@@ -19,8 +19,7 @@ export function deriveFolderPickerSharedState({ permissions } = {}) {
     lastmodified: null,
     hasReadPermission: true,
     hasWritePermission:
-      permission?.permission === PERMISSIONS.WRITE
-      || permission?.permission === PERMISSIONS.ADMIN,
+      permission?.permission === PERMISSIONS.WRITE || permission?.permission === PERMISSIONS.ADMIN,
   }));
 
   return {

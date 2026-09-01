@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Access logger: one JSON line per request to stdout. Does NOT log Authorization or body. |
-| Pipeline position | Top of middleware stack |
-| Preceding middleware | None |
+| Item                 | Description                                                                             |
+| -------------------- | --------------------------------------------------------------------------------------- |
+| Role                 | Access logger: one JSON line per request to stdout. Does NOT log Authorization or body. |
+| Pipeline position    | Top of middleware stack                                                                 |
+| Preceding middleware | None                                                                                    |
 
 ---
 

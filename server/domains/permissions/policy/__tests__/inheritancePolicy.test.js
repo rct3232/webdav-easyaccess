@@ -37,9 +37,7 @@ describe('inheritancePolicy (nodeId)', () => {
 
     const result = await inheritancePolicy.getEffectivePermission(userId, targetNodeId);
     expect(result).toBe(PERMISSIONS.READ);
-    expect(mockPermStore.getPathEffectivePermission).toHaveBeenCalledWith(
-      userId, targetNodeId
-    );
+    expect(mockPermStore.getPathEffectivePermission).toHaveBeenCalledWith(userId, targetNodeId);
   });
 
   it('V10b: returns WRITE when nearest ancestor has WRITE', async () => {

@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Account info display, Edit (opens AccountEditDialog), Logout at bottom. Single-item category content. |
-| Used in | MyPageContentArea (when selectedCategory is 'account') |
-| Related components | AccountEditDialog, userService |
+| Item               | Description                                                                                           |
+| ------------------ | ----------------------------------------------------------------------------------------------------- |
+| Role               | Account info display, Edit (opens AccountEditDialog), Logout at bottom. Single-item category content. |
+| Used in            | MyPageContentArea (when selectedCategory is 'account')                                                |
+| Related components | AccountEditDialog, userService                                                                        |
 
 ---
 
@@ -19,15 +19,15 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| user | object | Y | - | Current user (username, email, status, is_admin) |
-| onMessage | function | N | - | Message handler for success/error feedback |
+| Name      | Type     | Required | Default | Description                                      |
+| --------- | -------- | -------- | ------- | ------------------------------------------------ |
+| user      | object   | Y        | -       | Current user (username, email, status, is_admin) |
+| onMessage | function | N        | -       | Message handler for success/error feedback       |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
+| Callback  | When invoked                          | Arguments        |
+| --------- | ------------------------------------- | ---------------- |
 | onMessage | API success/failure, validation error | ({ type, text }) |
 
 ### 2.4 Dependencies

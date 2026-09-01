@@ -29,7 +29,13 @@ describe('buildPermissionDiff', () => {
 
   it('node empty -> revokes everything from initial; no grants', () => {
     const initial = new Map([
-      [1, new Map([['u1', 'read'], ['u2', 'write']])],
+      [
+        1,
+        new Map([
+          ['u1', 'read'],
+          ['u2', 'write'],
+        ]),
+      ],
       [2, new Map([['u3', 'read']])],
     ]);
 
@@ -51,11 +57,15 @@ describe('buildPermissionDiff', () => {
 
   it('removed user assignment -> revoke that user only', () => {
     const initial = new Map([
-      [1, new Map([['u1', 'read'], ['u2', 'write']])],
+      [
+        1,
+        new Map([
+          ['u1', 'read'],
+          ['u2', 'write'],
+        ]),
+      ],
     ]);
-    const current = new Map([
-      [1, new Map([['u1', 'read']])],
-    ]);
+    const current = new Map([[1, new Map([['u1', 'read']])]]);
 
     const { permissionsToRevoke, permissionsToGrant } = buildPermissionDiff({
       initialNodePermissions: initial,
@@ -67,12 +77,8 @@ describe('buildPermissionDiff', () => {
   });
 
   it('permission change -> grant new permission; no revoke', () => {
-    const initial = new Map([
-      [1, new Map([['u1', 'read']])],
-    ]);
-    const current = new Map([
-      [1, new Map([['u1', 'write']])],
-    ]);
+    const initial = new Map([[1, new Map([['u1', 'read']])]]);
+    const current = new Map([[1, new Map([['u1', 'write']])]]);
 
     const { permissionsToRevoke, permissionsToGrant } = buildPermissionDiff({
       initialNodePermissions: initial,
@@ -84,11 +90,15 @@ describe('buildPermissionDiff', () => {
   });
 
   it('extra user assignment -> grant; no revoke', () => {
-    const initial = new Map([
-      [1, new Map([['u1', 'read']])],
-    ]);
+    const initial = new Map([[1, new Map([['u1', 'read']])]]);
     const current = new Map([
-      [1, new Map([['u1', 'read'], ['u2', 'write']])],
+      [
+        1,
+        new Map([
+          ['u1', 'read'],
+          ['u2', 'write'],
+        ]),
+      ],
     ]);
 
     const { permissionsToRevoke, permissionsToGrant } = buildPermissionDiff({
@@ -107,9 +117,7 @@ describe('buildPermissionDiff', () => {
   });
 
   it('nodeIds are canonical integers in output', () => {
-    const initial = new Map([
-      [10, new Map([['u1', 'read']])],
-    ]);
+    const initial = new Map([[10, new Map([['u1', 'read']])]]);
     const current = new Map();
 
     const { permissionsToRevoke } = buildPermissionDiff({

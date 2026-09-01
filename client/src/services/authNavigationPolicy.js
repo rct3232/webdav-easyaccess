@@ -9,14 +9,13 @@ function shouldSkipAuthNavigation(config) {
 
   const h = config?.headers;
   const isShareRequest = Boolean(
-    h &&
-      (h instanceof Headers
-        ? h.get('X-Share-Token')
-        : h['X-Share-Token'] || h['x-share-token'])
+    h && (h instanceof Headers ? h.get('X-Share-Token') : h['X-Share-Token'] || h['x-share-token'])
   );
 
   const isSharePermissionCheck =
-    typeof config?.url === 'string' && config.url.includes('/share/') && config.url.includes('/check-my-permission');
+    typeof config?.url === 'string' &&
+    config.url.includes('/share/') &&
+    config.url.includes('/check-my-permission');
 
   return isAuthAttempt || isShareRequest || isSharePermissionCheck;
 }
@@ -54,4 +53,3 @@ function handle401RefreshFailure() {
 }
 
 export { shouldSkipAuthNavigation, is403RedirectableRequest, handle403, handle401RefreshFailure };
-

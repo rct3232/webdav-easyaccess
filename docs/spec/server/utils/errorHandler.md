@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                            |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Role | Centralized error handling: asyncHandler wrapper, formatErrorResponse, logError, error middleware. Standard error format (errorCode, params, details). |
 
 ---
@@ -17,19 +17,19 @@
 
 ### 2.2 Functions / Exports
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| asyncHandler | (fn) => (req, res, next) | Wraps async handlers, catches and forwards errors |
-| errorHandler | (err, req, res, next) => void | Express error middleware (add last) |
-| formatErrorResponse | (error, options?) => object | Standard error body |
-| logError | (error, context?) => void | Log error with context |
-| createError | (errorCode, status?, params?) => Error | Create error with errorCode |
-| mapDatabaseError | (error, options?) => Error | Maps PostgreSQL/DB errors to standardized status + errorCode |
-| validationError | (errorCode, params?) => Error | Validation error (400) |
-| unauthorizedError | (errorCode?, params?) => Error | Unauthorized (401) |
-| forbiddenError | (errorCode?, params?) => Error | Forbidden (403) |
-| notFoundError | (errorCode?, params?) => Error | Not found (404) |
-| conflictError | (errorCode?, params?) => Error | Conflict (409) |
+| Function            | Signature                              | Description                                                  |
+| ------------------- | -------------------------------------- | ------------------------------------------------------------ |
+| asyncHandler        | (fn) => (req, res, next)               | Wraps async handlers, catches and forwards errors            |
+| errorHandler        | (err, req, res, next) => void          | Express error middleware (add last)                          |
+| formatErrorResponse | (error, options?) => object            | Standard error body                                          |
+| logError            | (error, context?) => void              | Log error with context                                       |
+| createError         | (errorCode, status?, params?) => Error | Create error with errorCode                                  |
+| mapDatabaseError    | (error, options?) => Error             | Maps PostgreSQL/DB errors to standardized status + errorCode |
+| validationError     | (errorCode, params?) => Error          | Validation error (400)                                       |
+| unauthorizedError   | (errorCode?, params?) => Error         | Unauthorized (401)                                           |
+| forbiddenError      | (errorCode?, params?) => Error         | Forbidden (403)                                              |
+| notFoundError       | (errorCode?, params?) => Error         | Not found (404)                                              |
+| conflictError       | (errorCode?, params?) => Error         | Conflict (409)                                               |
 
 ### 2.3 Input / Output
 

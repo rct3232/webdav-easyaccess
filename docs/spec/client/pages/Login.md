@@ -2,20 +2,22 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Route path | `/login` |
-| Role | Login form page. Supports redirect-after-login or modal-style success via LoginForm props. |
+| Item       | Description                                                                                |
+| ---------- | ------------------------------------------------------------------------------------------ |
+| Route path | `/login`                                                                                   |
+| Role       | Login form page. Supports redirect-after-login or modal-style success via LoginForm props. |
 
 ---
 
 ## 2. Implementation Spec
 
 ### 2.1 File Path
+
 - **Source (page shell):** `client/src/pages/Login.js`
 - **Test file:** `client/src/pages/__tests__/Login.test.js`
 
 ### 2.2 Hooks Used
+
 - `useLoginForm` (controller hook)
   - useAuth (login)
   - useNavigate
@@ -23,6 +25,7 @@
 - (View) `LoginFormView` does not call hooks and does not import router modules
 
 ### 2.3 Main Child Components
+
 - `LoginForm` (controller wrapper, exported from `client/src/pages/Login.js`)
 - `LoginFormView` (pure view)
   - See `docs/spec/client/components/auth/LoginFormView.md`

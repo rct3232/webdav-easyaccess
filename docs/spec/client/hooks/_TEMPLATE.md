@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | (Hook's role) |
+| Item                     | Description        |
+| ------------------------ | ------------------ |
+| Role                     | (Hook's role)      |
 | Used by components/pages | (Where it is used) |
 
 ---
@@ -15,26 +15,26 @@
 
 Choose the scope according to [CODING_STYLE.md § Hook Placement](../../../../CODING_STYLE.md):
 
-| Scope | Source path | Test path |
-|-------|-------------|-----------|
-| Global | `client/src/hooks/[HookName].js` | `client/src/hooks/__tests__/[HookName].test.js` |
-| Page-local | `client/src/pages/[PageName]/hooks/[HookName].js` | `client/src/pages/[PageName]/hooks/__tests__/[HookName].test.js` |
-| Dialog-local | `client/src/components/dialogs/[DialogName]/hooks/[HookName].js` | `client/src/components/dialogs/[DialogName]/hooks/__tests__/[HookName].test.js` |
-| Component-family | `client/src/components/[family]/hooks/[HookName].js` | `client/src/components/[family]/hooks/__tests__/[HookName].test.js` |
+| Scope            | Source path                                                      | Test path                                                                       |
+| ---------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Global           | `client/src/hooks/[HookName].js`                                 | `client/src/hooks/__tests__/[HookName].test.js`                                 |
+| Page-local       | `client/src/pages/[PageName]/hooks/[HookName].js`                | `client/src/pages/[PageName]/hooks/__tests__/[HookName].test.js`                |
+| Dialog-local     | `client/src/components/dialogs/[DialogName]/hooks/[HookName].js` | `client/src/components/dialogs/[DialogName]/hooks/__tests__/[HookName].test.js` |
+| Component-family | `client/src/components/[family]/hooks/[HookName].js`             | `client/src/components/[family]/hooks/__tests__/[HookName].test.js`             |
 
 - **Source:** `(fill in the path matching the scope above)`
 - **Test file:** `(fill in the test path matching the scope above)`
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| (paramName) | (type) | Y/N | (description) |
+| Name        | Type   | Required | Description   |
+| ----------- | ------ | -------- | ------------- |
+| (paramName) | (type) | Y/N      | (description) |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
+| Key   | Type   | Meaning   |
+| ----- | ------ | --------- |
 | (key) | (type) | (meaning) |
 
 ### 2.4 Dependencies

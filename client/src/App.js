@@ -16,11 +16,11 @@ import ShareLinkLoader from './pages/ShareLinkLoader';
 const theme = createTheme({
   breakpoints: {
     values: {
-      xs: 0,      // 모바일 세로
-      sm: 600,    // 모바일 가로, 작은 태블릿
-      md: 900,    // 태블릿
-      lg: 1200,   // 데스크톱
-      xl: 1536,   // 대형 데스크톱
+      xs: 0, // 모바일 세로
+      sm: 600, // 모바일 가로, 작은 태블릿
+      md: 900, // 태블릿
+      lg: 1200, // 데스크톱
+      xl: 1536, // 대형 데스크톱
     },
   },
   palette: {
@@ -118,4 +118,3 @@ function App() {
 }
 
 export default App;
-

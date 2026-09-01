@@ -195,7 +195,9 @@ describe('MigrationPage', () => {
     renderPage(job);
 
     expect(await screen.findByRole('heading', { name: 'Migration cancelled' })).toBeInTheDocument();
-    expect(screen.getAllByText(/partial progress is preserved and resumes/i).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/partial progress is preserved and resumes/i).length
+    ).toBeGreaterThan(0);
   });
 
   it('shows persist-result guidance in the completed modal for blobs with persisted config', async () => {

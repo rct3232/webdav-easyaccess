@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Explorer interaction controller for FileManager: item click/open behavior, action-sheet/context-menu affordances, desktop double-click handling, and explorer-specific file-open flows including recent-file special cases. |
-| Used by components/pages | `client/src/pages/FileManager/FileManager.js` |
-| Does not own | Generic explorer command orchestration, progress state, or share-link overlay modal state. |
+| Item                     | Description                                                                                                                                                                                                                 |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Explorer interaction controller for FileManager: item click/open behavior, action-sheet/context-menu affordances, desktop double-click handling, and explorer-specific file-open flows including recent-file special cases. |
+| Used by components/pages | `client/src/pages/FileManager/FileManager.js`                                                                                                                                                                               |
+| Does not own             | Generic explorer command orchestration, progress state, or share-link overlay modal state.                                                                                                                                  |
 
 ---
 
@@ -21,37 +21,37 @@
 
 `useExplorerInteraction(params)`
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| isMobile | boolean | Y | Determines desktop vs mobile click semantics. |
-| isShareLinkMode | boolean | Y | Applies share-link-specific interaction policy. |
-| selectionMode | boolean | Y | Current explorer selection mode. |
-| displayedFiles | Array<object> | Y | Current visible file list used for desktop selection indexing. |
-| toggleFileSelection | (file: object) => void | Y | Selection toggle callback. |
-| handleFileClickSelection | (file: object, event: object, index: number) => void | Y | Desktop selection-click handler from `useSelection`. |
-| enterSelectionMode | () => void | Y | Enters selection mode for long-press. |
-| setSelectedFiles | (set: Set<number>) => void | Y | Setter for selected file nodeIds (keyed by `file.nodeId`). |
-| navigateToExplorerPath | (path: string) => Promise<void> \| void | Y | Generic explorer navigation from `useExplorerNavigation`. |
-| openExplorerFolder | (nodeId: number) => Promise<void> \| void | Y | Folder-open entry point from `useExplorerNavigation` (by nodeId). |
-| openPreviewDialog | () => void | Y | Opens preview dialog. |
-| setSelectedFile | (file: object) => void | Y | Sets currently previewed / context-selected file. |
-| setContextMenu | (state: object) => void | Y | Shell-owned desktop context-menu setter. |
-| setActionSheetFile | (file: object) => void | Y | Mobile action-sheet opener. |
-| actionSheetFile | object | N | Currently selected action-sheet file, used for preview. |
-| showError | (message: string) => void | Y | Shell-owned message surface. |
-| t | function | Y | Translation function. |
-| recentFileApi | object | N | Recent-file-specific callbacks (`trackRecentFileClick`, `clearTracking`, `handleRecentFileError`, `setRecentFileToPreview`). |
-| handleProductPathClick | (path: string) => Promise<boolean> \| boolean | N | Product-policy hook used to intercept path clicks before generic explorer navigation. |
+| Name                     | Type                                                 | Required | Description                                                                                                                  |
+| ------------------------ | ---------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| isMobile                 | boolean                                              | Y        | Determines desktop vs mobile click semantics.                                                                                |
+| isShareLinkMode          | boolean                                              | Y        | Applies share-link-specific interaction policy.                                                                              |
+| selectionMode            | boolean                                              | Y        | Current explorer selection mode.                                                                                             |
+| displayedFiles           | Array<object>                                        | Y        | Current visible file list used for desktop selection indexing.                                                               |
+| toggleFileSelection      | (file: object) => void                               | Y        | Selection toggle callback.                                                                                                   |
+| handleFileClickSelection | (file: object, event: object, index: number) => void | Y        | Desktop selection-click handler from `useSelection`.                                                                         |
+| enterSelectionMode       | () => void                                           | Y        | Enters selection mode for long-press.                                                                                        |
+| setSelectedFiles         | (set: Set<number>) => void                           | Y        | Setter for selected file nodeIds (keyed by `file.nodeId`).                                                                   |
+| navigateToExplorerPath   | (path: string) => Promise<void> \| void              | Y        | Generic explorer navigation from `useExplorerNavigation`.                                                                    |
+| openExplorerFolder       | (nodeId: number) => Promise<void> \| void            | Y        | Folder-open entry point from `useExplorerNavigation` (by nodeId).                                                            |
+| openPreviewDialog        | () => void                                           | Y        | Opens preview dialog.                                                                                                        |
+| setSelectedFile          | (file: object) => void                               | Y        | Sets currently previewed / context-selected file.                                                                            |
+| setContextMenu           | (state: object) => void                              | Y        | Shell-owned desktop context-menu setter.                                                                                     |
+| setActionSheetFile       | (file: object) => void                               | Y        | Mobile action-sheet opener.                                                                                                  |
+| actionSheetFile          | object                                               | N        | Currently selected action-sheet file, used for preview.                                                                      |
+| showError                | (message: string) => void                            | Y        | Shell-owned message surface.                                                                                                 |
+| t                        | function                                             | Y        | Translation function.                                                                                                        |
+| recentFileApi            | object                                               | N        | Recent-file-specific callbacks (`trackRecentFileClick`, `clearTracking`, `handleRecentFileError`, `setRecentFileToPreview`). |
+| handleProductPathClick   | (path: string) => Promise<boolean> \| boolean        | N        | Product-policy hook used to intercept path clicks before generic explorer navigation.                                        |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| handlePathClick | (path: string) => Promise<void> \| void | Path click handler that applies product policy before generic explorer navigation. |
-| handleFileClick | (file: object, event?: object, fileIndex?: number) => void | Main file-item click handler matching current desktop/mobile semantics. |
-| handleMoreClick | (file: object, event?: object) => void | Opens action sheet or desktop context menu. |
-| handleLongPressSelect | (file: object) => void | Mobile long-press selection entry point. |
-| handleActionSheetPreview | () => void | Opens preview for the current mobile action-sheet file. |
+| Key                      | Type                                                       | Meaning                                                                            |
+| ------------------------ | ---------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| handlePathClick          | (path: string) => Promise<void> \| void                    | Path click handler that applies product policy before generic explorer navigation. |
+| handleFileClick          | (file: object, event?: object, fileIndex?: number) => void | Main file-item click handler matching current desktop/mobile semantics.            |
+| handleMoreClick          | (file: object, event?: object) => void                     | Opens action sheet or desktop context menu.                                        |
+| handleLongPressSelect    | (file: object) => void                                     | Mobile long-press selection entry point.                                           |
+| handleActionSheetPreview | () => void                                                 | Opens preview for the current mobile action-sheet file.                            |
 
 ### 2.4 Responsibilities
 

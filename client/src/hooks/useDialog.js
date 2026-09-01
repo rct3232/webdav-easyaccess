@@ -12,13 +12,16 @@ const useDialog = (options = {}) => {
   const { onOpen, onClose, initialState = false } = options;
   const [isOpen, setIsOpen] = useState(initialState);
   const [data, setData] = useState(null);
-  
-  const open = useCallback((openData) => {
-    setData(openData);
-    setIsOpen(true);
-    onOpen?.(openData);
-  }, [onOpen]);
-  
+
+  const open = useCallback(
+    (openData) => {
+      setData(openData);
+      setIsOpen(true);
+      onOpen?.(openData);
+    },
+    [onOpen]
+  );
+
   const close = useCallback(() => {
     setIsOpen(false);
     setData(null);

@@ -40,7 +40,7 @@ const SharedFoldersSection = ({
   if (user?.is_admin || sharedFolders.length === 0) return null;
 
   const sharedTree = buildSharedFolderTree();
-  const sharedFoldersMap = new Map(sharedFolders.map(perm => [perm.nodeId, perm]));
+  const sharedFoldersMap = new Map(sharedFolders.map((perm) => [perm.nodeId, perm]));
 
   return (
     <>

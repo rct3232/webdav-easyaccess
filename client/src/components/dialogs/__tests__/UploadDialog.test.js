@@ -95,9 +95,7 @@ describe('UploadDialog', () => {
   it('resets files when dialog closes and reopens', async () => {
     const user = userEvent.setup();
     const file = new File(['x'], 'temp.txt', { type: 'text/plain' });
-    const { rerender } = renderWithProviders(
-      <UploadDialog {...defaultProps} open />
-    );
+    const { rerender } = renderWithProviders(<UploadDialog {...defaultProps} open />);
     const input = document.querySelector('input[type="file"]');
     await user.upload(input, file);
     expect(screen.getByText('temp.txt')).toBeInTheDocument();

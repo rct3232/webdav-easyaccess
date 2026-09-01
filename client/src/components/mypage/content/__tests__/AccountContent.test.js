@@ -107,7 +107,8 @@ describe('AccountContent', () => {
   it('AccountEditDialog: password change triggers logout', async () => {
     server.use(
       http.put('/api/users/:id/password', () =>
-        HttpResponse.json({ messageCode: 'serverMessages.users.passwordUpdated' }))
+        HttpResponse.json({ messageCode: 'serverMessages.users.passwordUpdated' })
+      )
     );
 
     const user = userEvent.setup();
@@ -151,10 +152,8 @@ describe('AccountContent', () => {
   it('message display when API returns error', async () => {
     server.use(
       http.put('/api/users/:id/email', () =>
-        HttpResponse.json(
-          { errorCode: 'serverErrors.users.emailTaken' },
-          { status: 409 }
-        ))
+        HttpResponse.json({ errorCode: 'serverErrors.users.emailTaken' }, { status: 409 })
+      )
     );
 
     const user = userEvent.setup();

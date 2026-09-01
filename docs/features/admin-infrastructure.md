@@ -25,16 +25,16 @@ Administrators are users with `is_admin` set. Admin routes require a valid JWT a
 
 ### Admin APIs
 
-| Area | Endpoints | Description |
-|------|-----------|-------------|
-| Settings | `GET /api/admin/settings`, `PUT /api/admin/settings` | Get/update system settings (e.g. `registration_enabled`). |
-| Users | `GET /api/admin/users/pending`, `GET /api/admin/users`, `POST /api/admin/users` | Pending signups, list all users, add user. |
-| Approval | `POST /api/admin/users/:id/approve`, `POST /api/admin/users/:id/reject` | Approve or reject signup; optional email (sendApprovalEmail, sendRejectionEmail). |
-| User management | `DELETE /api/admin/users/:id` | Delete user (cannot delete self or other admins). |
-| Permissions | `GET /api/admin/folders/list`, `PUT /api/admin/users/:id/permissions` | List folders for permission UI; set user folder permissions. |
-| Cleanup | `POST /api/admin/permissions/ensure-home-owner-admin`, `POST /api/admin/cleanup/orphaned` | Ensure home owner has admin on home folder; remove redundant self-grants on users' own subtrees; clean orphaned metadata. |
-| Maintenance (GC) | `POST /api/admin/maintenance/gc`, `POST /api/admin/maintenance/repair-sync` | Run one orphaned-blob GC cycle; manually resolve `orphaned_node` rows. |
-| Blob migration | `GET /api/admin/migration/info`, `POST /api/admin/migration/blobs`, `GET /api/admin/migration/jobs/:jobId`, `POST /api/admin/migration/jobs/:jobId/cancel` | Fetch derived direction/source, start a bidirectional WebDAV ↔ S3 blob migration, poll its status, cancel it. Spec: `docs/spec/server/tools/blob-migration.md`. |
+| Area             | Endpoints                                                                                                                                                  | Description                                                                                                                                                     |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Settings         | `GET /api/admin/settings`, `PUT /api/admin/settings`                                                                                                       | Get/update system settings (e.g. `registration_enabled`).                                                                                                       |
+| Users            | `GET /api/admin/users/pending`, `GET /api/admin/users`, `POST /api/admin/users`                                                                            | Pending signups, list all users, add user.                                                                                                                      |
+| Approval         | `POST /api/admin/users/:id/approve`, `POST /api/admin/users/:id/reject`                                                                                    | Approve or reject signup; optional email (sendApprovalEmail, sendRejectionEmail).                                                                               |
+| User management  | `DELETE /api/admin/users/:id`                                                                                                                              | Delete user (cannot delete self or other admins).                                                                                                               |
+| Permissions      | `GET /api/admin/folders/list`, `PUT /api/admin/users/:id/permissions`                                                                                      | List folders for permission UI; set user folder permissions.                                                                                                    |
+| Cleanup          | `POST /api/admin/permissions/ensure-home-owner-admin`, `POST /api/admin/cleanup/orphaned`                                                                  | Ensure home owner has admin on home folder; remove redundant self-grants on users' own subtrees; clean orphaned metadata.                                       |
+| Maintenance (GC) | `POST /api/admin/maintenance/gc`, `POST /api/admin/maintenance/repair-sync`                                                                                | Run one orphaned-blob GC cycle; manually resolve `orphaned_node` rows.                                                                                          |
+| Blob migration   | `GET /api/admin/migration/info`, `POST /api/admin/migration/blobs`, `GET /api/admin/migration/jobs/:jobId`, `POST /api/admin/migration/jobs/:jobId/cancel` | Fetch derived direction/source, start a bidirectional WebDAV ↔ S3 blob migration, poll its status, cancel it. Spec: `docs/spec/server/tools/blob-migration.md`. |
 
 See [api.md](../api.md) for exact methods, paths, and bodies.
 

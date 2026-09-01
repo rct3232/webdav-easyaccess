@@ -2,12 +2,12 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | In-process pub-sub for “recent files” change events. `recentFilesRepository` publishes change events here after successful observable updates, and UI subscribers reload their recent-derived state from this signal. |
-| Used by | Publisher: `recentFilesRepository` |
-| Used by | Subscribers: `FileManager` (`/__recent__` refresh) and `useFolderTreeController` (recent section refresh) |
-| Does not own | Any server IO or path mutation logic |
+| Item         | Description                                                                                                                                                                                                           |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role         | In-process pub-sub for “recent files” change events. `recentFilesRepository` publishes change events here after successful observable updates, and UI subscribers reload their recent-derived state from this signal. |
+| Used by      | Publisher: `recentFilesRepository`                                                                                                                                                                                    |
+| Used by      | Subscribers: `FileManager` (`/__recent__` refresh) and `useFolderTreeController` (recent section refresh)                                                                                                             |
+| Does not own | Any server IO or path mutation logic                                                                                                                                                                                  |
 
 ---
 
@@ -22,10 +22,10 @@
 
 ### 2.2 Main Functions
 
-| Function | Input => Return |
-|----------|------------------|
-| onRecentFilesChange | `(callback) => unsubscribeFn` |
-| notifyRecentFilesChange | `() => void` |
+| Function                | Input => Return               |
+| ----------------------- | ----------------------------- |
+| onRecentFilesChange     | `(callback) => unsubscribeFn` |
+| notifyRecentFilesChange | `() => void`                  |
 
 `unsubscribeFn` contract:
 
@@ -55,4 +55,3 @@
 - [ ] One subscriber throwing does not break notification fan-out.
 - [ ] `FileManager` and `useFolderTreeController` can safely call the returned unsubscribe function during effect cleanup.
 - [ ] Calling the returned unsubscribe function twice remains a no-op and does not throw.
-

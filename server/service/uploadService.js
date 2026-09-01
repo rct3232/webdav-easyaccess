@@ -24,7 +24,6 @@ const storage = require('../store/storage');
  * ────────────────────────────────────────────────────────────────
  */
 function createUploadService({ fileNodeService, blobStorageService, blobStore }) {
-
   function withTx(callback) {
     const backend = storage.getBackend();
     if (backend === 'sqlite') {

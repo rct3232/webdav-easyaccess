@@ -1,14 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Button,
-  Box,
-  Typography,
-  List,
-  ListItem,
-  ListItemText,
-  IconButton,
-} from '@mui/material';
+import { Button, Box, Typography, List, ListItem, ListItemText, IconButton } from '@mui/material';
 import { useDropzone } from 'react-dropzone';
 import { Close as CloseIcon } from '@mui/icons-material';
 import BaseDialog from './BaseDialog';
@@ -21,7 +13,7 @@ const UploadDialog = ({ open, onClose, parentNodeId, onUploadStart }) => {
 
   const onDrop = useCallback((acceptedFiles) => {
     setFiles((prev) => {
-      const newFiles = [...prev, ...acceptedFiles.map(file => ({ file }))];
+      const newFiles = [...prev, ...acceptedFiles.map((file) => ({ file }))];
       return newFiles;
     });
   }, []);
@@ -54,11 +46,11 @@ const UploadDialog = ({ open, onClose, parentNodeId, onUploadStart }) => {
     }
 
     // 선택된 파일 목록을 콜백으로 전달하고 다이얼로그 닫기
-    const fileList = files.map(item => item.file);
+    const fileList = files.map((item) => item.file);
     if (onUploadStart) {
       onUploadStart(fileList, parentNodeId);
     }
-    
+
     setFiles([]);
     onClose();
   };
@@ -75,10 +67,13 @@ const UploadDialog = ({ open, onClose, parentNodeId, onUploadStart }) => {
       title={t('dialogs.uploadTitle')}
       actions={
         <>
-          <Button onClick={handleClose}>
-            {t('common.cancel')}
-          </Button>
-          <Button data-testid="upload-dialog-submit" onClick={handleUpload} variant="contained" disabled={files.length === 0}>
+          <Button onClick={handleClose}>{t('common.cancel')}</Button>
+          <Button
+            data-testid="upload-dialog-submit"
+            onClick={handleUpload}
+            variant="contained"
+            disabled={files.length === 0}
+          >
             {t('dialogs.upload')}
           </Button>
         </>
@@ -110,11 +105,7 @@ const UploadDialog = ({ open, onClose, parentNodeId, onUploadStart }) => {
             <ListItem
               key={index}
               secondaryAction={
-                <IconButton 
-                  edge="end" 
-                  onClick={() => handleRemove(index)}
-                  size="small"
-                >
+                <IconButton edge="end" onClick={() => handleRemove(index)} size="small">
                   <CloseIcon />
                 </IconButton>
               }

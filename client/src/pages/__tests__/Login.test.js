@@ -190,13 +190,19 @@ describe('Login', () => {
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     });
-    expect(screen.queryByRole('link', { name: /sign up|don't have an account|no account/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: /sign up|don't have an account|no account/i })
+    ).not.toBeInTheDocument();
   });
 
   it('navigates to /setup when setup_complete is false', async () => {
     server.use(
       http.get('/api/settings/public', () => {
-        return HttpResponse.json({ registration_enabled: true, email_enabled: false, setup_complete: false });
+        return HttpResponse.json({
+          registration_enabled: true,
+          email_enabled: false,
+          setup_complete: false,
+        });
       })
     );
     render(renderLogin());

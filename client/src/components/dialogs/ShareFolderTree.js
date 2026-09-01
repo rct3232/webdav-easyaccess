@@ -1,11 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Box,
-  IconButton,
-  Typography,
-  CircularProgress,
-} from '@mui/material';
+import { Box, IconButton, Typography, CircularProgress } from '@mui/material';
 import {
   Folder as FolderIcon,
   FolderOpen as FolderOpenIcon,
@@ -45,34 +40,38 @@ const ShareFolderTree = ({
   const node = folderTree.get(rootNodeId);
   if (!node) return null;
 
-  const startLabelScroll = isMobile ? undefined : (event) => {
-    const container = event.currentTarget;
-    const text = container.querySelector('span');
+  const startLabelScroll = isMobile
+    ? undefined
+    : (event) => {
+        const container = event.currentTarget;
+        const text = container.querySelector('span');
 
-    if (!text || text.scrollWidth <= container.clientWidth) {
-      return;
-    }
+        if (!text || text.scrollWidth <= container.clientWidth) {
+          return;
+        }
 
-    const scrollDistance = text.scrollWidth - container.clientWidth;
-    const scrollSpeed = 50;
-    const scrollTime = scrollDistance / scrollSpeed;
-    const animationDuration = scrollTime + 0.5;
-    container.style.setProperty('--scroll-distance', `${scrollDistance}px`);
-    text.style.animation = 'none';
-    text.style.transform = 'translateX(0)';
-    void text.offsetWidth;
-    text.style.animation = `${HOVER_SCROLL_ANIMATION_NAME} ${animationDuration}s linear infinite`;
-  };
+        const scrollDistance = text.scrollWidth - container.clientWidth;
+        const scrollSpeed = 50;
+        const scrollTime = scrollDistance / scrollSpeed;
+        const animationDuration = scrollTime + 0.5;
+        container.style.setProperty('--scroll-distance', `${scrollDistance}px`);
+        text.style.animation = 'none';
+        text.style.transform = 'translateX(0)';
+        void text.offsetWidth;
+        text.style.animation = `${HOVER_SCROLL_ANIMATION_NAME} ${animationDuration}s linear infinite`;
+      };
 
-  const stopLabelScroll = isMobile ? undefined : (event) => {
-    const text = event.currentTarget.querySelector('span');
-    if (!text) {
-      return;
-    }
+  const stopLabelScroll = isMobile
+    ? undefined
+    : (event) => {
+        const text = event.currentTarget.querySelector('span');
+        if (!text) {
+          return;
+        }
 
-    text.style.animation = 'none';
-    text.style.transform = 'translateX(0)';
-  };
+        text.style.animation = 'none';
+        text.style.transform = 'translateX(0)';
+      };
 
   const nodeId = node.nodeId ?? rootNodeId;
   const isExpanded = expandedNodeIds.has(nodeId);
@@ -92,13 +91,13 @@ const ShareFolderTree = ({
           `}
         </style>
       )}
-      <Box 
-        sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between', 
-          py: 0.5, 
-          pl: level * 1, 
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          py: 0.5,
+          pl: level * 1,
           width: '100%',
           overflow: 'visible',
         }}
@@ -119,7 +118,11 @@ const ShareFolderTree = ({
               <ChevronRightIcon />
             )}
           </IconButton>
-          {isExpanded ? <FolderOpenIcon sx={{ fontSize: 16, mr: 0.5, flexShrink: 0 }} /> : <FolderIcon sx={{ fontSize: 16, mr: 0.5, flexShrink: 0 }} />}
+          {isExpanded ? (
+            <FolderOpenIcon sx={{ fontSize: 16, mr: 0.5, flexShrink: 0 }} />
+          ) : (
+            <FolderIcon sx={{ fontSize: 16, mr: 0.5, flexShrink: 0 }} />
+          )}
           <Box
             sx={{
               flex: '1 0 0',
@@ -145,25 +148,23 @@ const ShareFolderTree = ({
             </Typography>
           </Box>
         </Box>
-        
+
         {/* 오른쪽: 드롭다운 메뉴 버튼 */}
         {(() => {
-          const {
-            userCount,
-            isChanged,
-            isFolderWithAdminPermission,
-          } = deriveShareFolderAccessView({
-            nodeId,
-            folderPermissions,
-            isAdminMode,
-            userId,
-            user,
-            userInfoMap,
-            users,
-            getUserName,
-            hasPermissionChanged,
-            baseFolderNodeId,
-          });
+          const { userCount, isChanged, isFolderWithAdminPermission } = deriveShareFolderAccessView(
+            {
+              nodeId,
+              folderPermissions,
+              isAdminMode,
+              userId,
+              user,
+              userInfoMap,
+              users,
+              getUserName,
+              hasPermissionChanged,
+              baseFolderNodeId,
+            }
+          );
 
           return (
             <Box
@@ -175,7 +176,7 @@ const ShareFolderTree = ({
                 setFolderMenuAnchor(e.currentTarget);
                 setFolderMenuNodeId(nodeId);
               }}
-              sx={{ 
+              sx={{
                 display: 'flex',
                 alignItems: 'center',
                 border: 'none',
@@ -190,9 +191,11 @@ const ShareFolderTree = ({
                 gap: 0.5,
                 overflow: 'visible',
                 ...(isFolderWithAdminPermission ? { opacity: 0.55 } : {}),
-                '&:hover': isFolderWithAdminPermission ? {} : {
-                  backgroundColor: 'grey.400',
-                }
+                '&:hover': isFolderWithAdminPermission
+                  ? {}
+                  : {
+                      backgroundColor: 'grey.400',
+                    },
               }}
             >
               {loadingPermissions ? (
@@ -244,13 +247,13 @@ const ShareFolderTree = ({
           );
         })()}
       </Box>
-      
+
       {isExpanded && (hasChildren || isLoading) && (
         <Box sx={{ pl: 1 }}>
           {isLoading && !hasChildren ? (
             <FileTreeSkeleton level={level + 1} count={3} />
           ) : (
-            node.children.map(child => (
+            node.children.map((child) => (
               <ShareFolderTree
                 key={child.nodeId ?? child.path}
                 rootNodeId={child.nodeId}

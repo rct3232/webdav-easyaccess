@@ -25,7 +25,10 @@ const User = require('../../../../models/User');
 const Settings = require('../../../../models/Settings');
 const { runProbe } = require('../../../../infrastructure/backendProbe');
 const { getBackendHealth } = require('../../../../infrastructure/backendHealth');
-const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const {
+  SERVER_ERROR_CODES,
+  SERVER_MESSAGE_CODES,
+} = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { generateToken } = require('../../../../utils/auth');
 const { setSharedResolver } = require('../../../../infrastructure/configResolver');
 const { decryptSecret, encryptSecret } = require('../../../../utils/configEncryption');
@@ -416,9 +419,33 @@ describe('GET /api/admin/health', () => {
 
   it('returns 200 with the backend health snapshot', async () => {
     mockHealth.getHealth.mockReturnValue({
-      postgresql: { status: 'ok', code: undefined, reason: undefined, hint: undefined, lastCheckedAt: 1725000000000, firstFailedAt: undefined, consecutiveFailures: 0 },
-      s3: { status: 'unknown', code: undefined, reason: undefined, hint: undefined, lastCheckedAt: undefined, firstFailedAt: undefined, consecutiveFailures: 0 },
-      webdav: { status: 'fail', code: 'unreachable', reason: 'ECONNREFUSED', hint: 'Cannot reach the WebDAV server', lastCheckedAt: 1725000000000, firstFailedAt: 1724999900000, consecutiveFailures: 3 },
+      postgresql: {
+        status: 'ok',
+        code: undefined,
+        reason: undefined,
+        hint: undefined,
+        lastCheckedAt: 1725000000000,
+        firstFailedAt: undefined,
+        consecutiveFailures: 0,
+      },
+      s3: {
+        status: 'unknown',
+        code: undefined,
+        reason: undefined,
+        hint: undefined,
+        lastCheckedAt: undefined,
+        firstFailedAt: undefined,
+        consecutiveFailures: 0,
+      },
+      webdav: {
+        status: 'fail',
+        code: 'unreachable',
+        reason: 'ECONNREFUSED',
+        hint: 'Cannot reach the WebDAV server',
+        lastCheckedAt: 1725000000000,
+        firstFailedAt: 1724999900000,
+        consecutiveFailures: 3,
+      },
     });
 
     const res = await request(app)

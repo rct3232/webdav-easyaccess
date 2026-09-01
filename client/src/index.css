@@ -30,17 +30,33 @@ body,
 
 /* Dynamic AppBar Gradient Animation */
 @keyframes move-green {
-  0% { transform: translate(0, 0) scale(1); }
-  25% { transform: translate(10%, 5%) scale(1.1); }
-  50% { transform: translate(-5%, 10%) scale(0.9); }
-  75% { transform: translate(-10%, -5%) scale(1.05); }
-  100% { transform: translate(0, 0) scale(1); }
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+  25% {
+    transform: translate(10%, 5%) scale(1.1);
+  }
+  50% {
+    transform: translate(-5%, 10%) scale(0.9);
+  }
+  75% {
+    transform: translate(-10%, -5%) scale(1.05);
+  }
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
 }
 
 @keyframes move-yellow {
-  0% { transform: translateY(-10%); }
-  50% { transform: translateY(10%); }
-  100% { transform: translateY(-10%); }
+  0% {
+    transform: translateY(-10%);
+  }
+  50% {
+    transform: translateY(10%);
+  }
+  100% {
+    transform: translateY(-10%);
+  }
 }
 
 .dynamic-appbar-gradient {
@@ -52,7 +68,7 @@ body,
 .dynamic-appbar-gradient::before,
 .dynamic-appbar-gradient::after,
 .dynamic-appbar-gradient .gradient-bg-green {
-  content: "";
+  content: '';
   position: absolute;
   top: 0;
   left: 0;
@@ -69,7 +85,11 @@ body,
 
 /* Green (Moves XY) */
 .dynamic-appbar-gradient .gradient-bg-green {
-  background: radial-gradient(ellipse 250px 150px at 50% 100%, #52c597 0%, rgba(82, 197, 151, 0) 60%);
+  background: radial-gradient(
+    ellipse 250px 150px at 50% 100%,
+    #52c597 0%,
+    rgba(82, 197, 151, 0) 60%
+  );
   animation: move-green 46s ease-in-out infinite;
   width: 150%;
   height: 150%;
@@ -80,7 +100,11 @@ body,
 
 /* Yellow (Moves Y) */
 .dynamic-appbar-gradient::after {
-  background: radial-gradient(ellipse 300px 200px at 100% 15%, rgba(251, 229, 89, 0.6) 0%, rgba(251, 229, 89, 0) 60%);
+  background: radial-gradient(
+    ellipse 300px 200px at 100% 15%,
+    rgba(251, 229, 89, 0.6) 0%,
+    rgba(251, 229, 89, 0) 60%
+  );
   animation: move-yellow 19s ease-in-out infinite;
   width: 150%;
   height: 150%;
@@ -90,15 +114,13 @@ body,
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell',
+    'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
 }
-

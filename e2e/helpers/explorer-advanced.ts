@@ -24,7 +24,10 @@ export async function switchViewMode(page: Page, mode: 'list' | 'grid' | 'detail
  * @param page Playwright page
  * @param mode Sort mode: 'name-asc' | 'name-desc' | 'date-asc' | 'date-desc'
  */
-export async function setSortMode(page: Page, mode: 'name-asc' | 'name-desc' | 'date-asc' | 'date-desc'): Promise<void> {
+export async function setSortMode(
+  page: Page,
+  mode: 'name-asc' | 'name-desc' | 'date-asc' | 'date-desc'
+): Promise<void> {
   // Click sort button to open menu - use test id for stability
   const sortButton = page.getByTestId('file-manager-sort');
   await sortButton.click();
@@ -55,7 +58,7 @@ export async function setSortMode(page: Page, mode: 'name-asc' | 'name-desc' | '
 export async function searchInExplorer(page: Page, query: string): Promise<void> {
   const searchbox = page.getByRole('searchbox');
   await searchbox.fill(query);
-  
+
   // Wait for search results
   await page.waitForTimeout(500);
 }
@@ -68,7 +71,7 @@ export async function searchInExplorer(page: Page, query: string): Promise<void>
 export async function getVisibleItems(page: Page): Promise<string[]> {
   const itemLocators = page.locator('[data-file-path]');
   const items = await itemLocators.allTextContents();
-  
+
   // Extract paths from data-file-path attribute
   const paths = [];
   for (const locator of await itemLocators.all()) {
@@ -77,6 +80,6 @@ export async function getVisibleItems(page: Page): Promise<string[]> {
       paths.push(path);
     }
   }
-  
+
   return paths;
 }

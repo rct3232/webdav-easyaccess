@@ -60,9 +60,7 @@ describe('permissionPolicy (nodeId)', () => {
 
     const result = await permissionPolicy.canReadFolderNode(userId, dirNodeId);
     expect(result).toBe(true);
-    expect(mockPermStore.checkPermission).toHaveBeenCalledWith(
-      userId, dirNodeId, PERMISSIONS.READ
-    );
+    expect(mockPermStore.checkPermission).toHaveBeenCalledWith(userId, dirNodeId, PERMISSIONS.READ);
   });
 
   it('V8b: returns false when user has no READ permission', async () => {
@@ -112,7 +110,9 @@ describe('permissionPolicy (nodeId)', () => {
     const result = await permissionPolicy.canGrantPermissionNode(userId, targetNodeId);
     expect(result).toBe(true);
     expect(mockPermStore.checkPermission).toHaveBeenCalledWith(
-      userId, targetNodeId, PERMISSIONS.ADMIN
+      userId,
+      targetNodeId,
+      PERMISSIONS.ADMIN
     );
   });
 

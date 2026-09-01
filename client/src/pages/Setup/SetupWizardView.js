@@ -393,12 +393,7 @@ const SetupWizardView = ({
             {viewModel.back}
           </Button>
           {activeStep < stepCount - 1 ? (
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={onNext}
-              disabled={!testPassed}
-            >
+            <Button variant="contained" color="primary" onClick={onNext} disabled={!testPassed}>
               {viewModel.next}
             </Button>
           ) : (

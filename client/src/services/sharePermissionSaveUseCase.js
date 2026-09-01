@@ -4,10 +4,7 @@ import sharePermissionGateway from './sharePermissionGateway';
 /**
  * Persist ShareDialog share-mode permissions using diffed revoke/grant operations.
  */
-export async function sharePermissionSaveUseCase({
-  initialNodePermissions,
-  nodePermissions,
-} = {}) {
+export async function sharePermissionSaveUseCase({ initialNodePermissions, nodePermissions } = {}) {
   const { permissionsToRevoke, permissionsToGrant } = buildPermissionDiff({
     initialNodePermissions,
     nodePermissions,

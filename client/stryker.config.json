@@ -15,10 +15,7 @@
     "!src/mocks/**",
     "!src/test-utils/**"
   ],
-  "ignorePatterns": [
-    "**/node_modules/**",
-    "**/coverage/**"
-  ],
+  "ignorePatterns": ["**/node_modules/**", "**/coverage/**"],
   "jest": {
     "projectType": "create-react-app"
   }

@@ -34,7 +34,11 @@ describe('useFileOperations', () => {
     jest.clearAllMocks();
     fileService.downloadFile.mockResolvedValue();
     fileService.downloadMultipleFiles.mockResolvedValue({});
-    fileService.renameFile.mockResolvedValue({ messageCode: 'serverMessages.files.renameSuccess', nodeId: 1, newName: 'new.pdf' });
+    fileService.renameFile.mockResolvedValue({
+      messageCode: 'serverMessages.files.renameSuccess',
+      nodeId: 1,
+      newName: 'new.pdf',
+    });
   });
 
   afterEach(() => {
@@ -50,9 +54,7 @@ describe('useFileOperations', () => {
 
   it('handleFileDownload for file calls downloadFile and onClose on success', async () => {
     const file = { nodeId: 1, basename: 'file.txt', type: 'file' };
-    const { result } = renderHook(() =>
-      useFileOperations({ onClose: mockOnClose })
-    );
+    const { result } = renderHook(() => useFileOperations({ onClose: mockOnClose }));
 
     await act(async () => {
       await result.current.handleFileDownload(file);
@@ -72,10 +74,7 @@ describe('useFileOperations', () => {
       await result.current.handleFileDownload(file);
     });
 
-    expect(fileService.downloadMultipleFiles).toHaveBeenCalledWith(
-      [2],
-      expect.any(Function)
-    );
+    expect(fileService.downloadMultipleFiles).toHaveBeenCalledWith([2], expect.any(Function));
     expect(mockOnProgress).toHaveBeenCalled();
     expect(mockOnClose).toHaveBeenCalled();
   });
@@ -106,16 +105,12 @@ describe('useFileOperations', () => {
     });
 
     expect(mockOnClose).not.toHaveBeenCalled();
-    expect(mockOnProgress).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'error' })
-    );
+    expect(mockOnProgress).toHaveBeenCalledWith(expect.objectContaining({ status: 'error' }));
   });
 
   it('handleFileRename calls renameFile and onClose on success', async () => {
     const file = { nodeId: 1, basename: 'doc.pdf', type: 'file' };
-    const { result } = renderHook(() =>
-      useFileOperations({ onClose: mockOnClose })
-    );
+    const { result } = renderHook(() => useFileOperations({ onClose: mockOnClose }));
 
     await act(async () => {
       await result.current.handleFileRename(file, 'new.pdf');
@@ -144,9 +139,7 @@ describe('useFileOperations', () => {
 
   it('handleFileRename with onProgress updates progress', async () => {
     const file = { nodeId: 1, basename: 'doc.pdf', type: 'file' };
-    const { result } = renderHook(() =>
-      useFileOperations({ onProgress: mockOnProgress })
-    );
+    const { result } = renderHook(() => useFileOperations({ onProgress: mockOnProgress }));
 
     await act(async () => {
       await result.current.handleFileRename(file, 'new.pdf');
@@ -155,12 +148,8 @@ describe('useFileOperations', () => {
     expect(mockOnProgress).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'rename', status: 'preparing' })
     );
-    expect(mockOnProgress).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'processing' })
-    );
-    expect(mockOnProgress).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'completed' })
-    );
+    expect(mockOnProgress).toHaveBeenCalledWith(expect.objectContaining({ status: 'processing' }));
+    expect(mockOnProgress).toHaveBeenCalledWith(expect.objectContaining({ status: 'completed' }));
   });
 
   it('handleFileRename on API failure does not call onClose', async () => {
@@ -175,16 +164,12 @@ describe('useFileOperations', () => {
     });
 
     expect(mockOnClose).not.toHaveBeenCalled();
-    expect(mockOnProgress).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'error' })
-    );
+    expect(mockOnProgress).toHaveBeenCalledWith(expect.objectContaining({ status: 'error' }));
   });
 
   it('handleFileRename with empty newName reports validation error via onProgress', async () => {
     const file = { nodeId: 1, basename: 'doc.pdf', type: 'file' };
-    const { result } = renderHook(() =>
-      useFileOperations({ onProgress: mockOnProgress })
-    );
+    const { result } = renderHook(() => useFileOperations({ onProgress: mockOnProgress }));
 
     await act(async () => {
       await result.current.handleFileRename(file, '   ');

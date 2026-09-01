@@ -243,7 +243,9 @@ describe('shareLinkStore', () => {
 
       const attempts = 24;
       await Promise.all(
-        Array.from({ length: attempts }, () => isolatedStore.incrementDownloadCount('pg-concurrency-token'))
+        Array.from({ length: attempts }, () =>
+          isolatedStore.incrementDownloadCount('pg-concurrency-token')
+        )
       );
 
       const finalLink = await isolatedStore.getShareLink('pg-concurrency-token');

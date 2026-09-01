@@ -62,19 +62,23 @@ export const getConnectionClassFriendlyKey = (errorCode) =>
  */
 export const determineErrorType = (error) => {
   if (!error) return ERROR_TYPES.UNKNOWN;
-  
+
   // 네트워크 에러 확인
-  if (error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK' || 
-      error.message?.includes('Network Error') || error.message?.includes('timeout')) {
+  if (
+    error.code === 'ECONNABORTED' ||
+    error.code === 'ERR_NETWORK' ||
+    error.message?.includes('Network Error') ||
+    error.message?.includes('timeout')
+  ) {
     return ERROR_TYPES.NETWORK_ERROR;
   }
-  
+
   // HTTP 상태 코드 기반 판별
   const status = error.response?.status;
   if (status && STATUS_CODE_TO_ERROR_TYPE[status]) {
     return STATUS_CODE_TO_ERROR_TYPE[status];
   }
-  
+
   // 에러 메시지 기반 판별
   const message = (error.message || error.response?.data?.error || '').toLowerCase();
   if (message.includes('permission')) {
@@ -89,7 +93,7 @@ export const determineErrorType = (error) => {
   if (message.includes('already exists')) {
     return ERROR_TYPES.DUPLICATE_FILE;
   }
-  
+
   return ERROR_TYPES.UNKNOWN;
 };
 

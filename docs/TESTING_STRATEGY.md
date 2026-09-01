@@ -59,9 +59,9 @@ Current layout is summarized in [client/TEST_SUMMARY.md](../client/TEST_SUMMARY.
 - **React 18 async update guardrail:** When a hook or page triggers async effects immediately after render, do not rely on instantly resolved mocks plus ad-hoc microtask flushing. Prefer controlling completion explicitly with deferred promises or equivalent test-owned async seams, then wait for the user-visible completion state (`findBy*`, `waitFor`, `waitForElementToBeRemoved`) before asserting. This keeps React updates inside act-aware boundaries.
 - **Avoid unrelated async noise in page tests:** If a page scenario is not verifying sidebar/tree/FAB chrome, replace those shell-only async seams with lighter doubles so page tests do not inherit extra `act(...)` warnings from unrelated subscriptions or background loads.
 - **Auth-gated page guardrail:** For pages that return `null` until auth context resolves (for example `MyPage`), do not perform immediate `getBy*` queries after `render`. First wait for a stable post-auth UI anchor (`findByRole` or `waitFor`), then interact/assert.
-- **Decision rule:**  
-  - Component/page user flow tests -> prefer MSW  
-  - Service/hook/util unit tests -> prefer module mocks  
+- **Decision rule:**
+  - Component/page user flow tests -> prefer MSW
+  - Service/hook/util unit tests -> prefer module mocks
   - Mixed tests -> use hybrid approach (UI/router/i18n module mocks + API via MSW only where stable)
 
 ### Server
@@ -119,21 +119,21 @@ Some defects do not live inside a single function or component; they live in the
 ACL architecture (closure-table inheritance, structural ownership, normalized
 permission tables, share tokens, virtual collections) makes several cross-cutting
 defect classes possible. Presence-based happy-path tests systematically miss
-them: a defect usually *adds* or *keeps* the wrong item instead of removing the
+them: a defect usually _adds_ or _keeps_ the wrong item instead of removing the
 expected one. Treat this section as the governing policy for that class of bugs.
 
 ### 1. Defect classes
 
-| # | Class | Question it answers | Primary layer | Representative example |
-|---|-------|---------------------|---------------|------------------------|
-| A | Derived visibility | What is included / excluded from a listing? | Server route integration | `__shared__` / shared tree contains exactly the nodes granted by others — never the user's own subtree |
-| B | Authorization (ACL) | Does the grantee get exactly read/write/admin? | Server route integration + store | File-specific grant overrides inherited directory grant; revoke removes access immediately |
-| C | Reference stability | Do nodeId references survive move/rename/delete? | Server route integration + store | After a move, the closure table is rebuilt and permission inheritance follows the new parent |
-| D | Storage consistency | Do DB nodes and blobs agree? | Server integration + S3+PG infra | Copy shares a blob; overwriting the copy leaves the original intact; orphaned blobs are GC'd |
-| E | State transitions | Are lifecycle transitions atomic and terminal-state-enforcing? | Server route integration | Approving grants the requested permission; an already-cancelled request cannot be approved again |
-| F | Freshness / cache | Do cache, ETag, and existence index stay fresh? | Server integration + client unit | A grant is visible within cache TTL; a revoke is reflected immediately; `If-None-Match` gets a correct `304` |
-| G | Security surfaces | Can tokens / IDOR / path traversal leak? | Server route integration | Expired/invalid share token blocks download; share-token scope traversal is denied |
-| H | Cleanup / migration | Are cascades and reconciliations complete? | Server route integration + store | Deleting a user removes permission/share/recent rows while the home-root ADMIN anchor is preserved |
+| #   | Class               | Question it answers                                            | Primary layer                    | Representative example                                                                                       |
+| --- | ------------------- | -------------------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| A   | Derived visibility  | What is included / excluded from a listing?                    | Server route integration         | `__shared__` / shared tree contains exactly the nodes granted by others — never the user's own subtree       |
+| B   | Authorization (ACL) | Does the grantee get exactly read/write/admin?                 | Server route integration + store | File-specific grant overrides inherited directory grant; revoke removes access immediately                   |
+| C   | Reference stability | Do nodeId references survive move/rename/delete?               | Server route integration + store | After a move, the closure table is rebuilt and permission inheritance follows the new parent                 |
+| D   | Storage consistency | Do DB nodes and blobs agree?                                   | Server integration + S3+PG infra | Copy shares a blob; overwriting the copy leaves the original intact; orphaned blobs are GC'd                 |
+| E   | State transitions   | Are lifecycle transitions atomic and terminal-state-enforcing? | Server route integration         | Approving grants the requested permission; an already-cancelled request cannot be approved again             |
+| F   | Freshness / cache   | Do cache, ETag, and existence index stay fresh?                | Server integration + client unit | A grant is visible within cache TTL; a revoke is reflected immediately; `If-None-Match` gets a correct `304` |
+| G   | Security surfaces   | Can tokens / IDOR / path traversal leak?                       | Server route integration         | Expired/invalid share token blocks download; share-token scope traversal is denied                           |
+| H   | Cleanup / migration | Are cascades and reconciliations complete?                     | Server route integration + store | Deleting a user removes permission/share/recent rows while the home-root ADMIN anchor is preserved           |
 
 ### 2. Common principles
 
@@ -154,7 +154,7 @@ Apply to every class above:
    listing or permission check conflates them, the test must assert the boundary.
 5. **Assert terminal states.** A non-terminal action must fail (e.g. approving an
    already-cancelled request returns 404), not silently no-op.
-6. **Assert cleanup completeness.** Verify rows are removed *and* anchor grants
+6. **Assert cleanup completeness.** Verify rows are removed _and_ anchor grants
    are preserved (e.g. home-root ADMIN survives self-grant cleanup).
 7. **Verify cache via invalidation.** After any ACL mutation, assert the new state
    is visible immediately (grant appears, revoke disappears) within the configured
@@ -165,9 +165,9 @@ Apply to every class above:
 Anchors for the pattern — not an exhaustive matrix.
 
 - **Class A — derived visibility (`__shared__`).** Server route integration
-  provisions a user who owns subfolders (historical self-grant rows) *and*
+  provisions a user who owns subfolders (historical self-grant rows) _and_
   holds a genuine grant from another user, then asserts `GET
-  /api/permissions/shared` returns exactly the genuine grant with its real
+/api/permissions/shared` returns exactly the genuine grant with its real
   `name`/`type` — never the own subtree. E2E asserts the sidebar "Shared" tree is
   empty for a user who only has own folders.
 - **Class B + F — grant/revoke propagation.** Grant, then read the listing/check
@@ -255,7 +255,7 @@ Detailed browser-flow inventory, rollout order, and planned Playwright ownership
 
 ### New cleanup or migration logic
 
-- Assert cascade completeness *and* anchor preservation (e.g. home-root ADMIN survives self-grant cleanup).
+- Assert cascade completeness _and_ anchor preservation (e.g. home-root ADMIN survives self-grant cleanup).
 
 ---
 
@@ -324,10 +324,10 @@ This RCA (Root Cause Analysis) procedure is mandatory. See [.cursor/rules/rca-on
 
 ## Relationship to Other Docs
 
-| Document | Purpose |
-|----------|---------|
-| **TESTING_STRATEGY.md** (this file) | What to test, unit vs integration, mocking, checklist for new code, RCA when tests fail. |
-| **TEST_SUMMARY_TEMPLATE.md** | Template for writing `client/TEST_SUMMARY.md` and `server/TEST_SUMMARY.md` when tests complete. |
-| **TEST_GIT_GUIDE.md** | How to run tests, what to commit, CI, coverage commands, commit messages. |
-| **client/TEST_SUMMARY.md**, **server/TEST_SUMMARY.md** | Current test counts and coverage summary per package. |
-| **api.md**, **shared-contracts.md** | Contract to test against; keep mocks and assertions in sync. |
+| Document                                               | Purpose                                                                                         |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| **TESTING_STRATEGY.md** (this file)                    | What to test, unit vs integration, mocking, checklist for new code, RCA when tests fail.        |
+| **TEST_SUMMARY_TEMPLATE.md**                           | Template for writing `client/TEST_SUMMARY.md` and `server/TEST_SUMMARY.md` when tests complete. |
+| **TEST_GIT_GUIDE.md**                                  | How to run tests, what to commit, CI, coverage commands, commit messages.                       |
+| **client/TEST_SUMMARY.md**, **server/TEST_SUMMARY.md** | Current test counts and coverage summary per package.                                           |
+| **api.md**, **shared-contracts.md**                    | Contract to test against; keep mocks and assertions in sync.                                    |

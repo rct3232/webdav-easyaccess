@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item       | Description                  |
+| ---------- | ---------------------------- |
 | Route path | (e.g. /files, /share/:token) |
-| Role | (Page's role) |
+| Role       | (Page's role)                |
 
 ---
 

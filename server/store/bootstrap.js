@@ -23,7 +23,9 @@ async function ensureDefaultAdmin() {
   // needed. The previous path-based grant ('/') was a no-op on nodeId stores.
   // Keep console output consistent with previous behavior
   // eslint-disable-next-line no-console
-  console.log('Default admin account created. Please change the default password after first login.');
+  console.log(
+    'Default admin account created. Please change the default password after first login.'
+  );
 
   return admin;
 }

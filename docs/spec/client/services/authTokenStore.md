@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | SessionStorage-backed token persistence and refresh. Provides helpers for reading/writing tokens, applying `x-new-token`, and performing the `/api/auth/refresh` call used for 401 recovery. |
-| Used by | `apiClient` and `useAuthSession` (for session initialization and auth action token persistence). |
-| Does not own | Auth navigation/redirect/back rules. Those belong to `authNavigationPolicy`. |
+| Item         | Description                                                                                                                                                                                  |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role         | SessionStorage-backed token persistence and refresh. Provides helpers for reading/writing tokens, applying `x-new-token`, and performing the `/api/auth/refresh` call used for 401 recovery. |
+| Used by      | `apiClient` and `useAuthSession` (for session initialization and auth action token persistence).                                                                                             |
+| Does not own | Auth navigation/redirect/back rules. Those belong to `authNavigationPolicy`.                                                                                                                 |
 
 ---
 
@@ -19,25 +19,28 @@
 
 ### 2.2 Main Functions
 
-| Function | Input | Return |
-|----------|-------|--------|
-| `getAccessToken` | none | `string | null` |
-| `getRefreshToken` | none | `string | null` |
-| `setAccessToken` | `(token)` | `void` |
-| `setRefreshToken` | `(refreshToken)` | `void` |
-| `removeTokens` | none | `void` |
-| `applyNewTokenFromHeaders` | `(headers)` | `string | null` (new token if present) |
-| `refreshAccessToken` | none | `Promise<string>` |
+| Function                   | Input            | Return            |
+| -------------------------- | ---------------- | ----------------- | ---------------------------- |
+| `getAccessToken`           | none             | `string           | null`                        |
+| `getRefreshToken`          | none             | `string           | null`                        |
+| `setAccessToken`           | `(token)`        | `void`            |
+| `setRefreshToken`          | `(refreshToken)` | `void`            |
+| `removeTokens`             | none             | `void`            |
+| `applyNewTokenFromHeaders` | `(headers)`      | `string           | null` (new token if present) |
+| `refreshAccessToken`       | none             | `Promise<string>` |
 
 Token keys:
+
 - Access token key: `sessionStorage['token']`
 - Refresh token key: `sessionStorage['refreshToken']`
 
 Event:
+
 - When a new access token is applied (either from `x-new-token` headers or from refresh response), dispatch:
   - `window.dispatchEvent(new CustomEvent('token-refreshed', { detail: { token } }))`
 
 Refresh call:
+
 - `refreshAccessToken()` performs:
   - POST `${origin}/api/auth/refresh`
   - body: `{ refreshToken }` as JSON

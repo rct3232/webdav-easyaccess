@@ -30,17 +30,17 @@ OperationProgressStore.prototype.cleanupDownloadProgress = function (id, ttlMs) 
 
 // WEA_PREVIEW_TICKET_TTL_MS is T2 (lazy): when no per-call ttlMs is given, read
 // the effective value so DB-sourced edits apply without a restart.
-OperationProgressStore.prototype.issuePreviewTicket = async function (principalId, fileNodeId, ttlMs) {
+OperationProgressStore.prototype.issuePreviewTicket = async function (
+  principalId,
+  fileNodeId,
+  ttlMs
+) {
   const resolvedTtl =
     ttlMs ||
     parseInt(await getSharedResolver().getConfig('WEA_PREVIEW_TICKET_TTL_MS'), 10) ||
     120000;
   const ticket = crypto.randomBytes(32).toString('hex');
-  this.previewTicketCache.set(
-    `pt:${ticket}`,
-    { principalId, fileNodeId },
-    resolvedTtl
-  );
+  this.previewTicketCache.set(`pt:${ticket}`, { principalId, fileNodeId }, resolvedTtl);
   return ticket;
 };
 
@@ -53,9 +53,10 @@ OperationProgressStore.prototype.readPreviewTicket = function (ticket) {
 
 OperationProgressStore.prototype.createJob = function (userId, operation, payload) {
   const jobId = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
-  const total = operation === 'delete'
-    ? (payload.nodeIds?.length ?? payload.paths?.length ?? 0)
-    : (payload.moves?.length ?? payload.copies?.length ?? 0);
+  const total =
+    operation === 'delete'
+      ? (payload.nodeIds?.length ?? payload.paths?.length ?? 0)
+      : (payload.moves?.length ?? payload.copies?.length ?? 0);
   const job = {
     jobId,
     userId,

@@ -1,10 +1,6 @@
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 
-export function buildPendingRequestState({
-  requests,
-  targetNodeId,
-  isDirectory,
-} = {}) {
+export function buildPendingRequestState({ requests, targetNodeId, isDirectory } = {}) {
   const emptyState = {
     read: { pending: false, id: null },
     write: { pending: false, id: null },
@@ -18,13 +14,11 @@ export function buildPendingRequestState({
     isDirectory
       ? requests.find(
           (request) =>
-            request.file_node_id === targetNodeId &&
-            request.requested_permission === permission
+            request.file_node_id === targetNodeId && request.requested_permission === permission
         )
       : requests.find(
           (request) =>
-            request.file_node_id === targetNodeId &&
-            request.requested_permission === permission
+            request.file_node_id === targetNodeId && request.requested_permission === permission
         );
 
   const pendingRead = findPending(PERMISSIONS.READ);

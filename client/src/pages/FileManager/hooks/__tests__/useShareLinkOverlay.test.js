@@ -86,9 +86,12 @@ describe('useShareLinkOverlay', () => {
       user: null,
     });
     let resolveAdd;
-    addShareLinkToMyPermissions.mockImplementation(() => new Promise((resolve) => {
-      resolveAdd = resolve;
-    }));
+    addShareLinkToMyPermissions.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveAdd = resolve;
+        })
+    );
 
     const { result } = renderHook(() => useShareLinkOverlay(props));
     let pendingConfirm;
@@ -193,10 +196,9 @@ describe('useShareLinkOverlay', () => {
     checkMyPermissionForShare.mockResolvedValue({ hasSufficientPermission: false });
     const props = createDefaultProps();
 
-    const { rerender } = renderHook(
-      ({ hookProps }) => useShareLinkOverlay(hookProps),
-      { initialProps: { hookProps: props } }
-    );
+    const { rerender } = renderHook(({ hookProps }) => useShareLinkOverlay(hookProps), {
+      initialProps: { hookProps: props },
+    });
 
     await waitFor(() => {
       expect(checkMyPermissionForShare).toHaveBeenCalledTimes(1);

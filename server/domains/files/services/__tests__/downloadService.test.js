@@ -46,9 +46,7 @@ describe('downloadService', () => {
       });
       const blobStorageService = createBlobStorageServiceMock();
       const aclService = createAclServiceMock({
-        checkFilePermission: jest.fn()
-          .mockResolvedValueOnce(true)
-          .mockResolvedValueOnce(true),
+        checkFilePermission: jest.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(true),
       });
 
       const service = createDownloadService({ fileNodeService, blobStorageService, aclService });
@@ -67,9 +65,7 @@ describe('downloadService', () => {
       const fileNodeService = createFileNodeServiceMock();
       const blobStorageService = createBlobStorageServiceMock();
       const aclService = createAclServiceMock({
-        checkFilePermission: jest.fn()
-          .mockResolvedValueOnce(true)
-          .mockResolvedValueOnce(false),
+        checkFilePermission: jest.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false),
       });
 
       const service = createDownloadService({ fileNodeService, blobStorageService, aclService });
@@ -88,9 +84,7 @@ describe('downloadService', () => {
       const fileNodeService = createFileNodeServiceMock();
       const blobStorageService = createBlobStorageServiceMock();
       const aclService = createAclServiceMock({
-        checkFilePermission: jest.fn()
-          .mockResolvedValueOnce(false)
-          .mockResolvedValueOnce(false),
+        checkFilePermission: jest.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(false),
       });
 
       const service = createDownloadService({ fileNodeService, blobStorageService, aclService });
@@ -104,9 +98,7 @@ describe('downloadService', () => {
       const fileNodeService = createFileNodeServiceMock();
       const blobStorageService = createBlobStorageServiceMock();
       const aclService = createAclServiceMock({
-        checkFilePermission: jest.fn()
-          .mockResolvedValueOnce(true)
-          .mockResolvedValueOnce(true),
+        checkFilePermission: jest.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(true),
       });
 
       const service = createDownloadService({ fileNodeService, blobStorageService, aclService });
@@ -170,11 +162,13 @@ describe('downloadService', () => {
 
     it('skips directory nodes with reason directory_skipped and does not call downloadBlob', async () => {
       const fileNodeService = createFileNodeServiceMock({
-        getNode: jest.fn().mockImplementation(async (nodeId) =>
-          nodeId === 10
-            ? { id: 10, name: 'dir-10', type: 'directory' }
-            : { id: nodeId, name: `file_${nodeId}.txt`, type: 'file' }
-        ),
+        getNode: jest
+          .fn()
+          .mockImplementation(async (nodeId) =>
+            nodeId === 10
+              ? { id: 10, name: 'dir-10', type: 'directory' }
+              : { id: nodeId, name: `file_${nodeId}.txt`, type: 'file' }
+          ),
       });
       const blobStorageService = createBlobStorageServiceMock();
       const aclService = createAclServiceMock({
@@ -193,9 +187,7 @@ describe('downloadService', () => {
       );
       expect(blobStorageService.downloadBlob).not.toHaveBeenCalledWith(10);
       expect(blobStorageService.downloadBlob).toHaveBeenCalledWith(20);
-      expect(result.zipStream._entries).toEqual([
-        expect.objectContaining({ name: 'file_20.txt' }),
-      ]);
+      expect(result.zipStream._entries).toEqual([expect.objectContaining({ name: 'file_20.txt' })]);
     });
 
     it('all-directory selection produces empty ZIP without hang', async () => {

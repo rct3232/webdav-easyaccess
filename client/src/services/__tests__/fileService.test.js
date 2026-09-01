@@ -57,15 +57,18 @@ describe('fileService', () => {
 
       await getFileBlob(42, { inline: true, shareToken: 't' });
 
-      expect(get).toHaveBeenCalledWith('/files/download', expect.objectContaining({
-        params: expect.objectContaining({
-          nodeId: 42,
-          inline: 'true',
-          shareToken: 't',
-        }),
-        headers: expect.objectContaining({ 'X-Share-Token': 't' }),
-        responseType: 'blob',
-      }));
+      expect(get).toHaveBeenCalledWith(
+        '/files/download',
+        expect.objectContaining({
+          params: expect.objectContaining({
+            nodeId: 42,
+            inline: 'true',
+            shareToken: 't',
+          }),
+          headers: expect.objectContaining({ 'X-Share-Token': 't' }),
+          responseType: 'blob',
+        })
+      );
     });
   });
 
@@ -75,11 +78,7 @@ describe('fileService', () => {
 
       const url = await getVideoPreviewStreamUrl(7);
 
-      expect(post).toHaveBeenCalledWith(
-        '/files/preview-ticket',
-        { nodeId: 7 },
-        expect.any(Object)
-      );
+      expect(post).toHaveBeenCalledWith('/files/preview-ticket', { nodeId: 7 }, expect.any(Object));
       expect(url).toContain('/api/files/preview-stream?');
       expect(url).toContain('ticket=ticket123');
       expect(url).toContain('nodeId=7');
@@ -133,10 +132,13 @@ describe('fileService', () => {
 
       await downloadFile(1);
 
-      expect(get).toHaveBeenCalledWith('/files/download', expect.objectContaining({
-        params: { nodeId: 1 },
-        responseType: 'blob',
-      }));
+      expect(get).toHaveBeenCalledWith(
+        '/files/download',
+        expect.objectContaining({
+          params: { nodeId: 1 },
+          responseType: 'blob',
+        })
+      );
       const callArgs = get.mock.calls[0];
       expect(callArgs[1].params).not.toHaveProperty('shareToken');
       expect(callArgs[1].headers || {}).not.toHaveProperty('X-Share-Token');
@@ -147,11 +149,14 @@ describe('fileService', () => {
 
       await downloadFile(2, { shareToken: 'st' });
 
-      expect(get).toHaveBeenCalledWith('/files/download', expect.objectContaining({
-        params: { nodeId: 2, shareToken: 'st' },
-        responseType: 'blob',
-        headers: { 'X-Share-Token': 'st' },
-      }));
+      expect(get).toHaveBeenCalledWith(
+        '/files/download',
+        expect.objectContaining({
+          params: { nodeId: 2, shareToken: 'st' },
+          responseType: 'blob',
+          headers: { 'X-Share-Token': 'st' },
+        })
+      );
     });
 
     it('passes options.fileName for display; non-image uses default download', async () => {
@@ -159,9 +164,12 @@ describe('fileService', () => {
 
       await downloadFile(3, { fileName: 'doc.pdf' });
 
-      expect(get).toHaveBeenCalledWith('/files/download', expect.objectContaining({
-        params: { nodeId: 3 },
-      }));
+      expect(get).toHaveBeenCalledWith(
+        '/files/download',
+        expect.objectContaining({
+          params: { nodeId: 3 },
+        })
+      );
     });
 
     it('on iOS when canShare({ files }) returns true uses share sheet', async () => {
@@ -182,10 +190,13 @@ describe('fileService', () => {
 
       await downloadFile(4, { fileName: 'p.jpg' });
 
-      expect(get).toHaveBeenCalledWith('/files/download', expect.objectContaining({
-        params: { nodeId: 4 },
-        responseType: 'blob',
-      }));
+      expect(get).toHaveBeenCalledWith(
+        '/files/download',
+        expect.objectContaining({
+          params: { nodeId: 4 },
+          responseType: 'blob',
+        })
+      );
       expect(canShareMock).toHaveBeenCalledWith({ files: [expect.any(File)] });
       expect(shareMock).toHaveBeenCalledTimes(1);
       expect(shareMock.mock.calls[0][0]).toMatchObject({ files: [expect.any(File)] });
@@ -208,10 +219,13 @@ describe('fileService', () => {
 
       await downloadFile(5, { fileName: 'doc.pdf' });
 
-      expect(get).toHaveBeenCalledWith('/files/download', expect.objectContaining({
-        params: { nodeId: 5 },
-        responseType: 'blob',
-      }));
+      expect(get).toHaveBeenCalledWith(
+        '/files/download',
+        expect.objectContaining({
+          params: { nodeId: 5 },
+          responseType: 'blob',
+        })
+      );
       expect(canShareMock).toHaveBeenCalledWith({ files: [expect.any(File)] });
       Object.defineProperty(global, 'navigator', { value: origNavigator, configurable: true });
     });
@@ -227,9 +241,12 @@ describe('fileService', () => {
 
       const result = await listFiles(1);
 
-      expect(get).toHaveBeenCalledWith('/files/list', expect.objectContaining({
-        params: expect.objectContaining({ nodeId: 1 }),
-      }));
+      expect(get).toHaveBeenCalledWith(
+        '/files/list',
+        expect.objectContaining({
+          params: expect.objectContaining({ nodeId: 1 }),
+        })
+      );
       expect(Array.isArray(result)).toBe(true);
       expect(result).toHaveLength(2);
       expect(result[0]).toHaveProperty('nodeId');
@@ -242,10 +259,13 @@ describe('fileService', () => {
 
       await listFiles(3, { shareToken: 'my-share-token' });
 
-      expect(get).toHaveBeenCalledWith('/files/list', expect.objectContaining({
-        params: expect.objectContaining({ nodeId: 3, shareToken: 'my-share-token' }),
-        headers: expect.objectContaining({ 'X-Share-Token': 'my-share-token' }),
-      }));
+      expect(get).toHaveBeenCalledWith(
+        '/files/list',
+        expect.objectContaining({
+          params: expect.objectContaining({ nodeId: 3, shareToken: 'my-share-token' }),
+          headers: expect.objectContaining({ 'X-Share-Token': 'my-share-token' }),
+        })
+      );
     });
   });
 
@@ -323,9 +343,7 @@ describe('fileService', () => {
     it('batchMoveFiles returns jobId', async () => {
       post.mockResolvedValueOnce({ data: { jobId: 'job-123' } });
 
-      const result = await batchMoveFiles([
-        { sourceNodeId: 1, destinationParentNodeId: 5 },
-      ]);
+      const result = await batchMoveFiles([{ sourceNodeId: 1, destinationParentNodeId: 5 }]);
 
       expect(post).toHaveBeenCalledWith('/files/batch-move', {
         moves: [{ sourceNodeId: 1, destinationParentNodeId: 5 }],
@@ -338,9 +356,7 @@ describe('fileService', () => {
     it('batchCopyFiles returns jobId', async () => {
       post.mockResolvedValueOnce({ data: { jobId: 'job-456' } });
 
-      const result = await batchCopyFiles([
-        { sourceNodeId: 1, destinationParentNodeId: 3 },
-      ]);
+      const result = await batchCopyFiles([{ sourceNodeId: 1, destinationParentNodeId: 3 }]);
 
       expect(result).toHaveProperty('jobId');
       expect(result.jobId).toBe('job-456');
@@ -371,10 +387,7 @@ describe('fileService', () => {
     it('batchMoveFiles passes onConflict option', async () => {
       post.mockResolvedValueOnce({ data: { jobId: 'job-overwrite' } });
 
-      await batchMoveFiles(
-        [{ sourceNodeId: 1, destinationParentNodeId: 2 }],
-        'overwrite'
-      );
+      await batchMoveFiles([{ sourceNodeId: 1, destinationParentNodeId: 2 }], 'overwrite');
 
       expect(post).toHaveBeenCalledWith('/files/batch-move', {
         moves: [{ sourceNodeId: 1, destinationParentNodeId: 2 }],
@@ -385,10 +398,7 @@ describe('fileService', () => {
     it('batchCopyFiles passes onConflict option', async () => {
       post.mockResolvedValueOnce({ data: { jobId: 'job-skip' } });
 
-      await batchCopyFiles(
-        [{ sourceNodeId: 3, destinationParentNodeId: 4 }],
-        'skip'
-      );
+      await batchCopyFiles([{ sourceNodeId: 3, destinationParentNodeId: 4 }], 'skip');
 
       expect(post).toHaveBeenCalledWith('/files/batch-copy', {
         copies: [{ sourceNodeId: 3, destinationParentNodeId: 4 }],
@@ -455,9 +465,7 @@ describe('fileService', () => {
     it('returns conflicts when server reports them', async () => {
       post.mockResolvedValueOnce({
         data: {
-          conflicts: [
-            { sourceNodeId: 1, destinationParentNodeId: 2, reason: 'exists' },
-          ],
+          conflicts: [{ sourceNodeId: 1, destinationParentNodeId: 2, reason: 'exists' }],
         },
       });
 

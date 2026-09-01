@@ -3,13 +3,13 @@
  * @see docs/api.md, docs/spec/server/routes/recentFiles.md
  */
 const request = require('supertest');
-const {
-  createTestDatabase,
-  createAuthenticatedTestUser,
-} = require('@server/test-utils');
+const { createTestDatabase, createAuthenticatedTestUser } = require('@server/test-utils');
 const { createFileNodeService } = require('@server/service/fileNodeService');
 const { createFileNodesStore } = require('@server/store/fileNodesStore');
-const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const {
+  SERVER_ERROR_CODES,
+  SERVER_MESSAGE_CODES,
+} = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { createWebdavMock } = require('@testing/mocks/webdavMock');
 const WebdavBlobStore = require('@server/infrastructure/adapters/blobstore/WebdavBlobStore');
 const composition = require('@server/service/composition');
@@ -57,9 +57,7 @@ describe('GET /api/recent-files', () => {
       username: `recent-list-${Date.now()}`,
     });
 
-    const res = await request(app)
-      .get('/api/recent-files')
-      .set('Authorization', `Bearer ${token}`);
+    const res = await request(app).get('/api/recent-files').set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);

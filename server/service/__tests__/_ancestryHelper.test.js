@@ -28,10 +28,7 @@ describe('createAncestryHelper', () => {
         `DELETE FROM node_ancestors WHERE descendant_id IN (${placeholders}) OR ancestor_id IN (${placeholders})`,
         [...createdNodeIds, ...createdNodeIds]
       );
-      await dbRun(
-        `DELETE FROM file_nodes WHERE id IN (${placeholders})`,
-        createdNodeIds
-      );
+      await dbRun(`DELETE FROM file_nodes WHERE id IN (${placeholders})`, createdNodeIds);
       createdNodeIds.length = 0;
     }
   });
@@ -272,9 +269,7 @@ describe('createAncestryHelper', () => {
       createdNodeIds.splice(createdNodeIds.indexOf(child.id), 1);
 
       // Safety-net cleanup must not throw even though rows already cascade-deleted.
-      await expect(
-        helper.cleanupAncestorsForDeletion(descendants)
-      ).resolves.toBeUndefined();
+      await expect(helper.cleanupAncestorsForDeletion(descendants)).resolves.toBeUndefined();
     });
 
     // T5 edge: empty array / empty value guards do not throw

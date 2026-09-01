@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                     |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Pure helper that shapes admin-side user search and permission response data for `ShareTargetDialog` so the dialog stays focused on composition and save wiring. |
 
 ---
@@ -17,11 +17,11 @@
 
 ### 2.2 Function Signatures
 
-| Function | (input) => return |
-|----------|-------------------|
+| Function                     | (input) => return                                      |
+| ---------------------------- | ------------------------------------------------------ |
 | `buildShareTargetAccessList` | `({ permissions, isDirectory }) => Array<accessEntry>` |
-| `filterShareTargetUsers` | `({ users, searchQuery }) => Array<user>` |
-| `sortShareTargetAccessList` | `(accessList) => Array<accessEntry>` |
+| `filterShareTargetUsers`     | `({ users, searchQuery }) => Array<user>`              |
+| `sortShareTargetAccessList`  | `(accessList) => Array<accessEntry>`                   |
 
 ### 2.3 Dependencies
 

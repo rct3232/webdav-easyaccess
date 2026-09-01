@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                       |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Global settings (e.g. `registration_enabled`). Stored as key-value rows in `postgresql`/`sqlite`. FsJSON/WebDAV file fallback removed in Phase 7. |
 
 ---
@@ -17,12 +17,12 @@
 
 ### 2.2 Main Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| get | (key) => Promise\<*\> | Get value; undefined keys → null |
-| set | (key, value) => Promise\<{ success }\> | Set (values stringified) |
-| getAll | () => Promise\<object\> | All keys except updated_at |
-| isRegistrationEnabled | () => Promise\<boolean\> | get('registration_enabled') === 'true' |
+| Method                | Signature                              | Description                            |
+| --------------------- | -------------------------------------- | -------------------------------------- |
+| get                   | (key) => Promise\<\*\>                 | Get value; undefined keys → null       |
+| set                   | (key, value) => Promise\<{ success }\> | Set (values stringified)               |
+| getAll                | () => Promise\<object\>                | All keys except updated_at             |
+| isRegistrationEnabled | () => Promise\<boolean\>               | get('registration_enabled') === 'true' |
 
 > **Removed in Phase 7:** `ensureSettingsFile` — FsJSON bootstrap file creation; settings are DB rows only.
 

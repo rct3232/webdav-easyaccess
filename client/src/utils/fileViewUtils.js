@@ -1,5 +1,9 @@
 import React from 'react';
-import { DriveFileMove as MoveIcon, ContentCopy as CopyIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import {
+  DriveFileMove as MoveIcon,
+  ContentCopy as CopyIcon,
+  Delete as DeleteIcon,
+} from '@mui/icons-material';
 
 /**
  * Consistent entry key for selection/processing state.
@@ -31,15 +35,17 @@ export const renderProcessingIcon = (processingType) => {
  * @returns {Object} State object with isSelected, isDisabled, isProcessing, processingType
  */
 export const getFileItemState = (file, selectionMode, selectedFiles, processingMap) => {
-  const isSelected = Boolean(selectionMode && selectedFiles && selectedFiles.has(getEntryKey(file)));
-  
+  const isSelected = Boolean(
+    selectionMode && selectedFiles && selectedFiles.has(getEntryKey(file))
+  );
+
   // Directory permission check (files are always accessible)
   const isPermissionDisabled = file.type === 'directory' && file.hasReadPermission === false;
-  
+
   const processingType = processingMap?.get(file.nodeId);
   const isProcessing = Boolean(processingType);
   const isDisabled = isPermissionDisabled || isProcessing;
-  
+
   return {
     isSelected,
     isDisabled,
@@ -56,7 +62,7 @@ export const getFileItemState = (file, selectionMode, selectedFiles, processingM
  */
 export const getDropTargetStyles = (isDropTarget) => {
   if (!isDropTarget) return {};
-  
+
   return {
     backgroundColor: 'primary.main',
     color: 'white',

@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Menu view for the share-dialog folder tree. Renders manage/select-user menu states and forwards user actions through callbacks. The target boundary is view-lean rendering from prepared props, with only minimal local branching. |
-| Used in | ShareDialog |
-| Related components | ShareFolderTree |
+| Item               | Description                                                                                                                                                                                                                        |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Menu view for the share-dialog folder tree. Renders manage/select-user menu states and forwards user actions through callbacks. The target boundary is view-lean rendering from prepared props, with only minimal local branching. |
+| Used in            | ShareDialog                                                                                                                                                                                                                        |
+| Related components | ShareFolderTree                                                                                                                                                                                                                    |
 
 ---
 
@@ -19,38 +19,38 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| folderMenuAnchor | element | Y | - | Menu anchor |
-| onClose | function | Y | - | Close handler |
-| folderMenuPath | string | Y | - | Folder path |
-| folderPermissions | Map | Y | - | Path -> user permissions |
-| isAdminMode | boolean | Y | - | Admin mode |
-| userId | string | N | - | Current user ID |
-| username | string | N | - | Username |
-| user | object | N | - | Current user |
-| userInfoMap | Map | Y | - | User info map |
-| users | array | Y | - | Users list |
-| getUserName | function | Y | - | Get display name |
-| handleTogglePermission | function | Y | - | Toggle permission |
-| handleRemoveUser | function | Y | - | Remove user |
-| folderMenuView | string | Y | - | `'manage' \| 'selectUser'` |
-| setFolderMenuView | function | Y | - | Set view |
-| handleAddUser | function | N | - | Add user |
-| handleUserSelect | function | N | - | User select |
-| isShareMode | boolean | Y | - | Share mode |
-| isReviewMode | boolean | Y | - | Review mode |
-| permissionRequest | object | N | - | Pending request |
+| Name                   | Type     | Required | Default | Description                |
+| ---------------------- | -------- | -------- | ------- | -------------------------- |
+| folderMenuAnchor       | element  | Y        | -       | Menu anchor                |
+| onClose                | function | Y        | -       | Close handler              |
+| folderMenuPath         | string   | Y        | -       | Folder path                |
+| folderPermissions      | Map      | Y        | -       | Path -> user permissions   |
+| isAdminMode            | boolean  | Y        | -       | Admin mode                 |
+| userId                 | string   | N        | -       | Current user ID            |
+| username               | string   | N        | -       | Username                   |
+| user                   | object   | N        | -       | Current user               |
+| userInfoMap            | Map      | Y        | -       | User info map              |
+| users                  | array    | Y        | -       | Users list                 |
+| getUserName            | function | Y        | -       | Get display name           |
+| handleTogglePermission | function | Y        | -       | Toggle permission          |
+| handleRemoveUser       | function | Y        | -       | Remove user                |
+| folderMenuView         | string   | Y        | -       | `'manage' \| 'selectUser'` |
+| setFolderMenuView      | function | Y        | -       | Set view                   |
+| handleAddUser          | function | N        | -       | Add user                   |
+| handleUserSelect       | function | N        | -       | User select                |
+| isShareMode            | boolean  | Y        | -       | Share mode                 |
+| isReviewMode           | boolean  | Y        | -       | Review mode                |
+| permissionRequest      | object   | N        | -       | Pending request            |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| onClose | Menu close | - |
-| handleTogglePermission | Permission toggle | `(folderPath, userId)` |
-| handleRemoveUser | Remove user | `(folderPath, userId)` |
-| setFolderMenuView | View switch | `('manage' \| 'selectUser')` |
-| handleUserSelect | Select a user to add | `(userId)` |
+| Callback               | When invoked         | Arguments                    |
+| ---------------------- | -------------------- | ---------------------------- |
+| onClose                | Menu close           | -                            |
+| handleTogglePermission | Permission toggle    | `(folderPath, userId)`       |
+| handleRemoveUser       | Remove user          | `(folderPath, userId)`       |
+| setFolderMenuView      | View switch          | `('manage' \| 'selectUser')` |
+| handleUserSelect       | Select a user to add | `(userId)`                   |
 
 ### 2.4 Dependencies
 

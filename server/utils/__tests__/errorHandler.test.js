@@ -31,8 +31,7 @@ jest.mock('../../infrastructure/backendProbe', () => ({
   toShortReason: jest.fn((value) => (value == null ? undefined : String(value))),
 }));
 
-const healthReport = () =>
-  require('../../infrastructure/backendHealth').getBackendHealth().report;
+const healthReport = () => require('../../infrastructure/backendHealth').getBackendHealth().report;
 
 describe('errorHandler', () => {
   describe('asyncHandler', () => {
@@ -111,7 +110,10 @@ describe('errorHandler', () => {
     it('excludes params when error has no message', () => {
       const err = new Error();
       const result = formatErrorResponse(err);
-      expect(result).toHaveProperty('errorCode', SERVER_ERROR_CODES.errorHandler.internalServerError);
+      expect(result).toHaveProperty(
+        'errorCode',
+        SERVER_ERROR_CODES.errorHandler.internalServerError
+      );
       expect(result.params).toBeUndefined();
     });
 
@@ -208,7 +210,9 @@ describe('errorHandler', () => {
 
       const invalidText = mapDatabaseError({ code: '22P02' });
       expect(invalidText.status).toBe(HTTP_STATUS.BAD_REQUEST);
-      expect(invalidText.errorCode).toBe(SERVER_ERROR_CODES.errorHandler.databaseConstraintViolation);
+      expect(invalidText.errorCode).toBe(
+        SERVER_ERROR_CODES.errorHandler.databaseConstraintViolation
+      );
     });
 
     it('maps DB unavailable errors to service unavailable', () => {

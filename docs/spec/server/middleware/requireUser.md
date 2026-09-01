@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Require authenticated user, load full user into req.user.full. |
-| Pipeline position | After authenticateToken |
-| Preceding middleware | authenticateToken (or authenticateTokenOrShare) |
+| Item                 | Description                                                    |
+| -------------------- | -------------------------------------------------------------- |
+| Role                 | Require authenticated user, load full user into req.user.full. |
+| Pipeline position    | After authenticateToken                                        |
+| Preceding middleware | authenticateToken (or authenticateTokenOrShare)                |
 
 ---
 
@@ -19,9 +19,9 @@
 
 ### 2.2 Exports
 
-| Export | Usage |
-|--------|-------|
-| requireUser | Default export. Use after authenticateToken. Loads req.user.full. |
+| Export      | Usage                                                                                                                                                   |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| requireUser | Default export. Use after authenticateToken. Loads req.user.full.                                                                                       |
 | requireAuth | Named export. Use after authenticateTokenOrShare. Passes when req.principalId is set (share token). For JWT: loads req.user.full, sets req.principalId. |
 
 ### 2.3 Input Conditions
@@ -38,12 +38,12 @@
 
 ### 2.5 Error Cases
 
-| Condition | Behavior |
-|-----------|----------|
-| No req.user / req.user.id | 401 |
-| User not found | notFoundError, 404 |
+| Condition                           | Behavior           |
+| ----------------------------------- | ------------------ |
+| No req.user / req.user.id           | 401                |
+| User not found                      | notFoundError, 404 |
 | User.findById throw (DB/Store 예외) | 500 (errorHandler) |
-| Success | next() |
+| Success                             | next()             |
 
 ### 2.6 Mock Targets
 

@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Base dialog component with common structure and responsive behavior. Provides standardized layout for all dialogs. |
-| Used in | CreateFolderDialog, ShareDialog, and other dialogs that extend this pattern |
-| Related components | MUI Dialog, DialogTitle, DialogContent, DialogActions |
+| Item               | Description                                                                                                        |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| Role               | Base dialog component with common structure and responsive behavior. Provides standardized layout for all dialogs. |
+| Used in            | CreateFolderDialog, ShareDialog, and other dialogs that extend this pattern                                        |
+| Related components | MUI Dialog, DialogTitle, DialogContent, DialogActions                                                              |
 
 ---
 
@@ -19,23 +19,23 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| open | boolean | Y | - | Whether dialog is open |
-| onClose | function | Y | - | Close handler |
-| title | string | N | - | Dialog title |
-| children | ReactNode | N | - | Dialog content |
-| actions | ReactNode | N | - | Dialog actions (buttons) |
-| maxWidth | 'xs' \| 'sm' \| 'md' \| 'lg' \| 'xl' | N | 'sm' | Max width of dialog |
-| fullWidth | boolean | N | true | Whether dialog should be full width |
-| disableRestoreFocus | boolean | N | true | Whether to disable restore focus |
-| sx | object | N | {} | Additional MUI sx styles |
+| Name                | Type                                 | Required | Default | Description                         |
+| ------------------- | ------------------------------------ | -------- | ------- | ----------------------------------- |
+| open                | boolean                              | Y        | -       | Whether dialog is open              |
+| onClose             | function                             | Y        | -       | Close handler                       |
+| title               | string                               | N        | -       | Dialog title                        |
+| children            | ReactNode                            | N        | -       | Dialog content                      |
+| actions             | ReactNode                            | N        | -       | Dialog actions (buttons)            |
+| maxWidth            | 'xs' \| 'sm' \| 'md' \| 'lg' \| 'xl' | N        | 'sm'    | Max width of dialog                 |
+| fullWidth           | boolean                              | N        | true    | Whether dialog should be full width |
+| disableRestoreFocus | boolean                              | N        | true    | Whether to disable restore focus    |
+| sx                  | object                               | N        | {}      | Additional MUI sx styles            |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| onClose | When user closes dialog (backdrop click, escape) | - |
+| Callback | When invoked                                     | Arguments |
+| -------- | ------------------------------------------------ | --------- |
+| onClose  | When user closes dialog (backdrop click, escape) | -         |
 
 ### 2.4 Dependencies
 

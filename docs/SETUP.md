@@ -22,18 +22,20 @@ Do not use this file as a full schema/spec reference. Canonical technical contra
 npm install
 ```
 
-*   **Note**: For video thumbnail generation on the server, **FFmpeg** must be installed on the system.
+- **Note**: For video thumbnail generation on the server, **FFmpeg** must be installed on the system.
 
 ## 2. Environment Variables
 
 Copy `.env.example` to create a `.env` file at the project root:
 
 **Windows:**
+
 ```cmd
 copy .env.example .env
 ```
 
 **Linux/Mac:**
+
 ```bash
 cp .env.example .env
 ```
@@ -54,39 +56,39 @@ cp .env.example .env
 
 **Source column** — `T0` = must live in `.env` (startup-critical / `.env`-only, D2/D4/D7); `DB` = may be stored in the metadata DB `settings` table (via the wizard or the admin "Advanced settings" editor); a `.env` value always wins over the DB row (D1).
 
-| Variable | Source | Required | Description | Default |
-| :--- | :---: | :---: | :--- | :--- |
-| **WEA_FILE_STORAGE** | DB | No | File/blob storage backend (`s3` or `webdav`) | `s3` |
-| **S3_BUCKET** | DB | Only when `WEA_FILE_STORAGE=s3` | S3 bucket name for blob storage | - |
-| **AWS_REGION** | DB | Only when `WEA_FILE_STORAGE=s3` | AWS region of the S3 bucket | - |
-| **AWS_ACCESS_KEY_ID** | DB | Only when `WEA_FILE_STORAGE=s3` | AWS access key ID for S3 | - |
-| **AWS_SECRET_ACCESS_KEY** | DB | Only when `WEA_FILE_STORAGE=s3` | AWS secret access key for S3 (encrypted at rest) | - |
-| **S3_ENDPOINT** | DB | No | Custom S3-compatible endpoint (e.g. MinIO); empty for AWS | - |
-| **WEBDAV_URL** | DB | Only when `WEA_FILE_STORAGE=webdav` | WebDAV server base URL (e.g. `https://dav.example.com`) | - |
-| **WEBDAV_USERNAME** | DB | Only when `WEA_FILE_STORAGE=webdav` | WebDAV server account name | - |
-| **WEBDAV_PASSWORD** | DB | Only when `WEA_FILE_STORAGE=webdav` | WebDAV server password (encrypted at rest) | - |
-| **JWT_SECRET** | T0 | Yes | Secret key for token signing (must change in production!) | - |
-| **PORT** | DB | No | Server port | `5001` |
-| **CORS_ORIGINS** | DB | No | Allowed browser origins (comma-separated) | `*` (with warning) |
-| **WEA_STORAGE_BACKEND** | T0 | No | Metadata storage backend (`sqlite` or `postgresql`) | `sqlite` |
-| **WEA_SQLITE_PATH** | T0 | No | Path to the SQLite metadata database file | `data/webdav.db` |
-| **WEA_PG_HOST** | T0 | No | PostgreSQL host when using `postgresql` backend | - |
-| **WEA_PG_PORT** | T0 | No | PostgreSQL port when using `postgresql` backend | `5432` |
-| **WEA_PG_DATABASE** | T0 | No | PostgreSQL database name when using `postgresql` backend | - |
-| **WEA_PG_USER** | T0 | No | PostgreSQL user when using `postgresql` backend | - |
-| **WEA_PG_PASSWORD** | T0 | No | PostgreSQL password when using `postgresql` backend | - |
-| **WEA_PG_SSL** | T0 | No | Enable PostgreSQL TLS from app pool (`true`/`false`) | `false` |
-| **WEA_PG_MAX** | T0 | No | PostgreSQL pool max connections | `10` |
-| **WEA_PG_IDLE_TIMEOUT_MS** | T0 | No | PostgreSQL pool idle timeout (ms) | `30000` |
-| **WEA_PG_CONNECTION_TIMEOUT_MS** | T0 | No | PostgreSQL pool connection timeout (ms) | `10000` |
-| **PGSSLMODE** | T0 | No | Optional CLI/client SSL mode (for tools such as `psql`) | `prefer` |
-| **encrypt_secret_key** | T0 | Yes | Master key for DB-stored secrets (AES-256-GCM). Wizard auto-generates when absent and keeps an existing value. Losing it makes encrypted DB secrets unrecoverable. | - |
-| **MAX_THUMBNAIL_SIZE** | DB | No | Max thumbnail resolution (pixels) | `300` |
-| **FFMPEG_PATH** | DB | No | Absolute path to FFmpeg executable (when auto-detect fails) | `ffmpeg` (PATH) |
-| **WEBDAV_AUTH_TYPE** | DB | No | WebDAV auth method (`auto`, `basic`, `digest`) | `auto` |
-| **WEBDAV_UPSTREAM_URL** | DB | No | For `Destination` header issues behind a reverse proxy | - |
-| **JWT_EXPIRES_IN** | DB | No | Login session duration (e.g. `30m`, `1h`, `7d`) | `30m` |
-| **EMAIL_*** | DB | No | SMTP settings for signup/approval notifications (HOST, PORT, USER, PASS, etc.) | - |
+| Variable                         | Source |              Required               | Description                                                                                                                                                        | Default            |
+| :------------------------------- | :----: | :---------------------------------: | :----------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------- |
+| **WEA_FILE_STORAGE**             |   DB   |                 No                  | File/blob storage backend (`s3` or `webdav`)                                                                                                                       | `s3`               |
+| **S3_BUCKET**                    |   DB   |   Only when `WEA_FILE_STORAGE=s3`   | S3 bucket name for blob storage                                                                                                                                    | -                  |
+| **AWS_REGION**                   |   DB   |   Only when `WEA_FILE_STORAGE=s3`   | AWS region of the S3 bucket                                                                                                                                        | -                  |
+| **AWS_ACCESS_KEY_ID**            |   DB   |   Only when `WEA_FILE_STORAGE=s3`   | AWS access key ID for S3                                                                                                                                           | -                  |
+| **AWS_SECRET_ACCESS_KEY**        |   DB   |   Only when `WEA_FILE_STORAGE=s3`   | AWS secret access key for S3 (encrypted at rest)                                                                                                                   | -                  |
+| **S3_ENDPOINT**                  |   DB   |                 No                  | Custom S3-compatible endpoint (e.g. MinIO); empty for AWS                                                                                                          | -                  |
+| **WEBDAV_URL**                   |   DB   | Only when `WEA_FILE_STORAGE=webdav` | WebDAV server base URL (e.g. `https://dav.example.com`)                                                                                                            | -                  |
+| **WEBDAV_USERNAME**              |   DB   | Only when `WEA_FILE_STORAGE=webdav` | WebDAV server account name                                                                                                                                         | -                  |
+| **WEBDAV_PASSWORD**              |   DB   | Only when `WEA_FILE_STORAGE=webdav` | WebDAV server password (encrypted at rest)                                                                                                                         | -                  |
+| **JWT_SECRET**                   |   T0   |                 Yes                 | Secret key for token signing (must change in production!)                                                                                                          | -                  |
+| **PORT**                         |   DB   |                 No                  | Server port                                                                                                                                                        | `5001`             |
+| **CORS_ORIGINS**                 |   DB   |                 No                  | Allowed browser origins (comma-separated)                                                                                                                          | `*` (with warning) |
+| **WEA_STORAGE_BACKEND**          |   T0   |                 No                  | Metadata storage backend (`sqlite` or `postgresql`)                                                                                                                | `sqlite`           |
+| **WEA_SQLITE_PATH**              |   T0   |                 No                  | Path to the SQLite metadata database file                                                                                                                          | `data/webdav.db`   |
+| **WEA_PG_HOST**                  |   T0   |                 No                  | PostgreSQL host when using `postgresql` backend                                                                                                                    | -                  |
+| **WEA_PG_PORT**                  |   T0   |                 No                  | PostgreSQL port when using `postgresql` backend                                                                                                                    | `5432`             |
+| **WEA_PG_DATABASE**              |   T0   |                 No                  | PostgreSQL database name when using `postgresql` backend                                                                                                           | -                  |
+| **WEA_PG_USER**                  |   T0   |                 No                  | PostgreSQL user when using `postgresql` backend                                                                                                                    | -                  |
+| **WEA_PG_PASSWORD**              |   T0   |                 No                  | PostgreSQL password when using `postgresql` backend                                                                                                                | -                  |
+| **WEA_PG_SSL**                   |   T0   |                 No                  | Enable PostgreSQL TLS from app pool (`true`/`false`)                                                                                                               | `false`            |
+| **WEA_PG_MAX**                   |   T0   |                 No                  | PostgreSQL pool max connections                                                                                                                                    | `10`               |
+| **WEA_PG_IDLE_TIMEOUT_MS**       |   T0   |                 No                  | PostgreSQL pool idle timeout (ms)                                                                                                                                  | `30000`            |
+| **WEA_PG_CONNECTION_TIMEOUT_MS** |   T0   |                 No                  | PostgreSQL pool connection timeout (ms)                                                                                                                            | `10000`            |
+| **PGSSLMODE**                    |   T0   |                 No                  | Optional CLI/client SSL mode (for tools such as `psql`)                                                                                                            | `prefer`           |
+| **encrypt_secret_key**           |   T0   |                 Yes                 | Master key for DB-stored secrets (AES-256-GCM). Wizard auto-generates when absent and keeps an existing value. Losing it makes encrypted DB secrets unrecoverable. | -                  |
+| **MAX_THUMBNAIL_SIZE**           |   DB   |                 No                  | Max thumbnail resolution (pixels)                                                                                                                                  | `300`              |
+| **FFMPEG_PATH**                  |   DB   |                 No                  | Absolute path to FFmpeg executable (when auto-detect fails)                                                                                                        | `ffmpeg` (PATH)    |
+| **WEBDAV_AUTH_TYPE**             |   DB   |                 No                  | WebDAV auth method (`auto`, `basic`, `digest`)                                                                                                                     | `auto`             |
+| **WEBDAV_UPSTREAM_URL**          |   DB   |                 No                  | For `Destination` header issues behind a reverse proxy                                                                                                             | -                  |
+| **JWT_EXPIRES_IN**               |   DB   |                 No                  | Login session duration (e.g. `30m`, `1h`, `7d`)                                                                                                                    | `30m`              |
+| **EMAIL\_\***                    |   DB   |                 No                  | SMTP settings for signup/approval notifications (HOST, PORT, USER, PASS, etc.)                                                                                     | -                  |
 
 > **Secrets at rest:** DB-stored secrets (`EMAIL_PASSWORD`, `WEBDAV_PASSWORD`,
 > `AWS_SECRET_ACCESS_KEY`, `ADMIN_DEFAULT_PASSWORD`) are encrypted with AES-256-GCM under
@@ -112,12 +114,12 @@ The system supports PostgreSQL-backed and SQLite-backed metadata with the same s
 > ```
 
 1.  **SQLite backend (`sqlite`)** (default):
-    *   Stores metadata in a local SQLite database file (development/testing).
-    *   Set `WEA_STORAGE_BACKEND=sqlite` and `WEA_SQLITE_PATH=/path/to/webdav.db`.
+    - Stores metadata in a local SQLite database file (development/testing).
+    - Set `WEA_STORAGE_BACKEND=sqlite` and `WEA_SQLITE_PATH=/path/to/webdav.db`.
 2.  **PostgreSQL backend (`postgresql`)**:
-    *   Stores metadata in normalized relational tables (`users`, `settings`, `permissions_*`, `share_links`, `recent_files`, `permission_requests`, `locks`).
-    *   Recommended for stronger consistency and high-concurrency metadata operations.
-    *   Set `WEA_STORAGE_BACKEND=postgresql` and provide `WEA_PG_HOST`, `WEA_PG_PORT`, `WEA_PG_DATABASE`, `WEA_PG_USER`, `WEA_PG_PASSWORD` (plus optional pool/SSL settings).
+    - Stores metadata in normalized relational tables (`users`, `settings`, `permissions_*`, `share_links`, `recent_files`, `permission_requests`, `locks`).
+    - Recommended for stronger consistency and high-concurrency metadata operations.
+    - Set `WEA_STORAGE_BACKEND=postgresql` and provide `WEA_PG_HOST`, `WEA_PG_PORT`, `WEA_PG_DATABASE`, `WEA_PG_USER`, `WEA_PG_PASSWORD` (plus optional pool/SSL settings).
 
 ### File Storage (Blob) Configuration
 
@@ -146,7 +148,7 @@ To apply the DDL manually (equivalent to what startup does), instead:
       -f server/store/postgresql/ddl/001_initial_normalized_schema.sql
     ```
 2.  Verify schema apply status using your DB tooling (for example `\dt` / `\d` in `psql`) and treat the DDL file as canonical:
-    *   `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
+    - `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
 3.  Start the server and confirm `/api/health` reports healthy metadata store access.
 
 Permission contract source of truth:
@@ -214,10 +216,10 @@ node server/scripts/migrateBlobs.js --dest-type=webdav \
 
 ### Transaction and Concurrency Notes (postgresql)
 
-*   User creation/email change/deletion run in a single transaction.
-*   ACL grant/revoke and request status transitions run in per-operation transactions.
-*   Share download counters are incremented atomically in SQL.
-*   Metadata lock semantics use database locks table with TTL-aware cleanup.
+- User creation/email change/deletion run in a single transaction.
+- ACL grant/revoke and request status transitions run in per-operation transactions.
+- Share download counters are incremented atomically in SQL.
+- Metadata lock semantics use database locks table with TTL-aware cleanup.
 
 ### Operational Verification Checklist
 
@@ -234,10 +236,12 @@ For store contract validation, use `docs/spec/server/store/*.md`.
 ## 4. Running the Application
 
 ### Development Mode (client + server)
+
 ```bash
 npm run dev
 ```
-*   Access: `http://localhost:3000` (frontend dev server)
+
+- Access: `http://localhost:3000` (frontend dev server)
 
 ### E2E WebDAV readiness
 
@@ -246,6 +250,7 @@ For local Playwright E2E runs that use `docker-compose.e2e.yml`, treat the WebDA
 On Apple Silicon hosts, prefer a multi-architecture WebDAV image for the E2E compose stack. Running an amd64-only WebDAV image under emulation can introduce intermittent connection failures during longer repeat runs.
 
 ### Production Mode
+
 1.  **Build frontend**:
     ```bash
     npm run build
@@ -255,14 +260,15 @@ On Apple Silicon hosts, prefer a multi-architecture WebDAV image for the E2E com
     cd server
     npm start
     ```
-*   Access: `http://localhost:5001` (or your configured `PORT`)
+
+- Access: `http://localhost:5001` (or your configured `PORT`)
 
 ## 5. Security and Initial Admin Setup
 
 1.  **Default admin account**:
-    *   On first run, an account is created with username `admin` and password `admin` (or `ADMIN_DEFAULT_PASSWORD` from `.env`).
-    *   **Change the admin password immediately after first login.**
+    - On first run, an account is created with username `admin` and password `admin` (or `ADMIN_DEFAULT_PASSWORD` from `.env`).
+    - **Change the admin password immediately after first login.**
 2.  **HTTPS recommended**:
-    *   Auth tokens and WebDAV credentials are sent over the network; production deployments must use **HTTPS** via Nginx, Caddy, etc.
+    - Auth tokens and WebDAV credentials are sent over the network; production deployments must use **HTTPS** via Nginx, Caddy, etc.
 3.  **Browser session**:
-    *   Auth tokens are stored in `sessionStorage` for security. Closing the browser tab or window logs you out automatically.
+    - Auth tokens are stored in `sessionStorage` for security. Closing the browser tab or window logs you out automatically.

@@ -75,4 +75,3 @@ const sharePermissionGateway = {
 };
 
 export default sharePermissionGateway;
-

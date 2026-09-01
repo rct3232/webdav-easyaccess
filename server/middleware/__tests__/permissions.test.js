@@ -6,9 +6,7 @@ const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
 jest.mock('../../domains/permissions/services/aclService', () => {
-  const actual = jest.requireActual(
-        '../../domains/permissions/services/aclService'
-  );
+  const actual = jest.requireActual('../../domains/permissions/services/aclService');
   return {
     ...actual,
     checkFilePermission: jest.fn(),
@@ -131,10 +129,7 @@ describe('permissions middleware (nodeId)', () => {
       req.body.customNodeId = '75';
       aclService.checkFilePermission.mockResolvedValue(true);
 
-      const mw = requirePermission(
-        PERMISSIONS.READ,
-        (r) => r.body.customNodeId
-      );
+      const mw = requirePermission(PERMISSIONS.READ, (r) => r.body.customNodeId);
       await mw(req, res, next);
 
       expect(next).toHaveBeenCalled();

@@ -10,7 +10,7 @@ const VIRTUAL_SHARED = '__shared__';
 
 export const useFileManager = (user, options = {}) => {
   const { onLoadComplete, onLoadError, shareToken, linkInfo } = options;
-  const { '*' : urlPath } = useParams();
+  const { '*': urlPath } = useParams();
   const navigate = useNavigate();
 
   const onLoadCompleteRef = useRef(onLoadComplete);
@@ -169,7 +169,12 @@ export const useFileManager = (user, options = {}) => {
 
   // Ancestor chain for the breadcrumb (C2.2). Skipped for virtual views and home.
   useEffect(() => {
-    if (isShareMode || urlView.kind === 'recent' || urlView.kind === 'shared' || urlView.kind === 'home') {
+    if (
+      isShareMode ||
+      urlView.kind === 'recent' ||
+      urlView.kind === 'shared' ||
+      urlView.kind === 'home'
+    ) {
       setAncestors([]);
       return undefined;
     }
@@ -199,8 +204,12 @@ export const useFileManager = (user, options = {}) => {
       if (urlView.kind === 'recent') {
         const recentFilesList = await explorerGateway.loadRecentFiles();
         const recentFilesAsList = recentFilesList.map((recentFile) => {
-          const fileName = recentFile.name || recentFile.basename
-            || (recentFile.path ? recentFile.path.substring(recentFile.path.lastIndexOf('/') + 1) : '');
+          const fileName =
+            recentFile.name ||
+            recentFile.basename ||
+            (recentFile.path
+              ? recentFile.path.substring(recentFile.path.lastIndexOf('/') + 1)
+              : '');
           return {
             nodeId: recentFile.nodeId,
             path: recentFile.path || recentFile.displayPath || '',
@@ -216,7 +225,9 @@ export const useFileManager = (user, options = {}) => {
             isRecentFile: true,
           };
         });
-        const fileEntries = recentFilesAsList.filter((entry) => entry.type === 'file' && entry.nodeId != null);
+        const fileEntries = recentFilesAsList.filter(
+          (entry) => entry.type === 'file' && entry.nodeId != null
+        );
         if (fileEntries.length > 0) {
           try {
             const metaList = await explorerGateway.getEntriesMetadata({ entries: fileEntries });
@@ -231,7 +242,10 @@ export const useFileManager = (user, options = {}) => {
               }
             });
           } catch (metaErr) {
-            console.error('[useFileManager] Failed to load metadata for __recent__ entries:', metaErr);
+            console.error(
+              '[useFileManager] Failed to load metadata for __recent__ entries:',
+              metaErr
+            );
           }
         }
         if (requestId === requestIdRef.current) {

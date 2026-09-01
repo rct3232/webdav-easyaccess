@@ -125,7 +125,10 @@ describe('adminService', () => {
   describe('getConfigStatus', () => {
     it('returns the full response payload including key_lost_warning', async () => {
       get.mockResolvedValueOnce({
-        data: { config: { PORT: { value: '5001', source: 'default', tier: 'T1', secret: false } }, key_lost_warning: true },
+        data: {
+          config: { PORT: { value: '5001', source: 'default', tier: 'T1', secret: false } },
+          key_lost_warning: true,
+        },
       });
 
       const result = await getConfigStatus();
@@ -140,12 +143,18 @@ describe('adminService', () => {
 
   describe('updateConfig', () => {
     it('calls PUT /admin/config with { values } and returns the applied/restartRequired response', async () => {
-      const resultData = { applied: ['EMAIL_HOST'], restartRequired: ['PORT'], messageCode: 'serverMessages.admin.configSaved' };
+      const resultData = {
+        applied: ['EMAIL_HOST'],
+        restartRequired: ['PORT'],
+        messageCode: 'serverMessages.admin.configSaved',
+      };
       put.mockResolvedValueOnce({ data: resultData });
 
       const result = await updateConfig({ EMAIL_HOST: 'smtp.example.com' });
 
-      expect(put).toHaveBeenCalledWith('/admin/config', { values: { EMAIL_HOST: 'smtp.example.com' } });
+      expect(put).toHaveBeenCalledWith('/admin/config', {
+        values: { EMAIL_HOST: 'smtp.example.com' },
+      });
       expect(result).toEqual(resultData);
       expect(result).toHaveProperty('restartRequired');
     });
@@ -254,7 +263,9 @@ describe('adminService', () => {
       };
       post.mockRejectedValueOnce(err);
 
-      await expect(testConfig('webdav', { WEBDAV_URL: 'https://bad.example.com' })).rejects.toMatchObject({
+      await expect(
+        testConfig('webdav', { WEBDAV_URL: 'https://bad.example.com' })
+      ).rejects.toMatchObject({
         message: 'Connection test failed',
         errorCode: 'serverErrors.setup.test.pg.unreachable',
         reason: 'ECONNREFUSED',

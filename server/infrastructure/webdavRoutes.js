@@ -33,7 +33,9 @@ router.get('/info', (req, res) => {
     }
     res.json({ url: displayUrl });
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ errorCode: SERVER_ERROR_CODES.errorHandler.internalServerError });
+    res
+      .status(HTTP_STATUS.INTERNAL_SERVER_ERROR)
+      .json({ errorCode: SERVER_ERROR_CODES.errorHandler.internalServerError });
   }
 });
 

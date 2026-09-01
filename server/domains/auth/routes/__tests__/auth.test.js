@@ -101,18 +101,18 @@ describe('POST /api/auth/register', () => {
       email: 'dualtaken@example.com',
     });
 
-    const res = await request(app)
-      .post('/api/auth/register')
-      .send({
-        username: existing.username,
-        email: existing.email,
-        password: 'pass123',
-      });
+    const res = await request(app).post('/api/auth/register').send({
+      username: existing.username,
+      email: existing.email,
+      password: 'pass123',
+    });
 
     expect(res.status).toBe(400);
     expect(res.body.errorCode).toBeDefined();
     expect(
-      [SERVER_ERROR_CODES.auth.usernameTaken, SERVER_ERROR_CODES.auth.emailTaken].includes(res.body.errorCode)
+      [SERVER_ERROR_CODES.auth.usernameTaken, SERVER_ERROR_CODES.auth.emailTaken].includes(
+        res.body.errorCode
+      )
     ).toBe(true);
   });
 });
@@ -165,9 +165,7 @@ describe('POST /api/auth/login', () => {
   });
 
   it('returns 400 when credentials missing', async () => {
-    const res = await request(app)
-      .post('/api/auth/login')
-      .send({ username: 'u' }); // no password
+    const res = await request(app).post('/api/auth/login').send({ username: 'u' }); // no password
 
     expect(res.status).toBe(400);
     expect(res.body.errorCode).toBeDefined();
@@ -223,9 +221,7 @@ describe('POST /api/auth/refresh', () => {
       .send({ username: user.username, password: 'password123' });
     const refreshToken = loginRes.body.refreshToken;
 
-    const res = await request(app)
-      .post('/api/auth/refresh')
-      .send({ refreshToken });
+    const res = await request(app).post('/api/auth/refresh').send({ refreshToken });
 
     expect(res.status).toBe(200);
     expect(res.body.token).toBeDefined();
@@ -242,16 +238,12 @@ describe('POST /api/auth/refresh', () => {
   });
 
   it('returns 401 when refreshToken empty or missing', async () => {
-    const emptyRes = await request(app)
-      .post('/api/auth/refresh')
-      .send({ refreshToken: '' });
+    const emptyRes = await request(app).post('/api/auth/refresh').send({ refreshToken: '' });
 
     expect(emptyRes.status).toBe(401);
     expect(emptyRes.body.errorCode).toBeDefined();
 
-    const missingRes = await request(app)
-      .post('/api/auth/refresh')
-      .send({});
+    const missingRes = await request(app).post('/api/auth/refresh').send({});
 
     expect(missingRes.status).toBe(401);
     expect(missingRes.body.errorCode).toBeDefined();
@@ -264,9 +256,7 @@ describe('GET /api/auth/me', () => {
       username: `me-${Date.now()}`,
     });
 
-    const res = await request(app)
-      .get('/api/auth/me')
-      .set('Authorization', `Bearer ${token}`);
+    const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
@@ -282,9 +272,7 @@ describe('GET /api/auth/me', () => {
   });
 
   it('returns 401 or 403 when invalid token', async () => {
-    const res = await request(app)
-      .get('/api/auth/me')
-      .set('Authorization', 'Bearer invalid.jwt');
+    const res = await request(app).get('/api/auth/me').set('Authorization', 'Bearer invalid.jwt');
     expect([401, 403]).toContain(res.status);
     expect(res.body.errorCode).toBeDefined();
   });

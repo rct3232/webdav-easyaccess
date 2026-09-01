@@ -34,9 +34,7 @@ describe('FileActionSheet', () => {
   });
 
   it('returns null when file is null', () => {
-    const { container } = renderWithProviders(
-      <FileActionSheet {...defaultProps} file={null} />
-    );
+    const { container } = renderWithProviders(<FileActionSheet {...defaultProps} file={null} />);
     expect(container.firstChild).toBeNull();
   });
 

@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                             |
+| ---- | ------------------------------------------------------------------------------------------------------- |
 | Role | JWT auth: generateToken, verifyToken, authenticateToken middleware. Refresh token store and validation. |
 
 ---
@@ -17,15 +17,15 @@
 
 ### 2.2 Functions / Exports
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| generateToken | (user) => string | JWT sign |
-| verifyToken | (token) => object \| null | JWT verify |
-| authenticateToken | (req, res, next) => void | Middleware: req.user from Authorization |
-| addRefreshToken | (tokenId, userId, expiresAtMs) => void | Add refresh token |
-| validateRefreshToken | (tokenId) => Promise\<user \| null\> | Validate refresh token |
-| deleteRefreshToken | (tokenId) => void | Remove token |
-| deleteAllRefreshTokensForUser | (userId) => void | Remove all for user |
+| Function                      | Signature                              | Description                             |
+| ----------------------------- | -------------------------------------- | --------------------------------------- |
+| generateToken                 | (user) => string                       | JWT sign                                |
+| verifyToken                   | (token) => object \| null              | JWT verify                              |
+| authenticateToken             | (req, res, next) => void               | Middleware: req.user from Authorization |
+| addRefreshToken               | (tokenId, userId, expiresAtMs) => void | Add refresh token                       |
+| validateRefreshToken          | (tokenId) => Promise\<user \| null\>   | Validate refresh token                  |
+| deleteRefreshToken            | (tokenId) => void                      | Remove token                            |
+| deleteAllRefreshTokensForUser | (userId) => void                       | Remove all for user                     |
 
 ### 2.3 Input / Output
 

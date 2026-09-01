@@ -55,10 +55,34 @@ const mockGetVideoPreviewStreamUrl = jest.fn();
 const mockDownloadFile = jest.fn();
 const onCloseMock = jest.fn();
 
-const imageFile = { nodeId: 10, name: 'test.jpg', basename: 'test.jpg', path: '/test/path.jpg', type: 'file' };
-const videoFile = { nodeId: 20, name: 'video.mp4', basename: 'video.mp4', path: '/test/video.mp4', type: 'file' };
-const pdfFile = { nodeId: 30, name: 'doc.pdf', basename: 'doc.pdf', path: '/test/doc.pdf', type: 'file' };
-const unsupportedFile = { nodeId: 40, name: 'file.xyz', basename: 'file.xyz', path: '/test/file.xyz', type: 'file' };
+const imageFile = {
+  nodeId: 10,
+  name: 'test.jpg',
+  basename: 'test.jpg',
+  path: '/test/path.jpg',
+  type: 'file',
+};
+const videoFile = {
+  nodeId: 20,
+  name: 'video.mp4',
+  basename: 'video.mp4',
+  path: '/test/video.mp4',
+  type: 'file',
+};
+const pdfFile = {
+  nodeId: 30,
+  name: 'doc.pdf',
+  basename: 'doc.pdf',
+  path: '/test/doc.pdf',
+  type: 'file',
+};
+const unsupportedFile = {
+  nodeId: 40,
+  name: 'file.xyz',
+  basename: 'file.xyz',
+  path: '/test/file.xyz',
+  type: 'file',
+};
 
 function renderDialog(file, extraProps = {}) {
   return renderWithProviders(
@@ -98,7 +122,9 @@ describe('FilePreviewDialog', () => {
       blob.text = async () => 'x';
     }
     mockGetFileBlob.mockResolvedValue(blob);
-    mockGetVideoPreviewStreamUrl.mockResolvedValue('/api/files/preview-stream?path=%2Fv.mp4&ticket=t');
+    mockGetVideoPreviewStreamUrl.mockResolvedValue(
+      '/api/files/preview-stream?path=%2Fv.mp4&ticket=t'
+    );
   });
 
   it('returns null when file is not provided', () => {
@@ -109,7 +135,13 @@ describe('FilePreviewDialog', () => {
   });
 
   it('renders dialog when open with file', async () => {
-    const fileProps = { nodeId: 10, path: '/docs/readme.txt', basename: 'readme.txt', name: 'readme.txt', type: 'file' };
+    const fileProps = {
+      nodeId: 10,
+      path: '/docs/readme.txt',
+      basename: 'readme.txt',
+      name: 'readme.txt',
+      type: 'file',
+    };
     renderDialog(fileProps);
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -125,9 +157,7 @@ describe('FilePreviewDialog', () => {
     );
     expect(container.querySelector('[data-testid="file-preview-dialog"]')).toBeNull();
 
-    rerender(
-      <FilePreviewDialog open onClose={onCloseMock} file={imageFile} mediaFiles={[]} />
-    );
+    rerender(<FilePreviewDialog open onClose={onCloseMock} file={imageFile} mediaFiles={[]} />);
     expect(screen.getByTestId('file-preview-dialog')).toBeInTheDocument();
 
     await waitFor(() => {
@@ -255,14 +285,26 @@ describe('FilePreviewDialog', () => {
   });
 
   it('does not lock gallery index to 0 when mediaFiles arrives after open', async () => {
-    const openedFile = { nodeId: 2, path: '/b.jpg', basename: 'b.jpg', name: 'b.jpg', type: 'file' };
+    const openedFile = {
+      nodeId: 2,
+      path: '/b.jpg',
+      basename: 'b.jpg',
+      name: 'b.jpg',
+      type: 'file',
+    };
     const mediaFilesLater = [
       { nodeId: 1, path: '/a.jpg', basename: 'a.jpg', name: 'a.jpg', type: 'file' },
       openedFile,
     ];
 
     const { rerender } = renderWithProviders(
-      <FilePreviewDialog open onClose={onCloseMock} file={openedFile} mediaFiles={[]} shareToken={null} />
+      <FilePreviewDialog
+        open
+        onClose={onCloseMock}
+        file={openedFile}
+        mediaFiles={[]}
+        shareToken={null}
+      />
     );
 
     // Should not eagerly fall back to index 0 of mediaFiles (because mediaFiles is empty).
@@ -274,7 +316,13 @@ describe('FilePreviewDialog', () => {
     });
 
     rerender(
-      <FilePreviewDialog open onClose={onCloseMock} file={openedFile} mediaFiles={mediaFilesLater} shareToken={null} />
+      <FilePreviewDialog
+        open
+        onClose={onCloseMock}
+        file={openedFile}
+        mediaFiles={mediaFilesLater}
+        shareToken={null}
+      />
     );
 
     await waitFor(() => {
@@ -287,7 +335,8 @@ describe('FilePreviewDialog', () => {
 
   it('truncates long header filename and shows tooltip on hover (desktop)', async () => {
     const user = userEvent.setup();
-    const longName = 'this-is-a-very-very-very-very-very-long-filename-for-preview-dialog-header.txt';
+    const longName =
+      'this-is-a-very-very-very-very-very-long-filename-for-preview-dialog-header.txt';
 
     renderWithProviders(
       <FilePreviewDialog

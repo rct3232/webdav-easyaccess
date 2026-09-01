@@ -32,7 +32,9 @@ describe('RecentFilesSection', () => {
   it('expand icon area invokes handleRecentToggle', () => {
     renderWithProviders(<RecentFilesSection {...defaultProps} />);
     const listItem = screen.getByText(/recent/i).closest('li');
-    const expandIcon = listItem?.querySelector('[style*="cursor"]') || listItem?.querySelector('.MuiListItemIcon-root span');
+    const expandIcon =
+      listItem?.querySelector('[style*="cursor"]') ||
+      listItem?.querySelector('.MuiListItemIcon-root span');
     if (expandIcon) {
       fireEvent.click(expandIcon);
       expect(defaultProps.handleRecentToggle).toHaveBeenCalled();
@@ -52,24 +54,36 @@ describe('RecentFilesSection', () => {
       { nodeId: 1, path: '/docs/a.pdf', name: 'a.pdf', type: 'file' },
       { nodeId: 2, path: '/docs/folder', name: 'folder', type: 'directory' },
     ];
-    renderWithProviders(<RecentFilesSection {...defaultProps} recentExpanded recentFilesList={files} />);
+    renderWithProviders(
+      <RecentFilesSection {...defaultProps} recentExpanded recentFilesList={files} />
+    );
     expect(screen.getByText('a.pdf')).toBeInTheDocument();
     expect(screen.getByText('folder')).toBeInTheDocument();
   });
 
   it('folder click calls onNodeClick with the entry nodeId', () => {
     const files = [{ nodeId: 5, path: '/docs/folder', name: 'folder', type: 'directory' }];
-    renderWithProviders(<RecentFilesSection {...defaultProps} recentExpanded recentFilesList={files} />);
+    renderWithProviders(
+      <RecentFilesSection {...defaultProps} recentExpanded recentFilesList={files} />
+    );
     fireEvent.click(screen.getByText('folder'));
     expect(defaultProps.onNodeClick).toHaveBeenCalledWith(5);
   });
 
   it('file click invokes onFileClick with the nodeId entry', () => {
     const files = [{ nodeId: 3, path: '/docs/a.pdf', name: 'a.pdf', type: 'file' }];
-    renderWithProviders(<RecentFilesSection {...defaultProps} recentExpanded recentFilesList={files} />);
+    renderWithProviders(
+      <RecentFilesSection {...defaultProps} recentExpanded recentFilesList={files} />
+    );
     fireEvent.click(screen.getByText('a.pdf'));
     expect(defaultProps.onFileClick).toHaveBeenCalledWith(
-      expect.objectContaining({ nodeId: 3, path: '/docs/a.pdf', name: 'a.pdf', basename: 'a.pdf', isRecentFile: true })
+      expect.objectContaining({
+        nodeId: 3,
+        path: '/docs/a.pdf',
+        name: 'a.pdf',
+        basename: 'a.pdf',
+        isRecentFile: true,
+      })
     );
   });
 
@@ -81,7 +95,12 @@ describe('RecentFilesSection', () => {
 
   it('file click without onFileClick does not navigate (no path shim)', () => {
     const files = [{ nodeId: 3, path: '/docs/a.pdf', name: 'a.pdf', type: 'file' }];
-    const props = { ...defaultProps, recentExpanded: true, recentFilesList: files, onFileClick: undefined };
+    const props = {
+      ...defaultProps,
+      recentExpanded: true,
+      recentFilesList: files,
+      onFileClick: undefined,
+    };
     renderWithProviders(<RecentFilesSection {...props} />);
     fireEvent.click(screen.getByText('a.pdf'));
     expect(defaultProps.onNodeClick).not.toHaveBeenCalled();
@@ -94,7 +113,9 @@ describe('RecentFilesSection', () => {
       name: `file${i}.txt`,
       type: 'file',
     }));
-    renderWithProviders(<RecentFilesSection {...defaultProps} recentExpanded recentFilesList={files} />);
+    renderWithProviders(
+      <RecentFilesSection {...defaultProps} recentExpanded recentFilesList={files} />
+    );
     expect(screen.getByText('file0.txt')).toBeInTheDocument();
     expect(screen.getByText('file9.txt')).toBeInTheDocument();
     expect(screen.queryByText('file10.txt')).not.toBeInTheDocument();
@@ -103,7 +124,9 @@ describe('RecentFilesSection', () => {
   it('truncates very long filenames in the middle', () => {
     const longName = 'this-is-a-very-long-filename-that-should-be-truncated.docx';
     const files = [{ nodeId: 99, path: '/long.docx', name: longName, type: 'file' }];
-    renderWithProviders(<RecentFilesSection {...defaultProps} recentExpanded recentFilesList={files} />);
+    renderWithProviders(
+      <RecentFilesSection {...defaultProps} recentExpanded recentFilesList={files} />
+    );
 
     const truncatedElement = screen.getByLabelText(longName);
     expect(truncatedElement).toBeInTheDocument();

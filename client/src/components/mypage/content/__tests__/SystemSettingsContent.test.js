@@ -53,9 +53,7 @@ describe('SystemSettingsContent', () => {
     const user = userEvent.setup();
     let putBody;
     server.use(
-      http.get('/api/admin/settings', () =>
-        HttpResponse.json({ registration_enabled: 'false' })
-      ),
+      http.get('/api/admin/settings', () => HttpResponse.json({ registration_enabled: 'false' })),
       http.put('/api/admin/settings', async ({ request }) => {
         putBody = await request.json();
         return HttpResponse.json({ messageCode: 'serverMessages.admin.settingsSaved' });
@@ -142,7 +140,12 @@ describe('SystemSettingsContent', () => {
     server.use(
       http.post('/api/admin/permissions/ensure-home-owner-admin', () => {
         permissionCleanupCalled = true;
-        return HttpResponse.json({ updatedUsers: 0, upgradedPaths: 0, grantedPaths: 0, errors: [] });
+        return HttpResponse.json({
+          updatedUsers: 0,
+          upgradedPaths: 0,
+          grantedPaths: 0,
+          errors: [],
+        });
       })
     );
 
@@ -188,7 +191,9 @@ describe('SystemSettingsContent', () => {
     const user = userEvent.setup();
     renderSystemSettingsContent();
 
-    const metadataMigrationButton = await screen.findByRole('button', { name: /run metadata migration/i });
+    const metadataMigrationButton = await screen.findByRole('button', {
+      name: /run metadata migration/i,
+    });
     await user.click(metadataMigrationButton);
 
     await waitFor(() => {
@@ -297,9 +302,7 @@ describe('SystemSettingsContent', () => {
 
   it('shows a key-lost warning banner when the config status reports it', async () => {
     server.use(
-      http.get('/api/admin/config', () =>
-        HttpResponse.json({ config: {}, key_lost_warning: true })
-      )
+      http.get('/api/admin/config', () => HttpResponse.json({ config: {}, key_lost_warning: true }))
     );
 
     renderSystemSettingsContent();
@@ -333,7 +336,12 @@ describe('SystemSettingsContent', () => {
       http.get('/api/admin/health', () =>
         HttpResponse.json({
           backends: {
-            postgresql: { status: 'fail', code: 'unreachable', hint: 'Cannot reach host', lastCheckedAt: '2026-01-01T00:00:00Z' },
+            postgresql: {
+              status: 'fail',
+              code: 'unreachable',
+              hint: 'Cannot reach host',
+              lastCheckedAt: '2026-01-01T00:00:00Z',
+            },
             s3: { status: 'unknown' },
             webdav: { status: 'ok' },
           },

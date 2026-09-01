@@ -126,5 +126,3 @@ describe('ownerNodeResolver (nodeId)', () => {
     expect(result).toBeNull();
   });
 });
-
-

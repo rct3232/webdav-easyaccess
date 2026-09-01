@@ -59,7 +59,15 @@ describe('BaseFolderTreeItem', () => {
   it('calls onToggleExpand with the nodeId when expand icon clicked', () => {
     renderWithProviders(
       <BaseFolderTreeItem {...defaultProps}>
-        {[{ nodeId: 11, name: 'docs', hasReadPermission: true, hasWritePermission: true, isHidden: false }]}
+        {[
+          {
+            nodeId: 11,
+            name: 'docs',
+            hasReadPermission: true,
+            hasWritePermission: true,
+            isHidden: false,
+          },
+        ]}
       </BaseFolderTreeItem>
     );
 
@@ -74,14 +82,17 @@ describe('BaseFolderTreeItem', () => {
 
   it('loads children and shows them when expanded', async () => {
     const children = [
-      { nodeId: 11, name: 'docs', hasReadPermission: true, hasWritePermission: true, isHidden: false },
+      {
+        nodeId: 11,
+        name: 'docs',
+        hasReadPermission: true,
+        hasWritePermission: true,
+        isHidden: false,
+      },
     ];
     folderTreeGateway.listFolderChildren.mockResolvedValue(children);
     renderWithProviders(
-      <BaseFolderTreeItem
-        {...defaultProps}
-        expandedNodeIds={new Set([10])}
-      >
+      <BaseFolderTreeItem {...defaultProps} expandedNodeIds={new Set([10])}>
         {[]}
       </BaseFolderTreeItem>
     );
@@ -96,9 +107,7 @@ describe('BaseFolderTreeItem', () => {
   });
 
   it('disables item when hasReadPermission is false', () => {
-    renderWithProviders(
-      <BaseFolderTreeItem {...defaultProps} hasReadPermission={false} />
-    );
+    renderWithProviders(<BaseFolderTreeItem {...defaultProps} hasReadPermission={false} />);
     const button = screen.getByRole('button', { name: /testuser/i });
     expect(button).toHaveAttribute('aria-disabled', 'true');
   });

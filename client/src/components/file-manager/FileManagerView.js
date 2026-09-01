@@ -12,7 +12,11 @@ import {
 } from '@mui/material';
 import { CheckCircle as CheckCircleIcon } from '@mui/icons-material';
 
-import { FLOATING_BOTTOM_HEIGHT_MOBILE, FLOATING_BOTTOM_HEIGHT_DESKTOP, VIEW_MODES } from '../../constants/fileManager';
+import {
+  FLOATING_BOTTOM_HEIGHT_MOBILE,
+  FLOATING_BOTTOM_HEIGHT_DESKTOP,
+  VIEW_MODES,
+} from '../../constants/fileManager';
 import {
   FileList,
   FileGrid,
@@ -53,13 +57,8 @@ const FileManagerView = ({
   explorerHandlers,
 }) => {
   const { t } = useTranslation();
-  const {
-    shareToken,
-    isShareLinkMode,
-    shareRootPath,
-    shareRootName,
-    shareRootNodeId,
-  } = shareContext;
+  const { shareToken, isShareLinkMode, shareRootPath, shareRootName, shareRootNodeId } =
+    shareContext;
   const {
     user,
     navigate,
@@ -88,10 +87,7 @@ const FileManagerView = ({
     setLeaveShareConfirmTargetPath,
     handleLeaveShareConfirm,
   } = overlayState;
-  const {
-    controlsState,
-    listingState,
-  } = explorerSession;
+  const { controlsState, listingState } = explorerSession;
   const {
     currentPath,
     currentNodeId,
@@ -102,57 +98,19 @@ const FileManagerView = ({
     searchQuery,
     setSearchQuery,
   } = controlsState;
-  const {
-    displayedFiles,
-    loading,
-    processingMap,
-    handleThumbnailsLoaded,
-    loadMoreRef,
-    hasMore,
-  } = listingState;
-  const {
-    selectionModel,
-    bulkState,
-  } = selectionState;
-  const {
-    selectionMode,
-    selectedFiles,
-    handleFileCheck,
-  } = selectionModel;
-  const {
-    handleSelectAll,
-    handleDeselectAll,
-    allSelectedHaveWrite,
-    hasReadOnlyInSelection,
-  } = bulkState;
-  const {
-    capabilityState,
-    treeState,
-    transferState,
-  } = explorerActionState;
-  const {
-    hasWritePermission,
-  } = capabilityState;
-  const {
-    treeUpdateTrigger,
-  } = treeState;
-  const {
-    contentAreaDraggedNodeId,
-    bulkMoveCopyInProgress,
-  } = transferState;
-  const {
-    actionContext,
-    pickerState,
-    modalDialogs,
-    fileTargets,
-  } = dialogState;
-  const {
-    actionSheetOpen,
-    closeActionSheet,
-    actionSheetFile,
-    contextMenu,
-    setContextMenu,
-  } = actionContext;
+  const { displayedFiles, loading, processingMap, handleThumbnailsLoaded, loadMoreRef, hasMore } =
+    listingState;
+  const { selectionModel, bulkState } = selectionState;
+  const { selectionMode, selectedFiles, handleFileCheck } = selectionModel;
+  const { handleSelectAll, handleDeselectAll, allSelectedHaveWrite, hasReadOnlyInSelection } =
+    bulkState;
+  const { capabilityState, treeState, transferState } = explorerActionState;
+  const { hasWritePermission } = capabilityState;
+  const { treeUpdateTrigger } = treeState;
+  const { contentAreaDraggedNodeId, bulkMoveCopyInProgress } = transferState;
+  const { actionContext, pickerState, modalDialogs, fileTargets } = dialogState;
+  const { actionSheetOpen, closeActionSheet, actionSheetFile, contextMenu, setContextMenu } =
+    actionContext;
   const {
     mobilePickerFile,
     setMobilePickerFile,
@@ -202,20 +160,8 @@ const FileManagerView = ({
     selectedFile,
     setSelectedFile,
   } = fileTargets;
-  const {
-    dropMessage,
-    setDropMessage,
-    message,
-    clearMessage,
-    showError,
-    showWarning,
-  } = messaging;
-  const {
-    interaction,
-    commands,
-    progress,
-    refreshIndicator,
-  } = explorerHandlers;
+  const { dropMessage, setDropMessage, message, clearMessage, showError, showWarning } = messaging;
+  const { interaction, commands, progress, refreshIndicator } = explorerHandlers;
   const {
     handleFileClick,
     handleMoreClick,
@@ -284,12 +230,8 @@ const FileManagerView = ({
         minHeight: 0,
       }}
     >
-      {(!isShareLinkMode || (isShareLinkMode && user)) ? (
-        <FileManagerHeader
-          isMobile={isMobile}
-          user={user}
-          navigate={navigate}
-        />
+      {!isShareLinkMode || (isShareLinkMode && user) ? (
+        <FileManagerHeader isMobile={isMobile} user={user} navigate={navigate} />
       ) : (
         <AppBar
           position="sticky"
@@ -358,13 +300,17 @@ const FileManagerView = ({
                 onInternalDragEnd={handleDragEndFromView}
                 internalDraggedNodeId={contentAreaDraggedNodeId}
                 isMobile={false}
-                shareLinkSection={isShareLinkMode ? {
-                  shareRootNodeId,
-                  shareRootPath,
-                  shareRootName,
-                  shareToken,
-                  onNodeClick: handleFolderTreeNodeClick,
-                } : undefined}
+                shareLinkSection={
+                  isShareLinkMode
+                    ? {
+                        shareRootNodeId,
+                        shareRootPath,
+                        shareRootName,
+                        shareToken,
+                        onNodeClick: handleFolderTreeNodeClick,
+                      }
+                    : undefined
+                }
               />
             </Box>
           </Box>
@@ -384,11 +330,15 @@ const FileManagerView = ({
             currentPath={currentPath}
             ancestors={ancestors}
             onNodeClick={handleFolderTreeNodeClick}
-            {...(isShareLinkMode ? { shareRootPath, shareRootName, showFolderTreeToggle: true } : { user })}
-            {...(isMobile ? {
-              onToggleFolderTree: () => setDrawerOpen(!drawerOpen),
-              isFolderTreeOpen: drawerOpen,
-            } : {})}
+            {...(isShareLinkMode
+              ? { shareRootPath, shareRootName, showFolderTreeToggle: true }
+              : { user })}
+            {...(isMobile
+              ? {
+                  onToggleFolderTree: () => setDrawerOpen(!drawerOpen),
+                  isFolderTreeOpen: drawerOpen,
+                }
+              : {})}
           />
 
           {isMobile && (
@@ -427,16 +377,20 @@ const FileManagerView = ({
                   onInternalDragEnd={handleDragEndFromView}
                   internalDraggedNodeId={contentAreaDraggedNodeId}
                   isMobile
-                  shareLinkSection={isShareLinkMode ? {
-                    shareRootNodeId,
-                    shareRootPath,
-                    shareRootName,
-                    shareToken,
-                    onNodeClick: (target) => {
-                      handleFolderTreeNodeClick(target);
-                      setDrawerOpen(false);
-                    },
-                  } : undefined}
+                  shareLinkSection={
+                    isShareLinkMode
+                      ? {
+                          shareRootNodeId,
+                          shareRootPath,
+                          shareRootName,
+                          shareToken,
+                          onNodeClick: (target) => {
+                            handleFolderTreeNodeClick(target);
+                            setDrawerOpen(false);
+                          },
+                        }
+                      : undefined
+                  }
                 />
               </Box>
             </Collapse>
@@ -473,7 +427,13 @@ const FileManagerView = ({
             )}
 
           <Box
-            sx={{ flex: 1, minHeight: 0, position: 'relative', display: 'flex', flexDirection: 'column' }}
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              position: 'relative',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
             onDragEnter={contentAreaDnD.handleContentAreaDragEnter}
             onDragOver={contentAreaDnD.handleContentAreaDragOver}
             onDragLeave={contentAreaDnD.handleContentAreaDragLeave}
@@ -506,7 +466,9 @@ const FileManagerView = ({
                     px: 3,
                   }}
                 >
-                  {contentAreaDragType === 'internal' ? t('fileManager.moveDropHere') : t('dialogs.uploadDropHere')}
+                  {contentAreaDragType === 'internal'
+                    ? t('fileManager.moveDropHere')
+                    : t('dialogs.uploadDropHere')}
                 </Typography>
               </Box>
             )}
@@ -732,36 +694,60 @@ const FileManagerView = ({
           setContextMenu(null);
           handleFileDownloadOp(file);
         }}
-        onRename={isShareLinkMode ? undefined : (file) => {
-          setContextMenu(null);
-          openRenameDialog(file);
-        }}
-        onMove={isShareLinkMode ? undefined : (file) => {
-          setContextMenu(null);
-          setMobilePickerFile(file);
-          setMobilePickerAction('move');
-          setFolderPickerAction('move');
-          setFolderPickerOpen(true);
-        }}
-        onCopy={isShareLinkMode ? undefined : (file) => {
-          setContextMenu(null);
-          setMobilePickerFile(file);
-          setMobilePickerAction('copy');
-          setFolderPickerAction('copy');
-          setFolderPickerOpen(true);
-        }}
-        onShare={isShareLinkMode ? undefined : (file) => {
-          setContextMenu(null);
-          openShareDialogV2(file);
-        }}
-        onProperties={isShareLinkMode ? undefined : (file) => {
-          setContextMenu(null);
-          openPropertiesDialog(file);
-        }}
-        onDelete={isShareLinkMode ? undefined : (file) => {
-          setContextMenu(null);
-          openBulkDeleteDialog([file.nodeId]);
-        }}
+        onRename={
+          isShareLinkMode
+            ? undefined
+            : (file) => {
+                setContextMenu(null);
+                openRenameDialog(file);
+              }
+        }
+        onMove={
+          isShareLinkMode
+            ? undefined
+            : (file) => {
+                setContextMenu(null);
+                setMobilePickerFile(file);
+                setMobilePickerAction('move');
+                setFolderPickerAction('move');
+                setFolderPickerOpen(true);
+              }
+        }
+        onCopy={
+          isShareLinkMode
+            ? undefined
+            : (file) => {
+                setContextMenu(null);
+                setMobilePickerFile(file);
+                setMobilePickerAction('copy');
+                setFolderPickerAction('copy');
+                setFolderPickerOpen(true);
+              }
+        }
+        onShare={
+          isShareLinkMode
+            ? undefined
+            : (file) => {
+                setContextMenu(null);
+                openShareDialogV2(file);
+              }
+        }
+        onProperties={
+          isShareLinkMode
+            ? undefined
+            : (file) => {
+                setContextMenu(null);
+                openPropertiesDialog(file);
+              }
+        }
+        onDelete={
+          isShareLinkMode
+            ? undefined
+            : (file) => {
+                setContextMenu(null);
+                openBulkDeleteDialog([file.nodeId]);
+              }
+        }
       />
 
       <FolderPickerDialog
@@ -781,20 +767,33 @@ const FileManagerView = ({
               ? [actionSheetFile.nodeId]
               : Array.from(selectedFiles);
           if (sourceNodeIds.length > 0 && folderPickerAction) {
-            handleFolderPickerSelect(selectedNodeId, { type: folderPickerAction, nodeIds: sourceNodeIds });
+            handleFolderPickerSelect(selectedNodeId, {
+              type: folderPickerAction,
+              nodeIds: sourceNodeIds,
+            });
           }
         }}
         title={
           mobilePickerFile
             ? `${mobilePickerAction === 'move' ? t('actions.move') : t('actions.copy')}: ${mobilePickerFile.basename}`
-            : folderPickerAction === 'move' ? t('dialogs.moveFolderSelect') : t('dialogs.copyFolderSelect')
+            : folderPickerAction === 'move'
+              ? t('dialogs.moveFolderSelect')
+              : t('dialogs.copyFolderSelect')
         }
         currentNodeId={currentNodeId}
         user={user}
         action={folderPickerAction}
-        sourceNodeId={mobilePickerFile ? mobilePickerFile.nodeId : (actionSheetFile ? actionSheetFile.nodeId : undefined)}
+        sourceNodeId={
+          mobilePickerFile
+            ? mobilePickerFile.nodeId
+            : actionSheetFile
+              ? actionSheetFile.nodeId
+              : undefined
+        }
         sourceNodeIds={
-          !mobilePickerFile && !actionSheetFile && (folderPickerAction === 'copy' || folderPickerAction === 'move')
+          !mobilePickerFile &&
+          !actionSheetFile &&
+          (folderPickerAction === 'copy' || folderPickerAction === 'move')
             ? Array.from(selectedFiles)
             : undefined
         }
@@ -821,11 +820,7 @@ const FileManagerView = ({
         onClose={clearMessage}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert
-          onClose={clearMessage}
-          severity={message.type}
-          sx={{ width: '100%' }}
-        >
+        <Alert onClose={clearMessage} severity={message.type} sx={{ width: '100%' }}>
           {message.text}
         </Alert>
       </Snackbar>
@@ -854,8 +849,8 @@ const FileManagerView = ({
         />
       )}
 
-      {!selectionMode && (
-        isShareLinkMode ? (
+      {!selectionMode &&
+        (isShareLinkMode ? (
           <FAB
             shareLinkMode={{
               user,
@@ -871,8 +866,7 @@ const FileManagerView = ({
             hasWritePermission={hasWritePermission}
             isMobile={isMobile}
           />
-        )
-      )}
+        ))}
 
       {isMobile && (
         <FileActionSheet
@@ -882,43 +876,67 @@ const FileManagerView = ({
           hasWritePermission={isShareLinkMode ? false : hasWritePermission}
           user={user}
           onDownload={handleActionSheetDownload}
-          onRename={isShareLinkMode ? undefined : () => {
-            if (actionSheetFile) {
-              openRenameDialog(actionSheetFile);
-            }
-          }}
-          onMove={isShareLinkMode ? undefined : () => {
-            if (actionSheetFile) {
-              setMobilePickerFile(actionSheetFile);
-              setMobilePickerAction('move');
-              setFolderPickerAction('move');
-              setFolderPickerOpen(true);
-            }
-          }}
-          onCopy={isShareLinkMode ? undefined : () => {
-            if (actionSheetFile) {
-              setMobilePickerFile(actionSheetFile);
-              setMobilePickerAction('copy');
-              setFolderPickerAction('copy');
-              setFolderPickerOpen(true);
-            }
-          }}
-          onDelete={isShareLinkMode ? undefined : () => {
-            if (actionSheetFile) {
-              openBulkDeleteDialog([actionSheetFile.nodeId]);
-            }
-          }}
-          onShare={isShareLinkMode ? undefined : () => {
-            if (actionSheetFile) {
-              openShareDialogV2(actionSheetFile);
-            }
-          }}
+          onRename={
+            isShareLinkMode
+              ? undefined
+              : () => {
+                  if (actionSheetFile) {
+                    openRenameDialog(actionSheetFile);
+                  }
+                }
+          }
+          onMove={
+            isShareLinkMode
+              ? undefined
+              : () => {
+                  if (actionSheetFile) {
+                    setMobilePickerFile(actionSheetFile);
+                    setMobilePickerAction('move');
+                    setFolderPickerAction('move');
+                    setFolderPickerOpen(true);
+                  }
+                }
+          }
+          onCopy={
+            isShareLinkMode
+              ? undefined
+              : () => {
+                  if (actionSheetFile) {
+                    setMobilePickerFile(actionSheetFile);
+                    setMobilePickerAction('copy');
+                    setFolderPickerAction('copy');
+                    setFolderPickerOpen(true);
+                  }
+                }
+          }
+          onDelete={
+            isShareLinkMode
+              ? undefined
+              : () => {
+                  if (actionSheetFile) {
+                    openBulkDeleteDialog([actionSheetFile.nodeId]);
+                  }
+                }
+          }
+          onShare={
+            isShareLinkMode
+              ? undefined
+              : () => {
+                  if (actionSheetFile) {
+                    openShareDialogV2(actionSheetFile);
+                  }
+                }
+          }
           onPreview={isShareLinkMode ? undefined : handleActionSheetPreview}
-          onProperties={isShareLinkMode ? undefined : () => {
-            if (actionSheetFile) {
-              openPropertiesDialog(actionSheetFile);
-            }
-          }}
+          onProperties={
+            isShareLinkMode
+              ? undefined
+              : () => {
+                  if (actionSheetFile) {
+                    openPropertiesDialog(actionSheetFile);
+                  }
+                }
+          }
         />
       )}
 
@@ -949,14 +967,36 @@ const FileManagerView = ({
             <ShareDialog
               open={shareDialogOpen}
               onClose={closeShareDialog}
-              folderNodeId={(mobileShareFile || actionSheetFile)?.type === 'directory' ? (mobileShareFile || actionSheetFile)?.nodeId : null}
-              folderPath={(mobileShareFile || actionSheetFile)?.type === 'directory' ? (mobileShareFile || actionSheetFile)?.path : null}
-              folderName={(mobileShareFile || actionSheetFile)?.type === 'directory' ? ((mobileShareFile || actionSheetFile)?.basename || (mobileShareFile || actionSheetFile)?.name) : null}
+              folderNodeId={
+                (mobileShareFile || actionSheetFile)?.type === 'directory'
+                  ? (mobileShareFile || actionSheetFile)?.nodeId
+                  : null
+              }
+              folderPath={
+                (mobileShareFile || actionSheetFile)?.type === 'directory'
+                  ? (mobileShareFile || actionSheetFile)?.path
+                  : null
+              }
+              folderName={
+                (mobileShareFile || actionSheetFile)?.type === 'directory'
+                  ? (mobileShareFile || actionSheetFile)?.basename ||
+                    (mobileShareFile || actionSheetFile)?.name
+                  : null
+              }
               user={user}
               onMessage={setDropMessage}
               enableExternalShare={(mobileShareFile || actionSheetFile)?.type !== 'directory'}
-              fileNodeId={(mobileShareFile || actionSheetFile)?.type !== 'directory' ? (mobileShareFile || actionSheetFile)?.nodeId : null}
-              fileName={(mobileShareFile || actionSheetFile)?.type !== 'directory' ? ((mobileShareFile || actionSheetFile)?.basename || (mobileShareFile || actionSheetFile)?.name) : null}
+              fileNodeId={
+                (mobileShareFile || actionSheetFile)?.type !== 'directory'
+                  ? (mobileShareFile || actionSheetFile)?.nodeId
+                  : null
+              }
+              fileName={
+                (mobileShareFile || actionSheetFile)?.type !== 'directory'
+                  ? (mobileShareFile || actionSheetFile)?.basename ||
+                    (mobileShareFile || actionSheetFile)?.name
+                  : null
+              }
             />
           )}
           <ConfirmDialog
@@ -974,7 +1014,9 @@ const FileManagerView = ({
             onClose={() => setBulkConflictData(null)}
             onResolve={resolveBulkConflict}
             conflicts={bulkConflictData?.conflicts || []}
-            operationType={bulkConflictData?.action === 'move' ? t('actions.move') : t('actions.copy')}
+            operationType={
+              bulkConflictData?.action === 'move' ? t('actions.move') : t('actions.copy')
+            }
           />
           <ConflictResolveDialog
             open={!!uploadConflictData}
@@ -998,4 +1040,3 @@ const FileManagerView = ({
 };
 
 export default FileManagerView;
-

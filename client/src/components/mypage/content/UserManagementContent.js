@@ -27,7 +27,13 @@ import {
   Delete as DeleteIcon,
 } from '@mui/icons-material';
 import * as adminService from '../../../services/adminService';
-import { validateRequired, validateUsername, validateEmail, validatePassword, validateMatch } from '@webdav-easyaccess/shared/validation';
+import {
+  validateRequired,
+  validateUsername,
+  validateEmail,
+  validatePassword,
+  validateMatch,
+} from '@webdav-easyaccess/shared/validation';
 import { getValidationMessage } from '../../../utils/validationMessage';
 import { getServerErrorDisplay } from '../../../utils/errorUtils';
 import { ShareDialog } from '../../dialogs';
@@ -43,8 +49,17 @@ const UserManagementContent = () => {
   const [message, setMessage] = useState({ type: '', text: '' });
   const [deleteDialog, setDeleteDialog] = useState({ open: false, userId: null, username: '' });
   const [createDialog, setCreateDialog] = useState({ open: false });
-  const [newUser, setNewUser] = useState({ username: '', email: '', password: '', confirmPassword: '' });
-  const [permissionDialog, setPermissionDialog] = useState({ open: false, userId: null, username: '' });
+  const [newUser, setNewUser] = useState({
+    username: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+  });
+  const [permissionDialog, setPermissionDialog] = useState({
+    open: false,
+    userId: null,
+    username: '',
+  });
   const [initialLoading, setInitialLoading] = useState(true);
   const [actionLoadingIds, setActionLoadingIds] = useState(new Set());
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -112,7 +127,10 @@ const UserManagementContent = () => {
       setMessage({ type: 'success', text: t('admin.approveSuccess', { name: username }) });
       await Promise.all([loadPendingUsers(), loadAllUsers()]);
     } catch (error) {
-      setMessage({ type: 'error', text: getServerErrorDisplay(error?.response?.data, t) || t('admin.approveFail') });
+      setMessage({
+        type: 'error',
+        text: getServerErrorDisplay(error?.response?.data, t) || t('admin.approveFail'),
+      });
     } finally {
       setActionLoadingIds((prev) => {
         const next = new Set(prev);
@@ -129,7 +147,10 @@ const UserManagementContent = () => {
       setMessage({ type: 'success', text: t('admin.rejectSuccess', { name: username }) });
       await Promise.all([loadPendingUsers(), loadAllUsers()]);
     } catch (error) {
-      setMessage({ type: 'error', text: getServerErrorDisplay(error?.response?.data, t) || t('admin.rejectFail') });
+      setMessage({
+        type: 'error',
+        text: getServerErrorDisplay(error?.response?.data, t) || t('admin.rejectFail'),
+      });
     } finally {
       setActionLoadingIds((prev) => {
         const next = new Set(prev);
@@ -151,7 +172,10 @@ const UserManagementContent = () => {
       setMessage({ type: 'success', text: t('admin.deleteSuccess', { name: username }) });
       await Promise.all([loadPendingUsers(), loadAllUsers()]);
     } catch (error) {
-      setMessage({ type: 'error', text: getServerErrorDisplay(error?.response?.data, t) || t('admin.deleteFail') });
+      setMessage({
+        type: 'error',
+        text: getServerErrorDisplay(error?.response?.data, t) || t('admin.deleteFail'),
+      });
     } finally {
       setDeleteLoading(false);
     }
@@ -185,7 +209,11 @@ const UserManagementContent = () => {
       setMessage({ type: 'error', text: getValidationMessage(emailError, t) });
       return;
     }
-    const matchError = validateMatch(newUser.password, newUser.confirmPassword, t('login.password'));
+    const matchError = validateMatch(
+      newUser.password,
+      newUser.confirmPassword,
+      t('login.password')
+    );
     if (matchError) {
       setMessage({ type: 'error', text: getValidationMessage(matchError, t) });
       return;
@@ -197,13 +225,20 @@ const UserManagementContent = () => {
     }
     setCreateUserLoading(true);
     try {
-      await adminService.createUser({ username: newUser.username, email: newUser.email, password: newUser.password });
+      await adminService.createUser({
+        username: newUser.username,
+        email: newUser.email,
+        password: newUser.password,
+      });
       setMessage({ type: 'success', text: t('admin.addUserSuccess', { name: newUser.username }) });
       setCreateDialog({ open: false });
       setNewUser({ username: '', email: '', password: '', confirmPassword: '' });
       await Promise.all([loadPendingUsers(), loadAllUsers()]);
     } catch (error) {
-      setMessage({ type: 'error', text: getServerErrorDisplay(error?.response?.data, t) || t('admin.addUserFail') });
+      setMessage({
+        type: 'error',
+        text: getServerErrorDisplay(error?.response?.data, t) || t('admin.addUserFail'),
+      });
     } finally {
       setCreateUserLoading(false);
     }
@@ -213,7 +248,8 @@ const UserManagementContent = () => {
     if (userId == null) return;
     setPermissionDialog({ open: true, userId, username });
   };
-  const handleClosePermissionDialog = () => setPermissionDialog({ open: false, userId: null, username: '' });
+  const handleClosePermissionDialog = () =>
+    setPermissionDialog({ open: false, userId: null, username: '' });
 
   useEffect(() => {
     setTitle(t('admin.users'));
@@ -230,13 +266,28 @@ const UserManagementContent = () => {
   }, [t, handleCreateClick, setTitle, setActions]);
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+    <Box
+      sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}
+    >
       {initialLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1, py: 6 }}>
+        <Box
+          sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1, py: 6 }}
+        >
           <CircularProgress />
         </Box>
       ) : (
-        <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 2, WebkitOverflowScrolling: 'touch', p: 2 }}>
+        <Box
+          sx={{
+            flex: 1,
+            minHeight: 0,
+            overflow: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+            WebkitOverflowScrolling: 'touch',
+            p: 2,
+          }}
+        >
           {userList.length === 0 ? (
             <Paper sx={{ p: 3, textAlign: 'center' }}>
               <Typography variant="body1" color="text.secondary">
@@ -252,7 +303,9 @@ const UserManagementContent = () => {
                   '&:hover': u.status !== 'pending' && !u.is_admin ? { boxShadow: 3 } : {},
                   flexShrink: 0,
                 }}
-                onClick={() => u.status !== 'pending' && !u.is_admin && handleUserClick(u.id, u.username)}
+                onClick={() =>
+                  u.status !== 'pending' && !u.is_admin && handleUserClick(u.id, u.username)
+                }
               >
                 <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                   <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
@@ -263,7 +316,11 @@ const UserManagementContent = () => {
                   </Typography>
                   <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
                     {getStatusChip(u.status)}
-                    {u.is_admin ? <Chip label={t('admin.adminRole')} color="primary" size="small" /> : <Chip label={t('admin.normalRole')} size="small" />}
+                    {u.is_admin ? (
+                      <Chip label={t('admin.adminRole')} color="primary" size="small" />
+                    ) : (
+                      <Chip label={t('admin.normalRole')} size="small" />
+                    )}
                   </Box>
                   <Typography variant="caption" color="text.secondary">
                     {t('admin.joinedAtLabel', { date: formatDate(u.created_at) })}
@@ -276,7 +333,13 @@ const UserManagementContent = () => {
                         variant="contained"
                         color="success"
                         size="small"
-                        startIcon={actionLoadingIds.has(u.id) ? <CircularProgress size={16} color="inherit" /> : <CheckIcon />}
+                        startIcon={
+                          actionLoadingIds.has(u.id) ? (
+                            <CircularProgress size={16} color="inherit" />
+                          ) : (
+                            <CheckIcon />
+                          )
+                        }
                         onClick={() => handleApprove(u.id, u.username)}
                         disabled={actionLoadingIds.has(u.id)}
                         sx={{ flex: 1 }}
@@ -287,7 +350,13 @@ const UserManagementContent = () => {
                         variant="contained"
                         color="error"
                         size="small"
-                        startIcon={actionLoadingIds.has(u.id) ? <CircularProgress size={16} color="inherit" /> : <CloseIcon />}
+                        startIcon={
+                          actionLoadingIds.has(u.id) ? (
+                            <CircularProgress size={16} color="inherit" />
+                          ) : (
+                            <CloseIcon />
+                          )
+                        }
                         onClick={() => handleReject(u.id, u.username)}
                         disabled={actionLoadingIds.has(u.id)}
                         sx={{ flex: 1 }}
@@ -297,7 +366,13 @@ const UserManagementContent = () => {
                     </>
                   ) : (
                     !u.is_admin && (
-                      <IconButton color="error" size="small" onClick={() => handleDeleteClick(u.id, u.username)} title={t('admin.deleteUser')} sx={{ ml: 'auto' }}>
+                      <IconButton
+                        color="error"
+                        size="small"
+                        onClick={() => handleDeleteClick(u.id, u.username)}
+                        title={t('admin.deleteUser')}
+                        sx={{ ml: 'auto' }}
+                      >
                         <DeleteIcon />
                       </IconButton>
                     )
@@ -338,33 +413,92 @@ const UserManagementContent = () => {
           <Button onClick={handleDeleteCancel} color="primary" disabled={deleteLoading}>
             {t('common.cancel')}
           </Button>
-          <Button onClick={handleDeleteConfirm} color="error" variant="contained" autoFocus disabled={deleteLoading}>
+          <Button
+            onClick={handleDeleteConfirm}
+            color="error"
+            variant="contained"
+            autoFocus
+            disabled={deleteLoading}
+          >
             {deleteLoading ? <CircularProgress size={20} color="inherit" /> : t('common.delete')}
           </Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={createDialog.open} onClose={handleCreateCancel} maxWidth="sm" fullWidth fullScreen>
+      <Dialog
+        open={createDialog.open}
+        onClose={handleCreateCancel}
+        maxWidth="sm"
+        fullWidth
+        fullScreen
+      >
         <DialogTitle>{t('admin.newUserTitle')}</DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ mb: 2 }}>{t('admin.newUserDesc')}</DialogContentText>
-          <TextField fullWidth label={t('admin.username')} value={newUser.username} onChange={(e) => setNewUser({ ...newUser, username: e.target.value })} margin="normal" autoFocus required />
-          <TextField fullWidth label={t('admin.email')} type="email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} margin="normal" required />
-          <TextField fullWidth label={t('login.password')} type="password" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} margin="normal" helperText={t('admin.passwordMinLength')} required />
-          <TextField fullWidth label={t('admin.confirmPassword')} type="password" value={newUser.confirmPassword} onChange={(e) => setNewUser({ ...newUser, confirmPassword: e.target.value })} margin="normal" required />
+          <TextField
+            fullWidth
+            label={t('admin.username')}
+            value={newUser.username}
+            onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
+            margin="normal"
+            autoFocus
+            required
+          />
+          <TextField
+            fullWidth
+            label={t('admin.email')}
+            type="email"
+            value={newUser.email}
+            onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+            margin="normal"
+            required
+          />
+          <TextField
+            fullWidth
+            label={t('login.password')}
+            type="password"
+            value={newUser.password}
+            onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+            margin="normal"
+            helperText={t('admin.passwordMinLength')}
+            required
+          />
+          <TextField
+            fullWidth
+            label={t('admin.confirmPassword')}
+            type="password"
+            value={newUser.confirmPassword}
+            onChange={(e) => setNewUser({ ...newUser, confirmPassword: e.target.value })}
+            margin="normal"
+            required
+          />
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCreateCancel} color="primary" disabled={createUserLoading}>
             {t('common.cancel')}
           </Button>
-          <Button onClick={handleCreateSubmit} color="primary" variant="contained" disabled={createUserLoading}>
+          <Button
+            onClick={handleCreateSubmit}
+            color="primary"
+            variant="contained"
+            disabled={createUserLoading}
+          >
             {createUserLoading ? <CircularProgress size={20} color="inherit" /> : t('admin.add')}
           </Button>
         </DialogActions>
       </Dialog>
 
-      <Snackbar open={!!message.text} autoHideDuration={6000} onClose={() => setMessage({ type: '', text: '' })} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
-        <Alert onClose={() => setMessage({ type: '', text: '' })} severity={message.type || 'info'} sx={{ width: '100%' }}>
+      <Snackbar
+        open={!!message.text}
+        autoHideDuration={6000}
+        onClose={() => setMessage({ type: '', text: '' })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setMessage({ type: '', text: '' })}
+          severity={message.type || 'info'}
+          sx={{ width: '100%' }}
+        >
           {message.text}
         </Alert>
       </Snackbar>

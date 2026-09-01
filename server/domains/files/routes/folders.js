@@ -4,128 +4,153 @@ const express = require('express');
 const router = express.Router();
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { authenticateToken } = require('../../../utils/auth');
-const { asyncHandler, forbiddenError, validationError, conflictError } = require('../../../utils/errorHandler');
-const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const {
+  asyncHandler,
+  forbiddenError,
+  validationError,
+  conflictError,
+} = require('../../../utils/errorHandler');
+const {
+  SERVER_ERROR_CODES,
+  SERVER_MESSAGE_CODES,
+} = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { requireAuth } = require('../../../middleware/requireUser');
 
 const { getComposition } = require('../../../service/composition');
 
 // Create folder
-router.post('/create', authenticateToken, requireAuth, asyncHandler(async (req, res) => {
-  const { parentNodeId, name } = req.body;
-  const user = req.user.full;
+router.post(
+  '/create',
+  authenticateToken,
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { parentNodeId, name } = req.body;
+    const user = req.user.full;
 
-  // Root-level creation (parentNodeId null) is admin-only: the filesystem root
-  // `/` is the admin's home, listing all users' home directories.
-  const isRootCreate =
-    parentNodeId == null || parentNodeId === '' || parentNodeId === 'null' || parentNodeId === 'undefined';
-  if (!name || (isRootCreate && !user.is_admin)) {
-    throw validationError(SERVER_ERROR_CODES.folders.pathRequired);
-  }
-
-  let parentNodeIdParsed = null;
-  if (!isRootCreate) {
-    parentNodeIdParsed = parseInt(parentNodeId, 10);
-    if (isNaN(parentNodeIdParsed) || parentNodeIdParsed <= 0) {
+    // Root-level creation (parentNodeId null) is admin-only: the filesystem root
+    // `/` is the admin's home, listing all users' home directories.
+    const isRootCreate =
+      parentNodeId == null ||
+      parentNodeId === '' ||
+      parentNodeId === 'null' ||
+      parentNodeId === 'undefined';
+    if (!name || (isRootCreate && !user.is_admin)) {
       throw validationError(SERVER_ERROR_CODES.folders.pathRequired);
     }
-  }
 
-  const principalId = req.principalId;
-
-  if (!user.is_admin) {
-    const { aclService } = getComposition();
-    const ok = await aclService.checkFolderPermission(principalId, parentNodeIdParsed, PERMISSIONS.WRITE);
-    if (!ok) {
-      throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
+    let parentNodeIdParsed = null;
+    if (!isRootCreate) {
+      parentNodeIdParsed = parseInt(parentNodeId, 10);
+      if (isNaN(parentNodeIdParsed) || parentNodeIdParsed <= 0) {
+        throw validationError(SERVER_ERROR_CODES.folders.pathRequired);
+      }
     }
-  }
 
-  const { fileNodeService } = getComposition();
+    const principalId = req.principalId;
 
-  const siblings = await fileNodeService.listDirectory(parentNodeIdParsed);
-  if (siblings.some(s => s.name === name)) {
-    throw conflictError(SERVER_ERROR_CODES.folders.folderAlreadyExists, { folderName: name });
-  }
+    if (!user.is_admin) {
+      const { aclService } = getComposition();
+      const ok = await aclService.checkFolderPermission(
+        principalId,
+        parentNodeIdParsed,
+        PERMISSIONS.WRITE
+      );
+      if (!ok) {
+        throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
+      }
+    }
 
-  const dir = await fileNodeService.createDirectory(parentNodeIdParsed, name);
+    const { fileNodeService } = getComposition();
 
-  // WebDAV blob-storage mode: the physical remote directory must exist for
-  // subsequent PUTs. No-op in S3 mode. On MKCOL failure the node is marked
-  // sync_status='orphaned_node' (fail-safe) and the error is mapped by the
-  // error handler — same pattern as uploadToWebdav in fileService.
-  const { blobStorageService } = getComposition();
-  await blobStorageService.createDirectoryWebdav(dir.id);
+    const siblings = await fileNodeService.listDirectory(parentNodeIdParsed);
+    if (siblings.some((s) => s.name === name)) {
+      throw conflictError(SERVER_ERROR_CODES.folders.folderAlreadyExists, { folderName: name });
+    }
 
-  // No self-grant: the creator already has full access via the home-root ADMIN
-  // grant (closure-table inheritance) and the owner exception. Self-grants on
-  // own folders are redundant ACL state that leaks into the "shared with me"
-  // listing (see docs/features/permissions.md#owner-exception).
+    const dir = await fileNodeService.createDirectory(parentNodeIdParsed, name);
 
-  const display_path = await fileNodeService.getNodePath(dir.id);
+    // WebDAV blob-storage mode: the physical remote directory must exist for
+    // subsequent PUTs. No-op in S3 mode. On MKCOL failure the node is marked
+    // sync_status='orphaned_node' (fail-safe) and the error is mapped by the
+    // error handler — same pattern as uploadToWebdav in fileService.
+    const { blobStorageService } = getComposition();
+    await blobStorageService.createDirectoryWebdav(dir.id);
 
-  res.json({
-    messageCode: SERVER_MESSAGE_CODES.folders.createSuccess,
-    nodeId: dir.id,
-    name: dir.name,
-    path: display_path,
-  });
-}));
+    // No self-grant: the creator already has full access via the home-root ADMIN
+    // grant (closure-table inheritance) and the owner exception. Self-grants on
+    // own folders are redundant ACL state that leaks into the "shared with me"
+    // listing (see docs/features/permissions.md#owner-exception).
+
+    const display_path = await fileNodeService.getNodePath(dir.id);
+
+    res.json({
+      messageCode: SERVER_MESSAGE_CODES.folders.createSuccess,
+      nodeId: dir.id,
+      name: dir.name,
+      path: display_path,
+    });
+  })
+);
 
 // Get folder recursive statistics
-router.get('/stats', authenticateToken, requireAuth, asyncHandler(async (req, res) => {
-  const nodeIdValue = req.query.nodeId;
-  if (!nodeIdValue) {
-    throw validationError(SERVER_ERROR_CODES.folders.pathRequired);
-  }
-
-  const dirNodeId = parseInt(nodeIdValue, 10);
-  if (isNaN(dirNodeId) || dirNodeId <= 0) {
-    throw validationError(SERVER_ERROR_CODES.folders.pathRequired);
-  }
-
-  const principalId = req.principalId;
-  const user = req.user.full;
-
-  if (!user.is_admin) {
-    const { aclService } = getComposition();
-    const ok = await aclService.checkFolderPermission(principalId, dirNodeId, PERMISSIONS.READ);
-    if (!ok) {
-      throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
+router.get(
+  '/stats',
+  authenticateToken,
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const nodeIdValue = req.query.nodeId;
+    if (!nodeIdValue) {
+      throw validationError(SERVER_ERROR_CODES.folders.pathRequired);
     }
-  }
 
-  const { fileNodeService } = getComposition();
-  const node = await fileNodeService.getNode(dirNodeId);
-  if (!node || node.type !== 'directory') {
-    throw validationError(SERVER_ERROR_CODES.folders.pathRequired);
-  }
-
-  const descendantIds = await fileNodeService.getDescendantIds(dirNodeId);
-
-  let totalFiles = 0;
-  let totalFolders = 0;
-  let totalSize = 0;
-
-  for (const descId of descendantIds) {
-    if (descId === dirNodeId) continue;
-    const child = await fileNodeService.getNode(descId);
-    if (!child) continue;
-    if (child.type === 'directory') {
-      totalFolders++;
-    } else {
-      totalFiles++;
-      totalSize += child.size || 0;
+    const dirNodeId = parseInt(nodeIdValue, 10);
+    if (isNaN(dirNodeId) || dirNodeId <= 0) {
+      throw validationError(SERVER_ERROR_CODES.folders.pathRequired);
     }
-  }
 
-  res.json({
-    nodeId: dirNodeId,
-    name: node.name,
-    totalFiles,
-    totalFolders,
-    totalSize,
-  });
-}));
+    const principalId = req.principalId;
+    const user = req.user.full;
+
+    if (!user.is_admin) {
+      const { aclService } = getComposition();
+      const ok = await aclService.checkFolderPermission(principalId, dirNodeId, PERMISSIONS.READ);
+      if (!ok) {
+        throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
+      }
+    }
+
+    const { fileNodeService } = getComposition();
+    const node = await fileNodeService.getNode(dirNodeId);
+    if (!node || node.type !== 'directory') {
+      throw validationError(SERVER_ERROR_CODES.folders.pathRequired);
+    }
+
+    const descendantIds = await fileNodeService.getDescendantIds(dirNodeId);
+
+    let totalFiles = 0;
+    let totalFolders = 0;
+    let totalSize = 0;
+
+    for (const descId of descendantIds) {
+      if (descId === dirNodeId) continue;
+      const child = await fileNodeService.getNode(descId);
+      if (!child) continue;
+      if (child.type === 'directory') {
+        totalFolders++;
+      } else {
+        totalFiles++;
+        totalSize += child.size || 0;
+      }
+    }
+
+    res.json({
+      nodeId: dirNodeId,
+      name: node.name,
+      totalFiles,
+      totalFolders,
+      totalSize,
+    });
+  })
+);
 
 module.exports = router;

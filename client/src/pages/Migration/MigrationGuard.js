@@ -23,11 +23,7 @@ const MigrationGuard = () => {
         const active = Boolean(status && status.active);
         // /migration is where the operator must stay; /login stays reachable so
         // an expired session can be re-established mid-migration (allow-list).
-        if (
-          active &&
-          pathnameRef.current !== '/migration' &&
-          pathnameRef.current !== '/login'
-        ) {
+        if (active && pathnameRef.current !== '/migration' && pathnameRef.current !== '/login') {
           navigate('/migration', { replace: true });
         }
       } catch {

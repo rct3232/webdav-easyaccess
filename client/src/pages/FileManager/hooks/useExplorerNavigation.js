@@ -18,54 +18,56 @@ export function useExplorerNavigation({
   const [isNavigating, setIsNavigating] = useState(false);
   const navigationSeqRef = useRef(0);
 
-  const navigateToNode = useCallback(async (nextNodeId) => {
-    if (nextNodeId == null) return;
+  const navigateToNode = useCallback(
+    async (nextNodeId) => {
+      if (nextNodeId == null) return;
 
-    const previousNodeId = typeof getPreviousNodeId === 'function'
-      ? getPreviousNodeId()
-      : currentNodeId;
+      const previousNodeId =
+        typeof getPreviousNodeId === 'function' ? getPreviousNodeId() : currentNodeId;
 
-    if (previousNodeId != null && previousNodeId === nextNodeId) return;
+      if (previousNodeId != null && previousNodeId === nextNodeId) return;
 
-    if (typeof onTrackNodeHistory === 'function' && previousNodeId != null) {
-      onTrackNodeHistory(nextNodeId, previousNodeId);
-    }
-
-    // Optimistic update: transition immediately.
-    setCurrentNodeId(nextNodeId);
-    if (typeof onAfterNavigate === 'function') onAfterNavigate(nextNodeId);
-
-    if (typeof canNavigateToNode !== 'function') return;
-
-    navigationSeqRef.current += 1;
-    const seq = navigationSeqRef.current;
-    setIsNavigating(true);
-
-    try {
-      const ok = await canNavigateToNode(nextNodeId);
-      if (seq !== navigationSeqRef.current) return;
-      if (ok === false) {
-        throw createForbiddenError();
+      if (typeof onTrackNodeHistory === 'function' && previousNodeId != null) {
+        onTrackNodeHistory(nextNodeId, previousNodeId);
       }
-    } catch (error) {
-      if (seq !== navigationSeqRef.current) return;
-      if (previousNodeId != null) {
-        setCurrentNodeId(previousNodeId);
+
+      // Optimistic update: transition immediately.
+      setCurrentNodeId(nextNodeId);
+      if (typeof onAfterNavigate === 'function') onAfterNavigate(nextNodeId);
+
+      if (typeof canNavigateToNode !== 'function') return;
+
+      navigationSeqRef.current += 1;
+      const seq = navigationSeqRef.current;
+      setIsNavigating(true);
+
+      try {
+        const ok = await canNavigateToNode(nextNodeId);
+        if (seq !== navigationSeqRef.current) return;
+        if (ok === false) {
+          throw createForbiddenError();
+        }
+      } catch (error) {
+        if (seq !== navigationSeqRef.current) return;
+        if (previousNodeId != null) {
+          setCurrentNodeId(previousNodeId);
+        }
+        throw error;
+      } finally {
+        if (seq === navigationSeqRef.current) {
+          setIsNavigating(false);
+        }
       }
-      throw error;
-    } finally {
-      if (seq === navigationSeqRef.current) {
-        setIsNavigating(false);
-      }
-    }
-  }, [
-    currentNodeId,
-    getPreviousNodeId,
-    setCurrentNodeId,
-    onAfterNavigate,
-    onTrackNodeHistory,
-    canNavigateToNode,
-  ]);
+    },
+    [
+      currentNodeId,
+      getPreviousNodeId,
+      setCurrentNodeId,
+      onAfterNavigate,
+      onTrackNodeHistory,
+      canNavigateToNode,
+    ]
+  );
 
   const handleFolderOpen = useCallback((nodeId) => navigateToNode(nodeId), [navigateToNode]);
 

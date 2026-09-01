@@ -40,76 +40,87 @@ export const useThumbnailLazyLoad = (files, onThumbnailsLoaded, options = {}) =>
   /**
    * Batch thumbnail request (with debouncing)
    */
-  const requestThumbnails = useCallback((nodeIds) => {
-    if (nodeIds.length === 0) return;
+  const requestThumbnails = useCallback(
+    (nodeIds) => {
+      if (nodeIds.length === 0) return;
 
-    // Debounce: cancel existing timer
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
-
-    // Add nodeIds to pending set
-    nodeIds.forEach(nodeId => pendingNodeIdsRef.current.add(nodeId));
-
-    // Debounced request
-    debounceTimerRef.current = setTimeout(async () => {
-      const nodeIdsToRequest = Array.from(pendingNodeIdsRef.current);
-      pendingNodeIdsRef.current.clear();
-
-      if (nodeIdsToRequest.length === 0 || pendingRequestRef.current) {
-        return;
+      // Debounce: cancel existing timer
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
       }
 
-      // Add requested nodeIds to tracker
-      nodeIdsToRequest.forEach(nodeId => requestedNodeIdsRef.current.add(nodeId));
+      // Add nodeIds to pending set
+      nodeIds.forEach((nodeId) => pendingNodeIdsRef.current.add(nodeId));
 
-      pendingRequestRef.current = (async () => {
-        try {
-          const response = await requestThumbnailsBatch(nodeIdsToRequest, options);
-          if (response.thumbnails && onThumbnailsLoaded) {
-            // Convert thumbnail URLs to a Map keyed by nodeId
-            const thumbnailMap = new Map();
-            response.thumbnails.forEach(({ nodeId, thumbnailUrl }) => {
-              if (thumbnailUrl) {
-                thumbnailMap.set(nodeId, thumbnailUrl);
-              }
-            });
-            onThumbnailsLoaded(thumbnailMap);
-          }
-        } catch (error) {
-          console.error('Failed to load thumbnails:', error);
-          // On error, remove nodeIds from tracker so they can be retried
-          nodeIdsToRequest.forEach(nodeId => requestedNodeIdsRef.current.delete(nodeId));
-        } finally {
-          pendingRequestRef.current = null;
+      // Debounced request
+      debounceTimerRef.current = setTimeout(async () => {
+        const nodeIdsToRequest = Array.from(pendingNodeIdsRef.current);
+        pendingNodeIdsRef.current.clear();
+
+        if (nodeIdsToRequest.length === 0 || pendingRequestRef.current) {
+          return;
         }
-      })();
-    }, DEBOUNCE_MS);
-  }, [onThumbnailsLoaded, options]);
+
+        // Add requested nodeIds to tracker
+        nodeIdsToRequest.forEach((nodeId) => requestedNodeIdsRef.current.add(nodeId));
+
+        pendingRequestRef.current = (async () => {
+          try {
+            const response = await requestThumbnailsBatch(nodeIdsToRequest, options);
+            if (response.thumbnails && onThumbnailsLoaded) {
+              // Convert thumbnail URLs to a Map keyed by nodeId
+              const thumbnailMap = new Map();
+              response.thumbnails.forEach(({ nodeId, thumbnailUrl }) => {
+                if (thumbnailUrl) {
+                  thumbnailMap.set(nodeId, thumbnailUrl);
+                }
+              });
+              onThumbnailsLoaded(thumbnailMap);
+            }
+          } catch (error) {
+            console.error('Failed to load thumbnails:', error);
+            // On error, remove nodeIds from tracker so they can be retried
+            nodeIdsToRequest.forEach((nodeId) => requestedNodeIdsRef.current.delete(nodeId));
+          } finally {
+            pendingRequestRef.current = null;
+          }
+        })();
+      }, DEBOUNCE_MS);
+    },
+    [onThumbnailsLoaded, options]
+  );
 
   /**
    * IntersectionObserver callback
    */
-  const handleIntersection = useCallback((entries) => {
-    const visibleNodeIds = [];
+  const handleIntersection = useCallback(
+    (entries) => {
+      const visibleNodeIds = [];
 
-    entries.forEach((entry) => {
-      if (entry.isIntersecting) {
-        const fileNodeId = Number(entry.target.getAttribute('data-file-node-id'));
-        if (Number.isFinite(fileNodeId)) {
-          const file = files.find(f => f.nodeId === fileNodeId);
-          // If image/video, no thumbnail yet, and not already requested
-          if (file && isImageOrVideoFile(file) && !file.thumbnailUrl && !requestedNodeIdsRef.current.has(fileNodeId)) {
-            visibleNodeIds.push(fileNodeId);
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          const fileNodeId = Number(entry.target.getAttribute('data-file-node-id'));
+          if (Number.isFinite(fileNodeId)) {
+            const file = files.find((f) => f.nodeId === fileNodeId);
+            // If image/video, no thumbnail yet, and not already requested
+            if (
+              file &&
+              isImageOrVideoFile(file) &&
+              !file.thumbnailUrl &&
+              !requestedNodeIdsRef.current.has(fileNodeId)
+            ) {
+              visibleNodeIds.push(fileNodeId);
+            }
           }
         }
-      }
-    });
+      });
 
-    if (visibleNodeIds.length > 0) {
-      requestThumbnails(visibleNodeIds);
-    }
-  }, [files, requestThumbnails]);
+      if (visibleNodeIds.length > 0) {
+        requestThumbnails(visibleNodeIds);
+      }
+    },
+    [files, requestThumbnails]
+  );
 
   /**
    * Set up IntersectionObserver

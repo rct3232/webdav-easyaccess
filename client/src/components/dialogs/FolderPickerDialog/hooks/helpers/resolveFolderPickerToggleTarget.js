@@ -3,9 +3,7 @@ function isMoveOrCopyAction(action) {
 }
 
 function getSourceNodeIds(sourceNodeId, sourceNodeIds) {
-  return sourceNodeId != null
-    ? [sourceNodeId]
-    : (Array.isArray(sourceNodeIds) ? sourceNodeIds : []);
+  return sourceNodeId != null ? [sourceNodeId] : Array.isArray(sourceNodeIds) ? sourceNodeIds : [];
 }
 
 /**

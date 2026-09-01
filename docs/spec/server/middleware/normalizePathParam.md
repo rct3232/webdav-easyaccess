@@ -4,11 +4,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Normalize path params in req.query, req.body, req.params. |
-| Pipeline position | Before route handlers |
-| Preceding middleware | body-parser (for req.body) |
+| Item                 | Description                                               |
+| -------------------- | --------------------------------------------------------- |
+| Role                 | Normalize path params in req.query, req.body, req.params. |
+| Pipeline position    | Before route handlers                                     |
+| Preceding middleware | body-parser (for req.body)                                |
 
 ---
 

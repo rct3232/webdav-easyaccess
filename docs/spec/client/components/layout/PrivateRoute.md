@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Route guard: renders children when authenticated, else redirects to /login. Shows CircularProgress when loading. |
-| Used in | App routing |
-| Related components | useAuth, Navigate |
+| Item               | Description                                                                                                      |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| Role               | Route guard: renders children when authenticated, else redirects to /login. Shows CircularProgress when loading. |
+| Used in            | App routing                                                                                                      |
+| Related components | useAuth, Navigate                                                                                                |
 
 ---
 
@@ -19,9 +19,9 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| children | ReactNode | Y | - | Protected content |
+| Name     | Type      | Required | Default | Description       |
+| -------- | --------- | -------- | ------- | ----------------- |
+| children | ReactNode | Y        | -       | Protected content |
 
 ### 2.3 Callback Signatures
 

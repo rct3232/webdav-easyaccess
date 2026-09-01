@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                   |
+| ---- | ------------------------------------------------------------------------------------------------------------- |
 | Role | Share links: create, get, update, delete, and download counting. Uses normalized tables in postgresql/sqlite. |
 
 ---
@@ -17,15 +17,15 @@
 
 ### 2.2 Main Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| createShareLink | (linkData) => Promise\<object\> | Create link; token provided by caller |
-| getShareLink | (token) => Promise\<object \| null\> | Fetch by token |
-| getUserShareLinks | (userId) => Promise\<Array\> | All links by createdBy |
-| updateShareLink | (token, updates) => Promise\<object\> | Partial update; throws 404 if not found |
-| deleteShareLink | (token) => Promise\<void\> | Remove file |
-| incrementDownloadCount | (token) => Promise\<object\> | Increment downloadCount |
-| isLinkExpired | (link) => boolean | Check expiresAt vs now |
+| Method                 | Signature                             | Description                             |
+| ---------------------- | ------------------------------------- | --------------------------------------- |
+| createShareLink        | (linkData) => Promise\<object\>       | Create link; token provided by caller   |
+| getShareLink           | (token) => Promise\<object \| null\>  | Fetch by token                          |
+| getUserShareLinks      | (userId) => Promise\<Array\>          | All links by createdBy                  |
+| updateShareLink        | (token, updates) => Promise\<object\> | Partial update; throws 404 if not found |
+| deleteShareLink        | (token) => Promise\<void\>            | Remove file                             |
+| incrementDownloadCount | (token) => Promise\<object\>          | Increment downloadCount                 |
+| isLinkExpired          | (link) => boolean                     | Check expiresAt vs now                  |
 
 ### 2.3 PostgreSQL v2 Table Mapping
 

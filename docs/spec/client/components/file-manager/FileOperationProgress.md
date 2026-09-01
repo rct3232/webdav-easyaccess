@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | File operation progress: shrink state (icon + primary/secondary in AppBar) opens right-side Drawer; expanded state (Drawer open) shows per-item list with progress, retry, close. Auto-collapse list on new operations. On error/warning, expand that item only when drawer is opened (no auto-open). Show toast notification for error/warning messages (once per item). |
-| Used in | FileManager |
-| Related components | ProgressSummary, FileManagerHeader (slot #file-progress-slot), useResponsive, getServerErrorDisplay |
+| Item               | Description                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | File operation progress: shrink state (icon + primary/secondary in AppBar) opens right-side Drawer; expanded state (Drawer open) shows per-item list with progress, retry, close. Auto-collapse list on new operations. On error/warning, expand that item only when drawer is opened (no auto-open). Show toast notification for error/warning messages (once per item). |
+| Used in            | FileManager                                                                                                                                                                                                                                                                                                                                                               |
+| Related components | ProgressSummary, FileManagerHeader (slot #file-progress-slot), useResponsive, getServerErrorDisplay                                                                                                                                                                                                                                                                       |
 
 ---
 
@@ -20,29 +20,29 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| items | array | Y | - | Progress items (id, type, status, progress, total, name, error, etc.) |
-| drawerOpen | boolean | Y | - | Whether the right-side Drawer is open |
-| onDrawerOpen | function | N | - | Called to open the Drawer (e.g. shrink chip click) |
-| onDrawerClose | function | N | - | Called to close the Drawer (X button) |
-| onClose | function | N | - | Dismiss handler (item.id) |
-| onRetry | function | N | - | Retry handler (item.id) |
-| onCancelFile | function | N | - | Cancel single file (itemId, fileName) |
-| onCancelAll | function | N | - | Cancel operation (itemId) |
-| showError | function | N | - | Toast error message (text) |
-| showWarning | function | N | - | Toast warning message (text) |
+| Name          | Type     | Required | Default | Description                                                           |
+| ------------- | -------- | -------- | ------- | --------------------------------------------------------------------- |
+| items         | array    | Y        | -       | Progress items (id, type, status, progress, total, name, error, etc.) |
+| drawerOpen    | boolean  | Y        | -       | Whether the right-side Drawer is open                                 |
+| onDrawerOpen  | function | N        | -       | Called to open the Drawer (e.g. shrink chip click)                    |
+| onDrawerClose | function | N        | -       | Called to close the Drawer (X button)                                 |
+| onClose       | function | N        | -       | Dismiss handler (item.id)                                             |
+| onRetry       | function | N        | -       | Retry handler (item.id)                                               |
+| onCancelFile  | function | N        | -       | Cancel single file (itemId, fileName)                                 |
+| onCancelAll   | function | N        | -       | Cancel operation (itemId)                                             |
+| showError     | function | N        | -       | Toast error message (text)                                            |
+| showWarning   | function | N        | -       | Toast warning message (text)                                          |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| onDrawerOpen | Shrink chip (in AppBar) clicked | none |
-| onDrawerClose | Drawer X close button clicked | none |
-| onClose | Confirm/dismiss button | (itemId) |
-| onRetry | Retry button (error items) | (itemId) |
-| onCancelFile | Cancel single upload file | (itemId, fileName) |
-| onCancelAll | Cancel operation link | (itemId) |
+| Callback      | When invoked                    | Arguments          |
+| ------------- | ------------------------------- | ------------------ |
+| onDrawerOpen  | Shrink chip (in AppBar) clicked | none               |
+| onDrawerClose | Drawer X close button clicked   | none               |
+| onClose       | Confirm/dismiss button          | (itemId)           |
+| onRetry       | Retry button (error items)      | (itemId)           |
+| onCancelFile  | Cancel single upload file       | (itemId, fileName) |
+| onCancelAll   | Cancel operation link           | (itemId)           |
 
 ### 2.4 Dependencies
 

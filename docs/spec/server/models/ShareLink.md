@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                     |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Share link model: create (generates token), findByToken, findByUserId, update, delete, incrementDownloadCount, isExpired. Wraps shareLinkStore. |
 
 ---
@@ -17,15 +17,15 @@
 
 ### 2.2 Static Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| create | (fileNodeId, createdBy, expiresInDays?) => Promise\<object\> | Generate token (crypto.randomBytes), shareLinkStore.createShareLink |
-| findByToken | (token) => Promise\<object \| null\> | shareLinkStore.getShareLink |
-| findByUserId | (userId) => Promise\<Array\> | shareLinkStore.getUserShareLinks |
-| update | (token, updates) => Promise\<object\> | shareLinkStore.updateShareLink |
-| delete | (token) => Promise\<void\> | shareLinkStore.deleteShareLink |
-| incrementDownloadCount | (token) => Promise\<object\> | shareLinkStore.incrementDownloadCount |
-| isExpired | (link) => boolean | shareLinkStore.isLinkExpired |
+| Method                 | Signature                                                    | Description                                                         |
+| ---------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------- |
+| create                 | (fileNodeId, createdBy, expiresInDays?) => Promise\<object\> | Generate token (crypto.randomBytes), shareLinkStore.createShareLink |
+| findByToken            | (token) => Promise\<object \| null\>                         | shareLinkStore.getShareLink                                         |
+| findByUserId           | (userId) => Promise\<Array\>                                 | shareLinkStore.getUserShareLinks                                    |
+| update                 | (token, updates) => Promise\<object\>                        | shareLinkStore.updateShareLink                                      |
+| delete                 | (token) => Promise\<void\>                                   | shareLinkStore.deleteShareLink                                      |
+| incrementDownloadCount | (token) => Promise\<object\>                                 | shareLinkStore.incrementDownloadCount                               |
+| isExpired              | (link) => boolean                                            | shareLinkStore.isLinkExpired                                        |
 
 ### 2.3 Dependencies
 

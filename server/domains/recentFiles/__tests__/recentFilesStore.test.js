@@ -79,10 +79,14 @@ describe('recentFilesService (nodeId)', () => {
     });
 
     it('throws pathRequired for missing or invalid fileNodeId', async () => {
-      await expect(recentFilesService.addRecentFile(userId, undefined)).rejects.toThrow('pathRequired');
+      await expect(recentFilesService.addRecentFile(userId, undefined)).rejects.toThrow(
+        'pathRequired'
+      );
       await expect(recentFilesService.addRecentFile(userId, null)).rejects.toThrow('pathRequired');
       await expect(recentFilesService.addRecentFile(userId, NaN)).rejects.toThrow('pathRequired');
-      await expect(recentFilesService.addRecentFile(userId, 'not-a-number')).rejects.toThrow('pathRequired');
+      await expect(recentFilesService.addRecentFile(userId, 'not-a-number')).rejects.toThrow(
+        'pathRequired'
+      );
     });
 
     it('rejects with 404 when node does not exist', async () => {

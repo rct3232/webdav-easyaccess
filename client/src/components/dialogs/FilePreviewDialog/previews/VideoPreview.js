@@ -77,7 +77,10 @@ const VideoPreview = ({
     >
       {showChevrons && (
         <IconButton
-          onClick={(e) => { e.stopPropagation(); goPrev(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            goPrev();
+          }}
           disabled={currentMediaIndex <= 0}
           sx={{ position: 'absolute', left: 8, zIndex: 5, ...chevronSx }}
         >
@@ -117,7 +120,10 @@ const VideoPreview = ({
       />
       {showChevrons && (
         <IconButton
-          onClick={(e) => { e.stopPropagation(); goNext(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            goNext();
+          }}
           disabled={currentMediaIndex >= mediaFilesLength - 1}
           sx={{ position: 'absolute', right: 8, zIndex: 5, ...chevronSx }}
         >

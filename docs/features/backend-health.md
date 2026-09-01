@@ -49,11 +49,11 @@ backends (only a per-user 500 toast). This feature adds:
 
 ## Detection model (D2)
 
-| Backend | Failure hook | Success hook |
-|---|---|---|
-| `postgresql` | `mapDatabaseError` (when `getBackend()==='postgresql'`), pool `error` handler | `withTransaction` connect/commit, pool connect |
-| `s3` | `S3BlobStore` operation catch | `S3BlobStore` operation resolve |
-| `webdav` | `webdavTest.testConnection` throw, `WebdavBlobStore` catch, `utils/webdav.js` `listDirectory` catch | corresponding success |
+| Backend      | Failure hook                                                                                        | Success hook                                   |
+| ------------ | --------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `postgresql` | `mapDatabaseError` (when `getBackend()==='postgresql'`), pool `error` handler                       | `withTransaction` connect/commit, pool connect |
+| `s3`         | `S3BlobStore` operation catch                                                                       | `S3BlobStore` operation resolve                |
+| `webdav`     | `webdavTest.testConnection` throw, `WebdavBlobStore` catch, `utils/webdav.js` `listDirectory` catch | corresponding success                          |
 
 Classification is reused from the wizard probe machinery (`classifyPgError` /
 `classifyS3Error` / webdav `webdav.*` codes), normalized to a stable `code`

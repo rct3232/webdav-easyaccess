@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                       |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | WebDAV client wrapper: getFileContents, listDirectory, createDirectory, move, copy, delete, etc. Path normalization, buildDestinationAbsoluteUrl. |
 
 ---
@@ -19,39 +19,40 @@
 
 #### Native functions (defined in `server/utils/webdav.js`)
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| getWebDAVClient | (baseUrlOverride?) => Promise | Get/create WebDAV client with caching via InMemoryCacheAdapter |
-| resetWebDAVClient | () => void | Reset client cache |
-| listDirectory | (path) => Promise\<Array\> | List folder contents, normalizing item shape |
-| getFileContents | (path, options?) => Promise\<Buffer\> | Get file content as Buffer |
-| putFileContents | (path, buffer) => Promise | Write file via PUT |
-| putFileContentsAdvanced | (path, buffer, options?) => Promise | Put file with advanced headers (e.g. If-None-Match: \*) |
-| customRequest | (options) => Promise | Custom WebDAV request (MOVE, COPY, PROPFIND, etc.) |
-| deleteFile | (path, options?) => Promise | Delete file/folder |
-| moveFile | (source, dest, progressCallback?, overwrite?, options?) => Promise | Move with fallback to streamed copy+delete |
-| copyFile | (source, dest, progressCallback?, overwrite?, options?) => Promise | Copy with fallback to streamed download+upload |
-| createDirectory | (path) => Promise | Create directory — recursive and idempotent (see §2.2.2) |
-| ensureDirectoryExists | (path) => Promise | Ensure a directory exists via recursive MKCOL root → deepest; tolerant of already-existing collections |
-| pathExists | (path) => Promise\<boolean\> | Check path exists (direct PROPFIND + directory-list fallback) |
-| getFileMetadata | (path) => Promise\<object\> | Get file metadata via parent directory listing |
-| getRequestPath | (path, baseUrl?, options?) => string | Build request path from normalized path |
-| buildDestinationAbsoluteUrl | (base, dest, options?) => string | Destination URL for MOVE/COPY headers |
-| getRecursiveFolderStats | (path) => Promise\<object\> | Recursive folder statistics (fileCount, totalSize). Used by GET /api/folders/stats. |
+| Function                    | Signature                                                          | Description                                                                                            |
+| --------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| getWebDAVClient             | (baseUrlOverride?) => Promise                                      | Get/create WebDAV client with caching via InMemoryCacheAdapter                                         |
+| resetWebDAVClient           | () => void                                                         | Reset client cache                                                                                     |
+| listDirectory               | (path) => Promise\<Array\>                                         | List folder contents, normalizing item shape                                                           |
+| getFileContents             | (path, options?) => Promise\<Buffer\>                              | Get file content as Buffer                                                                             |
+| putFileContents             | (path, buffer) => Promise                                          | Write file via PUT                                                                                     |
+| putFileContentsAdvanced     | (path, buffer, options?) => Promise                                | Put file with advanced headers (e.g. If-None-Match: \*)                                                |
+| customRequest               | (options) => Promise                                               | Custom WebDAV request (MOVE, COPY, PROPFIND, etc.)                                                     |
+| deleteFile                  | (path, options?) => Promise                                        | Delete file/folder                                                                                     |
+| moveFile                    | (source, dest, progressCallback?, overwrite?, options?) => Promise | Move with fallback to streamed copy+delete                                                             |
+| copyFile                    | (source, dest, progressCallback?, overwrite?, options?) => Promise | Copy with fallback to streamed download+upload                                                         |
+| createDirectory             | (path) => Promise                                                  | Create directory — recursive and idempotent (see §2.2.2)                                               |
+| ensureDirectoryExists       | (path) => Promise                                                  | Ensure a directory exists via recursive MKCOL root → deepest; tolerant of already-existing collections |
+| pathExists                  | (path) => Promise\<boolean\>                                       | Check path exists (direct PROPFIND + directory-list fallback)                                          |
+| getFileMetadata             | (path) => Promise\<object\>                                        | Get file metadata via parent directory listing                                                         |
+| getRequestPath              | (path, baseUrl?, options?) => string                               | Build request path from normalized path                                                                |
+| buildDestinationAbsoluteUrl | (base, dest, options?) => string                                   | Destination URL for MOVE/COPY headers                                                                  |
+| getRecursiveFolderStats     | (path) => Promise\<object\>                                        | Recursive folder statistics (fileCount, totalSize). Used by GET /api/folders/stats.                    |
 
 #### Re-exported functions (defined elsewhere, re-exported from webdav.js for backward compatibility)
 
-| Function | Actual location | Description |
-|----------|----------------|-------------|
+| Function       | Actual location                       | Description                                                                |
+| -------------- | ------------------------------------- | -------------------------------------------------------------------------- |
 | testConnection | `server/infrastructure/webdavTest.js` | Test WebDAV connectivity (creates ephemeral client, probes root directory) |
-| isImageFile | `server/utils/fileTypes.js` | Check if filename has an image extension via shared `getFileType()` |
-| isVideoFile | `server/utils/fileTypes.js` | Check if filename has a video extension via shared `getFileType()` |
+| isImageFile    | `server/utils/fileTypes.js`           | Check if filename has an image extension via shared `getFileType()`        |
+| isVideoFile    | `server/utils/fileTypes.js`           | Check if filename has a video extension via shared `getFileType()`         |
 
 ### 2.2.1 FileStoreAdapter Abstraction Layer
 
 WebDAV file operations are abstracted behind the **FileStoreAdapter** interface (`server/infrastructure/adapters/filestore/FileStoreAdapter.js`). The default implementation, `WebdavFileStoreAdapter`, delegates all calls to this module via the factory `createFileStoreAdapter()` in `server/infrastructure/adapters/filestore/index.js`.
 
 This adapter layer enables:
+
 - Swapping file storage backends without touching domain code
 - Test injection of mock adapters
 - Consistent method signatures across implementations

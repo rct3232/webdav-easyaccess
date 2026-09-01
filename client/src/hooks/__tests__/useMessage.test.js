@@ -14,7 +14,9 @@ jest.mock('../../i18n', () => ({
 }));
 
 jest.mock('../../utils/errorUtils', () => ({
-  getServerErrorDisplay: jest.fn((data, t) => (data?.errorCode ? t(data.errorCode, data.params) : t('errors.unknown'))),
+  getServerErrorDisplay: jest.fn((data, t) =>
+    data?.errorCode ? t(data.errorCode, data.params) : t('errors.unknown')
+  ),
 }));
 
 describe('useMessage', () => {

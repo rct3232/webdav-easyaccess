@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-| Item       | Description                                                                                                                                                                                                                                                                                  |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Mount path | `/api/admin` (mounted by `server/index.js` behind `setupModeGuard`, alongside the other admin routes)                                                                                                                                                                                        |
+| Item       | Description                                                                                                                                                                                                                                                                                                                                             |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mount path | `/api/admin` (mounted by `server/index.js` behind `setupModeGuard`, alongside the other admin routes)                                                                                                                                                                                                                                                   |
 | Role       | Operator-facing config management (admin "Advanced settings" accordion): `GET` returns the **effective config** (env → DB → default, per `configResolver`) with secrets masked, `source`/`tier`/`secret` per registry key; `PUT` writes allowlisted non-T0 keys to the DB `settings` table (secrets encrypted), then invalidates the T2 resolver cache. |
 
 Feature Source-of-Truth: [config-source-resolution.md](../../../features/config-source-resolution.md).
@@ -24,10 +24,10 @@ Registry / resolver contracts: `docs/spec/server/infrastructure/configRegistry.m
 
 ### 2.2 Route List
 
-| Method | Path     | Auth              | Description                                                                                 |
-| ------ | -------- | ----------------- | ------------------------------------------------------------------------------------------- |
-| GET    | `/config` | Token + Admin     | Effective config: masked secrets, `value`/`source`/`tier`/`secret` per registry key + `key_lost_warning`. |
-| PUT    | `/config` | Token + Admin     | Allowlisted non-T0 keys → DB `settings`, secrets encrypted, T2 cache invalidated.            |
+| Method | Path           | Auth          | Description                                                                                                                                    |
+| ------ | -------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/config`      | Token + Admin | Effective config: masked secrets, `value`/`source`/`tier`/`secret` per registry key + `key_lost_warning`.                                      |
+| PUT    | `/config`      | Token + Admin | Allowlisted non-T0 keys → DB `settings`, secrets encrypted, T2 cache invalidated.                                                              |
 | POST   | `/config/test` | Token + Admin | Connection test **with pending values** for a file-storage backend (s3/webdav); reuses the wizard probe/classification. Serves D1 save gating. |
 
 ### 2.3 Middleware Used
@@ -44,13 +44,13 @@ Registry / resolver contracts: `docs/spec/server/infrastructure/configRegistry.m
 ```jsonc
 {
   "config": {
-    "EMAIL_HOST":   { "value": "smtp.gmail.com", "source": "db",   "tier": "T1", "secret": false },
-    "EMAIL_PASSWORD": { "value": "****",          "source": "db",   "tier": "T1", "secret": true },
-    "PORT":         { "value": "5001",           "source": "default", "tier": "T1", "secret": false },
-    "CORS_ORIGINS": { "value": "",               "source": "default", "tier": "T2", "secret": false },
-    "WEA_PG_HOST":  { "value": "db.internal",    "source": "env",  "tier": "T0", "secret": false }
+    "EMAIL_HOST": { "value": "smtp.gmail.com", "source": "db", "tier": "T1", "secret": false },
+    "EMAIL_PASSWORD": { "value": "****", "source": "db", "tier": "T1", "secret": true },
+    "PORT": { "value": "5001", "source": "default", "tier": "T1", "secret": false },
+    "CORS_ORIGINS": { "value": "", "source": "default", "tier": "T2", "secret": false },
+    "WEA_PG_HOST": { "value": "db.internal", "source": "env", "tier": "T0", "secret": false },
   },
-  "key_lost_warning": false
+  "key_lost_warning": false,
 }
 ```
 
@@ -75,11 +75,11 @@ Only changed keys are sent by the client; `values` must be a non-null object (no
 
 **Validation (per key, in order):**
 
-| Condition                          | Result                                                                  |
-| ---------------------------------- | ----------------------------------------------------------------------- |
-| `values` is null / non-object / array | `400 { errorCode: 'serverErrors.admin.configInvalidPayload' }`        |
-| Unknown key (not in registry)      | `400 { errorCode: 'serverErrors.admin.configUnknownKey', params: { key } }` |
-| T0 key (`isT0(key)`)               | `400 { errorCode: 'serverErrors.admin.configT0Protected', params: { key } }` — `.env`-only per D2/D4/D7. **400, not 403** (client error, not auth). |
+| Condition                                                | Result                                                                                                                                                                                                    |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `values` is null / non-object / array                    | `400 { errorCode: 'serverErrors.admin.configInvalidPayload' }`                                                                                                                                            |
+| Unknown key (not in registry)                            | `400 { errorCode: 'serverErrors.admin.configUnknownKey', params: { key } }`                                                                                                                               |
+| T0 key (`isT0(key)`)                                     | `400 { errorCode: 'serverErrors.admin.configT0Protected', params: { key } }` — `.env`-only per D2/D4/D7. **400, not 403** (client error, not auth).                                                       |
 | Current `source === 'env'` (from `getEffectiveConfig()`) | `400 { errorCode: 'serverErrors.admin.configEnvSourcedProtected', params: { key } }` — a DB copy would be silently shadowed by the env value (F4). Mirrors the UI's read-only rule for `source=env` rows. |
 
 Validation is sequential and all-or-nothing: the first failing key aborts the request before any write. The `getEffectiveConfig()` snapshot is taken once before the loop; a key is rejected only when its **current** effective source is `'env'`. DB-backed T1 keys mirrored into `process.env` at boot (`populateT1Env` → `markDbSourced`) report `source: 'db'`, so they remain writable.
@@ -105,7 +105,7 @@ Tier classification after a successful write:
 {
   "applied": ["CORS_ORIGINS"],
   "restartRequired": ["EMAIL_HOST"],
-  "messageCode": "serverMessages.admin.configSaved"
+  "messageCode": "serverMessages.admin.configSaved",
 }
 ```
 
@@ -141,7 +141,12 @@ Tier classification after a successful write:
 **Failure (non-2xx, same shape as `POST /api/setup/test`):**
 
 ```jsonc
-{ "ok": false, "errorCode": "serverErrors.setup.test.s3.accessDenied", "message": "Connection test failed", "reason": "AccessDenied" }
+{
+  "ok": false,
+  "errorCode": "serverErrors.setup.test.s3.accessDenied",
+  "message": "Connection test failed",
+  "reason": "AccessDenied",
+}
 ```
 
 - `errorCode` — the classified probe i18n key (`serverErrors.setup.test.*`).

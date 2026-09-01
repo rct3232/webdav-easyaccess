@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Admin blob-migration API: get the derived migration direction, start a migration job, poll its status, cancel it. Thin wrapper around `apiClient` (same style as `adminService`). |
-| Related docs | `PLAN.md` module G (client) + module E (admin routes contract); `docs/spec/client/components/mypage/content/MigrationDialog.md` |
+| Item         | Description                                                                                                                                                                       |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role         | Admin blob-migration API: get the derived migration direction, start a migration job, poll its status, cancel it. Thin wrapper around `apiClient` (same style as `adminService`). |
+| Related docs | `PLAN.md` module G (client) + module E (admin routes contract); `docs/spec/client/components/mypage/content/MigrationDialog.md`                                                   |
 
 ---
 
@@ -18,12 +18,12 @@
 
 ### 2.2 Main Functions
 
-| Function | Input | Return | API called |
-|----------|-------|--------|------------|
-| getMigrationInfo | () | Promise\<{ source, direction }\> | GET /api/admin/migration/info |
-| startBlobMigration | (payload) | Promise\<{ jobId }\> | POST /api/admin/migration/blobs |
-| getBlobMigrationStatus | (jobId) | Promise\<Job\> | GET /api/admin/migration/jobs/:jobId |
-| cancelBlobMigration | (jobId) | Promise\<Object\> | POST /api/admin/migration/jobs/:jobId/cancel |
+| Function               | Input     | Return                           | API called                                   |
+| ---------------------- | --------- | -------------------------------- | -------------------------------------------- |
+| getMigrationInfo       | ()        | Promise\<{ source, direction }\> | GET /api/admin/migration/info                |
+| startBlobMigration     | (payload) | Promise\<{ jobId }\>             | POST /api/admin/migration/blobs              |
+| getBlobMigrationStatus | (jobId)   | Promise\<Job\>                   | GET /api/admin/migration/jobs/:jobId         |
+| cancelBlobMigration    | (jobId)   | Promise\<Object\>                | POST /api/admin/migration/jobs/:jobId/cancel |
 
 - All require admin JWT.
 

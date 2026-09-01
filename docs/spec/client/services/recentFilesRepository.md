@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | IO boundary for persisting and reading user-specific “recent files” on the server. Provides server-backed operations and returns observable updated recent lists (unless silenced). |
-| Used by | Explorer/tree controllers and file operation flows that need recent list updates. |
-| Does not own | Pub-sub subscriptions and change notification fan-out (that belongs to `recentFilesNotifier`). |
+| Item         | Description                                                                                                                                                                                                |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role         | IO boundary for persisting and reading user-specific “recent files” on the server. Provides server-backed operations and returns observable updated recent lists (unless silenced).                        |
+| Used by      | Explorer/tree controllers and file operation flows that need recent list updates.                                                                                                                          |
+| Does not own | Pub-sub subscriptions and change notification fan-out (that belongs to `recentFilesNotifier`).                                                                                                             |
 | Does not own | Pure path mutation planning rules. `client/src/utils/recentFiles.js` was removed (Phase 5); recent entries are keyed by `nodeId`/`fileNodeId` and survive renames/moves without client-side path rewrites. |
 
 ---
@@ -31,12 +31,12 @@ Recent entry shape:
 - Recent entries are keyed by `nodeId`; nodeIds are stable across renames/moves.
 - `addRecentFile(file)` sends `{ fileNodeId: file.nodeId }`.
 
-| Function | Input => Return |
-|----------|------------------|
-| getRecentFiles | `() => Promise<RecentEntry[]>` |
-| addRecentFile | `(file, options?) => Promise<RecentEntry[]>` |
+| Function         | Input => Return                                    |
+| ---------------- | -------------------------------------------------- |
+| getRecentFiles   | `() => Promise<RecentEntry[]>`                     |
+| addRecentFile    | `(file, options?) => Promise<RecentEntry[]>`       |
 | removeRecentFile | `(fileNodeId, options?) => Promise<RecentEntry[]>` |
-| clearRecentFiles | `() => Promise<void>` |
+| clearRecentFiles | `() => Promise<void>`                              |
 
 `options`:
 
@@ -99,4 +99,3 @@ Recent entry shape:
 
 - Return shapes and error fallbacks are intended to match current observable behavior prior to extraction, so higher-level hooks do not need behavioral changes in P8-S1.
 - `getRecentFiles()` is the source of truth for the observable recent list. Mutation helpers may internally normalize payloads for outgoing writes, but the refreshed list returned to callers remains compatible with the server response shape.
-

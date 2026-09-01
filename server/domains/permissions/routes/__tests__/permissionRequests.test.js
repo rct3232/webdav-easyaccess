@@ -251,7 +251,10 @@ describe('Permission request lifecycle (state transitions)', () => {
     const ownerDir = await createOwnerDirectory(owner.user.username);
     await grantNodePermission(owner.user.id, ownerDir.id, PERMISSIONS.ADMIN);
 
-    const testFile = await fileNodeService.createFile(ownerDir.id, `lifecycle-f-file-${Date.now()}.txt`);
+    const testFile = await fileNodeService.createFile(
+      ownerDir.id,
+      `lifecycle-f-file-${Date.now()}.txt`
+    );
 
     const requester = await createAuthenticatedTestUser({
       username: `lifecycle-f-req-${Date.now()}`,
@@ -432,9 +435,7 @@ describe('Permission request lifecycle (state transitions)', () => {
       .post(`/api/permission-requests/${createRes.body.id}/approve`)
       .set('Authorization', `Bearer ${owner.token}`);
     expect(approveRes.status).toBe(400);
-    expect(approveRes.body.errorCode).toBe(
-      'serverErrors.permissionRequests.onlyPendingApprove'
-    );
+    expect(approveRes.body.errorCode).toBe('serverErrors.permissionRequests.onlyPendingApprove');
 
     const outbox = await request(app)
       .get('/api/permission-requests/outbox')
@@ -474,9 +475,7 @@ describe('Permission request lifecycle (state transitions)', () => {
       .post(`/api/permission-requests/${createRes.body.id}/reject`)
       .set('Authorization', `Bearer ${owner.token}`);
     expect(rejectRes.status).toBe(400);
-    expect(rejectRes.body.errorCode).toBe(
-      'serverErrors.permissionRequests.onlyPendingApprove'
-    );
+    expect(rejectRes.body.errorCode).toBe('serverErrors.permissionRequests.onlyPendingApprove');
 
     const outbox = await request(app)
       .get('/api/permission-requests/outbox')

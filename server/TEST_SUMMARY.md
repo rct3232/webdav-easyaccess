@@ -17,91 +17,91 @@ Summary of the test implementation for the Express.js server application. All te
 
 Single modules in isolation (models, middleware, utils, domain-internal stores). External dependencies (WebDAV, file system, blob stores) are mocked or use test doubles.
 
-| Test File | Notes |
-|-----------|-------|
-| `models/__tests__/User.test.js` | User CRUD, status, password |
-| `models/__tests__/Settings.test.js` | Settings model |
-| `models/__tests__/ShareLink.test.js` | ShareLink CRUD |
-| `models/__tests__/PermissionRequest.test.js` | Permission request model |
-| `middleware/__tests__/requireUser.test.js` | JWT auth, 401 handling |
-| `middleware/__tests__/permissions.test.js` | Permission checks, read/write validation |
-| `middleware/__tests__/requestLogger.test.js` | Request logging middleware |
-| `utils/__tests__/auth.test.js` | Token generation, verification, password hashing |
-| `utils/__tests__/email.test.js` | Email utilities |
-| `utils/__tests__/errorHandler.test.js` | Error formatting, status mapping |
-| `utils/__tests__/sharedConstants.test.js` | Shared constant definitions |
-| `utils/__tests__/sharedFileTypes.test.js` | Shared file type helpers |
-| `utils/__tests__/sharedPathUtils.test.js` | Shared path utilities |
-| `utils/__tests__/sharedValidation.test.js` | Shared validation helpers |
-| `utils/__tests__/webdav.test.js` | Recursive folder stats aggregation |
-| `domains/auth/__tests__/tokenStore.test.js` | Auth token store |
-| `domains/recentFiles/__tests__/recentFilesStore.test.js` | Recent files store/service (nodeId) |
-| `domains/sharing/__tests__/shareLinkStore.test.js` | Share link store |
+| Test File                                                | Notes                                            |
+| -------------------------------------------------------- | ------------------------------------------------ |
+| `models/__tests__/User.test.js`                          | User CRUD, status, password                      |
+| `models/__tests__/Settings.test.js`                      | Settings model                                   |
+| `models/__tests__/ShareLink.test.js`                     | ShareLink CRUD                                   |
+| `models/__tests__/PermissionRequest.test.js`             | Permission request model                         |
+| `middleware/__tests__/requireUser.test.js`               | JWT auth, 401 handling                           |
+| `middleware/__tests__/permissions.test.js`               | Permission checks, read/write validation         |
+| `middleware/__tests__/requestLogger.test.js`             | Request logging middleware                       |
+| `utils/__tests__/auth.test.js`                           | Token generation, verification, password hashing |
+| `utils/__tests__/email.test.js`                          | Email utilities                                  |
+| `utils/__tests__/errorHandler.test.js`                   | Error formatting, status mapping                 |
+| `utils/__tests__/sharedConstants.test.js`                | Shared constant definitions                      |
+| `utils/__tests__/sharedFileTypes.test.js`                | Shared file type helpers                         |
+| `utils/__tests__/sharedPathUtils.test.js`                | Shared path utilities                            |
+| `utils/__tests__/sharedValidation.test.js`               | Shared validation helpers                        |
+| `utils/__tests__/webdav.test.js`                         | Recursive folder stats aggregation               |
+| `domains/auth/__tests__/tokenStore.test.js`              | Auth token store                                 |
+| `domains/recentFiles/__tests__/recentFilesStore.test.js` | Recent files store/service (nodeId)              |
+| `domains/sharing/__tests__/shareLinkStore.test.js`       | Share link store                                 |
 
 ### Service Tests
 
 Domain services, policies, and stores plus the shared service/store layer. Persistence and external adapters use test doubles.
 
-| Test File | Notes |
-|-----------|-------|
-| `domains/files/services/__tests__/batchOperationService.test.js` | Batch operations service |
-| `domains/files/services/__tests__/downloadService.test.js` | Download service |
-| `domains/files/services/__tests__/fileService.test.js` | File service operations |
-| `domains/permissions/policy/__tests__/inheritancePolicy.test.js` | Permission inheritance policy |
-| `domains/permissions/policy/__tests__/ownerNodeResolver.test.js` | Owner node resolution |
-| `domains/permissions/policy/__tests__/permissionPolicy.test.js` | Permission policy |
-| `domains/permissions/services/__tests__/aclService.test.js` | ACL service |
+| Test File                                                                 | Notes                         |
+| ------------------------------------------------------------------------- | ----------------------------- |
+| `domains/files/services/__tests__/batchOperationService.test.js`          | Batch operations service      |
+| `domains/files/services/__tests__/downloadService.test.js`                | Download service              |
+| `domains/files/services/__tests__/fileService.test.js`                    | File service operations       |
+| `domains/permissions/policy/__tests__/inheritancePolicy.test.js`          | Permission inheritance policy |
+| `domains/permissions/policy/__tests__/ownerNodeResolver.test.js`          | Owner node resolution         |
+| `domains/permissions/policy/__tests__/permissionPolicy.test.js`           | Permission policy             |
+| `domains/permissions/services/__tests__/aclService.test.js`               | ACL service                   |
 | `domains/permissions/stores/__tests__/permissionStore.postgresql.test.js` | Permission store (PostgreSQL) |
-| `domains/permissions/stores/__tests__/permissionStore.test.js` | Permission store |
-| `domains/permissions/stores/__tests__/requestStore.test.js` | Permission request store |
-| `domains/thumbnails/services/__tests__/thumbnail.test.js` | Thumbnail generation service |
-| `service/__tests__/_ancestryHelper.test.js` | Ancestry helper |
-| `service/__tests__/blobStorageService.test.js` | Blob storage service |
-| `service/__tests__/composition.test.js` | Service composition |
-| `service/__tests__/failSafeService.test.js` | Fail-safe service |
-| `service/__tests__/fileNodeService.test.js` | File node service |
-| `service/__tests__/gcService.test.js` | Garbage collection service |
-| `service/__tests__/uploadService.test.js` | Upload service |
-| `store/__tests__/fileNodesStore.test.js` | File nodes store |
-| `store/__tests__/settingsStore.test.js` | Settings store |
-| `store/__tests__/storage.test.js` | Storage operations |
-| `store/__tests__/userStore.test.js` | User store operations |
+| `domains/permissions/stores/__tests__/permissionStore.test.js`            | Permission store              |
+| `domains/permissions/stores/__tests__/requestStore.test.js`               | Permission request store      |
+| `domains/thumbnails/services/__tests__/thumbnail.test.js`                 | Thumbnail generation service  |
+| `service/__tests__/_ancestryHelper.test.js`                               | Ancestry helper               |
+| `service/__tests__/blobStorageService.test.js`                            | Blob storage service          |
+| `service/__tests__/composition.test.js`                                   | Service composition           |
+| `service/__tests__/failSafeService.test.js`                               | Fail-safe service             |
+| `service/__tests__/fileNodeService.test.js`                               | File node service             |
+| `service/__tests__/gcService.test.js`                                     | Garbage collection service    |
+| `service/__tests__/uploadService.test.js`                                 | Upload service                |
+| `store/__tests__/fileNodesStore.test.js`                                  | File nodes store              |
+| `store/__tests__/settingsStore.test.js`                                   | Settings store                |
+| `store/__tests__/storage.test.js`                                         | Storage operations            |
+| `store/__tests__/userStore.test.js`                                       | User store operations         |
 
 ### Infrastructure Tests
 
 Schema, storage, locking, scheduling, and blob store adapters.
 
-| Test File | Notes |
-|-----------|-------|
-| `infrastructure/__tests__/ddlValidation.test.js` | DDL validation |
-| `infrastructure/__tests__/lockManager.test.js` | Lock manager |
-| `infrastructure/__tests__/maintenanceScheduler.test.js` | Maintenance scheduler |
-| `infrastructure/__tests__/schemaManager.test.js` | Schema manager |
-| `infrastructure/__tests__/sqliteSchemaInit.test.js` | SQLite schema init |
-| `infrastructure/adapters/blobstore/__tests__/blobstoreFactory.test.js` | Blob store factory |
-| `infrastructure/adapters/blobstore/__tests__/S3BlobStore.test.js` | S3 blob store |
-| `infrastructure/adapters/blobstore/__tests__/WebdavBlobStore.test.js` | WebDAV blob store |
+| Test File                                                              | Notes                 |
+| ---------------------------------------------------------------------- | --------------------- |
+| `infrastructure/__tests__/ddlValidation.test.js`                       | DDL validation        |
+| `infrastructure/__tests__/lockManager.test.js`                         | Lock manager          |
+| `infrastructure/__tests__/maintenanceScheduler.test.js`                | Maintenance scheduler |
+| `infrastructure/__tests__/schemaManager.test.js`                       | Schema manager        |
+| `infrastructure/__tests__/sqliteSchemaInit.test.js`                    | SQLite schema init    |
+| `infrastructure/adapters/blobstore/__tests__/blobstoreFactory.test.js` | Blob store factory    |
+| `infrastructure/adapters/blobstore/__tests__/S3BlobStore.test.js`      | S3 blob store         |
+| `infrastructure/adapters/blobstore/__tests__/WebdavBlobStore.test.js`  | WebDAV blob store     |
 
 ### Integration Tests
 
 API route tests with Supertest. Full request/response cycle; backing services use test doubles.
 
-| Test File / Area | Notes |
-|------------------|-------|
-| `domains/admin/routes/__tests__/admin.test.js` | Admin users, settings |
-| `domains/admin/routes/__tests__/settings.test.js` | User settings |
-| `domains/admin/routes/__tests__/users.test.js` | User CRUD, password |
-| `domains/auth/routes/__tests__/auth.test.js` | Register, login, logout, token refresh |
-| `domains/files/routes/__tests__/files.integration.test.js` | End-to-end file flows |
-| `domains/files/routes/__tests__/files.test.js` | List, download, upload, rename, batch operations, metadata, download-multiple |
-| `domains/files/routes/__tests__/folders.test.js` | Create folder, list |
-| `domains/permissions/routes/__tests__/permissionRequests.test.js` | Create, approve, deny requests |
-| `domains/permissions/routes/__tests__/permissions.test.js` | Grant, revoke, list permissions |
-| `domains/recentFiles/routes/__tests__/recentFiles.test.js` | Recent files API |
-| `domains/sharing/routes/__tests__/shareLinks.test.js` | Create, list, delete share links |
-| `domains/sharing/routes/__tests__/sharePublic.test.js` | Public share resolution |
-| `domains/thumbnails/routes/__tests__/thumbnails.test.js` | Thumbnail generation |
-| `infrastructure/routes/__tests__/healthRoutes.test.js` | Health check |
+| Test File / Area                                                  | Notes                                                                         |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `domains/admin/routes/__tests__/admin.test.js`                    | Admin users, settings                                                         |
+| `domains/admin/routes/__tests__/settings.test.js`                 | User settings                                                                 |
+| `domains/admin/routes/__tests__/users.test.js`                    | User CRUD, password                                                           |
+| `domains/auth/routes/__tests__/auth.test.js`                      | Register, login, logout, token refresh                                        |
+| `domains/files/routes/__tests__/files.integration.test.js`        | End-to-end file flows                                                         |
+| `domains/files/routes/__tests__/files.test.js`                    | List, download, upload, rename, batch operations, metadata, download-multiple |
+| `domains/files/routes/__tests__/folders.test.js`                  | Create folder, list                                                           |
+| `domains/permissions/routes/__tests__/permissionRequests.test.js` | Create, approve, deny requests                                                |
+| `domains/permissions/routes/__tests__/permissions.test.js`        | Grant, revoke, list permissions                                               |
+| `domains/recentFiles/routes/__tests__/recentFiles.test.js`        | Recent files API                                                              |
+| `domains/sharing/routes/__tests__/shareLinks.test.js`             | Create, list, delete share links                                              |
+| `domains/sharing/routes/__tests__/sharePublic.test.js`            | Public share resolution                                                       |
+| `domains/thumbnails/routes/__tests__/thumbnails.test.js`          | Thumbnail generation                                                          |
+| `infrastructure/routes/__tests__/healthRoutes.test.js`            | Health check                                                                  |
 
 ## Coverage Report
 

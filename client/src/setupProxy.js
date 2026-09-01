@@ -15,7 +15,7 @@ if (!process.env.REACT_APP_API_PORT && !process.env.API_PORT && fs.existsSync(en
 
 const proxyTarget = `http://localhost:${port}`;
 
-module.exports = function(app) {
+module.exports = function (app) {
   app.use(
     '/api',
     createProxyMiddleware({
@@ -24,7 +24,3 @@ module.exports = function(app) {
     })
   );
 };
-
-
-
-

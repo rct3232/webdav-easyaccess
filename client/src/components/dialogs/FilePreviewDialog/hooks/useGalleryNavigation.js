@@ -24,9 +24,8 @@ export const useGalleryNavigation = ({
       ? Math.max(0, Math.min(openedIndex + navigationOffset, mediaFiles.length - 1))
       : 0;
 
-  const currentDisplayFile = isGalleryMode && mediaFiles[currentMediaIndex]
-    ? mediaFiles[currentMediaIndex]
-    : file;
+  const currentDisplayFile =
+    isGalleryMode && mediaFiles[currentMediaIndex] ? mediaFiles[currentMediaIndex] : file;
   const currentPreviewFileType = currentDisplayFile
     ? getFileType(currentDisplayFile.name || currentDisplayFile.basename)
     : null;
@@ -98,7 +97,15 @@ export const useGalleryNavigation = ({
       }
       touchStartX.current = null;
     },
-    [isGalleryMode, isMobile, currentPreviewFileType, goPrev, goNext, setHeaderVisible, resetHideTimer]
+    [
+      isGalleryMode,
+      isMobile,
+      currentPreviewFileType,
+      goPrev,
+      goNext,
+      setHeaderVisible,
+      resetHideTimer,
+    ]
   );
 
   return {

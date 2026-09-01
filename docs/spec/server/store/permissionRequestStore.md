@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                                  |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Permission requests (inbox/outbox) for folder/file ACL workflows. Uses normalized table in postgresql/sqlite; all references use `file_node_id` BIGINT foreign keys instead of path strings. |
 
 ---
@@ -17,15 +17,15 @@
 
 ### 2.2 Main Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| createRequest | ({ requesterId, ownerId, fileNodeId, requestedPermission }) => Promise\<object\> | Create request; dedupes pending for same tuple |
-| getById | (id) => Promise\<object \| null\> | Fetch by id |
-| listInbox | (ownerId, { status }?) => Promise\<Array\> | Owner's inbox, optional status filter |
-| listOutbox | (requesterId, { status }?) => Promise\<Array\> | Requester's outbox |
-| updateStatus | (id, { status, resolvedBy }) => Promise\<object\> | Resolve/reject |
-| deleteByRequesterId | (userId) => Promise\<{ deletedCount }\> | Delete all by requester |
-| rejectByOwnerId | (userId, resolvedBy?) => Promise\<{ rejectedCount }\> | Bulk reject by owner |
+| Method              | Signature                                                                        | Description                                    |
+| ------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------- |
+| createRequest       | ({ requesterId, ownerId, fileNodeId, requestedPermission }) => Promise\<object\> | Create request; dedupes pending for same tuple |
+| getById             | (id) => Promise\<object \| null\>                                                | Fetch by id                                    |
+| listInbox           | (ownerId, { status }?) => Promise\<Array\>                                       | Owner's inbox, optional status filter          |
+| listOutbox          | (requesterId, { status }?) => Promise\<Array\>                                   | Requester's outbox                             |
+| updateStatus        | (id, { status, resolvedBy }) => Promise\<object\>                                | Resolve/reject                                 |
+| deleteByRequesterId | (userId) => Promise\<{ deletedCount }\>                                          | Delete all by requester                        |
+| rejectByOwnerId     | (userId, resolvedBy?) => Promise\<{ rejectedCount }\>                            | Bulk reject by owner                           |
 
 ### 2.3 Request Shape
 

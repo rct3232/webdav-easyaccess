@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Common wrapper for MyPage content: padding, overflow scroll, centered content with max-width (560px). Unified header row: [Back slot 40px] [Title] [Action buttons]. Back slot: Back button when `onBack` provided (detail view); category icon when not. Title and actions come from child content via PageHeaderContext. |
-| Used in | MyPageContentArea (wraps all category content) |
-| Related components | MyPageContentArea, PageHeaderContext, content components (AccountContent, SharingContent, etc.) |
+| Item               | Description                                                                                                                                                                                                                                                                                                                |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Common wrapper for MyPage content: padding, overflow scroll, centered content with max-width (560px). Unified header row: [Back slot 40px] [Title] [Action buttons]. Back slot: Back button when `onBack` provided (detail view); category icon when not. Title and actions come from child content via PageHeaderContext. |
+| Used in            | MyPageContentArea (wraps all category content)                                                                                                                                                                                                                                                                             |
+| Related components | MyPageContentArea, PageHeaderContext, content components (AccountContent, SharingContent, etc.)                                                                                                                                                                                                                            |
 
 ---
 
@@ -19,17 +19,17 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| children | node | Y | - | Content to render inside the panel |
-| onBack | function | N | - | If provided, show Back button at top-left; clicking calls this handler |
-| categoryIcon | component | N | - | Icon component to show in back slot when `onBack` is absent (e.g. PersonIcon for account) |
+| Name         | Type      | Required | Default | Description                                                                               |
+| ------------ | --------- | -------- | ------- | ----------------------------------------------------------------------------------------- |
+| children     | node      | Y        | -       | Content to render inside the panel                                                        |
+| onBack       | function  | N        | -       | If provided, show Back button at top-left; clicking calls this handler                    |
+| categoryIcon | component | N        | -       | Icon component to show in back slot when `onBack` is absent (e.g. PersonIcon for account) |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| onBack | Back button clicked | - |
+| Callback | When invoked        | Arguments |
+| -------- | ------------------- | --------- |
+| onBack   | Back button clicked | -         |
 
 ### 2.4 Dependencies
 

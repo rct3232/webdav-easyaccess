@@ -94,22 +94,22 @@
 
 ### Server: 14 failed suites / 78 failed tests / 1011 passed / 1090 total
 
-| Suite | Failures | Classification | Root Cause |
-|---|---|---|---|
-| `domains/files/routes/__tests__/files.test.js` | ~18 | Test migration incomplete (Task 4.9) | Route tests not fully migrated from WebDAV mock to fileNodeService + blobStorageService; S3 config missing in default mode |
-| `domains/files/routes/__tests__/folders.test.js` | ~6 | Test migration incomplete (Task 4.9) | Same as files.test.js |
-| `domains/recentFiles/__tests__/recentFiles.test.js` | 6 | Phase 5 scope | Pending nodeId migration in Phase 5 Task 5.x |
-| `domains/recentFiles/__tests__/recentFilesStore.test.js` | 8 | Phase 5 scope | Pending nodeId migration in Phase 5 Task 5.x |
-| `domains/sharing/routes/__tests__/shareLinks.test.js` | ~6 | Phase 5 scope | `grantTestPermission` removed; sharing routes pending nodeId migration |
-| `domains/sharing/routes/__tests__/sharePublic.test.js` | ~4 | Phase 5 scope | Same as shareLinks.test.js |
-| `domains/sharing/__tests__/shareLinkStore.test.js` | 5 | Phase 5 scope | Pending nodeId migration |
-| `models/__tests__/ShareLink.test.js` | 7 | Phase 5 scope | Legacy path-based model tests |
-| `models/__tests__/PermissionRequest.test.js` | 3 | Phase 5 scope | Legacy path-based model tests |
-| `domains/auth/routes/__tests__/auth.test.js` | 5 | Environmental | `postgresqlNotConfigured` in test env (no PostgreSQL configured) |
-| `domains/admin/routes/__tests__/admin.test.js` | 1 | Environmental | `postgresqlNotConfigured` in test env |
-| `infrastructure/__tests__/lockManager.test.js` | 5 | Environmental | `postgresqlNotConfigured` in test env |
-| `infrastructure/adapters/metadata/__tests__/settingsStore.test.js` | 3 | Pre-existing bug | Double-serialization bug in Settings model (unrelated to Phase 4) |
-| `models/__tests__/Settings.test.js` | 3 | Pre-existing bug | Same double-serialization bug |
+| Suite                                                              | Failures | Classification                       | Root Cause                                                                                                                 |
+| ------------------------------------------------------------------ | -------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `domains/files/routes/__tests__/files.test.js`                     | ~18      | Test migration incomplete (Task 4.9) | Route tests not fully migrated from WebDAV mock to fileNodeService + blobStorageService; S3 config missing in default mode |
+| `domains/files/routes/__tests__/folders.test.js`                   | ~6       | Test migration incomplete (Task 4.9) | Same as files.test.js                                                                                                      |
+| `domains/recentFiles/__tests__/recentFiles.test.js`                | 6        | Phase 5 scope                        | Pending nodeId migration in Phase 5 Task 5.x                                                                               |
+| `domains/recentFiles/__tests__/recentFilesStore.test.js`           | 8        | Phase 5 scope                        | Pending nodeId migration in Phase 5 Task 5.x                                                                               |
+| `domains/sharing/routes/__tests__/shareLinks.test.js`              | ~6       | Phase 5 scope                        | `grantTestPermission` removed; sharing routes pending nodeId migration                                                     |
+| `domains/sharing/routes/__tests__/sharePublic.test.js`             | ~4       | Phase 5 scope                        | Same as shareLinks.test.js                                                                                                 |
+| `domains/sharing/__tests__/shareLinkStore.test.js`                 | 5        | Phase 5 scope                        | Pending nodeId migration                                                                                                   |
+| `models/__tests__/ShareLink.test.js`                               | 7        | Phase 5 scope                        | Legacy path-based model tests                                                                                              |
+| `models/__tests__/PermissionRequest.test.js`                       | 3        | Phase 5 scope                        | Legacy path-based model tests                                                                                              |
+| `domains/auth/routes/__tests__/auth.test.js`                       | 5        | Environmental                        | `postgresqlNotConfigured` in test env (no PostgreSQL configured)                                                           |
+| `domains/admin/routes/__tests__/admin.test.js`                     | 1        | Environmental                        | `postgresqlNotConfigured` in test env                                                                                      |
+| `infrastructure/__tests__/lockManager.test.js`                     | 5        | Environmental                        | `postgresqlNotConfigured` in test env                                                                                      |
+| `infrastructure/adapters/metadata/__tests__/settingsStore.test.js` | 3        | Pre-existing bug                     | Double-serialization bug in Settings model (unrelated to Phase 4)                                                          |
+| `models/__tests__/Settings.test.js`                                | 3        | Pre-existing bug                     | Same double-serialization bug                                                                                              |
 
 ### Client: FileManager.test.js — 7 failures
 
@@ -175,7 +175,7 @@
 
 ### FilePreviewDialog.test.js — Case B (Test Error — stale path fixtures)
 
-> **Correction (2026-08-05, audit A2):** the "implementation is correct" claim in this entry was **inaccurate**. It covered the preview *loader* calls (`getFileBlob`/`getVideoPreviewStreamUrl`), but the *download* action at `FilePreviewDialog.js:207` still passed `targetFile.path` to nodeId-only `downloadFile` (server 400). The second test file (`FilePreviewDialog/__tests__/FilePreviewDialog.test.jsx`) asserted the buggy path call and passed while encoding the bug. Fixed under audit A2 (see entry below).
+> **Correction (2026-08-05, audit A2):** the "implementation is correct" claim in this entry was **inaccurate**. It covered the preview _loader_ calls (`getFileBlob`/`getVideoPreviewStreamUrl`), but the _download_ action at `FilePreviewDialog.js:207` still passed `targetFile.path` to nodeId-only `downloadFile` (server 400). The second test file (`FilePreviewDialog/__tests__/FilePreviewDialog.test.jsx`) asserted the buggy path call and passed while encoding the bug. Fixed under audit A2 (see entry below).
 
 - **Area:** `client/src/components/dialogs/__tests__/FilePreviewDialog.test.js`
 - **Classification:** Case B (Test Error)
@@ -210,7 +210,7 @@
 ### A2 — Preview download sent `targetFile.path` to nodeId-only `downloadFile` (corrects C1.7 record)
 
 - **Area:** `client/src/components/dialogs/FilePreviewDialog/FilePreviewDialog.js:207`, `FilePreviewDialog/__tests__/FilePreviewDialog.test.jsx:193`
-- **Classification:** Case A (Source Error). Corrects the prior C1.7 record which claimed "implementation is correct" — that RCA covered the preview *loader* calls only.
+- **Classification:** Case A (Source Error). Corrects the prior C1.7 record which claimed "implementation is correct" — that RCA covered the preview _loader_ calls only.
 - **Action taken:** `FilePreviewDialog.js:207` → `downloadFile(targetFile.nodeId, …)`; both preview test files updated to nodeId fixtures/assertions.
 - **Verification:** `FilePreviewDialog.test.js` (9) + `FilePreviewDialog.test.jsx` (7) pass.
 
@@ -235,7 +235,7 @@
 
 A five-sweep audit (client path remnants, server residual paths, client↔server contract, docs drift,
 test drift) found the A1–A6 wave missed client↔server contract breaks that unit tests masked because MSW
-`handlers.js` mirrors the *client's* expectations instead of the *server's* responses. All classified
+`handlers.js` mirrors the _client's_ expectations instead of the _server's_ responses. All classified
 Case A (Source Error — client), fixed in one wave; C11 (MSW mask) is Case B (test env).
 
 ### C1 — `/files/list` response shape mismatch (`name/display_path/mimeType/modifiedAt` vs `basename/path/mime/lastmod`)
@@ -338,7 +338,7 @@ suites are fully green.
    grants by nodeId; `ensureHomeOwnerAdminForAllUsers` grants once on the home
    node (closure table covers descendants); bootstrap drops the root grant
    (admin bypasses ACL via is_admin). `admin.test.js` updated to nodeId assertion
-   + webdav composition setup.
+   - webdav composition setup.
 4. **FileActionSheet** (`FileActionSheet.js`): implementation rendered
    rename/move/delete disabled, but spec (FileActionSheet.md §2.6) requires
    conditional rendering (hide) when `!fileWritePermission`; download was
@@ -416,10 +416,10 @@ suites are fully green.
   require-time (SQLite schema init → ffmpeg probe → WebDAV connection probe).
   Under `--runInBand` the suites finish before that chain settles, so its async
   continuations run after Jest teardown → `ReferenceError: ... after the Jest
-  environment has been torn down` + "Cannot log after tests are done" → exit 1
+environment has been torn down` + "Cannot log after tests are done" → exit 1
   despite all suites passing. Reproduced on SQLite with `--runInBand`
   (pre-existing, independent of PG). Empirically confirmed `require.main ===
-  module` is false under Jest (app.listen/GC-scheduler block does not run) and
+module` is false under Jest (app.listen/GC-scheduler block does not run) and
   that "Cannot log after tests are done" alone produces exit 1.
 - **Action taken (test files only):** await `initMetadataStore()` +
   `initFfmpegOnce()` (the shared/memoized init promises the startup chain awaits)
@@ -443,6 +443,7 @@ classified Case A (Source Error) and fixed with user approval on branch
 `refactor/phase-8-verification` (not merged to `dev`).
 
 ### 1. `fileNodesStore.insertAncestorRows` — PG multi-row VALUES syntax (42601)
+
 - **Area:** `server/store/fileNodesStore.js`
 - **Summary:** The PG branch built a flat `$1..$N` placeholder list for a
   multi-row `INSERT INTO node_ancestors ... VALUES (...)`; PG rejects that with
@@ -453,6 +454,7 @@ classified Case A (Source Error) and fixed with user approval on branch
   pass on PG; gates removed; full PG suite green.
 
 ### 2. `permissionRequestStore` — `resolved_by = CASE … $4` type inference (42804)
+
 - **Area:** `server/domains/permissions/stores/permissionRequestStore.js`
 - **Summary:** node-pg sends `$4` (nullable bigint) as text; PG cannot infer the
   column type in the `ELSE $4` arm → 42804.
@@ -460,6 +462,7 @@ classified Case A (Source Error) and fixed with user approval on branch
 - **Verification:** previously-gated 2 tests now pass.
 
 ### 3. `blobStorageService.ensureExclusiveBlob` — CoW overwrite broken (409 + original corruption)
+
 - **Area:** `server/service/blobStorageService.js`
 - **Summary:** overwriting a copy-on-write copy (E2E-S3PG-004) failed with 409
   and would also orphan the ORIGINAL node: `orphanObject(s3_key)` orphans ALL
@@ -471,6 +474,7 @@ classified Case A (Source Error) and fixed with user approval on branch
 - **Verification:** E2E-S3PG-004 passes; original content preserved.
 
 ### 4. Auth responses missing `rootNodeId` (home-view CRUD 400s)
+
 - **Area:** `server/domains/auth/service.js`
 - **Summary:** login/register/`/me` user payloads lacked the user's home node id;
   the client's home view computed `homeNodeId = user?.rootNodeId ?? null` →
@@ -479,6 +483,7 @@ classified Case A (Source Error) and fixed with user approval on branch
 - **Verification:** home-view CRUD works in both E2E modes.
 
 ### 5. WebDAV mode created directories DB-only (no MKCOL) — uploads 403
+
 - **Area:** `server/utils/webdav.js`, `server/service/blobStorageService.js`,
   `folders.js`, `userService.js`, `cleanupService.js`, E2E seed
 - **Summary:** physical WebDAV directories never created; PUT into a missing
@@ -490,6 +495,7 @@ classified Case A (Source Error) and fixed with user approval on branch
 - **Verification:** webdav E2E `mypage-user`/`core-flow` green.
 
 ### 6. Leave-share confirmation dead code (client)
+
 - **Area:** `client/src/pages/FileManager/*`, `useShareLinkOverlay.js`,
   `FolderTree.js`, `FileManagerView.js`
 - **Summary:** `handleLeaveSharePathClick` was never invoked in the render tree;
@@ -499,6 +505,7 @@ classified Case A (Source Error) and fixed with user approval on branch
 - **Verification:** E2E-SHARE-007 passes.
 
 ### 7. Permission-request inbox/outbox showed `#<file_node_id>` instead of a path
+
 - **Area:** `server/domains/permissions/routes/permissionRequests.js`,
   `client/.../mypage/content/SharingContent.js`
 - **Summary:** post-migration responses carried only `file_node_id`; the client
@@ -508,6 +515,7 @@ classified Case A (Source Error) and fixed with user approval on branch
 - **Verification:** MYPAGE-006/007/008 pass.
 
 ### 8. `pg.Pool` unhandled 'error' crashed the process
+
 - **Area:** `server/store/storage.js`
 - **Summary:** no `pool.on('error')` listener; a PG restart/drop (e.g. E2E
   teardown `down -v`) crashed the server via an unhandled event.
@@ -516,6 +524,7 @@ classified Case A (Source Error) and fixed with user approval on branch
   PG restarts.
 
 ### 9. `folderPickerGateway.listFolderContents` missing `basename` normalization
+
 - **Area:** `client/src/services/folderPickerGateway.js`,
   `client/src/components/dialogs/FolderPickerDialog/FolderPickerDialog.js`
 - **Summary:** picker entries were the raw `listFiles` shape (no `basename`);
@@ -608,7 +617,7 @@ classified Case A (Source Error) and fixed with user approval on branch
   current file. The existing `MigrationPage.test.js` only exercised the extended
   shape, masking the defect.
 - **Spec cross-check:** `docs/features/migration-mode.md` D8: "`% = progress /
-  total` over the snapshot; current file label shown"; PLAN §5 "Blob `%`:
+total` over the snapshot; current file label shown"; PLAN §5 "Blob `%`:
   `progress / total` (snapshot node count), updated per node; `current` =
   current file label." The extended-payload row also requires
   `progress: { percent, currentLabel, counters? }` on the job.
@@ -634,7 +643,7 @@ classified Case A (Source Error) and fixed with user approval on branch
 - **Classification:** Case C (Spec Error — source-of-truth doc contradicted the
   decided behavior; implementation was already correct) → doc corrected.
 - **Summary (cross-agent integration question):** does `POST
-  /api/admin/migration/blobs` set the gate for BOTH `dry-run` and `apply`?
+/api/admin/migration/blobs` set the gate for BOTH `dry-run` and `apply`?
   The client `MigrationDialog` navigates to `/migration` after any start
   (including dry-run), so a gate that is only set for `apply` would land a
   dry-run on the `/migration` "no active migration" empty state.
@@ -667,7 +676,7 @@ classified Case A (Source Error) and fixed with user approval on branch
   `setup.test.js` fails 44/44 with `TypeError: Pool is not a constructor`.
   `beforeAll` calls `createTestDatabase()`, which under PG reaches
   `initMetadataStore → applyPendingMigrations('postgresql') →
-  storage.getPgPool() → new Pool(...)`. The suite's `pg` mock only provides
+storage.getPgPool() → new Pool(...)`. The suite's `pg` mock only provides
   `Client`, so `Pool` is `undefined`. The mock predates the migration feature,
   and the PG schema-apply path already called `storage.getPgPool()` on the base
   commit.
@@ -688,8 +697,6 @@ classified Case A (Source Error) and fixed with user approval on branch
   44 failed (all in `setup.test.js`). The 84 passing suites include the
   backend-agnostic migration route tests and the metadataMigrationService
   sqlite→PG roundtrip (19/19 pass).
-
-
 
 ---
 

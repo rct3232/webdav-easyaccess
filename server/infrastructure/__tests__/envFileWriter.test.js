@@ -12,7 +12,10 @@ function makeEnvPath() {
 }
 
 function readLines(p) {
-  return fs.readFileSync(p, 'utf8').replace(/\r?\n$/, '').split(/\r?\n/);
+  return fs
+    .readFileSync(p, 'utf8')
+    .replace(/\r?\n$/, '')
+    .split(/\r?\n/);
 }
 
 function tmpLeftovers(dir) {
@@ -38,7 +41,10 @@ describe('writeEnv', () => {
 
   it('preserves unknown keys and comment lines verbatim while upserting allowlisted keys', () => {
     const p = makeEnvPath();
-    fs.writeFileSync(p, '# Database settings\nWEA_STORAGE_BACKEND=sqlite\nCUSTOM_FLAG=keep-me\nPORT=5001\n');
+    fs.writeFileSync(
+      p,
+      '# Database settings\nWEA_STORAGE_BACKEND=sqlite\nCUSTOM_FLAG=keep-me\nPORT=5001\n'
+    );
 
     writeEnv(p, { WEA_STORAGE_BACKEND: 'postgresql', EMAIL_HOST: 'smtp.example.com' });
 
@@ -117,7 +123,10 @@ describe('writeEnv', () => {
 
     const backups = backupNames(p);
     expect(backups).toHaveLength(1);
-    expect(readLines(path.join(path.dirname(p), backups[0]))).toEqual(['PORT=5001', 'JWT_SECRET=old']);
+    expect(readLines(path.join(path.dirname(p), backups[0]))).toEqual([
+      'PORT=5001',
+      'JWT_SECRET=old',
+    ]);
     expect(readLines(p)).toEqual(['PORT=6000', 'JWT_SECRET=new']);
   });
 

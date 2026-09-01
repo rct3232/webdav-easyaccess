@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Dialog to create a new folder in the current path. Validates folder name, calls createFolder API, reports progress. |
-| Used in | FileManager (when user triggers create folder) |
-| Related components | BaseDialog, useFormState, fileService.createFolder |
+| Item               | Description                                                                                                         |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| Role               | Dialog to create a new folder in the current path. Validates folder name, calls createFolder API, reports progress. |
+| Used in            | FileManager (when user triggers create folder)                                                                      |
+| Related components | BaseDialog, useFormState, fileService.createFolder                                                                  |
 
 ---
 
@@ -19,22 +19,22 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| open | boolean | Y | - | Whether dialog is open |
-| onClose | function | Y | - | Close handler |
-| onComplete | function | Y | - | Called on success with (folderPath, folderName) |
-| currentPath | string | Y | - | Display path where folder will be created (used for the display folderPath in onComplete) |
-| parentNodeId | number\|null | Y | - | Parent folder nodeId sent to `createFolder` (`null` = root level) |
-| onProgress | function | N | - | Progress callback for progressItem updates |
+| Name         | Type         | Required | Default | Description                                                                               |
+| ------------ | ------------ | -------- | ------- | ----------------------------------------------------------------------------------------- |
+| open         | boolean      | Y        | -       | Whether dialog is open                                                                    |
+| onClose      | function     | Y        | -       | Close handler                                                                             |
+| onComplete   | function     | Y        | -       | Called on success with (folderPath, folderName)                                           |
+| currentPath  | string       | Y        | -       | Display path where folder will be created (used for the display folderPath in onComplete) |
+| parentNodeId | number\|null | Y        | -       | Parent folder nodeId sent to `createFolder` (`null` = root level)                         |
+| onProgress   | function     | N        | -       | Progress callback for progressItem updates                                                |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| onClose | Cancel or dialog close | - |
-| onComplete | After successful create | (folderPath: string, folderName: string) |
-| onProgress | During create (preparing, processing, completed, error) | progressItem object |
+| Callback   | When invoked                                            | Arguments                                |
+| ---------- | ------------------------------------------------------- | ---------------------------------------- |
+| onClose    | Cancel or dialog close                                  | -                                        |
+| onComplete | After successful create                                 | (folderPath: string, folderName: string) |
+| onProgress | During create (preparing, processing, completed, error) | progressItem object                      |
 
 ### 2.4 Dependencies
 

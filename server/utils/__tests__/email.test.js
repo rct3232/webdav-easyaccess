@@ -33,9 +33,7 @@ describe('email utilities', () => {
       const result = await sendEmail('test@example.com', 'Test Subject', '<p>Body</p>');
 
       expect(result).toEqual({ success: false, error: 'Email not configured' });
-      expect(logSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Email not configured')
-      );
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Email not configured'));
 
       logSpy.mockRestore();
     });
@@ -184,7 +182,11 @@ describe('email utilities', () => {
       const result = initEmailTransporter();
 
       expect(result).toBeNull();
-      expect(errSpy).toHaveBeenNthCalledWith(1, 'Failed to initialize email transporter:', 'Transport creation failed');
+      expect(errSpy).toHaveBeenNthCalledWith(
+        1,
+        'Failed to initialize email transporter:',
+        'Transport creation failed'
+      );
 
       errSpy.mockRestore();
     });
@@ -199,11 +201,12 @@ describe('email utilities', () => {
     it('returns true when values come from the resolver and env is empty', () => {
       const { setSharedResolver } = require('../../infrastructure/configResolver');
       setSharedResolver({
-        getConfigSync: (key) => ({
-          EMAIL_HOST: 'smtp.db.com',
-          EMAIL_USER: 'user@db.com',
-          EMAIL_PASSWORD: 'db-pass',
-        })[key],
+        getConfigSync: (key) =>
+          ({
+            EMAIL_HOST: 'smtp.db.com',
+            EMAIL_USER: 'user@db.com',
+            EMAIL_PASSWORD: 'db-pass',
+          })[key],
       });
 
       const { isEmailEnabled } = require('../email');
@@ -221,7 +224,10 @@ describe('email utilities', () => {
     });
 
     it('returns true through the real resolver when values are DB-sourced (env absent)', async () => {
-      const { createConfigResolver, setSharedResolver } = require('../../infrastructure/configResolver');
+      const {
+        createConfigResolver,
+        setSharedResolver,
+      } = require('../../infrastructure/configResolver');
       const fakeStore = {
         async get() {
           return null;
@@ -247,7 +253,10 @@ describe('email utilities', () => {
       process.env.EMAIL_HOST = 'smtp.env.com';
       process.env.EMAIL_USER = 'env@env.com';
       process.env.EMAIL_PASSWORD = 'env-pass';
-      const { createConfigResolver, setSharedResolver } = require('../../infrastructure/configResolver');
+      const {
+        createConfigResolver,
+        setSharedResolver,
+      } = require('../../infrastructure/configResolver');
       const fakeStore = {
         async get() {
           return null;

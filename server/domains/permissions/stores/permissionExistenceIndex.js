@@ -34,7 +34,8 @@ async function getExistenceState(path, now = Date.now()) {
   const entry = existenceIndex.get(normalizedPath);
   if (!entry || typeof entry.checkedAt !== 'number') return 'unknown';
   const ttlMs =
-    parseInt(await getSharedResolver().getConfig('PERMISSIONS_EXISTENCE_INDEX_TTL_MS'), 10) || 30000;
+    parseInt(await getSharedResolver().getConfig('PERMISSIONS_EXISTENCE_INDEX_TTL_MS'), 10) ||
+    30000;
   if (now - entry.checkedAt > ttlMs) {
     existenceIndex.delete(normalizedPath);
     return 'unknown';
@@ -55,11 +56,7 @@ function invalidateExistenceIndexByPrefix(path) {
   }
 
   for (const queuedPath of Array.from(queuedReconciliationPaths)) {
-    if (
-      normalizedPath === '/' ||
-      queuedPath === normalizedPath ||
-      queuedPath.startsWith(prefix)
-    ) {
+    if (normalizedPath === '/' || queuedPath === normalizedPath || queuedPath.startsWith(prefix)) {
       queuedReconciliationPaths.delete(queuedPath);
       changed = true;
     }

@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Route path | `/share/:token` |
-| Role | Route shell for share links. Uses `useShareLinkInfo` to fetch public share link info; if directory renders FileManager; if file renders ShareLinkSingleFileView. |
+| Item       | Description                                                                                                                                                      |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Route path | `/share/:token`                                                                                                                                                  |
+| Role       | Route shell for share links. Uses `useShareLinkInfo` to fetch public share link info; if directory renders FileManager; if file renders ShareLinkSingleFileView. |
 
 ---
 
@@ -17,6 +17,7 @@
 - **Test file:** `client/src/pages/__tests__/ShareLinkLoader.test.js`
 
 ### 2.2 Hooks Used
+
 - useParams (token)
 - useShareLinkInfo (token)
 - useTranslation (loading/error view text)
@@ -37,6 +38,7 @@ Boundary note:
 - No PrivateRoute; public route. Token in URL; auth optional for “add to shared” flow.
 
 ### 2.5 Main User Flows
+
 - Load: `useShareLinkInfo(token)` calls `getPublicShareLinkInfo(token)`
 - Loading: show spinner
 - Error: show error message

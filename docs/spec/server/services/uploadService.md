@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                                                                                                                                                                    |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Role | Upload orchestration service. Manages the 4-step upload flow (TX1: DB INSERT → S3 PUT → TX2: DB UPDATE) with explicit transaction boundaries and failure recovery states. Owns TX ownership — all service methods are TX-agnostic. Factory `createUploadService({ fileNodeService, blobStorageService, blobStore, storage })`. |
 
 ---
@@ -33,12 +33,12 @@ function createUploadService({ fileNodeService, blobStorageService, blobStore, s
 
 Creates a new file: TX1 creates node + pending blob mapping → S3 PUT uploads content → TX2 finalizes with active status + filecache metadata.
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| parentNodeId | number \| null | yes | Parent directory; null for root-level creation |
-| name | string | yes | File name (subject to UNIQUE constraint per parent) |
-| buffer | Buffer | yes | File content bytes |
-| mimeType | string | yes | MIME type of the file |
+| Param        | Type           | Required | Description                                         |
+| ------------ | -------------- | -------- | --------------------------------------------------- |
+| parentNodeId | number \| null | yes      | Parent directory; null for root-level creation      |
+| name         | string         | yes      | File name (subject to UNIQUE constraint per parent) |
+| buffer       | Buffer         | yes      | File content bytes                                  |
+| mimeType     | string         | yes      | MIME type of the file                               |
 
 **Returns:** `{ nodeId, s3Key, size, mimeType }`
 
@@ -52,11 +52,11 @@ Creates a new file: TX1 creates node + pending blob mapping → S3 PUT uploads c
 
 Overwrites existing file content: TX1 prepares new version → S3 PUT uploads new content → TX2 finalizes.
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| fileNodeId | number | yes | ID of the existing file node to overwrite |
-| buffer | Buffer | yes | New content bytes |
-| mimeType | string | yes | MIME type of the new content |
+| Param      | Type   | Required | Description                               |
+| ---------- | ------ | -------- | ----------------------------------------- |
+| fileNodeId | number | yes      | ID of the existing file node to overwrite |
+| buffer     | Buffer | yes      | New content bytes                         |
+| mimeType   | string | yes      | MIME type of the new content              |
 
 **Returns:** `{ nodeId, s3Key, size, mimeType }`
 
@@ -70,9 +70,9 @@ Overwrites existing file content: TX1 prepares new version → S3 PUT uploads ne
 
 Downloads file content through blobStorageService (pass-through).
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| fileNodeId | number | yes | ID of the file node to download |
+| Param      | Type   | Required | Description                     |
+| ---------- | ------ | -------- | ------------------------------- |
+| fileNodeId | number | yes      | ID of the file node to download |
 
 **Returns:** Buffer \| null
 
@@ -85,11 +85,11 @@ Downloads file content through blobStorageService (pass-through).
 
 ### 2.5 Failure Recovery States
 
-| Failure Point | DB State | S3 State | Recovery |
-|---------------|----------|----------|----------|
-| TX1 fails | ROLLBACK, nothing persisted | Nothing written | Idempotent retry |
-| S3 PUT fails | object_map='pending', sync_status='pending_upload' | Nothing uploaded | Retry endpoint or GC Tier 1 cleanup |
-| TX2 fails | object_map='pending'; sync_status='pending_upload' | Blob uploaded in S3 | GC Tier 2 (listOrphanedKeys) cleans untracked blob |
+| Failure Point | DB State                                           | S3 State            | Recovery                                           |
+| ------------- | -------------------------------------------------- | ------------------- | -------------------------------------------------- |
+| TX1 fails     | ROLLBACK, nothing persisted                        | Nothing written     | Idempotent retry                                   |
+| S3 PUT fails  | object_map='pending', sync_status='pending_upload' | Nothing uploaded    | Retry endpoint or GC Tier 1 cleanup                |
+| TX2 fails     | object_map='pending'; sync_status='pending_upload' | Blob uploaded in S3 | GC Tier 2 (listOrphanedKeys) cleans untracked blob |
 
 ### 2.6 Error Cases
 

@@ -67,9 +67,7 @@ describe('createFileNodeService', () => {
       const dir = await svc.createDirectory(null, 'svc-dup-dir');
       await svc.createFile(dir.id, 'svc-dup-file.txt');
 
-      await expect(
-        svc.createFile(dir.id, 'svc-dup-file.txt')
-      ).rejects.toThrow();
+      await expect(svc.createFile(dir.id, 'svc-dup-file.txt')).rejects.toThrow();
 
       await dbRun('DELETE FROM file_nodes WHERE id = ?', [dir.id]);
     });
@@ -113,10 +111,7 @@ describe('createFileNodeService', () => {
 
       await svc.renameNode(file.id, 'svc-renamed-file.txt');
 
-      const updated = await dbQuery(
-        'SELECT name FROM file_nodes WHERE id = ?',
-        [file.id]
-      );
+      const updated = await dbQuery('SELECT name FROM file_nodes WHERE id = ?', [file.id]);
       expect(updated.rows[0].name).toBe('svc-renamed-file.txt');
 
       const afterAncestors = await dbQuery(
@@ -145,7 +140,7 @@ describe('createFileNodeService', () => {
         'SELECT * FROM node_ancestors WHERE descendant_id = ? ORDER BY depth',
         [child.id]
       );
-      expect(ancestors.rows.some(r => r.ancestor_id === oldParent.id)).toBe(true);
+      expect(ancestors.rows.some((r) => r.ancestor_id === oldParent.id)).toBe(true);
 
       await svc.moveNode(child.id, newParent.id);
 
@@ -154,13 +149,10 @@ describe('createFileNodeService', () => {
         'SELECT * FROM node_ancestors WHERE descendant_id = ? ORDER BY depth',
         [child.id]
       );
-      expect(ancestors.rows.some(r => r.ancestor_id === newParent.id)).toBe(true);
-      expect(ancestors.rows.some(r => r.ancestor_id === oldParent.id)).toBe(false);
+      expect(ancestors.rows.some((r) => r.ancestor_id === newParent.id)).toBe(true);
+      expect(ancestors.rows.some((r) => r.ancestor_id === oldParent.id)).toBe(false);
 
-      const updated = await dbQuery(
-        'SELECT parent_id FROM file_nodes WHERE id = ?',
-        [child.id]
-      );
+      const updated = await dbQuery('SELECT parent_id FROM file_nodes WHERE id = ?', [child.id]);
       expect(updated.rows[0].parent_id).toBe(newParent.id);
 
       await dbRun('DELETE FROM file_nodes WHERE id = ?', [oldParent.id]);
@@ -173,9 +165,9 @@ describe('createFileNodeService', () => {
       const parent = await svc.createDirectory(grandparent.id, 'svc-cycle-p');
       const child = await svc.createFile(parent.id, 'svc-cycle-child.txt');
 
-      await expect(
-        svc.moveNode(grandparent.id, child.id)
-      ).rejects.toThrow(/Cannot move node into its own descendant/i);
+      await expect(svc.moveNode(grandparent.id, child.id)).rejects.toThrow(
+        /Cannot move node into its own descendant/i
+      );
 
       await dbRun('DELETE FROM file_nodes WHERE id = ?', [grandparent.id]);
     });
@@ -219,10 +211,7 @@ describe('createFileNodeService', () => {
 
       await svc.deleteNode(child.id);
 
-      const node = await dbQuery(
-        'SELECT * FROM file_nodes WHERE id = ?',
-        [child.id]
-      );
+      const node = await dbQuery('SELECT * FROM file_nodes WHERE id = ?', [child.id]);
       expect(node.rows.length).toBe(0);
 
       const ancestors = await dbQuery(
@@ -245,10 +234,7 @@ describe('createFileNodeService', () => {
 
       // All nodes in subtree should be gone (CASCADE)
       for (const id of [rootDir.id, childFile.id, subDir.id, grandchildFile.id]) {
-        const row = await dbQuery(
-          'SELECT * FROM file_nodes WHERE id = ?',
-          [id]
-        );
+        const row = await dbQuery('SELECT * FROM file_nodes WHERE id = ?', [id]);
         expect(row.rows.length).toBe(0);
       }
 

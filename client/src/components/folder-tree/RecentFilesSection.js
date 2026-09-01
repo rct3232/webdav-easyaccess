@@ -154,42 +154,57 @@ const RecentFilesSection = ({
                     minHeight: 32,
                   }}
                 >
-                  <ListItemIcon sx={{ minWidth: 24, mr: 0.5, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <ListItemIcon
+                    sx={{
+                      minWidth: 24,
+                      mr: 0.5,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
                     {recentFile.type === 'directory' ? (
                       <FolderIcon fontSize="small" />
                     ) : (
-                      <Box sx={{ fontSize: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Box
+                        sx={{
+                          fontSize: '1.25rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
                         {getFileIcon({ type: 'file', basename: recentFile.name })}
                       </Box>
                     )}
                   </ListItemIcon>
                   <ListItemText
-                    primary={
-                      (() => {
-                        const originalName = recentFile.name;
-                        const truncatedName = pixelMiddleTruncate(originalName, maxPixelWidth, font);
-                        const isTruncated = truncatedName !== originalName;
+                    primary={(() => {
+                      const originalName = recentFile.name;
+                      const truncatedName = pixelMiddleTruncate(originalName, maxPixelWidth, font);
+                      const isTruncated = truncatedName !== originalName;
 
-                        const typography = (
-                          <Typography
-                            variant="body2"
-                            sx={{
-                              fontSize: '0.875rem',
-                              overflow: 'hidden',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {truncatedName}
-                          </Typography>
-                        );
+                      const typography = (
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontSize: '0.875rem',
+                            overflow: 'hidden',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {truncatedName}
+                        </Typography>
+                      );
 
-                        return isTruncated ? (
-                          <Tooltip title={originalName} disableInteractive>
-                            {typography}
-                          </Tooltip>
-                        ) : typography;
-                      })()
-                    }
+                      return isTruncated ? (
+                        <Tooltip title={originalName} disableInteractive>
+                          {typography}
+                        </Tooltip>
+                      ) : (
+                        typography
+                      );
+                    })()}
                   />
                 </ListItemButton>
               </ListItem>

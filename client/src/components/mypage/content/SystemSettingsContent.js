@@ -26,7 +26,10 @@ import SyncAlt from '@mui/icons-material/SyncAlt';
 import * as adminService from '../../../services/adminService';
 import { getMigrationPresence } from '../../../services/migrationService';
 import { getServerErrorDisplay } from '../../../utils/errorUtils';
-import { getShowHiddenFiles, setShowHiddenFiles as saveShowHiddenFiles } from '../../../utils/localStorage';
+import {
+  getShowHiddenFiles,
+  setShowHiddenFiles as saveShowHiddenFiles,
+} from '../../../utils/localStorage';
 import { usePageHeader } from '../../../contexts/PageHeaderContext';
 import MigrationDialog from './MigrationDialog';
 import MetadataMigrationDialog from './MetadataMigrationDialog';
@@ -113,7 +116,10 @@ const SystemSettingsContent = () => {
       await adminService.updateSettings(nextSettings);
       setMessage({ type: 'success', text: t('admin.registrationSaveSuccess') });
     } catch (error) {
-      setTempSettings((prev) => ({ ...prev, registration_enabled: newValue === 'true' ? 'false' : 'true' }));
+      setTempSettings((prev) => ({
+        ...prev,
+        registration_enabled: newValue === 'true' ? 'false' : 'true',
+      }));
       setMessage({ type: 'error', text: t('admin.settingsSaveFail') });
     } finally {
       setRegistrationSaving(false);
@@ -133,11 +139,15 @@ const SystemSettingsContent = () => {
         results.cleanedPermissionRequests;
       let messageText;
       if (totalCleaned === 0) messageText = t('admin.noDataToClean');
-      else if (results.errors?.length) messageText = t('admin.cleanupDonePartial', { count: totalCleaned });
+      else if (results.errors?.length)
+        messageText = t('admin.cleanupDonePartial', { count: totalCleaned });
       else messageText = t('admin.cleanupDone', { count: totalCleaned });
       setMessage({ type: results.errors?.length ? 'warning' : 'success', text: messageText });
     } catch (error) {
-      setMessage({ type: 'error', text: getServerErrorDisplay(error?.response?.data, t) || t('admin.orphanCleanupFail') });
+      setMessage({
+        type: 'error',
+        text: getServerErrorDisplay(error?.response?.data, t) || t('admin.orphanCleanupFail'),
+      });
     } finally {
       setCleanupLoading(false);
     }
@@ -151,12 +161,21 @@ const SystemSettingsContent = () => {
       const { updatedUsers, upgradedPaths, grantedPaths, errors } = res;
       const total = (upgradedPaths || 0) + (grantedPaths || 0);
       let messageText;
-      if (total === 0 && (!errors || errors.length === 0)) messageText = t('admin.noPermissionToFix');
-      else if (errors?.length) messageText = t('admin.permissionCleanupDonePartial', { users: updatedUsers || 0, paths: total });
-      else messageText = t('admin.permissionCleanupDone', { users: updatedUsers || 0, paths: total });
+      if (total === 0 && (!errors || errors.length === 0))
+        messageText = t('admin.noPermissionToFix');
+      else if (errors?.length)
+        messageText = t('admin.permissionCleanupDonePartial', {
+          users: updatedUsers || 0,
+          paths: total,
+        });
+      else
+        messageText = t('admin.permissionCleanupDone', { users: updatedUsers || 0, paths: total });
       setMessage({ type: errors?.length ? 'warning' : 'success', text: messageText });
     } catch (error) {
-      setMessage({ type: 'error', text: getServerErrorDisplay(error?.response?.data, t) || t('admin.permissionCleanupFail') });
+      setMessage({
+        type: 'error',
+        text: getServerErrorDisplay(error?.response?.data, t) || t('admin.permissionCleanupFail'),
+      });
     } finally {
       setPermissionCleanupLoading(false);
     }
@@ -187,7 +206,9 @@ const SystemSettingsContent = () => {
                 </Typography>
                 {health?.lastCheckedAt ? (
                   <Typography variant="caption" color="text.secondary">
-                    {t('admin.health.lastChecked', { time: new Date(health.lastCheckedAt).toLocaleString() })}
+                    {t('admin.health.lastChecked', {
+                      time: new Date(health.lastCheckedAt).toLocaleString(),
+                    })}
                   </Typography>
                 ) : null}
               </li>
@@ -212,15 +233,25 @@ const SystemSettingsContent = () => {
                   : t('migrationPage.backendSqlite'),
             })}
           </Typography>
-          <Button size="small" color="warning" variant="outlined" sx={{ mt: 1 }} onClick={() => setMetadataMigrationOpen(true)}>
+          <Button
+            size="small"
+            color="warning"
+            variant="outlined"
+            sx={{ mt: 1 }}
+            onClick={() => setMetadataMigrationOpen(true)}
+          >
             {t('admin.envSetupNeededAction')}
           </Button>
         </Alert>
       )}
-      <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <Box
+        sx={{ mt: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}
+      >
         <Box sx={{ flex: 1 }}>
           <Typography variant="body1">{t('admin.registrationEnabled')}</Typography>
-          <Typography variant="body2" color="text.secondary">{t('admin.registrationEnabledDesc')}</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {t('admin.registrationEnabledDesc')}
+          </Typography>
         </Box>
         <Switch
           checked={tempSettings.registration_enabled === 'true'}
@@ -230,10 +261,14 @@ const SystemSettingsContent = () => {
           sx={{ ml: 2 }}
         />
       </Box>
-      <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <Box
+        sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}
+      >
         <Box sx={{ flex: 1 }}>
           <Typography variant="body1">{t('admin.showHiddenFiles')}</Typography>
-          <Typography variant="body2" color="text.secondary">{t('admin.showHiddenFilesDesc')}</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {t('admin.showHiddenFilesDesc')}
+          </Typography>
         </Box>
         <Switch
           checked={showHiddenFiles}
@@ -247,39 +282,77 @@ const SystemSettingsContent = () => {
           sx={{ ml: 2 }}
         />
       </Box>
-      <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <Box
+        sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}
+      >
         <Box sx={{ flex: 1 }}>
           <Typography variant="body1">{t('admin.dataCleanup')}</Typography>
-          <Typography variant="body2" color="text.secondary">{t('admin.dataCleanupDesc')}</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {t('admin.dataCleanupDesc')}
+          </Typography>
         </Box>
-        <IconButton onClick={() => setCleanupConfirmOpen(true)} disabled={cleanupLoading} color="primary" sx={{ ml: 2 }} aria-label={t('admin.runCleanup')}>
+        <IconButton
+          onClick={() => setCleanupConfirmOpen(true)}
+          disabled={cleanupLoading}
+          color="primary"
+          sx={{ ml: 2 }}
+          aria-label={t('admin.runCleanup')}
+        >
           {cleanupLoading ? <CircularProgress size={24} /> : <CleaningServicesIcon />}
         </IconButton>
       </Box>
-      <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <Box
+        sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}
+      >
         <Box sx={{ flex: 1 }}>
           <Typography variant="body1">{t('admin.permissionCleanup')}</Typography>
-          <Typography variant="body2" color="text.secondary">{t('admin.permissionCleanupDesc')}</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {t('admin.permissionCleanupDesc')}
+          </Typography>
         </Box>
-        <IconButton onClick={() => setPermissionCleanupConfirmOpen(true)} disabled={permissionCleanupLoading} color="primary" sx={{ ml: 2 }} aria-label={t('admin.run')}>
+        <IconButton
+          onClick={() => setPermissionCleanupConfirmOpen(true)}
+          disabled={permissionCleanupLoading}
+          color="primary"
+          sx={{ ml: 2 }}
+          aria-label={t('admin.run')}
+        >
           {permissionCleanupLoading ? <CircularProgress size={24} /> : <CategoryIcon />}
         </IconButton>
       </Box>
-      <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <Box
+        sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}
+      >
         <Box sx={{ flex: 1 }}>
           <Typography variant="body1">{t('admin.storageMigration')}</Typography>
-          <Typography variant="body2" color="text.secondary">{t('admin.storageMigrationDesc')}</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {t('admin.storageMigrationDesc')}
+          </Typography>
         </Box>
-        <IconButton onClick={() => setMigrationOpen(true)} color="primary" sx={{ ml: 2 }} aria-label={t('admin.runMigration')}>
+        <IconButton
+          onClick={() => setMigrationOpen(true)}
+          color="primary"
+          sx={{ ml: 2 }}
+          aria-label={t('admin.runMigration')}
+        >
           <SyncAlt />
         </IconButton>
       </Box>
-      <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <Box
+        sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}
+      >
         <Box sx={{ flex: 1 }}>
           <Typography variant="body1">{t('admin.metadataMigration')}</Typography>
-          <Typography variant="body2" color="text.secondary">{t('admin.metadataMigrationDesc')}</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {t('admin.metadataMigrationDesc')}
+          </Typography>
         </Box>
-        <IconButton onClick={() => setMetadataMigrationOpen(true)} color="primary" sx={{ ml: 2 }} aria-label={t('admin.runMetadataMigration')}>
+        <IconButton
+          onClick={() => setMetadataMigrationOpen(true)}
+          color="primary"
+          sx={{ ml: 2 }}
+          aria-label={t('admin.runMetadataMigration')}
+        >
           <Storage />
         </IconButton>
       </Box>
@@ -328,7 +401,11 @@ const SystemSettingsContent = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={permissionCleanupConfirmOpen} onClose={() => setPermissionCleanupConfirmOpen(false)} fullScreen>
+      <Dialog
+        open={permissionCleanupConfirmOpen}
+        onClose={() => setPermissionCleanupConfirmOpen(false)}
+        fullScreen
+      >
         <DialogTitle>{t('admin.permissionCleanupConfirmTitle')}</DialogTitle>
         <DialogContent>
           <DialogContentText>
@@ -348,11 +425,28 @@ const SystemSettingsContent = () => {
         </DialogActions>
       </Dialog>
 
-      <MigrationDialog open={migrationOpen} onClose={() => setMigrationOpen(false)} onMessage={(msg) => setMessage(msg)} />
-      <MetadataMigrationDialog open={metadataMigrationOpen} onClose={() => setMetadataMigrationOpen(false)} onMessage={(msg) => setMessage(msg)} />
+      <MigrationDialog
+        open={migrationOpen}
+        onClose={() => setMigrationOpen(false)}
+        onMessage={(msg) => setMessage(msg)}
+      />
+      <MetadataMigrationDialog
+        open={metadataMigrationOpen}
+        onClose={() => setMetadataMigrationOpen(false)}
+        onMessage={(msg) => setMessage(msg)}
+      />
 
-      <Snackbar open={!!message.text} autoHideDuration={6000} onClose={() => setMessage({ type: '', text: '' })} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
-        <Alert onClose={() => setMessage({ type: '', text: '' })} severity={message.type || 'info'} sx={{ width: '100%' }}>
+      <Snackbar
+        open={!!message.text}
+        autoHideDuration={6000}
+        onClose={() => setMessage({ type: '', text: '' })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setMessage({ type: '', text: '' })}
+          severity={message.type || 'info'}
+          sx={{ width: '100%' }}
+        >
           {message.text}
         </Alert>
       </Snackbar>

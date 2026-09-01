@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Explorer navigation controller: owns explorer nodeId transitions (folder navigation, breadcrumb navigation, open-folder from list/grid/detail) and any optimistic/rollback behavior required to preserve current UX. It coordinates navigation decisions, but it does not own listing or product-overlay policy. |
-| Used by components/pages | `FileManager` page shell (`docs/spec/client/pages/FileManager.md`) |
-| Does not own | Search/sort/view session derivation (`useExplorerSession`), directory listing state (`useFileManager` or equivalent listing seam), command orchestration (`useExplorerCommands`), progress orchestration (`useExplorerProgress`), product overlays (share-link policy, `__recent__`, `__shared__`). |
+| Item                     | Description                                                                                                                                                                                                                                                                                                      |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Explorer navigation controller: owns explorer nodeId transitions (folder navigation, breadcrumb navigation, open-folder from list/grid/detail) and any optimistic/rollback behavior required to preserve current UX. It coordinates navigation decisions, but it does not own listing or product-overlay policy. |
+| Used by components/pages | `FileManager` page shell (`docs/spec/client/pages/FileManager.md`)                                                                                                                                                                                                                                               |
+| Does not own             | Search/sort/view session derivation (`useExplorerSession`), directory listing state (`useFileManager` or equivalent listing seam), command orchestration (`useExplorerCommands`), progress orchestration (`useExplorerProgress`), product overlays (share-link policy, `__recent__`, `__shared__`).              |
 
 ---
 
@@ -21,14 +21,14 @@
 
 `useExplorerNavigation(params)`
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| currentNodeId | number \| null | Y | Current folder nodeId. |
-| getPreviousNodeId | () => number \| null \| undefined | Y | Returns the last committed nodeId to support optimistic navigation rollback (typically backed by a ref in the shell). |
-| setCurrentNodeId | (nodeId: number \| null) => void | Y | Shell-owned nodeId setter (or equivalent routing setter) used to transition explorer location. |
-| onAfterNavigate | (nextNodeId: number \| null) => void | N | Hook for the shell to run follow-up behavior after navigation (e.g. close drawer, selection reset timing) while preserving current UX. |
-| onTrackNodeHistory | (nextNodeId: number \| null, previousNodeId: number \| null) => void | N | Optional callback to record optimistic navigation history used by existing rollback/error flows (e.g. recent-file navigation, which is nodeId-first since Phase 5). |
-| canNavigateToNode | (nodeId: number) => boolean \| Promise<boolean> | N | Optional guard for permission/availability checks used to preserve current "permission denied" rollback behavior (renamed from `canNavigateToPath`). In FileManager this should normally be provided by `explorerGateway` (or a narrow adapter over it) rather than a shell-owned direct service import. When it returns false, navigation must roll back and reject with a forbidden-shaped error. |
+| Name               | Type                                                                 | Required | Description                                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------------ | -------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| currentNodeId      | number \| null                                                       | Y        | Current folder nodeId.                                                                                                                                                                                                                                                                                                                                                                              |
+| getPreviousNodeId  | () => number \| null \| undefined                                    | Y        | Returns the last committed nodeId to support optimistic navigation rollback (typically backed by a ref in the shell).                                                                                                                                                                                                                                                                               |
+| setCurrentNodeId   | (nodeId: number \| null) => void                                     | Y        | Shell-owned nodeId setter (or equivalent routing setter) used to transition explorer location.                                                                                                                                                                                                                                                                                                      |
+| onAfterNavigate    | (nextNodeId: number \| null) => void                                 | N        | Hook for the shell to run follow-up behavior after navigation (e.g. close drawer, selection reset timing) while preserving current UX.                                                                                                                                                                                                                                                              |
+| onTrackNodeHistory | (nextNodeId: number \| null, previousNodeId: number \| null) => void | N        | Optional callback to record optimistic navigation history used by existing rollback/error flows (e.g. recent-file navigation, which is nodeId-first since Phase 5).                                                                                                                                                                                                                                 |
+| canNavigateToNode  | (nodeId: number) => boolean \| Promise<boolean>                      | N        | Optional guard for permission/availability checks used to preserve current "permission denied" rollback behavior (renamed from `canNavigateToPath`). In FileManager this should normally be provided by `explorerGateway` (or a narrow adapter over it) rather than a shell-owned direct service import. When it returns false, navigation must roll back and reject with a forbidden-shaped error. |
 
 Notes:
 
@@ -38,11 +38,11 @@ Notes:
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| navigateToNode | (nextNodeId: number \| null) => Promise<void> \| void | Primary navigation entry point used by breadcrumbs/tree/node click (renamed from `navigateToPath`). Must preserve current optimistic/rollback + error behavior. |
-| handleFolderOpen | (nodeId: number) => Promise<void> \| void | Entry point used when a folder is "opened" from the content area (double click / tap semantics as today). Typically delegates to `navigateToNode`. |
-| isNavigating | boolean | Whether a navigation transition is in progress (optional, if needed to preserve current UI disables/spinners). |
+| Key              | Type                                                  | Meaning                                                                                                                                                         |
+| ---------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| navigateToNode   | (nextNodeId: number \| null) => Promise<void> \| void | Primary navigation entry point used by breadcrumbs/tree/node click (renamed from `navigateToPath`). Must preserve current optimistic/rollback + error behavior. |
+| handleFolderOpen | (nodeId: number) => Promise<void> \| void             | Entry point used when a folder is "opened" from the content area (double click / tap semantics as today). Typically delegates to `navigateToNode`.              |
+| isNavigating     | boolean                                               | Whether a navigation transition is in progress (optional, if needed to preserve current UI disables/spinners).                                                  |
 
 ### 2.4 Responsibilities (must be non-overlapping)
 
@@ -86,4 +86,3 @@ Notes:
 
 - Navigating to the same nodeId is a no-op (unless current behavior explicitly refreshes).
 - Empty/undefined nodeId inputs keep the same fallback behavior used today.
-

@@ -23,10 +23,11 @@ const mockUser = {
 };
 
 const adminHandlers = () => [
-  http.get('/api/auth/me', () =>
-    HttpResponse.json({ ...mockUser, is_admin: true })),
+  http.get('/api/auth/me', () => HttpResponse.json({ ...mockUser, is_admin: true })),
   http.get('/api/admin/users/pending', () => HttpResponse.json([])),
-  http.get('/api/admin/users', () => HttpResponse.json([{ id: '2', username: 'user2', status: 'approved' }])),
+  http.get('/api/admin/users', () =>
+    HttpResponse.json([{ id: '2', username: 'user2', status: 'approved' }])
+  ),
   http.get('/api/admin/settings', () => HttpResponse.json({ registration_enabled: 'false' })),
 ];
 
@@ -86,9 +87,12 @@ describe('MyPageContentArea', () => {
         />
       );
 
-      await waitFor(() => {
-        expect(screen.getByText(/received requests/i)).toBeInTheDocument();
-      }, { timeout: 3000 });
+      await waitFor(
+        () => {
+          expect(screen.getByText(/received requests/i)).toBeInTheDocument();
+        },
+        { timeout: 3000 }
+      );
       expect(screen.getByText(/my requests/i)).toBeInTheDocument();
       expect(screen.getByText(/links/i)).toBeInTheDocument();
     });
@@ -105,9 +109,12 @@ describe('MyPageContentArea', () => {
         />
       );
 
-      await waitFor(() => {
-        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-      }, { timeout: 5000 });
+      await waitFor(
+        () => {
+          expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+        },
+        { timeout: 5000 }
+      );
 
       expect(screen.getByRole('button', { name: /add/i })).toBeInTheDocument();
       expect(screen.getByText('user2')).toBeInTheDocument();
@@ -125,9 +132,12 @@ describe('MyPageContentArea', () => {
         />
       );
 
-      await waitFor(() => {
-        expect(screen.getByText(/system settings/i)).toBeInTheDocument();
-      }, { timeout: 5000 });
+      await waitFor(
+        () => {
+          expect(screen.getByText(/system settings/i)).toBeInTheDocument();
+        },
+        { timeout: 5000 }
+      );
       expect(screen.getByText(/registration/i)).toBeInTheDocument();
     });
   });
@@ -183,11 +193,14 @@ describe('MyPageContentArea', () => {
         />
       );
 
-      await waitFor(() => {
-        expect(screen.getByText(/received requests/i)).toBeInTheDocument();
-        expect(screen.getByText(/my requests/i)).toBeInTheDocument();
-        expect(screen.getByText(/links/i)).toBeInTheDocument();
-      }, { timeout: 3000 });
+      await waitFor(
+        () => {
+          expect(screen.getByText(/received requests/i)).toBeInTheDocument();
+          expect(screen.getByText(/my requests/i)).toBeInTheDocument();
+          expect(screen.getByText(/links/i)).toBeInTheDocument();
+        },
+        { timeout: 3000 }
+      );
       expect(screen.queryByRole('button', { name: /back/i })).not.toBeInTheDocument();
     });
 
@@ -207,9 +220,12 @@ describe('MyPageContentArea', () => {
         />
       );
 
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /back/i })).toBeInTheDocument();
-      }, { timeout: 3000 });
+      await waitFor(
+        () => {
+          expect(screen.getByRole('button', { name: /back/i })).toBeInTheDocument();
+        },
+        { timeout: 3000 }
+      );
       expect(screen.getByText(/received requests/i)).toBeInTheDocument();
     });
   });
@@ -233,9 +249,12 @@ describe('MyPageContentArea', () => {
         />
       );
 
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /back/i })).toBeInTheDocument();
-      }, { timeout: 3000 });
+      await waitFor(
+        () => {
+          expect(screen.getByRole('button', { name: /back/i })).toBeInTheDocument();
+        },
+        { timeout: 3000 }
+      );
 
       await user.click(screen.getByRole('button', { name: /back/i }));
       expect(onSelectContentItem).toHaveBeenCalledWith(null);
@@ -259,9 +278,12 @@ describe('MyPageContentArea', () => {
         />
       );
 
-      await waitFor(() => {
-        expect(screen.getByText(/received requests/i)).toBeInTheDocument();
-      }, { timeout: 3000 });
+      await waitFor(
+        () => {
+          expect(screen.getByText(/received requests/i)).toBeInTheDocument();
+        },
+        { timeout: 3000 }
+      );
 
       await user.click(screen.getByText(/received requests/i));
       expect(onSelectContentItem).toHaveBeenCalledWith('inbox');

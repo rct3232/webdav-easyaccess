@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | IO boundary for the FolderPicker dialog controller logic (`useFolderPicker`). Provides directory listing, write-permission checking, and shared-folder permission data for the “__shared__” root. |
-| Used by | `client/src/components/dialogs/FolderPickerDialog/hooks/useFolderPicker.js` |
-| Does not own | Breadcrumb rendering, validation rules (`isInvalidDestination`), and copy/move UI state. |
+| Item         | Description                                                                                                                                                                                       |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role         | IO boundary for the FolderPicker dialog controller logic (`useFolderPicker`). Provides directory listing, write-permission checking, and shared-folder permission data for the “**shared**” root. |
+| Used by      | `client/src/components/dialogs/FolderPickerDialog/hooks/useFolderPicker.js`                                                                                                                       |
+| Does not own | Breadcrumb rendering, validation rules (`isInvalidDestination`), and copy/move UI state.                                                                                                          |
 
 ---
 
@@ -21,11 +21,11 @@
 
 ### 2.2 Main Functions
 
-| Function | Input | Return | API called (see api.md) |
-|----------|-------|--------|-------------------------|
-| `listFolderContents` | `({ nodeId, options? })` | `Promise<Array<object>>` | `GET /api/files/list?nodeId=...` |
-| `checkWritePermission` | `({ nodeId })` | `Promise<{ hasRead?: boolean, hasWrite?: boolean, source?: string }>` | `GET /api/permissions/check?nodeId=...` |
-| `getUserSharedFolderPermissions` | `({ user, options? })` | `Promise<Array<{ nodeId: number, name: string, permission: string, type: string }>>` | `GET /api/permissions/shared` |
+| Function                         | Input                    | Return                                                                               | API called (see api.md)                 |
+| -------------------------------- | ------------------------ | ------------------------------------------------------------------------------------ | --------------------------------------- |
+| `listFolderContents`             | `({ nodeId, options? })` | `Promise<Array<object>>`                                                             | `GET /api/files/list?nodeId=...`        |
+| `checkWritePermission`           | `({ nodeId })`           | `Promise<{ hasRead?: boolean, hasWrite?: boolean, source?: string }>`                | `GET /api/permissions/check?nodeId=...` |
+| `getUserSharedFolderPermissions` | `({ user, options? })`   | `Promise<Array<{ nodeId: number, name: string, permission: string, type: string }>>` | `GET /api/permissions/shared`           |
 
 Notes:
 
@@ -62,4 +62,3 @@ Verify from the caller perspective (observable outcome of picker):
 - [ ] `getUserSharedFolderPermissions` returns only shared folders (server excludes the user's own subtree; client keeps the root-level safety filter).
 - [ ] Admin users receive `[]` for `getUserSharedFolderPermissions`.
 - [ ] Gateway errors are propagated to the caller.
-

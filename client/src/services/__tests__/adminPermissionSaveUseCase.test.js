@@ -68,9 +68,7 @@ describe('adminPermissionSaveUseCase', () => {
   });
 
   it('never revokes the target user home folder and guarantees write access there', async () => {
-    const initialFolderPermissions = new Map([
-      [7, new Map([['target', PERMISSIONS.READ]])],
-    ]);
+    const initialFolderPermissions = new Map([[7, new Map([['target', PERMISSIONS.READ]])]]);
     const folderPermissions = new Map();
 
     await adminPermissionSaveUseCase({
@@ -89,9 +87,7 @@ describe('adminPermissionSaveUseCase', () => {
   });
 
   it('does not double-grant the home folder when it is already part of the diff', async () => {
-    const folderPermissions = new Map([
-      [7, new Map([['target', PERMISSIONS.WRITE]])],
-    ]);
+    const folderPermissions = new Map([[7, new Map([['target', PERMISSIONS.WRITE]])]]);
     const initialFolderPermissions = new Map();
 
     await adminPermissionSaveUseCase({

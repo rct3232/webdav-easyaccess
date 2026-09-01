@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Component-family hook that exposes a ref callback and the latest observed element width for width-sensitive rendering such as recent-file name truncation. |
-| Used by components/pages | `RecentFilesSection` and other folder-tree/file-list views that need prepared width state |
+| Item                     | Description                                                                                                                                                |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Component-family hook that exposes a ref callback and the latest observed element width for width-sensitive rendering such as recent-file name truncation. |
+| Used by components/pages | `RecentFilesSection` and other folder-tree/file-list views that need prepared width state                                                                  |
 
 ---
 
@@ -15,8 +15,8 @@
 
 Choose the scope according to [CODING_STYLE.md § Hook Placement](../../../../CODING_STYLE.md):
 
-| Scope | Source path | Test path |
-|-------|-------------|-----------|
+| Scope            | Source path                                                          | Test path                                                                           |
+| ---------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | Component-family | `client/src/components/folder-tree/hooks/useObservedElementWidth.js` | `client/src/components/folder-tree/hooks/__tests__/useObservedElementWidth.test.js` |
 
 - **Source:** `client/src/components/folder-tree/hooks/useObservedElementWidth.js`
@@ -24,16 +24,16 @@ Choose the scope according to [CODING_STYLE.md § Hook Placement](../../../../CO
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| `initialWidth` | `number` | N | Width used before observation starts; defaults to a safe truncation baseline |
+| Name           | Type     | Required | Description                                                                  |
+| -------------- | -------- | -------- | ---------------------------------------------------------------------------- |
+| `initialWidth` | `number` | N        | Width used before observation starts; defaults to a safe truncation baseline |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| `setObservedElement` | `(element: Element | null) => void` | Ref callback for the element whose width should be observed |
-| `width` | `number` | Latest observed element width |
+| Key                  | Type               | Meaning                       |
+| -------------------- | ------------------ | ----------------------------- | ----------------------------------------------------------- |
+| `setObservedElement` | `(element: Element | null) => void`                | Ref callback for the element whose width should be observed |
+| `width`              | `number`           | Latest observed element width |
 
 ### 2.4 Dependencies
 

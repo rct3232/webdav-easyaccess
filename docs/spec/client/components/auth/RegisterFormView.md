@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Pure view for the registration form UI. Renders prepared state and callbacks only. |
-| Used in | `client/src/pages/Register.js` |
-| Related components | `EmailNotificationMessage` |
+| Item               | Description                                                                        |
+| ------------------ | ---------------------------------------------------------------------------------- |
+| Role               | Pure view for the registration form UI. Renders prepared state and callbacks only. |
+| Used in            | `client/src/pages/Register.js`                                                     |
+| Related components | `EmailNotificationMessage`                                                         |
 
 ---
 
@@ -19,36 +19,36 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| `username` | `string` | Y | - | Current username value. |
-| `email` | `string` | Y | - | Current email value. |
-| `password` | `string` | Y | - | Current password value. |
-| `confirmPassword` | `string` | Y | - | Current confirmation value. |
-| `error` | `string` | N | `''` | Error alert content. |
-| `success` | `boolean` | Y | - | Whether the pending-success block is visible. |
-| `loading` | `boolean` | Y | - | Submit in-flight state. |
-| `emailEnabled` | `boolean` | Y | - | Whether email follow-up messaging should be shown on pending success. |
-| `settingsLoading` | `boolean` | Y | - | Public settings loading state. |
-| `loginPath` | `string` | Y | - | Route target for the login affordance. |
-| `onNavigateToLogin` | `function` | Y | - | Click handler that performs SPA navigation to the login route. |
-| `onUsernameChange` | `function` | Y | - | Username change handler. |
-| `onEmailChange` | `function` | Y | - | Email change handler. |
-| `onPasswordChange` | `function` | Y | - | Password change handler. |
-| `onConfirmPasswordChange` | `function` | Y | - | Confirm password change handler. |
-| `onSubmit` | `function` | Y | - | Form submit handler. |
-| `viewModel` | `object` | Y | - | Prepared labels and copy for the view. |
+| Name                      | Type       | Required | Default | Description                                                           |
+| ------------------------- | ---------- | -------- | ------- | --------------------------------------------------------------------- |
+| `username`                | `string`   | Y        | -       | Current username value.                                               |
+| `email`                   | `string`   | Y        | -       | Current email value.                                                  |
+| `password`                | `string`   | Y        | -       | Current password value.                                               |
+| `confirmPassword`         | `string`   | Y        | -       | Current confirmation value.                                           |
+| `error`                   | `string`   | N        | `''`    | Error alert content.                                                  |
+| `success`                 | `boolean`  | Y        | -       | Whether the pending-success block is visible.                         |
+| `loading`                 | `boolean`  | Y        | -       | Submit in-flight state.                                               |
+| `emailEnabled`            | `boolean`  | Y        | -       | Whether email follow-up messaging should be shown on pending success. |
+| `settingsLoading`         | `boolean`  | Y        | -       | Public settings loading state.                                        |
+| `loginPath`               | `string`   | Y        | -       | Route target for the login affordance.                                |
+| `onNavigateToLogin`       | `function` | Y        | -       | Click handler that performs SPA navigation to the login route.        |
+| `onUsernameChange`        | `function` | Y        | -       | Username change handler.                                              |
+| `onEmailChange`           | `function` | Y        | -       | Email change handler.                                                 |
+| `onPasswordChange`        | `function` | Y        | -       | Password change handler.                                              |
+| `onConfirmPasswordChange` | `function` | Y        | -       | Confirm password change handler.                                      |
+| `onSubmit`                | `function` | Y        | -       | Form submit handler.                                                  |
+| `viewModel`               | `object`   | Y        | -       | Prepared labels and copy for the view.                                |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| `onUsernameChange` | Username field changes | `(event)` |
-| `onEmailChange` | Email field changes | `(event)` |
-| `onPasswordChange` | Password field changes | `(event)` |
+| Callback                  | When invoked                   | Arguments |
+| ------------------------- | ------------------------------ | --------- |
+| `onUsernameChange`        | Username field changes         | `(event)` |
+| `onEmailChange`           | Email field changes            | `(event)` |
+| `onPasswordChange`        | Password field changes         | `(event)` |
 | `onConfirmPasswordChange` | Confirm password field changes | `(event)` |
-| `onNavigateToLogin` | Login affordance clicked | `(event)` |
-| `onSubmit` | Form submit | `(event)` |
+| `onNavigateToLogin`       | Login affordance clicked       | `(event)` |
+| `onSubmit`                | Form submit                    | `(event)` |
 
 ### 2.4 Dependencies
 

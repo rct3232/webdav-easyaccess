@@ -19,11 +19,7 @@ describe('FAB', () => {
     const onCreateFolder = jest.fn();
     const onUpload = jest.fn();
     renderWithProviders(
-      <FAB
-        onCreateFolder={onCreateFolder}
-        onUpload={onUpload}
-        hasWritePermission={true}
-      />
+      <FAB onCreateFolder={onCreateFolder} onUpload={onUpload} hasWritePermission={true} />
     );
     const fab = screen.getByRole('button', { name: /file actions/i });
     expect(fab).toBeInTheDocument();
@@ -35,9 +31,7 @@ describe('FAB', () => {
   it('calls onCreateFolder when create folder action clicked', () => {
     const onCreateFolder = jest.fn();
     const onUpload = jest.fn();
-    renderWithProviders(
-      <FAB onCreateFolder={onCreateFolder} onUpload={onUpload} />
-    );
+    renderWithProviders(<FAB onCreateFolder={onCreateFolder} onUpload={onUpload} />);
     fireEvent.click(screen.getByRole('button', { name: /file actions/i }));
     fireEvent.click(screen.getByRole('menuitem', { name: /create folder/i }));
     expect(onCreateFolder).toHaveBeenCalled();
@@ -46,9 +40,7 @@ describe('FAB', () => {
   it('calls onUpload when upload action clicked', () => {
     const onCreateFolder = jest.fn();
     const onUpload = jest.fn();
-    renderWithProviders(
-      <FAB onCreateFolder={onCreateFolder} onUpload={onUpload} />
-    );
+    renderWithProviders(<FAB onCreateFolder={onCreateFolder} onUpload={onUpload} />);
     fireEvent.click(screen.getByRole('button', { name: /file actions/i }));
     fireEvent.click(screen.getByRole('menuitem', { name: /upload file/i }));
     expect(onUpload).toHaveBeenCalled();
@@ -56,11 +48,7 @@ describe('FAB', () => {
 
   it('returns null when hasWritePermission is false', () => {
     renderWithProviders(
-      <FAB
-        onCreateFolder={jest.fn()}
-        onUpload={jest.fn()}
-        hasWritePermission={false}
-      />
+      <FAB onCreateFolder={jest.fn()} onUpload={jest.fn()} hasWritePermission={false} />
     );
     expect(screen.queryByRole('button', { name: /file actions/i })).not.toBeInTheDocument();
   });
@@ -100,25 +88,13 @@ describe('FAB', () => {
   });
 
   it('disables Fab when disabled prop is true', () => {
-    renderWithProviders(
-      <FAB
-        onCreateFolder={jest.fn()}
-        onUpload={jest.fn()}
-        disabled={true}
-      />
-    );
+    renderWithProviders(<FAB onCreateFolder={jest.fn()} onUpload={jest.fn()} disabled={true} />);
     const fab = screen.getByRole('button', { name: /file actions/i });
     expect(fab).toBeDisabled();
   });
 
   it('opens the SpeedDial from trigger click on mobile', () => {
-    renderWithProviders(
-      <FAB
-        onCreateFolder={jest.fn()}
-        onUpload={jest.fn()}
-        isMobile={true}
-      />
-    );
+    renderWithProviders(<FAB onCreateFolder={jest.fn()} onUpload={jest.fn()} isMobile={true} />);
 
     const fab = screen.getByRole('button', { name: /file actions/i });
     expect(fab).toHaveAttribute('aria-expanded', 'false');

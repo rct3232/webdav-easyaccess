@@ -189,7 +189,11 @@ describe('useSelection', () => {
         result.current.handleFileClickSelection(displayFiles[0], createEvent(), 0);
       });
       act(() => {
-        result.current.handleFileClickSelection(displayFiles[2], createEvent({ shiftKey: true }), 2);
+        result.current.handleFileClickSelection(
+          displayFiles[2],
+          createEvent({ shiftKey: true }),
+          2
+        );
       });
 
       expect(result.current.selectionMode).toBe(true);
@@ -203,7 +207,11 @@ describe('useSelection', () => {
       const { result } = renderHook(() => useSelection(displayFiles));
 
       act(() => {
-        result.current.handleFileClickSelection(displayFiles[1], createEvent({ shiftKey: true }), 1);
+        result.current.handleFileClickSelection(
+          displayFiles[1],
+          createEvent({ shiftKey: true }),
+          1
+        );
       });
 
       expect(result.current.selectionMode).toBe(true);
@@ -254,12 +262,20 @@ describe('useSelection', () => {
     const { result } = renderHook(() => useSelection(displayFiles));
 
     act(() => {
-      result.current.handleFileClickSelection(displayFiles[0], { ctrlKey: false, metaKey: false, shiftKey: false }, 0);
+      result.current.handleFileClickSelection(
+        displayFiles[0],
+        { ctrlKey: false, metaKey: false, shiftKey: false },
+        0
+      );
     });
     expect(result.current.selectionMode).toBe(true);
 
     act(() => {
-      result.current.handleFileClickSelection(displayFiles[0], { ctrlKey: true, metaKey: false, shiftKey: false }, 0);
+      result.current.handleFileClickSelection(
+        displayFiles[0],
+        { ctrlKey: true, metaKey: false, shiftKey: false },
+        0
+      );
     });
 
     expect(result.current.selectionMode).toBe(false);

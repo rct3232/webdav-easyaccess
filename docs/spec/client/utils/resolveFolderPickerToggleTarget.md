@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                  |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Pure helper that resolves the landing nodeId for home/shared toggle changes in `useFolderPicker` without mutating state or calling gateways. |
 
 ---
@@ -17,8 +17,8 @@
 
 ### 2.2 Function Signatures
 
-| Function | (input) => return |
-|----------|-------------------|
+| Function                          | (input) => return                                                                                                                                  |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `resolveFolderPickerToggleTarget` | `({ nextPathType, action, sourceNodeId, sourceNodeIds, sharedFolderRoots, homeNodeId }) => { nodeId, pathType, presetHasWritePermission } \| null` |
 
 ### 2.3 Dependencies

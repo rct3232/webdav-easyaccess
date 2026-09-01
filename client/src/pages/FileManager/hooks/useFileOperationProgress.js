@@ -4,18 +4,18 @@ import { getErrorMessage } from '../../../utils/errorUtils';
 
 /**
  * Custom hook for managing file operation progress
- * 
+ *
  * Provides centralized progress state management for file operations
  * such as move, copy, delete, download, and upload.
- * 
+ *
  * @returns {Object} Progress state and control functions
  * @property {Array} progressItems - Array of current progress items
  * @property {Function} updateProgress - Function to update/add/remove progress items
  * @property {Function} clearAllProgress - Function to clear all progress items
- * 
+ *
  * @example
  * const { progressItems, updateProgress } = useFileOperationProgress();
- * 
+ *
  * // Add or update a progress item
  * updateProgress({
  *   id: 'move_123',
@@ -26,7 +26,7 @@ import { getErrorMessage } from '../../../utils/errorUtils';
  *   current: '(5/10) 이동중...',
  *   name: '10개 항목 이동'
  * });
- * 
+ *
  * // Remove a progress item
  * updateProgress({ id: 'move_123', remove: true });
  */
@@ -38,7 +38,7 @@ export const useFileOperationProgress = () => {
 
   /**
    * Update, add, or remove a progress item
-   * 
+   *
    * @param {Object} progressItem - Progress item to update
    * @param {string} progressItem.id - Unique identifier for the progress item
    * @param {boolean} [progressItem.remove] - If true, removes the item instead of updating
@@ -59,10 +59,10 @@ export const useFileOperationProgress = () => {
   const updateProgress = useCallback((progressItem) => {
     if (progressItem.remove) {
       fileItemsByProgressIdRef.current.delete(progressItem.id);
-      setProgressItems(prev => prev.filter(item => item.id !== progressItem.id));
+      setProgressItems((prev) => prev.filter((item) => item.id !== progressItem.id));
     } else {
-      setProgressItems(prev => {
-        const existing = prev.find(item => item.id === progressItem.id);
+      setProgressItems((prev) => {
+        const existing = prev.find((item) => item.id === progressItem.id);
         if (existing) {
           // 기존 항목과 새 항목 병합
           const merged = { ...existing, ...progressItem };
@@ -71,18 +71,22 @@ export const useFileOperationProgress = () => {
           // Also prevent regressing from warning/error back to completed.
           const existingStatus = existing.status;
           const nextStatus = progressItem.status ?? existingStatus;
-          if ((existingStatus === 'error' && nextStatus !== 'error') || (existingStatus === 'warning' && nextStatus === 'completed')) {
+          if (
+            (existingStatus === 'error' && nextStatus !== 'error') ||
+            (existingStatus === 'warning' && nextStatus === 'completed')
+          ) {
             merged.status = existingStatus;
           } else {
             merged.status = nextStatus;
           }
-          
+
           // 단일 파일 상태만 갱신 (progress 콜백용, 성능 유지)
           if (progressItem.updatedFileItem && existing.fileItems) {
             const ufi = progressItem.updatedFileItem;
             const fileName = ufi.fileName;
             const fileStatus = ufi.status;
-            const base = fileItemsByProgressIdRef.current.get(progressItem.id) ?? existing.fileItems;
+            const base =
+              fileItemsByProgressIdRef.current.get(progressItem.id) ?? existing.fileItems;
             const idx = base.findIndex((it) => it.fileName === fileName);
             if (idx !== -1) {
               const next = [...base];
@@ -97,19 +101,19 @@ export const useFileOperationProgress = () => {
           // fileItems 배열이 있는 경우 병합 (updatedFileItem으로 이미 반영한 경우 스킵)
           if (progressItem.fileItems && existing.fileItems && !progressItem.updatedFileItem) {
             const existingFileItemsMap = new Map();
-            existing.fileItems.forEach(item => {
+            existing.fileItems.forEach((item) => {
               existingFileItemsMap.set(item.fileName, item);
             });
-            
+
             // 새 fileItems를 기존 항목과 병합
-            const mergedFileItems = progressItem.fileItems.map(newItem => {
+            const mergedFileItems = progressItem.fileItems.map((newItem) => {
               const existingItem = existingFileItemsMap.get(newItem.fileName);
-              
+
               // 취소 상태는 항상 보존 (우선순위 최우선)
               if (existingItem && existingItem.status === 'cancelled') {
                 return existingItem; // 취소 상태 보존
               }
-              
+
               // 기존 항목과 새 항목 병합 (기존 항목의 속성 유지)
               if (existingItem) {
                 return {
@@ -119,13 +123,13 @@ export const useFileOperationProgress = () => {
                   status: existingItem.status === 'cancelled' ? 'cancelled' : newItem.status,
                 };
               }
-              
+
               return newItem;
             });
-            
+
             // 기존에만 있고 새 항목에 없는 fileItems 추가 (취소된 파일 등) - O(1) 조회를 위해 Set 사용
-            const newFileNames = new Set(progressItem.fileItems.map(item => item.fileName));
-            existing.fileItems.forEach(existingItem => {
+            const newFileNames = new Set(progressItem.fileItems.map((item) => item.fileName));
+            existing.fileItems.forEach((existingItem) => {
               if (!newFileNames.has(existingItem.fileName)) {
                 // 취소된 파일은 항상 유지
                 if (existingItem.status === 'cancelled') {
@@ -133,7 +137,7 @@ export const useFileOperationProgress = () => {
                 }
               }
             });
-            
+
             merged.fileItems = mergedFileItems;
             fileItemsByProgressIdRef.current.set(progressItem.id, mergedFileItems);
           } else if (progressItem.fileItems) {
@@ -149,36 +153,76 @@ export const useFileOperationProgress = () => {
             const b = Array.isArray(progressItem.skippedPaths) ? progressItem.skippedPaths : [];
             merged.skippedPaths = Array.from(new Set([...a, ...b]));
           }
-          if (typeof existing.skippedCount === 'number' || typeof progressItem.skippedCount === 'number') {
+          if (
+            typeof existing.skippedCount === 'number' ||
+            typeof progressItem.skippedCount === 'number'
+          ) {
             const a = typeof existing.skippedCount === 'number' ? existing.skippedCount : 0;
             const b = typeof progressItem.skippedCount === 'number' ? progressItem.skippedCount : 0;
             merged.skippedCount = Math.max(a, b);
           }
-          if (typeof existing.skippedTruncated === 'boolean' || typeof progressItem.skippedTruncated === 'boolean') {
-            merged.skippedTruncated = Boolean(existing.skippedTruncated || progressItem.skippedTruncated);
+          if (
+            typeof existing.skippedTruncated === 'boolean' ||
+            typeof progressItem.skippedTruncated === 'boolean'
+          ) {
+            merged.skippedTruncated = Boolean(
+              existing.skippedTruncated || progressItem.skippedTruncated
+            );
           }
-          if (Array.isArray(existing.skippedPathsByConflict) || Array.isArray(progressItem.skippedPathsByConflict)) {
-            const a = Array.isArray(existing.skippedPathsByConflict) ? existing.skippedPathsByConflict : [];
-            const b = Array.isArray(progressItem.skippedPathsByConflict) ? progressItem.skippedPathsByConflict : [];
+          if (
+            Array.isArray(existing.skippedPathsByConflict) ||
+            Array.isArray(progressItem.skippedPathsByConflict)
+          ) {
+            const a = Array.isArray(existing.skippedPathsByConflict)
+              ? existing.skippedPathsByConflict
+              : [];
+            const b = Array.isArray(progressItem.skippedPathsByConflict)
+              ? progressItem.skippedPathsByConflict
+              : [];
             merged.skippedPathsByConflict = Array.from(new Set([...a, ...b]));
           }
-          if (Array.isArray(existing.skippedPathsByPermission) || Array.isArray(progressItem.skippedPathsByPermission)) {
-            const a = Array.isArray(existing.skippedPathsByPermission) ? existing.skippedPathsByPermission : [];
-            const b = Array.isArray(progressItem.skippedPathsByPermission) ? progressItem.skippedPathsByPermission : [];
+          if (
+            Array.isArray(existing.skippedPathsByPermission) ||
+            Array.isArray(progressItem.skippedPathsByPermission)
+          ) {
+            const a = Array.isArray(existing.skippedPathsByPermission)
+              ? existing.skippedPathsByPermission
+              : [];
+            const b = Array.isArray(progressItem.skippedPathsByPermission)
+              ? progressItem.skippedPathsByPermission
+              : [];
             merged.skippedPathsByPermission = Array.from(new Set([...a, ...b]));
           }
-          if (typeof existing.skippedCountByConflict === 'number' || typeof progressItem.skippedCountByConflict === 'number') {
-            const a = typeof existing.skippedCountByConflict === 'number' ? existing.skippedCountByConflict : 0;
-            const b = typeof progressItem.skippedCountByConflict === 'number' ? progressItem.skippedCountByConflict : 0;
+          if (
+            typeof existing.skippedCountByConflict === 'number' ||
+            typeof progressItem.skippedCountByConflict === 'number'
+          ) {
+            const a =
+              typeof existing.skippedCountByConflict === 'number'
+                ? existing.skippedCountByConflict
+                : 0;
+            const b =
+              typeof progressItem.skippedCountByConflict === 'number'
+                ? progressItem.skippedCountByConflict
+                : 0;
             merged.skippedCountByConflict = Math.max(a, b);
           }
-          if (typeof existing.skippedCountByPermission === 'number' || typeof progressItem.skippedCountByPermission === 'number') {
-            const a = typeof existing.skippedCountByPermission === 'number' ? existing.skippedCountByPermission : 0;
-            const b = typeof progressItem.skippedCountByPermission === 'number' ? progressItem.skippedCountByPermission : 0;
+          if (
+            typeof existing.skippedCountByPermission === 'number' ||
+            typeof progressItem.skippedCountByPermission === 'number'
+          ) {
+            const a =
+              typeof existing.skippedCountByPermission === 'number'
+                ? existing.skippedCountByPermission
+                : 0;
+            const b =
+              typeof progressItem.skippedCountByPermission === 'number'
+                ? progressItem.skippedCountByPermission
+                : 0;
             merged.skippedCountByPermission = Math.max(a, b);
           }
-          
-          return prev.map(item => item.id === progressItem.id ? merged : item);
+
+          return prev.map((item) => (item.id === progressItem.id ? merged : item));
         } else {
           if (progressItem.fileItems) {
             fileItemsByProgressIdRef.current.set(progressItem.id, progressItem.fileItems);
@@ -206,15 +250,10 @@ export const useFileOperationProgress = () => {
    * @returns {Object} Progress item
    */
   const createProgressItem = useCallback((options) => {
-    const {
-      type,
-      name,
-      total = 1,
-      id = null,
-    } = options;
+    const { type, name, total = 1, id = null } = options;
 
     const progressId = id || `${type}_${Date.now()}`;
-    
+
     return {
       id: progressId,
       type,
@@ -233,56 +272,65 @@ export const useFileOperationProgress = () => {
    * @param {Error} [error] - Optional error object
    * @param {string} [defaultErrorMsg] - Default error message
    */
-  const updateProgressWithError = useCallback((progressId, progressData, error = null, defaultKey = 'errors.operationFailed') => {
-    if (error) {
-      const { key, raw } = getErrorMessage(error, defaultKey);
-      const errorMsg = raw != null ? raw : t(key);
-      updateProgress({
-        id: progressId,
-        ...progressData,
-        status: 'error',
-        error: errorMsg,
-        keepOnError: true,
-      });
-    } else {
-      updateProgress({
-        id: progressId,
-        ...progressData,
-      });
-    }
-  }, [updateProgress, t]);
+  const updateProgressWithError = useCallback(
+    (progressId, progressData, error = null, defaultKey = 'errors.operationFailed') => {
+      if (error) {
+        const { key, raw } = getErrorMessage(error, defaultKey);
+        const errorMsg = raw != null ? raw : t(key);
+        updateProgress({
+          id: progressId,
+          ...progressData,
+          status: 'error',
+          error: errorMsg,
+          keepOnError: true,
+        });
+      } else {
+        updateProgress({
+          id: progressId,
+          ...progressData,
+        });
+      }
+    },
+    [updateProgress, t]
+  );
 
   /**
    * Create and initialize a progress item
    * @param {Object} options - Progress item options
    * @returns {string} Progress item ID
    */
-  const initProgress = useCallback((options) => {
-    const item = createProgressItem(options);
-    updateProgress(item);
-    return item.id;
-  }, [createProgressItem, updateProgress]);
+  const initProgress = useCallback(
+    (options) => {
+      const item = createProgressItem(options);
+      updateProgress(item);
+      return item.id;
+    },
+    [createProgressItem, updateProgress]
+  );
 
   /**
    * Mark progress as completed and schedule removal
    * @param {string} progressId - Progress item ID
    * @param {number} [delay] - Delay before removal in ms (default: 3000)
    */
-  const completeProgress = useCallback((progressId, delay = 3000) => {
-    updateProgress({
-      id: progressId,
-      status: 'completed',
-      progress: 1,
-      total: 1,
-      current: t('fileManager.statusCompleted'),
-    });
-    
-    if (delay > 0) {
-      setTimeout(() => {
-        updateProgress({ id: progressId, remove: true });
-      }, delay);
-    }
-  }, [updateProgress, t]);
+  const completeProgress = useCallback(
+    (progressId, delay = 3000) => {
+      updateProgress({
+        id: progressId,
+        status: 'completed',
+        progress: 1,
+        total: 1,
+        current: t('fileManager.statusCompleted'),
+      });
+
+      if (delay > 0) {
+        setTimeout(() => {
+          updateProgress({ id: progressId, remove: true });
+        }, delay);
+      }
+    },
+    [updateProgress, t]
+  );
 
   return {
     progressItems,

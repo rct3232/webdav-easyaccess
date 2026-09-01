@@ -100,7 +100,11 @@ describe('locks store', () => {
             const [lockKey] = params;
             if (params.length === 1) {
               // stale cleanup: remove only when the held row is expired
-              if (state.row && state.row.lockKey === lockKey && state.row.expiresAt.getTime() < Date.now()) {
+              if (
+                state.row &&
+                state.row.lockKey === lockKey &&
+                state.row.expiresAt.getTime() < Date.now()
+              ) {
                 state.row = null;
                 return { rowCount: 1, rows: [] };
               }

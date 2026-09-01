@@ -159,7 +159,9 @@ async function generateVideoThumbnail(nodeId) {
         })
         .on('end', () => resolve())
         .on('error', (err) => {
-          reject(createError(SERVER_ERROR_CODES.thumbnail.ffmpegFailed, 500, { reason: err.message }));
+          reject(
+            createError(SERVER_ERROR_CODES.thumbnail.ffmpegFailed, 500, { reason: err.message })
+          );
         });
     });
 

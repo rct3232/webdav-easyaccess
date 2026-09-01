@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Explorer session controller: the single owner of search, sort, view-mode, and other preference-backed in-session explorer state for the current directory. It derives view-ready explorer state (display list, local thumbnail merges, infinite-scroll shaping) and exposes stable callbacks to update that session state. |
-| Used by components/pages | `FileManager` page shell (`docs/spec/client/pages/FileManager.md`) |
-| Does not own | Navigation transitions, selection reset side effects, directory listing IO, recent-files repository/notifier IO, command orchestration (upload/rename/move/copy/delete/download), progress orchestration, product overlays (share-link policy, `__recent__`, `__shared__`). |
+| Item                     | Description                                                                                                                                                                                                                                                                                                                |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Explorer session controller: the single owner of search, sort, view-mode, and other preference-backed in-session explorer state for the current directory. It derives view-ready explorer state (display list, local thumbnail merges, infinite-scroll shaping) and exposes stable callbacks to update that session state. |
+| Used by components/pages | `FileManager` page shell (`docs/spec/client/pages/FileManager.md`)                                                                                                                                                                                                                                                         |
+| Does not own             | Navigation transitions, selection reset side effects, directory listing IO, recent-files repository/notifier IO, command orchestration (upload/rename/move/copy/delete/download), progress orchestration, product overlays (share-link policy, `__recent__`, `__shared__`).                                                |
 
 ---
 
@@ -21,12 +21,12 @@
 
 `useExplorerSession(params)`
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| currentNodeId | number \| null | Y | Current folder nodeId that the explorer is showing (`null` = root / virtual root). |
-| files | Array<object> | Y | Current directory entries already loaded (source of truth from higher-level listing logic). |
-| initialSearchQuery | string | N | Initial search query. Defaults to empty string. |
-| isMobile | boolean | N | Used only for preserving current mobile view-mode restrictions (behavior must remain unchanged). |
+| Name               | Type           | Required | Description                                                                                      |
+| ------------------ | -------------- | -------- | ------------------------------------------------------------------------------------------------ |
+| currentNodeId      | number \| null | Y        | Current folder nodeId that the explorer is showing (`null` = root / virtual root).               |
+| files              | Array<object>  | Y        | Current directory entries already loaded (source of truth from higher-level listing logic).      |
+| initialSearchQuery | string         | N        | Initial search query. Defaults to empty string.                                                  |
+| isMobile           | boolean        | N        | Used only for preserving current mobile view-mode restrictions (behavior must remain unchanged). |
 
 Notes:
 
@@ -36,23 +36,23 @@ Notes:
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| searchQuery | string | Current search query. |
-| setSearchQuery | (q: string) => void | Update query. |
-| sortMode | string | Current sort mode. |
-| setSortMode | (mode: string) => void | Update sort. |
-| viewMode | string | Current view mode. |
-| setViewMode | (mode: string) => void | Update view mode (must preserve current mobile restrictions). |
-| files | Array<object> | Local file list copy used for safe in-session display updates such as thumbnail merges. |
-| setFiles | (files: Array<object>) => void | Advanced setter for session-local display updates. |
-| filteredFiles | Array<object> | Derived list after applying search. |
-| sortedFiles | Array<object> | Derived list after sorting. |
-| displayedFiles | Array<object> | Final list that the view consumes (search + sort + infinite-scroll shaping + any display shaping that is currently local-state-derived). |
-| loadMoreRef | ref callback/object | Infinite-scroll sentinel for the view layer. |
-| hasMore | boolean | Whether more items can be revealed by the infinite-scroll seam. |
-| handleThumbnailsLoaded | `(thumbnailMap: Map<number, string>) => void` | Merge thumbnail URLs keyed by `file.nodeId` into the session-local file list without re-owning list loading. |
-| sessionKey | string | A stable key representing the explorer session boundary for downstream resets when the current nodeId changes. The hook exposes this token; the page shell / selection seam decides how to react to it. The key is derived from `currentNodeId` (`node:<id>`, `node:root` for the root level) or `view:recent` / `view:shared` for the virtual-root views. |
+| Key                    | Type                                          | Meaning                                                                                                                                                                                                                                                                                                                                                    |
+| ---------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| searchQuery            | string                                        | Current search query.                                                                                                                                                                                                                                                                                                                                      |
+| setSearchQuery         | (q: string) => void                           | Update query.                                                                                                                                                                                                                                                                                                                                              |
+| sortMode               | string                                        | Current sort mode.                                                                                                                                                                                                                                                                                                                                         |
+| setSortMode            | (mode: string) => void                        | Update sort.                                                                                                                                                                                                                                                                                                                                               |
+| viewMode               | string                                        | Current view mode.                                                                                                                                                                                                                                                                                                                                         |
+| setViewMode            | (mode: string) => void                        | Update view mode (must preserve current mobile restrictions).                                                                                                                                                                                                                                                                                              |
+| files                  | Array<object>                                 | Local file list copy used for safe in-session display updates such as thumbnail merges.                                                                                                                                                                                                                                                                    |
+| setFiles               | (files: Array<object>) => void                | Advanced setter for session-local display updates.                                                                                                                                                                                                                                                                                                         |
+| filteredFiles          | Array<object>                                 | Derived list after applying search.                                                                                                                                                                                                                                                                                                                        |
+| sortedFiles            | Array<object>                                 | Derived list after sorting.                                                                                                                                                                                                                                                                                                                                |
+| displayedFiles         | Array<object>                                 | Final list that the view consumes (search + sort + infinite-scroll shaping + any display shaping that is currently local-state-derived).                                                                                                                                                                                                                   |
+| loadMoreRef            | ref callback/object                           | Infinite-scroll sentinel for the view layer.                                                                                                                                                                                                                                                                                                               |
+| hasMore                | boolean                                       | Whether more items can be revealed by the infinite-scroll seam.                                                                                                                                                                                                                                                                                            |
+| handleThumbnailsLoaded | `(thumbnailMap: Map<number, string>) => void` | Merge thumbnail URLs keyed by `file.nodeId` into the session-local file list without re-owning list loading.                                                                                                                                                                                                                                               |
+| sessionKey             | string                                        | A stable key representing the explorer session boundary for downstream resets when the current nodeId changes. The hook exposes this token; the page shell / selection seam decides how to react to it. The key is derived from `currentNodeId` (`node:<id>`, `node:root` for the root level) or `view:recent` / `view:shared` for the virtual-root views. |
 
 ### 2.4 Responsibilities (must be non-overlapping)
 
@@ -102,4 +102,3 @@ Verify observable outcomes (“what”), not internal implementation:
 
 - `files` is empty → `displayedFiles` is empty.
 - `files` contains entries with missing/empty name → they do not crash filtering/sorting.
-

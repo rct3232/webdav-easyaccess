@@ -1,6 +1,11 @@
 'use strict';
 
-const { createConfigResolver, getSharedResolver, setSharedResolver, populateT1Env } = require('../configResolver');
+const {
+  createConfigResolver,
+  getSharedResolver,
+  setSharedResolver,
+  populateT1Env,
+} = require('../configResolver');
 const { encryptSecret } = require('../../utils/configEncryption');
 
 const MASTER_KEY = 'test-master-key';
@@ -26,7 +31,11 @@ function createFakeStore(initial = {}) {
 }
 
 function makeResolver(store, env = {}, ttlMs) {
-  return createConfigResolver({ settingsStore: store, env, ...(ttlMs !== undefined ? { ttlMs } : {}) });
+  return createConfigResolver({
+    settingsStore: store,
+    env,
+    ...(ttlMs !== undefined ? { ttlMs } : {}),
+  });
 }
 
 afterEach(() => {
@@ -183,7 +192,12 @@ describe('createConfigResolver', () => {
         secret: false,
       });
       expect(config.PORT).toEqual({ value: 5001, source: 'default', tier: 'T1', secret: false });
-      expect(config.WEA_PG_HOST).toEqual({ value: undefined, source: 'env', tier: 'T0', secret: false });
+      expect(config.WEA_PG_HOST).toEqual({
+        value: undefined,
+        source: 'env',
+        tier: 'T0',
+        secret: false,
+      });
       expect(config.registration_enabled).toBeDefined();
     });
 

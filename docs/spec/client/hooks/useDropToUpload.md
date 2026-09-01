@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Drop-to-upload from OS: extract files (including directories), upload to target. Folder mode: onExplorerDrop, optional onInternalFileDrop for internal (file manager) drag. Main mode: onUploadComplete, onUploadError. |
-| Used by components/pages | FileManager, BaseFolderTreeItem |
+| Item                     | Description                                                                                                                                                                                                             |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Drop-to-upload from OS: extract files (including directories), upload to target. Folder mode: onExplorerDrop, optional onInternalFileDrop for internal (file manager) drag. Main mode: onUploadComplete, onUploadError. |
+| Used by components/pages | FileManager, BaseFolderTreeItem                                                                                                                                                                                         |
 
 ---
 
@@ -20,9 +20,9 @@
 
 All references are nodeId-based — the target is identified by `nodeId` (BIGINT `file_nodes.id`), not a path string.
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| options | object | N | onUploadComplete, onUploadError, nodeId, isDisabled, hasWritePermission, onExplorerDrop, onInternalFileDrop, internalDraggedNodeId |
+| Name    | Type   | Required | Description                                                                                                                        |
+| ------- | ------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| options | object | N        | onUploadComplete, onUploadError, nodeId, isDisabled, hasWritePermission, onExplorerDrop, onInternalFileDrop, internalDraggedNodeId |
 
 - `nodeId` — folder node ID (folder-tree mode); when present with `onExplorerDrop`, the hook runs in folder mode.
 - `onInternalFileDrop` — internal drag/drop callback: `(draggedNodeId, targetNodeNodeId) => void`.
@@ -31,27 +31,27 @@ All references are nodeId-based — the target is identified by `nodeId` (BIGINT
 
 Folder mode (`nodeId` + `onExplorerDrop` provided) returns:
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| isDraggingOver | boolean | Dragging over |
-| isDropTarget | boolean | Drop target |
-| setIsDropTarget | function | Drop-target setter |
-| handleFolderDragOver | function | Folder-mode drag over handler |
-| handleFolderDragEnter | function | Folder-mode drag enter handler |
-| handleFolderDragLeave | function | Folder-mode drag leave handler |
-| handleFolderDrop | function | Folder-mode drop handler: `(e) => handleDrop(e, nodeId, onExplorerDrop)` |
+| Key                   | Type     | Meaning                                                                  |
+| --------------------- | -------- | ------------------------------------------------------------------------ |
+| isDraggingOver        | boolean  | Dragging over                                                            |
+| isDropTarget          | boolean  | Drop target                                                              |
+| setIsDropTarget       | function | Drop-target setter                                                       |
+| handleFolderDragOver  | function | Folder-mode drag over handler                                            |
+| handleFolderDragEnter | function | Folder-mode drag enter handler                                           |
+| handleFolderDragLeave | function | Folder-mode drag leave handler                                           |
+| handleFolderDrop      | function | Folder-mode drop handler: `(e) => handleDrop(e, nodeId, onExplorerDrop)` |
 
 Main mode returns:
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| isDraggingOver | boolean | Dragging over |
-| uploadProgress | array | Progress items |
-| handleDragEnter | function | Drag enter handler |
-| handleDragOver | function | Drag over handler |
-| handleDragLeave | function | Drag leave handler |
-| handleDrop | function | Drop handler: `(e, targetNodeNodeId, uploadCallback) => Promise<void>` |
-| reset | function | Resets drag/upload state |
+| Key             | Type     | Meaning                                                                |
+| --------------- | -------- | ---------------------------------------------------------------------- |
+| isDraggingOver  | boolean  | Dragging over                                                          |
+| uploadProgress  | array    | Progress items                                                         |
+| handleDragEnter | function | Drag enter handler                                                     |
+| handleDragOver  | function | Drag over handler                                                      |
+| handleDragLeave | function | Drag leave handler                                                     |
+| handleDrop      | function | Drop handler: `(e, targetNodeNodeId, uploadCallback) => Promise<void>` |
+| reset           | function | Resets drag/upload state                                               |
 
 ### 2.4 Dependencies
 

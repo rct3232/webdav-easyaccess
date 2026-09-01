@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                                                          |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | AES-256-GCM encryption of DB-stored secrets (D6–D8). Encrypt at write time (wizard apply / admin config write); decrypt at read time only when the env var is absent (D1). No new dependencies — Node `crypto` only. |
 
 ---
@@ -17,13 +17,13 @@
 
 ### 2.2 Functions / Exports
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `deriveKey` | `(passphrase) => Buffer` | SHA-256 of the passphrase → 32-byte key buffer (length 32). |
-| `encryptSecret` | `(plaintext, passphrase) => { enc, iv, tag, data }` | AES-256-GCM encrypt; random 96-bit IV, 128-bit auth tag; `iv`/`tag`/`data` base64 strings; `enc` is `'aes-256-gcm'`. |
-| `decryptSecret` | `(payload, passphrase) => string` | Authenticated decrypt → plaintext string. Throws on wrong key / tampered payload / unsupported `enc`. |
-| `generateKey` | `() => string` | 64-char lowercase hex from 32 random bytes (recommended `encrypt_secret_key`). |
-| `isEncryptedPayload` | `(value) => boolean` | True when `value` is a non-array object with string `enc`, `iv`, `tag`, `data` fields. |
+| Function             | Signature                                           | Description                                                                                                          |
+| -------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `deriveKey`          | `(passphrase) => Buffer`                            | SHA-256 of the passphrase → 32-byte key buffer (length 32).                                                          |
+| `encryptSecret`      | `(plaintext, passphrase) => { enc, iv, tag, data }` | AES-256-GCM encrypt; random 96-bit IV, 128-bit auth tag; `iv`/`tag`/`data` base64 strings; `enc` is `'aes-256-gcm'`. |
+| `decryptSecret`      | `(payload, passphrase) => string`                   | Authenticated decrypt → plaintext string. Throws on wrong key / tampered payload / unsupported `enc`.                |
+| `generateKey`        | `() => string`                                      | 64-char lowercase hex from 32 random bytes (recommended `encrypt_secret_key`).                                       |
+| `isEncryptedPayload` | `(value) => boolean`                                | True when `value` is a non-array object with string `enc`, `iv`, `tag`, `data` fields.                               |
 
 ### 2.3 Algorithm (D6)
 

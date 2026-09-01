@@ -57,22 +57,14 @@ describe('SharedPermissionList', () => {
 
     it('shows revoke button when has read or write permission', () => {
       renderWithProviders(
-        <SharedPermissionList
-          {...defaultProps}
-          hasReadPermission
-          hasWritePermission
-        />
+        <SharedPermissionList {...defaultProps} hasReadPermission hasWritePermission />
       );
       expect(screen.getByRole('button', { name: /revoke permission/i })).toBeInTheDocument();
     });
 
     it('calls onRevokeClick when revoke clicked', () => {
       renderWithProviders(
-        <SharedPermissionList
-          {...defaultProps}
-          hasReadPermission
-          hasWritePermission
-        />
+        <SharedPermissionList {...defaultProps} hasReadPermission hasWritePermission />
       );
       fireEvent.click(screen.getByRole('button', { name: /revoke permission/i }));
       expect(defaultProps.onRevokeClick).toHaveBeenCalledTimes(1);

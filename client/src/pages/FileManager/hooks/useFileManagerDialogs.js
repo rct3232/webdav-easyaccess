@@ -11,14 +11,14 @@ export const useFileManagerDialogs = () => {
   const uploadDialog = useDialog();
   const createFolderDialog = useDialog();
   const previewDialog = useDialog();
-  
+
   // Dialogs with file data
   const shareDialog = useDialog();
   const shareDialogV2 = useDialog();
   const propertiesDialog = useDialog();
   const bulkDeleteDialog = useDialog();
   const actionSheet = useDialog();
-  
+
   // Rename dialog needs special handling for additional state
   const renameDialog = useDialog();
   const [renameNewName, setRenameNewName] = useState('');
@@ -27,18 +27,21 @@ export const useFileManagerDialogs = () => {
   // Context menu and selected file (not dialogs)
   const [selectedFile, setSelectedFile] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
-  
+
   // Mobile picker states
   const [mobilePickerFile, setMobilePickerFile] = useState(null);
   const [mobilePickerAction, setMobilePickerAction] = useState(null);
 
   // Custom open/close handlers for rename dialog
-  const openRenameDialog = useCallback((file) => {
-    if (file) {
-      setRenameNewName(file.basename || file.name);
-    }
-    renameDialog.open(file);
-  }, [renameDialog]);
+  const openRenameDialog = useCallback(
+    (file) => {
+      if (file) {
+        setRenameNewName(file.basename || file.name);
+      }
+      renameDialog.open(file);
+    },
+    [renameDialog]
+  );
 
   const closeRenameDialog = useCallback(() => {
     renameDialog.close();
@@ -65,7 +68,7 @@ export const useFileManagerDialogs = () => {
     actionSheetFile: actionSheet.data,
     selectedFile,
     contextMenu,
-    
+
     renameNewName,
     renameError,
     mobileRenameFile: renameDialog.data,
@@ -77,25 +80,28 @@ export const useFileManagerDialogs = () => {
     mobilePickerAction,
 
     // State Setters (for cases where direct control is needed)
-    setUploadDialogOpen: (open) => open ? uploadDialog.open() : uploadDialog.close(),
-    setCreateFolderDialogOpen: (open) => open ? createFolderDialog.open() : createFolderDialog.close(),
-    setPreviewDialogOpen: (open) => open ? previewDialog.open() : previewDialog.close(),
-    setRenameDialogOpen: (open) => open ? renameDialog.open() : closeRenameDialog(),
-    setShareDialogOpen: (open) => open ? shareDialog.open() : shareDialog.close(),
-    setShareDialogV2Open: (open) => open ? shareDialogV2.open() : shareDialogV2.close(),
-    setPropertiesDialogOpen: (open) => open ? propertiesDialog.open() : propertiesDialog.close(),
-    setBulkDeleteDialogOpen: (open) => open ? bulkDeleteDialog.open() : bulkDeleteDialog.close(),
-    setActionSheetOpen: (open) => open ? actionSheet.open() : actionSheet.close(),
+    setUploadDialogOpen: (open) => (open ? uploadDialog.open() : uploadDialog.close()),
+    setCreateFolderDialogOpen: (open) =>
+      open ? createFolderDialog.open() : createFolderDialog.close(),
+    setPreviewDialogOpen: (open) => (open ? previewDialog.open() : previewDialog.close()),
+    setRenameDialogOpen: (open) => (open ? renameDialog.open() : closeRenameDialog()),
+    setShareDialogOpen: (open) => (open ? shareDialog.open() : shareDialog.close()),
+    setShareDialogV2Open: (open) => (open ? shareDialogV2.open() : shareDialogV2.close()),
+    setPropertiesDialogOpen: (open) => (open ? propertiesDialog.open() : propertiesDialog.close()),
+    setBulkDeleteDialogOpen: (open) => (open ? bulkDeleteDialog.open() : bulkDeleteDialog.close()),
+    setActionSheetOpen: (open) => (open ? actionSheet.open() : actionSheet.close()),
     setActionSheetFile: (file) => actionSheet.open(file),
     setSelectedFile,
     setContextMenu,
     setRenameNewName,
     setRenameError,
-    setMobileRenameFile: (file) => file ? renameDialog.open(file) : renameDialog.close(),
-    setMobileShareFile: (file) => file ? shareDialog.open(file) : shareDialog.close(),
-    setShareDialogV2File: (file) => file ? shareDialogV2.open(file) : shareDialogV2.close(),
-    setMobilePropertiesFile: (file) => file ? propertiesDialog.open(file) : propertiesDialog.close(),
-    setBulkDeleteFilePaths: (paths) => paths?.length > 0 ? bulkDeleteDialog.open(paths) : bulkDeleteDialog.close(),
+    setMobileRenameFile: (file) => (file ? renameDialog.open(file) : renameDialog.close()),
+    setMobileShareFile: (file) => (file ? shareDialog.open(file) : shareDialog.close()),
+    setShareDialogV2File: (file) => (file ? shareDialogV2.open(file) : shareDialogV2.close()),
+    setMobilePropertiesFile: (file) =>
+      file ? propertiesDialog.open(file) : propertiesDialog.close(),
+    setBulkDeleteFilePaths: (paths) =>
+      paths?.length > 0 ? bulkDeleteDialog.open(paths) : bulkDeleteDialog.close(),
     setMobilePickerFile,
     setMobilePickerAction,
 

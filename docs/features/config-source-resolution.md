@@ -53,11 +53,11 @@ connection before the metadata DB exists.
 
 ## Tier model
 
-| Tier    | Semantics                                              | Source             | Change to take effect |
-| ------- | ------------------------------------------------------ | ------------------ | --------------------- |
-| **T0**  | Required to connect to the metadata DB                 | `.env` only        | restart               |
-| **T1**  | Read once at boot into a snapshot; consumers behave as require-time consts | env → DB → default | restart   |
-| **T2**  | Read lazily per request/operation (small TTL cache, invalidated on write) | env → DB → default | immediate |
+| Tier   | Semantics                                                                  | Source             | Change to take effect |
+| ------ | -------------------------------------------------------------------------- | ------------------ | --------------------- |
+| **T0** | Required to connect to the metadata DB                                     | `.env` only        | restart               |
+| **T1** | Read once at boot into a snapshot; consumers behave as require-time consts | env → DB → default | restart               |
+| **T2** | Read lazily per request/operation (small TTL cache, invalidated on write)  | env → DB → default | immediate             |
 
 ### Variable classification
 
@@ -77,7 +77,7 @@ before any request.
 D8), `EMAIL_SECURE`, `EMAIL_FROM_NAME`.
 Rationale: consumed to construct boot-time singletons (blob store, listen port, scheduler,
 module consts, the nodemailer transporter). The **source** can be DB; the **effect** requires a
-restart. EMAIL_* were formerly T2, but the transporter is built once per process — edits only
+restart. EMAIL\_\* were formerly T2, but the transporter is built once per process — edits only
 take effect after a restart, so they are honestly classified T1 (F3).
 
 **T2 — env → DB fallback, immediate (hot):** `registration_enabled` (already DB),
@@ -204,14 +204,14 @@ Consequently, when `.env` has the PG connection info, boot still branches on wha
 page as an "Advanced settings" accordion (`MUI Accordion`) within
 `SystemSettingsContent.js`. (A full-screen modal is the fallback if the editor proves too long.)
 
-| Item         | Location                                                                                                    |
-| ------------ | ----------------------------------------------------------------------------------------------------------- |
-| Component    | `client/src/components/mypage/content/SystemConfigEditor.js` (new) — inside the accordion                   |
-| Registry     | none — no new mypage category (`myPageRegistry.js` unchanged)                                                |
-| Service      | `client/src/services/adminService.js`: `getConfig()` / `updateConfig(values)`                                |
-| Server route | `server/domains/admin/routes/config.js` (new): `GET /config` + `PUT /config` under `/api/admin`              |
-| MSW          | `client/src/mocks/handlers.js`: `GET/PUT /api/admin/config` + reset state                                    |
-| i18n         | en/ko `admin.advancedSettings` (accordion title) + `admin.config.*` (groups, generic strings)                |
+| Item         | Location                                                                                        |
+| ------------ | ----------------------------------------------------------------------------------------------- |
+| Component    | `client/src/components/mypage/content/SystemConfigEditor.js` (new) — inside the accordion       |
+| Registry     | none — no new mypage category (`myPageRegistry.js` unchanged)                                   |
+| Service      | `client/src/services/adminService.js`: `getConfig()` / `updateConfig(values)`                   |
+| Server route | `server/domains/admin/routes/config.js` (new): `GET /config` + `PUT /config` under `/api/admin` |
+| MSW          | `client/src/mocks/handlers.js`: `GET/PUT /api/admin/config` + reset state                       |
+| i18n         | en/ko `admin.advancedSettings` (accordion title) + `admin.config.*` (groups, generic strings)   |
 
 **GET `/api/admin/config`** →
 `{ config: { "<envKey>": { value, source: 'env'|'db'|'default', tier, secret } } }` for every
@@ -253,10 +253,10 @@ map; the server registry is authoritative for tier/secret/source.
 
 ## API surface summary
 
-| Endpoint                  | Guard                                    | Behavior                                   |
-| ------------------------- | ---------------------------------------- | ------------------------------------------ |
-| `GET /api/admin/config`   | authenticateToken + isAdmin              | effective config, masked secrets, source/tier |
-| `PUT /api/admin/config`   | authenticateToken + isAdmin              | allowlisted keys → DB, encrypt secrets, invalidate T2 cache |
+| Endpoint                | Guard                       | Behavior                                                    |
+| ----------------------- | --------------------------- | ----------------------------------------------------------- |
+| `GET /api/admin/config` | authenticateToken + isAdmin | effective config, masked secrets, source/tier               |
+| `PUT /api/admin/config` | authenticateToken + isAdmin | allowlisted keys → DB, encrypt secrets, invalidate T2 cache |
 
 The setup-mode guard (503 `setup.incomplete`) continues to block admin-write routes while
 `setup_complete=false`, so the admin config surface is reachable only when setup is complete.

@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-| Item       | Description                                                                                                                                                                                                                                                                        |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Mount path | `/api/setup`                                                                                                                                                                                                                                                                       |
+| Item       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mount path | `/api/setup`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | Role       | First-run setup wizard backend: reports derived setup-completeness state from the **effective** (env-first over DB) config, runs connection tests (s3/webdav), and persists wizard-chosen **non-T0** configuration into the connected metadata DB `settings` table. The metadata (DB) connection is `.env`-owned (D6/D7): the wizard never writes `WEA_STORAGE_BACKEND`/`WEA_PG_*` and rejects a `metadata` block whose backend is `postgresql`. Public while setup is incomplete; auto-gated with 403 once complete. |
 
 Feature Source-of-Truth: [config-source-resolution.md](../../../features/config-source-resolution.md) (§7 wizard apply, §8 boot order) and [setup-wizard.md](../../../features/setup-wizard.md).
@@ -27,12 +27,12 @@ Feature Source-of-Truth: [config-source-resolution.md](../../../features/config-
 
 ### 2.2 Route List
 
-| Method | Path      | Auth                                              | Description                                                                                    |
-| ------ | --------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| GET    | `/status` | None                                              | Derived setup completeness from the effective config + missing keys + safe current values (non-T0 only) + `key_lost_warning`. |
-| POST   | `/test`   | None (403 `setup.complete` when already complete) | Connection test for `s3` or `webdav` targets (postgresql is `.env`-owned under D7; probed via the admin `/api/admin/config/test` instead). |
-| POST   | `/apply`  | None (403 `setup.complete` when already complete) | Validate (metadata block optional; `postgresql` rejected); write **non-T0** keys to the connected metadata DB; apply admin-password effect. Returns `restart_required: true`. |
-| POST   | `/prefill`| None (403 `setup.complete` when already complete) | **Deprecated under D7** — metadata-driven prefill. Retained for backward compat; the wizard client prefills from `GET /status` `current` only. |
+| Method | Path       | Auth                                              | Description                                                                                                                                                                   |
+| ------ | ---------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/status`  | None                                              | Derived setup completeness from the effective config + missing keys + safe current values (non-T0 only) + `key_lost_warning`.                                                 |
+| POST   | `/test`    | None (403 `setup.complete` when already complete) | Connection test for `s3` or `webdav` targets (postgresql is `.env`-owned under D7; probed via the admin `/api/admin/config/test` instead).                                    |
+| POST   | `/apply`   | None (403 `setup.complete` when already complete) | Validate (metadata block optional; `postgresql` rejected); write **non-T0** keys to the connected metadata DB; apply admin-password effect. Returns `restart_required: true`. |
+| POST   | `/prefill` | None (403 `setup.complete` when already complete) | **Deprecated under D7** — metadata-driven prefill. Retained for backward compat; the wizard client prefills from `GET /status` `current` only.                                |
 
 ### 2.3 Middleware Used
 
@@ -177,7 +177,15 @@ Public; **403 `setup.complete` when already complete** (same `requireSetupIncomp
 
 ```jsonc
 {
-  "metadata": { "backend": "postgresql", "host": "…", "port": "5432", "database": "…", "user": "…", "password": "…", "ssl": false }
+  "metadata": {
+    "backend": "postgresql",
+    "host": "…",
+    "port": "5432",
+    "database": "…",
+    "user": "…",
+    "password": "…",
+    "ssl": false,
+  },
 }
 ```
 

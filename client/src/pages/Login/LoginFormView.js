@@ -1,5 +1,14 @@
 import React from 'react';
-import { Alert, Box, Button, CircularProgress, Link, Paper, TextField, Typography } from '@mui/material';
+import {
+  Alert,
+  Box,
+  Button,
+  CircularProgress,
+  Link,
+  Paper,
+  TextField,
+  Typography,
+} from '@mui/material';
 
 const LoginFormView = ({
   username,
@@ -16,14 +25,8 @@ const LoginFormView = ({
   onSubmit,
   viewModel,
 }) => {
-  const {
-    logoAlt,
-    title,
-    usernameLabel,
-    passwordLabel,
-    submitButtonText,
-    noAccountText,
-  } = viewModel;
+  const { logoAlt, title, usernameLabel, passwordLabel, submitButtonText, noAccountText } =
+    viewModel;
 
   return (
     <Paper elevation={0} sx={{ p: 4, width: '100%' }}>
@@ -40,7 +43,13 @@ const LoginFormView = ({
         }}
       />
 
-      <Typography variant="subtitle1" gutterBottom align="center" color="text.secondary" sx={{ mb: 3 }}>
+      <Typography
+        variant="subtitle1"
+        gutterBottom
+        align="center"
+        color="text.secondary"
+        sx={{ mb: 3 }}
+      >
         {title}
       </Typography>
 
@@ -116,4 +125,3 @@ const LoginFormView = ({
 };
 
 export default LoginFormView;
-

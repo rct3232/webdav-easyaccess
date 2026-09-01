@@ -110,7 +110,9 @@ describe('usePermissionManager', () => {
 
     act(() => {
       result.current.setFolderPermissions(new Map([[10, new Map([['user2', PERMISSIONS.READ]])]]));
-      result.current.setInitialFolderPermissions(new Map([[10, new Map([['user2', PERMISSIONS.READ]])]]));
+      result.current.setInitialFolderPermissions(
+        new Map([[10, new Map([['user2', PERMISSIONS.READ]])]])
+      );
     });
 
     expect(result.current.hasPermissionChanged(10)).toBe(false);
@@ -121,7 +123,9 @@ describe('usePermissionManager', () => {
 
     act(() => {
       result.current.setFolderPermissions(new Map([[10, new Map([['user2', PERMISSIONS.WRITE]])]]));
-      result.current.setInitialFolderPermissions(new Map([[10, new Map([['user2', PERMISSIONS.READ]])]]));
+      result.current.setInitialFolderPermissions(
+        new Map([[10, new Map([['user2', PERMISSIONS.READ]])]])
+      );
     });
 
     expect(result.current.hasPermissionChanged(10)).toBe(true);
@@ -132,7 +136,9 @@ describe('usePermissionManager', () => {
 
     act(() => {
       result.current.setFolderPermissions(new Map());
-      result.current.setInitialFolderPermissions(new Map([[10, new Map([['user2', PERMISSIONS.READ]])]]));
+      result.current.setInitialFolderPermissions(
+        new Map([[10, new Map([['user2', PERMISSIONS.READ]])]])
+      );
     });
 
     expect(result.current.hasPermissionChanged(10)).toBe(true);

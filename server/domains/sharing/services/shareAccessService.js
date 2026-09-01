@@ -124,7 +124,11 @@ async function addToMyPermissions(token, userId) {
   const isAdmin = Boolean(creatorUser.is_admin);
   const isOwner = await isOwnerNode(createdBy, shareNodeId);
   if (!isAdmin && !isOwner) {
-    const hasAdmin = await permissionStore.checkPermission(createdBy, shareNodeId, PERMISSIONS.ADMIN);
+    const hasAdmin = await permissionStore.checkPermission(
+      createdBy,
+      shareNodeId,
+      PERMISSIONS.ADMIN
+    );
     if (!hasAdmin) {
       return { error: 'forbidden', status: HTTP_STATUS.FORBIDDEN, code: 'cannotAddShare' };
     }
@@ -157,7 +161,11 @@ async function previewFile(token) {
     const { blobStorageService } = getServices();
     const buffer = await blobStorageService.downloadBlob(node.id);
     if (!buffer) {
-      return { error: 'previewFail', status: HTTP_STATUS.INTERNAL_SERVER_ERROR, code: 'previewFail' };
+      return {
+        error: 'previewFail',
+        status: HTTP_STATUS.INTERNAL_SERVER_ERROR,
+        code: 'previewFail',
+      };
     }
     const fileName = node.name;
     const contentType = getContentType(fileName);
@@ -188,7 +196,11 @@ async function downloadFile(token) {
     const { blobStorageService } = getServices();
     const buffer = await blobStorageService.downloadBlob(node.id);
     if (!buffer) {
-      return { error: 'downloadFail', status: HTTP_STATUS.INTERNAL_SERVER_ERROR, code: 'downloadFail' };
+      return {
+        error: 'downloadFail',
+        status: HTTP_STATUS.INTERNAL_SERVER_ERROR,
+        code: 'downloadFail',
+      };
     }
 
     await ShareLink.incrementDownloadCount(token);
@@ -200,7 +212,11 @@ async function downloadFile(token) {
       },
     };
   } catch (error) {
-    return { error: 'downloadFail', status: HTTP_STATUS.INTERNAL_SERVER_ERROR, code: 'downloadFail' };
+    return {
+      error: 'downloadFail',
+      status: HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      code: 'downloadFail',
+    };
   }
 }
 

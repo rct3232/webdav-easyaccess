@@ -145,41 +145,146 @@ function ts() {
 }
 
 async function seedSourceData(db) {
-  await run(db, `INSERT INTO users (id, username, email, email_hash, password, status, is_admin, token_version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'approved', 1, 0, ?, ?)`, [1, 'admin', 'admin@x.com', 'h1', 'p1', ts(), ts()]);
-  await run(db, `INSERT INTO users (id, username, email, email_hash, password, status, is_admin, token_version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'approved', 0, 2, ?, ?)`, [2, 'user', 'user@x.com', 'h2', 'p2', ts(), ts()]);
-  await run(db, `INSERT INTO file_nodes (id, parent_id, name, type, sync_status, created_at, updated_at) VALUES (?, NULL, 'root', 'directory', 'active', ?, ?)`, [1, ts(), ts()]);
-  await run(db, `INSERT INTO file_nodes (id, parent_id, name, type, sync_status, created_at, updated_at) VALUES (?, ?, 'a.txt', 'file', 'active', ?, ?)`, [2, 1, ts(), ts()]);
-  await run(db, `INSERT INTO object_map (id, file_node_id, s3_key, storage_backend, version_number, status, created_at) VALUES (?, ?, 'key-1', 's3', 1, 'active', ?)`, [1, 2, ts()]);
-  await run(db, `INSERT INTO filecache (file_node_id, size, mime_type, content_hash, updated_at) VALUES (?, 10, 'text/plain', 'ch', ?)`, [2, ts()]);
+  await run(
+    db,
+    `INSERT INTO users (id, username, email, email_hash, password, status, is_admin, token_version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'approved', 1, 0, ?, ?)`,
+    [1, 'admin', 'admin@x.com', 'h1', 'p1', ts(), ts()]
+  );
+  await run(
+    db,
+    `INSERT INTO users (id, username, email, email_hash, password, status, is_admin, token_version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'approved', 0, 2, ?, ?)`,
+    [2, 'user', 'user@x.com', 'h2', 'p2', ts(), ts()]
+  );
+  await run(
+    db,
+    `INSERT INTO file_nodes (id, parent_id, name, type, sync_status, created_at, updated_at) VALUES (?, NULL, 'root', 'directory', 'active', ?, ?)`,
+    [1, ts(), ts()]
+  );
+  await run(
+    db,
+    `INSERT INTO file_nodes (id, parent_id, name, type, sync_status, created_at, updated_at) VALUES (?, ?, 'a.txt', 'file', 'active', ?, ?)`,
+    [2, 1, ts(), ts()]
+  );
+  await run(
+    db,
+    `INSERT INTO object_map (id, file_node_id, s3_key, storage_backend, version_number, status, created_at) VALUES (?, ?, 'key-1', 's3', 1, 'active', ?)`,
+    [1, 2, ts()]
+  );
+  await run(
+    db,
+    `INSERT INTO filecache (file_node_id, size, mime_type, content_hash, updated_at) VALUES (?, 10, 'text/plain', 'ch', ?)`,
+    [2, ts()]
+  );
   await run(db, `INSERT INTO node_ancestors (ancestor_id, descendant_id, depth) VALUES (1, 1, 0)`);
   await run(db, `INSERT INTO node_ancestors (ancestor_id, descendant_id, depth) VALUES (1, 2, 1)`);
   await run(db, `INSERT INTO node_ancestors (ancestor_id, descendant_id, depth) VALUES (2, 2, 0)`);
-  await run(db, `INSERT INTO permissions_user_paths (user_id, file_node_id, permission, updated_at) VALUES (?, ?, 'admin', ?)`, [1, 2, ts()]);
-  await run(db, `INSERT INTO share_links (token, file_node_id, created_by, created_at, download_count) VALUES ('tok1', ?, ?, ?, 0)`, [2, 1, ts()]);
-  await run(db, `INSERT INTO locks (lock_name_hash, token, owner, created_at, expires_at) VALUES ('lh', 't', 'o', ?, ?)`, [ts(), ts()]);
-  await run(db, `INSERT INTO settings (key, value, updated_at) VALUES ('smtp_host', 'smtp.gmail.com', ?)`, [ts()]);
-  await run(db, `INSERT INTO settings (key, value, updated_at) VALUES ('registration_enabled', 'true', ?)`, [ts()]);
+  await run(
+    db,
+    `INSERT INTO permissions_user_paths (user_id, file_node_id, permission, updated_at) VALUES (?, ?, 'admin', ?)`,
+    [1, 2, ts()]
+  );
+  await run(
+    db,
+    `INSERT INTO share_links (token, file_node_id, created_by, created_at, download_count) VALUES ('tok1', ?, ?, ?, 0)`,
+    [2, 1, ts()]
+  );
+  await run(
+    db,
+    `INSERT INTO locks (lock_name_hash, token, owner, created_at, expires_at) VALUES ('lh', 't', 'o', ?, ?)`,
+    [ts(), ts()]
+  );
+  await run(
+    db,
+    `INSERT INTO settings (key, value, updated_at) VALUES ('smtp_host', 'smtp.gmail.com', ?)`,
+    [ts()]
+  );
+  await run(
+    db,
+    `INSERT INTO settings (key, value, updated_at) VALUES ('registration_enabled', 'true', ?)`,
+    [ts()]
+  );
 }
 
 function sourceDataForFake() {
   return {
     users: [
-      { id: 1, username: 'admin', email: 'admin@x.com', email_hash: 'h1', password: 'p1', status: 'approved', is_admin: true, token_version: 0, created_at: ts(), updated_at: ts() },
-      { id: 2, username: 'user', email: 'user@x.com', email_hash: 'h2', password: 'p2', status: 'approved', is_admin: false, token_version: 2, created_at: ts(), updated_at: ts() },
+      {
+        id: 1,
+        username: 'admin',
+        email: 'admin@x.com',
+        email_hash: 'h1',
+        password: 'p1',
+        status: 'approved',
+        is_admin: true,
+        token_version: 0,
+        created_at: ts(),
+        updated_at: ts(),
+      },
+      {
+        id: 2,
+        username: 'user',
+        email: 'user@x.com',
+        email_hash: 'h2',
+        password: 'p2',
+        status: 'approved',
+        is_admin: false,
+        token_version: 2,
+        created_at: ts(),
+        updated_at: ts(),
+      },
     ],
     file_nodes: [
-      { id: 1, parent_id: null, name: 'root', type: 'directory', sync_status: 'active', created_at: ts(), updated_at: ts() },
-      { id: 2, parent_id: 1, name: 'a.txt', type: 'file', sync_status: 'active', created_at: ts(), updated_at: ts() },
+      {
+        id: 1,
+        parent_id: null,
+        name: 'root',
+        type: 'directory',
+        sync_status: 'active',
+        created_at: ts(),
+        updated_at: ts(),
+      },
+      {
+        id: 2,
+        parent_id: 1,
+        name: 'a.txt',
+        type: 'file',
+        sync_status: 'active',
+        created_at: ts(),
+        updated_at: ts(),
+      },
     ],
-    object_map: [{ id: 1, file_node_id: 2, s3_key: 'key-1', storage_backend: 's3', version_number: 1, status: 'active', created_at: ts() }],
-    filecache: [{ file_node_id: 2, size: 10, mime_type: 'text/plain', content_hash: 'ch', updated_at: ts() }],
+    object_map: [
+      {
+        id: 1,
+        file_node_id: 2,
+        s3_key: 'key-1',
+        storage_backend: 's3',
+        version_number: 1,
+        status: 'active',
+        created_at: ts(),
+      },
+    ],
+    filecache: [
+      { file_node_id: 2, size: 10, mime_type: 'text/plain', content_hash: 'ch', updated_at: ts() },
+    ],
     node_ancestors: [
       { ancestor_id: 1, descendant_id: 1, depth: 0 },
       { ancestor_id: 1, descendant_id: 2, depth: 1 },
       { ancestor_id: 2, descendant_id: 2, depth: 0 },
     ],
-    permissions_user_paths: [{ user_id: 1, file_node_id: 2, permission: 'admin', updated_at: ts() }],
-    share_links: [{ token: 'tok1', file_node_id: 2, created_by: 1, created_at: ts(), expires_at: null, download_count: 0 }],
+    permissions_user_paths: [
+      { user_id: 1, file_node_id: 2, permission: 'admin', updated_at: ts() },
+    ],
+    share_links: [
+      {
+        token: 'tok1',
+        file_node_id: 2,
+        created_by: 1,
+        created_at: ts(),
+        expires_at: null,
+        download_count: 0,
+      },
+    ],
     locks: [{ lock_name_hash: 'lh', token: 't', owner: 'o', created_at: ts(), expires_at: ts() }],
     settings: [
       { key: 'smtp_host', value: 'smtp.gmail.com', updated_at: ts() },
@@ -274,9 +379,7 @@ describe('scanTarget', () => {
 
   it('rejects an unsupported backend', async () => {
     const service = createMetadataMigrationService();
-    await expect(service.scanTarget({ backend: 'mysql' })).rejects.toThrow(
-      /unsupported backend/
-    );
+    await expect(service.scanTarget({ backend: 'mysql' })).rejects.toThrow(/unsupported backend/);
   });
 });
 
@@ -330,7 +433,10 @@ describe('runMigration postgresqlToSqlite (fake PG source -> real sqlite target)
     });
 
     const db = await openDb(targetPath);
-    const ins = await run(db, `INSERT INTO users (username, email, email_hash, password, status, is_admin) VALUES ('new', 'n@x.com', 'h3', 'p', 'approved', 0)`);
+    const ins = await run(
+      db,
+      `INSERT INTO users (username, email, email_hash, password, status, is_admin) VALUES ('new', 'n@x.com', 'h3', 'p', 'approved', 0)`
+    );
     await closeDb(db);
     expect(ins.lastID).toBe(3); // source max id was 2
   });
@@ -338,7 +444,10 @@ describe('runMigration postgresqlToSqlite (fake PG source -> real sqlite target)
   it('wipeTarget deletes existing target rows then copies, inside the same transaction', async () => {
     const targetPath = makeSqlitePath('pg2sq-wipe');
     const db = await createSchemaDb(targetPath);
-    await run(db, `INSERT INTO users (id, username, email, email_hash, password, status, is_admin) VALUES (99, 'old', 'o@x.com', 'ho', 'po', 'approved', 0)`);
+    await run(
+      db,
+      `INSERT INTO users (id, username, email, email_hash, password, status, is_admin) VALUES (99, 'old', 'o@x.com', 'ho', 'po', 'approved', 0)`
+    );
     await run(db, `INSERT INTO settings (key, value) VALUES ('old_key', 'old_value')`);
     await closeDb(db);
 
@@ -379,8 +488,14 @@ describe('runMigration postgresqlToSqlite (fake PG source -> real sqlite target)
     expect(result.status).toBe('cancelled');
     // Schema apply + users insert happened inside the transaction -> all rolled back.
     const db = await openDb(targetPath, 'readonly');
-    const users = await all(db, "SELECT name FROM sqlite_master WHERE type='table' AND name='users'");
-    const settings = await all(db, "SELECT name FROM sqlite_master WHERE type='table' AND name='settings'");
+    const users = await all(
+      db,
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='users'"
+    );
+    const settings = await all(
+      db,
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='settings'"
+    );
     await closeDb(db);
     expect(users).toEqual([]);
     expect(settings).toEqual([]);
@@ -404,7 +519,10 @@ describe('runMigration postgresqlToSqlite (fake PG source -> real sqlite target)
     ).rejects.toThrow('boom on file_nodes');
 
     const db = await openDb(targetPath, 'readonly');
-    const users = await all(db, "SELECT name FROM sqlite_master WHERE type='table' AND name='users'");
+    const users = await all(
+      db,
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='users'"
+    );
     await closeDb(db);
     expect(users).toEqual([]);
   });
@@ -413,7 +531,11 @@ describe('runMigration postgresqlToSqlite (fake PG source -> real sqlite target)
     const sourcePath = makeSqlitePath('src-enc');
     const src = await createSchemaDb(sourcePath);
     const payload = JSON.stringify(encryptSecret('s3cr3t', 'master-key'));
-    await run(src, `INSERT INTO settings (key, value, updated_at) VALUES ('WEBDAV_PASSWORD', ?, ?)`, [payload, ts()]);
+    await run(
+      src,
+      `INSERT INTO settings (key, value, updated_at) VALUES ('WEBDAV_PASSWORD', ?, ?)`,
+      [payload, ts()]
+    );
     await closeDb(src);
 
     delete process.env.encrypt_secret_key;
@@ -425,7 +547,10 @@ describe('runMigration postgresqlToSqlite (fake PG source -> real sqlite target)
     const result = await service.runMigration({
       direction: 'sqliteToPostgresql',
       source: { sqlitePath: sourcePath },
-      target: { backend: 'postgresql', pg: { host: 'h', port: 5432, database: 'd', user: 'u', password: 'p' } },
+      target: {
+        backend: 'postgresql',
+        pg: { host: 'h', port: 5432, database: 'd', user: 'u', password: 'p' },
+      },
     });
 
     expect(result.warning).toBe('encryptSecretKeyMissing');
@@ -435,7 +560,11 @@ describe('runMigration postgresqlToSqlite (fake PG source -> real sqlite target)
     const sourcePath = makeSqlitePath('src-enc2');
     const src = await createSchemaDb(sourcePath);
     const payload = JSON.stringify(encryptSecret('s3cr3t', 'master-key'));
-    await run(src, `INSERT INTO settings (key, value, updated_at) VALUES ('WEBDAV_PASSWORD', ?, ?)`, [payload, ts()]);
+    await run(
+      src,
+      `INSERT INTO settings (key, value, updated_at) VALUES ('WEBDAV_PASSWORD', ?, ?)`,
+      [payload, ts()]
+    );
     await closeDb(src);
 
     process.env.encrypt_secret_key = 'master-key';
@@ -444,7 +573,10 @@ describe('runMigration postgresqlToSqlite (fake PG source -> real sqlite target)
     const result = await service.runMigration({
       direction: 'sqliteToPostgresql',
       source: { sqlitePath: sourcePath },
-      target: { backend: 'postgresql', pg: { host: 'h', port: 5432, database: 'd', user: 'u', password: 'p' } },
+      target: {
+        backend: 'postgresql',
+        pg: { host: 'h', port: 5432, database: 'd', user: 'u', password: 'p' },
+      },
     });
     expect(result.warning).toBeUndefined();
   });
@@ -471,7 +603,10 @@ describe('runMigration sqliteToPostgresql (real sqlite source -> fake PG target)
     const result = await service.runMigration({
       direction: 'sqliteToPostgresql',
       source: { sqlitePath: sourcePath },
-      target: { backend: 'postgresql', pg: { host: 'h', port: 5432, database: 'd', user: 'u', password: 'p' } },
+      target: {
+        backend: 'postgresql',
+        pg: { host: 'h', port: 5432, database: 'd', user: 'u', password: 'p' },
+      },
     });
     expect(result.status).toBe('completed');
 
@@ -501,7 +636,10 @@ describe('runMigration sqliteToPostgresql (real sqlite source -> fake PG target)
     await service.runMigration({
       direction: 'sqliteToPostgresql',
       source: { sqlitePath: sourcePath },
-      target: { backend: 'postgresql', pg: { host: 'h', port: 5432, database: 'd', user: 'u', password: 'p' } },
+      target: {
+        backend: 'postgresql',
+        pg: { host: 'h', port: 5432, database: 'd', user: 'u', password: 'p' },
+      },
     });
 
     const inserts = fake.calls
@@ -534,7 +672,10 @@ describe('runMigration sqliteToPostgresql (real sqlite source -> fake PG target)
     await service.runMigration({
       direction: 'sqliteToPostgresql',
       source: { sqlitePath: sourcePath },
-      target: { backend: 'postgresql', pg: { host: 'h', port: 5432, database: 'd', user: 'u', password: 'p' } },
+      target: {
+        backend: 'postgresql',
+        pg: { host: 'h', port: 5432, database: 'd', user: 'u', password: 'p' },
+      },
     });
 
     const setvals = fake.calls.filter((c) => /setval/.test(c.sql));
@@ -554,7 +695,10 @@ describe('runMigration sqliteToPostgresql (real sqlite source -> fake PG target)
     const result = await service.runMigration({
       direction: 'sqliteToPostgresql',
       source: { sqlitePath: sourcePath },
-      target: { backend: 'postgresql', pg: { host: 'h', port: 5432, database: 'd', user: 'u', password: 'p' } },
+      target: {
+        backend: 'postgresql',
+        pg: { host: 'h', port: 5432, database: 'd', user: 'u', password: 'p' },
+      },
     });
     expect(result.schemaApplied).toBe(true);
     // The DDL file text reached the target client (CREATE TABLE ... users).
@@ -571,7 +715,10 @@ describe('runMigration sqliteToPostgresql (real sqlite source -> fake PG target)
     const result = await service.runMigration({
       direction: 'sqliteToPostgresql',
       source: { sqlitePath: sourcePath },
-      target: { backend: 'postgresql', pg: { host: 'h', port: 5432, database: 'd', user: 'u', password: 'p' } },
+      target: {
+        backend: 'postgresql',
+        pg: { host: 'h', port: 5432, database: 'd', user: 'u', password: 'p' },
+      },
       isCancelled: () => cancelled,
       onProgress: (stage, table) => {
         if (stage === 'copy' && table === 'users') cancelled = true;
@@ -615,108 +762,110 @@ const PG_BASE = {
 
 // The real PG roundtrip runs only under test:ci:pg (WEA_STORAGE_BACKEND=postgresql);
 // under the sqlite test:ci run the tests are skipped.
-const roundtripIt =
-  process.env.WEA_STORAGE_BACKEND === 'postgresql' ? it : it.skip;
+const roundtripIt = process.env.WEA_STORAGE_BACKEND === 'postgresql' ? it : it.skip;
 
 describe('roundtrip sqlite -> postgresql (real PG)', () => {
-    async function withPgDatabase(name, fn) {
-      const { Client } = require('pg');
-      const admin = new Client({ ...PG_BASE, database: 'postgres' });
-      await admin.connect();
-      await admin.query(`DROP DATABASE IF EXISTS ${name}`);
-      await admin.query(`CREATE DATABASE ${name}`);
-      await admin.end();
+  async function withPgDatabase(name, fn) {
+    const { Client } = require('pg');
+    const admin = new Client({ ...PG_BASE, database: 'postgres' });
+    await admin.connect();
+    await admin.query(`DROP DATABASE IF EXISTS ${name}`);
+    await admin.query(`CREATE DATABASE ${name}`);
+    await admin.end();
 
-      const client = new Client({ ...PG_BASE, database: name });
-      await client.connect();
-      try {
-        await fn(client);
-      } finally {
-        await client.end();
-      }
-
-      const dropper = new Client({ ...PG_BASE, database: 'postgres' });
-      await dropper.connect();
-      await dropper.query(`DROP DATABASE IF EXISTS ${name}`);
-      await dropper.end();
+    const client = new Client({ ...PG_BASE, database: name });
+    await client.connect();
+    try {
+      await fn(client);
+    } finally {
+      await client.end();
     }
 
-    roundtripIt('round-trips data with correct serialization and sequence resync', async () => {
-      const { decryptSecret } = require('../../../../utils/configEncryption');
-      const sourcePath = makeSqlitePath('roundtrip-src');
-      const src = await createSchemaDb(sourcePath);
-      await seedSourceData(src);
-      const encPayload = JSON.stringify(encryptSecret('secret-val', 'master-key'));
-      await run(src, `INSERT INTO settings (key, value, updated_at) VALUES ('WEBDAV_PASSWORD', ?, ?)`, [encPayload, ts()]);
-      await closeDb(src);
-
-      const dbName = `wea_migr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-
-      await withPgDatabase(dbName, async (client) => {
-        const service = createMetadataMigrationService();
-        delete process.env.encrypt_secret_key;
-        const result = await service.runMigration({
-          direction: 'sqliteToPostgresql',
-          source: { sqlitePath: sourcePath },
-          target: {
-            backend: 'postgresql',
-            pg: { ...PG_BASE, database: dbName },
-          },
-        });
-        expect(result.status).toBe('completed');
-        expect(result.schemaApplied).toBe(true);
-        expect(result.warning).toBe('encryptSecretKeyMissing'); // no env key in this process
-
-        const users = await client.query('SELECT id, username, is_admin FROM users ORDER BY id');
-        expect(users.rows).toEqual([
-          { id: 1, username: 'admin', is_admin: true },
-          { id: 2, username: 'user', is_admin: false },
-        ]);
-
-        const settings = await client.query('SELECT key, value FROM settings ORDER BY key');
-        const byKey = Object.fromEntries(settings.rows.map((r) => [r.key, r.value]));
-        expect(byKey.smtp_host).toBe('smtp.gmail.com'); // JSON-string unwrapped by node-pg
-        expect(byKey.registration_enabled).toBe('true');
-        // Encrypted row survived verbatim and decrypts with the same master key.
-        expect(decryptSecret(JSON.parse(byKey.WEBDAV_PASSWORD), 'master-key')).toBe('secret-val');
-
-        // Sequence resync: a new insert does not collide with the copied ids.
-        const ins = await client.query(
-          `INSERT INTO users (username, email, email_hash, password, status, is_admin)
-           VALUES ('new', 'n@x.com', 'h3', 'p', 'approved', false) RETURNING id`
-        );
-        expect(Number(ins.rows[0].id)).toBe(3);
-      });
-    });
-
-    roundtripIt('cancel mid-copy rolls back schema + copy on the real target', async () => {
-      const sourcePath = makeSqlitePath('roundtrip-cancel-src');
-      const src = await createSchemaDb(sourcePath);
-      await seedSourceData(src);
-      await closeDb(src);
-
-      const dbName = `wea_migr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-
-      await withPgDatabase(dbName, async (client) => {
-        const service = createMetadataMigrationService();
-        let cancelled = false;
-        const result = await service.runMigration({
-          direction: 'sqliteToPostgresql',
-          source: { sqlitePath: sourcePath },
-          target: { backend: 'postgresql', pg: { ...PG_BASE, database: dbName } },
-          isCancelled: () => cancelled,
-          onProgress: (stage, table) => {
-            if (stage === 'copy' && table === 'users') cancelled = true;
-          },
-        });
-
-        expect(result.status).toBe('cancelled');
-        // Everything ran in one transaction -> schema + copy rolled back.
-        const tables = await client.query(
-          `SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> '_schema_migrations'`
-        );
-        expect(tables.rows).toEqual([]);
-      });
-    });
+    const dropper = new Client({ ...PG_BASE, database: 'postgres' });
+    await dropper.connect();
+    await dropper.query(`DROP DATABASE IF EXISTS ${name}`);
+    await dropper.end();
   }
-);
+
+  roundtripIt('round-trips data with correct serialization and sequence resync', async () => {
+    const { decryptSecret } = require('../../../../utils/configEncryption');
+    const sourcePath = makeSqlitePath('roundtrip-src');
+    const src = await createSchemaDb(sourcePath);
+    await seedSourceData(src);
+    const encPayload = JSON.stringify(encryptSecret('secret-val', 'master-key'));
+    await run(
+      src,
+      `INSERT INTO settings (key, value, updated_at) VALUES ('WEBDAV_PASSWORD', ?, ?)`,
+      [encPayload, ts()]
+    );
+    await closeDb(src);
+
+    const dbName = `wea_migr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+
+    await withPgDatabase(dbName, async (client) => {
+      const service = createMetadataMigrationService();
+      delete process.env.encrypt_secret_key;
+      const result = await service.runMigration({
+        direction: 'sqliteToPostgresql',
+        source: { sqlitePath: sourcePath },
+        target: {
+          backend: 'postgresql',
+          pg: { ...PG_BASE, database: dbName },
+        },
+      });
+      expect(result.status).toBe('completed');
+      expect(result.schemaApplied).toBe(true);
+      expect(result.warning).toBe('encryptSecretKeyMissing'); // no env key in this process
+
+      const users = await client.query('SELECT id, username, is_admin FROM users ORDER BY id');
+      expect(users.rows).toEqual([
+        { id: 1, username: 'admin', is_admin: true },
+        { id: 2, username: 'user', is_admin: false },
+      ]);
+
+      const settings = await client.query('SELECT key, value FROM settings ORDER BY key');
+      const byKey = Object.fromEntries(settings.rows.map((r) => [r.key, r.value]));
+      expect(byKey.smtp_host).toBe('smtp.gmail.com'); // JSON-string unwrapped by node-pg
+      expect(byKey.registration_enabled).toBe('true');
+      // Encrypted row survived verbatim and decrypts with the same master key.
+      expect(decryptSecret(JSON.parse(byKey.WEBDAV_PASSWORD), 'master-key')).toBe('secret-val');
+
+      // Sequence resync: a new insert does not collide with the copied ids.
+      const ins = await client.query(
+        `INSERT INTO users (username, email, email_hash, password, status, is_admin)
+           VALUES ('new', 'n@x.com', 'h3', 'p', 'approved', false) RETURNING id`
+      );
+      expect(Number(ins.rows[0].id)).toBe(3);
+    });
+  });
+
+  roundtripIt('cancel mid-copy rolls back schema + copy on the real target', async () => {
+    const sourcePath = makeSqlitePath('roundtrip-cancel-src');
+    const src = await createSchemaDb(sourcePath);
+    await seedSourceData(src);
+    await closeDb(src);
+
+    const dbName = `wea_migr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+
+    await withPgDatabase(dbName, async (client) => {
+      const service = createMetadataMigrationService();
+      let cancelled = false;
+      const result = await service.runMigration({
+        direction: 'sqliteToPostgresql',
+        source: { sqlitePath: sourcePath },
+        target: { backend: 'postgresql', pg: { ...PG_BASE, database: dbName } },
+        isCancelled: () => cancelled,
+        onProgress: (stage, table) => {
+          if (stage === 'copy' && table === 'users') cancelled = true;
+        },
+      });
+
+      expect(result.status).toBe('cancelled');
+      // Everything ran in one transaction -> schema + copy rolled back.
+      const tables = await client.query(
+        `SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> '_schema_migrations'`
+      );
+      expect(tables.rows).toEqual([]);
+    });
+  });
+});

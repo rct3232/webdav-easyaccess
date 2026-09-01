@@ -10,10 +10,7 @@ import LoginFormView from './Login/LoginFormView';
  * @param {boolean} [props.redirectAfterLogin=true] - If true, navigate to user home on success; if false, call onSuccess only.
  * @param {function(Object): void} [props.onSuccess] - Called on login success with { user }. Used when redirectAfterLogin is false.
  */
-export const LoginForm = ({
-  redirectAfterLogin = true,
-  onSuccess,
-}) => {
+export const LoginForm = ({ redirectAfterLogin = true, onSuccess }) => {
   const {
     username,
     password,

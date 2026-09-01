@@ -49,7 +49,7 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
           sqliteQuery: (sql, params = []) =>
             new Promise((resolve, reject) => {
               db.all(sql, params || [], (err, rows) =>
-                err ? reject(err) : resolve({ rows: rows || [] }),
+                err ? reject(err) : resolve({ rows: rows || [] })
               );
             }),
           sqliteRun: (sql, params = []) =>
@@ -61,20 +61,20 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
             }),
           withSqliteTransaction: async (callback) => {
             await new Promise((resolve, reject) =>
-              db.run('BEGIN', (err) => (err ? reject(err) : resolve())),
+              db.run('BEGIN', (err) => (err ? reject(err) : resolve()))
             );
             try {
               const client = {
                 query: (sql, params) =>
                   new Promise((resolve, reject) => {
                     db.all(sql, params || [], (err, rows) =>
-                      err ? reject(err) : resolve({ rows: rows || [] }),
+                      err ? reject(err) : resolve({ rows: rows || [] })
                     );
                   }),
               };
               const result = await callback(client);
               await new Promise((resolve, reject) =>
-                db.run('COMMIT', (err) => (err ? reject(err) : resolve())),
+                db.run('COMMIT', (err) => (err ? reject(err) : resolve()))
               );
               return result;
             } catch (e) {
@@ -96,22 +96,20 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
 
     function query(sql, params = []) {
       return new Promise((resolve, reject) => {
-        db.all(sql, params, (err, rows) =>
-          err ? reject(err) : resolve(rows || []),
-        );
+        db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows || [])));
       });
     }
 
     it('creates _schema_migrations on a completely empty database', async () => {
       const tables = await query(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
       );
       expect(tables).toEqual([]);
 
       await SchemaManager.applyPendingMigrations('sqlite');
 
       const afterTables = await query(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
       );
       const names = afterTables.map((r) => r.name);
       expect(names).toContain('_schema_migrations');
@@ -120,7 +118,7 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
     it('creates _schema_migrations before executing any DDL', async () => {
       await SchemaManager.applyPendingMigrations('sqlite');
 
-      const cols = await query("PRAGMA table_info(_schema_migrations)");
+      const cols = await query('PRAGMA table_info(_schema_migrations)');
       const colNames = cols.map((c) => c.name);
       expect(colNames).toContain('filename');
       expect(colNames).toContain('applied_at');
@@ -130,7 +128,7 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
     it('_schema_migrations has correct column types', async () => {
       await SchemaManager.applyPendingMigrations('sqlite');
 
-      const cols = await query("PRAGMA table_info(_schema_migrations)");
+      const cols = await query('PRAGMA table_info(_schema_migrations)');
       const filenameCol = cols.find((c) => c.name === 'filename');
       expect(filenameCol.type).toBe('TEXT');
 
@@ -158,7 +156,7 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
           sqliteQuery: (sql, params = []) =>
             new Promise((resolve, reject) => {
               db.all(sql, params || [], (err, rows) =>
-                err ? reject(err) : resolve({ rows: rows || [] }),
+                err ? reject(err) : resolve({ rows: rows || [] })
               );
             }),
           sqliteRun: (sql, params = []) =>
@@ -170,20 +168,20 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
             }),
           withSqliteTransaction: async (callback) => {
             await new Promise((resolve, reject) =>
-              db.run('BEGIN', (err) => (err ? reject(err) : resolve())),
+              db.run('BEGIN', (err) => (err ? reject(err) : resolve()))
             );
             try {
               const client = {
                 query: (sql, params) =>
                   new Promise((resolve, reject) => {
                     db.all(sql, params || [], (err, rows) =>
-                      err ? reject(err) : resolve({ rows: rows || [] }),
+                      err ? reject(err) : resolve({ rows: rows || [] })
                     );
                   }),
               };
               const result = await callback(client);
               await new Promise((resolve, reject) =>
-                db.run('COMMIT', (err) => (err ? reject(err) : resolve())),
+                db.run('COMMIT', (err) => (err ? reject(err) : resolve()))
               );
               return result;
             } catch (e) {
@@ -205,15 +203,13 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
 
     function query(sql, params = []) {
       return new Promise((resolve, reject) => {
-        db.all(sql, params, (err, rows) =>
-          err ? reject(err) : resolve(rows || []),
-        );
+        db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows || [])));
       });
     }
 
     async function getUserTables() {
       const rows = await query(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
       );
       return rows.map((r) => r.name);
     }
@@ -246,16 +242,12 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
 
     it('skips already-applied migrations on second call', async () => {
       await SchemaManager.applyPendingMigrations('sqlite');
-      const firstCount = (
-        await query('SELECT COUNT(*) as cnt FROM _schema_migrations')
-      )[0].cnt;
+      const firstCount = (await query('SELECT COUNT(*) as cnt FROM _schema_migrations'))[0].cnt;
 
       expect(firstCount).toBeGreaterThan(0);
 
       await SchemaManager.applyPendingMigrations('sqlite');
-      const secondCount = (
-        await query('SELECT COUNT(*) as cnt FROM _schema_migrations')
-      )[0].cnt;
+      const secondCount = (await query('SELECT COUNT(*) as cnt FROM _schema_migrations'))[0].cnt;
 
       expect(secondCount).toBe(firstCount);
     });
@@ -263,9 +255,7 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
     it('only applies files not already in _schema_migrations', async () => {
       await SchemaManager.applyPendingMigrations('sqlite');
 
-      const applied = await query(
-        'SELECT filename FROM _schema_migrations ORDER BY filename',
-      );
+      const applied = await query('SELECT filename FROM _schema_migrations ORDER BY filename');
 
       const ddlFiles = fs
         .readdirSync(DDL_DIR)
@@ -295,7 +285,7 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
           sqliteQuery: (sql, params = []) =>
             new Promise((resolve, reject) => {
               db.all(sql, params || [], (err, rows) =>
-                err ? reject(err) : resolve({ rows: rows || [] }),
+                err ? reject(err) : resolve({ rows: rows || [] })
               );
             }),
           sqliteRun: (sql, params = []) =>
@@ -307,20 +297,20 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
             }),
           withSqliteTransaction: async (callback) => {
             await new Promise((resolve, reject) =>
-              db.run('BEGIN', (err) => (err ? reject(err) : resolve())),
+              db.run('BEGIN', (err) => (err ? reject(err) : resolve()))
             );
             try {
               const client = {
                 query: (sql, params) =>
                   new Promise((resolve, reject) => {
                     db.all(sql, params || [], (err, rows) =>
-                      err ? reject(err) : resolve({ rows: rows || [] }),
+                      err ? reject(err) : resolve({ rows: rows || [] })
                     );
                   }),
               };
               const result = await callback(client);
               await new Promise((resolve, reject) =>
-                db.run('COMMIT', (err) => (err ? reject(err) : resolve())),
+                db.run('COMMIT', (err) => (err ? reject(err) : resolve()))
               );
               return result;
             } catch (e) {
@@ -342,29 +332,23 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
 
     function query(sql, params = []) {
       return new Promise((resolve, reject) => {
-        db.all(sql, params, (err, rows) =>
-          err ? reject(err) : resolve(rows || []),
-        );
+        db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows || [])));
       });
     }
 
     async function getUserTables() {
       const rows = await query(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
       );
       return rows.map((r) => r.name);
     }
 
     it('calling applyPendingMigrations twice produces no additional records', async () => {
       await SchemaManager.applyPendingMigrations('sqlite');
-      const afterFirst = await query(
-        'SELECT * FROM _schema_migrations ORDER BY filename',
-      );
+      const afterFirst = await query('SELECT * FROM _schema_migrations ORDER BY filename');
 
       await SchemaManager.applyPendingMigrations('sqlite');
-      const afterSecond = await query(
-        'SELECT * FROM _schema_migrations ORDER BY filename',
-      );
+      const afterSecond = await query('SELECT * FROM _schema_migrations ORDER BY filename');
 
       expect(afterSecond).toEqual(afterFirst);
     });
@@ -372,14 +356,10 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
     it('calling applyPendingMigrations three times produces no additional records', async () => {
       await SchemaManager.applyPendingMigrations('sqlite');
       await SchemaManager.applyPendingMigrations('sqlite');
-      const afterTwo = await query(
-        'SELECT * FROM _schema_migrations ORDER BY filename',
-      );
+      const afterTwo = await query('SELECT * FROM _schema_migrations ORDER BY filename');
 
       await SchemaManager.applyPendingMigrations('sqlite');
-      const afterThree = await query(
-        'SELECT * FROM _schema_migrations ORDER BY filename',
-      );
+      const afterThree = await query('SELECT * FROM _schema_migrations ORDER BY filename');
 
       expect(afterThree).toEqual(afterTwo);
     });
@@ -413,7 +393,7 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
           sqliteQuery: (sql, params = []) =>
             new Promise((resolve, reject) => {
               db.all(sql, params || [], (err, rows) =>
-                err ? reject(err) : resolve({ rows: rows || [] }),
+                err ? reject(err) : resolve({ rows: rows || [] })
               );
             }),
           sqliteRun: (sql, params = []) =>
@@ -425,20 +405,20 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
             }),
           withSqliteTransaction: async (callback) => {
             await new Promise((resolve, reject) =>
-              db.run('BEGIN', (err) => (err ? reject(err) : resolve())),
+              db.run('BEGIN', (err) => (err ? reject(err) : resolve()))
             );
             try {
               const client = {
                 query: (sql, params) =>
                   new Promise((resolve, reject) => {
                     db.all(sql, params || [], (err, rows) =>
-                      err ? reject(err) : resolve({ rows: rows || [] }),
+                      err ? reject(err) : resolve({ rows: rows || [] })
                     );
                   }),
               };
               const result = await callback(client);
               await new Promise((resolve, reject) =>
-                db.run('COMMIT', (err) => (err ? reject(err) : resolve())),
+                db.run('COMMIT', (err) => (err ? reject(err) : resolve()))
               );
               return result;
             } catch (e) {
@@ -460,9 +440,7 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
 
     function query(sql, params = []) {
       return new Promise((resolve, reject) => {
-        db.all(sql, params, (err, rows) =>
-          err ? reject(err) : resolve(rows || []),
-        );
+        db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows || [])));
       });
     }
 
@@ -470,7 +448,7 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
       await SchemaManager.applyPendingMigrations('sqlite');
 
       const records = await query(
-        'SELECT filename, checksum FROM _schema_migrations ORDER BY filename',
+        'SELECT filename, checksum FROM _schema_migrations ORDER BY filename'
       );
 
       expect(records.length).toBeGreaterThan(0);
@@ -478,10 +456,7 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
       for (const record of records) {
         const filePath = path.join(DDL_DIR, record.filename);
         const content = fs.readFileSync(filePath, 'utf8');
-        const expectedChecksum = crypto
-          .createHash('sha256')
-          .update(content)
-          .digest('hex');
+        const expectedChecksum = crypto.createHash('sha256').update(content).digest('hex');
 
         expect(record.checksum).toBe(expectedChecksum);
       }
@@ -490,9 +465,7 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
     it('checksum is non-empty 64-char hex for every record', async () => {
       await SchemaManager.applyPendingMigrations('sqlite');
 
-      const records = await query(
-        'SELECT filename, checksum FROM _schema_migrations',
-      );
+      const records = await query('SELECT filename, checksum FROM _schema_migrations');
 
       for (const r of records) {
         expect(r.checksum).toMatch(/^[a-f0-9]{64}$/);
@@ -502,9 +475,7 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
     it('applied_at is populated for every record', async () => {
       await SchemaManager.applyPendingMigrations('sqlite');
 
-      const records = await query(
-        'SELECT filename, applied_at FROM _schema_migrations',
-      );
+      const records = await query('SELECT filename, applied_at FROM _schema_migrations');
 
       for (const r of records) {
         expect(r.applied_at).toBeDefined();

@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Imperatively creates and destroys Plyr audio/video instances; syncs Plyr controls visibility with headerVisible/controlsVisible; prevents click synthesis on tap-to-toggle (mobile video) |
-| Used by components/pages | FilePreviewDialog |
+| Item                     | Description                                                                                                                                                                               |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Imperatively creates and destroys Plyr audio/video instances; syncs Plyr controls visibility with headerVisible/controlsVisible; prevents click synthesis on tap-to-toggle (mobile video) |
+| Used by components/pages | FilePreviewDialog                                                                                                                                                                         |
 
 ---
 
@@ -17,27 +17,27 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| open | boolean | Y | Dialog open state |
-| previewUrl | string\|null | Y | Stream or blob URL for the media |
-| displayFile | object | N | Currently displayed file |
-| file | object | Y | Original file prop |
-| headerVisible | boolean | Y | From useUIVisibility |
-| controlsVisible | boolean | Y | From useUIVisibility |
-| isMobile | boolean | Y | Mobile breakpoint flag |
-| currentPreviewFileType | string | N | Resolved file type of displayed file |
-| loading | boolean | Y | Preview loading state (triggers effect re-run when video mounts) |
-| isGalleryMode | boolean | Y | True when gallery mode is active |
+| Name                   | Type         | Required | Description                                                      |
+| ---------------------- | ------------ | -------- | ---------------------------------------------------------------- |
+| open                   | boolean      | Y        | Dialog open state                                                |
+| previewUrl             | string\|null | Y        | Stream or blob URL for the media                                 |
+| displayFile            | object       | N        | Currently displayed file                                         |
+| file                   | object       | Y        | Original file prop                                               |
+| headerVisible          | boolean      | Y        | From useUIVisibility                                             |
+| controlsVisible        | boolean      | Y        | From useUIVisibility                                             |
+| isMobile               | boolean      | Y        | Mobile breakpoint flag                                           |
+| currentPreviewFileType | string       | N        | Resolved file type of displayed file                             |
+| loading                | boolean      | Y        | Preview loading state (triggers effect re-run when video mounts) |
+| isGalleryMode          | boolean      | Y        | True when gallery mode is active                                 |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| videoNotPlayable | boolean | True when video cannot be played (format/network error) |
-| audioContainerRef | React.Ref | Ref for the audio Plyr mount container div |
-| videoContainerRef | React.Ref | Ref for the video Plyr mount container div |
-| mediaTouchRef | React.Ref | Ref for the touch-event wrapper (image or video Box) |
+| Key               | Type      | Meaning                                                 |
+| ----------------- | --------- | ------------------------------------------------------- |
+| videoNotPlayable  | boolean   | True when video cannot be played (format/network error) |
+| audioContainerRef | React.Ref | Ref for the audio Plyr mount container div              |
+| videoContainerRef | React.Ref | Ref for the video Plyr mount container div              |
+| mediaTouchRef     | React.Ref | Ref for the touch-event wrapper (image or video Box)    |
 
 ### 2.4 Dependencies
 

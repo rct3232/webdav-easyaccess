@@ -10,7 +10,10 @@ const {
 } = require('../../../../test-utils');
 const { createFileNodeService } = require('../../../../service/fileNodeService');
 const { createFileNodesStore } = require('../../../../store/fileNodesStore');
-const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const {
+  SERVER_ERROR_CODES,
+  SERVER_MESSAGE_CODES,
+} = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const ShareLink = require('../../../../models/ShareLink');
 const { createWebdavMock } = require('@testing/mocks/webdavMock');
@@ -28,7 +31,11 @@ async function createUserWithHomeNode(opts = {}) {
 }
 
 async function createFileForUser({ user, homeNodeId, name }) {
-  await grantTestPermissionByNodeId({ userId: user.id, fileNodeId: homeNodeId, permission: 'write' });
+  await grantTestPermissionByNodeId({
+    userId: user.id,
+    fileNodeId: homeNodeId,
+    permission: 'write',
+  });
   const file = await fileNodeService.createFile(homeNodeId, name);
   return file.id;
 }
@@ -127,7 +134,11 @@ describe('POST /api/share-links', () => {
     const userA = await createUserWithHomeNode({
       username: `share-owner-a-${Date.now()}`,
     });
-    const fileNodeId = await createFileForUser({ user: userA.user, homeNodeId: userA.homeNodeId, name: 'secret.pdf' });
+    const fileNodeId = await createFileForUser({
+      user: userA.user,
+      homeNodeId: userA.homeNodeId,
+      name: 'secret.pdf',
+    });
 
     const userB = await createAuthenticatedTestUser({
       username: `share-intruder-b-${Date.now()}`,
@@ -146,7 +157,11 @@ describe('POST /api/share-links', () => {
     const userA = await createUserWithHomeNode({
       username: `share-owner-ok-${Date.now()}`,
     });
-    const fileNodeId = await createFileForUser({ user: userA.user, homeNodeId: userA.homeNodeId, name: 'mine.pdf' });
+    const fileNodeId = await createFileForUser({
+      user: userA.user,
+      homeNodeId: userA.homeNodeId,
+      name: 'mine.pdf',
+    });
 
     const res = await request(app)
       .post('/api/share-links')
@@ -170,9 +185,7 @@ describe('GET /api/share-links', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ fileNodeId });
 
-    const res = await request(app)
-      .get('/api/share-links')
-      .set('Authorization', `Bearer ${token}`);
+    const res = await request(app).get('/api/share-links').set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);

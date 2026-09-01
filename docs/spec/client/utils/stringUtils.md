@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                                                                            |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Pixel- and character-based middle truncation for display. Handles CJK character width (approx. 2 units) and NFC normalization. Used by FileDetail, FileGridItem, FileListItem, and RecentFilesSection for long filenames with tooltip. |
 
 ---
@@ -17,12 +17,12 @@
 
 ### 2.2 Function Signatures
 
-| Function | (input) => return |
-|----------|-------------------|
-| getVisibleLength | (str) => number. Length in display units (CJK ≈ 2, others 1). Empty/falsy → 0. |
-| middleTruncate | (text, maxVisibleLength, backLength = 6) => string. Middle ellipsis by character-width; keeps end (e.g. extension). |
-| getTextWidth | (text, font?) => number. Pixel width via canvas measureText. Non-browser env or no context → getVisibleLength(text) * 8 fallback. |
-| pixelMiddleTruncate | (text, maxPixelWidth, font, backLength = 6) => string. Middle ellipsis by pixel width; keeps end. |
+| Function            | (input) => return                                                                                                                  |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| getVisibleLength    | (str) => number. Length in display units (CJK ≈ 2, others 1). Empty/falsy → 0.                                                     |
+| middleTruncate      | (text, maxVisibleLength, backLength = 6) => string. Middle ellipsis by character-width; keeps end (e.g. extension).                |
+| getTextWidth        | (text, font?) => number. Pixel width via canvas measureText. Non-browser env or no context → getVisibleLength(text) \* 8 fallback. |
+| pixelMiddleTruncate | (text, maxPixelWidth, font, backLength = 6) => string. Middle ellipsis by pixel width; keeps end.                                  |
 
 ### 2.3 Dependencies
 

@@ -73,7 +73,10 @@ function runStatementsOn(db, statements) {
         db.run(statement, (err) => {
           if (err) {
             // eslint-disable-next-line no-console
-            console.error(`[init-sqlite-schema] Failed to execute: ${statement.slice(0, 80)}...`, err.message);
+            console.error(
+              `[init-sqlite-schema] Failed to execute: ${statement.slice(0, 80)}...`,
+              err.message
+            );
             finish(err);
             return;
           }

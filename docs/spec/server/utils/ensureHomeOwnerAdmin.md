@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                                                                                                                  |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Ensure home owner admin: grant admin on each user's home node, and remove redundant self-grants the user holds on their own subtree (home root + descendants). Co-located with other admin maintenance logic in cleanupService. Used on startup and admin "권한정리" button. |
 
 ---
@@ -19,10 +19,10 @@
 
 ### 2.2 Functions / Exports
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| ensureHomeOwnerAdminForAllUsers | () => Promise\<object\> | Process all non-admin users; upgrade/grant admin under home |
-| cleanupOrphanedData | () => Promise\<object\> | Clean orphaned permission files, user metadata, email index, and permission requests |
+| Function                        | Signature               | Description                                                                          |
+| ------------------------------- | ----------------------- | ------------------------------------------------------------------------------------ |
+| ensureHomeOwnerAdminForAllUsers | () => Promise\<object\> | Process all non-admin users; upgrade/grant admin under home                          |
+| cleanupOrphanedData             | () => Promise\<object\> | Clean orphaned permission files, user metadata, email index, and permission requests |
 
 > **WebDAV mode (MKCOL-on-create):** for every resolved/created home `file_nodes` row the
 > function also calls `blobStorageService.createDirectoryWebdav(homeNode.id)` so the physical

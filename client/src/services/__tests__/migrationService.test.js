@@ -100,12 +100,17 @@ describe('migrationService', () => {
 
   describe('cancelBlobMigration', () => {
     it('POSTs /admin/migration/jobs/:jobId/cancel and returns the response', async () => {
-      post.mockResolvedValueOnce({ data: { messageCode: 'serverMessages.admin.migrationCancelled', jobId: 'mig-1' } });
+      post.mockResolvedValueOnce({
+        data: { messageCode: 'serverMessages.admin.migrationCancelled', jobId: 'mig-1' },
+      });
 
       const result = await cancelBlobMigration('mig-1');
 
       expect(post).toHaveBeenCalledWith('/admin/migration/jobs/mig-1/cancel');
-      expect(result).toEqual({ messageCode: 'serverMessages.admin.migrationCancelled', jobId: 'mig-1' });
+      expect(result).toEqual({
+        messageCode: 'serverMessages.admin.migrationCancelled',
+        jobId: 'mig-1',
+      });
     });
   });
 });

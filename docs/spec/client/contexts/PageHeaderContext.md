@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Supplies title and action slot for MyPage content panel header. Provider is MyPageContentPanel; consumers are content components (AccountContent, SharingContent, PreferencesContent, SystemSettingsContent, UserManagementContent) that call setTitle/setActions to render in the shared header row. |
-| Used in | MyPageContentPanel (provider); AccountContent, SharingContent, PreferencesContent, SystemSettingsContent, UserManagementContent (consumers) |
-| Related | MyPageContentPanel, MyPage |
+| Item    | Description                                                                                                                                                                                                                                                                                           |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role    | Supplies title and action slot for MyPage content panel header. Provider is MyPageContentPanel; consumers are content components (AccountContent, SharingContent, PreferencesContent, SystemSettingsContent, UserManagementContent) that call setTitle/setActions to render in the shared header row. |
+| Used in | MyPageContentPanel (provider); AccountContent, SharingContent, PreferencesContent, SystemSettingsContent, UserManagementContent (consumers)                                                                                                                                                           |
+| Related | MyPageContentPanel, MyPage                                                                                                                                                                                                                                                                            |
 
 ---
 
@@ -19,12 +19,12 @@
 
 ### 2.2 Provided Value
 
-| Key | Type | Description |
-|-----|------|-------------|
-| title | string | Current header title (set by child via setTitle). |
-| actions | ReactNode \| null | Optional action buttons or node for the header row (set by child via setActions). |
-| setTitle | (val: string \| null \| undefined) => void | Sets the header title; null/undefined treated as ''. |
-| setActions | (a: ReactNode \| null) => void | Sets the header actions; null clears. |
+| Key        | Type                                       | Description                                                                       |
+| ---------- | ------------------------------------------ | --------------------------------------------------------------------------------- |
+| title      | string                                     | Current header title (set by child via setTitle).                                 |
+| actions    | ReactNode \| null                          | Optional action buttons or node for the header row (set by child via setActions). |
+| setTitle   | (val: string \| null \| undefined) => void | Sets the header title; null/undefined treated as ''.                              |
+| setActions | (a: ReactNode \| null) => void             | Sets the header actions; null clears.                                             |
 
 ### 2.3 Hook
 

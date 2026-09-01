@@ -51,12 +51,32 @@ const CONFIG_DISPLAY_META = {
   },
   S3_BUCKET: { labelKey: 'admin.config.key.S3_BUCKET', group: 'fileStorage', inputType: 'text' },
   AWS_REGION: { labelKey: 'admin.config.key.AWS_REGION', group: 'fileStorage', inputType: 'text' },
-  AWS_ACCESS_KEY_ID: { labelKey: 'admin.config.key.AWS_ACCESS_KEY_ID', group: 'fileStorage', inputType: 'text' },
-  AWS_SECRET_ACCESS_KEY: { labelKey: 'admin.config.key.AWS_SECRET_ACCESS_KEY', group: 'fileStorage', inputType: 'text' },
-  S3_ENDPOINT: { labelKey: 'admin.config.key.S3_ENDPOINT', group: 'fileStorage', inputType: 'text' },
+  AWS_ACCESS_KEY_ID: {
+    labelKey: 'admin.config.key.AWS_ACCESS_KEY_ID',
+    group: 'fileStorage',
+    inputType: 'text',
+  },
+  AWS_SECRET_ACCESS_KEY: {
+    labelKey: 'admin.config.key.AWS_SECRET_ACCESS_KEY',
+    group: 'fileStorage',
+    inputType: 'text',
+  },
+  S3_ENDPOINT: {
+    labelKey: 'admin.config.key.S3_ENDPOINT',
+    group: 'fileStorage',
+    inputType: 'text',
+  },
   WEBDAV_URL: { labelKey: 'admin.config.key.WEBDAV_URL', group: 'fileStorage', inputType: 'text' },
-  WEBDAV_USERNAME: { labelKey: 'admin.config.key.WEBDAV_USERNAME', group: 'fileStorage', inputType: 'text' },
-  WEBDAV_PASSWORD: { labelKey: 'admin.config.key.WEBDAV_PASSWORD', group: 'fileStorage', inputType: 'text' },
+  WEBDAV_USERNAME: {
+    labelKey: 'admin.config.key.WEBDAV_USERNAME',
+    group: 'fileStorage',
+    inputType: 'text',
+  },
+  WEBDAV_PASSWORD: {
+    labelKey: 'admin.config.key.WEBDAV_PASSWORD',
+    group: 'fileStorage',
+    inputType: 'text',
+  },
   WEBDAV_AUTH_TYPE: {
     labelKey: 'admin.config.key.WEBDAV_AUTH_TYPE',
     group: 'fileStorage',
@@ -66,46 +86,161 @@ const CONFIG_DISPLAY_META = {
       { value: 'digest', labelKey: 'migration.authTypeDigest' },
     ],
   },
-  WEBDAV_UPSTREAM_URL: { labelKey: 'admin.config.key.WEBDAV_UPSTREAM_URL', group: 'fileStorage', inputType: 'text' },
-  MAX_THUMBNAIL_SIZE: { labelKey: 'admin.config.key.MAX_THUMBNAIL_SIZE', group: 'fileStorage', inputType: 'number' },
-  THUMBNAIL_CONCURRENCY_LIMIT: { labelKey: 'admin.config.key.THUMBNAIL_CONCURRENCY_LIMIT', group: 'fileStorage', inputType: 'number' },
-  THUMBNAIL_TOKEN_SECRET: { labelKey: 'admin.config.key.THUMBNAIL_TOKEN_SECRET', group: 'fileStorage', inputType: 'text' },
-  THUMBNAIL_TOKEN_EXPIRY: { labelKey: 'admin.config.key.THUMBNAIL_TOKEN_EXPIRY', group: 'fileStorage', inputType: 'text', helpKey: 'setup.expiresInHelp' },
-  FFMPEG_PATH: { labelKey: 'admin.config.key.FFMPEG_PATH', group: 'fileStorage', inputType: 'text' },
-  FFMPEG_INIT_TIMEOUT_MS: { labelKey: 'admin.config.key.FFMPEG_INIT_TIMEOUT_MS', group: 'fileStorage', inputType: 'number' },
-  WEA_PREVIEW_TICKET_TTL_MS: { labelKey: 'admin.config.key.WEA_PREVIEW_TICKET_TTL_MS', group: 'fileStorage', inputType: 'number' },
+  WEBDAV_UPSTREAM_URL: {
+    labelKey: 'admin.config.key.WEBDAV_UPSTREAM_URL',
+    group: 'fileStorage',
+    inputType: 'text',
+  },
+  MAX_THUMBNAIL_SIZE: {
+    labelKey: 'admin.config.key.MAX_THUMBNAIL_SIZE',
+    group: 'fileStorage',
+    inputType: 'number',
+  },
+  THUMBNAIL_CONCURRENCY_LIMIT: {
+    labelKey: 'admin.config.key.THUMBNAIL_CONCURRENCY_LIMIT',
+    group: 'fileStorage',
+    inputType: 'number',
+  },
+  THUMBNAIL_TOKEN_SECRET: {
+    labelKey: 'admin.config.key.THUMBNAIL_TOKEN_SECRET',
+    group: 'fileStorage',
+    inputType: 'text',
+  },
+  THUMBNAIL_TOKEN_EXPIRY: {
+    labelKey: 'admin.config.key.THUMBNAIL_TOKEN_EXPIRY',
+    group: 'fileStorage',
+    inputType: 'text',
+    helpKey: 'setup.expiresInHelp',
+  },
+  FFMPEG_PATH: {
+    labelKey: 'admin.config.key.FFMPEG_PATH',
+    group: 'fileStorage',
+    inputType: 'text',
+  },
+  FFMPEG_INIT_TIMEOUT_MS: {
+    labelKey: 'admin.config.key.FFMPEG_INIT_TIMEOUT_MS',
+    group: 'fileStorage',
+    inputType: 'number',
+  },
+  WEA_PREVIEW_TICKET_TTL_MS: {
+    labelKey: 'admin.config.key.WEA_PREVIEW_TICKET_TTL_MS',
+    group: 'fileStorage',
+    inputType: 'number',
+  },
 
   // ── Server & security ───────────────────────────────────────────────────
   PORT: { labelKey: 'admin.config.key.PORT', group: 'serverSecurity', inputType: 'number' },
-  CORS_ORIGINS: { labelKey: 'admin.config.key.CORS_ORIGINS', group: 'serverSecurity', inputType: 'text', helpKey: 'admin.config.help.CORS_ORIGINS' },
-  CORS_ORIGIN: { labelKey: 'admin.config.key.CORS_ORIGIN', group: 'serverSecurity', inputType: 'text' },
-  LOGIN_RATE_LIMIT_MAX: { labelKey: 'admin.config.key.LOGIN_RATE_LIMIT_MAX', group: 'serverSecurity', inputType: 'number' },
-  LOGIN_RATE_LIMIT_WINDOW_MS: { labelKey: 'admin.config.key.LOGIN_RATE_LIMIT_WINDOW_MS', group: 'serverSecurity', inputType: 'number' },
-  JWT_EXPIRES_IN: { labelKey: 'admin.config.key.JWT_EXPIRES_IN', group: 'serverSecurity', inputType: 'text', helpKey: 'setup.expiresInHelp' },
-  ADMIN_DEFAULT_PASSWORD: { labelKey: 'admin.config.key.ADMIN_DEFAULT_PASSWORD', group: 'serverSecurity', inputType: 'text' },
-  WEA_DISABLE_DEFAULT_ADMIN: { labelKey: 'admin.config.key.WEA_DISABLE_DEFAULT_ADMIN', group: 'serverSecurity', inputType: 'switch' },
+  CORS_ORIGINS: {
+    labelKey: 'admin.config.key.CORS_ORIGINS',
+    group: 'serverSecurity',
+    inputType: 'text',
+    helpKey: 'admin.config.help.CORS_ORIGINS',
+  },
+  CORS_ORIGIN: {
+    labelKey: 'admin.config.key.CORS_ORIGIN',
+    group: 'serverSecurity',
+    inputType: 'text',
+  },
+  LOGIN_RATE_LIMIT_MAX: {
+    labelKey: 'admin.config.key.LOGIN_RATE_LIMIT_MAX',
+    group: 'serverSecurity',
+    inputType: 'number',
+  },
+  LOGIN_RATE_LIMIT_WINDOW_MS: {
+    labelKey: 'admin.config.key.LOGIN_RATE_LIMIT_WINDOW_MS',
+    group: 'serverSecurity',
+    inputType: 'number',
+  },
+  JWT_EXPIRES_IN: {
+    labelKey: 'admin.config.key.JWT_EXPIRES_IN',
+    group: 'serverSecurity',
+    inputType: 'text',
+    helpKey: 'setup.expiresInHelp',
+  },
+  ADMIN_DEFAULT_PASSWORD: {
+    labelKey: 'admin.config.key.ADMIN_DEFAULT_PASSWORD',
+    group: 'serverSecurity',
+    inputType: 'text',
+  },
+  WEA_DISABLE_DEFAULT_ADMIN: {
+    labelKey: 'admin.config.key.WEA_DISABLE_DEFAULT_ADMIN',
+    group: 'serverSecurity',
+    inputType: 'switch',
+  },
   HOSTNAME: { labelKey: 'admin.config.key.HOSTNAME', group: 'serverSecurity', inputType: 'text' },
 
   // ── Email ───────────────────────────────────────────────────────────────
   EMAIL_HOST: { labelKey: 'admin.config.key.EMAIL_HOST', group: 'email', inputType: 'text' },
   EMAIL_PORT: { labelKey: 'admin.config.key.EMAIL_PORT', group: 'email', inputType: 'number' },
   EMAIL_USER: { labelKey: 'admin.config.key.EMAIL_USER', group: 'email', inputType: 'text' },
-  EMAIL_PASSWORD: { labelKey: 'admin.config.key.EMAIL_PASSWORD', group: 'email', inputType: 'text' },
+  EMAIL_PASSWORD: {
+    labelKey: 'admin.config.key.EMAIL_PASSWORD',
+    group: 'email',
+    inputType: 'text',
+  },
   EMAIL_SECURE: { labelKey: 'admin.config.key.EMAIL_SECURE', group: 'email', inputType: 'switch' },
-  EMAIL_FROM_NAME: { labelKey: 'admin.config.key.EMAIL_FROM_NAME', group: 'email', inputType: 'text' },
+  EMAIL_FROM_NAME: {
+    labelKey: 'admin.config.key.EMAIL_FROM_NAME',
+    group: 'email',
+    inputType: 'text',
+  },
 
   // ── Runtime ─────────────────────────────────────────────────────────────
-  GC_INTERVAL_MS: { labelKey: 'admin.config.key.GC_INTERVAL_MS', group: 'runtime', inputType: 'number' },
-  GC_ORPHAN_TTL_DAYS: { labelKey: 'admin.config.key.GC_ORPHAN_TTL_DAYS', group: 'runtime', inputType: 'number' },
-  REFRESH_TOKEN_EXPIRES_IN_DAYS: { labelKey: 'admin.config.key.REFRESH_TOKEN_EXPIRES_IN_DAYS', group: 'runtime', inputType: 'number' },
-  USER_CACHE_TTL_MS: { labelKey: 'admin.config.key.USER_CACHE_TTL_MS', group: 'runtime', inputType: 'number' },
-  PERMISSION_CACHE_TTL_MS: { labelKey: 'admin.config.key.PERMISSION_CACHE_TTL_MS', group: 'runtime', inputType: 'number' },
-  PERMISSIONS_EXISTENCE_INDEX_TTL_MS: { labelKey: 'admin.config.key.PERMISSIONS_EXISTENCE_INDEX_TTL_MS', group: 'runtime', inputType: 'number' },
-  PERMISSIONS_EXISTENCE_RECONCILE_BATCH_SIZE: { labelKey: 'admin.config.key.PERMISSIONS_EXISTENCE_RECONCILE_BATCH_SIZE', group: 'runtime', inputType: 'number' },
-  PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY: { labelKey: 'admin.config.key.PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY', group: 'runtime', inputType: 'number' },
-  WEA_SKIP_MIGRATION_WORKER: { labelKey: 'admin.config.key.WEA_SKIP_MIGRATION_WORKER', group: 'runtime', inputType: 'switch' },
-  WEA_SKIP_BULK_WORKER: { labelKey: 'admin.config.key.WEA_SKIP_BULK_WORKER', group: 'runtime', inputType: 'switch' },
-  WEA_SKIP_GC_SCHEDULER: { labelKey: 'admin.config.key.WEA_SKIP_GC_SCHEDULER', group: 'runtime', inputType: 'switch' },
+  GC_INTERVAL_MS: {
+    labelKey: 'admin.config.key.GC_INTERVAL_MS',
+    group: 'runtime',
+    inputType: 'number',
+  },
+  GC_ORPHAN_TTL_DAYS: {
+    labelKey: 'admin.config.key.GC_ORPHAN_TTL_DAYS',
+    group: 'runtime',
+    inputType: 'number',
+  },
+  REFRESH_TOKEN_EXPIRES_IN_DAYS: {
+    labelKey: 'admin.config.key.REFRESH_TOKEN_EXPIRES_IN_DAYS',
+    group: 'runtime',
+    inputType: 'number',
+  },
+  USER_CACHE_TTL_MS: {
+    labelKey: 'admin.config.key.USER_CACHE_TTL_MS',
+    group: 'runtime',
+    inputType: 'number',
+  },
+  PERMISSION_CACHE_TTL_MS: {
+    labelKey: 'admin.config.key.PERMISSION_CACHE_TTL_MS',
+    group: 'runtime',
+    inputType: 'number',
+  },
+  PERMISSIONS_EXISTENCE_INDEX_TTL_MS: {
+    labelKey: 'admin.config.key.PERMISSIONS_EXISTENCE_INDEX_TTL_MS',
+    group: 'runtime',
+    inputType: 'number',
+  },
+  PERMISSIONS_EXISTENCE_RECONCILE_BATCH_SIZE: {
+    labelKey: 'admin.config.key.PERMISSIONS_EXISTENCE_RECONCILE_BATCH_SIZE',
+    group: 'runtime',
+    inputType: 'number',
+  },
+  PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY: {
+    labelKey: 'admin.config.key.PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY',
+    group: 'runtime',
+    inputType: 'number',
+  },
+  WEA_SKIP_MIGRATION_WORKER: {
+    labelKey: 'admin.config.key.WEA_SKIP_MIGRATION_WORKER',
+    group: 'runtime',
+    inputType: 'switch',
+  },
+  WEA_SKIP_BULK_WORKER: {
+    labelKey: 'admin.config.key.WEA_SKIP_BULK_WORKER',
+    group: 'runtime',
+    inputType: 'switch',
+  },
+  WEA_SKIP_GC_SCHEDULER: {
+    labelKey: 'admin.config.key.WEA_SKIP_GC_SCHEDULER',
+    group: 'runtime',
+    inputType: 'switch',
+  },
 };
 
 const toStr = (value) => {
@@ -262,7 +397,10 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
       await loadConfig();
     } catch (error) {
       if (onSnackbar) {
-        onSnackbar({ type: 'error', text: getServerErrorDisplay(error?.response?.data, t) || t('admin.config.saveFail') });
+        onSnackbar({
+          type: 'error',
+          text: getServerErrorDisplay(error?.response?.data, t) || t('admin.config.saveFail'),
+        });
       }
     } finally {
       setSaving(false);
@@ -271,7 +409,8 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
 
   const renderTierBadge = (key, entry) => {
     if (entry.source === 'env' || entry.tier === 'T0') return null;
-    const label = entry.tier === 'T1' ? t('admin.config.tierRestart') : t('admin.config.tierImmediate');
+    const label =
+      entry.tier === 'T1' ? t('admin.config.tierRestart') : t('admin.config.tierImmediate');
     return (
       <Typography
         variant="caption"
@@ -334,7 +473,8 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
     const meta = CONFIG_DISPLAY_META[key];
     const entry = config[key];
     const readOnly = entry.source === 'env' || entry.tier === 'T0';
-    const helper = entry.source === 'env' ? t('admin.config.setInEnv') : meta.helpKey ? t(meta.helpKey) : '';
+    const helper =
+      entry.source === 'env' ? t('admin.config.setInEnv') : meta.helpKey ? t(meta.helpKey) : '';
 
     return (
       <Box sx={{ mb: 2 }}>
@@ -364,7 +504,8 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
     const meta = CONFIG_DISPLAY_META[key];
     const entry = config[key];
     const readOnly = entry.source === 'env' || entry.tier === 'T0';
-    const helper = entry.source === 'env' ? t('admin.config.setInEnv') : meta.helpKey ? t(meta.helpKey) : '';
+    const helper =
+      entry.source === 'env' ? t('admin.config.setInEnv') : meta.helpKey ? t(meta.helpKey) : '';
 
     return (
       <Box>
@@ -395,7 +536,8 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
     const meta = CONFIG_DISPLAY_META[key];
     const entry = config[key];
     const readOnly = entry.source === 'env' || entry.tier === 'T0';
-    const helper = entry.source === 'env' ? t('admin.config.setInEnv') : meta.helpKey ? t(meta.helpKey) : '';
+    const helper =
+      entry.source === 'env' ? t('admin.config.setInEnv') : meta.helpKey ? t(meta.helpKey) : '';
 
     return (
       <Box>
@@ -429,7 +571,14 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
 
   if (loadError && !config) {
     return (
-      <Alert severity="error" action={<Button color="inherit" size="small" onClick={handleRetry}>{t('admin.config.retry')}</Button>}>
+      <Alert
+        severity="error"
+        action={
+          <Button color="inherit" size="small" onClick={handleRetry}>
+            {t('admin.config.retry')}
+          </Button>
+        }
+      >
         {loadError}
       </Alert>
     );
@@ -466,18 +615,31 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
                   size="small"
                   onClick={handleTestConnection}
                   disabled={connectionTest.status === 'testing' || saving}
-                  startIcon={connectionTest.status === 'testing' ? <CircularProgress size={14} color="inherit" /> : null}
+                  startIcon={
+                    connectionTest.status === 'testing' ? (
+                      <CircularProgress size={14} color="inherit" />
+                    ) : null
+                  }
                   data-testid="config-test-connection"
                 >
                   {t('admin.config.connectionTest')}
                 </Button>
                 {connectionTest.status === 'testing' && (
-                  <Typography variant="body2" sx={{ mt: 0.5 }} data-testid="config-connection-test-status">
+                  <Typography
+                    variant="body2"
+                    sx={{ mt: 0.5 }}
+                    data-testid="config-connection-test-status"
+                  >
                     {t('setup.testing')}
                   </Typography>
                 )}
                 {connectionTest.status === 'ok' && (
-                  <Typography variant="body2" color="success.main" sx={{ mt: 0.5 }} data-testid="config-connection-test-status">
+                  <Typography
+                    variant="body2"
+                    color="success.main"
+                    sx={{ mt: 0.5 }}
+                    data-testid="config-connection-test-status"
+                  >
                     {connectionTest.message}
                   </Typography>
                 )}

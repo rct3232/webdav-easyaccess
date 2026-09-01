@@ -95,7 +95,12 @@ describe('FileManagerControls', () => {
 
   it('disables selection actions when selectionActionsDisabled', () => {
     renderWithProviders(
-      <FileManagerControls {...defaultProps} selectionMode selectionActionsDisabled {...bulkActionProps} />
+      <FileManagerControls
+        {...defaultProps}
+        selectionMode
+        selectionActionsDisabled
+        {...bulkActionProps}
+      />
     );
     const selectAllBtns = screen.getAllByText(/select all/i);
     expect(selectAllBtns[0].closest('button')).toBeDisabled();
@@ -103,14 +108,24 @@ describe('FileManagerControls', () => {
 
   it('hides sort button when selectionMode', () => {
     renderWithProviders(
-      <FileManagerControls {...defaultProps} selectionMode selectedFiles={new Set(['/a.txt'])} {...bulkActionProps} />
+      <FileManagerControls
+        {...defaultProps}
+        selectionMode
+        selectedFiles={new Set(['/a.txt'])}
+        {...bulkActionProps}
+      />
     );
     expect(screen.queryByTitle(/sort/i)).not.toBeInTheDocument();
   });
 
   it('hides view mode buttons when selectionMode', () => {
     renderWithProviders(
-      <FileManagerControls {...defaultProps} selectionMode selectedFiles={new Set(['/a.txt'])} {...bulkActionProps} />
+      <FileManagerControls
+        {...defaultProps}
+        selectionMode
+        selectedFiles={new Set(['/a.txt'])}
+        {...bulkActionProps}
+      />
     );
     expect(screen.queryByTitle(/list view/i)).not.toBeInTheDocument();
     expect(screen.queryByTitle(/grid view/i)).not.toBeInTheDocument();

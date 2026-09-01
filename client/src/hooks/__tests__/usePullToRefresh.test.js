@@ -21,10 +21,7 @@ function TestComponent({ onRefresh, options = {} }) {
       <span data-testid="can-pull">{String(result.canPull)}</span>
       <span data-testid="is-pulling">{String(result.isPulling)}</span>
       <span data-testid="is-refreshing">{String(result.isRefreshing)}</span>
-      <button
-        data-testid="reset-pull"
-        onClick={result.resetPull}
-      >
+      <button data-testid="reset-pull" onClick={result.resetPull}>
         Reset
       </button>
     </div>

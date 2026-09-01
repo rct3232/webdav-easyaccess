@@ -100,7 +100,9 @@ describe('useAuthSession', () => {
 
   it('login failure returns a failure result without crashing', async () => {
     authService.login.mockRejectedValue({
-      response: { data: { errorCode: 'serverErrors.auth.invalidCredentials', message: 'Bad credentials' } },
+      response: {
+        data: { errorCode: 'serverErrors.auth.invalidCredentials', message: 'Bad credentials' },
+      },
     });
 
     const { result } = renderHook(() => useAuthSession());
@@ -147,7 +149,9 @@ describe('useAuthSession', () => {
     });
 
     act(() => {
-      window.dispatchEvent(new CustomEvent('token-refreshed', { detail: { token: 'refreshed-token' } }));
+      window.dispatchEvent(
+        new CustomEvent('token-refreshed', { detail: { token: 'refreshed-token' } })
+      );
     });
 
     expect(result.current.user).toEqual({
@@ -165,12 +169,14 @@ describe('useAuthSession', () => {
       user: { id: '1', username: 'user', is_admin: false },
     });
     const originalSetItem = Storage.prototype.setItem;
-    const setItemSpy = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function (key, value) {
-      if (this === sessionStorage) {
-        throw new Error('QuotaExceeded');
-      }
-      return originalSetItem.call(this, key, value);
-    });
+    const setItemSpy = jest
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(function (key, value) {
+        if (this === sessionStorage) {
+          throw new Error('QuotaExceeded');
+        }
+        return originalSetItem.call(this, key, value);
+      });
 
     const { result } = renderHook(() => useAuthSession());
     let loginResult;

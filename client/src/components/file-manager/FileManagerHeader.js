@@ -1,27 +1,19 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  AppBar,
-  Toolbar,
-  Box,
-  IconButton,
-} from '@mui/material';
+import { AppBar, Toolbar, Box, IconButton } from '@mui/material';
 import { Person as PersonIcon } from '@mui/icons-material';
 
-const FileManagerHeader = ({
-  isMobile,
-  navigate,
-}) => {
+const FileManagerHeader = ({ isMobile, navigate }) => {
   const { t } = useTranslation();
   return (
-    <AppBar 
-      position="sticky" 
-      sx={{ 
-        top: 0, 
+    <AppBar
+      position="sticky"
+      sx={{
+        top: 0,
         zIndex: (theme) => theme.zIndex.appBar,
         backgroundColor: 'transparent',
         backgroundImage: 'none',
-      }} 
+      }}
       elevation={0}
     >
       <Toolbar>

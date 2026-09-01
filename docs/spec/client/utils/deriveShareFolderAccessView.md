@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                              |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Role | Pure helper that derives view-ready sharing state for `ShareFolderTree` and `UserSelectionMenu` from raw folder permission maps, review-request data, and user metadata. |
 
 ---
@@ -17,26 +17,26 @@
 
 ### 2.2 Function Signatures
 
-| Function | (input) => return |
-|----------|-------------------|
+| Function                    | (input) => return              |
+| --------------------------- | ------------------------------ |
 | deriveShareFolderAccessView | `(params) => derivedViewState` |
 
 ### 2.3 Inputs
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| folderPath | string | Y | Path whose menu/button state is being derived |
-| folderPermissions | `Map<string, Map<string, string>>` | Y | Raw folder permission map |
-| isAdminMode | boolean | Y | Admin mode flag |
-| userId | string | N | Admin target user id |
-| username | string | N | Admin target username |
-| user | object | N | Current user |
-| userInfoMap | `Map<string, object>` | Y | Supplemental user metadata |
-| users | array | Y | Approved-user list |
-| getUserName | function | Y | Display-name resolver |
-| hasPermissionChanged | function | N | Path changed-state predicate |
-| isReviewMode | boolean | N | Whether the menu is showing permission-review affordances |
-| permissionRequest | object | N | Pending request used to derive requester-only add behavior |
+| Name                 | Type                               | Required | Description                                                |
+| -------------------- | ---------------------------------- | -------- | ---------------------------------------------------------- |
+| folderPath           | string                             | Y        | Path whose menu/button state is being derived              |
+| folderPermissions    | `Map<string, Map<string, string>>` | Y        | Raw folder permission map                                  |
+| isAdminMode          | boolean                            | Y        | Admin mode flag                                            |
+| userId               | string                             | N        | Admin target user id                                       |
+| username             | string                             | N        | Admin target username                                      |
+| user                 | object                             | N        | Current user                                               |
+| userInfoMap          | `Map<string, object>`              | Y        | Supplemental user metadata                                 |
+| users                | array                              | Y        | Approved-user list                                         |
+| getUserName          | function                           | Y        | Display-name resolver                                      |
+| hasPermissionChanged | function                           | N        | Path changed-state predicate                               |
+| isReviewMode         | boolean                            | N        | Whether the menu is showing permission-review affordances  |
+| permissionRequest    | object                             | N        | Pending request used to derive requester-only add behavior |
 
 ### 2.4 Output
 

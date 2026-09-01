@@ -53,30 +53,25 @@ describe('createUploadService', () => {
       expect(result.mimeType).toBe(mimeType);
 
       // Node exists and is active
-      const node = await dbQuery(
-        'SELECT * FROM file_nodes WHERE id = ?',
-        [result.nodeId]
-      );
+      const node = await dbQuery('SELECT * FROM file_nodes WHERE id = ?', [result.nodeId]);
       expect(node.rows.length).toBe(1);
       expect(node.rows[0].name).toBe('upload-test.txt');
       expect(node.rows[0].type).toBe('file');
       expect(node.rows[0].sync_status).toBe('active');
 
       // object_map is active
-      const objMap = await dbQuery(
-        'SELECT * FROM object_map WHERE file_node_id = ?',
-        [result.nodeId]
-      );
+      const objMap = await dbQuery('SELECT * FROM object_map WHERE file_node_id = ?', [
+        result.nodeId,
+      ]);
       expect(objMap.rows.length).toBeGreaterThan(0);
-      const activeRow = objMap.rows.find(r => r.status === 'active');
+      const activeRow = objMap.rows.find((r) => r.status === 'active');
       expect(activeRow).toBeDefined();
       expect(activeRow.s3_key).toBe(result.s3Key);
 
       // filecache populated
-      const cache = await dbQuery(
-        'SELECT * FROM filecache WHERE file_node_id = ?',
-        [result.nodeId]
-      );
+      const cache = await dbQuery('SELECT * FROM filecache WHERE file_node_id = ?', [
+        result.nodeId,
+      ]);
       expect(cache.rows.length).toBe(1);
       expect(cache.rows[0].size).toBe(content.length);
       expect(cache.rows[0].mime_type).toBe(mimeType);
@@ -97,9 +92,9 @@ describe('createUploadService', () => {
 
   describe('uploadFile TX1 failure', () => {
     it('rolls back so nothing is persisted in DB when createFile throws', async () => {
-      jest.spyOn(fileNodeService, 'createFile').mockRejectedValueOnce(
-        new Error('TX1 simulated failure')
-      );
+      jest
+        .spyOn(fileNodeService, 'createFile')
+        .mockRejectedValueOnce(new Error('TX1 simulated failure'));
 
       const content = Buffer.from('should-not-persist');
 
@@ -108,10 +103,7 @@ describe('createUploadService', () => {
       ).rejects.toThrow();
 
       // No node created with this name
-      const nodes = await dbQuery(
-        "SELECT * FROM file_nodes WHERE name = 'fail-tx1.txt'",
-        []
-      );
+      const nodes = await dbQuery("SELECT * FROM file_nodes WHERE name = 'fail-tx1.txt'", []);
       expect(nodes.rows.length).toBe(0);
 
       // No blob uploaded to S3
@@ -134,24 +126,18 @@ describe('createUploadService', () => {
       ).rejects.toThrow();
 
       // Node was created (TX1 committed before S3 attempt)
-      const node = await dbQuery(
-        "SELECT * FROM file_nodes WHERE name = 'fail-s3.txt'",
-        []
-      );
+      const node = await dbQuery("SELECT * FROM file_nodes WHERE name = 'fail-s3.txt'", []);
       expect(node.rows.length).toBe(1);
       const nodeId = node.rows[0].id;
 
       // object_map is pending (not active, because TX2 never ran)
-      const objMap = await dbQuery(
-        'SELECT * FROM object_map WHERE file_node_id = ?',
-        [nodeId]
-      );
+      const objMap = await dbQuery('SELECT * FROM object_map WHERE file_node_id = ?', [nodeId]);
       expect(objMap.rows.length).toBeGreaterThan(0);
-      const pendingRow = objMap.rows.find(r => r.status === 'pending');
+      const pendingRow = objMap.rows.find((r) => r.status === 'pending');
       expect(pendingRow).toBeDefined();
 
       // No active row
-      const activeRows = objMap.rows.filter(r => r.status === 'active');
+      const activeRows = objMap.rows.filter((r) => r.status === 'active');
       expect(activeRows.length).toBe(0);
 
       // sync_status is still pending_upload (TX2 never ran to set active)
@@ -170,29 +156,23 @@ describe('createUploadService', () => {
       const content = Buffer.from('tx2-fail-content');
 
       // Let TX1 and S3 PUT succeed, then mock completeUpload to throw during TX2
-      jest.spyOn(blobStorageService, 'completeUpload').mockRejectedValueOnce(
-        new Error('TX2 simulated failure')
-      );
+      jest
+        .spyOn(blobStorageService, 'completeUpload')
+        .mockRejectedValueOnce(new Error('TX2 simulated failure'));
 
       await expect(
         uploadSvc.uploadFile(null, 'fail-tx2.txt', content, 'text/plain')
       ).rejects.toThrow();
 
       // Node was created by TX1
-      const node = await dbQuery(
-        "SELECT * FROM file_nodes WHERE name = 'fail-tx2.txt'",
-        []
-      );
+      const node = await dbQuery("SELECT * FROM file_nodes WHERE name = 'fail-tx2.txt'", []);
       expect(node.rows.length).toBe(1);
       const nodeId = node.rows[0].id;
 
       // object_map stays pending (TX2 never activated it)
-      const objMap = await dbQuery(
-        'SELECT * FROM object_map WHERE file_node_id = ?',
-        [nodeId]
-      );
+      const objMap = await dbQuery('SELECT * FROM object_map WHERE file_node_id = ?', [nodeId]);
       expect(objMap.rows.length).toBeGreaterThan(0);
-      const pendingRow = objMap.rows.find(r => r.status === 'pending');
+      const pendingRow = objMap.rows.find((r) => r.status === 'pending');
       expect(pendingRow).toBeDefined();
 
       // sync_status is still pending_upload (TX2 never set active)
@@ -216,13 +196,22 @@ describe('createUploadService', () => {
     it('orphans old key, activates new key, and updates filecache', async () => {
       // First do a clean upload to establish an active object
       const originalContent = Buffer.from('original-content');
-      const origResult = await uploadSvc.uploadFile(null, 'overwrite-target.txt', originalContent, 'text/plain');
+      const origResult = await uploadSvc.uploadFile(
+        null,
+        'overwrite-target.txt',
+        originalContent,
+        'text/plain'
+      );
 
       // Now overwrite
       const newContent = Buffer.from('new-overwritten-content');
       const newMimeType = 'application/octet-stream';
 
-      const overwriteResult = await uploadSvc.overwriteFile(origResult.nodeId, newContent, newMimeType);
+      const overwriteResult = await uploadSvc.overwriteFile(
+        origResult.nodeId,
+        newContent,
+        newMimeType
+      );
 
       expect(overwriteResult.nodeId).toBe(origResult.nodeId);
       expect(overwriteResult.s3Key).not.toBe(origResult.s3Key);
@@ -230,35 +219,31 @@ describe('createUploadService', () => {
       expect(overwriteResult.mimeType).toBe(newMimeType);
 
       // Old s3_key is orphaned
-      const oldObjMap = await dbQuery(
-        'SELECT status FROM object_map WHERE s3_key = ?',
-        [origResult.s3Key]
-      );
+      const oldObjMap = await dbQuery('SELECT status FROM object_map WHERE s3_key = ?', [
+        origResult.s3Key,
+      ]);
       expect(oldObjMap.rows.length).toBeGreaterThan(0);
       expect(oldObjMap.rows[0].status).toBe('orphaned');
 
       // New s3_key is active
-      const newObjMap = await dbQuery(
-        'SELECT status FROM object_map WHERE s3_key = ?',
-        [overwriteResult.s3Key]
-      );
+      const newObjMap = await dbQuery('SELECT status FROM object_map WHERE s3_key = ?', [
+        overwriteResult.s3Key,
+      ]);
       expect(newObjMap.rows.length).toBeGreaterThan(0);
       expect(newObjMap.rows[0].status).toBe('active');
 
       // filecache updated with new size and mime_type
-      const cache = await dbQuery(
-        'SELECT * FROM filecache WHERE file_node_id = ?',
-        [origResult.nodeId]
-      );
+      const cache = await dbQuery('SELECT * FROM filecache WHERE file_node_id = ?', [
+        origResult.nodeId,
+      ]);
       expect(cache.rows.length).toBe(1);
       expect(cache.rows[0].size).toBe(newContent.length);
       expect(cache.rows[0].mime_type).toBe(newMimeType);
 
       // sync_status is active
-      const updatedNode = await dbQuery(
-        'SELECT sync_status FROM file_nodes WHERE id = ?',
-        [origResult.nodeId]
-      );
+      const updatedNode = await dbQuery('SELECT sync_status FROM file_nodes WHERE id = ?', [
+        origResult.nodeId,
+      ]);
       expect(updatedNode.rows[0].sync_status).toBe('active');
 
       await dbRun('DELETE FROM file_nodes WHERE id = ?', [origResult.nodeId]);
@@ -273,14 +258,19 @@ describe('createUploadService', () => {
     it('rolls back preserving original state when prepareUpload throws', async () => {
       // First do a clean upload to establish an active object
       const originalContent = Buffer.from('original-for-tx1-fail');
-      const origResult = await uploadSvc.uploadFile(null, 'overwrite-tx1fail.txt', originalContent, 'text/plain');
+      const origResult = await uploadSvc.uploadFile(
+        null,
+        'overwrite-tx1fail.txt',
+        originalContent,
+        'text/plain'
+      );
 
       const oldS3Key = origResult.s3Key;
 
       // Mock prepareUpload to throw during TX1 of overwrite
-      jest.spyOn(blobStorageService, 'prepareUpload').mockRejectedValueOnce(
-        new Error('TX1 overwrite failure')
-      );
+      jest
+        .spyOn(blobStorageService, 'prepareUpload')
+        .mockRejectedValueOnce(new Error('TX1 overwrite failure'));
 
       const newContent = Buffer.from('should-not-appear');
       await expect(
@@ -296,10 +286,9 @@ describe('createUploadService', () => {
       expect(objMap.rows[0].status).toBe('active');
 
       // sync_status should still be active (TX1 rollback)
-      const node = await dbQuery(
-        'SELECT sync_status FROM file_nodes WHERE id = ?',
-        [origResult.nodeId]
-      );
+      const node = await dbQuery('SELECT sync_status FROM file_nodes WHERE id = ?', [
+        origResult.nodeId,
+      ]);
       expect(node.rows[0].sync_status).toBe('active');
 
       await dbRun('DELETE FROM file_nodes WHERE id = ?', [origResult.nodeId]);
@@ -333,13 +322,15 @@ describe('createUploadService', () => {
   describe('downloadFile non-existent', () => {
     it('returns null for a node with no active object', async () => {
       const content = Buffer.from('temp-content');
-      const uploadResult = await uploadSvc.uploadFile(null, 'null-download.txt', content, 'text/plain');
+      const uploadResult = await uploadSvc.uploadFile(
+        null,
+        'null-download.txt',
+        content,
+        'text/plain'
+      );
 
       // Delete the active object to simulate non-existent blob
-      await dbRun(
-        'DELETE FROM object_map WHERE file_node_id = ?',
-        [uploadResult.nodeId]
-      );
+      await dbRun('DELETE FROM object_map WHERE file_node_id = ?', [uploadResult.nodeId]);
       await dbRun('DELETE FROM filecache WHERE file_node_id = ?', [uploadResult.nodeId]);
 
       const downloaded = await uploadSvc.downloadFile(uploadResult.nodeId);

@@ -1,7 +1,11 @@
 'use strict';
 
 function safeJsonParse(text) {
-  try { return JSON.parse(text); } catch { return null; }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
 
 function nowIso() {

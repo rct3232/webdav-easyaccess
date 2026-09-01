@@ -41,7 +41,10 @@ const ProgressSummary = ({
       >
         {renderStatusIcon?.()}
         <Box sx={{ textAlign: 'left', minWidth: 0 }}>
-          <Typography variant="caption" sx={{ fontWeight: 'medium', display: 'block', lineHeight: 1.2 }}>
+          <Typography
+            variant="caption"
+            sx={{ fontWeight: 'medium', display: 'block', lineHeight: 1.2 }}
+          >
             {primaryLabel}
           </Typography>
           <Typography variant="caption" sx={{ display: 'block', lineHeight: 1.2, opacity: 0.9 }}>

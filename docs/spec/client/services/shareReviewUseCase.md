@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                                                                                                                             |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Use-case for the “review mode” permission request flow. Revokes assignments the reviewer removed from the dialog (best-effort), then approves the permission request. The requested permission itself is granted atomically by the server on approve, so the client must not pre-grant. |
 
 ---
@@ -17,11 +17,11 @@
 
 ### 2.2 Inputs
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| permissionRequestId | string | Y | The permission request id to approve. |
-| initialFolderPermissions | `Map<string, Map<string, string>>` | Y | Baseline permission assignments at dialog open. |
-| folderPermissions | `Map<string, Map<string, string>>` | Y | Current permission assignments after user edits. |
+| Name                     | Type                               | Required | Description                                      |
+| ------------------------ | ---------------------------------- | -------- | ------------------------------------------------ |
+| permissionRequestId      | string                             | Y        | The permission request id to approve.            |
+| initialFolderPermissions | `Map<string, Map<string, string>>` | Y        | Baseline permission assignments at dialog open.  |
+| folderPermissions        | `Map<string, Map<string, string>>` | Y        | Current permission assignments after user edits. |
 
 ### 2.3 Output
 
@@ -56,4 +56,3 @@
 
 - Maps may be empty but should not be null.
 - `buildPermissionDiff` normalization guarantees returned `folderPath` values are safe to pass into gateway calls.
-

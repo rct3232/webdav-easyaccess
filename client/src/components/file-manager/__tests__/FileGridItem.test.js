@@ -60,13 +60,17 @@ describe('FileGridItem', () => {
   });
 
   it('hides More button when !showMoreButton', () => {
-    renderWithProviders(<FileGridItem {...defaultProps} showMoreButton={false} onMoreClick={jest.fn()} />);
+    renderWithProviders(
+      <FileGridItem {...defaultProps} showMoreButton={false} onMoreClick={jest.fn()} />
+    );
     expect(screen.queryByRole('button', { name: /more actions/i })).not.toBeInTheDocument();
   });
 
   it('calls onMoreClick with file when More button clicked', () => {
     const onMoreClick = jest.fn();
-    renderWithProviders(<FileGridItem {...defaultProps} showMoreButton onMoreClick={onMoreClick} />);
+    renderWithProviders(
+      <FileGridItem {...defaultProps} showMoreButton onMoreClick={onMoreClick} />
+    );
     fireEvent.click(screen.getByRole('button', { name: /more actions/i }));
     expect(onMoreClick).toHaveBeenCalledWith(mockFile, expect.any(Object));
   });

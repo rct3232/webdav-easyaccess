@@ -15,7 +15,8 @@ export function deriveSharedAccessState({
   const permissionHasWrite = Boolean(check.hasWrite);
 
   // Effective read can be overridden by optimistic/direct state.
-  const hasReadPermission = typeof directHasReadPermission === 'boolean' ? directHasReadPermission : permissionHasRead;
+  const hasReadPermission =
+    typeof directHasReadPermission === 'boolean' ? directHasReadPermission : permissionHasRead;
   const hasWritePermission = permissionHasWrite;
 
   // Directory targets do not have path/file-level permission fields.
@@ -37,11 +38,17 @@ export function deriveSharedAccessState({
   const hasParentRead = Boolean(parentPermissionCheck?.hasRead);
 
   // Spec: parentPermissionCheck === null => 'none'
-  const pathPermission = parentPermissionCheck === null ? 'none' : hasParentWrite ? 'write' : hasParentRead ? 'read' : 'none';
+  const pathPermission =
+    parentPermissionCheck === null
+      ? 'none'
+      : hasParentWrite
+        ? 'write'
+        : hasParentRead
+          ? 'read'
+          : 'none';
 
   const source = check.source;
-  const filePermissionLevel =
-    source === 'file' ? (hasWritePermission ? 'write' : 'read') : null;
+  const filePermissionLevel = source === 'file' ? (hasWritePermission ? 'write' : 'read') : null;
 
   return {
     hasReadPermission,
@@ -52,4 +59,3 @@ export function deriveSharedAccessState({
     ownerExists,
   };
 }
-

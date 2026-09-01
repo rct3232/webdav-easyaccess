@@ -41,7 +41,8 @@ const useFolderTreeItemController = ({
   filterChildNames,
 }) => {
   const nodeId = node?.nodeId != null ? node.nodeId : null;
-  const name = nameProp || node?.name || (pathProp ? pathProp.split('/').filter(Boolean).pop() || '' : '');
+  const name =
+    nameProp || node?.name || (pathProp ? pathProp.split('/').filter(Boolean).pop() || '' : '');
   const isHidden = isHiddenProp || node?.isHidden || false;
 
   // Permission derivation:
@@ -53,8 +54,7 @@ const useFolderTreeItemController = ({
   if (node?.hasReadPermission !== undefined) {
     hasReadPermission = node.hasReadPermission === true;
   } else if (sharedFoldersMap && nodeId != null) {
-    hasReadPermission =
-      sharedFoldersMap.has(nodeId) || sharedFoldersMap.has(String(nodeId));
+    hasReadPermission = sharedFoldersMap.has(nodeId) || sharedFoldersMap.has(String(nodeId));
   }
 
   if (node?.hasWritePermission !== undefined) {

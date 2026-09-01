@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Manages header/controls visibility with auto-hide timer; exposes show/hide callbacks used by gallery navigation and mouse/touch events |
-| Used by components/pages | FilePreviewDialog |
+| Item                     | Description                                                                                                                            |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Manages header/controls visibility with auto-hide timer; exposes show/hide callbacks used by gallery navigation and mouse/touch events |
+| Used by components/pages | FilePreviewDialog                                                                                                                      |
 
 ---
 
@@ -17,22 +17,22 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| open | boolean | Y | Dialog open state |
-| isGalleryMode | boolean | Y | True when multiple media files are shown |
-| loading | boolean | Y | Preview loading state; timer starts after loading finishes |
-| isMobile | boolean | Y | Mobile breakpoint flag |
+| Name          | Type    | Required | Description                                                |
+| ------------- | ------- | -------- | ---------------------------------------------------------- |
+| open          | boolean | Y        | Dialog open state                                          |
+| isGalleryMode | boolean | Y        | True when multiple media files are shown                   |
+| loading       | boolean | Y        | Preview loading state; timer starts after loading finishes |
+| isMobile      | boolean | Y        | Mobile breakpoint flag                                     |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| headerVisible | boolean | Header visibility (mobile: controlled; desktop: always true) |
-| controlsVisible | boolean | Controls visibility (desktop: auto-hide; mobile: always true) |
-| startHideTimer | function | Starts (or restarts) the 2s auto-hide countdown |
-| clearHideTimer | function | Cancels the pending hide timer |
-| resetHideTimer | function | Shows UI and restarts the hide timer |
+| Key             | Type     | Meaning                                                       |
+| --------------- | -------- | ------------------------------------------------------------- |
+| headerVisible   | boolean  | Header visibility (mobile: controlled; desktop: always true)  |
+| controlsVisible | boolean  | Controls visibility (desktop: auto-hide; mobile: always true) |
+| startHideTimer  | function | Starts (or restarts) the 2s auto-hide countdown               |
+| clearHideTimer  | function | Cancels the pending hide timer                                |
+| resetHideTimer  | function | Shows UI and restarts the hide timer                          |
 
 ### 2.4 Dependencies
 

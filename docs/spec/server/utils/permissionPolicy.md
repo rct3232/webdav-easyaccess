@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                      |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | nodeId-only permission policy helpers. All exports operate on `nodeId` (BIGINT) — no path-based functions remain after Wave 4 removal of Tier 2/3 compat layers. |
 
 ---
@@ -12,15 +12,16 @@
 
 ### 2.1 File Paths
 
-| Module | Source | Purpose |
-|--------|--------|---------|
-| permissionPolicy | `server/domains/permissions/policy/permissionPolicy.js` | Main policy: nodeId-based read/write/grant/revoke/view checks with admin + owner bypass |
-| ownerNodeResolver | `server/domains/permissions/policy/ownerNodeResolver.js` | Owner node detection: isOwnerNode(userId, nodeId) via closure table |
-| permissionRank | `server/domains/permissions/policy/permissionRank.js` | Permission level comparison: getPermissionRank, meetsRank |
+| Module            | Source                                                   | Purpose                                                                                 |
+| ----------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| permissionPolicy  | `server/domains/permissions/policy/permissionPolicy.js`  | Main policy: nodeId-based read/write/grant/revoke/view checks with admin + owner bypass |
+| ownerNodeResolver | `server/domains/permissions/policy/ownerNodeResolver.js` | Owner node detection: isOwnerNode(userId, nodeId) via closure table                     |
+| permissionRank    | `server/domains/permissions/policy/permissionRank.js`    | Permission level comparison: getPermissionRank, meetsRank                               |
 
 - **Test file:** `server/utils/__tests__/permissionPolicy.test.js` (test has not been relocated yet)
 
 > **Removed modules** — the following sub-modules were deleted during Wave 4 as their Tier 2/Tier 3 functions had no remaining callers:
+>
 > - `ownerPathResolver.js` — path-based owner resolution; replaced by `ownerNodeResolver.js` (nodeId-based)
 > - `inheritancePolicy.js` — path normalization for permission lookup; inheritance is now handled via closure table queries in the store
 
@@ -28,24 +29,24 @@
 
 All Tier 2 (path-based compat layer) and Tier 3 (sync checker builder) functions have been removed. The module exports only nodeId-based helpers:
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| isAdminUser | `(user) => boolean` | `user?.is_admin` truthiness check |
-| canReadFolderNode | `(userId, dirNodeId, requiredPermission?) => Promise<boolean>` | Admin + owner bypass → store.checkPermission |
-| canWriteFolderNode | `(userId, dirNodeId) => Promise<boolean>` | Admin + owner bypass → store.checkPermission(WRITE) |
-| canReadFileNode | `(userId, fileNodeId, requiredPermission?) => Promise<boolean>` | Admin bypass → aclService.checkFilePermission(READ) |
-| canWriteFileNode | `(userId, fileNodeId) => Promise<boolean>` | Admin bypass → aclService.checkFilePermission(WRITE) |
-| canGrantPermissionNode | `(userId, targetNodeId) => Promise<boolean>` | Admin + owner bypass → store.checkPermission(ADMIN) |
-| canRevokePermissionNode | `(userId, targetNodeId, targetUserId) => Promise<boolean>` | Self-revoke + admin + owner bypass → store.checkPermission(ADMIN) |
-| canViewPermissionsNode | `(userId, targetNodeId) => Promise<boolean>` | Admin + owner bypass → store.checkPermission(ADMIN) |
-| getUserOrNull | `(userId) => Promise<User \| null>` | Fetch user by ID or return null |
+| Function                | Signature                                                       | Description                                                       |
+| ----------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------- |
+| isAdminUser             | `(user) => boolean`                                             | `user?.is_admin` truthiness check                                 |
+| canReadFolderNode       | `(userId, dirNodeId, requiredPermission?) => Promise<boolean>`  | Admin + owner bypass → store.checkPermission                      |
+| canWriteFolderNode      | `(userId, dirNodeId) => Promise<boolean>`                       | Admin + owner bypass → store.checkPermission(WRITE)               |
+| canReadFileNode         | `(userId, fileNodeId, requiredPermission?) => Promise<boolean>` | Admin bypass → aclService.checkFilePermission(READ)               |
+| canWriteFileNode        | `(userId, fileNodeId) => Promise<boolean>`                      | Admin bypass → aclService.checkFilePermission(WRITE)              |
+| canGrantPermissionNode  | `(userId, targetNodeId) => Promise<boolean>`                    | Admin + owner bypass → store.checkPermission(ADMIN)               |
+| canRevokePermissionNode | `(userId, targetNodeId, targetUserId) => Promise<boolean>`      | Self-revoke + admin + owner bypass → store.checkPermission(ADMIN) |
+| canViewPermissionsNode  | `(userId, targetNodeId) => Promise<boolean>`                    | Admin + owner bypass → store.checkPermission(ADMIN)               |
+| getUserOrNull           | `(userId) => Promise<User \| null>`                             | Fetch user by ID or return null                                   |
 
 ### 2.3 Functions / Exports — permissionRank.js
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| getPermissionRank | (permission) => number | Numeric rank via PERMISSIONS.ALL.indexOf; -1 for unknown |
-| meetsRank | (actual, required) => boolean | actual rank >= required rank |
+| Function          | Signature                     | Description                                              |
+| ----------------- | ----------------------------- | -------------------------------------------------------- |
+| getPermissionRank | (permission) => number        | Numeric rank via PERMISSIONS.ALL.indexOf; -1 for unknown |
+| meetsRank         | (actual, required) => boolean | actual rank >= required rank                             |
 
 ### 2.4 Input / Output
 

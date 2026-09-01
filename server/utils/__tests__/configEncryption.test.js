@@ -66,9 +66,9 @@ describe('configEncryption', () => {
     it('throws on invalid payloads and unsupported algorithms', () => {
       expect(() => decryptSecret('not-a-payload', 'k')).toThrow(TypeError);
       expect(() => decryptSecret(null, 'k')).toThrow(TypeError);
-      expect(() => decryptSecret({ enc: 'aes-128-cbc', iv: 'x', tag: 'y', data: 'z' }, 'k')).toThrow(
-        /Unsupported/
-      );
+      expect(() =>
+        decryptSecret({ enc: 'aes-128-cbc', iv: 'x', tag: 'y', data: 'z' }, 'k')
+      ).toThrow(/Unsupported/);
     });
   });
 

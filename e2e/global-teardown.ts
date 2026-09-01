@@ -49,7 +49,9 @@ function cleanDir(relativePath: string) {
       throw err;
     }
 
-    console.warn(`Warning: Cannot remove ${relativePath} directly due to permissions. Retrying via Docker helper.`);
+    console.warn(
+      `Warning: Cannot remove ${relativePath} directly due to permissions. Retrying via Docker helper.`
+    );
     execFileSync(
       'docker',
       [

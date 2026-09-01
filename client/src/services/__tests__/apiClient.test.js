@@ -14,9 +14,7 @@ describe('apiClient', () => {
 
   describe('request methods', () => {
     it('get returns response data', async () => {
-      server.use(
-        http.get('/api/test-get', () => HttpResponse.json({ value: 42 }))
-      );
+      server.use(http.get('/api/test-get', () => HttpResponse.json({ value: 42 })));
 
       const response = await get('/test-get');
 
@@ -50,9 +48,7 @@ describe('apiClient', () => {
     });
 
     it('del returns response', async () => {
-      server.use(
-        http.delete('/api/test-delete', () => HttpResponse.json({ deleted: true }))
-      );
+      server.use(http.delete('/api/test-delete', () => HttpResponse.json({ deleted: true })));
 
       const response = await del('/test-delete');
 
@@ -64,10 +60,7 @@ describe('apiClient', () => {
     it('rejects on 4xx', async () => {
       server.use(
         http.get('/api/test-error', () =>
-          HttpResponse.json(
-            { errorCode: 'serverErrors.files.notFound' },
-            { status: 404 }
-          )
+          HttpResponse.json({ errorCode: 'serverErrors.files.notFound' }, { status: 404 })
         )
       );
 
@@ -75,11 +68,7 @@ describe('apiClient', () => {
     });
 
     it('rejects on 5xx', async () => {
-      server.use(
-        http.get('/api/test-500', () =>
-          HttpResponse.json({}, { status: 500 })
-        )
-      );
+      server.use(http.get('/api/test-500', () => HttpResponse.json({}, { status: 500 })));
 
       await expect(get('/test-500')).rejects.toThrow();
     }, 15000);
@@ -87,10 +76,7 @@ describe('apiClient', () => {
     it('5xx retry all fail: throws last error, preserves error.response', async () => {
       server.use(
         http.get('/api/test-5xx', () =>
-          HttpResponse.json(
-            { errorCode: 'serverErrors.internal' },
-            { status: 502 }
-          )
+          HttpResponse.json({ errorCode: 'serverErrors.internal' }, { status: 502 })
         )
       );
 
@@ -116,7 +102,10 @@ describe('apiClient', () => {
           callCount++;
           const auth = request.headers.get('Authorization');
           if (callCount === 1 && auth === 'Bearer old-jwt') {
-            return HttpResponse.json({ errorCode: 'serverErrors.auth.invalidOrExpiredToken' }, { status: 401 });
+            return HttpResponse.json(
+              { errorCode: 'serverErrors.auth.invalidOrExpiredToken' },
+              { status: 401 }
+            );
           }
           return HttpResponse.json({ value: 'retried' });
         }),
@@ -125,7 +114,10 @@ describe('apiClient', () => {
           if (body?.refreshToken === 'valid-refresh') {
             return HttpResponse.json({ token: 'new-jwt-token' });
           }
-          return HttpResponse.json({ errorCode: 'serverErrors.auth.refreshTokenInvalid' }, { status: 401 });
+          return HttpResponse.json(
+            { errorCode: 'serverErrors.auth.refreshTokenInvalid' },
+            { status: 401 }
+          );
         })
       );
 
@@ -146,7 +138,10 @@ describe('apiClient', () => {
 
       server.use(
         http.get('/api/test-401-fail', () =>
-          HttpResponse.json({ errorCode: 'serverErrors.auth.invalidOrExpiredToken' }, { status: 401 })
+          HttpResponse.json(
+            { errorCode: 'serverErrors.auth.invalidOrExpiredToken' },
+            { status: 401 }
+          )
         ),
         http.post('/api/auth/refresh', () =>
           HttpResponse.json({ errorCode: 'serverErrors.auth.refreshTokenInvalid' }, { status: 401 })
@@ -195,7 +190,10 @@ describe('apiClient', () => {
 
       server.use(
         http.get('/api/share/:token/check-my-permission', () =>
-          HttpResponse.json({ errorCode: 'serverErrors.auth.invalidOrExpiredToken' }, { status: 401 })
+          HttpResponse.json(
+            { errorCode: 'serverErrors.auth.invalidOrExpiredToken' },
+            { status: 401 }
+          )
         ),
         http.post('/api/auth/refresh', () =>
           HttpResponse.json({ errorCode: 'serverErrors.auth.refreshTokenInvalid' }, { status: 401 })

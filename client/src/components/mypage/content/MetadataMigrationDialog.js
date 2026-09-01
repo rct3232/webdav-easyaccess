@@ -74,8 +74,11 @@ const MetadataMigrationDialog = ({ open, onClose, onMessage }) => {
   };
 
   const handleScan = async () => {
-    const required = targetBackend === 'postgresql' ? ['host', 'database', 'user', 'password'] : ['sqlitePath'];
-    const missing = required.filter((field) => (field === 'sqlitePath' ? !sqlitePath.trim() : !pg[field].trim()));
+    const required =
+      targetBackend === 'postgresql' ? ['host', 'database', 'user', 'password'] : ['sqlitePath'];
+    const missing = required.filter((field) =>
+      field === 'sqlitePath' ? !sqlitePath.trim() : !pg[field].trim()
+    );
     if (missing.length > 0) {
       setMissingFields(missing);
       setScanError(t('metadataMigration.requiredFields'));
@@ -112,7 +115,9 @@ const MetadataMigrationDialog = ({ open, onClose, onMessage }) => {
     setStarting(true);
     const payload = {
       targetBackend,
-      ...(targetBackend === 'postgresql' ? { pg: buildPgConfig() } : { sqlitePath: sqlitePath.trim() }),
+      ...(targetBackend === 'postgresql'
+        ? { pg: buildPgConfig() }
+        : { sqlitePath: sqlitePath.trim() }),
       wipeTarget: Boolean(wipeConfirmed),
     };
     try {
@@ -248,7 +253,11 @@ const MetadataMigrationDialog = ({ open, onClose, onMessage }) => {
       <DialogContent>
         <FormControl component="fieldset" sx={{ mt: 1 }}>
           <FormLabel>{t('metadataMigration.targetLabel')}</FormLabel>
-          <RadioGroup row value={targetBackend} onChange={(e) => handleTargetBackendChange(e.target.value)}>
+          <RadioGroup
+            row
+            value={targetBackend}
+            onChange={(e) => handleTargetBackendChange(e.target.value)}
+          >
             <FormControlLabel
               value="postgresql"
               control={<Radio />}
@@ -288,7 +297,12 @@ const MetadataMigrationDialog = ({ open, onClose, onMessage }) => {
         {targetHasData && (
           <FormControlLabel
             sx={{ mt: 2, display: 'flex' }}
-            control={<Checkbox checked={wipeConfirmed} onChange={(e) => setWipeConfirmed(e.target.checked)} />}
+            control={
+              <Checkbox
+                checked={wipeConfirmed}
+                onChange={(e) => setWipeConfirmed(e.target.checked)}
+              />
+            }
             label={t('metadataMigration.wipeConfirm')}
           />
         )}

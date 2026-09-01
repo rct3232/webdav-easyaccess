@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Explorer command controller: orchestrates user-initiated file operations (upload/rename/move/copy/delete/download) and exposes view-ready command callbacks. Uses the explorer gateway for IO and coordinates with progress + refresh policy without changing UX. |
-| Used by components/pages | `FileManager` page shell (`docs/spec/client/pages/FileManager.md`) |
-| Does not own | Search/sort/view derivation (`useExplorerSession`), navigation transitions (`useExplorerNavigation`), progress drawer state and retry/cancel UI (`useExplorerProgress`), product overlays (share-link policy, `__recent__`, `__shared__`). |
+| Item                     | Description                                                                                                                                                                                                                                                       |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Explorer command controller: orchestrates user-initiated file operations (upload/rename/move/copy/delete/download) and exposes view-ready command callbacks. Uses the explorer gateway for IO and coordinates with progress + refresh policy without changing UX. |
+| Used by components/pages | `FileManager` page shell (`docs/spec/client/pages/FileManager.md`)                                                                                                                                                                                                |
+| Does not own             | Search/sort/view derivation (`useExplorerSession`), navigation transitions (`useExplorerNavigation`), progress drawer state and retry/cancel UI (`useExplorerProgress`), product overlays (share-link policy, `__recent__`, `__shared__`).                        |
 
 ---
 
@@ -26,27 +26,27 @@ Transitional note:
 - The current implementation still receives concrete FileManager shell/controller wiring (for example `t`, `currentPathRef`, selection setters, dialog close handlers, and message surfaces) while it reuses `useBulkOperations` and `useFileOperations` internally.
 - Until the extraction fully converges on the narrower gateway/refresh-oriented signature below, dedicated hook tests should target the currently exported public command API and observable orchestration outcomes rather than assuming the future simplified constructor shape.
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| gateway | object | Y | Explorer IO gateway matching `docs/spec/client/services/explorerGateway.md`. |
-| currentNodeId | number \| null | Y | Current directory node ID used for upload/refresh decisions. |
-| refreshNow | () => void \| Promise<void> | Y | Shell-provided “refresh listing” entry point (implementation-owned elsewhere). |
-| getCurrentNodeIdNow | () => number \| null | Y | Function returning the latest current node ID at decision time (avoid stale closures; aligns with `refreshPolicy`). |
-| openDialogs | object | N | Shell-provided dialog openers for existing UX (rename prompt, conflict prompt, confirm delete, etc.). |
-| notify | (message: object) => void | N | Shell-provided user messaging mechanism (snackbar/toast) matching current behavior. |
-| modePolicy | object | N | Product overlay policy (e.g. share-link mode restrictions). Must be provided by the shell; explorer core must not own these rules. |
+| Name                | Type                        | Required | Description                                                                                                                        |
+| ------------------- | --------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| gateway             | object                      | Y        | Explorer IO gateway matching `docs/spec/client/services/explorerGateway.md`.                                                       |
+| currentNodeId       | number \| null              | Y        | Current directory node ID used for upload/refresh decisions.                                                                       |
+| refreshNow          | () => void \| Promise<void> | Y        | Shell-provided “refresh listing” entry point (implementation-owned elsewhere).                                                     |
+| getCurrentNodeIdNow | () => number \| null        | Y        | Function returning the latest current node ID at decision time (avoid stale closures; aligns with `refreshPolicy`).                |
+| openDialogs         | object                      | N        | Shell-provided dialog openers for existing UX (rename prompt, conflict prompt, confirm delete, etc.).                              |
+| notify              | (message: object) => void   | N        | Shell-provided user messaging mechanism (snackbar/toast) matching current behavior.                                                |
+| modePolicy          | object                      | N        | Product overlay policy (e.g. share-link mode restrictions). Must be provided by the shell; explorer core must not own these rules. |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| handleOperationComplete | `(info?: object \| string) => void` | Explorer-owned completion handler that applies refresh policy (via `startedNodeId` / `targetParentNodeId` in the payload) and tree refresh coordination for operation outcomes. The shell may reuse this callback for adjacent explorer flows (for example create-folder completion) rather than duplicating refresh logic inline. |
-| uploadFiles | (files: FileList \| File[], targetParentNodeId?: number) => Promise<void> | Upload entry point (drop/select). Falls back to the current directory node ID when `targetParentNodeId` is omitted. |
-| renameEntry | (file: object, newName: string) => Promise<void> | Rename orchestration, including validation and dialog lifecycle as today. |
-| moveEntries | (nodeIds: number[], destinationParentNodeId: number) => Promise<void> | Move orchestration (single/bulk) keyed by node IDs. |
-| copyEntries | (nodeIds: number[], destinationParentNodeId: number) => Promise<void> | Copy orchestration (single/bulk) keyed by node IDs. |
-| deleteEntries | (nodeIds: number[]) => Promise<void> | Delete orchestration keyed by node IDs. |
-| downloadEntries | (nodeIds: number[]) => Promise<void> | Download orchestration (single/bulk) keyed by node IDs. |
+| Key                     | Type                                                                      | Meaning                                                                                                                                                                                                                                                                                                                            |
+| ----------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| handleOperationComplete | `(info?: object \| string) => void`                                       | Explorer-owned completion handler that applies refresh policy (via `startedNodeId` / `targetParentNodeId` in the payload) and tree refresh coordination for operation outcomes. The shell may reuse this callback for adjacent explorer flows (for example create-folder completion) rather than duplicating refresh logic inline. |
+| uploadFiles             | (files: FileList \| File[], targetParentNodeId?: number) => Promise<void> | Upload entry point (drop/select). Falls back to the current directory node ID when `targetParentNodeId` is omitted.                                                                                                                                                                                                                |
+| renameEntry             | (file: object, newName: string) => Promise<void>                          | Rename orchestration, including validation and dialog lifecycle as today.                                                                                                                                                                                                                                                          |
+| moveEntries             | (nodeIds: number[], destinationParentNodeId: number) => Promise<void>     | Move orchestration (single/bulk) keyed by node IDs.                                                                                                                                                                                                                                                                                |
+| copyEntries             | (nodeIds: number[], destinationParentNodeId: number) => Promise<void>     | Copy orchestration (single/bulk) keyed by node IDs.                                                                                                                                                                                                                                                                                |
+| deleteEntries           | (nodeIds: number[]) => Promise<void>                                      | Delete orchestration keyed by node IDs.                                                                                                                                                                                                                                                                                            |
+| downloadEntries         | (nodeIds: number[]) => Promise<void>                                      | Download orchestration (single/bulk) keyed by node IDs.                                                                                                                                                                                                                                                                            |
 
 Notes:
 
@@ -104,4 +104,3 @@ These scenarios should be covered by a dedicated hook unit test in `client/src/p
 
 - Empty selection/node-ID lists are no-ops.
 - Destination parent node missing for move/copy uses the same fallback behavior as today (or is treated as invalid and rejected consistently).
-

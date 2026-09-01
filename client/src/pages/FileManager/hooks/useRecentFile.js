@@ -92,7 +92,8 @@ export const useRecentFile = ({
         return findEntryByNodeId(parentFiles, nodeIdOrPath) || { nodeId: nodeIdOrPath };
       }
       const normalizedTarget = normalizePath(nodeIdOrPath);
-      const matched = parentFiles.find((entry) => normalizePath(entry?.path) === normalizedTarget) || null;
+      const matched =
+        parentFiles.find((entry) => normalizePath(entry?.path) === normalizedTarget) || null;
       return matched || { path: nodeIdOrPath };
     },
     [recentGateway]
@@ -248,10 +249,7 @@ export const useRecentFile = ({
       const currentPathNow = currentPathRef.current;
       const currentNormalized = normalizePath(currentPathNow);
 
-      let previousPath = keys.reduce(
-        (acc, key) => acc || pathHistoryRef.current.get(key),
-        null
-      );
+      let previousPath = keys.reduce((acc, key) => acc || pathHistoryRef.current.get(key), null);
       if (!previousPath) previousPath = pathHistoryRef.current.get(currentPathNow);
       if (!previousPath) previousPath = pathHistoryRef.current.get(currentNormalized);
 
@@ -266,7 +264,8 @@ export const useRecentFile = ({
           setCurrentPath(defaultPath);
         }
       } else if (previousPath) {
-        const currentMatchesTarget = keys.includes(currentPathNow) || keys.includes(currentNormalized);
+        const currentMatchesTarget =
+          keys.includes(currentPathNow) || keys.includes(currentNormalized);
         if (currentMatchesTarget) {
           setCurrentPath(previousPath);
         }

@@ -181,7 +181,11 @@ const BaseFolderTreeItem = ({
         disablePadding
         sx={{
           '&:hover': {
-            backgroundColor: isDisabled ? 'transparent' : (isDropHighlight ? 'transparent' : 'action.hover'),
+            backgroundColor: isDisabled
+              ? 'transparent'
+              : isDropHighlight
+                ? 'transparent'
+                : 'action.hover',
           },
         }}
         draggable={!isMobile && !isDisabled}
@@ -265,11 +269,17 @@ const BaseFolderTreeItem = ({
             )}
           </ListItemIcon>
           <ListItemIcon sx={{ minWidth: 24 }}>
-            {isExpanded ? (openIcon || <FolderOpenIcon fontSize="small" />) : (icon || <FolderIcon fontSize="small" />)}
+            {isExpanded
+              ? openIcon || <FolderOpenIcon fontSize="small" />
+              : icon || <FolderIcon fontSize="small" />}
           </ListItemIcon>
           <ListItemText
             primary={
-              <Tooltip title={isNameTruncated ? (name || '') : ''} disableInteractive enterDelay={300}>
+              <Tooltip
+                title={isNameTruncated ? name || '' : ''}
+                disableInteractive
+                enterDelay={300}
+              >
                 <Typography
                   ref={nameTextRef}
                   variant="body2"
@@ -288,7 +298,7 @@ const BaseFolderTreeItem = ({
               </Tooltip>
             }
             sx={{
-              opacity: (isHidden || (name && name.startsWith('.'))) ? 0.5 : 1,
+              opacity: isHidden || (name && name.startsWith('.')) ? 0.5 : 1,
               minWidth: 0,
               overflow: 'hidden',
             }}

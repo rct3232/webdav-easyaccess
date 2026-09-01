@@ -18,22 +18,16 @@ async function generateImageThumbnail(nodeId) {
 
     // MAX_THUMBNAIL_SIZE is T2 (lazy): read the effective value per request.
     const maxSize = parseInt(await getSharedResolver().getConfig('MAX_THUMBNAIL_SIZE'), 10) || 300;
-    const sharpInstance = sharp(buffer)
-      .rotate()
-      .resize(maxSize, maxSize, {
-        fit: 'inside',
-        withoutEnlargement: true,
-      });
+    const sharpInstance = sharp(buffer).rotate().resize(maxSize, maxSize, {
+      fit: 'inside',
+      withoutEnlargement: true,
+    });
 
     let thumbnailBuffer;
     if (hasAlpha) {
-      thumbnailBuffer = await sharpInstance
-        .png({ quality: 90, compressionLevel: 6 })
-        .toBuffer();
+      thumbnailBuffer = await sharpInstance.png({ quality: 90, compressionLevel: 6 }).toBuffer();
     } else {
-      thumbnailBuffer = await sharpInstance
-        .jpeg({ quality: 80 })
-        .toBuffer();
+      thumbnailBuffer = await sharpInstance.jpeg({ quality: 80 }).toBuffer();
     }
 
     return { buffer: thumbnailBuffer, extension: outputExtension };

@@ -17,17 +17,17 @@ Brief summary of the test implementation for the {client|server} application. Al
 
 Single modules in isolation (utils, hooks, middleware, store/service). External dependencies are mocked.
 
-| Test File | Tests | Coverage | Notes |
-|-----------|-------|----------|-------|
-| `path/to/__tests__/module.test.js` | N | X% | (optional: key behaviors) |
+| Test File                          | Tests | Coverage | Notes                     |
+| ---------------------------------- | ----- | -------- | ------------------------- |
+| `path/to/__tests__/module.test.js` | N     | X%       | (optional: key behaviors) |
 
 ### Integration Tests
 
 Tests that exercise multiple layers together (API routes with Supertest, user flows with React Testing Library). Services/stores are mocked or use test doubles.
 
-| Test File / Area | Tests | Notes |
-|------------------|-------|-------|
-| (route or flow name) | N | (e.g. auth routes, file operations) |
+| Test File / Area     | Tests | Notes                               |
+| -------------------- | ----- | ----------------------------------- |
+| (route or flow name) | N     | (e.g. auth routes, file operations) |
 
 ## Coverage Report
 
@@ -39,9 +39,9 @@ Tests that exercise multiple layers together (API routes with Supertest, user fl
 
 ### Key Modules
 
-| Module | Statements | Branches | Functions | Lines |
-|--------|-----------|----------|-----------|-------|
-| (module.js) | X% | X% | X% | X% |
+| Module      | Statements | Branches | Functions | Lines |
+| ----------- | ---------- | -------- | --------- | ----- |
+| (module.js) | X%         | X%       | X%        | X%    |
 
 ### Overall Project Coverage
 
@@ -50,7 +50,7 @@ Tests that exercise multiple layers together (API routes with Supertest, user fl
 - **Functions**: X%
 - **Lines**: X%
 
-*Note: Core modules typically have higher coverage than the project overall.*
+_Note: Core modules typically have higher coverage than the project overall._
 
 ## Conclusion
 

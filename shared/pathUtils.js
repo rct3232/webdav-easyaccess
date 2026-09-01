@@ -108,10 +108,7 @@ function isPathUnder(childPath, parentPath) {
 
   if (normalizedParent === '/') return true;
 
-  return (
-    normalizedChild === normalizedParent ||
-    normalizedChild.startsWith(normalizedParent + '/')
-  );
+  return normalizedChild === normalizedParent || normalizedChild.startsWith(normalizedParent + '/');
 }
 
 /**

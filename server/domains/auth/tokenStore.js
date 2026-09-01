@@ -2,7 +2,8 @@ const crypto = require('crypto');
 const { createCacheAdapter } = require('../../infrastructure/adapters/cache');
 const userStore = require('../../store/userStore');
 
-const REFRESH_TOKEN_EXPIRES_IN_DAYS = parseInt(process.env.REFRESH_TOKEN_EXPIRES_IN_DAYS || '7', 10) || 7;
+const REFRESH_TOKEN_EXPIRES_IN_DAYS =
+  parseInt(process.env.REFRESH_TOKEN_EXPIRES_IN_DAYS || '7', 10) || 7;
 const REFRESH_TOKEN_TTL_MS = REFRESH_TOKEN_EXPIRES_IN_DAYS * 24 * 60 * 60 * 1000;
 
 let _cache = null;

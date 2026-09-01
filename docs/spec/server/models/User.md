@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                   |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | User model: create, lookup (username/email/id), update status/email/password, delete. Password hashing via bcrypt. Does not expose password in findById/findAll/findByStatus. |
 
 ---
@@ -17,19 +17,19 @@
 
 ### 2.2 Static Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| create | (username, email, password, isAdmin?) => Promise\<object\> | Hash password, userStore.createUser |
-| findByUsername | (username) => Promise\<object \| undefined\> | userStore.findByUsername |
-| findByEmail | (email) => Promise\<object \| undefined\> | userStore.findByEmail |
-| findById | (id) => Promise\<object \| undefined\> | userStore.findById; strips password |
-| findAll | () => Promise\<Array\> | userStore.findAll; strips password |
-| findByStatus | (status) => Promise\<Array\> | userStore.findByStatus; strips password |
-| updateStatus | (userId, status) => Promise\<object\> | userStore.updateStatus |
-| updateEmail | (userId, newEmail) => Promise\<object\> | userStore.updateEmail |
-| delete | (userId) => Promise\<object\> | userStore.deleteUser |
-| verifyPassword | (user, password) => Promise\<boolean\> | bcrypt.compare; **user must include `password` field** (e.g. from findByUsername; findById strips it) |
-| updatePassword | (userId, newPassword) => Promise\<object\> | Hash, userStore.updatePassword |
+| Method         | Signature                                                  | Description                                                                                           |
+| -------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| create         | (username, email, password, isAdmin?) => Promise\<object\> | Hash password, userStore.createUser                                                                   |
+| findByUsername | (username) => Promise\<object \| undefined\>               | userStore.findByUsername                                                                              |
+| findByEmail    | (email) => Promise\<object \| undefined\>                  | userStore.findByEmail                                                                                 |
+| findById       | (id) => Promise\<object \| undefined\>                     | userStore.findById; strips password                                                                   |
+| findAll        | () => Promise\<Array\>                                     | userStore.findAll; strips password                                                                    |
+| findByStatus   | (status) => Promise\<Array\>                               | userStore.findByStatus; strips password                                                               |
+| updateStatus   | (userId, status) => Promise\<object\>                      | userStore.updateStatus                                                                                |
+| updateEmail    | (userId, newEmail) => Promise\<object\>                    | userStore.updateEmail                                                                                 |
+| delete         | (userId) => Promise\<object\>                              | userStore.deleteUser                                                                                  |
+| verifyPassword | (user, password) => Promise\<boolean\>                     | bcrypt.compare; **user must include `password` field** (e.g. from findByUsername; findById strips it) |
+| updatePassword | (userId, newPassword) => Promise\<object\>                 | Hash, userStore.updatePassword                                                                        |
 
 ### 2.3 Dependencies
 

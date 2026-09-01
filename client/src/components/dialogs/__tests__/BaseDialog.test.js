@@ -90,11 +90,7 @@ describe('BaseDialog', () => {
 
   it('renders actions when provided', () => {
     renderWithProviders(
-      <BaseDialog
-        {...defaultProps}
-        title="Title"
-        actions={<button type="button">Save</button>}
-      />
+      <BaseDialog {...defaultProps} title="Title" actions={<button type="button">Save</button>} />
     );
     expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument();
   });

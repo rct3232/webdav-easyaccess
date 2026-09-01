@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Dialog showing file/folder properties: thumbnail, type, size, modified date, path, and permissions. Fetches permissions via getFolderPermissions. For directories, fetches recursive statistics (fileCount, totalSize) via getFolderStats and shows a default banner/layout (gradient, icon+name block). |
-| Used in | FileManager (Properties from context menu) |
-| Related components | getFileIcon, getThumbnail, formatFileSize, formatDate, getFolderPermissions, getFolderStats (fileService), getParentPath (shared pathUtils) |
+| Item               | Description                                                                                                                                                                                                                                                                                              |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Dialog showing file/folder properties: thumbnail, type, size, modified date, path, and permissions. Fetches permissions via getFolderPermissions. For directories, fetches recursive statistics (fileCount, totalSize) via getFolderStats and shows a default banner/layout (gradient, icon+name block). |
+| Used in            | FileManager (Properties from context menu)                                                                                                                                                                                                                                                               |
+| Related components | getFileIcon, getThumbnail, formatFileSize, formatDate, getFolderPermissions, getFolderStats (fileService), getParentPath (shared pathUtils)                                                                                                                                                              |
 
 ---
 
@@ -19,17 +19,17 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| open | boolean | Y | - | Dialog open |
-| onClose | function | Y | - | Close handler |
-| file | object | Y | - | File object |
+| Name    | Type     | Required | Default | Description   |
+| ------- | -------- | -------- | ------- | ------------- |
+| open    | boolean  | Y        | -       | Dialog open   |
+| onClose | function | Y        | -       | Close handler |
+| file    | object   | Y        | -       | File object   |
 
 ### 2.3 Callback Signatures
 
 | Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| onClose | Dialog close | - |
+| -------- | ------------ | --------- |
+| onClose  | Dialog close | -         |
 
 ### 2.4 Dependencies
 

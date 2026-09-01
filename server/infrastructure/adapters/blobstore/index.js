@@ -6,7 +6,7 @@ const { createFileStoreAdapter } = require('../filestore');
 
 function resolveS3Config() {
   const required = ['S3_BUCKET', 'AWS_REGION', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'];
-  const missing = required.filter(key => !process.env[key]);
+  const missing = required.filter((key) => !process.env[key]);
 
   if (missing.length > 0) {
     throw new Error(`Missing required S3 environment variables: ${missing.join(', ')}`);

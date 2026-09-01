@@ -93,7 +93,9 @@ describe('buildDestBlobStore', () => {
 
     it('passes endpoint through so forcePathStyle applies', () => {
       const { blobStore } = buildDestBlobStore({ ...baseS3, endpoint: 'http://localhost:9000' });
-      expect(S3BlobStore).toHaveBeenCalledWith(expect.objectContaining({ endpoint: 'http://localhost:9000' }));
+      expect(S3BlobStore).toHaveBeenCalledWith(
+        expect.objectContaining({ endpoint: 'http://localhost:9000' })
+      );
       expect(blobStore.client.config.forcePathStyle).toBe(true);
     });
 
@@ -112,13 +114,15 @@ describe('buildDestBlobStore', () => {
     });
 
     it('throws listing exactly which required fields are missing', () => {
-      expect(() => buildDestBlobStore({ type: 's3', region: 'eu-west-1' }))
-        .toThrow('Missing required destination fields: bucket, accessKey, secretKey');
+      expect(() => buildDestBlobStore({ type: 's3', region: 'eu-west-1' })).toThrow(
+        'Missing required destination fields: bucket, accessKey, secretKey'
+      );
     });
 
     it('throws when required fields are empty strings', () => {
-      expect(() => buildDestBlobStore({ type: 's3', bucket: '', accessKey: 'ak', secretKey: '' }))
-        .toThrow('Missing required destination fields: bucket, secretKey');
+      expect(() =>
+        buildDestBlobStore({ type: 's3', bucket: '', accessKey: 'ak', secretKey: '' })
+      ).toThrow('Missing required destination fields: bucket, secretKey');
     });
   });
 
@@ -177,7 +181,10 @@ describe('buildDestBlobStore', () => {
     });
 
     it('passes upstreamUrl through and exposes it on the adapter', () => {
-      const { blobStore } = buildDestBlobStore({ ...baseWebdav, upstreamUrl: 'https://upstream.example.com' });
+      const { blobStore } = buildDestBlobStore({
+        ...baseWebdav,
+        upstreamUrl: 'https://upstream.example.com',
+      });
       expect(blobStore.webdav.upstreamUrl).toBe('https://upstream.example.com');
     });
 
@@ -187,8 +194,9 @@ describe('buildDestBlobStore', () => {
     });
 
     it('throws listing exactly which required fields are missing', () => {
-      expect(() => buildDestBlobStore({ type: 'webdav', url: 'https://dav.example.com' }))
-        .toThrow('Missing required destination fields: username, password');
+      expect(() => buildDestBlobStore({ type: 'webdav', url: 'https://dav.example.com' })).toThrow(
+        'Missing required destination fields: username, password'
+      );
     });
   });
 

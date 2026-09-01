@@ -91,13 +91,7 @@ function withHealthReport(fn) {
   };
 }
 
-for (const method of [
-  'uploadBlob',
-  'createDirectory',
-  'downloadBlob',
-  'deleteBlob',
-  'headBlob',
-]) {
+for (const method of ['uploadBlob', 'createDirectory', 'downloadBlob', 'deleteBlob', 'headBlob']) {
   WebdavBlobStore.prototype[method] = withHealthReport(WebdavBlobStore.prototype[method]);
 }
 

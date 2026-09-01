@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                                                                                    |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Error message handling: determine error type from Error/response, map to i18n keys, extract display messages. Provides getServerErrorDisplay, getServerMessageDisplay, showErrorFromError. Note: For displaying messages, use useMessage hook. |
 
 ---
@@ -17,14 +17,14 @@
 
 ### 2.2 Function Signatures
 
-| Function | (input) => return |
-|----------|-------------------|
-| determineErrorType | (error) => string (ERROR_TYPES.*) |
-| getErrorMessageByType | (errorType) => string (i18n key) |
-| getErrorMessage | (error, defaultKey?) => { key, raw? } |
-| getServerErrorDisplay | (data, t) => string |
-| getServerMessageDisplay | (data, t) => string |
-| showErrorFromError | (error, showErrorFn, t, defaultKey?) => void |
+| Function                | (input) => return                            |
+| ----------------------- | -------------------------------------------- |
+| determineErrorType      | (error) => string (ERROR_TYPES.\*)           |
+| getErrorMessageByType   | (errorType) => string (i18n key)             |
+| getErrorMessage         | (error, defaultKey?) => { key, raw? }        |
+| getServerErrorDisplay   | (data, t) => string                          |
+| getServerMessageDisplay | (data, t) => string                          |
+| showErrorFromError      | (error, showErrorFn, t, defaultKey?) => void |
 
 ### 2.3 Exports
 

@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Mount path | `/api/permission-requests` |
-| Role | Permission request lifecycle: create, inbox, outbox, approve, reject, cancel, check owner. |
+| Item       | Description                                                                                |
+| ---------- | ------------------------------------------------------------------------------------------ |
+| Mount path | `/api/permission-requests`                                                                 |
+| Role       | Permission request lifecycle: create, inbox, outbox, approve, reject, cancel, check owner. |
 
 ---
 
@@ -18,15 +18,15 @@
 
 ### 2.2 Route List
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/` | Token | Create request. Body: `nodeId` or `fileNodeId`, `permission`, `message?` |
-| GET | `/inbox` | Token | Incoming requests. Query: `status?` |
-| GET | `/outbox` | Token | Outgoing requests. Query: `status?` |
-| GET | `/check-owner` | Token | Check if node has owner. Query: `nodeId` (or `folderNodeId`/`fileNodeId`). |
-| POST | `/:id/approve` | Token | Approve (owner): atomically grants `requested_permission` on `file_node_id` (file-level grants via `grantFilePermission` when the target node is a file), then sets status `approved`. 404 when the target node no longer exists; a grant failure propagates without approving. |
-| POST | `/:id/reject` | Token | Reject (owner). |
-| POST | `/:id/cancel` | Token | Cancel (requester). |
+| Method | Path           | Auth  | Description                                                                                                                                                                                                                                                                     |
+| ------ | -------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/`            | Token | Create request. Body: `nodeId` or `fileNodeId`, `permission`, `message?`                                                                                                                                                                                                        |
+| GET    | `/inbox`       | Token | Incoming requests. Query: `status?`                                                                                                                                                                                                                                             |
+| GET    | `/outbox`      | Token | Outgoing requests. Query: `status?`                                                                                                                                                                                                                                             |
+| GET    | `/check-owner` | Token | Check if node has owner. Query: `nodeId` (or `folderNodeId`/`fileNodeId`).                                                                                                                                                                                                      |
+| POST   | `/:id/approve` | Token | Approve (owner): atomically grants `requested_permission` on `file_node_id` (file-level grants via `grantFilePermission` when the target node is a file), then sets status `approved`. 404 when the target node no longer exists; a grant failure propagates without approving. |
+| POST   | `/:id/reject`  | Token | Reject (owner).                                                                                                                                                                                                                                                                 |
+| POST   | `/:id/cancel`  | Token | Cancel (requester).                                                                                                                                                                                                                                                             |
 
 ### 2.3 Middleware Used
 

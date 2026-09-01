@@ -129,7 +129,11 @@ describe('useFolderTreeController', () => {
     await waitFor(() => {
       expect(result.current.sharedFolders).toHaveLength(2);
     });
-    expect(result.current.sharedFolders[0]).toMatchObject({ nodeId: 10, name: 'Shared Docs', permission: 'read' });
+    expect(result.current.sharedFolders[0]).toMatchObject({
+      nodeId: 10,
+      name: 'Shared Docs',
+      permission: 'read',
+    });
   });
 
   it('does not load shared folders for admin users', async () => {
@@ -254,13 +258,14 @@ describe('useFolderTreeController', () => {
       currentPath: '/',
       user: baseUser,
       onNodeClick,
-      ancestors: [{ nodeId: 1, name: 'testuser' }, { nodeId: 2, name: 'a' }],
+      ancestors: [
+        { nodeId: 1, name: 'testuser' },
+        { nodeId: 2, name: 'a' },
+      ],
     });
 
     await waitFor(() => {
-      expect(Array.from(result.current.expandedNodeIds)).toEqual(
-        expect.arrayContaining([1, 2, 3])
-      );
+      expect(Array.from(result.current.expandedNodeIds)).toEqual(expect.arrayContaining([1, 2, 3]));
     });
 
     expect(result.current.homeNodeId).toBe(1);

@@ -67,10 +67,7 @@ describe('ExternalShareSection', () => {
     renderWithProviders(<ExternalShareSection {...defaultProps} />);
     fireEvent.click(screen.getByRole('button', { name: /create link/i }));
     await waitFor(() => {
-      expect(defaultProps.createShareLink).toHaveBeenCalledWith(
-        42,
-        14
-      );
+      expect(defaultProps.createShareLink).toHaveBeenCalledWith(42, 14);
     });
   });
 

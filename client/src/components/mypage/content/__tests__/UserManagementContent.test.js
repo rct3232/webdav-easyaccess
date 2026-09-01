@@ -257,9 +257,7 @@ describe('UserManagementContent', () => {
   });
 
   it('ShareDialog opens when non-pending, non-admin user card is clicked', async () => {
-    server.use(
-      http.get('/api/permissions/user/:userId', () => HttpResponse.json([]))
-    );
+    server.use(http.get('/api/permissions/user/:userId', () => HttpResponse.json([])));
 
     const user = userEvent.setup();
     renderWithProviders(

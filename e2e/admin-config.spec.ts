@@ -140,7 +140,9 @@ async function seedWebdavSettings(dir: string): Promise<void> {
       await exec(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`, [key, value]);
     }
   } finally {
-    await new Promise<void>((resolve, reject) => db.close((err) => (err ? reject(err) : resolve())));
+    await new Promise<void>((resolve, reject) =>
+      db.close((err) => (err ? reject(err) : resolve()))
+    );
   }
 }
 
@@ -208,7 +210,10 @@ async function getConfig(request: APIRequestContext): Promise<Record<string, Con
   return (await res.json()).config as Record<string, ConfigEntry>;
 }
 
-async function putConfig(request: APIRequestContext, values: Record<string, string>): Promise<void> {
+async function putConfig(
+  request: APIRequestContext,
+  values: Record<string, string>
+): Promise<void> {
   const token = await loginToken(request);
   const res = await request.put(`${SCRATCH_BASE}/api/admin/config`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -257,7 +262,9 @@ async function saveConfig(page: Page): Promise<void> {
   const close = snackbar.locator('[aria-label="Close"]');
   if ((await close.count()) > 0) {
     await close.click({ force: true });
-    await expect(snackbar).toBeHidden({ timeout: 3000 }).catch(() => {});
+    await expect(snackbar)
+      .toBeHidden({ timeout: 3000 })
+      .catch(() => {});
   }
 }
 
@@ -426,18 +433,14 @@ test.describe('Admin config editor (Advanced settings)', () => {
     const before1 = await rawSecret();
     await page.getByTestId('config-input-GC_ORPHAN_TTL_DAYS').fill('9');
     await saveConfig(page);
-    await expect
-      .poll(() => getConfig(request).then((c) => c.GC_ORPHAN_TTL_DAYS.value))
-      .toBe('9');
+    await expect.poll(() => getConfig(request).then((c) => c.GC_ORPHAN_TTL_DAYS.value)).toBe('9');
     expect(await rawSecret()).toBe(before1);
 
     // 2) "Set new value" but leave it blank → still kept.
     await page.getByTestId('config-secret-toggle-EMAIL_PASSWORD').click();
     await page.getByTestId('config-input-GC_ORPHAN_TTL_DAYS').fill('10');
     await saveConfig(page);
-    await expect
-      .poll(() => getConfig(request).then((c) => c.GC_ORPHAN_TTL_DAYS.value))
-      .toBe('10');
+    await expect.poll(() => getConfig(request).then((c) => c.GC_ORPHAN_TTL_DAYS.value)).toBe('10');
     expect(await rawSecret()).toBe(before1);
 
     // 3) "Set new value" and type → stored encrypted with the new plaintext.
@@ -445,9 +448,7 @@ test.describe('Admin config editor (Advanced settings)', () => {
     await page.getByTestId('config-secret-new-EMAIL_PASSWORD').fill('new-secret');
     await page.getByTestId('config-input-GC_ORPHAN_TTL_DAYS').fill('11');
     await saveConfig(page);
-    await expect
-      .poll(() => getConfig(request).then((c) => c.GC_ORPHAN_TTL_DAYS.value))
-      .toBe('11');
+    await expect.poll(() => getConfig(request).then((c) => c.GC_ORPHAN_TTL_DAYS.value)).toBe('11');
     await expect.poll(decryptDbSecret).toBe('new-secret');
     expect(await rawSecret()).not.toBe(before1);
 
@@ -455,9 +456,7 @@ test.describe('Admin config editor (Advanced settings)', () => {
     const before4 = await rawSecret();
     await page.getByTestId('config-input-GC_ORPHAN_TTL_DAYS').fill('12');
     await saveConfig(page);
-    await expect
-      .poll(() => getConfig(request).then((c) => c.GC_ORPHAN_TTL_DAYS.value))
-      .toBe('12');
+    await expect.poll(() => getConfig(request).then((c) => c.GC_ORPHAN_TTL_DAYS.value)).toBe('12');
     expect(await rawSecret()).toBe(before4);
     await expect.poll(decryptDbSecret).toBe('new-secret');
   });
@@ -567,9 +566,7 @@ test.describe('Admin config editor (Advanced settings)', () => {
 
     await saveConfig(page);
     await expect(page.getByTestId('config-applied-banner')).toContainText('GC_ORPHAN_TTL_DAYS');
-    await expect
-      .poll(() => getConfig(request).then((c) => c.GC_ORPHAN_TTL_DAYS.value))
-      .toBe('7');
+    await expect.poll(() => getConfig(request).then((c) => c.GC_ORPHAN_TTL_DAYS.value)).toBe('7');
   });
 
   test('T0 metadata group is absent from Advanced settings (D5)', async ({ page }) => {

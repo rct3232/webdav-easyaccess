@@ -78,9 +78,7 @@ describe('RenameDialog', () => {
   });
 
   it('shows error and helperText when error prop set', () => {
-    renderWithProviders(
-      <RenameDialog {...defaultProps} error="Invalid file name" />
-    );
+    renderWithProviders(<RenameDialog {...defaultProps} error="Invalid file name" />);
     expect(screen.getByText(/invalid file name/i)).toBeInTheDocument();
   });
 

@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Recent-file flow controller for FileManager. Tracks recent-file click/history state, coordinates preview/navigation recovery, and maps recent-file failures into user-visible outcomes. |
-| Used by components/pages | `FileManager` page shell and explorer interaction flows |
-| Does not own | Recent-files repository IO, directory listing IO, metadata enrichment, or product routing policy. Those dependencies must be supplied through gateway-backed seams. |
+| Item                     | Description                                                                                                                                                                             |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Recent-file flow controller for FileManager. Tracks recent-file click/history state, coordinates preview/navigation recovery, and maps recent-file failures into user-visible outcomes. |
+| Used by components/pages | `FileManager` page shell and explorer interaction flows                                                                                                                                 |
+| Does not own             | Recent-files repository IO, directory listing IO, metadata enrichment, or product routing policy. Those dependencies must be supplied through gateway-backed seams.                     |
 
 ---
 
@@ -21,34 +21,34 @@
 
 `useRecentFile(params)`
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| setCurrentPath | function | Y | Set path or delegate navigation for recent-file recovery. |
-| showError | function | Y | Show user-visible error feedback. |
-| user | object | Y | Current user. |
-| currentPathRef | ref | N | Current path ref for async rollback/recovery logic. |
-| setSelectedFile | function | N | Set preview target file. |
-| setPreviewDialogOpen | function | N | Open preview dialog. |
-| files | array | Y | Current explorer listing used to resolve clicked recent entries against already-loaded content. |
-| loading | boolean | Y | Whether the current explorer listing is loading. |
-| currentPath | string | Y | Current explorer path. |
-| recentGateway | object | N | Preferred final-target seam exposing gateway-backed helpers such as `addRecentFile`, `removeRecentFile`, and `listDirectory` (defaulting to `explorerGateway` when omitted). Exact shape may vary, but direct repository/service imports do not belong inside this hook. |
+| Name                 | Type     | Required | Description                                                                                                                                                                                                                                                              |
+| -------------------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| setCurrentPath       | function | Y        | Set path or delegate navigation for recent-file recovery.                                                                                                                                                                                                                |
+| showError            | function | Y        | Show user-visible error feedback.                                                                                                                                                                                                                                        |
+| user                 | object   | Y        | Current user.                                                                                                                                                                                                                                                            |
+| currentPathRef       | ref      | N        | Current path ref for async rollback/recovery logic.                                                                                                                                                                                                                      |
+| setSelectedFile      | function | N        | Set preview target file.                                                                                                                                                                                                                                                 |
+| setPreviewDialogOpen | function | N        | Open preview dialog.                                                                                                                                                                                                                                                     |
+| files                | array    | Y        | Current explorer listing used to resolve clicked recent entries against already-loaded content.                                                                                                                                                                          |
+| loading              | boolean  | Y        | Whether the current explorer listing is loading.                                                                                                                                                                                                                         |
+| currentPath          | string   | Y        | Current explorer path.                                                                                                                                                                                                                                                   |
+| recentGateway        | object   | N        | Preferred final-target seam exposing gateway-backed helpers such as `addRecentFile`, `removeRecentFile`, and `listDirectory` (defaulting to `explorerGateway` when omitted). Exact shape may vary, but direct repository/service imports do not belong inside this hook. |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| trackRecentFileClick | (nodeId, parentNodeId) => void | Track recent file click |
-| trackPathHistory | (path, previousPath) => void | Track path navigation history |
-| clearTracking | (path) => void | Clear tracking for path |
-| clearAllTracking | () => void | Clear all tracking |
-| clearPathHistory | (path) => void | Clear path history for path |
-| handleRecentFileError | (error, path) => Promise | Error handler: 404+recent → removeRecentFile; navigates on error |
-| recentFileToPreview | object \| null | File pending preview open |
-| setRecentFileToPreview | function | Set file to open in preview |
-| recentFilePathsRef | ref | Map of nodeId → recent file nodeId |
-| pathHistoryRef | ref | Map of path → previous path |
-| processingErrorRef | ref | Set of paths with active error handling |
+| Key                    | Type                           | Meaning                                                          |
+| ---------------------- | ------------------------------ | ---------------------------------------------------------------- |
+| trackRecentFileClick   | (nodeId, parentNodeId) => void | Track recent file click                                          |
+| trackPathHistory       | (path, previousPath) => void   | Track path navigation history                                    |
+| clearTracking          | (path) => void                 | Clear tracking for path                                          |
+| clearAllTracking       | () => void                     | Clear all tracking                                               |
+| clearPathHistory       | (path) => void                 | Clear path history for path                                      |
+| handleRecentFileError  | (error, path) => Promise       | Error handler: 404+recent → removeRecentFile; navigates on error |
+| recentFileToPreview    | object \| null                 | File pending preview open                                        |
+| setRecentFileToPreview | function                       | Set file to open in preview                                      |
+| recentFilePathsRef     | ref                            | Map of nodeId → recent file nodeId                               |
+| pathHistoryRef         | ref                            | Map of path → previous path                                      |
+| processingErrorRef     | ref                            | Set of paths with active error handling                          |
 
 ### 2.4 Responsibilities (must be non-overlapping)
 

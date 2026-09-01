@@ -139,9 +139,7 @@ describe('useExplorerCommands', () => {
   });
 
   it('stores upload conflict data when conflict preflight finds duplicates', async () => {
-    explorerGateway.checkConflicts.mockResolvedValue([
-      { fileName: 'dup.txt' },
-    ]);
+    explorerGateway.checkConflicts.mockResolvedValue([{ fileName: 'dup.txt' }]);
     const props = createProps();
     const file = new File(['x'], 'dup.txt', { type: 'text/plain' });
 
@@ -155,16 +153,18 @@ describe('useExplorerCommands', () => {
     expect(explorerGateway.checkConflicts).toHaveBeenCalledWith(
       expect.objectContaining({ parentNodeId: 10 })
     );
-    expect(result.current.uploadConflictData).toEqual(expect.objectContaining({
-      parentNodeId: 10,
-    }));
-    expect(bulkState.updateProgress).toHaveBeenCalledWith(expect.objectContaining({ remove: true }));
+    expect(result.current.uploadConflictData).toEqual(
+      expect.objectContaining({
+        parentNodeId: 10,
+      })
+    );
+    expect(bulkState.updateProgress).toHaveBeenCalledWith(
+      expect.objectContaining({ remove: true })
+    );
   });
 
   it('replays conflicted upload with the chosen resolution and refresh completion wiring', async () => {
-    explorerGateway.checkConflicts.mockResolvedValue([
-      { fileName: 'dup.txt' },
-    ]);
+    explorerGateway.checkConflicts.mockResolvedValue([{ fileName: 'dup.txt' }]);
     const props = createProps();
     const file = new File(['x'], 'dup.txt', { type: 'text/plain' });
     const { result } = renderHook(() => useExplorerCommands(props));
@@ -177,12 +177,16 @@ describe('useExplorerCommands', () => {
       await result.current.resolveUploadConflict('skip');
     });
 
-    expect(explorerGateway.uploadToPath).toHaveBeenCalledWith(expect.objectContaining({
-      parentNodeId: 10,
-      onConflict: 'skip',
-    }));
+    expect(explorerGateway.uploadToPath).toHaveBeenCalledWith(
+      expect.objectContaining({
+        parentNodeId: 10,
+        onConflict: 'skip',
+      })
+    );
     expect(props.refreshNow).toHaveBeenCalled();
-    expect(props.setTreeUpdateTrigger).toHaveBeenCalledWith(expect.objectContaining({ type: 'refresh' }));
+    expect(props.setTreeUpdateTrigger).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'refresh' })
+    );
     expect(result.current.uploadConflictData).toBe(null);
   });
 
@@ -241,9 +245,12 @@ describe('useExplorerCommands', () => {
     expect(props.closeBulkDeleteDialog).toHaveBeenCalled();
     expect(props.setSelectedFiles).toHaveBeenCalledWith(new Set());
     expect(props.setSelectionMode).toHaveBeenCalledWith(false);
-    expect(bulkState.handleBulkDelete).toHaveBeenCalledWith({
-      nodeIds: [42, 43],
-    }, null);
+    expect(bulkState.handleBulkDelete).toHaveBeenCalledWith(
+      {
+        nodeIds: [42, 43],
+      },
+      null
+    );
   });
 
   it('surfaces command-style validation failures through the shared error surface and rethrows', async () => {
@@ -266,9 +273,7 @@ describe('useExplorerCommands', () => {
 
   it('derives move/copy in-progress state from picker or active bulk progress items', () => {
     bulkState = createBulkState({
-      progressItems: [
-        { type: 'move', status: 'processing' },
-      ],
+      progressItems: [{ type: 'move', status: 'processing' }],
     });
     useBulkOperations.mockImplementation(() => bulkState);
 

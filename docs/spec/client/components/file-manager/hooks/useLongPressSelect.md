@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Provides long-press touch handlers for file items so that on mobile, a long press enters selection mode and selects the file (without opening context menu) |
-| Used by components/pages | FileList, FileGrid, FileDetail |
+| Item                     | Description                                                                                                                                                 |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Provides long-press touch handlers for file items so that on mobile, a long press enters selection mode and selects the file (without opening context menu) |
+| Used by components/pages | FileList, FileGrid, FileDetail                                                                                                                              |
 
 ---
 
@@ -13,8 +13,8 @@
 
 ### 2.1 File Path
 
-| Scope | Source path | Test path |
-|-------|-------------|-----------|
+| Scope            | Source path                                                      | Test path                                                                       |
+| ---------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------- |
 | Component-family | `client/src/components/file-manager/hooks/useLongPressSelect.js` | `client/src/components/file-manager/hooks/__tests__/useLongPressSelect.test.js` |
 
 - **Source:** `client/src/components/file-manager/hooks/useLongPressSelect.js`
@@ -22,16 +22,16 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| isMobile | boolean | Y | Whether the view is in mobile breakpoint; when false, hook returns no handlers |
-| selectionMode | boolean | Y | Whether selection mode is already active; when true, long-press is disabled |
-| onLongPressSelect | function | Y | Callback when long-press is detected: `(file) => void`. When falsy, hook returns no handlers |
+| Name              | Type     | Required | Description                                                                                  |
+| ----------------- | -------- | -------- | -------------------------------------------------------------------------------------------- |
+| isMobile          | boolean  | Y        | Whether the view is in mobile breakpoint; when false, hook returns no handlers               |
+| selectionMode     | boolean  | Y        | Whether selection mode is already active; when true, long-press is disabled                  |
+| onLongPressSelect | function | Y        | Callback when long-press is detected: `(file) => void`. When falsy, hook returns no handlers |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
+| Key                  | Type     | Meaning                                                                                                                                                                                               |
+| -------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | getLongPressHandlers | function | `(file) => { onTouchStart, onTouchEnd, onTouchMove }`. Returns empty object when disabled (!isMobile \|\| selectionMode \|\| !onLongPressSelect); otherwise returns touch handlers for the given file |
 
 ### 2.4 Dependencies

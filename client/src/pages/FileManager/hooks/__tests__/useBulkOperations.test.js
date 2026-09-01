@@ -32,7 +32,10 @@ const mockGetCurrentNodeId = jest.fn(() => 0);
 
 const defaultArgs = [
   new Set([1, 2]),
-  [{ nodeId: 1, type: 'file', basename: 'file1.txt' }, { nodeId: 2, type: 'file', basename: 'file2.txt' }],
+  [
+    { nodeId: 1, type: 'file', basename: 'file1.txt' },
+    { nodeId: 2, type: 'file', basename: 'file2.txt' },
+  ],
   mockOnOperationComplete,
   mockSetTreeUpdateTrigger,
   undefined,
@@ -121,9 +124,7 @@ describe('useBulkOperations', () => {
       result.current.handleBulkDelete();
     });
 
-    expect(fileService.batchDeleteFiles).toHaveBeenCalledWith(
-      expect.arrayContaining([1, 2])
-    );
+    expect(fileService.batchDeleteFiles).toHaveBeenCalledWith(expect.arrayContaining([1, 2]));
 
     await act(async () => {
       jest.advanceTimersByTime(500);
@@ -143,9 +144,7 @@ describe('useBulkOperations', () => {
       await result.current.handleBulkDelete(null, onConfirm);
     });
 
-    expect(onConfirm).toHaveBeenCalledWith(
-      expect.arrayContaining([1, 2])
-    );
+    expect(onConfirm).toHaveBeenCalledWith(expect.arrayContaining([1, 2]));
     expect(fileService.batchDeleteFiles).not.toHaveBeenCalled();
   });
 
@@ -176,10 +175,7 @@ describe('useBulkOperations', () => {
     });
 
     expect(fileService.checkConflicts).toHaveBeenCalled();
-    expect(fileService.batchMoveFiles).toHaveBeenCalledWith(
-      expect.any(Array),
-      'error'
-    );
+    expect(fileService.batchMoveFiles).toHaveBeenCalledWith(expect.any(Array), 'error');
 
     await act(async () => {
       jest.advanceTimersByTime(500);
@@ -203,10 +199,7 @@ describe('useBulkOperations', () => {
     });
 
     expect(fileService.checkConflicts).toHaveBeenCalled();
-    expect(fileService.batchCopyFiles).toHaveBeenCalledWith(
-      expect.any(Array),
-      'error'
-    );
+    expect(fileService.batchCopyFiles).toHaveBeenCalledWith(expect.any(Array), 'error');
 
     await act(async () => {
       jest.advanceTimersByTime(500);
@@ -293,10 +286,7 @@ describe('useBulkOperations', () => {
       await result.current.resolveBulkConflict('overwrite');
     });
 
-    expect(fileService.batchMoveFiles).toHaveBeenCalledWith(
-      expect.any(Array),
-      'overwrite'
-    );
+    expect(fileService.batchMoveFiles).toHaveBeenCalledWith(expect.any(Array), 'overwrite');
 
     await act(async () => {
       jest.advanceTimersByTime(500);

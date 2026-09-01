@@ -16,40 +16,42 @@ export function useExplorerRefreshIndicator({
   const [showRefreshSuccess, setShowRefreshSuccess] = useState(false);
   const refreshSuccessTimeoutRef = useRef(null);
 
-  const {
-    pullDistance,
-    isPulling,
-    isRefreshing,
-    threshold,
-    resetPull,
-  } = usePullToRefresh(loadFiles, {
-    scrollContainerRef: isMobile ? scrollContainerRef : null,
-    threshold: 240,
-    maxPullDistance: 300,
-    showRefreshSuccess: isMobile ? showRefreshSuccess : false,
-    onRefreshComplete: isMobile ? () => {
-      handleRefreshCompleteRef.current?.();
-    } : undefined,
-  });
-
-  const showRefreshSuccessIndicator = useCallback((options = {}) => {
-    const { shouldResetPull = false, shouldCheckRefreshing = false } = options;
-
-    if (!isMobile) return;
-    if (shouldCheckRefreshing && isRefreshing) return;
-
-    if (refreshSuccessTimeoutRef.current) {
-      clearTimeout(refreshSuccessTimeoutRef.current);
+  const { pullDistance, isPulling, isRefreshing, threshold, resetPull } = usePullToRefresh(
+    loadFiles,
+    {
+      scrollContainerRef: isMobile ? scrollContainerRef : null,
+      threshold: 240,
+      maxPullDistance: 300,
+      showRefreshSuccess: isMobile ? showRefreshSuccess : false,
+      onRefreshComplete: isMobile
+        ? () => {
+            handleRefreshCompleteRef.current?.();
+          }
+        : undefined,
     }
+  );
 
-    setShowRefreshSuccess(true);
-    refreshSuccessTimeoutRef.current = setTimeout(() => {
-      setShowRefreshSuccess(false);
-      if (shouldResetPull && resetPull) {
-        resetPull();
+  const showRefreshSuccessIndicator = useCallback(
+    (options = {}) => {
+      const { shouldResetPull = false, shouldCheckRefreshing = false } = options;
+
+      if (!isMobile) return;
+      if (shouldCheckRefreshing && isRefreshing) return;
+
+      if (refreshSuccessTimeoutRef.current) {
+        clearTimeout(refreshSuccessTimeoutRef.current);
       }
-    }, REFRESH_SUCCESS_DURATION);
-  }, [isMobile, isRefreshing, resetPull]);
+
+      setShowRefreshSuccess(true);
+      refreshSuccessTimeoutRef.current = setTimeout(() => {
+        setShowRefreshSuccess(false);
+        if (shouldResetPull && resetPull) {
+          resetPull();
+        }
+      }, REFRESH_SUCCESS_DURATION);
+    },
+    [isMobile, isRefreshing, resetPull]
+  );
 
   const handleLoadComplete = useCallback(() => {
     showRefreshSuccessIndicator({ shouldCheckRefreshing: true });
@@ -69,39 +71,49 @@ export function useExplorerRefreshIndicator({
   const isPullingOnly = isPulling && !isRefreshing && !loading && !showRefreshSuccess;
   const isDeterminateProgress = isPullingOnly;
 
-  const indicatorStyles = useMemo(() => ({
-    paddingTop: shouldShowIndicator ? '16px' : '0px',
-    paddingBottom: shouldShowIndicator ? '16px' : '0px',
-    marginTop: isActiveLoading
-      ? '0px'
-      : `${Math.max(-pullDistance * 0.5, -MAX_PULL_MARGIN)}px`,
-    transition: isActiveLoading
-      ? 'margin-top 0.3s ease-out, min-height 0.3s ease-out, opacity 0.3s ease-out'
-      : isPulling
-        ? 'none'
-        : 'margin-top 0.15s ease-out, min-height 0.15s ease-out, opacity 0.15s ease-out',
-    opacity: shouldShowIndicator
-      ? (isActiveLoading ? 1 : Math.min(pullDistance / threshold, 1))
-      : 0,
-    minHeight: shouldShowIndicator
-      ? (isPullingOnly ? `${INDICATOR_BASE_HEIGHT + pullDistance}px` : `${INDICATOR_BASE_HEIGHT}px`)
-      : 0,
-    height: shouldShowIndicator
-      ? (isPullingOnly ? `${INDICATOR_BASE_HEIGHT + pullDistance}px` : 'auto')
-      : 0,
-    overflow: 'hidden',
-  }), [shouldShowIndicator, isActiveLoading, isPullingOnly, isPulling, pullDistance, threshold]);
+  const indicatorStyles = useMemo(
+    () => ({
+      paddingTop: shouldShowIndicator ? '16px' : '0px',
+      paddingBottom: shouldShowIndicator ? '16px' : '0px',
+      marginTop: isActiveLoading ? '0px' : `${Math.max(-pullDistance * 0.5, -MAX_PULL_MARGIN)}px`,
+      transition: isActiveLoading
+        ? 'margin-top 0.3s ease-out, min-height 0.3s ease-out, opacity 0.3s ease-out'
+        : isPulling
+          ? 'none'
+          : 'margin-top 0.15s ease-out, min-height 0.15s ease-out, opacity 0.15s ease-out',
+      opacity: shouldShowIndicator
+        ? isActiveLoading
+          ? 1
+          : Math.min(pullDistance / threshold, 1)
+        : 0,
+      minHeight: shouldShowIndicator
+        ? isPullingOnly
+          ? `${INDICATOR_BASE_HEIGHT + pullDistance}px`
+          : `${INDICATOR_BASE_HEIGHT}px`
+        : 0,
+      height: shouldShowIndicator
+        ? isPullingOnly
+          ? `${INDICATOR_BASE_HEIGHT + pullDistance}px`
+          : 'auto'
+        : 0,
+      overflow: 'hidden',
+    }),
+    [shouldShowIndicator, isActiveLoading, isPullingOnly, isPulling, pullDistance, threshold]
+  );
 
-  const iconStyles = useMemo(() => ({
-    width: 24,
-    height: 24,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    mb: 1,
-    transform: isPullingOnly ? `rotate(${pullDistance * 2}deg)` : 'none',
-    transition: 'transform 0.1s ease-out, color 0.2s ease',
-  }), [isPullingOnly, pullDistance]);
+  const iconStyles = useMemo(
+    () => ({
+      width: 24,
+      height: 24,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      mb: 1,
+      transform: isPullingOnly ? `rotate(${pullDistance * 2}deg)` : 'none',
+      transition: 'transform 0.1s ease-out, color 0.2s ease',
+    }),
+    [isPullingOnly, pullDistance]
+  );
 
   const progressColor = useMemo(() => {
     if (hasReachedThreshold && isPullingOnly) {

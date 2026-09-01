@@ -79,12 +79,14 @@ const FilePropertiesDialog = ({ open, onClose, file }) => {
     {
       label: t('dialogs.size'),
       value: isDirectory
-        ? (folderStats
+        ? folderStats
           ? t('fileManager.folderStatsFormat', {
-            count: folderStats.fileCount,
-            size: formatFileSize(folderStats.totalSize),
-          })
-          : (statsLoading ? '...' : '-'))
+              count: folderStats.fileCount,
+              size: formatFileSize(folderStats.totalSize),
+            })
+          : statsLoading
+            ? '...'
+            : '-'
         : formatFileSize(file.size),
     },
     {
@@ -101,13 +103,7 @@ const FilePropertiesDialog = ({ open, onClose, file }) => {
   const thumbnailUrl = getThumbnail(file);
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      fullScreen={isMobile}
-      maxWidth="sm"
-      fullWidth
-    >
+    <Dialog open={open} onClose={onClose} fullScreen={isMobile} maxWidth="sm" fullWidth>
       <DialogTitle>{t('dialogs.propertiesTitle')}</DialogTitle>
       <DialogContent>
         {/* 1. 아이콘/이름 블록: 좌측 정렬, 썸네일 배경 + 그래디언트 */}
@@ -126,21 +122,23 @@ const FilePropertiesDialog = ({ open, onClose, file }) => {
             overflow: 'hidden',
             borderRadius: 1,
             background: 'linear-gradient(135deg, #4167ba 0%, #52c597 100%)',
-            '&::before': thumbnailUrl ? {
-              content: '""',
-              position: 'absolute',
-              inset: 0,
-              backgroundImage: `url(${thumbnailUrl})`,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-              zIndex: 0,
-            } : {
-              content: '""',
-              position: 'absolute',
-              inset: 0,
-              background: 'rgba(255, 255, 255, 0.82)', // 화이트 오버레이 추가
-              zIndex: 1,
-            },
+            '&::before': thumbnailUrl
+              ? {
+                  content: '""',
+                  position: 'absolute',
+                  inset: 0,
+                  backgroundImage: `url(${thumbnailUrl})`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  zIndex: 0,
+                }
+              : {
+                  content: '""',
+                  position: 'absolute',
+                  inset: 0,
+                  background: 'rgba(255, 255, 255, 0.82)', // 화이트 오버레이 추가
+                  zIndex: 1,
+                },
             '&::after': {
               content: '""',
               position: 'absolute',
@@ -233,7 +231,8 @@ const FilePropertiesDialog = ({ open, onClose, file }) => {
               <Typography {...typoCommon} color="text.secondary" sx={{ mb: 0.25 }}>
                 {prop.label}
               </Typography>
-              {(permissionsLoading || (prop.label === t('dialogs.size') && isDirectory && statsLoading)) ? (
+              {permissionsLoading ||
+              (prop.label === t('dialogs.size') && isDirectory && statsLoading) ? (
                 <Skeleton variant="text" width="60%" />
               ) : (
                 <Typography {...typoCommon}>{prop.value}</Typography>

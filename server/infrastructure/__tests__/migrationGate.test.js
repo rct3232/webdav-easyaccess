@@ -69,7 +69,12 @@ describe('createMigrationGate', () => {
       const gate = createMigrationGate();
       gate.set({ type: 'blobs', jobId: 'job-1' });
       const state = gate.clear();
-      expect(state).toEqual({ active: false, type: undefined, jobId: undefined, startedAt: undefined });
+      expect(state).toEqual({
+        active: false,
+        type: undefined,
+        jobId: undefined,
+        startedAt: undefined,
+      });
       expect(gate.isActive()).toBe(false);
     });
 

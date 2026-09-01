@@ -37,7 +37,7 @@ async function createFolder(page: Parameters<typeof openFabAction>[0], folderNam
 async function selectTwoFilesDesktop(
   page: Parameters<typeof openFabAction>[0],
   firstFilePath: string,
-  secondFilePath: string,
+  secondFilePath: string
 ) {
   await fileItem(page, firstFilePath).click();
   await fileItem(page, secondFilePath).click({ modifiers: ['Meta'] });
@@ -48,7 +48,7 @@ async function selectTwoFilesDesktop(
 async function openFolderPickerAndSelectDestination(
   page: Parameters<typeof openFabAction>[0],
   action: 'move' | 'copy',
-  destinationFolderName: string,
+  destinationFolderName: string
 ) {
   const testId = action === 'move' ? 'bulk-action-move' : 'bulk-action-copy';
   await page.getByTestId(testId).click();
@@ -66,9 +66,12 @@ async function waitForBulkOperationToComplete(
 ) {
   const progressSlot = page.locator('#file-progress-slot');
 
-  await expect(progressSlot).toContainText(/Preparing|준비 중|Processing|처리 중|Copying|복사 중|Moving|이동 중|Done|완료/, {
-    timeout: 10000,
-  });
+  await expect(progressSlot).toContainText(
+    /Preparing|준비 중|Processing|처리 중|Copying|복사 중|Moving|이동 중|Done|완료/,
+    {
+      timeout: 10000,
+    }
+  );
   await expect(progressSlot).toContainText(expectedFinalLabel, { timeout: 15000 });
   await expect(progressSlot).toHaveText('', { timeout: 10000 });
 }
@@ -77,7 +80,7 @@ async function openFolderRouteAndWaitForItems(
   page: Parameters<typeof openFabAction>[0],
   request: Parameters<typeof gotoFilesPath>[1],
   folderPath: string,
-  expectedItemPaths: string[],
+  expectedItemPaths: string[]
 ) {
   let lastError: Error | undefined;
 
@@ -98,9 +101,7 @@ async function openFolderRouteAndWaitForItems(
   throw lastError ?? new Error(`Expected copied items in ${folderPath}`);
 }
 
-async function bulkDeleteSelected(
-  page: Parameters<typeof openFabAction>[0],
-) {
+async function bulkDeleteSelected(page: Parameters<typeof openFabAction>[0]) {
   await page.getByTestId('bulk-action-delete').click();
 
   const dialog = page.getByRole('dialog');

@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Modal that shows LoginForm. On success, calls onClose (no navigation). Used when user is on share link and wants to log in without leaving. |
-| Used in | ShareLinkLoader, ShareLinkSingleFileView |
-| Related components | LoginForm |
+| Item               | Description                                                                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Modal that shows LoginForm. On success, calls onClose (no navigation). Used when user is on share link and wants to log in without leaving. |
+| Used in            | ShareLinkLoader, ShareLinkSingleFileView                                                                                                    |
+| Related components | LoginForm                                                                                                                                   |
 
 ---
 
@@ -19,16 +19,16 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| open | boolean | Y | - | Dialog open |
-| onClose | function | Y | - | Close handler; also called on success |
+| Name    | Type     | Required | Default | Description                           |
+| ------- | -------- | -------- | ------- | ------------------------------------- |
+| open    | boolean  | Y        | -       | Dialog open                           |
+| onClose | function | Y        | -       | Close handler; also called on success |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| onClose | Dialog close or login success | - |
+| Callback | When invoked                  | Arguments |
+| -------- | ----------------------------- | --------- |
+| onClose  | Dialog close or login success | -         |
 
 ### 2.4 Dependencies
 

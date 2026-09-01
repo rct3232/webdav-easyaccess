@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | FolderPicker dialog controller: manages open-state lifecycle, `selectedNodeId`, current folder list, write-permission status, and callback wiring for the picker dialog. |
-| Used by components/pages | FolderPickerDialog |
-| Ownership note | This hook is product UI/controller logic for the picker dialog. It is not reusable explorer core. Its target boundary is state/orchestration only: IO must go through `folderPickerGateway`, while breadcrumb shaping, invalid-destination rules, shared-root resolution, and home/shared toggle landing decisions belong in pure helper utilities. |
+| Item                     | Description                                                                                                                                                                                                                                                                                                                                         |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | FolderPicker dialog controller: manages open-state lifecycle, `selectedNodeId`, current folder list, write-permission status, and callback wiring for the picker dialog.                                                                                                                                                                            |
+| Used by components/pages | FolderPickerDialog                                                                                                                                                                                                                                                                                                                                  |
+| Ownership note           | This hook is product UI/controller logic for the picker dialog. It is not reusable explorer core. Its target boundary is state/orchestration only: IO must go through `folderPickerGateway`, while breadcrumb shaping, invalid-destination rules, shared-root resolution, and home/shared toggle landing decisions belong in pure helper utilities. |
 
 ---
 
@@ -19,32 +19,32 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| open | boolean | Y | Dialog open |
-| currentNodeId | number \| null | Y | Initial nodeId |
-| user | object | Y | User |
-| action | string | N | 'copy' \| 'move' |
-| sourceNodeId | number | N | Source nodeId |
-| sourceNodeIds | array | N | Source nodeIds |
+| Name          | Type           | Required | Description      |
+| ------------- | -------------- | -------- | ---------------- |
+| open          | boolean        | Y        | Dialog open      |
+| currentNodeId | number \| null | Y        | Initial nodeId   |
+| user          | object         | Y        | User             |
+| action        | string         | N        | 'copy' \| 'move' |
+| sourceNodeId  | number         | N        | Source nodeId    |
+| sourceNodeIds | array          | N        | Source nodeIds   |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| selectedNodeId | number \| null | Selected folder nodeId (the destination handed to the caller via `onSelect` is a nodeId, not a path) |
-| folders | array | Folder list |
-| loading | boolean | Loading |
-| hasWritePermission | boolean | Write permission |
-| breadcrumbs | array | Breadcrumb items (display names; clicks emit nodeIds) |
-| handleFolderClick | (folder) => void | Select folder (by `folder.nodeId`) |
-| handleNodeClick | (nodeId) => void | Breadcrumb click (by nodeId) |
-| handleTogglePath | (e, target) => void | Home/shared toggle |
-| getCurrentPathType | () => 'home' \| 'shared' | Current type |
-| isInvalidDestination | () => boolean | Invalid dest |
-| setSelectedNodeId | function | Set selected nodeId |
-| loadFolders | (nodeId) => Promise | Load folders for nodeId |
-| checkWritePermission | (nodeId) => Promise | Check write permission |
+| Key                  | Type                     | Meaning                                                                                              |
+| -------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------- |
+| selectedNodeId       | number \| null           | Selected folder nodeId (the destination handed to the caller via `onSelect` is a nodeId, not a path) |
+| folders              | array                    | Folder list                                                                                          |
+| loading              | boolean                  | Loading                                                                                              |
+| hasWritePermission   | boolean                  | Write permission                                                                                     |
+| breadcrumbs          | array                    | Breadcrumb items (display names; clicks emit nodeIds)                                                |
+| handleFolderClick    | (folder) => void         | Select folder (by `folder.nodeId`)                                                                   |
+| handleNodeClick      | (nodeId) => void         | Breadcrumb click (by nodeId)                                                                         |
+| handleTogglePath     | (e, target) => void      | Home/shared toggle                                                                                   |
+| getCurrentPathType   | () => 'home' \| 'shared' | Current type                                                                                         |
+| isInvalidDestination | () => boolean            | Invalid dest                                                                                         |
+| setSelectedNodeId    | function                 | Set selected nodeId                                                                                  |
+| loadFolders          | (nodeId) => Promise      | Load folders for nodeId                                                                              |
+| checkWritePermission | (nodeId) => Promise      | Check write permission                                                                               |
 
 ### 2.4 Dependencies
 
@@ -58,6 +58,7 @@
   - `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/resolveFolderPickerToggleTarget.js`
 
 #### 2.4.1 Pure Helper Utilities
+
 - Breadcrumb builder: `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/buildFolderPickerBreadcrumbs.js`
   - Responsibility: derive the `breadcrumbs` model purely from the hook-maintained navigation stack (`navStack` of `{ nodeId, name }` entries whose first entry is the home or shared root), `homeNodeId`, `homeLabel`, and `sharedLabel` (no gateways/services/hooks). Breadcrumb clicks emit nodeIds.
 - Invalid-destination validator: `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/isInvalidFolderPickerDestination.js`
@@ -93,7 +94,7 @@
 ### 2.7 Verification Scenarios
 
 - [x] Folders load for nodeId (`listFolderContents({ nodeId })`)
-- [x] __shared__ loads shared folders through the toggle
+- [x] **shared** loads shared folders through the toggle
 - [x] Breadcrumb contents match the navigation stack (home/shared root base; clicks emit nodeIds)
 - [x] NodeId click updates `selectedNodeId` and reloads the requested folder
 - [x] Home/shared toggle routes to the expected landing nodeId (home nodeId, shared root, or matching top-level shared root)

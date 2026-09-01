@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Route path | N/A directly; rendered by `ShareLinkLoader` for `/share/:token` when the token resolves to a single file |
-| Role | Full-screen single-file public-share preview/download surface. Reuses `FilePreviewDialog` without a close button and intentionally stays narrower than directory-share mode. |
+| Item       | Description                                                                                                                                                                  |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Route path | N/A directly; rendered by `ShareLinkLoader` for `/share/:token` when the token resolves to a single file                                                                     |
+| Role       | Full-screen single-file public-share preview/download surface. Reuses `FilePreviewDialog` without a close button and intentionally stays narrower than directory-share mode. |
 
 ---
 

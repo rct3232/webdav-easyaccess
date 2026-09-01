@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                                                    |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | User and share-token permissions. Node-level grants with cache support. Uses normalized permission tables in postgresql/sqlite; all references use `file_node_id` BIGINT foreign keys instead of path strings. |
 
 ---
@@ -19,48 +19,48 @@
 
 #### Directory Permissions (Folder-Level)
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| grant | (userId, nodeId, permission, options?) => Promise\<object\> | Grant directory permission; `nodeId` is BIGINT referencing `file_nodes.id` where `type='directory'` |
-| revoke | (userId, nodeId, options?) => Promise\<{ success }\> | Revoke all permissions for user on directory node |
-| getUserPermissions | (userId) => Promise\<Array\<{ file_node_id, permission }\>\> | List directory permissions for user |
-| getSharedPermissions | (userId, homeRootNodeId?) => Promise\<Array\> | List grants where user is grantee, excluding nodes inside the user's own subtree (closure-table); each row includes `name` and `type` from `file_nodes` |
-| removeOwnSubtreePermissions | (userId, homeRootNodeId) => Promise\<{ removedPaths, removedFiles }\> | Delete the user's permission rows on proper descendants of their home root (depth > 0); preserves the home-root ADMIN grant |
-| revokeUserSubtreePermissions | (userId, rootNodeId) => Promise\<{ removedPaths, removedFiles }\> | Delete the user's permission rows on every node in the subtree rooted at `rootNodeId`, INCLUDING the root itself (depth 0). Used on ownership transfer (D6): when a node the user owned is moved into another user's home subtree, the mover's explicit rows on the moved subtree (historical self-grants, admin-assigned rows) would otherwise resurface in `getSharedPermissions` as "shared with me" leaks. |
-| checkPermission | (userId, nodeId, requiredPermission) => Promise\<boolean\> | Check directory permission via ancestor traversal (§2.7) |
-| checkPermissions | (userId, nodeIds, requiredPermission) => Promise\<boolean\> | Batch permission check across multiple nodes |
-| getFolderPermissions | (nodeId, fileNodeId?) => Promise\<Array\> | List users with access to directory; optional `fileNodeId` for file-scoped results |
-| hasPermissionsInPath | (nodeId) => Promise\<Array\> | Permissions on ancestors of node |
-| getPathEffectivePermission | (userId, nodeId) => Promise\<string \| null\> | Effective directory-level permission for a node via ancestor traversal (§2.7) |
+| Method                       | Signature                                                             | Description                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ---------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| grant                        | (userId, nodeId, permission, options?) => Promise\<object\>           | Grant directory permission; `nodeId` is BIGINT referencing `file_nodes.id` where `type='directory'`                                                                                                                                                                                                                                                                                                            |
+| revoke                       | (userId, nodeId, options?) => Promise\<{ success }\>                  | Revoke all permissions for user on directory node                                                                                                                                                                                                                                                                                                                                                              |
+| getUserPermissions           | (userId) => Promise\<Array\<{ file_node_id, permission }\>\>          | List directory permissions for user                                                                                                                                                                                                                                                                                                                                                                            |
+| getSharedPermissions         | (userId, homeRootNodeId?) => Promise\<Array\>                         | List grants where user is grantee, excluding nodes inside the user's own subtree (closure-table); each row includes `name` and `type` from `file_nodes`                                                                                                                                                                                                                                                        |
+| removeOwnSubtreePermissions  | (userId, homeRootNodeId) => Promise\<{ removedPaths, removedFiles }\> | Delete the user's permission rows on proper descendants of their home root (depth > 0); preserves the home-root ADMIN grant                                                                                                                                                                                                                                                                                    |
+| revokeUserSubtreePermissions | (userId, rootNodeId) => Promise\<{ removedPaths, removedFiles }\>     | Delete the user's permission rows on every node in the subtree rooted at `rootNodeId`, INCLUDING the root itself (depth 0). Used on ownership transfer (D6): when a node the user owned is moved into another user's home subtree, the mover's explicit rows on the moved subtree (historical self-grants, admin-assigned rows) would otherwise resurface in `getSharedPermissions` as "shared with me" leaks. |
+| checkPermission              | (userId, nodeId, requiredPermission) => Promise\<boolean\>            | Check directory permission via ancestor traversal (§2.7)                                                                                                                                                                                                                                                                                                                                                       |
+| checkPermissions             | (userId, nodeIds, requiredPermission) => Promise\<boolean\>           | Batch permission check across multiple nodes                                                                                                                                                                                                                                                                                                                                                                   |
+| getFolderPermissions         | (nodeId, fileNodeId?) => Promise\<Array\>                             | List users with access to directory; optional `fileNodeId` for file-scoped results                                                                                                                                                                                                                                                                                                                             |
+| hasPermissionsInPath         | (nodeId) => Promise\<Array\>                                          | Permissions on ancestors of node                                                                                                                                                                                                                                                                                                                                                                               |
+| getPathEffectivePermission   | (userId, nodeId) => Promise\<string \| null\>                         | Effective directory-level permission for a node via ancestor traversal (§2.7)                                                                                                                                                                                                                                                                                                                                  |
 
 #### File Permissions
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| getFilePermission | (userId, fileNodeId) => Promise\<object\> | Get file-specific permission; `fileNodeId` is BIGINT referencing `file_nodes.id` where `type='file'` |
-| getEffectivePermission | (userId, fileNodeId) => Promise\<string \| null\> | File or ancestor directory effective permission for a file node |
-| grantFilePermission | (userId, fileNodeId, permission) => Promise\<object\> | File-only permission; `fileNodeId` is BIGINT |
-| revokeFilePermission | (userId, fileNodeId) => Promise\<{ success }\> | Remove file permission |
-| getUserFilePermissions | (userId) => Promise\<Array\> | List file permissions for user |
+| Method                 | Signature                                             | Description                                                                                          |
+| ---------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| getFilePermission      | (userId, fileNodeId) => Promise\<object\>             | Get file-specific permission; `fileNodeId` is BIGINT referencing `file_nodes.id` where `type='file'` |
+| getEffectivePermission | (userId, fileNodeId) => Promise\<string \| null\>     | File or ancestor directory effective permission for a file node                                      |
+| grantFilePermission    | (userId, fileNodeId, permission) => Promise\<object\> | File-only permission; `fileNodeId` is BIGINT                                                         |
+| revokeFilePermission   | (userId, fileNodeId) => Promise\<{ success }\>        | Remove file permission                                                                               |
+| getUserFilePermissions | (userId) => Promise\<Array\>                          | List file permissions for user                                                                       |
 
 > **Removed:** `checkPermissionSync` and `checkFilePermissionSync` — synchronous permission checks were deleted in Phase 4 (permissionPolicy/ACL legacy cleanup). All permission checks are async and nodeId-based.
 
 #### Share Token Permissions
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| grantSharePermission | (token, nodeId) => Promise\<object\> | Share-token grant; `nodeId` is BIGINT referencing `file_nodes.id`; node type (`file`/`directory`) derivable from `file_nodes.type` |
-| revokeSharePermission | (token) => Promise\<{ success }\> | Revoke share token |
-| checkSharePermission | (token, nodeId, requiredPermission) => Promise\<boolean\> | Share token permission check against node; ancestor inheritance via closure table (§2.7) |
+| Method                | Signature                                                 | Description                                                                                                                        |
+| --------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| grantSharePermission  | (token, nodeId) => Promise\<object\>                      | Share-token grant; `nodeId` is BIGINT referencing `file_nodes.id`; node type (`file`/`directory`) derivable from `file_nodes.type` |
+| revokeSharePermission | (token) => Promise\<{ success }\>                         | Revoke share token                                                                                                                 |
+| checkSharePermission  | (token, nodeId, requiredPermission) => Promise\<boolean\> | Share token permission check against node; ancestor inheritance via closure table (§2.7)                                           |
 
 > **Removed in Phase 7:** `getPermissionDoc` and `getSharePermissionDoc` — raw permission-document accessors; callers use nodeId-based queries directly. `shareCache` Map removed with them.
 
 #### Admin / Lifecycle
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| revokeAllUserPermissions | (userId) => Promise\<{ success }\> | Revoke all permissions for user |
-| deleteUserPermissionsFile | (userId) => Promise\<{ success }\> | Delete user permission file |
+| Method                    | Signature                          | Description                     |
+| ------------------------- | ---------------------------------- | ------------------------------- |
+| revokeAllUserPermissions  | (userId) => Promise\<{ success }\> | Revoke all permissions for user |
+| deleteUserPermissionsFile | (userId) => Promise\<{ success }\> | Delete user permission file     |
 
 > **Removed:** `rewritePermissionsForAllUsers` and `revokePermissionsPrefixForAllUsers` — path-based bulk operations are unnecessary with nodeId references; CASCADE delete on `file_nodes` handles bulk cleanup.
 

@@ -17,7 +17,7 @@ This project is refactoring the client so responsibilities are explicit and repl
 - **Explorer core (file browsing & operations)**
   - Presents folder contents, sorting/searching, selection, and progress UI.
   - Orchestrates file operations (upload/rename/move/copy/delete/download) against authenticated APIs.
-  - Does **not** own sharing policy, permission-request workflows, or recent-files persistence. It can *signal* that an operation occurred so overlays can react.
+  - Does **not** own sharing policy, permission-request workflows, or recent-files persistence. It can _signal_ that an operation occurred so overlays can react.
 
 - **Sharing overlay (share dialog, permission management, share links)**
   - Handles user-facing sharing flows: granting/revoking access, reviewing existing permissions, and creating/updating share links.

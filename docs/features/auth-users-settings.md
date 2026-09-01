@@ -23,12 +23,12 @@ The `/api/auth/me` endpoint provides the current user. User APIs support listing
 
 ### Auth APIs
 
-| Endpoint | Method | Auth | Input | Output / Notes |
-|----------|--------|------|-------|----------------|
-| `/api/auth/register` | POST | None | `username`, `email`, `password` | On success: `{ messageCode, status: 'pending' }` or `{ token, refreshToken?, user }` if auto-approved. Duplicate username/email → 400 with `errorCode`. Registration disabled → 403. |
-| `/api/auth/login` | POST | None | `username`, `password` | Returns `{ user, token, refreshToken? }`. Rate limited (429); pending/rejected status → 403 with `errorCode`. |
-| `/api/auth/refresh` | POST | None | `refreshToken` (body) | Returns `{ token }`. Invalid/expired refresh → 401. |
-| `/api/auth/me` | GET | Token | — | Returns current user object. 401 if invalid/expired. |
+| Endpoint             | Method | Auth  | Input                           | Output / Notes                                                                                                                                                                       |
+| -------------------- | ------ | ----- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/api/auth/register` | POST   | None  | `username`, `email`, `password` | On success: `{ messageCode, status: 'pending' }` or `{ token, refreshToken?, user }` if auto-approved. Duplicate username/email → 400 with `errorCode`. Registration disabled → 403. |
+| `/api/auth/login`    | POST   | None  | `username`, `password`          | Returns `{ user, token, refreshToken? }`. Rate limited (429); pending/rejected status → 403 with `errorCode`.                                                                        |
+| `/api/auth/refresh`  | POST   | None  | `refreshToken` (body)           | Returns `{ token }`. Invalid/expired refresh → 401.                                                                                                                                  |
+| `/api/auth/me`       | GET    | Token | —                               | Returns current user object. 401 if invalid/expired.                                                                                                                                 |
 
 **Input rules (validation):**
 
@@ -95,22 +95,22 @@ Pages and UI components present states and trigger actions; they should not impl
 
 ### User APIs
 
-| Endpoint | Method | Auth | Description |
-|----------|--------|------|-------------|
-| `/api/users` | GET | Token | List users (e.g. for share dialogs). |
-| `/api/users/approved` | GET | Token | List approved users only. |
-| `/api/users/:id` | GET | Token | Get user by id. |
-| `/api/users/:id/password` | PUT | Token | Change password. Body: `currentPassword`, `newPassword`. Only self (or admin) allowed; success invalidates other sessions via `token_version`. |
-| `/api/users/:id/email` | PUT | Token | Update email. Only self (or admin) allowed. |
-| `/api/users/:id/permissions` | PUT | Token | Update current user's own permissions (e.g. home folder). |
+| Endpoint                     | Method | Auth  | Description                                                                                                                                    |
+| ---------------------------- | ------ | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/users`                 | GET    | Token | List users (e.g. for share dialogs).                                                                                                           |
+| `/api/users/approved`        | GET    | Token | List approved users only.                                                                                                                      |
+| `/api/users/:id`             | GET    | Token | Get user by id.                                                                                                                                |
+| `/api/users/:id/password`    | PUT    | Token | Change password. Body: `currentPassword`, `newPassword`. Only self (or admin) allowed; success invalidates other sessions via `token_version`. |
+| `/api/users/:id/email`       | PUT    | Token | Update email. Only self (or admin) allowed.                                                                                                    |
+| `/api/users/:id/permissions` | PUT    | Token | Update current user's own permissions (e.g. home folder).                                                                                      |
 
 See [api.md](../api.md) for exact body/query shapes.
 
 ### Public Settings
 
-| Endpoint | Method | Auth | Description |
-|----------|--------|------|-------------|
-| `/api/settings/public` | GET | None | Returns public settings (e.g. `signupEnabled`). Used by login/register pages. |
+| Endpoint               | Method | Auth | Description                                                                   |
+| ---------------------- | ------ | ---- | ----------------------------------------------------------------------------- |
+| `/api/settings/public` | GET    | None | Returns public settings (e.g. `signupEnabled`). Used by login/register pages. |
 
 ---
 
@@ -122,7 +122,7 @@ See [api.md](../api.md) for exact body/query shapes.
 sequenceDiagram
     participant C as Client
     participant S as Server
-    
+
     C->>S: POST /api/auth/register { username, email, password }
     alt Registration disabled
         S-->>C: 403 errorCode: registrationDisabled

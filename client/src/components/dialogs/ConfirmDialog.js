@@ -57,12 +57,7 @@ const ConfirmDialog = ({
   }
 
   return (
-    <Dialog
-      open={open}
-      onClose={handleCancel}
-      maxWidth="xs"
-      fullWidth
-    >
+    <Dialog open={open} onClose={handleCancel} maxWidth="xs" fullWidth>
       <DialogTitle>{resolvedTitle}</DialogTitle>
       <DialogContent>
         <DialogContentText>{message}</DialogContentText>

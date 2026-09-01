@@ -10,11 +10,11 @@ The server returns a consistent JSON body for errors. See `server/utils/errorHan
 
 **Response body (when `errorCode` is set):**
 
-| Field       | Type   | Description |
-|------------|--------|-------------|
-| `errorCode`| string | i18n key for the error (e.g. from `SERVER_ERROR_CODES`) |
-| `params`   | object | Optional interpolation params for the translation |
-| `details`  | string | Optional; only in development, may include stack trace |
+| Field       | Type   | Description                                             |
+| ----------- | ------ | ------------------------------------------------------- |
+| `errorCode` | string | i18n key for the error (e.g. from `SERVER_ERROR_CODES`) |
+| `params`    | object | Optional interpolation params for the translation       |
+| `details`   | string | Optional; only in development, may include stack trace  |
 
 If the error has no `errorCode`, the handler uses a default internal-server-error code and may put `reason` in `params` from the error message.
 
@@ -44,16 +44,16 @@ Defined in `shared/serverMessageCodes.js`.
 
 Defined in `shared/constants.js`. Both client and server may import `@webdav-easyaccess/shared/constants`.
 
-| Constant                 | Purpose | Allowed values / notes |
-|--------------------------|---------|-------------------------|
-| `PERMISSIONS`            | Folder/file permission levels | `read`, `write`, `admin`; `PERMISSIONS.isValid(permission)` |
-| `HTTP_STATUS`            | HTTP status codes for responses | e.g. `OK`, `CREATED`, `BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `INTERNAL_SERVER_ERROR` |
-| `USER_STATUS`            | User approval state | `pending`, `approved`, `rejected`; `USER_STATUS.isValid(status)` |
-| `PERMISSION_REQUEST_STATUS` | Permission request state | `pending`, `approved`, `rejected`, `cancelled`; `PERMISSION_REQUEST_STATUS.isValid(status)` |
-| `IMAGE_EXTENSIONS`       | Recognized image extensions | Array of strings (e.g. `jpg`, `png`) |
-| `VIDEO_EXTENSIONS`        | Recognized video extensions | Array of strings |
-| `AUDIO_EXTENSIONS`        | Recognized audio extensions | Array of strings |
-| `TEXT_EXTENSIONS`         | Recognized text extensions | Array of strings |
+| Constant                    | Purpose                         | Allowed values / notes                                                                                             |
+| --------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `PERMISSIONS`               | Folder/file permission levels   | `read`, `write`, `admin`; `PERMISSIONS.isValid(permission)`                                                        |
+| `HTTP_STATUS`               | HTTP status codes for responses | e.g. `OK`, `CREATED`, `BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `INTERNAL_SERVER_ERROR` |
+| `USER_STATUS`               | User approval state             | `pending`, `approved`, `rejected`; `USER_STATUS.isValid(status)`                                                   |
+| `PERMISSION_REQUEST_STATUS` | Permission request state        | `pending`, `approved`, `rejected`, `cancelled`; `PERMISSION_REQUEST_STATUS.isValid(status)`                        |
+| `IMAGE_EXTENSIONS`          | Recognized image extensions     | Array of strings (e.g. `jpg`, `png`)                                                                               |
+| `VIDEO_EXTENSIONS`          | Recognized video extensions     | Array of strings                                                                                                   |
+| `AUDIO_EXTENSIONS`          | Recognized audio extensions     | Array of strings                                                                                                   |
+| `TEXT_EXTENSIONS`           | Recognized text extensions      | Array of strings                                                                                                   |
 
 Use these constants instead of magic strings so client and server stay in sync.
 
@@ -72,14 +72,14 @@ Defined in `shared/validation.js`. Used by both client and server for form and i
 
 **Functions:**
 
-| Function            | Purpose | Typical return (error) |
-|---------------------|---------|-------------------------|
-| `validateFileName`  | File/folder name | String key or `null` |
-| `validateEmail`     | Email format | String key or `null` |
-| `validatePassword` | Password length etc. | `{ key, minLength }` / `{ key, maxLength }` or `null` |
-| `validateUsername`  | Username format and reserved names | String key or `null` |
-| `validateMatch`     | Two values must match | `{ key: 'validation.match', fieldName }` or `null` |
-| `validateRequired`   | Required field | `{ key: 'validation.required', fieldName }` or `null` |
+| Function           | Purpose                            | Typical return (error)                                |
+| ------------------ | ---------------------------------- | ----------------------------------------------------- |
+| `validateFileName` | File/folder name                   | String key or `null`                                  |
+| `validateEmail`    | Email format                       | String key or `null`                                  |
+| `validatePassword` | Password length etc.               | `{ key, minLength }` / `{ key, maxLength }` or `null` |
+| `validateUsername` | Username format and reserved names | String key or `null`                                  |
+| `validateMatch`    | Two values must match              | `{ key: 'validation.match', fieldName }` or `null`    |
+| `validateRequired` | Required field                     | `{ key: 'validation.required', fieldName }` or `null` |
 
 **Client usage:** If the result is a string, use `t(result)`. If it is an object, use `t(result.key, result)` (or `t(result.key, { fieldName: result.fieldName })` etc.). Changing the return shape (e.g. adding a new param) requires updating client display logic and any tests that assert on validation output.
 

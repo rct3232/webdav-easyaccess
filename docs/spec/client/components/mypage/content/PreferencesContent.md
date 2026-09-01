@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Language selector (Menu: ko/en). Single-item category content. Moved from AppBar. |
-| Used in | MyPageContentArea (when selectedCategory is 'preferences') |
-| Related components | i18n, getFlagEmoji utility |
+| Item               | Description                                                                       |
+| ------------------ | --------------------------------------------------------------------------------- |
+| Role               | Language selector (Menu: ko/en). Single-item category content. Moved from AppBar. |
+| Used in            | MyPageContentArea (when selectedCategory is 'preferences')                        |
+| Related components | i18n, getFlagEmoji utility                                                        |
 
 ---
 
@@ -19,9 +19,9 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| (minimal) | - | - | - | No required props; can accept optional styling props if needed |
+| Name      | Type | Required | Default | Description                                                    |
+| --------- | ---- | -------- | ------- | -------------------------------------------------------------- |
+| (minimal) | -    | -        | -       | No required props; can accept optional styling props if needed |
 
 ### 2.3 Callback Signatures
 

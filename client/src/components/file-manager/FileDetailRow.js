@@ -51,7 +51,8 @@ const FileDetailRow = ({
     }
   });
 
-  const allowContextMenu = isPermissionDisabled && !isProcessing;  const canOpenMenu = !isDisabled || allowContextMenu;
+  const allowContextMenu = isPermissionDisabled && !isProcessing;
+  const canOpenMenu = !isDisabled || allowContextMenu;
 
   return (
     <TableRow
@@ -60,30 +61,42 @@ const FileDetailRow = ({
       data-file-node-id={file.nodeId}
       {...dragHandlers}
       {...dropHandlers}
-      {...(isLongPressEnabled ? {
-        onTouchStart,
-        onTouchEnd,
-        onTouchMove,
-        onMouseDown,
-        onMouseUp,
-        onMouseLeave,
-      } : {})}
+      {...(isLongPressEnabled
+        ? {
+            onTouchStart,
+            onTouchEnd,
+            onTouchMove,
+            onMouseDown,
+            onMouseUp,
+            onMouseLeave,
+          }
+        : {})}
       hover={!isDisabled}
       sx={{
-        cursor: isDisabled ? 'not-allowed' : (isMobile ? 'pointer' : (selectionMode ? 'pointer' : 'move')),
-        opacity: isDragging ? 0.5 : (isDisabled ? 0.4 : (file.isHidden ? 0.5 : 1)),
+        cursor: isDisabled
+          ? 'not-allowed'
+          : isMobile
+            ? 'pointer'
+            : selectionMode
+              ? 'pointer'
+              : 'move',
+        opacity: isDragging ? 0.5 : isDisabled ? 0.4 : file.isHidden ? 0.5 : 1,
         backgroundColor: isDropTarget
           ? 'primary.main'
-          : (selectionMode && isSelected ? (t_theme) => alpha(t_theme.palette.primary.main, 0.12) : 'transparent'),
-        ...(selectionMode && isSelected && !isDropTarget && {
-          '&:hover': {
-            backgroundColor: (t_theme) => alpha(t_theme.palette.primary.main, 0.2),
-          },
-        }),
+          : selectionMode && isSelected
+            ? (t_theme) => alpha(t_theme.palette.primary.main, 0.12)
+            : 'transparent',
+        ...(selectionMode &&
+          isSelected &&
+          !isDropTarget && {
+            '&:hover': {
+              backgroundColor: (t_theme) => alpha(t_theme.palette.primary.main, 0.2),
+            },
+          }),
         transition: 'all 0.2s',
         borderBottom: '1px solid',
         borderColor: 'divider',
-        color: isDisabled ? 'text.disabled' : (isDropTarget ? 'white' : 'inherit'),
+        color: isDisabled ? 'text.disabled' : isDropTarget ? 'white' : 'inherit',
         position: 'relative',
         height: '40px',
         '& > td': {
@@ -118,9 +131,7 @@ const FileDetailRow = ({
         }
       }}
     >
-      <TableCell
-        sx={{ borderBottom: '1px solid', borderColor: 'divider' }}
-      >
+      <TableCell sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, fontSize: '1.25rem' }}>
           {getFileIcon(file)}
           {(() => {
@@ -129,7 +140,10 @@ const FileDetailRow = ({
             const isTruncated = truncatedName !== originalName;
 
             const typography = (
-              <Typography variant="body2" sx={{ fontSize: '0.875rem', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+              <Typography
+                variant="body2"
+                sx={{ fontSize: '0.875rem', overflow: 'hidden', whiteSpace: 'nowrap' }}
+              >
                 {truncatedName}
               </Typography>
             );
@@ -138,7 +152,9 @@ const FileDetailRow = ({
               <Tooltip title={originalName} disableInteractive>
                 {typography}
               </Tooltip>
-            ) : typography;
+            ) : (
+              typography
+            );
           })()}
         </Box>
       </TableCell>
@@ -157,7 +173,10 @@ const FileDetailRow = ({
           {formatDate(file.lastmod)}
         </Typography>
       </TableCell>
-      <TableCell align="right" sx={{ borderBottom: '1px solid', borderColor: 'divider', width: 48, px: 0.5 }}>
+      <TableCell
+        align="right"
+        sx={{ borderBottom: '1px solid', borderColor: 'divider', width: 48, px: 0.5 }}
+      >
         {(showMoreButton ?? !selectionMode) && onMoreClick && (
           <Box
             component="button"
@@ -204,9 +223,7 @@ const FileDetailRow = ({
           }}
         >
           <CircularProgress size={16} thickness={5} />
-          <Box sx={{ ml: 0.5 }}>
-            {renderProcessingIcon(processingType)}
-          </Box>
+          <Box sx={{ ml: 0.5 }}>{renderProcessingIcon(processingType)}</Box>
         </Box>
       )}
     </TableRow>

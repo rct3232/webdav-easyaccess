@@ -115,7 +115,9 @@ const MIGRATION_ALLOWED_ROUTES = [
 
 function isMigrationAllowListed(req) {
   if (req.path.startsWith('/api/admin/migration')) return true;
-  return MIGRATION_ALLOWED_ROUTES.some((rule) => req.method === rule.method && req.path === rule.path);
+  return MIGRATION_ALLOWED_ROUTES.some(
+    (rule) => req.method === rule.method && req.path === rule.path
+  );
 }
 
 function migrationGatingMiddleware(req, res, next) {
@@ -132,7 +134,6 @@ function migrationGatingMiddleware(req, res, next) {
   });
 }
 app.use(migrationGatingMiddleware);
-
 
 const setupModeGuard = require('./middleware/setupModeGuard');
 const setupModeGuardInstance = setupModeGuard();
@@ -160,17 +161,25 @@ app.use('/api/admin', setupModeGuardInstance, require('./domains/admin/routes/mi
 app.use('/api/admin', setupModeGuardInstance, require('./domains/admin/routes/config'));
 // Public settings (GET /api/settings/public) stays open in setup mode; the
 // admin-write settings routes under /api/settings are gated like /api/admin.
-app.use('/api/settings', (req, res, next) => {
-  if (req.path === '/public') return next();
-  return setupModeGuardInstance(req, res, next);
-}, require('./domains/admin/routes/settings'));
+app.use(
+  '/api/settings',
+  (req, res, next) => {
+    if (req.path === '/public') return next();
+    return setupModeGuardInstance(req, res, next);
+  },
+  require('./domains/admin/routes/settings')
+);
 // Files domain routes (Phase 6 split) — blocked while setup is incomplete
 app.use('/api/files', setupModeGuardInstance, require('./domains/files/routes/crud'));
 app.use('/api/files', setupModeGuardInstance, require('./domains/files/routes/batch'));
 app.use('/api/files', setupModeGuardInstance, require('./domains/files/routes/preview'));
 app.use('/api/folders', setupModeGuardInstance, require('./domains/files/routes/folders'));
 app.use('/api/permissions', setupModeGuardInstance, require('./domains/permissions/routes'));
-app.use('/api/permission-requests', setupModeGuardInstance, require('./domains/permissions/routes/permissionRequests'));
+app.use(
+  '/api/permission-requests',
+  setupModeGuardInstance,
+  require('./domains/permissions/routes/permissionRequests')
+);
 app.use('/api/share-links', setupModeGuardInstance, require('./domains/sharing/routes/shareLinks'));
 app.use('/api/share', setupModeGuardInstance, require('./domains/sharing/routes/sharePublic'));
 app.use('/api/recent-files', setupModeGuardInstance, require('./domains/recentFiles/routes'));
@@ -187,7 +196,6 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
-
 app.use('/api/webdav', require('./infrastructure/webdavRoutes'));
 
 // Error handler middleware (must be after all routes)
@@ -197,7 +205,9 @@ app.use(errorHandler);
 if (fs.existsSync(clientBuildPath)) {
   app.get('*', (req, res) => {
     if (req.path.startsWith('/api/')) {
-      return res.status(HTTP_STATUS.NOT_FOUND).json({ errorCode: SERVER_ERROR_CODES.errorHandler.defaultMessage });
+      return res
+        .status(HTTP_STATUS.NOT_FOUND)
+        .json({ errorCode: SERVER_ERROR_CODES.errorHandler.defaultMessage });
     }
     res.sendFile(path.join(clientBuildPath, 'index.html'));
   });
@@ -221,7 +231,9 @@ async function runBoot() {
   if (getBackend() === 'postgresql') {
     const missing = PG_REQUIRED_KEYS.filter((key) => !process.env[key]);
     if (missing.length > 0) {
-      console.error(`[config] WEA_STORAGE_BACKEND=postgresql requires ${missing.join(', ')} in env/.env. Aborting.`);
+      console.error(
+        `[config] WEA_STORAGE_BACKEND=postgresql requires ${missing.join(', ')} in env/.env. Aborting.`
+      );
       process.exit(1);
     }
   }
@@ -267,7 +279,7 @@ async function runBoot() {
   } catch (e) {
     console.warn('⚠ FFmpeg initialization failed. Video thumbnails are disabled.');
   }
-  
+
   // Test WebDAV connection on startup — only when WebDAV is the active file
   // backend. Probing an unused backend would record a false health alert (D3).
   if (process.env.WEA_FILE_STORAGE === 'webdav') {
@@ -279,7 +291,9 @@ async function runBoot() {
       } else {
         console.warn('⚠ WebDAV connection test: FAILED');
         console.warn(`  ${testResult.message}`);
-        console.warn('  Please check your WebDAV credentials in the effective configuration (env or DB settings).');
+        console.warn(
+          '  Please check your WebDAV credentials in the effective configuration (env or DB settings).'
+        );
       }
     } catch (error) {
       console.warn('⚠ WebDAV connection test failed:', error.message);
@@ -291,12 +305,18 @@ async function runBoot() {
   // backend would record a false health alert (D3). Warn-only: a failure must
   // never exit or crash boot; the health tracker reflects it on the health card.
   if (process.env.WEA_FILE_STORAGE === 's3') {
-    const { probeS3, classifyToHealthCode, toShortReason } = require('./infrastructure/backendProbe');
+    const {
+      probeS3,
+      classifyToHealthCode,
+      toShortReason,
+    } = require('./infrastructure/backendProbe');
     try {
       const payload = buildS3ProbePayload(resolver);
       if (!payload) {
         console.warn('⚠ S3 connection test: SKIPPED (missing required S3 configuration)');
-        console.warn('  Set S3_BUCKET, AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY in the effective configuration (env or DB settings).');
+        console.warn(
+          '  Set S3_BUCKET, AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY in the effective configuration (env or DB settings).'
+        );
       } else {
         await probeS3(payload);
         getBackendHealth().report('s3', { ok: true });
@@ -311,7 +331,9 @@ async function runBoot() {
       });
       console.warn('⚠ S3 connection test: FAILED');
       console.warn(`  ${error.message || error.errorCode}`);
-      console.warn('  Please check your S3 credentials in the effective configuration (env or DB settings).');
+      console.warn(
+        '  Please check your S3 credentials in the effective configuration (env or DB settings).'
+      );
     }
   }
 
@@ -322,10 +344,15 @@ async function runBoot() {
 
   getBackendHealth().reset();
   getBackendHealth().setOnTransition((backend, { from, to, code, reason }) => {
-    if (to === 'fail') console.error(`[backend-health] ${backend}: ${from} → FAIL` + (code ? ` (${code})` : '') + (reason ? ` — ${reason}` : ''));
+    if (to === 'fail')
+      console.error(
+        `[backend-health] ${backend}: ${from} → FAIL` +
+          (code ? ` (${code})` : '') +
+          (reason ? ` — ${reason}` : '')
+      );
     else console.log(`[backend-health] ${backend}: ${from} → OK`);
   });
-  
+
   if (require.main === module) {
     // PORT is T1 (boot-frozen, env → DB → default): resolve at listen time so
     // a DB-sourced value takes effect after the env population above.
@@ -333,19 +360,24 @@ async function runBoot() {
     app.listen(port, () => {
       console.log(`Server is running on port ${port}`);
       setImmediate(() => {
-        const { ensureHomeOwnerAdminForAllUsers } = require('./domains/admin/services/cleanupService');
+        const {
+          ensureHomeOwnerAdminForAllUsers,
+        } = require('./domains/admin/services/cleanupService');
         ensureHomeOwnerAdminForAllUsers()
           .then(() => console.log('✓ Permission cleanup (home-owner admin) completed'))
-          .catch(err => console.error('Permission cleanup on startup failed:', err));
+          .catch((err) => console.error('Permission cleanup on startup failed:', err));
       });
       setImmediate(() => {
         try {
           const { getComposition } = require('./service/composition');
-          const { runStartupFailSafeRecovery, startGcScheduler } = require('./infrastructure/maintenanceScheduler');
+          const {
+            runStartupFailSafeRecovery,
+            startGcScheduler,
+          } = require('./infrastructure/maintenanceScheduler');
           const composition = getComposition();
           runStartupFailSafeRecovery({ failSafeService: composition.failSafeService })
             .then(() => {})
-            .catch(err => console.error('Fail-safe recovery on startup failed:', err));
+            .catch((err) => console.error('Fail-safe recovery on startup failed:', err));
           startGcScheduler({ gcService: composition.gcService });
         } catch (err) {
           const { setup_complete } = computeSetupStatus(process.env);
@@ -360,10 +392,9 @@ async function runBoot() {
   }
 }
 
-runBoot().catch(err => {
+runBoot().catch((err) => {
   console.error('Initialization failed:', err);
   process.exit(1);
 });
 
 module.exports = app;
-

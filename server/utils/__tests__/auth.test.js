@@ -4,11 +4,7 @@
  */
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
-const {
-  generateToken,
-  verifyToken,
-  authenticateToken,
-} = require('../auth');
+const { generateToken, verifyToken, authenticateToken } = require('../auth');
 
 describe('auth', () => {
   describe('generateToken', () => {

@@ -196,12 +196,15 @@ export function useSetupWizard() {
     loadStatus();
   }, [loadStatus]);
 
-  const handleFileBackendChange = useCallback((value) => {
-    setForm((prev) => ({ ...prev, fileBackend: value }));
-    setErrors((prev) => ({ ...prev, 0: null }));
-    resetTest('s3');
-    resetTest('webdav');
-  }, [resetTest]);
+  const handleFileBackendChange = useCallback(
+    (value) => {
+      setForm((prev) => ({ ...prev, fileBackend: value }));
+      setErrors((prev) => ({ ...prev, 0: null }));
+      resetTest('s3');
+      resetTest('webdav');
+    },
+    [resetTest]
+  );
 
   const handleFieldChange = useCallback(
     (scope, field) => (event) => {

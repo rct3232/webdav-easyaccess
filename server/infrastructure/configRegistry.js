@@ -35,7 +35,12 @@ const CONFIG_ENTRIES = Object.freeze([
   { key: 'NODE_ENV', tier: TIER.T0, secret: false },
   { key: 'DOTENV_CONFIG_PATH', tier: TIER.T0, secret: false },
   { key: 'encrypt_secret_key', tier: TIER.T0, secret: true },
-  { key: 'JWT_SECRET', tier: TIER.T0, secret: true, default: 'your-secret-key-change-in-production' },
+  {
+    key: 'JWT_SECRET',
+    tier: TIER.T0,
+    secret: true,
+    default: 'your-secret-key-change-in-production',
+  },
 
   // ── File storage ───────────────────────────────────────────────────────
   { key: 'WEA_FILE_STORAGE', tier: TIER.T1, secret: false, default: 's3' },

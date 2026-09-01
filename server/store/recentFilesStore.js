@@ -34,7 +34,9 @@ async function listRecentFilesPg(userId, client = null) {
 }
 
 async function listRecentFilesSqlite(userId, client = null) {
-  const query = client ? (sql, params) => client.query(sql, params) : (sql, params) => storage.sqliteQuery(sql, params);
+  const query = client
+    ? (sql, params) => client.query(sql, params)
+    : (sql, params) => storage.sqliteQuery(sql, params);
   const res = await query(
     `SELECT file_node_id, last_accessed
        FROM recent_files

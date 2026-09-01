@@ -120,16 +120,16 @@ describe('explorerGateway', () => {
 
     expect(listFiles).toHaveBeenCalledWith(5, {});
     expect(getShowHiddenFiles).toHaveBeenCalled();
-    expect(result).toEqual([
-      expect.objectContaining({ nodeId: 10, hasAdminPermission: true }),
-    ]);
+    expect(result).toEqual([expect.objectContaining({ nodeId: 10, hasAdminPermission: true })]);
     expect(result).toHaveLength(1); // hidden file filtered out
     // hasAdminPermission comes from the server listing row, not getUserPermissions.
     expect(getUserPermissions).not.toHaveBeenCalled();
   });
 
   it('returns raw share listings without hidden or permission enrichment', async () => {
-    listFiles.mockResolvedValueOnce([{ nodeId: 20, display_path: '/shared/.hidden.txt', isHidden: true }]);
+    listFiles.mockResolvedValueOnce([
+      { nodeId: 20, display_path: '/shared/.hidden.txt', isHidden: true },
+    ]);
 
     const result = await listDirectory({
       nodeId: 15,
@@ -221,7 +221,9 @@ describe('explorerGateway', () => {
   });
 
   it('loads metadata for file entries only', async () => {
-    getFilesMetadata.mockResolvedValueOnce([{ nodeId: 10, display_path: '/docs/report.txt', size: 12 }]);
+    getFilesMetadata.mockResolvedValueOnce([
+      { nodeId: 10, display_path: '/docs/report.txt', size: 12 },
+    ]);
 
     const result = await getEntriesMetadata({
       entries: [
@@ -264,9 +266,22 @@ describe('explorerGateway', () => {
     });
 
     expect(result).toEqual([
-      expect.objectContaining({ nodeId: 100, name: 'Shared Docs', basename: 'Shared Docs', type: 'directory', hasWritePermission: true }),
+      expect.objectContaining({
+        nodeId: 100,
+        name: 'Shared Docs',
+        basename: 'Shared Docs',
+        type: 'directory',
+        hasWritePermission: true,
+      }),
       expect.objectContaining({ nodeId: 101, name: 'Read Only', type: 'directory' }),
-      expect.objectContaining({ nodeId: 300, name: 'report.txt', basename: 'report.txt', type: 'file', size: 50, mime: 'text/plain' }),
+      expect.objectContaining({
+        nodeId: 300,
+        name: 'report.txt',
+        basename: 'report.txt',
+        type: 'file',
+        size: 50,
+        mime: 'text/plain',
+      }),
     ]);
     expect(result).toHaveLength(3);
     expect(JSON.stringify(result)).not.toContain('node-100');
@@ -290,8 +305,17 @@ describe('explorerGateway', () => {
     expect(result).toEqual([
       expect.objectContaining({ nodeId: 100, hasWritePermission: true, hasAdminPermission: true }),
       expect.objectContaining({ nodeId: 101, hasWritePermission: true, hasAdminPermission: false }),
-      expect.objectContaining({ nodeId: 102, hasWritePermission: false, hasAdminPermission: false }),
-      expect.objectContaining({ nodeId: 300, type: 'file', hasWritePermission: false, hasAdminPermission: false }),
+      expect.objectContaining({
+        nodeId: 102,
+        hasWritePermission: false,
+        hasAdminPermission: false,
+      }),
+      expect.objectContaining({
+        nodeId: 300,
+        type: 'file',
+        hasWritePermission: false,
+        hasAdminPermission: false,
+      }),
     ]);
     expect(JSON.stringify(result)).not.toContain('node-100');
     expect(JSON.stringify(result)).not.toContain('file-300');

@@ -260,12 +260,17 @@ async function loginAsAdminUi(page: Page): Promise<void> {
 async function openSystemSettings(page: Page): Promise<void> {
   await page.goto('/mypage');
   const systemSettings = page.getByRole('button', { name: /system settings/i });
-  if (!(await systemSettings.isVisible().catch(() => false))) {
-    const menuButton = page.locator('button[aria-label="My page"]');
-    if ((await menuButton.count()) > 0) {
-      await menuButton.click();
-      await expect(page.locator('.MuiDrawer-paper')).toBeVisible();
-    }
+  const menuButton = page.locator('button[aria-label="My page"]');
+  // Wait for the MyPage shell to render before deciding: on desktop the sidebar
+  // (with the System settings button) is always visible; on mobile the menu
+  // button appears in the AppBar while the sidebar lives in a closed drawer.
+  // A one-shot isVisible()/count() right after goto races React mount — both
+  // resolve to 0 before the app loads, the drawer is never opened, and the
+  // subsequent click() times out against the hidden drawer content.
+  await expect(menuButton.or(systemSettings).first()).toBeVisible({ timeout: 20000 });
+  if ((await menuButton.count()) > 0) {
+    await menuButton.click();
+    await expect(page.locator('.MuiDrawer-paper')).toBeVisible();
   }
   await systemSettings.click();
   await expect(page.getByRole('heading', { level: 6, name: /system settings/i })).toBeVisible();

@@ -167,10 +167,30 @@ When `WEA_STORAGE_BACKEND=postgresql`, metadata is persisted in normalized table
 This document intentionally omits full constraints/indexes. Treat
 `server/store/postgresql/ddl/001_initial_normalized_schema.sql` as the single source of truth.
 
-#### Metadata Migration Path (One-shot)
+#### Metadata Migration Path
 
-> **Removed in Phase 7.** The FsJSON/webdav metadata backends and `server/scripts/migrateMetadataToPostgresql.js` were removed. Blob migration between the current backends is handled by the bidirectional WebDAV ↔ S3 migration tool — see `docs/spec/server/tools/blob-migration.md` (admin API + `server/scripts/migrateBlobs.js` CLI).
-- command sequence and operator checks are maintained in `docs/SETUP.md`.
+Metadata migration between the `sqlite` and `postgresql` backends is a **supported admin path**
+(schemas are structurally identical — the sqlite DDL is generated from
+`001_initial_normalized_schema.sql` via `sqliteSchemaInit.js` type-conversion). It is exposed as
+an admin API + config dialogs (no standalone CLI; the legacy
+`server/scripts/migrateMetadataToPostgresql.js` was removed in Phase 7):
+
+- `GET /api/admin/migration/target-scan` — scan the non-active target backend
+  (`schemaExists` + per-table row counts).
+- `POST /api/admin/migration/metadata` — transactional wipe + copy (target-scan → wipe alert →
+  explicit `wipeTarget` confirm → copy; cancel = rollback). Backed by
+  `server/domains/admin/services/metadataMigrationService.js`.
+- Runs under **migration mode**: while a migration is active a gate middleware returns
+  `503 migrationInProgress` for all routes except an allow-list, and the `/migration` page forces
+  the operator to stay until the terminal state.
+- Final cutover is a manual `.env` edit + restart (the DB connection is T0/`.env`-owned); the
+  ".env setup needed" banner guides it while the non-active backend holds data.
+
+Full contracts: `docs/features/migration-mode.md`, `docs/spec/server/tools/metadata-migration.md`,
+`docs/spec/server/services/metadataMigrationService.md`. Blob migration between the current
+backends remains the bidirectional WebDAV ↔ S3 tool — see
+`docs/spec/server/tools/blob-migration.md` (admin API primary + `server/scripts/migrateBlobs.js`
+CLI). Command sequences and operator checks are maintained in `docs/SETUP.md`.
 
 ### 2.2 Concurrency Control (Metadata Locking)
 

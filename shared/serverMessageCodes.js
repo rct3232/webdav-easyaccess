@@ -199,6 +199,10 @@ const SERVER_ERROR_CODES = {
     shareLinkExpired: P('serverErrors.utilsAuth', 'shareLinkExpired'),
     tokenRequired: P('serverErrors.utilsAuth', 'tokenRequired'),
   },
+  // Migration gate (PLAN D3): returned verbatim by the gating middleware
+  // (server/infrastructure/migrationGate.js), so the value is a bare i18n key,
+  // not namespaced via P().
+  migrationInProgress: 'migrationInProgress',
 };
 
 const SERVER_MESSAGE_CODES = {
@@ -257,6 +261,9 @@ const SERVER_MESSAGE_CODES = {
     emailUpdated: P('serverMessages.users', 'emailUpdated'),
     permissionUpdated: P('serverMessages.users', 'permissionUpdated'),
   },
+  // Migration gate (PLAN D3): bare i18n key returned verbatim by the gating
+  // middleware (server/infrastructure/migrationGate.js).
+  migrationInProgress: 'migrationInProgress',
 };
 
 module.exports = {

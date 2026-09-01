@@ -21,12 +21,15 @@ import {
 import { CleaningServices as CleaningServicesIcon } from '@mui/icons-material';
 import CategoryIcon from '@mui/icons-material/Category';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import Storage from '@mui/icons-material/Storage';
 import SyncAlt from '@mui/icons-material/SyncAlt';
 import * as adminService from '../../../services/adminService';
+import { getMigrationPresence } from '../../../services/migrationService';
 import { getServerErrorDisplay } from '../../../utils/errorUtils';
 import { getShowHiddenFiles, setShowHiddenFiles as saveShowHiddenFiles } from '../../../utils/localStorage';
 import { usePageHeader } from '../../../contexts/PageHeaderContext';
 import MigrationDialog from './MigrationDialog';
+import MetadataMigrationDialog from './MetadataMigrationDialog';
 import SystemConfigEditor from './SystemConfigEditor';
 
 const SystemSettingsContent = ({ onMessage }) => {
@@ -42,10 +45,12 @@ const SystemSettingsContent = ({ onMessage }) => {
   const [permissionCleanupLoading, setPermissionCleanupLoading] = useState(false);
   const [permissionCleanupConfirmOpen, setPermissionCleanupConfirmOpen] = useState(false);
   const [migrationOpen, setMigrationOpen] = useState(false);
+  const [metadataMigrationOpen, setMetadataMigrationOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [keyLostWarning, setKeyLostWarning] = useState(false);
   const [backendHealth, setBackendHealth] = useState({});
   const [activeBackends, setActiveBackends] = useState(() => new Set());
+  const [metadataPresence, setMetadataPresence] = useState(null);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -83,11 +88,21 @@ const SystemSettingsContent = ({ onMessage }) => {
     }
   }, []);
 
+  const loadMigrationPresence = useCallback(async () => {
+    try {
+      const data = await getMigrationPresence();
+      setMetadataPresence(data);
+    } catch {
+      setMetadataPresence(null);
+    }
+  }, []);
+
   useEffect(() => {
     loadSettings();
     loadKeyLostWarning();
     loadHealth();
-  }, [loadSettings, loadKeyLostWarning, loadHealth]);
+    loadMigrationPresence();
+  }, [loadSettings, loadKeyLostWarning, loadHealth, loadMigrationPresence]);
 
   const handleToggleRegistration = async () => {
     const newValue = tempSettings.registration_enabled === 'true' ? 'false' : 'true';
@@ -186,6 +201,22 @@ const SystemSettingsContent = ({ onMessage }) => {
           <Typography variant="body2">{t('admin.keyLostWarningDetail')}</Typography>
         </Alert>
       )}
+      {metadataPresence?.otherHasData && (
+        <Alert severity="warning" sx={{ mb: 3 }} data-testid="env-setup-needed-banner">
+          <Typography variant="subtitle2">{t('admin.envSetupNeededTitle')}</Typography>
+          <Typography variant="body2">
+            {t('admin.envSetupNeededBody', {
+              backend:
+                metadataPresence.otherBackend === 'postgresql'
+                  ? t('migrationPage.backendPostgresql')
+                  : t('migrationPage.backendSqlite'),
+            })}
+          </Typography>
+          <Button size="small" color="warning" variant="outlined" sx={{ mt: 1 }} onClick={() => setMetadataMigrationOpen(true)}>
+            {t('admin.envSetupNeededAction')}
+          </Button>
+        </Alert>
+      )}
       <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <Box sx={{ flex: 1 }}>
           <Typography variant="body1">{t('admin.registrationEnabled')}</Typography>
@@ -241,6 +272,15 @@ const SystemSettingsContent = ({ onMessage }) => {
         </Box>
         <IconButton onClick={() => setMigrationOpen(true)} color="primary" sx={{ ml: 2 }} aria-label={t('admin.runMigration')}>
           <SyncAlt />
+        </IconButton>
+      </Box>
+      <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="body1">{t('admin.metadataMigration')}</Typography>
+          <Typography variant="body2" color="text.secondary">{t('admin.metadataMigrationDesc')}</Typography>
+        </Box>
+        <IconButton onClick={() => setMetadataMigrationOpen(true)} color="primary" sx={{ ml: 2 }} aria-label={t('admin.runMetadataMigration')}>
+          <Storage />
         </IconButton>
       </Box>
 
@@ -309,6 +349,7 @@ const SystemSettingsContent = ({ onMessage }) => {
       </Dialog>
 
       <MigrationDialog open={migrationOpen} onClose={() => setMigrationOpen(false)} onMessage={(msg) => setMessage(msg)} />
+      <MetadataMigrationDialog open={metadataMigrationOpen} onClose={() => setMetadataMigrationOpen(false)} onMessage={(msg) => setMessage(msg)} />
 
       <Snackbar open={!!message.text} autoHideDuration={6000} onClose={() => setMessage({ type: '', text: '' })} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert onClose={() => setMessage({ type: '', text: '' })} severity={message.type || 'info'} sx={{ width: '100%' }}>

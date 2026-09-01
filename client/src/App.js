@@ -7,6 +7,8 @@ import { MainLayout, PrivateRoute } from './components/layout';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Setup from './pages/Setup/Setup';
+import MigrationPage from './pages/Migration/MigrationPage';
+import MigrationGuard from './pages/Migration/MigrationGuard';
 import FileManager from './pages/FileManager';
 import MyPage from './pages/MyPage';
 import ShareLinkLoader from './pages/ShareLinkLoader';
@@ -65,36 +67,42 @@ const theme = createTheme({
 function App() {
   const router = createBrowserRouter(
     [
-      { path: '/login', element: <Login /> },
-      { path: '/register', element: <Register /> },
-      { path: '/setup', element: <Setup /> },
       {
-        element: <MainLayout />,
+        element: <MigrationGuard />,
         children: [
+          { path: '/login', element: <Login /> },
+          { path: '/register', element: <Register /> },
+          { path: '/setup', element: <Setup /> },
+          { path: '/migration', element: <MigrationPage /> },
           {
-            path: '/files/*',
-            element: (
-              <PrivateRoute>
-                <FileManager />
-              </PrivateRoute>
-            ),
+            element: <MainLayout />,
+            children: [
+              {
+                path: '/files/*',
+                element: (
+                  <PrivateRoute>
+                    <FileManager />
+                  </PrivateRoute>
+                ),
+              },
+              {
+                path: '/mypage',
+                element: (
+                  <PrivateRoute>
+                    <MyPage />
+                  </PrivateRoute>
+                ),
+              },
+              {
+                path: '/admin',
+                element: <Navigate to="/mypage" state={{ category: 'admin' }} replace />,
+              },
+              { path: '/share/:token', element: <ShareLinkLoader /> },
+            ],
           },
-          {
-            path: '/mypage',
-            element: (
-              <PrivateRoute>
-                <MyPage />
-              </PrivateRoute>
-            ),
-          },
-          {
-            path: '/admin',
-            element: <Navigate to="/mypage" state={{ category: 'admin' }} replace />,
-          },
-          { path: '/share/:token', element: <ShareLinkLoader /> },
+          { path: '/', element: <Navigate to="/files" replace /> },
         ],
       },
-      { path: '/', element: <Navigate to="/files" replace /> },
     ],
     {}
   );

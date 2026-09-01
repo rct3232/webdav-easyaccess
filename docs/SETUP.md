@@ -132,7 +132,7 @@ File/blob storage is selected independently of the metadata backend:
 
 The schema is applied **automatically at startup**. On a **fresh empty database**, the server boots and `initMetadataStore()` (`server/store/bootstrap.js`) runs `applyPendingMigrations('postgresql')` (`server/infrastructure/schemaManager.js`), which applies `server/store/postgresql/ddl/*.sql` in order and records each file in `_schema_migrations`. Subsequent boots detect all files as applied and are no-ops (idempotent).
 
-**Deployment contract: point the app only at a fresh empty database. Never point it at an existing/old DB.** No "already exists" tolerance is added — a misconfigured app aimed at a pre-existing (e.g. legacy path-based) database must fail loudly at boot rather than be silently recorded as migrated. Data migration is handled out of band: blob content is moved with the active WebDAV ↔ S3 migration tool (see [Data Migration: WebDAV ↔ S3](#data-migration-webdav--s3) and `docs/spec/server/tools/blob-migration.md`).
+**Deployment contract: point the app only at a fresh empty database. Never point it at an existing/old DB.** No "already exists" tolerance is added — a misconfigured app aimed at a pre-existing (e.g. legacy path-based) database must fail loudly at boot rather than be silently recorded as migrated. Moving existing metadata into a fresh target DB is handled out of band by the **metadata migration admin path** (`GET /api/admin/migration/target-scan` → `POST /api/admin/migration/metadata`, target scan → wipe alert → confirm → transactional copy; see `docs/features/migration-mode.md` and `docs/spec/server/tools/metadata-migration.md`), followed by a manual `.env` cutover + restart (the DB connection is T0/`.env`-owned). Blob content is moved with the WebDAV ↔ S3 migration tool (see [Data Migration: WebDAV ↔ S3](#data-migration-webdav--s3) and `docs/spec/server/tools/blob-migration.md`).
 
 To apply the DDL manually (equivalent to what startup does), instead:
 
@@ -158,7 +158,7 @@ Permission contract source of truth:
 
 > **Active — see `docs/spec/server/tools/blob-migration.md` for the full spec.**
 
-Moves physical blobs between the two supported blob backends (WebDAV and S3) in either direction, guided by the DB metadata (`file_nodes` + `object_map` + `filecache`). The tool is **bidirectional** and resumable. It runs as a **standalone CLI** (`server/scripts/migrateBlobs.js`) or in-app via the admin API (`POST /api/admin/migration/blobs`, 202 + `{ jobId }` polling). Both trigger the same `migrationService` core.
+Moves physical blobs between the two supported blob backends (WebDAV and S3) in either direction, guided by the DB metadata (`file_nodes` + `object_map` + `filecache`). The tool is **bidirectional** and resumable. It runs **in-app** via the admin API (`POST /api/admin/migration/blobs`, 202 + `{ jobId }` polling) — the primary path, executed on the `/migration` page under migration mode — or as a **standalone CLI** (`server/scripts/migrateBlobs.js`, kept but not the primary path). Both trigger the same `migrationService` core. Feature spec: `docs/features/migration-mode.md`.
 
 **How it works**
 
@@ -166,14 +166,18 @@ Moves physical blobs between the two supported blob backends (WebDAV and S3) in 
 - The migration run uses a **snapshot approach**: the active file-node set is enumerated once at start; the tool reads only from source and writes only to the destination store plus the required DB updates. The app remains fully usable during the copy.
 - **Source blobs are never deleted** in the MVP (a delete mode is a follow-up).
 
-**Direction and cutover**
+**Direction and cutover (migration mode)**
 
-The migration direction is never selected — it follows from the current `WEA_FILE_STORAGE`. `GET /api/admin/migration/info` reports the derived `{ source, direction }`. After an `apply` run completes, the in-app UI shows a popup instructing you to change `WEA_FILE_STORAGE` + the target storage env block in `.env` and restart the server process (a dry-run completion does not show it).
+The migration direction is never selected — it follows from the current `WEA_FILE_STORAGE`. `GET /api/admin/migration/info` reports the derived `{ source, direction }`. Starting an **apply** run from the storage-migration dialog (System Settings) enters **migration mode**: the whole app locks (all routes return `503 migrationInProgress` except health/login/migration/status) and the browser **auto-redirects to `/migration`**, which shows node-count progress (`% = copied/total`), the current file label, and copied/skipped/failed counters. The run is cancellable mid-copy and resumable on re-run.
 
-Both directions follow the same cutover shape — run the copy (`apply`), switch `WEA_FILE_STORAGE` + the backend's storage env in `.env`, restart the app, then verify:
+Both directions follow the same cutover shape:
 
-- **WebDAV → S3 (derived when `WEA_FILE_STORAGE=webdav`):** run the copy while the app is in webdav mode. `object_map` is updated per node during copy (safe because the webdav-mode app ignores it). After the copy completes, stop the app, set `WEA_FILE_STORAGE=s3` (+ `S3_*` env), and restart — no finalize step is needed.
-- **S3 → WebDAV (derived when `WEA_FILE_STORAGE=s3`):** run the copy while the app is in s3 mode. Each node's `object_map.storage_backend` is flipped to `'webdav'` **inline** right after its webdav upload succeeds, while `s3_key` is **preserved** — the running S3-mode app keeps serving via the retained key and rollback stays possible. Then **cut over**: stop the app, set `WEA_FILE_STORAGE=webdav` (+ `WEBDAV_*` env), and restart. No separate finalize step is needed.
+1. **Run the copy (`apply`)** — dialog destination credentials are used for the copy; on completion the destination config is **auto-persisted** (DB-sourced storage keys are written to the DB `settings` table, secrets AES-encrypted; env-sourced keys are reported as `skippedEnvSourced` and you edit `.env` manually instead). A `dry-run` also enters migration mode (its enumeration progress is shown on `/migration`) but writes nothing.
+2. **Restart the app** — storage config is boot-frozen (`WEA_FILE_STORAGE` + the backend block are read once at startup), so a restart is strictly required for the switch to take effect.
+3. **Verify** — after restart the active backend is probed at boot (WebDAV probe, or the S3 probe) and the backend-health card reflects the new backend.
+
+- **WebDAV → S3 (derived when `WEA_FILE_STORAGE=webdav`):** run the copy while the app is in webdav mode. `object_map` is updated per node during copy (safe because the webdav-mode app ignores it). After the copy completes and the restart is done, the app runs in s3 mode — no finalize step is needed.
+- **S3 → WebDAV (derived when `WEA_FILE_STORAGE=s3`):** run the copy while the app is in s3 mode. Each node's `object_map.storage_backend` is flipped to `'webdav'` **inline** right after its webdav upload succeeds, while `s3_key` is **preserved** — the running S3-mode app keeps serving via the retained key and rollback stays possible. Then **cut over**: restart with `WEA_FILE_STORAGE=webdav` (+ `WEBDAV_*` env). No separate finalize step is needed.
 
 **Execution order**
 
@@ -221,7 +225,8 @@ Use this checklist for deployment/runtime validation only:
 
 - [ ] `WEA_STORAGE_BACKEND` and backend-specific env keys are set as intended.
 - [ ] Required DDL has been applied (`001`). On a fresh DB the server applies it automatically at startup; on a migrated target DB the migration tool applies it first.
-- [ ] Blob migration (WebDAV ↔ S3, `docs/spec/server/tools/blob-migration.md`) ran `--check-env` and `--dry-run` before `--apply`, and report warnings are resolved; cutover steps followed.
+- [ ] Blob migration (WebDAV ↔ S3, `docs/spec/server/tools/blob-migration.md`) ran a `dry-run` before `apply` and report warnings are resolved; cutover steps (persist/restart/probe) followed.
+- [ ] Metadata migration (sqlite ↔ PG, `docs/spec/server/tools/metadata-migration.md`) used `target-scan` + explicit wipe confirm; `.env` cutover (`WEA_STORAGE_BACKEND` + `WEA_PG_*`) and restart performed; ".env setup needed" banner resolved.
 - [ ] `/api/health` returns healthy status after server start.
 
 For store contract validation, use `docs/spec/server/store/*.md`.

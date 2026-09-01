@@ -317,6 +317,29 @@ export function queryScratchSqlite<T = Record<string, unknown>>(
 }
 
 /**
+ * Run a write/DDL statement against a scratch sqlite file (its own connection,
+ * closed afterwards). Used by the migration spec to seed object_map rows and
+ * flood the source `settings` table. sqlite3 has no types; the local
+ * structural type keeps it typed.
+ */
+export function execScratchSqlite(dbPath: string, sql: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const { Database } = require('sqlite3') as {
+      Database: new (path: string) => {
+        run: (sql: string, cb: (err: Error | null) => void) => void;
+        close: (cb?: (err: Error | null) => void) => void;
+      };
+    };
+    const db = new Database(dbPath);
+    db.run(sql, (err) => {
+      db.close(() => {});
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+}
+
+/**
  * Ensure the webdav case subtree `/setup-e2e/<caseId>/` exists on the shared
  * bytemark container (MKCOL each missing segment). The wizard's WebDAV URL is
  * pointed at the subtree so each scratch case keeps its blobs isolated on the

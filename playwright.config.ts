@@ -94,6 +94,30 @@ const projects: PlaywrightProject[] = [
       baseURL: 'http://localhost:5003',
     },
   },
+  // Additive, hermetic unified-migration-mode projects: same scratch-server
+  // pattern as setup-wizard/admin-config — each test spawns its own fully
+  // configured scratch server on :5003 (own .env, own sqlite, own scratch PG
+  // target) and drives the migration dialogs / /migration page against it.
+  {
+    name: 'migration-desktop',
+    testMatch: /migration\.spec\.ts$/,
+    use: {
+      browserName: 'chromium',
+      viewport: { width: 1280, height: 720 },
+      baseURL: 'http://localhost:5003',
+    },
+  },
+  {
+    name: 'migration-mobile',
+    testMatch: /migration\.spec\.ts$/,
+    use: {
+      browserName: 'webkit',
+      viewport: { width: 390, height: 844 },
+      isMobile: true,
+      hasTouch: true,
+      baseURL: 'http://localhost:5003',
+    },
+  },
 ];
 
 export default defineConfig({

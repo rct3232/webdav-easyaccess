@@ -690,3 +690,70 @@ classified Case A (Source Error) and fixed with user approval on branch
   sqlite→PG roundtrip (19/19 pass).
 
 
+
+---
+
+## 2026-09-01 — migration-mode E2E (branch test/migration-e2e): two Case A defects + test-side findings
+
+### A1 — Metadata migration cancel is defeated by the worker's progress updates
+
+- **Area:** `server/domains/admin/routes/migration.js` (`runMetadataMigrationWorker` onProgress), `server/domains/admin/stores/migrationJobStore.js`
+- **Classification:** Case A (Source Error — feature violates `docs/spec/server/services/metadataMigrationService.md` / `docs/features/migration-mode.md` D4 cancel=ROLLBACK)
+- **Summary:** `POST /api/admin/migration/jobs/:jobId/cancel` sets the job store status to `'cancelled'`, but the metadata worker's `onProgress` callback writes `migrationJobStore.update(jobId, { status: 'running', ... })` on every progress tick, overwriting the cancel flag. `isCancelled()` reads the job-store status, so it always sees `'running'` during the copy and the transaction always COMMITs. The blob worker is unaffected (its `onProgress` does not touch `status`).
+- **Observed failure:** `e2e/migration.spec.ts` E2E-MIG-007 (B5) — cancel mid-copy returns 200, then the job status trace is `running→running→…→running→completed` (never `'cancelled'`), consistently across scan / schema / copy phases (5+ consecutive runs). The target DB is fully committed, not rolled back.
+- **Spec cross-check:** `metadata-migration.md` §2.4 "the metadata worker aborts the transaction → ROLLBACK"; `migration-mode.md` D4 "DB migration = one target transaction → cancel = ROLLBACK". The service-level rollback logic (`metadataMigrationService.runMigration` → `runInTargetTransaction` → ROLLBACK on `MigrationCancelledError`) is correct; `metadataMigrationService.test.js` passes only because its `isCancelled` flips a plain variable, never the job-store status the worker writes.
+- **Action taken (FIXED):** `runMetadataMigrationWorker`'s onProgress
+  (`migration.js:260-278`) now builds the progress patch WITHOUT the `status`
+  field and only adds `status:'running'` when the job is `pending`/`running`;
+  an existing `'cancelled'` status is preserved across ticks, so a cancel that
+  lands between progress ticks stays observable to `isCancelled()` and the
+  copy aborts → the target transaction ROLLBACKs and the job ends `cancelled`.
+  E2E-MIG-007's `test.fail()` placeholder was removed and the test now asserts
+  the real behavior (job `cancelled`, gate cleared, target `users`/`settings`/
+  `file_nodes` all rolled back). Added a route-level regression test
+  (`migration.test.js` "a progress tick landing after cancel does NOT clobber
+  the cancelled status") that reproduces the race via a mocked `runMigration`
+  calling onProgress after the cancel request; it fails against the old code
+  (job reaches `completed`) and passes against the fix.
+
+### A2 — WebDAV-mode uploads never reach `sync_status='active'`, so a webdav-source blob migration snapshots nothing
+
+- **Area:** `server/domains/files/services/fileService.js` (webdav branch of `uploadFile`), `server/store/fileNodesStore.js` (`createNode` hardcodes `'pending_upload'`), `server/domains/admin/services/migrationService.js` (`enumerateSnapshot` filters `getNodesBySyncStatus('active')`)
+- **Classification:** Case A (Source Error — a `webdav → s3` blob migration cannot copy data produced by the app itself)
+- **Summary:** Every node is created with `sync_status='pending_upload'`. In S3 mode the upload service's TX2 sets `'active'`; in webdav mode `fileService.uploadFile` calls `uploadToWebdav` (which only upserts filecache) and never sets `'active'`, and webdav uploads never create `object_map` rows either. `migrationService.enumerateSnapshot` requires `sync_status='active'` + an active `object_map` row, so a webdav-source migration always enumerates zero nodes (`total: 0`, copied 0).
+- **Observed failure:** e2e migration seeding — uploads via `POST /api/files/upload` left nodes `pending_upload` with no `object_map`; dry-run/apply reported `total: 0`.
+- **Spec cross-check:** `docs/spec/server/tools/blob-migration.md` §6 defines the snapshot as `file_nodes WHERE type='file' AND sync_status='active'` with an active `object_map` row.
+- **Action taken:** Test-side: `e2e/migration.spec.ts` `seedObjectMapRows` puts uploaded nodes into the spec-defined snapshot precondition (sets `sync_status='active'` + seeds the active webdav `object_map` row), mirroring the `migrationService.test.js` fixture. This is a test precondition, not a feature fix — the webdav sync-status lifecycle defect remains (reported, not fixed).
+- **Follow-up verdict (2026-09-01, investigated):** **(a) pre-existing webdav-mode
+  design** (webdav is path-based; `object_map`/`sync_status='active'` are S3-mode
+  lifecycle concepts) **combined with (c) a genuine gap in the migration
+  feature's snapshot contract** — `enumerateSnapshot` (`migrationService.js:103-114`)
+  requires `sync_status='active'` (`getNodesBySyncStatus('active')`) AND an active
+  `object_map` row (`getActiveObject`), but neither is producible by the app's own
+  webdav writes: `createNode` hardcodes `'pending_upload'`
+  (`fileNodesStore.js:77,96`), webdav `uploadFile` (`fileService.js:148-164`) →
+  `uploadToWebdav` (`blobStorageService.js:146-153`) only upserts filecache and
+  never sets `'active'` nor touches `object_map`, and webdav-mode
+  `prepareUpload`/`completeUpload` are stubs (`blobStorageService.js:19-38`). Not
+  a regression (the migration feature is new; there is no prior behavior to
+  regress). A real webdav→s3 migration of app-produced data silently migrates
+  0 nodes. **Recommended minimal fix (NOT applied — decision deferred):** make
+  `enumerateSnapshot` source-mode aware — in webdav mode enumerate file nodes
+  with `sync_status != 'orphaned_node'` and synthesize the activeObject
+  (`{ s3_key: null, storage_backend: 'webdav' }`) since the webdav source blob is
+  at `getNodePath(node.id)` (the webdav-to-s3 `shouldSkip`/`processNode` paths
+  read `activeObject.s3_key` only as a resume marker and never touch the source
+  path); alternative (larger blast radius): have `uploadToWebdav` write an active
+  `object_map` row (`storage_backend='webdav'`, `s3_key=NULL`) and set
+  `sync_status='active'` so app data satisfies the existing precondition — but
+  that changes every webdav upload's write path and the S3-centric status/GC
+  semantics, so the migration-side fix is preferred. Also update
+  `docs/spec/server/tools/blob-migration.md` §6 accordingly.
+
+### B — Test-side issues fixed (Case B), no feature changes
+
+- **Stale client build:** `client/build` predated the migration feature (old MigrationDialog text, missing `metadata-wipe-alert`/`env-setup-needed-banner` testids). `ensureClientBuild()` only builds when `index.html` is absent, so the stale build was served. Fixed by rebuilding `client/`.
+- **PG scratch DB name:** `CREATE DATABASE` with a hyphenated name (`flow-d1-scan-wipe`) → PG syntax error. Fixed by replacing `-` with `_` in the scratch DB name (`bootScratch`).
+- **Flow C gate hold:** `WEA_SKIP_MIGRATION_WORKER=1` does not set the migration gate (`dispatchWorker` early-returns, intentionally — covered by server tests), so it cannot produce the active gate the flow needs. Flow C instead holds the gate with a real migration whose destination probe hangs on a local tarpit (`net.Server` that accepts and never replies), and A8 uses a client-side (history API) navigation to `/mypage` (a full reload of a PrivateRoute would 503 `getMe` → auth logout → PrivateRoute → `/login`, racing the guard).
+- **WebDAV credentials for non-upload flows:** Flow C boots `WEA_FILE_STORAGE=webdav`; without the seeded `WEBDAV_*` DB settings `setup_complete` is false and `/login` redirects to `/setup`. Fixed by seeding webdav settings in all flows (`withWebdav`).
+- **B5 timing:** the metadata copy is fast (~780 ms for 20k settings rows); the cancel kept landing in the final `sourceHasEncryptedRows`/COMMIT window or was wiped by the A1 defect. Flooded to 50k rows and canceled on a mid-copy progress signal. After the A1 fix the cancel works: E2E-MIG-007 now polls for a mid-copy `progress.percent >= 10`, cancels, and asserts the job ends `cancelled` with the target rolled back.

@@ -87,20 +87,21 @@ async function createMigrationTable(backend, options = {}) {
   }
 }
 
-async function isApplied(backend, filename, options = {}) {
+// Return the recorded migration row for the file, or null when unapplied.
+async function getMigrationRecord(backend, filename, options = {}) {
   if (backend === 'postgresql') {
     const { rows } = await resolvePgExecutor(options).query(
-      'SELECT 1 FROM _schema_migrations WHERE filename = $1',
+      'SELECT filename, checksum FROM _schema_migrations WHERE filename = $1',
       [filename]
     );
-    return rows.length > 0;
+    return rows.length > 0 ? rows[0] : null;
   }
 
   const result = await resolveSqliteExecutor(options).query(
-    'SELECT 1 FROM _schema_migrations WHERE filename = ?',
+    'SELECT filename, checksum FROM _schema_migrations WHERE filename = ?',
     [filename]
   );
-  return result.rows && result.rows.length > 0;
+  return result.rows && result.rows.length > 0 ? result.rows[0] : null;
 }
 
 async function recordMigration(backend, filename, checksum, options = {}) {
@@ -118,12 +119,20 @@ async function recordMigration(backend, filename, checksum, options = {}) {
 }
 
 async function applyIfPending(backend, filename, options = {}) {
-  const applied = await isApplied(backend, filename, options);
-  if (applied) return;
-
   const filePath = path.join(DDL_DIR, filename);
   const content = await fs.readFile(filePath, 'utf8');
   const checksum = computeChecksum(content);
+
+  const record = await getMigrationRecord(backend, filename, options);
+  if (record) {
+    if (record.checksum === checksum) return;
+
+    throw new Error(
+      `Schema drift: DDL file '${filename}' was modified after it was applied. ` +
+        `Stored checksum ${record.checksum} != current checksum ${checksum}. ` +
+        `Reset the _schema_migrations row or restore the file.`
+    );
+  }
 
   let ddl = backend === 'sqlite' ? convertPostgresToSqlite(content) : content;
 

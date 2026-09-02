@@ -17,9 +17,9 @@
 
 | ID | Status | Item | Source | Proposed resolution |
 | -- | ------ | ---- | ------ | ------------------- |
-| D-1 | UNDECIDED | `refreshPolicy` direction: function is still path-keyed (`startedPath/currentPathNow/targetPath`) while its only caller (`useExplorerCommands.js:80-85`) already passes nodeIds — the mismatch disables per-operation refresh gating (see C-3). | `docs/spec/client/utils/refreshPolicy.md` | (a) rename function params to the nodeId end-state, or (b) revert the caller to path args. Must be chosen before C-3. |
-| D-2 | UNDECIDED | Remove the dead `fileService` legacy permission wrappers (`checkPermission`, `checkFilePermission`, `grantFilePermission`, `revokeFilePermission`, `updateFilePermission`) + `listFilePermissions` re-export — zero production consumers (only tests/mocks). | `client/src/services/fileService.js:534-560` | Delete now (see C-2) or defer to the next file-layer cleanup. |
-| D-3 | UNDECIDED | iOS Web Share "Save Image" hint for image preview download — spec is optional, UI not implemented. | `docs/spec/client/components/dialogs/FilePreviewDialog.md` | Product decision: implement a hint (tooltip/toast) or leave absent. |
+| D-1 | CODE-FIX | `refreshPolicy` direction — option (a) chosen: function must be migrated to the nodeId end-state the caller already sends (see C-3). | `docs/spec/client/utils/refreshPolicy.md` | **Decided 2026-09-02: option (a)** — migrate to nodeId params; implementation tracked as C-3. |
+| D-2 | CODE-FIX | Remove the dead `fileService` legacy permission wrappers (`checkPermission`, `checkFilePermission`, `grantFilePermission`, `revokeFilePermission`, `updateFilePermission`) + `listFilePermissions` re-export — zero production consumers (only tests/mocks). | `client/src/services/fileService.js:534-560` | **Decided 2026-09-02: delete now** — file-level capability already consolidated in `permissionService` (`grant/revokePermission` with `target:'file'`); implementation tracked as C-2. |
+| D-3 | RESOLVED | iOS Web Share "Save Image" hint for image preview download — decided: no hint; no code work. | `docs/spec/client/components/dialogs/FilePreviewDialog.md` | **Decided 2026-09-02: leave absent** — share-sheet native save options are self-explanatory; spec wording cleaned in `FilePreviewDialog.md` / `client-ui.md`. |
 
 ## 2. Code changes pending (detailed)
 
@@ -32,13 +32,13 @@
 ### C-2 — Remove dead `fileService` permission wrappers
 - **File:** `client/src/services/fileService.js:534-557` (+ `:560` re-export)
 - **Problem:** legacy nodeId wrappers over `permissionService`; no production caller (only `fileService.test.js:34` and `testing/mocks/serviceMocks.js:21-24`).
-- **Fix:** remove the exports; update the test and mock; verify no remaining importer.
-- **Decision required:** see D-2. **Priority:** low.
+- **Fix (decision 2026-09-02: delete now):** remove the exports (5 wrappers + `listFilePermissions` re-export + now-unused `permissionService` imports); update the `fileService.test.js` mock and `serviceMocks.js`; verify no remaining importer. Update `fileService.md:43` note with the code.
+- **Priority:** low.
 
 ### C-3 — `refreshPolicy` caller/callee nodeId–path mismatch
 - **Files:** `client/src/pages/FileManager/hooks/useExplorerCommands.js:80-85`, `client/src/utils/refreshPolicy.js:19-24`
 - **Problem:** caller sends `{ opType, startedNodeId, currentNodeIdNow, targetParentNodeId }`; function destructures path names and normalizes `undefined` → both paths become `/` → **always returns refresh**. Per-operation refresh gating is ineffective and can cause mis-refreshes.
-- **Fix:** depends on D-1 — either migrate `refreshPolicy` (function + `refreshPolicy.test.js` path fixtures) to nodeId params, or revert the caller to path args.
+- **Fix (decision 2026-09-02: option (a) — migrate to nodeId):** rename `refreshPolicy` params to `startedNodeId`/`currentNodeIdNow`/`targetParentNodeId`, drop `normalizePath`; rewrite `refreshPolicy.test.js` fixtures (path strings → nodeIds; add identity/null edge cases); align the two stray path-keyed call sites in `FileManager.js:567/637`; update the `refreshPolicy.md:24` note with the code.
 - **Priority:** medium (behavioral).
 
 ### C-4 — `setup.test.js` PostgreSQL gating (decision: option B)
@@ -86,6 +86,12 @@
 - **Client spec:** `ShareFolderTree` false "still path-keyed" claim removed; `FolderTree`/`BaseFolderTreeItem`/`SharedFoldersSection` target-contract wording → current state; `AuthContext` "(split target)" removed; `FileManager.md` "(planned)/still monolithic" → implemented; `sharePermissionSaveUseCase`/`shareTargetPermissionSaveUseCase` revoke semantics fixed (best-effort revoke, fatal grant); `FilePreviewDialog` iOS hint → optional + tracked; `SystemSettingsContent` key-lost-warning UI spec added; `explorerGateway.removeRecentFile` → nodeId; `fileViewUtils` path-fallback note updated.
 - **Feature/infra:** `config-source-resolution` D3 apply rewritten + future-tooling moved here; `auth-users-settings` password semantics aligned; `client-ui` → v7 baseline; PLAN.md citations removed from `migration-mode`/`backend-health`/`E2E_COVERAGE_PLAN`/`TEST_GIT_GUIDE`/`TESTING_STRATEGY`; blob/metadata-migration payload docs made type-dependent; deferred statements moved to §4; E2E bucket wording (ensure both modes, empty s3) fixed; RCA references repointed from `.cursor/` to this document + AGENTS §3.2.
 - **Retirement:** root `PLAN.md` content and `docs/fail_log.md` removed after review — future RCA entries are recorded here (AGENTS.md §3.2).
+
+### 2026-09-02 — D-1/D-2/D-3 decisions (client cleanup)
+
+- **D-1 (option (a) — migrate `refreshPolicy` to nodeId):** rename to `startedNodeId`/`currentNodeIdNow`/`targetParentNodeId`, drop `normalizePath`. Verified: every op payload producer (delete `useBulkOperations.js:284`, move/copy `:580-581`, rename, upload) already emits nodeId keys, so gating becomes effective once implemented. Implementation = C-3.
+- **D-2 (delete now):** confirmed file-level capability is consolidated in `permissionService` (`grantPermission`/`revokePermission` with `target:'file'`, `checkPermission`, `listFilePermissions`); the `fileService` wrappers are pure delegates with zero production consumers. Implementation = C-2.
+- **D-3 (no hint):** iOS image share sheet presents native save options and is self-explanatory; no product request. Spec wording updated to current state in `FilePreviewDialog.md` and `client-ui.md`.
 
 ### Historical completed improvement backlog (pre-2026-09-02)
 

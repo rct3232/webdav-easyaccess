@@ -564,7 +564,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         });
       }
 
-      handleOperationComplete({ opType: 'createFolder', startedPath: folderPath });
+      handleOperationComplete({ opType: 'createFolder', startedNodeId: parentNodeId });
       closeCreateFolderDialog();
 
       setTimeout(() => {
@@ -634,7 +634,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   );
 
   const onShareTargetSave = useCallback(() => {
-    handleOperationComplete({ opType: 'refresh', startedPath: currentPathRef.current });
+    handleOperationComplete({ opType: 'refresh', startedNodeId: currentNodeIdRef.current });
   }, [handleOperationComplete]);
 
   useEffect(() => {

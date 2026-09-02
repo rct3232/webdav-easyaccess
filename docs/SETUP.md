@@ -172,7 +172,7 @@ Moves physical blobs between the two supported blob backends (WebDAV and S3) in 
 
 - The **direction** is auto-derived from the current app config (`WEA_FILE_STORAGE`): source = the env mode, destination = the other backend. The server is the single source of truth; only the **destination** config is user input (`--dest-*` flags or `DEST_*` env; e.g. `DEST_TYPE=s3`, `DEST_S3_BUCKET`, ... or `DEST_TYPE=webdav`, `DEST_WEBDAV_URL`, ...). `DEST_TYPE` must match the derived destination (`s3` for a webdav source, `webdav` for an s3 source).
 - The migration run uses a **snapshot approach**: the active file-node set is enumerated once at start; the tool reads only from source and writes only to the destination store plus the required DB updates. The app remains fully usable during the copy.
-- **Source blobs are never deleted** in the MVP (a delete mode is a follow-up).
+- **Source blobs are never deleted** (a delete-mode follow-up is tracked in `docs/IMPROVEMENT_PLAN.md`).
 
 **Direction and cutover (migration mode)**
 

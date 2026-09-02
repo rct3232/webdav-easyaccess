@@ -69,6 +69,6 @@ User objects returned by the auth API carry a `rootNodeId` field that resolves t
 - [ ] Login returns 429 when rate limit exceeded
 - [ ] Refresh returns 200 with token (string); token uniqueness not guaranteed within same second
 - [ ] GET /me returns user when authenticated
-- [ ] Register usernameTaken vs emailTaken 동시: errorCode 우선순위(구현 정의)
+- [ ] Register duplicate handling: username uniqueness is checked first (service.js:108-122); when both username and email are taken, `serverErrors.auth.usernameTaken` (400) is always returned — `emailTaken` is only returned after the username check passes
 - [ ] Refresh 빈/잘못된 refreshToken → 401
 - [ ] GET /me 만료 토큰 → 401

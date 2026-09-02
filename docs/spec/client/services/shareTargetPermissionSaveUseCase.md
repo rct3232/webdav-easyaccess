@@ -46,7 +46,7 @@
 ### 2.6 Error Handling
 
 - Any grant failure rejects the use-case.
-- Revoke failures are best-effort only if preserving existing behavior requires it.
+- Revoke failures are best-effort (non-fatal) and are ignored.
 - Callers own user-facing error messages and close/retry behavior.
 
 ### 2.7 Verification Scenarios

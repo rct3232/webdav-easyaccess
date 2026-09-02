@@ -4,7 +4,7 @@
 
 | Item | Description                                                                                                                                                                                                                                                           |
 | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role | CacheAdapter-backed store for tracking download progress, preview tickets, and bulk operation jobs (delete, move, copy). Replaces the original `server/store/bulkJobStore.js`. Jobs expire after BULK_JOB_TTL_MS (1 hour) when terminal (completed/cancelled/failed). |
+| Role | CacheAdapter-backed store for tracking download progress, preview tickets, and bulk operation jobs (delete, move, copy). Successor of the original `server/store/bulkJobStore.js`; the implementation now lives in the files domain at `server/domains/files/stores/operationProgress.js`. Jobs expire after BULK_JOB_TTL_MS (1 hour) when terminal (completed/cancelled/failed). |
 
 ---
 
@@ -12,7 +12,7 @@
 
 ### 2.1 File Path
 
-- **Source:** `server/domains/files/stores/operationProgress.js`
+- **Source:** `server/domains/files/stores/operationProgress.js` (successor to the legacy `server/store/bulkJobStore.js`, which no longer exists)
 - **Test file:** None yet
 
 ### 2.2 Class & Factory
@@ -30,8 +30,8 @@
 | setDownloadProgress     | (id, state) => void                          | Store download progress state                                             |
 | getDownloadProgress     | (id) => object \| undefined                  | Retrieve download progress state                                          |
 | cleanupDownloadProgress | (id, ttlMs?) => void                         | Schedule download progress deletion via setTimeout; default TTL 5 min     |
-| issuePreviewTicket      | (principalId, filePath, ttlMs?) => string    | Generate hex ticket; stores {principalId, filePath} with default 120s TTL |
-| readPreviewTicket       | (ticket) => {principalId, filePath} \| null  | Validate and return ticket data; returns null for invalid/expired tickets |
+| issuePreviewTicket      | (principalId, fileNodeId, ttlMs?) => string | Generate hex ticket; stores {principalId, fileNodeId} with default 120s TTL |
+| readPreviewTicket       | (ticket) => {principalId, fileNodeId} \| null | Validate and return ticket data; returns null for invalid/expired tickets |
 | createJob               | (userId, operation, payload) => {jobId, job} | Create bulk job; total computed from payload paths/moves/copies           |
 | getJob                  | (jobId) => object \| null                    | Get job by ID; returns null if expired (and deletes entry)                |
 | setJobCancelled         | (jobId) => boolean                           | Mark job cancelled; returns false if not found                            |
@@ -57,7 +57,8 @@
 ### 2.7 Dependencies
 
 - crypto (randomUUID / randomBytes for jobId, randomBytes for preview tickets)
-- `createCacheAdapter` from `server/infrastructure/adapters/cache`
+- `createCacheAdapter` from `server/infrastructure/adapters/cache` (three adapters: download `dp:` / preview-ticket `pt:` / bulk-job `bj:` keys)
+- `configResolver.getSharedResolver()` — lazily resolves the T2 `WEA_PREVIEW_TICKET_TTL_MS` default ticket TTL
 
 ### 2.8 Verification Scenarios
 

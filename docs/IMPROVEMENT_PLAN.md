@@ -1,240 +1,94 @@
-# Codebase Improvement Plan
+# Codebase Improvement Plan — Consolidated Open-Item Tracker
 
-> **Generated**: 2026-05-01 | **Updated**: 2026-05-03
-> **Status**: P0 ✅ Complete, P1 ✅ Complete, P2 ✅ Complete (14✅ + 12-partial + 10✅), P3 ⏳ Partial (16✅, 17✅, 19✅)
-> **Purpose**: Preserve audit context before implementation begins.
+> **Updated**: 2026-09-02
+> **Purpose**: This is the **single tracking document** for every unresolved, undecided, or
+> unimplemented item in the repository.
 >
-> **Commits**:
+> **Governance rule**: Spec/feature docs describe only the **current implemented/decided**
+> state. Planned/future/"pending implementation"/"target contract" work must **not** be written
+> into individual docs — record it here instead (see AGENTS.md §2.1). Completed work is logged
+> in [§5 Resolved & RCA log](#5-resolved--rca-log) with dates.
 >
-> - `1562613` — P0: security, memory leak, debug logging fixes
-> - `c133db0` — P1: Korean→English translation, asyncHandler standardization, HTTP_STATUS constants
-> - `ace302b` — P2-14 + P3-16: lint/format config, gitignore cleanup
-> - `b175854` — P3-17 + P3-19: JWT dev warning, inline require cleanup
-> - `ded0ce8` — P2-15: structured logging context in bulk operation catch blocks
-> - `250cc3a` — P2-12-partial: MutationObserver replaces setInterval polling, Korean→English translation
-> - `fb83a55` — P3-18: JSDoc for runBulkJobWorker and authenticateTokenOrShare
-> - `1089e0f` — SQLite storage backend + Docker WebDAV dev scripts (all 7 store modules, schema init)
-> - `7c32b7e` — P2-10: tests for untested server modules + critical client components (14 test files, 426+4 client tests)
+> **Status legend**: `UNDECIDED` · `CODE-FIX` · `DOC-FIX` · `DEFERRED` · `RESOLVED`
 
 ---
 
-## Executive Summary
+## 1. Open decisions (undecided)
 
-The WebDAV EasyAccess codebase has strong architectural documentation, comprehensive testing infrastructure (941 client tests, 347 server tests, 86 E2E specs, Stryker mutation testing), and a well-designed centralized error handler. However, several areas show significant technical debt: inconsistent error handling patterns across routes, excessively large route files, mixed-language comments, hardcoded status codes, a debug endpoint that poses a security risk in production, setInterval memory leaks, and reliance on CRA v5.
+| ID | Status | Item | Source | Proposed resolution |
+| -- | ------ | ---- | ------ | ------------------- |
+| D-1 | UNDECIDED | `refreshPolicy` direction: function is still path-keyed (`startedPath/currentPathNow/targetPath`) while its only caller (`useExplorerCommands.js:80-85`) already passes nodeIds — the mismatch disables per-operation refresh gating (see C-3). | `docs/spec/client/utils/refreshPolicy.md` | (a) rename function params to the nodeId end-state, or (b) revert the caller to path args. Must be chosen before C-3. |
+| D-2 | UNDECIDED | Remove the dead `fileService` legacy permission wrappers (`checkPermission`, `checkFilePermission`, `grantFilePermission`, `revokeFilePermission`, `updateFilePermission`) + `listFilePermissions` re-export — zero production consumers (only tests/mocks). | `client/src/services/fileService.js:534-560` | Delete now (see C-2) or defer to the next file-layer cleanup. |
+| D-3 | UNDECIDED | iOS Web Share "Save Image" hint for image preview download — spec is optional, UI not implemented. | `docs/spec/client/components/dialogs/FilePreviewDialog.md` | Product decision: implement a hint (tooltip/toast) or leave absent. |
 
----
+## 2. Code changes pending (detailed)
 
-## P0 — Critical ✅ COMPLETE
+### C-1 — envFileWriter allowlist cleanup (was PLAN/fail-log note)
+- **File:** `server/infrastructure/envFileWriter.js:10-43`
+- **Problem:** `WIZARD_WRITABLE_KEYS` still lists metadata T0 keys (`WEA_STORAGE_BACKEND`, `WEA_PG_*`) and `ADMIN_DEFAULT_PASSWORD` even though `setupCore.applySetup` never emits them (`partitionEntries` excludes `METADATA_T0_KEYS`; only `JWT_SECRET` + auto-generated `encrypt_secret_key` reach `.env`). Non-behavioral latent mismatch; the stale state is pinned by a test.
+- **Fix:** drop the metadata T0 rows and `ADMIN_DEFAULT_PASSWORD` from the allowlist; update the `envFileWriter.test.js:149-155` assertion and the module comment to match `docs/spec/server/routes/setup.md` ("only JWT_SECRET + encrypt_secret_key written").
+- **Priority:** low (cleanliness).
 
-**Commit: `1562613`**
+### C-2 — Remove dead `fileService` permission wrappers
+- **File:** `client/src/services/fileService.js:534-557` (+ `:560` re-export)
+- **Problem:** legacy nodeId wrappers over `permissionService`; no production caller (only `fileService.test.js:34` and `testing/mocks/serviceMocks.js:21-24`).
+- **Fix:** remove the exports; update the test and mock; verify no remaining importer.
+- **Decision required:** see D-2. **Priority:** low.
 
-### 1. Debug Endpoint Security Vulnerability
+### C-3 — `refreshPolicy` caller/callee nodeId–path mismatch
+- **Files:** `client/src/pages/FileManager/hooks/useExplorerCommands.js:80-85`, `client/src/utils/refreshPolicy.js:19-24`
+- **Problem:** caller sends `{ opType, startedNodeId, currentNodeIdNow, targetParentNodeId }`; function destructures path names and normalizes `undefined` → both paths become `/` → **always returns refresh**. Per-operation refresh gating is ineffective and can cause mis-refreshes.
+- **Fix:** depends on D-1 — either migrate `refreshPolicy` (function + `refreshPolicy.test.js` path fixtures) to nodeId params, or revert the caller to path args.
+- **Priority:** medium (behavioral).
 
-- **File**: `server/index.js:87-94`
-- **Issue**: `POST /api/debug-log` endpoint accepts arbitrary JSON and writes to disk with no authentication.
-- **Risk**: Unauthorized file writes, DoS attacks in production.
-- **Fix**: Remove entirely or gate behind `NODE_ENV !== 'production'` + auth middleware.
+### C-4 — `setup.test.js` PostgreSQL gating (decision: option B)
+- **File:** `server/domains/setup/__tests__/setup.test.js`
+- **Problem:** under `npm run test:ci:pg` the suite fails 44/44 with `TypeError: Pool is not a constructor` — its `jest.mock('pg', () => ({ Client: jest.fn() }))` (line 22) lacks `Pool`, and `createTestDatabase → initMetadataStore → applyPendingMigrations('postgresql') → storage.getPgPool()` reaches `new Pool(...)` when the backend env is `postgresql`.
+- **Decision (made):** **option B** — make the suite self-declare SQLite-only: gate the PG-touching metadata-store path (e.g. `describe.skipIf` for the PG backend run) consistent with existing per-suite backend gating.
+- **Status:** DECIDED — scheduled for the next iteration, not part of the 2026-09-02 wave.
 
-### 2. setInterval Memory Leak
+### M-1 — cosmetic cleanup (optional)
+- `explorerGateway.js` `removeRecentFile` internal parameter is still literally named `path` although the contract is nodeId (docs already aligned). Rename the param.
 
-- **File**: `client/src/pages/FileManager/hooks/useBulkOperations.js:208, 416`
-- **Issue**: `setInterval(poll, POLL_INTERVAL_MS)` called inside `useCallback` handlers — no cleanup mechanism on component unmount.
-- **Risk**: Interval continues firing after unmount → memory leak + state updates on unmounted component → crashes.
-- **Fix**: Move polling into `useEffect` with `clearInterval` in cleanup; consider AbortController pattern.
+## 3. Document drift backlog (residual after the 2026-09-02 alignment)
 
-### 3. Debug console.log in Production Code
+| ID | Item | Source |
+| -- | ---- | ------ |
+| 3-1 | Blob-job payload still described with the extended shape in a few spots (`progress:{percent,currentLabel}`) while code + `tools/blob-migration.md` §4.4 store scalar `progress` + top-level `current`/`results`. | `docs/features/migration-mode.md` (:18/:250/:307/:308) |
+| 3-2 | `setFolderMenuAnchor` argument documented as "-" (code passes `e.currentTarget`); code `baseFolderNodeId` prop undocumented. | `docs/spec/client/components/dialogs/ShareFolderTree.md` §2.3 |
+| 3-3 | `admin.health.*` i18n keys used by the backend-health card not listed. | `docs/spec/client/components/mypage/content/SystemSettingsContent.md` §2.5 |
+| 3-4 | Spec tree folder naming inconsistent (`store/` vs `stores/`, `service/` vs `services/`); contents and source paths are accurate. | `docs/spec/server/{store,stores,service,services}` |
 
-- **File**: `client/src/pages/FileManager/FileManager.js:242`
-- **Issue**: `console.log('[DEBUG] FileManager: Render - files length:', ...)` fires on every render.
-- **Risk**: Performance impact, potential sensitive data leakage.
-- **Fix**: Remove entirely or gate behind conditional debug flag.
+## 4. Deferred & future work (decided — no active owner)
 
-### 4. Default Admin Credentials Logged to Console
+| ID | Status | Item | Originating doc (now references here) |
+| -- | ------ | ---- | ------------------------------------- |
+| DEF-1 | DEFERRED | Admin/operator app split (recorded, not planned). | `docs/features/migration-mode.md` |
+| DEF-2 | DEFERRED | env↔DB sync/alert tool (D9). | `docs/features/config-source-resolution.md` |
+| DEF-3 | DEFERRED | `encrypt_secret_key` rotation tooling. | `docs/features/config-source-resolution.md` |
+| DEF-4 | DEFERRED | Blob migration source-delete mode (`--delete-mode`). | `docs/spec/server/tools/blob-migration.md`, `docs/SETUP.md` |
+| DEF-5 | DEFERRED | HTTP Range/206 support on public share download. | `docs/spec/server/routes/sharePublic.md` |
+| DEF-6 | DEFERRED | Future raw-WebDAV protocol mount behind the migration gate. | `docs/spec/server/infrastructure/migrationGate.md` |
+| DEF-7 | DEFERRED | Multi-version object history (`version_number > 1`). | `docs/spec/server/services/blobStorageService.md`, `docs/spec/server/store/fileNodesStore.md`, `docs/features/core-service-layer.md` |
+| DEF-8 | DEFERRED | Redis-backed cache / operationProgress store. | `docs/spec/server/services/downloadService.md`, `docs/ARCHITECTURE.md` |
+| DEF-9 | DEFERRED | schemaManager checksum-based modified-DDL detection. | `docs/spec/server/infrastructure/schemaManager.md` |
+| DEF-10 | DEFERRED | Client test-quality refactor — 424 implementation-detail assertions, fragile mock factories. | former `docs/IMPROVEMENT_PLAN.md` §11 |
+| DEF-11 | DEFERRED | FileManager `useMemo`/`useCallback` performance sprint (MutationObserver already applied). | former `docs/IMPROVEMENT_PLAN.md` §12 |
+| DEF-12 | DEFERRED | CRA v5 → Vite migration (separate project/epic). | former `docs/IMPROVEMENT_PLAN.md` §13 |
+| CLOSED | RESOLVED | Client↔server integration-test layer (former §20) — superseded by route-level integration tests + E2E coverage. | former `docs/IMPROVEMENT_PLAN.md` §20 |
+| CLOSED | RESOLVED | Byte-weighted migration progress — out of scope. | `docs/spec/server/tools/blob-migration.md` |
 
-- **File**: `server/store/bootstrap.js:50-56`
-- **Issue**: Logs default admin password to console on startup.
-- **Risk**: Credential exposure in logs.
-- **Fix**: Remove credential logging; use structured logging with appropriate log levels.
+## 5. Resolved & RCA log
 
----
+### 2026-09-02 — Repo-wide doc↔code alignment wave (branch `chore/consolidate-open-items`)
 
-## P1 — High ✅ COMPLETE
+- **Server spec:** `ensureHomeOwnerAdmin` marked REMOVED → real impl in `cleanupService.js` (nodeId); `configRegistry` `THUMBNAIL_TOKEN_SECRET` secret→yes; phantom "(T3)/boot snapshot loader" references removed (`configRegistry`/`configResolver`); `routes/setup.md` apply scenarios rewritten to the real contract (metadata T0 never written, `postgresql` rejected); `thumbnails`/`thumbnail` "pending implementation in S1" removed; `downloadService.getDownloadProgress` marked implemented; `files.md` mount → `/api/folders`; `users.md`/`auth.md` password + username-priority contracts fixed; `metadataMigrationService` explicit-target variant marked implemented; `fileNodesStore`/`userStore`/`locks` naming aligned to code; `bulkJobStore.md` renamed → `operationProgress.md`; `blobStorageService` multi-version note neutralized.
+- **Client spec:** `ShareFolderTree` false "still path-keyed" claim removed; `FolderTree`/`BaseFolderTreeItem`/`SharedFoldersSection` target-contract wording → current state; `AuthContext` "(split target)" removed; `FileManager.md` "(planned)/still monolithic" → implemented; `sharePermissionSaveUseCase`/`shareTargetPermissionSaveUseCase` revoke semantics fixed (best-effort revoke, fatal grant); `FilePreviewDialog` iOS hint → optional + tracked; `SystemSettingsContent` key-lost-warning UI spec added; `explorerGateway.removeRecentFile` → nodeId; `fileViewUtils` path-fallback note updated.
+- **Feature/infra:** `config-source-resolution` D3 apply rewritten + future-tooling moved here; `auth-users-settings` password semantics aligned; `client-ui` → v7 baseline; PLAN.md citations removed from `migration-mode`/`backend-health`/`E2E_COVERAGE_PLAN`/`TEST_GIT_GUIDE`/`TESTING_STRATEGY`; blob/metadata-migration payload docs made type-dependent; deferred statements moved to §4; E2E bucket wording (ensure both modes, empty s3) fixed; RCA references repointed from `.cursor/` to this document + AGENTS §3.2.
+- **Retirement:** root `PLAN.md` content and `docs/fail_log.md` removed after review — future RCA entries are recorded here (AGENTS.md §3.2).
 
-**Commit: `c133db0`**
+### Historical completed improvement backlog (pre-2026-09-02)
 
-### 5. Korean Comments → English Translation
-
-- **Scope**: `server/routes/files.js` (lines 45, 159, 745, 753, 1068, 1129), `admin.js` (line 400), `auth.js` (line 142), and others.
-- **Issue**: AGENTS.md mandates English for all documentation and technical communications — Korean comments are pervasive.
-- **Fix**: Translate all Korean comments to English.
-
-### 6. Inconsistent Error Handling — asyncHandler Bypassed
-
-- **Files using `asyncHandler`** (correct): `files.js`, `permissions.js`, `users.js`, `recentFiles.js`, `sharePublic.js`, `shareLinks.js`, `folders.js`, `thumbnails.js`, `settings.js`.
-- **Files NOT using `asyncHandler`**: `admin.js` (0 usages — inline try/catch), `auth.js` (0 usages), `permissionRequests.js` (0 usages).
-- **Issue**: Bypassing centralized error handler means:
-  - Error logging (`logError`) does not fire.
-  - Response format may differ subtly.
-  - Inconsistent developer experience.
-- **Fix**: Convert all routes to use `asyncHandler` + `throw createError(...)` pattern.
-
-### 7. Hardcoded HTTP Status Codes Mixed with Constants
-
-- **Files**: `auth.js:72,172,179,180` — uses raw `403` instead of `HTTP_STATUS.FORBIDDEN`.
-- **File**: `errorHandler.js:198` — `validationError(errorCode, 400)` uses raw `400`.
-- **Fix**: Use `HTTP_STATUS.*` constants consistently throughout.
-
-### 8. God Object Files Need Splitting
-
-| File                                                    | Lines | Responsibility Overlap                                                     |
-| ------------------------------------------------------- | ----- | -------------------------------------------------------------------------- |
-| `server/routes/files.js`                                | 1,547 | List, upload, download, delete, move, copy, batch ops, conflicts, previews |
-| `client/src/pages/FileManager/FileManager.js`           | 928   | 15+ hooks, 40+ state variables, deeply nested useMemo prop building        |
-| `client/src/components/file-manager/FileManagerView.js` | 969   | All UI rendering + massive prop drilling                                   |
-| `server/store/permissionStore.js`                       | 1,103 | All CRUD for permissions, shares, user paths                               |
-
-- **Fix Direction**:
-  - `files.js`: Split into `list.js`, `upload.js`, `download.js`, `bulk-operations.js`, `conflicts.js`, `previews.js`.
-  - `FileManager.js`: Extract state into separate contexts (selection, navigation, dialogs).
-  - `FileManagerView.js`: Break into smaller presentational components.
-  - `permissionStore.js`: Split into `pathStore.js`, `shareStore.js`, `userPathStore.js`.
-
-### 9. Prop Overloading — 23+ Parameters per Component
-
-- **Files**: `FileGrid.js:14`, `FileList.js:14`, `FileDetail.js:26` — each receives 23+ individual props.
-- **Fix**: Group related props into objects (e.g., `{ fileActions, selectionState, dragState }`); use React Context for cross-cutting concerns.
+All P0/P1/P2 items complete; P3 #16–#19 complete. Provenance commits: `1562613` (P0 security/leak/logging), `c133db0` (P1 Korean→English, asyncHandler, status constants), `ace302b` (lint/format config + P3-16), `b175854` (P3-17 JWT dev warning, P3-19 inline requires), `ded0ce8` (P2-15 structured logging), `250cc3a` (P2-12 MutationObserver), `fb83a55` (P3-18 JSDoc), `7c32b7e` (P2-10 test gaps), `1089e0f` (SQLite backend + Docker WebDAV scripts). Remaining former items (#11/#12/#13) are tracked in §4; #20 closed in §4.
 
 ---
-
-## P2 — Medium ✅ Complete (14✅, 15✅, 12-partial✅, 10✅)
-
-### 10. Test Coverage Gaps ✅ COMPLETE (Commit: `7c32b7e`)
-
-#### Previously untested server modules — now covered:
-
-| File                                 | Risk                         |
-| ------------------------------------ | ---------------------------- |
-| `server/utils/permissionPolicy.js`   | Core security logic untested |
-| `server/utils/thumbnail.js`          | Image processing untested    |
-| `server/utils/email.js`              | Email sending untested       |
-| `server/middleware/requestLogger.js` | Request logging untested     |
-
-#### Critical Untested Client Modules:
-
-| File                                  | Risk                                  |
-| ------------------------------------- | ------------------------------------- |
-| `FilePreviewDialog/` entire subsystem | Major user-facing feature, zero tests |
-| `pages/FileManager/FileManager.js`    | Main page untested                    |
-| `components/file-manager/FileItem.js` | Core rendering untested               |
-
-#### Shared Package:
-
-- **7 files, 0 tests** — constants, validation, pathUtils, fileTypes used by both client and server.
-
-### 11. Client Test Quality Issues ⏳ Deferred (low-impact/high-risk)
-
-- **424 implementation-detail assertions** (`toHaveBeenCalledWith`, `toHaveBeenCalledTimes`) — test "how" not "what".
-- **Fragile mock setup**: `FileManagerView.test.js` has 130+ line `createProps()` factory.
-- **Heavy mocking**: 73/147 client test files use `jest.mock()`, averaging 4 mocks per file.
-- **Fix Direction**: Replace with behavior-focused assertions; add shared mock factories (`createMockUser()`, `createMockFile()`).
-- **Defer Reason**: Existing tests already pass; refactoring creates high regression risk with low ROI. The service-level tests (fileService, recentFilesRepository, permissionService) are already well-structured with outcome-focused assertions.
-
-### 12. Performance Issues ⏳ Partial (MutationObserver ✅, useCallback/useMemo deferred)
-
-| File:Line                     | Issue                                                                    | Status                      |
-| ----------------------------- | ------------------------------------------------------------------------ | --------------------------- |
-| `useThumbnailLazyLoad.js:143` | `setInterval(observeElements, 500)` queries DOM every 500ms              | ✅ Fixed (MutationObserver) |
-| `useBulkOperations.js:210`    | useCallback dependency array has 20+ items → unnecessary re-creation     | ⏳ Deferred — high-risk     |
-| `FileManager.js:534-911`      | 15+ useMemo calls with full dependency arrays → cascading re-computation | ⏳ Deferred — high-risk     |
-
-- **Fix Direction**: Use `useRef` for stable references; reduce useMemo nesting. (MutationObserver already applied.)
-- **Defer Reason**: useCallback/useMemo changes are high-risk — require careful analysis and testing in dedicated session. Deferring to future focused performance optimization sprint.
-
-### 13. CRA v5 Migration Planning
-
-- **File**: `client/package.json` — `react-scripts 5.0.1`
-- **Issue**: Known Node.js >= 18 compatibility issues; community has moved to Vite-based alternatives.
-- **Fix Direction**: Plan migration to Vite as a separate project/epic.
-
-### 14. Root-Level Lint/Format Configuration Missing ✅ COMPLETE (root config added `chore/residual-gap-closure`)
-
-- **Commit: `ace302b`** — root `.prettierrc` and server-only `server/eslint.config.js` added here.
-- Only client has ESLint config (embedded in `package.json`). Server and shared have no linting.
-- No Prettier configuration anywhere.
-- **Fix**: Add root-level `eslint.config.js` + `.prettierrc` applying to all workspaces.
-- True root-level `eslint.config.js` (flat config covering server+client+shared) plus `eslint-config-prettier` were added on `chore/residual-gap-closure` (2026-09-01), at which point the client's legacy `eslintConfig` and `server/eslint.config.js` were removed.
-
-### 15. Silent Error Swallowing in Permission Operations ✅ COMPLETE
-
-- **Commit: `ded0ce8`**
-- **File**: `server/routes/files.js:350,371,476,482,493,603,614`
-- **Issue**: Multiple catch blocks log to console but continue execution — makes debugging production issues very difficult.
-- **Fix**: At minimum, log with structured context (jobId, userId, path).
-
----
-
-## P3 — Low ⏳ Partial (16✅, 17-20 pending)
-
-### 16. `server/undefined/` Directory Cleanup ✅ COMPLETE
-
-- **Commit: `ace302b`**
-- Stray metadata files committed to repo; not in `.gitignore`.
-- **Fix**: Add `server/undefined/` to `.gitignore`; investigate root cause of undefined storage path.
-
-### 17. Default JWT Secret Warning ✅ COMPLETE
-
-- **Commit: `b175854`**
-- **File**: `server/utils/auth.js:7` — `'your-secret-key-change-in-production'`
-- Production guard exists, but adding a startup warning in development mode would improve DX.
-
-### 18. JSDoc Documentation Gaps ✅ COMPLETE
-
-- **Commit: `fb83a55`**
-- Complex functions (`runBulkJobWorker`, `authenticateTokenOrShare`) lack parameter types, return types, and documented contracts.
-- **Fix**: Add JSDoc annotations to complex functions.
-
-### 19. Inline require() Calls in Route Handlers ✅ COMPLETE
-
-- **Commit: `b175854`**
-- **File**: `server/routes/files.js:970,1240` — `require()` calls deep inside route handlers instead of top-level imports.
-- **Fix**: Move all requires to top of file per CODING_STYLE.md.
-
-### 20. No Integration Tests Between Client and Server ⏳ Deferred
-
-- Client unit tests mock API responses; server tests use supertest directly. No integration tests exercising full stack (client → server → WebDAV backend).
-- **Fix Direction**: Add lightweight integration test layer between E2E and unit tests.
-- **Defer Reason**: Existing route-level integration tests (files.test.js, permissions.test.js, etc.) already provide comprehensive coverage using supertest with mocked WebDAV. The remaining gap (full client→server→WebDAV stack) is what E2E tests cover.
-
----
-
-## Priority Action Plan
-
-| Priority | Task                                                              | Estimated Effort |
-| -------- | ----------------------------------------------------------------- | ---------------- |
-| **P0**   | Remove/secure debug endpoint (`server/index.js:87-94`)            | 15 min           |
-| **P0**   | Fix setInterval memory leak (`useBulkOperations.js`)              | 30 min           |
-| **P0**   | Remove debug console.log (`FileManager.js:242`)                   | 10 min           |
-| **P0**   | Remove credential logging (`bootstrap.js:50-56`)                  | 10 min           |
-| **P1**   | Translate Korean comments to English (multiple files)             | 2-3 hours        |
-| **P1**   | Standardize error handling — convert all routes to asyncHandler   | 2-3 hours        |
-| **P1**   | Replace hardcoded status codes with HTTP_STATUS constants         | 1 hour           |
-| **P2**   | Add tests for critical untested server modules (permissionPolicy) | 4-6 hours        |
-| **P2**   | Add tests for FilePreviewDialog subsystem                         | 3-4 hours        |
-| **P2**   | Fix performance issues (useRef, reduce useMemo, MutationObserver) | 2-3 hours        |
-| **P2**   | Add root-level ESLint + Prettier configuration                    | 1 hour           |
-| **P2**   | Fix silent error swallowing — add structured logging context      | 1-2 hours        |
-| **P3**   | Begin God Object file splitting (files.js, FileManager)           | 1-2 days         |
-| **P3**   | Add JSDoc to complex functions                                    | 2-3 hours        |
-| **P3**   | CRA → Vite migration planning                                     | Separate epic    |
-
----
-
-## Reference: Original Audit Sources
-
-This document was generated from three parallel codebase exploration agents:
-
-1. **Comprehensive Assessment Agent** — Structure, conventions, error handling, types, tests, config, dependencies, docs.
-2. **Anti-Pattern Detection Agent** — Complexity, duplication, magic values, dead code, security, performance, null checks.
-3. **Test Coverage Assessment Agent** — Framework, coverage scope, critical gaps, test quality, integration vs unit balance.
-
-See original agent results in session history for full detail including specific line numbers and file references.

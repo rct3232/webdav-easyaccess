@@ -25,7 +25,7 @@
 | GET    | `/`                | Token | List users (for share dialogs).                                               |
 | GET    | `/approved`        | Token | List approved users.                                                          |
 | GET    | `/:id`             | Token | Get user by id.                                                               |
-| PUT    | `/:id/password`    | Token | Change password. Body: password (or currentPassword, newPassword per api.md). |
+| PUT    | `/:id/password`    | Token | Reset password. Body: `{ password }`. Self-only — changing another user's password returns 403. |
 | PUT    | `/:id/email`       | Token | Update email. Body: email.                                                    |
 | PUT    | `/:id/permissions` | Token | Update user's own permissions. Body: permissions.                             |
 
@@ -38,7 +38,7 @@
 - **GET /:** 200: user array
 - **GET /approved:** 200: approved user array
 - **GET /:id:** 200: user object. 404 if not found.
-- **PUT /:id/password:** Body: `{ password }`. 200 or 204.
+- **PUT /:id/password:** Body: `{ password }` (single field; no `currentPassword`/`newPassword` pair). 200: `{ messageCode }`. **Self-only** (`parseInt(id) !== req.user.id` → 403 `permissionsMiddleware.accessDenied`, admin routes/users.js:55-57). A password change revokes all of the user's tokens via `revokeAllUserTokens` (userService.updatePassword, userService.js:257-262) — sessions are invalidated by token disposal.
 - **PUT /:id/email:** Body: `{ email }`. 200 or 204.
 - **PUT /:id/permissions:** Body: `{ permissions }`. 200 or 204.
 

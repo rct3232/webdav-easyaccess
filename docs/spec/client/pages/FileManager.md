@@ -26,7 +26,7 @@ It intentionally documents _who owns what_, not file-by-file implementation deta
 
 ## 2. Boundaries (Shell vs Core vs Overlays)
 
-This page is being refactored into explicit layers per `docs/CODING_STYLE.md` ("Client Layering Rules").
+This page is structured into explicit layers per `docs/CODING_STYLE.md` ("Client Layering Rules").
 
 ### 2.1 Page shell (this spec owns)
 
@@ -49,16 +49,16 @@ The page shell does **not** own:
 
 Explorer core is the reusable “file explorer” core for browsing and acting on a directory. It is composed of:
 
-- **Controller hooks** (planned):
+- **Controller hooks** (implemented):
   - `docs/spec/client/hooks/useExplorerSession.md` (local explorer session state: view/sort/search/listing derivation plus session-boundary tokens)
   - `docs/spec/client/hooks/useExplorerNavigation.md` (path navigation orchestration and transitions)
   - `docs/spec/client/hooks/useExplorerCommands.md` (file operation orchestration)
   - `docs/spec/client/hooks/useExplorerProgress.md` (progress list + retry/cancel coordination)
   - `docs/spec/client/hooks/useExplorerInteraction.md` (item click/open/context interaction orchestration for explorer content)
   - `docs/spec/client/hooks/useExplorerRefreshIndicator.md` (mobile pull-to-refresh indicator presentation)
-- **Pure view(s)** (planned):
+- **Pure view(s)** (implemented):
   - `docs/spec/client/components/file-manager/FileManagerView.md` (renders from props only)
-- **Gateways/adapters** (planned):
+- **Gateways/adapters** (implemented):
   - `docs/spec/client/services/explorerGateway.md` (IO boundary for listing, operations, and related IO concerns)
 
 Explorer core explicitly does **not** own product overlays such as share-link policy, “virtual collections”, or feature-specific modal flows. That includes `useShareLinkOverlay`, which is a page/product overlay controller, not part of reusable explorer core.
@@ -82,21 +82,21 @@ The FileManager page shell must continue to own these overlays and policies (unt
 
 ---
 
-## 3. Implementation Spec (Current + Target Shape)
+## 3. Implementation Spec
 
 ### 3.1 File paths
 
-- **Source (current)**: `client/src/pages/FileManager/FileManager.js`
-- **Test file (current)**: `client/src/pages/__tests__/FileManager.test.js`
+- **Source**: `client/src/pages/FileManager/FileManager.js`
+- **Test file**: `client/src/pages/__tests__/FileManager.test.js`
 
-### 3.2 Target composition (no UX change)
+### 3.2 Composition (page shell)
 
-The end-state after the acceptance closure is a small page shell that:
+The FileManager page shell is a composition module that:
 
 - Derives route context (auth vs share-link mode) and page-level overlay state.
 - Calls explorer controller hooks and product overlay hooks in the correct order.
 - Renders a pure view (`FileManagerView`) plus product-only dialogs/overlays.
-- Keeps explorer-specific IO/storage/repository details out of the page module.
+- Keeps explorer-specific IO/storage/repository details out of the page module (delegated to explorer controller hooks and `explorerGateway`).
 
 Conceptually:
 
@@ -107,17 +107,15 @@ FileManager (page shell)
   -> product overlays (share-link mode, virtual collections, share dialogs, etc.)
 ```
 
-### 3.3 Current dependencies (to be re-homed)
+### 3.3 Direct service imports in the page module (re-home candidates)
 
-While the current implementation is still monolithic, it uses (directly or indirectly) these roles:
+The page module delegates orchestration and derived state to the explorer controller hooks and renders through `FileManagerView`, but it still imports a few services directly:
 
-- Auth + routing: `useAuth`, `useNavigate`, route wrappers (e.g. `PrivateRoute` at the router level)
-- Explorer/session-ish state: `useFileManager`, `useSelection`
-- Commands: `useBulkOperations`, `useFileOperations`
-- Dialog orchestration: `useFileManagerDialogs`
-- UX + utilities: `useDropToUpload`, `usePullToRefresh`, `useResponsive`, `useInfiniteScroll`, `useMessage`, `useRecentFile`
+- `explorerGateway` (nav capability checks)
+- `adminService` (backend-health status banner for admins)
+- `fileService` (`resolvePath`)
 
-As extraction proceeds, the page shell should retain only _composition_ responsibility; orchestration and derived state move to the relevant explorer controller hooks. The page may still pass product context into those hooks, but it should not remain the owner of explorer storage/service/notifier wiring.
+These are the only remaining re-home candidates. The page shell should retain _composition_ responsibility; explorer storage/service/notifier wiring belongs to the controller hooks and gateways.
 
 ---
 

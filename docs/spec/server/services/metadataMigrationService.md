@@ -10,7 +10,7 @@
 | Test files | `server/domains/admin/services/__tests__/metadataMigrationService.test.js` (new; sqlite↔PG roundtrip under `test:ci:pg`)                                                                                                                                                                                    |
 
 Source of truth: `docs/features/migration-mode.md`, `docs/spec/server/tools/metadata-migration.md`,
-`PLAN.md` (`feature/migration-mode`, D4–D6, D11, D14).
+`docs/features/migration-mode.md` (decisions D4–D6, D11, D14).
 
 The service operates on **direct target connections** (`pg.Client` for PostgreSQL,
 `better-sqlite3` for SQLite) — it does **not** use the app's own metadata adapter/store layer,
@@ -79,11 +79,14 @@ If `schemaExists === false`, apply the DDL **to the explicit target connection**
   on the target `pg.Client`.
 - **SQLite target:** run `convertPostgresToSqlite(DDL)` (`server/infrastructure/sqliteSchemaInit.js`)
   on the target sqlite connection.
-- Requires a refactor of the schema manager (`server/infrastructure/schemaManager.js` /
-  `initSqliteSchema`): today `applyPendingMigrations(backend)` always acts on the **active**
-  backend (`storage.getPgPool()` / `storage.getSqliteConnection()`); this feature introduces an
-  explicit-target variant that applies the same idempotent DDL (`IF NOT EXISTS` + file-based
-  tracking for PG) to a caller-supplied connection. The boot path is unchanged.
+- The explicit-target schema apply is **implemented** (no schema-manager refactor pending):
+  `applyPendingMigrations(backend, options)` accepts `{ pgClient }` to apply the PG DDL to a
+  caller-supplied connection (`server/infrastructure/schemaManager.js:162-170`), and
+  `initSqliteSchema({ connection })` applies the SQLite DDL to a caller-supplied sqlite3
+  connection (`server/infrastructure/sqliteSchemaInit.js:107-118`). `applySchema` invokes them
+  against the migration-target connection (metadataMigrationService.js:631-637); the boot path is
+  unchanged (no options → the active backend, `storage.getPgPool()` /
+  `storage.getSqliteConnection()`).
 - `_schema_migrations` is **not** copied (see §2.8); for a PG target the schema-apply records the
   applied DDL files so subsequent app boots are no-ops.
 

@@ -17,7 +17,7 @@
 - **Source:** `client/src/components/folder-tree/hooks/useFolderTreeController.js`
 - **Test file:** `client/src/components/folder-tree/hooks/__tests__/useFolderTreeController.test.js`
 
-> **Phase 4 nodeId end-state:** the controller uses nodeId-first state — `expandedNodeIds`, `currentNodeId`, `onNodeClick(nodeId)` — and shared folders are keyed by nodeId (the permissions API already returns nodeId). Virtual roots `/__shared__` and `/__recent__` remain unchanged (decision D1).
+> **NodeId-first controller:** the controller uses nodeId-first state — `expandedNodeIds`, `currentNodeId`, `onNodeClick(nodeId)` — and shared folders are keyed by nodeId (the permissions API already returns nodeId). Virtual roots `/__shared__` and `/__recent__` remain unchanged (decision D1).
 
 ### 2.2 Input Parameters
 

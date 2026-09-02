@@ -6,7 +6,7 @@
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Mount path | `/api/thumbnails`                                                                                                                                                                                                                                                      |
 | Role       | Authed batch thumbnail URL resolution keyed by `fileNodeId` (`POST /batch`) plus public single-thumbnail serving by hash and extension (`GET /:hash.:ext`, signed token in query).                                                                                     |
-| Status     | **Phase 2 relocated** — Moved from `server/routes/thumbnails.js` to `server/domains/thumbnails/routes.js`. **Phase 4 nodeId migration** (target contract, pending implementation in S1) — batch keyed by `nodeId`; authed single route `GET /thumbnail/:hash` removed. |
+| Status     | **Phase 2 relocated** — Moved from `server/routes/thumbnails.js` to `server/domains/thumbnails/routes.js`. **Phase 4 nodeId migration** — **implemented**: batch (`POST /batch`) is keyed by `nodeId` (`server/domains/thumbnails/routes/thumbnailRoutes.js`), cache key is `thumb:<nodeId>`, and the authed single route `GET /thumbnail/:hash` is removed. |
 
 ---
 

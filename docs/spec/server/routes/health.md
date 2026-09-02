@@ -5,7 +5,7 @@
 | Item            | Description                                                                                                                                                                                        |
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role            | Liveness/health surfaces. `GET /api/health` (public) stays a liveness probe and now includes per-backend status strings. `GET /api/admin/health` (admin) returns the full backend-health snapshot. |
-| Source of truth | `docs/features/backend-health.md`, `PLAN.md` Phase B (B1, D3)                                                                                                                                      |
+| Source of truth | `docs/features/backend-health.md` (decisions B1, D3)                                                                                                                                      |
 
 ---
 

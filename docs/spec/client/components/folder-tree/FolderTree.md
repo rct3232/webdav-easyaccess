@@ -25,10 +25,10 @@
 | currentNodeId      | number    | Y        | -       | Current folder node id                                                                                                                                                                                                                                                                                            |
 | onNodeClick        | function  | Y        | -       | Folder click: `(nodeId) => void`                                                                                                                                                                                                                                                                                  |
 | onLeaveShareClick  | function  | N        | -       | Share-mode folder click for non-share sections: `(nodeId: number \| path: string) => void`. When a `shareLinkSection` is present, the home / shared / recent sections call this instead of `onNodeClick`, so the hosting surface can open the leave-share confirmation. Falls back to `onNodeClick` when omitted. |
-| onFileClick        | function  | N        | -       | File click (recent). Recent entries carry `nodeId` (nodeId-first since Phase 5)                                                                                                                                                                                                                                   |
+| onFileClick        | function  | N        | -       | File click (recent). Recent entries are nodeId-keyed; directory entries navigate via `onNodeClick(nodeId)`, file entries (carrying `nodeId`) are passed to `onFileClick`. |
 | user               | object    | Y        | -       | User                                                                                                                                                                                                                                                                                                              |
 | treeUpdateTrigger  | any       | N        | -       | Trigger reload                                                                                                                                                                                                                                                                                                    |
-| hasWritePermission | boolean   | N        | -       | Compatibility prop accepted by host surfaces; Phase 4 `FolderTree` view does not consume it directly                                                                                                                                                                                                              |
+| hasWritePermission | boolean   | N        | -       | Compatibility prop accepted by host surfaces; the `FolderTree` view does not destructure or consume it (the home item is rendered write-enabled unconditionally).                                                                                    |
 | onExplorerDrop     | function  | N        | -       | Drop handler (OS files)                                                                                                                                                                                                                                                                                           |
 | onInternalFileDrop | function  | N        | -       | Internal drag: `(draggedNodeId, targetNodeId)` when dropped from file manager                                                                                                                                                                                                                                     |
 | isMobile           | boolean   | N        | false   | Mobile                                                                                                                                                                                                                                                                                                            |
@@ -47,7 +47,7 @@
 ### 2.4 Dependencies
 
 - **Allowed imports:** presentational components, section views, and controller hooks that prepare section state/handlers for the view.
-- **Avoid (target contract):** direct service/IO imports inside the tree view component. Shared/recent section coordination belongs to `useFolderTreeController`; share-link section loading must go through `folderTreeGateway`.
+- **No direct service/IO imports inside the tree view component.** Shared/recent section coordination is delegated to `useFolderTreeController`; share-link section data loading goes through `folderTreeGateway`.
 - **Reference implementation:** `client/src/components/folder-tree/FolderTree.js`
 - **Related specs:**
   - `docs/spec/client/components/folder-tree/BaseFolderTreeItem.md`
@@ -68,7 +68,7 @@
 
 - [ ] Clicking a folder calls `onNodeClick(nodeId)` with the clicked folder's node id.
 - [ ] When a share-link section is present, clicking the home / shared / recent entries calls `onLeaveShareClick` (node id or virtual-root path) instead of `onNodeClick`; the share-link section itself still calls `onNodeClick`.
-- [ ] Clicking a recent file entry (if rendered) calls `onFileClick(file)` with the same file object used by the section. Recent entries are nodeId-first since Phase 5.
+- [ ] Clicking a recent file entry (if rendered) calls `onFileClick(file)` with the same file object used by the section. Recent entries are nodeId-keyed.
 - [ ] Shared and recent sections render when the hosting surface provides the required inputs/sections (product overlays remain product-owned).
 - [ ] External drop handler calls `onExplorerDrop` when OS-file drop occurs (if enabled).
 - [ ] Internal DnD drop calls `onInternalFileDrop(draggedNodeId, targetNodeId)` only for valid targets (permission/no-op rules remain unchanged).

@@ -7,7 +7,7 @@
 | Role               | Folder tree item view: renders a folder row with expand/collapse affordance, highlights current path, and wires drop/drag callbacks provided by the host. Supports `path`/`name` or `node`.                                                     |
 | Used in            | FolderTree, SharedFoldersSection                                                                                                                                                                                                                |
 | Related components | `FolderTree`, `SharedFoldersSection`, `FileTreeSkeleton`                                                                                                                                                                                        |
-| Ownership note     | This component is primarily a **view** + interaction wiring. In Phase 4, child loading, permission derivation, tree-update reconciliation, and DnD policy are delegated to `useFolderTreeItemController`, without changing observable behavior. |
+| Ownership note     | This component is primarily a **view** + interaction wiring. Child loading, permission derivation, tree-update reconciliation, and DnD policy are delegated to `useFolderTreeItemController`. |
 
 ---
 
@@ -22,7 +22,7 @@
 
 | Name                  | Type      | Required | Default | Description                                                                                                                                   |
 | --------------------- | --------- | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| path                  | string    | N\*      | -       | Path fallback (\* or node; transitional — superseded by `node.nodeId`)                                                                        |
+| path                  | string    | N\*      | -       | Path fallback (\* or node; used when `node` is not provided — legacy fallback retained)                                                       |
 | name                  | string    | N\*      | -       | Name (\* or node)                                                                                                                             |
 | node                  | object    | N\*      | -       | Node `{ nodeId, name, isHidden, hasReadPermission, hasWritePermission, children }` (\* or path/name)                                          |
 | level                 | number    | N        | 0       | Indent level                                                                                                                                  |
@@ -63,7 +63,7 @@
 ### 2.4 Dependencies
 
 - **Allowed imports:** presentational components, pure utilities, and the controller hook `useFolderTreeItemController`.
-- **Avoid (target contract):** direct file listing/service calls and direct DnD wiring (`useDropToUpload`) inside the view. Child-loading, drop-to-upload wiring, and reconciliation are owned by `useFolderTreeItemController`.
+- **No direct file listing/service calls or direct DnD wiring (`useDropToUpload`) inside the view.** Child-loading, drop-to-upload wiring, and reconciliation are owned by `useFolderTreeItemController`.
 - **Reference implementation:** `client/src/components/folder-tree/BaseFolderTreeItem.js`
 
 ### 2.5 i18n Keys

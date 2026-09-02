@@ -2,13 +2,13 @@
 
 ## Overview
 
-Summary of the test implementation for the React client application. All tests follow **black-box testing**: assertions focus on observable outcomes (return values, UI behavior, user flows), not implementation details. API calls are mocked via MSW; the MSW server is created in `src/setupTests.js` with handlers defined in `src/mocks/handlers.js`. Test files are colocated with source under `components/`, `hooks/`, `pages/`, `services/`, `utils/`, and `contexts/`. See [docs/TESTING_STRATEGY.md](../docs/TESTING_STRATEGY.md) and [.cursor/rules/testing-principles.mdc](../.cursor/rules/testing-principles.mdc).
+Summary of the test implementation for the React client application. All tests follow **black-box testing**: assertions focus on observable outcomes (return values, UI behavior, user flows), not implementation details. API calls are mocked via MSW; the MSW server is created in `src/setupTests.js` with handlers defined in `src/mocks/handlers.js`. Test files are colocated with source under `components/`, `hooks/`, `pages/`, `services/`, `utils/`, and `contexts/`. See [docs/TESTING_STRATEGY.md](../docs/TESTING_STRATEGY.md).
 
 ## Test Statistics
 
-- **Total Test Suites**: 147
-- **Total Tests**: 1254
-- **Pass Rate**: 100% (1254 passed, 0 failed) ✅
+- **Total Test Suites**: 156 (as of 2026-09-02)
+- **Total Tests**: 1397
+- **Pass Rate**: 100% (1397 passed, 0 failed) ✅
 - **Execution Time**: Reported per run by `npm run test`
 
 ## Test Breakdown by Category
@@ -175,7 +175,7 @@ The per-module and overall coverage percentages previously published in this fil
 
 ## Conclusion
 
-- 1254 tests across 147 suites, 100% pass rate
+- 1397 tests across 156 suites, 100% pass rate (as of 2026-09-02)
 - Tests are colocated with source under `components/`, `hooks/`, `pages/`, `services/`, `utils/`, `contexts/`
 - Coverage and integration goals documented
 - Test infrastructure and MSW setup in place (server created in `src/setupTests.js`)

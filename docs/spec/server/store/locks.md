@@ -12,14 +12,14 @@
 
 ### 2.1 File Path
 
-- **Source:** `server/store/locks.js`
+- **Source:** `server/store/locks.js` is a **1-line re-export** of `server/infrastructure/lockManager.js` — that module holds the implementation (`acquireLock`/`withLock`, exports at lockManager.js:175-178)
 - **Test file:** `server/store/__tests__/locks.test.js`
 
 ### 2.2 Main Methods
 
 | Method      | Signature                                                       | Description                                                                                                                 |
 | ----------- | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| acquireLock | (lockName, options?) => Promise\<{ token, lockPath, release }\> | Acquire backend-specific lock. `postgresql`/`sqlite`: retries on PK conflict with stale row cleanup (`expires_at < NOW()`). |
+| acquireLock | (lockName, options?) => Promise\<{ token, release }\>           | Acquire a lock row on the active DB backend. `postgresql`: stale-row cleanup then `INSERT ... ON CONFLICT (lock_name_hash) DO NOTHING`; `sqlite`: stale-row cleanup then INSERT-or-fail inside a transaction. Retries until the `waitMs` deadline, then throws `LOCK_TIMEOUT`. |
 | withLock    | (lockName, fn, options?) => Promise\<T\>                        | Acquire, run fn, release in `finally` for both success and error paths.                                                     |
 
 ### 2.3 Options
@@ -27,27 +27,27 @@
 - ttlMs (default 30000)
 - waitMs (default 30000) – timeout for acquire
 - retryDelayMs (default 250)
-- owner – debug identifier
+- owner – debug identifier (default `"${hostname}:${pid}"`; `HOSTNAME` read via `getSharedResolver().getConfigSync('HOSTNAME')`, lockManager.js:148-149)
 
 ### 2.4 Backend Strategy
+
+Locks are **DB rows in a `locks` table** — there is no lock-file (`lockPath`) storage.
 
 #### `postgresql`
 
 - Table: `locks(lock_name_hash, token, owner, created_at, expires_at)`
 - Acquire attempt:
   - First run TTL cleanup for this key: delete row where `lock_name_hash` matches and `expires_at < NOW()`
-  - Try `INSERT` with `(lock_name_hash, token, owner, NOW(), NOW() + ttl interval)`
-  - On unique conflict, wait/retry until `waitMs` deadline
-- Release:
-  - Delete only when both `lock_name_hash` and `token` match (ownership-safe release)
-  - Repeated release is no-op (0-row delete)
+  - `INSERT INTO locks (lock_name_hash, token, owner, created_at, expires_at) VALUES (...) ON CONFLICT (lock_name_hash) DO NOTHING RETURNING lock_name_hash` (lockManager.js:66-72)
+  - On conflict (row not returned), wait/retry until `waitMs` deadline
+- Success returns `{ token, release }` where `release` deletes only when both `lock_name_hash` and `token` match (ownership-safe; idempotent via an internal `released` guard, lockManager.js:24-40)
 
 ### 2.5 Dependencies
 
-- storage (getBackend, getPgPool, sqliteRun, withSqliteTransaction)
-- hash (sha256HexLower)
-- crypto (randomUUID)
-- storage.getBackend / storage.getPgPool for backend selection and PostgreSQL queries
+- storage (`getBackend`, `getPgPool`, `isSqliteBackend`, `withSqliteTransaction`, `sqliteRun`)
+- `server/utils/hash` (`sha256HexLower`) — lock name → `lock_name_hash`
+- `server/infrastructure/configResolver` (`getSharedResolver`) — `HOSTNAME` for the default owner label
+- crypto (`randomUUID`) — owner token
 
 ### 2.6 Verification Scenarios
 
@@ -63,5 +63,5 @@
 
 ### 2.7 Edge Cases
 
-- release() 호출 후 재호출: no-op 또는 경고 로그; deletePath 이미 됐으면 에러 없음
+- release() 호출 후 재호출: no-op (`released` 가드, lockManager.js:24-28); 소유자 토큰 불일치 시 해당 행은 삭제되지 않음
 - withLock 내부에서 동일 lockName으로 withLock 재호출: deadlock 가능; 지원 안 함. 문서화만.

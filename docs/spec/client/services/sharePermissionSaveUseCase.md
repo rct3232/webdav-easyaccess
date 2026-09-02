@@ -17,10 +17,10 @@
 
 ### 2.2 Inputs
 
-| Name                     | Type                               | Required | Description                           |
-| ------------------------ | ---------------------------------- | -------- | ------------------------------------- |
-| initialFolderPermissions | `Map<string, Map<string, string>>` | Y        | Permission assignments at dialog open |
-| folderPermissions        | `Map<string, Map<string, string>>` | Y        | Edited permission assignments         |
+| Name                     | Type                               | Required | Description                               |
+| ------------------------ | ---------------------------------- | -------- | ----------------------------------------- |
+| initialNodePermissions   | `Map<number, Map<string, string>>` | Y        | NodeId-keyed permission assignments at dialog open |
+| nodePermissions          | `Map<number, Map<string, string>>` | Y        | NodeId-keyed edited permission assignments |
 
 ### 2.3 Output
 
@@ -39,8 +39,8 @@
 
 ### 2.6 Error Handling
 
-- Grant failures are fatal and must reject the use-case.
-- Revoke failures are non-fatal only if the existing share-dialog behavior intentionally allows best-effort revoke semantics; otherwise they must reject.
+- Grant failures are fatal and reject the use-case.
+- Revoke failures are best-effort (non-fatal) and are ignored.
 - Caller owns user-facing error messages and close/retry behavior.
 
 ### 2.7 Verification Scenarios
@@ -48,4 +48,4 @@
 - [ ] Removed assignments are revoked
 - [ ] Current assignments are granted
 - [ ] Grant failure rejects and prevents success completion
-- [ ] Returned/derived paths are normalized via `buildPermissionDiff`
+- [ ] `buildPermissionDiff` computes revoke/grant sets from nodeId-keyed maps

@@ -1,6 +1,6 @@
 # normalizePathParam Spec
 
-> **⚠ DEPRECATED** — This middleware (`server/middleware/normalizePathParam.js`) and its test have been deleted as part of Phase 4 Wave 3 integration. Routes now accept `nodeId` exclusively with no path-based fallback (PLAN.md Rule 13). This spec is retained for historical reference only.
+> **⚠ DEPRECATED** — This middleware (`server/middleware/normalizePathParam.js`) and its test have been deleted as part of Phase 4 Wave 3 integration. Routes now accept `nodeId` exclusively with no path-based fallback (Rule 13). This spec is retained for historical reference only.
 
 ## 1. Overview
 

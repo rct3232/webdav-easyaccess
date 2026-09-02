@@ -237,9 +237,9 @@ Connection-test taxonomy codes are module-local i18n keys (same `ns.key` format;
 - [ ] GET /status prefills `current` from DB `settings` rows (effective env-first view)
 - [ ] GET /status → `key_lost_warning: true` when an encrypted DB row exists and `encrypt_secret_key` is absent; `false` when the key is present
 - [ ] POST /test passes through postgresql/s3/webdav probe results; error shapes are `{ ok: false, errorCode, message, reason? }` with the classified taxonomy codes
-- [ ] POST /apply (sqlite+webdav / pg+s3): T0 keys (`WEA_STORAGE_BACKEND`, `WEA_PG_*`, `JWT_SECRET`, generated `encrypt_secret_key`) are written to `.env` (mode 0600); non-T0 keys are upserted to the metadata DB with secrets encrypted (`decryptSecret` round-trips)
+- [ ] POST /apply (sqlite+webdav): only `JWT_SECRET` (always) and an auto-generated `encrypt_secret_key` are written to `.env` (mode 0600); the metadata T0 keys (`WEA_STORAGE_BACKEND`, `WEA_PG_*`) are never written by apply; non-T0 keys are upserted into the **booted** metadata DB `settings` table with secrets encrypted (`decryptSecret` round-trips)
 - [ ] POST /apply keeps an existing `encrypt_secret_key` (not regenerated, not written to `.env`)
-- [ ] POST /apply (postgresql) runs the idempotent `settings` DDL and upserts against the target PG; sqlite admin password is untouched
+- [ ] POST /apply with `metadata.backend === 'postgresql'` → 400 `fields.metadata='notAllowed'` (the DB connection is `.env`-owned; apply never runs settings DDL or upserts against a target PG); a non-T0 apply upserts into the booted store's `settings` table and updates the `admin` password on that store
 - [ ] POST /apply → `restart_required: true` and `getSharedResolver().invalidateCache()` is invoked
 - [ ] POST /apply when already complete → 403 `setup.complete`
 - [ ] POST /test when already complete → 403 `setup.complete`

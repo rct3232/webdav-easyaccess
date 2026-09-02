@@ -166,11 +166,11 @@ Required assumptions:
 
 - Docker must be installed and running on the host machine.
 - `playwright.config.ts` is configured with `webServer` to manage the client and server lifecycle automatically.
-- The E2E Docker stack (`docker-compose.e2e.yml`: WebDAV, PostgreSQL, MinIO) is provisioned by the `e2e:server` webServer command before the app server boots: `scripts/e2e-wait-healthy.mjs` runs an idempotent `docker compose up -d` and polls `docker compose ps` until the mode's required containers report `healthy` (webdav-test + postgresql-e2e always; minio-e2e in s3 mode only). `e2e/global-setup.ts` re-runs the same helper idempotently as belt-and-braces (it never tears the stack down), then resets the data state WITHOUT restarting services: it TRUNCATEs all app tables (preserving `_schema_migrations`) and re-seeds the default admin and base users with home `file_nodes` roots via `e2e/global-setup.seed-db.cjs`, and (s3 mode) empties the MinIO bucket before ensuring it. `e2e/global-teardown.ts` empties the S3 bucket (s3 mode) and stops the services (`down -v`).
+- The E2E Docker stack (`docker-compose.e2e.yml`: WebDAV, PostgreSQL, MinIO) is provisioned by the `e2e:server` webServer command before the app server boots: `scripts/e2e-wait-healthy.mjs` runs an idempotent `docker compose up -d` and polls `docker compose ps` until the mode's required containers report `healthy` (webdav-test + postgresql-e2e always; minio-e2e in s3 mode only). `e2e/global-setup.ts` re-runs the same helper idempotently as belt-and-braces (it never tears the stack down), then resets the data state WITHOUT restarting services: it TRUNCATEs all app tables (preserving `_schema_migrations`) and re-seeds the default admin and base users with home `file_nodes` roots via `e2e/global-setup.seed-db.cjs`, ensures the MinIO bucket in both modes, and empties it in s3 mode. `e2e/global-teardown.ts` empties the S3 bucket (s3 mode) and stops the services (`down -v`).
 - The root Playwright config builds the desktop/mobile project matrix from the active backend mode: `s3-desktop`/`s3-mobile` when `E2E_BACKEND_MODE=s3`, and `webdav-desktop`/`webdav-mobile` when `E2E_BACKEND_MODE=webdav`. Only the projects for the active mode are defined, so `npm run test:e2e:s3` runs only the `s3-*` projects and `npm run test:e2e:webdav` only the `webdav-*` projects (check with `E2E_BACKEND_MODE=s3 npx playwright test --list`).
 - The backend mode is selected via `E2E_BACKEND_MODE` (`s3` default, `webdav` legacy). The `e2e:server` script maps it to the matching env file (`../.env.e2e` for s3, `../.env.e2e.webdav` for webdav) and chains `scripts/e2e-wait-healthy.mjs` (compose provisioning + health wait) before starting the server; host-exposed ports are MinIO 9010, PostgreSQL 5433, and WebDAV 8090.
 - Specs branch on the project name platform suffix (`testInfo.project.name.endsWith('-desktop')` / `endsWith('-mobile')`), so the platform checks keep working under the mode-prefixed project names.
-- The setup-wizard projects (`setup-wizard-desktop` / `setup-wizard-mobile`, `baseURL http://localhost:5003`) are additive and hermetic: the spec spawns its own scratch server instance on `:5003` (own env file, own sqlite path, own scratch PG DB) and supervises its own process lifecycle because restart is the behavior under test (PLAN.md §7). They do not use the shared `:5002` server or `:3000` client.
+- The setup-wizard projects (`setup-wizard-desktop` / `setup-wizard-mobile`, `baseURL http://localhost:5003`) are additive and hermetic: the spec spawns its own scratch server instance on `:5003` (own env file, own sqlite path, own scratch PG DB) and supervises its own process lifecycle because restart is the behavior under test. They do not use the shared `:5002` server or `:3000` client.
 
 ## Recommended Git Workflow
 
@@ -308,8 +308,8 @@ jobs:
 
 ### Current Status
 
-- **Client**: 1254 tests across 147 suites, 100% pass rate. See `client/TEST_SUMMARY.md`.
-- **Server**: 1119 tests across 66 suites, 100% pass rate (3 skipped). See `server/TEST_SUMMARY.md`.
+- **Client**: 1397 tests across 156 suites, 100% pass rate (as of 2026-09-02). See `client/TEST_SUMMARY.md`.
+- **Server**: 1658 passed / 5 skipped across 87 suites, 100% pass rate (as of 2026-09-02). See `server/TEST_SUMMARY.md`.
 - Coverage figures are measured per run via `npm run test:coverage` and recorded in the respective `TEST_SUMMARY.md`.
 
 ### Recommended Targets

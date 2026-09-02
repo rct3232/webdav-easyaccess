@@ -4,8 +4,8 @@
 
 | Item            | Description                                                                                                                                                                                                                                                                                |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Role            | Single authoritative catalog of every `process.env` config key the server reads, classified into tiers (T0/T1/T2), flagged secret or not, with the in-code default (if any). Consumed by `configResolver`, the boot snapshot loader (T3), the admin config API (T4) and setup status (T6). |
-| Source of truth | `PLAN.md` §3/§4 and `docs/features/config-source-resolution.md` (variable classification)                                                                                                                                                                                                  |
+| Role            | Single authoritative catalog of every `process.env` config key the server reads, classified into tiers (T0/T1/T2), flagged secret or not, with the in-code default (if any). Consumed by `configResolver` for runtime resolution, `configResolver.populateT1Env` for the boot env mirror (server/index.js:254), the admin config API (server/domains/admin/routes/config.js), and the setup routes (server/domains/setup/). |
+| Source of truth | `docs/features/config-source-resolution.md` (variable classification)                                                                                                                                  |
 
 ---
 
@@ -87,7 +87,7 @@ Precedence invariant (D1): env wins whenever set; DB is read only when the env v
 | `WEBDAV_UPSTREAM_URL`         | T2   | no      | —                    |
 | `MAX_THUMBNAIL_SIZE`          | T2   | no      | `300`                |
 | `THUMBNAIL_CONCURRENCY_LIMIT` | T1   | no      | `10`                 |
-| `THUMBNAIL_TOKEN_SECRET`      | T2   | no      | `'thumbnail-secret'` |
+| `THUMBNAIL_TOKEN_SECRET`      | T2   | **yes** | `'thumbnail-secret'` |
 | `THUMBNAIL_TOKEN_EXPIRY`      | T2   | no      | `'15m'`              |
 | `FFMPEG_PATH`                 | T1   | no      | —                    |
 | `FFMPEG_INIT_TIMEOUT_MS`      | T2   | no      | `2000`               |

@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                                                     |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | S3 blob store adapter — flat opaque-key blob storage for file content. Works with `object_map` to map file nodes to physical blobs. Two-tier GC strategy (DB-driven orphan cleanup + S3 bucket reconciliation). |
 
 ---
@@ -19,13 +19,13 @@
 
 ### 2.2 Main Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| uploadBlob | (key: string, buffer: Buffer) => Promise\<void\> | Upload binary data to S3 with given key. `null`/`undefined` buffer rejected; **zero-byte (`Buffer.alloc(0)`) buffers are allowed** (empty files migrate/upload correctly) |
-| downloadBlob | (key: string) => Promise\<Buffer\> | Download blob as Buffer from S3 |
-| deleteBlob | (key: string) => Promise\<void\> | Delete blob from S3 (idempotent) |
-| headBlob | (key: string) => Promise\<{contentLength, contentType}\> | Get metadata without downloading body |
-| listOrphanedKeys | (olderThan: Date) => Promise\<string[]\> | List keys older than threshold (for GC Tier 2) |
+| Method           | Signature                                                | Description                                                                                                                                                               |
+| ---------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| uploadBlob       | (key: string, buffer: Buffer) => Promise\<void\>         | Upload binary data to S3 with given key. `null`/`undefined` buffer rejected; **zero-byte (`Buffer.alloc(0)`) buffers are allowed** (empty files migrate/upload correctly) |
+| downloadBlob     | (key: string) => Promise\<Buffer\>                       | Download blob as Buffer from S3                                                                                                                                           |
+| deleteBlob       | (key: string) => Promise\<void\>                         | Delete blob from S3 (idempotent)                                                                                                                                          |
+| headBlob         | (key: string) => Promise\<{contentLength, contentType}\> | Get metadata without downloading body                                                                                                                                     |
+| listOrphanedKeys | (olderThan: Date) => Promise\<string[]\>                 | List keys older than threshold (for GC Tier 2)                                                                                                                            |
 
 WebdavBlobStore implements the same signatures, mapping blob keys to WebDAV paths (PUT/GET/DELETE). `createDirectory` maps to WebDAV MKCOL.
 
@@ -36,14 +36,14 @@ WebdavBlobStore implements the same signatures, mapping blob keys to WebDAV path
 
 ### 2.4 Configuration
 
-| Variable | Purpose | Values | Required |
-|----------|---------|--------|----------|
-| WEA_FILE_STORAGE | Blob storage mode | `s3`, `webdav` | No (default: s3) |
-| S3_BUCKET | Target S3 bucket name | string | Yes (for s3 mode) |
-| AWS_REGION | AWS region | string | Yes (for s3 mode) |
-| AWS_ACCESS_KEY_ID | Access key ID | string | Yes (for s3 mode) |
-| AWS_SECRET_ACCESS_KEY | Secret access key | string | Yes (for s3 mode) |
-| S3_ENDPOINT | Custom endpoint (MinIO, etc.) | URL string | No |
+| Variable              | Purpose                       | Values         | Required          |
+| --------------------- | ----------------------------- | -------------- | ----------------- |
+| WEA_FILE_STORAGE      | Blob storage mode             | `s3`, `webdav` | No (default: s3)  |
+| S3_BUCKET             | Target S3 bucket name         | string         | Yes (for s3 mode) |
+| AWS_REGION            | AWS region                    | string         | Yes (for s3 mode) |
+| AWS_ACCESS_KEY_ID     | Access key ID                 | string         | Yes (for s3 mode) |
+| AWS_SECRET_ACCESS_KEY | Secret access key             | string         | Yes (for s3 mode) |
+| S3_ENDPOINT           | Custom endpoint (MinIO, etc.) | URL string     | No                |
 
 > **Bucket provisioning is external.** `S3BlobStore` does **not** auto-create its S3 bucket — doing so would add a round-trip off the request hot path. The bucket must exist before the server starts. Deployment and tests provision it via the shared helper `server/testing/minioTestUtils.js` (`ensureBucket()` / `emptyBucket()`), which is used by jest integration tests against real MinIO and by the Playwright E2E global-setup.
 
@@ -71,11 +71,11 @@ No DDL duplication — `object_map` table is defined in `server/store/postgresql
 
 ### 2.7 Error Cases
 
-| AWS SDK Error | HTTP Status | Behavior |
-|---------------|-------------|----------|
-| NoSuchKey / NotFound | 404 | Propagated as not-found error |
-| NetworkingError / TimeoutError | 503 | Retryable — service unavailable |
-| AccessDenied | 403 | Permission denied |
-| NoSuchBucket | 500 | Configuration error — bucket missing |
-| SignatureDoesNotMatch | 403 | Invalid credentials |
-| SlowDown | 429 | Rate limited |
+| AWS SDK Error                  | HTTP Status | Behavior                             |
+| ------------------------------ | ----------- | ------------------------------------ |
+| NoSuchKey / NotFound           | 404         | Propagated as not-found error        |
+| NetworkingError / TimeoutError | 503         | Retryable — service unavailable      |
+| AccessDenied                   | 403         | Permission denied                    |
+| NoSuchBucket                   | 500         | Configuration error — bucket missing |
+| SignatureDoesNotMatch          | 403         | Invalid credentials                  |
+| SlowDown                       | 429         | Rate limited                         |

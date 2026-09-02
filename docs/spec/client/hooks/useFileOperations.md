@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Transitional single-entry operation helper for FileManager-era flows. It currently encapsulates rename and download mechanics, but in the target explorer architecture it is a lower-level helper that can be reused by `useExplorerCommands` rather than remaining the primary owner of explorer command orchestration. |
-| Used by components/pages | FileManager, FileContextMenu, and target explorer command composition |
+| Item                     | Description                                                                                                                                                                                                                                                                                                              |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role                     | Transitional single-entry operation helper for FileManager-era flows. It currently encapsulates rename and download mechanics, but in the target explorer architecture it is a lower-level helper that can be reused by `useExplorerCommands` rather than remaining the primary owner of explorer command orchestration. |
+| Used by components/pages | FileManager, FileContextMenu, and target explorer command composition                                                                                                                                                                                                                                                    |
 
 ---
 
@@ -18,23 +18,23 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| onProgress | function | N | Progress callback |
-| onMessage | function | N | Message callback (FileContextMenu) |
-| setDropMessage | function | N | Drop message setter (FileManager) |
-| setProcessingMap | function | N | Processing map setter |
-| onProcessingStart | function | N | Processing start |
-| onProcessingEnd | function | N | Processing end |
-| onActionComplete | function | N | Action complete |
-| onClose | function | N | Close callback |
+| Name              | Type     | Required | Description                        |
+| ----------------- | -------- | -------- | ---------------------------------- |
+| onProgress        | function | N        | Progress callback                  |
+| onMessage         | function | N        | Message callback (FileContextMenu) |
+| setDropMessage    | function | N        | Drop message setter (FileManager)  |
+| setProcessingMap  | function | N        | Processing map setter              |
+| onProcessingStart | function | N        | Processing start                   |
+| onProcessingEnd   | function | N        | Processing end                     |
+| onActionComplete  | function | N        | Action complete                    |
+| onClose           | function | N        | Close callback                     |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| handleFileDownload | (file) => Promise | Download file/folder; passes file metadata (e.g. name, path, type) to fileService.downloadFile so the service can apply platform-specific behavior (e.g. iOS + image → Web Share or inline fallback) |
-| handleFileRename | (file, newName) => Promise | Rename |
+| Key                | Type                       | Meaning                                                                                                                                                                                              |
+| ------------------ | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| handleFileDownload | (file) => Promise          | Download file/folder; passes file metadata (e.g. name, path, type) to fileService.downloadFile so the service can apply platform-specific behavior (e.g. iOS + image → Web Share or inline fallback) |
+| handleFileRename   | (file, newName) => Promise | Rename                                                                                                                                                                                               |
 
 ### 2.4 Boundaries
 

@@ -4,11 +4,7 @@
  */
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
-const {
-  generateToken,
-  verifyToken,
-  authenticateToken,
-} = require('../auth');
+const { generateToken, verifyToken, authenticateToken } = require('../auth');
 
 describe('auth', () => {
   describe('generateToken', () => {
@@ -35,6 +31,30 @@ describe('auth', () => {
       const decoded = verifyToken(token);
       expect(decoded.token_version).toBe(5);
       expect(decoded.is_admin).toBe(1);
+    });
+
+    it('reads JWT_EXPIRES_IN lazily from the shared resolver at sign time', () => {
+      const { setSharedResolver } = require('../../infrastructure/configResolver');
+      setSharedResolver({
+        getConfigSync: (key) => (key === 'JWT_EXPIRES_IN' ? '5m' : undefined),
+      });
+
+      const token = generateToken({ id: 1, username: 'alice' });
+      const decoded = verifyToken(token);
+      expect(decoded.exp - decoded.iat).toBe(300);
+
+      setSharedResolver(null);
+    });
+
+    it('falls back to the default 30m expiry when no resolver value exists', () => {
+      const { setSharedResolver } = require('../../infrastructure/configResolver');
+      setSharedResolver({ getConfigSync: () => undefined });
+
+      const token = generateToken({ id: 1, username: 'alice' });
+      const decoded = verifyToken(token);
+      expect(decoded.exp - decoded.iat).toBe(1800);
+
+      setSharedResolver(null);
     });
   });
 

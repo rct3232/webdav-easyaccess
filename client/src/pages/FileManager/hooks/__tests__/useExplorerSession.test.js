@@ -46,11 +46,13 @@ describe('useExplorerSession', () => {
       { nodeId: 6, path: '/docs/photo.jpg', basename: 'photo.jpg' },
     ];
 
-    const { result } = renderHook(() => useExplorerSession({
-      currentNodeId: 5,
-      files,
-      isMobile: false,
-    }));
+    const { result } = renderHook(() =>
+      useExplorerSession({
+        currentNodeId: 5,
+        files,
+        isMobile: false,
+      })
+    );
 
     act(() => {
       result.current.setSearchQuery('report');
@@ -63,11 +65,12 @@ describe('useExplorerSession', () => {
 
   it('changes sessionKey when currentNodeId changes so the shell can reset selection', () => {
     const { result, rerender } = renderHook(
-      ({ currentNodeId }) => useExplorerSession({
-        currentNodeId,
-        files: EMPTY_FILES,
-        isMobile: false,
-      }),
+      ({ currentNodeId }) =>
+        useExplorerSession({
+          currentNodeId,
+          files: EMPTY_FILES,
+          isMobile: false,
+        }),
       { initialProps: { currentNodeId: 5 } }
     );
 
@@ -90,31 +93,37 @@ describe('useExplorerSession', () => {
   });
 
   it('uses node:root as the session key for root-level listings', () => {
-    const { result } = renderHook(() => useExplorerSession({
-      currentNodeId: null,
-      files: EMPTY_FILES,
-      isMobile: false,
-    }));
+    const { result } = renderHook(() =>
+      useExplorerSession({
+        currentNodeId: null,
+        files: EMPTY_FILES,
+        isMobile: false,
+      })
+    );
 
     expect(result.current.sessionKey).toBe('node:root');
   });
 
   it('forces detail mode back to list on mobile to preserve current UX', () => {
-    const { result } = renderHook(() => useExplorerSession({
-      currentNodeId: 5,
-      files: EMPTY_FILES,
-      isMobile: true,
-    }));
+    const { result } = renderHook(() =>
+      useExplorerSession({
+        currentNodeId: 5,
+        files: EMPTY_FILES,
+        isMobile: true,
+      })
+    );
 
     expect(result.current.viewMode).toBe('list');
   });
 
   it('persists current view and sort mode through the existing localStorage policy', () => {
-    renderHook(() => useExplorerSession({
-      currentNodeId: 5,
-      files: EMPTY_FILES,
-      isMobile: false,
-    }));
+    renderHook(() =>
+      useExplorerSession({
+        currentNodeId: 5,
+        files: EMPTY_FILES,
+        isMobile: false,
+      })
+    );
 
     expect(setViewMode).toHaveBeenCalledWith('detail');
     expect(setSortMode).toHaveBeenCalledWith('name_desc');
@@ -122,11 +131,13 @@ describe('useExplorerSession', () => {
   });
 
   it('owns sort mode internally without external injection', () => {
-    const { result } = renderHook(() => useExplorerSession({
-      currentNodeId: 5,
-      files: EMPTY_FILES,
-      isMobile: false,
-    }));
+    const { result } = renderHook(() =>
+      useExplorerSession({
+        currentNodeId: 5,
+        files: EMPTY_FILES,
+        isMobile: false,
+      })
+    );
 
     expect(result.current.sortMode).toBe('name_desc');
 
@@ -144,11 +155,13 @@ describe('useExplorerSession', () => {
       { nodeId: 2, path: '/docs/b.jpg', basename: 'b.jpg', type: 'file', mime: 'image/jpeg' },
     ];
 
-    const { result } = renderHook(() => useExplorerSession({
-      currentNodeId: 5,
-      files,
-      isMobile: false,
-    }));
+    const { result } = renderHook(() =>
+      useExplorerSession({
+        currentNodeId: 5,
+        files,
+        isMobile: false,
+      })
+    );
 
     act(() => {
       result.current.handleThumbnailsLoaded(new Map([[1, 'http://thumb/a.jpg']]));

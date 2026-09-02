@@ -104,9 +104,7 @@ describe('FilePropertiesDialog', () => {
   });
 
   it('renders folder type for directory', async () => {
-    renderWithProviders(
-      <FilePropertiesDialog {...defaultProps} file={folderProps} />
-    );
+    renderWithProviders(<FilePropertiesDialog {...defaultProps} file={folderProps} />);
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
@@ -114,9 +112,7 @@ describe('FilePropertiesDialog', () => {
   });
 
   it('when directory, dialog shows folder stats (file count and size) after load', async () => {
-    renderWithProviders(
-      <FilePropertiesDialog {...defaultProps} file={folderProps} />
-    );
+    renderWithProviders(<FilePropertiesDialog {...defaultProps} file={folderProps} />);
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
@@ -143,9 +139,7 @@ describe('FilePropertiesDialog', () => {
   });
 
   it('for a directory, fetches folder permissions and stats by nodeId', async () => {
-    renderWithProviders(
-      <FilePropertiesDialog {...defaultProps} file={folderProps} />
-    );
+    renderWithProviders(<FilePropertiesDialog {...defaultProps} file={folderProps} />);
     await waitFor(() => {
       expect(getFolderPermissions).toHaveBeenCalledWith(2);
       expect(getFolderStats).toHaveBeenCalledWith(2);

@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Fetches public share-link info for `/share/:token` and normalizes loading + error state for the route shell. |
-| Used by components/pages | `client/src/pages/ShareLinkLoader.js` |
+| Item                     | Description                                                                                                  |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| Role                     | Fetches public share-link info for `/share/:token` and normalizes loading + error state for the route shell. |
+| Used by components/pages | `client/src/pages/ShareLinkLoader.js`                                                                        |
 
 > **Phase 5 nodeId end-state:** `GET /api/share/:token/info` always returns a `nodeId` for the shared root, so the hook never needs to resolve a path. The Phase 4 gap-closure `resolve-path` fallback (C2.5) was removed in Phase 5; `useShareLinkInfo` only fetches link info and passes it through as-is.
 
@@ -24,17 +24,17 @@ Scope is page-local to `ShareLinkLoader`:
 
 `useShareLinkInfo(token)`
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| token | string | Y | Public share token from the route URL. |
+| Name  | Type   | Required | Description                            |
+| ----- | ------ | -------- | -------------------------------------- |
+| token | string | Y        | Public share token from the route URL. |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| loading | `boolean` | Current fetch-in-flight state. |
+| Key      | Type           | Meaning                                                                                                              |
+| -------- | -------------- | -------------------------------------------------------------------------------------------------------------------- |
+| loading  | `boolean`      | Current fetch-in-flight state.                                                                                       |
 | linkInfo | object \| null | Share metadata on success; includes `nodeId`, `fileName`, `fileType`, `isDirectory`, and `displayPath` from the API. |
-| error | string \| null | Translated main error message on error. |
+| error    | string \| null | Translated main error message on error.                                                                              |
 
 ### 2.4 Dependencies
 
@@ -65,4 +65,3 @@ Scope is page-local to `ShareLinkLoader`:
 - Empty `token` never resolves to `success`.
 - Rapid token changes do not cause older responses to overwrite newer state.
 - `getPublicShareLinkInfo` failure (expired link, network error) keeps `linkInfo` null and surfaces a translated error message.
-

@@ -3,7 +3,11 @@
  * @see docs/spec/client/services/folderPickerGateway.md
  * @see docs/TESTING_STRATEGY.md
  */
-import folderPickerGateway, { checkWritePermission, getUserSharedFolderPermissions, listFolderContents } from '../folderPickerGateway';
+import folderPickerGateway, {
+  checkWritePermission,
+  getUserSharedFolderPermissions,
+  listFolderContents,
+} from '../folderPickerGateway';
 import { listFiles } from '../fileService';
 import { checkPermission, getSharedPermissions } from '../permissionService';
 
@@ -53,7 +57,9 @@ describe('folderPickerGateway', () => {
     const result = await getUserSharedFolderPermissions({ user });
 
     expect(getSharedPermissions).toHaveBeenCalledTimes(1);
-    expect(result).toEqual([{ nodeId: 100, name: 'Shared Docs', permission: 'write', type: 'directory' }]);
+    expect(result).toEqual([
+      { nodeId: 100, name: 'Shared Docs', permission: 'write', type: 'directory' },
+    ]);
   });
 
   it('returns an empty shared-folder list for admin users without calling the service', async () => {

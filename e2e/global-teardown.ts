@@ -1,7 +1,7 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { cleanDir } from './helpers/seedDb';
 
 const rootDir = process.cwd();
 const composeFile = path.join(rootDir, 'docker-compose.e2e.yml');
@@ -37,37 +37,6 @@ function runCompose(args: string[]) {
     cwd: rootDir,
     stdio: 'inherit',
   });
-}
-
-function cleanDir(relativePath: string) {
-  const targetPath = path.join(rootDir, relativePath);
-  try {
-    fs.rmSync(targetPath, { recursive: true, force: true });
-  } catch (err: unknown) {
-    const error = err as NodeJS.ErrnoException;
-    if (error.code !== 'EACCES') {
-      throw err;
-    }
-
-    console.warn(`Warning: Cannot remove ${relativePath} directly due to permissions. Retrying via Docker helper.`);
-    execFileSync(
-      'docker',
-      [
-        'run',
-        '--rm',
-        '-v',
-        `${rootDir}:/workspace`,
-        'alpine',
-        'sh',
-        '-c',
-        `rm -rf /workspace/${relativePath}`,
-      ],
-      {
-        cwd: rootDir,
-        stdio: 'inherit',
-      }
-    );
-  }
 }
 
 export default async function globalTeardown() {

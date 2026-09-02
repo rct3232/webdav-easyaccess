@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | IntersectionObserver-based infinite scroll. Returns displayedFiles (slice), loadMoreRef, hasMore, reset. |
-| Used by components/pages | FileList, FileGrid |
+| Item                     | Description                                                                                              |
+| ------------------------ | -------------------------------------------------------------------------------------------------------- |
+| Role                     | IntersectionObserver-based infinite scroll. Returns displayedFiles (slice), loadMoreRef, hasMore, reset. |
+| Used by components/pages | FileList, FileGrid                                                                                       |
 
 ---
 
@@ -18,21 +18,21 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| files | array | Y | Full file list |
-| options | object | N | initialCount (50), incrementCount (50), threshold (0.1), rootMargin ('200px') |
+| Name    | Type   | Required | Description                                                                   |
+| ------- | ------ | -------- | ----------------------------------------------------------------------------- |
+| files   | array  | Y        | Full file list                                                                |
+| options | object | N        | initialCount (50), incrementCount (50), threshold (0.1), rootMargin ('200px') |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| displayedFiles | array | files.slice(0, displayCount) |
-| loadMoreRef | ref | Sentinel ref |
-| hasMore | boolean | displayCount < files.length |
-| totalCount | number | files.length |
-| displayedCount | number | Current count |
-| reset | () => void | Reset to initial |
+| Key            | Type       | Meaning                      |
+| -------------- | ---------- | ---------------------------- |
+| displayedFiles | array      | files.slice(0, displayCount) |
+| loadMoreRef    | ref        | Sentinel ref                 |
+| hasMore        | boolean    | displayCount < files.length  |
+| totalCount     | number     | files.length                 |
+| displayedCount | number     | Current count                |
+| reset          | () => void | Reset to initial             |
 
 ### 2.4 Dependencies
 

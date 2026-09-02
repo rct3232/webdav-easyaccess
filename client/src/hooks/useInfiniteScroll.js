@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
 /**
  * 무한 스크롤 훅 - IntersectionObserver 기반 점진적 로딩
- * 
+ *
  * @param {Array} files - 전체 파일 목록
  * @param {Object} options - 옵션
  * @param {number} options.initialCount - 초기 표시 개수 (기본: 50)
@@ -12,12 +12,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
  * @returns {Object} { displayedFiles, loadMoreRef, hasMore, totalCount, displayedCount, reset }
  */
 export const useInfiniteScroll = (files, options = {}) => {
-  const {
-    initialCount = 50,
-    incrementCount = 50,
-    threshold = 0.1,
-    rootMargin = '200px',
-  } = options;
+  const { initialCount = 50, incrementCount = 50, threshold = 0.1, rootMargin = '200px' } = options;
 
   const [displayCount, setDisplayCount] = useState(initialCount);
   const loadMoreRef = useRef(null);
@@ -39,7 +34,7 @@ export const useInfiniteScroll = (files, options = {}) => {
 
   // 추가 로드 함수
   const loadMore = useCallback(() => {
-    setDisplayCount(prev => {
+    setDisplayCount((prev) => {
       const next = prev + incrementCount;
       return Math.min(next, files.length);
     });

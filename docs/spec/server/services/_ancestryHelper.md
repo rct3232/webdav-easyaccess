@@ -1,9 +1,9 @@
-# _ancestryHelper Spec
+# \_ancestryHelper Spec
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                                                                                                                                  |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Closure table (`node_ancestors`) maintenance for filesystem tree operations. Handles ancestor chain building on node creation, subtree rebuild after moves (BFS-based delete-then-insert), and explicit cleanup on deletion. Called exclusively by fileNodeService, never exposed to routes. |
 
 ---
@@ -33,12 +33,13 @@ function createAncestryHelper(fileNodesStore) {
 
 Builds ancestor rows when inserting a node. Copies all parent's ancestors + adds self (depth=0).
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| nodeId | number | yes | ID of the newly created node |
-| parentId | number \| null | yes | Parent node ID; null for root-level nodes |
+| Param    | Type           | Required | Description                               |
+| -------- | -------------- | -------- | ----------------------------------------- |
+| nodeId   | number         | yes      | ID of the newly created node              |
+| parentId | number \| null | yes      | Parent node ID; null for root-level nodes |
 
 **Algorithm:**
+
 - If `parentId === null`: insert only self-row `(nodeId, nodeId, depth=0)`
 - Otherwise: fetch parent's ancestor chain via `getAncestorChain(parentId)`, then insert self-row + all parent ancestors with depth+1
 
@@ -46,12 +47,13 @@ Builds ancestor rows when inserting a node. Copies all parent's ancestors + adds
 
 Rebuilds ancestor rows for an entire subtree after a move. Uses delete-then-insert strategy (simplest correct approach).
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| movedNodeId | number | yes | ID of the node that was moved |
-| newParentId | number \| null | yes | New parent ID; null means move to root |
+| Param       | Type           | Required | Description                            |
+| ----------- | -------------- | -------- | -------------------------------------- |
+| movedNodeId | number         | yes      | ID of the node that was moved          |
+| newParentId | number \| null | yes      | New parent ID; null means move to root |
 
 **Algorithm:**
+
 1. `getDescendantIds(movedNodeId)` → collect all descendant IDs (includes self)
 2. `deleteAncestorByDescendant(descendantIds)` — remove all existing ancestor rows
 3. Get new parent's chain: if `newParentId !== null`, call `getAncestorChain(newParentId)`
@@ -62,9 +64,9 @@ Rebuilds ancestor rows for an entire subtree after a move. Uses delete-then-inse
 
 Explicit ancestor cleanup on deletion. FK CASCADE handles this automatically, but explicit removal serves as a safety net.
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| nodeIds | number[] | yes | Array of descendant IDs to clean up |
+| Param   | Type     | Required | Description                         |
+| ------- | -------- | -------- | ----------------------------------- |
+| nodeIds | number[] | yes      | Array of descendant IDs to clean up |
 
 ### 2.4 Dependencies
 

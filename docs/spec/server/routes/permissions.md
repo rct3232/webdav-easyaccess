@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Mount path | `/api/permissions` |
-| Role | Folder and file permissions: grant, revoke, list by user/folder, check effective permission. All operations use `nodeId` (BIGINT) references instead of path strings. |
+| Item       | Description                                                                                                                                                           |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mount path | `/api/permissions`                                                                                                                                                    |
+| Role       | Folder and file permissions: grant, revoke, list by user/folder, check effective permission. All operations use `nodeId` (BIGINT) references instead of path strings. |
 
 ---
 
@@ -22,19 +22,19 @@
 
 ### 2.2 Route List
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/grant` | Token | Grant permission. Body: nodeId, userId, permission, targetType? |
-| DELETE | `/revoke` | Token | Revoke. Query: userId, nodeId, scope? |
-| GET | `/user/:userId` | Token | List permissions for user. |
-| GET | `/shared` | Token | List current user's "shared with me" permissions (own subtree excluded), including `name` and `type`. |
-| GET | `/folder` | Token | List permissions for folder. Query: nodeId, fileNodeId? |
-| GET | `/check` | Token | Check current user permission. Query: nodeId. |
-| POST | `/file/grant` | Token | Grant file-level permission. Body: userId, fileNodeId, permission. |
-| DELETE | `/file/revoke` | Token | Revoke file-level permission. Query: userId, fileNodeId. |
-| PATCH | `/file` | Token | Update file-level permission. Body: userId, fileNodeId, permission. |
-| GET | `/file/check` | Token | Check file permission. Query: fileNodeId. |
-| GET | `/file/list` | Token | List file permissions. Query: nodeId? (parent directory) |
+| Method | Path            | Auth  | Description                                                                                           |
+| ------ | --------------- | ----- | ----------------------------------------------------------------------------------------------------- |
+| POST   | `/grant`        | Token | Grant permission. Body: nodeId, userId, permission, targetType?                                       |
+| DELETE | `/revoke`       | Token | Revoke. Query: userId, nodeId, scope?                                                                 |
+| GET    | `/user/:userId` | Token | List permissions for user.                                                                            |
+| GET    | `/shared`       | Token | List current user's "shared with me" permissions (own subtree excluded), including `name` and `type`. |
+| GET    | `/folder`       | Token | List permissions for folder. Query: nodeId, fileNodeId?                                               |
+| GET    | `/check`        | Token | Check current user permission. Query: nodeId.                                                         |
+| POST   | `/file/grant`   | Token | Grant file-level permission. Body: userId, fileNodeId, permission.                                    |
+| DELETE | `/file/revoke`  | Token | Revoke file-level permission. Query: userId, fileNodeId.                                              |
+| PATCH  | `/file`         | Token | Update file-level permission. Body: userId, fileNodeId, permission.                                   |
+| GET    | `/file/check`   | Token | Check file permission. Query: fileNodeId.                                                             |
+| GET    | `/file/list`    | Token | List file permissions. Query: nodeId? (parent directory)                                              |
 
 ### 2.3 Middleware Used
 

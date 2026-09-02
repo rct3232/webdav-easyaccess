@@ -1,4 +1,6 @@
 /* eslint-disable no-console -- email transport status logging and unconfigured fallback */
+const { getSharedResolver } = require('../infrastructure/configResolver');
+
 let nodemailer;
 try {
   nodemailer = require('nodemailer');
@@ -10,13 +12,30 @@ try {
 
 let transporter = null;
 
+// EMAIL_* are T2 (hot): read the effective values (env → DB → default) via the
+// shared resolver so DB-sourced email config is honored. The transporter itself
+// is still built once per process; a restart rebuilds it with fresh values.
+function readEmailConfig() {
+  const resolver = getSharedResolver();
+  return {
+    host: resolver.getConfigSync('EMAIL_HOST'),
+    port: parseInt(resolver.getConfigSync('EMAIL_PORT'), 10) || 587,
+    secure: resolver.getConfigSync('EMAIL_SECURE') === 'true',
+    user: resolver.getConfigSync('EMAIL_USER'),
+    password: resolver.getConfigSync('EMAIL_PASSWORD'),
+    fromName: resolver.getConfigSync('EMAIL_FROM_NAME'),
+  };
+}
+
 function initEmailTransporter() {
   if (!nodemailer) {
     console.warn('Email configuration skipped: nodemailer not available.');
     return null;
   }
 
-  if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
+  const { host, port, secure, user, password } = readEmailConfig();
+
+  if (!host || !user || !password) {
     console.warn('Email configuration not found. Email functionality will be disabled.');
     return null;
   }
@@ -24,12 +43,12 @@ function initEmailTransporter() {
   try {
     // nodemailer uses createTransport (not createTransporter)
     transporter = nodemailer.createTransport({
-      host: process.env.EMAIL_HOST,
-      port: parseInt(process.env.EMAIL_PORT) || 587,
-      secure: process.env.EMAIL_SECURE === 'true',
+      host,
+      port,
+      secure,
       auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASSWORD,
+        user,
+        pass: password,
       },
     });
 
@@ -56,8 +75,9 @@ async function sendEmail(to, subject, htmlContent) {
   }
 
   try {
+    const { fromName, user } = readEmailConfig();
     const info = await transporter.sendMail({
-      from: `"${process.env.EMAIL_FROM_NAME || 'WebDAV EasyAccess'}" <${process.env.EMAIL_USER}>`,
+      from: `"${fromName || 'WebDAV EasyAccess'}" <${user}>`,
       to,
       subject,
       html: htmlContent,
@@ -120,8 +140,9 @@ function isEmailEnabled() {
   if (!nodemailer) {
     return false;
   }
-  
-  return !!(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASSWORD);
+
+  const { host, user, password } = readEmailConfig();
+  return !!(host && user && password);
 }
 
 module.exports = {
@@ -132,4 +153,3 @@ module.exports = {
   sendRejectionEmail,
   isEmailEnabled,
 };
-

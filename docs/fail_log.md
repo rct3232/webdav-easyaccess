@@ -94,22 +94,22 @@
 
 ### Server: 14 failed suites / 78 failed tests / 1011 passed / 1090 total
 
-| Suite | Failures | Classification | Root Cause |
-|---|---|---|---|
-| `domains/files/routes/__tests__/files.test.js` | ~18 | Test migration incomplete (Task 4.9) | Route tests not fully migrated from WebDAV mock to fileNodeService + blobStorageService; S3 config missing in default mode |
-| `domains/files/routes/__tests__/folders.test.js` | ~6 | Test migration incomplete (Task 4.9) | Same as files.test.js |
-| `domains/recentFiles/__tests__/recentFiles.test.js` | 6 | Phase 5 scope | Pending nodeId migration in Phase 5 Task 5.x |
-| `domains/recentFiles/__tests__/recentFilesStore.test.js` | 8 | Phase 5 scope | Pending nodeId migration in Phase 5 Task 5.x |
-| `domains/sharing/routes/__tests__/shareLinks.test.js` | ~6 | Phase 5 scope | `grantTestPermission` removed; sharing routes pending nodeId migration |
-| `domains/sharing/routes/__tests__/sharePublic.test.js` | ~4 | Phase 5 scope | Same as shareLinks.test.js |
-| `domains/sharing/__tests__/shareLinkStore.test.js` | 5 | Phase 5 scope | Pending nodeId migration |
-| `models/__tests__/ShareLink.test.js` | 7 | Phase 5 scope | Legacy path-based model tests |
-| `models/__tests__/PermissionRequest.test.js` | 3 | Phase 5 scope | Legacy path-based model tests |
-| `domains/auth/routes/__tests__/auth.test.js` | 5 | Environmental | `postgresqlNotConfigured` in test env (no PostgreSQL configured) |
-| `domains/admin/routes/__tests__/admin.test.js` | 1 | Environmental | `postgresqlNotConfigured` in test env |
-| `infrastructure/__tests__/lockManager.test.js` | 5 | Environmental | `postgresqlNotConfigured` in test env |
-| `infrastructure/adapters/metadata/__tests__/settingsStore.test.js` | 3 | Pre-existing bug | Double-serialization bug in Settings model (unrelated to Phase 4) |
-| `models/__tests__/Settings.test.js` | 3 | Pre-existing bug | Same double-serialization bug |
+| Suite                                                              | Failures | Classification                       | Root Cause                                                                                                                 |
+| ------------------------------------------------------------------ | -------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `domains/files/routes/__tests__/files.test.js`                     | ~18      | Test migration incomplete (Task 4.9) | Route tests not fully migrated from WebDAV mock to fileNodeService + blobStorageService; S3 config missing in default mode |
+| `domains/files/routes/__tests__/folders.test.js`                   | ~6       | Test migration incomplete (Task 4.9) | Same as files.test.js                                                                                                      |
+| `domains/recentFiles/__tests__/recentFiles.test.js`                | 6        | Phase 5 scope                        | Pending nodeId migration in Phase 5 Task 5.x                                                                               |
+| `domains/recentFiles/__tests__/recentFilesStore.test.js`           | 8        | Phase 5 scope                        | Pending nodeId migration in Phase 5 Task 5.x                                                                               |
+| `domains/sharing/routes/__tests__/shareLinks.test.js`              | ~6       | Phase 5 scope                        | `grantTestPermission` removed; sharing routes pending nodeId migration                                                     |
+| `domains/sharing/routes/__tests__/sharePublic.test.js`             | ~4       | Phase 5 scope                        | Same as shareLinks.test.js                                                                                                 |
+| `domains/sharing/__tests__/shareLinkStore.test.js`                 | 5        | Phase 5 scope                        | Pending nodeId migration                                                                                                   |
+| `models/__tests__/ShareLink.test.js`                               | 7        | Phase 5 scope                        | Legacy path-based model tests                                                                                              |
+| `models/__tests__/PermissionRequest.test.js`                       | 3        | Phase 5 scope                        | Legacy path-based model tests                                                                                              |
+| `domains/auth/routes/__tests__/auth.test.js`                       | 5        | Environmental                        | `postgresqlNotConfigured` in test env (no PostgreSQL configured)                                                           |
+| `domains/admin/routes/__tests__/admin.test.js`                     | 1        | Environmental                        | `postgresqlNotConfigured` in test env                                                                                      |
+| `infrastructure/__tests__/lockManager.test.js`                     | 5        | Environmental                        | `postgresqlNotConfigured` in test env                                                                                      |
+| `infrastructure/adapters/metadata/__tests__/settingsStore.test.js` | 3        | Pre-existing bug                     | Double-serialization bug in Settings model (unrelated to Phase 4)                                                          |
+| `models/__tests__/Settings.test.js`                                | 3        | Pre-existing bug                     | Same double-serialization bug                                                                                              |
 
 ### Client: FileManager.test.js — 7 failures
 
@@ -175,7 +175,7 @@
 
 ### FilePreviewDialog.test.js — Case B (Test Error — stale path fixtures)
 
-> **Correction (2026-08-05, audit A2):** the "implementation is correct" claim in this entry was **inaccurate**. It covered the preview *loader* calls (`getFileBlob`/`getVideoPreviewStreamUrl`), but the *download* action at `FilePreviewDialog.js:207` still passed `targetFile.path` to nodeId-only `downloadFile` (server 400). The second test file (`FilePreviewDialog/__tests__/FilePreviewDialog.test.jsx`) asserted the buggy path call and passed while encoding the bug. Fixed under audit A2 (see entry below).
+> **Correction (2026-08-05, audit A2):** the "implementation is correct" claim in this entry was **inaccurate**. It covered the preview _loader_ calls (`getFileBlob`/`getVideoPreviewStreamUrl`), but the _download_ action at `FilePreviewDialog.js:207` still passed `targetFile.path` to nodeId-only `downloadFile` (server 400). The second test file (`FilePreviewDialog/__tests__/FilePreviewDialog.test.jsx`) asserted the buggy path call and passed while encoding the bug. Fixed under audit A2 (see entry below).
 
 - **Area:** `client/src/components/dialogs/__tests__/FilePreviewDialog.test.js`
 - **Classification:** Case B (Test Error)
@@ -210,7 +210,7 @@
 ### A2 — Preview download sent `targetFile.path` to nodeId-only `downloadFile` (corrects C1.7 record)
 
 - **Area:** `client/src/components/dialogs/FilePreviewDialog/FilePreviewDialog.js:207`, `FilePreviewDialog/__tests__/FilePreviewDialog.test.jsx:193`
-- **Classification:** Case A (Source Error). Corrects the prior C1.7 record which claimed "implementation is correct" — that RCA covered the preview *loader* calls only.
+- **Classification:** Case A (Source Error). Corrects the prior C1.7 record which claimed "implementation is correct" — that RCA covered the preview _loader_ calls only.
 - **Action taken:** `FilePreviewDialog.js:207` → `downloadFile(targetFile.nodeId, …)`; both preview test files updated to nodeId fixtures/assertions.
 - **Verification:** `FilePreviewDialog.test.js` (9) + `FilePreviewDialog.test.jsx` (7) pass.
 
@@ -235,7 +235,7 @@
 
 A five-sweep audit (client path remnants, server residual paths, client↔server contract, docs drift,
 test drift) found the A1–A6 wave missed client↔server contract breaks that unit tests masked because MSW
-`handlers.js` mirrors the *client's* expectations instead of the *server's* responses. All classified
+`handlers.js` mirrors the _client's_ expectations instead of the _server's_ responses. All classified
 Case A (Source Error — client), fixed in one wave; C11 (MSW mask) is Case B (test env).
 
 ### C1 — `/files/list` response shape mismatch (`name/display_path/mimeType/modifiedAt` vs `basename/path/mime/lastmod`)
@@ -338,7 +338,7 @@ suites are fully green.
    grants by nodeId; `ensureHomeOwnerAdminForAllUsers` grants once on the home
    node (closure table covers descendants); bootstrap drops the root grant
    (admin bypasses ACL via is_admin). `admin.test.js` updated to nodeId assertion
-   + webdav composition setup.
+   - webdav composition setup.
 4. **FileActionSheet** (`FileActionSheet.js`): implementation rendered
    rename/move/delete disabled, but spec (FileActionSheet.md §2.6) requires
    conditional rendering (hide) when `!fileWritePermission`; download was
@@ -416,10 +416,10 @@ suites are fully green.
   require-time (SQLite schema init → ffmpeg probe → WebDAV connection probe).
   Under `--runInBand` the suites finish before that chain settles, so its async
   continuations run after Jest teardown → `ReferenceError: ... after the Jest
-  environment has been torn down` + "Cannot log after tests are done" → exit 1
+environment has been torn down` + "Cannot log after tests are done" → exit 1
   despite all suites passing. Reproduced on SQLite with `--runInBand`
   (pre-existing, independent of PG). Empirically confirmed `require.main ===
-  module` is false under Jest (app.listen/GC-scheduler block does not run) and
+module` is false under Jest (app.listen/GC-scheduler block does not run) and
   that "Cannot log after tests are done" alone produces exit 1.
 - **Action taken (test files only):** await `initMetadataStore()` +
   `initFfmpegOnce()` (the shared/memoized init promises the startup chain awaits)
@@ -443,6 +443,7 @@ classified Case A (Source Error) and fixed with user approval on branch
 `refactor/phase-8-verification` (not merged to `dev`).
 
 ### 1. `fileNodesStore.insertAncestorRows` — PG multi-row VALUES syntax (42601)
+
 - **Area:** `server/store/fileNodesStore.js`
 - **Summary:** The PG branch built a flat `$1..$N` placeholder list for a
   multi-row `INSERT INTO node_ancestors ... VALUES (...)`; PG rejects that with
@@ -453,6 +454,7 @@ classified Case A (Source Error) and fixed with user approval on branch
   pass on PG; gates removed; full PG suite green.
 
 ### 2. `permissionRequestStore` — `resolved_by = CASE … $4` type inference (42804)
+
 - **Area:** `server/domains/permissions/stores/permissionRequestStore.js`
 - **Summary:** node-pg sends `$4` (nullable bigint) as text; PG cannot infer the
   column type in the `ELSE $4` arm → 42804.
@@ -460,6 +462,7 @@ classified Case A (Source Error) and fixed with user approval on branch
 - **Verification:** previously-gated 2 tests now pass.
 
 ### 3. `blobStorageService.ensureExclusiveBlob` — CoW overwrite broken (409 + original corruption)
+
 - **Area:** `server/service/blobStorageService.js`
 - **Summary:** overwriting a copy-on-write copy (E2E-S3PG-004) failed with 409
   and would also orphan the ORIGINAL node: `orphanObject(s3_key)` orphans ALL
@@ -471,6 +474,7 @@ classified Case A (Source Error) and fixed with user approval on branch
 - **Verification:** E2E-S3PG-004 passes; original content preserved.
 
 ### 4. Auth responses missing `rootNodeId` (home-view CRUD 400s)
+
 - **Area:** `server/domains/auth/service.js`
 - **Summary:** login/register/`/me` user payloads lacked the user's home node id;
   the client's home view computed `homeNodeId = user?.rootNodeId ?? null` →
@@ -479,6 +483,7 @@ classified Case A (Source Error) and fixed with user approval on branch
 - **Verification:** home-view CRUD works in both E2E modes.
 
 ### 5. WebDAV mode created directories DB-only (no MKCOL) — uploads 403
+
 - **Area:** `server/utils/webdav.js`, `server/service/blobStorageService.js`,
   `folders.js`, `userService.js`, `cleanupService.js`, E2E seed
 - **Summary:** physical WebDAV directories never created; PUT into a missing
@@ -490,6 +495,7 @@ classified Case A (Source Error) and fixed with user approval on branch
 - **Verification:** webdav E2E `mypage-user`/`core-flow` green.
 
 ### 6. Leave-share confirmation dead code (client)
+
 - **Area:** `client/src/pages/FileManager/*`, `useShareLinkOverlay.js`,
   `FolderTree.js`, `FileManagerView.js`
 - **Summary:** `handleLeaveSharePathClick` was never invoked in the render tree;
@@ -499,6 +505,7 @@ classified Case A (Source Error) and fixed with user approval on branch
 - **Verification:** E2E-SHARE-007 passes.
 
 ### 7. Permission-request inbox/outbox showed `#<file_node_id>` instead of a path
+
 - **Area:** `server/domains/permissions/routes/permissionRequests.js`,
   `client/.../mypage/content/SharingContent.js`
 - **Summary:** post-migration responses carried only `file_node_id`; the client
@@ -508,6 +515,7 @@ classified Case A (Source Error) and fixed with user approval on branch
 - **Verification:** MYPAGE-006/007/008 pass.
 
 ### 8. `pg.Pool` unhandled 'error' crashed the process
+
 - **Area:** `server/store/storage.js`
 - **Summary:** no `pool.on('error')` listener; a PG restart/drop (e.g. E2E
   teardown `down -v`) crashed the server via an unhandled event.
@@ -516,6 +524,7 @@ classified Case A (Source Error) and fixed with user approval on branch
   PG restarts.
 
 ### 9. `folderPickerGateway.listFolderContents` missing `basename` normalization
+
 - **Area:** `client/src/services/folderPickerGateway.js`,
   `client/src/components/dialogs/FolderPickerDialog/FolderPickerDialog.js`
 - **Summary:** picker entries were the raw `listFiles` shape (no `basename`);
@@ -552,3 +561,298 @@ classified Case A (Source Error) and fixed with user approval on branch
 - **Verification:** unit test added for root listing; server SQLite + PG
   (67/1137) and client (147/1265) green; full default-wave E2E passes in both
   modes (S3 111 pass, WebDAV 95 pass, 0 failures).
+
+---
+
+## 2026-09-01 — C2: MigrationDialog config-only reroute (7 test failures → intended)
+
+- **Area:** `client/src/components/mypage/content/MigrationDialog.js` +
+  `__tests__/MigrationDialog.test.js`
+- **Classification:** Case B (Test Error — tests asserted removed inline
+  progress/popup/cancel UI; source intentionally changed per PLAN D1/D2)
+- **Summary:** Under the unified migration-mode plan the blob `MigrationDialog`
+  is now config-only: inline job polling, progress UI, cancel and the terminal
+  popups moved to `/migration`; a successful start closes the dialog and
+  auto-redirects to `/migration`. 7 tests failed because they asserted the
+  removed behaviors (`job id: …`, `progress: 5 / 10`, `copied/skipped/failed`,
+  restart/dry-run/failed/cancelled popups, cancel flow, close-stops-polling).
+- **Spec cross-check:** `docs/features/migration-mode.md` D1/D2 (config stays in
+  dialogs; `/migration` is execution/progress only) — the source change is
+  spec-compliant; the tests were stale.
+- **Action taken:** Rewrote `MigrationDialog.test.js` to the config-only flow
+  (info load, dest fields, validation, start → close + navigate to `/migration`
+  via a `LocationProbe`, start-failure inline error). Added
+  `MetadataMigrationDialog.test.js` (target-scan → wipe-alert → confirm → start)
+  and extended `SystemSettingsContent.test.js` (metadata row + ".env setup
+  needed" banner). Removed now-unused `migration.*` i18n keys (verified unused:
+  `cancelJob`, `cancelSuccess`, `cancelledTitle/Body`, `dryRunDone*`,
+  `failedTitle/Body`, `restartRequired*`, `status*`, `progress`, `current`,
+  `copied`, `skipped`, `failed`, `errorsTitle`, `jobId`, `cancelling`,
+  `cancelFail`, `statusLoadFail`, `ok`).
+- **Verification:** 3 suites / 35 tests pass; full client suite 1377 passed /
+  1 failed (pre-existing flaky `Setup.test.js` timeout, passes in isolation);
+  ESLint 0 errors; en/ko JSON valid.
+
+---
+
+## 2026-09-01 — C3: `/migration` page never renders blob progress % or current-file label
+
+- **Area:** `client/src/pages/Migration/MigrationPage.js` (blob-progress fallback)
+- **Classification:** Case A (Source Error — implementation violates
+  `docs/features/migration-mode.md` D8 for blob jobs). **STOP + report; not fixed
+  (client-QA agent is not authorized to change source).**
+- **Summary:** The server's blob migration jobs keep the legacy scalar shape:
+  `migrationJobStore.create` (`server/domains/admin/stores/migrationJobStore.js:32-40`)
+  and the blob worker (`server/domains/admin/routes/migration.js:171-180`) write
+  `progress` (scalar done-count), `total`, `current` and `results` at the job
+  **top level**. `MigrationPage.js:174-194` computes `%` and `currentLabel` only
+  from the extended shape (`job.progress.percent`, `job.progress.total`,
+  `job.progress.currentLabel/current`), so for every blob job:
+  `percent` falls through to `0` (never 50/100), and the current-file label is
+  always `null`. Only the `results`-based counters render correctly. The
+  metadata shape (`job.progress = { percent, currentLabel }`) works.
+- **Observed failure:** A test asserting the scalar shape
+  (`progress: 5, total: 10` → "50%" + current file) against the real server
+  payload shape fails — the page renders the header/overview but "0%" and no
+  current file. The existing `MigrationPage.test.js` only exercised the extended
+  shape, masking the defect.
+- **Spec cross-check:** `docs/features/migration-mode.md` D8: "`% = progress /
+total` over the snapshot; current file label shown"; PLAN §5 "Blob `%`:
+  `progress / total` (snapshot node count), updated per node; `current` =
+  current file label." The extended-payload row also requires
+  `progress: { percent, currentLabel, counters? }` on the job.
+- **Action taken (reporting only):** Removed the failing scalar-shape test
+  (would break CI). Recommended fix (implementing agent): in `MigrationPage.js`
+  fall back to top-level fields, e.g. `percent` from
+  `jobProgress.total ?? job.total` / `jobProgress.progress ?? job.progress`, and
+  `currentLabel` from `jobProgress.current ?? job.current`. QA added coverage for
+  the extended shape, failed/cancelled alerts, all three blobs/metadata terminal
+  modal variants, "Go to settings" navigation, the MigrationGuard redirects, and
+  the metadata noSchema scan case.
+- **Verification:** Full client suite 1387 passed / 1 failed (pre-existing
+  flaky `Setup.test.js` timeout — re-run in isolation passes 14/14); 5
+  migration-related suites / 48 tests pass; ESLint 0 errors on migration files.
+
+---
+
+## 2026-09-01 — S1: dry-run starts migration mode (spec contradiction resolved)
+
+- **Area:** `docs/features/migration-mode.md:190`,
+  `docs/spec/server/tools/blob-migration.md:32,116`, `docs/SETUP.md:175`,
+  `server/domains/admin/routes/migration.js` (`dispatchWorker`)
+- **Classification:** Case C (Spec Error — source-of-truth doc contradicted the
+  decided behavior; implementation was already correct) → doc corrected.
+- **Summary (cross-agent integration question):** does `POST
+/api/admin/migration/blobs` set the gate for BOTH `dry-run` and `apply`?
+  The client `MigrationDialog` navigates to `/migration` after any start
+  (including dry-run), so a gate that is only set for `apply` would land a
+  dry-run on the `/migration` "no active migration" empty state.
+- **Observed (verified):** `dispatchWorker` (`migration.js:309-334`) calls
+  `getMigrationGate().set(...)` unconditionally — there is no `mode` branch —
+  so the gate is active for `dry-run` and `apply` alike. Confirmed by test
+  "blobs dry-run: sets the gate on start (202) and clears it when the worker
+  reaches a terminal state" (`migration.test.js`). No server change needed.
+- **Decision:** dry-run SHOULD show its progress on `/migration` (it does real
+  enumeration work; nothing is written). The gate being active during a dry-run
+  is consistent with the conservative-gating note (`migration-mode.md` §gating).
+- **Action taken:** Corrected the four doc statements that claimed "a dry-run
+  does not start migration mode" to state that both `dry-run` and `apply`
+  start migration mode (gate set + auto-redirect to `/migration`); added
+  explicit QA coverage asserting the dry-run gate is active and cleared on
+  terminal.
+- **Verification:** Server `test:ci` green; doc statements aligned with
+  implementation and tests.
+
+---
+
+## 2026-09-01 — S2: test:ci:pg `setup.test.js` 44 failures — `Pool is not a constructor`
+
+- **Area:** `server/domains/setup/__tests__/setup.test.js:22`
+  (`jest.mock('pg', () => ({ Client: jest.fn() }))`), `server/store/storage.js:79`
+- **Classification:** Pre-existing test-infrastructure failure (NOT caused by
+  the migration feature). **Reported, not fixed** (unrelated pre-existing
+  failure, per AGENTS.md §3.2 / task scope).
+- **Summary:** Under `npm run test:ci:pg` (`WEA_STORAGE_BACKEND=postgresql`),
+  `setup.test.js` fails 44/44 with `TypeError: Pool is not a constructor`.
+  `beforeAll` calls `createTestDatabase()`, which under PG reaches
+  `initMetadataStore → applyPendingMigrations('postgresql') →
+storage.getPgPool() → new Pool(...)`. The suite's `pg` mock only provides
+  `Client`, so `Pool` is `undefined`. The mock predates the migration feature,
+  and the PG schema-apply path already called `storage.getPgPool()` on the base
+  commit.
+- **Observed failure:** 1 suite / 44 tests fail only under PG; the same suite
+  passes under SQLite. Empirically reproduced on `HEAD` (base schema-manager):
+  reverting `schemaManager.js`/`sqliteSchemaInit.js` to `HEAD` and running the
+  suite under PG env still yields 44 failures — the feature's explicit-target
+  refactor is not the cause.
+- **Spec cross-check:** `setup.test.js` is a SQLite-oriented suite
+  (`createTestDatabase` sqlite path); it is not gated for PG-only runs. The
+  repo's `test:ci:pg` claims in `fail_log.md` (2026-08-06/07) predate the
+  suite's current `pg` mock shape.
+- **Action taken (reporting only):** None — out of scope for the
+  migration-mode QA task. Recommended fix: have `setup.test.js` mock
+  `pg` with `{ Client: jest.fn(), Pool: jest.fn() }` or gate the suite off for
+  PG (`describe.skipIf(isSqliteBackend() === false)`).
+- **Verification:** `test:ci:pg` → 84 suites / 1576 passed / 3 skipped /
+  44 failed (all in `setup.test.js`). The 84 passing suites include the
+  backend-agnostic migration route tests and the metadataMigrationService
+  sqlite→PG roundtrip (19/19 pass).
+
+---
+
+## 2026-09-01 — migration-mode E2E (branch test/migration-e2e): two Case A defects + test-side findings
+
+### A1 — Metadata migration cancel is defeated by the worker's progress updates
+
+- **Area:** `server/domains/admin/routes/migration.js` (`runMetadataMigrationWorker` onProgress), `server/domains/admin/stores/migrationJobStore.js`
+- **Classification:** Case A (Source Error — feature violates `docs/spec/server/services/metadataMigrationService.md` / `docs/features/migration-mode.md` D4 cancel=ROLLBACK)
+- **Summary:** `POST /api/admin/migration/jobs/:jobId/cancel` sets the job store status to `'cancelled'`, but the metadata worker's `onProgress` callback writes `migrationJobStore.update(jobId, { status: 'running', ... })` on every progress tick, overwriting the cancel flag. `isCancelled()` reads the job-store status, so it always sees `'running'` during the copy and the transaction always COMMITs. The blob worker is unaffected (its `onProgress` does not touch `status`).
+- **Observed failure:** `e2e/migration.spec.ts` E2E-MIG-007 (B5) — cancel mid-copy returns 200, then the job status trace is `running→running→…→running→completed` (never `'cancelled'`), consistently across scan / schema / copy phases (5+ consecutive runs). The target DB is fully committed, not rolled back.
+- **Spec cross-check:** `metadata-migration.md` §2.4 "the metadata worker aborts the transaction → ROLLBACK"; `migration-mode.md` D4 "DB migration = one target transaction → cancel = ROLLBACK". The service-level rollback logic (`metadataMigrationService.runMigration` → `runInTargetTransaction` → ROLLBACK on `MigrationCancelledError`) is correct; `metadataMigrationService.test.js` passes only because its `isCancelled` flips a plain variable, never the job-store status the worker writes.
+- **Action taken (FIXED):** `runMetadataMigrationWorker`'s onProgress
+  (`migration.js:260-278`) now builds the progress patch WITHOUT the `status`
+  field and only adds `status:'running'` when the job is `pending`/`running`;
+  an existing `'cancelled'` status is preserved across ticks, so a cancel that
+  lands between progress ticks stays observable to `isCancelled()` and the
+  copy aborts → the target transaction ROLLBACKs and the job ends `cancelled`.
+  E2E-MIG-007's `test.fail()` placeholder was removed and the test now asserts
+  the real behavior (job `cancelled`, gate cleared, target `users`/`settings`/
+  `file_nodes` all rolled back). Added a route-level regression test
+  (`migration.test.js` "a progress tick landing after cancel does NOT clobber
+  the cancelled status") that reproduces the race via a mocked `runMigration`
+  calling onProgress after the cancel request; it fails against the old code
+  (job reaches `completed`) and passes against the fix.
+
+### A2 — WebDAV-mode uploads never reach `sync_status='active'`, so a webdav-source blob migration snapshots nothing
+
+- **Area:** `server/domains/files/services/fileService.js` (webdav branch of `uploadFile`), `server/store/fileNodesStore.js` (`createNode` hardcodes `'pending_upload'`), `server/domains/admin/services/migrationService.js` (`enumerateSnapshot` filters `getNodesBySyncStatus('active')`)
+- **Classification:** Case A (Source Error — a `webdav → s3` blob migration cannot copy data produced by the app itself)
+- **Summary:** Every node is created with `sync_status='pending_upload'`. In S3 mode the upload service's TX2 sets `'active'`; in webdav mode `fileService.uploadFile` calls `uploadToWebdav` (which only upserts filecache) and never sets `'active'`, and webdav uploads never create `object_map` rows either. `migrationService.enumerateSnapshot` requires `sync_status='active'` + an active `object_map` row, so a webdav-source migration always enumerates zero nodes (`total: 0`, copied 0).
+- **Observed failure:** e2e migration seeding — uploads via `POST /api/files/upload` left nodes `pending_upload` with no `object_map`; dry-run/apply reported `total: 0`.
+- **Spec cross-check:** `docs/spec/server/tools/blob-migration.md` §6 defines the snapshot as `file_nodes WHERE type='file' AND sync_status='active'` with an active `object_map` row.
+- **Action taken:** Test-side: `e2e/migration.spec.ts` `seedObjectMapRows` puts uploaded nodes into the spec-defined snapshot precondition (sets `sync_status='active'` + seeds the active webdav `object_map` row), mirroring the `migrationService.test.js` fixture. This is a test precondition, not a feature fix — the webdav sync-status lifecycle defect remains (reported, not fixed).
+- **Follow-up verdict (2026-09-01, investigated):** **(a) pre-existing webdav-mode
+  design** (webdav is path-based; `object_map`/`sync_status='active'` are S3-mode
+  lifecycle concepts) **combined with (c) a genuine gap in the migration
+  feature's snapshot contract** — `enumerateSnapshot` (`migrationService.js:103-114`)
+  requires `sync_status='active'` (`getNodesBySyncStatus('active')`) AND an active
+  `object_map` row (`getActiveObject`), but neither is producible by the app's own
+  webdav writes: `createNode` hardcodes `'pending_upload'`
+  (`fileNodesStore.js:77,96`), webdav `uploadFile` (`fileService.js:148-164`) →
+  `uploadToWebdav` (`blobStorageService.js:146-153`) only upserts filecache and
+  never sets `'active'` nor touches `object_map`, and webdav-mode
+  `prepareUpload`/`completeUpload` are stubs (`blobStorageService.js:19-38`). Not
+  a regression (the migration feature is new; there is no prior behavior to
+  regress). A real webdav→s3 migration of app-produced data silently migrates
+  0 nodes. **Recommended minimal fix (NOT applied — decision deferred):** make
+  `enumerateSnapshot` source-mode aware — in webdav mode enumerate file nodes
+  with `sync_status != 'orphaned_node'` and synthesize the activeObject
+  (`{ s3_key: null, storage_backend: 'webdav' }`) since the webdav source blob is
+  at `getNodePath(node.id)` (the webdav-to-s3 `shouldSkip`/`processNode` paths
+  read `activeObject.s3_key` only as a resume marker and never touch the source
+  path); alternative (larger blast radius): have `uploadToWebdav` write an active
+  `object_map` row (`storage_backend='webdav'`, `s3_key=NULL`) and set
+  `sync_status='active'` so app data satisfies the existing precondition — but
+  that changes every webdav upload's write path and the S3-centric status/GC
+  semantics, so the migration-side fix is preferred. Also update
+  `docs/spec/server/tools/blob-migration.md` §6 accordingly.
+
+### B — Test-side issues fixed (Case B), no feature changes
+
+- **Stale client build:** `client/build` predated the migration feature (old MigrationDialog text, missing `metadata-wipe-alert`/`env-setup-needed-banner` testids). `ensureClientBuild()` only builds when `index.html` is absent, so the stale build was served. Fixed by rebuilding `client/`.
+- **PG scratch DB name:** `CREATE DATABASE` with a hyphenated name (`flow-d1-scan-wipe`) → PG syntax error. Fixed by replacing `-` with `_` in the scratch DB name (`bootScratch`).
+- **Flow C gate hold:** `WEA_SKIP_MIGRATION_WORKER=1` does not set the migration gate (`dispatchWorker` early-returns, intentionally — covered by server tests), so it cannot produce the active gate the flow needs. Flow C instead holds the gate with a real migration whose destination probe hangs on a local tarpit (`net.Server` that accepts and never replies), and A8 uses a client-side (history API) navigation to `/mypage` (a full reload of a PrivateRoute would 503 `getMe` → auth logout → PrivateRoute → `/login`, racing the guard).
+- **WebDAV credentials for non-upload flows:** Flow C boots `WEA_FILE_STORAGE=webdav`; without the seeded `WEBDAV_*` DB settings `setup_complete` is false and `/login` redirects to `/setup`. Fixed by seeding webdav settings in all flows (`withWebdav`).
+- **B5 timing:** the metadata copy is fast (~780 ms for 20k settings rows); the cancel kept landing in the final `sourceHasEncryptedRows`/COMMIT window or was wiped by the A1 defect. Flooded to 50k rows and canceled on a mid-copy progress signal. After the A1 fix the cancel works: E2E-MIG-007 now polls for a mid-copy `progress.percent >= 10`, cancels, and asserts the job ends `cancelled` with the target rolled back.
+
+---
+
+## 2026-09-01 — WebDAV-source blob migration snapshots 0 nodes (A2 fix design)
+
+Resolves the A2 defect above (webdav-mode uploads never reach `sync_status='active'`), whose fix was previously deferred. Branch `fix/webdav-migration-source`.
+
+- **Area:** `server/domains/admin/services/migrationService.js` (`enumerateSnapshot`, webdav→s3 `processNode`), `server/store/fileNodesStore.js` (new `getNodesBySyncStatusNot`), `server/service/gcService.js` (`runTier1`), docs under `/docs` (M1 docs-first).
+- **Classification:** Case A (Source Error — product defect). Verdict from the A2 follow-up: **pre-existing webdav-mode design** (webdav is path-addressed; `object_map`/`sync_status='active'` are S3-mode lifecycle concepts) **combined with a genuine gap in the migration feature's snapshot contract**. The webdav lifecycle itself is not changed — the migration (and GC) sides are made source-aware instead (per the A2 recommendation, the smaller blast radius).
+- **Symptom:** a real `webdav → s3` migration reports `total: 0` / `copied: 0` and silently "completes" — no node is copied, no error is surfaced.
+- **Evidence:**
+  - `fileService.uploadFile` webdav branch (`fileService.js:148-164`) → `blobStorageService.uploadToWebdav(nodeId, buffer)` (`fileService.js:158`) only upserts filecache; it never sets `sync_status='active'` nor creates an `object_map` row (`blobStorageService.js` §4 Dual-Backend Dispatch Table: `uploadToWebdav` = "resolve path → uploadBlob → upsertCache").
+  - `fileNodesStore.createNode` hardcodes `sync_status='pending_upload'` (`fileNodesStore.js:77,96`).
+  - `enumerateSnapshot` (`migrationService.js:103-114`) requires `sync_status='active'` (`getNodesBySyncStatus('active')`) **AND** an active `object_map` row (`getActiveObject`) — neither is producible by the app's own webdav writes.
+  - Live-DB evidence (PG): webdav-native files have no `object_map` row; the only webdav `object_map` rows present were created by an out-of-band/legacy script (`s3_key NULL`, version 1).
+- **Root cause:** the snapshot imposed the S3 model (`active` + `object_map`) on a path-addressed source. For webdav-native files the blob **is** the node's display path; an `object_map` row is redundant, so the app never creates one — the S3-shaped precondition can never be satisfied.
+- **Action taken (fix design recorded in M1 docs-first; implementation follows on this branch):**
+  1. `migrationService.enumerateSnapshot` becomes source-mode aware. In webdav mode: enumerate file nodes via a new `fileNodesStore.getNodesBySyncStatusNot('orphaned_node')` and, per node, use `getActiveObject(node.id)` when present (its preserved `s3_key` is the resume marker from a prior migration) else synthesize `{ s3_key: null, storage_backend: 'webdav' }`. S3 mode unchanged (`active` + `object_map`).
+  2. New `fileNodesStore.getNodesBySyncStatusNot(status)` (PG + sqlite) — mirror of `getNodesBySyncStatus`.
+  3. webdav→s3 `processNode` success additionally calls `updateSyncStatus(node.id, 'active')`, so post-cutover (S3-mode) state matches the S3 lifecycle model.
+  4. `gcService.runTier1`: in webdav mode skip the `blobStore.deleteBlob(row.s3_key)` call (a preserved s3_key on a migrated row is a UUID rollback marker, **not** a webdav path; `WebdavBlobStore.deleteBlob` is path-addressed → wasteful 404) while still deleting the `object_map` rows. Tier 2 is already fully skipped in webdav (`gcService.js:93`). No other GC/fail-safe behavior changes — `orphaned_node` nodes are never auto-deleted (`runStartupRecovery` is scan + manual review only).
+- **Test impact (corrected with the implementation):**
+  - **Unit (`migrationService.test.js`):** `seedWebdavFile` no longer needs the S3-model preconditions — webdav-native fixtures can leave nodes `pending_upload` with no `object_map`; new coverage asserts native files are enumerated, copied, and end `sync_status='active'`, that `orphaned_node` files are excluded, that a preserved active `s3_key` acts as the resume marker (rerun skips), and that the synthesized activeObject is `{ s3_key: null, storage_backend: 'webdav' }`.
+  - **Unit (`gcService.test.js`):** Tier-1 webdav-mode case asserting `blobStore.deleteBlob` is NOT called while orphaned `object_map` rows are still removed.
+  - **E2E (`e2e/migration.spec.ts`):** the `seedObjectMapRows` snapshot precondition (added for A2 as a test seam) can be removed for webdav→s3 — real app-uploaded nodes now satisfy the snapshot; assert `copied > 0` and post-copy `sync_status='active'`.
+
+---
+
+## 2026-09-01 — E2E corrected to drive the REAL webdav upload path (test seam removed)
+
+- **Area:** `e2e/migration.spec.ts`, `e2e/helpers/minio.ts` (new `emptyS3Bucket`)
+- **Classification:** Case B (Test Error — the E2E seeded the snapshot precondition instead of exercising the real upload path, masking the A2 defect)
+- **Summary:** MIG-001/002 previously created the snapshot precondition directly (`seedObjectMapRows`: force `sync_status='active'` + insert an active webdav `object_map` row) after real API uploads. That precondition was un-producible by the app's own webdav writes (uploads stay `pending_upload`, no `object_map`), so the E2E could not distinguish the fixed source-aware snapshot from the old behavior. The server-side fix (enumerateSnapshot source-mode aware, `getNodesBySyncStatusNot`, post-copy `updateSyncStatus('active')`, GC Tier-1 webdav guard) is now driven end-to-end from real `POST /api/files/upload` webdav-branch uploads.
+- **Observed failure:** none in the fixed build — this entry records the pre-fix blind spot: the old suite passed because `seedObjectMapRows` manufactured the S3-model precondition the old snapshot required; against real webdav data the old snapshot silently enumerated `total: 0`.
+- **Action taken (test-only; no feature source touched):**
+  - Removed `seedObjectMapRows` (and its calls in MIG-001/002/006). Real multipart uploads through the app API now seed the source.
+  - Added `assertRealWebdavPrecondition(dbPath, nodeIds)`: asserts each uploaded node is `sync_status='pending_upload'` with zero `object_map` rows — proves the E2E exercises the defect path (no seeded seam).
+  - Added `assertPostMigrationBlobState(dbPath, nodeIds)`: asserts one `(s3, s3_key, active)` `object_map` row per file, all nodes `sync_status='active'`, `listS3Keys().length === fileCount`, and each key exists via `blobExists`.
+  - Added `e2e/helpers/minio.ts` `emptyS3Bucket()` (List+Delete, paginated) so the exact S3 count assertions have a deterministic per-case baseline (the shared bucket otherwise accumulates across tests in one Playwright invocation). Each blob case empties the bucket before its run.
+  - MIG-001: dry-run additionally asserts it writes nothing (global `object_map` count `0` + `listS3Keys()` empty); apply then asserts `assertPostMigrationBlobState`.
+  - MIG-002 (cancel+resume): same real-upload precondition; post-resume asserts `listS3Keys().length === 30` (no duplicate blobs) and every node `sync_status='active'` in addition to the existing no-duplicate-row / key-preservation assertions.
+  - New **E2E-MIG-008 (E3)**: focused regression — native webdav file (no `object_map`, `pending_upload`) IS migrated (s3 object + active object_map + `sync_status='active'`) and a rerun is skipped via the preserved `s3_key` resume marker (no duplicate: same key set, `listS3Keys()` count unchanged).
+  - MIG-006 kept intact (env-sourced modal assertions) — only the seeding call removed; real uploads now satisfy the snapshot.
+- **Verification:** `e2e/migration.spec.ts` (8 tests × desktop+mobile) → 16/16 pass; regression `e2e/admin-config.spec.ts` + `e2e/setup-wizard.spec.ts` (desktop+mobile) → 32/32 pass. No Case A findings.
+- **Uncertainty:** MIG-002/E3 rely on `emptyS3Bucket()` for exact `listS3Keys()` counts; safe because the migration spec runs alone with `--workers=1` (no other spec writes to `e2e-test-bucket` concurrently). The resume "skipped" job counter for the fast 2-file E3 rerun is not asserted via the job payload (the gate can clear before the jobId is readable); the no-duplicate proof is instead asserted deterministically via the DB (unchanged key set) + S3 (unchanged object count).
+
+---
+
+## 2026-09-02 — E2E infra findings exposed during naming/consolidation verification
+
+- **Area:** `e2e/global-setup.ts`, `e2e/global-teardown.ts`, `playwright.config.ts`
+- **Classification:** Case A (infra/environment gap, not a spec-logic error). Both pre-existing;
+  no spec-logic regression in the refactor.
+- **Finding 1 — webdav-mode `NoSuchBucket`:** after every Playwright run, `global-teardown`
+  runs `docker compose down -v`, wiping the MinIO volume (and the `e2e-test-bucket`). In webdav
+  mode `global-setup` skips `ensureS3Bucket()` (s3-mode only), but the webdav-mode app still
+  writes some blobs to S3, so a webdav run started right after any completed run fails all
+  upload-based tests with `NoSuchBucket: The specified bucket does not exist` until the bucket
+  is recreated manually (`server/testing/minioTestUtils.js` `ensureBucket`). First hit
+  independently by the hermetic-scaffolding sub-agent; reproduced across the full webdav suite.
+- **Finding 2 — per-project data isolation ordering:** Playwright runs all dependency-only
+  setup projects before any test project, so `webdav-mobile-setup` (and `s3-mobile-setup`) reset
+  the DB BEFORE the desktop project's tests. The mobile project then ran on desktop-polluted
+  data; once the desktop project leaves enough root items to exceed the client's 50-root-item
+  render cap, mobile uploads never render and the suite fails. The default-waves run masked this
+  (low volume); later-waves (explorer-advanced + mypage-admin create many root folders) exposed
+  it. **Fixed** in `playwright.config.ts`: `${backendMode}-mobile-setup` now depends on
+  `${backendMode}-desktop`, ordering the reset immediately before the mobile project.
+- **Verification:** after both fixes — webdav default 105/3, webdav later-waves 181/5, s3 default
+  153/3, s3 later-waves 183/3 (all green, `--workers=1`).
+
+---
+
+## 2026-09-02 — Migration E2E `NoSuchBucket` flake (residual from the bucket-infra gap)
+
+- **Area:** `e2e/global-setup.ts`, `e2e/helpers/minio.ts`, `e2e/migration.spec.ts`
+- **Classification:** Case A (infra/environment gap — no spec-logic error). Follow-up to the
+  Finding 1 entry above: the gap surfaces deterministically in the migration spec.
+- **Symptom:** repeated `migration-mobile` runs failed ~2/3 with
+  `NoSuchBucket: The specified bucket does not exist` at `emptyS3Bucket` (minio.ts:80), raised
+  from MIG-001's per-case bucket baseline. The failure pattern (first run after a manual bucket
+  creation passed, subsequent runs failed) matched the teardown `down -v` wiping the bucket.
+- **Evidence:** run-to-run correlation — every completed Playwright run removes the MinIO volume;
+  webdav-mode global-setup skipped `ensureS3Bucket`; `ListObjectsV2` on a missing bucket throws.
+  One-off "flaky" MIG-001 in the earlier combined run was the same root cause.
+- **Fix (applied):**
+  1. `e2e/global-setup.ts` — ensure the bucket in BOTH modes (`waitForMinio` + `ensureS3Bucket`
+     unconditionally; `emptyS3Bucket` still s3-only). MinIO always starts via `up -d`.
+  2. `e2e/helpers/minio.ts` — new `ensureS3BucketExists()` (HeadBucket → CreateBucket on
+     404/403), called at the top of `emptyS3Bucket`, so the migration baseline is self-sufficient.
+- **Verification:** with the bucket wiped before the loop, migration-mobile 3/3 pass; full
+  webdav later-waves re-run 181 passed / 5 skipped.

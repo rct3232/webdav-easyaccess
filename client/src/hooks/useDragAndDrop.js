@@ -42,7 +42,8 @@ export const useDragAndDrop = (
     const canDropOnFolder = file.type === 'directory' && (fromList || fromTree);
     if (canDropOnFolder) {
       e.preventDefault();
-      if (e?.dataTransfer) e.dataTransfer.dropEffect = file.hasWritePermission === false ? 'none' : 'move';
+      if (e?.dataTransfer)
+        e.dataTransfer.dropEffect = file.hasWritePermission === false ? 'none' : 'move';
       if (file.hasWritePermission === false) return;
       // No-op move: target is the parent of the dragged nodeId (item already lives there)
       const listNoOp = fromList && draggedFile.parentNodeId === file.nodeId;
@@ -76,7 +77,11 @@ export const useDragAndDrop = (
     }
 
     // List no-op: target is parent of dragged nodeId (same folder)
-    if (draggedFile && targetFolder.type === 'directory' && draggedFile.parentNodeId === targetFolder.nodeId) {
+    if (
+      draggedFile &&
+      targetFolder.type === 'directory' &&
+      draggedFile.parentNodeId === targetFolder.nodeId
+    ) {
       setDraggedFile(null);
       setDropTarget(null);
       return;
@@ -94,8 +99,14 @@ export const useDragAndDrop = (
       return;
     }
 
-    const fromList = draggedFile && targetFolder.type === 'directory' && draggedFile.nodeId !== targetFolder.nodeId;
-    const fromTree = effectiveTreeNodeId != null && targetFolder.type === 'directory' && String(effectiveTreeNodeId) !== String(targetFolder.nodeId);
+    const fromList =
+      draggedFile &&
+      targetFolder.type === 'directory' &&
+      draggedFile.nodeId !== targetFolder.nodeId;
+    const fromTree =
+      effectiveTreeNodeId != null &&
+      targetFolder.type === 'directory' &&
+      String(effectiveTreeNodeId) !== String(targetFolder.nodeId);
 
     if (fromList) {
       onFileDrop?.(draggedFile, targetFolder);
@@ -117,4 +128,3 @@ export const useDragAndDrop = (
     handleDrop,
   };
 };
-

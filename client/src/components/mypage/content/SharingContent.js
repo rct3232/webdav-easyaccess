@@ -85,7 +85,8 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
     } catch (error) {
       setInboxRequests([]);
       setOutboxRequests([]);
-      const msg = getServerErrorDisplay(error?.response?.data, t) || t('mypage.requestListLoadFail');
+      const msg =
+        getServerErrorDisplay(error?.response?.data, t) || t('mypage.requestListLoadFail');
       setMessage({ type: 'error', text: msg });
       onMessage?.({ type: 'error', text: msg });
     } finally {
@@ -158,7 +159,10 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
       setMessage({ type: 'success', text: t('mypage.linkDeleted') });
       await loadShareLinks();
     } catch (error) {
-      setMessage({ type: 'error', text: getServerErrorDisplay(error?.response?.data, t) || t('mypage.linkDeleteFail') });
+      setMessage({
+        type: 'error',
+        text: getServerErrorDisplay(error?.response?.data, t) || t('mypage.linkDeleteFail'),
+      });
     }
   };
 
@@ -168,7 +172,10 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
       setMessage({ type: 'success', text: t('mypage.linkExtended') });
       await loadShareLinks();
     } catch (error) {
-      setMessage({ type: 'error', text: getServerErrorDisplay(error?.response?.data, t) || t('mypage.linkExtendFail') });
+      setMessage({
+        type: 'error',
+        text: getServerErrorDisplay(error?.response?.data, t) || t('mypage.linkExtendFail'),
+      });
     }
   };
 
@@ -179,7 +186,11 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
     return (
       <Box>
         {showMessage && (
-          <Alert severity={message.type} sx={{ mb: 2 }} onClose={() => setMessage({ type: '', text: '' })}>
+          <Alert
+            severity={message.type}
+            sx={{ mb: 2 }}
+            onClose={() => setMessage({ type: '', text: '' })}
+          >
             {message.text}
           </Alert>
         )}
@@ -191,10 +202,16 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
             </ListItemButton>
           </ListItem>
           <ListItem disablePadding divider>
-            <ListItemButton onClick={() => onSelectContentItem('inbox')} sx={{ alignItems: 'center' }}>
+            <ListItemButton
+              onClick={() => onSelectContentItem('inbox')}
+              sx={{ alignItems: 'center' }}
+            >
               <ListItemText
                 primary={
-                  <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
+                  <Box
+                    component="span"
+                    sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}
+                  >
                     {t('mypage.inboxRequests')}
                     <Badge
                       badgeContent={inboxRequests.length}
@@ -219,10 +236,16 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
             </ListItemButton>
           </ListItem>
           <ListItem disablePadding divider>
-            <ListItemButton onClick={() => onSelectContentItem('outbox')} sx={{ alignItems: 'center' }}>
+            <ListItemButton
+              onClick={() => onSelectContentItem('outbox')}
+              sx={{ alignItems: 'center' }}
+            >
               <ListItemText
                 primary={
-                  <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
+                  <Box
+                    component="span"
+                    sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}
+                  >
                     {t('mypage.outboxRequests')}
                     <Badge
                       badgeContent={outboxRequests.length}
@@ -247,10 +270,16 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
             </ListItemButton>
           </ListItem>
           <ListItem disablePadding>
-            <ListItemButton onClick={() => onSelectContentItem('links')} sx={{ alignItems: 'center' }}>
+            <ListItemButton
+              onClick={() => onSelectContentItem('links')}
+              sx={{ alignItems: 'center' }}
+            >
               <ListItemText
                 primary={
-                  <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
+                  <Box
+                    component="span"
+                    sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}
+                  >
                     {t('mypage.links')}
                     <Badge
                       badgeContent={shareLinks.length}
@@ -297,7 +326,11 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
     return (
       <Box>
         {showMessage && (
-          <Alert severity={message.type} sx={{ mb: 2 }} onClose={() => setMessage({ type: '', text: '' })}>
+          <Alert
+            severity={message.type}
+            sx={{ mb: 2 }}
+            onClose={() => setMessage({ type: '', text: '' })}
+          >
             {message.text}
           </Alert>
         )}
@@ -332,13 +365,19 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
                     </Stack>
                     <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
                       {r.targetType === 'file' ? t('mypage.file') : t('mypage.folder')}:{' '}
-                      {r.display_path || r.target_name || (r.file_node_id != null ? `#${r.file_node_id}` : '')}
+                      {r.display_path ||
+                        r.target_name ||
+                        (r.file_node_id != null ? `#${r.file_node_id}` : '')}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
                       {t('mypage.requester')}: {r.requester_username || r.requester_id}
                     </Typography>
                     {r.message && (
-                      <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-wrap' }}>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ whiteSpace: 'pre-wrap' }}
+                      >
                         {t('mypage.messageLabel')}: {r.message}
                       </Typography>
                     )}
@@ -425,7 +464,11 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
     return (
       <Box>
         {showMessage && (
-          <Alert severity={message.type} sx={{ mb: 2 }} onClose={() => setMessage({ type: '', text: '' })}>
+          <Alert
+            severity={message.type}
+            sx={{ mb: 2 }}
+            onClose={() => setMessage({ type: '', text: '' })}
+          >
             {message.text}
           </Alert>
         )}
@@ -460,13 +503,19 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
                     </Stack>
                     <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
                       {r.targetType === 'file' ? t('mypage.file') : t('mypage.folder')}:{' '}
-                      {r.display_path || r.target_name || (r.file_node_id != null ? `#${r.file_node_id}` : '')}
+                      {r.display_path ||
+                        r.target_name ||
+                        (r.file_node_id != null ? `#${r.file_node_id}` : '')}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
                       {t('mypage.owner')}: {r.owner_username || r.owner_id}
                     </Typography>
                     {r.message && (
-                      <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-wrap' }}>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ whiteSpace: 'pre-wrap' }}
+                      >
                         {t('mypage.messageLabel')}: {r.message}
                       </Typography>
                     )}
@@ -501,7 +550,11 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
     return (
       <Box>
         {showMessage && (
-          <Alert severity={message.type} sx={{ mb: 2 }} onClose={() => setMessage({ type: '', text: '' })}>
+          <Alert
+            severity={message.type}
+            sx={{ mb: 2 }}
+            onClose={() => setMessage({ type: '', text: '' })}
+          >
             {message.text}
           </Alert>
         )}
@@ -518,7 +571,13 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
             {shareLinks.map((link) => (
               <Paper key={link.token} variant="outlined" sx={{ p: 2 }}>
                 <Stack spacing={1}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'flex-start',
+                    }}
+                  >
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Typography variant="body2" sx={{ wordBreak: 'break-all', mb: 0.5 }}>
                         {link.fileName || link.displayPath?.split('/').pop() || ''}
@@ -544,7 +603,11 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
                         {getShareLinkUrl(link.token)}
                       </Typography>
                     </Box>
-                    <IconButton size="small" onClick={() => handleCopyLink(link.token)} sx={{ ml: 1 }}>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleCopyLink(link.token)}
+                      sx={{ ml: 1 }}
+                    >
                       {linkCopied === link.token ? (
                         <CheckIcon fontSize="small" />
                       ) : (
@@ -564,7 +627,10 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
                       }
                       color={link.isExpired ? 'error' : 'default'}
                     />
-                    <Chip size="small" label={t('mypage.downloadCount', { count: link.downloadCount || 0 })} />
+                    <Chip
+                      size="small"
+                      label={t('mypage.downloadCount', { count: link.downloadCount || 0 })}
+                    />
                   </Box>
                   <Stack direction="row" spacing={1} justifyContent="flex-end">
                     {!link.isExpired && link.expiresAt && (

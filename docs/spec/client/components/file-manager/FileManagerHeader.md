@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Sticky header with logo and mypage. Search bar is in FloatingSearchBar (bottom, left of FAB). Logout is shown only on MyPage AppBar. |
-| Used in | FileManager |
-| Related components | MUI AppBar, Toolbar, Box, IconButton; FloatingSearchBar |
+| Item               | Description                                                                                                                          |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Role               | Sticky header with logo and mypage. Search bar is in FloatingSearchBar (bottom, left of FAB). Logout is shown only on MyPage AppBar. |
+| Used in            | FileManager                                                                                                                          |
+| Related components | MUI AppBar, Toolbar, Box, IconButton; FloatingSearchBar                                                                              |
 
 ---
 
@@ -19,17 +19,17 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| isMobile | boolean | Y | - | Mobile layout |
-| user | object | N | - | User |
-| navigate | function | Y | - | Navigation (mypage) |
+| Name     | Type     | Required | Default | Description         |
+| -------- | -------- | -------- | ------- | ------------------- |
+| isMobile | boolean  | Y        | -       | Mobile layout       |
+| user     | object   | N        | -       | User                |
+| navigate | function | Y        | -       | Navigation (mypage) |
 
 ### 2.3 Callback Signatures
 
 | Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| navigate | MyPage click | (path) |
+| -------- | ------------ | --------- |
+| navigate | MyPage click | (path)    |
 
 ### 2.4 Dependencies
 

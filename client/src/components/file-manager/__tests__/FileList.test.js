@@ -57,9 +57,7 @@ describe('FileList', () => {
   });
 
   it('shows FileListSkeleton when loading and files empty', () => {
-    const { container } = renderWithProviders(
-      <FileList {...defaultProps} files={[]} loading />
-    );
+    const { container } = renderWithProviders(<FileList {...defaultProps} files={[]} loading />);
     expect(container.querySelector('.MuiSkeleton-root')).toBeInTheDocument();
   });
 
@@ -70,9 +68,7 @@ describe('FileList', () => {
 
   it('renders loadMoreRef when hasMore', () => {
     const loadMoreRef = { current: null };
-    const { container } = renderWithProviders(
-      <FileList {...defaultProps} hasMore loadMoreRef={loadMoreRef} />
-    );
+    renderWithProviders(<FileList {...defaultProps} hasMore loadMoreRef={loadMoreRef} />);
     expect(loadMoreRef.current).toBeTruthy();
   });
 

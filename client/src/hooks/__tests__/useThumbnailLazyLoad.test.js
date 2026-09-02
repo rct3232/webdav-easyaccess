@@ -20,7 +20,13 @@ const imageFile = {
   type: 'file',
   mime: 'image/jpeg',
 };
-const textFile = { nodeId: 102, path: '/doc.txt', basename: 'doc.txt', type: 'file', mime: 'text/plain' };
+const textFile = {
+  nodeId: 102,
+  path: '/doc.txt',
+  basename: 'doc.txt',
+  type: 'file',
+  mime: 'text/plain',
+};
 
 describe('useThumbnailLazyLoad', () => {
   let mockObserve;
@@ -109,10 +115,7 @@ describe('useThumbnailLazyLoad', () => {
     });
 
     await waitFor(() => {
-      expect(fileService.requestThumbnailsBatch).toHaveBeenCalledWith(
-        [101],
-        expect.any(Object)
-      );
+      expect(fileService.requestThumbnailsBatch).toHaveBeenCalledWith([101], expect.any(Object));
     });
 
     await waitFor(() => {
@@ -124,8 +127,20 @@ describe('useThumbnailLazyLoad', () => {
   });
 
   it('debounces rapid intersection: single requestThumbnailsBatch after DEBOUNCE_MS', async () => {
-    const img1 = { nodeId: 201, path: '/a/img1.jpg', basename: 'img1.jpg', type: 'file', mime: 'image/jpeg' };
-    const img2 = { nodeId: 202, path: '/a/img2.jpg', basename: 'img2.jpg', type: 'file', mime: 'image/jpeg' };
+    const img1 = {
+      nodeId: 201,
+      path: '/a/img1.jpg',
+      basename: 'img1.jpg',
+      type: 'file',
+      mime: 'image/jpeg',
+    };
+    const img2 = {
+      nodeId: 202,
+      path: '/a/img2.jpg',
+      basename: 'img2.jpg',
+      type: 'file',
+      mime: 'image/jpeg',
+    };
     fileService.requestThumbnailsBatch.mockResolvedValue({ thumbnails: [] });
 
     const div1 = document.createElement('div');
@@ -219,10 +234,9 @@ describe('useThumbnailLazyLoad', () => {
     });
 
     await waitFor(() => {
-      expect(fileService.requestThumbnailsBatch).toHaveBeenCalledWith(
-        expect.any(Array),
-        { shareToken: 'token123' }
-      );
+      expect(fileService.requestThumbnailsBatch).toHaveBeenCalledWith(expect.any(Array), {
+        shareToken: 'token123',
+      });
     });
   });
 });

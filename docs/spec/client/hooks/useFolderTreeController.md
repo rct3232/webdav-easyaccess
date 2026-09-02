@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Folder-tree section controller: loads and maintains “__shared__” + “__recent__” data, manages expansion state for tree nodes, and exposes view-ready handlers plus controller-owned derived shared-tree data for Phase 4. |
-| Used by components/pages | `client/src/components/folder-tree/FolderTree.js` |
-| Ownership note | This hook owns folder-tree section loading/expansion coordination only. It must not become a UI component or own product overlay policies beyond what `FolderTree` already supports. |
+| Item                     | Description                                                                                                                                                                                                               |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Folder-tree section controller: loads and maintains “**shared**” + “**recent**” data, manages expansion state for tree nodes, and exposes view-ready handlers plus controller-owned derived shared-tree data for Phase 4. |
+| Used by components/pages | `client/src/components/folder-tree/FolderTree.js`                                                                                                                                                                         |
+| Ownership note           | This hook owns folder-tree section loading/expansion coordination only. It must not become a UI component or own product overlay policies beyond what `FolderTree` already supports.                                      |
 
 ---
 
@@ -21,29 +21,29 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| currentNodeId | number | Y | Current explorer node id (drives which sections/nodes should be marked expanded). Virtual-root routes (`__shared__`/`__recent__`) keep their route-based selection per D1. |
-| user | object | Y | Current user (drives whether shared/recent sections can load). |
-| onNodeClick | function | Y | Called when the controller wants to navigate via the host: `(nodeId) => void`. Also used to navigate to the `__shared__`/`__recent__` virtual-root routes. |
+| Name          | Type     | Required | Description                                                                                                                                                                |
+| ------------- | -------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| currentNodeId | number   | Y        | Current explorer node id (drives which sections/nodes should be marked expanded). Virtual-root routes (`__shared__`/`__recent__`) keep their route-based selection per D1. |
+| user          | object   | Y        | Current user (drives whether shared/recent sections can load).                                                                                                             |
+| onNodeClick   | function | Y        | Called when the controller wants to navigate via the host: `(nodeId) => void`. Also used to navigate to the `__shared__`/`__recent__` virtual-root routes.                 |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| homeNodeId | number | Host "home" folder node id (admin -> root node id, others -> user home node id). |
-| expandedNodeIds | Set<number> | Expanded folder node ids for the main tree and shared section items. |
-| onToggleExpand | (nodeId: number) => void | Toggles expansion for an individual folder node id. |
-| sharedFolders | Array<{ nodeId: number, permission: string }> | Shared-folder permission entries (filtered), keyed by nodeId, used by the shared tree builder. |
-| sharedExpanded | boolean | Whether the “__shared__” section is expanded. |
-| handleSharedToggle | (e: any) => void | Stops propagation and toggles “__shared__” expanded state (and navigates to `/__shared__` when expanding). |
-| handleSharedClick | () => void | Navigates to `/__shared__`. |
-| handleSharedFolderClick | (nodeId: number) => void | Navigates to a specific shared folder by nodeId. |
-| buildSharedFolderTree | () => Array<{ nodeId: number, name: string, children: any[], parentNodeId: number \| null, permission: string, hasReadPermission: boolean }> | Derived shared-tree structure consumed by `SharedFoldersSection`. Nodes are keyed by nodeId; the interim synthetic `/__shared__/<nodeId>` path entries are removed. Extraction to a standalone pure helper is future work. |
-| recentExpanded | boolean | Whether the “__recent__” section is expanded. |
-| handleRecentToggle | (e: any) => void | Stops propagation and toggles “__recent__” expanded state. |
-| handleRecentClick | () => void | Navigates to `/__recent__`. |
-| recentFilesList | Array<any> | Current recent files list consumed by `RecentFilesSection` (nodeId-first since Phase 5). |
+| Key                     | Type                                                                                                                                         | Meaning                                                                                                                                                                                                                    |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| homeNodeId              | number                                                                                                                                       | Host "home" folder node id (admin -> root node id, others -> user home node id).                                                                                                                                           |
+| expandedNodeIds         | Set<number>                                                                                                                                  | Expanded folder node ids for the main tree and shared section items.                                                                                                                                                       |
+| onToggleExpand          | (nodeId: number) => void                                                                                                                     | Toggles expansion for an individual folder node id.                                                                                                                                                                        |
+| sharedFolders           | Array<{ nodeId: number, permission: string }>                                                                                                | Shared-folder permission entries (filtered), keyed by nodeId, used by the shared tree builder.                                                                                                                             |
+| sharedExpanded          | boolean                                                                                                                                      | Whether the “**shared**” section is expanded.                                                                                                                                                                              |
+| handleSharedToggle      | (e: any) => void                                                                                                                             | Stops propagation and toggles “**shared**” expanded state (and navigates to `/__shared__` when expanding).                                                                                                                 |
+| handleSharedClick       | () => void                                                                                                                                   | Navigates to `/__shared__`.                                                                                                                                                                                                |
+| handleSharedFolderClick | (nodeId: number) => void                                                                                                                     | Navigates to a specific shared folder by nodeId.                                                                                                                                                                           |
+| buildSharedFolderTree   | () => Array<{ nodeId: number, name: string, children: any[], parentNodeId: number \| null, permission: string, hasReadPermission: boolean }> | Derived shared-tree structure consumed by `SharedFoldersSection`. Nodes are keyed by nodeId; the interim synthetic `/__shared__/<nodeId>` path entries are removed. Extraction to a standalone pure helper is future work. |
+| recentExpanded          | boolean                                                                                                                                      | Whether the “**recent**” section is expanded.                                                                                                                                                                              |
+| handleRecentToggle      | (e: any) => void                                                                                                                             | Stops propagation and toggles “**recent**” expanded state.                                                                                                                                                                 |
+| handleRecentClick       | () => void                                                                                                                                   | Navigates to `/__recent__`.                                                                                                                                                                                                |
+| recentFilesList         | Array<any>                                                                                                                                   | Current recent files list consumed by `RecentFilesSection` (nodeId-first since Phase 5).                                                                                                                                   |
 
 ### 2.4 Dependencies
 
@@ -65,7 +65,7 @@
   - Loads shared-folder permissions for non-admin users (nodeId-keyed entries)
   - Clears shared-folder permissions for admin users
 - Whenever `currentNodeId`, `user homeNodeId`, or `sharedFolders` changes:
-  - Recomputes `expandedNodeIds` to include the current node's ancestor node ids and `homeNodeId` 
+  - Recomputes `expandedNodeIds` to include the current node's ancestor node ids and `homeNodeId`
   - Sets `sharedExpanded` to `true` when the current location is the `/__shared__` virtual root or within a shared folder node subtree
   - Sets `recentExpanded` to `true` when the current location is `/__recent__`
 - Manual toggles:
@@ -102,4 +102,3 @@ The following should be covered by `useFolderTreeController` unit tests (renderH
 
 - `currentNodeId` is empty/falsy: `expandedNodeIds` contains only `homeNodeId`.
 - Shared permission entries are keyed by nodeId; the shared-tree builder no longer normalizes synthetic paths. Shared folders with the same nodeId must not duplicate.
-

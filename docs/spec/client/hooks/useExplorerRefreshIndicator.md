@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Explorer presentation controller for mobile pull-to-refresh and refresh-success indicator state used by FileManager. |
-| Used by components/pages | `client/src/pages/FileManager/FileManager.js` |
-| Does not own | File listing itself, generic explorer commands, or share-link overlay policy. |
+| Item                     | Description                                                                                                          |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Explorer presentation controller for mobile pull-to-refresh and refresh-success indicator state used by FileManager. |
+| Used by components/pages | `client/src/pages/FileManager/FileManager.js`                                                                        |
+| Does not own             | File listing itself, generic explorer commands, or share-link overlay policy.                                        |
 
 ---
 
@@ -21,33 +21,33 @@
 
 `useExplorerRefreshIndicator(params)`
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| isMobile | boolean | Y | Whether mobile pull-to-refresh should be active. |
-| loading | boolean | Y | Current FileManager loading state; used to preserve indicator behavior. |
-| loadFiles | () => void \| Promise<void> | Y | Refresh entry point used by pull-to-refresh. |
-| scrollContainerRef | React.RefObject | Y | Scroll container used by `usePullToRefresh`. |
-| t | function | Y | Translation function. |
+| Name               | Type                        | Required | Description                                                             |
+| ------------------ | --------------------------- | -------- | ----------------------------------------------------------------------- |
+| isMobile           | boolean                     | Y        | Whether mobile pull-to-refresh should be active.                        |
+| loading            | boolean                     | Y        | Current FileManager loading state; used to preserve indicator behavior. |
+| loadFiles          | () => void \| Promise<void> | Y        | Refresh entry point used by pull-to-refresh.                            |
+| scrollContainerRef | React.RefObject             | Y        | Scroll container used by `usePullToRefresh`.                            |
+| t                  | function                    | Y        | Translation function.                                                   |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| pullDistance | number | Current pull distance from `usePullToRefresh`. |
-| isPulling | boolean | Whether the user is currently pulling. |
-| isRefreshing | boolean | Whether a refresh is currently running. |
-| threshold | number | Pull threshold for triggering refresh. |
-| showRefreshSuccess | boolean | Whether the success indicator is visible. |
-| handleLoadComplete | () => void | Callback for list-load completion to show success indicator when appropriate. |
-| handleRefreshComplete | () => void | Callback for pull-to-refresh completion to show success indicator and reset pull state. |
-| indicatorStyles | object | Prepared styles for the indicator container. |
-| iconStyles | object | Prepared styles for the indicator icon. |
-| progress | number | Current normalized pull progress in the `0..1` range. |
-| progressColor | string | Current indicator progress color token. |
-| textColor | string | Current indicator text color token. |
-| textContent | string | Current translated status message. |
-| shouldShowIndicator | boolean | Whether the indicator should currently be visible. |
-| isDeterminateProgress | boolean | Whether the progress indicator should render determinate pull progress instead of loading state. |
+| Key                   | Type       | Meaning                                                                                          |
+| --------------------- | ---------- | ------------------------------------------------------------------------------------------------ |
+| pullDistance          | number     | Current pull distance from `usePullToRefresh`.                                                   |
+| isPulling             | boolean    | Whether the user is currently pulling.                                                           |
+| isRefreshing          | boolean    | Whether a refresh is currently running.                                                          |
+| threshold             | number     | Pull threshold for triggering refresh.                                                           |
+| showRefreshSuccess    | boolean    | Whether the success indicator is visible.                                                        |
+| handleLoadComplete    | () => void | Callback for list-load completion to show success indicator when appropriate.                    |
+| handleRefreshComplete | () => void | Callback for pull-to-refresh completion to show success indicator and reset pull state.          |
+| indicatorStyles       | object     | Prepared styles for the indicator container.                                                     |
+| iconStyles            | object     | Prepared styles for the indicator icon.                                                          |
+| progress              | number     | Current normalized pull progress in the `0..1` range.                                            |
+| progressColor         | string     | Current indicator progress color token.                                                          |
+| textColor             | string     | Current indicator text color token.                                                              |
+| textContent           | string     | Current translated status message.                                                               |
+| shouldShowIndicator   | boolean    | Whether the indicator should currently be visible.                                               |
+| isDeterminateProgress | boolean    | Whether the progress indicator should render determinate pull progress instead of loading state. |
 
 ### 2.4 Responsibilities
 

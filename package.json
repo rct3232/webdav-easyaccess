@@ -20,11 +20,15 @@
     "test:e2e": "playwright test --workers=1",
     "test:e2e:s3": "E2E_BACKEND_MODE=s3 playwright test --workers=1",
     "test:e2e:webdav": "E2E_BACKEND_MODE=webdav playwright test --workers=1",
+    "test:e2e:core": "E2E_CORE=1 playwright test --workers=1",
+    "test:e2e:core:s3": "E2E_CORE=1 E2E_BACKEND_MODE=s3 playwright test --workers=1",
+    "test:e2e:core:webdav": "E2E_CORE=1 E2E_BACKEND_MODE=webdav playwright test --workers=1",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:install": "playwright install chromium webkit",
-    "lint": "npm run lint --workspace server && npm run lint --workspace client",
+    "lint": "npm run lint --workspace server && npm run lint --workspace client && npm run lint --workspace shared",
+    "lint:ci": "eslint . --max-warnings 0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "dev:webdav:start": "docker compose -f docker-compose.e2e.yml up -d && sleep 3",
@@ -41,6 +45,7 @@
   "devDependencies": {
     "@playwright/test": "^1.58.2",
     "concurrently": "^8.2.2",
+    "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.8.3"
   }
 }

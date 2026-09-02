@@ -14,11 +14,11 @@ The application runs its own **ACL** independent of the WebDAV server. Permissio
 
 Defined in `shared/constants.js` as `PERMISSIONS`:
 
-| Level   | Value   | Typical use |
-|--------|---------|-------------|
-| read   | `read`  | List and download; see folder contents. |
-| write  | `write` | Create, upload, rename, move, copy, delete in that folder. |
-| admin  | `admin` | Same as write plus grant/revoke permissions for that folder. |
+| Level | Value   | Typical use                                                  |
+| ----- | ------- | ------------------------------------------------------------ |
+| read  | `read`  | List and download; see folder contents.                      |
+| write | `write` | Create, upload, rename, move, copy, delete in that folder.   |
+| admin | `admin` | Same as write plus grant/revoke permissions for that folder. |
 
 Use `PERMISSIONS.isValid(permission)` to check a value. Ordering for "higher" is: read &lt; write &lt; admin.
 
@@ -76,24 +76,24 @@ All permission endpoints are nodeId-based; no path strings are accepted.
 
 ### Directory-level permissions
 
-| Method | Path | Body / Query |
-|--------|------|--------------|
-| POST | `/api/permissions/grant` | Body: `{ userId, nodeId, permission }` — `nodeId` must reference a directory node; applies to the folder and, via closure-table inheritance, its subtree. |
-| DELETE | `/api/permissions/revoke` | Query: `userId`, `nodeId`; optional `includeDescendants` (`true` also revokes grants stored on descendant nodes). |
-| GET | `/api/permissions/user/:userId` | Returns `[{ nodeId, permission }]`. |
-| GET | `/api/permissions/shared` | Returns `[{ nodeId, name, permission, type }]` — grants where the current user is the grantee **and the node is not inside their own subtree** (own home root + descendants are never "shared with me"). |
-| GET | `/api/permissions/folder` | Query: `nodeId`; optional `includeDescendants`, `fileNodeId`. |
-| GET | `/api/permissions/check` | Query: `nodeId`. Returns `{ nodeId, hasRead, hasWrite, source }`. |
+| Method | Path                            | Body / Query                                                                                                                                                                                             |
+| ------ | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/permissions/grant`        | Body: `{ userId, nodeId, permission }` — `nodeId` must reference a directory node; applies to the folder and, via closure-table inheritance, its subtree.                                                |
+| DELETE | `/api/permissions/revoke`       | Query: `userId`, `nodeId`; optional `includeDescendants` (`true` also revokes grants stored on descendant nodes).                                                                                        |
+| GET    | `/api/permissions/user/:userId` | Returns `[{ nodeId, permission }]`.                                                                                                                                                                      |
+| GET    | `/api/permissions/shared`       | Returns `[{ nodeId, name, permission, type }]` — grants where the current user is the grantee **and the node is not inside their own subtree** (own home root + descendants are never "shared with me"). |
+| GET    | `/api/permissions/folder`       | Query: `nodeId`; optional `includeDescendants`, `fileNodeId`.                                                                                                                                            |
+| GET    | `/api/permissions/check`        | Query: `nodeId`. Returns `{ nodeId, hasRead, hasWrite, source }`.                                                                                                                                        |
 
 ### File-level permissions
 
-| Method | Path | Body / Query |
-|--------|------|--------------|
-| POST | `/api/permissions/file/grant` | Body: `{ userId, fileNodeId, permission }`. |
-| DELETE | `/api/permissions/file/revoke` | Query: `userId`, `fileNodeId`. |
-| PATCH | `/api/permissions/file` | Body: `{ userId, fileNodeId, permission }`. |
-| GET | `/api/permissions/file/check` | Query: `fileNodeId`. Returns `{ nodeId, hasRead, hasWrite, source }`. |
-| GET | `/api/permissions/file/list` | Query: optional `parentNodeId` (filters to files under that node). |
+| Method | Path                           | Body / Query                                                          |
+| ------ | ------------------------------ | --------------------------------------------------------------------- |
+| POST   | `/api/permissions/file/grant`  | Body: `{ userId, fileNodeId, permission }`.                           |
+| DELETE | `/api/permissions/file/revoke` | Query: `userId`, `fileNodeId`.                                        |
+| PATCH  | `/api/permissions/file`        | Body: `{ userId, fileNodeId, permission }`.                           |
+| GET    | `/api/permissions/file/check`  | Query: `fileNodeId`. Returns `{ nodeId, hasRead, hasWrite, source }`. |
+| GET    | `/api/permissions/file/list`   | Query: optional `parentNodeId` (filters to files under that node).    |
 
 Source: `server/domains/permissions/routes/folderPermissions.js`, `filePermissions.js`, `queries.js`.
 

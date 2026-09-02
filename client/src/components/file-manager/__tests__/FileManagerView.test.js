@@ -75,7 +75,16 @@ function createProps(overrides = {}) {
         setSearchQuery: jest.fn(),
       },
       listingState: {
-        displayedFiles: [{ nodeId: 1, path: '/docs/a.txt', basename: 'a.txt', type: 'file', size: 12, lastmod: '2025-01-01T00:00:00Z' }],
+        displayedFiles: [
+          {
+            nodeId: 1,
+            path: '/docs/a.txt',
+            basename: 'a.txt',
+            type: 'file',
+            size: 12,
+            lastmod: '2025-01-01T00:00:00Z',
+          },
+        ],
         loading: false,
         processingMap: new Map(),
         handleThumbnailsLoaded: jest.fn(),
@@ -441,6 +450,56 @@ describe('FileManagerView', () => {
     expect(props.overlayState.setLeaveShareConfirmOpen).toHaveBeenCalledWith(false);
     expect(props.overlayState.setLeaveShareConfirmTargetNodeId).toHaveBeenCalledWith(null);
     expect(props.overlayState.setLeaveShareConfirmTargetPath).toHaveBeenCalledWith(null);
+  });
+
+  it('renders the admin-only backend-health banner when an active backend is fail', async () => {
+    const props = createProps({
+      shellContext: {
+        ...createProps().shellContext,
+        user: { id: 'user-1', username: 'admin1', is_admin: true },
+        backendHealth: { postgresql: 'ok', s3: 'ok', webdav: 'fail' },
+        activeBackends: new Set(['webdav']),
+      },
+    });
+    renderWithProviders(<FileManagerView {...props} />);
+
+    expect(await screen.findByTestId('backend-health-banner')).toBeInTheDocument();
+    expect(screen.getByText(/backend is experiencing connection problems/i)).toBeInTheDocument();
+  });
+
+  it('does not render the banner when the failing backend is not in use', async () => {
+    const props = createProps({
+      shellContext: {
+        ...createProps().shellContext,
+        user: { id: 'user-1', username: 'admin1', is_admin: true },
+        // WebDAV is failing but s3 is the active file backend → no banner.
+        backendHealth: { postgresql: 'ok', s3: 'unknown', webdav: 'fail' },
+        activeBackends: new Set(['s3']),
+      },
+    });
+    renderWithProviders(<FileManagerView {...props} />);
+
+    await screen.findByTestId('explorer-container');
+
+    expect(screen.queryByTestId('backend-health-banner')).not.toBeInTheDocument();
+  });
+
+  it('does not render the backend-health banner for non-admin users', async () => {
+    const props = createProps({
+      shellContext: {
+        ...createProps().shellContext,
+        user: { id: 'user-1', username: 'user1', is_admin: false },
+        backendHealth: { postgresql: 'ok', s3: 'ok', webdav: 'fail' },
+        activeBackends: new Set(['webdav']),
+      },
+    });
+    renderWithProviders(<FileManagerView {...props} />);
+
+    await waitFor(() => {
+      expect(folderTreeGateway.getUserSharedFolderPermissions).toHaveBeenCalled();
+    });
+
+    expect(screen.queryByTestId('backend-health-banner')).not.toBeInTheDocument();
   });
 
   it('routes non-share folder-tree clicks through handleLeaveSharePathClick in share mode', async () => {

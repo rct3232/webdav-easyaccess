@@ -40,7 +40,9 @@ describe('shareTargetPermissionSaveUseCase', () => {
       targetNodeId: 55,
       isDirectory: false,
       initialAccessList: [{ id: 'u1', permission: 'read', filePermission: 'read' }],
-      accessList: [{ id: 'u1', permission: 'revoke', pathPermission: 'read', filePermission: 'read' }],
+      accessList: [
+        { id: 'u1', permission: 'revoke', pathPermission: 'read', filePermission: 'read' },
+      ],
     });
 
     expect(sharePermissionGateway.revokePermission).toHaveBeenCalledWith({

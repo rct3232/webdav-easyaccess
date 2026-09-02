@@ -29,5 +29,4 @@ describe('FileManagerHeader', () => {
     fireEvent.click(screen.getByTitle(/my page|mypage/i));
     expect(navigate).toHaveBeenCalledWith('/mypage');
   });
-
 });

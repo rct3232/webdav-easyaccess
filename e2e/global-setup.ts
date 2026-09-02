@@ -3,6 +3,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { cleanDir, runSeedDb } from './helpers/seedDb';
 
 const rootDir = process.cwd();
 const backendMode = process.env.E2E_BACKEND_MODE || 's3';
@@ -14,61 +15,14 @@ const require = createRequire(path.join(rootDir, 'e2e', 'global-setup.ts'));
 // Host-reachable service defaults. They mirror `.env.e2e` / `.env.e2e.webdav`;
 // the global-setup process does not load those dotenv files itself, so we read
 // process.env overrides but fall back to the same values.
-const E2E_PG_HOST = '127.0.0.1';
-const E2E_PG_PORT = process.env.WEA_PG_PORT || '5433';
-const E2E_PG_DATABASE = process.env.WEA_PG_DATABASE || 'webdav_e2e';
-const E2E_PG_USER = process.env.WEA_PG_USER || 'e2etest';
-const E2E_PG_PASSWORD = process.env.WEA_PG_PASSWORD || 'e2etest';
 const E2E_S3_ENDPOINT = 'http://127.0.0.1:9010';
 const E2E_S3_REGION = process.env.AWS_REGION || 'us-east-1';
 const E2E_S3_ACCESS_KEY = process.env.AWS_ACCESS_KEY_ID || 'minioadmin';
 const E2E_S3_SECRET_KEY = process.env.AWS_SECRET_ACCESS_KEY || 'minioadmin';
 const E2E_S3_BUCKET = process.env.S3_BUCKET || 'e2e-test-bucket';
-const E2E_ADMIN_PASSWORD = process.env.ADMIN_DEFAULT_PASSWORD || 'admin';
-
-// Base users pre-seeded for E2E. These mirror `e2e/fixtures/test-data.ts`
-// (admin is bootstrapped by the server itself). Specs additionally
-// self-provision suffixed users through the running server's admin API during
-// the run, but a deterministic baseline avoids first-run races.
-const SEED_USERS = [
-  { username: 'user1', password: 'user1pass', email: 'user1@e2etest.com' },
-  { username: 'user2', password: 'user2pass', email: 'user2@e2etest.com' },
-  { username: 'user3', password: 'user3pass', email: 'user3@e2etest.com' },
-];
 
 const webdavBaseUrl = 'http://127.0.0.1:8090/';
 const webdavAuth = Buffer.from('e2etest:e2etest123').toString('base64');
-
-function cleanDir(relativePath: string) {
-  const targetPath = path.join(rootDir, relativePath);
-  try {
-    fs.rmSync(targetPath, { recursive: true, force: true });
-  } catch (err: unknown) {
-    const error = err as NodeJS.ErrnoException;
-    if (error.code !== 'EACCES') {
-      throw err;
-    }
-
-    console.warn(`Warning: Cannot remove ${relativePath} directly due to permissions. Retrying via Docker helper.`);
-    execFileSync(
-      'docker',
-      [
-        'run',
-        '--rm',
-        '-v',
-        `${rootDir}:/workspace`,
-        'alpine',
-        'sh',
-        '-c',
-        `rm -rf /workspace/${relativePath}`,
-      ],
-      {
-        cwd: rootDir,
-        stdio: 'inherit',
-      }
-    );
-  }
-}
 
 function waitForWebdav(timeoutMs: number) {
   const startedAt = Date.now();
@@ -120,7 +74,11 @@ function waitForWebdav(timeoutMs: number) {
           response.resume();
           const statusCode = response.statusCode || 500;
           settleAttempt(() => {
-            if ((statusCode >= 200 && statusCode < 300) || statusCode === 207 || statusCode === 403) {
+            if (
+              (statusCode >= 200 && statusCode < 300) ||
+              statusCode === 207 ||
+              statusCode === 403
+            ) {
               finishSuccess();
               return;
             }
@@ -221,34 +179,8 @@ async function ensureS3Bucket() {
 }
 
 function seedPostgresql() {
-  const seedScript = path.join(rootDir, 'e2e', 'global-setup.seed-db.cjs');
-  const seedEnv: NodeJS.ProcessEnv = {
-    ...process.env,
-    WEA_STORAGE_BACKEND: 'postgresql',
-    WEA_FILE_STORAGE: backendMode === 'webdav' ? 'webdav' : 's3',
-    WEA_PG_HOST: E2E_PG_HOST,
-    WEA_PG_PORT: E2E_PG_PORT,
-    WEA_PG_DATABASE: E2E_PG_DATABASE,
-    WEA_PG_USER: E2E_PG_USER,
-    WEA_PG_PASSWORD: E2E_PG_PASSWORD,
-    ADMIN_DEFAULT_PASSWORD: E2E_ADMIN_PASSWORD,
-    NODE_ENV: 'test',
-  };
-  if (backendMode === 'webdav') {
-    // Mirror .env.e2e.webdav so the seed's WebDAV MKCOL (home dir materialization)
-    // can reach the bytemark container on its host port.
-    seedEnv.WEBDAV_URL = process.env.WEBDAV_URL || 'http://127.0.0.1:8090';
-    seedEnv.WEBDAV_UPSTREAM_URL = process.env.WEBDAV_UPSTREAM_URL || 'http://127.0.0.1:8090';
-    seedEnv.WEBDAV_USERNAME = process.env.WEBDAV_USERNAME || 'e2etest';
-    seedEnv.WEBDAV_PASSWORD = process.env.WEBDAV_PASSWORD || 'e2etest123';
-  }
-
   try {
-    execFileSync(process.execPath, [seedScript, JSON.stringify(SEED_USERS)], {
-      cwd: rootDir,
-      env: seedEnv,
-      stdio: 'inherit',
-    });
+    runSeedDb();
   } catch (error) {
     throw new Error(`PostgreSQL E2E seed failed: ${(error as Error).message}`);
   }
@@ -283,11 +215,14 @@ export default async function globalSetup() {
     execFileSync('docker', ['restart', 'webdav-e2e-test'], { cwd: rootDir, stdio: 'inherit' });
   }
 
+  // MinIO runs in both modes and both the webdav-mode app (some blob writes)
+  // and the migration E2E target the S3 bucket, so the bucket must exist in
+  // both modes. s3 mode additionally empties it for a deterministic baseline.
+  await waitForMinio(30_000);
   if (backendMode === 's3') {
-    await waitForMinio(30_000);
     await emptyS3Bucket();
-    await ensureS3Bucket();
   }
+  await ensureS3Bucket();
 
   // Fresh data state WITHOUT killing the running server: the seed script
   // TRUNCATEs all app tables (preserving `_schema_migrations` so the schema is

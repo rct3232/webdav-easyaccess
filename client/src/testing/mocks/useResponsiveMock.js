@@ -8,9 +8,11 @@ export function createUseResponsiveModuleMock(overrides = {}) {
   const { useResponsive: useResponsiveOverride, ...valueOverrides } = overrides;
 
   return {
-    useResponsive: useResponsiveOverride || (() => ({
-      ...defaultValue,
-      ...valueOverrides,
-    })),
+    useResponsive:
+      useResponsiveOverride ||
+      (() => ({
+        ...defaultValue,
+        ...valueOverrides,
+      })),
   };
 }

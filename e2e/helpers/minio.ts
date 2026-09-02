@@ -3,15 +3,16 @@ import {
   ListObjectsV2Command,
   type ListObjectsV2CommandInput,
   HeadObjectCommand,
-  PutObjectCommand,
+  HeadBucketCommand,
+  CreateBucketCommand,
+  DeleteObjectsCommand,
 } from '@aws-sdk/client-s3';
 
 /**
- * Direct MinIO access for the S3+PostgreSQL E2E scenarios (E2E-S3PG-005/008).
- *
- * These scenarios assert blob-level behavior that is only observable against
- * the object store itself (GC Tier 2 reconciliation), so the spec talks to
- * the seeded bucket directly. Config mirrors `e2e/global-setup.ts`.
+ * Direct MinIO access for E2E scenarios that assert blob-level behavior with
+ * no non-blob observable (e.g. the migration E2E's "no duplicate blobs"
+ * guarantees and its deterministic bucket baseline). Config mirrors
+ * `e2e/global-setup.ts`.
  */
 
 const E2E_S3_ENDPOINT = process.env.S3_ENDPOINT || 'http://127.0.0.1:9010';
@@ -68,7 +69,43 @@ export async function blobExists(key: string): Promise<boolean> {
   }
 }
 
-/** Directly PUT a blob that has no corresponding `object_map` row (E2E-S3PG-008). */
-export async function putBlob(key: string, body: Buffer): Promise<void> {
-  await getS3Client().send(new PutObjectCommand({ Bucket: E2E_S3_BUCKET, Key: key, Body: body }));
+/**
+ * Create the seeded bucket when it does not exist. The bucket is wiped by the
+ * global-teardown `down -v`, so a later run (any mode) must be able to
+ * re-provision it deterministically.
+ */
+export async function ensureS3BucketExists(): Promise<void> {
+  const client = getS3Client();
+  try {
+    await client.send(new HeadBucketCommand({ Bucket: E2E_S3_BUCKET }));
+    return;
+  } catch (err) {
+    const status = (err as { $metadata?: { httpStatusCode?: number } })?.$metadata?.httpStatusCode;
+    if (status !== 404 && status !== 403) throw err;
+  }
+  await client.send(new CreateBucketCommand({ Bucket: E2E_S3_BUCKET }));
+}
+
+/**
+ * Delete every object currently in the seeded bucket. Used by the migration
+ * E2E to give its "no duplicate blobs" assertions a deterministic baseline:
+ * the shared bucket otherwise accumulates objects across tests in the same
+ * Playwright invocation, so an exact `listS3Keys()` count match must start
+ * from an empty bucket per case.
+ */
+export async function emptyS3Bucket(): Promise<void> {
+  const client = getS3Client();
+  await ensureS3BucketExists();
+  for (;;) {
+    const listed = await client.send(new ListObjectsV2Command({ Bucket: E2E_S3_BUCKET }));
+    const contents = listed.Contents || [];
+    if (contents.length === 0) return;
+    await client.send(
+      new DeleteObjectsCommand({
+        Bucket: E2E_S3_BUCKET,
+        Delete: { Objects: contents.map(({ Key }) => ({ Key: Key as string })) },
+      })
+    );
+    if (!listed.IsTruncated) return;
+  }
 }

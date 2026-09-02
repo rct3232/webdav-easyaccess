@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                                             |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Per-user recent files. Stored as normalized tables in postgresql/sqlite. Max 20 entries per user. Supports add, remove, clear. Node_ids are stable so bulk move/remove operations are no longer needed. |
 
 ---
@@ -17,12 +17,12 @@
 
 ### 2.2 Main Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| getUserRecentFiles | (userId) => Promise\<Array\> | List recent files |
-| addRecentFile | (userId, fileNodeId) => Promise<Array> | Add; dedupe by node_id; prepend; cap at MAX_RECENT_FILES. Name/type derivable from `file_nodes`. |
-| removeRecentFile | (userId, fileNodeId) => Promise\<Array\> | Remove by node_id |
-| clearRecentFiles | (userId) => Promise\<void\> | Delete all entries |
+| Method             | Signature                                | Description                                                                                      |
+| ------------------ | ---------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| getUserRecentFiles | (userId) => Promise\<Array\>             | List recent files                                                                                |
+| addRecentFile      | (userId, fileNodeId) => Promise<Array>   | Add; dedupe by node_id; prepend; cap at MAX_RECENT_FILES. Name/type derivable from `file_nodes`. |
+| removeRecentFile   | (userId, fileNodeId) => Promise\<Array\> | Remove by node_id                                                                                |
+| clearRecentFiles   | (userId) => Promise\<void\>              | Delete all entries                                                                               |
 
 **REMOVED methods:** `applyBulkMove`, `removePaths` — node_ids are stable; rename/move does not change nodeId.
 

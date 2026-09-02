@@ -74,9 +74,10 @@ export const useHeaderTruncation = ({ open, hideCloseButton, textContent, displa
   }, [open, textContent]);
 
   const originalHeaderName = (displayFile || file)?.name || (displayFile || file)?.basename || '';
-  const maxHeaderTitleWidth = titleRowWidth > 0
-    ? Math.max(40, titleRowWidth - actionsWidth - HEADER_SAFETY_PX - HEADER_GAP_PX)
-    : HEADER_FALLBACK_WIDTH_PX;
+  const maxHeaderTitleWidth =
+    titleRowWidth > 0
+      ? Math.max(40, titleRowWidth - actionsWidth - HEADER_SAFETY_PX - HEADER_GAP_PX)
+      : HEADER_FALLBACK_WIDTH_PX;
 
   const truncatedHeaderName = useMemo(
     () => pixelMiddleTruncate(originalHeaderName, maxHeaderTitleWidth, HEADER_FONT),

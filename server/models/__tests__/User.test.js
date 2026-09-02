@@ -145,7 +145,11 @@ describe('User model', () => {
 
   describe('verifyPassword', () => {
     it('returns true for correct password', async () => {
-      const created = await createTestUser({ username: 'jane', email: 'jane@example.com', password: 'secret123' });
+      const created = await createTestUser({
+        username: 'jane',
+        email: 'jane@example.com',
+        password: 'secret123',
+      });
       const full = await getFullTestUser(created.id);
       expect(full).toBeDefined();
       const ok = await User.verifyPassword(full, 'secret123');
@@ -153,7 +157,11 @@ describe('User model', () => {
     });
 
     it('returns false for wrong password', async () => {
-      const created = await createTestUser({ username: 'kate', email: 'kate@example.com', password: 'secret123' });
+      const created = await createTestUser({
+        username: 'kate',
+        email: 'kate@example.com',
+        password: 'secret123',
+      });
       const full = await getFullTestUser(created.id);
       const ok = await User.verifyPassword(full, 'wrong');
       expect(ok).toBe(false);
@@ -162,7 +170,11 @@ describe('User model', () => {
 
   describe('updatePassword', () => {
     it('updates password so verifyPassword succeeds with new password', async () => {
-      const created = await createTestUser({ username: 'leo', email: 'leo@example.com', password: 'old' });
+      const created = await createTestUser({
+        username: 'leo',
+        email: 'leo@example.com',
+        password: 'old',
+      });
       await User.updatePassword(created.id, 'newpass');
       const full = await getFullTestUser(created.id);
       const okOld = await User.verifyPassword(full, 'old');

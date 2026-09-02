@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Floating search bar positioned to the left of the FAB. Unified behavior for mobile and desktop: always visible, no toggle. Styled with AppBar/FAB-style layered radial + linear gradient outline, pill shape, matte light interior. |
-| Used in | FileManager |
-| Related components | MUI TextField, InputAdornment, IconButton; FAB |
+| Item               | Description                                                                                                                                                                                                                         |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Floating search bar positioned to the left of the FAB. Unified behavior for mobile and desktop: always visible, no toggle. Styled with AppBar/FAB-style layered radial + linear gradient outline, pill shape, matte light interior. |
+| Used in            | FileManager                                                                                                                                                                                                                         |
+| Related components | MUI TextField, InputAdornment, IconButton; FAB                                                                                                                                                                                      |
 
 ---
 
@@ -19,19 +19,19 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| searchQuery | string | Y | - | Search input value |
-| setSearchQuery | function | Y | - | Set search query |
-| isMobile | boolean | Y | - | Mobile layout (affects width) |
-| placeholder | string | N | t('nav.searchPlaceholder') | Placeholder text (i18n) |
-| fabVisible | boolean | N | true | When false (e.g. selection mode), search bar expands to occupy FAB space |
+| Name           | Type     | Required | Default                    | Description                                                              |
+| -------------- | -------- | -------- | -------------------------- | ------------------------------------------------------------------------ |
+| searchQuery    | string   | Y        | -                          | Search input value                                                       |
+| setSearchQuery | function | Y        | -                          | Set search query                                                         |
+| isMobile       | boolean  | Y        | -                          | Mobile layout (affects width)                                            |
+| placeholder    | string   | N        | t('nav.searchPlaceholder') | Placeholder text (i18n)                                                  |
+| fabVisible     | boolean  | N        | true                       | When false (e.g. selection mode), search bar expands to occupy FAB space |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| setSearchQuery | Input change | (string) |
+| Callback       | When invoked | Arguments |
+| -------------- | ------------ | --------- |
+| setSearchQuery | Input change | (string)  |
 
 ### 2.4 Layout
 

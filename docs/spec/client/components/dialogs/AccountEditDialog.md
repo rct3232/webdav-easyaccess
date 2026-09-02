@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Dialog for editing account: email, password, confirm password. Uses BaseDialog. Controlled form; parent manages state. |
-| Used in | MyPage |
-| Related components | BaseDialog |
+| Item               | Description                                                                                                            |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| Role               | Dialog for editing account: email, password, confirm password. Uses BaseDialog. Controlled form; parent manages state. |
+| Used in            | MyPage                                                                                                                 |
+| Related components | BaseDialog                                                                                                             |
 
 ---
 
@@ -19,29 +19,29 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| open | boolean | Y | - | Dialog open |
-| onClose | function | Y | - | Close handler |
-| email | string | Y | - | Email value |
-| onEmailChange | function | Y | - | Email change |
-| password | string | Y | - | Password value |
-| onPasswordChange | function | Y | - | Password change |
-| confirmPassword | string | Y | - | Confirm value |
-| onConfirmPasswordChange | function | Y | - | Confirm change |
-| loading | boolean | N | false | Loading |
-| canSave | boolean | N | false | Save enabled |
-| onSave | function | Y | - | Save handler |
-| message | object | N | - | { text, type } |
-| onClearMessage | function | N | - | Clear message |
+| Name                    | Type     | Required | Default | Description     |
+| ----------------------- | -------- | -------- | ------- | --------------- |
+| open                    | boolean  | Y        | -       | Dialog open     |
+| onClose                 | function | Y        | -       | Close handler   |
+| email                   | string   | Y        | -       | Email value     |
+| onEmailChange           | function | Y        | -       | Email change    |
+| password                | string   | Y        | -       | Password value  |
+| onPasswordChange        | function | Y        | -       | Password change |
+| confirmPassword         | string   | Y        | -       | Confirm value   |
+| onConfirmPasswordChange | function | Y        | -       | Confirm change  |
+| loading                 | boolean  | N        | false   | Loading         |
+| canSave                 | boolean  | N        | false   | Save enabled    |
+| onSave                  | function | Y        | -       | Save handler    |
+| message                 | object   | N        | -       | { text, type }  |
+| onClearMessage          | function | N        | -       | Clear message   |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| onClose | Close | - |
-| onSave | Save button | - |
-| onEmailChange, onPasswordChange, onConfirmPasswordChange | Input change | (value) |
+| Callback                                                 | When invoked | Arguments |
+| -------------------------------------------------------- | ------------ | --------- |
+| onClose                                                  | Close        | -         |
+| onSave                                                   | Save button  | -         |
+| onEmailChange, onPasswordChange, onConfirmPasswordChange | Input change | (value)   |
 
 ### 2.4 Dependencies
 

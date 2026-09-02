@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Role | nodeId-based batch operations replacing path-based bulk workers. Delegates all per-item work to fileService so that subtree traversal, closure-table maintenance, and storage dispatch remain in a single location. Async permission gates via aclService with `PERMISSIONS.READ` / `PERMISSIONS.WRITE` constants replace the former sync checker functions (`buildSyncWriteChecker`, etc.). No direct storage calls — every mutation flows through fileService → blobStorageService. Integrates with the existing job system: `opStore.createJob` + `scheduleBulkWorker` create jobs; worker dispatches to this service per item and writes progress via operation-progress store. Payloads carry nodeId-only data (no path fields). Error entries include a `status` field (`'skipped'` for permission-denied items, `'failed'` for runtime errors). |
 
 ---
@@ -27,11 +27,11 @@ function createBatchOperationService({ fileNodeService, fileService, aclService 
 }
 ```
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| fileNodeService | object | yes | Imported but not directly invoked by batch methods; retained for API compatibility and future nodeId resolution — see `fileNodeService.md` |
-| fileService | object | yes | Per-item operation delegation: deleteNode, moveNode, copyFile — see `fileService.md` |
-| aclService | object | yes | Async permission gates: checkFolderPermission, checkFilePermission, isAdminUser — see `aclService.js` |
+| Param           | Type   | Required | Description                                                                                                                                |
+| --------------- | ------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| fileNodeService | object | yes      | Imported but not directly invoked by batch methods; retained for API compatibility and future nodeId resolution — see `fileNodeService.md` |
+| fileService     | object | yes      | Per-item operation delegation: deleteNode, moveNode, copyFile — see `fileService.md`                                                       |
+| aclService      | object | yes      | Async permission gates: checkFolderPermission, checkFilePermission, isAdminUser — see `aclService.js`                                      |
 
 ### 2.3 Methods
 
@@ -39,11 +39,11 @@ function createBatchOperationService({ fileNodeService, fileService, aclService 
 
 Deletes multiple nodes (and their subtrees) in sequence. Each node is independently permission-gated before delegation to fileService.deleteNode.
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| nodeIds | number[] | yes | Array of top-level file_nodes IDs to delete |
-| userId | number | yes | ID of the requesting user (principal) |
-| user | object | yes | Full user object with `is_admin` flag for admin bypass resolution |
+| Param   | Type     | Required | Description                                                       |
+| ------- | -------- | -------- | ----------------------------------------------------------------- |
+| nodeIds | number[] | yes      | Array of top-level file_nodes IDs to delete                       |
+| userId  | number   | yes      | ID of the requesting user (principal)                             |
+| user    | object   | yes      | Full user object with `is_admin` flag for admin bypass resolution |
 
 **Returns:** `{ deletedCount: number, errors: array }` — count of successfully processed items and per-item error entries.
 
@@ -71,11 +71,11 @@ Deletes multiple nodes (and their subtrees) in sequence. Each node is independen
 
 Moves multiple nodes to new parent directories in sequence. Each move is independently permission-gated before delegation to fileService.moveNode.
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| moves | array | yes | Array of `{ sourceNodeId: number, destinationParentNodeId: number \| null }` objects |
-| userId | number | yes | ID of the requesting user (principal) |
-| user | object | yes | Full user object with `is_admin` flag for admin bypass resolution |
+| Param  | Type   | Required | Description                                                                          |
+| ------ | ------ | -------- | ------------------------------------------------------------------------------------ |
+| moves  | array  | yes      | Array of `{ sourceNodeId: number, destinationParentNodeId: number \| null }` objects |
+| userId | number | yes      | ID of the requesting user (principal)                                                |
+| user   | object | yes      | Full user object with `is_admin` flag for admin bypass resolution                    |
 
 **Returns:** `{ movedCount: number, errors: array }` — count of successfully processed moves and per-move error entries.
 
@@ -104,11 +104,11 @@ Moves multiple nodes to new parent directories in sequence. Each move is indepen
 
 Copies multiple files to destination directories in sequence. Copy semantics are delegated entirely to fileService.copyFile (S3 mode = copy-on-write with shared-blob detection; WebDAV mode = actual blob download + re-upload). Each copy is independently permission-gated before delegation.
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| copies | array | yes | Array of `{ sourceNodeId: number, destinationParentNodeId: number \| null }` objects |
-| userId | number | yes | ID of the requesting user (principal) |
-| user | object | yes | Full user object with `is_admin` flag for admin bypass resolution |
+| Param  | Type   | Required | Description                                                                          |
+| ------ | ------ | -------- | ------------------------------------------------------------------------------------ |
+| copies | array  | yes      | Array of `{ sourceNodeId: number, destinationParentNodeId: number \| null }` objects |
+| userId | number | yes      | ID of the requesting user (principal)                                                |
+| user   | object | yes      | Full user object with `is_admin` flag for admin bypass resolution                    |
 
 **Returns:** `{ copiedCount: number, errors: array }` — count of successfully processed copies and per-copy error entries.
 
@@ -133,11 +133,11 @@ Copies multiple files to destination directories in sequence. Copy semantics are
 
 ### 2.4 Dependencies
 
-| Dependency | Purpose |
-|------------|---------|
-| fileNodeService | Imported but not directly used by batch methods; available for future nodeId resolution needs — see `fileNodeService.md` |
-| fileService | Per-item operation delegation: deleteNode, moveNode, copyFile — carries all closure-table and storage-backend logic — see `fileService.md` |
-| aclService | Async permission gates: checkFolderPermission, checkFilePermission, isAdminUser — see `aclService.js` |
+| Dependency      | Purpose                                                                                                                                    |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| fileNodeService | Imported but not directly used by batch methods; available for future nodeId resolution needs — see `fileNodeService.md`                   |
+| fileService     | Per-item operation delegation: deleteNode, moveNode, copyFile — carries all closure-table and storage-backend logic — see `fileService.md` |
+| aclService      | Async permission gates: checkFolderPermission, checkFilePermission, isAdminUser — see `aclService.js`                                      |
 
 ---
 
@@ -145,13 +145,13 @@ Copies multiple files to destination directories in sequence. Copy semantics are
 
 All permission checks are async calls to `aclService`, replacing the former sync checker functions entirely. No `buildSyncWriteChecker`, `buildSyncReadChecker`, or similar constructs exist in this service.
 
-| Operation | Permission Check | aclService Call |
-|-----------|-----------------|-----------------|
-| batchDelete (per item) | Write on the node itself | `aclService.checkFilePermission(userId, nodeId, PERMISSIONS.WRITE)` |
-| batchMove — source (per item) | Write on the source node directly | `aclService.checkFilePermission(userId, sourceNodeId, PERMISSIONS.WRITE)` |
-| batchMove — destination (per item) | Write on target parent directory | `aclService.checkFolderPermission(userId, destinationParentNodeId, PERMISSIONS.WRITE)` |
-| batchCopy — source (per item) | Read on source file node | `aclService.checkFilePermission(userId, sourceNodeId, PERMISSIONS.READ)` |
-| batchCopy — destination (per item) | Write on target parent directory | `aclService.checkFolderPermission(userId, destinationParentNodeId, PERMISSIONS.WRITE)` |
+| Operation                          | Permission Check                  | aclService Call                                                                        |
+| ---------------------------------- | --------------------------------- | -------------------------------------------------------------------------------------- |
+| batchDelete (per item)             | Write on the node itself          | `aclService.checkFilePermission(userId, nodeId, PERMISSIONS.WRITE)`                    |
+| batchMove — source (per item)      | Write on the source node directly | `aclService.checkFilePermission(userId, sourceNodeId, PERMISSIONS.WRITE)`              |
+| batchMove — destination (per item) | Write on target parent directory  | `aclService.checkFolderPermission(userId, destinationParentNodeId, PERMISSIONS.WRITE)` |
+| batchCopy — source (per item)      | Read on source file node          | `aclService.checkFilePermission(userId, sourceNodeId, PERMISSIONS.READ)`               |
+| batchCopy — destination (per item) | Write on target parent directory  | `aclService.checkFolderPermission(userId, destinationParentNodeId, PERMISSIONS.WRITE)` |
 
 Admin bypass: `aclService.isAdminUser(user)` returning true skips all permission checks for the item. Each item is checked independently; one denied item does not block processing of remaining items in the batch.
 
@@ -210,14 +210,14 @@ All payloads are nodeId-only. No path fields are stored in job payloads.
 
 Operations that pass permission checks but fail at the fileService or storage layer are recorded in `errors[]` with nodeId and reason string. The batch does not abort — remaining items continue processing. Each item is its own transaction boundary inherited from fileService.
 
-| Scenario | Behavior |
-|----------|-----------|
-| Permission denied on one item | Item skipped, error entry added, remaining items still processed |
-| Node not found during delete/move/copy | Error entry with `reason: 'node_not_found'`, remaining items continue |
-| Cycle detected during move | Error entry for that specific move, remaining moves process normally |
-| Storage failure — S3 mode (e.g., orphaned_node from fileService) | Error propagated per item; batch continues with next nodeId |
-| Storage failure — WebDAV mode (connection refused, timeout) | fileService sets sync_status='orphaned_node' as fail-safe; error recorded in `errors[]`, remaining items continue |
-| All items fail | Returns `{ deletedCount: 0, errors: [...] }` with one entry per failed item |
+| Scenario                                                         | Behavior                                                                                                          |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Permission denied on one item                                    | Item skipped, error entry added, remaining items still processed                                                  |
+| Node not found during delete/move/copy                           | Error entry with `reason: 'node_not_found'`, remaining items continue                                             |
+| Cycle detected during move                                       | Error entry for that specific move, remaining moves process normally                                              |
+| Storage failure — S3 mode (e.g., orphaned_node from fileService) | Error propagated per item; batch continues with next nodeId                                                       |
+| Storage failure — WebDAV mode (connection refused, timeout)      | fileService sets sync_status='orphaned_node' as fail-safe; error recorded in `errors[]`, remaining items continue |
+| All items fail                                                   | Returns `{ deletedCount: 0, errors: [...] }` with one entry per failed item                                       |
 
 ### Transaction Semantics
 
@@ -228,6 +228,7 @@ Per-item transactional integrity is maintained by fileService/fileNodeService. T
 ## 7. Verification Scenarios
 
 ### batchDelete
+
 - [ ] Deletes multiple leaf file nodes successfully, returns `{ deletedCount: N, errors: [] }` for N valid items
 - [ ] Deletes directory node and all descendants via fileService.deleteNode cascade (closure table enumeration)
 - [ ] Skips item when user lacks write permission on the node itself; error entry has `status: 'skipped'`, reason `'permission_denied'`
@@ -236,6 +237,7 @@ Per-item transactional integrity is maintained by fileService/fileNodeService. T
 - [ ] Empty nodeIds array → returns `{ deletedCount: 0, errors: [] }` immediately
 
 ### batchMove
+
 - [ ] Moves multiple nodes to new parent successfully, updates closure table via fileService.moveNode
 - [ ] Checks write permission on source node directly AND destination parent per item
 - [ ] Skips item with `status: 'skipped'`, reason `'permission_denied'` when user cannot write to source or destination (same reason for both)
@@ -243,6 +245,7 @@ Per-item transactional integrity is maintained by fileService/fileNodeService. T
 - [ ] destinationParentNodeId as null (move to root) is a valid operation
 
 ### batchCopy
+
 - [ ] Copies multiple files successfully, creates new file_nodes with independent blob references
 - [ ] S3 mode: zero-copy when source blob exclusively owned; duplicateBlob when shared — delegated to fileService.copyFile
 - [ ] WebDAV mode: downloads source content and re-uploads at destination path — delegated to fileService.copyFile
@@ -252,6 +255,7 @@ Per-item transactional integrity is maintained by fileService/fileNodeService. T
 - [ ] Error captured with `status: 'failed'` when source has no active blob (no storage content to copy)
 
 ### Cross-cutting
+
 - [ ] No `buildSync*Checker` calls exist anywhere in the batchOperationService implementation
 - [ ] All permission checks route through aclService async methods
 - [ ] Job payload contains only nodeId references, no path strings

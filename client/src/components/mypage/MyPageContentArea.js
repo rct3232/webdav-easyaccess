@@ -2,13 +2,14 @@ import React from 'react';
 import MyPageContentPanel from './MyPageContentPanel';
 import { getMyPageContentDescriptor } from '../../utils/myPageRegistry';
 
-const MyPageContentArea = ({ selectedCategory, selectedContentItem, onSelectContentItem, user, onMessage }) => {
-  const {
-    categoryIcon,
-    onBack,
-    ContentComponent,
-    contentProps,
-  } = getMyPageContentDescriptor({
+const MyPageContentArea = ({
+  selectedCategory,
+  selectedContentItem,
+  onSelectContentItem,
+  user,
+  onMessage,
+}) => {
+  const { categoryIcon, onBack, ContentComponent, contentProps } = getMyPageContentDescriptor({
     selectedCategory,
     selectedContentItem,
     onSelectContentItem,

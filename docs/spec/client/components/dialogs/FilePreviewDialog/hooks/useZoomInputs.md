@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Attaches wheel (Ctrl+wheel) and pointer (two-finger pinch) zoom handlers to a container ref; enables keyboard-free zoom interaction |
-| Used by components/pages | FilePreviewDialog |
+| Item                     | Description                                                                                                                         |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Attaches wheel (Ctrl+wheel) and pointer (two-finger pinch) zoom handlers to a container ref; enables keyboard-free zoom interaction |
+| Used by components/pages | FilePreviewDialog                                                                                                                   |
 
 ---
 
@@ -17,15 +17,15 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| containerRef | React.RefObject | Y | Ref to the DOM element that receives zoom events |
-| zoom | number | Y | Current zoom factor |
-| setZoom | function | Y | Callback `(prev => next) => void` to update zoom |
-| isMobile | boolean | Y | Mobile breakpoint; enables pinch, may disable or adjust wheel behavior |
-| enabled | boolean | Y | Whether to attach listeners; when false, no listeners |
-| minZoom | number | Y | Minimum zoom for clamping |
-| maxZoom | number | Y | Maximum zoom for clamping |
+| Name         | Type            | Required | Description                                                            |
+| ------------ | --------------- | -------- | ---------------------------------------------------------------------- |
+| containerRef | React.RefObject | Y        | Ref to the DOM element that receives zoom events                       |
+| zoom         | number          | Y        | Current zoom factor                                                    |
+| setZoom      | function        | Y        | Callback `(prev => next) => void` to update zoom                       |
+| isMobile     | boolean         | Y        | Mobile breakpoint; enables pinch, may disable or adjust wheel behavior |
+| enabled      | boolean         | Y        | Whether to attach listeners; when false, no listeners                  |
+| minZoom      | number          | Y        | Minimum zoom for clamping                                              |
+| maxZoom      | number          | Y        | Maximum zoom for clamping                                              |
 
 ### 2.3 Return Value / State
 

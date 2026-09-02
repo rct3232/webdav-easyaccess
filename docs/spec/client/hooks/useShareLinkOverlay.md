@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Product-overlay controller for FileManager share-link flows: add-to-my-permissions modal lifecycle, share-link permission bootstrap, and leave-share confirmation routing. |
-| Used by components/pages | `client/src/pages/FileManager/FileManager.js` |
-| Does not own | Generic explorer navigation, command orchestration, progress state, or file list rendering. |
+| Item                     | Description                                                                                                                                                                |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Product-overlay controller for FileManager share-link flows: add-to-my-permissions modal lifecycle, share-link permission bootstrap, and leave-share confirmation routing. |
+| Used by components/pages | `client/src/pages/FileManager/FileManager.js`                                                                                                                              |
+| Does not own             | Generic explorer navigation, command orchestration, progress state, or file list rendering.                                                                                |
 
 ---
 
@@ -21,35 +21,35 @@
 
 `useShareLinkOverlay(params)`
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| isShareLinkMode | boolean | Y | Whether FileManager is currently rendering in share-link mode. |
-| shareToken | string | N | Public share token used for add/check flows. |
-| linkInfo | object | N | Share metadata from `ShareLinkLoader` (used for directory routing after success). When it carries `nodeId`, post-success routing is nodeId-first (`/files/node/<nodeId>`, C2.5). |
-| user | object | N | Current authenticated user; enables "add to my permissions" bootstrap when present. |
-| navigate | (path: string) => void | Y | Shell-owned navigation function. |
-| showError | (message: string) => void | Y | Shell-owned message surface. |
-| setDrawerOpen | (open: boolean) => void | N | Optional shell setter used when leaving share mode from mobile tree interactions. |
-| t | function | Y | Translation function. |
+| Name            | Type                      | Required | Description                                                                                                                                                                      |
+| --------------- | ------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| isShareLinkMode | boolean                   | Y        | Whether FileManager is currently rendering in share-link mode.                                                                                                                   |
+| shareToken      | string                    | N        | Public share token used for add/check flows.                                                                                                                                     |
+| linkInfo        | object                    | N        | Share metadata from `ShareLinkLoader` (used for directory routing after success). When it carries `nodeId`, post-success routing is nodeId-first (`/files/node/<nodeId>`, C2.5). |
+| user            | object                    | N        | Current authenticated user; enables "add to my permissions" bootstrap when present.                                                                                              |
+| navigate        | (path: string) => void    | Y        | Shell-owned navigation function.                                                                                                                                                 |
+| showError       | (message: string) => void | Y        | Shell-owned message surface.                                                                                                                                                     |
+| setDrawerOpen   | (open: boolean) => void   | N        | Optional shell setter used when leaving share mode from mobile tree interactions.                                                                                                |
+| t               | function                  | Y        | Translation function.                                                                                                                                                            |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| addToSharedModalOpen | boolean | Whether the add-to-my-permissions modal is visible. |
-| setAddToSharedModalOpen | (open: boolean) => void | Setter for modal visibility. |
-| addToSharedStatus | string | Modal state (`loading`, `confirm`, etc.) matching current UX. |
-| addToSharedConfirmLoading | boolean | Whether the confirm action is in flight. |
-| openAddToSharedModal | () => void | Opens modal and runs permission bootstrap. |
-| handleAddToSharedConfirm | () => Promise<void> | Confirms add-to-my-permissions flow and preserves current post-success navigation. |
-| leaveShareConfirmOpen | boolean | Whether the leave-share confirmation dialog is visible. |
-| setLeaveShareConfirmOpen | (open: boolean) => void | Setter for leave-share dialog visibility. |
-| leaveShareConfirmTargetNodeId | number \| null | Destination node id selected before leaving share mode (preferred; nodeId-first navigation). |
-| setLeaveShareConfirmTargetNodeId | (nodeId: number \| null) => void | Setter for the pending destination node id. |
-| leaveShareConfirmTargetPath | string \| null | Legacy destination path selected before leaving share mode (fallback when no node id was clicked, e.g. virtual-root targets). |
-| setLeaveShareConfirmTargetPath | (path: string \| null) => void | Setter for the pending destination path. |
-| handleLeaveSharePathClick | (target: number \| string) => void | Opens leave-share confirmation for a target node id (number) or path (string). |
-| handleLeaveShareConfirm | () => void | Confirms leaving share mode and navigates to the authenticated files route (nodeId-first). |
+| Key                              | Type                               | Meaning                                                                                                                       |
+| -------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| addToSharedModalOpen             | boolean                            | Whether the add-to-my-permissions modal is visible.                                                                           |
+| setAddToSharedModalOpen          | (open: boolean) => void            | Setter for modal visibility.                                                                                                  |
+| addToSharedStatus                | string                             | Modal state (`loading`, `confirm`, etc.) matching current UX.                                                                 |
+| addToSharedConfirmLoading        | boolean                            | Whether the confirm action is in flight.                                                                                      |
+| openAddToSharedModal             | () => void                         | Opens modal and runs permission bootstrap.                                                                                    |
+| handleAddToSharedConfirm         | () => Promise<void>                | Confirms add-to-my-permissions flow and preserves current post-success navigation.                                            |
+| leaveShareConfirmOpen            | boolean                            | Whether the leave-share confirmation dialog is visible.                                                                       |
+| setLeaveShareConfirmOpen         | (open: boolean) => void            | Setter for leave-share dialog visibility.                                                                                     |
+| leaveShareConfirmTargetNodeId    | number \| null                     | Destination node id selected before leaving share mode (preferred; nodeId-first navigation).                                  |
+| setLeaveShareConfirmTargetNodeId | (nodeId: number \| null) => void   | Setter for the pending destination node id.                                                                                   |
+| leaveShareConfirmTargetPath      | string \| null                     | Legacy destination path selected before leaving share mode (fallback when no node id was clicked, e.g. virtual-root targets). |
+| setLeaveShareConfirmTargetPath   | (path: string \| null) => void     | Setter for the pending destination path.                                                                                      |
+| handleLeaveSharePathClick        | (target: number \| string) => void | Opens leave-share confirmation for a target node id (number) or path (string).                                                |
+| handleLeaveShareConfirm          | () => void                         | Confirms leaving share mode and navigates to the authenticated files route (nodeId-first).                                    |
 
 ### 2.4 Responsibilities
 

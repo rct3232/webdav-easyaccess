@@ -26,63 +26,79 @@ function createComposition(overrides = {}) {
   const fileNodesStore = overrides.fileNodesStore || createFileNodesStore();
   const blobStore = overrides.blobStore || createBlobStore();
   const fileNodeService = overrides.fileNodeService || createFileNodeService({ fileNodesStore });
-  const blobStorageService = overrides.blobStorageService || createBlobStorageService({
-    blobStore,
-    fileNodesStore,
-    fileStorageMode,
-    fileNodeService,
-  });
-  const uploadService = overrides.uploadService || createUploadService({
-    fileNodeService,
-    blobStorageService,
-    blobStore,
-  });
+  const blobStorageService =
+    overrides.blobStorageService ||
+    createBlobStorageService({
+      blobStore,
+      fileNodesStore,
+      fileStorageMode,
+      fileNodeService,
+    });
+  const uploadService =
+    overrides.uploadService ||
+    createUploadService({
+      fileNodeService,
+      blobStorageService,
+      blobStore,
+    });
 
   const effectiveAclService = overrides.aclService || aclService;
 
-  const fileService = overrides.fileService || createFileService({
-    fileNodeService,
-    blobStorageService,
-    uploadService,
-    aclService: effectiveAclService,
-    fileStorageMode,
-    permissionStore,
-    ownerNodeResolver,
-  });
+  const fileService =
+    overrides.fileService ||
+    createFileService({
+      fileNodeService,
+      blobStorageService,
+      uploadService,
+      aclService: effectiveAclService,
+      fileStorageMode,
+      permissionStore,
+      ownerNodeResolver,
+    });
 
-  const batchOperationService = overrides.batchOperationService || createBatchOperationService({
-    fileNodeService,
-    fileService,
-    aclService: effectiveAclService,
-  });
+  const batchOperationService =
+    overrides.batchOperationService ||
+    createBatchOperationService({
+      fileNodeService,
+      fileService,
+      aclService: effectiveAclService,
+    });
 
-  const downloadService = overrides.downloadService || createDownloadService({
-    fileNodeService,
-    blobStorageService,
-    aclService: effectiveAclService,
-  });
+  const downloadService =
+    overrides.downloadService ||
+    createDownloadService({
+      fileNodeService,
+      blobStorageService,
+      aclService: effectiveAclService,
+    });
 
-  const gcService = overrides.gcService || createGcService({
-    blobStore,
-    fileNodesStore,
-    fileStorageMode,
-  });
+  const gcService =
+    overrides.gcService ||
+    createGcService({
+      blobStore,
+      fileNodesStore,
+      fileStorageMode,
+    });
 
-  const failSafeService = overrides.failSafeService || createFailSafeService({
-    fileNodeService,
-    fileNodesStore,
-  });
+  const failSafeService =
+    overrides.failSafeService ||
+    createFailSafeService({
+      fileNodeService,
+      fileNodesStore,
+    });
 
   const migrationJobStore = overrides.migrationJobStore || createMigrationJobStore();
 
-  const migrationService = overrides.migrationService || createMigrationService({
-    srcBlobStore: blobStore,
-    fileNodesStore,
-    fileNodeService,
-    buildDestBlobStore,
-    lockManager,
-    fileStorageMode,
-  });
+  const migrationService =
+    overrides.migrationService ||
+    createMigrationService({
+      srcBlobStore: blobStore,
+      fileNodesStore,
+      fileNodeService,
+      buildDestBlobStore,
+      lockManager,
+      fileStorageMode,
+    });
 
   return {
     fileStorageMode,

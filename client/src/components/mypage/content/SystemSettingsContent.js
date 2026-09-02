@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Box,
   Button,
   Typography,
@@ -17,14 +20,22 @@ import {
 } from '@mui/material';
 import { CleaningServices as CleaningServicesIcon } from '@mui/icons-material';
 import CategoryIcon from '@mui/icons-material/Category';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import Storage from '@mui/icons-material/Storage';
 import SyncAlt from '@mui/icons-material/SyncAlt';
 import * as adminService from '../../../services/adminService';
+import { getMigrationPresence } from '../../../services/migrationService';
 import { getServerErrorDisplay } from '../../../utils/errorUtils';
-import { getShowHiddenFiles, setShowHiddenFiles as saveShowHiddenFiles } from '../../../utils/localStorage';
+import {
+  getShowHiddenFiles,
+  setShowHiddenFiles as saveShowHiddenFiles,
+} from '../../../utils/localStorage';
 import { usePageHeader } from '../../../contexts/PageHeaderContext';
 import MigrationDialog from './MigrationDialog';
+import MetadataMigrationDialog from './MetadataMigrationDialog';
+import SystemConfigEditor from './SystemConfigEditor';
 
-const SystemSettingsContent = ({ onMessage }) => {
+const SystemSettingsContent = () => {
   const { t } = useTranslation();
   const { setTitle, setActions } = usePageHeader();
 
@@ -37,6 +48,12 @@ const SystemSettingsContent = ({ onMessage }) => {
   const [permissionCleanupLoading, setPermissionCleanupLoading] = useState(false);
   const [permissionCleanupConfirmOpen, setPermissionCleanupConfirmOpen] = useState(false);
   const [migrationOpen, setMigrationOpen] = useState(false);
+  const [metadataMigrationOpen, setMetadataMigrationOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [keyLostWarning, setKeyLostWarning] = useState(false);
+  const [backendHealth, setBackendHealth] = useState({});
+  const [activeBackends, setActiveBackends] = useState(() => new Set());
+  const [metadataPresence, setMetadataPresence] = useState(null);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -47,9 +64,48 @@ const SystemSettingsContent = ({ onMessage }) => {
     }
   }, [t]);
 
+  const loadKeyLostWarning = useCallback(async () => {
+    try {
+      const data = await adminService.getConfigStatus();
+      setKeyLostWarning(Boolean(data?.key_lost_warning));
+      // Derive the backends actually in use so unused backends never alert (D3):
+      // metadata backend = WEA_STORAGE_BACKEND, file backend = WEA_FILE_STORAGE.
+      const cfg = data?.config || {};
+      const active = new Set();
+      if (cfg.WEA_STORAGE_BACKEND?.value === 'postgresql') active.add('postgresql');
+      if (cfg.WEA_FILE_STORAGE?.value === 's3') active.add('s3');
+      if (cfg.WEA_FILE_STORAGE?.value === 'webdav') active.add('webdav');
+      setActiveBackends(active);
+    } catch {
+      setKeyLostWarning(false);
+      setActiveBackends(new Set());
+    }
+  }, []);
+
+  const loadHealth = useCallback(async () => {
+    try {
+      const data = await adminService.getAdminHealth();
+      setBackendHealth(data?.backends || {});
+    } catch {
+      setBackendHealth({});
+    }
+  }, []);
+
+  const loadMigrationPresence = useCallback(async () => {
+    try {
+      const data = await getMigrationPresence();
+      setMetadataPresence(data);
+    } catch {
+      setMetadataPresence(null);
+    }
+  }, []);
+
   useEffect(() => {
     loadSettings();
-  }, [loadSettings]);
+    loadKeyLostWarning();
+    loadHealth();
+    loadMigrationPresence();
+  }, [loadSettings, loadKeyLostWarning, loadHealth, loadMigrationPresence]);
 
   const handleToggleRegistration = async () => {
     const newValue = tempSettings.registration_enabled === 'true' ? 'false' : 'true';
@@ -60,7 +116,10 @@ const SystemSettingsContent = ({ onMessage }) => {
       await adminService.updateSettings(nextSettings);
       setMessage({ type: 'success', text: t('admin.registrationSaveSuccess') });
     } catch (error) {
-      setTempSettings((prev) => ({ ...prev, registration_enabled: newValue === 'true' ? 'false' : 'true' }));
+      setTempSettings((prev) => ({
+        ...prev,
+        registration_enabled: newValue === 'true' ? 'false' : 'true',
+      }));
       setMessage({ type: 'error', text: t('admin.settingsSaveFail') });
     } finally {
       setRegistrationSaving(false);
@@ -80,11 +139,15 @@ const SystemSettingsContent = ({ onMessage }) => {
         results.cleanedPermissionRequests;
       let messageText;
       if (totalCleaned === 0) messageText = t('admin.noDataToClean');
-      else if (results.errors?.length) messageText = t('admin.cleanupDonePartial', { count: totalCleaned });
+      else if (results.errors?.length)
+        messageText = t('admin.cleanupDonePartial', { count: totalCleaned });
       else messageText = t('admin.cleanupDone', { count: totalCleaned });
       setMessage({ type: results.errors?.length ? 'warning' : 'success', text: messageText });
     } catch (error) {
-      setMessage({ type: 'error', text: getServerErrorDisplay(error?.response?.data, t) || t('admin.orphanCleanupFail') });
+      setMessage({
+        type: 'error',
+        text: getServerErrorDisplay(error?.response?.data, t) || t('admin.orphanCleanupFail'),
+      });
     } finally {
       setCleanupLoading(false);
     }
@@ -98,12 +161,21 @@ const SystemSettingsContent = ({ onMessage }) => {
       const { updatedUsers, upgradedPaths, grantedPaths, errors } = res;
       const total = (upgradedPaths || 0) + (grantedPaths || 0);
       let messageText;
-      if (total === 0 && (!errors || errors.length === 0)) messageText = t('admin.noPermissionToFix');
-      else if (errors?.length) messageText = t('admin.permissionCleanupDonePartial', { users: updatedUsers || 0, paths: total });
-      else messageText = t('admin.permissionCleanupDone', { users: updatedUsers || 0, paths: total });
+      if (total === 0 && (!errors || errors.length === 0))
+        messageText = t('admin.noPermissionToFix');
+      else if (errors?.length)
+        messageText = t('admin.permissionCleanupDonePartial', {
+          users: updatedUsers || 0,
+          paths: total,
+        });
+      else
+        messageText = t('admin.permissionCleanupDone', { users: updatedUsers || 0, paths: total });
       setMessage({ type: errors?.length ? 'warning' : 'success', text: messageText });
     } catch (error) {
-      setMessage({ type: 'error', text: getServerErrorDisplay(error?.response?.data, t) || t('admin.permissionCleanupFail') });
+      setMessage({
+        type: 'error',
+        text: getServerErrorDisplay(error?.response?.data, t) || t('admin.permissionCleanupFail'),
+      });
     } finally {
       setPermissionCleanupLoading(false);
     }
@@ -114,12 +186,72 @@ const SystemSettingsContent = ({ onMessage }) => {
     setActions(null);
   }, [t, setTitle, setActions]);
 
+  const failedBackends = Object.entries(backendHealth).filter(
+    ([name, health]) => health?.status === 'fail' && activeBackends.has(name)
+  );
+
   return (
     <Box>
-      <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      {failedBackends.length > 0 && (
+        <Alert severity="warning" sx={{ mb: 3 }} data-testid="backend-health-card">
+          <Typography variant="subtitle2">{t('admin.health.title')}</Typography>
+          <Box component="ul" sx={{ mt: 1, mb: 0, pl: 3 }}>
+            {failedBackends.map(([name, health]) => (
+              <li key={name}>
+                <Typography variant="body2">
+                  {name}: {t('admin.health.fail')}
+                  {health?.hint || health?.code
+                    ? ` (${t('admin.health.hintPrefix')} ${health?.hint || health?.code})`
+                    : ''}
+                </Typography>
+                {health?.lastCheckedAt ? (
+                  <Typography variant="caption" color="text.secondary">
+                    {t('admin.health.lastChecked', {
+                      time: new Date(health.lastCheckedAt).toLocaleString(),
+                    })}
+                  </Typography>
+                ) : null}
+              </li>
+            ))}
+          </Box>
+        </Alert>
+      )}
+      {keyLostWarning && (
+        <Alert severity="warning" sx={{ mb: 3 }} data-testid="key-lost-warning">
+          <Typography variant="subtitle2">{t('admin.keyLostWarning')}</Typography>
+          <Typography variant="body2">{t('admin.keyLostWarningDetail')}</Typography>
+        </Alert>
+      )}
+      {metadataPresence?.otherHasData && (
+        <Alert severity="warning" sx={{ mb: 3 }} data-testid="env-setup-needed-banner">
+          <Typography variant="subtitle2">{t('admin.envSetupNeededTitle')}</Typography>
+          <Typography variant="body2">
+            {t('admin.envSetupNeededBody', {
+              backend:
+                metadataPresence.otherBackend === 'postgresql'
+                  ? t('migrationPage.backendPostgresql')
+                  : t('migrationPage.backendSqlite'),
+            })}
+          </Typography>
+          <Button
+            size="small"
+            color="warning"
+            variant="outlined"
+            sx={{ mt: 1 }}
+            onClick={() => setMetadataMigrationOpen(true)}
+          >
+            {t('admin.envSetupNeededAction')}
+          </Button>
+        </Alert>
+      )}
+      <Box
+        sx={{ mt: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}
+      >
         <Box sx={{ flex: 1 }}>
           <Typography variant="body1">{t('admin.registrationEnabled')}</Typography>
-          <Typography variant="body2" color="text.secondary">{t('admin.registrationEnabledDesc')}</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {t('admin.registrationEnabledDesc')}
+          </Typography>
         </Box>
         <Switch
           checked={tempSettings.registration_enabled === 'true'}
@@ -129,10 +261,14 @@ const SystemSettingsContent = ({ onMessage }) => {
           sx={{ ml: 2 }}
         />
       </Box>
-      <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <Box
+        sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}
+      >
         <Box sx={{ flex: 1 }}>
           <Typography variant="body1">{t('admin.showHiddenFiles')}</Typography>
-          <Typography variant="body2" color="text.secondary">{t('admin.showHiddenFilesDesc')}</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {t('admin.showHiddenFilesDesc')}
+          </Typography>
         </Box>
         <Switch
           checked={showHiddenFiles}
@@ -146,33 +282,104 @@ const SystemSettingsContent = ({ onMessage }) => {
           sx={{ ml: 2 }}
         />
       </Box>
-      <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <Box
+        sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}
+      >
         <Box sx={{ flex: 1 }}>
           <Typography variant="body1">{t('admin.dataCleanup')}</Typography>
-          <Typography variant="body2" color="text.secondary">{t('admin.dataCleanupDesc')}</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {t('admin.dataCleanupDesc')}
+          </Typography>
         </Box>
-        <IconButton onClick={() => setCleanupConfirmOpen(true)} disabled={cleanupLoading} color="primary" sx={{ ml: 2 }} aria-label={t('admin.runCleanup')}>
+        <IconButton
+          onClick={() => setCleanupConfirmOpen(true)}
+          disabled={cleanupLoading}
+          color="primary"
+          sx={{ ml: 2 }}
+          aria-label={t('admin.runCleanup')}
+        >
           {cleanupLoading ? <CircularProgress size={24} /> : <CleaningServicesIcon />}
         </IconButton>
       </Box>
-      <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <Box
+        sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}
+      >
         <Box sx={{ flex: 1 }}>
           <Typography variant="body1">{t('admin.permissionCleanup')}</Typography>
-          <Typography variant="body2" color="text.secondary">{t('admin.permissionCleanupDesc')}</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {t('admin.permissionCleanupDesc')}
+          </Typography>
         </Box>
-        <IconButton onClick={() => setPermissionCleanupConfirmOpen(true)} disabled={permissionCleanupLoading} color="primary" sx={{ ml: 2 }} aria-label={t('admin.run')}>
+        <IconButton
+          onClick={() => setPermissionCleanupConfirmOpen(true)}
+          disabled={permissionCleanupLoading}
+          color="primary"
+          sx={{ ml: 2 }}
+          aria-label={t('admin.run')}
+        >
           {permissionCleanupLoading ? <CircularProgress size={24} /> : <CategoryIcon />}
         </IconButton>
       </Box>
-      <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <Box
+        sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}
+      >
         <Box sx={{ flex: 1 }}>
           <Typography variant="body1">{t('admin.storageMigration')}</Typography>
-          <Typography variant="body2" color="text.secondary">{t('admin.storageMigrationDesc')}</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {t('admin.storageMigrationDesc')}
+          </Typography>
         </Box>
-        <IconButton onClick={() => setMigrationOpen(true)} color="primary" sx={{ ml: 2 }} aria-label={t('admin.runMigration')}>
+        <IconButton
+          onClick={() => setMigrationOpen(true)}
+          color="primary"
+          sx={{ ml: 2 }}
+          aria-label={t('admin.runMigration')}
+        >
           <SyncAlt />
         </IconButton>
       </Box>
+      <Box
+        sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}
+      >
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="body1">{t('admin.metadataMigration')}</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {t('admin.metadataMigrationDesc')}
+          </Typography>
+        </Box>
+        <IconButton
+          onClick={() => setMetadataMigrationOpen(true)}
+          color="primary"
+          sx={{ ml: 2 }}
+          aria-label={t('admin.runMetadataMigration')}
+        >
+          <Storage />
+        </IconButton>
+      </Box>
+
+      <Accordion
+        expanded={advancedOpen}
+        onChange={(e, expanded) => setAdvancedOpen(expanded)}
+        sx={{
+          mt: 4,
+          boxShadow: 'none',
+          bgcolor: 'transparent',
+          '&:before': { display: 'none' },
+          '&.Mui-expanded': { margin: 0, mt: 4 },
+        }}
+      >
+        <AccordionSummary
+          expandIcon={<ExpandMoreIcon />}
+          aria-controls="advanced-settings-content"
+          id="advanced-settings-header"
+          sx={{ minHeight: 0, '&.Mui-expanded': { minHeight: 0 }, px: 0 }}
+        >
+          <Typography variant="h6">{t('admin.advancedSettings')}</Typography>
+        </AccordionSummary>
+        <AccordionDetails sx={{ px: 0 }}>
+          <SystemConfigEditor active={advancedOpen} onSnackbar={(msg) => setMessage(msg)} />
+        </AccordionDetails>
+      </Accordion>
 
       <Dialog open={cleanupConfirmOpen} onClose={() => setCleanupConfirmOpen(false)} fullScreen>
         <DialogTitle>{t('admin.orphanCleanupConfirmTitle')}</DialogTitle>
@@ -194,7 +401,11 @@ const SystemSettingsContent = ({ onMessage }) => {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={permissionCleanupConfirmOpen} onClose={() => setPermissionCleanupConfirmOpen(false)} fullScreen>
+      <Dialog
+        open={permissionCleanupConfirmOpen}
+        onClose={() => setPermissionCleanupConfirmOpen(false)}
+        fullScreen
+      >
         <DialogTitle>{t('admin.permissionCleanupConfirmTitle')}</DialogTitle>
         <DialogContent>
           <DialogContentText>
@@ -214,10 +425,28 @@ const SystemSettingsContent = ({ onMessage }) => {
         </DialogActions>
       </Dialog>
 
-      <MigrationDialog open={migrationOpen} onClose={() => setMigrationOpen(false)} onMessage={(msg) => setMessage(msg)} />
+      <MigrationDialog
+        open={migrationOpen}
+        onClose={() => setMigrationOpen(false)}
+        onMessage={(msg) => setMessage(msg)}
+      />
+      <MetadataMigrationDialog
+        open={metadataMigrationOpen}
+        onClose={() => setMetadataMigrationOpen(false)}
+        onMessage={(msg) => setMessage(msg)}
+      />
 
-      <Snackbar open={!!message.text} autoHideDuration={6000} onClose={() => setMessage({ type: '', text: '' })} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
-        <Alert onClose={() => setMessage({ type: '', text: '' })} severity={message.type || 'info'} sx={{ width: '100%' }}>
+      <Snackbar
+        open={!!message.text}
+        autoHideDuration={6000}
+        onClose={() => setMessage({ type: '', text: '' })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setMessage({ type: '', text: '' })}
+          severity={message.type || 'info'}
+          sx={{ width: '100%' }}
+        >
           {message.text}
         </Alert>
       </Snackbar>

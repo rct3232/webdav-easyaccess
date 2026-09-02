@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Provides drag-and-drop state and handlers for moving files/folders within the file manager (list/grid/detail) and for drops from the folder tree. Handles drag start/end, drag over (drop target), and drop; supports permission-based blocking (no write on target → forbidden cursor and optional callback). Tree-origin drags: when `dataTransfer.types` includes `'text/plain'` and there is no in-view dragged file, treat as drop-from-tree; same permission rules and onDropPermissionDenied apply. |
-| Used by components/pages | useFileViewCommon (FileList, FileGrid, FileDetail) |
+| Item                     | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Provides drag-and-drop state and handlers for moving files/folders within the file manager (list/grid/detail) and for drops from the folder tree. Handles drag start/end, drag over (drop target), and drop; supports permission-based blocking (no write on target → forbidden cursor and optional callback). Tree-origin drags: when `dataTransfer.types` includes `'text/plain'` and there is no in-view dragged file, treat as drop-from-tree; same permission rules and onDropPermissionDenied apply. |
+| Used by components/pages | useFileViewCommon (FileList, FileGrid, FileDetail)                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 
 ---
 
@@ -18,26 +18,26 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| onFileDrop | function | N | Callback when a file is dropped on a valid folder: `(draggedFile, targetFolder) => void`. For tree-origin drops, draggedFile is `{ nodeId }` with the dropped node ID. |
-| selectionMode | boolean | Y | When true, drag/drop is disabled (no handlers used) |
-| theme | object | N | MUI theme for drag ghost image |
-| onDropPermissionDenied | function | N | Callback when user drops on a folder with no write permission: `(destinationNodeId) => void` |
-| onDragStart | function | N | Callback when drag starts: `(nodeId) => void`. Used so the host can know the dragged node ID (e.g. to hide content-area overlay when drop would be no-op). |
-| onDragEnd | function | N | Callback when drag ends: `() => void`. Clears any host state tied to the drag. |
+| Name                   | Type     | Required | Description                                                                                                                                                            |
+| ---------------------- | -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| onFileDrop             | function | N        | Callback when a file is dropped on a valid folder: `(draggedFile, targetFolder) => void`. For tree-origin drops, draggedFile is `{ nodeId }` with the dropped node ID. |
+| selectionMode          | boolean  | Y        | When true, drag/drop is disabled (no handlers used)                                                                                                                    |
+| theme                  | object   | N        | MUI theme for drag ghost image                                                                                                                                         |
+| onDropPermissionDenied | function | N        | Callback when user drops on a folder with no write permission: `(destinationNodeId) => void`                                                                           |
+| onDragStart            | function | N        | Callback when drag starts: `(nodeId) => void`. Used so the host can know the dragged node ID (e.g. to hide content-area overlay when drop would be no-op).             |
+| onDragEnd              | function | N        | Callback when drag ends: `() => void`. Clears any host state tied to the drag.                                                                                         |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| draggedFile | object \| null | Currently dragged file object |
-| dropTarget | number \| null | Node ID of folder currently under cursor as drop target |
-| handleDragStart | function | (e, file) => void |
-| handleDragEnd | function | () => void |
-| handleDragOver | function | (e, file) => void |
-| handleDragLeave | function | () => void |
-| handleDrop | function | (e, targetFolder) => void |
+| Key             | Type           | Meaning                                                 |
+| --------------- | -------------- | ------------------------------------------------------- |
+| draggedFile     | object \| null | Currently dragged file object                           |
+| dropTarget      | number \| null | Node ID of folder currently under cursor as drop target |
+| handleDragStart | function       | (e, file) => void                                       |
+| handleDragEnd   | function       | () => void                                              |
+| handleDragOver  | function       | (e, file) => void                                       |
+| handleDragLeave | function       | () => void                                              |
+| handleDrop      | function       | (e, targetFolder) => void                               |
 
 ### 2.4 Dependencies
 

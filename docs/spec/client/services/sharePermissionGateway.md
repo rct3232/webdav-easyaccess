@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Gateway adapter for sharing/permission flows. Isolates permission/request/user permission API calls behind a stable interface so controller hooks and use-cases can remain thin and replaceable. |
+| Item     | Description                                                                                                                                                                                                                    |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role     | Gateway adapter for sharing/permission flows. Isolates permission/request/user permission API calls behind a stable interface so controller hooks and use-cases can remain thin and replaceable.                               |
 | Boundary | This module owns request/response mapping and low-level side effects for permission mutations and permission/request reads. It does not own UI state or permission-diff algorithms (those belong to pure helpers / use-cases). |
 
 ---
@@ -20,19 +20,19 @@
 
 All identifiers are nodeId-based (`nodeId` / `fileNodeId` are BIGINT `file_nodes.id` values, not path strings).
 
-| Function | Input | Return | Backing source |
-|----------|-------|--------|-----------------|
-| getUserPermissions | `(userId, options?)` | `Promise<Array>` | `permissionService.getUserPermissions` |
-| getFolderPermissions | `(nodeId, fileNodeId?)` | `Promise<Array>` | `permissionService.getFolderPermissions` |
-| checkPermission | `(nodeId)` | `Promise<{ hasRead: boolean, hasWrite: boolean, source?: 'file'\|'path' }>` | `permissionService.checkPermission` |
-| checkOwnerExists | `(nodeId)` | `Promise<{ ownerExists: boolean }>` | `permissionRequestService.checkOwnerExists` |
-| listOutboxPermissionRequests | `(params)` | `Promise<Array>` | `permissionRequestService.listOutboxPermissionRequests` |
-| createPermissionRequest | `(payload)` | `Promise<{ id?: string }>` | `permissionRequestService.createPermissionRequest` |
-| cancelPermissionRequest | `(id)` | `Promise<void>` | `permissionRequestService.cancelPermissionRequest` |
-| grantPermission | `({ userId, nodeId, permission, target? })` | `Promise<void>` | `permissionService.grantPermission` |
-| revokePermission | `({ userId, nodeId, scope? })` | `Promise<void>` | `permissionService.revokePermission` |
-| approvePermissionRequest | `(id)` | `Promise<any>` | `permissionRequestService.approvePermissionRequest` |
-| updateUserPermissions | `(userId, permissions)` | `Promise<any>` | `userService.updateUserPermissions` |
+| Function                     | Input                                       | Return                                                                      | Backing source                                          |
+| ---------------------------- | ------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------- |
+| getUserPermissions           | `(userId, options?)`                        | `Promise<Array>`                                                            | `permissionService.getUserPermissions`                  |
+| getFolderPermissions         | `(nodeId, fileNodeId?)`                     | `Promise<Array>`                                                            | `permissionService.getFolderPermissions`                |
+| checkPermission              | `(nodeId)`                                  | `Promise<{ hasRead: boolean, hasWrite: boolean, source?: 'file'\|'path' }>` | `permissionService.checkPermission`                     |
+| checkOwnerExists             | `(nodeId)`                                  | `Promise<{ ownerExists: boolean }>`                                         | `permissionRequestService.checkOwnerExists`             |
+| listOutboxPermissionRequests | `(params)`                                  | `Promise<Array>`                                                            | `permissionRequestService.listOutboxPermissionRequests` |
+| createPermissionRequest      | `(payload)`                                 | `Promise<{ id?: string }>`                                                  | `permissionRequestService.createPermissionRequest`      |
+| cancelPermissionRequest      | `(id)`                                      | `Promise<void>`                                                             | `permissionRequestService.cancelPermissionRequest`      |
+| grantPermission              | `({ userId, nodeId, permission, target? })` | `Promise<void>`                                                             | `permissionService.grantPermission`                     |
+| revokePermission             | `({ userId, nodeId, scope? })`              | `Promise<void>`                                                             | `permissionService.revokePermission`                    |
+| approvePermissionRequest     | `(id)`                                      | `Promise<any>`                                                              | `permissionRequestService.approvePermissionRequest`     |
+| updateUserPermissions        | `(userId, permissions)`                     | `Promise<any>`                                                              | `userService.updateUserPermissions`                     |
 
 Notes:
 
@@ -54,4 +54,3 @@ Notes:
 
 - `listOutboxPermissionRequests` may return non-array values (caller treats as empty).
 - `checkOwnerExists` should be interpreted as `ownerExists === true` meaning owner exists; any other shape means owner not confirmed.
-

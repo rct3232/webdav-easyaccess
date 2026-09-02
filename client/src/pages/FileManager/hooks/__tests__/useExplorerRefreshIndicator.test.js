@@ -68,9 +68,13 @@ describe('useExplorerRefreshIndicator', () => {
 
   it('stays inert on desktop even when refresh completion callback is triggered', () => {
     mockPullState();
-    const { result } = renderHook(() => useExplorerRefreshIndicator(createDefaultProps({
-      isMobile: false,
-    })));
+    const { result } = renderHook(() =>
+      useExplorerRefreshIndicator(
+        createDefaultProps({
+          isMobile: false,
+        })
+      )
+    );
 
     act(() => {
       result.current.handleRefreshComplete();

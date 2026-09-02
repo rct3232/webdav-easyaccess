@@ -41,10 +41,7 @@ describe('createBlobStorageService', () => {
       expect(typeof s3Key).toBe('string');
       expect(s3Key.length).toBe(36);
 
-      const objMapRow = await dbQuery(
-        `SELECT * FROM object_map WHERE file_node_id = ?`,
-        [node.id]
-      );
+      const objMapRow = await dbQuery(`SELECT * FROM object_map WHERE file_node_id = ?`, [node.id]);
       expect(objMapRow.rows.length).toBe(1);
       expect(objMapRow.rows[0].s3_key).toBe(s3Key);
       expect(objMapRow.rows[0].status).toBe('pending');
@@ -62,20 +59,20 @@ describe('createBlobStorageService', () => {
         [node.id, 'old-active-s3-key', 'active']
       );
 
-      const oldRow = await dbQuery(
-        `SELECT status FROM object_map WHERE s3_key = ?`,
-        ['old-active-s3-key']
-      );
+      const oldRow = await dbQuery(`SELECT status FROM object_map WHERE s3_key = ?`, [
+        'old-active-s3-key',
+      ]);
       expect(oldRow.rows[0].status).toBe('active');
 
       try {
         await service.prepareUpload(node.id);
-      } catch { /* upsertObjectMap INSERT may fail on UNIQUE constraint; orphaning UPDATE still ran */ }
+      } catch {
+        /* upsertObjectMap INSERT may fail on UNIQUE constraint; orphaning UPDATE still ran */
+      }
 
-      const orphanedRow = await dbQuery(
-        `SELECT status FROM object_map WHERE s3_key = ?`,
-        ['old-active-s3-key']
-      );
+      const orphanedRow = await dbQuery(`SELECT status FROM object_map WHERE s3_key = ?`, [
+        'old-active-s3-key',
+      ]);
       expect(orphanedRow.rows[0].status).toBe('orphaned');
 
       await dbRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);
@@ -124,10 +121,7 @@ describe('createBlobStorageService', () => {
       const s3Key = await service.prepareUpload(node.id);
       await service.completeUpload(s3Key, 2048, 'application/pdf');
 
-      const cacheRow = await dbQuery(
-        `SELECT * FROM filecache WHERE file_node_id = ?`,
-        [node.id]
-      );
+      const cacheRow = await dbQuery(`SELECT * FROM filecache WHERE file_node_id = ?`, [node.id]);
       expect(cacheRow.rows.length).toBe(1);
       expect(cacheRow.rows[0].size).toBe(2048);
       expect(cacheRow.rows[0].mime_type).toBe('application/pdf');
@@ -198,10 +192,7 @@ describe('createBlobStorageService', () => {
       const newBuffer = Buffer.from('new content here');
       const newS3Key = await service.overwriteBlob(node.id, newBuffer);
 
-      const oldStatus = await dbQuery(
-        `SELECT status FROM object_map WHERE s3_key = ?`,
-        [oldS3Key]
-      );
+      const oldStatus = await dbQuery(`SELECT status FROM object_map WHERE s3_key = ?`, [oldS3Key]);
       expect(oldStatus.rows[0].status).toBe('orphaned');
 
       const activeAfter = await fileNodesStore.getActiveObject(node.id);
@@ -293,10 +284,7 @@ describe('createBlobStorageService', () => {
 
       await service.deleteBlob(node.id);
 
-      const orphanedRow = await dbQuery(
-        `SELECT status FROM object_map WHERE s3_key = ?`,
-        [s3Key]
-      );
+      const orphanedRow = await dbQuery(`SELECT status FROM object_map WHERE s3_key = ?`, [s3Key]);
       expect(orphanedRow.rows[0].status).toBe('orphaned');
 
       expect(await fileNodesStore.getActiveObject(node.id)).toBeNull();
@@ -351,8 +339,18 @@ describe('createBlobStorageService', () => {
       jest.resetModules();
       const { createBlobStorageService: cbss } = require('../blobStorageService');
       return cbss({
-        blobStore: mockBlobStore || { uploadBlob: jest.fn(), downloadBlob: jest.fn(), deleteBlob: jest.fn() },
-        fileNodesStore: { upsertCache: jest.fn(), insertObject: jest.fn(), orphanObject: jest.fn(), getActiveObject: jest.fn().mockResolvedValue(null), countActiveObjectsByS3Key: jest.fn().mockResolvedValue(0) },
+        blobStore: mockBlobStore || {
+          uploadBlob: jest.fn(),
+          downloadBlob: jest.fn(),
+          deleteBlob: jest.fn(),
+        },
+        fileNodesStore: {
+          upsertCache: jest.fn(),
+          insertObject: jest.fn(),
+          orphanObject: jest.fn(),
+          getActiveObject: jest.fn().mockResolvedValue(null),
+          countActiveObjectsByS3Key: jest.fn().mockResolvedValue(0),
+        },
         fileStorageMode: 'webdav',
         fileNodeService: mockFileNodeService,
       });
@@ -604,7 +602,7 @@ describe('createBlobStorageService', () => {
       const nodeB = await fileNodesStore.createNode(null, 'cow-exclusive-b', 'file');
       const sharedKey = crypto.randomUUID();
 
-      blobStore.copyBlob = jest.fn((src, dst) => {
+      blobStore.copyBlob = jest.fn(() => {
         return Promise.resolve();
       });
 
@@ -666,9 +664,7 @@ describe('createBlobStorageService', () => {
         fileStorageMode: 'webdav',
         fileNodeService: { getNode: jest.fn(), getNodePath: jest.fn() },
       });
-      await expect(webdavSvc.duplicateBlob('source-key')).rejects.toThrow(
-        /not applicable/
-      );
+      await expect(webdavSvc.duplicateBlob('source-key')).rejects.toThrow(/not applicable/);
     });
   });
 });

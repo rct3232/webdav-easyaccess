@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | (Middleware's role) |
-| Pipeline position | (e.g. after Auth, before requireUser) |
+| Item                 | Description                            |
+| -------------------- | -------------------------------------- |
+| Role                 | (Middleware's role)                    |
+| Pipeline position    | (e.g. after Auth, before requireUser)  |
 | Preceding middleware | (What must run before this middleware) |
 
 ---
@@ -29,12 +29,12 @@
 
 ### 2.4 Error Cases
 
-| Condition | Behavior |
-|-----------|----------|
-| Unauthenticated | 401, next(error), etc. |
-| Forbidden | 403 |
-| Resource not found | 404 |
-| Other | next(error) |
+| Condition          | Behavior               |
+| ------------------ | ---------------------- |
+| Unauthenticated    | 401, next(error), etc. |
+| Forbidden          | 403                    |
+| Resource not found | 404                    |
+| Other              | next(error)            |
 
 ### 2.5 Mock Targets
 

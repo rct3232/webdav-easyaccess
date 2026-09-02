@@ -26,9 +26,7 @@ describe('useDropToUpload', () => {
 
   it('returns folder-specific handlers in folder mode', () => {
     const onExplorerDrop = jest.fn();
-    const { result } = renderHook(() =>
-      useDropToUpload({ nodeId: 10, onExplorerDrop })
-    );
+    const { result } = renderHook(() => useDropToUpload({ nodeId: 10, onExplorerDrop }));
 
     expect(typeof result.current.isDropTarget).toBe('boolean');
     expect(typeof result.current.handleFolderDragEnter).toBe('function');
@@ -78,12 +76,12 @@ describe('useDropToUpload', () => {
   });
 
   it('handleDrop updates uploadProgress when progressUpdater is called', async () => {
-    const mockUploadCallback = jest.fn().mockImplementation((files, targetNodeNodeId, progressUpdater) => {
-      progressUpdater([
-        { id: '1', name: 'a.txt', status: 'processing', progress: 50 },
-      ]);
-      return Promise.resolve();
-    });
+    const mockUploadCallback = jest
+      .fn()
+      .mockImplementation((files, targetNodeNodeId, progressUpdater) => {
+        progressUpdater([{ id: '1', name: 'a.txt', status: 'processing', progress: 50 }]);
+        return Promise.resolve();
+      });
 
     const file = new File(['x'], 'a.txt', { type: 'text/plain' });
     const dataTransfer = {
@@ -142,9 +140,7 @@ describe('useDropToUpload', () => {
       getData: () => '',
     };
 
-    const { result } = renderHook(() =>
-      useDropToUpload({ onUploadComplete })
-    );
+    const { result } = renderHook(() => useDropToUpload({ onUploadComplete }));
 
     const e = {
       preventDefault: jest.fn(),
@@ -175,13 +171,13 @@ describe('useDropToUpload', () => {
 
     const file = new File(['x'], 'a.txt', { type: 'text/plain' });
     const dataTransfer = {
-      items: [{ kind: 'file', getAsFile: () => file, webkitGetAsEntry: undefined, getAsEntry: undefined }],
+      items: [
+        { kind: 'file', getAsFile: () => file, webkitGetAsEntry: undefined, getAsEntry: undefined },
+      ],
       getData: () => '',
     };
 
-    const { result } = renderHook(() =>
-      useDropToUpload({ onUploadError })
-    );
+    const { result } = renderHook(() => useDropToUpload({ onUploadError }));
 
     const e = {
       preventDefault: jest.fn(),
@@ -240,13 +236,13 @@ describe('useDropToUpload', () => {
     const file = new File(['x'], 'doc.txt', { type: 'text/plain' });
     const dataTransfer = {
       types: ['Files'],
-      items: [{ kind: 'file', getAsFile: () => file, webkitGetAsEntry: undefined, getAsEntry: undefined }],
+      items: [
+        { kind: 'file', getAsFile: () => file, webkitGetAsEntry: undefined, getAsEntry: undefined },
+      ],
       getData: () => '',
     };
 
-    const { result } = renderHook(() =>
-      useDropToUpload({ nodeId: 10, onExplorerDrop })
-    );
+    const { result } = renderHook(() => useDropToUpload({ nodeId: 10, onExplorerDrop }));
 
     const e = {
       preventDefault: jest.fn(),

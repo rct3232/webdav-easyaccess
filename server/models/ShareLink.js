@@ -12,7 +12,7 @@ class ShareLink {
   static async create(fileNodeId, createdBy, expiresInDays = 14) {
     // Access token 생성 (32바이트 랜덤)
     const token = crypto.randomBytes(32).toString('base64url');
-    
+
     return await shareLinkStore.createShareLink({
       token,
       fileNodeId,

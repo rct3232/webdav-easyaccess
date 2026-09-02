@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Pure view for the FileManager explorer UI. Renders the content area (list/grid/detail), toolbars/controls, folder tree region, dialogs/overlays slots, and binds callbacks passed from controller hooks and the page shell. |
-| Used in | `FileManager` page shell (`docs/spec/client/pages/FileManager.md`) |
-| Must be | A pure view: renders from props only. Must not import services, gateways, router hooks, or browser globals. |
+| Item    | Description                                                                                                                                                                                                                 |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role    | Pure view for the FileManager explorer UI. Renders the content area (list/grid/detail), toolbars/controls, folder tree region, dialogs/overlays slots, and binds callbacks passed from controller hooks and the page shell. |
+| Used in | `FileManager` page shell (`docs/spec/client/pages/FileManager.md`)                                                                                                                                                          |
+| Must be | A pure view: renders from props only. Must not import services, gateways, router hooks, or browser globals.                                                                                                                 |
 
 ---
 
@@ -21,17 +21,17 @@
 
 This view remains pure, but the page shell should pass grouped sub-view models instead of flattening dozens of individual props. The goal is to keep `FileManager` readable as a composition layer while the view still receives fully prepared data/callbacks.
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| shareContext | object | Y | Share-link mode context (`shareToken`, `isShareLinkMode`, `shareRootPath`, `shareRootName`). |
-| shellContext | object | Y | Shell-only view state such as `user`, `navigate`, `isMobile`, refs, and responsive layout inputs. |
-| overlayState | object | Y | Product overlay and drawer/login/share-link modal state prepared by the shell/controllers. |
-| explorerSession | object | Y | Current explorer session view model. This should be split into sub-objects such as `controlsState` (search/sort/view controls) and `listingState` (displayed files, loading, thumbnails, infinite-scroll state). |
-| selectionState | object | Y | Selection-derived view model. This should be split into sub-objects such as `selectionModel` (selection mode, selected set, item toggle callback) and `bulkState` (select-all/reset callbacks and bulk-action capability flags). |
-| explorerActionState | object | Y | Explorer action-related view state. This should be split into sub-objects such as `capabilityState` (write permission), `treeState` (tree refresh trigger), and `transferState` (drag source path and move/copy in-progress flags). |
-| dialogState | object | Y | Dialog-related view state prepared by controllers. This should be split into sub-objects such as `actionContext`, `pickerState`, `modalDialogs`, and `fileTargets` rather than one flat dialog bag. |
-| messaging | object | Y | Snackbar and drop-message view model. |
-| explorerHandlers | object | Y | Prepared callbacks grouped by responsibility. At minimum, this should be split into sub-objects such as `interaction`, `commands`, `progress`, and `refreshIndicator` rather than one flat callback bag. |
+| Name                | Type   | Required | Description                                                                                                                                                                                                                         |
+| ------------------- | ------ | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| shareContext        | object | Y        | Share-link mode context (`shareToken`, `isShareLinkMode`, `shareRootPath`, `shareRootName`).                                                                                                                                        |
+| shellContext        | object | Y        | Shell-only view state such as `user`, `navigate`, `isMobile`, refs, and responsive layout inputs.                                                                                                                                   |
+| overlayState        | object | Y        | Product overlay and drawer/login/share-link modal state prepared by the shell/controllers.                                                                                                                                          |
+| explorerSession     | object | Y        | Current explorer session view model. This should be split into sub-objects such as `controlsState` (search/sort/view controls) and `listingState` (displayed files, loading, thumbnails, infinite-scroll state).                    |
+| selectionState      | object | Y        | Selection-derived view model. This should be split into sub-objects such as `selectionModel` (selection mode, selected set, item toggle callback) and `bulkState` (select-all/reset callbacks and bulk-action capability flags).    |
+| explorerActionState | object | Y        | Explorer action-related view state. This should be split into sub-objects such as `capabilityState` (write permission), `treeState` (tree refresh trigger), and `transferState` (drag source path and move/copy in-progress flags). |
+| dialogState         | object | Y        | Dialog-related view state prepared by controllers. This should be split into sub-objects such as `actionContext`, `pickerState`, `modalDialogs`, and `fileTargets` rather than one flat dialog bag.                                 |
+| messaging           | object | Y        | Snackbar and drop-message view model.                                                                                                                                                                                               |
+| explorerHandlers    | object | Y        | Prepared callbacks grouped by responsibility. At minimum, this should be split into sub-objects such as `interaction`, `commands`, `progress`, and `refreshIndicator` rather than one flat callback bag.                            |
 
 Notes:
 
@@ -72,7 +72,17 @@ Call signatures listed in the props table are the contract; the view must call t
 - **Forbidden imports:** `client/src/services/*`, gateways (including `explorerGateway`), router hooks, browser APIs, storage utilities.
 - **Reference implementation:** extracted from `client/src/pages/FileManager/FileManager.js` during Phase 3.1.
 
-### 2.5 Verification Scenarios
+### 2.5 Admin backend-health banner (D3)
+
+- The controller (`FileManager.js`) fetches `GET /api/health` (backend status strings) and
+  `GET /api/admin/config` (to derive the **active** backends: `WEA_STORAGE_BACKEND` for metadata
+  - `WEA_FILE_STORAGE` for file storage), passing both down via the shell context.
+- The view renders an admin-only `Alert` (between `FileManagerControls` and the listing,
+  `data-testid="backend-health-banner"`) when `isAdmin`, any **active** backend is `fail`, and
+  `activeBackends` is populated. Failures from inactive backends never trigger it.
+- The view never performs the health fetch itself (presentational boundary).
+
+### 2.6 Verification Scenarios
 
 These scenarios should be covered by a dedicated component test in `client/src/components/file-manager/__tests__/FileManagerView.test.js`. That test may mock lower-level child components and dialogs to verify boundary wiring while layout/details inside those children remain covered by their own tests.
 
@@ -82,9 +92,9 @@ These scenarios should be covered by a dedicated component test in `client/src/c
 - [ ] Folder tree and overlay slots render in the same layout positions as today.
 - [ ] Progress drawer renders from `progress` props and calls provided retry/cancel callbacks without owning the operation logic.
 - [ ] In share-link mode, the folder tree routes non-share section clicks through `onLeaveShareClick` (`interaction.handleLeaveSharePathClick`) so the hosting shell can open the leave-share confirmation; the leave-share `ConfirmDialog` renders from `overlayState` (leave-share state) and confirms via `handleLeaveShareConfirm`.
+- [ ] Admin-only backend-health banner renders when any backend is `fail`; absent for non-admins.
 
 ### 2.6 Edge Cases
 
 - `displayedFiles` empty: renders empty state message consistent with current UI.
 - Loading state: renders the current loading UX (spinner/skeleton) driven purely by `isLoading`.
-

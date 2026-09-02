@@ -1,11 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Fab,
-  SpeedDial,
-  SpeedDialAction,
-  SpeedDialIcon,
-} from '@mui/material';
+import { Fab, SpeedDial, SpeedDialAction, SpeedDialIcon } from '@mui/material';
 import {
   Upload as UploadIcon,
   CreateNewFolder as CreateNewFolderIcon,
@@ -63,7 +58,7 @@ const FAB = ({
 
   const handleFabTriggerClick = () => {
     if (!isMobile) return;
-    setOpen(prevOpen => !prevOpen);
+    setOpen((prevOpen) => !prevOpen);
   };
 
   const offset = isMobile ? 16 : 48; // PC: 3x more inward (16 * 3)
@@ -105,7 +100,7 @@ const FAB = ({
       onClick: onUpload,
       show: hasWritePermission,
     },
-  ].filter(action => action.show);
+  ].filter((action) => action.show);
 
   const handleActionClick = (onClick) => {
     onClick();

@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                          |
+| ---- | -------------------------------------------------------------------------------------------------------------------- |
 | Role | Convert language code (ko, en) to flag emoji (🇰🇷, 🇺🇸) using Unicode Regional Indicator symbols. No external package. |
 
 ---
@@ -17,8 +17,8 @@
 
 ### 2.2 Function Signatures
 
-| Function | (input) => return |
-|----------|-------------------|
+| Function     | (input) => return    |
+| ------------ | -------------------- |
 | getFlagEmoji | (langCode) => string |
 
 ### 2.3 Mapping

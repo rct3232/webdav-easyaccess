@@ -73,9 +73,7 @@ async function pgRun(sql, params = []) {
   }
   const result = await storage.getPgPool().query(runSql, params);
   const lastID =
-    result.rows && result.rows[0]
-      ? result.rows[0][Object.keys(result.rows[0])[0]]
-      : undefined;
+    result.rows && result.rows[0] ? result.rows[0][Object.keys(result.rows[0])[0]] : undefined;
   return { changes: result.rowCount, lastID };
 }
 

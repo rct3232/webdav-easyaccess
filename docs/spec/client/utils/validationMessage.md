@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                                   |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Resolve validation result (from shared/validation) to a translated message. Supports key string or { key, ...params } object. Sets fieldName default from t('validation.field') when missing. |
 
 ---
@@ -17,8 +17,8 @@
 
 ### 2.2 Function Signatures
 
-| Function | (input) => return |
-|----------|-------------------|
+| Function             | (input) => return             |
+| -------------------- | ----------------------------- |
 | getValidationMessage | (result, t) => string \| null |
 
 ### 2.3 Input Types

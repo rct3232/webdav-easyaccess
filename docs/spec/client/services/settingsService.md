@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                         |
+| ---- | --------------------------------------------------------------------------------------------------- |
 | Role | Public settings API (no auth). Used by Login/Register to check registration_enabled, email_enabled. |
 
 ---
@@ -17,9 +17,9 @@
 
 ### 2.2 Main Functions
 
-| Function | Input | Return | API called |
-|----------|-------|--------|------------|
-| getPublicSettings | () | Promise\<Object\> | GET /api/settings/public |
+| Function          | Input | Return            | API called               |
+| ----------------- | ----- | ----------------- | ------------------------ |
+| getPublicSettings | ()    | Promise\<Object\> | GET /api/settings/public |
 
 - Response: `{ registration_enabled, email_enabled, ... }`
 

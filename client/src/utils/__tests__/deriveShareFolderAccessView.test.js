@@ -64,9 +64,7 @@ describe('deriveShareFolderAccessView', () => {
   it('derives addable users and review requester state for select-user menus', () => {
     const result = deriveShareFolderAccessView({
       nodeId: 303,
-      folderPermissions: new Map([
-        [303, new Map([['u1', PERMISSIONS.READ]])],
-      ]),
+      folderPermissions: new Map([[303, new Map([['u1', PERMISSIONS.READ]])]]),
       isAdminMode: false,
       user: { id: 'me' },
       userInfoMap: new Map(),
@@ -75,7 +73,7 @@ describe('deriveShareFolderAccessView', () => {
         { id: 'u2', username: 'user2', is_admin: false },
         { id: 'admin', username: 'admin', is_admin: true },
       ],
-      getUserName: (id) => ({ u1: 'user1', u2: 'user2', requester: 'requester' }[id] || ''),
+      getUserName: (id) => ({ u1: 'user1', u2: 'user2', requester: 'requester' })[id] || '',
       isReviewMode: true,
       permissionRequest: {
         requester_id: 'requester',
@@ -83,9 +81,7 @@ describe('deriveShareFolderAccessView', () => {
       },
     });
 
-    expect(result.availableUsers).toEqual([
-      { id: 'u2', username: 'user2', is_admin: false },
-    ]);
+    expect(result.availableUsers).toEqual([{ id: 'u2', username: 'user2', is_admin: false }]);
     expect(result.reviewRequesterOption).toEqual({
       userId: 'requester',
       userName: 'requester',

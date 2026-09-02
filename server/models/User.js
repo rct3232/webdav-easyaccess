@@ -39,7 +39,7 @@ class User {
 
   static async findAll() {
     const users = await userStore.findAll();
-    return users.map(u => {
+    return users.map((u) => {
       // eslint-disable-next-line no-unused-vars
       const { password, ...rest } = u;
       return rest;
@@ -48,7 +48,7 @@ class User {
 
   static async findByStatus(status) {
     const users = await userStore.findByStatus(status);
-    return users.map(u => {
+    return users.map((u) => {
       // eslint-disable-next-line no-unused-vars
       const { password, ...rest } = u;
       return rest;
@@ -78,4 +78,3 @@ class User {
 }
 
 module.exports = User;
-

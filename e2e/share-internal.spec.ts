@@ -1,9 +1,18 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { buildName, fileItem } from './helpers/files';
+import {
+  buildName,
+  createFolderAt,
+  downloadFile,
+  fileItem,
+  readTestFileFixture,
+  uploadFileAt,
+} from './helpers/files';
 import { ensureApprovedUser, loginAsUser, getTestSuffix } from './helpers/auth';
 import { getSessionToken, nodeUrl, resolveNodeId } from './helpers/resolvePath';
-import { TEST_USERS } from './fixtures/test-data';
+import { TEST_FILES, TEST_USERS } from './fixtures/test-data';
+
+const textFixtureBuffer = readTestFileFixture(TEST_FILES.smallText);
 
 type InternalSharingFixtures = {
   ownerUsername: string;
@@ -95,7 +104,9 @@ async function gotoFolderByPath(page: Page, request: any, serverPath: string) {
   await page.goto(nodeUrl(nodeId));
 }
 
-test.describe.serial('internal sharing request -> __shared__', () => {
+test.describe.configure({ mode: 'serial' });
+
+test.describe('internal sharing request -> __shared__', () => {
   let fixtures: InternalSharingFixtures;
 
   test.beforeAll(async ({ request }, testInfo) => {
@@ -159,7 +170,7 @@ test.describe.serial('internal sharing request -> __shared__', () => {
     };
   });
 
-  test("E2E-OVERLAY-003: Request access to another user's content from protected UI", async ({
+  test("E2E-OVERLAY-003: Requests access to another user's content from protected UI", async ({
     page,
     request,
   }) => {
@@ -330,13 +341,11 @@ test.describe.serial('internal sharing request -> __shared__', () => {
     await page.goto('/files');
     await expect(page.getByTestId('file-actions-fab')).toBeVisible();
 
-    // On mobile, the folder tree is hidden by default and needs to be toggled open
+    // On mobile, the folder tree is hidden by default and needs to be toggled open.
+    // The click auto-waits for the toggle to be visible — no count() snapshot gate
+    // that can silently read 0 before the breadcrumb mounts.
     if (testInfo.project.name.endsWith('-mobile')) {
-      const toggleBtn = page.locator('button[title="Open folder tree"]');
-      const toggleCount = await toggleBtn.count();
-      if (toggleCount > 0) {
-        await toggleBtn.click();
-      }
+      await page.locator('button[title="Open folder tree"]').click();
     }
 
     // Wait for folder tree to be ready with shared folders
@@ -369,13 +378,11 @@ test.describe.serial('internal sharing request -> __shared__', () => {
     await page.goto('/files');
     await expect(page.getByTestId('file-actions-fab')).toBeVisible();
 
-    // On mobile, the folder tree is hidden by default and needs to be toggled open
+    // On mobile, the folder tree is hidden by default and needs to be toggled open.
+    // The click auto-waits for the toggle to be visible — no count() snapshot gate
+    // that can silently read 0 before the breadcrumb mounts.
     if (testInfo.project.name.endsWith('-mobile')) {
-      const toggleBtn = page.locator('button[title="Open folder tree"]');
-      const toggleCount = await toggleBtn.count();
-      if (toggleCount > 0) {
-        await toggleBtn.click();
-      }
+      await page.locator('button[title="Open folder tree"]').click();
     }
 
     // Wait for folder tree to be ready with shared folders
@@ -450,5 +457,79 @@ test.describe.serial('internal sharing request -> __shared__', () => {
     // (The listing container exists but has no items)
     const listingItems = page.locator('[data-file-path]');
     await expect(listingItems).toHaveCount(0);
+  });
+
+  test('E2E-OVERLAY-011: Grant on a folder reaches content 2 levels down and the grandchild is downloadable', async ({
+    page,
+    request,
+  }, testInfo) => {
+    // Ported from E2E-S3PG-006. Self-contained: creates its own tree under the
+    // owner home (admin token is ACL-exempt) and grants READ directly, so it
+    // does not depend on E2E-OVERLAY-004's approval side effect. Closure-table
+    // inheritance depth is only observable by descending 2 levels below the
+    // grant point.
+    const parentName = buildName(testInfo, 'overlay-011-parent');
+    const childName = buildName(testInfo, 'overlay-011-child');
+    const fileName = buildName(testInfo, 'overlay-011-file', '.txt');
+    const parentPath = `${fixtures.ownerHomePath}/${parentName}`;
+    const childPath = `${parentPath}/${childName}`;
+    const filePath = `${childPath}/${fileName}`;
+
+    const parentNodeId = await createFolderAt(
+      request,
+      fixtures.adminToken,
+      fixtures.ownerHomeNodeId,
+      parentName
+    );
+    const childNodeId = await createFolderAt(request, fixtures.adminToken, parentNodeId, childName);
+    const fileNodeId = await uploadFileAt(
+      request,
+      fixtures.adminToken,
+      childNodeId,
+      fileName,
+      'text/plain',
+      textFixtureBuffer
+    );
+
+    await grantReadViaApi(request, fixtures.adminToken, fixtures.requesterUserId, parentPath);
+
+    // Decisive observable: the requester can download the grandchild byte-equal.
+    const requesterLogin = await loginByUsername(request, {
+      username: fixtures.requesterUsername,
+      password: TEST_USERS.user1.password,
+    });
+    const requesterToken = requesterLogin.token;
+    const downloaded = await downloadFile(request, requesterToken, fileNodeId);
+    expect(downloaded.equals(textFixtureBuffer)).toBeTruthy();
+
+    // UI: the granted parent is exposed in __shared__ and descendants are
+    // browsable through it down to the grandchild.
+    await loginAsUser(page, 'user1', fixtures.requesterSuffix);
+    await page.goto('/files/__shared__');
+    await expect(page).toHaveURL(/\/files\/__shared__/);
+
+    const sharedEntry = page.locator(`[data-file-node-id="${parentNodeId}"]`);
+    await expect(sharedEntry).toBeVisible({ timeout: 20_000 });
+
+    const openEntry = async () => {
+      if (testInfo.project.name.endsWith('-mobile')) {
+        await sharedEntry.click();
+      } else {
+        await sharedEntry.dblclick();
+      }
+    };
+
+    await openEntry();
+    await expect(page).toHaveURL(new RegExp(`/files/node/${parentNodeId}$`));
+
+    const childItem = fileItem(page, childPath);
+    await expect(childItem).toBeVisible({ timeout: 20_000 });
+    if (testInfo.project.name.endsWith('-mobile')) {
+      await childItem.click();
+    } else {
+      await childItem.dblclick();
+    }
+    await expect(page).toHaveURL(new RegExp(`/files/node/${childNodeId}$`));
+    await expect(fileItem(page, filePath)).toBeVisible({ timeout: 20_000 });
   });
 });

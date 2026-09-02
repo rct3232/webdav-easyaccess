@@ -25,7 +25,10 @@ beforeEach(() => {
 
 describe('useInfiniteScroll', () => {
   it('initial displayedFiles length is min(initialCount, files.length)', () => {
-    const files = Array.from({ length: 100 }, (_, i) => ({ path: `/f${i}.txt`, basename: `f${i}.txt` }));
+    const files = Array.from({ length: 100 }, (_, i) => ({
+      path: `/f${i}.txt`,
+      basename: `f${i}.txt`,
+    }));
     const { result } = renderHook(() => useInfiniteScroll(files, { initialCount: 50 }));
 
     expect(result.current.displayedFiles).toHaveLength(50);
@@ -54,7 +57,10 @@ describe('useInfiniteScroll', () => {
   });
 
   it('intersecting triggers loadMore and increases displayedCount', () => {
-    const files = Array.from({ length: 100 }, (_, i) => ({ path: `/f${i}.txt`, basename: `f${i}.txt` }));
+    const files = Array.from({ length: 100 }, (_, i) => ({
+      path: `/f${i}.txt`,
+      basename: `f${i}.txt`,
+    }));
     const { result } = renderHook(() =>
       useInfiniteScroll(files, { initialCount: 50, incrementCount: 25 })
     );
@@ -89,7 +95,9 @@ describe('useInfiniteScroll', () => {
 
   it('reset restores displayCount to initialCount', () => {
     const files = Array.from({ length: 100 }, (_, i) => ({ path: `/f${i}.txt` }));
-    const { result } = renderHook(() => useInfiniteScroll(files, { initialCount: 50, incrementCount: 25 }));
+    const { result } = renderHook(() =>
+      useInfiniteScroll(files, { initialCount: 50, incrementCount: 25 })
+    );
 
     act(() => {
       const cb = mockCallbacks[mockCallbacks.length - 1];

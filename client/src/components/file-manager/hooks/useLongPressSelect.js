@@ -20,11 +20,14 @@ export function useLongPressSelect({ isMobile, selectionMode, onLongPressSelect 
   const timersRef = useRef(new Map()); // file.path -> timer id
   const movedRef = useRef(new Set()); // file.paths where touch moved
 
-  useEffect(() => () => {
-    timersRef.current.forEach((id) => clearTimeout(id));
-    timersRef.current.clear();
-    movedRef.current.clear();
-  }, []);
+  useEffect(
+    () => () => {
+      timersRef.current.forEach((id) => clearTimeout(id));
+      timersRef.current.clear();
+      movedRef.current.clear();
+    },
+    []
+  );
 
   const getLongPressHandlers = useCallback(
     (file) => {
@@ -37,7 +40,11 @@ export function useLongPressSelect({ isMobile, selectionMode, onLongPressSelect 
         const id = setTimeout(() => {
           if (!movedRef.current.has(filePath)) {
             onLongPressSelect(file);
-            try { navigator.vibrate?.(50); } catch {}
+            try {
+              navigator.vibrate?.(50);
+            } catch {
+              /* haptics are optional */
+            }
           }
         }, LONG_PRESS_MS);
         timersRef.current.set(filePath, id);
@@ -45,18 +52,24 @@ export function useLongPressSelect({ isMobile, selectionMode, onLongPressSelect 
 
       const onTouchEnd = () => {
         const id = timersRef.current.get(filePath);
-        if (id != null) { clearTimeout(id); timersRef.current.delete(filePath); }
+        if (id != null) {
+          clearTimeout(id);
+          timersRef.current.delete(filePath);
+        }
       };
 
       const onTouchMove = () => {
         movedRef.current.add(filePath);
         const id = timersRef.current.get(filePath);
-        if (id != null) { clearTimeout(id); timersRef.current.delete(filePath); }
+        if (id != null) {
+          clearTimeout(id);
+          timersRef.current.delete(filePath);
+        }
       };
 
       return { onTouchStart, onTouchEnd, onTouchMove };
     },
-    [isLongPressEnabled, onLongPressSelect],
+    [isLongPressEnabled, onLongPressSelect]
   );
 
   return { isLongPressEnabled, onLongPressSelect, getLongPressHandlers };

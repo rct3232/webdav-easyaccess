@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
-import { addShareLinkToMyPermissions, checkMyPermissionForShare } from '../../../services/shareLinkService';
+import {
+  addShareLinkToMyPermissions,
+  checkMyPermissionForShare,
+} from '../../../services/shareLinkService';
 import { getServerErrorDisplay } from '../../../utils/errorUtils';
 import { toFilesPath } from '../../../utils/pathUtils';
 
@@ -82,7 +85,11 @@ export function useShareLinkOverlay({
         navigate(shareDirectoryRoute);
       }
     } catch (err) {
-      showError(getServerErrorDisplay(err?.response?.data, t) || err?.message || t('dialogs.addToSharedError'));
+      showError(
+        getServerErrorDisplay(err?.response?.data, t) ||
+          err?.message ||
+          t('dialogs.addToSharedError')
+      );
     } finally {
       setAddToSharedConfirmLoading(false);
     }

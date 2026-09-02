@@ -10,7 +10,7 @@ async function uploadFileToUserHome(
   request: any,
   bearerToken: string,
   homePath: string,
-  fileName: string,
+  fileName: string
 ) {
   const parentNodeId = await resolveNodeId(request, bearerToken, homePath);
   const fileBuffer = readTestFileFixture(TEST_FILES.smallText);
@@ -25,11 +25,7 @@ async function uploadFileToUserHome(
   if (uploadRes.status() !== 409) expect(uploadRes.ok()).toBeTruthy();
 }
 
-async function requestFileReadPermission(
-  request: any,
-  bearerToken: string,
-  filePath: string,
-) {
+async function requestFileReadPermission(request: any, bearerToken: string, filePath: string) {
   const fileNodeId = await resolveNodeId(request, bearerToken, filePath);
   const reqRes = await request.post('/api/permission-requests', {
     headers: { Authorization: `Bearer ${bearerToken}` },
@@ -49,7 +45,10 @@ test('E2E-MYPAGE-001: Authenticated user can open MyPage', async ({ page, reques
   await expect(page.getByRole('button', { name: /log out/i })).toBeVisible();
 });
 
-test('E2E-MYPAGE-002: Close button returns user to file area', async ({ page, request }, testInfo) => {
+test('E2E-MYPAGE-002: Close button returns user to file area', async ({
+  page,
+  request,
+}, testInfo) => {
   const suffix = getTestSuffix(testInfo);
   await ensureApprovedUser(request, 'user1', suffix);
   await loginAsUser(page, 'user1', suffix);
@@ -101,7 +100,10 @@ test('E2E-MYPAGE-004: Email update succeeds', async ({ page, request }, testInfo
   await expect(page.getByText(newEmail, { exact: true })).toBeVisible({ timeout: 20_000 });
 });
 
-test('E2E-MYPAGE-005: Password change invalidates current session', async ({ page, request }, testInfo) => {
+test('E2E-MYPAGE-005: Password change invalidates current session', async ({
+  page,
+  request,
+}, testInfo) => {
   const suffix = getTestSuffix(testInfo);
   await ensureApprovedUser(request, 'user1', suffix);
   await loginAsUser(page, 'user1', suffix);
@@ -309,7 +311,11 @@ test('E2E-MYPAGE-008: Sharing outbox cancel flow works', async ({ page, request 
   await expect(page.getByText(/Request cancelled/i)).toBeVisible();
 });
 
-test('E2E-MYPAGE-009: Share links list supports copy, extend, delete', async ({ page, request, context }, testInfo) => {
+test('E2E-MYPAGE-009: Share links list supports copy, extend, delete', async ({
+  page,
+  request,
+  context,
+}, testInfo) => {
   const suffix = getTestSuffix(testInfo);
   const suffix1 = `${suffix}_1`;
 
@@ -363,7 +369,9 @@ test('E2E-MYPAGE-009: Share links list supports copy, extend, delete', async ({ 
 
   await expect(page.getByText(shareLink.token)).toBeVisible({ timeout: 20_000 });
 
-  const linkCard = page.getByText(shareLink.token).locator('xpath=ancestor::div[contains(@class, "Paper")]');
+  const linkCard = page
+    .getByText(shareLink.token)
+    .locator('xpath=ancestor::div[contains(@class, "Paper")]');
   await expect(linkCard).toBeVisible();
 
   await linkCard.locator('.MuiBox-root > .MuiIconButton-root').first().click();
@@ -377,10 +385,11 @@ test('E2E-MYPAGE-009: Share links list supports copy, extend, delete', async ({ 
   await expect(page.getByText(/Share link has been deleted/i)).toBeVisible();
 });
 
-test('E2E-MYPAGE-011: Mobile menu button opens and closes the category drawer', async ({ page, request }, testInfo) => {
-  if (!testInfo.project.name.endsWith('-mobile')) {
-    test.skip();
-  }
+test('E2E-MYPAGE-011: Mobile menu button opens and closes the category drawer', async ({
+  page,
+  request,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.endsWith('-mobile'), 'E2E-MYPAGE-011 is mobile-only');
 
   const suffix = getTestSuffix(testInfo);
   await ensureApprovedUser(request, 'user1', suffix);
@@ -403,10 +412,11 @@ test('E2E-MYPAGE-011: Mobile menu button opens and closes the category drawer', 
   await expect(drawer).not.toBeVisible();
 });
 
-test('E2E-MYPAGE-012: Selecting a category from the mobile drawer closes it and updates content', async ({ page, request }, testInfo) => {
-  if (!testInfo.project.name.endsWith('-mobile')) {
-    test.skip();
-  }
+test('E2E-MYPAGE-012: Selecting a category from the mobile drawer closes it and updates content', async ({
+  page,
+  request,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.endsWith('-mobile'), 'E2E-MYPAGE-012 is mobile-only');
 
   const suffix = getTestSuffix(testInfo);
   await ensureApprovedUser(request, 'user1', suffix);

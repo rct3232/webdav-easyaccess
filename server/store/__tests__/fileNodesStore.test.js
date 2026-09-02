@@ -29,7 +29,9 @@ describe('createFileNodesStore', () => {
       for (const row of ids.rows) {
         try {
           await dbRun('DELETE FROM file_nodes WHERE id = ?', [row.id]);
-        } catch { /* ignore cascade errors */ }
+        } catch {
+          /* ignore cascade errors */
+        }
       }
     });
 
@@ -55,9 +57,7 @@ describe('createFileNodesStore', () => {
     // V3: createNode with duplicate name under same parent
     it('throws on duplicate name under same parent', async () => {
       await store.createNode(null, 'test-duplicate-name', 'file');
-      await expect(
-        store.createNode(null, 'test-duplicate-name', 'directory')
-      ).rejects.toThrow();
+      await expect(store.createNode(null, 'test-duplicate-name', 'directory')).rejects.toThrow();
     });
 
     // V4: getChildren on empty directory
@@ -79,13 +79,16 @@ describe('createFileNodesStore', () => {
       expect(ids).toContain(rootB.id);
       expect(ids).not.toContain(nested.id);
 
-      await dbRun('DELETE FROM file_nodes WHERE name IN (?, ?, ?)', ['fn-root-a', 'fn-root-b', 'fn-root-nested']);
+      await dbRun('DELETE FROM file_nodes WHERE name IN (?, ?, ?)', [
+        'fn-root-a',
+        'fn-root-b',
+        'fn-root-nested',
+      ]);
     });
 
     // renameNode
     it('renames a node and refreshes updated_at', async () => {
       const created = await store.createNode(null, 'fn-rename-me', 'file');
-      const beforeUpdate = new Date();
       await store.renameNode(created.id, 'fn-renamed');
 
       const node = await store.getNode(created.id);
@@ -175,6 +178,42 @@ describe('createFileNodesStore', () => {
 
       const node = await store.getNode(created.id);
       expect(node.syncStatus).toBe('active');
+    });
+
+    // getNodesBySyncStatusNot
+    it('returns only nodes whose sync_status differs from the given status', async () => {
+      const active = await store.createNode(null, 'fn-not-active', 'file');
+      await store.updateSyncStatus(active.id, 'active');
+      const pending = await store.createNode(null, 'fn-not-pending', 'file');
+      const orphan = await store.createNode(null, 'fn-not-orphan', 'file');
+      await store.updateSyncStatus(orphan.id, 'orphaned_node');
+
+      const excludingOrphaned = await store.getNodesBySyncStatusNot('orphaned_node');
+      const excludingOrphanedIds = excludingOrphaned.map((n) => n.id);
+      expect(excludingOrphanedIds).toContain(active.id);
+      expect(excludingOrphanedIds).toContain(pending.id);
+      expect(excludingOrphanedIds).not.toContain(orphan.id);
+
+      const excludingActive = await store.getNodesBySyncStatusNot('active');
+      const excludingActiveIds = excludingActive.map((n) => n.id);
+      expect(excludingActiveIds).toContain(pending.id);
+      expect(excludingActiveIds).toContain(orphan.id);
+      expect(excludingActiveIds).not.toContain(active.id);
+    });
+
+    it('getNodesBySyncStatusNot maps rows identically to getNodesBySyncStatus', async () => {
+      const node = await store.createNode(null, 'fn-not-mapping', 'file');
+      await store.updateSyncStatus(node.id, 'active');
+
+      const [fromNot] = await store.getNodesBySyncStatusNot('pending_upload');
+      const [fromEq] = await store.getNodesBySyncStatus('active');
+
+      expect(fromNot.id).toBe(node.id);
+      expect(fromNot.type).toBe('file');
+      expect(fromNot.name).toBe('fn-not-mapping');
+      expect(fromNot.syncStatus).toBe('active');
+      expect(fromNot.parentId).toBeNull();
+      expect(fromNot).toEqual(fromEq);
     });
 
     // resolvePathSegment
@@ -272,9 +311,7 @@ describe('createFileNodesStore', () => {
     it('returns only the node itself when it has only a self row', async () => {
       const root = await store.createNode(null, `${testPrefix}desc-leaf`, 'file');
 
-      await store.insertAncestorRows([
-        { ancestorId: root.id, descendantId: root.id, depth: 0 },
-      ]);
+      await store.insertAncestorRows([{ ancestorId: root.id, descendantId: root.id, depth: 0 }]);
 
       const descendants = await store.getDescendants(root.id);
       expect(descendants.map((d) => d.id)).toEqual([root.id]);
@@ -434,23 +471,25 @@ describe('createFileNodesStore', () => {
       );
 
       // Verify it's active
-      let row = await dbQuery(
-        `SELECT * FROM object_map WHERE file_node_id = ? AND s3_key = ?`,
-        [created.id, 's3://bucket/old-key']
-      );
+      let row = await dbQuery(`SELECT * FROM object_map WHERE file_node_id = ? AND s3_key = ?`, [
+        created.id,
+        's3://bucket/old-key',
+      ]);
       expect(row.rows[0].status).toBe('active');
 
       // upsertObjectMap will orphan the active row, then INSERT version 1 (which conflicts)
       // We capture that the UPDATE ran by checking the status transition
       try {
         await store.upsertObjectMap(created.id, 's3://bucket/new-key', 'pending');
-      } catch { /* expected: unique constraint on (file_node_id, version_number) */ }
+      } catch {
+        /* expected: unique constraint on (file_node_id, version_number) */
+      }
 
       // The orphaning UPDATE runs before the INSERT, so old row should be orphaned
-      row = await dbQuery(
-        `SELECT * FROM object_map WHERE file_node_id = ? AND s3_key = ?`,
-        [created.id, 's3://bucket/old-key']
-      );
+      row = await dbQuery(`SELECT * FROM object_map WHERE file_node_id = ? AND s3_key = ?`, [
+        created.id,
+        's3://bucket/old-key',
+      ]);
       expect(row.rows[0].status).toBe('orphaned');
     });
 
@@ -462,10 +501,9 @@ describe('createFileNodesStore', () => {
       const result = await store.activateObject('s3://bucket/activate-key');
       expect(result.changes).toBe(1);
 
-      const row = await dbQuery(
-        `SELECT status FROM object_map WHERE s3_key = ?`,
-        ['s3://bucket/activate-key']
-      );
+      const row = await dbQuery(`SELECT status FROM object_map WHERE s3_key = ?`, [
+        's3://bucket/activate-key',
+      ]);
       expect(row.rows[0].status).toBe('active');
     });
 
@@ -477,10 +515,9 @@ describe('createFileNodesStore', () => {
       const result = await store.orphanObject('s3://bucket/orphan-active-key');
       expect(result.changes).toBe(1);
 
-      const row = await dbQuery(
-        `SELECT status FROM object_map WHERE s3_key = ?`,
-        ['s3://bucket/orphan-active-key']
-      );
+      const row = await dbQuery(`SELECT status FROM object_map WHERE s3_key = ?`, [
+        's3://bucket/orphan-active-key',
+      ]);
       expect(row.rows[0].status).toBe('orphaned');
     });
 
@@ -578,10 +615,7 @@ describe('createFileNodesStore', () => {
 
       expect(result.changes).toBe(1);
 
-      const row = await dbQuery(
-        `SELECT * FROM filecache WHERE file_node_id = ?`,
-        [created.id]
-      );
+      const row = await dbQuery(`SELECT * FROM filecache WHERE file_node_id = ?`, [created.id]);
       expect(row.rows.length).toBe(1);
       expect(row.rows[0].size).toBe(2048);
       expect(row.rows[0].mime_type).toBe('text/plain');
@@ -596,10 +630,7 @@ describe('createFileNodesStore', () => {
       const result = await store.upsertCache(created.id, 2048, 'application/pdf', 'hash-v2');
       expect(result.changes).toBe(1);
 
-      const row = await dbQuery(
-        `SELECT * FROM filecache WHERE file_node_id = ?`,
-        [created.id]
-      );
+      const row = await dbQuery(`SELECT * FROM filecache WHERE file_node_id = ?`, [created.id]);
       expect(row.rows.length).toBe(1);
       expect(row.rows[0].size).toBe(2048);
       expect(row.rows[0].mime_type).toBe('application/pdf');
@@ -628,10 +659,9 @@ describe('createFileNodesStore', () => {
       const result = await store.deleteCache(created.id);
       expect(result.changes).toBe(1);
 
-      const row = await dbQuery(
-        `SELECT COUNT(*) as count FROM filecache WHERE file_node_id = ?`,
-        [created.id]
-      );
+      const row = await dbQuery(`SELECT COUNT(*) as count FROM filecache WHERE file_node_id = ?`, [
+        created.id,
+      ]);
       expect(row.rows[0].count).toBe(0);
     });
   });

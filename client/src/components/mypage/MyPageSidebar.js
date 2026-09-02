@@ -1,12 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Box,
-  List,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
-} from '@mui/material';
+import { Box, List, ListItemButton, ListItemIcon, ListItemText } from '@mui/material';
 
 const MyPageSidebar = ({ categories, selectedCategory, onSelectCategory, isMobile }) => {
   const { t } = useTranslation();
@@ -45,11 +39,11 @@ const MyPageSidebar = ({ categories, selectedCategory, onSelectCategory, isMobil
             sx={
               !isMobile
                 ? {
-                  py: 0.75,
-                  minHeight: 42,
-                  borderTopRightRadius: 24,
-                  borderBottomRightRadius: 24,
-                }
+                    py: 0.75,
+                    minHeight: 42,
+                    borderTopRightRadius: 24,
+                    borderBottomRightRadius: 24,
+                  }
                 : undefined
             }
           >

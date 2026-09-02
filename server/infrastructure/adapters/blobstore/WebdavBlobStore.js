@@ -63,4 +63,36 @@ class WebdavBlobStore {
   }
 }
 
+function reportWebdavOk() {
+  const { getBackendHealth } = require('../../backendHealth');
+  getBackendHealth().report('webdav', { ok: true });
+}
+
+function reportWebdavFail(error) {
+  const { getBackendHealth } = require('../../backendHealth');
+  const { classifyToHealthCode } = require('../../backendProbe');
+  getBackendHealth().report('webdav', {
+    ok: false,
+    code: classifyToHealthCode('webdav', error && error.errorCode),
+    reason: error && error.message,
+  });
+}
+
+function withHealthReport(fn) {
+  return async function wrappedHealthReport(...args) {
+    try {
+      const result = await fn.apply(this, args);
+      reportWebdavOk();
+      return result;
+    } catch (error) {
+      reportWebdavFail(error);
+      throw error;
+    }
+  };
+}
+
+for (const method of ['uploadBlob', 'createDirectory', 'downloadBlob', 'deleteBlob', 'headBlob']) {
+  WebdavBlobStore.prototype[method] = withHealthReport(WebdavBlobStore.prototype[method]);
+}
+
 module.exports = WebdavBlobStore;

@@ -6,19 +6,19 @@ This directory contains design documentation and implementation/unit-test specif
 
 ## Format Templates by Type
 
-| Type | Template Path | Purpose |
-|------|---------------|---------|
-| Client Components | [client/components/_TEMPLATE.md](client/components/_TEMPLATE.md) | Props, callbacks, i18n, conditional rendering |
-| Client Hooks | [client/hooks/_TEMPLATE.md](client/hooks/_TEMPLATE.md) | Input/return, dependencies, side effects |
-| Client Pages | [client/pages/_TEMPLATE.md](client/pages/_TEMPLATE.md) | Routes, hooks used, child components |
-| Client Services | [client/services/_TEMPLATE.md](client/services/_TEMPLATE.md) | API wrapper functions, error handling |
-| Client Utils | [client/utils/_TEMPLATE.md](client/utils/_TEMPLATE.md) | Pure function signatures, dependencies |
-| Client Contexts | [client/contexts/_TEMPLATE.md](client/contexts/_TEMPLATE.md) | Provided value, hooks, dependencies |
-| Server Utils | [server/utils/_TEMPLATE.md](server/utils/_TEMPLATE.md) | Util functions, input/output contracts |
-| Server Middleware | [server/middleware/_TEMPLATE.md](server/middleware/_TEMPLATE.md) | Pipeline position, req/res modifications |
-| Server Stores | [server/store/_TEMPLATE.md](server/store/_TEMPLATE.md) | Storage methods, paths, dependencies |
-| Server Models | [server/models/_TEMPLATE.md](server/models/_TEMPLATE.md) | Static methods, Store dependencies |
-| Server Routes | [server/routes/_TEMPLATE.md](server/routes/_TEMPLATE.md) | Endpoints, middleware, request/response |
+| Type              | Template Path                                                     | Purpose                                       |
+| ----------------- | ----------------------------------------------------------------- | --------------------------------------------- |
+| Client Components | [client/components/\_TEMPLATE.md](client/components/_TEMPLATE.md) | Props, callbacks, i18n, conditional rendering |
+| Client Hooks      | [client/hooks/\_TEMPLATE.md](client/hooks/_TEMPLATE.md)           | Input/return, dependencies, side effects      |
+| Client Pages      | [client/pages/\_TEMPLATE.md](client/pages/_TEMPLATE.md)           | Routes, hooks used, child components          |
+| Client Services   | [client/services/\_TEMPLATE.md](client/services/_TEMPLATE.md)     | API wrapper functions, error handling         |
+| Client Utils      | [client/utils/\_TEMPLATE.md](client/utils/_TEMPLATE.md)           | Pure function signatures, dependencies        |
+| Client Contexts   | [client/contexts/\_TEMPLATE.md](client/contexts/_TEMPLATE.md)     | Provided value, hooks, dependencies           |
+| Server Utils      | [server/utils/\_TEMPLATE.md](server/utils/_TEMPLATE.md)           | Util functions, input/output contracts        |
+| Server Middleware | [server/middleware/\_TEMPLATE.md](server/middleware/_TEMPLATE.md) | Pipeline position, req/res modifications      |
+| Server Stores     | [server/store/\_TEMPLATE.md](server/store/_TEMPLATE.md)           | Storage methods, paths, dependencies          |
+| Server Models     | [server/models/\_TEMPLATE.md](server/models/_TEMPLATE.md)         | Static methods, Store dependencies            |
+| Server Routes     | [server/routes/\_TEMPLATE.md](server/routes/_TEMPLATE.md)         | Endpoints, middleware, request/response       |
 
 ---
 
@@ -50,7 +50,7 @@ When you split a module into multiple responsibilities (for example: page shell 
 
 ### Minimum content to include in each new spec
 
-- **Role + boundaries**: What it owns and what it explicitly does *not* own.
+- **Role + boundaries**: What it owns and what it explicitly does _not_ own.
 - **Public interface**: Props/signatures/return values and error/result shapes.
 - **Dependencies**: Which other roles it may call (and which it must not).
 - **Side effects**: Only if applicable (typically gateways and some controllers).
@@ -60,12 +60,12 @@ When you split a module into multiple responsibilities (for example: page shell 
 
 ## Related Documents
 
-| Document | Purpose |
-|----------|---------|
-| [api.md](../api.md) | REST API endpoint reference |
-| [shared-contracts.md](../shared-contracts.md) | Error format, validation return values, constants |
-| [ARCHITECTURE.md](../ARCHITECTURE.md) | System architecture and cross-stack layering boundaries (server flow plus client layering) |
-| [TESTING_STRATEGY.md](../TESTING_STRATEGY.md) | Unit vs integration, mocking, checklist for new code |
+| Document                                      | Purpose                                                                                    |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| [api.md](../api.md)                           | REST API endpoint reference                                                                |
+| [shared-contracts.md](../shared-contracts.md) | Error format, validation return values, constants                                          |
+| [ARCHITECTURE.md](../ARCHITECTURE.md)         | System architecture and cross-stack layering boundaries (server flow plus client layering) |
+| [TESTING_STRATEGY.md](../TESTING_STRATEGY.md) | Unit vs integration, mocking, checklist for new code                                       |
 
 ---
 

@@ -1,11 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Menu,
-  MenuItem,
-  ListItemIcon,
-  ListItemText,
-} from '@mui/material';
+import { Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
 import {
   Download as DownloadIcon,
   Delete as DeleteIcon,
@@ -20,7 +15,6 @@ const FileContextMenu = ({
   contextMenu,
   onClose,
   file,
-  user,
   hasWritePermission,
   onDownload,
   onRename,
@@ -31,7 +25,8 @@ const FileContextMenu = ({
   onDelete,
 }) => {
   const { t } = useTranslation();
-  const fileWritePermission = file?.hasWritePermission !== undefined ? file.hasWritePermission : hasWritePermission;
+  const fileWritePermission =
+    file?.hasWritePermission !== undefined ? file.hasWritePermission : hasWritePermission;
 
   if (!file) return null;
 
@@ -54,14 +49,12 @@ const FileContextMenu = ({
       onClose={onClose}
       anchorReference="anchorPosition"
       anchorPosition={
-        contextMenu !== null
-          ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
-          : undefined
+        contextMenu !== null ? { top: contextMenu.mouseY, left: contextMenu.mouseX } : undefined
       }
     >
       {onDownload && (
-        <MenuItem 
-          data-testid="file-action-download" 
+        <MenuItem
+          data-testid="file-action-download"
           onClick={() => handleAction(onDownload)}
           disabled={!file.hasReadPermission}
         >
@@ -96,8 +89,8 @@ const FileContextMenu = ({
         </MenuItem>
       )}
       {onCopy && (
-        <MenuItem 
-          data-testid="file-action-copy" 
+        <MenuItem
+          data-testid="file-action-copy"
           onClick={() => handleAction(onCopy)}
           disabled={!file.hasReadPermission}
         >
@@ -116,13 +109,13 @@ const FileContextMenu = ({
         </MenuItem>
       )}
       {onProperties && (
-            <MenuItem data-testid="file-action-properties" onClick={() => handleAction(onProperties)}>
-              <ListItemIcon>
-                <InfoIcon fontSize="small" />
-              </ListItemIcon>
-              <ListItemText>{t('actions.properties')}</ListItemText>
-            </MenuItem>
-          )}
+        <MenuItem data-testid="file-action-properties" onClick={() => handleAction(onProperties)}>
+          <ListItemIcon>
+            <InfoIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>{t('actions.properties')}</ListItemText>
+        </MenuItem>
+      )}
       {onDelete && (
         <MenuItem
           data-testid="file-action-delete"

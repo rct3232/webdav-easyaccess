@@ -9,7 +9,7 @@ export const formatFileSize = (bytes) => {
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
 
-  return Math.round(bytes / Math.pow(k, i) * 10) / 10 + ' ' + sizes[i];
+  return Math.round((bytes / Math.pow(k, i)) * 10) / 10 + ' ' + sizes[i];
 };
 
 export const formatDate = (dateString) => {
@@ -44,4 +44,3 @@ export const formatDateOnly = (dateString) => {
     return String(dateString);
   }
 };
-

@@ -16,9 +16,9 @@ export const createProcessingUpdater = (setProcessingMap) => {
    */
   const markProcessing = (paths, type) => {
     const pathsArray = Array.isArray(paths) ? paths : [paths];
-    setProcessingMap(prev => {
+    setProcessingMap((prev) => {
       const next = new Map(prev);
-      pathsArray.forEach(p => next.set(p, type));
+      pathsArray.forEach((p) => next.set(p, type));
       return next;
     });
   };
@@ -29,9 +29,9 @@ export const createProcessingUpdater = (setProcessingMap) => {
    */
   const clearProcessing = (paths) => {
     const pathsArray = Array.isArray(paths) ? paths : [paths];
-    setProcessingMap(prev => {
+    setProcessingMap((prev) => {
       const next = new Map(prev);
-      pathsArray.forEach(p => next.delete(p));
+      pathsArray.forEach((p) => next.delete(p));
       return next;
     });
   };
@@ -47,9 +47,9 @@ export const createProcessingUpdater = (setProcessingMap) => {
  */
 export const markProcessing = (setProcessingMap, paths, type) => {
   const pathsArray = Array.isArray(paths) ? paths : [paths];
-  setProcessingMap(prev => {
+  setProcessingMap((prev) => {
     const next = new Map(prev);
-    pathsArray.forEach(p => next.set(p, type));
+    pathsArray.forEach((p) => next.set(p, type));
     return next;
   });
 };
@@ -61,9 +61,9 @@ export const markProcessing = (setProcessingMap, paths, type) => {
  */
 export const clearProcessing = (setProcessingMap, paths) => {
   const pathsArray = Array.isArray(paths) ? paths : [paths];
-  setProcessingMap(prev => {
+  setProcessingMap((prev) => {
     const next = new Map(prev);
-    pathsArray.forEach(p => next.delete(p));
+    pathsArray.forEach((p) => next.delete(p));
     return next;
   });
 };

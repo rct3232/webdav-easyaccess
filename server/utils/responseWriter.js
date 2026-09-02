@@ -28,4 +28,3 @@ async function sendBufferAsChunks(res, buffer, options = {}) {
 module.exports = {
   sendBufferAsChunks,
 };
-

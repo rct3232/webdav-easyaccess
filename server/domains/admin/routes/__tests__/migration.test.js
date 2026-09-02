@@ -9,14 +9,20 @@
  * @see docs/spec/server/routes/admin.md §2.2.4
  */
 const request = require('supertest');
-const {
-  createTestDatabase,
-  createAuthenticatedTestUser,
-} = require('../../../../test-utils');
+const { createTestDatabase, createAuthenticatedTestUser } = require('../../../../test-utils');
 const { initMetadataStore } = require('../../../../store/bootstrap');
 const { initFfmpegOnce } = require('../../../../domains/thumbnails/services/videoProcessor');
 const { MigrationJobStore } = require('../../stores/migrationJobStore');
-const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const {
+  SERVER_ERROR_CODES,
+  SERVER_MESSAGE_CODES,
+} = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { getMigrationGate } = require('../../../../infrastructure/migrationGate');
+
+const mockMetadataService = { scanTarget: jest.fn(), runMigration: jest.fn() };
+jest.mock('../../services/metadataMigrationService', () => ({
+  getService: () => mockMetadataService,
+}));
 
 var mockWebdav;
 jest.mock('../../../../utils/webdav', () => {
@@ -38,6 +44,22 @@ const VALID_PAYLOAD = {
   force: false,
   dest: { type: 's3', bucket: 'test-bucket', accessKey: 'ak', secretKey: 'sk' },
 };
+
+// Backend-agnostic metadata target: the active backend depends on the env
+// (sqlite under test:ci, postgresql under test:ci:pg), so the target is the
+// OTHER backend.
+const ACTIVE_METADATA_BACKEND = require('../../../../store/storage').getBackend();
+const OTHER_METADATA_BACKEND = ACTIVE_METADATA_BACKEND === 'sqlite' ? 'postgresql' : 'sqlite';
+
+function makeMetadataPayload(targetBackend = OTHER_METADATA_BACKEND, overrides = {}) {
+  const payload = { targetBackend, wipeTarget: false };
+  if (targetBackend === 'postgresql') {
+    payload.pg = { host: 'h', port: 5432, database: 'd', user: 'u', password: 'p' };
+  } else {
+    payload.sqlitePath = '/tmp/target.db';
+  }
+  return { ...payload, ...overrides };
+}
 
 async function createAdminToken() {
   const { token } = await createAuthenticatedTestUser({
@@ -90,6 +112,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   jobStore._jobs.clear();
+  getMigrationGate().reset();
   delete process.env.WEA_SKIP_MIGRATION_WORKER;
   jest.clearAllMocks();
 });
@@ -102,9 +125,7 @@ describe('Route matrix: non-admin denied on every /api/admin/migration/* route',
     });
     const auth = { Authorization: `Bearer ${token}` };
 
-    const infoRes = await request(app)
-      .get('/api/admin/migration/info')
-      .set(auth);
+    const infoRes = await request(app).get('/api/admin/migration/info').set(auth);
     expect(infoRes.status).toBe(403);
     expect(infoRes.body.errorCode).toBe(SERVER_ERROR_CODES.admin.adminRequired);
 
@@ -115,9 +136,7 @@ describe('Route matrix: non-admin denied on every /api/admin/migration/* route',
     expect(postRes.status).toBe(403);
     expect(postRes.body.errorCode).toBe(SERVER_ERROR_CODES.admin.adminRequired);
 
-    const getRes = await request(app)
-      .get('/api/admin/migration/jobs/some-job')
-      .set(auth);
+    const getRes = await request(app).get('/api/admin/migration/jobs/some-job').set(auth);
     expect(getRes.status).toBe(403);
     expect(getRes.body.errorCode).toBe(SERVER_ERROR_CODES.admin.adminRequired);
 
@@ -256,9 +275,30 @@ describe('POST /api/admin/migration/blobs', () => {
 
   it('runs the worker and the job reaches completed with propagated results', async () => {
     fakeMigrationService.run.mockImplementationOnce(async ({ onProgress }) => {
-      onProgress({ total: 3, done: 1, current: { nodeId: 1, path: '/a.txt' }, copied: 1, skipped: 0, failed: 0 });
-      onProgress({ total: 3, done: 2, current: { nodeId: 2, path: '/b.txt' }, copied: 2, skipped: 0, failed: 0 });
-      onProgress({ total: 3, done: 3, current: { nodeId: 3, path: '/c.txt' }, copied: 2, skipped: 1, failed: 0 });
+      onProgress({
+        total: 3,
+        done: 1,
+        current: { nodeId: 1, path: '/a.txt' },
+        copied: 1,
+        skipped: 0,
+        failed: 0,
+      });
+      onProgress({
+        total: 3,
+        done: 2,
+        current: { nodeId: 2, path: '/b.txt' },
+        copied: 2,
+        skipped: 0,
+        failed: 0,
+      });
+      onProgress({
+        total: 3,
+        done: 3,
+        current: { nodeId: 3, path: '/c.txt' },
+        copied: 2,
+        skipped: 1,
+        failed: 0,
+      });
       return { copied: 2, skipped: 1, failed: 0, errors: [] };
     });
     const token = await createAdminToken();
@@ -270,12 +310,19 @@ describe('POST /api/admin/migration/blobs', () => {
     expect(postRes.status).toBe(202);
     const { jobId } = postRes.body;
 
-    expect(fakeMigrationService.run).toHaveBeenCalledWith(expect.objectContaining({
-      mode: 'dry-run',
-      force: false,
-      destConfig: expect.objectContaining({ type: 's3', bucket: 'test-bucket', accessKey: 'ak', secretKey: 'sk' }),
-      onProgress: expect.any(Function),
-    }));
+    expect(fakeMigrationService.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: 'dry-run',
+        force: false,
+        destConfig: expect.objectContaining({
+          type: 's3',
+          bucket: 'test-bucket',
+          accessKey: 'ak',
+          secretKey: 'sk',
+        }),
+        onProgress: expect.any(Function),
+      })
+    );
     expect(fakeMigrationService.run.mock.calls[0][0].direction).toBeUndefined();
 
     const res = await waitForJobStatus(token, jobId, 'completed');
@@ -316,9 +363,18 @@ describe('POST /api/admin/migration/blobs', () => {
 
   it('propagates onProgress updates to the job while running', async () => {
     let release;
-    const gate = new Promise((resolve) => { release = resolve; });
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
     fakeMigrationService.run.mockImplementationOnce(async ({ onProgress }) => {
-      onProgress({ total: 5, done: 2, current: { nodeId: 7, path: '/docs/a.txt' }, copied: 2, skipped: 0, failed: 0 });
+      onProgress({
+        total: 5,
+        done: 2,
+        current: { nodeId: 7, path: '/docs/a.txt' },
+        copied: 2,
+        skipped: 0,
+        failed: 0,
+      });
       await gate;
       return { copied: 2, skipped: 0, failed: 0, errors: [] };
     });
@@ -398,5 +454,593 @@ describe('POST /api/admin/migration/jobs/:jobId/cancel', () => {
       .set('Authorization', `Bearer ${token}`);
     expect(getRes.body.status).toBe('cancelled');
     expect(getRes.body.completedAt).toBeDefined();
+  });
+});
+
+describe('GET /api/migration/status (auth-optional)', () => {
+  it('returns { active: false } for an anonymous caller when the gate is inactive', async () => {
+    const res = await request(app).get('/api/migration/status');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ active: false });
+  });
+
+  it('returns { active: true } only (no type/jobId/startedAt) for an anonymous caller while the gate is active', async () => {
+    getMigrationGate().set({ type: 'metadata', jobId: 'status-job' });
+    try {
+      const res = await request(app).get('/api/migration/status');
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ active: true });
+      expect(res.body.type).toBeUndefined();
+      expect(res.body.jobId).toBeUndefined();
+      expect(res.body.startedAt).toBeUndefined();
+    } finally {
+      getMigrationGate().reset();
+    }
+  });
+
+  it('returns { active: true } only for a non-admin token while the gate is active', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `migration-status-nonadmin-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      isAdmin: false,
+    });
+    getMigrationGate().set({ type: 'blobs', jobId: 'status-nonadmin' });
+    try {
+      const res = await request(app)
+        .get('/api/migration/status')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ active: true });
+      expect(res.body.jobId).toBeUndefined();
+    } finally {
+      getMigrationGate().reset();
+    }
+  });
+
+  it('returns the full gate status for a valid admin token', async () => {
+    const token = await createAdminToken();
+    getMigrationGate().set({ type: 'blobs', jobId: 'admin-status' });
+    try {
+      const res = await request(app)
+        .get('/api/migration/status')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        active: true,
+        type: 'blobs',
+        jobId: 'admin-status',
+        startedAt: expect.any(String),
+      });
+    } finally {
+      getMigrationGate().reset();
+    }
+  });
+
+  it('returns { active: false } for an admin token when the gate is inactive', async () => {
+    const token = await createAdminToken();
+    const res = await request(app)
+      .get('/api/migration/status')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ active: false });
+  });
+});
+
+describe('GET /api/admin/migration/presence', () => {
+  it('is admin-only and returns the non-active backend presence result', async () => {
+    const token = await createAdminToken();
+    const res = await request(app)
+      .get('/api/admin/migration/presence')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    // The detector reports the NON-active metadata backend. Presence is
+    // environment-dependent (it probes the configured backend), so only the
+    // deterministic shape is asserted.
+    expect(res.body.otherBackend).toBe(OTHER_METADATA_BACKEND);
+    expect(typeof res.body.otherHasData).toBe('boolean');
+    expect(res.body.checkedAt).toBeDefined();
+  });
+
+  it('returns 401 without a token', async () => {
+    const res = await request(app).get('/api/admin/migration/presence');
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('GET /api/admin/migration/target-scan', () => {
+  it('returns 400 for an invalid target backend', async () => {
+    const token = await createAdminToken();
+    const res = await request(app)
+      .get('/api/admin/migration/target-scan')
+      .set('Authorization', `Bearer ${token}`)
+      .query({ targetBackend: 'mysql' });
+    expect(res.status).toBe(400);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.migrationInvalidPayload);
+    expect(mockMetadataService.scanTarget).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when PG connection fields are missing', async () => {
+    const token = await createAdminToken();
+    const res = await request(app)
+      .get('/api/admin/migration/target-scan')
+      .set('Authorization', `Bearer ${token}`)
+      .query({ targetBackend: 'postgresql', host: 'h' });
+    expect(res.status).toBe(400);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.migrationMissingRequired);
+  });
+
+  it('returns 400 when sqlitePath is missing for a sqlite target', async () => {
+    const token = await createAdminToken();
+    const res = await request(app)
+      .get('/api/admin/migration/target-scan')
+      .set('Authorization', `Bearer ${token}`)
+      .query({ targetBackend: 'sqlite' });
+    expect(res.status).toBe(400);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.migrationMissingRequired);
+  });
+
+  it('returns 200 with the scan result for a nested pg payload', async () => {
+    mockMetadataService.scanTarget.mockResolvedValueOnce({
+      backend: 'postgresql',
+      connected: true,
+      schemaExists: true,
+      tables: [{ name: 'users', rows: 3 }],
+      totalRows: 3,
+      checkedAt: '2026-09-01T00:00:00.000Z',
+    });
+    const token = await createAdminToken();
+    const res = await request(app)
+      .get('/api/admin/migration/target-scan')
+      .set('Authorization', `Bearer ${token}`)
+      .query({ targetBackend: 'postgresql' })
+      .send({ pg: { host: 'h', port: 5432, database: 'd', user: 'u', password: 'p' } });
+
+    expect(res.status).toBe(200);
+    expect(res.body.schemaExists).toBe(true);
+    expect(mockMetadataService.scanTarget).toHaveBeenCalledWith({
+      backend: 'postgresql',
+      pg: { host: 'h', port: 5432, database: 'd', user: 'u', password: 'p' },
+      sqlitePath: undefined,
+    });
+  });
+
+  it('returns 200 and forwards flat query params as the pg connection for a postgresql target', async () => {
+    mockMetadataService.scanTarget.mockResolvedValueOnce({
+      backend: 'postgresql',
+      connected: true,
+      schemaExists: false,
+      tables: [],
+      totalRows: 0,
+    });
+    const token = await createAdminToken();
+    const res = await request(app)
+      .get('/api/admin/migration/target-scan')
+      .set('Authorization', `Bearer ${token}`)
+      .query({
+        targetBackend: 'postgresql',
+        host: 'h',
+        port: 5433,
+        database: 'd',
+        user: 'u',
+        password: 'p',
+      });
+
+    expect(res.status).toBe(200);
+    expect(mockMetadataService.scanTarget).toHaveBeenCalledWith({
+      backend: 'postgresql',
+      pg: { host: 'h', port: '5433', database: 'd', user: 'u', password: 'p' },
+      sqlitePath: undefined,
+    });
+  });
+
+  it('returns 200 and forwards sqlitePath for a sqlite target', async () => {
+    mockMetadataService.scanTarget.mockResolvedValueOnce({
+      backend: 'sqlite',
+      connected: true,
+      schemaExists: true,
+      tables: [{ name: 'settings', rows: 2 }],
+      totalRows: 2,
+    });
+    const token = await createAdminToken();
+    const res = await request(app)
+      .get('/api/admin/migration/target-scan')
+      .set('Authorization', `Bearer ${token}`)
+      .query({ targetBackend: 'sqlite', sqlitePath: '/tmp/target.db' });
+
+    expect(res.status).toBe(200);
+    expect(mockMetadataService.scanTarget).toHaveBeenCalledWith({
+      backend: 'sqlite',
+      sqlitePath: '/tmp/target.db',
+      pg: undefined,
+    });
+  });
+});
+
+describe('POST /api/admin/migration/metadata', () => {
+  // Backend-agnostic: the active metadata backend depends on the env, so the
+  // target is always derived as the OTHER backend (see makeMetadataPayload).
+  const expectedDirection =
+    ACTIVE_METADATA_BACKEND === 'sqlite' ? 'sqliteToPostgresql' : 'postgresqlToSqlite';
+  const pgTargetIt = OTHER_METADATA_BACKEND === 'postgresql' ? it : it.skip;
+  const sqliteTargetIt = OTHER_METADATA_BACKEND === 'sqlite' ? it : it.skip;
+
+  const VALID_METADATA_PAYLOAD = makeMetadataPayload();
+
+  it('returns 400 with migrationInvalidPayload for an invalid target backend', async () => {
+    const token = await createAdminToken();
+    const res = await request(app)
+      .post('/api/admin/migration/metadata')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ targetBackend: 'mysql' });
+    expect(res.status).toBe(400);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.migrationInvalidPayload);
+  });
+
+  it('returns 400 when targetBackend equals the active backend', async () => {
+    const token = await createAdminToken();
+    const res = await request(app)
+      .post('/api/admin/migration/metadata')
+      .set('Authorization', `Bearer ${token}`)
+      .send(makeMetadataPayload(ACTIVE_METADATA_BACKEND));
+    expect(res.status).toBe(400);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.migrationInvalidPayload);
+  });
+
+  pgTargetIt(
+    'returns 400 with migrationMissingRequired when pg fields are incomplete',
+    async () => {
+      const token = await createAdminToken();
+      const res = await request(app)
+        .post('/api/admin/migration/metadata')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ targetBackend: 'postgresql', pg: { host: 'h' } });
+      expect(res.status).toBe(400);
+      expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.migrationMissingRequired);
+    }
+  );
+
+  sqliteTargetIt('returns 400 when sqlitePath is missing for a sqlite target', async () => {
+    const token = await createAdminToken();
+    const res = await request(app)
+      .post('/api/admin/migration/metadata')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ targetBackend: 'sqlite' });
+    expect(res.status).toBe(400);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.migrationMissingRequired);
+  });
+
+  it('returns 409 while a blob job is already running', async () => {
+    process.env.WEA_SKIP_MIGRATION_WORKER = '1';
+    const token = await createAdminToken();
+    await request(app)
+      .post('/api/admin/migration/blobs')
+      .set('Authorization', `Bearer ${token}`)
+      .send(VALID_PAYLOAD);
+
+    const res = await request(app)
+      .post('/api/admin/migration/metadata')
+      .set('Authorization', `Bearer ${token}`)
+      .send(VALID_METADATA_PAYLOAD);
+    expect(res.status).toBe(409);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.migrationAlreadyRunning);
+  });
+
+  it('returns 409 while the migration gate is already active', async () => {
+    process.env.WEA_SKIP_MIGRATION_WORKER = '1';
+    const token = await createAdminToken();
+    getMigrationGate().set({ type: 'blobs', jobId: 'already-active' });
+    try {
+      const res = await request(app)
+        .post('/api/admin/migration/metadata')
+        .set('Authorization', `Bearer ${token}`)
+        .send(VALID_METADATA_PAYLOAD);
+      expect(res.status).toBe(409);
+      expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.migrationAlreadyRunning);
+    } finally {
+      getMigrationGate().reset();
+    }
+  });
+
+  it('accepts a valid payload with 202 { jobId } and records a metadata job', async () => {
+    process.env.WEA_SKIP_MIGRATION_WORKER = '1';
+    const token = await createAdminToken();
+
+    const res = await request(app)
+      .post('/api/admin/migration/metadata')
+      .set('Authorization', `Bearer ${token}`)
+      .send(VALID_METADATA_PAYLOAD);
+
+    expect(res.status).toBe(202);
+    expect(res.body).toEqual({ jobId: expect.any(String) });
+
+    const job = jobStore.get(res.body.jobId);
+    expect(job).toMatchObject({
+      jobId: res.body.jobId,
+      type: 'metadata',
+      direction: expectedDirection,
+      mode: 'apply',
+      status: 'pending',
+      stage: null,
+      progress: { percent: 0, currentLabel: null },
+    });
+    expect(mockMetadataService.runMigration).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 for a non-admin', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `mig-meta-nonadmin-${Date.now()}`,
+      isAdmin: false,
+    });
+    const res = await request(app)
+      .post('/api/admin/migration/metadata')
+      .set('Authorization', `Bearer ${token}`)
+      .send(VALID_METADATA_PAYLOAD);
+    expect(res.status).toBe(403);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.adminRequired);
+  });
+});
+
+describe('migration gate lifecycle', () => {
+  // VALID_PAYLOAD is mode: 'dry-run' — this test verifies the cross-agent
+  // decision that dry-run DOES activate the gate (the client navigates to
+  // /migration after any start, and a dry-run performs real enumeration work).
+  it('blobs dry-run: sets the gate on start (202) and clears it when the worker reaches a terminal state', async () => {
+    let release;
+    const workerGate = new Promise((resolve) => {
+      release = resolve;
+    });
+    fakeMigrationService.run.mockImplementationOnce(async () => {
+      await workerGate;
+      return { copied: 1, skipped: 0, failed: 0, errors: [] };
+    });
+    const token = await createAdminToken();
+
+    const postRes = await request(app)
+      .post('/api/admin/migration/blobs')
+      .set('Authorization', `Bearer ${token}`)
+      .send(VALID_PAYLOAD);
+    expect(postRes.status).toBe(202);
+
+    expect(getMigrationGate().isActive()).toBe(true);
+    expect(getMigrationGate().getStatus()).toMatchObject({
+      active: true,
+      type: 'blobs',
+      jobId: postRes.body.jobId,
+    });
+    expect(getMigrationGate().getStatus().startedAt).toBeDefined();
+
+    release();
+    await waitForJobStatus(token, postRes.body.jobId, 'completed');
+    expect(getMigrationGate().isActive()).toBe(false);
+  });
+
+  it('metadata: sets the gate on start (202) and clears it on completion', async () => {
+    let release;
+    const workerGate = new Promise((resolve) => {
+      release = resolve;
+    });
+    mockMetadataService.runMigration.mockImplementationOnce(async ({ onProgress }) => {
+      onProgress('copy', 'users', 2, 2);
+      await workerGate;
+      return {
+        status: 'completed',
+        tablesCopied: [{ name: 'users', rows: 2 }],
+        totalRows: 2,
+        schemaApplied: false,
+        wiped: false,
+      };
+    });
+    const token = await createAdminToken();
+
+    const postRes = await request(app)
+      .post('/api/admin/migration/metadata')
+      .set('Authorization', `Bearer ${token}`)
+      .send(makeMetadataPayload());
+    expect(postRes.status).toBe(202);
+
+    expect(getMigrationGate().isActive()).toBe(true);
+    expect(getMigrationGate().getStatus()).toMatchObject({
+      active: true,
+      type: 'metadata',
+      jobId: postRes.body.jobId,
+    });
+
+    release();
+    const res = await waitForJobStatus(token, postRes.body.jobId, 'completed');
+    expect(res.body.status).toBe('completed');
+    expect(getMigrationGate().isActive()).toBe(false);
+  });
+
+  it('blobs: clears the gate when the worker fails', async () => {
+    fakeMigrationService.run.mockImplementationOnce(async () => {
+      throw new Error('destination unavailable');
+    });
+    const token = await createAdminToken();
+
+    const postRes = await request(app)
+      .post('/api/admin/migration/blobs')
+      .set('Authorization', `Bearer ${token}`)
+      .send(VALID_PAYLOAD);
+    expect(postRes.status).toBe(202);
+
+    await waitForJobStatus(token, postRes.body.jobId, 'failed');
+    expect(getMigrationGate().isActive()).toBe(false);
+  });
+});
+
+describe('cancel for metadata jobs', () => {
+  it('cancels a pending metadata job and the gate worker reports cancelled', async () => {
+    let release;
+    const workerGate = new Promise((resolve) => {
+      release = resolve;
+    });
+    mockMetadataService.runMigration.mockImplementationOnce(async () => {
+      await workerGate;
+      return { status: 'cancelled' };
+    });
+    const token = await createAdminToken();
+
+    const postRes = await request(app)
+      .post('/api/admin/migration/metadata')
+      .set('Authorization', `Bearer ${token}`)
+      .send(makeMetadataPayload());
+    expect(postRes.status).toBe(202);
+    const { jobId } = postRes.body;
+
+    // Give the worker time to start (status running) before cancelling.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const cancelRes = await request(app)
+      .post(`/api/admin/migration/jobs/${jobId}/cancel`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(cancelRes.status).toBe(200);
+    expect(cancelRes.body).toEqual({
+      messageCode: SERVER_MESSAGE_CODES.admin.migrationCancelled,
+      jobId,
+    });
+
+    release();
+    // The worker observes the cancelled flag and returns { status: 'cancelled' }.
+    const res = await waitForJobStatus(token, jobId, 'cancelled');
+    expect(res.body.status).toBe('cancelled');
+    expect(getMigrationGate().isActive()).toBe(false);
+  });
+
+  it('a progress tick landing after cancel does NOT clobber the cancelled status; the job ends cancelled and the gate clears', async () => {
+    // Regression for the Case A bug surfaced by E2E-MIG-007: the worker's
+    // onProgress callback wrote { status: 'running' } on every tick, so a tick
+    // arriving after POST /cancel reset the store status back to 'running',
+    // isCancelled() never became true, and the copy COMMITted ('completed').
+    let release;
+    const workerPaused = new Promise((resolve) => {
+      release = resolve;
+    });
+    mockMetadataService.runMigration.mockImplementationOnce(async ({ onProgress, isCancelled }) => {
+      onProgress('copy', 'users', 1, 100);
+      // Simulate the copy loop running between batches; the test cancels here.
+      await workerPaused;
+      // The next progress tick lands AFTER the cancel request was served. It
+      // must not reset the job status, otherwise isCancelled() reads 'running'.
+      onProgress('copy', 'users', 2, 100);
+      return isCancelled()
+        ? { status: 'cancelled' }
+        : { status: 'completed', tablesCopied: [{ name: 'users', rows: 2 }], totalRows: 2 };
+    });
+    const token = await createAdminToken();
+
+    const postRes = await request(app)
+      .post('/api/admin/migration/metadata')
+      .set('Authorization', `Bearer ${token}`)
+      .send(makeMetadataPayload());
+    expect(postRes.status).toBe(202);
+    const { jobId } = postRes.body;
+
+    // The worker is inside the copy phase.
+    await waitForJobStatus(token, jobId, 'running');
+
+    const cancelRes = await request(app)
+      .post(`/api/admin/migration/jobs/${jobId}/cancel`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(cancelRes.status).toBe(200);
+
+    // Resume the copy loop so its post-cancel progress tick runs.
+    release();
+
+    const res = await waitForJobStatus(token, jobId, 'cancelled');
+    expect(res.body.status).toBe('cancelled');
+    expect(res.body.stage).toBe('done');
+    expect(getMigrationGate().isActive()).toBe(false);
+  });
+});
+
+describe('gating middleware (503 migrationInProgress)', () => {
+  const BLOCKED_PATHS = [
+    ['get', '/api/settings/public'],
+    ['get', '/api/files/anything'],
+    ['get', '/api/folders/1'],
+    ['get', '/api/webdav/anything'],
+  ];
+
+  it('gate inactive -> all routes proceed (no 503)', async () => {
+    const token = await createAdminToken();
+    const auth = { Authorization: `Bearer ${token}` };
+
+    const health = await request(app).get('/api/health');
+    expect(health.status).toBe(200);
+
+    for (const [method, url] of BLOCKED_PATHS) {
+      const res = await request(app)[method](url).set(auth);
+      expect(res.status).not.toBe(503);
+    }
+  });
+
+  it('gate active -> non-allow-listed routes return 503 migrationInProgress', async () => {
+    getMigrationGate().set({ type: 'blobs', jobId: 'gating-1' });
+    try {
+      const res = await request(app).get('/api/settings/public');
+      expect(res.status).toBe(503);
+      expect(res.body.errorCode).toBe('migrationInProgress');
+      expect(res.body.messageCode).toBe('migrationInProgress');
+      expect(res.body).toEqual({
+        errorCode: 'migrationInProgress',
+        messageCode: 'migrationInProgress',
+        message: 'Migration in progress',
+      });
+      expect(res.body.params).toBeUndefined();
+      expect(res.body.type).toBeUndefined();
+      expect(res.body.jobId).toBeUndefined();
+
+      const filesRes = await request(app).get('/api/files/anything');
+      expect(filesRes.status).toBe(503);
+    } finally {
+      getMigrationGate().reset();
+    }
+  });
+
+  it('gate active -> allow-listed routes still pass', async () => {
+    const token = await createAdminToken();
+    const auth = { Authorization: `Bearer ${token}` };
+    getMigrationGate().set({ type: 'metadata', jobId: 'gating-2' });
+    try {
+      // GET /api/health stays open.
+      const health = await request(app).get('/api/health');
+      expect(health.status).toBe(200);
+      expect(health.status).not.toBe(503);
+
+      // POST /api/auth/login stays open (auth logic runs, not the gate).
+      const login = await request(app)
+        .post('/api/auth/login')
+        .send({ username: 'x', password: 'y' });
+      expect(login.status).not.toBe(503);
+
+      // GET /api/migration/status stays open; an admin token gets the full
+      // gate state (the anonymous shape is covered above).
+      const status = await request(app).get('/api/migration/status').set(auth);
+      expect(status.status).toBe(200);
+      expect(status.body.active).toBe(true);
+      expect(status.body.jobId).toBe('gating-2');
+
+      // /api/admin/migration/* stays open (observe + cancel the running job).
+      const info = await request(app).get('/api/admin/migration/info').set(auth);
+      expect(info.status).toBe(200);
+
+      const presence = await request(app).get('/api/admin/migration/presence').set(auth);
+      expect(presence.status).toBe(200);
+    } finally {
+      getMigrationGate().reset();
+    }
+  });
+
+  it('gate active -> OPTIONS preflight is not blocked', async () => {
+    getMigrationGate().set({ type: 'blobs', jobId: 'gating-3' });
+    try {
+      const res = await request(app)
+        .options('/api/files/anything')
+        .set('Origin', 'http://example.test')
+        .set('Access-Control-Request-Method', 'GET');
+      expect(res.status).not.toBe(503);
+    } finally {
+      getMigrationGate().reset();
+    }
   });
 });

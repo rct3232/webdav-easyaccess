@@ -79,11 +79,7 @@ describe('SharedManageBody', () => {
 
   it('calls onRevokePermission when confirm button clicked in revoke dialog', () => {
     renderWithProviders(
-      <SharedManageBody
-        {...defaultProps}
-        confirmDialogOpen
-        setConfirmDialogOpen={jest.fn()}
-      />
+      <SharedManageBody {...defaultProps} confirmDialogOpen setConfirmDialogOpen={jest.fn()} />
     );
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /confirm/i }));
@@ -93,11 +89,7 @@ describe('SharedManageBody', () => {
   it('calls setConfirmDialogOpen false when cancel clicked in revoke dialog', () => {
     const setConfirm = jest.fn();
     renderWithProviders(
-      <SharedManageBody
-        {...defaultProps}
-        confirmDialogOpen
-        setConfirmDialogOpen={setConfirm}
-      />
+      <SharedManageBody {...defaultProps} confirmDialogOpen setConfirmDialogOpen={setConfirm} />
     );
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
     expect(setConfirm).toHaveBeenCalledWith(false);

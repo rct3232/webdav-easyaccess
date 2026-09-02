@@ -76,86 +76,92 @@ export function useAuthSession() {
     return () => window.removeEventListener('token-refreshed', handleTokenRefresh);
   }, []);
 
-  const login = useCallback(async (username, password) => {
-    try {
-      const data = await authService.login(username, password);
-      if (!data) {
+  const login = useCallback(
+    async (username, password) => {
+      try {
+        const data = await authService.login(username, password);
+        if (!data) {
+          setLoading(false);
+          return { success: false, error: 'auth_skipped', message: 'auth_skipped' };
+        }
+        const { token: newToken, refreshToken: newRefreshToken, user: userData } = data || {};
+
+        setAccessToken(newToken);
+        if (newRefreshToken) {
+          setRefreshToken(newRefreshToken);
+        }
+
+        const accessTokenStored = getAccessToken() === newToken;
+        const refreshTokenStored = !newRefreshToken || getRefreshToken() === newRefreshToken;
+        if (!accessTokenStored || !refreshTokenStored) {
+          // Defensive: do not crash; return a failure result.
+          logout();
+          setLoading(false);
+          return { success: false, error: 'storage_failed' };
+        }
+
+        setToken(newToken);
+        const normalizedUser = normalizeAuthUser(userData);
+        setUser(normalizedUser);
         setLoading(false);
-        return { success: false, error: 'auth_skipped', message: 'auth_skipped' };
-      }
-      const { token: newToken, refreshToken: newRefreshToken, user: userData } = data || {};
 
-      setAccessToken(newToken);
-      if (newRefreshToken) {
-        setRefreshToken(newRefreshToken);
+        return { success: true, user: normalizedUser };
+      } catch (error) {
+        const errorData = error?.response?.data || {};
+        return {
+          success: false,
+          ...errorData,
+          error: errorData.error || errorData.message || errorData.errorCode,
+          status: errorData.status,
+          message: errorData.message,
+        };
       }
+    },
+    [logout]
+  );
 
-      const accessTokenStored = getAccessToken() === newToken;
-      const refreshTokenStored = !newRefreshToken || getRefreshToken() === newRefreshToken;
-      if (!accessTokenStored || !refreshTokenStored) {
-        // Defensive: do not crash; return a failure result.
-        logout();
+  const register = useCallback(
+    async (username, email, password) => {
+      try {
+        const data = await authService.register(username, email, password);
+        if (!data) {
+          setLoading(false);
+          return { success: false, error: 'auth_skipped', message: 'auth_skipped' };
+        }
+        const { status: accountStatus } = data || {};
+
+        if (accountStatus === 'pending') {
+          return { success: true, status: 'pending' };
+        }
+
+        const { token: newToken, refreshToken: newRefreshToken, user: userData } = data || {};
+
+        setAccessToken(newToken);
+        if (newRefreshToken) {
+          setRefreshToken(newRefreshToken);
+        }
+
+        const accessTokenStored = getAccessToken() === newToken;
+        const refreshTokenStored = !newRefreshToken || getRefreshToken() === newRefreshToken;
+        if (!accessTokenStored || !refreshTokenStored) {
+          logout();
+          setLoading(false);
+          return { success: false, error: 'storage_failed' };
+        }
+
+        setToken(newToken);
+        const normalizedUser = normalizeAuthUser(userData);
+        setUser(normalizedUser);
         setLoading(false);
-        return { success: false, error: 'storage_failed' };
+
+        return { success: true };
+      } catch (error) {
+        const data = error?.response?.data || {};
+        return { success: false, ...data, error: data.error || data.message || data.errorCode };
       }
-
-      setToken(newToken);
-      const normalizedUser = normalizeAuthUser(userData);
-      setUser(normalizedUser);
-      setLoading(false);
-
-      return { success: true, user: normalizedUser };
-    } catch (error) {
-      const errorData = error?.response?.data || {};
-       return {
-         success: false,
-         ...errorData,
-         error: errorData.error || errorData.message || errorData.errorCode,
-         status: errorData.status,
-         message: errorData.message,
-       };
-    }
-  }, [logout]);
-
-  const register = useCallback(async (username, email, password) => {
-    try {
-      const data = await authService.register(username, email, password);
-      if (!data) {
-        setLoading(false);
-        return { success: false, error: 'auth_skipped', message: 'auth_skipped' };
-      }
-      const { status: accountStatus } = data || {};
-
-      if (accountStatus === 'pending') {
-        return { success: true, status: 'pending' };
-      }
-
-      const { token: newToken, refreshToken: newRefreshToken, user: userData } = data || {};
-
-      setAccessToken(newToken);
-      if (newRefreshToken) {
-        setRefreshToken(newRefreshToken);
-      }
-
-      const accessTokenStored = getAccessToken() === newToken;
-      const refreshTokenStored = !newRefreshToken || getRefreshToken() === newRefreshToken;
-      if (!accessTokenStored || !refreshTokenStored) {
-        logout();
-        setLoading(false);
-        return { success: false, error: 'storage_failed' };
-      }
-
-      setToken(newToken);
-      const normalizedUser = normalizeAuthUser(userData);
-      setUser(normalizedUser);
-      setLoading(false);
-
-      return { success: true };
-     } catch (error) {
-       const data = error?.response?.data || {};
-       return { success: false, ...data, error: data.error || data.message || data.errorCode };
-     }
-  }, [logout]);
+    },
+    [logout]
+  );
 
   const isAuthenticated = !!user;
 
@@ -168,4 +174,3 @@ export function useAuthSession() {
     isAuthenticated,
   };
 }
-

@@ -30,10 +30,9 @@ const mockOnClose = jest.fn();
 const mockOnActionComplete = jest.fn();
 
 async function renderOpenUseSharedManage(props) {
-  const rendered = renderHook(
-    (hookProps) => useSharedManage(hookProps),
-    { initialProps: { ...props, open: false } }
-  );
+  const rendered = renderHook((hookProps) => useSharedManage(hookProps), {
+    initialProps: { ...props, open: false },
+  });
   await act(async () => {
     rendered.rerender(props);
     await Promise.resolve();
@@ -159,7 +158,10 @@ describe('useSharedManage', () => {
 
   it('handlePermissionRequest calls createPermissionRequest and onMessage on success', async () => {
     sharePermissionGateway.createPermissionRequest.mockResolvedValue({ id: 'req-1' });
-    const { result } = await renderOpenUseSharedManage({ ...defaultProps, onMessage: mockOnMessage });
+    const { result } = await renderOpenUseSharedManage({
+      ...defaultProps,
+      onMessage: mockOnMessage,
+    });
 
     await waitFor(() => {
       expect(result.current.initialLoading).toBe(false);
@@ -255,7 +257,10 @@ describe('useSharedManage', () => {
     ]);
     sharePermissionGateway.cancelPermissionRequest.mockResolvedValue();
 
-    const { result } = await renderOpenUseSharedManage({ ...defaultProps, onMessage: mockOnMessage });
+    const { result } = await renderOpenUseSharedManage({
+      ...defaultProps,
+      onMessage: mockOnMessage,
+    });
 
     await waitFor(() => {
       expect(result.current.initialLoading).toBe(false);
@@ -267,9 +272,7 @@ describe('useSharedManage', () => {
     });
 
     expect(sharePermissionGateway.cancelPermissionRequest).toHaveBeenCalledWith('req-1');
-    expect(mockOnMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'success' })
-    );
+    expect(mockOnMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'success' }));
   });
 
   it('maps pending file requests by file_node_id', async () => {

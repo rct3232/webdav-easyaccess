@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Transitional listing/nodeId seam for FileManager. Its final target is narrow: own the current explorer nodeId plus gateway-backed listing reload state, while staying out of explorer session, commands, progress, and product-overlay policy. |
-| Used by components/pages | FileManager page shell (current implementation) |
+| Item                     | Description                                                                                                                                                                                                                                    |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Transitional listing/nodeId seam for FileManager. Its final target is narrow: own the current explorer nodeId plus gateway-backed listing reload state, while staying out of explorer session, commands, progress, and product-overlay policy. |
+| Used by components/pages | FileManager page shell (current implementation)                                                                                                                                                                                                |
 
 ---
 
@@ -18,23 +18,23 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| user | object | Y | Current user |
-| options | object | N | onLoadComplete, onLoadError, shareToken, linkInfo |
+| Name    | Type   | Required | Description                                       |
+| ------- | ------ | -------- | ------------------------------------------------- |
+| user    | object | Y        | Current user                                      |
+| options | object | N        | onLoadComplete, onLoadError, shareToken, linkInfo |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| currentNodeId | number\|null | Current folder nodeId (`null` = root / virtual-root level). **Source of truth** for the explorer location in the nodeId end-state. |
-| setCurrentNodeId | (nodeId) => void | Set current folder nodeId and navigate to `/files/node/<nodeId>`. |
-| currentPath | string | Derived display path only (breadcrumbs/labels); not a navigation or lookup key. |
-| files | array | File list |
-| loading | boolean | Loading |
-| hasWritePermission | boolean | Write permission |
-| loadFiles | () => Promise | Reload files |
-| onLoadErrorRef | ref | Ref for onLoadError callback (for external updates) |
+| Key                | Type             | Meaning                                                                                                                            |
+| ------------------ | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| currentNodeId      | number\|null     | Current folder nodeId (`null` = root / virtual-root level). **Source of truth** for the explorer location in the nodeId end-state. |
+| setCurrentNodeId   | (nodeId) => void | Set current folder nodeId and navigate to `/files/node/<nodeId>`.                                                                  |
+| currentPath        | string           | Derived display path only (breadcrumbs/labels); not a navigation or lookup key.                                                    |
+| files              | array            | File list                                                                                                                          |
+| loading            | boolean          | Loading                                                                                                                            |
+| hasWritePermission | boolean          | Write permission                                                                                                                   |
+| loadFiles          | () => Promise    | Reload files                                                                                                                       |
+| onLoadErrorRef     | ref              | Ref for onLoadError callback (for external updates)                                                                                |
 
 ### 2.4 Boundaries
 

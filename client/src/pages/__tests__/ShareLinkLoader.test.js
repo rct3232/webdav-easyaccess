@@ -19,21 +19,29 @@ function createDeferred() {
   return { promise, resolve };
 }
 
-jest.mock('../FileManager', () => function MockFileManager({ shareToken, linkInfo }) {
-  return (
-    <div data-testid="file-manager" data-share-token={shareToken}>
-      FileManager: {linkInfo?.isDirectory ? 'directory' : 'file'}
-    </div>
-  );
-});
+jest.mock(
+  '../FileManager',
+  () =>
+    function MockFileManager({ shareToken, linkInfo }) {
+      return (
+        <div data-testid="file-manager" data-share-token={shareToken}>
+          FileManager: {linkInfo?.isDirectory ? 'directory' : 'file'}
+        </div>
+      );
+    }
+);
 
-jest.mock('../ShareLinkSingleFileView', () => function MockShareLinkSingleFileView({ token, linkInfo }) {
-  return (
-    <div data-testid="share-link-single-file-view" data-token={token}>
-      SingleFile: {linkInfo?.fileName}
-    </div>
-  );
-});
+jest.mock(
+  '../ShareLinkSingleFileView',
+  () =>
+    function MockShareLinkSingleFileView({ token, linkInfo }) {
+      return (
+        <div data-testid="share-link-single-file-view" data-token={token}>
+          SingleFile: {linkInfo?.fileName}
+        </div>
+      );
+    }
+);
 
 function renderShareLinkLoader(initialEntries = ['/share/valid-token']) {
   return renderWithProviders(
@@ -50,7 +58,12 @@ describe('ShareLinkLoader', () => {
     server.use(
       http.get('/api/share/:token/info', () =>
         pendingInfoRequest.promise.then(() =>
-          HttpResponse.json({ token: 't1', filePath: '/a.pdf', fileName: 'a.pdf', isDirectory: false })
+          HttpResponse.json({
+            token: 't1',
+            filePath: '/a.pdf',
+            fileName: 'a.pdf',
+            isDirectory: false,
+          })
         )
       )
     );
@@ -70,7 +83,9 @@ describe('ShareLinkLoader', () => {
 
   it('shows error state when fetch fails', async () => {
     server.use(
-      http.get('/api/share/:token/info', () => HttpResponse.json({ errorCode: 'serverErrors.share.shareLinkNotFound' }, { status: 404 }))
+      http.get('/api/share/:token/info', () =>
+        HttpResponse.json({ errorCode: 'serverErrors.share.shareLinkNotFound' }, { status: 404 })
+      )
     );
     renderShareLinkLoader(['/share/invalid']);
 
@@ -83,7 +98,10 @@ describe('ShareLinkLoader', () => {
   it('shows error state for invalid token format (API returns 400)', async () => {
     server.use(
       http.get('/api/share/:token/info', () =>
-        HttpResponse.json({ errorCode: 'serverErrors.utilsAuth.invalidOrExpiredToken' }, { status: 400 })
+        HttpResponse.json(
+          { errorCode: 'serverErrors.utilsAuth.invalidOrExpiredToken' },
+          { status: 400 }
+        )
       )
     );
     renderShareLinkLoader(['/share/invalid-format']);
@@ -176,7 +194,10 @@ describe('ShareLinkLoader', () => {
     await waitFor(() => {
       expect(screen.getByTestId('share-link-single-file-view')).toBeInTheDocument();
     });
-    expect(screen.getByTestId('share-link-single-file-view')).toHaveAttribute('data-token', 'file-token');
+    expect(screen.getByTestId('share-link-single-file-view')).toHaveAttribute(
+      'data-token',
+      'file-token'
+    );
     expect(screen.getByText(/doc\.pdf/)).toBeInTheDocument();
   });
 });

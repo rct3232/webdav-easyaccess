@@ -35,7 +35,8 @@ export async function adminPermissionSaveUseCase({
   // Guard the target user's own home folder: never leave it without at least write access.
   if (homeFolderNodeId != null && userId != null) {
     const homeAlreadyGranted = permissionsToGrant.some(
-      ({ userId: grantUserId, nodeId }) => grantUserId === String(userId) && nodeId === homeFolderNodeId
+      ({ userId: grantUserId, nodeId }) =>
+        grantUserId === String(userId) && nodeId === homeFolderNodeId
     );
     if (!homeAlreadyGranted) {
       await sharePermissionGateway.grantPermission({

@@ -39,7 +39,7 @@ const FileGridItemContainer = ({
     onMouseUp,
     onMouseLeave,
     wasLongPress,
-  } = useLongPress((e) => {
+  } = useLongPress(() => {
     if (onLongPressCallback) {
       onLongPressCallback(file);
     }
@@ -55,14 +55,16 @@ const FileGridItemContainer = ({
       data-file-node-id={file.nodeId}
       {...dragHandlers}
       {...dropHandlers}
-      {...(isLongPressEnabled ? {
-        onTouchStart,
-        onTouchEnd,
-        onTouchMove,
-        onMouseDown,
-        onMouseUp,
-        onMouseLeave,
-      } : {})}
+      {...(isLongPressEnabled
+        ? {
+            onTouchStart,
+            onTouchEnd,
+            onTouchMove,
+            onMouseDown,
+            onMouseUp,
+            onMouseLeave,
+          }
+        : {})}
       onClick={(e) => {
         if (wasLongPress()) return;
         if (!isDisabled) {

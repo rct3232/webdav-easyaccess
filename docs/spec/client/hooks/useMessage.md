@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Unified message display: showMessage, showSuccess, showError, showWarning, showInfo, showErrorFromError, clearMessage. Auto-hide after duration. |
-| Used by components/pages | FileManager, dialogs, pages |
+| Item                     | Description                                                                                                                                      |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role                     | Unified message display: showMessage, showSuccess, showError, showWarning, showInfo, showErrorFromError, clearMessage. Auto-hide after duration. |
+| Used by components/pages | FileManager, dialogs, pages                                                                                                                      |
 
 ---
 
@@ -18,25 +18,25 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| options | object | N | {} |
-| options.defaultDuration | number | N | 3000 |
-| options.successDuration | number | N | 3000 |
-| options.errorDuration | number | N | 5000 |
+| Name                    | Type   | Required | Description |
+| ----------------------- | ------ | -------- | ----------- |
+| options                 | object | N        | {}          |
+| options.defaultDuration | number | N        | 3000        |
+| options.successDuration | number | N        | 3000        |
+| options.errorDuration   | number | N        | 5000        |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| message | { show, text, type } | Current message |
-| showMessage | (text, type, duration?) => void | Show message |
-| showSuccess | (text, duration?) => void | Success |
-| showError | (text, duration?) => void | Error |
-| showWarning | (text, duration?) => void | Warning |
-| showInfo | (text, duration?) => void | Info |
+| Key                | Type                                    | Meaning           |
+| ------------------ | --------------------------------------- | ----------------- |
+| message            | { show, text, type }                    | Current message   |
+| showMessage        | (text, type, duration?) => void         | Show message      |
+| showSuccess        | (text, duration?) => void               | Success           |
+| showError          | (text, duration?) => void               | Error             |
+| showWarning        | (text, duration?) => void               | Warning           |
+| showInfo           | (text, duration?) => void               | Info              |
 | showErrorFromError | (error, defaultMsg?, duration?) => void | From error object |
-| clearMessage | () => void | Clear |
+| clearMessage       | () => void                              | Clear             |
 
 ### 2.4 Dependencies
 

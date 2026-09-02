@@ -50,20 +50,16 @@ function createFailSafeService({ fileNodeService, fileNodesStore }) {
    */
   async function repairNode(nodeId, { action }) {
     if (!REPAIR_ACTIONS.includes(action)) {
-      throw createError(
-        SERVER_ERROR_CODES.admin.repairSyncInvalidAction,
-        400,
-        { action: String(action) }
-      );
+      throw createError(SERVER_ERROR_CODES.admin.repairSyncInvalidAction, 400, {
+        action: String(action),
+      });
     }
 
     const node = await fileNodeService.getNode(nodeId);
     if (!node) {
-      throw createError(
-        SERVER_ERROR_CODES.admin.repairSyncNodeNotFound,
-        404,
-        { nodeId: Number(nodeId) }
-      );
+      throw createError(SERVER_ERROR_CODES.admin.repairSyncNodeNotFound, 404, {
+        nodeId: Number(nodeId),
+      });
     }
 
     let path = null;

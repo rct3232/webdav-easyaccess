@@ -101,9 +101,9 @@ describe('convertPostgresToSqlite', () => {
   });
 
   it('passes partial index WHERE clauses through unchanged', () => {
-    const ddl = "CREATE INDEX idx ON t (a) WHERE b IS NULL;";
+    const ddl = 'CREATE INDEX idx ON t (a) WHERE b IS NULL;';
     const result = convertPostgresToSqlite(ddl);
-    expect(result).toContain("WHERE b IS NULL");
+    expect(result).toContain('WHERE b IS NULL');
   });
 
   it('passes self-referencing FK inline syntax through', () => {
@@ -130,7 +130,10 @@ describe('convertPostgresToSqlite', () => {
 // Integration test: execute converted DDL against an in-memory SQLite DB
 // ---------------------------------------------------------------------------
 describe('initSqliteSchema integration', () => {
-  const ddlPath = path.join(__dirname, '../../store/postgresql/ddl/001_initial_normalized_schema.sql');
+  const ddlPath = path.join(
+    __dirname,
+    '../../store/postgresql/ddl/001_initial_normalized_schema.sql'
+  );
   const ddlSource = fs.readFileSync(ddlPath, 'utf8');
 
   let db;
@@ -197,31 +200,31 @@ describe('initSqliteSchema integration', () => {
   });
 
   it('file_nodes.id is INTEGER PRIMARY KEY AUTOINCREMENT', async () => {
-    const info = await queryDb(db, "PRAGMA table_info(file_nodes)");
+    const info = await queryDb(db, 'PRAGMA table_info(file_nodes)');
     const idCol = info.find((c) => c.name === 'id');
     expect(idCol.type).toBe('INTEGER');
   });
 
   it('users.is_admin is INTEGER (converted from BOOLEAN)', async () => {
-    const info = await queryDb(db, "PRAGMA table_info(users)");
+    const info = await queryDb(db, 'PRAGMA table_info(users)');
     const col = info.find((c) => c.name === 'is_admin');
     expect(col.type).toBe('INTEGER');
   });
 
   it('users.created_at is TEXT (converted from TIMESTAMPTZ)', async () => {
-    const info = await queryDb(db, "PRAGMA table_info(users)");
+    const info = await queryDb(db, 'PRAGMA table_info(users)');
     const col = info.find((c) => c.name === 'created_at');
     expect(col.type).toBe('TEXT');
   });
 
   it('settings.value is TEXT (converted from JSONB)', async () => {
-    const info = await queryDb(db, "PRAGMA table_info(settings)");
+    const info = await queryDb(db, 'PRAGMA table_info(settings)');
     const col = info.find((c) => c.name === 'value');
     expect(col.type).toBe('TEXT');
   });
 
   it('filecache.size is INTEGER (converted from BIGINT)', async () => {
-    const info = await queryDb(db, "PRAGMA table_info(filecache)");
+    const info = await queryDb(db, 'PRAGMA table_info(filecache)');
     const col = info.find((c) => c.name === 'size');
     expect(col.type).toBe('INTEGER');
   });
@@ -235,12 +238,18 @@ describe('initSqliteSchema integration', () => {
 
   it('CHECK constraints are preserved (users.status)', async () => {
     // Insert a valid status — should succeed.
-    await runSql(db, "INSERT INTO users (username, email, email_hash, password, status) VALUES ('chk_test', 't@t.com', 'hash', 'pw', 'approved')");
+    await runSql(
+      db,
+      "INSERT INTO users (username, email, email_hash, password, status) VALUES ('chk_test', 't@t.com', 'hash', 'pw', 'approved')"
+    );
 
     // Insert an invalid status — should fail.
     let err = null;
     try {
-      await runSql(db, "INSERT INTO users (username, email, email_hash, password, status) VALUES ('chk_fail', 'f@t.com', 'hash2', 'pw', 'invalid_status')");
+      await runSql(
+        db,
+        "INSERT INTO users (username, email, email_hash, password, status) VALUES ('chk_fail', 'f@t.com', 'hash2', 'pw', 'invalid_status')"
+      );
     } catch (e) {
       err = e;
     }

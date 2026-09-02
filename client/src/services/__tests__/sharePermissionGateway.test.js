@@ -47,7 +47,9 @@ describe('sharePermissionGateway', () => {
   });
 
   it('forwards getUserPermissions to permissionService', async () => {
-    permissionService.getUserPermissions.mockResolvedValueOnce([{ nodeId: 10, permission: 'read' }]);
+    permissionService.getUserPermissions.mockResolvedValueOnce([
+      { nodeId: 10, permission: 'read' },
+    ]);
     const res = await getUserPermissions('u1');
     expect(permissionService.getUserPermissions).toHaveBeenCalledWith('u1', undefined);
     expect(res).toEqual([{ nodeId: 10, permission: 'read' }]);
@@ -57,8 +59,17 @@ describe('sharePermissionGateway', () => {
     await grantPermission({ userId: 'u1', nodeId: 42, permission: 'read' });
     await revokePermission({ userId: 'u1', nodeId: 42, scope: 'pathOnly' });
 
-    expect(permissionService.grantPermission).toHaveBeenCalledWith({ userId: 'u1', nodeId: 42, permission: 'read', target: undefined });
-    expect(permissionService.revokePermission).toHaveBeenCalledWith({ userId: 'u1', nodeId: 42, scope: 'pathOnly' });
+    expect(permissionService.grantPermission).toHaveBeenCalledWith({
+      userId: 'u1',
+      nodeId: 42,
+      permission: 'read',
+      target: undefined,
+    });
+    expect(permissionService.revokePermission).toHaveBeenCalledWith({
+      userId: 'u1',
+      nodeId: 42,
+      scope: 'pathOnly',
+    });
   });
 
   it('forwards approvePermissionRequest to permissionRequestService', async () => {
@@ -77,7 +88,9 @@ describe('sharePermissionGateway', () => {
   it('forwards updateUserPermissions to userService', async () => {
     userService.updateUserPermissions.mockResolvedValueOnce({ ok: true });
     const res = await updateUserPermissions('u1', [{ nodeId: 10, permission: 'write' }]);
-    expect(userService.updateUserPermissions).toHaveBeenCalledWith('u1', [{ nodeId: 10, permission: 'write' }]);
+    expect(userService.updateUserPermissions).toHaveBeenCalledWith('u1', [
+      { nodeId: 10, permission: 'write' },
+    ]);
     expect(res).toEqual({ ok: true });
   });
 
@@ -89,7 +102,9 @@ describe('sharePermissionGateway', () => {
     await listOutboxPermissionRequests({ status: 'pending' });
 
     expect(permissionRequestService.checkOwnerExists).toHaveBeenCalledWith(42);
-    expect(permissionRequestService.listOutboxPermissionRequests).toHaveBeenCalledWith({ status: 'pending' });
+    expect(permissionRequestService.listOutboxPermissionRequests).toHaveBeenCalledWith({
+      status: 'pending',
+    });
   });
 
   it('forwards request create/cancel', async () => {
@@ -99,12 +114,19 @@ describe('sharePermissionGateway', () => {
     await createPermissionRequest({ nodeId: 42, permission: 'read' });
     await cancelPermissionRequest('req-1');
 
-    expect(permissionRequestService.createPermissionRequest).toHaveBeenCalledWith({ nodeId: 42, permission: 'read' });
+    expect(permissionRequestService.createPermissionRequest).toHaveBeenCalledWith({
+      nodeId: 42,
+      permission: 'read',
+    });
     expect(permissionRequestService.cancelPermissionRequest).toHaveBeenCalledWith('req-1');
   });
 
   it('forwards checkPermission', async () => {
-    permissionService.checkPermission.mockResolvedValueOnce({ hasRead: true, hasWrite: false, source: 'file' });
+    permissionService.checkPermission.mockResolvedValueOnce({
+      hasRead: true,
+      hasWrite: false,
+      source: 'file',
+    });
     const res = await checkPermission(42);
     expect(permissionService.checkPermission).toHaveBeenCalledWith(42);
     expect(res).toEqual({ hasRead: true, hasWrite: false, source: 'file' });
@@ -117,4 +139,3 @@ describe('sharePermissionGateway', () => {
     expect(res).toEqual([]);
   });
 });
-

@@ -12,11 +12,14 @@ export const getVisibleLength = (str) => {
   for (const char of chars) {
     const charCode = char.charCodeAt(0);
     // Rough check for CJK characters (Hangul, Hanja, Symbols)
-    if ((charCode >= 0x1100 && charCode <= 0x11ff) || // Hangul Jamo
+    if (
+      (charCode >= 0x1100 && charCode <= 0x11ff) || // Hangul Jamo
       (charCode >= 0x3000 && charCode <= 0x303f) || // CJK Symbols and Punctuation
       (charCode >= 0x3130 && charCode <= 0x318f) || // Hangul Compatibility Jamo
       (charCode >= 0xac00 && charCode <= 0xd7af) || // Hangul Syllables
-      (charCode >= 0x4e00 && charCode <= 0x9fff)) {  // CJK Unified Ideographs
+      (charCode >= 0x4e00 && charCode <= 0x9fff)
+    ) {
+      // CJK Unified Ideographs
       length += 2;
     } else {
       length += 1;
@@ -80,7 +83,10 @@ let canvas = null;
 /**
  * Measures the pixel width of a string given a font.
  */
-export const getTextWidth = (text, font = '14px Inter, Roboto, "Helvetica Neue", Arial, sans-serif') => {
+export const getTextWidth = (
+  text,
+  font = '14px Inter, Roboto, "Helvetica Neue", Arial, sans-serif'
+) => {
   if (typeof document === 'undefined') return 0; // Guard for non-browser env
   if (!canvas) {
     canvas = document.createElement('canvas');
@@ -125,7 +131,8 @@ export const pixelMiddleTruncate = (text, maxPixelWidth, font, backLength = 6) =
 
   const availableFrontWidth = maxPixelWidth - backWidth - ellipsisWidth;
 
-  if (availableFrontWidth < 5) { // Minimum space for at least one narrow char
+  if (availableFrontWidth < 5) {
+    // Minimum space for at least one narrow char
     return `${ellipsis}${backStr}`;
   }
 

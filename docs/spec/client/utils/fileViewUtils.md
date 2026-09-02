@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                               |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | File list/grid view helpers: render processing icon (move/copy/delete), compute file item state (selected, disabled, processing), drop target styles. Used in FileListItem, FileGridItem. |
 
 ---
@@ -17,12 +17,12 @@
 
 ### 2.2 Function Signatures
 
-| Function | (input) => return |
-|----------|-------------------|
-| getEntryKey | (file) => number \| string — `file.nodeId` when present, otherwise `file.path` |
-| renderProcessingIcon | (processingType: 'move' \| 'copy' \| 'delete') => JSX.Element \| null |
-| getFileItemState | (file, selectionMode, selectedFiles, processingMap) => { isSelected, isDisabled, isProcessing, processingType, isPermissionDisabled } |
-| getDropTargetStyles | (isDropTarget) => sx object \| {} |
+| Function             | (input) => return                                                                                                                     |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| getEntryKey          | (file) => number \| string — `file.nodeId` when present, otherwise `file.path`                                                        |
+| renderProcessingIcon | (processingType: 'move' \| 'copy' \| 'delete') => JSX.Element \| null                                                                 |
+| getFileItemState     | (file, selectionMode, selectedFiles, processingMap) => { isSelected, isDisabled, isProcessing, processingType, isPermissionDisabled } |
+| getDropTargetStyles  | (isDropTarget) => sx object \| {}                                                                                                     |
 
 ### 2.3 Dependencies
 

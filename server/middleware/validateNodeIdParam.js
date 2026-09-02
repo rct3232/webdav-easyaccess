@@ -11,7 +11,7 @@ const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageC
  * @param {string} fieldName - Field name for error context (default 'nodeId')
  * @returns {number} Parsed positive integer
  */
-function parseNodeId(value, fieldName = 'nodeId') {
+function parseNodeId(value, _fieldName = 'nodeId') {
   const parsed = parseInt(value, 10);
   if (isNaN(parsed) || parsed <= 0) {
     throw validationError(SERVER_ERROR_CODES.files.invalidPath);

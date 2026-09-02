@@ -49,8 +49,11 @@ beforeAll(async () => {
   });
   userToken = created.token;
 
-  readableNodeId = (await createTestFileNode({ name: 'photo.jpg', type: 'file', parentId: null })).nodeId;
-  forbiddenNodeId = (await createTestFileNode({ name: 'private.pdf', type: 'file', parentId: null })).nodeId;
+  readableNodeId = (await createTestFileNode({ name: 'photo.jpg', type: 'file', parentId: null }))
+    .nodeId;
+  forbiddenNodeId = (
+    await createTestFileNode({ name: 'private.pdf', type: 'file', parentId: null })
+  ).nodeId;
 
   await grantTestPermissionByNodeId({
     userId: created.user.id,

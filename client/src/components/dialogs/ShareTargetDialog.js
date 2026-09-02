@@ -68,7 +68,9 @@ function getFilePermissionOptions(pathPermission, hasSameLevelFilePermission, t)
     return [{ value: PERMISSIONS.ADMIN, label: labels[PERMISSIONS.ADMIN] }];
   }
   const rank = permissionRank(path);
-  const pathOptionLabel = hasSameLevelFilePermission ? labels[path] || path : t('dialogs.sameAsPath');
+  const pathOptionLabel = hasSameLevelFilePermission
+    ? labels[path] || path
+    : t('dialogs.sameAsPath');
   const options = [{ value: path, label: pathOptionLabel }];
   PERMISSIONS.ALL.forEach((perm) => {
     if (perm !== PERMISSIONS.ADMIN && permissionRank(perm) > rank) {
@@ -86,7 +88,7 @@ function getFilePermissionOptions(pathPermission, hasSameLevelFilePermission, t)
  */
 function ShareManageContent({ open, file, user, onMessage, onActionComplete, onClose }) {
   const targetNodeId = file?.nodeId ?? null;
-  const parentNodeId = !file?.type || file.type === 'directory' ? null : file?.parentId ?? null;
+  const parentNodeId = !file?.type || file.type === 'directory' ? null : (file?.parentId ?? null);
   const displayName = file?.basename || file?.name || '';
   const isDirectory = file?.type === 'directory';
   const directHasReadPermission =
@@ -141,14 +143,7 @@ function ShareManageContent({ open, file, user, onMessage, onActionComplete, onC
   );
 }
 
-const ShareTargetDialog = ({
-  open,
-  onClose,
-  file,
-  user,
-  onMessage,
-  onSave,
-}) => {
+const ShareTargetDialog = ({ open, onClose, file, user, onMessage, onSave }) => {
   const { t } = useTranslation();
   const permissionLabels = React.useMemo(() => getPermissionLabels(t), [t]);
   const { isMobile } = useResponsive();
@@ -194,7 +189,8 @@ const ShareTargetDialog = ({
       setInitialAccessList(list.map((u) => ({ ...u })));
     } catch (err) {
       console.error('Failed to load permissions:', err);
-      if (onMessage) onMessage({ show: true, text: t('dialogs.permissionListLoadFail'), type: 'error' });
+      if (onMessage)
+        onMessage({ show: true, text: t('dialogs.permissionListLoadFail'), type: 'error' });
       setAccessList([]);
       setInitialAccessList([]);
     } finally {
@@ -224,39 +220,46 @@ const ShareTargetDialog = ({
     [searchQuery, users]
   );
 
-  const sortedAccessList = React.useMemo(
-    () => sortShareTargetAccessList(accessList),
-    [accessList]
+  const sortedAccessList = React.useMemo(() => sortShareTargetAccessList(accessList), [accessList]);
+
+  const addUser = useCallback(
+    (u) => {
+      setAccessList((prev) => {
+        if (prev.some((x) => x.id === u.id)) return prev;
+        if (isDirectory) {
+          return [
+            ...prev,
+            { id: u.id, username: u.username, email: u.email || '', permission: PERMISSIONS.READ },
+          ];
+        }
+        return [
+          ...prev,
+          {
+            id: u.id,
+            username: u.username,
+            email: u.email || '',
+            pathPermission: undefined,
+            filePermission: null,
+            permission: PERMISSIONS.READ,
+          },
+        ];
+      });
+      setSearchQuery('');
+      setSearchOpen(false);
+    },
+    [isDirectory]
   );
 
-  const addUser = useCallback((u) => {
-    setAccessList((prev) => {
-      if (prev.some((x) => x.id === u.id)) return prev;
-      if (isDirectory) {
-        return [...prev, { id: u.id, username: u.username, email: u.email || '', permission: PERMISSIONS.READ }];
+  const setUserPermission = useCallback(
+    (userId, permission, pathPermissionOfUser) => {
+      if (permission === 'revoke' && (isDirectory || pathPermissionOfUser == null)) {
+        setAccessList((prev) => prev.filter((x) => x.id !== userId));
+        return;
       }
-      return [...prev, {
-        id: u.id,
-        username: u.username,
-        email: u.email || '',
-        pathPermission: undefined,
-        filePermission: null,
-        permission: PERMISSIONS.READ,
-      }];
-    });
-    setSearchQuery('');
-    setSearchOpen(false);
-  }, [isDirectory]);
-
-  const setUserPermission = useCallback((userId, permission, pathPermissionOfUser) => {
-    if (permission === 'revoke' && (isDirectory || pathPermissionOfUser == null)) {
-      setAccessList((prev) => prev.filter((x) => x.id !== userId));
-      return;
-    }
-    setAccessList((prev) =>
-      prev.map((x) => (x.id === userId ? { ...x, permission } : x))
-    );
-  }, [isDirectory]);
+      setAccessList((prev) => prev.map((x) => (x.id === userId ? { ...x, permission } : x)));
+    },
+    [isDirectory]
+  );
 
   const handleSave = useCallback(async () => {
     if (!targetNodeId) return;
@@ -269,25 +272,23 @@ const ShareTargetDialog = ({
         accessList,
       });
 
-      if (onMessage) onMessage({ show: true, text: isDirectory ? t('dialogs.folderShareSuccess') : t('dialogs.permissionSaveSuccess'), type: 'success' });
+      if (onMessage)
+        onMessage({
+          show: true,
+          text: isDirectory ? t('dialogs.folderShareSuccess') : t('dialogs.permissionSaveSuccess'),
+          type: 'success',
+        });
       if (onSave) onSave();
       onClose();
     } catch (err) {
-      const msg = getServerErrorDisplay(err?.response?.data, t) || (isDirectory ? t('dialogs.folderShareFail') : t('dialogs.permissionSaveFail'));
+      const msg =
+        getServerErrorDisplay(err?.response?.data, t) ||
+        (isDirectory ? t('dialogs.folderShareFail') : t('dialogs.permissionSaveFail'));
       if (onMessage) onMessage({ show: true, text: msg, type: 'error' });
     } finally {
       setSaving(false);
     }
-  }, [
-    targetNodeId,
-    isDirectory,
-    initialAccessList,
-    accessList,
-    onMessage,
-    onSave,
-    onClose,
-    t,
-  ]);
+  }, [targetNodeId, isDirectory, initialAccessList, accessList, onMessage, onSave, onClose, t]);
 
   const handleSearchFocus = (e) => {
     setSearchAnchorEl(e.currentTarget);
@@ -310,192 +311,245 @@ const ShareTargetDialog = ({
           sx: isMobile ? {} : { maxHeight: '85vh' },
         }}
       >
-        <DialogTitle>{displayName ? `${displayName} ${t('dialogs.shareWith')}` : t('dialogs.shareWith')}</DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, p: 2, overflow: 'hidden' }}>
+        <DialogTitle>
+          {displayName ? `${displayName} ${t('dialogs.shareWith')}` : t('dialogs.shareWith')}
+        </DialogTitle>
+        <DialogContent
+          sx={{ display: 'flex', flexDirection: 'column', gap: 2, p: 2, overflow: 'hidden' }}
+        >
           {hasAdmin ? (
-          <>
-          <Box ref={(el) => setSearchAnchorEl(el || null)}>
-            <TextField
-              fullWidth
-              size="small"
-              placeholder={t('dialogs.userSearchPlaceholder')}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onFocus={handleSearchFocus}
-              onBlur={handleSearchBlur}
-            />
-          </Box>
-          <Popper open={searchOpen} anchorEl={searchAnchorEl} placement="bottom-start" style={{ zIndex: 1400 }} sx={{ width: searchAnchorEl ? searchAnchorEl.offsetWidth : undefined }}>
-            <Paper elevation={2} sx={{ maxHeight: 280, overflow: 'auto' }}>
-              {filteredUsers.length === 0 ? (
-                <Box sx={{ p: 2 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    {t('dialogs.noSearchResults')}
-                  </Typography>
-                </Box>
-              ) : (
-                <List dense>
-                  {filteredUsers.map((u) => (
-                    <ListItem key={u.id} disablePadding>
-                      <ListItemButton
-                        onClick={() => addUser(u)}
-                        disabled={accessList.some((x) => x.id === u.id)}
-                      >
-                        <Box>
-                          <Typography variant="body2">{u.username}</Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {u.email || ''}
-                          </Typography>
-                        </Box>
-                      </ListItemButton>
-                    </ListItem>
-                  ))}
-                </List>
-              )}
-            </Paper>
-          </Popper>
+            <>
+              <Box ref={(el) => setSearchAnchorEl(el || null)}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  placeholder={t('dialogs.userSearchPlaceholder')}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onFocus={handleSearchFocus}
+                  onBlur={handleSearchBlur}
+                />
+              </Box>
+              <Popper
+                open={searchOpen}
+                anchorEl={searchAnchorEl}
+                placement="bottom-start"
+                style={{ zIndex: 1400 }}
+                sx={{ width: searchAnchorEl ? searchAnchorEl.offsetWidth : undefined }}
+              >
+                <Paper elevation={2} sx={{ maxHeight: 280, overflow: 'auto' }}>
+                  {filteredUsers.length === 0 ? (
+                    <Box sx={{ p: 2 }}>
+                      <Typography variant="body2" color="text.secondary">
+                        {t('dialogs.noSearchResults')}
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <List dense>
+                      {filteredUsers.map((u) => (
+                        <ListItem key={u.id} disablePadding>
+                          <ListItemButton
+                            onClick={() => addUser(u)}
+                            disabled={accessList.some((x) => x.id === u.id)}
+                          >
+                            <Box>
+                              <Typography variant="body2">{u.username}</Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {u.email || ''}
+                              </Typography>
+                            </Box>
+                          </ListItemButton>
+                        </ListItem>
+                      ))}
+                    </List>
+                  )}
+                </Paper>
+              </Popper>
 
-          <Typography variant="subtitle2" color="text.secondary">
-            {t('dialogs.usersWithAccess')}
-          </Typography>
-          {loading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
-              <CircularProgress size={24} />
-            </Box>
-          ) : (
-            <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'auto', maxHeight: 280 }}>
-              {accessList.length === 0 ? (
-                <Box sx={{ p: 2 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    {t('dialogs.noUsersWithAccess')}
-                  </Typography>
+              <Typography variant="subtitle2" color="text.secondary">
+                {t('dialogs.usersWithAccess')}
+              </Typography>
+              {loading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                  <CircularProgress size={24} />
                 </Box>
               ) : (
-                <List dense>
-                  {sortedAccessList.map((u) => (
-                    <ListItem
-                      key={u.id}
-                      sx={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        borderBottom: '1px solid',
-                        borderColor: 'divider',
-                        '&:last-child': { borderBottom: 'none' },
-                      }}
-                    >
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography variant="body2" noWrap>
-                          {u.username}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" display="block" noWrap>
-                          {u.email || ''}
-                        </Typography>
-                      </Box>
-                      <FormControl size="small" sx={{ minWidth: 0 }}>
-                        <Select
-                          value={u.permission === PERMISSIONS.ADMIN ? PERMISSIONS.ADMIN : u.permission}
-                          onChange={(e) => setUserPermission(u.id, e.target.value, u.pathPermission)}
-                          displayEmpty
-                          disabled={(isDirectory && u.permission === PERMISSIONS.ADMIN) || (!isDirectory && u.pathPermission === PERMISSIONS.ADMIN)}
-                          renderValue={(v) => {
-                            if (v === PERMISSIONS.ADMIN) return permissionLabels[PERMISSIONS.ADMIN];
-                            if (v === 'revoke') return t('dialogs.sameAsPath');
-                            if (!isDirectory && u.pathPermission != null && v === u.pathPermission) {
-                              if (u.filePermission != null && u.filePermission === u.pathPermission) return permissionLabels[v] || v;
-                              return t('dialogs.sameAsPath');
-                            }
-                            return permissionLabels[v] || v;
-                          }}
-                          variant="standard"
-                          disableUnderline
-                          IconComponent={() => null}
+                <Box
+                  sx={{
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    overflow: 'auto',
+                    maxHeight: 280,
+                  }}
+                >
+                  {accessList.length === 0 ? (
+                    <Box sx={{ p: 2 }}>
+                      <Typography variant="body2" color="text.secondary">
+                        {t('dialogs.noUsersWithAccess')}
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <List dense>
+                      {sortedAccessList.map((u) => (
+                        <ListItem
+                          key={u.id}
                           sx={{
-                            color: 'text.secondary',
-                            fontSize: '0.875rem',
-                            cursor: (isDirectory && u.permission === PERMISSIONS.ADMIN) || (!isDirectory && u.pathPermission === PERMISSIONS.ADMIN) ? 'default' : 'pointer',
-                            padding: 0,
-                            textAlign: 'right',
-                            backgroundColor: 'transparent',
-                            '& .MuiSelect-select': {
-                              padding: 0,
-                              textAlign: 'right',
-                              backgroundColor: 'transparent',
-                            },
-                            '&:hover:not(.Mui-disabled)': {
-                              color: 'text.primary',
-                              backgroundColor: 'transparent',
-                            },
-                            '&.Mui-focused': {
-                              backgroundColor: 'transparent',
-                              boxShadow: 'none',
-                              outline: 'none',
-                            },
-                            '&.Mui-focused .MuiSelect-select': { backgroundColor: 'transparent' },
-                            '& .MuiSelect-select:hover': { backgroundColor: 'transparent' },
-                            '& .MuiSelect-select:focus': {
-                              backgroundColor: 'transparent',
-                              outline: 'none',
-                              boxShadow: 'none',
-                            },
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            borderBottom: '1px solid',
+                            borderColor: 'divider',
+                            '&:last-child': { borderBottom: 'none' },
                           }}
                         >
-                          {((isDirectory && u.permission === PERMISSIONS.ADMIN) || (!isDirectory && u.pathPermission === PERMISSIONS.ADMIN)) && (
-                            <MenuItem value={PERMISSIONS.ADMIN} disabled>
-                              {permissionLabels[PERMISSIONS.ADMIN]}
-                            </MenuItem>
-                          )}
-                          {isDirectory
-                            ? getPermissionOptions(t).map((opt) => (
-                                <MenuItem key={opt.value} value={opt.value}>
-                                  {opt.label}
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Typography variant="body2" noWrap>
+                              {u.username}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              display="block"
+                              noWrap
+                            >
+                              {u.email || ''}
+                            </Typography>
+                          </Box>
+                          <FormControl size="small" sx={{ minWidth: 0 }}>
+                            <Select
+                              value={
+                                u.permission === PERMISSIONS.ADMIN
+                                  ? PERMISSIONS.ADMIN
+                                  : u.permission
+                              }
+                              onChange={(e) =>
+                                setUserPermission(u.id, e.target.value, u.pathPermission)
+                              }
+                              displayEmpty
+                              disabled={
+                                (isDirectory && u.permission === PERMISSIONS.ADMIN) ||
+                                (!isDirectory && u.pathPermission === PERMISSIONS.ADMIN)
+                              }
+                              renderValue={(v) => {
+                                if (v === PERMISSIONS.ADMIN)
+                                  return permissionLabels[PERMISSIONS.ADMIN];
+                                if (v === 'revoke') return t('dialogs.sameAsPath');
+                                if (
+                                  !isDirectory &&
+                                  u.pathPermission != null &&
+                                  v === u.pathPermission
+                                ) {
+                                  if (
+                                    u.filePermission != null &&
+                                    u.filePermission === u.pathPermission
+                                  )
+                                    return permissionLabels[v] || v;
+                                  return t('dialogs.sameAsPath');
+                                }
+                                return permissionLabels[v] || v;
+                              }}
+                              variant="standard"
+                              disableUnderline
+                              IconComponent={() => null}
+                              sx={{
+                                color: 'text.secondary',
+                                fontSize: '0.875rem',
+                                cursor:
+                                  (isDirectory && u.permission === PERMISSIONS.ADMIN) ||
+                                  (!isDirectory && u.pathPermission === PERMISSIONS.ADMIN)
+                                    ? 'default'
+                                    : 'pointer',
+                                padding: 0,
+                                textAlign: 'right',
+                                backgroundColor: 'transparent',
+                                '& .MuiSelect-select': {
+                                  padding: 0,
+                                  textAlign: 'right',
+                                  backgroundColor: 'transparent',
+                                },
+                                '&:hover:not(.Mui-disabled)': {
+                                  color: 'text.primary',
+                                  backgroundColor: 'transparent',
+                                },
+                                '&.Mui-focused': {
+                                  backgroundColor: 'transparent',
+                                  boxShadow: 'none',
+                                  outline: 'none',
+                                },
+                                '&.Mui-focused .MuiSelect-select': {
+                                  backgroundColor: 'transparent',
+                                },
+                                '& .MuiSelect-select:hover': { backgroundColor: 'transparent' },
+                                '& .MuiSelect-select:focus': {
+                                  backgroundColor: 'transparent',
+                                  outline: 'none',
+                                  boxShadow: 'none',
+                                },
+                              }}
+                            >
+                              {((isDirectory && u.permission === PERMISSIONS.ADMIN) ||
+                                (!isDirectory && u.pathPermission === PERMISSIONS.ADMIN)) && (
+                                <MenuItem value={PERMISSIONS.ADMIN} disabled>
+                                  {permissionLabels[PERMISSIONS.ADMIN]}
                                 </MenuItem>
-                              ))
-                            : u.pathPermission !== PERMISSIONS.ADMIN &&
-                              getFilePermissionOptions(u.pathPermission, u.filePermission != null && u.filePermission === u.pathPermission, t).map((opt) => (
-                                <MenuItem key={opt.value} value={opt.value}>
-                                  {opt.label}
-                                </MenuItem>
-                              ))}
-                        </Select>
-                      </FormControl>
-                    </ListItem>
-                  ))}
-                </List>
+                              )}
+                              {isDirectory
+                                ? getPermissionOptions(t).map((opt) => (
+                                    <MenuItem key={opt.value} value={opt.value}>
+                                      {opt.label}
+                                    </MenuItem>
+                                  ))
+                                : u.pathPermission !== PERMISSIONS.ADMIN &&
+                                  getFilePermissionOptions(
+                                    u.pathPermission,
+                                    u.filePermission != null &&
+                                      u.filePermission === u.pathPermission,
+                                    t
+                                  ).map((opt) => (
+                                    <MenuItem key={opt.value} value={opt.value}>
+                                      {opt.label}
+                                    </MenuItem>
+                                  ))}
+                            </Select>
+                          </FormControl>
+                        </ListItem>
+                      ))}
+                    </List>
+                  )}
+                </Box>
               )}
-            </Box>
-          )}
 
-          {file && (
-            <ExternalShareSection
-              externalShareLink={externalShareLink}
-              setExternalShareLink={setExternalShareLink}
-              externalShareLoading={externalShareLoading}
-              setExternalShareLoading={setExternalShareLoading}
-              externalShareExpiresInDays={externalShareExpiresInDays}
-              setExternalShareExpiresInDays={setExternalShareExpiresInDays}
-              externalShareUnlimited={externalShareUnlimited}
-              setExternalShareUnlimited={setExternalShareUnlimited}
-              linkCopied={linkCopied}
-              setLinkCopied={setLinkCopied}
-              createShareLink={createShareLink}
-              getShareLinkUrl={getShareLinkUrl}
-              onOpenShareLink={openUrlInNewTab}
-              fileNodeId={file.nodeId}
-              fileName={displayName}
-              onMessage={onMessage}
-            />
-          )}
-          </>
+              {file && (
+                <ExternalShareSection
+                  externalShareLink={externalShareLink}
+                  setExternalShareLink={setExternalShareLink}
+                  externalShareLoading={externalShareLoading}
+                  setExternalShareLoading={setExternalShareLoading}
+                  externalShareExpiresInDays={externalShareExpiresInDays}
+                  setExternalShareExpiresInDays={setExternalShareExpiresInDays}
+                  externalShareUnlimited={externalShareUnlimited}
+                  setExternalShareUnlimited={setExternalShareUnlimited}
+                  linkCopied={linkCopied}
+                  setLinkCopied={setLinkCopied}
+                  createShareLink={createShareLink}
+                  getShareLinkUrl={getShareLinkUrl}
+                  onOpenShareLink={openUrlInNewTab}
+                  fileNodeId={file.nodeId}
+                  fileName={displayName}
+                  onMessage={onMessage}
+                />
+              )}
+            </>
           ) : (
-          <ShareManageContent
-            open={open}
-            file={file}
-            user={user}
-            onMessage={onMessage}
-            onActionComplete={onSave}
-            onClose={onClose}
-          />
+            <ShareManageContent
+              open={open}
+              file={file}
+              user={user}
+              onMessage={onMessage}
+              onActionComplete={onSave}
+              onClose={onClose}
+            />
           )}
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
@@ -504,14 +558,17 @@ const ShareTargetDialog = ({
               <Button onClick={onClose} disabled={saving}>
                 {t('common.cancel')}
               </Button>
-              <Button variant="contained" color="primary" onClick={handleSave} disabled={saving || loading}>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={handleSave}
+                disabled={saving || loading}
+              >
                 {saving ? t('common.saving') : t('common.save')}
               </Button>
             </>
           ) : (
-            <Button onClick={onClose}>
-              {t('common.close')}
-            </Button>
+            <Button onClick={onClose}>{t('common.close')}</Button>
           )}
         </DialogActions>
       </Dialog>

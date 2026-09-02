@@ -2,8 +2,17 @@ const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { meetsRank } = require('../policy/permissionRank');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { createError, mapDatabaseError } = require('../../../utils/errorHandler');
-const { getBackend, getPgPool, withTransaction, isSqliteBackend, getSqliteConnection, withSqliteTransaction, sqliteRun } = require('../../../store/storage');
+const {
+  getBackend,
+  getPgPool,
+  withTransaction,
+  isSqliteBackend,
+  getSqliteConnection,
+  withSqliteTransaction,
+  sqliteRun,
+} = require('../../../store/storage');
 const { invalidateExistenceIndexForAclMutation } = require('./permissionExistenceIndex');
+const { getSharedResolver } = require('../../../infrastructure/configResolver');
 const userStore = require('../../../store/userStore');
 
 function isPostgresqlBackend() {
@@ -11,10 +20,6 @@ function isPostgresqlBackend() {
 }
 
 const cache = new Map();
-const CACHE_TTL_MS =
-  process.env.NODE_ENV === 'test'
-    ? 0
-    : parseInt(process.env.PERMISSION_CACHE_TTL_MS || '5000', 10) || 5000;
 
 /* ------------------------------------------------------------------ */
 /*  Share Permissions                                                 */
@@ -339,7 +344,14 @@ async function getUserPermissions(userId) {
   const uid = Number(userId);
   const uidStr = String(uid);
 
-  if (CACHE_TTL_MS > 0) {
+  // PERMISSION_CACHE_TTL_MS is T2 (lazy): read the effective value per call.
+  // The test-mode 0 short-circuit is preserved so unit tests never cache.
+  const cacheTtlMs =
+    process.env.NODE_ENV === 'test'
+      ? 0
+      : parseInt(await getSharedResolver().getConfig('PERMISSION_CACHE_TTL_MS'), 10) || 5000;
+
+  if (cacheTtlMs > 0) {
     const cached = cache.get(uidStr);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.data;
@@ -397,12 +409,20 @@ async function getUserPermissions(userId) {
   }
 
   const result = [
-    ...pathPerms.rows.map(r => ({ file_node_id: Number(r.file_node_id), permission: r.permission, type: 'directory' })),
-    ...filePerms.rows.map(r => ({ file_node_id: Number(r.file_node_id), permission: r.permission, type: 'file' })),
+    ...pathPerms.rows.map((r) => ({
+      file_node_id: Number(r.file_node_id),
+      permission: r.permission,
+      type: 'directory',
+    })),
+    ...filePerms.rows.map((r) => ({
+      file_node_id: Number(r.file_node_id),
+      permission: r.permission,
+      type: 'file',
+    })),
   ];
 
-  if (CACHE_TTL_MS > 0) {
-    cache.set(uidStr, { expiresAt: Date.now() + CACHE_TTL_MS, data: result });
+  if (cacheTtlMs > 0) {
+    cache.set(uidStr, { expiresAt: Date.now() + cacheTtlMs, data: result });
   } else {
     cache.delete(uidStr);
   }
@@ -609,7 +629,10 @@ async function getUserFilePermissions(userId) {
         `SELECT file_node_id, permission FROM permissions_user_files WHERE user_id = $1`,
         [uid]
       );
-      return res.rows.map(r => ({ file_node_id: Number(r.file_node_id), permission: r.permission }));
+      return res.rows.map((r) => ({
+        file_node_id: Number(r.file_node_id),
+        permission: r.permission,
+      }));
     } catch (error) {
       throw mapDatabaseError(error);
     }
@@ -628,7 +651,10 @@ async function getUserFilePermissions(userId) {
           }
         );
       });
-      return res.rows.map(r => ({ file_node_id: Number(r.file_node_id), permission: r.permission }));
+      return res.rows.map((r) => ({
+        file_node_id: Number(r.file_node_id),
+        permission: r.permission,
+      }));
     } catch (error) {
       throw mapDatabaseError(error);
     }
@@ -705,8 +731,18 @@ async function getSharedPermissions(userId, homeRootNodeId) {
   const seen = new Set();
   const result = [];
   for (const row of [
-    ...pathPerms.rows.map(r => ({ file_node_id: Number(r.file_node_id), name: r.name, permission: r.permission, type: r.type })),
-    ...filePerms.rows.map(r => ({ file_node_id: Number(r.file_node_id), name: r.name, permission: r.permission, type: r.type })),
+    ...pathPerms.rows.map((r) => ({
+      file_node_id: Number(r.file_node_id),
+      name: r.name,
+      permission: r.permission,
+      type: r.type,
+    })),
+    ...filePerms.rows.map((r) => ({
+      file_node_id: Number(r.file_node_id),
+      name: r.name,
+      permission: r.permission,
+      type: r.type,
+    })),
   ]) {
     if (seen.has(row.file_node_id)) continue;
     seen.add(row.file_node_id);
@@ -739,8 +775,14 @@ async function removeOwnSubtreePermissions(userId, homeRootNodeId) {
   if (isPostgresqlBackend()) {
     try {
       const pool = getPgPool();
-      const pathRes = await pool.query(buildRemovalSql('permissions_user_paths', '$1', '$2'), [uid, root]);
-      const fileRes = await pool.query(buildRemovalSql('permissions_user_files', '$1', '$2'), [uid, root]);
+      const pathRes = await pool.query(buildRemovalSql('permissions_user_paths', '$1', '$2'), [
+        uid,
+        root,
+      ]);
+      const fileRes = await pool.query(buildRemovalSql('permissions_user_files', '$1', '$2'), [
+        uid,
+        root,
+      ]);
       removedPaths = pathRes.rowCount || 0;
       removedFiles = fileRes.rowCount || 0;
     } catch (error) {
@@ -748,8 +790,14 @@ async function removeOwnSubtreePermissions(userId, homeRootNodeId) {
     }
   } else if (isSqliteBackend()) {
     try {
-      const pathRes = await sqliteRun(buildRemovalSql('permissions_user_paths', '?', '?'), [uid, root]);
-      const fileRes = await sqliteRun(buildRemovalSql('permissions_user_files', '?', '?'), [uid, root]);
+      const pathRes = await sqliteRun(buildRemovalSql('permissions_user_paths', '?', '?'), [
+        uid,
+        root,
+      ]);
+      const fileRes = await sqliteRun(buildRemovalSql('permissions_user_files', '?', '?'), [
+        uid,
+        root,
+      ]);
       removedPaths = pathRes.changes || 0;
       removedFiles = fileRes.changes || 0;
     } catch (error) {
@@ -792,8 +840,14 @@ async function revokeUserSubtreePermissions(userId, rootNodeId) {
   if (isPostgresqlBackend()) {
     try {
       const pool = getPgPool();
-      const pathRes = await pool.query(buildSubtreeRemovalSql('permissions_user_paths', '$1', '$2'), [uid, root]);
-      const fileRes = await pool.query(buildSubtreeRemovalSql('permissions_user_files', '$1', '$2'), [uid, root]);
+      const pathRes = await pool.query(
+        buildSubtreeRemovalSql('permissions_user_paths', '$1', '$2'),
+        [uid, root]
+      );
+      const fileRes = await pool.query(
+        buildSubtreeRemovalSql('permissions_user_files', '$1', '$2'),
+        [uid, root]
+      );
       removedPaths = pathRes.rowCount || 0;
       removedFiles = fileRes.rowCount || 0;
     } catch (error) {
@@ -801,8 +855,14 @@ async function revokeUserSubtreePermissions(userId, rootNodeId) {
     }
   } else if (isSqliteBackend()) {
     try {
-      const pathRes = await sqliteRun(buildSubtreeRemovalSql('permissions_user_paths', '?', '?'), [uid, root]);
-      const fileRes = await sqliteRun(buildSubtreeRemovalSql('permissions_user_files', '?', '?'), [uid, root]);
+      const pathRes = await sqliteRun(buildSubtreeRemovalSql('permissions_user_paths', '?', '?'), [
+        uid,
+        root,
+      ]);
+      const fileRes = await sqliteRun(buildSubtreeRemovalSql('permissions_user_files', '?', '?'), [
+        uid,
+        root,
+      ]);
       removedPaths = pathRes.changes || 0;
       removedFiles = fileRes.changes || 0;
     } catch (error) {

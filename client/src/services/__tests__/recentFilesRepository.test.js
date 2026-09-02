@@ -54,7 +54,9 @@ describe('recentFilesRepository', () => {
   describe('addRecentFile', () => {
     it('posts fileNodeId and returns refreshed list, notifies', async () => {
       post.mockResolvedValueOnce({});
-      get.mockResolvedValueOnce({ data: [{ fileNodeId: 7, name: 'new', type: 'file', displayPath: '/new' }] });
+      get.mockResolvedValueOnce({
+        data: [{ fileNodeId: 7, name: 'new', type: 'file', displayPath: '/new' }],
+      });
 
       const result = await addRecentFile({ nodeId: 7, name: 'new', type: 'file' });
 
@@ -77,28 +79,28 @@ describe('recentFilesRepository', () => {
 
     it('returns fallback list without notifying when persistence fails', async () => {
       post.mockRejectedValueOnce(new Error('save failed'));
-      get.mockResolvedValueOnce({ data: [{ fileNodeId: 2, name: 'existing', type: 'file', displayPath: '/existing' }] });
+      get.mockResolvedValueOnce({
+        data: [{ fileNodeId: 2, name: 'existing', type: 'file', displayPath: '/existing' }],
+      });
 
       const result = await addRecentFile({ nodeId: 1, name: 'x', type: 'file' });
 
-      expect(result).toEqual([
-        expect.objectContaining({ nodeId: 2, path: '/existing' }),
-      ]);
+      expect(result).toEqual([expect.objectContaining({ nodeId: 2, path: '/existing' })]);
       expect(notifyRecentFilesChange).not.toHaveBeenCalled();
     });
   });
 
   describe('removeRecentFile', () => {
     it('deletes by numeric nodeId and notifies', async () => {
-      del.mockResolvedValueOnce({ data: [{ fileNodeId: 5, name: 'a', type: 'file', displayPath: '/a' }] });
+      del.mockResolvedValueOnce({
+        data: [{ fileNodeId: 5, name: 'a', type: 'file', displayPath: '/a' }],
+      });
 
       const result = await removeRecentFile(5);
 
       expect(del).toHaveBeenCalledWith('/recent-files/5');
       expect(notifyRecentFilesChange).toHaveBeenCalledTimes(1);
-      expect(result).toEqual([
-        expect.objectContaining({ nodeId: 5, path: '/a' }),
-      ]);
+      expect(result).toEqual([expect.objectContaining({ nodeId: 5, path: '/a' })]);
     });
 
     it('skips notify when silent=true', async () => {

@@ -139,9 +139,12 @@ describe('useFolderTreeItemController', () => {
       expandedNodeIds: new Set([10]),
       children: [{ nodeId: 99, name: 'existing' }],
     });
-    const { rerender: rerenderExpanded } = renderHook((hookProps) => useFolderTreeItemController(hookProps), {
-      initialProps: expandedProps,
-    });
+    const { rerender: rerenderExpanded } = renderHook(
+      (hookProps) => useFolderTreeItemController(hookProps),
+      {
+        initialProps: expandedProps,
+      }
+    );
 
     act(() => {
       rerenderExpanded({
@@ -160,9 +163,12 @@ describe('useFolderTreeItemController', () => {
       isHome: true,
       children: [{ nodeId: 99, name: 'existing' }],
     });
-    const { rerender: rerenderHome } = renderHook((hookProps) => useFolderTreeItemController(hookProps), {
-      initialProps: homeProps,
-    });
+    const { rerender: rerenderHome } = renderHook(
+      (hookProps) => useFolderTreeItemController(hookProps),
+      {
+        initialProps: homeProps,
+      }
+    );
 
     act(() => {
       rerenderHome({
@@ -180,9 +186,12 @@ describe('useFolderTreeItemController', () => {
     const collapsedProps = createProps({
       children: [{ nodeId: 99, name: 'existing' }],
     });
-    const { rerender: rerenderCollapsed } = renderHook((hookProps) => useFolderTreeItemController(hookProps), {
-      initialProps: collapsedProps,
-    });
+    const { rerender: rerenderCollapsed } = renderHook(
+      (hookProps) => useFolderTreeItemController(hookProps),
+      {
+        initialProps: collapsedProps,
+      }
+    );
 
     act(() => {
       rerenderCollapsed({
@@ -195,9 +204,7 @@ describe('useFolderTreeItemController', () => {
   });
 
   it('prefers explicit node permissions over sharedFoldersMap fallback', () => {
-    const sharedFoldersMap = new Map([
-      [10, { permission: PERMISSIONS.WRITE }],
-    ]);
+    const sharedFoldersMap = new Map([[10, { permission: PERMISSIONS.WRITE }]]);
 
     const { result } = renderHook(() =>
       useFolderTreeItemController(
@@ -219,9 +226,7 @@ describe('useFolderTreeItemController', () => {
   });
 
   it('derives permissions from sharedFoldersMap (keyed by nodeId) when explicit node permissions are absent', () => {
-    const sharedFoldersMap = new Map([
-      [10, { permission: PERMISSIONS.WRITE }],
-    ]);
+    const sharedFoldersMap = new Map([[10, { permission: PERMISSIONS.WRITE }]]);
 
     const { result } = renderHook(() =>
       useFolderTreeItemController(

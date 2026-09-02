@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                 |
+| ---- | ----------------------------------------------------------------------------------------------------------- |
 | Role | Async helpers: asyncLimit, asyncLimitSettled (concurrency limit), asyncLimitSettledWithCancel (cancelable). |
 
 ---
@@ -17,10 +17,10 @@
 
 ### 2.2 Functions / Exports
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| asyncLimit | (limit, items, fn) => Promise\<Array\> | Run fn for each item with concurrency limit |
-| asyncLimitSettled | (limit, items, fn) => Promise\<Array\> | Like allSettled with limit |
+| Function                    | Signature                                             | Description                                             |
+| --------------------------- | ----------------------------------------------------- | ------------------------------------------------------- |
+| asyncLimit                  | (limit, items, fn) => Promise\<Array\>                | Run fn for each item with concurrency limit             |
+| asyncLimitSettled           | (limit, items, fn) => Promise\<Array\>                | Like allSettled with limit                              |
 | asyncLimitSettledWithCancel | (limit, items, fn, getCancelFlag) => Promise\<Array\> | Like asyncLimitSettled, stops when getCancelFlag() true |
 
 ### 2.3 Input / Output

@@ -8,7 +8,7 @@ const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageC
 /**
  * Wraps async route handlers to automatically catch errors
  * Usage: router.get('/path', asyncHandler(async (req, res) => { ... }))
- * 
+ *
  * @param {Function} fn - Async route handler function
  * @returns {Function} Express middleware function
  * @example
@@ -34,12 +34,7 @@ function asyncHandler(fn) {
  * @returns {Object} Standardized error response
  */
 function formatErrorResponse(error, options = {}) {
-  const {
-    defaultErrorCode = SERVER_ERROR_CODES.errorHandler.internalServerError,
-    defaultStatus = HTTP_STATUS.INTERNAL_SERVER_ERROR,
-  } = options;
-
-  const status = error.status || error.statusCode || defaultStatus;
+  const { defaultErrorCode = SERVER_ERROR_CODES.errorHandler.internalServerError } = options;
 
   // Don't expose internal error details in production
   const isDevelopment = process.env.NODE_ENV !== 'production';
@@ -85,7 +80,7 @@ function logError(error, context = {}) {
 /**
  * Express error handler middleware
  * Should be added after all routes: app.use(errorHandler)
- * 
+ *
  * @param {Error} err - Error object
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
@@ -95,7 +90,7 @@ function logError(error, context = {}) {
  * app.use('/api', routes);
  * app.use(errorHandler); // Must be last
  */
-function errorHandler(err, req, res, next) {
+function errorHandler(err, req, res, _next) {
   // Log error with request context
   logError(err, {
     method: req.method,
@@ -151,41 +146,47 @@ function mapDatabaseError(error, options = {}) {
   }
 
   // Debug: expose raw DB error to console
-  console.error(
-    '[mapDatabaseError] raw DB error:',
-    { code: error?.code, message: error?.message }
-  );
+  console.error('[mapDatabaseError] raw DB error:', { code: error?.code, message: error?.message });
 
-  const fallbackErrorCode = options.fallbackErrorCode
-    || SERVER_ERROR_CODES.errorHandler.databaseQueryFailed;
+  const fallbackErrorCode =
+    options.fallbackErrorCode || SERVER_ERROR_CODES.errorHandler.databaseQueryFailed;
 
   const code = error?.code;
+  let mapped;
   if (code === '23505') {
-    const mapped = createError(
-      SERVER_ERROR_CODES.errorHandler.databaseConflict,
-      HTTP_STATUS.CONFLICT
-    );
+    mapped = createError(SERVER_ERROR_CODES.errorHandler.databaseConflict, HTTP_STATUS.CONFLICT);
     if (error?.constraint) mapped.params = { constraint: error.constraint };
-    return mapped;
-  }
-
-  if (code === '23503' || code === '23514' || code === '22P02') {
-    const mapped = createError(
+  } else if (code === '23503' || code === '23514' || code === '22P02') {
+    mapped = createError(
       SERVER_ERROR_CODES.errorHandler.databaseConstraintViolation,
       HTTP_STATUS.BAD_REQUEST
     );
     if (error?.constraint) mapped.params = { constraint: error.constraint };
-    return mapped;
-  }
-
-  if (code === '57P01' || code === '53300') {
-    return createError(
+  } else if (code === '57P01' || code === '53300') {
+    mapped = createError(
       SERVER_ERROR_CODES.errorHandler.databaseUnavailable,
       HTTP_STATUS.SERVICE_UNAVAILABLE
     );
+  } else {
+    mapped = createError(fallbackErrorCode, HTTP_STATUS.INTERNAL_SERVER_ERROR);
   }
 
-  return createError(fallbackErrorCode, HTTP_STATUS.INTERNAL_SERVER_ERROR);
+  // Passive backend-health reporting (D2): only connection-class failures
+  // (unreachable DB) are recorded; conflict/constraint codes are not.
+  if (mapped.errorCode === SERVER_ERROR_CODES.errorHandler.databaseUnavailable) {
+    const { getBackend } = require('../store/storage');
+    if (getBackend() === 'postgresql') {
+      const { getBackendHealth } = require('../infrastructure/backendHealth');
+      const { toShortReason } = require('../infrastructure/backendProbe');
+      getBackendHealth().report('postgresql', {
+        ok: false,
+        code: 'unreachable',
+        reason: toShortReason(error?.message),
+      });
+    }
+  }
+
+  return mapped;
 }
 
 /**
@@ -204,7 +205,10 @@ function validationError(errorCode, params = undefined) {
  * @param {Object} [params] - Optional params for i18n
  * @returns {Error} Unauthorized error
  */
-function unauthorizedError(errorCode = SERVER_ERROR_CODES.utilsAuth.invalidOrExpiredToken, params = undefined) {
+function unauthorizedError(
+  errorCode = SERVER_ERROR_CODES.utilsAuth.invalidOrExpiredToken,
+  params = undefined
+) {
   return createError(errorCode, 401, params);
 }
 
@@ -214,7 +218,10 @@ function unauthorizedError(errorCode = SERVER_ERROR_CODES.utilsAuth.invalidOrExp
  * @param {Object} [params] - Optional params for i18n
  * @returns {Error} Forbidden error
  */
-function forbiddenError(errorCode = SERVER_ERROR_CODES.permissionsMiddleware.accessDenied, params = undefined) {
+function forbiddenError(
+  errorCode = SERVER_ERROR_CODES.permissionsMiddleware.accessDenied,
+  params = undefined
+) {
   return createError(errorCode, 403, params);
 }
 

@@ -62,15 +62,17 @@ describe('CreateFolderDialog', () => {
     await user.type(input, 'newfolder');
     await user.click(screen.getByRole('button', { name: /create/i }));
     await waitFor(() => {
-      expect(defaultProps.onComplete).toHaveBeenCalledWith('/newfolder', 'newfolder', expect.any(Number));
+      expect(defaultProps.onComplete).toHaveBeenCalledWith(
+        '/newfolder',
+        'newfolder',
+        expect.any(Number)
+      );
     });
   });
 
   it('builds folder path correctly when currentPath is not root', async () => {
     const user = userEvent.setup();
-    renderWithProviders(
-      <CreateFolderDialog {...defaultProps} currentPath="/parent/child" />
-    );
+    renderWithProviders(<CreateFolderDialog {...defaultProps} currentPath="/parent/child" />);
     const input = screen.getByLabelText(/folder name/i);
     await user.type(input, 'subfolder');
     await user.click(screen.getByRole('button', { name: /create/i }));
@@ -100,16 +102,12 @@ describe('CreateFolderDialog', () => {
     );
     const user = userEvent.setup();
     const onProgress = jest.fn();
-    renderWithProviders(
-      <CreateFolderDialog {...defaultProps} onProgress={onProgress} />
-    );
+    renderWithProviders(<CreateFolderDialog {...defaultProps} onProgress={onProgress} />);
     const input = screen.getByLabelText(/folder name/i);
     await user.type(input, 'newfolder');
     await user.click(screen.getByRole('button', { name: /create/i }));
     await waitFor(() => {
-      expect(onProgress).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'error' })
-      );
+      expect(onProgress).toHaveBeenCalledWith(expect.objectContaining({ status: 'error' }));
     });
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
@@ -117,19 +115,13 @@ describe('CreateFolderDialog', () => {
   it('calls onProgress when provided and API succeeds', async () => {
     const user = userEvent.setup();
     const onProgress = jest.fn();
-    renderWithProviders(
-      <CreateFolderDialog {...defaultProps} onProgress={onProgress} />
-    );
+    renderWithProviders(<CreateFolderDialog {...defaultProps} onProgress={onProgress} />);
     const input = screen.getByLabelText(/folder name/i);
     await user.type(input, 'myfolder');
     await user.click(screen.getByRole('button', { name: /create/i }));
     await waitFor(() => {
-      expect(onProgress).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'processing' })
-      );
+      expect(onProgress).toHaveBeenCalledWith(expect.objectContaining({ status: 'processing' }));
     });
-    expect(onProgress).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'completed' })
-    );
+    expect(onProgress).toHaveBeenCalledWith(expect.objectContaining({ status: 'completed' }));
   });
 });

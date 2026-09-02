@@ -1,13 +1,7 @@
 import React from 'react';
 import { Box } from '@mui/material';
 
-const TextPreview = ({
-  textContent,
-  textContainerRef,
-  textPreRef,
-  textOverflows,
-  isMobile,
-}) => (
+const TextPreview = ({ textContent, textContainerRef, textPreRef, textOverflows, isMobile }) => (
   <Box
     ref={textContainerRef}
     sx={{

@@ -24,9 +24,10 @@ describe('createFailSafeService', () => {
   });
 
   async function createOrphanedNode({ name, parentId = null, type = 'file' }) {
-    const node = type === 'directory'
-      ? await fileNodeService.createDirectory(parentId, name)
-      : await fileNodeService.createFile(parentId, name);
+    const node =
+      type === 'directory'
+        ? await fileNodeService.createDirectory(parentId, name)
+        : await fileNodeService.createFile(parentId, name);
     await fileNodeService.updateSyncStatus(node.id, 'orphaned_node');
     return node;
   }
@@ -76,9 +77,20 @@ describe('createFailSafeService', () => {
     });
 
     it('retry-delete removes the node and its subtree from the DB', async () => {
-      const rootDir = await createOrphanedNode({ name: `fs-del-root-${Date.now()}`, type: 'directory' });
-      const childDir = await fileNodesStore.createNode(rootDir.id, `fs-del-child-${Date.now()}`, 'directory');
-      const childFile = await fileNodesStore.createNode(childDir.id, `fs-del-file-${Date.now()}`, 'file');
+      const rootDir = await createOrphanedNode({
+        name: `fs-del-root-${Date.now()}`,
+        type: 'directory',
+      });
+      const childDir = await fileNodesStore.createNode(
+        rootDir.id,
+        `fs-del-child-${Date.now()}`,
+        'directory'
+      );
+      const childFile = await fileNodesStore.createNode(
+        childDir.id,
+        `fs-del-file-${Date.now()}`,
+        'file'
+      );
 
       const result = await failSafeService.repairNode(rootDir.id, { action: 'retry-delete' });
 
@@ -92,13 +104,15 @@ describe('createFailSafeService', () => {
     it('rejects an invalid action with a 400 validation error', async () => {
       const node = await createOrphanedNode({ name: `fs-bad-${Date.now()}` });
 
-      await expect(failSafeService.repairNode(node.id, { action: 'delete-now' }))
-        .rejects.toMatchObject({ status: 400 });
+      await expect(
+        failSafeService.repairNode(node.id, { action: 'delete-now' })
+      ).rejects.toMatchObject({ status: 400 });
     });
 
     it('returns 404 for a missing node', async () => {
-      await expect(failSafeService.repairNode(999999, { action: 'force-active' }))
-        .rejects.toMatchObject({ status: 404 });
+      await expect(
+        failSafeService.repairNode(999999, { action: 'force-active' })
+      ).rejects.toMatchObject({ status: 404 });
     });
   });
 
@@ -203,10 +217,9 @@ describe('createFailSafeService', () => {
       const res = await fileNodesStore.deleteObjectMapRows([rowA.lastID]);
 
       expect(res.changes).toBe(1);
-      const remaining = await dbQuery(
-        'SELECT s3_key FROM object_map WHERE file_node_id = ?',
-        [node.id]
-      );
+      const remaining = await dbQuery('SELECT s3_key FROM object_map WHERE file_node_id = ?', [
+        node.id,
+      ]);
       expect(remaining.rows).toHaveLength(1);
       expect(remaining.rows[0].s3_key).toContain('del-b');
     });

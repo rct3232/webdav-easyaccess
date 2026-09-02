@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                   |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Pure breadcrumb derivation for `FolderPickerDialog`. Converts the picker's nodeId navigation stack plus home/shared context into the breadcrumb model rendered by the dialog. |
 
 ---
@@ -17,8 +17,8 @@
 
 ### 2.2 Function Signatures
 
-| Function | (input) => return |
-|----------|-------------------|
+| Function                       | (input) => return                                                                                       |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------- |
 | `buildFolderPickerBreadcrumbs` | `({ homeNodeId, homeLabel, navStack, sharedLabel }) => Array<{ name: string, nodeId: number \| null }>` |
 
 ### 2.3 Dependencies

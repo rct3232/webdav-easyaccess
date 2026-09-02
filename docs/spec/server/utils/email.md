@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                    |
+| ---- | -------------------------------------------------------------------------------------------------------------- |
 | Role | Email: initEmailTransporter, sendEmail, sendRegistrationPendingEmail, sendApprovalEmail, etc. Uses nodemailer. |
 
 ---
@@ -17,14 +17,14 @@
 
 ### 2.2 Functions / Exports
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| initEmailTransporter | () => object \| null | Init nodemailer |
-| sendEmail | (to, subject, htmlContent) => Promise\<object\> | Send mail |
-| sendRegistrationPendingEmail | (email, username) => Promise | Pending registration |
-| sendApprovalEmail | (email, username) => Promise | Approval notification |
-| sendRejectionEmail | (email, username) => Promise | Rejection notification |
-| isEmailEnabled | () => boolean | Check if email configured |
+| Function                     | Signature                                       | Description               |
+| ---------------------------- | ----------------------------------------------- | ------------------------- |
+| initEmailTransporter         | () => object \| null                            | Init nodemailer           |
+| sendEmail                    | (to, subject, htmlContent) => Promise\<object\> | Send mail                 |
+| sendRegistrationPendingEmail | (email, username) => Promise                    | Pending registration      |
+| sendApprovalEmail            | (email, username) => Promise                    | Approval notification     |
+| sendRejectionEmail           | (email, username) => Promise                    | Rejection notification    |
+| isEmailEnabled               | () => boolean                                   | Check if email configured |
 
 ### 2.3 Input / Output
 
@@ -40,7 +40,7 @@
 
 - nodemailer.createTransport
 - transporter.sendMail
-- process.env.EMAIL_*
+- process.env.EMAIL\_\*
 
 ### 2.6 Verification Scenarios
 

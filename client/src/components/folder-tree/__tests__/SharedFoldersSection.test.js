@@ -9,12 +9,18 @@ import { screen, fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import SharedFoldersSection from '../SharedFoldersSection';
 
-jest.mock('../BaseFolderTreeItem', () => ({ node, onNodeClick, onToggleExpand }) => (
-  <div data-testid="base-folder-tree-item">
-    <button onClick={() => onNodeClick(node.nodeId)}>{node.name}</button>
-    <button onClick={() => onToggleExpand(node.nodeId)}>Expand</button>
-  </div>
-));
+jest.mock(
+  '../BaseFolderTreeItem',
+  () =>
+    function MockBaseFolderTreeItem({ node, onNodeClick, onToggleExpand }) {
+      return (
+        <div data-testid="base-folder-tree-item">
+          <button onClick={() => onNodeClick(node.nodeId)}>{node.name}</button>
+          <button onClick={() => onToggleExpand(node.nodeId)}>Expand</button>
+        </div>
+      );
+    }
+);
 
 const sharedFolders = [
   { nodeId: 10, permission: 'read' },
@@ -50,9 +56,7 @@ describe('SharedFoldersSection', () => {
   });
 
   it('returns null when sharedFolders is empty', () => {
-    renderWithProviders(
-      <SharedFoldersSection {...defaultProps} sharedFolders={[]} />
-    );
+    renderWithProviders(<SharedFoldersSection {...defaultProps} sharedFolders={[]} />);
     expect(screen.queryByText('Shared')).not.toBeInTheDocument();
   });
 
@@ -78,17 +82,13 @@ describe('SharedFoldersSection', () => {
   });
 
   it('renders BaseFolderTreeItem children when expanded', () => {
-    renderWithProviders(
-      <SharedFoldersSection {...defaultProps} sharedExpanded={true} />
-    );
+    renderWithProviders(<SharedFoldersSection {...defaultProps} sharedExpanded={true} />);
     expect(screen.getByRole('button', { name: 'docs' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'project' })).toBeInTheDocument();
   });
 
   it('calls onNodeClick with the shared folder nodeId when clicked', () => {
-    renderWithProviders(
-      <SharedFoldersSection {...defaultProps} sharedExpanded={true} />
-    );
+    renderWithProviders(<SharedFoldersSection {...defaultProps} sharedExpanded={true} />);
     fireEvent.click(screen.getByRole('button', { name: 'docs' }));
     expect(defaultProps.onNodeClick).toHaveBeenCalledWith(10);
   });

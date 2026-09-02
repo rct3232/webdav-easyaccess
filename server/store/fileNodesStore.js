@@ -124,10 +124,9 @@ function createFileNodesStore() {
     if (isPg) {
       try {
         const pool = storage.getPgPool();
-        const res = await pool.query(
-          'SELECT * FROM file_nodes WHERE id = $1 LIMIT 1',
-          [Number(id)]
-        );
+        const res = await pool.query('SELECT * FROM file_nodes WHERE id = $1 LIMIT 1', [
+          Number(id),
+        ]);
         return mapNodeRow(res.rows[0]);
       } catch (error) {
         throw mapDatabaseError(error);
@@ -135,10 +134,9 @@ function createFileNodesStore() {
     }
 
     try {
-      const res = await storage.sqliteQuery(
-        'SELECT * FROM file_nodes WHERE id = ? LIMIT 1',
-        [Number(id)]
-      );
+      const res = await storage.sqliteQuery('SELECT * FROM file_nodes WHERE id = ? LIMIT 1', [
+        Number(id),
+      ]);
       return mapNodeRow(res.rows[0]);
     } catch (error) {
       throw mapDatabaseError(error);
@@ -338,10 +336,12 @@ function createFileNodesStore() {
     if (isPg) {
       try {
         const pool = storage.getPgPool();
-        const valueGroups = rows.map((_, i) => {
-          const base = i * 3;
-          return `($${base + 1}, $${base + 2}, $${base + 3})`;
-        }).join(', ');
+        const valueGroups = rows
+          .map((_, i) => {
+            const base = i * 3;
+            return `($${base + 1}, $${base + 2}, $${base + 3})`;
+          })
+          .join(', ');
         const values = [];
         for (const r of rows) {
           values.push(Number(r.ancestorId), Number(r.descendantId), Number(r.depth));
@@ -894,10 +894,7 @@ function createFileNodesStore() {
     try {
       let totalChanges = 0;
       for (const id of ids) {
-        const res = await storage.sqliteRun(
-          'DELETE FROM object_map WHERE id = ?',
-          [Number(id)]
-        );
+        const res = await storage.sqliteRun('DELETE FROM object_map WHERE id = ?', [Number(id)]);
         totalChanges += res.changes;
       }
       return { changes: totalChanges };
@@ -915,10 +912,9 @@ function createFileNodesStore() {
     if (isPg) {
       try {
         const pool = storage.getPgPool();
-        const res = await pool.query(
-          'SELECT * FROM file_nodes WHERE sync_status = $1',
-          [String(status)]
-        );
+        const res = await pool.query('SELECT * FROM file_nodes WHERE sync_status = $1', [
+          String(status),
+        ]);
         return res.rows.map(mapNodeRow);
       } catch (error) {
         throw mapDatabaseError(error);
@@ -926,16 +922,42 @@ function createFileNodesStore() {
     }
 
     try {
-      const res = await storage.sqliteQuery(
-        'SELECT * FROM file_nodes WHERE sync_status = ?',
-        [String(status)]
-      );
+      const res = await storage.sqliteQuery('SELECT * FROM file_nodes WHERE sync_status = ?', [
+        String(status),
+      ]);
       return res.rows.map(mapNodeRow);
     } catch (error) {
       throw mapDatabaseError(error);
     }
   }
 
+  /**
+   * Return all file_nodes rows whose sync_status differs from the given status.
+   * @param {string} status - 'active' | 'pending_upload' | 'orphaned_node'
+   * @returns {Promise<Array<Object>>} mapped node rows
+   */
+  async function getNodesBySyncStatusNot(status) {
+    if (isPg) {
+      try {
+        const pool = storage.getPgPool();
+        const res = await pool.query('SELECT * FROM file_nodes WHERE sync_status != $1', [
+          String(status),
+        ]);
+        return res.rows.map(mapNodeRow);
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    }
+
+    try {
+      const res = await storage.sqliteQuery('SELECT * FROM file_nodes WHERE sync_status != ?', [
+        String(status),
+      ]);
+      return res.rows.map(mapNodeRow);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
 
   /* ------------------------------------------------------------------ */
   /*  filecache operations                                               */
@@ -990,10 +1012,9 @@ function createFileNodesStore() {
     if (isPg) {
       try {
         const pool = storage.getPgPool();
-        const res = await pool.query(
-          'SELECT * FROM filecache WHERE file_node_id = $1 LIMIT 1',
-          [Number(fileNodeId)]
-        );
+        const res = await pool.query('SELECT * FROM filecache WHERE file_node_id = $1 LIMIT 1', [
+          Number(fileNodeId),
+        ]);
         return res.rows[0] || null;
       } catch (error) {
         throw mapDatabaseError(error);
@@ -1015,10 +1036,9 @@ function createFileNodesStore() {
     if (isPg) {
       try {
         const pool = storage.getPgPool();
-        const res = await pool.query(
-          'DELETE FROM filecache WHERE file_node_id = $1',
-          [Number(fileNodeId)]
-        );
+        const res = await pool.query('DELETE FROM filecache WHERE file_node_id = $1', [
+          Number(fileNodeId),
+        ]);
         return { changes: res.rowCount };
       } catch (error) {
         throw mapDatabaseError(error);
@@ -1026,10 +1046,9 @@ function createFileNodesStore() {
     }
 
     try {
-      const res = await storage.sqliteRun(
-        'DELETE FROM filecache WHERE file_node_id = ?',
-        [Number(fileNodeId)]
-      );
+      const res = await storage.sqliteRun('DELETE FROM filecache WHERE file_node_id = ?', [
+        Number(fileNodeId),
+      ]);
       return { changes: res.changes };
     } catch (error) {
       throw mapDatabaseError(error);
@@ -1072,6 +1091,7 @@ function createFileNodesStore() {
     getAllActiveS3Keys,
     deleteObjectMapRows,
     getNodesBySyncStatus,
+    getNodesBySyncStatusNot,
   };
 }
 

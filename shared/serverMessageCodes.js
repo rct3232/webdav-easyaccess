@@ -61,6 +61,11 @@ const SERVER_ERROR_CODES = {
     migrationMissingRequired: P('serverErrors.admin', 'migrationMissingRequired'),
     migrationAlreadyRunning: P('serverErrors.admin', 'migrationAlreadyRunning'),
     migrationJobNotFound: P('serverErrors.admin', 'migrationJobNotFound'),
+    configUnknownKey: P('serverErrors.admin', 'configUnknownKey'),
+    configT0Protected: P('serverErrors.admin', 'configT0Protected'),
+    configInvalidPayload: P('serverErrors.admin', 'configInvalidPayload'),
+    configEncryptKeyMissing: P('serverErrors.admin', 'configEncryptKeyMissing'),
+    configEnvSourcedProtected: P('serverErrors.admin', 'configEnvSourcedProtected'),
   },
   share: {
     shareLinkNotFound: P('serverErrors.share', 'shareLinkNotFound'),
@@ -141,6 +146,10 @@ const SERVER_ERROR_CODES = {
   api: {
     webdavTestFailed: P('serverErrors.api', 'webdavTestFailed'),
   },
+  setup: {
+    incomplete: P('serverErrors.setup', 'incomplete'),
+    complete: P('serverErrors.setup', 'complete'),
+  },
   thumbnails: {
     invalidOrExpiredToken: P('serverErrors.thumbnails', 'invalidOrExpiredToken'),
     notFound: P('serverErrors.thumbnails', 'notFound'),
@@ -190,6 +199,10 @@ const SERVER_ERROR_CODES = {
     shareLinkExpired: P('serverErrors.utilsAuth', 'shareLinkExpired'),
     tokenRequired: P('serverErrors.utilsAuth', 'tokenRequired'),
   },
+  // Migration gate (PLAN D3): returned verbatim by the gating middleware
+  // (server/infrastructure/migrationGate.js), so the value is a bare i18n key,
+  // not namespaced via P().
+  migrationInProgress: 'migrationInProgress',
 };
 
 const SERVER_MESSAGE_CODES = {
@@ -208,6 +221,7 @@ const SERVER_MESSAGE_CODES = {
     gcDone: P('serverMessages.admin', 'gcDone'),
     repairSyncDone: P('serverMessages.admin', 'repairSyncDone'),
     migrationCancelled: P('serverMessages.admin', 'migrationCancelled'),
+    configSaved: P('serverMessages.admin', 'configSaved'),
   },
   folders: {
     createSuccess: P('serverMessages.folders', 'createSuccess'),
@@ -247,6 +261,9 @@ const SERVER_MESSAGE_CODES = {
     emailUpdated: P('serverMessages.users', 'emailUpdated'),
     permissionUpdated: P('serverMessages.users', 'permissionUpdated'),
   },
+  // Migration gate (PLAN D3): bare i18n key returned verbatim by the gating
+  // middleware (server/infrastructure/migrationGate.js).
+  migrationInProgress: 'migrationInProgress',
 };
 
 module.exports = {

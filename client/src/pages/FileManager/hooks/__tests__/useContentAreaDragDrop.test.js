@@ -46,9 +46,7 @@ describe('useContentAreaDragDrop', () => {
   });
 
   it('returns all four content-area handlers', () => {
-    const { result } = renderHook(() =>
-      useContentAreaDragDrop(createDefaultOptions())
-    );
+    const { result } = renderHook(() => useContentAreaDragDrop(createDefaultOptions()));
 
     expect(typeof result.current.handleContentAreaDragEnter).toBe('function');
     expect(typeof result.current.handleContentAreaDragOver).toBe('function');
@@ -202,11 +200,7 @@ describe('useContentAreaDragDrop', () => {
 
       expect(opts.setContentAreaDraggedNodeId).toHaveBeenCalledWith(null);
       expect(opts.setContentAreaDragType).toHaveBeenCalledWith(null);
-      expect(opts.handleFileAreaDrop).toHaveBeenCalledWith(
-        e,
-        10,
-        opts.handleExplorerDrop
-      );
+      expect(opts.handleFileAreaDrop).toHaveBeenCalledWith(e, 10, opts.handleExplorerDrop);
       expect(opts.handleInternalFileDrop).not.toHaveBeenCalled();
     });
   });

@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Mount path | `/api/files` |
-| Role | File and folder operations: list, download, upload, rename, batch move/copy/delete, metadata, conflicts, thumbnails, bulk job status. Post-Phase 4, all routes accept `nodeId` exclusively; path strings are display-only in responses and never accepted in request payloads. |
+| Item       | Description                                                                                                                                                                                                                                                                    |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Mount path | `/api/files`                                                                                                                                                                                                                                                                   |
+| Role       | File and folder operations: list, download, upload, rename, batch move/copy/delete, metadata, conflicts, thumbnails, bulk job status. Post-Phase 4, all routes accept `nodeId` exclusively; path strings are display-only in responses and never accepted in request payloads. |
 
 ---
 
@@ -15,10 +15,10 @@
 
 The monolithic `server/routes/files.js` was split into domain-bounded modules:
 
-| Route Module | Source File | Mount Point | Endpoints |
-|-------------|-------------|-------------|-----------|
-| CRUD operations | `domains/files/routes/crud.js` | `/api/files` | check-conflicts, metadata, list, ancestors, download, upload, rename, resolve-path |
-| Batch operations | `domains/files/routes/batch.js` | `/api/files` | batch-delete, batch-move, batch-copy, bulk-operation/:jobId, :jobId/cancel |
+| Route Module         | Source File                       | Mount Point  | Endpoints                                                                                                   |
+| -------------------- | --------------------------------- | ------------ | ----------------------------------------------------------------------------------------------------------- |
+| CRUD operations      | `domains/files/routes/crud.js`    | `/api/files` | check-conflicts, metadata, list, ancestors, download, upload, rename, resolve-path                          |
+| Batch operations     | `domains/files/routes/batch.js`   | `/api/files` | batch-delete, batch-move, batch-copy, bulk-operation/:jobId, :jobId/cancel                                  |
 | Preview & thumbnails | `domains/files/routes/preview.js` | `/api/files` | preview-ticket, preview-stream, download-multiple, download-progress/:id, thumbnail/:hash, thumbnails/batch |
 
 - **Test file:** `server/domains/files/__tests__/files.test.js` (relocated from routes)
@@ -27,21 +27,21 @@ The monolithic `server/routes/files.js` was split into domain-bounded modules:
 
 ### 2.2 Route List
 
-| Method | Path | Request Payload (nodeId only) | Response |
-|--------|------|------------------------------|----------|
-| GET | `/list` | Query: `nodeId` (required); `?nodeId=5`; missing/invalid → 400 | Each item: `{ nodeId, display_path, ... }` |
-| GET | `/ancestors` | Query: `nodeId` (required); missing/invalid → 400; 404 `files.notFound` if the node does not exist | `{ ancestors: [{ nodeId, name }] }` ordered root→current (current node last, including itself) |
-| GET | `/download` | Query: `nodeId` (required); `?nodeId=5`; 404 if not found | File buffer + `X-Node-ID` header |
-| POST | `/upload` | multipart + `parentNodeId`; file field; overwrite via `onConflict: 'overwrite'` against `(parent_id, name)` | `{ nodeId, display_path }`; `{ nodeId, skipped: true }` for skip |
-| PUT | `/rename` | Body: `{ nodeId, newName }` — `sourceNodeId` replaces prior design | `{ nodeId, new_display_path }` |
-| POST | `/move` | Body: `{ nodeId, destinationParentNodeId }` — single-item move (new route) | `{ nodeId, new_display_path }` |
-| POST | `/copy` | Body: `{ nodeId, destinationParentNodeId, newName? }` — single-item copy (new route); S3 = copy-on-write | `{ nodeId, display_path }` |
-| DELETE | `/delete` | Body: `{ nodeId }` — single-item delete (new route) | `{ deletedCount }` |
-| POST | `/batch-move` | Body: `{ moves[] }`; moves = `{ sourceNodeId, destinationParentNodeId }` | jobId; results keyed by nodeId |
-| POST | `/batch-copy` | Body: `{ copies[] }`; copies = `{ sourceNodeId, destinationParentNodeId, newName? }` | jobId; results keyed by nodeId |
-| POST | `/batch-delete` | Body: `{ nodeIds[] }`; `nodeIds` array (no `paths`) | jobId; deleted nodeIds |
-| POST | `/download-multiple` | Body: `{ nodeIds[], downloadId }`; `nodeIds` array (no `paths`) | Unchanged (ZIP stream) |
-| POST | `/resolve-path` | Body: `{ path }` (string, required); 400 if missing/not a string | `{ nodeId }`; 404 `files.notFound` if the path does not resolve |
+| Method | Path                 | Request Payload (nodeId only)                                                                               | Response                                                                                       |
+| ------ | -------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| GET    | `/list`              | Query: `nodeId` (required); `?nodeId=5`; missing/invalid → 400                                              | Each item: `{ nodeId, display_path, ... }`                                                     |
+| GET    | `/ancestors`         | Query: `nodeId` (required); missing/invalid → 400; 404 `files.notFound` if the node does not exist          | `{ ancestors: [{ nodeId, name }] }` ordered root→current (current node last, including itself) |
+| GET    | `/download`          | Query: `nodeId` (required); `?nodeId=5`; 404 if not found                                                   | File buffer + `X-Node-ID` header                                                               |
+| POST   | `/upload`            | multipart + `parentNodeId`; file field; overwrite via `onConflict: 'overwrite'` against `(parent_id, name)` | `{ nodeId, display_path }`; `{ nodeId, skipped: true }` for skip                               |
+| PUT    | `/rename`            | Body: `{ nodeId, newName }` — `sourceNodeId` replaces prior design                                          | `{ nodeId, new_display_path }`                                                                 |
+| POST   | `/move`              | Body: `{ nodeId, destinationParentNodeId }` — single-item move (new route)                                  | `{ nodeId, new_display_path }`                                                                 |
+| POST   | `/copy`              | Body: `{ nodeId, destinationParentNodeId, newName? }` — single-item copy (new route); S3 = copy-on-write    | `{ nodeId, display_path }`                                                                     |
+| DELETE | `/delete`            | Body: `{ nodeId }` — single-item delete (new route)                                                         | `{ deletedCount }`                                                                             |
+| POST   | `/batch-move`        | Body: `{ moves[] }`; moves = `{ sourceNodeId, destinationParentNodeId }`                                    | jobId; results keyed by nodeId                                                                 |
+| POST   | `/batch-copy`        | Body: `{ copies[] }`; copies = `{ sourceNodeId, destinationParentNodeId, newName? }`                        | jobId; results keyed by nodeId                                                                 |
+| POST   | `/batch-delete`      | Body: `{ nodeIds[] }`; `nodeIds` array (no `paths`)                                                         | jobId; deleted nodeIds                                                                         |
+| POST   | `/download-multiple` | Body: `{ nodeIds[], downloadId }`; `nodeIds` array (no `paths`)                                             | Unchanged (ZIP stream)                                                                         |
+| POST   | `/resolve-path`      | Body: `{ path }` (string, required); 400 if missing/not a string                                            | `{ nodeId }`; 404 `files.notFound` if the path does not resolve                                |
 
 ### 2.3 Phase 4 nodeId Contracts
 
@@ -53,10 +53,10 @@ The monolithic `server/routes/files.js` was split into domain-bounded modules:
 
 Route handlers delegate to `fileService` instead of calling WebDAV directly. No path fallback anywhere — nodeId is mandatory.
 
-| Module | Endpoints |
-|--------|-----------|
-| `crud.js` | list, ancestors, download, upload, rename, move, copy, delete, check-conflicts, metadata |
-| `batch.js` | batch-move, batch-copy, batch-delete, bulk-operation/:jobId, cancel |
+| Module       | Endpoints                                                                                         |
+| ------------ | ------------------------------------------------------------------------------------------------- |
+| `crud.js`    | list, ancestors, download, upload, rename, move, copy, delete, check-conflicts, metadata          |
+| `batch.js`   | batch-move, batch-copy, batch-delete, bulk-operation/:jobId, cancel                               |
 | `preview.js` | preview-ticket, preview-stream, download-multiple, download-progress, thumbnail, thumbnails/batch |
 
 #### Middleware Removal
@@ -118,6 +118,7 @@ Route module: `domains/files/routes/folders.js` — mounted at `/api/files`. Bot
 #### POST `/create` — Create Directory
 
 **Request Body:** `{ parentNodeId: number, name: string }`
+
 - `parentNodeId`: target parent directory node ID (required, positive integer)
 - `name`: folder display name (required, non-empty string)
 - Missing/invalid → 400 error
@@ -129,6 +130,7 @@ Route module: `domains/files/routes/folders.js` — mounted at `/api/files`. Bot
 > **No self-grant:** Folder creation no longer writes a `permissions_user_paths` row for the creator. The creator already owns the folder through the home-root `ADMIN` grant (closure-table ancestor inheritance) and the owner exception in [permissions.md](../../../features/permissions.md#owner-exception). Self-grants on own folders were removed because they are redundant ACL state that leaked into the "shared with me" listing.
 
 **Server Flow:**
+
 1. Validate `parentNodeId` (positive integer) and `name` (non-empty); 400 if missing/invalid
 2. Permission check on parent folder
 3. Check for name conflicts among siblings via `fileNodeService.listDirectory(parentNodeId)` — 409 if duplicate exists
@@ -139,6 +141,7 @@ Route module: `domains/files/routes/folders.js` — mounted at `/api/files`. Bot
 #### GET `/stats` — Folder Statistics
 
 **Query Parameter:** `?nodeId=10` (replaces prior `?path=/folder`)
+
 - `nodeId`: target folder node ID (required, positive integer)
 - Missing/invalid → 400 error
 
@@ -147,6 +150,7 @@ Route module: `domains/files/routes/folders.js` — mounted at `/api/files`. Bot
 **Response:** `{ nodeId, name, totalFiles, totalFolders, totalSize }` — computed via closure table descendant queries and aggregated file node sizes instead of recursive WebDAV probes.
 
 **Server Flow:**
+
 1. Validate `nodeId` (positive integer); 400 if missing/invalid
 2. Permission check: read access on target folder
 3. Verify node exists and is type `'directory'`; 400 otherwise

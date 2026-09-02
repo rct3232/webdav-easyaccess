@@ -39,7 +39,13 @@ function createFakeBlobStore() {
 }
 
 describe('service/composition', () => {
-  const ENV_KEYS = ['WEA_FILE_STORAGE', 'S3_BUCKET', 'AWS_REGION', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'];
+  const ENV_KEYS = [
+    'WEA_FILE_STORAGE',
+    'S3_BUCKET',
+    'AWS_REGION',
+    'AWS_ACCESS_KEY_ID',
+    'AWS_SECRET_ACCESS_KEY',
+  ];
   const savedEnv = {};
 
   beforeAll(() => {

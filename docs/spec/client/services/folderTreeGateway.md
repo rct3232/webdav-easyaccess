@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | IO boundary for folder-tree surfaces (FolderTree + its sections + tree items). Provides: (1) folder child listing for expandable tree nodes and share-link tree roots, and (2) shared-folder permission data for building the “__shared__” tree. |
-| Used by | `client/src/components/folder-tree/FolderTree.js`, `client/src/components/folder-tree/BaseFolderTreeItem.js`, `client/src/components/folder-tree/ShareLinkSection.js`, `client/src/components/folder-tree/SharedFoldersSection.js` (via props) |
-| Does not own | Product overlays and dialog/picker UX (breadcrumbs, validation, share-link policy, “__recent__” logic, etc.). |
+| Item         | Description                                                                                                                                                                                                                                      |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role         | IO boundary for folder-tree surfaces (FolderTree + its sections + tree items). Provides: (1) folder child listing for expandable tree nodes and share-link tree roots, and (2) shared-folder permission data for building the “**shared**” tree. |
+| Used by      | `client/src/components/folder-tree/FolderTree.js`, `client/src/components/folder-tree/BaseFolderTreeItem.js`, `client/src/components/folder-tree/ShareLinkSection.js`, `client/src/components/folder-tree/SharedFoldersSection.js` (via props)   |
+| Does not own | Product overlays and dialog/picker UX (breadcrumbs, validation, share-link policy, “**recent**” logic, etc.).                                                                                                                                    |
 
 ---
 
@@ -21,10 +21,10 @@
 
 ### 2.2 Main Functions
 
-| Function | Input | Return | API called (see api.md) |
-|----------|-------|--------|-------------------------|
-| `listFolderChildren` | `({ nodeId, listFilesOptions?, useHiddenFilesFilter?, filterChildNames? })` | `Promise<Array<{ nodeId: number, name: string, hasReadPermission?: boolean, hasWritePermission?: boolean, isHidden?: boolean }>>` | `GET /api/files/list?nodeId=...` |
-| `getUserSharedFolderPermissions` | `({ user, options? })` | `Promise<Array<{ nodeId: number, name: string, permission: string, type: string }>>` | `GET /api/permissions/shared` |
+| Function                         | Input                                                                       | Return                                                                                                                            | API called (see api.md)          |
+| -------------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| `listFolderChildren`             | `({ nodeId, listFilesOptions?, useHiddenFilesFilter?, filterChildNames? })` | `Promise<Array<{ nodeId: number, name: string, hasReadPermission?: boolean, hasWritePermission?: boolean, isHidden?: boolean }>>` | `GET /api/files/list?nodeId=...` |
+| `getUserSharedFolderPermissions` | `({ user, options? })`                                                      | `Promise<Array<{ nodeId: number, name: string, permission: string, type: string }>>`                                              | `GET /api/permissions/shared`    |
 
 Notes:
 
@@ -69,4 +69,3 @@ Verify from the caller perspective (observable outcome of the tree):
 - [ ] `getUserSharedFolderPermissions` returns only `type === 'directory'` entries with real `name` values (no `node-<id>` placeholders).
 - [ ] Admin users receive `[]` for `getUserSharedFolderPermissions`.
 - [ ] Listing/permissions errors are propagated to the caller.
-

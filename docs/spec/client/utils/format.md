@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                  |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Role | Locale-aware formatting for file size (formatFileSize), date-time (formatDate), and date-only (formatDateOnly). Uses i18n.language to choose en-US or ko-KR. |
 
 ---
@@ -17,16 +17,16 @@
 
 ### 2.2 Function Signatures
 
-| Function | (input) => return |
-|----------|-------------------|
-| formatFileSize | (bytes) => string (e.g. '1.5 MB') |
-| formatDate | (dateString) => string (locale date-time; '-' if empty) |
-| formatDateOnly | (dateString) => string (locale date only) |
+| Function       | (input) => return                                       |
+| -------------- | ------------------------------------------------------- |
+| formatFileSize | (bytes) => string (e.g. '1.5 MB')                       |
+| formatDate     | (dateString) => string (locale date-time; '-' if empty) |
+| formatDateOnly | (dateString) => string (locale date only)               |
 
 ### 2.3 Dependencies
 
 - `client/src/i18n` (i18n.language for getLocale)
-- getLocale: en* → en-US, else ko-KR
+- getLocale: en\* → en-US, else ko-KR
 
 ### 2.4 Verification Scenarios
 

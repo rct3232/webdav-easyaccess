@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | User management for admins: list users, approve/reject pending, delete, create user, open ShareDialog for permissions. Direct content. Admin only. |
-| Used in | MyPageContentArea (when selectedCategory is 'admin-users') |
-| Related components | adminService, ShareDialog (mode admin for user permissions) |
+| Item               | Description                                                                                                                                        |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | User management for admins: list users, approve/reject pending, delete, create user, open ShareDialog for permissions. Direct content. Admin only. |
+| Used in            | MyPageContentArea (when selectedCategory is 'admin-users')                                                                                         |
+| Related components | adminService, ShareDialog (mode admin for user permissions)                                                                                        |
 
 ---
 
@@ -19,15 +19,15 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| user | object | Y | - | Current user (admin) |
-| onMessage | function | N | - | Message handler for feedback |
+| Name      | Type     | Required | Default | Description                  |
+| --------- | -------- | -------- | ------- | ---------------------------- |
+| user      | object   | Y        | -       | Current user (admin)         |
+| onMessage | function | N        | -       | Message handler for feedback |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
+| Callback  | When invoked          | Arguments                 |
+| --------- | --------------------- | ------------------------- |
 | onMessage | Feedback from actions | (object) – { type, text } |
 
 ### 2.4 Dependencies

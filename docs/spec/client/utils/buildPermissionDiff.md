@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                                                  |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Role | Pure permission-diff helper for sharing dialogs. Computes which user/nodeId permission assignments must be revoked vs granted by comparing `initialNodePermissions` and `nodePermissions` nodeId-keyed maps. |
 
 ---
@@ -17,23 +17,23 @@
 
 ### 2.2 Function Signatures
 
-| Function | (input) => return |
-|----------|-------------------|
+| Function            | (input) => return                                         |
+| ------------------- | --------------------------------------------------------- |
 | buildPermissionDiff | (params) => `{ permissionsToRevoke, permissionsToGrant }` |
 
 **Input parameters**
 
-| Name | Type | Description |
-|------|------|-------------|
-| initialNodePermissions | `Map<number, Map<string, string>>` | nodeId -> (userId -> permission). Baseline at dialog open. |
-| nodePermissions | `Map<number, Map<string, string>>` | nodeId -> (userId -> permission). Current edits in the dialog. |
+| Name                   | Type                               | Description                                                    |
+| ---------------------- | ---------------------------------- | -------------------------------------------------------------- |
+| initialNodePermissions | `Map<number, Map<string, string>>` | nodeId -> (userId -> permission). Baseline at dialog open.     |
+| nodePermissions        | `Map<number, Map<string, string>>` | nodeId -> (userId -> permission). Current edits in the dialog. |
 
 **Return value**
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| permissionsToRevoke | `Array<{ userId: string, nodeId: number }>` | Assignments that existed initially but are removed in the current map. |
-| permissionsToGrant | `Array<{ userId: string, nodeId: number, permission: string }>` | Assignments that exist in the current map (includes permission-level changes). |
+| Key                 | Type                                                            | Meaning                                                                        |
+| ------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| permissionsToRevoke | `Array<{ userId: string, nodeId: number }>`                     | Assignments that existed initially but are removed in the current map.         |
+| permissionsToGrant  | `Array<{ userId: string, nodeId: number, permission: string }>` | Assignments that exist in the current map (includes permission-level changes). |
 
 ### 2.3 Dependencies
 
@@ -52,4 +52,3 @@
 
 - Missing nodeIds in `nodePermissions` for a given `initialNodePermissions` nodeId => revoke all userIds present on that initial nodeId.
 - Extra userIds in `nodePermissions` not present initially => grant them; no revoke entries for them.
-

@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                  |
+| ---- | ------------------------------------------------------------ |
 | Role | (Util's role, e.g. path normalization, file icon resolution) |
 
 ---
@@ -17,9 +17,9 @@
 
 ### 2.2 Function Signatures
 
-| Function | (input) => return |
-|----------|-------------------|
-| (fn) | (input) => (output) |
+| Function | (input) => return   |
+| -------- | ------------------- |
+| (fn)     | (input) => (output) |
 
 ### 2.3 Dependencies
 

@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Controller hook for shared-item management dialogs. Loads raw permission/request state, derives UI-ready access fields, and exposes public actions for request, cancel, and revoke flows. |
-| Used by components/pages | `SharedManageDialog`, non-admin branch inside `ShareTargetDialog` |
-| Does not own | JSX rendering, pure access derivation rules, low-level permission/request transport, or reusable transient-message timing/composition policy |
+| Item                     | Description                                                                                                                                                                               |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Controller hook for shared-item management dialogs. Loads raw permission/request state, derives UI-ready access fields, and exposes public actions for request, cancel, and revoke flows. |
+| Used by components/pages | `SharedManageDialog`, non-admin branch inside `ShareTargetDialog`                                                                                                                         |
+| Does not own             | JSX rendering, pure access derivation rules, low-level permission/request transport, or reusable transient-message timing/composition policy                                              |
 
 ---
 
@@ -19,36 +19,36 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| open | boolean | Y | Dialog open state |
-| targetNodeId | number | Y | Target file/folder node ID (`file_nodes.id`) |
-| parentNodeId | number \| null | N | Parent directory node ID; used for file targets to load parent-node permission state |
-| displayName | string | Y | Display name used in success messaging |
-| isDirectory | boolean | Y | Whether the target is a directory |
-| user | object | Y | Current user |
-| directHasReadPermission | boolean | N | Optional caller-known read override |
-| onMessage | function | N | User-visible message dispatcher |
-| onActionComplete | function | N | Success callback after revoke |
-| onClose | function | N | Close callback |
+| Name                    | Type           | Required | Description                                                                          |
+| ----------------------- | -------------- | -------- | ------------------------------------------------------------------------------------ |
+| open                    | boolean        | Y        | Dialog open state                                                                    |
+| targetNodeId            | number         | Y        | Target file/folder node ID (`file_nodes.id`)                                         |
+| parentNodeId            | number \| null | N        | Parent directory node ID; used for file targets to load parent-node permission state |
+| displayName             | string         | Y        | Display name used in success messaging                                               |
+| isDirectory             | boolean        | Y        | Whether the target is a directory                                                    |
+| user                    | object         | Y        | Current user                                                                         |
+| directHasReadPermission | boolean        | N        | Optional caller-known read override                                                  |
+| onMessage               | function       | N        | User-visible message dispatcher                                                      |
+| onActionComplete        | function       | N        | Success callback after revoke                                                        |
+| onClose                 | function       | N        | Close callback                                                                       |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| loading | boolean | Action-in-progress state |
-| initialLoading | boolean | Initial permission/request load state |
-| confirmDialogOpen | boolean | Revoke-confirm dialog state |
-| setConfirmDialogOpen | function | Confirm-dialog setter |
-| hasReadPermission | boolean | Effective read access |
-| hasWritePermission | boolean | Effective write access |
-| pathPermission | `'none' \| 'read' \| 'write' \| null` | Parent-node permission state for file targets |
-| filePermissionLevel | `'read' \| 'write' \| null` | Direct file-level permission state |
-| pendingRequest | object | Pending request view state keyed by permission level |
-| ownerExists | boolean \| null | Whether a share owner still exists |
-| handlePermissionRequest | `(permission) => Promise<void>` | Request read/write access |
-| handleCancelPendingRequest | `(permission) => Promise<void>` | Cancel a pending request |
-| handleRevokePermission | `() => Promise<void>` | Revoke existing access |
+| Key                        | Type                                  | Meaning                                              |
+| -------------------------- | ------------------------------------- | ---------------------------------------------------- |
+| loading                    | boolean                               | Action-in-progress state                             |
+| initialLoading             | boolean                               | Initial permission/request load state                |
+| confirmDialogOpen          | boolean                               | Revoke-confirm dialog state                          |
+| setConfirmDialogOpen       | function                              | Confirm-dialog setter                                |
+| hasReadPermission          | boolean                               | Effective read access                                |
+| hasWritePermission         | boolean                               | Effective write access                               |
+| pathPermission             | `'none' \| 'read' \| 'write' \| null` | Parent-node permission state for file targets        |
+| filePermissionLevel        | `'read' \| 'write' \| null`           | Direct file-level permission state                   |
+| pendingRequest             | object                                | Pending request view state keyed by permission level |
+| ownerExists                | boolean \| null                       | Whether a share owner still exists                   |
+| handlePermissionRequest    | `(permission) => Promise<void>`       | Request read/write access                            |
+| handleCancelPendingRequest | `(permission) => Promise<void>`       | Cancel a pending request                             |
+| handleRevokePermission     | `() => Promise<void>`                 | Revoke existing access                               |
 
 ### 2.4 Dependencies
 

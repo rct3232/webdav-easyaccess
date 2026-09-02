@@ -34,12 +34,57 @@ export const mockShareLinks = [];
 export const mockAdminSettings = { registration_enabled: 'false' };
 export const mockAdminUsers = {
   pending: [
-    { id: 'p1', username: 'pending1', email: 'pending1@example.com', status: 'pending', created_at: new Date().toISOString(), is_admin: false },
+    {
+      id: 'p1',
+      username: 'pending1',
+      email: 'pending1@example.com',
+      status: 'pending',
+      created_at: new Date().toISOString(),
+      is_admin: false,
+    },
   ],
   approved: [
-    { id: '1', username: 'user1', email: 'user1@example.com', status: 'approved', created_at: new Date().toISOString(), is_admin: false },
+    {
+      id: '1',
+      username: 'user1',
+      email: 'user1@example.com',
+      status: 'approved',
+      created_at: new Date().toISOString(),
+      is_admin: false,
+    },
   ],
 };
+
+// Mock admin config state (effective config per registry; tests may override
+// via server.use). Mirrors server/domains/admin/routes/config.js semantics:
+// secrets masked '****', T0 keys .env-only and rejected by PUT, T2 = applied,
+// T1 = restartRequired.
+export function createDefaultMockAdminConfig() {
+  return {
+    WEA_STORAGE_BACKEND: { value: 'sqlite', source: 'env', tier: 'T0', secret: false },
+    WEA_PG_HOST: { value: 'db.internal', source: 'env', tier: 'T0', secret: false },
+    WEA_PG_PORT: { value: '5432', source: 'default', tier: 'T0', secret: false },
+    WEA_FILE_STORAGE: { value: 's3', source: 'default', tier: 'T1', secret: false },
+    S3_BUCKET: { value: 'my-bucket', source: 'env', tier: 'T1', secret: false },
+    AWS_REGION: { value: 'us-east-1', source: 'env', tier: 'T1', secret: false },
+    AWS_ACCESS_KEY_ID: { value: 'AKIAEXAMPLE', source: 'env', tier: 'T1', secret: false },
+    AWS_SECRET_ACCESS_KEY: { value: '****', source: 'env', tier: 'T1', secret: true },
+    WEBDAV_URL: { value: '', source: 'default', tier: 'T1', secret: false },
+    WEBDAV_PASSWORD: { value: '****', source: 'db', tier: 'T1', secret: true },
+    PORT: { value: '5001', source: 'default', tier: 'T1', secret: false },
+    CORS_ORIGINS: { value: '', source: 'default', tier: 'T2', secret: false },
+    JWT_EXPIRES_IN: { value: '30m', source: 'default', tier: 'T2', secret: false },
+    EMAIL_HOST: { value: 'smtp.gmail.com', source: 'db', tier: 'T2', secret: false },
+    EMAIL_PORT: { value: '587', source: 'db', tier: 'T2', secret: false },
+    EMAIL_PASSWORD: { value: '****', source: 'db', tier: 'T2', secret: true },
+    EMAIL_SECURE: { value: false, source: 'default', tier: 'T2', secret: false },
+    GC_ORPHAN_TTL_DAYS: { value: '1', source: 'default', tier: 'T2', secret: false },
+    USER_CACHE_TTL_MS: { value: '3000', source: 'default', tier: 'T1', secret: false },
+    WEA_SKIP_BULK_WORKER: { value: 'true', source: 'env', tier: 'T2', secret: false },
+  };
+}
+
+export const mockAdminConfig = createDefaultMockAdminConfig();
 
 // Mock migration job state (tests may override via server.use)
 export const mockMigrationJobs = new Map();
@@ -62,10 +107,26 @@ export function __resetHandlersState() {
     delete mockAdminSettings[key];
   }
   mockAdminSettings.registration_enabled = 'false';
-  mockAdminUsers.pending.splice(0, mockAdminUsers.pending.length,
-    { id: 'p1', username: 'pending1', email: 'pending1@example.com', status: 'pending', created_at: new Date().toISOString(), is_admin: false });
-  mockAdminUsers.approved.splice(0, mockAdminUsers.approved.length,
-    { id: '1', username: 'user1', email: 'user1@example.com', status: 'approved', created_at: new Date().toISOString(), is_admin: false });
+  mockAdminUsers.pending.splice(0, mockAdminUsers.pending.length, {
+    id: 'p1',
+    username: 'pending1',
+    email: 'pending1@example.com',
+    status: 'pending',
+    created_at: new Date().toISOString(),
+    is_admin: false,
+  });
+  mockAdminUsers.approved.splice(0, mockAdminUsers.approved.length, {
+    id: '1',
+    username: 'user1',
+    email: 'user1@example.com',
+    status: 'approved',
+    created_at: new Date().toISOString(),
+    is_admin: false,
+  });
+  for (const key of Object.keys(mockAdminConfig)) {
+    delete mockAdminConfig[key];
+  }
+  Object.assign(mockAdminConfig, createDefaultMockAdminConfig());
   mockMigrationJobs.clear();
   mockMigrationInfo.source = 'webdav';
   mockMigrationInfo.direction = 'webdav-to-s3';
@@ -78,10 +139,7 @@ function nextJobId() {
 
 // Helper: standard error response per shared-contracts.md
 function errorResponse(errorCode, status = 400, params = {}) {
-  return HttpResponse.json(
-    { errorCode, params },
-    { status }
-  );
+  return HttpResponse.json({ errorCode, params }, { status });
 }
 
 // Public share tokens considered valid by the shared /share/:token/* mocks
@@ -95,11 +153,14 @@ export const handlers = [
     if (!body.username || !body.email || !body.password) {
       return errorResponse('serverErrors.auth.requiredFields', 400);
     }
-    return HttpResponse.json({
-      messageCode: 'serverMessages.auth.registerSuccess',
-      status: 'pending',
-      user: { id: '1', username: body.username, email: body.email, status: 'pending' },
-    }, { status: 201 });
+    return HttpResponse.json(
+      {
+        messageCode: 'serverMessages.auth.registerSuccess',
+        status: 'pending',
+        user: { id: '1', username: body.username, email: body.email, status: 'pending' },
+      },
+      { status: 201 }
+    );
   }),
 
   http.post(`${API_BASE}/auth/login`, async ({ request }) => {
@@ -146,13 +207,73 @@ export const handlers = [
     const custom = mockFiles.get(nodeIdParam);
     if (custom) return HttpResponse.json(custom);
     const rootItems = [
-      { nodeId: 1, name: 'test.txt', type: 'file', display_path: '/testuser/test.txt', size: 0, mimeType: 'text/plain', modifiedAt: '2024-01-01T10:00:00Z', hasReadPermission: true, hasWritePermission: true, hasAdminPermission: true, isHidden: false },
-      { nodeId: 2, name: 'docs', type: 'directory', display_path: '/testuser/docs', size: 0, mimeType: null, modifiedAt: '2024-01-01T10:00:00Z', hasReadPermission: true, hasWritePermission: true, hasAdminPermission: true, isHidden: false },
-      { nodeId: 3, name: 'folder', type: 'directory', display_path: '/testuser/folder', size: 0, mimeType: null, modifiedAt: '2024-01-01T10:00:00Z', hasReadPermission: true, hasWritePermission: true, hasAdminPermission: true, isHidden: false },
+      {
+        nodeId: 1,
+        name: 'test.txt',
+        type: 'file',
+        display_path: '/testuser/test.txt',
+        size: 0,
+        mimeType: 'text/plain',
+        modifiedAt: '2024-01-01T10:00:00Z',
+        hasReadPermission: true,
+        hasWritePermission: true,
+        hasAdminPermission: true,
+        isHidden: false,
+      },
+      {
+        nodeId: 2,
+        name: 'docs',
+        type: 'directory',
+        display_path: '/testuser/docs',
+        size: 0,
+        mimeType: null,
+        modifiedAt: '2024-01-01T10:00:00Z',
+        hasReadPermission: true,
+        hasWritePermission: true,
+        hasAdminPermission: true,
+        isHidden: false,
+      },
+      {
+        nodeId: 3,
+        name: 'folder',
+        type: 'directory',
+        display_path: '/testuser/folder',
+        size: 0,
+        mimeType: null,
+        modifiedAt: '2024-01-01T10:00:00Z',
+        hasReadPermission: true,
+        hasWritePermission: true,
+        hasAdminPermission: true,
+        isHidden: false,
+      },
     ];
     const folderItems = [
-      { nodeId: 4, name: 'sub.txt', type: 'file', display_path: '/testuser/folder/sub.txt', size: 0, mimeType: 'text/plain', modifiedAt: '2024-01-01T10:00:00Z', hasReadPermission: true, hasWritePermission: true, hasAdminPermission: true, isHidden: false },
-      { nodeId: 5, name: 'nested', type: 'directory', display_path: '/testuser/folder/nested', size: 0, mimeType: null, modifiedAt: '2024-01-01T10:00:00Z', hasReadPermission: true, hasWritePermission: true, hasAdminPermission: true, isHidden: false },
+      {
+        nodeId: 4,
+        name: 'sub.txt',
+        type: 'file',
+        display_path: '/testuser/folder/sub.txt',
+        size: 0,
+        mimeType: 'text/plain',
+        modifiedAt: '2024-01-01T10:00:00Z',
+        hasReadPermission: true,
+        hasWritePermission: true,
+        hasAdminPermission: true,
+        isHidden: false,
+      },
+      {
+        nodeId: 5,
+        name: 'nested',
+        type: 'directory',
+        display_path: '/testuser/folder/nested',
+        size: 0,
+        mimeType: null,
+        modifiedAt: '2024-01-01T10:00:00Z',
+        hasReadPermission: true,
+        hasWritePermission: true,
+        hasAdminPermission: true,
+        isHidden: false,
+      },
     ];
     if (nodeIdParam === '3') {
       return HttpResponse.json(folderItems);
@@ -195,10 +316,24 @@ export const handlers = [
     }
     const chains = {
       1: [{ nodeId: 1, name: 'testuser' }],
-      2: [{ nodeId: 1, name: 'testuser' }, { nodeId: 2, name: 'docs' }],
-      3: [{ nodeId: 1, name: 'testuser' }, { nodeId: 3, name: 'folder' }],
-      4: [{ nodeId: 1, name: 'testuser' }, { nodeId: 3, name: 'folder' }, { nodeId: 4, name: 'sub.txt' }],
-      5: [{ nodeId: 1, name: 'testuser' }, { nodeId: 3, name: 'folder' }, { nodeId: 5, name: 'nested' }],
+      2: [
+        { nodeId: 1, name: 'testuser' },
+        { nodeId: 2, name: 'docs' },
+      ],
+      3: [
+        { nodeId: 1, name: 'testuser' },
+        { nodeId: 3, name: 'folder' },
+      ],
+      4: [
+        { nodeId: 1, name: 'testuser' },
+        { nodeId: 3, name: 'folder' },
+        { nodeId: 4, name: 'sub.txt' },
+      ],
+      5: [
+        { nodeId: 1, name: 'testuser' },
+        { nodeId: 3, name: 'folder' },
+        { nodeId: 5, name: 'nested' },
+      ],
     };
     const ancestors = chains[nodeId] || [{ nodeId: Number(nodeId), name: 'folder' }];
     return HttpResponse.json({ ancestors });
@@ -211,7 +346,12 @@ export const handlers = [
     if (!nodeId) {
       return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
     }
-    return HttpResponse.json({ nodeId: Number(nodeId), hasRead: true, hasWrite: true, source: 'path' });
+    return HttpResponse.json({
+      nodeId: Number(nodeId),
+      hasRead: true,
+      hasWrite: true,
+      source: 'path',
+    });
   }),
 
   http.get(`${API_BASE}/permissions/user/:userId`, ({ params }) => {
@@ -244,8 +384,22 @@ export const handlers = [
       return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
     }
     const perms = [
-      { id: 1, username: 'testuser', email: 'user@example.com', is_admin: false, permission: 'admin', node_id: Number(nodeId) },
-      { id: 2, username: 'user2', email: 'user2@example.com', is_admin: false, permission: 'read', node_id: Number(nodeId) },
+      {
+        id: 1,
+        username: 'testuser',
+        email: 'user@example.com',
+        is_admin: false,
+        permission: 'admin',
+        node_id: Number(nodeId),
+      },
+      {
+        id: 2,
+        username: 'user2',
+        email: 'user2@example.com',
+        is_admin: false,
+        permission: 'read',
+        node_id: Number(nodeId),
+      },
     ];
     if (fileNodeId) {
       return HttpResponse.json(perms.map((p) => ({ ...p, file_permission: p.permission })));
@@ -271,7 +425,10 @@ export const handlers = [
       return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
     }
     if (includeDescendants === 'true') {
-      return HttpResponse.json({ messageCode: 'serverMessages.permissions.permissionRevoked', deletedCount: 1 });
+      return HttpResponse.json({
+        messageCode: 'serverMessages.permissions.permissionRevoked',
+        deletedCount: 1,
+      });
     }
     return HttpResponse.json({ messageCode: 'serverMessages.permissions.permissionRevoked' });
   }),
@@ -308,7 +465,12 @@ export const handlers = [
     if (!fileNodeId) {
       return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
     }
-    return HttpResponse.json({ nodeId: Number(fileNodeId), hasRead: true, hasWrite: true, source: 'path' });
+    return HttpResponse.json({
+      nodeId: Number(fileNodeId),
+      hasRead: true,
+      hasWrite: true,
+      source: 'path',
+    });
   }),
 
   http.patch(`${API_BASE}/permissions/file`, async ({ request }) => {
@@ -329,7 +491,13 @@ export const handlers = [
       return errorResponse('serverErrors.recentFiles.pathRequired', 400);
     }
     return HttpResponse.json([
-      { fileNodeId: body.fileNodeId, name: `file-${body.fileNodeId}`, type: 'file', lastAccessed: new Date().toISOString(), displayPath: `/file-${body.fileNodeId}` },
+      {
+        fileNodeId: body.fileNodeId,
+        name: `file-${body.fileNodeId}`,
+        type: 'file',
+        lastAccessed: new Date().toISOString(),
+        displayPath: `/file-${body.fileNodeId}`,
+      },
     ]);
   }),
 
@@ -337,9 +505,7 @@ export const handlers = [
     HttpResponse.json({ messageCode: 'serverMessages.recentFiles.clearedSuccess' })
   ),
 
-  http.delete(`${API_BASE}/recent-files/:fileNodeId`, ({ params }) =>
-    HttpResponse.json([])
-  ),
+  http.delete(`${API_BASE}/recent-files/:fileNodeId`, () => HttpResponse.json([])),
 
   http.get(`${API_BASE}/files/download`, ({ request }) => {
     const url = new URL(request.url);
@@ -361,14 +527,25 @@ export const handlers = [
       return errorResponse('serverErrors.files.invalidParentNodeId', 400);
     }
     const name = file.name;
-    const exists = mockFiles.has(parentNodeId) && (mockFiles.get(parentNodeId) ?? []).some((i) => i.basename === name);
+    const exists =
+      mockFiles.has(parentNodeId) &&
+      (mockFiles.get(parentNodeId) ?? []).some((i) => i.basename === name);
     if (exists && onConflict === 'skip') {
-      return HttpResponse.json({ messageCode: 'serverMessages.files.uploadSkipped', parentNodeId, skipped: true });
+      return HttpResponse.json({
+        messageCode: 'serverMessages.files.uploadSkipped',
+        parentNodeId,
+        skipped: true,
+      });
     }
     if (exists && onConflict !== 'overwrite') {
       return errorResponse('serverErrors.files.duplicateFile', 409);
     }
-    return HttpResponse.json({ messageCode: 'serverMessages.files.uploadSuccess', nodeId: Date.now(), parentNodeId, basename: name });
+    return HttpResponse.json({
+      messageCode: 'serverMessages.files.uploadSuccess',
+      nodeId: Date.now(),
+      parentNodeId,
+      basename: name,
+    });
   }),
 
   // --- Files: rename (PUT /files/rename) ---
@@ -378,7 +555,11 @@ export const handlers = [
     if (!nodeId || !newName) {
       return errorResponse('serverErrors.files.sourceDestRequired', 400);
     }
-    return HttpResponse.json({ messageCode: 'serverMessages.files.renameSuccess', nodeId, newName });
+    return HttpResponse.json({
+      messageCode: 'serverMessages.files.renameSuccess',
+      nodeId,
+      newName,
+    });
   }),
 
   // --- Files: single-node move (POST /files/move, body: { nodeId, destinationParentNodeId }) ---
@@ -389,7 +570,11 @@ export const handlers = [
     if (!nodeId || !destinationParentNodeId) {
       return errorResponse('serverErrors.files.sourceDestRequired', 400);
     }
-    return HttpResponse.json({ messageCode: 'serverMessages.files.moveSuccess', nodeId, newParentId: destinationParentNodeId });
+    return HttpResponse.json({
+      messageCode: 'serverMessages.files.moveSuccess',
+      nodeId,
+      newParentId: destinationParentNodeId,
+    });
   }),
 
   // --- Files: single-node copy (POST /files/copy, body: { nodeId, destinationParentNodeId, newName? }) ---
@@ -399,7 +584,11 @@ export const handlers = [
     if (!nodeId || !destinationParentNodeId) {
       return errorResponse('serverErrors.files.sourceDestRequired', 400);
     }
-    return HttpResponse.json({ messageCode: 'serverMessages.files.copySuccess', sourceNodeId: nodeId, copiedNodeId: `${nodeId}_copy` });
+    return HttpResponse.json({
+      messageCode: 'serverMessages.files.copySuccess',
+      sourceNodeId: nodeId,
+      copiedNodeId: `${nodeId}_copy`,
+    });
   }),
 
   // --- Files: single-node delete (DELETE /files/delete, body: { nodeId }) ---
@@ -409,25 +598,39 @@ export const handlers = [
     if (!nodeId) {
       return errorResponse('serverErrors.files.sourceDestRequired', 400);
     }
-    return HttpResponse.json({ messageCode: 'serverMessages.files.deleteSuccess', nodeId, deletedCount: 1 });
+    return HttpResponse.json({
+      messageCode: 'serverMessages.files.deleteSuccess',
+      nodeId,
+      deletedCount: 1,
+    });
   }),
 
   // --- Files: batch-move (POST, body: { moves, onConflict }) ---
   http.post(`${API_BASE}/files/batch-move`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    const { moves, onConflict } = body;
+    const { moves } = body;
     if (!moves || !Array.isArray(moves) || moves.length === 0) {
       return errorResponse('serverErrors.files.sourceDestRequired', 400);
     }
     const jobId = nextJobId();
-    mockBulkJobs.set(jobId, { status: 'pending', progress: 0, total: moves.length, results: [], userId: '1' });
+    mockBulkJobs.set(jobId, {
+      status: 'pending',
+      progress: 0,
+      total: moves.length,
+      results: [],
+      userId: '1',
+    });
     // Simulate async completion
     setTimeout(() => {
       const job = mockBulkJobs.get(jobId);
       if (job) {
         job.status = 'completed';
         job.progress = moves.length;
-        job.results = moves.map((m) => ({ sourceNodeId: m.sourceNodeId, destinationParentNodeId: m.destinationParentNodeId, status: 'succeeded' }));
+        job.results = moves.map((m) => ({
+          sourceNodeId: m.sourceNodeId,
+          destinationParentNodeId: m.destinationParentNodeId,
+          status: 'succeeded',
+        }));
       }
     }, bulkJobDelayMs);
     return HttpResponse.json({ jobId }, { status: 202 });
@@ -436,18 +639,28 @@ export const handlers = [
   // --- Files: batch-copy (POST, body: { copies, onConflict }) ---
   http.post(`${API_BASE}/files/batch-copy`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    const { copies, onConflict } = body;
+    const { copies } = body;
     if (!copies || !Array.isArray(copies) || copies.length === 0) {
       return errorResponse('serverErrors.files.sourceDestRequired', 400);
     }
     const jobId = nextJobId();
-    mockBulkJobs.set(jobId, { status: 'pending', progress: 0, total: copies.length, results: [], userId: '1' });
+    mockBulkJobs.set(jobId, {
+      status: 'pending',
+      progress: 0,
+      total: copies.length,
+      results: [],
+      userId: '1',
+    });
     setTimeout(() => {
       const job = mockBulkJobs.get(jobId);
       if (job) {
         job.status = 'completed';
         job.progress = copies.length;
-        job.results = copies.map((c) => ({ sourceNodeId: c.sourceNodeId, destinationParentNodeId: c.destinationParentNodeId, status: 'succeeded' }));
+        job.results = copies.map((c) => ({
+          sourceNodeId: c.sourceNodeId,
+          destinationParentNodeId: c.destinationParentNodeId,
+          status: 'succeeded',
+        }));
       }
     }, bulkJobDelayMs);
     return HttpResponse.json({ jobId }, { status: 202 });
@@ -461,7 +674,13 @@ export const handlers = [
       return errorResponse('serverErrors.files.sourceDestRequired', 400);
     }
     const jobId = nextJobId();
-    mockBulkJobs.set(jobId, { status: 'pending', progress: 0, total: nodeIds.length, results: [], userId: '1' });
+    mockBulkJobs.set(jobId, {
+      status: 'pending',
+      progress: 0,
+      total: nodeIds.length,
+      results: [],
+      userId: '1',
+    });
     setTimeout(() => {
       const job = mockBulkJobs.get(jobId);
       if (job) {
@@ -494,7 +713,10 @@ export const handlers = [
       return errorResponse('serverErrors.files.jobNotFound', 404);
     }
     job.cancelled = true;
-    return HttpResponse.json({ messageCode: 'serverMessages.files.cancelRequested', jobId: params.jobId });
+    return HttpResponse.json({
+      messageCode: 'serverMessages.files.cancelRequested',
+      jobId: params.jobId,
+    });
   }),
 
   // --- Files: download-multiple, download-progress ---
@@ -513,7 +735,7 @@ export const handlers = [
     });
   }),
 
-  http.get(`${API_BASE}/files/download-progress/:id`, ({ params }) => {
+  http.get(`${API_BASE}/files/download-progress/:id`, () => {
     return HttpResponse.json({
       status: 'completed',
       progress: 1,
@@ -546,7 +768,9 @@ export const handlers = [
     if (!Array.isArray(nodeIds) || nodeIds.length === 0) {
       return errorResponse('serverErrors.files.sourceDestRequired', 400);
     }
-    return HttpResponse.json({ thumbnails: nodeIds.map((n) => ({ nodeId: n, thumbnailUrl: null })) });
+    return HttpResponse.json({
+      thumbnails: nodeIds.map((n) => ({ nodeId: n, thumbnailUrl: null })),
+    });
   }),
 
   // --- Video preview ticket/stream ---
@@ -571,7 +795,12 @@ export const handlers = [
     if (!parentNodeId || !name) {
       return errorResponse('serverErrors.folders.pathRequired', 400);
     }
-    return HttpResponse.json({ messageCode: 'serverMessages.folders.createSuccess', nodeId: Date.now(), parentNodeId, basename: name });
+    return HttpResponse.json({
+      messageCode: 'serverMessages.folders.createSuccess',
+      nodeId: Date.now(),
+      parentNodeId,
+      basename: name,
+    });
   }),
 
   // --- Folders: recursive stats (GET /folders/stats?nodeId=) ---
@@ -583,16 +812,93 @@ export const handlers = [
     if (!nodeId) {
       return errorResponse('serverErrors.folders.pathRequired', 400);
     }
-    return HttpResponse.json({ nodeId: Number(nodeId), name: 'folder', totalFiles: 2, totalFolders: 1, totalSize: 0 });
+    return HttpResponse.json({
+      nodeId: Number(nodeId),
+      name: 'folder',
+      totalFiles: 2,
+      totalFolders: 1,
+      totalSize: 0,
+    });
   }),
 
   // --- Health, settings, webdav ---
   http.get(`${API_BASE}/health`, () => {
-    return HttpResponse.json({ status: 'ok', messageCode: 'serverMessages.api.healthOk' });
+    return HttpResponse.json({
+      status: 'ok',
+      messageCode: 'serverMessages.api.healthOk',
+      backends: { postgresql: 'ok', s3: 'unknown', webdav: 'ok' },
+    });
+  }),
+
+  http.get(`${API_BASE}/admin/health`, () => {
+    return HttpResponse.json({
+      backends: {
+        postgresql: { status: 'ok' },
+        s3: { status: 'unknown' },
+        webdav: { status: 'ok' },
+      },
+    });
+  }),
+
+  http.post(`${API_BASE}/admin/config/test`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    if (
+      body.target === 'webdav' &&
+      typeof body.WEBDAV_URL === 'string' &&
+      body.WEBDAV_URL.includes('bad')
+    ) {
+      return HttpResponse.json({
+        ok: false,
+        errorCode: 'serverErrors.setup.test.pg.unreachable',
+        message: 'Connection test failed',
+        reason: 'ECONNREFUSED',
+      });
+    }
+    return HttpResponse.json({ ok: true });
   }),
 
   http.get(`${API_BASE}/settings/public`, () => {
-    return HttpResponse.json({ registration_enabled: true, email_enabled: false });
+    return HttpResponse.json({
+      registration_enabled: true,
+      email_enabled: false,
+      setup_complete: true,
+    });
+  }),
+
+  // --- Setup wizard (first-run boot config; docs/spec/server/routes/setup.md) ---
+  http.get(`${API_BASE}/setup/status`, () => {
+    return HttpResponse.json({
+      setup_complete: false,
+      missing: ['S3_BUCKET', 'AWS_REGION', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'],
+      current: {
+        WEA_STORAGE_BACKEND: 'sqlite',
+        WEA_FILE_STORAGE: 's3',
+        PORT: '5001',
+        JWT_SECRET: '',
+        WEBDAV_URL: '',
+        EMAIL_HOST: '',
+      },
+    });
+  }),
+
+  http.post(`${API_BASE}/setup/test`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    const validTargets = ['postgresql', 's3', 'webdav'];
+    if (!validTargets.includes(body.target)) {
+      return HttpResponse.json(
+        {
+          ok: false,
+          errorCode: 'serverErrors.permissionsMiddleware.pathRequired',
+          message: 'Unsupported setup target',
+        },
+        { status: 400 }
+      );
+    }
+    return HttpResponse.json({ ok: true });
+  }),
+
+  http.post(`${API_BASE}/setup/apply`, () => {
+    return HttpResponse.json({ restart_required: true });
   }),
 
   http.get(`${API_BASE}/webdav/info`, () => {
@@ -647,6 +953,52 @@ export const handlers = [
     const body = await request.json().catch(() => ({}));
     Object.assign(mockAdminSettings, body);
     return HttpResponse.json({ messageCode: 'serverMessages.admin.settingsSaved' });
+  }),
+
+  // --- Admin: effective config (docs/spec/server/routes/config.md) ---
+  http.get(`${API_BASE}/admin/config`, () => {
+    return HttpResponse.json({ config: mockAdminConfig, key_lost_warning: false });
+  }),
+
+  http.put(`${API_BASE}/admin/config`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    const values = body.values;
+    if (values === null || typeof values !== 'object' || Array.isArray(values)) {
+      return errorResponse('serverErrors.admin.configInvalidPayload', 400);
+    }
+    const applied = [];
+    const restartRequired = [];
+    for (const [key, value] of Object.entries(values)) {
+      const entry = mockAdminConfig[key];
+      if (!entry) {
+        return errorResponse('serverErrors.admin.configUnknownKey', 400, { key });
+      }
+      if (entry.tier === 'T0') {
+        return errorResponse('serverErrors.admin.configT0Protected', 400, { key });
+      }
+      if (entry.source === 'env') {
+        return errorResponse('serverErrors.admin.configEnvSourcedProtected', 400, { key });
+      }
+      if (entry.secret) {
+        // Masked/blank secret keeps its existing ciphertext (only-re-encrypt-on-new-value).
+        if (value === undefined || value === null || value === '' || value === '****') {
+          continue;
+        }
+        mockAdminConfig[key] = { ...entry, value: '****', source: 'db' };
+      } else {
+        mockAdminConfig[key] = { ...entry, value: String(value), source: 'db' };
+      }
+      if (entry.tier === 'T2') {
+        applied.push(key);
+      } else {
+        restartRequired.push(key);
+      }
+    }
+    return HttpResponse.json({
+      applied,
+      restartRequired,
+      messageCode: 'serverMessages.admin.configSaved',
+    });
   }),
 
   http.get(`${API_BASE}/admin/users/pending`, () => {
@@ -761,7 +1113,10 @@ export const handlers = [
       return errorResponse('serverErrors.admin.migrationJobNotFound', 404);
     }
     job.status = 'cancelled';
-    return HttpResponse.json({ messageCode: 'serverMessages.admin.migrationCancelled', jobId: params.jobId });
+    return HttpResponse.json({
+      messageCode: 'serverMessages.admin.migrationCancelled',
+      jobId: params.jobId,
+    });
   }),
 
   // --- Permission requests (nodeId-based, matching server/domains/permissions/routes/permissionRequests.js) ---
@@ -773,7 +1128,10 @@ export const handlers = [
   }),
   http.get(`${API_BASE}/permission-requests/check-owner`, ({ request }) => {
     const url = new URL(request.url);
-    const nodeId = url.searchParams.get('nodeId') || url.searchParams.get('folderNodeId') || url.searchParams.get('fileNodeId');
+    const nodeId =
+      url.searchParams.get('nodeId') ||
+      url.searchParams.get('folderNodeId') ||
+      url.searchParams.get('fileNodeId');
     if (!nodeId) {
       return errorResponse('serverErrors.permissionRequests.pathRequired', 400);
     }
@@ -851,7 +1209,9 @@ export const handlers = [
       isDirectory: false,
       displayPath: `/file-${fileNodeId}`,
       createdAt: new Date().toISOString(),
-      expiresAt: expiresInDays ? new Date(Date.now() + expiresInDays * 86400000).toISOString() : null,
+      expiresAt: expiresInDays
+        ? new Date(Date.now() + expiresInDays * 86400000).toISOString()
+        : null,
       downloadCount: 0,
       isExpired: false,
     };

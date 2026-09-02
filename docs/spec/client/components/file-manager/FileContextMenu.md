@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Context menu for file actions: download, rename, move, copy, share, properties, delete. Positioned at mouse coordinates. |
-| Used in | FileManager (desktop right-click) |
-| Related components | MUI Menu, MenuItem |
+| Item               | Description                                                                                                              |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| Role               | Context menu for file actions: download, rename, move, copy, share, properties, delete. Positioned at mouse coordinates. |
+| Used in            | FileManager (desktop right-click)                                                                                        |
+| Related components | MUI Menu, MenuItem                                                                                                       |
 
 ---
 
@@ -19,26 +19,26 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| contextMenu | { mouseX, mouseY } \| null | Y | - | Position or null when closed |
-| onClose | function | Y | - | Close handler |
-| file | object | Y | - | File object |
-| user | object | N | - | User |
-| hasWritePermission | boolean | Y | - | Default write permission |
-| onDownload | function | N | - | Download handler |
-| onRename | function | N | - | Rename handler |
-| onMove | function | N | - | Move handler |
-| onCopy | function | N | - | Copy handler |
-| onShare | function | N | - | Share handler |
-| onProperties | function | N | - | Properties handler |
-| onDelete | function | N | - | Delete handler |
+| Name               | Type                       | Required | Default | Description                  |
+| ------------------ | -------------------------- | -------- | ------- | ---------------------------- |
+| contextMenu        | { mouseX, mouseY } \| null | Y        | -       | Position or null when closed |
+| onClose            | function                   | Y        | -       | Close handler                |
+| file               | object                     | Y        | -       | File object                  |
+| user               | object                     | N        | -       | User                         |
+| hasWritePermission | boolean                    | Y        | -       | Default write permission     |
+| onDownload         | function                   | N        | -       | Download handler             |
+| onRename           | function                   | N        | -       | Rename handler               |
+| onMove             | function                   | N        | -       | Move handler                 |
+| onCopy             | function                   | N        | -       | Copy handler                 |
+| onShare            | function                   | N        | -       | Share handler                |
+| onProperties       | function                   | N        | -       | Properties handler           |
+| onDelete           | function                   | N        | -       | Delete handler               |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| onClose | Menu close | - |
+| Callback               | When invoked    | Arguments                                |
+| ---------------------- | --------------- | ---------------------------------------- |
+| onClose                | Menu close      | -                                        |
 | handleAction(callback) | Menu item click | calls onClose first, then callback(file) |
 
 ### 2.4 Dependencies

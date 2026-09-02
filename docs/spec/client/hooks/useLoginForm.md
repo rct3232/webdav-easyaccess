@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Controller hook for the Login form (state + submit orchestration). |
+| Item    | Description                                                                       |
+| ------- | --------------------------------------------------------------------------------- |
+| Role    | Controller hook for the Login form (state + submit orchestration).                |
 | Used by | `client/src/pages/Login.js` (page shell) and modal `LoginDialog` via `LoginForm`. |
 
 ---
@@ -18,28 +18,28 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| `redirectAfterLogin` | `boolean` | Y | When `true`, navigate to the user's home route on success; when `false`, call `onSuccess`. |
-| `onSuccess` | `(result: any) => void` | N | Called on login success when `redirectAfterLogin` is `false`. |
+| Name                 | Type                    | Required | Description                                                                                |
+| -------------------- | ----------------------- | -------- | ------------------------------------------------------------------------------------------ |
+| `redirectAfterLogin` | `boolean`               | Y        | When `true`, navigate to the user's home route on success; when `false`, call `onSuccess`. |
+| `onSuccess`          | `(result: any) => void` | N        | Called on login success when `redirectAfterLogin` is `false`.                              |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| `username` | `string` | Current username input value. |
-| `password` | `string` | Current password input value. |
-| `error` | `string` | Error message shown in an `Alert` severity `error`. |
-| `warning` | `string` | Warning message shown in an `Alert` severity `warning`. |
-| `loading` | `boolean` | Submit in-flight state. |
-| `settingsLoading` | `boolean` | Public settings fetch in-flight state. |
-| `registrationEnabled` | `boolean` | Derived from `getPublicSettings().registration_enabled`. |
-| `registerPath` | `string` | Route target for the Register affordance rendered by the view. |
-| `onNavigateToRegister` | `(event) => void` | Handles SPA navigation for the register affordance without pushing router imports into the view. |
-| `onUsernameChange` | `(e) => void` | Sets `username` from input events. |
-| `onPasswordChange` | `(e) => void` | Sets `password` from input events. |
-| `handleSubmit` | `(e) => Promise<void>` | Prevents default, validates inputs, calls auth `login`, and updates state / navigation. |
-| `viewModel` | `object` | Prepared strings/labels for `LoginFormView` (logo alt, field labels, button text, etc.). |
+| Key                    | Type                   | Meaning                                                                                          |
+| ---------------------- | ---------------------- | ------------------------------------------------------------------------------------------------ |
+| `username`             | `string`               | Current username input value.                                                                    |
+| `password`             | `string`               | Current password input value.                                                                    |
+| `error`                | `string`               | Error message shown in an `Alert` severity `error`.                                              |
+| `warning`              | `string`               | Warning message shown in an `Alert` severity `warning`.                                          |
+| `loading`              | `boolean`              | Submit in-flight state.                                                                          |
+| `settingsLoading`      | `boolean`              | Public settings fetch in-flight state.                                                           |
+| `registrationEnabled`  | `boolean`              | Derived from `getPublicSettings().registration_enabled`.                                         |
+| `registerPath`         | `string`               | Route target for the Register affordance rendered by the view.                                   |
+| `onNavigateToRegister` | `(event) => void`      | Handles SPA navigation for the register affordance without pushing router imports into the view. |
+| `onUsernameChange`     | `(e) => void`          | Sets `username` from input events.                                                               |
+| `onPasswordChange`     | `(e) => void`          | Sets `password` from input events.                                                               |
+| `handleSubmit`         | `(e) => Promise<void>` | Prevents default, validates inputs, calls auth `login`, and updates state / navigation.          |
+| `viewModel`            | `object`               | Prepared strings/labels for `LoginFormView` (logo alt, field labels, button text, etc.).         |
 
 ### 2.4 Dependencies
 
@@ -70,4 +70,3 @@
 - Empty submit sets an error alert
 - Pending login sets a warning alert
 - Approved/normal success navigates to the correct route
-

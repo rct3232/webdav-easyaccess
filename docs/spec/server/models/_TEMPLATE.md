@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                         |
+| ---- | ----------------------------------- |
 | Role | (User, Permission, etc. model role) |
 
 ---
@@ -17,8 +17,8 @@
 
 ### 2.2 Static Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
+| Method   | Signature          | Description   |
+| -------- | ------------------ | ------------- |
 | (method) | (params) => return | (description) |
 
 ### 2.3 Dependencies

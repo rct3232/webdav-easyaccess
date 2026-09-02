@@ -4,7 +4,6 @@
  * @see docs/TESTING_STRATEGY.md
  */
 import React from 'react';
-import { screen } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import {
   FileListSkeleton,

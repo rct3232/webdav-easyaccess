@@ -62,9 +62,7 @@ const ShareLinkLoader = () => {
     return <FileManager shareToken={token} linkInfo={linkInfo} />;
   }
 
-  return (
-    <ShareLinkSingleFileView token={token} linkInfo={linkInfo} />
-  );
+  return <ShareLinkSingleFileView token={token} linkInfo={linkInfo} />;
 };
 
 export default ShareLinkLoader;

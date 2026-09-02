@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Pure view section for external share link: create link, expiry options, display/copy/open link through prepared callbacks. |
-| Used in | ShareDialog, ShareTargetDialog |
-| Related components | formatDateOnly, getServerErrorDisplay |
+| Item               | Description                                                                                                                |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Pure view section for external share link: create link, expiry options, display/copy/open link through prepared callbacks. |
+| Used in            | ShareDialog, ShareTargetDialog                                                                                             |
+| Related components | formatDateOnly, getServerErrorDisplay                                                                                      |
 
 ---
 
@@ -19,33 +19,33 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| externalShareLink | string | Y | - | Share link |
-| setExternalShareLink | function | Y | - | Set link |
-| externalShareLoading | boolean | Y | - | Loading |
-| setExternalShareLoading | function | Y | - | Set loading |
-| externalShareExpiresInDays | number | N | - | Expiry days |
-| setExternalShareExpiresInDays | function | Y | - | Set expiry |
-| externalShareUnlimited | boolean | Y | - | Unlimited expiry |
-| setExternalShareUnlimited | function | Y | - | Set unlimited |
-| linkCopied | boolean | Y | - | Copy feedback |
-| setLinkCopied | function | Y | - | Set copied |
-| createShareLink | function | Y | - | Create link API |
-| getShareLinkUrl | function | Y | - | Get URL |
-| onOpenShareLink | function | N | - | Opens a prepared share URL through an upstream browser adapter/callback |
-| fileNodeId | number | N | - | File node id (single file share) |
-| fileName | string | N | - | File name |
-| onMessage | function | N | - | Message handler |
+| Name                          | Type     | Required | Default | Description                                                             |
+| ----------------------------- | -------- | -------- | ------- | ----------------------------------------------------------------------- |
+| externalShareLink             | string   | Y        | -       | Share link                                                              |
+| setExternalShareLink          | function | Y        | -       | Set link                                                                |
+| externalShareLoading          | boolean  | Y        | -       | Loading                                                                 |
+| setExternalShareLoading       | function | Y        | -       | Set loading                                                             |
+| externalShareExpiresInDays    | number   | N        | -       | Expiry days                                                             |
+| setExternalShareExpiresInDays | function | Y        | -       | Set expiry                                                              |
+| externalShareUnlimited        | boolean  | Y        | -       | Unlimited expiry                                                        |
+| setExternalShareUnlimited     | function | Y        | -       | Set unlimited                                                           |
+| linkCopied                    | boolean  | Y        | -       | Copy feedback                                                           |
+| setLinkCopied                 | function | Y        | -       | Set copied                                                              |
+| createShareLink               | function | Y        | -       | Create link API                                                         |
+| getShareLinkUrl               | function | Y        | -       | Get URL                                                                 |
+| onOpenShareLink               | function | N        | -       | Opens a prepared share URL through an upstream browser adapter/callback |
+| fileNodeId                    | number   | N        | -       | File node id (single file share)                                        |
+| fileName                      | string   | N        | -       | File name                                                               |
+| onMessage                     | function | N        | -       | Message handler                                                         |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| createShareLink | Create button | - |
-| setLinkCopied | Copy click | (boolean) |
-| onOpenShareLink | Link text click | (url) |
-| onMessage | Error/success | - |
+| Callback        | When invoked    | Arguments |
+| --------------- | --------------- | --------- |
+| createShareLink | Create button   | -         |
+| setLinkCopied   | Copy click      | (boolean) |
+| onOpenShareLink | Link text click | (url)     |
+| onMessage       | Error/success   | -         |
 
 ### 2.4 Dependencies
 

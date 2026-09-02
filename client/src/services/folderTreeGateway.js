@@ -42,7 +42,7 @@ export const listFolderChildren = async ({
  * The server already excludes the user's own subtree; the client keeps a
  * root-level safety filter and returns only directory entries.
  */
-export const getUserSharedFolderPermissions = async ({ user, options } = {}) => {
+export const getUserSharedFolderPermissions = async ({ user, options: _options } = {}) => {
   if (!user || !user.id || user.is_admin) return [];
   const data = await getSharedPermissions();
   const filtered = filterOutUserOwnFolders(data || [], user);
@@ -55,4 +55,3 @@ const folderTreeGateway = {
 };
 
 export default folderTreeGateway;
-

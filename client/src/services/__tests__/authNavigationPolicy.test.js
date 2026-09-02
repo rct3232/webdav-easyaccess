@@ -41,19 +41,13 @@ describe('authNavigationPolicy', () => {
 
   it('handle403 rethrows for excluded or non-redirectable requests', () => {
     const excludedError = new Error('excluded');
-    expect(() =>
-      handle403(
-        { method: 'GET', url: '/api/auth/login' },
-        excludedError
-      )
-    ).toThrow(excludedError);
+    expect(() => handle403({ method: 'GET', url: '/api/auth/login' }, excludedError)).toThrow(
+      excludedError
+    );
 
     const nonRedirectableError = new Error('non-redirectable');
     expect(() =>
-      handle403(
-        { method: 'POST', url: '/api/files/upload' },
-        nonRedirectableError
-      )
+      handle403({ method: 'POST', url: '/api/files/upload' }, nonRedirectableError)
     ).toThrow(nonRedirectableError);
   });
 

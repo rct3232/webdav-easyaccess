@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Manages multi-file selection state for FileManager. Handles selection mode entry/exit, single/range/add-to-selection semantics, and auto-exit when empty. |
-| Used by components/pages | FileManager, FileList, FileGrid, FileDetail, FileManagerControls |
+| Item                     | Description                                                                                                                                               |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Manages multi-file selection state for FileManager. Handles selection mode entry/exit, single/range/add-to-selection semantics, and auto-exit when empty. |
+| Used by components/pages | FileManager, FileList, FileGrid, FileDetail, FileManagerControls                                                                                          |
 
 ---
 
@@ -18,27 +18,27 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| displayedFiles | array | Y | Files currently displayed (for index lookup, range selection) |
-| allFiles | array | N | If provided, select-all uses all files; otherwise uses displayedFiles |
+| Name           | Type  | Required | Description                                                           |
+| -------------- | ----- | -------- | --------------------------------------------------------------------- |
+| displayedFiles | array | Y        | Files currently displayed (for index lookup, range selection)         |
+| allFiles       | array | N        | If provided, select-all uses all files; otherwise uses displayedFiles |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| selectionMode | boolean | Whether selection mode is active |
-| setSelectionMode | function | Set selection mode explicitly (e.g. for mobile long-press entry) |
-| selectedFiles | Set | Set of selected file nodeIds (keyed by `file.nodeId`) |
-| setSelectedFiles | function | Set selected files (e.g. clear after bulk op) |
-| handleSelectAll | function | Select all (uses allFiles or displayedFiles) |
-| handleDeselectAll | function | Clear selection |
-| handleFileCheck | function | Checkbox handler: (file, checked) — add or remove `file.nodeId` from selection |
-| toggleFileSelection | function | Toggle single file: (file) — add `file.nodeId` if not selected, remove if selected |
-| handleFileClickSelection | function | Main click handler for desktop: (file, event, fileIndex) — handles single click (select only), Ctrl+click (add/toggle), Shift+click (range select), double click delegates to caller for open |
-| lastSelectedIndex | number \| null | Index of last-selected file (anchor for range select) |
-| selectRange | function | Select range from anchor to given index: (fromIndex, toIndex) |
-| enterSelectionMode | function | Enter selection mode (e.g. on mobile long-press) |
+| Key                      | Type           | Meaning                                                                                                                                                                                       |
+| ------------------------ | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| selectionMode            | boolean        | Whether selection mode is active                                                                                                                                                              |
+| setSelectionMode         | function       | Set selection mode explicitly (e.g. for mobile long-press entry)                                                                                                                              |
+| selectedFiles            | Set            | Set of selected file nodeIds (keyed by `file.nodeId`)                                                                                                                                         |
+| setSelectedFiles         | function       | Set selected files (e.g. clear after bulk op)                                                                                                                                                 |
+| handleSelectAll          | function       | Select all (uses allFiles or displayedFiles)                                                                                                                                                  |
+| handleDeselectAll        | function       | Clear selection                                                                                                                                                                               |
+| handleFileCheck          | function       | Checkbox handler: (file, checked) — add or remove `file.nodeId` from selection                                                                                                                |
+| toggleFileSelection      | function       | Toggle single file: (file) — add `file.nodeId` if not selected, remove if selected                                                                                                            |
+| handleFileClickSelection | function       | Main click handler for desktop: (file, event, fileIndex) — handles single click (select only), Ctrl+click (add/toggle), Shift+click (range select), double click delegates to caller for open |
+| lastSelectedIndex        | number \| null | Index of last-selected file (anchor for range select)                                                                                                                                         |
+| selectRange              | function       | Select range from anchor to given index: (fromIndex, toIndex)                                                                                                                                 |
+| enterSelectionMode       | function       | Enter selection mode (e.g. on mobile long-press)                                                                                                                                              |
 
 ### 2.4 handleFileClickSelection Semantics
 

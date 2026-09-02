@@ -43,7 +43,6 @@ export function useShareDialog({
   handleAddUserPermission,
   handleRemoveUserPermission,
   handleToggleUserPermission,
-  hasPermissionChanged,
 }) {
   const { t } = useTranslation();
   const isAdminMode = mode === 'admin';
@@ -51,8 +50,12 @@ export function useShareDialog({
   const isReviewMode = mode === 'review';
 
   const rootPath = isAdminMode
-    ? (startFromUserHome && username ? getUserBaseFolder({ username }) : '/')
-    : (folderPath && folderPath !== '/' && folderPath.endsWith('/') ? folderPath.slice(0, -1) : (folderPath || '/'));
+    ? startFromUserHome && username
+      ? getUserBaseFolder({ username })
+      : '/'
+    : folderPath && folderPath !== '/' && folderPath.endsWith('/')
+      ? folderPath.slice(0, -1)
+      : folderPath || '/';
 
   const folderNodeIdProp = folderNodeId ?? targetNodeId ?? null;
 
@@ -86,79 +89,87 @@ export function useShareDialog({
     }
   }, [onMessage, t]);
 
-  const loadFolderChildren = useCallback((nodeId) => {
-    const cacheKey = nodeId ?? '__root__';
-    const inFlight = inFlightFolderLoadsRef.current.get(cacheKey);
-    if (inFlight) return inFlight;
+  const loadFolderChildren = useCallback(
+    (nodeId) => {
+      const cacheKey = nodeId ?? '__root__';
+      const inFlight = inFlightFolderLoadsRef.current.get(cacheKey);
+      if (inFlight) return inFlight;
 
-    const loadPromise = (async () => {
-      setLoadingNodeIds(prev => new Set(prev).add(nodeId));
-      try {
-        const data = await listFiles(nodeId);
-        const folders = (data || [])
-          .filter(item => item.type === 'directory')
-          .map(folder => ({
-            nodeId: folder.nodeId,
-            name: folder.basename || folder.name,
-            path: folder.display_path || folder.path || '',
-            children: [],
-          }));
-
-        setFolderTree(prev => {
-          const newMap = new Map(prev);
-          let current = newMap.get(nodeId);
-          if (!current) {
-            current = {
-              nodeId,
-              path: nodeId == null ? rootPath : '',
-              name: nodeId == null ? 'Root' : String(nodeId),
+      const loadPromise = (async () => {
+        setLoadingNodeIds((prev) => new Set(prev).add(nodeId));
+        try {
+          const data = await listFiles(nodeId);
+          const folders = (data || [])
+            .filter((item) => item.type === 'directory')
+            .map((folder) => ({
+              nodeId: folder.nodeId,
+              name: folder.basename || folder.name,
+              path: folder.display_path || folder.path || '',
               children: [],
-            };
-          }
-          current.children = folders;
-          newMap.set(nodeId, current);
-          if (current.path) newMap.set(current.path, current);
-          folders.forEach(folder => {
-            if (!newMap.has(folder.nodeId)) newMap.set(folder.nodeId, folder);
-            if (folder.path) newMap.set(folder.path, folder);
+            }));
+
+          setFolderTree((prev) => {
+            const newMap = new Map(prev);
+            let current = newMap.get(nodeId);
+            if (!current) {
+              current = {
+                nodeId,
+                path: nodeId == null ? rootPath : '',
+                name: nodeId == null ? 'Root' : String(nodeId),
+                children: [],
+              };
+            }
+            current.children = folders;
+            newMap.set(nodeId, current);
+            if (current.path) newMap.set(current.path, current);
+            folders.forEach((folder) => {
+              if (!newMap.has(folder.nodeId)) newMap.set(folder.nodeId, folder);
+              if (folder.path) newMap.set(folder.path, folder);
+            });
+            return newMap;
           });
-          return newMap;
-        });
 
-        return folders;
-      } catch (error) {
-        if (error.response?.status === HTTP_STATUS.NOT_FOUND) return [];
-        console.error(`Failed to load folder children for ${nodeId}:`, error);
-        return [];
-      } finally {
-        setLoadingNodeIds(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(nodeId);
-          return newSet;
-        });
-        inFlightFolderLoadsRef.current.delete(cacheKey);
-      }
-    })();
-
-    inFlightFolderLoadsRef.current.set(cacheKey, loadPromise);
-    return loadPromise;
-  }, [rootPath]);
-
-  const loadAllSubfoldersRecursive = useCallback(async (parentNodeId) => {
-    const expandedNodeIdsSet = new Set();
-    const loadRecursive = async (nodeId) => {
-      try {
-        const children = await loadFolderChildren(nodeId);
-        expandedNodeIdsSet.add(nodeId);
-        for (const child of children) {
-          await loadRecursive(child.nodeId);
-          await new Promise(resolve => setTimeout(resolve, 50));
+          return folders;
+        } catch (error) {
+          if (error.response?.status === HTTP_STATUS.NOT_FOUND) return [];
+          console.error(`Failed to load folder children for ${nodeId}:`, error);
+          return [];
+        } finally {
+          setLoadingNodeIds((prev) => {
+            const newSet = new Set(prev);
+            newSet.delete(nodeId);
+            return newSet;
+          });
+          inFlightFolderLoadsRef.current.delete(cacheKey);
         }
-      } catch (err) {}
-    };
-    await loadRecursive(parentNodeId);
-    return expandedNodeIdsSet;
-  }, [loadFolderChildren]);
+      })();
+
+      inFlightFolderLoadsRef.current.set(cacheKey, loadPromise);
+      return loadPromise;
+    },
+    [rootPath]
+  );
+
+  const loadAllSubfoldersRecursive = useCallback(
+    async (parentNodeId) => {
+      const expandedNodeIdsSet = new Set();
+      const loadRecursive = async (nodeId) => {
+        try {
+          const children = await loadFolderChildren(nodeId);
+          expandedNodeIdsSet.add(nodeId);
+          for (const child of children) {
+            await loadRecursive(child.nodeId);
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+        } catch {
+          /* best-effort preload; ignore load failures */
+        }
+      };
+      await loadRecursive(parentNodeId);
+      return expandedNodeIdsSet;
+    },
+    [loadFolderChildren]
+  );
 
   const initializeDialog = useCallback(async () => {
     if (enableExternalShare) {
@@ -214,34 +225,43 @@ export function useShareDialog({
 
       const selectedFolder = {
         nodeId: resolvedRootNodeId,
-        name: resolvedRootNodeId == null ? 'Root' : (folderName || 'Root'),
+        name: resolvedRootNodeId == null ? 'Root' : folderName || 'Root',
         path: rootPath,
         children: [],
       };
-      setFolderTree(new Map([[resolvedRootNodeId, selectedFolder], [rootPath, selectedFolder]]));
+      setFolderTree(
+        new Map([
+          [resolvedRootNodeId, selectedFolder],
+          [rootPath, selectedFolder],
+        ])
+      );
 
       if (isAdminMode) {
         await loadFolderChildren(resolvedRootNodeId);
         const expandedNodeIdsSet = await loadAllSubfoldersRecursive(resolvedRootNodeId);
-        setExpandedNodeIds(prev => new Set([...prev, ...expandedNodeIdsSet]));
+        setExpandedNodeIds((prev) => new Set([...prev, ...expandedNodeIdsSet]));
 
         if (userId) {
           setLoadingPermissions(true);
           const permData = await sharePermissionGateway.getUserPermissions(userId);
           const newFolderPermissions = new Map();
-          (permData || []).forEach(perm => {
+          (permData || []).forEach((perm) => {
             const permNodeId = perm.nodeId;
             if (permNodeId == null || !expandedNodeIdsSet.has(permNodeId)) return;
-            if (!newFolderPermissions.has(permNodeId)) newFolderPermissions.set(permNodeId, new Map());
+            if (!newFolderPermissions.has(permNodeId))
+              newFolderPermissions.set(permNodeId, new Map());
             newFolderPermissions.get(permNodeId).set(userId, perm.permission);
           });
           if (startFromUserHome && resolvedBaseFolderNodeId != null) {
-            if (!newFolderPermissions.has(resolvedBaseFolderNodeId)) newFolderPermissions.set(resolvedBaseFolderNodeId, new Map());
+            if (!newFolderPermissions.has(resolvedBaseFolderNodeId))
+              newFolderPermissions.set(resolvedBaseFolderNodeId, new Map());
             newFolderPermissions.get(resolvedBaseFolderNodeId).set(userId, PERMISSIONS.WRITE);
           }
           setFolderPermissions(newFolderPermissions);
           const deepCopied = new Map();
-          newFolderPermissions.forEach((userPermMap, nodeId) => deepCopied.set(nodeId, new Map(userPermMap)));
+          newFolderPermissions.forEach((userPermMap, nodeId) =>
+            deepCopied.set(nodeId, new Map(userPermMap))
+          );
           setInitialFolderPermissions(deepCopied);
           setLoadingPermissions(false);
         } else {
@@ -256,18 +276,31 @@ export function useShareDialog({
 
         setLoadingPermissions(true);
         try {
-          const getPermissionPriority = (p) => (p === PERMISSIONS.ADMIN ? 3 : p === PERMISSIONS.WRITE ? 2 : p === PERMISSIONS.READ ? 1 : 0);
-          const getHigherPermission = (a, b) => (getPermissionPriority(a) >= getPermissionPriority(b) ? a : b);
+          const getPermissionPriority = (p) =>
+            p === PERMISSIONS.ADMIN
+              ? 3
+              : p === PERMISSIONS.WRITE
+                ? 2
+                : p === PERMISSIONS.READ
+                  ? 1
+                  : 0;
+          const getHigherPermission = (a, b) =>
+            getPermissionPriority(a) >= getPermissionPriority(b) ? a : b;
           const newFolderPermissions = new Map();
           const newUserInfoMap = new Map();
 
           try {
-            const fileNodeId = permissionRequest?.targetType === 'file' ? permissionRequest.file_node_id : undefined;
-            const permData = await sharePermissionGateway.getFolderPermissions(resolvedRootNodeId, fileNodeId);
-            (permData || []).forEach(perm => {
+            const fileNodeId =
+              permissionRequest?.targetType === 'file' ? permissionRequest.file_node_id : undefined;
+            const permData = await sharePermissionGateway.getFolderPermissions(
+              resolvedRootNodeId,
+              fileNodeId
+            );
+            (permData || []).forEach((perm) => {
               const permNodeId = perm.node_id;
               if (permNodeId == null) return;
-              if (!newFolderPermissions.has(permNodeId)) newFolderPermissions.set(permNodeId, new Map());
+              if (!newFolderPermissions.has(permNodeId))
+                newFolderPermissions.set(permNodeId, new Map());
               newFolderPermissions.get(permNodeId).set(perm.id, perm.permission);
               if (perm.id && perm.username) {
                 newUserInfoMap.set(perm.id, {
@@ -284,18 +317,32 @@ export function useShareDialog({
           if (permissionRequest) {
             const requesterId = permissionRequest.requester_id;
             const requestedPermission = permissionRequest.requested_permission || PERMISSIONS.READ;
-            if (!newFolderPermissions.has(resolvedRootNodeId)) newFolderPermissions.set(resolvedRootNodeId, new Map());
+            if (!newFolderPermissions.has(resolvedRootNodeId))
+              newFolderPermissions.set(resolvedRootNodeId, new Map());
             const rootMap = newFolderPermissions.get(resolvedRootNodeId);
             const existing = rootMap.get(requesterId);
-            rootMap.set(requesterId, existing ? getHigherPermission(existing, requestedPermission) : requestedPermission);
-            expandedNodeIdsSet.forEach(subNodeId => {
+            rootMap.set(
+              requesterId,
+              existing ? getHigherPermission(existing, requestedPermission) : requestedPermission
+            );
+            expandedNodeIdsSet.forEach((subNodeId) => {
               if (subNodeId === resolvedRootNodeId) return;
-              if (!newFolderPermissions.has(subNodeId)) newFolderPermissions.set(subNodeId, new Map());
+              if (!newFolderPermissions.has(subNodeId))
+                newFolderPermissions.set(subNodeId, new Map());
               const subMap = newFolderPermissions.get(subNodeId);
               const subExisting = subMap.get(requesterId);
-              subMap.set(requesterId, subExisting ? getHigherPermission(subExisting, requestedPermission) : requestedPermission);
+              subMap.set(
+                requesterId,
+                subExisting
+                  ? getHigherPermission(subExisting, requestedPermission)
+                  : requestedPermission
+              );
             });
-            if (requesterId && permissionRequest.requester_username && !newUserInfoMap.has(requesterId)) {
+            if (
+              requesterId &&
+              permissionRequest.requester_username &&
+              !newUserInfoMap.has(requesterId)
+            ) {
               newUserInfoMap.set(requesterId, {
                 username: permissionRequest.requester_username,
                 email: '',
@@ -306,7 +353,9 @@ export function useShareDialog({
 
           setFolderPermissions(newFolderPermissions);
           const deepCopied = new Map();
-          newFolderPermissions.forEach((userPermMap, nodeId) => deepCopied.set(nodeId, new Map(userPermMap)));
+          newFolderPermissions.forEach((userPermMap, nodeId) =>
+            deepCopied.set(nodeId, new Map(userPermMap))
+          );
           setInitialFolderPermissions(deepCopied);
           setUserInfoMap(newUserInfoMap);
           setLoadingPermissions(false);
@@ -316,8 +365,18 @@ export function useShareDialog({
         }
         setLoadingAllFolders(false);
       } else {
-        const selectedFolderNode = { nodeId: resolvedRootNodeId, name: folderName, path: rootPath, children: [] };
-        setFolderTree(new Map([[resolvedRootNodeId, selectedFolderNode], [rootPath, selectedFolderNode]]));
+        const selectedFolderNode = {
+          nodeId: resolvedRootNodeId,
+          name: folderName,
+          path: rootPath,
+          children: [],
+        };
+        setFolderTree(
+          new Map([
+            [resolvedRootNodeId, selectedFolderNode],
+            [rootPath, selectedFolderNode],
+          ])
+        );
         await loadFolderChildren(resolvedRootNodeId);
         const expandedNodeIdsSet = await loadAllSubfoldersRecursive(resolvedRootNodeId);
         expandedNodeIdsSet.add(resolvedRootNodeId);
@@ -328,10 +387,11 @@ export function useShareDialog({
           const permData = await sharePermissionGateway.getFolderPermissions(resolvedRootNodeId);
           const newFolderPermissions = new Map();
           const newUserInfoMap = new Map();
-          (permData || []).forEach(perm => {
+          (permData || []).forEach((perm) => {
             const permNodeId = perm.node_id;
             if (permNodeId == null) return;
-            if (!newFolderPermissions.has(permNodeId)) newFolderPermissions.set(permNodeId, new Map());
+            if (!newFolderPermissions.has(permNodeId))
+              newFolderPermissions.set(permNodeId, new Map());
             newFolderPermissions.get(permNodeId).set(perm.id, perm.permission);
             if (perm.id && perm.username) {
               newUserInfoMap.set(perm.id, {
@@ -343,7 +403,9 @@ export function useShareDialog({
           });
           setFolderPermissions(newFolderPermissions);
           const deepCopied = new Map();
-          newFolderPermissions.forEach((userPermMap, nodeId) => deepCopied.set(nodeId, new Map(userPermMap)));
+          newFolderPermissions.forEach((userPermMap, nodeId) =>
+            deepCopied.set(nodeId, new Map(userPermMap))
+          );
           setInitialFolderPermissions(deepCopied);
           setUserInfoMap(newUserInfoMap);
           setLoadingPermissions(false);
@@ -384,90 +446,141 @@ export function useShareDialog({
       if (isShareMode || isReviewMode) loadUsers();
       initializeDialog();
     }
-  }, [open, rootPath, isAdminMode, isShareMode, isReviewMode, userId, username, permissionRequest, folderNodeIdProp]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
+  }, [
+    open,
+    rootPath,
+    isAdminMode,
+    isShareMode,
+    isReviewMode,
+    userId,
+    username,
+    permissionRequest,
+    folderNodeIdProp,
+  ]);
 
-  const toggleExpand = useCallback(async (nodeId) => {
-    const wasExpanded = expandedNodeIds.has(nodeId);
-    setExpandedNodeIds(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(nodeId)) newSet.delete(nodeId);
-      else newSet.add(nodeId);
-      return newSet;
-    });
-    if (!wasExpanded) {
-      const node = folderTree.get(nodeId);
-      if (node && (!node.children || node.children.length === 0)) {
-        await loadFolderChildren(nodeId);
+  const toggleExpand = useCallback(
+    async (nodeId) => {
+      const wasExpanded = expandedNodeIds.has(nodeId);
+      setExpandedNodeIds((prev) => {
+        const newSet = new Set(prev);
+        if (newSet.has(nodeId)) newSet.delete(nodeId);
+        else newSet.add(nodeId);
+        return newSet;
+      });
+      if (!wasExpanded) {
+        const node = folderTree.get(nodeId);
+        if (node && (!node.children || node.children.length === 0)) {
+          await loadFolderChildren(nodeId);
+        }
       }
-    }
-  }, [expandedNodeIds, folderTree, loadFolderChildren]);
+    },
+    [expandedNodeIds, folderTree, loadFolderChildren]
+  );
 
-  const getAllSubfolderNodeIds = useCallback((nodeId) => {
-    const subfolders = [];
-    const node = folderTree.get(nodeId);
-    if (!node || !node.children) return subfolders;
-    const traverse = (currentNodeId) => {
-      const currentNode = folderTree.get(currentNodeId);
-      if (!currentNode || !currentNode.children) return;
-      currentNode.children.forEach(child => {
-        subfolders.push(child.nodeId);
-        traverse(child.nodeId);
-      });
-    };
-    traverse(nodeId);
-    return subfolders;
-  }, [folderTree]);
-
-  const getUserName = useCallback((targetUserId) => {
-    if (isAdminMode) return username;
-    if (userInfoMap.has(targetUserId)) return userInfoMap.get(targetUserId).username;
-    const u = users.find(us => us.id === targetUserId);
-    return u ? u.username : '';
-  }, [isAdminMode, username, userInfoMap, users]);
-
-  const handleAddUser = useCallback((nodeId, targetUserId = null) => {
-    if (isAdminMode) {
-      if (!userId) return;
-      const defaultPermission =
-        isReviewMode && permissionRequest ? (permissionRequest.requested_permission || PERMISSIONS.READ) : PERMISSIONS.WRITE;
-      const subfolders = getAllSubfolderNodeIds(nodeId);
-      handleAddUserPermission(nodeId, userId, defaultPermission, subfolders);
-    } else {
-      setFolderMenuNodeId(nodeId);
-      setFolderMenuView('selectUser');
-    }
-  }, [isAdminMode, isReviewMode, permissionRequest, userId, getAllSubfolderNodeIds, handleAddUserPermission]);
-
-  const handleUserSelect = useCallback((selectedUserId) => {
-    if (folderMenuNodeId == null) return;
-    const defaultPermission =
-      isReviewMode && permissionRequest ? (permissionRequest.requested_permission || PERMISSIONS.READ) : PERMISSIONS.WRITE;
-    const subfolders = getAllSubfolderNodeIds(folderMenuNodeId);
-    handleAddUserPermission(folderMenuNodeId, selectedUserId, defaultPermission, subfolders);
-    const selectedUser = users.find(u => u.id === selectedUserId);
-    if (selectedUser) {
-      setUserInfoMap(prev => {
-        const newMap = new Map(prev);
-        newMap.set(selectedUserId, {
-          username: selectedUser.username,
-          email: selectedUser.email || '',
-          is_admin: Boolean(selectedUser.is_admin),
+  const getAllSubfolderNodeIds = useCallback(
+    (nodeId) => {
+      const subfolders = [];
+      const node = folderTree.get(nodeId);
+      if (!node || !node.children) return subfolders;
+      const traverse = (currentNodeId) => {
+        const currentNode = folderTree.get(currentNodeId);
+        if (!currentNode || !currentNode.children) return;
+        currentNode.children.forEach((child) => {
+          subfolders.push(child.nodeId);
+          traverse(child.nodeId);
         });
-        return newMap;
-      });
-    }
-    setFolderMenuView('manage');
-  }, [folderMenuNodeId, isReviewMode, permissionRequest, users, getAllSubfolderNodeIds, handleAddUserPermission, setUserInfoMap]);
+      };
+      traverse(nodeId);
+      return subfolders;
+    },
+    [folderTree]
+  );
 
-  const handleRemoveUser = useCallback((nodeId, targetUserId) => {
-    const subfolders = getAllSubfolderNodeIds(nodeId);
-    handleRemoveUserPermission(nodeId, targetUserId, subfolders);
-  }, [getAllSubfolderNodeIds, handleRemoveUserPermission]);
+  const getUserName = useCallback(
+    (targetUserId) => {
+      if (isAdminMode) return username;
+      if (userInfoMap.has(targetUserId)) return userInfoMap.get(targetUserId).username;
+      const u = users.find((us) => us.id === targetUserId);
+      return u ? u.username : '';
+    },
+    [isAdminMode, username, userInfoMap, users]
+  );
 
-  const handleTogglePermission = useCallback((nodeId, targetUserId) => {
-    const subfolders = getAllSubfolderNodeIds(nodeId);
-    handleToggleUserPermission(nodeId, targetUserId, subfolders);
-  }, [getAllSubfolderNodeIds, handleToggleUserPermission]);
+  const handleAddUser = useCallback(
+    (nodeId, _targetUserId = null) => {
+      if (isAdminMode) {
+        if (!userId) return;
+        const defaultPermission =
+          isReviewMode && permissionRequest
+            ? permissionRequest.requested_permission || PERMISSIONS.READ
+            : PERMISSIONS.WRITE;
+        const subfolders = getAllSubfolderNodeIds(nodeId);
+        handleAddUserPermission(nodeId, userId, defaultPermission, subfolders);
+      } else {
+        setFolderMenuNodeId(nodeId);
+        setFolderMenuView('selectUser');
+      }
+    },
+    [
+      isAdminMode,
+      isReviewMode,
+      permissionRequest,
+      userId,
+      getAllSubfolderNodeIds,
+      handleAddUserPermission,
+    ]
+  );
+
+  const handleUserSelect = useCallback(
+    (selectedUserId) => {
+      if (folderMenuNodeId == null) return;
+      const defaultPermission =
+        isReviewMode && permissionRequest
+          ? permissionRequest.requested_permission || PERMISSIONS.READ
+          : PERMISSIONS.WRITE;
+      const subfolders = getAllSubfolderNodeIds(folderMenuNodeId);
+      handleAddUserPermission(folderMenuNodeId, selectedUserId, defaultPermission, subfolders);
+      const selectedUser = users.find((u) => u.id === selectedUserId);
+      if (selectedUser) {
+        setUserInfoMap((prev) => {
+          const newMap = new Map(prev);
+          newMap.set(selectedUserId, {
+            username: selectedUser.username,
+            email: selectedUser.email || '',
+            is_admin: Boolean(selectedUser.is_admin),
+          });
+          return newMap;
+        });
+      }
+      setFolderMenuView('manage');
+    },
+    [
+      folderMenuNodeId,
+      isReviewMode,
+      permissionRequest,
+      users,
+      getAllSubfolderNodeIds,
+      handleAddUserPermission,
+      setUserInfoMap,
+    ]
+  );
+
+  const handleRemoveUser = useCallback(
+    (nodeId, targetUserId) => {
+      const subfolders = getAllSubfolderNodeIds(nodeId);
+      handleRemoveUserPermission(nodeId, targetUserId, subfolders);
+    },
+    [getAllSubfolderNodeIds, handleRemoveUserPermission]
+  );
+
+  const handleTogglePermission = useCallback(
+    (nodeId, targetUserId) => {
+      const subfolders = getAllSubfolderNodeIds(nodeId);
+      handleToggleUserPermission(nodeId, targetUserId, subfolders);
+    },
+    [getAllSubfolderNodeIds, handleToggleUserPermission]
+  );
 
   const handleSave = useCallback(async () => {
     if (isAdminMode) {
@@ -503,7 +616,9 @@ export function useShareDialog({
         onClose();
       } catch (error) {
         console.error('Failed to approve permission request:', error);
-        const errorMsg = getServerErrorDisplay(error?.response?.data, t) || t('dialogs.permissionRequestApproveFail');
+        const errorMsg =
+          getServerErrorDisplay(error?.response?.data, t) ||
+          t('dialogs.permissionRequestApproveFail');
         if (onMessage) onMessage({ text: errorMsg, type: 'error' });
       } finally {
         setSaving(false);
@@ -523,7 +638,8 @@ export function useShareDialog({
         onClose();
       } catch (error) {
         console.error('Failed to share folder:', error);
-        const errorMsg = getServerErrorDisplay(error?.response?.data, t) || t('dialogs.folderShareFail');
+        const errorMsg =
+          getServerErrorDisplay(error?.response?.data, t) || t('dialogs.folderShareFail');
         if (onMessage) onMessage({ text: errorMsg, type: 'error' });
       } finally {
         setSaving(false);

@@ -8,13 +8,10 @@ const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const permissionStore = require('../../../store/permissionStore');
 const User = require('../../../models/User');
 const { meetsRank } = require('../policy/permissionRank');
+const { getSharedResolver } = require('../../../infrastructure/configResolver');
 
 // --- User cache (extracted from middleware/permissions.js) ---
 const userCache = new Map();
-const USER_CACHE_TTL_MS =
-  process.env.NODE_ENV === 'test'
-    ? 0
-    : parseInt(process.env.USER_CACHE_TTL_MS || '3000', 10) || 3000;
 
 async function getCachedUser(userId) {
   const key = String(userId);
@@ -23,8 +20,14 @@ async function getCachedUser(userId) {
     return cached.user;
   }
   const user = await User.findById(userId);
-  if (user && USER_CACHE_TTL_MS > 0) {
-    userCache.set(key, { user, expiresAt: Date.now() + USER_CACHE_TTL_MS });
+  // USER_CACHE_TTL_MS is T2 (lazy): read the effective value per call. The
+  // test-mode 0 short-circuit is preserved so unit tests never cache.
+  const cacheTtlMs =
+    process.env.NODE_ENV === 'test'
+      ? 0
+      : parseInt(await getSharedResolver().getConfig('USER_CACHE_TTL_MS'), 10) || 3000;
+  if (user && cacheTtlMs > 0) {
+    userCache.set(key, { user, expiresAt: Date.now() + cacheTtlMs });
   }
   return user;
 }
@@ -58,7 +61,9 @@ async function checkFilePermission(principalId, fileNodeId, requiredPermission =
   // Share principal: resolve via token → permissions_shares → closure table descendant check
   if (isSharePrincipal(principalId)) {
     const token = extractShareToken(principalId);
-    return token ? permissionStore.checkSharePermission(token, fileNodeId, requiredPermission) : false;
+    return token
+      ? permissionStore.checkSharePermission(token, fileNodeId, requiredPermission)
+      : false;
   }
 
   // Regular user: fetch and check admin status
@@ -88,11 +93,17 @@ async function checkFilePermission(principalId, fileNodeId, requiredPermission =
  * Resolves share principals via token, admin users bypass all checks,
  * and regular users are checked against the closure table for directory permissions.
  */
-async function checkFolderPermission(principalId, dirNodeId, requiredPermission = PERMISSIONS.READ) {
+async function checkFolderPermission(
+  principalId,
+  dirNodeId,
+  requiredPermission = PERMISSIONS.READ
+) {
   // Share principal: resolve via token → permissions_shares → closure table descendant check
   if (isSharePrincipal(principalId)) {
     const token = extractShareToken(principalId);
-    return token ? permissionStore.checkSharePermission(token, dirNodeId, requiredPermission) : false;
+    return token
+      ? permissionStore.checkSharePermission(token, dirNodeId, requiredPermission)
+      : false;
   }
 
   // Regular user: fetch and check admin status
@@ -115,7 +126,12 @@ async function checkFolderPermission(principalId, dirNodeId, requiredPermission 
  * Unified permission check entry point.
  * Determines file vs folder by the isDirectory flag and delegates accordingly.
  */
-async function checkPermission(nodeId, principalId, action = PERMISSIONS.READ, isDirectory = false) {
+async function checkPermission(
+  nodeId,
+  principalId,
+  action = PERMISSIONS.READ,
+  isDirectory = false
+) {
   if (isSharePrincipal(principalId)) {
     const token = extractShareToken(principalId);
     return token ? permissionStore.checkSharePermission(token, nodeId, action) : false;

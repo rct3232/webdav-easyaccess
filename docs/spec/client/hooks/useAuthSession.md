@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Auth session controller hook. Owns session-backed user state (`user`, `loading`) and exposes public auth actions (`login`, `register`, `logout`). |
-| Used by | `AuthContext` provider. |
-| Does not own | Auth `401/403` navigation/refresh behavior (belongs to `apiClient`). It only reacts to `getMe` failures and token-refreshed events. |
+| Item         | Description                                                                                                                                       |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role         | Auth session controller hook. Owns session-backed user state (`user`, `loading`) and exposes public auth actions (`login`, `register`, `logout`). |
+| Used by      | `AuthContext` provider.                                                                                                                           |
+| Does not own | Auth `401/403` navigation/refresh behavior (belongs to `apiClient`). It only reacts to `getMe` failures and token-refreshed events.               |
 
 ---
 
@@ -23,14 +23,14 @@
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| `user` | `object | null` | Current user or null. |
-| `loading` | `boolean` | Initial auth-check status. |
-| `login` | `(username: string, password: string) => Promise<{ success: boolean, user?: object, error?: string, status?: string, message?: string }>` | Login action. |
-| `register` | `(username: string, email: string, password: string) => Promise<{ success: boolean, status?: string, error?: string, message?: string }>` | Register action. |
-| `logout` | `() => void` | Clears tokens and user state. |
-| `isAuthenticated` | `boolean` | `!!user`. |
+| Key               | Type                                                                                                                                      | Meaning                       |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | --------------------- |
+| `user`            | `object                                                                                                                                   | null`                         | Current user or null. |
+| `loading`         | `boolean`                                                                                                                                 | Initial auth-check status.    |
+| `login`           | `(username: string, password: string) => Promise<{ success: boolean, user?: object, error?: string, status?: string, message?: string }>` | Login action.                 |
+| `register`        | `(username: string, email: string, password: string) => Promise<{ success: boolean, status?: string, error?: string, message?: string }>` | Register action.              |
+| `logout`          | `() => void`                                                                                                                              | Clears tokens and user state. |
+| `isAuthenticated` | `boolean`                                                                                                                                 | `!!user`.                     |
 
 ### 2.4 Dependencies
 
@@ -40,22 +40,26 @@
 - React hooks (`useState`, `useEffect`, `useCallback`)
 
 Must not own:
+
 - Auth navigation/redirect/back rules
 
 ### 2.5 Side Effects
 
 On init:
+
 - Read the access token via `authTokenStore.getAccessToken()`.
 - Legacy cleanup: remove `localStorage['token']` on init.
 - If token exists: call `authService.getMe()` and set `loading=false` when done.
 
 Event subscription:
+
 - Subscribe to `window` `token-refreshed` event.
 - When event arrives with `{ token }`:
   - update the stored token state,
   - do not necessarily refetch `getMe` if `user` is already present.
 
 On auth actions:
+
 - `login` stores tokens via `authTokenStore` and updates `user`.
 - `register` stores tokens via `authTokenStore` and updates `user` on non-pending success.
 - `logout` clears tokens via `authTokenStore.removeTokens()` and also removes legacy local storage tokens.
@@ -68,6 +72,7 @@ On auth actions:
 ### 2.7 Verification Scenarios
 
 Verify observable outcomes to match existing `AuthContext` behavior:
+
 - [ ] Unauthenticated init: `loading` becomes false and `user` remains null when no `sessionStorage.token` exists.
 - [ ] Authenticated init: when token exists and `getMe` resolves, `user` is set and `isAuthenticated` becomes true.
 - [ ] Loading: when token exists and `getMe` is pending, `loading` stays true.

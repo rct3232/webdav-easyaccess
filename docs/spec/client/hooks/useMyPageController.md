@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Controller hook for MyPage layout state + navigation callbacks |
-| Used by components/pages | `client/src/pages/MyPage.js` |
+| Item                     | Description                                                    |
+| ------------------------ | -------------------------------------------------------------- |
+| Role                     | Controller hook for MyPage layout state + navigation callbacks |
+| Used by components/pages | `client/src/pages/MyPage.js`                                   |
 
 ---
 
@@ -18,24 +18,24 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| isMobile | boolean | Y | Whether the current layout uses the mobile drawer category UI |
+| Name     | Type    | Required | Description                                                   |
+| -------- | ------- | -------- | ------------------------------------------------------------- |
+| isMobile | boolean | Y        | Whether the current layout uses the mobile drawer category UI |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| user | object \| null | Current user object from `useAuth()` (controls admin-only category normalization) |
-| selectedCategory | string | Currently selected MyPage category id |
-| selectedContentItem | string \| null | For multi-item categories: `null` = list view, non-null = detail view |
-| categoryDrawerOpen | boolean | Mobile category drawer visibility |
-| `sidebarItems` | `Array<{ id: string, icon: React.ComponentType, labelKey: string }>` | Visible category items prepared for the current role |
-| onSelectCategory | (categoryId: string) => void | Updates selected category and resets `selectedContentItem` to list view |
-| onSelectContentItem | (itemId: string \| null) => void | Switches between list and detail view for multi-item categories |
-| onOpenCategoryDrawer | () => void | Opens the category drawer (mobile) |
-| onCloseCategoryDrawer | () => void | Closes the category drawer (mobile) |
-| onCloseMyPage | () => void | Navigates to `/` (AppBar close icon) |
+| Key                   | Type                                                                 | Meaning                                                                           |
+| --------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| user                  | object \| null                                                       | Current user object from `useAuth()` (controls admin-only category normalization) |
+| selectedCategory      | string                                                               | Currently selected MyPage category id                                             |
+| selectedContentItem   | string \| null                                                       | For multi-item categories: `null` = list view, non-null = detail view             |
+| categoryDrawerOpen    | boolean                                                              | Mobile category drawer visibility                                                 |
+| `sidebarItems`        | `Array<{ id: string, icon: React.ComponentType, labelKey: string }>` | Visible category items prepared for the current role                              |
+| onSelectCategory      | (categoryId: string) => void                                         | Updates selected category and resets `selectedContentItem` to list view           |
+| onSelectContentItem   | (itemId: string \| null) => void                                     | Switches between list and detail view for multi-item categories                   |
+| onOpenCategoryDrawer  | () => void                                                           | Opens the category drawer (mobile)                                                |
+| onCloseCategoryDrawer | () => void                                                           | Closes the category drawer (mobile)                                               |
+| onCloseMyPage         | () => void                                                           | Navigates to `/` (AppBar close icon)                                              |
 
 ### 2.4 Dependencies
 
@@ -82,4 +82,3 @@
 - `user` is `null` during auth resolution: hook returns `user: null`; caller may render loading/empty state.
 - `location.state` is missing: controller uses `DEFAULT_MY_PAGE_CATEGORY`.
 - Unknown `selectedCategory` values: views render with no item highlighted (no crash).
-

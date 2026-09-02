@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Mount path | `/api/share-links` |
-| Role | Authenticated share link CRUD: create, list, get, update, delete. Share links are nodeId-based. |
+| Item       | Description                                                                                     |
+| ---------- | ----------------------------------------------------------------------------------------------- |
+| Mount path | `/api/share-links`                                                                              |
+| Role       | Authenticated share link CRUD: create, list, get, update, delete. Share links are nodeId-based. |
 
 ---
 
@@ -21,23 +21,23 @@
 
 Business logic is delegated to `shareLinkService`, which exports:
 
-| Function | Description |
-|----------|-------------|
+| Function                                             | Description                                                      |
+| ---------------------------------------------------- | ---------------------------------------------------------------- |
 | `createShareLink(fileNodeId, userId, expiresInDays)` | Validates node exists, creates link and grants share permission. |
-| `listUserShareLinks(userId)` | Returns all nodeId-based links for a user with `isExpired` flag. |
-| `getShareLinkInfo(token, userId)` | Ownership check; returns nodeId-based link details. |
-| `updateShareLink(token, expiresInDays, userId)` | Ownership check; updates expiry (null removes expiry). |
-| `deleteShareLink(token, userId)` | Ownership check; deletes link and revokes share permission. |
+| `listUserShareLinks(userId)`                         | Returns all nodeId-based links for a user with `isExpired` flag. |
+| `getShareLinkInfo(token, userId)`                    | Ownership check; returns nodeId-based link details.              |
+| `updateShareLink(token, expiresInDays, userId)`      | Ownership check; updates expiry (null removes expiry).           |
+| `deleteShareLink(token, userId)`                     | Ownership check; deletes link and revokes share permission.      |
 
 ### 2.2 Route List
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/` | Token | Create. Body: fileNodeId, expiresInDays? |
-| GET | `/` | Token | List own links. |
-| GET | `/:token` | Token | Get link details. |
-| PUT | `/:token` | Token | Update (e.g. expiry). |
-| DELETE | `/:token` | Token | Delete. |
+| Method | Path      | Auth  | Description                              |
+| ------ | --------- | ----- | ---------------------------------------- |
+| POST   | `/`       | Token | Create. Body: fileNodeId, expiresInDays? |
+| GET    | `/`       | Token | List own links.                          |
+| GET    | `/:token` | Token | Get link details.                        |
+| PUT    | `/:token` | Token | Update (e.g. expiry).                    |
+| DELETE | `/:token` | Token | Delete.                                  |
 
 ### 2.3 Middleware Used
 

@@ -1,11 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
-import {
-  Box,
-  Button,
-  Typography,
-} from '@mui/material';
+import { Box, Button, Typography } from '@mui/material';
 import {
   Edit as EditIcon,
   ExitToApp as ExitToAppIcon,
@@ -30,9 +26,9 @@ function getPermissionLevels(isDirectory, folderProps, fileProps) {
   const p = fileProps.pathPermission ?? 'none';
   const f = fileProps.filePermissionLevel;
   return {
-    pathReadLevel: (p === 'read' || p === 'write') ? 1 : 0,
+    pathReadLevel: p === 'read' || p === 'write' ? 1 : 0,
     pathWriteLevel: p === 'write' ? 1 : 0,
-    fileReadLevel: (f === 'read' || f === 'write') ? 1 : 0,
+    fileReadLevel: f === 'read' || f === 'write' ? 1 : 0,
     fileWriteLevel: f === 'write' ? 1 : 0,
   };
 }
@@ -69,7 +65,11 @@ export default function SharedPermissionList({
   const showRevokeWrite = !isDirectory && fileWriteLevel && !pathWriteLevel;
 
   const requestDisabled =
-    loading || ownerExists === false || ownerExists === null || pendingRequest.read.pending || pendingRequest.write.pending;
+    loading ||
+    ownerExists === false ||
+    ownerExists === null ||
+    pendingRequest.read.pending ||
+    pendingRequest.write.pending;
   const writeRequestDisabled =
     loading || ownerExists === false || ownerExists === null || pendingRequest.write.pending;
   const revokeDisabled = loading || ownerExists === false || ownerExists === null;

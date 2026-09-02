@@ -49,11 +49,7 @@ function requirePermission(
         return next();
       }
 
-      const hasPermission = await checkFilePermission(
-        principalId,
-        nodeId,
-        permissionType
-      );
+      const hasPermission = await checkFilePermission(principalId, nodeId, permissionType);
 
       if (!hasPermission) {
         return res.status(HTTP_STATUS.FORBIDDEN).json({
@@ -104,11 +100,7 @@ function requireFolderPermission(
         return next();
       }
 
-      const hasPermission = await checkFolderPermission(
-        principalId,
-        nodeId,
-        permissionType
-      );
+      const hasPermission = await checkFolderPermission(principalId, nodeId, permissionType);
 
       if (!hasPermission) {
         return res.status(HTTP_STATUS.FORBIDDEN).json({

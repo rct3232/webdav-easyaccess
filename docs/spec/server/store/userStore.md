@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                                |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Role | User persistence: CRUD users and identity lookups by id/username/email. Uses the normalized `users` table in `postgresql`/`sqlite` backends. FsJSON file/index storage removed in Phase 7. |
 
 ---
@@ -17,18 +17,18 @@
 
 ### 2.2 Main Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| findByUsername | (username) => Promise\<object \| undefined\> | Lookup by username |
-| findByEmail | (email) => Promise\<object \| undefined\> | Lookup via email hash index |
-| findById | (id) => Promise\<object \| undefined\> | Lookup via index.byId |
-| findAll | () => Promise\<Array\> | All users, sorted by created_at desc |
-| findByStatus | (status) => Promise\<Array\> | Filter by status |
-| createUser | ({ username, email, passwordHash, isAdmin }) => Promise\<object\> | Create user; throws on duplicate username/email |
-| updateStatus | (userId, status) => Promise\<{ success }\> | Update user status |
-| updateEmail | (userId, newEmail) => Promise\<{ success }\> | Update email, reindex |
-| updatePassword | (userId, passwordHash) => Promise\<{ success }\> | Update password, bump token_version |
-| deleteUser | (userId) => Promise\<{ success }\> | Remove user and email index |
+| Method         | Signature                                                         | Description                                     |
+| -------------- | ----------------------------------------------------------------- | ----------------------------------------------- |
+| findByUsername | (username) => Promise\<object \| undefined\>                      | Lookup by username                              |
+| findByEmail    | (email) => Promise\<object \| undefined\>                         | Lookup via email hash index                     |
+| findById       | (id) => Promise\<object \| undefined\>                            | Lookup via index.byId                           |
+| findAll        | () => Promise\<Array\>                                            | All users, sorted by created_at desc            |
+| findByStatus   | (status) => Promise\<Array\>                                      | Filter by status                                |
+| createUser     | ({ username, email, passwordHash, isAdmin }) => Promise\<object\> | Create user; throws on duplicate username/email |
+| updateStatus   | (userId, status) => Promise\<{ success }\>                        | Update user status                              |
+| updateEmail    | (userId, newEmail) => Promise\<{ success }\>                      | Update email, reindex                           |
+| updatePassword | (userId, passwordHash) => Promise\<{ success }\>                  | Update password, bump token_version             |
+| deleteUser     | (userId) => Promise\<{ success }\>                                | Remove user and email index                     |
 
 ### 2.3 Storage Paths
 

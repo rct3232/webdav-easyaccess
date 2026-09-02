@@ -8,7 +8,9 @@ import { Box } from '@mui/material';
  */
 const MainLayout = () => {
   return (
-    <Box sx={{ position: 'relative', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <Box
+      sx={{ position: 'relative', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}
+    >
       {/* 고정된 전역 앱바 배경 */}
       <Box
         className="dynamic-appbar-gradient"
@@ -24,7 +26,7 @@ const MainLayout = () => {
       >
         <div className="gradient-bg-green" />
       </Box>
-      
+
       {/* 실제 페이지 콘텐츠 */}
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         <Outlet />

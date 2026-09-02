@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                             |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Core permission-checking service. nodeId-based interface using the closure table for inheritance resolution. No Express coupling; consumed by middleware, routes, and the policy layer. |
 
 ---
@@ -28,11 +28,11 @@ Checks whether a principal has the required permission on a **file** node. Resol
 
 **Key distinction from `checkFolderPermission`:** Step 3 (direct file permission lookup) is unique to this function. File-level grants in `permissions_user_files` override any inherited directory permission.
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| principalId | number \| string | yes | User ID or `"share:<token>"` |
-| fileNodeId | number (BIGINT) | yes | File node ID referencing `file_nodes.id` where `type='file'` |
-| requiredPermission | string | no | Defaults to `PERMISSIONS.READ` |
+| Param              | Type             | Required | Description                                                  |
+| ------------------ | ---------------- | -------- | ------------------------------------------------------------ |
+| principalId        | number \| string | yes      | User ID or `"share:<token>"`                                 |
+| fileNodeId         | number (BIGINT)  | yes      | File node ID referencing `file_nodes.id` where `type='file'` |
+| requiredPermission | string           | no       | Defaults to `PERMISSIONS.READ`                               |
 
 **Returns:** `Promise<boolean>`
 
@@ -46,11 +46,11 @@ Checks whether a principal has the required permission on a **directory** node. 
 
 **Key distinction from `checkFilePermission`:** No direct file-level permission check (Step 3 above). Directory permissions are stored only in `permissions_user_paths` and resolved through ancestor traversal.
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| principalId | number \| string | yes | User ID or `"share:<token>"` |
-| dirNodeId | number (BIGINT) | yes | Directory node ID referencing `file_nodes.id` where `type='directory'` |
-| requiredPermission | string | no | Defaults to `PERMISSIONS.READ` |
+| Param              | Type             | Required | Description                                                            |
+| ------------------ | ---------------- | -------- | ---------------------------------------------------------------------- |
+| principalId        | number \| string | yes      | User ID or `"share:<token>"`                                           |
+| dirNodeId          | number (BIGINT)  | yes      | Directory node ID referencing `file_nodes.id` where `type='directory'` |
+| requiredPermission | string           | no       | Defaults to `PERMISSIONS.READ`                                         |
 
 **Returns:** `Promise<boolean>`
 
@@ -58,12 +58,12 @@ Checks whether a principal has the required permission on a **directory** node. 
 
 Unified entry point that delegates to the appropriate checker based on the `isDirectory` flag. Admin users bypass all checks; non-admins are routed to `checkFilePermission` or `checkFolderPermission` accordingly. Share principals are resolved before delegation.
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| nodeId | number (BIGINT) | yes | Node ID |
-| principalId | number \| string | yes | User ID or `"share:<token>"` |
-| action | string | no | Defaults to `PERMISSIONS.READ` |
-| isDirectory | boolean | no | Defaults to `false` |
+| Param       | Type             | Required | Description                    |
+| ----------- | ---------------- | -------- | ------------------------------ |
+| nodeId      | number (BIGINT)  | yes      | Node ID                        |
+| principalId | number \| string | yes      | User ID or `"share:<token>"`   |
+| action      | string           | no       | Defaults to `PERMISSIONS.READ` |
+| isDirectory | boolean          | no       | Defaults to `false`            |
 
 **Returns:** `Promise<boolean>`
 
@@ -79,11 +79,11 @@ Admin bypass + delegates to `checkFilePermission(user.id, fileNodeId, PERMISSION
 
 ### 2.4 Identity Helpers
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `isSharePrincipal(principalId)` | `(principalId) => boolean` | Returns true if string starts with `"share:"` |
-| `extractShareToken(principalId)` | `(principalId) => string \| null` | Strips `"share:"` prefix; returns null for non-share principals |
-| `isAdminUser(userOrId)` | `(userOrId) => boolean` | Returns true if object has `is_admin: true`; false for everything else |
+| Function                         | Signature                         | Description                                                            |
+| -------------------------------- | --------------------------------- | ---------------------------------------------------------------------- |
+| `isSharePrincipal(principalId)`  | `(principalId) => boolean`        | Returns true if string starts with `"share:"`                          |
+| `extractShareToken(principalId)` | `(principalId) => string \| null` | Strips `"share:"` prefix; returns null for non-share principals        |
+| `isAdminUser(userOrId)`          | `(userOrId) => boolean`           | Returns true if object has `is_admin: true`; false for everything else |
 
 ### 2.5 Cache Utilities
 
@@ -102,7 +102,7 @@ The service does **not** expose a `checkPermissionsBatch` method. Callers needin
 ```js
 // Pattern used by downloadService.downloadMultiple:
 const results = await Promise.allSettled(
-  nodeIds.map(id => aclService.checkFilePermission(userId, id, PERMISSIONS.READ))
+  nodeIds.map((id) => aclService.checkFilePermission(userId, id, PERMISSIONS.READ))
 );
 ```
 

@@ -73,7 +73,9 @@ describe('useRecentFile', () => {
       result.current.trackRecentFileClick('/folder/file.txt', '/folder');
     });
 
-    expect(result.current.recentFilePathsRef.current.get('/folder/file.txt')).toBe('/folder/file.txt');
+    expect(result.current.recentFilePathsRef.current.get('/folder/file.txt')).toBe(
+      '/folder/file.txt'
+    );
     expect(result.current.recentFilePathsRef.current.get('/folder')).toBeDefined();
   });
 
@@ -189,19 +191,14 @@ describe('useRecentFile', () => {
 
   it('handleRecentFileError on 404 navigates to previousPath when available', async () => {
     const currentPathRef = { current: '/folder' };
-    const { result } = renderHook(() =>
-      useRecentFile({ ...defaultProps, currentPathRef })
-    );
+    const { result } = renderHook(() => useRecentFile({ ...defaultProps, currentPathRef }));
 
     act(() => {
       result.current.trackPathHistory('/folder', '/');
     });
 
     await act(async () => {
-      await result.current.handleRecentFileError(
-        { response: { status: 404 } },
-        '/folder'
-      );
+      await result.current.handleRecentFileError({ response: { status: 404 } }, '/folder');
     });
 
     await waitFor(() => {
@@ -216,10 +213,7 @@ describe('useRecentFile', () => {
     );
 
     await act(async () => {
-      await result.current.handleRecentFileError(
-        { response: { status: 404 } },
-        '/unknown'
-      );
+      await result.current.handleRecentFileError({ response: { status: 404 } }, '/unknown');
     });
 
     await waitFor(() => {
@@ -231,10 +225,7 @@ describe('useRecentFile', () => {
     const { result } = renderHook(() => useRecentFile(defaultProps));
 
     await act(async () => {
-      await result.current.handleRecentFileError(
-        { response: { status: 500 } },
-        '/any'
-      );
+      await result.current.handleRecentFileError({ response: { status: 500 } }, '/any');
     });
 
     expect(mockShowError).toHaveBeenCalledWith('errors.fileNotFound');

@@ -33,10 +33,7 @@ describe('useDragAndDrop', () => {
     expect(result.current.draggedFile).toEqual(draggedFile);
 
     act(() => {
-      result.current.handleDragOver(
-        { preventDefault: jest.fn(), dataTransfer },
-        noWriteFolder
-      );
+      result.current.handleDragOver({ preventDefault: jest.fn(), dataTransfer }, noWriteFolder);
     });
 
     expect(dataTransfer.dropEffect).toBe('none');
@@ -56,10 +53,7 @@ describe('useDragAndDrop', () => {
       result.current.handleDragStart({ dataTransfer }, draggedFile);
     });
     act(() => {
-      result.current.handleDragOver(
-        { preventDefault: jest.fn(), dataTransfer },
-        writeFolder
-      );
+      result.current.handleDragOver({ preventDefault: jest.fn(), dataTransfer }, writeFolder);
     });
 
     expect(dataTransfer.dropEffect).toBe('move');
@@ -123,10 +117,7 @@ describe('useDragAndDrop', () => {
       result.current.handleDragStart({ dataTransfer }, draggedFile);
     });
     act(() => {
-      result.current.handleDragOver(
-        { preventDefault: jest.fn(), dataTransfer },
-        parentFolder
-      );
+      result.current.handleDragOver({ preventDefault: jest.fn(), dataTransfer }, parentFolder);
     });
 
     expect(result.current.dropTarget).toBeNull();
@@ -190,10 +181,7 @@ describe('useDragAndDrop', () => {
     );
 
     act(() => {
-      result.current.handleDragOver(
-        { preventDefault: jest.fn(), dataTransfer },
-        folder
-      );
+      result.current.handleDragOver({ preventDefault: jest.fn(), dataTransfer }, folder);
     });
 
     expect(result.current.dropTarget).toBeNull();

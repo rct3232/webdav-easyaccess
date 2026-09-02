@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Manages zoom state for zoomable preview types (PDF, image); provides zoom in/out, reset, and setZoom |
-| Used by components/pages | FilePreviewDialog |
+| Item                     | Description                                                                                          |
+| ------------------------ | ---------------------------------------------------------------------------------------------------- |
+| Role                     | Manages zoom state for zoomable preview types (PDF, image); provides zoom in/out, reset, and setZoom |
+| Used by components/pages | FilePreviewDialog                                                                                    |
 
 ---
 
@@ -17,25 +17,25 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| minZoom | number | N | 0.5 | Minimum zoom factor |
-| maxZoom | number | N | 3 | Maximum zoom factor |
-| initialZoom | number | N | 1 | Initial zoom value |
-| step | number | N | 0.25 | Zoom increment for zoomIn/zoomOut |
-| open | boolean | N | - | Dialog open state; reset zoom when becomes false |
-| previewFileType | string | N | - | Active preview type; reset zoom when changes |
-| displayFile | object | N | - | Currently displayed file; reset zoom when its path changes (e.g. gallery navigation) |
+| Name            | Type    | Required | Default | Description                                                                          |
+| --------------- | ------- | -------- | ------- | ------------------------------------------------------------------------------------ |
+| minZoom         | number  | N        | 0.5     | Minimum zoom factor                                                                  |
+| maxZoom         | number  | N        | 3       | Maximum zoom factor                                                                  |
+| initialZoom     | number  | N        | 1       | Initial zoom value                                                                   |
+| step            | number  | N        | 0.25    | Zoom increment for zoomIn/zoomOut                                                    |
+| open            | boolean | N        | -       | Dialog open state; reset zoom when becomes false                                     |
+| previewFileType | string  | N        | -       | Active preview type; reset zoom when changes                                         |
+| displayFile     | object  | N        | -       | Currently displayed file; reset zoom when its path changes (e.g. gallery navigation) |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| zoom | number | Current zoom factor (clamped between minZoom and maxZoom) |
-| zoomIn | function | Increase zoom by step |
-| zoomOut | function | Decrease zoom by step |
-| resetZoom | function | Set zoom to 1 |
-| setZoom | function | Set zoom directly (will be clamped) |
+| Key       | Type     | Meaning                                                   |
+| --------- | -------- | --------------------------------------------------------- |
+| zoom      | number   | Current zoom factor (clamped between minZoom and maxZoom) |
+| zoomIn    | function | Increase zoom by step                                     |
+| zoomOut   | function | Decrease zoom by step                                     |
+| resetZoom | function | Set zoom to 1                                             |
+| setZoom   | function | Set zoom directly (will be clamped)                       |
 
 ### 2.4 Dependencies
 

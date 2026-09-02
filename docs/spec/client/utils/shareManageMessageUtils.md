@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                    |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Reusable helper for `useSharedManage` message composition and hide-duration policy so success/error feedback does not live as duplicated hook-local branching. |
 
 ---
@@ -19,12 +19,12 @@
 
 > **Phase 7 note (nodeId end-state):** `buildShareManageSuccessMessage` no longer accepts `targetPath`; it uses `displayName`/`isDirectory` only.
 
-| Function | (input) => return |
-|----------|-------------------|
+| Function                         | (input) => return                                                             |
+| -------------------------------- | ----------------------------------------------------------------------------- |
 | `buildShareManageSuccessMessage` | `({ kind, permission, displayName, isDirectory, t }) => { show, text, type }` |
-| `buildShareManageErrorMessage` | `({ error, fallbackKey, t }) => { show, text, type }` |
-| `getShareManageHideDuration` | `(type) => number` |
-| `HIDDEN_SHARE_MANAGE_MESSAGE` | hidden message payload |
+| `buildShareManageErrorMessage`   | `({ error, fallbackKey, t }) => { show, text, type }`                         |
+| `getShareManageHideDuration`     | `(type) => number`                                                            |
+| `HIDDEN_SHARE_MANAGE_MESSAGE`    | hidden message payload                                                        |
 
 ### 2.3 Dependencies
 

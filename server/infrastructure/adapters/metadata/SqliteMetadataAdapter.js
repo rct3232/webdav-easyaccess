@@ -8,7 +8,9 @@ const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { nowIso, toIsoString } = require('../../../utils/sharedHelpers');
 
 function normalizeEmail(email) {
-  return String(email || '').trim().toLowerCase();
+  return String(email || '')
+    .trim()
+    .toLowerCase();
 }
 
 function mapUserRow(row) {
@@ -21,7 +23,9 @@ function mapUserRow(row) {
     password: row.password,
     status: row.status,
     is_admin: row.is_admin ? 1 : 0,
-    token_version: Number.isInteger(row.token_version) ? row.token_version : Number(row.token_version || 0),
+    token_version: Number.isInteger(row.token_version)
+      ? row.token_version
+      : Number(row.token_version || 0),
     created_at: toIsoString(row.created_at),
     updated_at: toIsoString(row.updated_at),
   };
@@ -110,18 +114,16 @@ function SqliteMetadataAdapter() {
       const createdAt = nowIso();
       try {
         return await withSqliteTransaction(async (client) => {
-          const dupUsername = await client.query(
-            `SELECT 1 FROM users WHERE username = ? LIMIT 1`,
-            [String(username)]
-          );
+          const dupUsername = await client.query(`SELECT 1 FROM users WHERE username = ? LIMIT 1`, [
+            String(username),
+          ]);
           if (dupUsername.rows.length > 0) {
             throw createError(SERVER_ERROR_CODES.admin.usernameTaken, 409);
           }
 
-          const dupEmail = await client.query(
-            `SELECT 1 FROM users WHERE email_hash = ? LIMIT 1`,
-            [emailHash]
-          );
+          const dupEmail = await client.query(`SELECT 1 FROM users WHERE email_hash = ? LIMIT 1`, [
+            emailHash,
+          ]);
           if (dupEmail.rows.length > 0) {
             throw createError(SERVER_ERROR_CODES.auth.emailTaken, 409);
           }
@@ -307,10 +309,9 @@ function SqliteMetadataAdapter() {
       const normalizedFilePath = normalizePath(filePath);
       try {
         return await withSqliteTransaction(async (client) => {
-          const existing = await client.query(
-            `SELECT * FROM share_links WHERE token = ? LIMIT 1`,
-            [String(token)]
-          );
+          const existing = await client.query(`SELECT * FROM share_links WHERE token = ? LIMIT 1`, [
+            String(token),
+          ]);
           if (existing.rows.length > 0) {
             return mapShareLinkRow(existing.rows[0]);
           }
@@ -319,10 +320,9 @@ function SqliteMetadataAdapter() {
              VALUES (?, ?, ?, datetime('now'), ?, 0)`,
             [String(token), normalizedFilePath, Number(createdBy), expiresAt]
           );
-          const inserted = await client.query(
-            `SELECT * FROM share_links WHERE token = ? LIMIT 1`,
-            [String(token)]
-          );
+          const inserted = await client.query(`SELECT * FROM share_links WHERE token = ? LIMIT 1`, [
+            String(token),
+          ]);
           return mapShareLinkRow(inserted.rows[0]);
         });
       } catch (error) {
@@ -372,10 +372,9 @@ function SqliteMetadataAdapter() {
     async updateShareLink(token, updates) {
       try {
         return await withSqliteTransaction(async (client) => {
-          const existing = await client.query(
-            `SELECT * FROM share_links WHERE token = ? LIMIT 1`,
-            [String(token)]
-          );
+          const existing = await client.query(`SELECT * FROM share_links WHERE token = ? LIMIT 1`, [
+            String(token),
+          ]);
           if (existing.rows.length === 0) {
             throw createError(SERVER_ERROR_CODES.share.shareLinkNotFound, 404);
           }
@@ -383,12 +382,16 @@ function SqliteMetadataAdapter() {
           const merged = { ...current, ...updates };
           await client.query(
             `UPDATE share_links SET file_path = ?, expires_at = ?, download_count = ? WHERE token = ?`,
-            [normalizePath(merged.filePath), merged.expiresAt || null, Number(merged.downloadCount || 0), String(token)]
+            [
+              normalizePath(merged.filePath),
+              merged.expiresAt || null,
+              Number(merged.downloadCount || 0),
+              String(token),
+            ]
           );
-          const updated = await client.query(
-            `SELECT * FROM share_links WHERE token = ? LIMIT 1`,
-            [String(token)]
-          );
+          const updated = await client.query(`SELECT * FROM share_links WHERE token = ? LIMIT 1`, [
+            String(token),
+          ]);
           return mapShareLinkRow(updated.rows[0]);
         });
       } catch (error) {
@@ -413,10 +416,9 @@ function SqliteMetadataAdapter() {
             `UPDATE share_links SET download_count = download_count + 1 WHERE token = ?`,
             [String(token)]
           );
-          const updated = await client.query(
-            `SELECT * FROM share_links WHERE token = ? LIMIT 1`,
-            [String(token)]
-          );
+          const updated = await client.query(`SELECT * FROM share_links WHERE token = ? LIMIT 1`, [
+            String(token),
+          ]);
           if (updated.rows.length === 0) {
             throw createError(SERVER_ERROR_CODES.share.shareLinkNotFound, 404);
           }

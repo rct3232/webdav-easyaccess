@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Centralized API client (fetch-based) that unifies request/response parsing, auth token injection, auth error handling (401 refresh + 403 navigation), and retry behavior. |
-| Used by | `services/*` modules (e.g. `authService`) and any client code that needs consistent `/api/*` request behavior. |
-| Depends on (split target) | `httpClient` (transport + retry + parsing), `authTokenStore` (token persistence + refresh + x-new-token application), `authNavigationPolicy` (redirect/back rules). |
+| Item                      | Description                                                                                                                                                               |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                      | Centralized API client (fetch-based) that unifies request/response parsing, auth token injection, auth error handling (401 refresh + 403 navigation), and retry behavior. |
+| Used by                   | `services/*` modules (e.g. `authService`) and any client code that needs consistent `/api/*` request behavior.                                                            |
+| Depends on (split target) | `httpClient` (transport + retry + parsing), `authTokenStore` (token persistence + refresh + x-new-token application), `authNavigationPolicy` (redirect/back rules).       |
 
 ---
 
@@ -21,15 +21,16 @@
 
 The exported API is stable:
 
-| Function | Input | Return | API called |
-|----------|-------|--------|------------|
-| `get` | `(url, config)` | `Promise<{ data: any, status: number, statusText: string, headers: Record<string,string> }>` | GET `/api/url` |
-| `post` | `(url, data, config)` | same as above | POST `/api/url` |
-| `put` | `(url, data, config)` | same as above | PUT `/api/url` |
-| `del` | `(url, config)` | same as above | DELETE `/api/url` |
-| `request` | `(config)` | same as above | custom config |
+| Function  | Input                 | Return                                                                                       | API called        |
+| --------- | --------------------- | -------------------------------------------------------------------------------------------- | ----------------- |
+| `get`     | `(url, config)`       | `Promise<{ data: any, status: number, statusText: string, headers: Record<string,string> }>` | GET `/api/url`    |
+| `post`    | `(url, data, config)` | same as above                                                                                | POST `/api/url`   |
+| `put`     | `(url, data, config)` | same as above                                                                                | PUT `/api/url`    |
+| `del`     | `(url, config)`       | same as above                                                                                | DELETE `/api/url` |
+| `request` | `(config)`            | same as above                                                                                | custom config     |
 
 Shared request defaults:
+
 - Base URL: `/api`
 - Timeout: `300000` ms (5 minutes)
 
@@ -81,6 +82,7 @@ Shared request defaults:
 ### 2.6 Verification Scenarios
 
 Verify observable outcomes (what callers see), not internal implementation:
+
 - [ ] When an access token exists in `sessionStorage`, requests include `Authorization: Bearer <token>`.
 - [ ] When a response includes `x-new-token`, the new token is stored and a `token-refreshed` event is dispatched.
 - [ ] On `401` for a non-excluded endpoint: refresh succeeds, token is updated, and the original request is retried.

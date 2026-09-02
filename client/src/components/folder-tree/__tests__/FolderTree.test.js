@@ -6,7 +6,7 @@
  * @see docs/TESTING_STRATEGY.md
  */
 import React from 'react';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import FolderTree from '../FolderTree';
 import { getRecentFiles } from '../../../services/recentFilesRepository';
@@ -68,10 +68,7 @@ describe('FolderTree', () => {
 
   it('renders home label for admin user', async () => {
     renderWithProviders(
-      <FolderTree
-        {...defaultProps}
-        user={{ id: '1', username: 'admin', is_admin: true }}
-      />
+      <FolderTree {...defaultProps} user={{ id: '1', username: 'admin', is_admin: true }} />
     );
     await waitFor(() => {
       expect(screen.getByText(/home/i)).toBeInTheDocument();

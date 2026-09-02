@@ -8,7 +8,9 @@ const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { nowIso, toIsoString } = require('../../../utils/sharedHelpers');
 
 function normalizeEmail(email) {
-  return String(email || '').trim().toLowerCase();
+  return String(email || '')
+    .trim()
+    .toLowerCase();
 }
 
 function mapUserRow(row) {
@@ -21,7 +23,9 @@ function mapUserRow(row) {
     password: row.password,
     status: row.status,
     is_admin: row.is_admin ? 1 : 0,
-    token_version: Number.isInteger(row.token_version) ? row.token_version : Number(row.token_version || 0),
+    token_version: Number.isInteger(row.token_version)
+      ? row.token_version
+      : Number(row.token_version || 0),
     created_at: toIsoString(row.created_at),
     updated_at: toIsoString(row.updated_at),
   };
@@ -100,10 +104,9 @@ function PostgresqlMetadataAdapter() {
             throw createError(SERVER_ERROR_CODES.admin.usernameTaken, 409);
           }
 
-          const dupEmail = await client.query(
-            `SELECT 1 FROM users WHERE email_hash = $1 LIMIT 1`,
-            [emailHash]
-          );
+          const dupEmail = await client.query(`SELECT 1 FROM users WHERE email_hash = $1 LIMIT 1`, [
+            emailHash,
+          ]);
           if (dupEmail.rows.length > 0) {
             throw createError(SERVER_ERROR_CODES.auth.emailTaken, 409);
           }
@@ -294,10 +297,9 @@ function PostgresqlMetadataAdapter() {
     async getShareLink(token) {
       try {
         const pool = getPgPool();
-        const res = await pool.query(
-          `SELECT * FROM share_links WHERE token = $1 LIMIT 1`,
-          [String(token)]
-        );
+        const res = await pool.query(`SELECT * FROM share_links WHERE token = $1 LIMIT 1`, [
+          String(token),
+        ]);
         if (res.rows.length === 0) return null;
         return mapShareLinkRow(res.rows[0]);
       } catch (error) {
@@ -333,7 +335,12 @@ function PostgresqlMetadataAdapter() {
           const updated = await client.query(
             `UPDATE share_links SET file_path = $2, expires_at = $3, download_count = $4
              WHERE token = $1 RETURNING *`,
-            [String(token), normalizePath(merged.filePath), merged.expiresAt || null, Number(merged.downloadCount || 0)]
+            [
+              String(token),
+              normalizePath(merged.filePath),
+              merged.expiresAt || null,
+              Number(merged.downloadCount || 0),
+            ]
           );
           return mapShareLinkRow(updated.rows[0]);
         });

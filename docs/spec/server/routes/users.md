@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Mount path | `/api/users` |
-| Role | User management: list, approved list, get by id, update password, email, permissions. |
+| Item       | Description                                                                           |
+| ---------- | ------------------------------------------------------------------------------------- |
+| Mount path | `/api/users`                                                                          |
+| Role       | User management: list, approved list, get by id, update password, email, permissions. |
 
 ---
 
@@ -20,14 +20,14 @@
 
 ### 2.2 Route List
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/` | Token | List users (for share dialogs). |
-| GET | `/approved` | Token | List approved users. |
-| GET | `/:id` | Token | Get user by id. |
-| PUT | `/:id/password` | Token | Change password. Body: password (or currentPassword, newPassword per api.md). |
-| PUT | `/:id/email` | Token | Update email. Body: email. |
-| PUT | `/:id/permissions` | Token | Update user's own permissions. Body: permissions. |
+| Method | Path               | Auth  | Description                                                                   |
+| ------ | ------------------ | ----- | ----------------------------------------------------------------------------- |
+| GET    | `/`                | Token | List users (for share dialogs).                                               |
+| GET    | `/approved`        | Token | List approved users.                                                          |
+| GET    | `/:id`             | Token | Get user by id.                                                               |
+| PUT    | `/:id/password`    | Token | Change password. Body: password (or currentPassword, newPassword per api.md). |
+| PUT    | `/:id/email`       | Token | Update email. Body: email.                                                    |
+| PUT    | `/:id/permissions` | Token | Update user's own permissions. Body: permissions.                             |
 
 ### 2.3 Middleware Used
 

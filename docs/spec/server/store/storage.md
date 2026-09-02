@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                                                                                                          |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Abstraction over metadata backends. Supports `postgresql` and `sqlite` only (FsJSON `fs` and legacy `webdav` metadata backends were removed in Phase 7). Provides PostgreSQL pool/transaction helpers and SQLite connection/transaction helpers for relational mode. |
 
 ---
@@ -19,26 +19,26 @@
 
 #### Backend Selection
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| getBackend | () => 'postgresql' \| 'sqlite' | Resolved from `WEA_STORAGE_BACKEND`. Accepts aliases: `postgresql`/`postgres`/`pg` → `'postgresql'`; `sqlite` → `'sqlite'`; any other value (including removed `fs`/`filesystem`/`webdav`) → warns + returns `'sqlite'`; empty/undefined → warns + returns `'sqlite'` (default) |
-| isSqliteBackend | () => boolean | Returns `true` if `getBackend() === 'sqlite'` |
+| Method          | Signature                      | Description                                                                                                                                                                                                                                                                                                                                                       |
+| --------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| getBackend      | () => 'postgresql' \| 'sqlite' | Resolved from `WEA_STORAGE_BACKEND`. Accepts aliases: `postgresql`/`postgres`/`pg` → `'postgresql'`; `sqlite` → `'sqlite'`; empty/undefined → `'sqlite'` (default). **Any other value throws a terminal `Error`** (e.g. removed `fs`/`filesystem`/`webdav`, or a typo) — the boot path (`runBoot().catch`) exits with `process.exit(1)`. No silent fallback (F6). |
+| isSqliteBackend | () => boolean                  | Returns `true` if `getBackend() === 'sqlite'`                                                                                                                                                                                                                                                                                                                     |
 
 #### PostgreSQL Helpers
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| getPgPool | () => Pool | Returns PostgreSQL connection pool when backend is `postgresql` |
+| Method          | Signature                  | Description                                                         |
+| --------------- | -------------------------- | ------------------------------------------------------------------- |
+| getPgPool       | () => Pool                 | Returns PostgreSQL connection pool when backend is `postgresql`     |
 | withTransaction | (callback) => Promise\<T\> | Executes callback in single SQL transaction (begin/commit/rollback) |
-| closePgPool | () => Promise\<void\> | Close pool (for tests and process shutdown) |
+| closePgPool     | () => Promise\<void\>      | Close pool (for tests and process shutdown)                         |
 
 #### SQLite Helpers
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| getSqliteConnection | () => Database | Returns better-sqlite3 Database instance |
-| withSqliteTransaction | (callback) => Promise\<T\> | Executes callback in SQLite transaction |
-| closeSqliteDb | () => void | Close SQLite database |
+| Method                | Signature                  | Description                              |
+| --------------------- | -------------------------- | ---------------------------------------- |
+| getSqliteConnection   | () => Database             | Returns better-sqlite3 Database instance |
+| withSqliteTransaction | (callback) => Promise\<T\> | Executes callback in SQLite transaction  |
+| closeSqliteDb         | () => void                 | Close SQLite database                    |
 
 #### Legacy Filesystem Helpers
 
@@ -54,12 +54,14 @@
 
 These two environment variables are **completely independent**:
 
-| Variable | Purpose | Values | Handled By |
-|----------|---------|--------|------------|
+| Variable              | Purpose                    | Values                           | Handled By                |
+| --------------------- | -------------------------- | -------------------------------- | ------------------------- |
 | `WEA_STORAGE_BACKEND` | Metadata persistence layer | `sqlite` (default), `postgresql` | `storage.js:getBackend()` |
-| `WEA_FILE_STORAGE` | File content blob storage | `s3` (default), `webdav` | Phase 1 S3 adapter |
+| `WEA_FILE_STORAGE`    | File content blob storage  | `s3` (default), `webdav`         | Phase 1 S3 adapter        |
 
-`WEA_STORAGE_BACKEND` no longer accepts `fs` or `webdav` metadata values (removed in Phase 7); any unrecognized value warns and falls back to `sqlite`. File content storage via `WEA_FILE_STORAGE=webdav` (WebDAV) or `WEA_FILE_STORAGE=s3` (S3) is unaffected.
+`WEA_STORAGE_BACKEND` no longer accepts `fs` or `webdav` metadata values (removed in Phase 7); any unrecognized **non-empty** value is a terminal boot error (no silent `sqlite` fallback, F6). An unset/empty value defaults to `sqlite`. File content storage via `WEA_FILE_STORAGE=webdav` (WebDAV) or `WEA_FILE_STORAGE=s3` (S3) is unaffected.
+
+**D6 boot rule:** the DB connection is `.env`-owned. When `WEA_STORAGE_BACKEND=postgresql`, the boot pre-flight (`runBoot`, `server/index.js`) requires `WEA_PG_HOST/PORT/DATABASE/USER/PASSWORD`; any missing key → `console.error('[config] … requires <keys> …')` + `process.exit(1)`. `resolvePgConfig`'s `storage.postgresqlNotConfigured` throw remains as a runtime guard.
 
 ### 2.4 PostgreSQL Infrastructure Contract
 
@@ -99,9 +101,9 @@ Permission contract source of truth for `postgresql` backend:
 ### 2.7 Verification Scenarios
 
 - [ ] getBackend: WEA_STORAGE_BACKEND=postgresql → postgresql
-- [ ] getBackend: WEA_STORAGE_BACKEND=fs → warns + returns sqlite (fs removed in Phase 7)
-- [ ] getBackend: WEA_STORAGE_BACKEND=webdav → warns + returns sqlite
-- [ ] getBackend: WEA_STORAGE_BACKEND= (empty) → warns + returns sqlite (default)
+- [ ] getBackend: WEA_STORAGE_BACKEND=fs → throws (fs removed in Phase 7)
+- [ ] getBackend: WEA_STORAGE_BACKEND=webdav → throws
+- [ ] getBackend: WEA_STORAGE_BACKEND= (empty) → sqlite (default)
 - [ ] getBackend: WEA_STORAGE_BACKEND=postgres → postgresql (alias)
 - [ ] getBackend: WEA_STORAGE_BACKEND=pg → postgresql (alias)
 - [ ] getBackend: WEA_STORAGE_BACKEND=sqlite → sqlite

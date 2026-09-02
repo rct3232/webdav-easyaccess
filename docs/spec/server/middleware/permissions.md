@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Permission check utilities and middleware: checkFilePermission, checkFolderPermission, canAccessPath, requirePermission, requireFolderPermission, isSharePrincipal, extractShareToken. Principal: userId or share:token. Owner detection via closure table ancestor check, admin bypass. All operations use `nodeId` (BIGINT) instead of path strings. |
-| Pipeline position | requirePermission/requireFolderPermission used in routes; check* used by permissionPolicy |
-| Preceding middleware | requireAuth (req.principalId) |
+| Item                 | Description                                                                                                                                                                                                                                                                                                                                            |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role                 | Permission check utilities and middleware: checkFilePermission, checkFolderPermission, canAccessPath, requirePermission, requireFolderPermission, isSharePrincipal, extractShareToken. Principal: userId or share:token. Owner detection via closure table ancestor check, admin bypass. All operations use `nodeId` (BIGINT) instead of path strings. |
+| Pipeline position    | requirePermission/requireFolderPermission used in routes; check\* used by permissionPolicy                                                                                                                                                                                                                                                             |
+| Preceding middleware | requireAuth (req.principalId)                                                                                                                                                                                                                                                                                                                          |
 
 ---
 

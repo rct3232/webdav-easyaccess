@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Full-screen preview for images, PDFs, text, video. Supports gallery mode for multiple media. Uses getFileBlob (non-video), react-pdf, and a ticket-based streaming URL for video preview. |
-| Used in | FileManager (Preview from context menu) |
-| Related components | PreviewThumbnailBar, HeaderZoomControls, getFileBlob, getFileType |
+| Item               | Description                                                                                                                                                                               |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Full-screen preview for images, PDFs, text, video. Supports gallery mode for multiple media. Uses getFileBlob (non-video), react-pdf, and a ticket-based streaming URL for video preview. |
+| Used in            | FileManager (Preview from context menu)                                                                                                                                                   |
+| Related components | PreviewThumbnailBar, HeaderZoomControls, getFileBlob, getFileType                                                                                                                         |
 
 ---
 
@@ -22,14 +22,14 @@
 
 All hooks live under `client/src/components/dialogs/FilePreviewDialog/hooks/`:
 
-| Hook | Responsibility |
-|------|---------------|
-| `usePreviewLoader` | `loading`, `error`, `previewUrl`, `previewBlob`, `textContent`, `loadPreview` callback, blob cleanup effect |
-| `useGalleryNavigation` | `currentMediaIndex`, `goPrev`, `goNext`, `handleTouchStart/End`, derived opened index + navigation offset, reset on close |
-| `useUIVisibility` | `headerVisible`, `controlsVisible`, `startHideTimer`, `clearHideTimer`, `resetHideTimer`, hide timer effects |
-| `usePlyrPlayer` | Plyr audio/video DOM effects, `videoNotPlayable` state, controls sync effect, touchend preventDefault effect, `audioContainerRef`, `videoContainerRef`, `mediaTouchRef` |
-| `usePdfLayout` | `pdfContainerRef`, `containerWidth/Height`, `calculatedWidth` (useMemo), `pageArray` (useMemo), `numPages`, `pageInfo`, PDF container ResizeObserver effect |
-| `useHeaderTruncation` | `titleRowRef`, `actionsRef`, `titleRowWidth`, `actionsWidth`, `textOverflows`, `truncatedHeaderName`, `isHeaderTruncated`, header ResizeObserver effect, text overflow detection effect |
+| Hook                   | Responsibility                                                                                                                                                                          |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `usePreviewLoader`     | `loading`, `error`, `previewUrl`, `previewBlob`, `textContent`, `loadPreview` callback, blob cleanup effect                                                                             |
+| `useGalleryNavigation` | `currentMediaIndex`, `goPrev`, `goNext`, `handleTouchStart/End`, derived opened index + navigation offset, reset on close                                                               |
+| `useUIVisibility`      | `headerVisible`, `controlsVisible`, `startHideTimer`, `clearHideTimer`, `resetHideTimer`, hide timer effects                                                                            |
+| `usePlyrPlayer`        | Plyr audio/video DOM effects, `videoNotPlayable` state, controls sync effect, touchend preventDefault effect, `audioContainerRef`, `videoContainerRef`, `mediaTouchRef`                 |
+| `usePdfLayout`         | `pdfContainerRef`, `containerWidth/Height`, `calculatedWidth` (useMemo), `pageArray` (useMemo), `numPages`, `pageInfo`, PDF container ResizeObserver effect                             |
+| `useHeaderTruncation`  | `titleRowRef`, `actionsRef`, `titleRowWidth`, `actionsWidth`, `textOverflows`, `truncatedHeaderName`, `isHeaderTruncated`, header ResizeObserver effect, text overflow detection effect |
 
 Spec files: `docs/spec/client/components/dialogs/FilePreviewDialog/hooks/`
 
@@ -37,14 +37,14 @@ Spec files: `docs/spec/client/components/dialogs/FilePreviewDialog/hooks/`
 
 All subcomponents live under `client/src/components/dialogs/FilePreviewDialog/previews/`:
 
-| Component | Rendered for |
-|-----------|-------------|
-| `ImagePreview` | `fileType === 'image'` — img + gallery chevrons; supports zoom |
-| `VideoPreview` | `fileType === 'video'` — Plyr video container, videoNotPlayable overlay, gallery chevrons |
-| `AudioPreview` | `fileType === 'audio'` — Plyr audio container |
-| `PdfPreview` | `fileType === 'pdf'` — react-pdf Document/Page; supports zoom |
-| `TextPreview` | `fileType === 'text'` — pre tag with scrollable text (no zoom) |
-| `PreviewUnsupported` | `canPreview === false` and unrecognised types |
+| Component            | Rendered for                                                                              |
+| -------------------- | ----------------------------------------------------------------------------------------- |
+| `ImagePreview`       | `fileType === 'image'` — img + gallery chevrons; supports zoom                            |
+| `VideoPreview`       | `fileType === 'video'` — Plyr video container, videoNotPlayable overlay, gallery chevrons |
+| `AudioPreview`       | `fileType === 'audio'` — Plyr audio container                                             |
+| `PdfPreview`         | `fileType === 'pdf'` — react-pdf Document/Page; supports zoom                             |
+| `TextPreview`        | `fileType === 'text'` — pre tag with scrollable text (no zoom)                            |
+| `PreviewUnsupported` | `canPreview === false` and unrecognised types                                             |
 
 ### 2.2c Zoom Support
 
@@ -56,22 +56,22 @@ All subcomponents live under `client/src/components/dialogs/FilePreviewDialog/pr
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| open | boolean | Y | - | Dialog open |
-| onClose | function | Y | - | Close handler |
-| file | object | Y | - | File to preview |
-| mediaFiles | array | N | [] | Multiple media for gallery |
-| shareToken | string | N | - | Share token |
-| onThumbnailsLoaded | function | N | - | Thumbnail callback |
-| hideCloseButton | boolean | N | false | Hide close button |
+| Name               | Type     | Required | Default | Description                |
+| ------------------ | -------- | -------- | ------- | -------------------------- |
+| open               | boolean  | Y        | -       | Dialog open                |
+| onClose            | function | Y        | -       | Close handler              |
+| file               | object   | Y        | -       | File to preview            |
+| mediaFiles         | array    | N        | []      | Multiple media for gallery |
+| shareToken         | string   | N        | -       | Share token                |
+| onThumbnailsLoaded | function | N        | -       | Thumbnail callback         |
+| hideCloseButton    | boolean  | N        | false   | Hide close button          |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| onClose | Close | - |
-| onThumbnailsLoaded | Thumbnails ready | - |
+| Callback           | When invoked     | Arguments |
+| ------------------ | ---------------- | --------- |
+| onClose            | Close            | -         |
+| onThumbnailsLoaded | Thumbnails ready | -         |
 
 ### 2.4 Dependencies
 
@@ -81,7 +81,7 @@ All subcomponents live under `client/src/components/dialogs/FilePreviewDialog/pr
 
 ### 2.5 i18n Keys
 
-- preview.*, common.*
+- preview._, common._
 - Video playback failure overlay uses: `preview.videoNotPlayable`
 - When using Web Share for image download (iOS), consider a short hint (e.g. tooltip or toast) that the user can choose “Save Image” (or locale equivalent) in the share sheet to save to Photos.
 

@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                           |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Permission API: list by user/folder, grant, revoke, check effective permission, file-level permissions. All operations use `nodeId` (BIGINT) instead of path strings. |
 
 ---
@@ -19,16 +19,16 @@
 
 ### 2.2 Main Functions
 
-| Function | Input | Return | API called |
-|----------|-------|--------|------------|
-| getUserPermissions | (userId, options?) | Promise\<Array\> | GET /api/permissions/user/:userId |
-| getSharedPermissions | () | Promise\<Array\> | GET /api/permissions/shared |
-| getFolderPermissions | (nodeId, fileNodeId?) | Promise\<Array\> | GET /api/permissions/folder?nodeId=... |
-| grantPermission | ({ userId, nodeId, permission, target? }) | Promise\<void\> | POST /api/permissions/grant |
-| revokePermission | ({ userId, nodeId, scope? }) | Promise\<void\> | DELETE /api/permissions/revoke |
-| checkPermission | (nodeId) | Promise\<Object\> | GET /api/permissions/check?nodeId=... |
-| listFilePermissions | (parentNodeId?) | Promise\<Array\> | GET /api/permissions/file/list?parentNodeId=... |
-| clearUserPermissionsCache | (userId?) | void | - |
+| Function                  | Input                                     | Return            | API called                                      |
+| ------------------------- | ----------------------------------------- | ----------------- | ----------------------------------------------- |
+| getUserPermissions        | (userId, options?)                        | Promise\<Array\>  | GET /api/permissions/user/:userId               |
+| getSharedPermissions      | ()                                        | Promise\<Array\>  | GET /api/permissions/shared                     |
+| getFolderPermissions      | (nodeId, fileNodeId?)                     | Promise\<Array\>  | GET /api/permissions/folder?nodeId=...          |
+| grantPermission           | ({ userId, nodeId, permission, target? }) | Promise\<void\>   | POST /api/permissions/grant                     |
+| revokePermission          | ({ userId, nodeId, scope? })              | Promise\<void\>   | DELETE /api/permissions/revoke                  |
+| checkPermission           | (nodeId)                                  | Promise\<Object\> | GET /api/permissions/check?nodeId=...           |
+| listFilePermissions       | (parentNodeId?)                           | Promise\<Array\>  | GET /api/permissions/file/list?parentNodeId=... |
+| clearUserPermissionsCache | (userId?)                                 | void              | -                                               |
 
 - `target`: `'file'` for file-level grant; defaults to `'directory'`
 - `scope`: `'pathOnly'` for file-level revoke
@@ -58,10 +58,10 @@ The following parameters are removed in Phase 4:
 
 #### Payload Shape Changes
 
-| Before | After |
-|---------|-------|
-| `{ folderPath: '/a/b', permission: 'read' }` | `{ userId: 'u1', nodeId: 123, permission: 'read' }` |
-| `{ userId: 'u1', folderPath: '/a', includeSubfolders: false }` | `{ userId: 'u1', nodeId: 123 }` |
+| Before                                                         | After                                               |
+| -------------------------------------------------------------- | --------------------------------------------------- |
+| `{ folderPath: '/a/b', permission: 'read' }`                   | `{ userId: 'u1', nodeId: 123, permission: 'read' }` |
+| `{ userId: 'u1', folderPath: '/a', includeSubfolders: false }` | `{ userId: 'u1', nodeId: 123 }`                     |
 
 #### Response Shape Changes
 

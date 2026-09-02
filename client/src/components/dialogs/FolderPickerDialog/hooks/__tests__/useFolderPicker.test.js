@@ -93,7 +93,11 @@ describe('useFolderPicker', () => {
     });
 
     expect(result.current.folders).toHaveLength(2);
-    expect(result.current.folders[0]).toMatchObject({ nodeId: 101, basename: 'folder1', type: 'directory' });
+    expect(result.current.folders[0]).toMatchObject({
+      nodeId: 101,
+      basename: 'folder1',
+      type: 'directory',
+    });
     expect(folderPickerGateway.listFolderContents).toHaveBeenCalledWith({ nodeId: 100 });
   });
 
@@ -184,7 +188,12 @@ describe('useFolderPicker', () => {
       { nodeId: 103, basename: 'sub', type: 'directory' },
     ]);
     await act(async () => {
-      result.current.handleFolderClick({ nodeId: 101, basename: 'folder1', type: 'directory', hasReadPermission: true });
+      result.current.handleFolderClick({
+        nodeId: 101,
+        basename: 'folder1',
+        type: 'directory',
+        hasReadPermission: true,
+      });
     });
     await waitFor(() => {
       expect(result.current.loading).toBe(false);

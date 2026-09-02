@@ -43,8 +43,9 @@ function createS3Mock(overrides = {}) {
 
       copyObject: jest.fn((cmd) => {
         const params = cmd.input || cmd;
-        const { Bucket, CopySource, Key } = params;
-        const sourceKey = typeof CopySource === 'string' ? CopySource.split('/').slice(1).join('/') : CopySource;
+        const { CopySource, Key } = params;
+        const sourceKey =
+          typeof CopySource === 'string' ? CopySource.split('/').slice(1).join('/') : CopySource;
         const src = store.get(sourceKey);
         if (!src) {
           throw new Error('NoSuchKey');
@@ -74,7 +75,7 @@ function createS3Mock(overrides = {}) {
 
       listObjectsV2: jest.fn((cmd) => {
         const params = cmd.input || cmd;
-        const { Bucket, ContinuationToken, MaxKeys } = params;
+        const { ContinuationToken, MaxKeys } = params;
         const allEntries = Array.from(store.entries()).map(([Key, obj]) => ({
           Key,
           Size: obj.ContentLength,
@@ -83,14 +84,16 @@ function createS3Mock(overrides = {}) {
 
         let startIdx = 0;
         if (ContinuationToken) {
-          const tokenIdx = allEntries.findIndex(e => e.Key === ContinuationToken);
+          const tokenIdx = allEntries.findIndex((e) => e.Key === ContinuationToken);
           if (tokenIdx >= 0) {
             startIdx = tokenIdx + 1;
           }
         }
 
-        const sliced = MaxKeys ? allEntries.slice(startIdx, startIdx + MaxKeys) : allEntries.slice(startIdx);
-        const isTruncated = sliced.length > 0 && (startIdx + sliced.length < allEntries.length);
+        const sliced = MaxKeys
+          ? allEntries.slice(startIdx, startIdx + MaxKeys)
+          : allEntries.slice(startIdx);
+        const isTruncated = sliced.length > 0 && startIdx + sliced.length < allEntries.length;
 
         return {
           Contents: sliced,
@@ -102,7 +105,9 @@ function createS3Mock(overrides = {}) {
 
       getStore: () => store,
 
-      clearStore: () => { store.clear(); },
+      clearStore: () => {
+        store.clear();
+      },
     };
   }
 

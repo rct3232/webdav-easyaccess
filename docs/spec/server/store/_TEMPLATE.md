@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                              |
+| ---- | ---------------------------------------- |
 | Role | (Storage role: users, permissions, etc.) |
 
 ---
@@ -17,8 +17,8 @@
 
 ### 2.2 Main Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
+| Method   | Signature          | Description   |
+| -------- | ------------------ | ------------- |
 | (method) | (params) => return | (description) |
 
 ### 2.3 Storage Paths

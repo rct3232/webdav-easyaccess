@@ -13,14 +13,16 @@ describe('useExplorerNavigation', () => {
     const onTrackNodeHistory = jest.fn();
     const onAfterNavigate = jest.fn();
 
-    const { result } = renderHook(() => useExplorerNavigation({
-      currentNodeId: 1,
-      getPreviousNodeId: () => 1,
-      setCurrentNodeId,
-      onAfterNavigate,
-      onTrackNodeHistory,
-      canNavigateToNode,
-    }));
+    const { result } = renderHook(() =>
+      useExplorerNavigation({
+        currentNodeId: 1,
+        getPreviousNodeId: () => 1,
+        setCurrentNodeId,
+        onAfterNavigate,
+        onTrackNodeHistory,
+        canNavigateToNode,
+      })
+    );
 
     await act(async () => {
       await result.current.navigateToNode(2);
@@ -39,12 +41,14 @@ describe('useExplorerNavigation', () => {
     const error = new Error('network failed');
     const canNavigateToNode = jest.fn().mockRejectedValue(error);
 
-    const { result } = renderHook(() => useExplorerNavigation({
-      currentNodeId: 1,
-      getPreviousNodeId: () => 1,
-      setCurrentNodeId,
-      canNavigateToNode,
-    }));
+    const { result } = renderHook(() =>
+      useExplorerNavigation({
+        currentNodeId: 1,
+        getPreviousNodeId: () => 1,
+        setCurrentNodeId,
+        canNavigateToNode,
+      })
+    );
 
     let thrown;
     await act(async () => {
@@ -64,12 +68,14 @@ describe('useExplorerNavigation', () => {
     const setCurrentNodeId = jest.fn();
     const canNavigateToNode = jest.fn().mockResolvedValue(false);
 
-    const { result } = renderHook(() => useExplorerNavigation({
-      currentNodeId: 1,
-      getPreviousNodeId: () => 1,
-      setCurrentNodeId,
-      canNavigateToNode,
-    }));
+    const { result } = renderHook(() =>
+      useExplorerNavigation({
+        currentNodeId: 1,
+        getPreviousNodeId: () => 1,
+        setCurrentNodeId,
+        canNavigateToNode,
+      })
+    );
 
     let thrown;
     await act(async () => {
@@ -90,12 +96,14 @@ describe('useExplorerNavigation', () => {
     const setCurrentNodeId = jest.fn();
     const canNavigateToNode = jest.fn();
 
-    const { result } = renderHook(() => useExplorerNavigation({
-      currentNodeId: 2,
-      getPreviousNodeId: () => 2,
-      setCurrentNodeId,
-      canNavigateToNode,
-    }));
+    const { result } = renderHook(() =>
+      useExplorerNavigation({
+        currentNodeId: 2,
+        getPreviousNodeId: () => 2,
+        setCurrentNodeId,
+        canNavigateToNode,
+      })
+    );
 
     await act(async () => {
       await result.current.navigateToNode(2);
@@ -109,12 +117,14 @@ describe('useExplorerNavigation', () => {
     const setCurrentNodeId = jest.fn();
     const canNavigateToNode = jest.fn();
 
-    const { result } = renderHook(() => useExplorerNavigation({
-      currentNodeId: null,
-      getPreviousNodeId: () => null,
-      setCurrentNodeId,
-      canNavigateToNode,
-    }));
+    const { result } = renderHook(() =>
+      useExplorerNavigation({
+        currentNodeId: null,
+        getPreviousNodeId: () => null,
+        setCurrentNodeId,
+        canNavigateToNode,
+      })
+    );
 
     await act(async () => {
       await result.current.navigateToNode(null);

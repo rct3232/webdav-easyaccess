@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Centralizes content-area drag/drop logic for the file manager: guards (mobile, selection mode, write permission), same-parent skip, data-file-path skip, and delegation to file-area handlers (useDropToUpload) or internal move (handleInternalFileDrop). |
-| Used by components/pages | FileManager |
+| Item                     | Description                                                                                                                                                                                                                                                |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Centralizes content-area drag/drop logic for the file manager: guards (mobile, selection mode, write permission), same-parent skip, data-file-path skip, and delegation to file-area handlers (useDropToUpload) or internal move (handleInternalFileDrop). |
+| Used by components/pages | FileManager                                                                                                                                                                                                                                                |
 
 ---
 
@@ -13,8 +13,8 @@
 
 ### 2.1 File Path
 
-| Scope | Source path | Test path |
-|-------|-------------|-----------|
+| Scope      | Source path                                                    | Test path                                                                     |
+| ---------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | Page-local | `client/src/pages/FileManager/hooks/useContentAreaDragDrop.js` | `client/src/pages/FileManager/hooks/__tests__/useContentAreaDragDrop.test.js` |
 
 - **Source:** `client/src/pages/FileManager/hooks/useContentAreaDragDrop.js`
@@ -22,32 +22,32 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| isMobile | boolean | Y | When true, all handlers no-op (no content-area drop UI) |
-| selectionMode | boolean | Y | When true, all handlers no-op |
-| hasWritePermission | boolean | Y | When false, all handlers no-op |
-| isShareLinkMode | boolean | N | Reserved for overlay logic in caller; hook may not use |
-| currentNodeId | number \| null | Y | Current folder nodeId (target for drops) |
-| contentAreaDraggedNodeId | number \| null | Y | NodeId of the file being dragged (internal drag); used for same-parent skip |
-| setContentAreaDraggedNodeId | function | Y | Setter for contentAreaDraggedNodeId (e.g. clear on drop) |
-| setContentAreaDragType | function | Y | Setter for overlay type: `'external'` \| `'internal'` \| null |
-| handleInternalFileDrop | function | Y | `(draggedNodeId, targetNodeId) => void` for internal move |
-| handleExplorerDrop | function | Y | Passed to file-area drop for external uploads |
-| handleFileAreaDragEnter | function | Y | From useDropToUpload (file-area drag enter) |
-| handleFileAreaDragOver | function | Y | From useDropToUpload (file-area drag over) |
-| handleFileAreaDragLeave | function | Y | From useDropToUpload (file-area drag leave) |
-| handleFileAreaDrop | function | Y | From useDropToUpload (file-area drop) |
-| resetFileAreaDrag | function | N | From useDropToUpload (reset file-area drag state) |
+| Name                        | Type           | Required | Description                                                                 |
+| --------------------------- | -------------- | -------- | --------------------------------------------------------------------------- |
+| isMobile                    | boolean        | Y        | When true, all handlers no-op (no content-area drop UI)                     |
+| selectionMode               | boolean        | Y        | When true, all handlers no-op                                               |
+| hasWritePermission          | boolean        | Y        | When false, all handlers no-op                                              |
+| isShareLinkMode             | boolean        | N        | Reserved for overlay logic in caller; hook may not use                      |
+| currentNodeId               | number \| null | Y        | Current folder nodeId (target for drops)                                    |
+| contentAreaDraggedNodeId    | number \| null | Y        | NodeId of the file being dragged (internal drag); used for same-parent skip |
+| setContentAreaDraggedNodeId | function       | Y        | Setter for contentAreaDraggedNodeId (e.g. clear on drop)                    |
+| setContentAreaDragType      | function       | Y        | Setter for overlay type: `'external'` \| `'internal'` \| null               |
+| handleInternalFileDrop      | function       | Y        | `(draggedNodeId, targetNodeId) => void` for internal move                   |
+| handleExplorerDrop          | function       | Y        | Passed to file-area drop for external uploads                               |
+| handleFileAreaDragEnter     | function       | Y        | From useDropToUpload (file-area drag enter)                                 |
+| handleFileAreaDragOver      | function       | Y        | From useDropToUpload (file-area drag over)                                  |
+| handleFileAreaDragLeave     | function       | Y        | From useDropToUpload (file-area drag leave)                                 |
+| handleFileAreaDrop          | function       | Y        | From useDropToUpload (file-area drop)                                       |
+| resetFileAreaDrag           | function       | N        | From useDropToUpload (reset file-area drag state)                           |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
+| Key                        | Type     | Meaning                  |
+| -------------------------- | -------- | ------------------------ |
 | handleContentAreaDragEnter | function | `(e: DragEvent) => void` |
-| handleContentAreaDragOver | function | `(e: DragEvent) => void` |
+| handleContentAreaDragOver  | function | `(e: DragEvent) => void` |
 | handleContentAreaDragLeave | function | `(e: DragEvent) => void` |
-| handleContentAreaDrop | function | `(e: DragEvent) => void` |
+| handleContentAreaDrop      | function | `(e: DragEvent) => void` |
 
 ### 2.4 Dependencies
 

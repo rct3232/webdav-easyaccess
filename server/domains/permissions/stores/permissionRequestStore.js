@@ -1,7 +1,4 @@
-const {
-  PERMISSIONS,
-  PERMISSION_REQUEST_STATUS,
-} = require('@webdav-easyaccess/shared/constants');
+const { PERMISSIONS, PERMISSION_REQUEST_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { createError } = require('../../../utils/errorHandler');
 const {
@@ -37,8 +34,7 @@ function mapPermissionRequestRow(row) {
     message: row.message || '',
     created_at: toIsoString(row.created_at),
     resolved_at: toIsoString(row.resolved_at),
-    resolved_by:
-      row.resolved_by == null ? null : Number(row.resolved_by),
+    resolved_by: row.resolved_by == null ? null : Number(row.resolved_by),
     targetType: row.target_type || null,
   };
 }
@@ -58,10 +54,7 @@ async function createRequest({
   }
 
   if (!fileNodeId || !Number.isInteger(fileNodeId)) {
-    throw createError(
-      SERVER_ERROR_CODES.permissionRequests.folderOrFileRequired,
-      400
-    );
+    throw createError(SERVER_ERROR_CODES.permissionRequests.folderOrFileRequired, 400);
   }
 
   if (getBackend() === 'postgresql') {
@@ -174,11 +167,9 @@ async function createRequest({
     }
   }
 
-  throw createError(
-    SERVER_ERROR_CODES.storage.postgresqlNotConfigured,
-    500,
-    { reason: 'unsupported_backend' }
-  );
+  throw createError(SERVER_ERROR_CODES.storage.postgresqlNotConfigured, 500, {
+    reason: 'unsupported_backend',
+  });
 }
 
 async function getById(id) {
@@ -217,11 +208,9 @@ async function getById(id) {
     }
   }
 
-  throw createError(
-    SERVER_ERROR_CODES.storage.postgresqlNotConfigured,
-    500,
-    { reason: 'unsupported_backend' }
-  );
+  throw createError(SERVER_ERROR_CODES.storage.postgresqlNotConfigured, 500, {
+    reason: 'unsupported_backend',
+  });
 }
 
 async function listInbox(ownerId, { status } = {}) {
@@ -276,11 +265,9 @@ async function listInbox(ownerId, { status } = {}) {
     }
   }
 
-  throw createError(
-    SERVER_ERROR_CODES.storage.postgresqlNotConfigured,
-    500,
-    { reason: 'unsupported_backend' }
-  );
+  throw createError(SERVER_ERROR_CODES.storage.postgresqlNotConfigured, 500, {
+    reason: 'unsupported_backend',
+  });
 }
 
 async function listOutbox(requesterId, { status } = {}) {
@@ -333,11 +320,9 @@ async function listOutbox(requesterId, { status } = {}) {
     }
   }
 
-  throw createError(
-    SERVER_ERROR_CODES.storage.postgresqlNotConfigured,
-    500,
-    { reason: 'unsupported_backend' }
-  );
+  throw createError(SERVER_ERROR_CODES.storage.postgresqlNotConfigured, 500, {
+    reason: 'unsupported_backend',
+  });
 }
 
 async function updateStatus(id, { status, resolvedBy } = {}) {
@@ -354,10 +339,7 @@ async function updateStatus(id, { status, resolvedBy } = {}) {
           [Number(id)]
         );
         if (existing.rows.length === 0) {
-          throw createError(
-            SERVER_ERROR_CODES.permissionRequests.requestNotFound,
-            404
-          );
+          throw createError(SERVER_ERROR_CODES.permissionRequests.requestNotFound, 404);
         }
 
         const updated = await client.query(
@@ -389,10 +371,7 @@ async function updateStatus(id, { status, resolvedBy } = {}) {
           [Number(id)]
         );
         if (existing.rows.length === 0) {
-          throw createError(
-            SERVER_ERROR_CODES.permissionRequests.requestNotFound,
-            404
-          );
+          throw createError(SERVER_ERROR_CODES.permissionRequests.requestNotFound, 404);
         }
 
         const updated = await client.query(
@@ -419,11 +398,9 @@ async function updateStatus(id, { status, resolvedBy } = {}) {
     }
   }
 
-  throw createError(
-    SERVER_ERROR_CODES.storage.postgresqlNotConfigured,
-    500,
-    { reason: 'unsupported_backend' }
-  );
+  throw createError(SERVER_ERROR_CODES.storage.postgresqlNotConfigured, 500, {
+    reason: 'unsupported_backend',
+  });
 }
 
 async function deleteByRequesterId(userId) {
@@ -448,10 +425,9 @@ async function deleteByRequesterId(userId) {
           `SELECT id FROM permission_requests WHERE requester_id = ?`,
           [Number(userId)]
         );
-        await client.query(
-          `DELETE FROM permission_requests WHERE requester_id = ?`,
-          [Number(userId)]
-        );
+        await client.query(`DELETE FROM permission_requests WHERE requester_id = ?`, [
+          Number(userId),
+        ]);
         return { deletedCount: Number(rows.rows.length) };
       });
     } catch (error) {
@@ -459,11 +435,9 @@ async function deleteByRequesterId(userId) {
     }
   }
 
-  throw createError(
-    SERVER_ERROR_CODES.storage.postgresqlNotConfigured,
-    500,
-    { reason: 'unsupported_backend' }
-  );
+  throw createError(SERVER_ERROR_CODES.storage.postgresqlNotConfigured, 500, {
+    reason: 'unsupported_backend',
+  });
 }
 
 async function rejectByOwnerId(userId, resolvedBy = null) {
@@ -519,11 +493,9 @@ async function rejectByOwnerId(userId, resolvedBy = null) {
     }
   }
 
-  throw createError(
-    SERVER_ERROR_CODES.storage.postgresqlNotConfigured,
-    500,
-    { reason: 'unsupported_backend' }
-  );
+  throw createError(SERVER_ERROR_CODES.storage.postgresqlNotConfigured, 500, {
+    reason: 'unsupported_backend',
+  });
 }
 
 module.exports = {

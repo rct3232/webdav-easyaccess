@@ -2,6 +2,7 @@
 
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { createOperationProgressStore } = require('../stores/operationProgress');
+const { getSharedResolver } = require('../../../infrastructure/configResolver');
 
 /**
  * Async worker that processes a bulk job from the operation progress store.
@@ -13,7 +14,7 @@ async function _processBulkJob(jobId) {
   if (!job) return;
 
   const { getComposition } = require('../../../service/composition');
-  const { fileService, batchOperationService: batchOp } = getComposition();
+  const { batchOperationService: batchOp } = getComposition();
 
   try {
     opStore.updateJob(jobId, { status: 'running', progress: 0 });
@@ -25,30 +26,29 @@ async function _processBulkJob(jobId) {
         break;
       }
       case 'move': {
-        result = await batchOp.batchMove(
-          job.payload.moves,
-          job.userId,
-          { is_admin: true },
-        );
+        result = await batchOp.batchMove(job.payload.moves, job.userId, { is_admin: true });
         break;
       }
       case 'copy': {
-        result = await batchOp.batchCopy(
-          job.payload.copies,
-          job.userId,
-          { is_admin: true },
-        );
+        result = await batchOp.batchCopy(job.payload.copies, job.userId, { is_admin: true });
         break;
       }
       default:
-        opStore.updateJob(jobId, { status: 'failed', errorMessage: `Unknown operation: ${job.operation}` });
+        opStore.updateJob(jobId, {
+          status: 'failed',
+          errorMessage: `Unknown operation: ${job.operation}`,
+        });
         return;
     }
 
-    const countKey = result.deletedCount != null ? 'deletedCount'
-      : result.movedCount != null ? 'movedCount'
-      : result.copiedCount != null ? 'copiedCount'
-      : null;
+    const countKey =
+      result.deletedCount != null
+        ? 'deletedCount'
+        : result.movedCount != null
+          ? 'movedCount'
+          : result.copiedCount != null
+            ? 'copiedCount'
+            : null;
 
     opStore.updateJob(jobId, {
       status: 'completed',
@@ -66,11 +66,12 @@ async function _processBulkJob(jobId) {
  * @param {string} jobId — the job identifier returned by createJob
  */
 function scheduleBulkWorker(jobId) {
-  if (process.env.WEA_SKIP_BULK_WORKER === '1') {
+  // WEA_SKIP_BULK_WORKER is T2 (test seam): read lazily at scheduling time.
+  if (getSharedResolver().getConfigSync('WEA_SKIP_BULK_WORKER') === '1') {
     return;
   }
   setImmediate(() => {
-    _processBulkJob(jobId).catch(err => {
+    _processBulkJob(jobId).catch((err) => {
       console.error(`[batchOperationService] Unhandled error in bulk worker ${jobId}:`, err);
     });
   });

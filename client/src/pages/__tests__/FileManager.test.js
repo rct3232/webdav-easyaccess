@@ -7,7 +7,14 @@
 import React from 'react';
 import { screen, waitFor, render, act, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Routes, Route, createMemoryRouter, RouterProvider, Outlet, useParams } from 'react-router-dom';
+import {
+  Routes,
+  Route,
+  createMemoryRouter,
+  RouterProvider,
+  Outlet,
+  useParams,
+} from 'react-router-dom';
 import { http, HttpResponse } from 'msw';
 import { renderWithProviders, ThemeAndAuthProviders } from '../../test-utils';
 import { server } from '../../setupTests';
@@ -42,7 +49,11 @@ jest.mock('../../components/file-manager', () => {
       const isLoggedIn = Boolean(user);
       const label = isLoggedIn ? 'add to shared' : 'login';
       return (
-        <button type="button" aria-label={label} onClick={isLoggedIn ? onAddToSharedClick : onLoginClick}>
+        <button
+          type="button"
+          aria-label={label}
+          onClick={isLoggedIn ? onAddToSharedClick : onLoginClick}
+        >
           {label}
         </button>
       );
@@ -54,9 +65,15 @@ jest.mock('../../components/file-manager', () => {
 
     return (
       <div data-testid="mock-fab">
-        <button type="button" aria-label="file actions">file actions</button>
-        <button type="button" onClick={onCreateFolder}>create folder</button>
-        <button type="button" onClick={onUpload}>upload file</button>
+        <button type="button" aria-label="file actions">
+          file actions
+        </button>
+        <button type="button" onClick={onCreateFolder}>
+          create folder
+        </button>
+        <button type="button" onClick={onUpload}>
+          upload file
+        </button>
       </div>
     );
   };
@@ -90,9 +107,7 @@ jest.mock('../FileManager/hooks/useExplorerNavigation', () => ({
     const navigateToNode = async (nextNodeId) => {
       if (nextNodeId == null) return;
 
-      const previousNodeId = typeof getPreviousNodeId === 'function'
-        ? getPreviousNodeId()
-        : null;
+      const previousNodeId = typeof getPreviousNodeId === 'function' ? getPreviousNodeId() : null;
 
       if (previousNodeId != null && previousNodeId === nextNodeId) return;
 
@@ -119,17 +134,66 @@ function ParamsReporter() {
   return <span data-testid="params">{JSON.stringify(params)}</span>;
 }
 
-
 // Path-prefixed so non-admin redirect to /testuser and folder click sets path to /testuser/folder (useFileManager path rules).
 const rootFilesForUser = (base) => [
-  { nodeId: 1, path: `${base}/test.txt`, basename: 'test.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
-  { nodeId: 2, path: `${base}/docs`, basename: 'docs', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
-  { nodeId: 3, path: `${base}/folder`, basename: 'folder', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+  {
+    nodeId: 1,
+    path: `${base}/test.txt`,
+    basename: 'test.txt',
+    type: 'file',
+    size: 0,
+    lastmod: null,
+    hasReadPermission: true,
+    hasWritePermission: true,
+    isHidden: false,
+  },
+  {
+    nodeId: 2,
+    path: `${base}/docs`,
+    basename: 'docs',
+    type: 'directory',
+    size: 0,
+    lastmod: null,
+    hasReadPermission: true,
+    hasWritePermission: true,
+    isHidden: false,
+  },
+  {
+    nodeId: 3,
+    path: `${base}/folder`,
+    basename: 'folder',
+    type: 'directory',
+    size: 0,
+    lastmod: null,
+    hasReadPermission: true,
+    hasWritePermission: true,
+    isHidden: false,
+  },
 ];
 
 const folderFilesForPath = (base) => [
-  { nodeId: 4, path: `${base}/sub.txt`, basename: 'sub.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
-  { nodeId: 5, path: `${base}/nested`, basename: 'nested', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+  {
+    nodeId: 4,
+    path: `${base}/sub.txt`,
+    basename: 'sub.txt',
+    type: 'file',
+    size: 0,
+    lastmod: null,
+    hasReadPermission: true,
+    hasWritePermission: true,
+    isHidden: false,
+  },
+  {
+    nodeId: 5,
+    path: `${base}/nested`,
+    basename: 'nested',
+    type: 'directory',
+    size: 0,
+    lastmod: null,
+    hasReadPermission: true,
+    hasWritePermission: true,
+    isHidden: false,
+  },
 ];
 
 function FileManagerWithRoutes() {
@@ -172,20 +236,25 @@ describe('FileManager', () => {
 
   it('renders file manager when authenticated', async () => {
     await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 5000 });
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      },
+      { timeout: 5000 }
+    );
     expect(document.body.textContent).toMatch(/no files|test|folder|home|recent|docs/i);
   });
 
   it('renders without share link by default', async () => {
-    await renderWithProvidersAct(
-      <FileManagerWithRoutes />,
-      { initialEntries: ['/files/testuser'] }
+    await renderWithProvidersAct(<FileManagerWithRoutes />, {
+      initialEntries: ['/files/testuser'],
+    });
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      },
+      { timeout: 3000 }
     );
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 3000 });
     expect(document.body).toBeInTheDocument();
   });
 
@@ -205,7 +274,9 @@ describe('FileManager', () => {
       })
     );
 
-    await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files/__recent__'] });
+    await renderWithProvidersAct(<FileManagerWithRoutes />, {
+      initialEntries: ['/files/__recent__'],
+    });
 
     await waitFor(() => {
       expect(screen.getByText('old.txt')).toBeInTheDocument();
@@ -232,10 +303,13 @@ describe('FileManager', () => {
       http.get('/api/files/list', ({ request }) => {
         const url = new URL(request.url);
         const path = (url.searchParams.get('path') || '/').replace(/\/$/, '') || '/';
-        const base = path === '' || path === '/' ? '/testuser' : path.startsWith('/') ? path : `/${path}`;
+        const base =
+          path === '' || path === '/' ? '/testuser' : path.startsWith('/') ? path : `/${path}`;
         return HttpResponse.json(rootFilesForUser(base));
       }),
-      http.get('/api/permissions/check', () => HttpResponse.json({ hasRead: true, hasWrite: true })),
+      http.get('/api/permissions/check', () =>
+        HttpResponse.json({ hasRead: true, hasWrite: true })
+      ),
       http.get('/api/permissions/user/:userId', () => HttpResponse.json([])),
       http.get('/api/recent-files', () => HttpResponse.json(recentEntries)),
       http.post('/api/recent-files', async ({ request }) => {
@@ -269,9 +343,7 @@ describe('FileManager', () => {
       </ThemeAndAuthProviders>
     );
     const router = createMemoryRouter(
-      [
-        { path: '/', element: rootEl, children: [{ path: 'files/*', element: <FileManager /> }] },
-      ],
+      [{ path: '/', element: rootEl, children: [{ path: 'files/*', element: <FileManager /> }] }],
       {
         initialEntries: ['/files/__recent__'],
         initialIndex: 0,
@@ -371,11 +443,17 @@ describe('FileManager', () => {
         const url = new URL(request.url);
         const nodeId = url.searchParams.get('nodeId');
         const path = (url.searchParams.get('path') || '/').replace(/\/$/, '') || '/';
-        const base = path === '' || path === '/' ? '/testuser' : path.startsWith('/') ? path : `/${path}`;
-        const isFolderPath = nodeId === '3' || path.endsWith('/folder') || path.split('/').filter(Boolean).pop() === 'folder';
+        const base =
+          path === '' || path === '/' ? '/testuser' : path.startsWith('/') ? path : `/${path}`;
+        const isFolderPath =
+          nodeId === '3' ||
+          path.endsWith('/folder') ||
+          path.split('/').filter(Boolean).pop() === 'folder';
         return HttpResponse.json(isFolderPath ? folderFilesForPath(base) : rootFilesForUser(base));
       }),
-      http.get('/api/permissions/check', () => HttpResponse.json({ hasRead: true, hasWrite: true })),
+      http.get('/api/permissions/check', () =>
+        HttpResponse.json({ hasRead: true, hasWrite: true })
+      ),
       http.get('/api/permissions/user/:userId', () => HttpResponse.json([]))
     );
 
@@ -386,9 +464,7 @@ describe('FileManager', () => {
       </ThemeAndAuthProviders>
     );
     const router = createMemoryRouter(
-      [
-        { path: '/', element: rootEl, children: [{ path: 'files/*', element: <FileManager /> }] },
-      ],
+      [{ path: '/', element: rootEl, children: [{ path: 'files/*', element: <FileManager /> }] }],
       {
         initialEntries: ['/files/testuser'],
         initialIndex: 0,
@@ -407,12 +483,18 @@ describe('FileManager', () => {
       />
     );
 
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 8000 });
-    await waitFor(() => {
-      expect(document.body.textContent).toMatch(/folder|docs|test/i);
-    }, { timeout: 5000 });
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      },
+      { timeout: 8000 }
+    );
+    await waitFor(
+      () => {
+        expect(document.body.textContent).toMatch(/folder|docs|test/i);
+      },
+      { timeout: 5000 }
+    );
 
     const folderRow = await waitFor(
       () => {
@@ -433,9 +515,12 @@ describe('FileManager', () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 5000 });
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      },
+      { timeout: 5000 }
+    );
     expect(await screen.findByText(/sub\.txt/i, { timeout: 15000 })).toBeInTheDocument();
   }, 25000);
 
@@ -444,23 +529,32 @@ describe('FileManager', () => {
       http.get('/api/files/list', ({ request }) => {
         const url = new URL(request.url);
         const path = (url.searchParams.get('path') || '/').replace(/\/$/, '') || '/';
-        const base = path === '' || path === '/' ? '/testuser' : path.startsWith('/') ? path : `/${path}`;
+        const base =
+          path === '' || path === '/' ? '/testuser' : path.startsWith('/') ? path : `/${path}`;
         return HttpResponse.json(rootFilesForUser(base));
       }),
-      http.get('/api/permissions/check', () => HttpResponse.json({ hasRead: true, hasWrite: true })),
+      http.get('/api/permissions/check', () =>
+        HttpResponse.json({ hasRead: true, hasWrite: true })
+      ),
       http.get('/api/permissions/user/:userId', () => HttpResponse.json([]))
     );
 
     const user = userEvent.setup();
     await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
 
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 8000 });
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      },
+      { timeout: 8000 }
+    );
 
-    await waitFor(() => {
-      expect(document.body.textContent).toMatch(/folder|docs|test/i);
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(document.body.textContent).toMatch(/folder|docs|test/i);
+      },
+      { timeout: 3000 }
+    );
 
     // Desktop: search input is always visible; mobile: open search via button then input appears.
     const searchInput = screen.queryByPlaceholderText(/search files/i);
@@ -472,9 +566,12 @@ describe('FileManager', () => {
       await user.type(screen.getByPlaceholderText(/search files/i), 'test');
     }
 
-    await waitFor(() => {
-      expect(screen.getByText(/test\.txt/)).toBeInTheDocument();
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(screen.getByText(/test\.txt/)).toBeInTheDocument();
+      },
+      { timeout: 3000 }
+    );
   });
 
   /**
@@ -486,23 +583,33 @@ describe('FileManager', () => {
       http.get('/api/files/list', ({ request }) => {
         const url = new URL(request.url);
         const path = (url.searchParams.get('path') || '/').replace(/\/$/, '') || '/';
-        const base = path === '' || path === '/' ? '/testuser' : path.startsWith('/') ? path : `/${path}`;
-        const isFolderPath = path.endsWith('/folder') || path.split('/').filter(Boolean).pop() === 'folder';
+        const base =
+          path === '' || path === '/' ? '/testuser' : path.startsWith('/') ? path : `/${path}`;
+        const isFolderPath =
+          path.endsWith('/folder') || path.split('/').filter(Boolean).pop() === 'folder';
         return HttpResponse.json(isFolderPath ? folderFilesForPath(base) : rootFilesForUser(base));
       }),
-      http.get('/api/permissions/check', () => HttpResponse.json({ hasRead: true, hasWrite: true })),
+      http.get('/api/permissions/check', () =>
+        HttpResponse.json({ hasRead: true, hasWrite: true })
+      ),
       http.get('/api/permissions/user/:userId', () => HttpResponse.json([]))
     );
 
     const user = userEvent.setup();
     await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
 
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 8000 });
-    await waitFor(() => {
-      expect(document.body.textContent).toMatch(/folder|docs|test/i);
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      },
+      { timeout: 8000 }
+    );
+    await waitFor(
+      () => {
+        expect(document.body.textContent).toMatch(/folder|docs|test/i);
+      },
+      { timeout: 3000 }
+    );
 
     // Enter selection mode by single-clicking a file (desktop: single click = enter selection + select)
     const rowTestTxt = screen.getByText(/test\.txt/i).closest('div')?.parentElement;
@@ -518,26 +625,41 @@ describe('FileManager', () => {
     await user.click(moveBtn);
 
     // Folder picker: wait for folder list to load (spinner gone), choose destination folder then confirm
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument();
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+      },
+      { timeout: 3000 }
+    );
     const dialog = screen.getByRole('dialog');
-    await waitFor(() => {
-      expect(within(dialog).queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 5000 });
+    await waitFor(
+      () => {
+        expect(within(dialog).queryByRole('progressbar')).not.toBeInTheDocument();
+      },
+      { timeout: 5000 }
+    );
     const folderListButtons = within(dialog).getAllByRole('button', { name: /folder/i });
-    const folderListItem = folderListButtons.length > 0 ? folderListButtons[0] : within(dialog).getByRole('button', { name: /folder/i });
+    const folderListItem =
+      folderListButtons.length > 0
+        ? folderListButtons[0]
+        : within(dialog).getByRole('button', { name: /folder/i });
     await user.click(folderListItem);
     const confirmSelect = within(dialog).getByRole('button', { name: /select/i });
     await user.click(confirmSelect);
 
     // Observable outcome: progress appears then completion (FileOperationProgress shows "Done" or "complete")
-    await waitFor(() => {
-      expect(document.body.textContent).toMatch(/preparing|complete|done/i);
-    }, { timeout: 5000 });
-    await waitFor(() => {
-      expect(document.body.textContent).toMatch(/complete|done/i);
-    }, { timeout: 8000 });
+    await waitFor(
+      () => {
+        expect(document.body.textContent).toMatch(/preparing|complete|done/i);
+      },
+      { timeout: 5000 }
+    );
+    await waitFor(
+      () => {
+        expect(document.body.textContent).toMatch(/complete|done/i);
+      },
+      { timeout: 8000 }
+    );
   }, 20000);
 
   /**
@@ -549,23 +671,33 @@ describe('FileManager', () => {
       http.get('/api/files/list', ({ request }) => {
         const url = new URL(request.url);
         const path = (url.searchParams.get('path') || '/').replace(/\/$/, '') || '/';
-        const base = path === '' || path === '/' ? '/testuser' : path.startsWith('/') ? path : `/${path}`;
-        const isFolderPath = path.endsWith('/folder') || path.split('/').filter(Boolean).pop() === 'folder';
+        const base =
+          path === '' || path === '/' ? '/testuser' : path.startsWith('/') ? path : `/${path}`;
+        const isFolderPath =
+          path.endsWith('/folder') || path.split('/').filter(Boolean).pop() === 'folder';
         return HttpResponse.json(isFolderPath ? folderFilesForPath(base) : rootFilesForUser(base));
       }),
-      http.get('/api/permissions/check', () => HttpResponse.json({ hasRead: true, hasWrite: true })),
+      http.get('/api/permissions/check', () =>
+        HttpResponse.json({ hasRead: true, hasWrite: true })
+      ),
       http.get('/api/permissions/user/:userId', () => HttpResponse.json([]))
     );
 
     const user = userEvent.setup();
     await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
 
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 8000 });
-    await waitFor(() => {
-      expect(document.body.textContent).toMatch(/folder|docs|test/i);
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      },
+      { timeout: 8000 }
+    );
+    await waitFor(
+      () => {
+        expect(document.body.textContent).toMatch(/folder|docs|test/i);
+      },
+      { timeout: 3000 }
+    );
 
     const rowTestTxt = screen.getByText(/test\.txt/i).closest('div')?.parentElement;
     expect(rowTestTxt).toBeTruthy();
@@ -578,22 +710,34 @@ describe('FileManager', () => {
     const copyBtn = screen.getByRole('button', { name: /^copy$/i });
     await user.click(copyBtn);
 
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument();
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+      },
+      { timeout: 3000 }
+    );
     const dialog = screen.getByRole('dialog');
-    await waitFor(() => {
-      expect(within(dialog).queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 5000 });
+    await waitFor(
+      () => {
+        expect(within(dialog).queryByRole('progressbar')).not.toBeInTheDocument();
+      },
+      { timeout: 5000 }
+    );
     const folderListButtons = within(dialog).getAllByRole('button', { name: /folder/i });
-    const folderListItem = folderListButtons.length > 0 ? folderListButtons[0] : within(dialog).getByRole('button', { name: /folder/i });
+    const folderListItem =
+      folderListButtons.length > 0
+        ? folderListButtons[0]
+        : within(dialog).getByRole('button', { name: /folder/i });
     await user.click(folderListItem);
     const confirmSelect = within(dialog).getByRole('button', { name: /select/i });
     await user.click(confirmSelect);
 
-    await waitFor(() => {
-      expect(document.body.textContent).toMatch(/complete|done/i);
-    }, { timeout: 8000 });
+    await waitFor(
+      () => {
+        expect(document.body.textContent).toMatch(/complete|done/i);
+      },
+      { timeout: 8000 }
+    );
   }, 20000);
 
   /**
@@ -607,23 +751,44 @@ describe('FileManager', () => {
         const url = new URL(request.url);
         const nodeId = url.searchParams.get('nodeId');
         const path = (url.searchParams.get('path') || '/').replace(/\/$/, '') || '/';
-        const base = (path === '' || path === '/') && !nodeId ? '/testuser' : (path.startsWith('/') ? path : `/${path}`);
+        const base =
+          (path === '' || path === '/') && !nodeId
+            ? '/testuser'
+            : path.startsWith('/')
+              ? path
+              : `/${path}`;
         const items = [
           ...rootFilesForUser(base),
-          { nodeId: 9, path: `${base}/doc2.txt`, basename: 'doc2.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+          {
+            nodeId: 9,
+            path: `${base}/doc2.txt`,
+            basename: 'doc2.txt',
+            type: 'file',
+            size: 0,
+            lastmod: null,
+            hasReadPermission: true,
+            hasWritePermission: true,
+            isHidden: false,
+          },
         ];
         return HttpResponse.json(items);
       }),
-      http.get('/api/permissions/check', () => HttpResponse.json({ hasRead: true, hasWrite: true })),
+      http.get('/api/permissions/check', () =>
+        HttpResponse.json({ hasRead: true, hasWrite: true })
+      ),
       http.get('/api/permissions/user/:userId', () => HttpResponse.json([])),
       http.post('/api/files/download-multiple', async ({ request }) => {
         downloadMultipleCalled = true;
         const body = await request.json().catch(() => ({}));
         const nodeIds = body.nodeIds || [];
-        if (!nodeIds || nodeIds.length === 0) return HttpResponse.json({ errorCode: 'bad' }, { status: 400 });
+        if (!nodeIds || nodeIds.length === 0)
+          return HttpResponse.json({ errorCode: 'bad' }, { status: 400 });
         const blob = new Blob(['mock zip'], { type: 'application/zip' });
         return new HttpResponse(blob, {
-          headers: { 'Content-Type': 'application/zip', 'Content-Disposition': 'attachment; filename="download.zip"' },
+          headers: {
+            'Content-Type': 'application/zip',
+            'Content-Disposition': 'attachment; filename="download.zip"',
+          },
         });
       })
     );
@@ -631,12 +796,18 @@ describe('FileManager', () => {
     const user = userEvent.setup();
     await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
 
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 8000 });
-    await waitFor(() => {
-      expect(document.body.textContent).toMatch(/test|doc2|folder|docs/i);
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      },
+      { timeout: 8000 }
+    );
+    await waitFor(
+      () => {
+        expect(document.body.textContent).toMatch(/test|doc2|folder|docs/i);
+      },
+      { timeout: 3000 }
+    );
 
     const rowTestTxt = screen.getByText(/test\.txt/i).closest('div')?.parentElement;
     expect(rowTestTxt).toBeTruthy();
@@ -649,12 +820,18 @@ describe('FileManager', () => {
     const downloadBtn = screen.getByRole('button', { name: /download/i });
     await user.click(downloadBtn);
 
-    await waitFor(() => {
-      expect(downloadMultipleCalled).toBe(true);
-    }, { timeout: 10000 });
-    await waitFor(() => {
-      expect(document.body.textContent).toMatch(/complete|done|downloading/i);
-    }, { timeout: 8000 });
+    await waitFor(
+      () => {
+        expect(downloadMultipleCalled).toBe(true);
+      },
+      { timeout: 10000 }
+    );
+    await waitFor(
+      () => {
+        expect(document.body.textContent).toMatch(/complete|done|downloading/i);
+      },
+      { timeout: 8000 }
+    );
   }, 20000);
 
   /**
@@ -666,11 +843,15 @@ describe('FileManager', () => {
       http.get('/api/files/list', ({ request }) => {
         const url = new URL(request.url);
         const path = (url.searchParams.get('path') || '/').replace(/\/$/, '') || '/';
-        const base = path === '' || path === '/' ? '/testuser' : path.startsWith('/') ? path : `/${path}`;
-        const isFolderPath = path.endsWith('/folder') || path.split('/').filter(Boolean).pop() === 'folder';
+        const base =
+          path === '' || path === '/' ? '/testuser' : path.startsWith('/') ? path : `/${path}`;
+        const isFolderPath =
+          path.endsWith('/folder') || path.split('/').filter(Boolean).pop() === 'folder';
         return HttpResponse.json(isFolderPath ? folderFilesForPath(base) : rootFilesForUser(base));
       }),
-      http.get('/api/permissions/check', () => HttpResponse.json({ hasRead: true, hasWrite: true })),
+      http.get('/api/permissions/check', () =>
+        HttpResponse.json({ hasRead: true, hasWrite: true })
+      ),
       http.get('/api/permissions/user/:userId', () => HttpResponse.json([])),
       http.delete('/api/recent-files/:fileNodeId', async () => HttpResponse.json([]))
     );
@@ -678,12 +859,18 @@ describe('FileManager', () => {
     const user = userEvent.setup();
     await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
 
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 8000 });
-    await waitFor(() => {
-      expect(document.body.textContent).toMatch(/folder|docs|test/i);
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      },
+      { timeout: 8000 }
+    );
+    await waitFor(
+      () => {
+        expect(document.body.textContent).toMatch(/folder|docs|test/i);
+      },
+      { timeout: 3000 }
+    );
 
     const rowTestTxt = screen.getByText(/test\.txt/i).closest('div')?.parentElement;
     expect(rowTestTxt).toBeTruthy();
@@ -696,16 +883,22 @@ describe('FileManager', () => {
     const deleteBtn = screen.getByRole('button', { name: /delete/i });
     await user.click(deleteBtn);
 
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument();
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+      },
+      { timeout: 3000 }
+    );
     const dialog = screen.getByRole('dialog');
     const confirmDeleteBtn = within(dialog).getByRole('button', { name: /delete/i });
     await user.click(confirmDeleteBtn);
 
-    await waitFor(() => {
-      expect(document.body.textContent).toMatch(/complete|done/i);
-    }, { timeout: 10000 });
+    await waitFor(
+      () => {
+        expect(document.body.textContent).toMatch(/complete|done/i);
+      },
+      { timeout: 10000 }
+    );
   }, 15000);
 
   /**
@@ -718,22 +911,31 @@ describe('FileManager', () => {
       http.get('/api/files/list', ({ request }) => {
         const url = new URL(request.url);
         const path = (url.searchParams.get('path') || '/').replace(/\/$/, '') || '/';
-        const base = path === '' || path === '/' ? '/testuser' : path.startsWith('/') ? path : `/${path}`;
+        const base =
+          path === '' || path === '/' ? '/testuser' : path.startsWith('/') ? path : `/${path}`;
         return HttpResponse.json(rootFilesForUser(base));
       }),
-      http.get('/api/permissions/check', () => HttpResponse.json({ hasRead: true, hasWrite: true })),
+      http.get('/api/permissions/check', () =>
+        HttpResponse.json({ hasRead: true, hasWrite: true })
+      ),
       http.get('/api/permissions/user/:userId', () => HttpResponse.json([]))
     );
 
     const user = userEvent.setup();
     await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
 
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 8000 });
-    await waitFor(() => {
-      expect(document.body.textContent).toMatch(/folder|docs|test/i);
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      },
+      { timeout: 8000 }
+    );
+    await waitFor(
+      () => {
+        expect(document.body.textContent).toMatch(/folder|docs|test/i);
+      },
+      { timeout: 3000 }
+    );
 
     await user.click(screen.getByText(/test\.txt/i));
 
@@ -744,9 +946,12 @@ describe('FileManager', () => {
     expect(gridContainer).toBeTruthy();
     fireEvent.click(gridContainer);
 
-    await waitFor(() => {
-      expect(screen.queryByRole('button', { name: /move/i })).not.toBeInTheDocument();
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('button', { name: /move/i })).not.toBeInTheDocument();
+      },
+      { timeout: 3000 }
+    );
   }, 15000);
 
   /**
@@ -760,26 +965,44 @@ describe('FileManager', () => {
         const url = new URL(request.url);
         const path = (url.searchParams.get('path') || '/').replace(/\/$/, '') || '/';
         const nodeId = url.searchParams.get('nodeId');
-        const base = (path === '' || path === '/') && !nodeId ? '/testuser' : (path.startsWith('/') ? path : `/${path}`);
+        const base =
+          (path === '' || path === '/') && !nodeId
+            ? '/testuser'
+            : path.startsWith('/')
+              ? path
+              : `/${path}`;
         return HttpResponse.json(rootFilesForUser(base));
       }),
-      http.get('/api/permissions/check', () => HttpResponse.json({ hasRead: true, hasWrite: true })),
+      http.get('/api/permissions/check', () =>
+        HttpResponse.json({ hasRead: true, hasWrite: true })
+      ),
       http.get('/api/permissions/user/:userId', () => HttpResponse.json([])),
       http.post('/api/folders/create', async ({ request }) => {
         const body = await request.json().catch(() => ({}));
         createFolderName = body.name;
-        return HttpResponse.json({ messageCode: 'serverMessages.folders.createSuccess', parentNodeId: body.parentNodeId, basename: body.name });
+        return HttpResponse.json({
+          messageCode: 'serverMessages.folders.createSuccess',
+          parentNodeId: body.parentNodeId,
+          basename: body.name,
+        });
       })
     );
 
     const user = userEvent.setup();
     await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
 
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 8000 });
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      },
+      { timeout: 8000 }
+    );
 
-    const createFolderBtn = await screen.findByRole('button', { name: /create folder/i }, { timeout: 5000 });
+    const createFolderBtn = await screen.findByRole(
+      'button',
+      { name: /create folder/i },
+      { timeout: 5000 }
+    );
     await user.click(createFolderBtn);
 
     const dialog = await screen.findByRole('dialog', {}, { timeout: 5000 });
@@ -788,9 +1011,12 @@ describe('FileManager', () => {
     const createBtn = within(dialog).getByRole('button', { name: /^create$/i });
     await user.click(createBtn);
 
-    await waitFor(() => {
-      expect(document.body.textContent).toMatch(/complete|done/i);
-    }, { timeout: 10000 });
+    await waitFor(
+      () => {
+        expect(document.body.textContent).toMatch(/complete|done/i);
+      },
+      { timeout: 10000 }
+    );
 
     expect(createFolderName).toBe('newfolder');
   }, 15000);
@@ -806,13 +1032,20 @@ describe('FileManager', () => {
         const url = new URL(request.url);
         const path = (url.searchParams.get('path') || '/').replace(/\/$/, '') || '/';
         const nodeId = url.searchParams.get('nodeId');
-        const base = (path === '' || path === '/') && !nodeId ? '/testuser' : (path.startsWith('/') ? path : `/${path}`);
+        const base =
+          (path === '' || path === '/') && !nodeId
+            ? '/testuser'
+            : path.startsWith('/')
+              ? path
+              : `/${path}`;
         return HttpResponse.json(rootFilesForUser(base));
       }),
-      http.get('/api/permissions/check', () => HttpResponse.json({ hasRead: true, hasWrite: true })),
+      http.get('/api/permissions/check', () =>
+        HttpResponse.json({ hasRead: true, hasWrite: true })
+      ),
       http.get('/api/permissions/user/:userId', () => HttpResponse.json([])),
       http.post('/api/files/check-conflicts', async ({ request }) => {
-        const body = await request.json().catch(() => ({}));
+        await request.json().catch(() => ({}));
         return HttpResponse.json({ conflicts: [] });
       }),
       http.post('/api/files/upload', async ({ request }) => {
@@ -821,18 +1054,32 @@ describe('FileManager', () => {
         const parentNodeId = formData.get('parentNodeId') || '1';
         const name = file?.name || 'file';
         uploadedPayload = { name, parentNodeId };
-        return HttpResponse.json({ messageCode: 'serverMessages.files.uploadSuccess', nodeId: Date.now(), parentNodeId, basename: name });
+        return HttpResponse.json({
+          messageCode: 'serverMessages.files.uploadSuccess',
+          nodeId: Date.now(),
+          parentNodeId,
+          basename: name,
+        });
       })
     );
 
     const user = userEvent.setup();
-    await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files/testuser'] });
+    await renderWithProvidersAct(<FileManagerWithRoutes />, {
+      initialEntries: ['/files/testuser'],
+    });
 
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 8000 });
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      },
+      { timeout: 8000 }
+    );
 
-    const uploadBtn = await screen.findByRole('button', { name: /upload file/i }, { timeout: 5000 });
+    const uploadBtn = await screen.findByRole(
+      'button',
+      { name: /upload file/i },
+      { timeout: 5000 }
+    );
     await user.click(uploadBtn);
 
     const dialog = await screen.findByRole('dialog', {}, { timeout: 5000 });
@@ -843,9 +1090,12 @@ describe('FileManager', () => {
     const uploadSubmit = within(dialog).getByRole('button', { name: /^upload$/i });
     await user.click(uploadSubmit);
 
-    await waitFor(() => {
-      expect(document.body.textContent).toMatch(/complete|done/i);
-    }, { timeout: 10000 });
+    await waitFor(
+      () => {
+        expect(document.body.textContent).toMatch(/complete|done/i);
+      },
+      { timeout: 10000 }
+    );
 
     expect(uploadedPayload).not.toBeNull();
     expect(uploadedPayload.name).toBe('newfile.txt');
@@ -864,17 +1114,26 @@ describe('FileManager', () => {
         const url = new URL(request.url);
         const path = (url.searchParams.get('path') || '/').replace(/\/$/, '') || '/';
         const nodeId = url.searchParams.get('nodeId');
-        const base = (path === '' || path === '/') && !nodeId ? '/testuser' : (path.startsWith('/') ? path : `/${path}`);
+        const base =
+          (path === '' || path === '/') && !nodeId
+            ? '/testuser'
+            : path.startsWith('/')
+              ? path
+              : `/${path}`;
         return HttpResponse.json(rootFilesForUser(base));
       }),
-      http.get('/api/permissions/check', () => HttpResponse.json({ hasRead: true, hasWrite: true })),
+      http.get('/api/permissions/check', () =>
+        HttpResponse.json({ hasRead: true, hasWrite: true })
+      ),
       http.get('/api/permissions/user/:userId', () => HttpResponse.json([])),
       http.post('/api/files/check-conflicts', async ({ request }) => {
         const body = await request.json().catch(() => ({}));
         const operations = body.operations || [];
         // Return conflicts to trigger the conflict dialog
         if (operations.length > 0) {
-          return HttpResponse.json({ conflicts: [{ nodeId: 99, path: conflictPath, type: 'file' }] });
+          return HttpResponse.json({
+            conflicts: [{ nodeId: 99, path: conflictPath, type: 'file' }],
+          });
         }
         return HttpResponse.json({ conflicts: [] });
       }),
@@ -886,20 +1145,38 @@ describe('FileManager', () => {
         const name = file?.name || 'file';
         uploadedPayload = { name, parentNodeId, onConflict };
         if (onConflict === 'skip') {
-          return HttpResponse.json({ messageCode: 'serverMessages.files.uploadSkipped', parentNodeId, skipped: true });
+          return HttpResponse.json({
+            messageCode: 'serverMessages.files.uploadSkipped',
+            parentNodeId,
+            skipped: true,
+          });
         }
-        return HttpResponse.json({ messageCode: 'serverMessages.files.uploadSuccess', nodeId: Date.now(), parentNodeId, basename: name });
+        return HttpResponse.json({
+          messageCode: 'serverMessages.files.uploadSuccess',
+          nodeId: Date.now(),
+          parentNodeId,
+          basename: name,
+        });
       })
     );
 
     const user = userEvent.setup();
-    await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files/testuser'] });
+    await renderWithProvidersAct(<FileManagerWithRoutes />, {
+      initialEntries: ['/files/testuser'],
+    });
 
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 8000 });
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      },
+      { timeout: 8000 }
+    );
 
-    const uploadBtn = await screen.findByRole('button', { name: /upload file/i }, { timeout: 5000 });
+    const uploadBtn = await screen.findByRole(
+      'button',
+      { name: /upload file/i },
+      { timeout: 5000 }
+    );
     await user.click(uploadBtn);
 
     const dialog = await screen.findByRole('dialog', {}, { timeout: 5000 });
@@ -915,9 +1192,12 @@ describe('FileManager', () => {
     const skipBtn = within(conflictDialog).getByRole('button', { name: /skip duplicates/i });
     await user.click(skipBtn);
 
-    await waitFor(() => {
-      expect(document.body.textContent).toMatch(/skipped|complete|done/i);
-    }, { timeout: 10000 });
+    await waitFor(
+      () => {
+        expect(document.body.textContent).toMatch(/skipped|complete|done/i);
+      },
+      { timeout: 10000 }
+    );
 
     expect(uploadedPayload).not.toBeNull();
     expect(uploadedPayload.name).toBe('dup.txt');
@@ -945,9 +1225,12 @@ describe('FileManager', () => {
     const user = userEvent.setup();
     await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
 
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 8000 });
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      },
+      { timeout: 8000 }
+    );
     const fileRow = await waitFor(
       () => {
         const row = document.querySelector('[data-file-path="/testuser/test.txt"]');
@@ -961,9 +1244,12 @@ describe('FileManager', () => {
     const downloadItem = await screen.findByRole('menuitem', { name: /download/i });
     await user.click(downloadItem);
 
-    await waitFor(() => {
-      expect(downloadRequestParam).not.toBeNull();
-    }, { timeout: 5000 });
+    await waitFor(
+      () => {
+        expect(downloadRequestParam).not.toBeNull();
+      },
+      { timeout: 5000 }
+    );
   }, 15000);
 
   /**
@@ -991,9 +1277,12 @@ describe('FileManager', () => {
     const user = userEvent.setup({ delay: null });
     await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
 
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 8000 });
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      },
+      { timeout: 8000 }
+    );
     const fileRow = await waitFor(
       () => {
         const row = document.querySelector('[data-file-path="/testuser/test.txt"]');
@@ -1039,14 +1328,52 @@ describe('FileManager', () => {
         const url = new URL(request.url);
         const nodeId = url.searchParams.get('nodeId');
         const path = (url.searchParams.get('path') || '/').replace(/\/$/, '') || '/';
-        const base = (path === '' || path === '/') && !nodeId ? '/testuser' : (path.startsWith('/') ? path : `/${path}`);
-        const isFolderPath = nodeId === '3' || path.endsWith('/folder') || path.split('/').filter(Boolean).pop() === 'folder';
+        const base =
+          (path === '' || path === '/') && !nodeId
+            ? '/testuser'
+            : path.startsWith('/')
+              ? path
+              : `/${path}`;
+        const isFolderPath =
+          nodeId === '3' ||
+          path.endsWith('/folder') ||
+          path.split('/').filter(Boolean).pop() === 'folder';
         const rootItems = [
-          { nodeId: 1, path: `${base}/test.txt`, basename: 'test.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
-          { nodeId: 3, path: `${base}/folder`, basename: 'folder', type: 'directory', size: 0, lastmod: null, hasReadPermission: false, hasWritePermission: false, isHidden: false },
+          {
+            nodeId: 1,
+            path: `${base}/test.txt`,
+            basename: 'test.txt',
+            type: 'file',
+            size: 0,
+            lastmod: null,
+            hasReadPermission: true,
+            hasWritePermission: true,
+            isHidden: false,
+          },
+          {
+            nodeId: 3,
+            path: `${base}/folder`,
+            basename: 'folder',
+            type: 'directory',
+            size: 0,
+            lastmod: null,
+            hasReadPermission: false,
+            hasWritePermission: false,
+            isHidden: false,
+          },
         ];
         const folderItems = [
-          { nodeId: 4, path: `${base}/sub.txt`, basename: 'sub.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+          {
+            nodeId: 4,
+            path: `${base}/sub.txt`,
+            basename: 'sub.txt',
+            type: 'file',
+            size: 0,
+            lastmod: null,
+            hasReadPermission: true,
+            hasWritePermission: true,
+            isHidden: false,
+          },
         ];
         return HttpResponse.json(isFolderPath ? folderItems : rootItems);
       }),
@@ -1059,14 +1386,21 @@ describe('FileManager', () => {
           isTargetFolder ? { hasRead: false, hasWrite: false } : { hasRead: true, hasWrite: true }
         );
       }),
-      http.get('/api/permission-requests/check-owner', () => HttpResponse.json({ ownerExists: true })),
+      http.get('/api/permission-requests/check-owner', () =>
+        HttpResponse.json({ ownerExists: true })
+      ),
       http.get('/api/permission-requests/outbox', () => HttpResponse.json([])),
-      http.get('/api/permissions/user/:userId', () => HttpResponse.json([
-        { nodeId: 2, permission: 'admin' },
-      ])),
+      http.get('/api/permissions/user/:userId', () =>
+        HttpResponse.json([{ nodeId: 2, permission: 'admin' }])
+      ),
       http.post('/api/permission-requests', async ({ request }) => {
         const body = await request.json().catch(() => ({}));
-        return HttpResponse.json({ id: `pr_${Date.now()}`, nodeId: body.nodeId, permission: body.permission || 'read', status: 'pending' });
+        return HttpResponse.json({
+          id: `pr_${Date.now()}`,
+          nodeId: body.nodeId,
+          permission: body.permission || 'read',
+          status: 'pending',
+        });
       })
     );
 
@@ -1074,18 +1408,26 @@ describe('FileManager', () => {
     clearUserPermissionsCache();
     await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
 
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 8000 });
-    await waitFor(() => {
-      expect(document.body.textContent).toMatch(/folder|test/i);
-    }, { timeout: 5000 });
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      },
+      { timeout: 8000 }
+    );
+    await waitFor(
+      () => {
+        expect(document.body.textContent).toMatch(/folder|test/i);
+      },
+      { timeout: 5000 }
+    );
 
     const folderRow = await waitFor(
       () => {
         const el = document.querySelector('[data-file-path="/testuser/folder"]');
         if (el) return el;
-        const byText = screen.getByText(/\bfolder\b/i).closest('[data-file-path]') || screen.getByText(/\bfolder\b/i).closest('tr');
+        const byText =
+          screen.getByText(/\bfolder\b/i).closest('[data-file-path]') ||
+          screen.getByText(/\bfolder\b/i).closest('tr');
         if (byText) return byText;
         throw new Error('Folder row not found');
       },
@@ -1097,9 +1439,12 @@ describe('FileManager', () => {
     await user.click(shareItem);
 
     const dialog = await screen.findByRole('dialog', {}, { timeout: 5000 });
-    await waitFor(() => {
-      expect(within(dialog).queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 5000 });
+    await waitFor(
+      () => {
+        expect(within(dialog).queryByRole('progressbar')).not.toBeInTheDocument();
+      },
+      { timeout: 5000 }
+    );
 
     const requestReadBtn = await waitFor(
       () => within(dialog).getByRole('button', { name: /request read permission/i }),
@@ -1107,9 +1452,12 @@ describe('FileManager', () => {
     );
     await user.click(requestReadBtn);
 
-    await waitFor(() => {
-      expect(within(dialog).getByText(/read permission requested/i)).toBeInTheDocument();
-    }, { timeout: 5000 });
+    await waitFor(
+      () => {
+        expect(within(dialog).getByText(/read permission requested/i)).toBeInTheDocument();
+      },
+      { timeout: 5000 }
+    );
   }, 15000);
 
   /**
@@ -1134,9 +1482,12 @@ describe('FileManager', () => {
       { initialEntries: ['/share-view'] }
     );
 
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 8000 });
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      },
+      { timeout: 8000 }
+    );
 
     // Simplified header: no logout/mypage (unauthenticated share link shows logo-only AppBar)
     expect(screen.queryByRole('button', { name: /logout/i })).not.toBeInTheDocument();
@@ -1147,9 +1498,12 @@ describe('FileManager', () => {
     expect(screen.queryByRole('button', { name: /create folder/i })).not.toBeInTheDocument();
 
     // Download-only bulk: enter selection by single-clicking file, toolbar shows Download but not Move/Copy/Delete
-    await waitFor(() => {
-      expect(document.body.textContent).toMatch(/test|folder|docs/i);
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(document.body.textContent).toMatch(/test|folder|docs/i);
+      },
+      { timeout: 3000 }
+    );
 
     await user.click(screen.getByText(/test\.txt/i));
 

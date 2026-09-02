@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Transitional bulk-operation helper for FileManager. It currently encapsulates bulk move/copy/delete/download mechanics, conflict checks, folder-picker state, and polling, but in the target architecture it serves as an internal dependency that can be wrapped by `useExplorerCommands` rather than remaining the top-level owner of explorer command orchestration. |
-| Used by components/pages | FileManager (current implementation); target usage may be via `useExplorerCommands` |
+| Item                     | Description                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Transitional bulk-operation helper for FileManager. It currently encapsulates bulk move/copy/delete/download mechanics, conflict checks, folder-picker state, and polling, but in the target architecture it serves as an internal dependency that can be wrapped by `useExplorerCommands` rather than remaining the top-level owner of explorer command orchestration. |
+| Used by components/pages | FileManager (current implementation); target usage may be via `useExplorerCommands`                                                                                                                                                                                                                                                                                     |
 
 ---
 
@@ -18,39 +18,39 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| selectedNodeIds | Set | Y | Selected file nodeIds |
-| files | array | Y | File list |
-| onOperationComplete | function | Y | Complete callback |
-| setTreeUpdateTrigger | function | Y | Tree refresh |
-| setDropMessage | function | N | Drop message |
-| setSelectedFiles | function | Y | Set selection |
-| setSelectionMode | function | Y | Set selection mode |
-| getCurrentNodeId | function | Y | Current folder nodeId |
-| options | object | N | markProcessing, clearProcessing, shareToken |
+| Name                 | Type     | Required | Description                                 |
+| -------------------- | -------- | -------- | ------------------------------------------- |
+| selectedNodeIds      | Set      | Y        | Selected file nodeIds                       |
+| files                | array    | Y        | File list                                   |
+| onOperationComplete  | function | Y        | Complete callback                           |
+| setTreeUpdateTrigger | function | Y        | Tree refresh                                |
+| setDropMessage       | function | N        | Drop message                                |
+| setSelectedFiles     | function | Y        | Set selection                               |
+| setSelectionMode     | function | Y        | Set selection mode                          |
+| getCurrentNodeId     | function | Y        | Current folder nodeId                       |
+| options              | object   | N        | markProcessing, clearProcessing, shareToken |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| folderPickerOpen | boolean | Folder picker open |
-| folderPickerAction | 'move' \| 'copy' \| null | Action |
-| handleBulkMove | () => void | Open move picker |
-| handleBulkCopy | () => void | Open copy picker |
-| handleBulkDelete | (retryData?, onConfirm?) => void | Delete |
-| handleBulkDownload | () => Promise | Download |
-| handleFolderPickerSelect | (destinationParentNodeId, retryData?) => Promise | Pick folder, triggers move/copy |
-| handleRetry | (progressId) => Promise | Retry failed operation |
-| handleCancelBulkOperation | (progressId) => Promise | Cancel bulk job |
-| dismissFailedItems | () => void | Dismiss failed items |
-| setFolderPickerOpen | function | Set folder picker open |
-| setFolderPickerAction | function | Set folder picker action |
-| bulkConflictData | object | Conflict data |
-| resolveBulkConflict | (resolution) => Promise | Resolve conflict (overwrite/skip) |
-| setBulkConflictData | function | Set conflict data |
-| progressItems | array | Progress items |
-| updateProgress | function | Update progress |
+| Key                       | Type                                             | Meaning                           |
+| ------------------------- | ------------------------------------------------ | --------------------------------- |
+| folderPickerOpen          | boolean                                          | Folder picker open                |
+| folderPickerAction        | 'move' \| 'copy' \| null                         | Action                            |
+| handleBulkMove            | () => void                                       | Open move picker                  |
+| handleBulkCopy            | () => void                                       | Open copy picker                  |
+| handleBulkDelete          | (retryData?, onConfirm?) => void                 | Delete                            |
+| handleBulkDownload        | () => Promise                                    | Download                          |
+| handleFolderPickerSelect  | (destinationParentNodeId, retryData?) => Promise | Pick folder, triggers move/copy   |
+| handleRetry               | (progressId) => Promise                          | Retry failed operation            |
+| handleCancelBulkOperation | (progressId) => Promise                          | Cancel bulk job                   |
+| dismissFailedItems        | () => void                                       | Dismiss failed items              |
+| setFolderPickerOpen       | function                                         | Set folder picker open            |
+| setFolderPickerAction     | function                                         | Set folder picker action          |
+| bulkConflictData          | object                                           | Conflict data                     |
+| resolveBulkConflict       | (resolution) => Promise                          | Resolve conflict (overwrite/skip) |
+| setBulkConflictData       | function                                         | Set conflict data                 |
+| progressItems             | array                                            | Progress items                    |
+| updateProgress            | function                                         | Update progress                   |
 
 ### 2.4 Boundaries
 

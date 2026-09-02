@@ -14,9 +14,7 @@ jest.mock('../../../../hooks/useResponsive', () => {
 
 describe('ProgressSummary', () => {
   it('renders primaryLabel and secondaryLabel', () => {
-    renderWithProviders(
-      <ProgressSummary primaryLabel="Moving" secondaryLabel="3 items" />
-    );
+    renderWithProviders(<ProgressSummary primaryLabel="Moving" secondaryLabel="3 items" />);
     expect(screen.getByText('Moving')).toBeInTheDocument();
     expect(screen.getByText('3 items')).toBeInTheDocument();
   });
@@ -34,11 +32,7 @@ describe('ProgressSummary', () => {
 
   it('renders as button when variant is appbar', () => {
     renderWithProviders(
-      <ProgressSummary
-        variant="appbar"
-        primaryLabel="Done"
-        secondaryLabel="2 items"
-      />
+      <ProgressSummary variant="appbar" primaryLabel="Done" secondaryLabel="2 items" />
     );
     const button = screen.getByRole('button');
     expect(button).toBeInTheDocument();

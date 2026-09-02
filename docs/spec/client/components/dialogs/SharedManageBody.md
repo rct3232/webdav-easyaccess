@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Presentational body for shared item management. Shows display name, loading/skeleton, SharedPermissionList. No hooks. |
-| Used in | SharedManageDialog, ShareTargetDialog |
-| Related components | SharedPermissionList |
+| Item               | Description                                                                                                           |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| Role               | Presentational body for shared item management. Shows display name, loading/skeleton, SharedPermissionList. No hooks. |
+| Used in            | SharedManageDialog, ShareTargetDialog                                                                                 |
+| Related components | SharedPermissionList                                                                                                  |
 
 ---
 
@@ -19,33 +19,33 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| displayName | string | Y | - | Item name |
-| isDirectory | boolean | Y | - | Is folder |
-| loading | boolean | Y | - | Loading state |
-| initialLoading | boolean | Y | - | Initial fetch |
-| confirmDialogOpen | boolean | Y | - | Revoke confirm open |
-| setConfirmDialogOpen | function | Y | - | Set confirm state |
-| hasReadPermission | boolean | Y | - | Read permission |
-| hasWritePermission | boolean | Y | - | Write permission |
-| pathPermission | string | N | - | Path permission (file) |
-| filePermissionLevel | string | N | - | File permission level |
-| pendingRequest | object | N | - | Pending permission request |
-| ownerExists | boolean | Y | - | Owner exists |
-| onRequestPermission | function | Y | - | Request handler |
-| onCancelPendingRequest | function | Y | - | Cancel request handler |
-| onRevokePermission | function | Y | - | Revoke handler |
-| loadingVariant | string | N | 'skeleton' | 'skeleton' \| 'spinner' |
+| Name                   | Type     | Required | Default    | Description                |
+| ---------------------- | -------- | -------- | ---------- | -------------------------- |
+| displayName            | string   | Y        | -          | Item name                  |
+| isDirectory            | boolean  | Y        | -          | Is folder                  |
+| loading                | boolean  | Y        | -          | Loading state              |
+| initialLoading         | boolean  | Y        | -          | Initial fetch              |
+| confirmDialogOpen      | boolean  | Y        | -          | Revoke confirm open        |
+| setConfirmDialogOpen   | function | Y        | -          | Set confirm state          |
+| hasReadPermission      | boolean  | Y        | -          | Read permission            |
+| hasWritePermission     | boolean  | Y        | -          | Write permission           |
+| pathPermission         | string   | N        | -          | Path permission (file)     |
+| filePermissionLevel    | string   | N        | -          | File permission level      |
+| pendingRequest         | object   | N        | -          | Pending permission request |
+| ownerExists            | boolean  | Y        | -          | Owner exists               |
+| onRequestPermission    | function | Y        | -          | Request handler            |
+| onCancelPendingRequest | function | Y        | -          | Cancel request handler     |
+| onRevokePermission     | function | Y        | -          | Revoke handler             |
+| loadingVariant         | string   | N        | 'skeleton' | 'skeleton' \| 'spinner'    |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| setConfirmDialogOpen | Revoke click | (boolean) |
-| onRequestPermission | Request permission | - |
-| onCancelPendingRequest | Cancel request | - |
-| onRevokePermission | Revoke confirm | - |
+| Callback               | When invoked       | Arguments |
+| ---------------------- | ------------------ | --------- |
+| setConfirmDialogOpen   | Revoke click       | (boolean) |
+| onRequestPermission    | Request permission | -         |
+| onCancelPendingRequest | Cancel request     | -         |
+| onRevokePermission     | Revoke confirm     | -         |
 
 ### 2.4 Dependencies
 

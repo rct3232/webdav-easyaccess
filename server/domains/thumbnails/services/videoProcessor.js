@@ -7,9 +7,7 @@ const { execFile } = require('child_process');
 const ffmpeg = require('fluent-ffmpeg');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { createError } = require('../../../utils/errorHandler');
-
-const MAX_SIZE = parseInt(process.env.MAX_THUMBNAIL_SIZE) || 300;
-const FFMPEG_INIT_TIMEOUT_MS = parseInt(process.env.FFMPEG_INIT_TIMEOUT_MS) || 2000;
+const { getSharedResolver } = require('../../../infrastructure/configResolver');
 
 const ffmpegState = {
   checked: false,
@@ -26,8 +24,12 @@ function getFfmpegStatus() {
 }
 
 async function canExecFfmpeg(cmdPath) {
+  // FFMPEG_INIT_TIMEOUT_MS is T2 (lazy): read the effective value at point of
+  // use. initFfmpegOnce runs after populateT1Env at boot, so the DB value wins.
+  const timeoutMs =
+    parseInt(await getSharedResolver().getConfig('FFMPEG_INIT_TIMEOUT_MS'), 10) || 2000;
   return await new Promise((resolve) => {
-    execFile(cmdPath, ['-version'], { timeout: FFMPEG_INIT_TIMEOUT_MS }, (err) => {
+    execFile(cmdPath, ['-version'], { timeout: timeoutMs }, (err) => {
       if (!err) return resolve(true);
       if (err.killed || err.signal === 'SIGTERM' || err.signal === 'SIGKILL') return resolve(true);
       return resolve(false);
@@ -157,7 +159,9 @@ async function generateVideoThumbnail(nodeId) {
         })
         .on('end', () => resolve())
         .on('error', (err) => {
-          reject(createError(SERVER_ERROR_CODES.thumbnail.ffmpegFailed, 500, { reason: err.message }));
+          reject(
+            createError(SERVER_ERROR_CODES.thumbnail.ffmpegFailed, 500, { reason: err.message })
+          );
         });
     });
 
@@ -165,8 +169,10 @@ async function generateVideoThumbnail(nodeId) {
       throw createError(SERVER_ERROR_CODES.thumbnail.frameExtractionFailed, 500);
     }
     const frameBuffer = fs.readFileSync(tempFramePath);
+    // MAX_THUMBNAIL_SIZE is T2 (lazy): read the effective value per request.
+    const maxSize = parseInt(await getSharedResolver().getConfig('MAX_THUMBNAIL_SIZE'), 10) || 300;
     const thumbnailBuffer = await sharp(frameBuffer)
-      .resize(MAX_SIZE, MAX_SIZE, {
+      .resize(maxSize, maxSize, {
         fit: 'inside',
         withoutEnlargement: true,
       })

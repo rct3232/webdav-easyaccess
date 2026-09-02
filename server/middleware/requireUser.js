@@ -1,9 +1,9 @@
 /**
  * Middleware to require authenticated user and load full user object
  * Adds req.user.full with complete user information
- * 
+ *
  * Usage: router.get('/path', authenticateToken, requireUser, handler)
- * 
+ *
  * After this middleware, you can access the full user object via req.user.full
  * instead of calling User.findById(req.user.id) in each route handler.
  */
@@ -36,7 +36,9 @@ async function requireAuth(req, res, next) {
       req.principalId = req.user.id;
       return next();
     }
-    return res.status(HTTP_STATUS.UNAUTHORIZED).json({ errorCode: SERVER_ERROR_CODES.requireUser.authenticationRequired });
+    return res
+      .status(HTTP_STATUS.UNAUTHORIZED)
+      .json({ errorCode: SERVER_ERROR_CODES.requireUser.authenticationRequired });
   } catch (error) {
     next(error);
   }
@@ -45,7 +47,7 @@ async function requireAuth(req, res, next) {
 /**
  * Middleware to load full user object
  * Requires authenticateToken to be called first
- * 
+ *
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  * @param {Function} next - Express next function
@@ -58,7 +60,9 @@ async function requireAuth(req, res, next) {
 async function requireUser(req, res, next) {
   try {
     if (!req.user || !req.user.id) {
-      return res.status(HTTP_STATUS.UNAUTHORIZED).json({ errorCode: SERVER_ERROR_CODES.requireUser.authenticationRequired });
+      return res
+        .status(HTTP_STATUS.UNAUTHORIZED)
+        .json({ errorCode: SERVER_ERROR_CODES.requireUser.authenticationRequired });
     }
 
     // Skip userStore if authenticateToken already set req.user.full (e.g. from cache)
@@ -75,7 +79,9 @@ async function requireUser(req, res, next) {
     const jwtVersion = req.user.token_version;
     const dbVersion = Number.isInteger(user.token_version) ? user.token_version : 0;
     if (Number.isInteger(jwtVersion) && jwtVersion !== dbVersion) {
-      return res.status(HTTP_STATUS.UNAUTHORIZED).json({ errorCode: SERVER_ERROR_CODES.utilsAuth.invalidOrExpiredToken });
+      return res
+        .status(HTTP_STATUS.UNAUTHORIZED)
+        .json({ errorCode: SERVER_ERROR_CODES.utilsAuth.invalidOrExpiredToken });
     }
 
     req.user.full = user;

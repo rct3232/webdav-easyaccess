@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Global layout: fixed app bar gradient background, Outlet for page content. Preserves gradient animation across page navigation. |
-| Used in | App routing |
-| Related components | Outlet (react-router-dom) |
+| Item               | Description                                                                                                                     |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Global layout: fixed app bar gradient background, Outlet for page content. Preserves gradient animation across page navigation. |
+| Used in            | App routing                                                                                                                     |
+| Related components | Outlet (react-router-dom)                                                                                                       |
 
 ---
 
@@ -20,8 +20,8 @@
 ### 2.2 Props
 
 | Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| None | - | - | - | No props |
+| ---- | ---- | -------- | ------- | ----------- |
+| None | -    | -        | -       | No props    |
 
 ### 2.3 Callback Signatures
 

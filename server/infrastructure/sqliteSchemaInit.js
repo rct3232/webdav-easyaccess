@@ -47,20 +47,12 @@ function splitStatements(sql) {
   return statements.filter((s) => s.length > 0);
 }
 
-async function initSqliteSchema() {
-  const files = (await fs.readdir(DDL_DIR)).filter((f) => f.endsWith('.sql')).sort();
-  const contents = await Promise.all(files.map((f) => fs.readFile(path.join(DDL_DIR, f), 'utf8')));
-  const ddlSource = contents.join('\n');
-  const sqliteDdl = convertPostgresToSqlite(ddlSource);
-
-  const db = storage.getSqliteConnection();
-  const statements = splitStatements(sqliteDdl);
-
-  // Run every DDL statement serially inside a single connection. Using
-  // db.serialize() guarantees the run() calls are queued in order, which
-  // prevents coverage instrumentation from interleaving a later statement
-  // with a close from another suite.
-  await new Promise((resolve, reject) => {
+// Run every DDL statement serially on the supplied connection. Using
+// db.serialize() guarantees the run() calls are queued in order, which
+// prevents coverage instrumentation from interleaving a later statement
+// with a close from another suite.
+function runStatementsOn(db, statements) {
+  return new Promise((resolve, reject) => {
     db.serialize(() => {
       let settled = false;
       const finish = (err) => {
@@ -81,7 +73,10 @@ async function initSqliteSchema() {
         db.run(statement, (err) => {
           if (err) {
             // eslint-disable-next-line no-console
-            console.error(`[init-sqlite-schema] Failed to execute: ${statement.slice(0, 80)}...`, err.message);
+            console.error(
+              `[init-sqlite-schema] Failed to execute: ${statement.slice(0, 80)}...`,
+              err.message
+            );
             finish(err);
             return;
           }
@@ -91,9 +86,69 @@ async function initSqliteSchema() {
       next();
     });
   });
+}
 
-  // eslint-disable-next-line no-console
-  console.log('[init-sqlite-schema] Schema initialized successfully');
+function openDatabaseAt(dbPath) {
+  const sqlite3 = require('sqlite3');
+  return new Promise((resolve, reject) => {
+    const db = new sqlite3.Database(dbPath, (err) => (err ? reject(err) : resolve(db)));
+  });
+}
+
+function closeDatabase(db) {
+  return new Promise((resolve, reject) => {
+    db.close((err) => (err ? reject(err) : resolve()));
+  });
+}
+
+/**
+ * Apply the converted sqlite DDL.
+ *
+ * - `initSqliteSchema()` — unchanged behavior: applies to the active backend
+ *   connection (storage.getSqliteConnection()).
+ * - `initSqliteSchema({ connection })` — applies to a caller-supplied
+ *   sqlite3.Database (e.g. a migration-target connection). The caller owns the
+ *   connection lifecycle.
+ * - `initSqliteSchema({ path })` — opens a temporary database at `path`,
+ *   applies the DDL, then closes it.
+ *
+ * @param {{ connection?: object, path?: string }} [options]
+ * @returns {Promise<{ connection: object }>}
+ */
+async function initSqliteSchema(options = {}) {
+  const files = (await fs.readdir(DDL_DIR)).filter((f) => f.endsWith('.sql')).sort();
+  const contents = await Promise.all(files.map((f) => fs.readFile(path.join(DDL_DIR, f), 'utf8')));
+  const ddlSource = contents.join('\n');
+  const sqliteDdl = convertPostgresToSqlite(ddlSource);
+
+  const connection = (options && options.connection) || null;
+  const dbPath = (options && options.path) || null;
+
+  let db = connection;
+  let owned = false;
+  if (!db) {
+    if (dbPath) {
+      db = await openDatabaseAt(dbPath);
+      await new Promise((resolve, reject) => {
+        db.run('PRAGMA foreign_keys = ON', (err) => (err ? reject(err) : resolve()));
+      });
+      owned = true;
+    } else {
+      db = storage.getSqliteConnection();
+    }
+  }
+
+  const statements = splitStatements(sqliteDdl);
+  await runStatementsOn(db, statements);
+
+  if (owned) {
+    await closeDatabase(db);
+  } else if (!connection) {
+    // eslint-disable-next-line no-console
+    console.log('[init-sqlite-schema] Schema initialized successfully');
+  }
+
+  return { connection: db };
 }
 
 module.exports = { initSqliteSchema, convertPostgresToSqlite };

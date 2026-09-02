@@ -23,27 +23,12 @@
     "build": "react-scripts build",
     "test": "react-scripts test",
     "test:ci": "react-scripts test --watchAll=false --coverage",
+    "lint": "eslint src",
     "test:integration": "react-scripts test --testPathPattern=integration --watchAll=false",
     "test:unit": "react-scripts test --testPathPattern='(hooks|utils|components)/__tests__' --watchAll=false",
     "test:coverage": "react-scripts test --watchAll=false --coverage --collectCoverageFrom='src/**/*.{js,jsx}' --collectCoverageFrom='!src/index.js' --collectCoverageFrom='!src/setupTests.js' --collectCoverageFrom='!src/setupProxy.js' --collectCoverageFrom='!src/mocks/**' --collectCoverageFrom='!src/test-utils/**'",
     "eject": "react-scripts eject",
     "test:mutation": "stryker run"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app"
-    ],
-    "env": {
-      "es2021": true
-    },
-    "rules": {
-      "no-restricted-globals": [
-        "error",
-        "event",
-        "fdescribe",
-        "fit"
-      ]
-    }
   },
   "browserslist": {
     "production": [

@@ -7,10 +7,7 @@
  */
 
 const { createBatchOperationService } = require('../batchOperationService');
-const {
-  createFileNodeServiceMock,
-  createAclServiceMock,
-} = require('@testing/mocks/serviceMocks');
+const { createFileNodeServiceMock, createAclServiceMock } = require('@testing/mocks/serviceMocks');
 
 // ─── Mock factories ────────────────────────────────────────────────
 
@@ -51,7 +48,8 @@ describe('batchOperationService', () => {
         deleteNode: jest.fn().mockResolvedValue({ deletedCount: 1 }),
       });
       const aclService = createAclServiceMock({
-        checkFilePermission: jest.fn()
+        checkFilePermission: jest
+          .fn()
           .mockResolvedValueOnce(true)
           .mockResolvedValueOnce(true)
           .mockResolvedValueOnce(true),
@@ -76,9 +74,7 @@ describe('batchOperationService', () => {
         deleteNode: jest.fn().mockResolvedValue({ deletedCount: 1 }),
       });
       const aclService = createAclServiceMock({
-        checkFilePermission: jest.fn()
-          .mockResolvedValueOnce(true)
-          .mockResolvedValueOnce(true),
+        checkFilePermission: jest.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(true),
       });
 
       const service = createBatchOperationService({ fileNodeService, fileService, aclService });
@@ -96,7 +92,8 @@ describe('batchOperationService', () => {
         deleteNode: jest.fn().mockResolvedValue({ deletedCount: 1 }),
       });
       const aclService = createAclServiceMock({
-        checkFilePermission: jest.fn()
+        checkFilePermission: jest
+          .fn()
           .mockResolvedValueOnce(true)
           .mockResolvedValueOnce(false)
           .mockResolvedValueOnce(true),
@@ -107,7 +104,9 @@ describe('batchOperationService', () => {
       const result = await service.batchDelete([42, 43, 44], 1, { id: 1 });
 
       expect(result.deletedCount).toBe(2);
-      expect(result.errors).toEqual([{ nodeId: 43, status: 'skipped', reason: 'permission_denied' }]);
+      expect(result.errors).toEqual([
+        { nodeId: 43, status: 'skipped', reason: 'permission_denied' },
+      ]);
       expect(fileService.deleteNode).toHaveBeenCalledTimes(2);
       expect(fileService.deleteNode).not.toHaveBeenCalledWith(43, 1, { id: 1 });
     });
@@ -136,13 +135,15 @@ describe('batchOperationService', () => {
     it('returns { deletedCount, errors[] } with correct counts after partial failure', async () => {
       const fileNodeService = createFileNodeServiceMock();
       const fileService = createMockFileService({
-        deleteNode: jest.fn()
+        deleteNode: jest
+          .fn()
           .mockResolvedValueOnce({ deletedCount: 1 }) // first succeeds
           .mockRejectedValueOnce(new Error('node_not_found')) // second fails
           .mockResolvedValueOnce({ deletedCount: 1 }), // third succeeds
       });
       const aclService = createAclServiceMock({
-        checkFilePermission: jest.fn()
+        checkFilePermission: jest
+          .fn()
           .mockResolvedValueOnce(true)
           .mockResolvedValueOnce(true)
           .mockResolvedValueOnce(true),
@@ -181,10 +182,8 @@ describe('batchOperationService', () => {
         moveNode: jest.fn().mockResolvedValue(true),
       });
       const aclService = createAclServiceMock({
-        checkFilePermission: jest.fn()
-          .mockResolvedValueOnce(true), // source write
-        checkFolderPermission: jest.fn()
-          .mockResolvedValueOnce(true),  // dest parent write
+        checkFilePermission: jest.fn().mockResolvedValueOnce(true), // source write
+        checkFolderPermission: jest.fn().mockResolvedValueOnce(true), // dest parent write
       });
 
       const service = createBatchOperationService({ fileNodeService, fileService, aclService });
@@ -208,10 +207,12 @@ describe('batchOperationService', () => {
         moveNode: jest.fn().mockResolvedValue(true),
       });
       const aclService = createAclServiceMock({
-        checkFilePermission: jest.fn()
+        checkFilePermission: jest
+          .fn()
           .mockResolvedValueOnce(true) // source 1
           .mockResolvedValueOnce(true), // source 2
-        checkFolderPermission: jest.fn()
+        checkFolderPermission: jest
+          .fn()
           .mockResolvedValueOnce(true) // dest 1
           .mockResolvedValueOnce(true), // dest 2
       });
@@ -240,10 +241,8 @@ describe('batchOperationService', () => {
         moveNode: jest.fn().mockResolvedValue(true),
       });
       const aclService = createAclServiceMock({
-        checkFilePermission: jest.fn()
-          .mockResolvedValueOnce(true), // source 10 -> write
-        checkFolderPermission: jest.fn()
-          .mockResolvedValueOnce(true),  // dest parent 20 -> write
+        checkFilePermission: jest.fn().mockResolvedValueOnce(true), // source 10 -> write
+        checkFolderPermission: jest.fn().mockResolvedValueOnce(true), // dest parent 20 -> write
       });
 
       const service = createBatchOperationService({ fileNodeService, fileService, aclService });
@@ -266,10 +265,8 @@ describe('batchOperationService', () => {
         moveNode: jest.fn().mockRejectedValue(new Error('cycle detected')),
       });
       const aclService = createAclServiceMock({
-        checkFilePermission: jest.fn()
-          .mockResolvedValueOnce(true),
-        checkFolderPermission: jest.fn()
-          .mockResolvedValueOnce(true),
+        checkFilePermission: jest.fn().mockResolvedValueOnce(true),
+        checkFolderPermission: jest.fn().mockResolvedValueOnce(true),
       });
 
       const service = createBatchOperationService({ fileNodeService, fileService, aclService });
@@ -282,16 +279,22 @@ describe('batchOperationService', () => {
 
       expect(result.movedCount).toBe(0);
       expect(result.errors).toEqual([
-        { sourceNodeId: 10, destinationParentNodeId: 50, status: 'failed', reason: 'cycle detected' },
+        {
+          sourceNodeId: 10,
+          destinationParentNodeId: 50,
+          status: 'failed',
+          reason: 'cycle detected',
+        },
       ]);
     });
 
     it('records per-item errors without aborting remaining operations', async () => {
       const fileNodeService = createFileNodeServiceMock();
       const fileService = createMockFileService({
-        moveNode: jest.fn()
+        moveNode: jest
+          .fn()
           .mockRejectedValueOnce(new Error('cycle detected')) // first fails
-          .mockResolvedValueOnce(true),                       // second succeeds
+          .mockResolvedValueOnce(true), // second succeeds
       });
       const aclService = createAclServiceMock({
         checkFilePermission: jest.fn().mockResolvedValue(true),
@@ -311,13 +314,19 @@ describe('batchOperationService', () => {
 
       expect(result.movedCount).toBe(1);
       expect(result.errors.length).toBe(1);
-      expect(result.errors[0]).toEqual({ sourceNodeId: 10, destinationParentNodeId: 5, status: 'failed', reason: 'cycle detected' });
+      expect(result.errors[0]).toEqual({
+        sourceNodeId: 10,
+        destinationParentNodeId: 5,
+        status: 'failed',
+        reason: 'cycle detected',
+      });
     });
 
     it('returns { movedCount, errors[] } with correct counts', async () => {
       const fileNodeService = createFileNodeServiceMock();
       const fileService = createMockFileService({
-        moveNode: jest.fn()
+        moveNode: jest
+          .fn()
           .mockResolvedValueOnce(true)
           .mockRejectedValueOnce(new Error('cycle detected'))
           .mockResolvedValueOnce(true),
@@ -407,11 +416,7 @@ describe('batchOperationService', () => {
 
       const service = createBatchOperationService({ fileNodeService, fileService, aclService });
 
-      await service.batchCopy(
-        [{ sourceNodeId: 10, destinationParentNodeId: 20 }],
-        1,
-        { id: 1 }
-      );
+      await service.batchCopy([{ sourceNodeId: 10, destinationParentNodeId: 20 }], 1, { id: 1 });
 
       expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'read');
       expect(aclService.checkFolderPermission).toHaveBeenCalledWith(1, 20, 'write');
@@ -420,7 +425,8 @@ describe('batchOperationService', () => {
     it('returns { copiedCount, errors[] } with correct counts', async () => {
       const fileNodeService = createFileNodeServiceMock();
       const fileService = createMockFileService({
-        copyFile: jest.fn()
+        copyFile: jest
+          .fn()
           .mockResolvedValueOnce({ sourceNodeId: 10, copiedNodeId: 50 })
           .mockRejectedValueOnce(new Error('no_active_blob')),
       });
@@ -442,7 +448,12 @@ describe('batchOperationService', () => {
 
       expect(result.copiedCount).toBe(1);
       expect(result.errors.length).toBe(1);
-      expect(result.errors[0]).toEqual({ sourceNodeId: 30, destinationParentNodeId: 40, status: 'failed', reason: 'no_active_blob' });
+      expect(result.errors[0]).toEqual({
+        sourceNodeId: 30,
+        destinationParentNodeId: 40,
+        status: 'failed',
+        reason: 'no_active_blob',
+      });
     });
   });
 

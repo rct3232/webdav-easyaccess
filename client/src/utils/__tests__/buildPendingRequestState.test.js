@@ -3,7 +3,9 @@ import { buildPendingRequestState } from '../buildPendingRequestState';
 
 describe('buildPendingRequestState', () => {
   it('returns empty state for missing/non-array input', () => {
-    expect(buildPendingRequestState({ requests: null, targetNodeId: 1001, isDirectory: true })).toEqual({
+    expect(
+      buildPendingRequestState({ requests: null, targetNodeId: 1001, isDirectory: true })
+    ).toEqual({
       read: { pending: false, id: null },
       write: { pending: false, id: null },
     });
@@ -27,9 +29,7 @@ describe('buildPendingRequestState', () => {
 
   it('matches file requests by file_node_id', () => {
     const result = buildPendingRequestState({
-      requests: [
-        { id: 'r1', file_node_id: 1001, requested_permission: PERMISSIONS.READ },
-      ],
+      requests: [{ id: 'r1', file_node_id: 1001, requested_permission: PERMISSIONS.READ }],
       targetNodeId: 1001,
       isDirectory: false,
     });

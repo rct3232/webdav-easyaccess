@@ -56,12 +56,7 @@ describe('ConfirmDialog', () => {
 
   it('variant=loading shows only spinner', () => {
     renderWithProviders(
-      <ConfirmDialog
-        {...defaultProps}
-        variant="loading"
-        title="Title"
-        message="Message"
-      />
+      <ConfirmDialog {...defaultProps} variant="loading" title="Title" message="Message" />
     );
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByRole('progressbar')).toBeInTheDocument();
@@ -93,12 +88,7 @@ describe('ConfirmDialog', () => {
 
   it('uses default i18n when title/confirmText/cancelText not provided', () => {
     renderWithProviders(
-      <ConfirmDialog
-        open
-        onClose={jest.fn()}
-        onConfirm={jest.fn()}
-        message="Default test"
-      />
+      <ConfirmDialog open onClose={jest.fn()} onConfirm={jest.fn()} message="Default test" />
     );
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText('Default test')).toBeInTheDocument();
@@ -107,9 +97,7 @@ describe('ConfirmDialog', () => {
   });
 
   it('confirmColor does not break rendering', () => {
-    renderWithProviders(
-      <ConfirmDialog {...defaultProps} confirmColor="error" />
-    );
+    renderWithProviders(<ConfirmDialog {...defaultProps} confirmColor="error" />);
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /confirm/i })).toBeInTheDocument();
   });

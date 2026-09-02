@@ -4,7 +4,7 @@
  * @see docs/TESTING_STRATEGY.md
  */
 import React from 'react';
-import { screen, fireEvent } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '../../../test-utils';
 import BaseDialog from '../BaseDialog';
@@ -90,11 +90,7 @@ describe('BaseDialog', () => {
 
   it('renders actions when provided', () => {
     renderWithProviders(
-      <BaseDialog
-        {...defaultProps}
-        title="Title"
-        actions={<button type="button">Save</button>}
-      />
+      <BaseDialog {...defaultProps} title="Title" actions={<button type="button">Save</button>} />
     );
     expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument();
   });

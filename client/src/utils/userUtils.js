@@ -2,8 +2,6 @@
  * User utility functions
  */
 
-import { normalizePath } from './pathUtils';
-
 /**
  * Get user's base folder path
  * @param {object} user - User object
@@ -31,12 +29,12 @@ export const isUserOwnFolder = (nodeId, user) => {
  * @returns {Array} Filtered permissions array
  */
 export const filterOutUserOwnFolders = (permissions, user) => {
-  return permissions.filter(perm => !isUserOwnFolder(perm.nodeId, user));
+  return permissions.filter((perm) => !isUserOwnFolder(perm.nodeId, user));
 };
 
 /**
  * Filter users for display in ShareFolderTree and UserSelectionMenu
- * 
+ *
  * @param {Array} users - User array (entries format: [[userId, permData], ...])
  * @param {object} options - Filter options
  * @param {boolean} options.isAdminMode - Whether admin mode is active
@@ -48,22 +46,22 @@ export const filterOutUserOwnFolders = (permissions, user) => {
  */
 export const filterDisplayUsers = (users, options = {}) => {
   const { isAdminMode, currentUserId, user, userInfoMap, allUsers } = options;
-  
+
   if (isAdminMode) {
     return users.filter(([uid]) => uid === currentUserId);
   }
-  
+
   return users.filter(([targetUserId]) => {
     // Exclude self
     if (user && targetUserId === user.id) return false;
-    
+
     // Exclude admins
     const userInfo = userInfoMap?.get(targetUserId);
     if (userInfo?.is_admin) return false;
-    
-    const fullUser = allUsers?.find(u => u.id === targetUserId);
+
+    const fullUser = allUsers?.find((u) => u.id === targetUserId);
     if (fullUser?.is_admin) return false;
-    
+
     return true;
   });
 };

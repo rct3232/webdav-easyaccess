@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Route path | `/mypage` |
-| Role | User profile and settings: Chrome-style layout with category sidebar (Account, Sharing, User Management, System Settings, Preferences). Account info, edit email/password, share links, permission requests (inbox/outbox), user management, system settings, language. |
+| Item       | Description                                                                                                                                                                                                                                                             |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Route path | `/mypage`                                                                                                                                                                                                                                                               |
+| Role       | User profile and settings: Chrome-style layout with category sidebar (Account, Sharing, User Management, System Settings, Preferences). Account info, edit email/password, share links, permission requests (inbox/outbox), user management, system settings, language. |
 
 ---
 
@@ -26,12 +26,12 @@
 
 ### 2.3 Summary
 
-| Area         | Desktop                           | Mobile                    |
-|--------------|-----------------------------------|---------------------------|
-| AppBar Left  | Logo (same as FileManager)        | Menu icon (opens drawer)  |
-| AppBar Right | Close (X) → navigate to `/`       | Same                      |
-| Left Panel   | Category sidebar (always visible) | Inside drawer only        |
-| Center       | Content                           | Content                   |
+| Area         | Desktop                           | Mobile                   |
+| ------------ | --------------------------------- | ------------------------ |
+| AppBar Left  | Logo (same as FileManager)        | Menu icon (opens drawer) |
+| AppBar Right | Close (X) → navigate to `/`       | Same                     |
+| Left Panel   | Category sidebar (always visible) | Inside drawer only       |
+| Center       | Content                           | Content                  |
 
 ---
 
@@ -57,12 +57,12 @@
 
 ### 3.4 Controller-provided State
 
-| State               | Purpose                                                   |
-|---------------------|-----------------------------------------------------------|
-| selectedCategory    | Current category. Reset selectedContentItem when changed. |
+| State               | Purpose                                                              |
+| ------------------- | -------------------------------------------------------------------- |
+| selectedCategory    | Current category. Reset selectedContentItem when changed.            |
 | selectedContentItem | For multi-item categories: null = list view, non-null = detail view. |
-| categoryDrawerOpen  | Mobile sidebar drawer visibility.                         |
-| sidebarItems        | Prepared category items already filtered for the current role. |
+| categoryDrawerOpen  | Mobile sidebar drawer visibility.                                    |
+| sidebarItems        | Prepared category items already filtered for the current role.       |
 
 Initial `selectedCategory` may come from `location.state?.category` (e.g. `navigate('/mypage', { state: { category: 'admin-users' } })`). Legacy `admin` maps to `admin-users`.
 
@@ -70,13 +70,13 @@ This normalization is handled by `useMyPageController`.
 
 ### 3.5 Categories and Content Flow
 
-| Category      | Type     | Content |
-|---------------|----------|---------|
-| Account       | Direct   | Profile info, Edit (email, password), Logout at bottom |
-| Sharing       | List→Detail | Sub-items: Inbox requests, Outbox requests, Share links. Hidden for admin. |
-| User Management | Direct | UserManagementContent. Admin only. |
-| System Settings | Direct | SystemSettingsContent. Admin only. |
-| Preferences   | Direct   | Language selector (moved from AppBar) |
+| Category        | Type        | Content                                                                    |
+| --------------- | ----------- | -------------------------------------------------------------------------- |
+| Account         | Direct      | Profile info, Edit (email, password), Logout at bottom                     |
+| Sharing         | List→Detail | Sub-items: Inbox requests, Outbox requests, Share links. Hidden for admin. |
+| User Management | Direct      | UserManagementContent. Admin only.                                         |
+| System Settings | Direct      | SystemSettingsContent. Admin only.                                         |
+| Preferences     | Direct      | Language selector (moved from AppBar)                                      |
 
 **List → Detail pattern (Sharing only):**
 

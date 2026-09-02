@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Folder permissions state for ShareDialog: folderPermissions Map, handleAddUserPermission, handleRemoveUserPermission, handleToggleUserPermission, hasPermissionChanged. |
-| Used by components/pages | ShareDialog |
+| Item                     | Description                                                                                                                                                             |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Folder permissions state for ShareDialog: folderPermissions Map, handleAddUserPermission, handleRemoveUserPermission, handleToggleUserPermission, hasPermissionChanged. |
+| Used by components/pages | ShareDialog                                                                                                                                                             |
 
 ---
 
@@ -18,31 +18,31 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| mode | string | Y | Mode |
-| userId | string | N | User ID |
-| username | string | N | Username |
-| permissionRequest | object | N | Permission request |
-| onMessage | function | N | Message |
-| onSave | function | N | Save |
-| onApprove | function | N | Approve |
-| onClose | function | N | Close |
+| Name              | Type     | Required | Description        |
+| ----------------- | -------- | -------- | ------------------ |
+| mode              | string   | Y        | Mode               |
+| userId            | string   | N        | User ID            |
+| username          | string   | N        | Username           |
+| permissionRequest | object   | N        | Permission request |
+| onMessage         | function | N        | Message            |
+| onSave            | function | N        | Save               |
+| onApprove         | function | N        | Approve            |
+| onClose           | function | N        | Close              |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| folderPermissions | Map | Path -> Map(userId -> permission) |
-| setFolderPermissions | function | Set |
-| initialFolderPermissions | Map | Initial |
-| userInfoMap | Map | User info |
-| saving | boolean | Saving |
-| loadingPermissions | boolean | Loading |
-| handleAddUserPermission | (path, userId, perm, subPaths?) => void | Add |
-| handleRemoveUserPermission | (path, userId, subPaths?) => void | Remove |
-| handleToggleUserPermission | (path, userId, subPaths?) => void | Toggle |
-| hasPermissionChanged | boolean | Dirty |
+| Key                        | Type                                    | Meaning                           |
+| -------------------------- | --------------------------------------- | --------------------------------- |
+| folderPermissions          | Map                                     | Path -> Map(userId -> permission) |
+| setFolderPermissions       | function                                | Set                               |
+| initialFolderPermissions   | Map                                     | Initial                           |
+| userInfoMap                | Map                                     | User info                         |
+| saving                     | boolean                                 | Saving                            |
+| loadingPermissions         | boolean                                 | Loading                           |
+| handleAddUserPermission    | (path, userId, perm, subPaths?) => void | Add                               |
+| handleRemoveUserPermission | (path, userId, subPaths?) => void       | Remove                            |
+| handleToggleUserPermission | (path, userId, subPaths?) => void       | Toggle                            |
+| hasPermissionChanged       | boolean                                 | Dirty                             |
 
 ### 2.4 Dependencies
 

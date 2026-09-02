@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Mount path | `/api/folders` |
-| Role | Folder creation and recursive statistics. |
+| Item       | Description                               |
+| ---------- | ----------------------------------------- |
+| Mount path | `/api/folders`                            |
+| Role       | Folder creation and recursive statistics. |
 
 ---
 
@@ -18,10 +18,10 @@
 
 ### 2.2 Route List
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/create` | Token | Create folder. Body: parentNodeId, name. |
-| GET | `/stats` | Token | Recursive folder statistics. Query: nodeId. Returns fileCount, totalSize. |
+| Method | Path      | Auth  | Description                                                               |
+| ------ | --------- | ----- | ------------------------------------------------------------------------- |
+| POST   | `/create` | Token | Create folder. Body: parentNodeId, name.                                  |
+| GET    | `/stats`  | Token | Recursive folder statistics. Query: nodeId. Returns fileCount, totalSize. |
 
 ### 2.3 Middleware Used
 

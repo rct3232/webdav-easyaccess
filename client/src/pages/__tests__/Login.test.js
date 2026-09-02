@@ -36,6 +36,7 @@ function renderLogin(initialEntries = ['/login']) {
         children: [
           { path: 'login', element: <Login /> },
           { path: 'files/*', element: <div data-testid="files-page">Files</div> },
+          { path: 'setup', element: <div data-testid="setup-page">Setup</div> },
         ],
       },
     ],
@@ -189,6 +190,47 @@ describe('Login', () => {
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     });
-    expect(screen.queryByRole('link', { name: /sign up|don't have an account|no account/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: /sign up|don't have an account|no account/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it('navigates to /setup when setup_complete is false', async () => {
+    server.use(
+      http.get('/api/settings/public', () => {
+        return HttpResponse.json({
+          registration_enabled: true,
+          email_enabled: false,
+          setup_complete: false,
+        });
+      })
+    );
+    render(renderLogin());
+    await waitFor(() => {
+      expect(screen.getByTestId('setup-page')).toBeInTheDocument();
+    });
+  });
+
+  it('stays on login when setup_complete is true', async () => {
+    render(renderLogin());
+    await waitFor(() => {
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('setup-page')).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/username/i)).toBeInTheDocument();
+  });
+
+  it('stays on login when setup_complete is missing', async () => {
+    server.use(
+      http.get('/api/settings/public', () => {
+        return HttpResponse.json({ registration_enabled: true, email_enabled: false });
+      })
+    );
+    render(renderLogin());
+    await waitFor(() => {
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('setup-page')).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/username/i)).toBeInTheDocument();
   });
 });

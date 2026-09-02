@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Compact progress summary chip: shows status icon, primary label, secondary label. Used in shrink state of FileOperationProgress—either in AppBar slot (variant="appbar") or as legacy floating Paper. Click opens the progress drawer. |
-| Used in | FileOperationProgress |
-| Related components | FileOperationProgress, useResponsive |
+| Item               | Description                                                                                                                                                                                                                            |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Compact progress summary chip: shows status icon, primary label, secondary label. Used in shrink state of FileOperationProgress—either in AppBar slot (variant="appbar") or as legacy floating Paper. Click opens the progress drawer. |
+| Used in            | FileOperationProgress                                                                                                                                                                                                                  |
+| Related components | FileOperationProgress, useResponsive                                                                                                                                                                                                   |
 
 ---
 
@@ -19,20 +19,20 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| variant | string | N | - | When `'appbar'`, renders compact chip for AppBar (icon + primary + secondary + chevron). Otherwise legacy floating Paper. |
-| onExpand | function | N | - | Click handler (legacy). |
-| onOpenDrawer | function | N | - | Click handler to open drawer; takes precedence over onExpand when present. |
-| renderStatusIcon | function | N | - | Returns React node for status icon. |
-| primaryLabel | string | N | - | Primary line text (e.g. operation status). |
-| secondaryLabel | string | N | - | Secondary line text (e.g. item count or detail). |
+| Name             | Type     | Required | Default | Description                                                                                                               |
+| ---------------- | -------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------- |
+| variant          | string   | N        | -       | When `'appbar'`, renders compact chip for AppBar (icon + primary + secondary + chevron). Otherwise legacy floating Paper. |
+| onExpand         | function | N        | -       | Click handler (legacy).                                                                                                   |
+| onOpenDrawer     | function | N        | -       | Click handler to open drawer; takes precedence over onExpand when present.                                                |
+| renderStatusIcon | function | N        | -       | Returns React node for status icon.                                                                                       |
+| primaryLabel     | string   | N        | -       | Primary line text (e.g. operation status).                                                                                |
+| secondaryLabel   | string   | N        | -       | Secondary line text (e.g. item count or detail).                                                                          |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| (click) | User clicks chip/Paper | none; handler is onOpenDrawer ?? onExpand |
+| Callback | When invoked           | Arguments                                 |
+| -------- | ---------------------- | ----------------------------------------- |
+| (click)  | User clicks chip/Paper | none; handler is onOpenDrawer ?? onExpand |
 
 ### 2.4 Dependencies
 

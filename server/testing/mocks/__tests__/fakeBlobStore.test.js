@@ -73,7 +73,9 @@ describe('createFakeBlobStore', () => {
       const store = createFakeBlobStore();
       store.failOn('poison');
 
-      await expect(store.uploadBlob('poison', Buffer.from('x'))).rejects.toThrow(/injected failure/);
+      await expect(store.uploadBlob('poison', Buffer.from('x'))).rejects.toThrow(
+        /injected failure/
+      );
       await expect(store.downloadBlob('poison')).rejects.toThrow(/injected failure/);
       await expect(store.headBlob('poison')).rejects.toThrow(/injected failure/);
       await expect(store.deleteBlob('poison')).rejects.toThrow(/injected failure/);

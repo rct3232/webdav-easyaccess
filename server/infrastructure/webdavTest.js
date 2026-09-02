@@ -6,7 +6,7 @@ const { createError } = require('../utils/errorHandler');
 let createClientPromise = null;
 async function getCreateClient() {
   if (!createClientPromise) {
-    createClientPromise = import('webdav').then(mod => mod.createClient);
+    createClientPromise = import('webdav').then((mod) => mod.createClient);
   }
   return await createClientPromise;
 }
@@ -16,7 +16,10 @@ async function getWebDAVClient() {
   const username = process.env.WEBDAV_USERNAME;
   const password = process.env.WEBDAV_PASSWORD;
   if (!url || !username || !password) {
-    throw createError(SERVER_ERROR_CODES.webdav.credentialsNotConfigured, HTTP_STATUS.SERVICE_UNAVAILABLE);
+    throw createError(
+      SERVER_ERROR_CODES.webdav.credentialsNotConfigured,
+      HTTP_STATUS.SERVICE_UNAVAILABLE
+    );
   }
   const createClient = await getCreateClient();
   const authType = process.env.WEBDAV_AUTH_TYPE || 'auto';
@@ -35,32 +38,57 @@ async function getWebDAVClient() {
 }
 
 async function testConnection() {
-  const client = await getWebDAVClient();
-  const baseUrl = process.env.WEBDAV_URL?.trim() || '';
-  const testPaths = baseUrl.includes('/') && baseUrl.split('/').length > 3 ? ['', '/'] : ['/'];
+  try {
+    const client = await getWebDAVClient();
+    const baseUrl = process.env.WEBDAV_URL?.trim() || '';
+    const testPaths = baseUrl.includes('/') && baseUrl.split('/').length > 3 ? ['', '/'] : ['/'];
 
-  let lastError = null;
-  for (const testPath of testPaths) {
-    try {
-      const items = await client.getDirectoryContents(testPath);
-      return {
-        success: true,
-        messageCode: SERVER_MESSAGE_CODES.api.webdavTestOk,
-        itemCount: items.length,
-        testPath: testPath || '/',
-      };
-    } catch (err) {
-      lastError = err;
+    let lastError = null;
+    for (const testPath of testPaths) {
+      try {
+        const items = await client.getDirectoryContents(testPath);
+        const { getBackendHealth } = require('../infrastructure/backendHealth');
+        getBackendHealth().report('webdav', { ok: true });
+        return {
+          success: true,
+          messageCode: SERVER_MESSAGE_CODES.api.webdavTestOk,
+          itemCount: items.length,
+          testPath: testPath || '/',
+        };
+      } catch (err) {
+        lastError = err;
+      }
     }
-  }
 
-  const error = lastError || createError(SERVER_ERROR_CODES.webdav.allConnectionAttemptsFailed, HTTP_STATUS.INTERNAL_SERVER_ERROR);
-  const status = error.status || error.statusCode || error.response?.status || HTTP_STATUS.INTERNAL_SERVER_ERROR;
-  if (error.errorCode) throw error;
-  if (status === HTTP_STATUS.UNAUTHORIZED) throw createError(SERVER_ERROR_CODES.webdav.credentialsNotConfigured, status);
-  if (status === HTTP_STATUS.NOT_FOUND) throw createError(SERVER_ERROR_CODES.webdav.cannotConnect, status);
-  if (status === HTTP_STATUS.FORBIDDEN) throw createError(SERVER_ERROR_CODES.webdav.connectionRefused, status);
-  throw createError(SERVER_ERROR_CODES.api.webdavTestFailed, status, { reason: error.message });
+    const error =
+      lastError ||
+      createError(
+        SERVER_ERROR_CODES.webdav.allConnectionAttemptsFailed,
+        HTTP_STATUS.INTERNAL_SERVER_ERROR
+      );
+    const status =
+      error.status ||
+      error.statusCode ||
+      error.response?.status ||
+      HTTP_STATUS.INTERNAL_SERVER_ERROR;
+    if (error.errorCode) throw error;
+    if (status === HTTP_STATUS.UNAUTHORIZED)
+      throw createError(SERVER_ERROR_CODES.webdav.credentialsNotConfigured, status);
+    if (status === HTTP_STATUS.NOT_FOUND)
+      throw createError(SERVER_ERROR_CODES.webdav.cannotConnect, status);
+    if (status === HTTP_STATUS.FORBIDDEN)
+      throw createError(SERVER_ERROR_CODES.webdav.connectionRefused, status);
+    throw createError(SERVER_ERROR_CODES.api.webdavTestFailed, status, { reason: error.message });
+  } catch (error) {
+    const { getBackendHealth } = require('../infrastructure/backendHealth');
+    const { classifyToHealthCode } = require('../infrastructure/backendProbe');
+    getBackendHealth().report('webdav', {
+      ok: false,
+      code: classifyToHealthCode('webdav', error && error.errorCode),
+      reason: error && error.message,
+    });
+    throw error;
+  }
 }
 
 module.exports = { testConnection };

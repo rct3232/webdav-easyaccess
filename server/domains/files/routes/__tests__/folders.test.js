@@ -134,9 +134,7 @@ describe('POST /api/folders/create', () => {
 
 describe('GET /api/folders/stats', () => {
   it('returns 401 when not authenticated', async () => {
-    const res = await request(app)
-      .get('/api/folders/stats')
-      .query({ nodeId: homeNodeId });
+    const res = await request(app).get('/api/folders/stats').query({ nodeId: homeNodeId });
 
     expect(res.status).toBe(401);
     expect(res.body.errorCode).toBeDefined();

@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | List (Inbox requests, Outbox requests, Share links) or Detail view for each sub-item. Multi-item category with List → Detail flow. Hidden for admin users. |
-| Used in | MyPageContentArea (when selectedCategory is 'sharing') |
-| Related components | ShareDialog (mode share, mode review), shareLinkService, permissionRequestService |
+| Item               | Description                                                                                                                                                |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | List (Inbox requests, Outbox requests, Share links) or Detail view for each sub-item. Multi-item category with List → Detail flow. Hidden for admin users. |
+| Used in            | MyPageContentArea (when selectedCategory is 'sharing')                                                                                                     |
+| Related components | ShareDialog (mode share, mode review), shareLinkService, permissionRequestService                                                                          |
 
 ---
 
@@ -19,17 +19,17 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| selectedContentItem | string \| null | Y | - | null = list view; 'inbox', 'outbox', 'links' = detail view |
-| onSelectContentItem | function | Y | - | Switch to list or detail |
-| user | object | Y | - | Current user |
-| onMessage | function | N | - | Message handler for feedback |
+| Name                | Type           | Required | Default | Description                                                |
+| ------------------- | -------------- | -------- | ------- | ---------------------------------------------------------- |
+| selectedContentItem | string \| null | Y        | -       | null = list view; 'inbox', 'outbox', 'links' = detail view |
+| onSelectContentItem | function       | Y        | -       | Switch to list or detail                                   |
+| user                | object         | Y        | -       | Current user                                               |
+| onMessage           | function       | N        | -       | Message handler for feedback                               |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
+| Callback            | When invoked                      | Arguments                                              |
+| ------------------- | --------------------------------- | ------------------------------------------------------ |
 | onSelectContentItem | List item clicked or Back pressed | (itemId \| null) – 'inbox', 'outbox', 'links', or null |
 
 ### 2.4 Dependencies

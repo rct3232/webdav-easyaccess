@@ -15,10 +15,7 @@ export function useMyPageController({ isMobile }) {
 
   const isAdmin = Boolean(user?.is_admin);
 
-  const resolveCategory = useCallback(
-    (cat) => resolveMyPageCategory(cat, isAdmin),
-    [isAdmin]
-  );
+  const resolveCategory = useCallback((cat) => resolveMyPageCategory(cat, isAdmin), [isAdmin]);
 
   const initCategory = useMemo(() => {
     return resolveCategory(location.state?.category ?? DEFAULT_MY_PAGE_CATEGORY);
@@ -28,10 +25,7 @@ export function useMyPageController({ isMobile }) {
   const [selectedContentItem, setSelectedContentItem] = useState(null);
   const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false);
 
-  const sidebarItems = useMemo(
-    () => getMyPageSidebarCategories(isAdmin),
-    [isAdmin]
-  );
+  const sidebarItems = useMemo(() => getMyPageSidebarCategories(isAdmin), [isAdmin]);
 
   useEffect(() => {
     const cat = resolveCategory(location.state?.category);

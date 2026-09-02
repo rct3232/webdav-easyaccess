@@ -40,7 +40,9 @@ beforeEach(() => {
 
       if (command.constructor.name === 'ListObjectsV2Command') {
         if (!bucketExists) {
-          throw Object.assign(new Error('The specified bucket does not exist'), { name: 'NoSuchBucket' });
+          throw Object.assign(new Error('The specified bucket does not exist'), {
+            name: 'NoSuchBucket',
+          });
         }
         if (!params.ContinuationToken) {
           listSnapshot = Array.from(objectStore.keys());
@@ -114,8 +116,9 @@ describe('ensureBucket', () => {
   });
 
   it('throws a clear error when no bucket can be resolved', async () => {
-    await expect(utils.ensureBucket({ region: 'r', credentials: { accessKeyId: 'k', secretAccessKey: 's' } }))
-      .rejects.toThrow(/bucket name is required/i);
+    await expect(
+      utils.ensureBucket({ region: 'r', credentials: { accessKeyId: 'k', secretAccessKey: 's' } })
+    ).rejects.toThrow(/bucket name is required/i);
   });
 
   it('sets forcePathStyle=true on the S3Client when an endpoint is provided', async () => {

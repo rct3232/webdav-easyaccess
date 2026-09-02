@@ -15,8 +15,7 @@ const VIRTUAL_ROOTS = ['/__shared__', '/__recent__'];
 
 export const normalizePath = sharedNormalizePath;
 
-export const getParentPath = (path) =>
-  sharedGetParentPath(path, { treatAsRoot: VIRTUAL_ROOTS });
+export const getParentPath = (path) => sharedGetParentPath(path, { treatAsRoot: VIRTUAL_ROOTS });
 
 export const isRootPath = (path) => sharedIsRootPath(path, VIRTUAL_ROOTS);
 
@@ -82,6 +81,8 @@ export const joinPath = (...parts) => {
  */
 export const toFilesPath = (filePath) => {
   if (!filePath || typeof filePath !== 'string') return '/files';
-  const normalized = sharedNormalizePath(filePath).replace(/^\/+|\/+$/g, '').replace(/\/+/g, '/');
+  const normalized = sharedNormalizePath(filePath)
+    .replace(/^\/+|\/+$/g, '')
+    .replace(/\/+/g, '/');
   return normalized ? `/files/${normalized}` : '/files';
 };

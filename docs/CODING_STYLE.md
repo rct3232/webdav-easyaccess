@@ -52,12 +52,12 @@ import { getFileIcon } from '../../utils/fileIconUtils';
 
 Place hooks in the narrowest scope that covers all their consumers. Only widen the scope when a second, unrelated consumer needs the same hook.
 
-| Scope | Location | When to use |
-|-------|----------|-------------|
-| Global | `client/src/hooks/` | Used by 2+ unrelated pages or components, or genuinely cross-cutting (e.g. `useDragAndDrop`, `useMessage`, `usePullToRefresh`, `useInfiniteScroll`) |
-| Page-local | `client/src/pages/[PageName]/hooks/` | Exclusively consumed by a single page and its direct sub-components (e.g. `useFileManager`, `useFileOperations`) |
-| Dialog-local | `client/src/components/dialogs/[DialogName]/hooks/` | Exclusively consumed by one dialog component (e.g. `useShareDialog`, `useFolderPicker`) |
-| Component-family | `client/src/components/[family]/hooks/` | Shared among multiple components in the same folder but not used outside it (e.g. `useFileViewCommon` in `file-manager/hooks/`) |
+| Scope            | Location                                            | When to use                                                                                                                                         |
+| ---------------- | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Global           | `client/src/hooks/`                                 | Used by 2+ unrelated pages or components, or genuinely cross-cutting (e.g. `useDragAndDrop`, `useMessage`, `usePullToRefresh`, `useInfiniteScroll`) |
+| Page-local       | `client/src/pages/[PageName]/hooks/`                | Exclusively consumed by a single page and its direct sub-components (e.g. `useFileManager`, `useFileOperations`)                                    |
+| Dialog-local     | `client/src/components/dialogs/[DialogName]/hooks/` | Exclusively consumed by one dialog component (e.g. `useShareDialog`, `useFolderPicker`)                                                             |
+| Component-family | `client/src/components/[family]/hooks/`             | Shared among multiple components in the same folder but not used outside it (e.g. `useFileViewCommon` in `file-manager/hooks/`)                     |
 
 **Decision rule**: start at the narrowest scope; move outward only when a second unrelated consumer appears.
 
@@ -157,4 +157,13 @@ Refer to feature and spec documents for module-level contracts before implementa
 
 ## Tooling
 
-- **ESLint**: The client uses `eslint-config-react-app` (see `client/package.json`). Follow the configured rules; if you need an exception, add a comment explaining why.
+- **ESLint**: A single root `eslint.config.js` (flat config, ESLint 8) covers all workspaces
+  (`server/`, `shared/`, `client/`). It enforces `eslint:recommended` plus `eqeqeq` (smart),
+  `no-unused-vars`, and React rules (`react/prop-types` off, `react-hooks/exhaustive-deps` warn).
+  Run `npm run lint` at the repo root; `npm run lint:ci` enforces zero warnings for CI.
+- **Prettier**: Root `.prettierrc` (semi, singleQuote, printWidth 100, 2-space) formats the
+  whole repo. Run `npm run format:check` / `npm run format` before committing. Lint and
+  Prettier are wired via `eslint-config-prettier` so they do not conflict.
+- **Exceptions**: For a lint exception, add a comment explaining why (prefer a rule-specific
+  `eslint-disable-next-line <rule>`; use a bare `eslint-disable-next-line` only when the rule
+  is not available to the CRA production build).

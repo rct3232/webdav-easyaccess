@@ -5,7 +5,11 @@ process.env.WEA_STORAGE_BACKEND = process.env.WEA_STORAGE_BACKEND || 'sqlite';
 const { buildDestBlobStore } = require('../../infrastructure/adapters/blobstore/config');
 const { runMigrationCli } = require('../migrateBlobs');
 
-const S3_FLAGS = ['--dest-s3-bucket=bucket-1', '--dest-s3-access-key=ak-1', '--dest-s3-secret-key=sk-1'];
+const S3_FLAGS = [
+  '--dest-s3-bucket=bucket-1',
+  '--dest-s3-access-key=ak-1',
+  '--dest-s3-secret-key=sk-1',
+];
 const WEBDAV_FLAGS = [
   '--dest-webdav-url=https://dav.example.com',
   '--dest-webdav-username=user-1',
@@ -28,10 +32,12 @@ const DEST_ENV_KEYS = [
 const previousFileStorage = process.env.WEA_FILE_STORAGE;
 
 function makeFakeService(overrides = {}) {
-  const run = overrides.run || jest.fn(async (opts) => {
-    if (opts && opts.onProgress) opts.onProgress({ total: 0, done: 0, current: {} });
-    return { copied: 0, skipped: 0, failed: 0, errors: [], dryRun: false };
-  });
+  const run =
+    overrides.run ||
+    jest.fn(async (opts) => {
+      if (opts && opts.onProgress) opts.onProgress({ total: 0, done: 0, current: {} });
+      return { copied: 0, skipped: 0, failed: 0, errors: [], dryRun: false };
+    });
   return { run };
 }
 
@@ -160,7 +166,9 @@ describe('runMigrationCli', () => {
       output,
     });
     expect(code).toBe(1);
-    expect(lines.error.join('\n')).toMatch(/Missing required destination fields: bucket, accessKey, secretKey/);
+    expect(lines.error.join('\n')).toMatch(
+      /Missing required destination fields: bucket, accessKey, secretKey/
+    );
     expect(service.run).not.toHaveBeenCalled();
   });
 
@@ -234,7 +242,11 @@ describe('runMigrationCli', () => {
 
   it('run() rejection exits 1 with the error logged', async () => {
     const { output, lines } = makeOutput();
-    const service = makeFakeService({ run: jest.fn(async () => { throw new Error('config invalid'); }) });
+    const service = makeFakeService({
+      run: jest.fn(async () => {
+        throw new Error('config invalid');
+      }),
+    });
     const code = await runMigrationCli(['--dry-run', ...S3_FLAGS], {
       migrationService: service,
       buildDestBlobStore,
@@ -286,7 +298,11 @@ describe('runMigrationCli', () => {
   it('onProgress is rate-limited (every 100) and always fires at completion', async () => {
     const run = jest.fn(async (opts) => {
       for (let done = 1; done <= 1000; done += 1) {
-        opts.onProgress({ total: 1000, done, current: { nodeId: done, path: `/user/f${done}.txt` } });
+        opts.onProgress({
+          total: 1000,
+          done,
+          current: { nodeId: done, path: `/user/f${done}.txt` },
+        });
       }
       return { copied: 1000, skipped: 0, failed: 0, errors: [], dryRun: false };
     });

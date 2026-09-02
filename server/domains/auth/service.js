@@ -8,11 +8,23 @@ const { ensureDefaultAdmin } = require('../../store/bootstrap');
 const { createFileNodesStore } = require('../../store/fileNodesStore');
 const tokenStore = require('./tokenStore');
 const { createCacheAdapter } = require('../../infrastructure/adapters/cache');
-
-const LOGIN_RATE_LIMIT_WINDOW_MS = parseInt(process.env.LOGIN_RATE_LIMIT_WINDOW_MS || '900000', 10);
-const LOGIN_RATE_LIMIT_MAX = parseInt(process.env.LOGIN_RATE_LIMIT_MAX || '20', 10);
+const { getSharedResolver } = require('../../infrastructure/configResolver');
 
 let _rateLimitCache = null;
+
+// LOGIN_RATE_LIMIT_* are T2: read the effective values (env → DB → default)
+// lazily via the shared resolver so DB-sourced edits apply without a restart.
+async function getRateLimitConfig() {
+  const resolver = getSharedResolver();
+  const [max, windowMs] = await Promise.all([
+    resolver.getConfig('LOGIN_RATE_LIMIT_MAX'),
+    resolver.getConfig('LOGIN_RATE_LIMIT_WINDOW_MS'),
+  ]);
+  return {
+    max: parseInt(max, 10) || 20,
+    windowMs: parseInt(windowMs, 10) || 900000,
+  };
+}
 
 function _getRateLimitCache() {
   if (!_rateLimitCache) {
@@ -33,27 +45,33 @@ function getClientIp(req) {
   return req.ip || '';
 }
 
-function checkLoginRateLimit(req) {
+async function checkLoginRateLimit(req) {
+  const { max } = await getRateLimitConfig();
   const key = getClientIp(req);
   const cache = _getRateLimitCache();
   const entry = cache.get(`ratelimit:${key}`);
   const now = Date.now();
   if (!entry || now > entry.resetAt) return { ok: true, key };
-  if (entry.count >= LOGIN_RATE_LIMIT_MAX) {
+  if (entry.count >= max) {
     return { ok: false, key, retryAfterMs: entry.resetAt - now };
   }
   return { ok: true, key };
 }
 
-function recordLoginFailure(key) {
+async function recordLoginFailure(key) {
+  const { windowMs } = await getRateLimitConfig();
   const cache = _getRateLimitCache();
   const now = Date.now();
   const entry = cache.get(`ratelimit:${key}`);
   if (!entry || now > entry.resetAt) {
-    cache.set(`ratelimit:${key}`, { count: 1, resetAt: now + LOGIN_RATE_LIMIT_WINDOW_MS }, LOGIN_RATE_LIMIT_WINDOW_MS);
+    cache.set(`ratelimit:${key}`, { count: 1, resetAt: now + windowMs }, windowMs);
     return;
   }
-  cache.set(`ratelimit:${key}`, { count: entry.count + 1, resetAt: entry.resetAt }, entry.resetAt - now);
+  cache.set(
+    `ratelimit:${key}`,
+    { count: entry.count + 1, resetAt: entry.resetAt },
+    entry.resetAt - now
+  );
 }
 
 function clearLoginFailures(key) {
@@ -132,7 +150,11 @@ async function registerUser({ username, email, password }) {
   } catch (error) {
     if (error.errorCode) throw error;
     if (createdUser && createdUser.id) {
-      try { await User.delete(createdUser.id); } catch {}
+      try {
+        await User.delete(createdUser.id);
+      } catch {
+        /* best-effort rollback */
+      }
     }
     throw error;
   }
@@ -146,7 +168,7 @@ async function loginUser({ username, password }, req) {
     throw err;
   }
 
-  const limit = checkLoginRateLimit(req);
+  const limit = await checkLoginRateLimit(req);
   if (!limit.ok) {
     const err = new Error('loginRateLimit');
     err.errorCode = SERVER_ERROR_CODES.auth.loginRateLimit;
@@ -168,7 +190,7 @@ async function loginUser({ username, password }, req) {
 
   const user = await User.findByUsername(username);
   if (!user) {
-    recordLoginFailure(limit.key);
+    await recordLoginFailure(limit.key);
     const err = new Error('invalidCredentials');
     err.errorCode = SERVER_ERROR_CODES.auth.invalidCredentials;
     err.status = 401;
@@ -177,7 +199,7 @@ async function loginUser({ username, password }, req) {
 
   const isValid = await User.verifyPassword(user, password);
   if (!isValid) {
-    recordLoginFailure(limit.key);
+    await recordLoginFailure(limit.key);
     const err = new Error('invalidCredentials');
     err.errorCode = SERVER_ERROR_CODES.auth.invalidCredentials;
     err.status = 401;
@@ -185,7 +207,7 @@ async function loginUser({ username, password }, req) {
   }
 
   if (user.status === USER_STATUS.PENDING) {
-    recordLoginFailure(limit.key);
+    await recordLoginFailure(limit.key);
     const err = new Error('pendingApproval');
     err.errorCode = SERVER_ERROR_CODES.auth.pendingApproval;
     err.status = 403;
@@ -194,7 +216,7 @@ async function loginUser({ username, password }, req) {
   }
 
   if (user.status === USER_STATUS.REJECTED) {
-    recordLoginFailure(limit.key);
+    await recordLoginFailure(limit.key);
     const err = new Error('rejected');
     err.errorCode = SERVER_ERROR_CODES.auth.rejected;
     err.status = 403;

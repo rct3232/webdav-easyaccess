@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Dialog for conflict resolution during copy/move. Lists conflicting paths and offers Overwrite, Skip, or Cancel. |
-| Used in | FileManager (bulk copy/move when conflicts exist) |
-| Related components | MUI Dialog, List, conflict list |
+| Item               | Description                                                                                                     |
+| ------------------ | --------------------------------------------------------------------------------------------------------------- |
+| Role               | Dialog for conflict resolution during copy/move. Lists conflicting paths and offers Overwrite, Skip, or Cancel. |
+| Used in            | FileManager (bulk copy/move when conflicts exist)                                                               |
+| Related components | MUI Dialog, List, conflict list                                                                                 |
 
 ---
 
@@ -19,19 +19,19 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| open | boolean | Y | - | Dialog open |
-| onClose | function | Y | - | Close/cancel handler |
-| onResolve | function | Y | - | Resolve handler with 'overwrite' or 'skip' |
-| conflicts | array | N | [] | Array of { path, type } |
-| operationType | string | N | - | Operation type (copy/move) |
+| Name          | Type     | Required | Default | Description                                |
+| ------------- | -------- | -------- | ------- | ------------------------------------------ |
+| open          | boolean  | Y        | -       | Dialog open                                |
+| onClose       | function | Y        | -       | Close/cancel handler                       |
+| onResolve     | function | Y        | -       | Resolve handler with 'overwrite' or 'skip' |
+| conflicts     | array    | N        | []      | Array of { path, type }                    |
+| operationType | string   | N        | -       | Operation type (copy/move)                 |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| onClose | Cancel button | - |
+| Callback  | When invoked             | Arguments               |
+| --------- | ------------------------ | ----------------------- |
+| onClose   | Cancel button            | -                       |
 | onResolve | Overwrite or Skip button | ('overwrite' \| 'skip') |
 
 ### 2.4 Dependencies

@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                  |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | User-related utilities: base folder path, ownership check, filter out own folders from permissions, filter display users (ShareFolderTree, UserSelectionMenu), display name. |
 
 ---
@@ -17,13 +17,13 @@
 
 ### 2.2 Function Signatures
 
-| Function | (input) => return |
-|----------|-------------------|
-| getUserBaseFolder | (user) => string (e.g. '/username') |
-| isUserOwnFolder | (path, user) => boolean |
-| filterOutUserOwnFolders | (permissions, user) => Array |
-| filterDisplayUsers | (users, options) => Array |
-| getUserDisplayName | (user) => string |
+| Function                | (input) => return                   |
+| ----------------------- | ----------------------------------- |
+| getUserBaseFolder       | (user) => string (e.g. '/username') |
+| isUserOwnFolder         | (path, user) => boolean             |
+| filterOutUserOwnFolders | (permissions, user) => Array        |
+| filterDisplayUsers      | (users, options) => Array           |
+| getUserDisplayName      | (user) => string                    |
 
 ### 2.3 filterDisplayUsers Options
 

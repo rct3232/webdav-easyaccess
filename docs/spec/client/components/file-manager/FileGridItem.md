@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Card-style grid item: thumbnail/icon, filename, More button. Selection indicated by light primary background. Processing overlay. React.memo optimized. |
-| Used in | FileGrid |
-| Related components | getFileIconForGrid, getThumbnail, renderProcessingIcon |
+| Item               | Description                                                                                                                                             |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Card-style grid item: thumbnail/icon, filename, More button. Selection indicated by light primary background. Processing overlay. React.memo optimized. |
+| Used in            | FileGrid                                                                                                                                                |
+| Related components | getFileIconForGrid, getThumbnail, renderProcessingIcon                                                                                                  |
 
 ---
 
@@ -19,24 +19,24 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| file | object | Y | - | File object |
-| isSelected | boolean | Y | - | Selected state |
-| isDisabled | boolean | Y | - | Disabled |
-| isProcessing | boolean | Y | - | Processing overlay |
-| processingType | string | N | - | Processing type |
-| isDropTarget | boolean | Y | - | Drop target highlight |
-| isDragging | boolean | Y | - | Dragging |
-| selectionMode | boolean | Y | - | Selection mode active (affects card styling when isSelected) |
-| showMoreButton | boolean | Y | - | Show More (⋮) button; false when in selection mode |
-| onMoreClick | function | Y | - | More button click handler; opens FileActionSheet; call stopPropagation so card tap does not toggle selection |
-| isMobile | boolean | Y | - | Mobile styles |
+| Name           | Type     | Required | Default | Description                                                                                                  |
+| -------------- | -------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------ |
+| file           | object   | Y        | -       | File object                                                                                                  |
+| isSelected     | boolean  | Y        | -       | Selected state                                                                                               |
+| isDisabled     | boolean  | Y        | -       | Disabled                                                                                                     |
+| isProcessing   | boolean  | Y        | -       | Processing overlay                                                                                           |
+| processingType | string   | N        | -       | Processing type                                                                                              |
+| isDropTarget   | boolean  | Y        | -       | Drop target highlight                                                                                        |
+| isDragging     | boolean  | Y        | -       | Dragging                                                                                                     |
+| selectionMode  | boolean  | Y        | -       | Selection mode active (affects card styling when isSelected)                                                 |
+| showMoreButton | boolean  | Y        | -       | Show More (⋮) button; false when in selection mode                                                           |
+| onMoreClick    | function | Y        | -       | More button click handler; opens FileActionSheet; call stopPropagation so card tap does not toggle selection |
+| isMobile       | boolean  | Y        | -       | Mobile styles                                                                                                |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
+| Callback    | When invoked      | Arguments                                           |
+| ----------- | ----------------- | --------------------------------------------------- |
 | onMoreClick | More button click | (file) — must stopPropagation to prevent card click |
 
 ### 2.4 Dependencies

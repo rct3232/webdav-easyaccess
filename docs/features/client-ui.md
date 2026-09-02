@@ -56,7 +56,14 @@ These boundaries are intentionally written at the **feature level** (not as a fi
 
 ### Routing
 
-- **Public:** `/login`, `/register`. No auth required.
+- **Public:** `/login`, `/register`, `/setup`, `/migration`, `/maintenance`. No auth required.
+  `/migration` (operator progress) and `/maintenance` (generic maintenance screen) are
+  reachable only meaningfully while a migration is active; the role-aware app-guard routes
+  admin → `/migration` and regular/anonymous sessions → `/maintenance` — see
+  [migration-mode.md](migration-mode.md) "Role-aware lock UX".
+- **Setup wizard:** `/setup` — first-run setup wizard, rendered outside `MainLayout` (standalone, like Login). Full flow, gating, and security contract in [setup-wizard.md](setup-wizard.md). Redirect rules:
+  - The login page redirects to `/setup` when `setup_complete` is `false` (fetched from `GET /api/settings/public`; see `docs/spec/server/routes/settings.md`).
+  - `/setup` redirects to `/login` when setup is already complete (covers revisits after restart).
 - **Default:** `/` redirects to `/files`.
 - **Authenticated (under MainLayout):** `/files/*` (FileManager), `/mypage` (MyPage). `/admin` redirects to `/mypage` with `state: { category: 'admin' }` for admin users. Wrapped in `PrivateRoute`: if not authenticated, redirect to `/login`; while loading auth state, show loading spinner.
 - **Share link:** `/share/:token` — Renders `ShareLinkLoader`, which fetches `GET /api/share/:token/info` then either `FileManager` (folder) or `ShareLinkSingleFileView` (single file). No auth required for viewing; login/add-to-my-permissions available in share UI.
@@ -120,7 +127,7 @@ Once the client is upgraded to React Router v7, these behaviors are treated as t
 - **Same source and destination (no-op):** When the drop would be a no-op (e.g. target folder is the parent of the dragged path, or same path), the folder is not highlighted as a drop target and the content area does not show the drop overlay or message. This avoids showing "drop here" when the move would do nothing.
 - **Content area drop copy:** Upload (OS files) and internal move use different copy: upload uses `dialogs.uploadDropHere` (e.g. "Drop files here"); internal move uses `fileManager.moveDropHere` (e.g. "Move here").
 - **Context menu (desktop):** Right-click on file/folder: Download, Rename, Move, Copy, Delete, Share, etc. Actions open the same dialogs as toolbar.
-- **Item-level More button:** Each file item (list, grid, detail) has a More (⋮) button. Visible when *not* in selection mode; hidden when in selection mode. Opens `FileActionSheet` for that file. Placed: list = right side of item; grid = top-right of preview (thumbnail/icon) area, overlaid with z-index; detail = right end of row (last column).
+- **Item-level More button:** Each file item (list, grid, detail) has a More (⋮) button. Visible when _not_ in selection mode; hidden when in selection mode. Opens `FileActionSheet` for that file. Placed: list = right side of item; grid = top-right of preview (thumbnail/icon) area, overlaid with z-index; detail = right end of row (last column).
 - **Filename truncation:** All file items (list, grid, detail, and recent files) use middle ellipsis (`pixelMiddleTruncate`) for long filenames, ensuring the file extension remains visible. A `Tooltip` displays the full filename on hover if it is truncated.
 - **Action sheet (mobile):** More button or right-click triggers bottom action sheet (`FileActionSheet`) with same actions as context menu. Long-press no longer opens context menu; it enters selection mode (see Selection above).
 - **Dialogs:** Upload, CreateFolder, FilePreview, FolderPicker, Share, ShareTarget, FileProperties, Confirm, ConflictResolve, Rename, Login (for share link when not logged in). Dialog state managed in `useFileManagerDialogs` or similar; list refreshes after successful close.

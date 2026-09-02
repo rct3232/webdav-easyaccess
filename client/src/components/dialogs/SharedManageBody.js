@@ -93,12 +93,7 @@ export default function SharedManageBody({
           <Button onClick={() => setConfirmDialogOpen(false)} disabled={loading}>
             {t('common.cancel')}
           </Button>
-          <Button
-            onClick={onRevokePermission}
-            variant="contained"
-            color="error"
-            disabled={loading}
-          >
+          <Button onClick={onRevokePermission} variant="contained" color="error" disabled={loading}>
             {loading ? t('dialogs.processing') : t('common.confirm')}
           </Button>
         </DialogActions>

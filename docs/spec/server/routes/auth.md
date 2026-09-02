@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Mount path | `/api/auth` |
-| Role | Authentication: register, login, refresh token, current user (me). |
+| Item       | Description                                                        |
+| ---------- | ------------------------------------------------------------------ |
+| Mount path | `/api/auth`                                                        |
+| Role       | Authentication: register, login, refresh token, current user (me). |
 
 ---
 
@@ -18,12 +18,12 @@
 
 ### 2.2 Route List (sync with api.md)
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/register` | None | Sign up. Body: username, email, password. |
-| POST | `/login` | None | Login. Returns user, token, refreshToken. |
-| POST | `/refresh` | None | Refresh token. Body: refreshToken. |
-| GET | `/me` | Token | Current user info. |
+| Method | Path        | Auth  | Description                               |
+| ------ | ----------- | ----- | ----------------------------------------- |
+| POST   | `/register` | None  | Sign up. Body: username, email, password. |
+| POST   | `/login`    | None  | Login. Returns user, token, refreshToken. |
+| POST   | `/refresh`  | None  | Refresh token. Body: refreshToken.        |
+| GET    | `/me`       | Token | Current user info.                        |
 
 ### 2.3 Middleware Used
 
@@ -33,6 +33,7 @@
 ### 2.4 Architecture Notes
 
 Business logic is extracted into `server/domains/auth/service.js`, which exports:
+
 - `registerUser({ username, email, password })` — registration with validation
 - `loginUser({ username, password }, req)` — authentication with rate limiting
 - `refreshAccessToken(refreshToken)` — token refresh via token store

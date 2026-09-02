@@ -6,14 +6,24 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../contexts/AuthContext';
 import { usePageHeader } from '../../../contexts/PageHeaderContext';
 import { AccountEditDialog } from '../../dialogs';
-import { updateEmail as updateEmailApi, updatePassword as updatePasswordApi } from '../../../services/userService';
-import { validateEmail, validatePassword, validateMatch } from '@webdav-easyaccess/shared/validation';
+import {
+  updateEmail as updateEmailApi,
+  updatePassword as updatePasswordApi,
+} from '../../../services/userService';
+import {
+  validateEmail,
+  validatePassword,
+  validateMatch,
+} from '@webdav-easyaccess/shared/validation';
 import { getValidationMessage } from '../../../utils/validationMessage';
 import { getServerErrorDisplay } from '../../../utils/errorUtils';
 
-const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+const normalizeEmail = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase();
 
-const AccountContent = ({ user, onMessage }) => {
+const AccountContent = ({ user }) => {
   const { t } = useTranslation();
   const { logout } = useAuth();
   const navigate = useNavigate();
@@ -152,7 +162,11 @@ const AccountContent = ({ user, onMessage }) => {
   useEffect(() => {
     setTitle(t('mypage.accountInfo'));
     setActions(
-      <IconButton aria-label={t('mypage.editAccountInfo')} onClick={handleOpenEditDialog} size="small">
+      <IconButton
+        aria-label={t('mypage.editAccountInfo')}
+        onClick={handleOpenEditDialog}
+        size="small"
+      >
         <EditIcon />
       </IconButton>
     );
@@ -163,7 +177,11 @@ const AccountContent = ({ user, onMessage }) => {
   return (
     <Box>
       {showMessage && (
-        <Alert severity={message.type} sx={{ mb: 2 }} onClose={() => setMessage({ type: '', text: '' })}>
+        <Alert
+          severity={message.type}
+          sx={{ mb: 2 }}
+          onClose={() => setMessage({ type: '', text: '' })}
+        >
           {message.text}
         </Alert>
       )}

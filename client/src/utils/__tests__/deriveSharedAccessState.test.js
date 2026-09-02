@@ -6,7 +6,10 @@ import { deriveSharedAccessState } from '../deriveSharedAccessState';
 
 describe('deriveSharedAccessState', () => {
   it('directory: derives hasRead/hasWrite and returns null path/file permission fields', () => {
-    const pendingRequest = { read: { pending: true, id: 'pr1' }, write: { pending: false, id: null } };
+    const pendingRequest = {
+      read: { pending: true, id: 'pr1' },
+      write: { pending: false, id: null },
+    };
     const ownerExists = true;
 
     const result = deriveSharedAccessState({
@@ -83,4 +86,3 @@ describe('deriveSharedAccessState', () => {
     expect(result.filePermissionLevel).toBe(null);
   });
 });
-

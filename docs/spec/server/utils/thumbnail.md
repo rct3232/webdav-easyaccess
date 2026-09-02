@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Thumbnail generation for images (sharp) and videos (ffmpeg). Token-based URL, cache. All APIs keyed by `fileNodeId`. |
+| Item   | Description                                                                                                                                                                                                                                                                                                                                      |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role   | Thumbnail generation for images (sharp) and videos (ffmpeg). Token-based URL, cache. All APIs keyed by `fileNodeId`.                                                                                                                                                                                                                             |
 | Status | **Phase 2 relocated** — Logic moved to `domains/thumbnails/services/`. This file retained for backward compatibility only. **Phase 4 nodeId migration** (target contract, pending implementation in S1) — cache/hash/token/batch keyed by `fileNodeId`; blob bytes fetched via `blobStorageService.downloadBlob(nodeId)` instead of webdav path. |
 
 ---
@@ -19,23 +19,23 @@
 
 ### 2.2 Functions / Exports
 
-| Function | Signature | Location | Description |
-|----------|-----------|----------|-------------|
-| getThumbnail | (nodeId) => Promise\<Buffer\|null\> | thumbnailService.js | Dispatch to image/video processor |
-| getThumbnailUrl | (nodeId) => string\|null | thumbnailService.js | URL string for cached thumbnail (`/api/thumbnails/<hash>.<ext>?token=`) |
-| getThumbnailFromCache | (nodeId) => Object\|null | thumbnailService.js | Cached thumbnail data |
-| ensureThumbnail | (nodeId) => Promise\<string\|null\> | thumbnailService.js | Generate if not cached, return URL |
-| ensureThumbnailsBatch | (nodeIds) => Promise\<Array\> | thumbnailService.js | Batch generation with concurrency limit; reads bytes via `blobStorageService.downloadBlob(nodeId)` |
-| getCachedThumbnail | (nodeId) => Object\|null | thumbnailService.js | Cache read keyed `thumb:<nodeId>` |
-| setCachedThumbnail | (nodeId, buffer, extension) => void | thumbnailService.js | Cache write keyed `thumb:<nodeId>` |
-| findCachedThumbnailByHash | (hash) => { nodeId, thumbnail }\|null | thumbnailService.js | Linear cache scan; matches `md5(String(nodeId))` against hash |
-| getThumbnailHash | (nodeId) => string | thumbnailService.js | MD5 hash of the numeric `fileNodeId` string: `md5(String(nodeId))` |
-| signThumbnailToken | (nodeId) => string | thumbnailService.js | JWT sign over the nodeId-derived hash |
-| verifyThumbnailToken | (token, hash) => boolean | thumbnailService.js | JWT verify; unchanged mechanics |
-| generateImageThumbnail | (nodeId) => Promise\<Object\|null\> | imageProcessor.js | Sharp-based resize; reads bytes via `blobStorageService.downloadBlob(nodeId)` |
-| generateVideoThumbnail | (nodeId) => Promise\<Object\|null\> | videoProcessor.js | FFmpeg frame extraction + sharp; reads bytes via `blobStorageService.downloadBlob(nodeId)` |
-| initFfmpegOnce | () => Promise\<Object\> | videoProcessor.js | One-time ffmpeg availability check |
-| getFfmpegStatus | () => object | videoProcessor.js | ffmpeg state object |
+| Function                  | Signature                             | Location            | Description                                                                                        |
+| ------------------------- | ------------------------------------- | ------------------- | -------------------------------------------------------------------------------------------------- |
+| getThumbnail              | (nodeId) => Promise\<Buffer\|null\>   | thumbnailService.js | Dispatch to image/video processor                                                                  |
+| getThumbnailUrl           | (nodeId) => string\|null              | thumbnailService.js | URL string for cached thumbnail (`/api/thumbnails/<hash>.<ext>?token=`)                            |
+| getThumbnailFromCache     | (nodeId) => Object\|null              | thumbnailService.js | Cached thumbnail data                                                                              |
+| ensureThumbnail           | (nodeId) => Promise\<string\|null\>   | thumbnailService.js | Generate if not cached, return URL                                                                 |
+| ensureThumbnailsBatch     | (nodeIds) => Promise\<Array\>         | thumbnailService.js | Batch generation with concurrency limit; reads bytes via `blobStorageService.downloadBlob(nodeId)` |
+| getCachedThumbnail        | (nodeId) => Object\|null              | thumbnailService.js | Cache read keyed `thumb:<nodeId>`                                                                  |
+| setCachedThumbnail        | (nodeId, buffer, extension) => void   | thumbnailService.js | Cache write keyed `thumb:<nodeId>`                                                                 |
+| findCachedThumbnailByHash | (hash) => { nodeId, thumbnail }\|null | thumbnailService.js | Linear cache scan; matches `md5(String(nodeId))` against hash                                      |
+| getThumbnailHash          | (nodeId) => string                    | thumbnailService.js | MD5 hash of the numeric `fileNodeId` string: `md5(String(nodeId))`                                 |
+| signThumbnailToken        | (nodeId) => string                    | thumbnailService.js | JWT sign over the nodeId-derived hash                                                              |
+| verifyThumbnailToken      | (token, hash) => boolean              | thumbnailService.js | JWT verify; unchanged mechanics                                                                    |
+| generateImageThumbnail    | (nodeId) => Promise\<Object\|null\>   | imageProcessor.js   | Sharp-based resize; reads bytes via `blobStorageService.downloadBlob(nodeId)`                      |
+| generateVideoThumbnail    | (nodeId) => Promise\<Object\|null\>   | videoProcessor.js   | FFmpeg frame extraction + sharp; reads bytes via `blobStorageService.downloadBlob(nodeId)`         |
+| initFfmpegOnce            | () => Promise\<Object\>               | videoProcessor.js   | One-time ffmpeg availability check                                                                 |
+| getFfmpegStatus           | () => object                          | videoProcessor.js   | ffmpeg state object                                                                                |
 
 ### 2.3 CacheAdapter Integration
 

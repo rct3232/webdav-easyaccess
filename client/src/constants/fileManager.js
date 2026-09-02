@@ -30,4 +30,3 @@ export const PREVIEWABLE_EXTENSIONS = [
   'pdf',
   ...TEXT_EXTENSIONS,
 ];
-

@@ -34,6 +34,27 @@ export const ERROR_MESSAGE_KEYS = {
   [ERROR_TYPES.UNKNOWN]: 'errors.unknown',
 };
 
+// Server error codes that share one friendly user message (connection-class failures:
+// storage unreachable / auth / resource-missing). Keeps backend internals out of the UI.
+// Matches only the exact codes below; unrelated errorCodes keep their own translation.
+const CONNECTION_CLASS_ERROR_CODES = {
+  'serverErrors.webdav.connectionRefused': 'files.storageUnavailable',
+  'serverErrors.webdav.serverNotResponding': 'files.storageUnavailable',
+  'serverErrors.webdav.cannotConnect': 'files.storageUnavailable',
+  'serverErrors.webdav.allConnectionAttemptsFailed': 'files.storageUnavailable',
+  'serverErrors.webdav.credentialsNotConfigured': 'files.storageUnavailable',
+  'serverErrors.storage.postgresqlNotConfigured': 'files.storageUnavailable',
+  'serverErrors.errorHandler.databaseUnavailable': 'files.maintenanceNotice',
+};
+
+/**
+ * Map a server errorCode to its friendly i18n key when it is a connection-class failure.
+ * @param {string} errorCode - Server error code
+ * @returns {string|null} Friendly i18n key, or null when the code is not mapped
+ */
+export const getConnectionClassFriendlyKey = (errorCode) =>
+  CONNECTION_CLASS_ERROR_CODES[errorCode] ?? null;
+
 /**
  * Determine error type from error object
  * @param {Error} error - Error object
@@ -41,19 +62,23 @@ export const ERROR_MESSAGE_KEYS = {
  */
 export const determineErrorType = (error) => {
   if (!error) return ERROR_TYPES.UNKNOWN;
-  
+
   // 네트워크 에러 확인
-  if (error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK' || 
-      error.message?.includes('Network Error') || error.message?.includes('timeout')) {
+  if (
+    error.code === 'ECONNABORTED' ||
+    error.code === 'ERR_NETWORK' ||
+    error.message?.includes('Network Error') ||
+    error.message?.includes('timeout')
+  ) {
     return ERROR_TYPES.NETWORK_ERROR;
   }
-  
+
   // HTTP 상태 코드 기반 판별
   const status = error.response?.status;
   if (status && STATUS_CODE_TO_ERROR_TYPE[status]) {
     return STATUS_CODE_TO_ERROR_TYPE[status];
   }
-  
+
   // 에러 메시지 기반 판별
   const message = (error.message || error.response?.data?.error || '').toLowerCase();
   if (message.includes('permission')) {
@@ -68,7 +93,7 @@ export const determineErrorType = (error) => {
   if (message.includes('already exists')) {
     return ERROR_TYPES.DUPLICATE_FILE;
   }
-  
+
   return ERROR_TYPES.UNKNOWN;
 };
 
@@ -93,7 +118,7 @@ export const getErrorMessage = (error, defaultKey = 'errors.unknown') => {
 
   const data = error.response?.data;
   if (data?.errorCode) {
-    return { key: data.errorCode };
+    return { key: getConnectionClassFriendlyKey(data.errorCode) || data.errorCode };
   }
 
   const errorType = determineErrorType(error);
@@ -122,7 +147,8 @@ export const getErrorMessage = (error, defaultKey = 'errors.unknown') => {
 export const getServerErrorDisplay = (data, t) => {
   if (!data) return t('errors.unknown');
   if (data.errorCode) {
-    const msg = t(data.errorCode, data.params || {});
+    const key = getConnectionClassFriendlyKey(data.errorCode) || data.errorCode;
+    const msg = t(key, data.params || {});
     return typeof msg === 'string' ? msg : t('errors.unknown');
   }
   if (data.error) return data.error;

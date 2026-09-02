@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Transport adapter that performs HTTP requests to the client `/api/*` namespace, parses responses into a stable shape, applies timeouts, and retries only on network failures and 5xx responses. |
-| Used by | `apiClient` (transport layer only). |
-| Does not own | Auth token storage/injection, refresh behavior, auth navigation/redirect rules, `x-new-token` application to session storage. |
+| Item         | Description                                                                                                                                                                                     |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role         | Transport adapter that performs HTTP requests to the client `/api/*` namespace, parses responses into a stable shape, applies timeouts, and retries only on network failures and 5xx responses. |
+| Used by      | `apiClient` (transport layer only).                                                                                                                                                             |
+| Does not own | Auth token storage/injection, refresh behavior, auth navigation/redirect rules, `x-new-token` application to session storage.                                                                   |
 
 ---
 
@@ -19,11 +19,12 @@
 
 ### 2.2 Main Functions
 
-| Function | Input | Return |
-|----------|-------|--------|
+| Function  | Input      | Return                                                                                       |
+| --------- | ---------- | -------------------------------------------------------------------------------------------- |
 | `request` | `(config)` | `Promise<{ data: any, status: number, statusText: string, headers: Record<string,string> }>` |
 
 `request(config)` supports (at least):
+
 - `url` (string): path or absolute URL
 - `method` (string, default `'GET'`)
 - `data` (any): JSON-serializable value, string, or `FormData`
@@ -38,6 +39,7 @@
 ### 2.3 Error Handling
 
 The transport throws structured errors:
+
 - For HTTP responses with status `>= 400`, throw an `Error` where:
   - `error.response` is the parsed payload shape `{ data, status, statusText, headers }`
   - `error.config` is the original request config

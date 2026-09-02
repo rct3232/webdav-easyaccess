@@ -2,20 +2,22 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Route path | `/register` |
-| Role | User registration form. Validates username, email, password; on success either shows pending message or navigates to `/files`. |
+| Item       | Description                                                                                                                    |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Route path | `/register`                                                                                                                    |
+| Role       | User registration form. Validates username, email, password; on success either shows pending message or navigates to `/files`. |
 
 ---
 
 ## 2. Implementation Spec
 
 ### 2.1 File Path
+
 - **Source (page shell):** `client/src/pages/Register.js`
 - **Test file:** `client/src/pages/__tests__/Register.test.js`
 
 ### 2.2 Hooks Used
+
 - `useRegisterForm` (controller hook)
   - useAuth (register)
   - useNavigate
@@ -23,6 +25,7 @@
 - (View) does not call hooks and does not import router modules
 
 ### 2.3 Main Child Components
+
 - `RegisterFormView` (pure view)
   - See `docs/spec/client/components/auth/RegisterFormView.md`
 - Paper, TextField, Button, Alert (rendered by view)

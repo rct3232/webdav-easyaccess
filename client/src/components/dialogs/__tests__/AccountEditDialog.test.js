@@ -63,21 +63,14 @@ describe('AccountEditDialog', () => {
 
   it('shows message Alert when message.text is provided', () => {
     renderWithProviders(
-      <AccountEditDialog
-        {...defaultProps}
-        message={{ text: 'Update failed', type: 'error' }}
-      />
+      <AccountEditDialog {...defaultProps} message={{ text: 'Update failed', type: 'error' }} />
     );
     expect(screen.getByText('Update failed')).toBeInTheDocument();
   });
 
   it('shows password mismatch helper text when confirm differs from password', () => {
     renderWithProviders(
-      <AccountEditDialog
-        {...defaultProps}
-        password="secret"
-        confirmPassword="different"
-      />
+      <AccountEditDialog {...defaultProps} password="secret" confirmPassword="different" />
     );
     expect(screen.getByText(/passwords do not match/i)).toBeInTheDocument();
   });

@@ -15,7 +15,13 @@ import SharingContent from '../SharingContent';
 
 jest.mock('../../../dialogs/FilePreviewDialog', () => () => null);
 
-const mockUser = { id: '1', username: 'testuser', email: 'user@example.com', is_admin: false, status: 'approved' };
+const mockUser = {
+  id: '1',
+  username: 'testuser',
+  email: 'user@example.com',
+  is_admin: false,
+  status: 'approved',
+};
 
 const inboxRequest = (overrides = {}) => ({
   id: 'pr-inbox-1',
@@ -98,13 +104,16 @@ describe('SharingContent', () => {
 
     renderSharing({ selectedContentItem: null });
 
-    await waitFor(() => {
-      expect(screen.getByText(/received requests/i)).toBeInTheDocument();
-      expect(screen.getByText(/my requests/i)).toBeInTheDocument();
-      expect(screen.getByText(/links/i)).toBeInTheDocument();
-      const badgesWithOne = screen.getAllByText('1', { exact: true });
-      expect(badgesWithOne.length).toBeGreaterThanOrEqual(1);
-    }, { timeout: 5000 });
+    await waitFor(
+      () => {
+        expect(screen.getByText(/received requests/i)).toBeInTheDocument();
+        expect(screen.getByText(/my requests/i)).toBeInTheDocument();
+        expect(screen.getByText(/links/i)).toBeInTheDocument();
+        const badgesWithOne = screen.getAllByText('1', { exact: true });
+        expect(badgesWithOne.length).toBeGreaterThanOrEqual(1);
+      },
+      { timeout: 5000 }
+    );
   });
 
   it('clicking list item calls onSelectContentItem(itemId)', async () => {
@@ -118,9 +127,12 @@ describe('SharingContent', () => {
     const user = userEvent.setup();
     renderSharing({ selectedContentItem: null, onSelectContentItem });
 
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 5000 });
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      },
+      { timeout: 5000 }
+    );
 
     await user.click(screen.getByRole('button', { name: /received requests/i }));
     expect(onSelectContentItem).toHaveBeenCalledWith('inbox');
@@ -143,10 +155,13 @@ describe('SharingContent', () => {
 
     renderSharing({ selectedContentItem: 'inbox' });
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /review/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /rejected/i })).toBeInTheDocument();
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(screen.getByRole('button', { name: /review/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /rejected/i })).toBeInTheDocument();
+      },
+      { timeout: 3000 }
+    );
   });
 
   it('inbox detail: renders resolved display_path for the target', async () => {
@@ -162,9 +177,12 @@ describe('SharingContent', () => {
 
     renderSharing({ selectedContentItem: 'inbox' });
 
-    await waitFor(() => {
-      expect(screen.getByText(/Folder:\s*\/testuser\/docs\/shared-folder/i)).toBeInTheDocument();
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(screen.getByText(/Folder:\s*\/testuser\/docs\/shared-folder/i)).toBeInTheDocument();
+      },
+      { timeout: 3000 }
+    );
   });
 
   it('inbox detail: falls back to target_name then #file_node_id when path absent', async () => {
@@ -180,9 +198,12 @@ describe('SharingContent', () => {
 
     renderSharing({ selectedContentItem: 'inbox' });
 
-    await waitFor(() => {
-      expect(screen.getByText(/Folder:\s*shared-folder/i)).toBeInTheDocument();
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(screen.getByText(/Folder:\s*shared-folder/i)).toBeInTheDocument();
+      },
+      { timeout: 3000 }
+    );
 
     const req2 = inboxRequest({
       id: 'pr-inbox-raw',
@@ -195,9 +216,12 @@ describe('SharingContent', () => {
     );
 
     const { unmount } = renderSharing({ selectedContentItem: 'inbox' });
-    await waitFor(() => {
-      expect(screen.getByText(/Folder:\s*#101/i)).toBeInTheDocument();
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(screen.getByText(/Folder:\s*#101/i)).toBeInTheDocument();
+      },
+      { timeout: 3000 }
+    );
     unmount();
   });
 
@@ -214,9 +238,12 @@ describe('SharingContent', () => {
 
     renderSharing({ selectedContentItem: 'outbox' });
 
-    await waitFor(() => {
-      expect(screen.getByText(/Folder:\s*\/testuser\/docs\/shared-folder/i)).toBeInTheDocument();
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(screen.getByText(/Folder:\s*\/testuser\/docs\/shared-folder/i)).toBeInTheDocument();
+      },
+      { timeout: 3000 }
+    );
   });
 
   it('inbox: reject request shows success feedback', async () => {
@@ -225,15 +252,19 @@ describe('SharingContent', () => {
       http.get('/api/permission-requests/inbox', () => HttpResponse.json([req])),
       http.get('/api/permission-requests/outbox', () => HttpResponse.json([])),
       http.post('/api/permission-requests/:id/reject', () =>
-        HttpResponse.json({ messageCode: 'serverMessages.permissionRequest.rejected' }))
+        HttpResponse.json({ messageCode: 'serverMessages.permissionRequest.rejected' })
+      )
     );
 
     const user = userEvent.setup();
     renderSharing({ selectedContentItem: 'inbox' });
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /rejected/i })).toBeInTheDocument();
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(screen.getByRole('button', { name: /rejected/i })).toBeInTheDocument();
+      },
+      { timeout: 3000 }
+    );
     await user.click(screen.getByRole('button', { name: /rejected/i }));
 
     await waitFor(() => {
@@ -247,15 +278,19 @@ describe('SharingContent', () => {
       http.get('/api/permission-requests/inbox', () => HttpResponse.json([])),
       http.get('/api/permission-requests/outbox', () => HttpResponse.json([req])),
       http.post('/api/permission-requests/:id/cancel', () =>
-        HttpResponse.json({ messageCode: 'serverMessages.permissionRequest.cancelled' }))
+        HttpResponse.json({ messageCode: 'serverMessages.permissionRequest.cancelled' })
+      )
     );
 
     const user = userEvent.setup();
     renderSharing({ selectedContentItem: 'outbox' });
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /cancelled/i })).toBeInTheDocument();
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(screen.getByRole('button', { name: /cancelled/i })).toBeInTheDocument();
+      },
+      { timeout: 3000 }
+    );
     await user.click(screen.getByRole('button', { name: /cancelled/i }));
 
     await waitFor(() => {
@@ -276,9 +311,12 @@ describe('SharingContent', () => {
     const user = userEvent.setup();
     renderSharing({ selectedContentItem: 'links' });
 
-    await waitFor(() => {
-      expect(screen.getByText(/doc\.pdf/)).toBeInTheDocument();
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(screen.getByText(/doc\.pdf/)).toBeInTheDocument();
+      },
+      { timeout: 3000 }
+    );
 
     expect(screen.getByRole('button', { name: /\+7 days/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /delete/i })).toBeInTheDocument();
@@ -307,9 +345,12 @@ describe('SharingContent', () => {
     const user = userEvent.setup();
     renderSharing({ selectedContentItem: 'links' });
 
-    await waitFor(() => {
-      expect(screen.getByText(/doc\.pdf/)).toBeInTheDocument();
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(screen.getByText(/doc\.pdf/)).toBeInTheDocument();
+      },
+      { timeout: 3000 }
+    );
 
     await user.click(screen.getByRole('button', { name: /delete/i }));
 
@@ -333,9 +374,12 @@ describe('SharingContent', () => {
       withBack: true,
     });
 
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 5000 });
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      },
+      { timeout: 5000 }
+    );
 
     await user.click(screen.getByRole('button', { name: /back/i }));
     expect(onSelectContentItem).toHaveBeenCalledWith(null);

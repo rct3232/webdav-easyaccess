@@ -1,8 +1,7 @@
 const sharp = require('sharp');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { createError } = require('../../../utils/errorHandler');
-
-const MAX_SIZE = parseInt(process.env.MAX_THUMBNAIL_SIZE) || 300;
+const { getSharedResolver } = require('../../../infrastructure/configResolver');
 
 async function generateImageThumbnail(nodeId) {
   try {
@@ -17,22 +16,18 @@ async function generateImageThumbnail(nodeId) {
     const hasAlpha = metadata.hasAlpha === true;
     const outputExtension = hasAlpha ? 'png' : 'jpg';
 
-    const sharpInstance = sharp(buffer)
-      .rotate()
-      .resize(MAX_SIZE, MAX_SIZE, {
-        fit: 'inside',
-        withoutEnlargement: true,
-      });
+    // MAX_THUMBNAIL_SIZE is T2 (lazy): read the effective value per request.
+    const maxSize = parseInt(await getSharedResolver().getConfig('MAX_THUMBNAIL_SIZE'), 10) || 300;
+    const sharpInstance = sharp(buffer).rotate().resize(maxSize, maxSize, {
+      fit: 'inside',
+      withoutEnlargement: true,
+    });
 
     let thumbnailBuffer;
     if (hasAlpha) {
-      thumbnailBuffer = await sharpInstance
-        .png({ quality: 90, compressionLevel: 6 })
-        .toBuffer();
+      thumbnailBuffer = await sharpInstance.png({ quality: 90, compressionLevel: 6 }).toBuffer();
     } else {
-      thumbnailBuffer = await sharpInstance
-        .jpeg({ quality: 80 })
-        .toBuffer();
+      thumbnailBuffer = await sharpInstance.jpeg({ quality: 80 }).toBuffer();
     }
 
     return { buffer: thumbnailBuffer, extension: outputExtension };

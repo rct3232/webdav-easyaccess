@@ -11,8 +11,12 @@ function getBackend() {
   const forced = (process.env.WEA_STORAGE_BACKEND || '').toLowerCase();
   if (forced === 'postgresql' || forced === 'postgres' || forced === 'pg') return 'postgresql';
   if (forced === 'sqlite') return 'sqlite';
-  console.warn(`DEPRECATION: WEA_STORAGE_BACKEND=${forced || '(default)'} is deprecated. Falling back to sqlite.`);
-  return 'sqlite';
+  if (!forced) return 'sqlite';
+  // Unrecognized non-empty value: fail loudly instead of silently booting
+  // sqlite — a typo would otherwise shadow the operator's intended backend.
+  throw new Error(
+    `Invalid WEA_STORAGE_BACKEND='${process.env.WEA_STORAGE_BACKEND}'. Valid values: 'sqlite', 'postgresql'.`
+  );
 }
 
 function isSqliteBackend() {
@@ -39,11 +43,9 @@ function resolvePgConfig() {
   ];
   const missing = requiredKeys.filter((key) => !process.env[key]);
   if (missing.length > 0) {
-    throw createError(
-      SERVER_ERROR_CODES.storage.postgresqlNotConfigured,
-      500,
-      { missing: missing.join(',') }
-    );
+    throw createError(SERVER_ERROR_CODES.storage.postgresqlNotConfigured, 500, {
+      missing: missing.join(','),
+    });
   }
 
   return {
@@ -65,11 +67,9 @@ function getPgPool() {
   try {
     ({ Pool } = require('pg'));
   } catch (error) {
-    throw createError(
-      SERVER_ERROR_CODES.storage.postgresqlNotConfigured,
-      500,
-      { reason: 'pg_module_missing' }
-    );
+    throw createError(SERVER_ERROR_CODES.storage.postgresqlNotConfigured, 500, {
+      reason: 'pg_module_missing',
+    });
   }
 
   pgPool = new Pool(resolvePgConfig());
@@ -79,6 +79,12 @@ function getPgPool() {
     // unhandled and crashes the process.
     // eslint-disable-next-line no-console
     console.error('Unexpected error on idle PostgreSQL client:', err.message);
+    const { getBackendHealth } = require('../infrastructure/backendHealth');
+    getBackendHealth().report('postgresql', {
+      ok: false,
+      code: 'unreachable',
+      reason: err.message,
+    });
   });
   return pgPool;
 }
@@ -102,7 +108,11 @@ function getSqliteConnection() {
   }
 
   if (sqliteDb) {
-    try { sqliteDb.close(); } catch { /* ignore */ }
+    try {
+      sqliteDb.close();
+    } catch {
+      /* ignore */
+    }
     sqliteDb = null;
   }
 
@@ -110,11 +120,9 @@ function getSqliteConnection() {
   try {
     sqlite3 = require('sqlite3').verbose();
   } catch (error) {
-    throw createError(
-      SERVER_ERROR_CODES.storage.postgresqlNotConfigured,
-      500,
-      { reason: 'sqlite3_module_missing' }
-    );
+    throw createError(SERVER_ERROR_CODES.storage.postgresqlNotConfigured, 500, {
+      reason: 'sqlite3_module_missing',
+    });
   }
 
   const dir = path.dirname(dbPath);
@@ -168,29 +176,42 @@ function sqliteRun(sql, params = []) {
   });
 }
 
+// node-sqlite3's db.serialize() only covers the synchronous portion of an async
+// callback, so two concurrent withSqliteTransaction() calls can interleave
+// BEGIN/COMMIT and fail with "cannot start a transaction within a transaction".
+// Serializing whole transactions on a single promise chain keeps them atomic
+// (single-connection assumption; see getSqliteConnection). getSqliteConnection()
+// is re-resolved per transaction so a queued transaction never uses a stale
+// (closed or re-pointed) handle across test suites.
+let sqliteTransactionQueue = Promise.resolve();
+
 async function withSqliteTransaction(callback) {
-  const db = getSqliteConnection();
-  return new Promise((resolve, reject) => {
-    db.serialize(async () => {
+  const run = async () => {
+    await sqliteRun('BEGIN');
+    try {
+      const client = {
+        query: (sql, params = []) => sqliteQuery(sql, params),
+        release: () => {},
+      };
+      const result = await callback(client);
+      await sqliteRun('COMMIT');
+      return result;
+    } catch (error) {
       try {
-        await sqliteRun('BEGIN');
-        const client = {
-          query: (sql, params = []) => sqliteQuery(sql, params),
-          release: () => {},
-        };
-        const result = await callback(client);
-        await sqliteRun('COMMIT');
-        resolve(result);
-      } catch (error) {
-        try {
-          await sqliteRun('ROLLBACK');
-        } catch {
-          // ignore rollback errors and surface the original failure
-        }
-        reject(mapDatabaseError(error));
+        await sqliteRun('ROLLBACK');
+      } catch {
+        // ignore rollback errors and surface the original failure
       }
-    });
-  });
+      throw mapDatabaseError(error);
+    }
+  };
+
+  const result = sqliteTransactionQueue.then(run, run);
+  sqliteTransactionQueue = result.then(
+    () => {},
+    () => {}
+  );
+  return result;
 }
 
 async function withTransaction(callback) {
@@ -199,8 +220,17 @@ async function withTransaction(callback) {
   try {
     client = await pool.connect();
   } catch (error) {
+    const { getBackendHealth } = require('../infrastructure/backendHealth');
+    getBackendHealth().report('postgresql', {
+      ok: false,
+      code: 'unreachable',
+      reason: error.message,
+    });
     throw mapDatabaseError(error);
   }
+
+  const { getBackendHealth } = require('../infrastructure/backendHealth');
+  getBackendHealth().report('postgresql', { ok: true });
 
   try {
     await client.query('BEGIN');

@@ -3,11 +3,7 @@
  * @see docs/api.md, docs/spec/server/routes/users.md
  */
 const request = require('supertest');
-const {
-  createTestDatabase,
-  createAuthenticatedTestUser,
-  createTestUser,
-} = require('../../../../test-utils');
+const { createTestDatabase, createAuthenticatedTestUser } = require('../../../../test-utils');
 
 let app;
 let dbCleanup;
@@ -34,9 +30,7 @@ describe('GET /api/users', () => {
       username: `users-list-${Date.now()}`,
     });
 
-    const res = await request(app)
-      .get('/api/users')
-      .set('Authorization', `Bearer ${token}`);
+    const res = await request(app).get('/api/users').set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
@@ -94,9 +88,7 @@ describe('GET /api/users/:id', () => {
       username: `users-get2-${Date.now()}`,
     });
 
-    const res = await request(app)
-      .get('/api/users/999999')
-      .set('Authorization', `Bearer ${token}`);
+    const res = await request(app).get('/api/users/999999').set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(404);
     expect(res.body.errorCode).toBeDefined();
@@ -105,9 +97,7 @@ describe('GET /api/users/:id', () => {
 
 describe('PUT /api/users/:id/password', () => {
   it('returns 401 when not authenticated', async () => {
-    const res = await request(app)
-      .put('/api/users/1/password')
-      .send({ password: 'newpass123' });
+    const res = await request(app).put('/api/users/1/password').send({ password: 'newpass123' });
     expect(res.status).toBe(401);
   });
 
@@ -153,9 +143,7 @@ describe('PUT /api/users/:id/password', () => {
       .send({ password: 'newpassword456' });
     expect(putRes.status).toBe(200);
 
-    const meRes = await request(app)
-      .get('/api/auth/me')
-      .set('Authorization', `Bearer ${token}`);
+    const meRes = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`);
     expect(meRes.status).toBe(401);
     expect(meRes.body.errorCode).toBeDefined();
   });
@@ -163,9 +151,7 @@ describe('PUT /api/users/:id/password', () => {
 
 describe('PUT /api/users/:id/email', () => {
   it('returns 401 when not authenticated', async () => {
-    const res = await request(app)
-      .put('/api/users/1/email')
-      .send({ email: 'new@example.com' });
+    const res = await request(app).put('/api/users/1/email').send({ email: 'new@example.com' });
     expect(res.status).toBe(401);
   });
 

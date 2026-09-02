@@ -42,11 +42,7 @@ describe('ShareFolderTree', () => {
 
   it('returns null when node is missing', () => {
     const { container } = renderWithProviders(
-      <ShareFolderTree
-        {...defaultProps}
-        rootNodeId={999}
-        folderTree={new Map()}
-      />
+      <ShareFolderTree {...defaultProps} rootNodeId={999} folderTree={new Map()} />
     );
     expect(container.firstChild).toBeNull();
   });
@@ -64,12 +60,7 @@ describe('ShareFolderTree', () => {
   });
 
   it('shows children when expanded', () => {
-    renderWithProviders(
-      <ShareFolderTree
-        {...defaultProps}
-        expandedNodeIds={new Set([1])}
-      />
-    );
+    renderWithProviders(<ShareFolderTree {...defaultProps} expandedNodeIds={new Set([1])} />);
     expect(screen.getByText('sub')).toBeInTheDocument();
   });
 

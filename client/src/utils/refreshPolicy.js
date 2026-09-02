@@ -33,4 +33,3 @@ export const shouldRefreshAfterOperation = ({
 
   return current === started;
 };
-

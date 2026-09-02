@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                                                         |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | DDL discovery + PostgreSQL→SQLite conversion for SQLite schema initialization. Reads `ddl/*.sql` files via directory listing, converts PostgreSQL types to SQLite equivalents, and executes against better-sqlite3. |
 
 ---
@@ -17,14 +17,15 @@
 
 ### 2.2 Main Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| initSqliteSchema | () => Promise\<void\> | DDL discovery via `fs.readdir`, type conversion, execute against SQLite DB. Reads DB handle internally via `storage.getSqliteConnection()`. |
-| convertPostgresToSqlite | (ddl) => string | Convert PostgreSQL DDL to SQLite-compatible SQL |
+| Method                  | Signature             | Description                                                                                                                                 |
+| ----------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| initSqliteSchema        | () => Promise\<void\> | DDL discovery via `fs.readdir`, type conversion, execute against SQLite DB. Reads DB handle internally via `storage.getSqliteConnection()`. |
+| convertPostgresToSqlite | (ddl) => string       | Convert PostgreSQL DDL to SQLite-compatible SQL                                                                                             |
 
 ### 2.3 Type Conversions (`convertPostgresToSqlite`)
 
 Applied in order:
+
 1. `BEGIN;` / `COMMIT;` → stripped (removed)
 2. `BIGSERIAL PRIMARY KEY` → `INTEGER PRIMARY KEY AUTOINCREMENT`
 3. Standalone `BIGSERIAL` → `INTEGER PRIMARY KEY AUTOINCREMENT`
@@ -37,6 +38,7 @@ Applied in order:
 10. `DEFAULT TRUE` → `DEFAULT 1`
 
 Pass-through (no conversion needed):
+
 - `CHECK` constraints — SQLite supports them natively
 - Partial indexes (`WHERE ...`) — SQLite 3.9.0+ supports them
 - Self-referencing FKs — inline syntax works on both backends

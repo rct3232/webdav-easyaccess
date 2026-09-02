@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                             |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Pure helper that normalizes shared-permission results into the folder models and permission-path context consumed by `useFolderPicker`. |
 
 ---
@@ -17,8 +17,8 @@
 
 ### 2.2 Function Signatures
 
-| Function | (input) => return |
-|----------|-------------------|
+| Function                        | (input) => return                                                                  |
+| ------------------------------- | ---------------------------------------------------------------------------------- |
 | `deriveFolderPickerSharedState` | `({ permissions }) => { sharedPermissionPaths, sharedFolders, sharedFolderRoots }` |
 
 ### 2.3 Dependencies

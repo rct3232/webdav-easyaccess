@@ -28,6 +28,7 @@
 - **Problem:** `WIZARD_WRITABLE_KEYS` still lists metadata T0 keys (`WEA_STORAGE_BACKEND`, `WEA_PG_*`) and `ADMIN_DEFAULT_PASSWORD` even though `setupCore.applySetup` never emits them (`partitionEntries` excludes `METADATA_T0_KEYS`; only `JWT_SECRET` + auto-generated `encrypt_secret_key` reach `.env`). Non-behavioral latent mismatch; the stale state is pinned by a test.
 - **Fix:** drop the metadata T0 rows and `ADMIN_DEFAULT_PASSWORD` from the allowlist; update the `envFileWriter.test.js:149-155` assertion and the module comment to match `docs/spec/server/routes/setup.md` ("only JWT_SECRET + encrypt_secret_key written").
 - **Priority:** low (cleanliness).
+- **Status:** RESOLVED (2026-09-02) — implemented; commit `1b7f19d` (+ merge).
 
 ### C-2 — Remove dead `fileService` permission wrappers
 - **File:** `client/src/services/fileService.js:534-557` (+ `:560` re-export)
@@ -46,8 +47,8 @@
 ### C-4 — `setup.test.js` PostgreSQL gating (decision: option B)
 - **File:** `server/domains/setup/__tests__/setup.test.js`
 - **Problem:** under `npm run test:ci:pg` the suite fails 44/44 with `TypeError: Pool is not a constructor` — its `jest.mock('pg', () => ({ Client: jest.fn() }))` (line 22) lacks `Pool`, and `createTestDatabase → initMetadataStore → applyPendingMigrations('postgresql') → storage.getPgPool()` reaches `new Pool(...)` when the backend env is `postgresql`.
-- **Decision (made):** **option B** — make the suite self-declare SQLite-only: gate the PG-touching metadata-store path (e.g. `describe.skipIf` for the PG backend run) consistent with existing per-suite backend gating.
-- **Status:** DECIDED — scheduled for the next iteration, not part of the 2026-09-02 wave.
+- **Decision (made):** **option B** — make the suite self-declare SQLite-only: gate the PG-touching metadata-store path for the PG backend run, consistent with per-suite backend gating.
+- **Status:** RESOLVED (2026-09-02) — implemented; commit `81d1980` (+ merge). SQLite-only gating via `describe.skip` binding (`describeIfSqlite`) on all six top-level groups + guarded top-level bootstrap.
 
 ### M-1 — cosmetic cleanup (optional)
 - `explorerGateway.js` `removeRecentFile` internal parameter was literally named `path` although the contract is nodeId (docs already aligned).
@@ -102,6 +103,12 @@
 - **C-2 (dead wrappers):** removed 5 `fileService` permission wrappers + `listFilePermissions` re-export + now-unused `permissionService` import; dropped matching keys from `createFileServiceMock` and the `permissionService` jest.mock in `fileService.test.js`; spec `fileService.md` note removed. Commits `a8fe71d` (docs), `c0da498` (refactor), merge `f5bf2b7`.
 - **M-1 (param rename):** `removeExplorerRecentFile` internal parameter renamed `path` → `nodeId`. Commit `af65924`.
 - **Verification:** full client `test:ci` green after each merge (156 suites / 1401 tests); `refreshPolicy` coverage 100%.
+
+### 2026-09-02 — Wave 2 implementation (C-1, C-4)
+
+- **C-1 (envFileWriter allowlist):** dropped the never-written metadata-backend T0 keys (`WEA_STORAGE_BACKEND`, `WEA_PG_*`) and `ADMIN_DEFAULT_PASSWORD` from `WIZARD_WRITABLE_KEYS`, rewrote the module comment (retired `PLAN.md` reference) and the allowlist test to assert the removed keys stay absent; swapped test fixtures to the still-allowlisted `WEA_FILE_STORAGE`. Commit `1b7f19d` (+ merge).
+- **C-4 (setup suite PG gating):** suite self-declares SQLite-only under `test:ci:pg` (`WEA_STORAGE_BACKEND=postgresql`): all six top-level `describe` groups bound to `describe.skip` and the top-level `beforeAll`/`afterAll` DB bootstrap early-returns, so the mocked `pg` (no `Pool`) is never reached. Verified: PG-override run reports the suite skipped, default sqlite run 51/51 passes. Commit `81d1980` (+ merge).
+- **Verification:** full server `test:ci` green after each merge (87 suites / 1658 passed, 5 skipped); eslint clean.
 
 ### Historical completed improvement backlog (pre-2026-09-02)
 

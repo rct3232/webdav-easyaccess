@@ -47,7 +47,7 @@ CREATE TABLE _schema_migrations (
 ### 2.5 Key Properties
 
 - **Idempotent**: Running twice produces no changes (second run detects all files as already applied)
-- **Checksum tracking**: Each file's SHA-256 is recorded; modified DDL files can be detected in future phases
+- **Checksum tracking**: Each file's SHA-256 is recorded; detecting modified DDL files is tracked in `docs/IMPROVEMENT_PLAN.md`
 - **Called at startup**: `applyPendingMigrations('postgresql')` is invoked from `server/store/bootstrap.js` `initMetadataStore()` for the non-SQLite branch, before `ensureDefaultAdmin()`. The SQLite path is unchanged and uses `initSqliteSchema()` (converter-based) instead — `applyPendingMigrations('sqlite')` is exercised only by its unit tests.
 
 ### 2.6 Dependencies

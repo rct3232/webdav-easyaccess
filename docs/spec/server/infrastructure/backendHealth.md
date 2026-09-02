@@ -5,7 +5,7 @@
 | Item            | Description                                                                                                                                                                                                                                                                                                              |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Role            | In-memory per-backend health tracker for `postgresql`, `s3`, `webdav`. Passive, event-based (D2): callers report success/failure; the tracker records state, fires a transition callback only on `OK→FAIL` / `FAIL→OK`, and serves a snapshot for the admin card/banner and public status. State resets on restart (D4). |
-| Source of truth | `docs/features/backend-health.md`, `PLAN.md` Phase B (B1, D2–D4)                                                                                                                                                                                                                                                         |
+| Source of truth | `docs/features/backend-health.md` (decisions B1, D2–D4)                                                                                                                                                                                                                                                         |
 
 ---
 

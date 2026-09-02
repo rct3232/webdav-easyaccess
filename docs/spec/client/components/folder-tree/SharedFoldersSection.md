@@ -19,7 +19,7 @@
 
 ### 2.2 Props
 
-> **Phase 4 nodeId end-state:** shared-folder items are keyed and navigated by nodeId (the permissions API already returns nodeId). The section header selection on the `/__shared__` virtual-root route is unchanged (decision D1 keeps virtual roots path-based).
+> Shared-folder items are keyed and navigated by nodeId (the permissions API returns nodeId). The section header selection on the `/__shared__` virtual-root route is path-based (decision D1 keeps virtual roots path-based).
 
 | Name                  | Type     | Required | Default | Description                                                                                   |
 | --------------------- | -------- | -------- | ------- | --------------------------------------------------------------------------------------------- |
@@ -58,7 +58,7 @@
 ### 2.6 Conditional Rendering
 
 - Returns null when user?.is_admin or sharedFolders.length === 0
-- Section header selected on the `/__shared__` virtual-root route (unchanged per D1)
+- Section header selected on the `/__shared__` virtual-root route (path-based per D1)
 - Collapse for children
 
 ### 2.7 Verification Scenarios

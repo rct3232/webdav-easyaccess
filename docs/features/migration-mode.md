@@ -6,8 +6,9 @@ metadata DB migration flow (F1), the blob migration cutover flow (F2), the auto-
 destination config, the ".env setup needed" banner, the S3 boot probe, and the manual env
 cutover contract.
 
-Working plan with decisions D1–D14 and progress log: `PLAN.md` (root,
-`feature/migration-mode`).
+Working decisions D1–D14 are recorded in this document ([Decisions summary
+(D1–D14)](#decisions-summary-d1d14)); the feature's progress log lives in the repository's
+commit history (`git log`).
 
 Detailed implementation contracts live in:
 
@@ -91,7 +92,7 @@ A gating middleware installed in `server/index.js` (see
 'migrationInProgress', ... }` **except** the allow-list:
   - `GET /api/health` — liveness stays open.
   - `POST /api/auth/login` — authentication stays open so the operator can reach `/migration`
-    after a session expiry. _(PLAN D3 refers to this as the admin login; the real route is
+    after a session expiry. _(Decision D3 lists this as the admin login; the real route is
     `POST /api/auth/login`, mounted from `server/domains/auth/routes.js`.)_
   - `/api/admin/migration/*` — the admin migration API (start/cancel/poll, target-scan) stays
     open so a running migration can be observed and cancelled.
@@ -336,10 +337,4 @@ Representative observable behaviors to cover:
 
 ## Future work
 
-- **Separate admin/operator app (recorded, not planned):** admin settings, `/setup`, and
-  `/migration` could be extracted into a dedicated operator build served under its own route
-  (e.g. `/admin`) and gated at the document-serving boundary (cookie auth). It would remove the
-  "operator page shell loads but its API is 403" cosmetic surface, but requires an auth-cookie
-  refactor and does NOT change the two bootstrap windows (`/setup` runs before any admin
-  exists; `/migration` must be reachable before login) — those are closed by the loopback-only
-  setup binding and the role-aware maintenance split described above.
+Future admin/operator app split — tracked in `docs/IMPROVEMENT_PLAN.md`.

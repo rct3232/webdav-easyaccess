@@ -5,7 +5,7 @@
 | Item   | Description                                                                                                                                                                                                                                                                                                                                      |
 | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Role   | Thumbnail generation for images (sharp) and videos (ffmpeg). Token-based URL, cache. All APIs keyed by `fileNodeId`.                                                                                                                                                                                                                             |
-| Status | **Phase 2 relocated** — Logic moved to `domains/thumbnails/services/`. This file retained for backward compatibility only. **Phase 4 nodeId migration** (target contract, pending implementation in S1) — cache/hash/token/batch keyed by `fileNodeId`; blob bytes fetched via `blobStorageService.downloadBlob(nodeId)` instead of webdav path. |
+| Status | **Phase 2 relocated** — Logic moved to `domains/thumbnails/services/` (`server/utils/thumbnail.js` and `server/routes/thumbnails.js` deleted). **Phase 4 nodeId migration** — **implemented**: cache/hash/token/batch are keyed by `fileNodeId`; blob bytes are fetched via `blobStorageService.downloadBlob(nodeId)`. |
 
 ---
 

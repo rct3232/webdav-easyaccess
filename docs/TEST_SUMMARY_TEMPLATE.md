@@ -2,7 +2,7 @@
 
 ## Overview
 
-Brief summary of the test implementation for the {client|server} application. All tests follow **black-box testing**: assertions focus on observable outcomes (return values, UI, API responses), not implementation details. See [docs/TESTING_STRATEGY.md](TESTING_STRATEGY.md) and [.cursor/rules/testing-principles.mdc](../.cursor/rules/testing-principles.mdc).
+Brief summary of the test implementation for the {client|server} application. All tests follow **black-box testing**: assertions focus on observable outcomes (return values, UI, API responses), not implementation details. See [docs/TESTING_STRATEGY.md](TESTING_STRATEGY.md).
 
 ## Test Statistics
 

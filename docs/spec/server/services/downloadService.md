@@ -4,7 +4,7 @@
 
 | Item | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role | nodeId-based multi-file ZIP download with async permission checks per file. Replaces path-based `downloadService.js` where paths are resolved to nodeIds before entering service. No direct WebDAV or S3 calls; all blob retrieval goes through `blobStorageService`. Assembles streaming ZIP archive via archiver library, tracks progress through operationProgress store, and returns structured error entries for files that fail permission checks or blob retrieval. |
+| Role | nodeId-based multi-file ZIP download with async permission checks per file. Replaces path-based `downloadService.js` where paths are resolved to nodeIds before entering service. No direct WebDAV or S3 calls; all blob retrieval goes through `blobStorageService`. Assembles streaming ZIP archive via archiver library, tracks live progress in a service-local in-memory Map (the route records the terminal state on the operationProgress store), and returns structured error entries for files that fail permission checks or blob retrieval. |
 
 ---
 
@@ -21,7 +21,7 @@
 | --------------------------------- | ------------------------------------------------------------------------------------- | ------------------ |
 | Factory (`createDownloadService`) | Implemented — accepts `{ fileNodeService, blobStorageService, aclService }`           | Task W4.1 (Wave 4) |
 | `downloadMultiple`                | Implemented — uses `aclService.checkFilePermission` per file via `Promise.allSettled` | Wave 4             |
-| `getDownloadProgress`             | Spec'd — in-memory Map with TTL; Redis upgrade path documented                        | Future             |
+| `getDownloadProgress`             | Implemented — service-local in-memory Map (no TTL); exposed via `GET /api/files/download-progress/:id` (preview.js:226-242) | Wave 4             |
 
 ### 2.3 Factory Function Signature
 
@@ -65,13 +65,13 @@ Assembles a ZIP archive from multiple file node IDs with per-file async permissi
 
 #### `getDownloadProgress(downloadId)`
 
-Reads progress state for a given download operation from the in-memory Map (or future Redis-backed operationProgress store).
+Reads progress state for a given download operation from the service's local in-memory Map (`progressStore`, created per `createDownloadService` instance — downloadService.js:14).
 
 | Param      | Type   | Required | Description                         |
 | ---------- | ------ | -------- | ----------------------------------- |
 | downloadId | string | yes      | UUID returned by `downloadMultiple` |
 
-**Returns:** `{ completed: number, total: number, percentage: number } \| null — returns null for expired or unknown downloadId.
+**Returns:** `{ completed: number, total: number, percentage: number } \| null — returns null for an unknown downloadId. No TTL-based expiry is implemented on the service-local Map.
 
 ### 2.4 Dependencies
 
@@ -102,15 +102,14 @@ The streaming approach ensures memory usage remains bounded regardless of total 
 
 ## 5. Progress Tracking
 
-Progress entries are written to the operationProgress store keyed by `downloadId`. The store uses an in-memory Map for initial implementation with a path to Redis-backed storage for horizontal scaling.
+Live progress lives in the **service's local in-memory Map** (`progressStore`, downloadService.js:14) keyed by `downloadId`, holding `{ completed, total, percentage }`:
+- **Initialize:** `progressStore.set(downloadId, { completed: 0, total, percentage: 0 })` before ZIP assembly begins.
+- **Update per file:** after each file, `{ completed: n+1, total, percentage: ((n+1)/total)*100 }`.
+- **Finalize:** `{ completed: successCount, total: totalFiles, percentage: 100 }` (guarded against `total: 0`).
 
-| Operation       | Method                                                                                      | Description                               |
-| --------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| Initialize      | `setDownloadProgress(downloadId, { completed: 0, total, percentage: 0 })`                   | Written before ZIP assembly begins        |
-| Update per file | `setDownloadProgress(downloadId, { completed: n+1, total, percentage: ((n+1)/total)*100 })` | Written after each successful file append |
-| Finalize        | `setDownloadProgress(downloadId, { completed: total, total, percentage: 100 })`             | Written when archiver finalizes           |
+The route additionally records the **terminal state** on the operationProgress store when the archive completes or errors (`opStore.setDownloadProgress(downloadId, { status: 'completed' | 'error', progress, total, current, zipName })`, preview.js:198-217) and schedules its cleanup (`opStore.cleanupDownloadProgress(downloadId)`, 5-minute TTL — preview.js:219).
 
-The progress is pollable via a separate GET endpoint consuming `getDownloadProgress(downloadId)`. TTL-based cleanup removes expired entries after download completion to prevent unbounded memory growth in the in-memory Map implementation.
+The progress is pollable via `GET /api/files/download-progress/:id`, which reads the service-local Map through `getDownloadProgress(downloadId)` (preview.js:226-242). TTL-based expiry is not implemented on the service-local Map. Redis-backed operationProgress scaling is tracked in `docs/IMPROVEMENT_PLAN.md`.
 
 ---
 
@@ -123,8 +122,7 @@ The progress is pollable via a separate GET endpoint consuming `getDownloadProgr
 | blob download fails for a nodeId (blobStorageService returns null or throws) | Recorded as `{ nodeId, reason: 'blob_error', detail: <error message> }` — assembly continues with remaining files                                                                                                                                                                                                                                                                                                                                      |
 | Permission denied for all nodeIds                                            | Returns 403 response immediately; no ZIP archive initialized                                                                                                                                                                                                                                                                                                                                                                                           |
 | Permission denied for subset of nodeIds                                      | Denied files excluded with error entries; ZIP assembled from permitted files only                                                                                                                                                                                                                                                                                                                                                                      |
-| Unknown downloadId in `getDownloadProgress`                                  | Returns null (no throw)                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| Expired downloadId in progress store                                         | Returns null after TTL expiration                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Unknown downloadId in `getDownloadProgress`                                  | Returns null (no throw). The service-local Map does not TTL-expire; the operationProgress terminal record is removed by the route's `cleanupDownloadProgress` timer (5-minute TTL, preview.js:219)                                                                                                                                                             |
 
 ---
 

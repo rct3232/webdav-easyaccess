@@ -36,6 +36,7 @@
 - **Auto-save:** Registration toggle calls `adminService.updateSettings` on change; show hidden files persists to localStorage on change; cleanup actions run on confirm.
 - **Advanced settings accordion:** Below the migration row, an MUI Accordion titled `admin.advancedSettings` renders `<SystemConfigEditor active={expanded} onSnackbar={...} />`. The config is fetched lazily on first expand (see `SystemConfigEditor.md`).
 - **Backend-health status card (D3):** At the top of the page (above the key-lost warning) an Alert/card renders `GET /api/admin/health` (`adminService.getAdminHealth()`). It is shown **only when an in-use backend is failing** and lists **only the failing in-use backends** — name + `admin.health.fail` label + classification hint/code + last-checked. Healthy/unknown backends and **inactive backends** (active set derived from the effective config: `WEA_STORAGE_BACKEND` for metadata + `WEA_FILE_STORAGE` for file storage) are never listed. `data-testid="backend-health-card"`.
+- **Key-lost warning:** Below the backend-health card, an Alert (`severity="warning"`, `data-testid="key-lost-warning"`) renders when `adminService.getConfigStatus()` (`GET /api/admin/config`) returns a truthy `key_lost_warning`. It shows the `admin.keyLostWarning` title and the `admin.keyLostWarningDetail` body. Server/feature contract: `docs/features/config-source-resolution.md` (F6) and `docs/spec/server/routes/config.md`.
 - **Success feedback:** Registration toggle, show hidden files toggle, data cleanup, and permission cleanup each show a success toast (Snackbar) when the action completes without error. The config editor reuses the same page-level Snackbar via `onSnackbar`.
 
 ### 2.5 i18n Keys
@@ -50,6 +51,7 @@
 - `admin.runCleanup`, `admin.run`
 - `common.cancel`
 - `admin.settingsLoadFail`, `admin.registrationSaveSuccess`, `admin.showHiddenFilesSaveSuccess`, `admin.settingsSaveFail`
+- `admin.keyLostWarning`, `admin.keyLostWarningDetail`
 - `admin.noDataToClean`, `admin.cleanupDone`, `admin.cleanupDonePartial`, `admin.orphanCleanupFail`
 - `admin.noPermissionToFix`, `admin.permissionCleanupDone`, `admin.permissionCleanupDonePartial`, `admin.permissionCleanupFail`
 
@@ -60,6 +62,7 @@
 - Data cleanup button with confirm dialog.
 - Permission cleanup button with confirm dialog.
 - Advanced settings Accordion (collapsed by default; config fetched on expand).
+- Backend-health card and key-lost warning Alert render above the settings rows, each only when its condition holds (failing in-use backend / `key_lost_warning`).
 - Snackbar for feedback.
 
 ### 2.7 Verification Scenarios
@@ -69,6 +72,9 @@
 - [x] Toggle show hidden files persists to localStorage
 - [x] Data cleanup shows confirm dialog and runs on confirm
 - [x] Permission cleanup shows confirm dialog and runs on confirm
+- [x] Backend-health card renders only when an in-use backend is failing and lists only the failing in-use backends
+- [x] Key-lost warning renders when `getConfigStatus()` returns `key_lost_warning` and is hidden otherwise
+- [x] Advanced settings accordion fetches config lazily on expand
 
 ### 2.8 Edge Cases
 

@@ -5,9 +5,6 @@ the two-layer configuration model, the source precedence rules, the tier (T0/T1/
 the DB storage and secret-encryption design, the wizard apply changes, the boot order, the
 setup-completeness rules against the effective config, and the admin "Advanced settings" UI.
 
-Working plan with decisions D1–D11, resolved questions, and progress log:
-`PLAN.md` (root, `feature/config-source-resolution`).
-
 Detailed implementation contracts live in:
 
 - `docs/spec/server/routes/config.md` — `GET /api/admin/config`, `PUT /api/admin/config`.
@@ -22,9 +19,9 @@ Detailed implementation contracts live in:
 
 ## Overview
 
-Today the app reads **all** configuration from `process.env` at require time
-(`server/index.js:10-18`), and the first-run wizard persists everything to `.env`. This feature
-moves the configuration surface to a two-layer model:
+Today the app reads configuration from `process.env` at require time
+(`server/index.js:10-18`) plus the metadata DB `settings` table, and the first-run wizard
+persists values across both layers. This feature describes the two-layer model in detail:
 
 1. **T0 (startup) — `.env` only:** just enough to connect to the metadata DB
    (`WEA_STORAGE_BACKEND`, `WEA_PG_*` / `WEA_SQLITE_PATH`, `NODE_ENV`,
@@ -46,8 +43,9 @@ connection before the metadata DB exists.
 
 - A value present in `.env` **always wins**; the DB copy is read only when the env var is
   absent. For encrypted secrets, an env value means "do not even decrypt".
-- The DB copy can therefore become stale relative to `.env`; reconciling them (alert + sync
-  feature) is explicitly future scope (D9).
+- The DB copy can therefore become stale relative to `.env`; no env-vs-DB sync/alert tool is
+  implemented today (only the `updated_at` column exists to detect such drift) — the sync/alert
+  feature is tracked in `docs/IMPROVEMENT_PLAN.md`.
 
 ---
 
@@ -113,7 +111,8 @@ CREATE TABLE IF NOT EXISTS settings (
   - encrypted secret (D6/D8) → object
     `{ "enc": "aes-256-gcm", "iv": "<b64>", "tag": "<b64>", "data": "<b64>" }`
 - Tier / source / restart-required are derived at runtime from the registry, never stored.
-- `updated_at` is already available for the future env-vs-DB sync/alert feature (D9).
+- `updated_at` exists now; the env-vs-DB sync/alert feature it would serve is tracked in
+  `docs/IMPROVEMENT_PLAN.md`.
 
 ---
 
@@ -133,8 +132,8 @@ CREATE TABLE IF NOT EXISTS settings (
      decrypted/prefilled.
   3. **only re-encrypt on new value** — a masked (unchanged) secret keeps its existing
      ciphertext; a new value is the only trigger to encrypt with the current key.
-- Rotation: changing `encrypt_secret_key` requires re-encrypting all DB secrets (future
-  tooling; documented).
+- Rotation: changing `encrypt_secret_key` requires re-encrypting all DB secrets; no rotation
+  tooling exists today (tracked in `docs/IMPROVEMENT_PLAN.md`).
 - Exposure model: a DB backup leak exposes ciphertext only; plaintext requires both DB and
   `.env` (same class as `JWT_SECRET`).
 
@@ -142,34 +141,31 @@ CREATE TABLE IF NOT EXISTS settings (
 
 ## Wizard apply changes (D3)
 
-Current: apply writes every collected value to `.env` via `envFileWriter`.
-New principle: **apply stores operator-entered values in the DB by default; only T0 keys are
-written to `.env`.**
+Apply (`POST /api/setup/apply`, shared by the wizard and the CLI via
+`server/domains/setup/setupCore.js` `applySetup`) stores operator-entered values in the
+metadata DB by default; only T0 keys are written to `.env`.
 
-- T0 written to `.env`: metadata connection (`WEA_STORAGE_BACKEND`, `WEA_PG_*` /
-  `WEA_SQLITE_PATH`) + generated `encrypt_secret_key` + (non-production) `JWT_SECRET`.
-- All non-T0 blocks (file storage, email, server/CORS, JWT_EXPIRES_IN) upserted into the
-  metadata DB `settings` table; secrets encrypted with `encrypt_secret_key`.
-- Admin password effect: unchanged semantics (sqlite direct update / PG via
-  `ADMIN_DEFAULT_PASSWORD` — T1).
-- **PG case:** apply connects to the target PG with the entered credentials and ensures the
-  `settings` table exists by executing the same idempotent
-  `CREATE TABLE IF NOT EXISTS settings (...)` DDL that mirrors
-  `001_initial_normalized_schema.sql` (comment must state "keep in sync with 001"). The full
-  app schema (`users`, `_schema_migrations`, …) is still created by normal boot migrations on
-  restart — no conflict (IF NOT EXISTS + file-based tracking).
-- **Setup-phase reads are always direct:** during setup the wizard always reads/prefills from
-  the target metadata DB via a direct connection (whether or not `.env` already has the PG
-  connection info). `settingsStore` (the app's own store) is used only after setup completes —
-  runtime T2 reads and the admin config page. No "app's-current-metadata vs target"
-  distinction in the setup phase.
-- **Prefill implementation (Q1b):** at wizard step 1 (metadata), clicking **Next** with
-  `postgresql` issues `POST /api/setup/prefill` carrying the entered credentials; the server
-  reads `SELECT key, value FROM settings` from the **target PG directly** and returns
-  `{ current, key_lost_warning }` (secrets masked, never plaintext) which the client merges
-  into the form via the same `prefillForm` used for `GET /status`. Best-effort — a prefill
-  failure does not block advancing. Full contract: `docs/spec/server/routes/setup.md`
-  (§"POST /api/setup/prefill").
+- **`.env` gets only `JWT_SECRET` (plus a generated `encrypt_secret_key` when no key
+  exists).** The apply payload never produces metadata entries (`buildEnvEntries` emits no
+  `WEA_STORAGE_BACKEND` / `WEA_PG_*` / `WEA_SQLITE_PATH` keys), and `partitionEntries`
+  (`setupCore.js`) additionally drops the `WEA_STORAGE_BACKEND` / `WEA_PG_*` set — the DB
+  connection is `.env`-owned, so apply never writes it.
+- **Metadata backend `postgresql` is rejected with 400 `metadata.backend: notAllowed`**
+  (`validateMetadata` via `validateApplyPayload`, `setupCore.js`) — PostgreSQL metadata is
+  not configurable through the wizard/CLI apply.
+- **All non-T0 values** (file storage, email, server/CORS, `JWT_EXPIRES_IN`) are upserted
+  into the metadata DB `settings` table via the **booted app's own `Settings` store**
+  (`writeSettings`, `setupCore.js`); secrets are AES-256-GCM-encrypted with
+  `encrypt_secret_key`.
+- **Admin password:** apply calls `User.updatePassword` directly on the booted app's `admin`
+  user (`updateAdminPassword`, `setupCore.js`) — there is no `ADMIN_DEFAULT_PASSWORD` path.
+- **Setup-phase prefill is a direct read (wizard-only, Q1b):** during setup the wizard
+  prefill (`POST /api/setup/prefill`) reads the target metadata DB `settings` rows via a
+  **direct connection** using the credentials entered in wizard step 1 and returns
+  `{ current, key_lost_warning }` (secrets masked, never plaintext). It does not use the
+  app's own store; runtime T2 reads and the admin config page use `Settings`/the resolver.
+  Best-effort — a prefill failure does not block advancing. Full contract:
+  `docs/spec/server/routes/setup.md` (§"POST /api/setup/prefill").
 
 ---
 

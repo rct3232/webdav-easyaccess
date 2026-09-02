@@ -17,7 +17,7 @@
 - **Source:** `client/src/components/folder-tree/hooks/useFolderTreeItemController.js`
 - **Test file:** `client/src/components/folder-tree/hooks/__tests__/useFolderTreeItemController.test.js`
 
-> **Phase 4 nodeId end-state:** the controller uses nodeId-first state — `nodeId`, `currentNodeId`, `expandedNodeIds`, `onNodeClick(nodeId)`, `onToggleExpand(nodeId)` — and the drag source writes `text/plain` = `String(nodeId)` (unifying with `useDragAndDrop`). `useDropToUpload` is wired with `nodeId` so `isFolderMode` activates.
+> **NodeId-first controller:** the controller uses nodeId-first state — `nodeId`, `currentNodeId`, `expandedNodeIds`, `onNodeClick(nodeId)`, `onToggleExpand(nodeId)` — and the drag source writes `text/plain` = `String(nodeId)` (unifying with `useDragAndDrop`). `useDropToUpload` is wired with `nodeId` so `isFolderMode` activates.
 
 ### 2.2 Input Parameters
 

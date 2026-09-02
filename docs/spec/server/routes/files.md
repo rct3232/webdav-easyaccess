@@ -47,7 +47,7 @@ The monolithic `server/routes/files.js` was split into domain-bounded modules:
 
 **All endpoints accept `nodeId` exclusively.** Path strings are display-only in responses and are never accepted in request payloads. Response objects include `nodeId` field for every file/folder entry.
 
-**Exception — `POST /resolve-path`:** the sole path-accepting endpoint. It is a legacy-URL/boostrap resolver (deep-link + share-link fallback for nodeId-first navigation) exposing `fileNodeService.resolvePath(path)`. It returns `{ nodeId }` for a resolvable path and 404 `files.notFound` otherwise. No other path-based endpoints may be added (PLAN.md Execution Rule 13).
+**Exception — `POST /resolve-path`:** the sole path-accepting endpoint. It is a legacy-URL/boostrap resolver (deep-link + share-link fallback for nodeId-first navigation) exposing `fileNodeService.resolvePath(path)`. It returns `{ nodeId }` for a resolvable path and 404 `files.notFound` otherwise. No other path-based endpoints may be added (Execution Rule 13).
 
 #### Route Module Mapping (Post-Phase 4)
 
@@ -113,9 +113,9 @@ Route handlers delegate to `fileService` instead of calling WebDAV directly. No 
 
 ### 2.9 folders.js nodeId Contracts
 
-Route module: `domains/files/routes/folders.js` — mounted at `/api/files`. Both endpoints are nodeId-only; no path fallback.
+Route module: `domains/files/routes/folders.js` — mounted at `/api/folders` (`server/index.js:178`), **not** under `/api/files`. Both endpoints are nodeId-only; no path fallback.
 
-#### POST `/create` — Create Directory
+#### POST `/api/folders/create` — Create Directory
 
 **Request Body:** `{ parentNodeId: number, name: string }`
 
@@ -138,7 +138,7 @@ Route module: `domains/files/routes/folders.js` — mounted at `/api/files`. Bot
 5. Resolve display path via `fileNodeService.getNodePath(dir.id)`
 6. Return `{ nodeId: dir.id, name: dir.name, path: display_path }`
 
-#### GET `/stats` — Folder Statistics
+#### GET `/api/folders/stats` — Folder Statistics
 
 **Query Parameter:** `?nodeId=10` (replaces prior `?path=/folder`)
 

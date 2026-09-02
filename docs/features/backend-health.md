@@ -2,7 +2,7 @@
 
 Source-of-Truth for the Phase B feature: operator visibility into DB/S3/WebDAV health,
 connection-key save gating, a k3s-safe boot rule, and wizard scope. Decisions D1–D8
-(finalized 2026-08-31) live in `PLAN.md` (Phase B).
+(finalized 2026-08-31) are recorded in this document.
 
 Detailed contracts:
 

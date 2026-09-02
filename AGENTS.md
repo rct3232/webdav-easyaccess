@@ -17,6 +17,7 @@ This document defines the mandatory workflows and standards for all agents worki
 2. **Read**: Review the identified documents.
 3. **Update**: Modify or add spec/feature docs (`docs/spec/`, `docs/features/`) before implementation.
 4. **Implement**: Proceed to code changes only after docs are updated.
+5. **Track unresolved work in one place**: Unresolved, undecided, or unimplemented items must be recorded only in `docs/IMPROVEMENT_PLAN.md`. Spec/feature docs describe the current implemented/decided state and must not carry planned/future or "pending implementation"/"target contract" statements.
 
 ### 2.2 Branching Convention
 
@@ -65,4 +66,4 @@ This document defines the mandatory workflows and standards for all agents worki
    - **Case A (Source Error)**: Implementation violates spec → **STOP** and ask user.
    - **Case B (Test Error)**: Test misinterprets spec/asserts on internals → **Proceed** to fix test.
    - **Case C (Spec Error)**: Spec is undefined or ambiguous → **STOP** and ask user.
-3. **Recording**: Log the incident in `docs/fail_log.md`.
+3. **Recording**: Log the incident in the "Resolved & RCA log" section of `docs/IMPROVEMENT_PLAN.md`.

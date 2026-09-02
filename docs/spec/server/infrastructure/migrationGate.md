@@ -9,7 +9,7 @@
 | Files      | `server/infrastructure/migrationGate.js` (new)                                                                                                                                                                                                                                                                                                                                            |
 | Test files | `server/infrastructure/__tests__/migrationGate.test.js` (new)                                                                                                                                                                                                                                                                                                                             |
 
-Source of truth: `docs/features/migration-mode.md`, `PLAN.md` (`feature/migration-mode`, D2–D4, D9).
+Source of truth: `docs/features/migration-mode.md` (decisions D2–D4, D9).
 
 ---
 
@@ -86,7 +86,7 @@ While the gate is active, only the following routes proceed:
 | Method + path               | Reason                                                                                                                                                                                                                                |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /api/health`           | Liveness probes stay open.                                                                                                                                                                                                            |
-| `POST /api/auth/login`      | Authentication stays open so the operator can reach `/migration` after a session expiry. _PLAN D3 lists this as the admin login; the real route is `POST /api/auth/login` (`server/domains/auth/routes.js`, mounted at `/api/auth`)._ |
+| `POST /api/auth/login`      | Authentication stays open so the operator can reach `/migration` after a session expiry. _Decision D3 lists this as the admin login; the real route is `POST /api/auth/login` (`server/domains/auth/routes.js`, mounted at `/api/auth`)._ |
 | `/api/admin/migration/*`    | The admin migration API (start/cancel/poll, target-scan) must remain reachable while a migration runs so the operator can observe and cancel it.                                                                                      |
 | `GET /api/migration/status` | The migration-gate status endpoint: unauthenticated callers get `{ active }` only (polled by the app-guard); an authenticated admin gets the full gate state (polled by the `/migration` page).                                       |
 
@@ -103,10 +103,10 @@ prefix rules exactly as above.
   anonymous visitors) cannot learn which migration is running or its job id. `errorCode`/`messageCode` added to
   `shared/serverMessageCodes.js` (or the existing `SERVER_ERROR_CODES` group used by the admin
   migration routes). `retryAfter` is not sent.
-- **WebDAV protocol coverage:** because the middleware is app-level, the WebDAV file-domain
-  routes (`/api/files/*`, `/api/folders/*`, `/api/thumbnails/*`, ...) return `503` while the gate
-  is active — the running app cannot read/write the WebDAV backend during a migration. Any future
-  raw-WebDAV protocol mount must also be placed behind the gate so external clients are blocked.
+- **WebDAV protocol coverage:** because the middleware is app-level, the file-domain routes
+  (`/api/files/*`, `/api/folders/*`, `/api/thumbnails/*`, ...) — through which the app accesses
+  its blob backend during normal operation — return `503` while the gate is active. Gating a
+  future raw-WebDAV protocol mount is tracked in `docs/IMPROVEMENT_PLAN.md`.
 - The client treats `503 migrationInProgress` like the app-guard's force-redirect: any screen
   receiving it is routed by the app-guard (admin → `/migration`, others → `/maintenance`).
 

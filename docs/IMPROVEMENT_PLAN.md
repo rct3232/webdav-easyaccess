@@ -1,6 +1,6 @@
 # Codebase Improvement Plan — Consolidated Open-Item Tracker
 
-> **Updated**: 2026-09-02
+> **Updated**: 2026-09-03
 > **Purpose**: This is the **single tracking document** for every unresolved, undecided, or
 > unimplemented item in the repository.
 >
@@ -18,7 +18,6 @@ Ordered by urgency review (2026-09-02): highest priority first.
 
 | ID | Status | Item | Originating doc (now references here) |
 | -- | ------ | ---- | ------------------------------------- |
-| DEF-1 | DEFERRED | schemaManager checksum-based modified-DDL detection. | `docs/spec/server/infrastructure/schemaManager.md` |
 | DEF-2 | DEFERRED | Test black-box compliance refactor — client + server; audit 2026-09-02 (~155 violations in 12 files). Fragile client mock factories. | see DEF-2 detail below |
 | DEF-3 | DEFERRED | env↔DB sync/alert tool (D9). | `docs/features/config-source-resolution.md` |
 | DEF-4 | DEFERRED | FileManager `useMemo`/`useCallback` performance sprint (MutationObserver already applied). | former improvement-plan backlog (pre-2026-09-02, item #12) |
@@ -130,3 +129,10 @@ consolidation:
 
 The resolved-work log and its provenance commits were removed with the completed items. No
 open items remain outside the DEF list above.
+
+---
+
+### Completion note (2026-09-03)
+
+- DEF-1 (schemaManager checksum-based modified-DDL detection, Option A hard fail) implemented
+  on 2026-09-03 via `feature/checksum-ddl-detection`.

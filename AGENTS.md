@@ -66,4 +66,4 @@ This document defines the mandatory workflows and standards for all agents worki
    - **Case A (Source Error)**: Implementation violates spec → **STOP** and ask user.
    - **Case B (Test Error)**: Test misinterprets spec/asserts on internals → **Proceed** to fix test.
    - **Case C (Spec Error)**: Spec is undefined or ambiguous → **STOP** and ask user.
-3. **Recording**: Log the incident in the "Resolved & RCA log" section of `docs/IMPROVEMENT_PLAN.md`.
+3. **Recording**: Log the incident in `docs/RCA_LOG.md`.

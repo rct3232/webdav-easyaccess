@@ -34,7 +34,7 @@ Current layout is summarized in [client/TEST_SUMMARY.md](../client/TEST_SUMMARY.
 - **Avoid logic-heavy mocks:** Mock factories should primarily return fixed values and simple `jest.fn()` stubs. Avoid re-implementing production branching inside mocks.
 - **Use shared factories for repeated dependencies:** When the same mock shape appears in 3+ files, move it to a shared factory/helper.
 - **Reset policy:** Use `jest.clearAllMocks()` in `beforeEach` by default. Use `jest.resetAllMocks()` only when previous mock implementations must be fully reset. Use `jest.restoreAllMocks()` when spies on real methods are used.
-- **Document decisions in the RCA log:** If a mocking approach causes regressions or infra incompatibility, record the RCA in `docs/IMPROVEMENT_PLAN.md` (Resolved & RCA log section) and update this strategy/spec docs before broad migration.
+- **Document decisions in the RCA log:** If a mocking approach causes regressions or infra incompatibility, record the RCA in `docs/RCA_LOG.md` and update this strategy/spec docs before broad migration.
 
 ### Adapter mock contract fidelity
 
@@ -334,7 +334,7 @@ When a test fails (during development, CI, or when fixing regressions):
    - **B** — Bug in the test itself
    - **C** — Spec/contract mismatch
 3. **Act:** Apply the fix (or update spec) according to the classification. Do not modify code before classifying.
-4. **Record:** Add an entry to [docs/IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md) (Resolved & RCA log section) with date, summary, classification, and action taken.
+4. **Record:** Add an entry to [docs/RCA_LOG.md](RCA_LOG.md) with date, summary, classification, and action taken.
 
 This RCA (Root Cause Analysis) procedure is mandatory. See [AGENTS.md](../AGENTS.md) §3.2 for the full rule.
 

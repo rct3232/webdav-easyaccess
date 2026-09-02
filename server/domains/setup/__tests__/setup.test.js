@@ -5,7 +5,8 @@
  * Builds a minimal express app mounting the setup router directly (T5 will
  * mount it in server/index.js). envFileWriter is mocked so the test can assert
  * exactly which (T0) keys reach .env; the metadata store is a real isolated
- * sqlite DB (createTestDatabase).
+ * sqlite DB (createTestDatabase). SQLite-only: the suite self-skips under
+ * test:ci:pg (RUN_UNDER_PG), where the storage backend is postgresql.
  * @see docs/spec/server/routes/setup.md
  */
 const mockWriteEnv = jest.fn();
@@ -45,6 +46,17 @@ const {
 const { errorHandler } = require('../../../utils/errorHandler');
 const requestLogger = require('../../../middleware/requestLogger');
 const { Client: MockPgClient } = require('pg');
+
+// This suite drives the setup wizard against a real isolated sqlite metadata
+// store (SQLite-only). Under test:ci:pg the storage backend boots as
+// postgresql, where initMetadataStore would reach storage.getPgPool() -> the
+// jest-mocked 'pg' (Client only, no Pool) and throw. So on a PG backend run
+// the whole suite self-declares SQLite-only: every test is skipped and the
+// suite-level DB bootstrap is bypassed.
+const RUN_UNDER_PG = process.env.WEA_STORAGE_BACKEND === 'postgresql';
+
+// Bind describe to skip when the storage backend is postgresql (SQLite-only suite).
+const describeIfSqlite = RUN_UNDER_PG ? describe.skip : describe;
 
 const setupRouter = require('../routes');
 const setupCore = require('../setupCore');
@@ -157,6 +169,8 @@ let dbCleanup;
 let adminUser;
 
 beforeAll(async () => {
+  if (RUN_UNDER_PG) return;
+
   for (const key of WIZARD_ENV_KEYS) SAVED_ENV[key] = process.env[key];
 
   const db = await createTestDatabase();
@@ -168,6 +182,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  if (RUN_UNDER_PG) return;
+
   for (const key of WIZARD_ENV_KEYS) {
     if (SAVED_ENV[key] === undefined) delete process.env[key];
     else process.env[key] = SAVED_ENV[key];
@@ -185,7 +201,7 @@ beforeEach(async () => {
   setupS3HeadBlob(makeNoSuchKeyError());
 });
 
-describe('GET /api/setup/status', () => {
+describeIfSqlite('GET /api/setup/status', () => {
   it('returns incomplete status with missing s3 keys and masked current values', async () => {
     setIncompleteBaseline();
     const res = await request(app).get('/api/setup/status');
@@ -271,7 +287,7 @@ describe('GET /api/setup/status', () => {
   });
 });
 
-describe('POST /api/setup/apply', () => {
+describeIfSqlite('POST /api/setup/apply', () => {
   let settingsSetSpy;
   let invalidateSpy;
 
@@ -631,7 +647,7 @@ describe('POST /api/setup/apply', () => {
   });
 });
 
-describe('POST /api/setup/test', () => {
+describeIfSqlite('POST /api/setup/test', () => {
   it('postgresql: 200 ok:true on a successful connection', async () => {
     const res = await request(app).post('/api/setup/test').send({
       target: 'postgresql',
@@ -1051,7 +1067,7 @@ describe('POST /api/setup/test', () => {
   });
 });
 
-describe('POST /api/setup/prefill', () => {
+describeIfSqlite('POST /api/setup/prefill', () => {
   function setupPgRows(rows) {
     MockPgClient.mockImplementation(() => {
       const client = makePgClient();
@@ -1203,7 +1219,7 @@ describe('POST /api/setup/prefill', () => {
   });
 });
 
-describe('request logger', () => {
+describeIfSqlite('request logger', () => {
   it('logs the apply request without leaking the body', async () => {
     const envPath = makeEnvPath('logger');
     process.env.DOTENV_CONFIG_PATH = envPath;
@@ -1247,7 +1263,7 @@ describe('request logger', () => {
   });
 });
 
-describe('setupCore (shared apply core)', () => {
+describeIfSqlite('setupCore (shared apply core)', () => {
   let settingsSetSpy;
   let invalidateSpy;
 

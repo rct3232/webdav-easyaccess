@@ -3,16 +3,14 @@ import {
   ListObjectsV2Command,
   type ListObjectsV2CommandInput,
   HeadObjectCommand,
-  PutObjectCommand,
   DeleteObjectsCommand,
 } from '@aws-sdk/client-s3';
 
 /**
- * Direct MinIO access for the S3+PostgreSQL E2E scenarios (E2E-S3PG-005/008).
- *
- * These scenarios assert blob-level behavior that is only observable against
- * the object store itself (GC Tier 2 reconciliation), so the spec talks to
- * the seeded bucket directly. Config mirrors `e2e/global-setup.ts`.
+ * Direct MinIO access for E2E scenarios that assert blob-level behavior with
+ * no non-blob observable (e.g. the migration E2E's "no duplicate blobs"
+ * guarantees and its deterministic bucket baseline). Config mirrors
+ * `e2e/global-setup.ts`.
  */
 
 const E2E_S3_ENDPOINT = process.env.S3_ENDPOINT || 'http://127.0.0.1:9010';
@@ -67,11 +65,6 @@ export async function blobExists(key: string): Promise<boolean> {
     if (status === 404) return false;
     throw err;
   }
-}
-
-/** Directly PUT a blob that has no corresponding `object_map` row (E2E-S3PG-008). */
-export async function putBlob(key: string, body: Buffer): Promise<void> {
-  await getS3Client().send(new PutObjectCommand({ Bucket: E2E_S3_BUCKET, Key: key, Body: body }));
 }
 
 /**

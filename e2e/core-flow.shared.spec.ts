@@ -1,12 +1,34 @@
 import { expect, test } from '@playwright/test';
 
-import { TEST_FILES } from './fixtures/test-data';
-import { loginAsAdmin } from './helpers/auth';
+import { TEST_FILES, TEST_USERS } from './fixtures/test-data';
+import { loginAsAdmin, loginAsUser } from './helpers/auth';
 import { breadcrumbChip, openFabAction } from './helpers/explorer';
-import { buildName, fileItem, readTestFileFixture } from './helpers/files';
-import { getSessionToken, gotoFilesPath, resolveNodeId } from './helpers/resolvePath';
+import {
+  buildName,
+  createFolderAt,
+  downloadFile,
+  fileItem,
+  listNodeChildren,
+  readTestFileFixture,
+  uploadFileAt,
+} from './helpers/files';
+import {
+  getSessionToken,
+  gotoFilesPath,
+  resolveNodeId,
+  resolvePathOrNull,
+} from './helpers/resolvePath';
 
 const textFixtureBuffer = readTestFileFixture(TEST_FILES.smallText);
+
+async function loginUserViaApi(request: Parameters<typeof createFolderAt>[0]): Promise<string> {
+  const res = await request.post('/api/auth/login', {
+    data: { username: TEST_USERS.user1.username, password: TEST_USERS.user1.password },
+  });
+  expect(res.ok()).toBeTruthy();
+  const body = await res.json();
+  return body.token as string;
+}
 
 async function createFolder(page: Parameters<typeof openFabAction>[0], folderName: string) {
   await openFabAction(page, 'Create folder');
@@ -81,6 +103,104 @@ test('E2E-EXP-005: Upload file from dialog', async ({ page }, testInfo) => {
   });
 
   await expect(fileItem(page, `/${fileName}`)).toBeVisible();
+});
+
+test('[P0] E2E-EXP-012: Rename a file keeps its content byte-identical', async ({
+  page,
+  request,
+}, testInfo) => {
+  // Ported from E2E-S3PG-002. Backend-agnostic regression net for the rename
+  // re-upload sync path (WebDAV mode re-uploads the blob under the new name).
+  const dirName = buildName(testInfo, 'rename-dir');
+  const oldName = buildName(testInfo, 'rename-old', '.txt');
+  const newName = buildName(testInfo, 'rename-new', '.txt');
+  const dirPath = `/user1/${dirName}`;
+  const oldPath = `${dirPath}/${oldName}`;
+  const newPath = `${dirPath}/${newName}`;
+
+  const token = await loginUserViaApi(request);
+  const homeNodeId = await resolveNodeId(request, token, '/user1');
+  const dirNodeId = await createFolderAt(request, token, homeNodeId, dirName);
+  const fileNodeId = await uploadFileAt(
+    request,
+    token,
+    dirNodeId,
+    oldName,
+    'text/plain',
+    textFixtureBuffer
+  );
+
+  const renameRes = await request.put('/api/files/rename', {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { nodeId: fileNodeId, newName },
+  });
+  expect(renameRes.ok()).toBeTruthy();
+
+  const renamedNodeId = await resolveNodeId(request, token, newPath);
+  expect(renamedNodeId).toBe(fileNodeId);
+  expect(await resolvePathOrNull(request, token, oldPath)).toBeNull();
+
+  const downloaded = await downloadFile(request, token, renamedNodeId);
+  expect(downloaded.equals(textFixtureBuffer)).toBeTruthy();
+
+  await loginAsUser(page, 'user1');
+  await gotoFilesPath(page, request, dirPath);
+  await expect(fileItem(page, newPath)).toBeVisible();
+  await expect(fileItem(page, oldPath)).toHaveCount(0);
+});
+
+test('[P0] E2E-EXP-013: Move a file across folders keeps its content byte-identical', async ({
+  page,
+  request,
+}, testInfo) => {
+  // Ported from E2E-S3PG-003. Backend-agnostic regression net for the move
+  // sync path (old location must not keep serving the file in WebDAV mode).
+  const folderAName = buildName(testInfo, 'move-a');
+  const folderBName = buildName(testInfo, 'move-b');
+  const fileName = buildName(testInfo, 'move-file', '.txt');
+  const folderAPath = `/user1/${folderAName}`;
+  const folderBPath = `/user1/${folderBName}`;
+  const oldFilePath = `${folderAPath}/${fileName}`;
+  const newFilePath = `${folderBPath}/${fileName}`;
+
+  const token = await loginUserViaApi(request);
+  const homeNodeId = await resolveNodeId(request, token, '/user1');
+  const folderANodeId = await createFolderAt(request, token, homeNodeId, folderAName);
+  const folderBNodeId = await createFolderAt(request, token, homeNodeId, folderBName);
+  const fileNodeId = await uploadFileAt(
+    request,
+    token,
+    folderANodeId,
+    fileName,
+    'text/plain',
+    textFixtureBuffer
+  );
+
+  const moveRes = await request.post('/api/files/move', {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { nodeId: fileNodeId, destinationParentNodeId: folderBNodeId },
+  });
+  expect(moveRes.ok()).toBeTruthy();
+  const moveBody = await moveRes.json();
+  expect(moveBody.newParentId).toBe(folderBNodeId);
+
+  expect(await resolvePathOrNull(request, token, oldFilePath)).toBeNull();
+  const movedNodeId = await resolveNodeId(request, token, newFilePath);
+  expect(movedNodeId).toBe(fileNodeId);
+
+  const downloaded = await downloadFile(request, token, movedNodeId);
+  expect(downloaded.equals(textFixtureBuffer)).toBeTruthy();
+
+  const folderBListing = await listNodeChildren(request, token, folderBNodeId);
+  expect(folderBListing.some((item) => item.nodeId === fileNodeId)).toBeTruthy();
+  const folderAListing = await listNodeChildren(request, token, folderANodeId);
+  expect(folderAListing.some((item) => item.nodeId === fileNodeId)).toBeFalsy();
+
+  await loginAsUser(page, 'user1');
+  await gotoFilesPath(page, request, folderBPath);
+  await expect(fileItem(page, newFilePath)).toBeVisible();
+  await gotoFilesPath(page, request, folderAPath);
+  await expect(fileItem(page, oldFilePath)).toHaveCount(0);
 });
 
 test('E2E-EXP-002: Direct route entry loads a nested folder path', async ({

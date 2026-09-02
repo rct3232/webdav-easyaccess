@@ -21,6 +21,24 @@ export async function resolveNodeId(
 }
 
 /**
+ * Null-tolerant variant of `resolveNodeId`: returns `null` when the path no
+ * longer resolves (e.g. after a rename/move/delete) instead of asserting.
+ */
+export async function resolvePathOrNull(
+  request: APIRequestContext,
+  bearerToken: string,
+  path: string
+): Promise<number | null> {
+  const res = await request.post('/api/files/resolve-path', {
+    headers: { Authorization: `Bearer ${bearerToken}` },
+    data: { path },
+  });
+  if (!res.ok()) return null;
+  const body = await res.json();
+  return body.nodeId as number;
+}
+
+/**
  * Real-folder URL scheme: `/files/node/<nodeId>`.
  * Virtual roots `/files/__recent__` and `/files/__shared__` are intentionally unchanged.
  */

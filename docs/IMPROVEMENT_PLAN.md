@@ -17,8 +17,8 @@
 
 | ID | Status | Item | Source | Proposed resolution |
 | -- | ------ | ---- | ------ | ------------------- |
-| D-1 | CODE-FIX | `refreshPolicy` direction — option (a) chosen: function must be migrated to the nodeId end-state the caller already sends (see C-3). | `docs/spec/client/utils/refreshPolicy.md` | **Decided 2026-09-02: option (a)** — migrate to nodeId params; implementation tracked as C-3. |
-| D-2 | CODE-FIX | Remove the dead `fileService` legacy permission wrappers (`checkPermission`, `checkFilePermission`, `grantFilePermission`, `revokeFilePermission`, `updateFilePermission`) + `listFilePermissions` re-export — zero production consumers (only tests/mocks). | `client/src/services/fileService.js:534-560` | **Decided 2026-09-02: delete now** — file-level capability already consolidated in `permissionService` (`grant/revokePermission` with `target:'file'`); implementation tracked as C-2. |
+| D-1 | RESOLVED | `refreshPolicy` migrated to the nodeId end-state the caller already sends. | `docs/spec/client/utils/refreshPolicy.md` | **Decided 2026-09-02: option (a)** — implemented in C-3 (see §5). |
+| D-2 | RESOLVED | Dead `fileService` legacy permission wrappers + `listFilePermissions` re-export removed — zero production consumers existed. | `client/src/services/fileService.js` | **Decided 2026-09-02: delete now** — implemented in C-2 (see §5); file-level capability remains in `permissionService` (`target:'file'`). |
 | D-3 | RESOLVED | iOS Web Share "Save Image" hint for image preview download — decided: no hint; no code work. | `docs/spec/client/components/dialogs/FilePreviewDialog.md` | **Decided 2026-09-02: leave absent** — share-sheet native save options are self-explanatory; spec wording cleaned in `FilePreviewDialog.md` / `client-ui.md`. |
 
 ## 2. Code changes pending (detailed)
@@ -34,12 +34,14 @@
 - **Problem:** legacy nodeId wrappers over `permissionService`; no production caller (only `fileService.test.js:34` and `testing/mocks/serviceMocks.js:21-24`).
 - **Fix (decision 2026-09-02: delete now):** remove the exports (5 wrappers + `listFilePermissions` re-export + now-unused `permissionService` imports); update the `fileService.test.js` mock and `serviceMocks.js`; verify no remaining importer. Update `fileService.md:43` note with the code.
 - **Priority:** low.
+- **Status:** RESOLVED (2026-09-02) — implemented; commits `c0da498` (+ merge `f5bf2b7`).
 
 ### C-3 — `refreshPolicy` caller/callee nodeId–path mismatch
 - **Files:** `client/src/pages/FileManager/hooks/useExplorerCommands.js:80-85`, `client/src/utils/refreshPolicy.js:19-24`
 - **Problem:** caller sends `{ opType, startedNodeId, currentNodeIdNow, targetParentNodeId }`; function destructures path names and normalizes `undefined` → both paths become `/` → **always returns refresh**. Per-operation refresh gating is ineffective and can cause mis-refreshes.
 - **Fix (decision 2026-09-02: option (a) — migrate to nodeId):** rename `refreshPolicy` params to `startedNodeId`/`currentNodeIdNow`/`targetParentNodeId`, drop `normalizePath`; rewrite `refreshPolicy.test.js` fixtures (path strings → nodeIds; add identity/null edge cases); align the two stray path-keyed call sites in `FileManager.js:567/637`; update the `refreshPolicy.md:24` note with the code.
 - **Priority:** medium (behavioral).
+- **Status:** RESOLVED (2026-09-02) — implemented; commits `a13a123` (+ merge `662887e`).
 
 ### C-4 — `setup.test.js` PostgreSQL gating (decision: option B)
 - **File:** `server/domains/setup/__tests__/setup.test.js`
@@ -48,7 +50,8 @@
 - **Status:** DECIDED — scheduled for the next iteration, not part of the 2026-09-02 wave.
 
 ### M-1 — cosmetic cleanup (optional)
-- `explorerGateway.js` `removeRecentFile` internal parameter is still literally named `path` although the contract is nodeId (docs already aligned). Rename the param.
+- `explorerGateway.js` `removeRecentFile` internal parameter was literally named `path` although the contract is nodeId (docs already aligned).
+- **Status:** RESOLVED (2026-09-02) — parameter renamed to `nodeId`; commit `af65924`.
 
 ## 3. Document drift backlog (residual after the 2026-09-02 alignment)
 
@@ -92,6 +95,13 @@
 - **D-1 (option (a) — migrate `refreshPolicy` to nodeId):** rename to `startedNodeId`/`currentNodeIdNow`/`targetParentNodeId`, drop `normalizePath`. Verified: every op payload producer (delete `useBulkOperations.js:284`, move/copy `:580-581`, rename, upload) already emits nodeId keys, so gating becomes effective once implemented. Implementation = C-3.
 - **D-2 (delete now):** confirmed file-level capability is consolidated in `permissionService` (`grantPermission`/`revokePermission` with `target:'file'`, `checkPermission`, `listFilePermissions`); the `fileService` wrappers are pure delegates with zero production consumers. Implementation = C-2.
 - **D-3 (no hint):** iOS image share sheet presents native save options and is self-explanatory; no product request. Spec wording updated to current state in `FilePreviewDialog.md` and `client-ui.md`.
+
+### 2026-09-02 — Wave 1 implementation (C-2, C-3, M-1)
+
+- **C-3 (`refreshPolicy` → nodeId):** `shouldRefreshAfterOperation` now compares `startedNodeId`/`currentNodeIdNow`/`targetParentNodeId` by identity and no longer normalizes paths (`refreshPolicy.js`); the two stray path-keyed call sites in `FileManager.js` (createFolder + share-target refresh) pass nodeIds; fixtures rewritten to nodeIds with identity/null edges; spec `refreshPolicy.md` note removed. Commits `f77324e` (docs), `a13a123` (fix), merge `662887e`.
+- **C-2 (dead wrappers):** removed 5 `fileService` permission wrappers + `listFilePermissions` re-export + now-unused `permissionService` import; dropped matching keys from `createFileServiceMock` and the `permissionService` jest.mock in `fileService.test.js`; spec `fileService.md` note removed. Commits `a8fe71d` (docs), `c0da498` (refactor), merge `f5bf2b7`.
+- **M-1 (param rename):** `removeExplorerRecentFile` internal parameter renamed `path` → `nodeId`. Commit `af65924`.
+- **Verification:** full client `test:ci` green after each merge (156 suites / 1401 tests); `refreshPolicy` coverage 100%.
 
 ### Historical completed improvement backlog (pre-2026-09-02)
 

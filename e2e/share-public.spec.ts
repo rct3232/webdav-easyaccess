@@ -3,10 +3,19 @@ import { expect, test } from '@playwright/test';
 import { createPublicShareFixtures, type PublicShareFixtures } from './helpers/shareLinks';
 import { gotoAsAnonymousShare, gotoAsLoggedInShare } from './helpers/auth';
 import { openItemActions } from './helpers/explorer';
-import { fileItem } from './helpers/files';
-import { nodeUrl } from './helpers/resolvePath';
+import {
+  buildName,
+  createFolderAt,
+  fileItem,
+  readTestFileFixture,
+  uploadFileAt,
+} from './helpers/files';
+import { nodeUrl, resolveNodeId } from './helpers/resolvePath';
+import { TEST_FILES, TEST_USERS } from './fixtures/test-data';
 
 const laterWavesEnabled = process.env.E2E_LATER_WAVES === '1';
+
+const imageFixtureBuffer = readTestFileFixture(TEST_FILES.smallImage);
 
 test.describe('public share link', () => {
   let fixtures: PublicShareFixtures;
@@ -163,5 +172,66 @@ test.describe('public share link', () => {
     // PreviewDialog 가 실제로 열림을 검증
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
+  });
+
+  test('[P1] E2E-SHARE-011: Single-file share link survives a file rename (nodeId reference, not path)', async ({
+    page,
+    request,
+  }, testInfo) => {
+    // Ported from E2E-S3PG-007. This spec runs fully parallel, so the test
+    // creates its OWN file + share token inside the body — it never touches
+    // `fixtures.singleFile` (E2E-SHARE-003 reads it; renaming that file from a
+    // parallel test would race).
+    const dirName = buildName(testInfo, 'share-rename-dir');
+    const oldName = buildName(testInfo, 'share-rename-old', '.jpg');
+    const newName = buildName(testInfo, 'share-rename-new', '.jpg');
+    const dirPath = `/user1/${dirName}`;
+
+    const loginRes = await request.post('/api/auth/login', {
+      data: { username: TEST_USERS.user1.username, password: TEST_USERS.user1.password },
+    });
+    expect(loginRes.ok()).toBeTruthy();
+    const loginBody = await loginRes.json();
+    const token = loginBody.token as string;
+
+    const homeNodeId = await resolveNodeId(request, token, '/user1');
+    const dirNodeId = await createFolderAt(request, token, homeNodeId, dirName);
+    const fileNodeId = await uploadFileAt(
+      request,
+      token,
+      dirNodeId,
+      oldName,
+      'image/jpeg',
+      imageFixtureBuffer
+    );
+
+    const linkRes = await request.post('/api/share-links', {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { fileNodeId, expiresInDays: 30 },
+    });
+    expect(linkRes.ok()).toBeTruthy();
+    const linkBody = await linkRes.json();
+    const shareToken = linkBody.token as string;
+
+    const renameRes = await request.put('/api/files/rename', {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { nodeId: fileNodeId, newName },
+    });
+    expect(renameRes.ok()).toBeTruthy();
+
+    // The share link points at the nodeId, so renaming the file must not break
+    // it: the share page still resolves the node and renders the preview dialog
+    // (an expired/not-found link would render the error text instead).
+    await page.goto(`/share/${shareToken}`);
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog).not.toContainText(/expired|could not be found/i);
+
+    // And the content is still served through the share token (nodeId reference).
+    const anonRes = await request.get(`/api/files/download?nodeId=${fileNodeId}&inline=true`, {
+      headers: { 'X-Share-Token': shareToken },
+    });
+    expect(anonRes.ok()).toBeTruthy();
+    expect((await anonRes.body()).equals(imageFixtureBuffer)).toBeTruthy();
   });
 });

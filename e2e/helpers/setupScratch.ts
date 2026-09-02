@@ -12,9 +12,10 @@ import { createRequire } from 'node:module';
  *
  * Every helper here is scratch-owned: own port (:5003), own `.env` via
  * `DOTENV_CONFIG_PATH`, own sqlite path, own scratch PG database
- * (`webdav_e2e_setup`, separate from the read-only `webdav_e2e` used by
- * `e2e/helpers/pg.ts`). `pg` is required via `createRequire` (ships no types;
- * the local structural type keeps the surface typed without a new dependency).
+ * (`webdav_e2e_setup`, separate from the read-only `webdav_e2e` used by the
+ * shared E2E infrastructure). `pg` is required via `createRequire` (ships no
+ * types; the local structural type keeps the surface typed without a new
+ * dependency).
  */
 
 const require = createRequire(__filename);

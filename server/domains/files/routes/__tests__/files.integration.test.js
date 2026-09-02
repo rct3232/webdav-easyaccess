@@ -310,7 +310,7 @@ describe('S5.0-SCENARIO-3: WebDAV mode upload/list/download', () => {
    Scenario 4 - S3 Mode: Copy-on-Write (CoW) verification
    ======================================================================== */
 describe('S5.0-SCENARIO-4: S3 mode copy-on-write', () => {
-  let user, homeNodeId, sourceNodeId;
+  let user, homeNodeId, sourceNodeId, copiedNodeId;
 
   beforeEach(jest.clearAllMocks);
 
@@ -342,6 +342,7 @@ describe('S5.0-SCENARIO-4: S3 mode copy-on-write', () => {
 
     expect(res.status).toBe(200);
     const targetNodeId = res.body.copiedNodeId;
+    copiedNodeId = targetNodeId;
 
     // Both nodes should share the same s3_key in object_map
     const dbResult = await dbQuery(
@@ -357,10 +358,52 @@ describe('S5.0-SCENARIO-4: S3 mode copy-on-write', () => {
   it('source file remains downloadable after copy', async () => {
     const res = await request(app)
       .get('/api/files/download')
-      .query({ nodeId: sourceNodeId })
-      .set('Authorization', `Bearer ${user.token}`);
+      .set('Authorization', `Bearer ${user.token}`)
+      .query({ nodeId: sourceNodeId });
     expect(res.status).toBe(200);
     expect(Buffer.from(res.body).toString()).toBe('shared source content');
+  });
+
+  it('overwriting the copy leaves the original byte-identical (full CoW chain)', async () => {
+    // Re-upload with the same filename into the same parent using onConflict
+    // 'overwrite': the route must resolve the target to the existing copy node.
+    const overwriteContent = Buffer.from('overwritten copy content');
+    const overwriteRes = await request(app)
+      .post('/api/files/upload')
+      .set('Authorization', `Bearer ${user.token}`)
+      .field('parentNodeId', String(homeNodeId))
+      .field('onConflict', 'overwrite')
+      .attach('file', overwriteContent, 'copied-cow.txt');
+    expect(overwriteRes.status).toBe(200);
+    expect(overwriteRes.body.nodeId).toBe(copiedNodeId);
+
+    // Observable CoW result: the original keeps its bytes while the copy
+    // serves the overwritten content.
+    const orig = await request(app)
+      .get('/api/files/download')
+      .set('Authorization', `Bearer ${user.token}`)
+      .query({ nodeId: sourceNodeId });
+    const copy = await request(app)
+      .get('/api/files/download')
+      .set('Authorization', `Bearer ${user.token}`)
+      .query({ nodeId: copiedNodeId });
+    expect(orig.status).toBe(200);
+    expect(copy.status).toBe(200);
+    expect(Buffer.from(orig.body).toString()).toBe('shared source content');
+    expect(Buffer.from(copy.body).toString()).toBe('overwritten copy content');
+
+    // The original's active s3_key still points at the untouched blob in the store.
+    const activeRows = await dbQuery(
+      'SELECT file_node_id, s3_key FROM object_map WHERE file_node_id IN (?, ?) AND status = ?',
+      [sourceNodeId, copiedNodeId, 'active']
+    );
+    expect(activeRows.rows).toHaveLength(2);
+    const origKey = activeRows.rows.find(
+      (r) => Number(r.file_node_id) === Number(sourceNodeId)
+    ).s3_key;
+    const storedBlob = currentMockS3.getStore().get(origKey);
+    expect(storedBlob).toBeDefined();
+    expect(Buffer.from(storedBlob.Body).toString()).toBe('shared source content');
   });
 });
 
@@ -444,6 +487,95 @@ describe('S5.0-SCENARIO-5: S3 mode delete cascade', () => {
       file2Id,
     ]);
     expect(result.rows).toHaveLength(0);
+  });
+
+  it('S3: deleting a file leaves the physical blob in the store pending GC (lazy delete boundary)', async () => {
+    const lazyName = `lazy-${Date.now()}.txt`;
+    const upload = await uploadFile(user, homeNodeId, lazyName, 'lazy delete content');
+    expect(upload.status).toBe(200);
+    const lazyNodeId = upload.body.nodeId;
+
+    const keyRow = await dbQuery('SELECT s3_key FROM object_map WHERE file_node_id = ?', [
+      lazyNodeId,
+    ]);
+    expect(keyRow.rows).toHaveLength(1);
+    const s3Key = keyRow.rows[0].s3_key;
+    expect(currentMockS3.getStore().has(s3Key)).toBe(true);
+
+    const del = await request(app)
+      .delete('/api/files/delete')
+      .set('Authorization', `Bearer ${user.token}`)
+      .send({ nodeId: lazyNodeId });
+    expect(del.status).toBe(200);
+
+    const nodeRows = await dbQuery('SELECT id FROM file_nodes WHERE id = ?', [lazyNodeId]);
+    expect(nodeRows.rows).toHaveLength(0);
+    const mapRows = await dbQuery('SELECT s3_key FROM object_map WHERE file_node_id = ?', [
+      lazyNodeId,
+    ]);
+    expect(mapRows.rows).toHaveLength(0);
+
+    // Lazy delete boundary: S3 delete is deferred to the GC run, so the
+    // physical blob must still exist in the store.
+    expect(currentMockS3.getStore().has(s3Key)).toBe(true);
+  });
+});
+
+/* ========================================================================
+   Scenario 5B - S3 Mode: GC route (route level) reclaims an untracked blob
+   (Tier-2 reconciliation). The blob has no object_map row; the admin GC
+   endpoint must scan the store and delete it.
+   ======================================================================== */
+describe('S5.0-SCENARIO-5B: GC route reclaims an untracked S3 blob (Tier 2)', () => {
+  let admin;
+  const previousTtl = process.env.GC_ORPHAN_TTL_DAYS;
+
+  beforeEach(jest.clearAllMocks);
+
+  beforeAll(async () => {
+    currentMockS3 = createS3Mock();
+    wireS3Mock(currentMockS3);
+    await useS3Mode();
+    process.env.GC_ORPHAN_TTL_DAYS = '0';
+
+    admin = await createAuthenticatedTestUser({
+      isAdmin: true,
+      username: `gcuntracked-${Date.now()}`,
+    });
+  });
+
+  afterAll(() => {
+    if (previousTtl === undefined) {
+      delete process.env.GC_ORPHAN_TTL_DAYS;
+    } else {
+      process.env.GC_ORPHAN_TTL_DAYS = previousTtl;
+    }
+  });
+
+  it('GC deletes a directly-placed blob that has no object_map row', async () => {
+    const untrackedKey = `untracked-${Date.now()}.txt`;
+    await currentMockS3.putObject({
+      Bucket: 'test-bucket',
+      Key: untrackedKey,
+      Body: Buffer.from('orphan content'),
+    });
+    // Age the blob past the orphan TTL so Tier-2 scans it as a candidate.
+    currentMockS3.getStore().set(untrackedKey, {
+      ...currentMockS3.getStore().get(untrackedKey),
+      LastModified: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+    });
+    expect(currentMockS3.getStore().has(untrackedKey)).toBe(true);
+
+    const res = await request(app)
+      .post('/api/admin/maintenance/gc')
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.results.tier2.skipped).toBe(false);
+    expect(res.body.results.tier2.scannedKeys).toBeGreaterThan(0);
+    expect(res.body.results.tier2.untrackedKeys).toBeGreaterThanOrEqual(1);
+    expect(res.body.results.tier2.deletedKeys).toBeGreaterThanOrEqual(1);
+
+    expect(currentMockS3.getStore().has(untrackedKey)).toBe(false);
   });
 });
 

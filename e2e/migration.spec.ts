@@ -603,17 +603,22 @@ test.describe('unified migration mode (E2E-MIG-001..009)', () => {
     expect(gateState.active).toBe(true);
     const jobId = gateState.jobId as string;
 
-    const runningJob = await pollJobStatus(
+    // Wait until the copy is genuinely in flight (at least one node copied) and
+    // cancel as soon as it is. No fixed sleep: on a fast runner the whole
+    // 30-node copy can finish before a 600ms head start elapses, and cancelling
+    // a terminal job returns 404 (migrationJobStore.cancel), which made this
+    // assertion flaky in CI.
+    const runningJob = await pollJobStatusUntil(
       request,
       token,
       jobId,
-      ['running', 'completed', 'cancelled', 'failed'],
+      (job) =>
+        ['completed', 'cancelled', 'failed'].includes(String(job.status)) ||
+        (String(job.status) === 'running' && (job.results?.copied ?? 0) >= 1),
       30_000
     );
     expect(runningJob.status).toBe('running');
 
-    // Give the copy a head start so several nodes are copied before the cancel.
-    await sleep(600);
     const cancelRes = await request.post(
       `${SCRATCH_BASE}/api/admin/migration/jobs/${jobId}/cancel`,
       {

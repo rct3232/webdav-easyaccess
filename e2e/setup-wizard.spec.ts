@@ -75,7 +75,12 @@ let spawnedChild: ReturnType<typeof spawnScratchServer> | null = null;
 let currentScratch: string | null = null;
 let usedScratchPgDb = false;
 
-test.describe.configure({ mode: 'serial' });
+// Each scenario boots a scratch server twice (setup-mode apply + restart) and
+// drives the full wizard plus a file round-trip, so a bare 30s default test
+// timeout is too tight under CI load (E2E-SETUP-001 flaked on it). Keep the
+// serial mode and give the describe the same generous budget as the migration
+// suite (240s).
+test.describe.configure({ mode: 'serial', timeout: 240_000 });
 
 test.afterEach(async () => {
   if (spawnedChild) {

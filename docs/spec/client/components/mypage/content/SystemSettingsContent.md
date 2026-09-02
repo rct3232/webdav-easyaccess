@@ -54,6 +54,8 @@
 - `admin.keyLostWarning`, `admin.keyLostWarningDetail`
 - `admin.noDataToClean`, `admin.cleanupDone`, `admin.cleanupDonePartial`, `admin.orphanCleanupFail`
 - `admin.noPermissionToFix`, `admin.permissionCleanupDone`, `admin.permissionCleanupDonePartial`, `admin.permissionCleanupFail`
+- `admin.health.title`, `admin.health.fail`, `admin.health.hintPrefix`, `admin.health.lastChecked` (`lastChecked` interpolates `{ time }`) — backend-health card
+- `admin.runMigration`, `admin.runMetadataMigration` — migration row buttons
 
 ### 2.6 Conditional Rendering
 

@@ -15,7 +15,7 @@ Detailed implementation contracts live in:
 - `docs/spec/server/infrastructure/migrationGate.md` — gate state, transitions, gating middleware + allow-list, `503 migrationInProgress`.
 - `docs/spec/server/services/metadataMigrationService.md` — target scan, schema apply, transactional wipe+copy, rollback.
 - `docs/spec/server/tools/metadata-migration.md` — the admin-API metadata migration path (`target-scan`, `POST /metadata`).
-- `docs/spec/server/tools/blob-migration.md` (updated) — blob migration spec incl. `configPersist` (D10), cancel semantics, `/migration`-page execution, extended job payload.
+- `docs/spec/server/tools/blob-migration.md` (updated) — blob migration spec incl. `configPersist` (D10), cancel semantics, `/migration`-page execution, and the type-specific job payload (blob jobs keep scalar `progress` + top-level `current`/`results`; see §4.4).
 - `docs/SETUP.md` — operator env reference and the updated cutover runbook.
 - `docs/ARCHITECTURE.md` — the (now supported) metadata migration path.
 
@@ -247,7 +247,7 @@ The existing blob migration core (`migrationService`, admin API `POST
    backend-health card.
 
 Full spec: `docs/spec/server/tools/blob-migration.md` (updated for `configPersist`, cancel
-semantics, `/migration`-page execution, extended job payload).
+semantics, `/migration`-page execution, type-specific job payload).
 
 ---
 
@@ -304,8 +304,8 @@ it.
 | `GET /api/admin/migration/target-scan`         | Token + Admin            | Metadata target scan: `schemaExists` + per-table row counts                                                                                                                                           |
 | `POST /api/admin/migration/metadata`           | Token + Admin            | Start a metadata DB migration. Body `{ targetBackend, pg?, sqlitePath?, wipeTarget? }`; gate set; cancel = rollback                                                                                   |
 | `GET /api/admin/migration/info`                | Token + Admin            | Derived blob direction `{ source, direction }` (existing)                                                                                                                                             |
-| `POST /api/admin/migration/blobs`              | Token + Admin            | Start a blob migration job; both `dry-run` and `apply` set the gate (existing, extended payload)                                                                                                      |
-| `GET /api/admin/migration/jobs/:jobId`         | Token + Admin            | Job status/progress (existing, extended payload)                                                                                                                                                      |
+| `POST /api/admin/migration/blobs`              | Token + Admin            | Start a blob migration job; both `dry-run` and `apply` set the gate (existing; blob jobs keep scalar `progress` + top-level `current`/`results`)                                                                                    |
+| `GET /api/admin/migration/jobs/:jobId`         | Token + Admin            | Job status/progress (existing; type-specific payload: blob scalar `progress` + top-level `current`/`results`, metadata extended `{ percent, currentLabel }`)                                                                       |
 | `POST /api/admin/migration/jobs/:jobId/cancel` | Token + Admin            | Cancel a running job (existing)                                                                                                                                                                       |
 
 While the gate is active all non-allow-listed routes return `503 migrationInProgress`

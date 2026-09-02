@@ -105,8 +105,9 @@ prefix rules exactly as above.
   migration routes). `retryAfter` is not sent.
 - **WebDAV protocol coverage:** because the middleware is app-level, the file-domain routes
   (`/api/files/*`, `/api/folders/*`, `/api/thumbnails/*`, ...) — through which the app accesses
-  its blob backend during normal operation — return `503` while the gate is active. Gating a
-  future raw-WebDAV protocol mount is tracked in `docs/IMPROVEMENT_PLAN.md`.
+  its blob backend during normal operation — return `503` while the gate is active. A future
+  raw-WebDAV protocol mount must follow the app-level coverage invariant
+  (`docs/ARCHITECTURE.md` §1.3).
 - The client treats `503 migrationInProgress` like the app-guard's force-redirect: any screen
   receiving it is routed by the app-guard (admin → `/migration`, others → `/maintenance`).
 

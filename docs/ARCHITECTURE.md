@@ -119,6 +119,25 @@ Request → CORS → Body Parser → Request Logger → [Auth (JWT) → User Loa
 3.  **parseNodeId** (`server/middleware/validateNodeIdParam.js`): Parses and validates opaque `nodeId` / `parentNodeId` / `fileNodeId` payload fields inside route handlers; invalid nodeIds are rejected rather than normalized.
 4.  **errorHandler** (`server/utils/errorHandler.js`): Catches all route errors and returns standardized JSON responses (status, **errorCode**, optional **params**, optional **details** in development).
 
+#### App-level request gate (maintenance/migration lock)
+
+`server/infrastructure/migrationGate.js` is a **process-local, in-memory app-level lock**:
+inactive at boot, and currently **migration mode** is the only activator. While active, every
+`/api` request except a small allow-list (`GET /api/health`, `POST /api/auth/login`,
+`GET /api/migration/status`, `/api/admin/migration/*`) returns
+`503 migrationInProgress`; non-`/api` requests (static assets + SPA) pass so the UI can keep
+loading. It is mounted at the app level in `server/index.js` — after body parsing/request logger,
+before all domain routers — independent of the per-route auth pipeline.
+
+**Coverage invariant:** any backend-touching mount — including a future raw-WebDAV protocol
+mount or a future maintenance lock — must be registered in `server/index.js` **after** this
+gating middleware (never before it) and must not be allow-listed. A mount exposed on a separate
+port/server requires explicit gate hookup before it can go live. When a new gating need appears,
+judge reuse of this mechanism versus a separate gate component against that requirement before
+implementing.
+
+Details: `docs/spec/server/infrastructure/migrationGate.md`, `docs/features/migration-mode.md`.
+
 ### 1.4 Permission Policy (ACL)
 
 The system runs its own **ACL (Access Control List)** independent of WebDAV server permissions. Permissions are stored on nodes (`file_node_id` BIGINT); directory-level grants inherit to descendants through the `node_ancestors` closure table.

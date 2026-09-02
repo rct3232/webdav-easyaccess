@@ -1,7 +1,11 @@
 import { expect, test } from '@playwright/test';
 
-import { createPublicShareFixtures, type PublicShareFixtures } from './helpers/shareLinks';
-import { gotoAsAnonymousShare, gotoAsLoggedInShare } from './helpers/auth';
+import {
+  createPublicShareFixtures,
+  createShareLink,
+  type PublicShareFixtures,
+} from './helpers/shareLinks';
+import { gotoAsAnonymousShare, gotoAsLoggedInShare, loginAsUserApi } from './helpers/auth';
 import { openItemActions } from './helpers/explorer';
 import {
   buildName,
@@ -11,9 +15,7 @@ import {
   uploadFileAt,
 } from './helpers/files';
 import { nodeUrl, resolveNodeId } from './helpers/resolvePath';
-import { TEST_FILES, TEST_USERS } from './fixtures/test-data';
-
-const laterWavesEnabled = process.env.E2E_LATER_WAVES === '1';
+import { TEST_FILES } from './fixtures/test-data';
 
 const imageFixtureBuffer = readTestFileFixture(TEST_FILES.smallImage);
 
@@ -22,15 +24,6 @@ test.describe('public share link', () => {
 
   test.beforeAll(async ({ request }, testInfo) => {
     fixtures = await createPublicShareFixtures(request, testInfo);
-  });
-
-  test.beforeEach(async ({}, testInfo) => {
-    const isP2Deferred = testInfo.title.includes('E2E-SHARE-010');
-
-    test.skip(
-      !laterWavesEnabled && isP2Deferred,
-      'P2 share follow-up runs only when E2E_LATER_WAVES=1 (after share-public + bulk P0 are stable).'
-    );
   });
 
   test('E2E-SHARE-001: Invalid or expired share token shows error state', async ({ page }) => {
@@ -46,15 +39,12 @@ test.describe('public share link', () => {
     await expect(fileItem(page, fixtures.anonDir.innerFilePath)).toBeVisible();
   });
 
-  test('E2E-SHARE-008: Share mode hides or disables write actions', async ({ page }) => {
-    await gotoAsAnonymousShare(page, fixtures.anonDir.token);
+  test('E2E-SHARE-003: Single-file share loads full-screen preview view', async ({ page }) => {
+    await page.goto(`/share/${fixtures.singleFile.token}`);
 
-    await openItemActions(page, fixtures.anonDir.innerFilePath);
-    await expect(page.getByTestId('file-action-download')).toBeVisible();
-
-    await expect(page.getByTestId('file-action-rename')).toHaveCount(0);
-    await expect(page.getByTestId('file-action-delete')).toHaveCount(0);
-    await expect(page.getByTestId('file-action-share')).toHaveCount(0);
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator('img').first()).toBeVisible();
   });
 
   test('E2E-SHARE-004: Anonymous user can open login flow from shared directory', async ({
@@ -93,7 +83,7 @@ test.describe('public share link', () => {
     await expect(page.locator(`[data-file-node-id="${fixtures.addDir.nodeId}"]`)).toHaveCount(0);
   });
 
-  test('E2E-SHARE-006: Successful add-to-my-permissions transitions to regular `/files` path', async ({
+  test('E2E-SHARE-006: Successful add-to-my-permissions transitions to regular /files path', async ({
     page,
   }) => {
     await gotoAsLoggedInShare(
@@ -148,12 +138,15 @@ test.describe('public share link', () => {
     await expect(fileItem(page, fixtures.leaveDir.innerFilePath)).toHaveCount(0);
   });
 
-  test('E2E-SHARE-003: Single-file share loads full-screen preview view', async ({ page }) => {
-    await page.goto(`/share/${fixtures.singleFile.token}`);
+  test('E2E-SHARE-008: Share mode hides or disables write actions', async ({ page }) => {
+    await gotoAsAnonymousShare(page, fixtures.anonDir.token);
 
-    const dialog = page.getByRole('dialog');
-    await expect(dialog).toBeVisible();
-    await expect(dialog.locator('img').first()).toBeVisible();
+    await openItemActions(page, fixtures.anonDir.innerFilePath);
+    await expect(page.getByTestId('file-action-download')).toBeVisible();
+
+    await expect(page.getByTestId('file-action-rename')).toHaveCount(0);
+    await expect(page.getByTestId('file-action-delete')).toHaveCount(0);
+    await expect(page.getByTestId('file-action-share')).toHaveCount(0);
   });
 
   test('E2E-SHARE-009: Shared directory still allows file preview', async ({ page }, testInfo) => {
@@ -174,7 +167,7 @@ test.describe('public share link', () => {
     await expect(dialog).toBeVisible();
   });
 
-  test('[P1] E2E-SHARE-011: Single-file share link survives a file rename (nodeId reference, not path)', async ({
+  test('E2E-SHARE-011: Single-file share link survives a file rename (nodeId reference, not path)', async ({
     page,
     request,
   }, testInfo) => {
@@ -187,12 +180,7 @@ test.describe('public share link', () => {
     const newName = buildName(testInfo, 'share-rename-new', '.jpg');
     const dirPath = `/user1/${dirName}`;
 
-    const loginRes = await request.post('/api/auth/login', {
-      data: { username: TEST_USERS.user1.username, password: TEST_USERS.user1.password },
-    });
-    expect(loginRes.ok()).toBeTruthy();
-    const loginBody = await loginRes.json();
-    const token = loginBody.token as string;
+    const token = await loginAsUserApi(request, 'user1');
 
     const homeNodeId = await resolveNodeId(request, token, '/user1');
     const dirNodeId = await createFolderAt(request, token, homeNodeId, dirName);
@@ -205,12 +193,10 @@ test.describe('public share link', () => {
       imageFixtureBuffer
     );
 
-    const linkRes = await request.post('/api/share-links', {
-      headers: { Authorization: `Bearer ${token}` },
-      data: { fileNodeId, expiresInDays: 30 },
+    const linkBody = await createShareLink(request, {
+      bearerToken: token,
+      filePath: `${dirPath}/${oldName}`,
     });
-    expect(linkRes.ok()).toBeTruthy();
-    const linkBody = await linkRes.json();
     const shareToken = linkBody.token as string;
 
     const renameRes = await request.put('/api/files/rename', {

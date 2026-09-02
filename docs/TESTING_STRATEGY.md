@@ -193,8 +193,22 @@ Anchors for the pattern — not an exhaustive matrix.
   - stable file-item locators such as `data-file-path`
 - Playwright hook signatures that use fixtures must use object destructuring for the first argument (even when unused), e.g. `test.beforeEach(async ({}, testInfo) => ...)`.
 - Do not force desktop and mobile flows to share interaction helpers when the UI surface differs. Shared FAB-based create/upload helpers are fine when the user path is the same, but desktop item-action/context-menu interactions and mobile action-sheet interactions should live in their own platform spec or helper.
-- Express platform ownership in Playwright project/spec assignment, naming, `testMatch`, or `grep` configuration rather than inline `test.skip()` branches keyed off the current project.
+- Express platform ownership in Playwright project/spec assignment, naming, `testMatch`, or `grep` configuration rather than inline `test.skip()` branches keyed off the current project. Exception: mobile-only cases that live inside a both-platform spec (e.g. `E2E-MYPAGE-011/012`) may keep a reason-carrying `test.skip(isMobile ? false : true, 'reason')`.
 - Follow the selector policy from [features/files-sharing.md](features/files-sharing.md): semantic selectors first, `data-file-path` for explorer items, and `data-testid` only for documented unstable or icon-only seams. For SpeedDial-style action menus, prefer the visible `menuitem` names after opening the trigger when that accessibility surface is stable.
+
+### Naming convention (suites and cases)
+
+Apply uniformly to every spec in `e2e/`:
+
+- **Case title format**: `E2E-<DOMAIN>-NNN: <third-person present declarative description>`.
+  - Sentence case; declarative statement form (no imperative commands like `Approve pending signup`, no `[Px]` priority prefixes, no literal backticks, no emojis, no `snake_case` identifiers in the title).
+  - Scenario labels for hermetic suites stay as a parenthetical between the ID and the colon, normalized: setup wizard `(Case N, both modes|s3 mode only)`, migration `(Flow <label>)`.
+  - IDs should be declared in numeric order within each file. Exception: a serial suite whose execution order is load-bearing (e.g. migration job-state sequences) keeps its execution order.
+  - Every `test()` carries an ID. Setup-only infrastructure tests use a documented `E2E-SETUP-NNN` slot.
+- **Suite title format**: lowercase sentence case. Platform-owned suites append `(desktop)` or `(mobile)`. Hermetic families append their ID range, e.g. `first-run setup wizard (E2E-SETUP-001..004)`.
+- **Serialization**: use `test.describe.configure({ mode: 'serial' })` (never the anonymous `test.describe.serial`). Suites that mutate shared per-project DB state are serial.
+- **Skips**: every `test.skip`/`test.fixme` carries a reason string. Platform ownership goes in `testMatch`/project assignment, not inline project skips (exception above).
+- **Filename style**: `<name>.<platform>.spec.ts` dot suffix for platform files (`core-flow.shared`, `core-flow.desktop`, `core-flow.mobile`). No hyphen-prefix platform files.
 - For E2E setup phases (creating test folders/files as prerequisites), avoid timing-sensitive UI seams like SpeedDial open/transition states; prefer stable API endpoints (e.g. folder create + multipart upload) to make prerequisites deterministic.
 - When using Playwright `APIRequestContext` for setup or cleanup, pass URL query strings with `params`, not `query`, so contract-required request parameters actually reach the server.
 - **Hermetic scratch projects (setup wizard):** the first-run setup spec runs in dedicated `setup-wizard-desktop` / `setup-wizard-mobile` Playwright projects that never reuse the shared `.env.e2e` boot state. Each test spawns its own scratch server instance on `:5003` (own env file via `DOTENV_CONFIG_PATH`, own sqlite path, own scratch PG DB) and supervises its own process lifecycle, because restart is the behavior under test (PLAN.md §7). The spec is serial within the describe and cleans up per case in `afterEach` (kill the scratch child, remove the scratch dir, drop the scratch PG database). Keep these projects additive — do not fold them into the mode-prefixed project matrix.

@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 import { TEST_FILES } from './fixtures/test-data';
+import { loginWithCredentials } from './helpers/auth';
 import { readTestFileFixture } from './helpers/files';
 import {
   createScratchPgDb,
@@ -19,6 +20,7 @@ import {
   scratchPort,
   spawnScratchServer,
   waitForScratchHealth,
+  writeScratchEnv,
 } from './helpers/setupScratch';
 
 /**
@@ -209,15 +211,6 @@ function buildPreBootEnv(scratch: string, config: CaseConfig): Record<string, st
   return env;
 }
 
-/** Write `KEY=value` lines into the scratch `.env` (0600). */
-function writeScratchEnv(scratch: string, entries: Record<string, string>): void {
-  const content =
-    Object.entries(entries)
-      .map(([key, value]) => `${key}=${value}`)
-      .join('\n') + '\n';
-  fs.writeFileSync(path.join(scratch, '.env'), content, { mode: 0o600 });
-}
-
 /**
  * Quick PostgreSQL reachability probe (own short-timeout pool). Used to skip
  * the PG-dependent case when docker/PG is unavailable, so the suite stays green
@@ -404,17 +397,6 @@ async function assertFileRoundTrip(
   expect(downloaded).toEqual(textFixture);
 }
 
-async function loginViaUi(page: Page, username: string, password: string): Promise<void> {
-  await page.goto('/login');
-  await expect(page.locator('input[name="username"]')).toBeVisible();
-  await page.locator('input[name="username"]').fill(username);
-  await page.locator('input[name="password"]').fill(password);
-  await Promise.all([
-    page.waitForURL(/\/files(?:\/.*)?$/),
-    page.locator('form button[type="submit"]').click(),
-  ]);
-}
-
 type AfterRestartContext = {
   scratch: string;
   page: Page;
@@ -473,8 +455,8 @@ async function runSetupScenario(
   await afterRestart({ scratch, page, request, config });
 }
 
-test.describe('First-run setup wizard (E2E-SETUP-001..004)', () => {
-  test('E2E-SETUP-001 (Case 1, both modes): sqlite + webdav configure-and-restart', async ({
+test.describe('first-run setup wizard (E2E-SETUP-001..004)', () => {
+  test('E2E-SETUP-001 (Case 1, both modes): Sqlite + webdav configure-and-restart', async ({
     page,
     request,
   }) => {
@@ -499,7 +481,7 @@ test.describe('First-run setup wizard (E2E-SETUP-001..004)', () => {
       await assertFileRoundTrip(req, token, 'setup-001');
 
       // Browser: admin login lands in the explorer.
-      await loginViaUi(page, 'admin', cfg.adminPassword);
+      await loginWithCredentials(page, 'admin', cfg.adminPassword);
       await expect(page.getByTestId('file-actions-fab')).toBeVisible();
 
       // /setup is no longer reachable — it redirects to /login.
@@ -508,7 +490,7 @@ test.describe('First-run setup wizard (E2E-SETUP-001..004)', () => {
     });
   });
 
-  test('E2E-SETUP-002 (Case 2, s3 mode only): sqlite + s3 writes S3_* keys', async ({
+  test('E2E-SETUP-002 (Case 2, s3 mode only): Sqlite + s3 writes S3_* keys', async ({
     page,
     request,
   }) => {
@@ -533,7 +515,7 @@ test.describe('First-run setup wizard (E2E-SETUP-001..004)', () => {
       const token = await loginToken(req, 'admin', cfg.adminPassword);
       await assertFileRoundTrip(req, token, 'setup-002');
 
-      await loginViaUi(page, 'admin', cfg.adminPassword);
+      await loginWithCredentials(page, 'admin', cfg.adminPassword);
       await expect(page.getByTestId('file-actions-fab')).toBeVisible();
 
       await page.goto('/setup');
@@ -541,7 +523,7 @@ test.describe('First-run setup wizard (E2E-SETUP-001..004)', () => {
     });
   });
 
-  test('E2E-SETUP-003 (Case 3, both modes): postgresql + webdav seeds scratch PG, not scratch sqlite', async ({
+  test('E2E-SETUP-003 (Case 3, both modes): Postgresql + webdav seeds scratch PG, not scratch sqlite', async ({
     page,
     request,
   }) => {
@@ -608,7 +590,7 @@ test.describe('First-run setup wizard (E2E-SETUP-001..004)', () => {
 
         // Post-restart upload/download round-trip and /setup lockout.
         await assertFileRoundTrip(req, token, 'setup-003');
-        await loginViaUi(page, 'admin', cfg.adminPassword);
+        await loginWithCredentials(page, 'admin', cfg.adminPassword);
         await expect(page.getByTestId('file-actions-fab')).toBeVisible();
         await page.goto('/setup');
         await page.waitForURL(/\/login$/);
@@ -616,7 +598,7 @@ test.describe('First-run setup wizard (E2E-SETUP-001..004)', () => {
     );
   });
 
-  test('E2E-SETUP-004 (Case 4, both modes): complete-state gate locks the wizard and file APIs stay live', async ({
+  test('E2E-SETUP-004 (Case 4, both modes): Complete-state gate locks the wizard and file APIs stay live', async ({
     page,
     request,
   }) => {
@@ -654,7 +636,7 @@ test.describe('First-run setup wizard (E2E-SETUP-001..004)', () => {
       expect(testRes.status()).toBe(403);
 
       // /setup redirects to /login.
-      await loginViaUi(page, 'admin', cfg.adminPassword);
+      await loginWithCredentials(page, 'admin', cfg.adminPassword);
       await expect(page.getByTestId('file-actions-fab')).toBeVisible();
       await page.goto('/setup');
       await page.waitForURL(/\/login$/);

@@ -389,9 +389,7 @@ test('E2E-MYPAGE-011: Mobile menu button opens and closes the category drawer', 
   page,
   request,
 }, testInfo) => {
-  if (!testInfo.project.name.endsWith('-mobile')) {
-    test.skip();
-  }
+  test.skip(!testInfo.project.name.endsWith('-mobile'), 'E2E-MYPAGE-011 is mobile-only');
 
   const suffix = getTestSuffix(testInfo);
   await ensureApprovedUser(request, 'user1', suffix);
@@ -418,9 +416,7 @@ test('E2E-MYPAGE-012: Selecting a category from the mobile drawer closes it and 
   page,
   request,
 }, testInfo) => {
-  if (!testInfo.project.name.endsWith('-mobile')) {
-    test.skip();
-  }
+  test.skip(!testInfo.project.name.endsWith('-mobile'), 'E2E-MYPAGE-012 is mobile-only');
 
   const suffix = getTestSuffix(testInfo);
   await ensureApprovedUser(request, 'user1', suffix);

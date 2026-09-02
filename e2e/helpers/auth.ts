@@ -32,14 +32,22 @@ async function clearBrowserSession(page: Page) {
 
 async function loginAs(page: Page, userKey: TestUserKey, suffix?: string) {
   const user = getUserData(userKey, suffix);
+  await loginWithCredentials(page, user.username, user.password);
+}
 
+/**
+ * UI login form-fill shared by the auth helpers and the hermetic scratch specs
+ * (setup-wizard/admin-config/migration): goto `/login`, fill username/password,
+ * submit and wait for the explorer URL.
+ */
+export async function loginWithCredentials(page: Page, username: string, password: string) {
   await page.goto('/login');
 
   const usernameInput = page.locator('input[name="username"]');
   await expect(usernameInput).toBeVisible();
 
-  await usernameInput.fill(user.username);
-  await page.locator('input[name="password"]').fill(user.password);
+  await usernameInput.fill(username);
+  await page.locator('input[name="password"]').fill(password);
 
   await Promise.all([
     page.waitForURL(/\/files(?:\/.*)?$/),
@@ -107,7 +115,21 @@ async function ensureUserCanLogin(
   }
 }
 
-async function getAdminToken(request: APIRequestContext) {
+export async function loginAsUserApi(
+  request: APIRequestContext,
+  userKey: StandardTestUserKey,
+  suffix?: string
+): Promise<string> {
+  const user = getUserData(userKey, suffix);
+  const response = await request.post('/api/auth/login', {
+    data: { username: user.username, password: user.password },
+  });
+  expect(response.ok()).toBeTruthy();
+  const body = await response.json();
+  return body.token as string;
+}
+
+export async function getAdminToken(request: APIRequestContext) {
   const response = await request.post('/api/auth/login', {
     data: {
       username: TEST_USERS.admin.username,

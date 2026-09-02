@@ -1,8 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 import { loginAsAdmin } from './helpers/auth';
-import { openFabAction } from './helpers/explorer';
-import { buildName } from './helpers/files';
+import { buildName, createFolderViaUi, uploadFileViaUi } from './helpers/files';
 import {
   longPressItem,
   toggleFolderTree,
@@ -12,31 +11,18 @@ import {
 import { gotoFilesPath } from './helpers/resolvePath';
 
 async function createTestFolder(page: any, folderName: string) {
-  await openFabAction(page, 'Create folder');
-  const dialog = page.getByRole('dialog');
-  await expect(dialog.getByTestId('create-folder-name-input')).toBeVisible();
-  await dialog.getByTestId('create-folder-name-input').fill(folderName);
-  await dialog.getByTestId('create-folder-submit').click();
+  await createFolderViaUi(page, folderName);
 }
 
 async function createTestFile(page: any, fileName: string) {
-  await openFabAction(page, 'Upload file');
-  const dialog = page.getByRole('dialog');
-  const fileInput = dialog.getByTestId('upload-dialog-file-input');
-  await expect(fileInput).toBeVisible();
-
-  // Upload a dummy file
-  await fileInput.setInputFiles({
-    name: fileName,
+  await uploadFileViaUi(page, {
+    fileName,
     mimeType: 'text/plain',
     buffer: Buffer.from('test content'),
   });
-
-  await dialog.getByTestId('upload-dialog-submit').click();
-  await expect(dialog).not.toBeVisible();
 }
 
-test.describe('explorer advanced (mobile)', () => {
+test.describe('core flow (mobile)', () => {
   test('E2E-MOBILE-001: Long-press enters selection mode', async ({ page }, testInfo) => {
     // Log browser console messages to the terminal
     page.on('console', (msg) => console.log(`[BROWSER] ${msg.text()}`));
@@ -144,59 +130,5 @@ test.describe('explorer advanced (mobile)', () => {
     // 7. Verify Collapse
     // Check if the folder tree container is no longer visible
     await expect(page.getByTestId('folder-tree')).not.toBeVisible();
-  });
-
-  test('E2E-BULK-007: Conflict resolution dialog appears when move/copy would collide', async ({
-    page,
-    request,
-  }, testInfo) => {
-    // 1. Login as admin
-    await loginAsAdmin(page);
-
-    // 2. Setup: Create two folders, each containing a file with the same name
-    const folderA = buildName(testInfo, 'mobile-conflict-folder-a');
-    const folderB = buildName(testInfo, 'mobile-conflict-folder-b');
-    const conflictFileName = 'mobile_conflict_test.txt';
-
-    await createTestFolder(page, folderA);
-    await createTestFolder(page, folderB);
-
-    // Upload file to folderA
-    await gotoFilesPath(page, request, `/${folderA}`);
-    await createTestFile(page, conflictFileName);
-
-    // Upload file to folderB
-    await gotoFilesPath(page, request, `/${folderB}`);
-    await createTestFile(page, conflictFileName);
-
-    // 3. Action: Move file from folderA to folderB
-    await gotoFilesPath(page, request, `/${folderA}`);
-    await longPressItem(page, `/${folderA}/${conflictFileName}`);
-
-    // Trigger bulk move
-    await page.getByTestId('bulk-action-move').click();
-
-    // Select folderB in the folder picker
-    const pickerDialog = page.getByRole('dialog');
-    await expect(pickerDialog).toBeVisible();
-
-    // Navigate to root via breadcrumb to find folderB
-    const breadcrumbs = pickerDialog.locator('.MuiBreadcrumbs-root button');
-    await breadcrumbs.first().click();
-
-    // Wait for loading to finish
-    await expect(pickerDialog.getByRole('progressbar')).not.toBeVisible();
-
-    // Select folderB
-    await pickerDialog.locator('li').filter({ hasText: folderB }).click();
-    await pickerDialog.getByRole('button', { name: 'Select', exact: true }).click();
-
-    // 4. Assertion: Verify conflict resolution dialog appears
-    const conflictDialog = page.getByRole('dialog');
-    await expect(conflictDialog).toBeVisible();
-
-    await expect(conflictDialog).toContainText('conflict', { ignoreCase: true });
-    await expect(conflictDialog.getByRole('button', { name: /skip/i })).toBeVisible();
-    await expect(conflictDialog.getByRole('button', { name: /merge/i })).toBeVisible();
   });
 });

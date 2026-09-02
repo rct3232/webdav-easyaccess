@@ -3,6 +3,8 @@ import {
   ListObjectsV2Command,
   type ListObjectsV2CommandInput,
   HeadObjectCommand,
+  HeadBucketCommand,
+  CreateBucketCommand,
   DeleteObjectsCommand,
 } from '@aws-sdk/client-s3';
 
@@ -68,6 +70,23 @@ export async function blobExists(key: string): Promise<boolean> {
 }
 
 /**
+ * Create the seeded bucket when it does not exist. The bucket is wiped by the
+ * global-teardown `down -v`, so a later run (any mode) must be able to
+ * re-provision it deterministically.
+ */
+export async function ensureS3BucketExists(): Promise<void> {
+  const client = getS3Client();
+  try {
+    await client.send(new HeadBucketCommand({ Bucket: E2E_S3_BUCKET }));
+    return;
+  } catch (err) {
+    const status = (err as { $metadata?: { httpStatusCode?: number } })?.$metadata?.httpStatusCode;
+    if (status !== 404 && status !== 403) throw err;
+  }
+  await client.send(new CreateBucketCommand({ Bucket: E2E_S3_BUCKET }));
+}
+
+/**
  * Delete every object currently in the seeded bucket. Used by the migration
  * E2E to give its "no duplicate blobs" assertions a deterministic baseline:
  * the shared bucket otherwise accumulates objects across tests in the same
@@ -76,6 +95,7 @@ export async function blobExists(key: string): Promise<boolean> {
  */
 export async function emptyS3Bucket(): Promise<void> {
   const client = getS3Client();
+  await ensureS3BucketExists();
   for (;;) {
     const listed = await client.send(new ListObjectsV2Command({ Bucket: E2E_S3_BUCKET }));
     const contents = listed.Contents || [];

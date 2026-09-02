@@ -4,11 +4,15 @@ import path from 'node:path';
 import { spawn, spawnSync, execFileSync, type ChildProcess } from 'node:child_process';
 import { createRequire } from 'node:module';
 
+import { expect, type Page } from '@playwright/test';
+
 /**
- * Hermetic scratch-instance helpers for the first-run setup-wizard E2E spec
- * (PLAN.md §7). The shared E2E infrastructure (`:5002` server, `:3000` client,
- * `webdav_e2e` PG database) is unusable for the setup spec because the wizard
- * configures-and-restarts a fresh server — restart is the behavior under test.
+ * Hermetic scratch-instance helpers for the first-run setup-wizard
+ * (`setup-wizard.spec.ts`), admin-config (`admin-config.spec.ts`) and migration
+ * (`migration.spec.ts`) E2E specs (PLAN.md §7/§9). The shared E2E
+ * infrastructure (`:5002` server, `:3000` client, `webdav_e2e` PG database) is
+ * unusable for these specs because they spawn and supervise their own scratch
+ * instance — in the wizard case restart is the behavior under test.
  *
  * Every helper here is scratch-owned: own port (:5003), own `.env` via
  * `DOTENV_CONFIG_PATH`, own sqlite path, own scratch PG database
@@ -230,6 +234,15 @@ export function readEnvFile(scratchDir: string): Record<string, string> {
   return result;
 }
 
+/** Write `KEY=value` lines into the scratch `.env` (0600), keys in insertion order. */
+export function writeScratchEnv(scratch: string, entries: Record<string, string>): void {
+  const content =
+    Object.entries(entries)
+      .map(([key, value]) => `${key}=${value}`)
+      .join('\n') + '\n';
+  fs.writeFileSync(path.join(scratch, '.env'), content, { mode: 0o600 });
+}
+
 async function pgSuperuserQuery(sql: string): Promise<void> {
   const Pool = getPg();
   const pool = new Pool({
@@ -338,6 +351,39 @@ export function execScratchSqlite(dbPath: string, sql: string): Promise<void> {
       else resolve();
     });
   });
+}
+
+/**
+ * Pre-seed the scratch metadata sqlite with DB-sourced WebDAV connection keys
+ * BEFORE the server's first boot (admin-config + migration pattern) so the
+ * app's webdav blob store resolves WEBDAV_URL from the DB (to `url`) and
+ * `setup_complete` derives true. The settings table schema mirrors the
+ * converted DDL (CREATE TABLE IF NOT EXISTS makes the boot re-init a no-op).
+ * WEBDAV_PASSWORD is stored as plaintext (legacy row) so key-lost restart cases
+ * still boot complete. Defaults `url` to the shared WEBDAV_BASE.
+ */
+export async function seedWebdavSettings(scratchDir: string, url = WEBDAV_BASE): Promise<void> {
+  const dbPath = path.join(scratchDir, 'webdav.db');
+  await execScratchSqlite(
+    dbPath,
+    `CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`
+  );
+  const rows: Array<[string, string]> = [
+    ['WEBDAV_URL', url],
+    ['WEBDAV_USERNAME', 'e2etest'],
+    ['WEBDAV_PASSWORD', 'e2etest123'],
+    ['WEBDAV_AUTH_TYPE', 'auto'],
+  ];
+  for (const [key, value] of rows) {
+    await execScratchSqlite(
+      dbPath,
+      `INSERT OR REPLACE INTO settings (key, value) VALUES ('${key}', '${value}')`
+    );
+  }
 }
 
 /**
@@ -479,4 +525,26 @@ function mkcol(url: string): Promise<void> {
 
     tryOnce();
   });
+}
+
+/**
+ * Navigate to `/mypage` and open the System settings category. MyPage returns
+ * null until the async getMe() resolves; on mobile the category sidebar lives
+ * in a non-keepMounted SwipeableDrawer. A one-shot isVisible()/count() right
+ * after goto races React mount — both resolve to 0/0 before the app loads, the
+ * drawer is never opened, and the later click() times out against the unmounted
+ * drawer content. Wait for the MyPage shell first, then branch on the
+ * mobile-only menu button.
+ */
+export async function openSystemSettings(page: Page): Promise<void> {
+  await page.goto('/mypage');
+  const systemSettings = page.getByRole('button', { name: /system settings/i });
+  const menuButton = page.locator('button[aria-label="My page"]');
+  await expect(menuButton.or(systemSettings).first()).toBeVisible({ timeout: 20000 });
+  if ((await menuButton.count()) > 0) {
+    await menuButton.click();
+    await expect(page.locator('.MuiDrawer-paper')).toBeVisible();
+  }
+  await systemSettings.click();
+  await expect(page.getByRole('heading', { level: 6, name: /system settings/i })).toBeVisible();
 }

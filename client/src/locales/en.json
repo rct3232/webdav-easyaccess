@@ -30,6 +30,10 @@
     "failed": "Login failed.",
     "logoAlt": "WebDAV EasyAccess"
   },
+  "maintenance": {
+    "title": "System maintenance in progress",
+    "body": "The service is temporarily unavailable while system maintenance is in progress. Please check back shortly."
+  },
   "register": {
     "title": "Sign up",
     "username": "Username",

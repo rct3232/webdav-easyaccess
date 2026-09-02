@@ -10,6 +10,7 @@ const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageC
 const { resolveEnvPath } = require('./infrastructure/envPath');
 const { computeSetupStatus } = require('./infrastructure/setupStatus');
 const { getBackendHealth } = require('./infrastructure/backendHealth');
+const { resolveListenHost } = require('./infrastructure/listenConfig');
 const { getMigrationGate, MIGRATION_IN_PROGRESS_CODE } = require('./infrastructure/migrationGate');
 const {
   createConfigResolver,
@@ -125,12 +126,13 @@ function migrationGatingMiddleware(req, res, next) {
   if (!req.path.startsWith('/api/')) return next();
   if (!getMigrationGate().isActive()) return next();
   if (isMigrationAllowListed(req)) return next();
-  const { type, jobId } = getMigrationGate().getStatus();
+  // WS4: no operational metadata (type/jobId) in the 503 body so blocked
+  // clients — including external WebDAV clients and anonymous visitors —
+  // cannot learn which migration is running or its job id.
   return res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
     errorCode: MIGRATION_IN_PROGRESS_CODE,
     messageCode: MIGRATION_IN_PROGRESS_CODE,
     message: 'Migration in progress',
-    params: { type, jobId },
   });
 }
 app.use(migrationGatingMiddleware);
@@ -357,8 +359,18 @@ async function runBoot() {
     // PORT is T1 (boot-frozen, env → DB → default): resolve at listen time so
     // a DB-sourced value takes effect after the env population above.
     const port = resolver.getConfigSync('PORT') || process.env.PORT || 5001;
-    app.listen(port, () => {
-      console.log(`Server is running on port ${port}`);
+    // WS1: while setup is incomplete the server binds 127.0.0.1 only (no
+    // opt-out) so the wizard is unreachable from the network. When setup is
+    // complete the host argument is omitted so Express binds all interfaces
+    // (reverse proxies keep working).
+    const listenHost = resolveListenHost(bootStatus.setup_complete);
+    const listenArgs = listenHost ? [port, listenHost] : [port];
+    app.listen(...listenArgs, () => {
+      if (listenHost) {
+        console.log(`Server is running on ${listenHost}:${port} (setup mode — loopback only)`);
+      } else {
+        console.log(`Server is running on port ${port}`);
+      }
       setImmediate(() => {
         const {
           ensureHomeOwnerAdminForAllUsers,

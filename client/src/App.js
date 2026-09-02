@@ -9,6 +9,7 @@ import Register from './pages/Register';
 import Setup from './pages/Setup/Setup';
 import MigrationPage from './pages/Migration/MigrationPage';
 import MigrationGuard from './pages/Migration/MigrationGuard';
+import MaintenancePage from './pages/Maintenance/MaintenancePage';
 import FileManager from './pages/FileManager';
 import MyPage from './pages/MyPage';
 import ShareLinkLoader from './pages/ShareLinkLoader';
@@ -74,6 +75,7 @@ function App() {
           { path: '/register', element: <Register /> },
           { path: '/setup', element: <Setup /> },
           { path: '/migration', element: <MigrationPage /> },
+          { path: '/maintenance', element: <MaintenancePage /> },
           {
             element: <MainLayout />,
             children: [

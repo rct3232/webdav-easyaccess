@@ -124,7 +124,7 @@ Probe references:
 
 #### POST /api/setup/apply
 
-Public; **403 when already complete** (gate uses the same effective view as `/status`). Validates every block (unknown keys rejected, `400` with per-field errors), then **upserts every non-T0 key into the connected metadata DB `settings` table** (row key = raw env var name, D11). The `metadata` block is **optional** (D7); when present, `metadata.backend === 'postgresql'` is rejected `400` `fields.metadata='notAllowed'` — the DB connection is `.env`-owned (D6). No T0 keys are ever written to `.env`.
+Public; **403 when already complete** (gate uses the same effective view as `/status`). Validates every block (unknown keys rejected, `400` with per-field errors), then **writes the payload's startup-critical T0 keys into the resolved `.env`** (`JWT_SECRET`, and `encrypt_secret_key` only when auto-generated) and **upserts every non-T0 key into the connected metadata DB `settings` table** (row key = raw env var name, D11). The `metadata` block is **optional** (D7); when present, `metadata.backend === 'postgresql'` is rejected `400` `fields.metadata='notAllowed'` — the DB connection is `.env`-owned (D6). The metadata-backend T0 keys (`WEA_STORAGE_BACKEND`, `WEA_PG_*`) are **never** written by apply. Implemented by the shared `setupCore.applySetup`, which is also the single apply core of the CLI setup tool (`docs/features/setup-cli.md`).
 
 **Request:**
 
@@ -139,35 +139,33 @@ Public; **403 when already complete** (gate uses the same effective view as `/st
 }
 ```
 
-> **D7 note:** the `metadata` block is absent from the wizard client and is **optional** server-side. A `metadata` block with `backend: "postgresql"` is rejected (400) — the DB connection is `.env`-owned (D6). The detailed step-by-step PG direct-write description in the original apply section no longer applies (that code path was removed); non-T0 keys are written via the app's own `settingsStore`.
+> **D7 note:** the `metadata` block is absent from the wizard client and is **optional** server-side. A `metadata` block with `backend: "postgresql"` is rejected (400) — the DB connection is `.env`-owned (D6). Non-T0 keys are written via the app's own `settingsStore`; the metadata-backend T0 keys are never touched by apply (see the Behavior list below).
 
 `registration_enabled` is **not** part of the wizard payload and is never touched by apply.
 
 **Behavior:**
 
 1. Validate every block (reject unknown keys → `400` with per-field errors).
-2. Build the full entries map (`buildEnvEntries`) and partition by registry tier:
-   - **T0 → `.env`** (via `envFileWriter`, atomic `0600`, merge-preserves unknown lines):
-     `WEA_STORAGE_BACKEND`, the `WEA_PG_*` subset (postgresql only), `JWT_SECRET` (always written — D4 env-only; the boot auth key must exist after restart), and `encrypt_secret_key` (only when auto-generated, see step 3).
-   - **Non-T0 → DB `settings`** (row key = raw env var name):
-     `WEA_FILE_STORAGE`, `S3_BUCKET` / `AWS_REGION` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `S3_ENDPOINT` (s3), `WEBDAV_URL` / `WEBDAV_USERNAME` / `WEBDAV_PASSWORD` / `WEBDAV_AUTH_TYPE` (webdav), `PORT`, `CORS_ORIGINS`, `JWT_EXPIRES_IN`, `EMAIL_HOST` / `EMAIL_PORT` / `EMAIL_USER` / `EMAIL_PASSWORD` / `EMAIL_SECURE` / `EMAIL_FROM_NAME`, and — postgresql only — `ADMIN_DEFAULT_PASSWORD`.
+2. Build the full entries map (`buildEnvEntries`) from the payload (`file`/`jwt`/`server`/`email`).
 3. **Masked (unchanged) secrets keep their existing ciphertext (only-re-encrypt-on-new-value, PLAN §7):** the client sends the prefill mask `'****'` for a secret it did not edit; validation accepts it (non-empty) but apply **drops** any `'****'` secret entry before the DB write, so `writeSettings` never re-encrypts it. A genuinely new value is the only trigger to encrypt with the current master key.
-4. **`encrypt_secret_key` lifecycle (keep-existing, PLAN §7):**
+4. Partition the entries by registry tier (`partitionEntries`):
+   - **T0 → `.env`** (via `envFileWriter`, atomic `0600`, backup, merge-preserves unknown
+     lines): `JWT_SECRET` (always written — D4 env-only; the boot auth key must exist after
+     restart) and `encrypt_secret_key` (only when auto-generated, see step 5). The
+     metadata-backend T0 keys (`WEA_STORAGE_BACKEND`, the `WEA_PG_*` subset) are explicitly
+     **excluded** — they are `.env`-owned (D6) and never written by apply.
+   - **Non-T0 → DB `settings`** (row key = raw env var name):
+     `WEA_FILE_STORAGE`, `S3_BUCKET` / `AWS_REGION` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `S3_ENDPOINT` (s3), `WEBDAV_URL` / `WEBDAV_USERNAME` / `WEBDAV_PASSWORD` / `WEBDAV_AUTH_TYPE` (webdav), `PORT`, `CORS_ORIGINS`, `JWT_EXPIRES_IN`, `EMAIL_HOST` / `EMAIL_PORT` / `EMAIL_USER` / `EMAIL_PASSWORD` / `EMAIL_SECURE` / `EMAIL_FROM_NAME`.
+5. **`encrypt_secret_key` lifecycle (keep-existing, PLAN §7):**
    - If `process.env.encrypt_secret_key` is already set → **keep it**: it is not regenerated and not written to `.env`; it is used to encrypt the DB secrets of this apply.
-   - Otherwise → **auto-generate** one (`generateKey()`), write it to the `.env` T0 subset, and use it to encrypt this apply's DB secrets.
-5. **Write the `.env` T0 subset FIRST** (atomic temp-file + rename). Ordering guarantee: if the `.env` write fails, the DB has not been touched, so boot still shows setup mode — a failed apply can never leave a committed-but-error "complete" state.
-6. Admin password effect (D6):
-   - `metadata.backend=postgresql` → `ADMIN_DEFAULT_PASSWORD=<chosen>` is stored in the DB (encrypted as a secret, T1). A parallel boot task populates it into `process.env` before `ensureDefaultAdmin` creates `admin` on restart **only when the user does not exist**. Additionally, apply updates the **existing** `admin` account's password directly on the target PG (`UPDATE users SET password = bcrypt(<chosen>,10) WHERE username='admin'`, via a second direct connection) so the wizard password takes effect immediately even when the admin already exists; a missing `users` table (fresh PG) is tolerated — `ADMIN_DEFAULT_PASSWORD` covers the first-boot creation.
-   - `metadata.backend=sqlite` → admin already exists in the sqlite store from first boot; apply updates its password directly via the existing user store (single store call, after the `.env` write), so no restart dependency for the credential.
-7. Write non-T0 to the metadata DB:
-   - **sqlite**: `Settings.set(key, value)` — plaintext config value passed as-is (the store JSON-stringifies); a secret is stored as `JSON.stringify(encryptSecret(String(value), masterKey))`.
-   - **postgresql**: apply connects **directly** to the target PG with the entered credentials (a masked `'****'` password falls back to `process.env.WEA_PG_PASSWORD` — the `.env` is authoritative for a masked T0 value), ensures the `settings` table exists via the idempotent `CREATE TABLE IF NOT EXISTS settings (…)` DDL (mirrored verbatim from `001_initial_normalized_schema.sql`; a code comment marks it "keep in sync with 001"), then **wraps the upserts in a transaction** (`BEGIN`/`COMMIT`/`ROLLBACK` on error) so a mid-loop failure leaves no partial rows:
-     `INSERT INTO settings (key, value, updated_at) VALUES ($1, $2::jsonb, NOW()) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`.
-     Plaintext rows store `JSON.stringify(String(value))` (e.g. `"smtp.gmail.com"`); secret rows store the encrypted payload object as JSON. The client is closed in a `finally`. The full app schema (`users`, `_schema_migrations`, …) is still created by normal boot migrations on restart (`IF NOT EXISTS` + file-based tracking → no conflict).
-8. Clear the shared T2 cache: `getSharedResolver().invalidateCache()` so the DB writes are visible immediately for restart-free (T2) reads.
-9. Respond **`200 { "restart_required": true }`**.
+   - Otherwise → **auto-generate** one (`generateKey()`), add it to the `.env` subset, and use it to encrypt this apply's DB secrets.
+6. **Write the `.env` subset FIRST** (atomic temp-file + rename). Ordering guarantee: if the `.env` write fails, the DB has not been touched, so boot still shows setup mode — a failed apply can never leave a committed-but-error "complete" state.
+7. **Update the admin password** (`updateAdminPassword`): the `admin` account already exists in the connected metadata store (seeded at boot, including setup-mode boots); apply updates its password via the app's user store after the `.env` write. If the `admin` row is unexpectedly absent it logs a warning and continues (the default credential then applies on the next boot). There is no restart dependency for the credential and no `ADMIN_DEFAULT_PASSWORD` is written.
+8. **Write non-T0 to the metadata DB through the app's `Settings` model** (`writeSettings`) on the connected store (sqlite or postgresql, as booted): plaintext config values are stored as-is (the store JSON-stringifies); a secret is stored as `JSON.stringify(encryptSecret(String(value), masterKey))`.
+9. Clear the shared T2 cache: `getSharedResolver().invalidateCache()` so the DB writes are visible immediately for restart-free (T2) reads.
+10. Respond **`200 { "restart_required": true }`**.
 
-**Idempotency/safety:** apply refuses (`403`) once `setup_complete` is true; concurrent applies are last-writer-wins (documented, single-operator assumption). The `.env` write happens before the DB write and the PG upserts are transactional, so a failed apply leaves **no committed partial state** — the worst case is a written `.env` with an unchanged (or rolled-back) DB, which still boots into setup mode (never a false "complete").
+**Idempotency/safety:** apply refuses (`403`) once `setup_complete` is true; concurrent applies are last-writer-wins (documented, single-operator assumption). The `.env` write happens before the DB write, so a failed apply leaves **no committed partial state** — the worst case is a written `.env` with an unchanged DB, which still boots into setup mode (never a false "complete").
 
 #### POST /api/setup/prefill
 

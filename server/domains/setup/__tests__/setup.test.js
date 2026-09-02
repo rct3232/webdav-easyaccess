@@ -47,6 +47,7 @@ const requestLogger = require('../../../middleware/requestLogger');
 const { Client: MockPgClient } = require('pg');
 
 const setupRouter = require('../routes');
+const setupCore = require('../setupCore');
 
 const TMP_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'setup-routes-'));
 const ADMIN_PASSWORD = 'admin-old-password';
@@ -1243,5 +1244,170 @@ describe('request logger', () => {
     expect(serialized).not.toContain('admin-leak');
     expect(serialized).not.toContain('jwt-leak');
     expect(serialized).not.toContain('dav-leak');
+  });
+});
+
+describe('setupCore (shared apply core)', () => {
+  let settingsSetSpy;
+  let invalidateSpy;
+
+  function validWebdavPayload() {
+    return {
+      metadata: { backend: 'sqlite' },
+      file: {
+        backend: 'webdav',
+        url: 'https://dav.example.com',
+        username: 'dav-user',
+        password: 'dav-pass',
+        authType: 'auto',
+      },
+      admin: { password: 'core-admin-pass' },
+      jwt: { secret: 'core-jwt-secret', expiresIn: '30m' },
+      server: { port: '5001', corsOrigins: 'http://localhost:3000' },
+      email: {
+        host: 'smtp.example.com',
+        port: '587',
+        user: 'mail-user',
+        password: 'mail-pass',
+        secure: false,
+        fromName: 'WebDAV',
+      },
+    };
+  }
+
+  beforeEach(() => {
+    settingsSetSpy = jest
+      .spyOn(Settings, 'set')
+      .mockImplementation(async () => ({ success: true }));
+    invalidateSpy = jest.spyOn(getSharedResolver(), 'invalidateCache');
+    process.env.DOTENV_CONFIG_PATH = makeEnvPath('setupcore');
+  });
+
+  afterEach(() => {
+    settingsSetSpy.mockRestore();
+    invalidateSpy.mockRestore();
+    delete process.env.encrypt_secret_key;
+  });
+
+  it('validateApplyPayload: returns null for a valid payload and error detail otherwise', () => {
+    expect(setupCore.validateApplyPayload(validWebdavPayload())).toBeNull();
+    expect(setupCore.validateApplyPayload('nope')).toEqual({
+      errorCode: 'serverErrors.setup.invalidPayload',
+      message: 'Invalid setup payload',
+      fields: { body: 'invalid' },
+    });
+    const missingJwt = setupCore.validateApplyPayload({
+      metadata: { backend: 'sqlite' },
+      file: { backend: 'webdav', url: 'https://dav.example.com', username: 'u', password: 'p' },
+      admin: { password: 'pass' },
+      jwt: {},
+    });
+    expect(missingJwt.fields['jwt.secret']).toBe('required');
+  });
+
+  it('validateApplyPayload: postgresql metadata is rejected with the wizard message', () => {
+    const result = setupCore.validateApplyPayload({
+      metadata: { backend: 'postgresql', host: 'db.local' },
+      file: { backend: 'webdav', url: 'https://dav.example.com', username: 'u', password: 'p' },
+      admin: { password: 'pass' },
+      jwt: { secret: 's' },
+    });
+    expect(result.errorCode).toBe('serverErrors.setup.invalidPayload');
+    expect(result.fields).toEqual({ metadata: 'notAllowed' });
+    expect(result.message).toContain('environment variables');
+  });
+
+  it('buildEnvEntries + partitionEntries: T0 (non-metadata) goes to .env, the rest to DB', () => {
+    const entries = setupCore.buildEnvEntries(validWebdavPayload());
+    expect(entries.WEA_FILE_STORAGE).toBe('webdav');
+    expect(entries.JWT_SECRET).toBe('core-jwt-secret');
+    expect(entries.EMAIL_SECURE).toBe('false');
+
+    const { envEntries, dbEntries } = setupCore.partitionEntries(entries);
+    expect(Object.keys(envEntries).sort()).toEqual(['JWT_SECRET']);
+    expect(dbEntries).not.toHaveProperty('JWT_SECRET');
+    expect(dbEntries.WEA_FILE_STORAGE).toBe('webdav');
+    expect(dbEntries.WEBDAV_PASSWORD).toBe('dav-pass');
+
+    // Metadata-backend T0 keys are excluded from the .env partition entirely.
+    const pgT0 = setupCore.partitionEntries({ WEA_PG_HOST: 'db.local' });
+    expect(pgT0.envEntries).toEqual({});
+    expect(pgT0.dbEntries).toEqual({});
+  });
+
+  it('applySetup: valid webdav payload applies wizard-identically and returns restart_required', async () => {
+    const result = await setupCore.applySetup(validWebdavPayload());
+
+    expect(result).toEqual({ restart_required: true });
+    expect(mockWriteEnv).toHaveBeenCalledTimes(1);
+    const [, envEntries] = mockWriteEnv.mock.calls[0];
+    expect(Object.keys(envEntries).sort()).toEqual(['JWT_SECRET', 'encrypt_secret_key']);
+    expect(envEntries.JWT_SECRET).toBe('core-jwt-secret');
+    expect(envEntries.encrypt_secret_key).toMatch(/^[a-f0-9]{64}$/);
+
+    const masterKey = envEntries.encrypt_secret_key;
+    const written = Object.fromEntries(settingsSetSpy.mock.calls);
+    expect(written.WEA_FILE_STORAGE).toBe('webdav');
+    expect(written.WEBDAV_URL).toBe('https://dav.example.com');
+    expect(decryptSecret(JSON.parse(written.WEBDAV_PASSWORD), masterKey)).toBe('dav-pass');
+    expect(decryptSecret(JSON.parse(written.EMAIL_PASSWORD), masterKey)).toBe('mail-pass');
+    expect(invalidateSpy).toHaveBeenCalled();
+
+    const admin = await User.findByUsername('admin');
+    expect(await bcrypt.compare('core-admin-pass', admin.password)).toBe(true);
+    expect(await bcrypt.compare(ADMIN_PASSWORD, admin.password)).toBe(false);
+  });
+
+  it('applySetup: rejects an invalid payload with the typed 400 error and writes nothing', async () => {
+    const payload = validWebdavPayload();
+    payload.jwt = {};
+
+    await expect(setupCore.applySetup(payload)).rejects.toMatchObject({
+      errorCode: 'serverErrors.setup.invalidPayload',
+      message: 'Invalid setup payload',
+      fields: { 'jwt.secret': 'required' },
+    });
+    expect(mockWriteEnv).not.toHaveBeenCalled();
+    expect(settingsSetSpy).not.toHaveBeenCalled();
+    expect(invalidateSpy).not.toHaveBeenCalled();
+  });
+
+  it('applySetup: a masked (unchanged) secret is dropped, not re-encrypted', async () => {
+    const payload = {
+      metadata: { backend: 'sqlite' },
+      file: {
+        backend: 's3',
+        bucket: 'webdav-temp',
+        region: 'us-east-1',
+        accessKeyId: 'admin',
+        secretAccessKey: '****',
+      },
+      admin: { password: 'core-admin-pass' },
+      jwt: { secret: 'core-jwt-secret' },
+    };
+
+    const result = await setupCore.applySetup(payload);
+    expect(result).toEqual({ restart_required: true });
+
+    const written = Object.fromEntries(settingsSetSpy.mock.calls);
+    expect(written).not.toHaveProperty('AWS_SECRET_ACCESS_KEY');
+    expect(written.S3_BUCKET).toBe('webdav-temp');
+    expect(mockWriteEnv).toHaveBeenCalledTimes(1);
+  });
+
+  it('applySetup: an existing encrypt_secret_key is kept, never written to .env', async () => {
+    process.env.encrypt_secret_key = 'core-pre-existing-key';
+
+    const result = await setupCore.applySetup(validWebdavPayload());
+    expect(result).toEqual({ restart_required: true });
+
+    const [, envEntries] = mockWriteEnv.mock.calls[0];
+    expect(Object.keys(envEntries).sort()).toEqual(['JWT_SECRET']);
+    expect(envEntries).not.toHaveProperty('encrypt_secret_key');
+
+    const written = Object.fromEntries(settingsSetSpy.mock.calls);
+    expect(decryptSecret(JSON.parse(written.WEBDAV_PASSWORD), 'core-pre-existing-key')).toBe(
+      'dav-pass'
+    );
   });
 });

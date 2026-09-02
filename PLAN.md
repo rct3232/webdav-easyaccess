@@ -1,136 +1,275 @@
-# PLAN — E2E Naming Normalization + Suite Consolidation
+# PLAN — External Exposure Hardening: Setup / Migration
 
-Status: IN PROGRESS.
-Branch: `refactor/e2e-naming-and-consolidation` (base: `dev`).
+Status: NOT STARTED (awaiting start command).
+Branch: `feature/setup-migration-exposure-hardening` (base: `dev`).
+Docs language: English (repo-wide convention).
 
 ## 1. Objective
 
-Two deliverables on the Playwright e2e suite (`e2e/*.spec.ts`, `e2e/helpers/*`):
+Close the external-exposure windows around the setup and migration surfaces of a
+network-published instance:
 
-1. **Naming rules** — define and apply one convention for suite (`describe`) and case
-   (`test`) titles, serialization, and conditional skips.
-2. **Suite/case consolidation** — remove duplicated scenarios and helpers between
-   specs/helpers, and align the `docs/E2E_COVERAGE_PLAN.md` inventory with reality.
+- **Setup (WS1 + WS2-cli + WS3):** a fresh (`setup_complete === false`) server must NEVER
+  listen on a non-loopback interface, so `/setup` and its unauthenticated write endpoints
+  cannot be reached from outside at all. Operators who cannot use a browser on/next to the
+  host complete first-run configuration with a new **CLI setup tool** (no remote-wizard
+  token gate — dropped by user decision).
+- **Migration (WS4):** regular users must not be pushed onto the operator `/migration` page;
+  they see a generic public `/maintenance` screen. Public endpoints leak no operational
+  metadata (job id/type/timing).
+- **Docs (WS3):** operator/reverse-proxy guidance documents all of the above.
 
-Target filename style: `<name>.<platform>.spec.ts` (dot suffix). After consolidation the
-platform-specific core-flow twins are absorbed into `core-flow.shared.spec.ts`, so the
-remaining platform files (`explorer-advanced.{desktop,mobile}`, `core-flow.shared`) all
-use the dot-suffix style; `desktop-core-flow.spec.ts` / `mobile-core-flow.spec.ts` are
-deleted.
+Future (out of scope, recorded): splitting admin/operator surfaces into a separate build/app.
 
-## 2. Naming convention (target — also written to `docs/TESTING_STRATEGY.md`)
+## 2. Scope
 
-- **Case title**: `E2E-<DOMAIN>-NNN: <third-person present declarative description>`.
-  - Sentence case, no imperative/gerund, no `[Px]` priority tags, no literal backticks,
-    no snake_case identifiers, no emojis.
-  - Hermetic scenario labels stay as a parenthetical between ID and colon, normalized:
-    setup-wizard `(Case N, both modes|s3 mode only)`, migration `(Flow <label>)` (no bare
-    `(A5)`/`(B5)`/`(E3)`).
-  - IDs declared in **numeric order** within each file.
-- **Suite title**: lowercase sentence case; platform qualifier `(desktop)` / `(mobile)`
-  when platform-owned; ID-range qualifier for hermetic families
-  (`first-run setup wizard (E2E-SETUP-001..004)`).
-- **Serial mode**: always `test.describe.configure({ mode: 'serial' })`; never the
-  anonymous `test.describe.serial`.
-- **Skips**: every `test.skip`/`test.fixme` carries a reason. Platform ownership via
-  project/testMatch, not inline project skips — documented exception: mobile-only cases
-  inside a both-platform spec (mypage-user 011/012) keep a reason-carrying skip.
-- **ID coverage**: every `test()` carries an ID. `admin-config.spec.ts` gets the new
-  `E2E-ADMINCFG-001..012` family; `00-project-setup.spec.ts` gets `E2E-SETUP-005`.
+In scope:
 
-## 3. Consolidation targets
+1. Setup-mode loopback-only binding (no opt-out) — WS1.
+2. CLI first-run setup tool (shared apply core extracted from the setup routes) — WS2-cli.
+3. Operator/ops docs: three setup paths, no-browser path, reverse-proxy hardening — WS3.
+4. Migration UX split: public `/maintenance` vs admin `/migration`; minimal public status;
+   503 body cleanup — WS4.
+5. Docs-first updates for every affected doc, unit tests, lint/format, server tests, e2e core
+   green, merge to `dev`.
 
-| #   | Target                                                                                                                                                                                                                    | Change                                                                                                                                                                                              |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| C1  | `mypage-admin.spec.ts` desktop/mobile twins (16 tests, 8 scenarios)                                                                                                                                                       | One parameterized suite; platform navigation seam; `(mobile)` title suffixes removed                                                                                                                |
-| C2  | Core-flow twins `E2E-EXP-006/008`, `E2E-BULK-001..004` (+ BULK-006 mobile-only, BULK-007 conflict dialog) duplicated in `desktop-core-flow`/`mobile-core-flow`/`explorer-advanced.*`                                      | Absorb into `core-flow.shared.spec.ts` with a platform interaction seam; delete `desktop-core-flow.spec.ts` + `mobile-core-flow.spec.ts`; remove BULK-007 from `explorer-advanced.{desktop,mobile}` |
-| C3  | `E2E-AUTH-004` ≡ `E2E-EXP-001` identical landing smoke                                                                                                                                                                    | Remove `E2E-AUTH-004` test; mark inventory row `removed` (covered by E2E-EXP-001)                                                                                                                   |
-| C4  | Helper re-implementations: UI uploadFile/createFolder ×3, folder-picker ×2, bulkDeleteSelected ×2, long-press ×2, path folder-create ×3, API login ×5, UI login ×4, share-link inline, openSystemSettings ×2, PROPFIND ×3 | Route into `helpers/files.ts`, `helpers/auth.ts`, `helpers/mobile-interactions.ts`, `helpers/shareLinks.ts`, `helpers/setupScratch.ts`                                                              |
-| C5  | Hermetic scratch scaffolding: boot/teardown ×3, `writeScratchEnv` ×2 identical, `seedWebdavSettings` ×2                                                                                                                   | Extract shared boot/teardown + env/seed helpers into `setupScratch.ts`                                                                                                                              |
-| C6  | Global files: `seedPostgresql()` caller + `SEED_USERS`, `cleanDir()`, S3/PG constants duplicated                                                                                                                          | Extract shared `runSeedDb`, `SEED_USERS`, `cleanDir`, constants module                                                                                                                              |
-| C7  | `playwright.config.ts` testMatch + wave gating                                                                                                                                                                            | Update for removed files; drop redundant inline wave gate in `mypage-admin` (keep testMatch gate)                                                                                                   |
-| C8  | Inventory drift                                                                                                                                                                                                           | Fix `covered`/`planned`/ownership rows; add `E2E-MIG-001..008` + `E2E-ADMINCFG-001..012` sections; note EXP-007 folded into EXP-006                                                                 |
+Out of scope (explicitly NOT part of this work):
 
-## 4. Success criteria
+- `WEA_SETUP_TOKEN` setup-token gate (cancelled by user; WS1 loopback + CLI replace it).
+- Separate admin/operator SPA or app split — recorded as future work only.
+- Migration-related admin _authorization_ changes (already token + DB-admin enforced).
+- Any change to the `admin`/`admin` default-credential bootstrap itself.
 
-- Naming convention documented in `docs/TESTING_STRATEGY.md` and applied to every spec.
-- No duplicate scenario bodies between specs/helpers (C1–C4); hermetic scaffolding shared (C5, C6).
-- `docs/E2E_COVERAGE_PLAN.md` inventory matches the suite (C8).
-- eslint (`npm run lint:ci`) + prettier (`npm run format:check`) clean.
-- Playwright e2e green in both backend modes for the consolidated suite
-  (`npm run test:e2e:s3` and `npm run test:e2e:webdav`, plus the hermetic projects).
+## 3. Key Components (current state, evidence)
 
-## 5. Dependency graph
+- SPA fallback serves `index.html` for every non-`/api` GET — `server/index.js:205-214`
+  (WS1 makes setup-mode unreachable at the listener instead).
+- `app.listen(port)` with no host → all interfaces — `server/index.js:356-360`;
+  `bootStatus.setup_complete` computed in the same boot scope — `server/index.js:249`.
+- Setup domain is a single routes module with inline logic:
+  `server/domains/setup/routes.js` — validation (`validateApplyPayload`), env building
+  (`buildEnvEntries`), T0/DB partition (`partitionEntries`), secret mask handling, admin
+  password update (`updateAdminPassword`), DB settings write (`writeSettings`), master-key
+  lifecycle. Route tests: `server/domains/setup/__tests__/setup.test.js`.
+- Setup status is derived, not stored: `server/infrastructure/setupStatus.js`
+  (`computeSetupStatus`); status endpoint `GET /api/setup/status` public.
+- Config source resolution / registry: `server/infrastructure/configRegistry.js`
+  (`isT0`, `isSecret`, `getDefault`, `TIER`), `configResolver.js`, `envFileWriter.js`
+  (`writeEnv`), `envPath.js` (`resolveEnvPath`).
+- Migration gate: `server/infrastructure/migrationGate.js`; public
+  `GET /api/migration/status` returns full gate status — `server/domains/admin/routes/migrationStatus.js:26-28`;
+  503 body carries `params: { type, jobId }` — `server/index.js:128-134`.
+- Client: routes in `client/src/App.js:68-108` (`/setup`, `/migration` public);
+  `client/src/pages/Migration/MigrationGuard.js` force-redirects all (except `/login`) to
+  `/migration` while active; `MigrationPage.js` polls public status and admin job endpoint.
+- No app `Dockerfile` in repo (only `docker-compose.e2e.yml` for MinIO/WebDAV e2e
+  dependencies); server has no prompt library — CLI will use Node `readline`/flags only.
 
-- **Task 1 (docs)**: naming rules in `TESTING_STRATEGY.md`; inventory rewrite in
-  `E2E_COVERAGE_PLAN.md`; PLAN.md. No dependencies.
-- **Task 2 (helpers, C4)**: depends on Task 1 (helper seams documented). Can run parallel
-  with Task 3.
-- **Task 3 (hermetic scaffolding, C5)**: independent of Task 2 (different helpers).
-- **Task 4 (core-flow consolidation, C2)**: depends on Task 2 helpers (uploadFile/
-  createFolder/folder-picker/bulk-delete/long-press shared first).
-- **Task 5 (mypage-admin consolidation, C1)**: independent of Task 4; depends on Task 2's
-  `createFolderViaApi` + auth helpers.
-- **Task 6 (naming pass, C0)**: apply the convention to every spec title/skip; depends on
-  Tasks 4+5 to avoid rework on moved tests.
-- **Task 7 (config + cleanup)**: playwright.config.ts, delete twins, E2E-AUTH-004 removal,
-  `E2E-ADMINCFG`/`E2E-SETUP-005` IDs. Depends on Tasks 4–6.
-- **Task 8 (verification)**: lint, prettier, e2e runs. Depends on Task 7.
+## 4. Workstreams and Tasks
+
+> Docs-first (Task 1) precedes all code. Tasks in the same workstream are sequential; the
+> three workstreams are independent of each other after Task 1.
+
+### Workstream 1 — Docs-first + Ops guide (WS3)
+
+**Task 1 — Docs updates (WS3 + pre-docs for WS1/WS2-cli/WS4).**
+
+- Objective: update all affected docs BEFORE any code edit.
+- Files (verify each exists and update): `docs/features/setup-wizard.md` (Security section:
+  replace deferred `WEA_SETUP_TOKEN` text with loopback-only + CLI; new "no browser" path),
+  `docs/SETUP.md` (Security and Initial Admin Setup §5 + env reference: setup-mode loopback
+  binding; three setup paths — local browser / SSH tunnel / CLI; headless no-browser
+  env-only or CLI path; container note), `docs/features/migration-mode.md` + the
+  `docs/spec/server/infrastructure/migrationGate.md` status contract (`public {active}`,
+  admin-full; `/maintenance` for non-admins), any `docs/spec/client/pages/*` setup/migration
+  page specs, `docs/features/client-ui.md` redirect chain if present, `.env.example` if it
+  lists setup-related vars, `docs/IMPROVEMENT_PLAN.md` (future-work: admin-app split).
+- New file: CLI setup tool spec `docs/features/setup-cli.md` (or under `docs/features/`)
+  describing commands, flags, and the reuse of the wizard apply core.
+- Expected output: all behavior contracts (WS1 bind rule, WS2-cli commands, WS4 public/admin
+  status shapes) fixed in docs; the earlier e2e-relevant doc rows (`E2E_COVERAGE_PLAN.md`)
+  annotated if a spec changes observable behavior.
+- Verification: grep the doc set for stale `WEA_SETUP_TOKEN`/force-redirect claims; reviewer
+  reads; no code touched.
+- Dependencies: none.
+
+### Workstream 2 — WS1: loopback-only setup-mode binding (server)
+
+**Task 2 — Force loopback bind while setup is incomplete.**
+
+- Objective: when `setup_complete === false`, `app.listen` binds `127.0.0.1` only
+  (no opt-out). When complete, current behavior (all interfaces) is preserved so reverse
+  proxies keep working.
+- Inputs: `server/index.js:249` boot status + `server/index.js:356-360` listen site.
+- Expected: `app.listen(port, bootStatus.setup_complete ? undefined : '127.0.0.1', cb)`
+  (or explicit `process.env.HOST` when complete if later added — none today) plus a
+  self-test/unit assertion that the chosen host is loopback in setup mode.
+- Verification: server boots in setup mode → netstat/lsof shows `127.0.0.1`; complete
+  (`.env` populated) → `0.0.0.0`; existing route tests green.
+- Dependencies: Task 1 (behavior contract documented).
+
+### Workstream 3 — WS2-cli: CLI first-run setup tool (server)
+
+**Task 3 — Extract shared setup apply core from the setup routes.**
+
+- Objective: move `validateApplyPayload`, `buildEnvEntries`, `partitionEntries`, secret-mask
+  normalization, `writeSettings`/`updateAdminPassword` orchestration (the `POST /apply`
+  handler body, minus HTTP bits) into a shared module the HTTP route AND the CLI both call,
+  without behavior change.
+- Inputs: `server/domains/setup/routes.js` (validation/apply/prefill blocks),
+  `server/domains/setup/__tests__/setup.test.js` (existing contract tests).
+- Expected: new `server/domains/setup/setupCore.js` (naming per repo conventions) exporting
+  the pure validators/builders + `applySetup(payload)`; routes.js becomes a thin handler;
+  existing setup route tests stay green (they assert the HTTP behavior unchanged).
+- Verification: `npm run test --workspace server -- routes/setup` (or the setup test path)
+  passes; no HTTP contract change.
+- Dependencies: Task 1.
+
+**Task 4 — CLI tool `server/scripts/setup.js`.**
+
+- Objective: first-run configuration from the terminal on the host, mirroring the wizard:
+  preflight status check (refuse when already complete), optional connection test (parity
+  with `POST /api/setup/test` / `runProbe`), then apply (parity with `POST /api/setup/apply`:
+  `.env` T0 write via `writeEnv`, admin password, DB settings upsert under the master key,
+  `restart_required` guidance). Flags-driven non-interactive mode (+ optional `readline`
+  interactive mode); `--help`. Boots the app store/resolver the same way
+  `server/index.js` does (`initMetadataStore`/`Settings`/`createConfigResolver`/`loadAll`)
+  so PG (env-owned) and sqlite (no-env) metadata both work.
+- Inputs: Task 3 core; `server/index.js:240-266` store-boot sequence as reference;
+  `server/scripts/migrateBlobs.js` as the CLI-style precedent.
+- Expected: runnable `node server/scripts/setup.js`; exits non-zero on invalid input/refusal;
+  prints clear next steps. Note in SETUP.md.
+- Verification: unit/integration test covering flag parsing, validation refusals,
+  already-complete refusal, and an apply that flips `computeSetupStatus` to complete on a
+  throwaway sqlite DB.
+- Dependencies: Task 3.
+
+### Workstream 4 — WS4: migration surface split + exposure reduction
+
+**Task 5 — Server: minimal public status, admin-full status, 503 cleanup.**
+
+- Objective: unauthenticated `GET /api/migration/status` returns `{ active }` only; the same
+  endpoint (or a designated admin endpoint) returns the full `{ active, type, jobId,
+startedAt }` only to a valid admin token; the migration-gate 503 body no longer carries
+  `type`/`jobId` (verify nothing besides the admin client needs them).
+- Inputs: `server/domains/admin/routes/migrationStatus.js`, `server/index.js:110-136`
+  (gate + allow-list), `server/infrastructure/migrationGate.js`.
+- Expected: public response shape `{ active }`; admin consumers (client `/migration` page,
+  app-guard) get full data only via an admin-authenticated request.
+- Verification: server tests asserting anonymous body is `{ active }`, admin body is full,
+  503 params removed; existing e2e migration/admin-config specs adjusted where they assert
+  the old shapes.
+- Dependencies: Task 1.
+
+**Task 6 — Client: `/maintenance` (public) vs `/migration` (admin); role-aware guard.**
+
+- Objective: new public `MaintenancePage` (generic, no operational metadata) shown to
+  non-admin/anonymous sessions while the gate is active; authenticated admins go to
+  `/migration` as today. MigrationGuard decision becomes role-aware (needs the session
+  user's `is_admin` at guard scope — verify where the session user lives relative to the
+  guard in `client/src/App.js` and plumb accordingly). `/migration` page requires an admin
+  session (its data calls already 401 otherwise) and reads full status/jobId through the
+  admin-authenticated path added in Task 5.
+- Inputs: `client/src/pages/Migration/MigrationGuard.js`, `MigrationPage.js`,
+  `client/src/App.js`, auth/session hook + service, i18n files.
+- Expected: during a migration an anonymous/normal user lands on a generic maintenance
+  screen (no `/migration`), an admin lands on `/migration`; `/login` stays reachable so an
+  expired admin can re-authenticate and reach `/migration`.
+- Verification: client tests + e2e assertions updated (regular-user redirect → maintenance
+  page; admin → `/migration`); mobile/desktop e2e migration scenarios stay green.
+- Dependencies: Task 5.
+
+### Workstream 5 — Verification + merge
+
+**Task 7 — Full verification.**
+
+- Objective: lint/format clean, server unit+integration tests, client tests, e2e core +
+  migration/admin-config hermetic projects green in both backend modes where applicable.
+- Inputs: repo scripts `npm run lint:ci`, `npm run format:check`, workspace `test:ci`
+  (client/server), e2e commands per `package.json`.
+- Dependencies: Tasks 2, 4, 6.
+
+**Task 8 — Merge to `dev`.**
+
+- Switch to `dev`, merge the feature branch after Task 7 is green, delete the branch.
+  Never merge to `main` (CI/CD owner: user).
+- Dependencies: Task 7.
+
+## 5. Success criteria
+
+- A server booted with no `.env` (or an incomplete one) is reachable only on `127.0.0.1`;
+  no env flag or request can make `/api/setup/*` reachable on a non-loopback interface.
+- A headless operator can complete first-run configuration on the host via the CLI
+  (`setup.js`) or a full `.env`; the wizard remains available only from localhost / SSH
+  tunnel.
+- During an active migration, anonymous and regular users land on the generic
+  `/maintenance` page; only an authenticated admin sees `/migration` progress. Public
+  endpoints and 503 bodies expose no `type`/`jobId`/timing data.
+- Docs (setup-wizard, SETUP.md, migration-mode, migrationGate spec, new setup-cli doc)
+  describe the final contracts; no stale `WEA_SETUP_TOKEN` or force-redirect claims remain.
+- Admin-app separation recorded as future work in the docs.
+- lint/format clean; server/client tests + affected e2e green; merged to `dev`.
 
 ## 6. Progress log
 
-- 2026-09-02: Analysis complete (two parallel surveys): full title/suite inventory + 8
-  consolidation targets with file:line evidence. Scope confirmed with user: full refactor,
-  dot-suffix filename style. Plan written.
-- 2026-09-02: Docs-first done — naming rules in `docs/TESTING_STRATEGY.md` (new subsection),
-  `docs/E2E_COVERAGE_PLAN.md` inventory rewritten (ownership table, EXP/BULK/OVERLAY rows,
-  E2E-AUTH-004 removed, E2E-EXP-007 folded note, new E2E-MIG-001..008 + E2E-ADMINCFG-001..012 +
-  E2E-SETUP-005 sections).
-- 2026-09-02: Suite consolidation implemented. `core-flow.shared.spec.ts` now owns EXP-001..006,
-  008, 012, 013 + BULK-001..004, 006, 007 with a platform interaction seam (click/Meta vs
-  long-press/action-sheet); `desktop-core-flow.spec.ts` + `mobile-core-flow.spec.ts` deleted;
-  `playwright.config.ts` testMatch updated. `mypage-admin.spec.ts` reduced from 16 twin tests to
-  one parameterized serial suite (8 tests × both projects); inline platform/wave skips removed.
-  `E2E-AUTH-004` removed (byte-identical to E2E-EXP-001).
-- 2026-09-02: Helper consolidation. UI create/upload/folder-picker/bulk-delete/progress helpers
-  added to `helpers/files.ts`; `loginAsUserApi`/`getAdminToken`/`loginWithCredentials` added to
-  `helpers/auth.ts`; `writeScratchEnv`/`seedWebdavSettings`/`openSystemSettings` extracted to
-  `helpers/setupScratch.ts`; new `helpers/seedDb.ts` (SEED_USERS + runSeedDb + cleanDir) dedupes
-  global-setup/teardown/00-project-setup. All 6 hermetic projects verified green (webdav mode).
-- 2026-09-02: Naming pass applied to all remaining specs via parallel sub-agents: [P0]/[P1]
-  prefixes removed, dead E2E-SHARE-010 skip deleted, describe titles lowercased, serial idiom
-  unified to `test.describe.configure`, all skips carry reasons, share-public reordered
-  numerically, share-internal order preserved (load-bearing), admin-config got E2E-ADMINCFG-001..012,
-  00-project-setup got E2E-SETUP-005, migration labels normalized to `(Flow X)`.
-- 2026-09-02: Verification fixes. (1) mypage-admin `E2E-ADMIN-005` mobile flake root-caused to a
-  locator bug I introduced (`dialog.getByText('Add').first()` matched the dialog heading "Add new
-  user" instead of the submit button) — fixed with `dialog.getByRole('button', { name: 'Add',
-exact: true })` + bounded re-dispatch until the 201 response. (2) Per-project data isolation
-  ordering defect (pre-existing, exposed by later-waves data volume): Playwright runs all
-  dependency-only setup projects before any test project, so the mobile project always ran on
-  desktop-polluted data. Fixed in `playwright.config.ts` by making `${backendMode}-mobile-setup`
-  depend on `${backendMode}-desktop`, so the reset runs right before mobile tests.
-- 2026-09-02: VERIFICATION GREEN. `npm run lint:ci` + `npm run format:check` clean.
-  - webdav default-waves (desktop+mobile): 105 passed / 3 skipped
-  - webdav later-waves (all projects): 181 passed / 5 skipped
-  - s3 default-waves (all projects): 153 passed / 3 skipped
-  - s3 later-waves (all projects): 183 passed / 3 skipped
-- 2026-09-02: Residual later-waves flake root-caused and fixed. Repeat runs of the migration
-  spec exposed `E2E-MIG-001` failing 2/3 when the MinIO bucket was absent: every run's
-  global-teardown `down -v` wipes the bucket, webdav-mode global-setup skipped
-  `ensureS3Bucket`, and `emptyS3Bucket` crashed with `NoSuchBucket`. Fixed at two layers:
-  (1) `global-setup.ts` now `waitForMinio` + `ensureS3Bucket` in BOTH modes (empty only in s3);
-  (2) `e2e/helpers/minio.ts` `emptyS3Bucket` calls new `ensureS3BucketExists` first.
-  Verified: migration-mobile 3/3 with the bucket wiped beforehand; full webdav later-waves
-  re-run 181 passed.
-- 2026-09-02: **Replaced `E2E_LATER_WAVES` with `E2E_CORE=1` (essential-only run).** The flag
-  semantics inverted: default `npm run test:e2e` now runs the FULL suite; `E2E_CORE=1`
-  (`npm run test:e2e:core[:s3|:webdav]`) runs only essential suites. `explorer-advanced.*`
-  reclassified as ESSENTIAL (view/sort/search/recent/selection are core file-exploration flows,
-  per user decision) and RENAMED to `core-flow.desktop.spec.ts` / `core-flow.mobile.spec.ts`
-  (helper `explorer-advanced.ts` → `explorer-controls.ts`) so the suite family is
-  `core-flow.<shared|desktop|mobile>`. Non-essential (excluded in core mode): `mypage-admin`
-  - hermetic `setup-wizard` / `admin-config` / `migration` (now conditionally pushed only when
-    `!coreOnlyEnabled`). Docs updated (E2E_COVERAGE_PLAN ownership/wave-gating section,
-    TESTING_STRATEGY filename style, TEST_GIT_GUIDE, .env.e2e/.env.e2e.webdav).
-    Verified: webdav core 119/3, s3 core 119/3, webdav full 181/5 (s3 full 183/5 pre-rename).
+- 2026-09-02: Scope decisions with user — dropped the `WEA_SETUP_TOKEN` remote-wizard gate
+  entirely; setup-incomplete servers ALWAYS bind `127.0.0.1` (no opt-out) and a CLI setup
+  tool covers the no-local-browser case. WS4 proceeds as recommended (public `/maintenance`
+  - admin `/migration`, minimal public status); full admin/operator app split recorded as
+    future work only. Branch created. This plan written.
+- 2026-09-02: Task 1 (docs-first) done — `docs/features/setup-wizard.md` Security section
+  rewritten (loopback-only + CLI; deferred `WEA_SETUP_TOKEN` text removed), new "Network
+  exposure (loopback-only binding)" section, mermaid flow + API table + client summary +
+  testing anchors updated; `docs/SETUP.md` §5 rewritten with the three setup paths, env-only
+  first run, reverse-proxy hardening checklist, migration `/maintenance` note, §2 note box
+  updated; `docs/features/migration-mode.md` role-aware lock UX (`/maintenance` vs
+  `/migration`), API table public `{active}` / admin-full, 503-no-metadata, testing anchors,
+  future-work note; `docs/spec/server/infrastructure/migrationGate.md` contract updated
+  (auth-optional status, 503 body without params); `docs/ARCHITECTURE.md` wording; new
+  `docs/features/setup-cli.md`. Next: parallel implementation — Task 2 (WS1 bind), Task 3
+  (setup core extraction), Task 5 (WS4 server).
+- 2026-09-02: Implementation complete. (1) WS1: `server/infrastructure/listenConfig.js`
+  `resolveListenHost` + index.js loopback bind while `!setup_complete` (log shows bind) + unit
+  tests. (2) WS4 server: `migrationStatus.js` auth-optional status (anonymous `{active}` /
+  admin full), index.js 503 body drops `params {type,jobId}`; migration.test.js extended.
+  (3) WS2 core: `server/domains/setup/setupCore.js` (validators + `applySetup`), routes.js
+  thin, setup tests 51 passed. (4) WS4 client: `MaintenancePage` + `/maintenance` route,
+  role-aware `MigrationGuard` (admin → /migration, others → /maintenance), i18n en/ko,
+  MigrationGuard tests rewritten; full client suite 1397 passed. (5) CLI:
+  `server/scripts/setup.js` (interactive + flags + `--status` + `--check`, env/store boot
+  parity, refusal when complete) + 13 hermetic tests passed; doc reconciled (exit codes, TTY
+  secret-prompt exception, `--s3-secret-key` alias, `--check` backend source). (6) e2e fix:
+  `e2e/migration.spec.ts` status polls now send the admin bearer header (4 sites; one token
+  hoisted); no other spec affected.
+- 2026-09-02: VERIFICATION GREEN. `lint:ci` clean (one React-version config notice),
+  `format:check` clean. Server full suite `jest --ci` → 87 suites / 1658 passed / 5 skipped.
+  Client full suite → 156 suites / 1397 passed. Targeted hermetic e2e
+  (`migration-desktop` + `setup-wizard-desktop`, docker MinIO/WebDAV/PG up) → 12 passed.
+  Full-wave e2e runs (core + later-waves, both backend modes) not executed locally — deferred
+  to CI on merge. Next: Task 8 (merge to `dev`).
+- 2026-09-02: E2E-MIG-009 added (`e2e/migration.spec.ts` after E2E-MIG-003; describe/header
+  range → 001..009; inventory row + ownership flow range A–F in `docs/E2E_COVERAGE_PLAN.md`).
+  Flow F role-aware gate hold: admin stays on `/migration`; regular user and anonymous visitor
+  are routed to the new public `/maintenance` page (gate held via the Flow C tarpit dry-run
+  pattern). Fresh `client/build` rebuilt before the run. Verified: targeted
+  `--project=migration-desktop -g "E2E-MIG-009"` → 1 passed; full `migration-desktop` serial
+  suite → 9 passed. Next: Task 8 (merge to `dev`).
+- 2026-09-02: Maintenance page UX change (user): removed the "Operator sign in" button; an
+  authenticated session now gets a plain "Log out" link (`maintenance` page uses `nav.logout`,
+  `logout()` + `/login`), anonymous visitors get no action; i18n `maintenance.operatorSignIn`
+  keys removed; docs `migration-mode.md` role-aware section updated. Client unit tests
+  rewritten (4 cases) and green; E2E-MIG-009 assertions updated (regular-user → "Log out"
+  link, anonymous → no action); fresh `client/build`; targeted e2e `E2E-MIG-009` → 1 passed.
+  Next: Task 8 (merge to `dev`).
+- 2026-09-02: Docs↔code consistency audit (sub-agent). All implementation claims MATCH. Doc
+  drift fixed: migrationGate.md 503 body spec now `{ errorCode, messageCode, message }`
+  (no retryAfter/params) in §2.5 row + §2.7 + migration-mode.md; routes/setup.md apply
+  section rewritten to the real `setupCore.applySetup` flow (removes the pre-D7 PG
+  direct-write/`ADMIN_DEFAULT_PASSWORD` steps; `.env` gets `JWT_SECRET` +
+  auto-generated `encrypt_secret_key` only, metadata T0 keys never written);
+  setup-wizard.md Admin-password semantics + Two-layer model corrected (no PG branch, no
+  `ADMIN_DEFAULT_PASSWORD` by apply); SETUP.md §2 wizard note fixed (metadata connection
+  env-owned, never wizard-written); client-ui.md routing list + setup-wizard/Setup page-spec
+  `App.js:64-98` → `App.js:69-105` refs. Code note left open (non-behavioral):
+  `envFileWriter` allowlist still lists metadata T0 keys even though apply never emits them.
+  Next: Task 8 (merge to `dev`).

@@ -457,27 +457,71 @@ describe('POST /api/admin/migration/jobs/:jobId/cancel', () => {
   });
 });
 
-describe('GET /api/migration/status (public)', () => {
-  it('returns the inactive gate state without auth', async () => {
+describe('GET /api/migration/status (auth-optional)', () => {
+  it('returns { active: false } for an anonymous caller when the gate is inactive', async () => {
     const res = await request(app).get('/api/migration/status');
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({
-      active: false,
-      type: undefined,
-      jobId: undefined,
-      startedAt: undefined,
-    });
+    expect(res.body).toEqual({ active: false });
   });
 
-  it('returns the active gate state (type/jobId/startedAt) without auth', async () => {
-    const state = getMigrationGate().set({ type: 'metadata', jobId: 'status-job' });
+  it('returns { active: true } only (no type/jobId/startedAt) for an anonymous caller while the gate is active', async () => {
+    getMigrationGate().set({ type: 'metadata', jobId: 'status-job' });
     try {
       const res = await request(app).get('/api/migration/status');
       expect(res.status).toBe(200);
-      expect(res.body).toEqual(state);
+      expect(res.body).toEqual({ active: true });
+      expect(res.body.type).toBeUndefined();
+      expect(res.body.jobId).toBeUndefined();
+      expect(res.body.startedAt).toBeUndefined();
     } finally {
       getMigrationGate().reset();
     }
+  });
+
+  it('returns { active: true } only for a non-admin token while the gate is active', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `migration-status-nonadmin-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      isAdmin: false,
+    });
+    getMigrationGate().set({ type: 'blobs', jobId: 'status-nonadmin' });
+    try {
+      const res = await request(app)
+        .get('/api/migration/status')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ active: true });
+      expect(res.body.jobId).toBeUndefined();
+    } finally {
+      getMigrationGate().reset();
+    }
+  });
+
+  it('returns the full gate status for a valid admin token', async () => {
+    const token = await createAdminToken();
+    getMigrationGate().set({ type: 'blobs', jobId: 'admin-status' });
+    try {
+      const res = await request(app)
+        .get('/api/migration/status')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        active: true,
+        type: 'blobs',
+        jobId: 'admin-status',
+        startedAt: expect.any(String),
+      });
+    } finally {
+      getMigrationGate().reset();
+    }
+  });
+
+  it('returns { active: false } for an admin token when the gate is inactive', async () => {
+    const token = await createAdminToken();
+    const res = await request(app)
+      .get('/api/migration/status')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ active: false });
   });
 });
 
@@ -937,7 +981,14 @@ describe('gating middleware (503 migrationInProgress)', () => {
       expect(res.status).toBe(503);
       expect(res.body.errorCode).toBe('migrationInProgress');
       expect(res.body.messageCode).toBe('migrationInProgress');
-      expect(res.body.params).toEqual({ type: 'blobs', jobId: 'gating-1' });
+      expect(res.body).toEqual({
+        errorCode: 'migrationInProgress',
+        messageCode: 'migrationInProgress',
+        message: 'Migration in progress',
+      });
+      expect(res.body.params).toBeUndefined();
+      expect(res.body.type).toBeUndefined();
+      expect(res.body.jobId).toBeUndefined();
 
       const filesRes = await request(app).get('/api/files/anything');
       expect(filesRes.status).toBe(503);
@@ -962,8 +1013,9 @@ describe('gating middleware (503 migrationInProgress)', () => {
         .send({ username: 'x', password: 'y' });
       expect(login.status).not.toBe(503);
 
-      // GET /api/migration/status stays open and reflects the active gate.
-      const status = await request(app).get('/api/migration/status');
+      // GET /api/migration/status stays open; an admin token gets the full
+      // gate state (the anonymous shape is covered above).
+      const status = await request(app).get('/api/migration/status').set(auth);
       expect(status.status).toBe(200);
       expect(status.body.active).toBe(true);
       expect(status.body.jobId).toBe('gating-2');

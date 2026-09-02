@@ -5,6 +5,7 @@ import path from 'node:path';
 import { expect, test, type APIRequestContext, type Page, type TestInfo } from '@playwright/test';
 
 import { TEST_FILES } from './fixtures/test-data';
+import { loginWithCredentials } from './helpers/auth';
 import { readTestFileFixture } from './helpers/files';
 import { blobExists, emptyS3Bucket, listS3Keys } from './helpers/minio';
 import {
@@ -14,11 +15,14 @@ import {
   ensureWebdavSubtree,
   execScratchSqlite,
   killScratch,
+  openSystemSettings,
   queryScratchPg,
   queryScratchSqlite,
   scratchDirFor,
+  seedWebdavSettings,
   spawnScratchServer,
   waitForScratchHealth,
+  writeScratchEnv,
 } from './helpers/setupScratch';
 
 /**
@@ -105,45 +109,6 @@ function slugify(value: string): string {
     .replace(/[^a-z0-9]+/gi, '-')
     .toLowerCase()
     .replace(/^-+|-+$/g, '');
-}
-
-/** Write `KEY=value` lines into the scratch `.env` (0600). */
-function writeScratchEnv(scratch: string, entries: Record<string, string>): void {
-  const content =
-    Object.entries(entries)
-      .map(([key, value]) => `${key}=${value}`)
-      .join('\n') + '\n';
-  fs.writeFileSync(path.join(scratch, '.env'), content, { mode: 0o600 });
-}
-
-/**
- * Pre-seed the scratch metadata sqlite with DB-sourced WebDAV connection keys
- * BEFORE the server's first boot (same pattern as admin-config.spec.ts) so the
- * app's webdav blob store resolves WEBDAV_URL from the DB to the isolated
- * `/setup-e2e/...` subtree and `setup_complete` derives true.
- */
-async function seedWebdavSettings(dir: string, url: string): Promise<void> {
-  const dbPath = path.join(dir, 'webdav.db');
-  await execScratchSqlite(
-    dbPath,
-    `CREATE TABLE IF NOT EXISTS settings (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL,
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )`
-  );
-  const rows: Array<[string, string]> = [
-    ['WEBDAV_URL', url],
-    ['WEBDAV_USERNAME', 'e2etest'],
-    ['WEBDAV_PASSWORD', 'e2etest123'],
-    ['WEBDAV_AUTH_TYPE', 'auto'],
-  ];
-  for (const [key, value] of rows) {
-    await execScratchSqlite(
-      dbPath,
-      `INSERT OR REPLACE INTO settings (key, value) VALUES ('${key}', '${value}')`
-    );
-  }
 }
 
 type BootOptions = {
@@ -246,34 +211,8 @@ async function loginToken(
 }
 
 async function loginAsAdminUi(page: Page): Promise<void> {
-  await page.goto('/login');
-  await expect(page.locator('input[name="username"]')).toBeVisible();
-  await page.locator('input[name="username"]').fill('admin');
-  await page.locator('input[name="password"]').fill(ADMIN_PASSWORD);
-  await Promise.all([
-    page.waitForURL(/\/files(?:\/.*)?$/),
-    page.locator('form button[type="submit"]').click(),
-  ]);
+  await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
   await expect(page.getByTestId('file-actions-fab')).toBeVisible();
-}
-
-async function openSystemSettings(page: Page): Promise<void> {
-  await page.goto('/mypage');
-  const systemSettings = page.getByRole('button', { name: /system settings/i });
-  const menuButton = page.locator('button[aria-label="My page"]');
-  // Wait for the MyPage shell to render before deciding: on desktop the sidebar
-  // (with the System settings button) is always visible; on mobile the menu
-  // button appears in the AppBar while the sidebar lives in a closed drawer.
-  // A one-shot isVisible()/count() right after goto races React mount — both
-  // resolve to 0 before the app loads, the drawer is never opened, and the
-  // subsequent click() times out against the hidden drawer content.
-  await expect(menuButton.or(systemSettings).first()).toBeVisible({ timeout: 20000 });
-  if ((await menuButton.count()) > 0) {
-    await menuButton.click();
-    await expect(page.locator('.MuiDrawer-paper')).toBeVisible();
-  }
-  await systemSettings.click();
-  await expect(page.getByRole('heading', { level: 6, name: /system settings/i })).toBeVisible();
 }
 
 async function assertOnSystemSettings(page: Page): Promise<void> {
@@ -527,8 +466,8 @@ function tarpitEndpoint(server: net.Server): string {
   return `http://127.0.0.1:${address.port}`;
 }
 
-test.describe('Unified migration mode (E2E-MIG-001..008)', () => {
-  test('E2E-MIG-001 (Flow A): blob dry-run then apply happy path — dialog → /migration → terminal modal → settings', async ({
+test.describe('unified migration mode (E2E-MIG-001..008)', () => {
+  test('E2E-MIG-001 (Flow A): Blob dry-run then apply happy path — dialog → /migration → terminal modal → settings', async ({
     page,
     request,
   }, testInfo) => {
@@ -620,7 +559,7 @@ test.describe('Unified migration mode (E2E-MIG-001..008)', () => {
     await assertOnSystemSettings(page);
   });
 
-  test('E2E-MIG-002 (Flow B): blob cancel mid-copy, resume via shouldSkip, no duplicate blobs', async ({
+  test('E2E-MIG-002 (Flow B): Blob cancel mid-copy, resume via shouldSkip, no duplicate blobs', async ({
     page,
     request,
   }, testInfo) => {
@@ -798,7 +737,7 @@ test.describe('Unified migration mode (E2E-MIG-001..008)', () => {
     for (const row of postResumeNodes) expect(row.sync_status).toBe('active');
   });
 
-  test('E2E-MIG-008 (E3): native webdav file (no object_map) is snapshotted + migrated; rerun is skipped (no duplicate)', async ({
+  test('E2E-MIG-008 (Flow E3): Native webdav file (no object_map) is snapshotted + migrated; rerun is skipped (no duplicate)', async ({
     page,
     request,
   }, testInfo) => {
@@ -886,7 +825,7 @@ test.describe('Unified migration mode (E2E-MIG-001..008)', () => {
     });
   });
 
-  test('E2E-MIG-003 (Flow C): gate hold — app-guard force-redirect, /login allow-list, 409 on second start', async ({
+  test('E2E-MIG-003 (Flow C): Gate hold — app-guard force-redirect, /login allow-list, 409 on second start', async ({
     page,
     request,
   }, testInfo) => {
@@ -961,7 +900,7 @@ test.describe('Unified migration mode (E2E-MIG-001..008)', () => {
     expect(second.status()).toBe(409);
   });
 
-  test('E2E-MIG-004 (Flow D-1): metadata scan → empty target → seeded target wipe alert → confirm → start', async ({
+  test('E2E-MIG-004 (Flow D-1): Metadata scan → empty target → seeded target wipe alert → confirm → start', async ({
     page,
     request,
   }, testInfo) => {
@@ -1023,7 +962,7 @@ test.describe('Unified migration mode (E2E-MIG-001..008)', () => {
     await expect(page).toHaveURL(/\/migration/);
   });
 
-  test('E2E-MIG-005 (Flow D-2): metadata complete → env-cutover guidance → target rows/ids → ".env setup needed" banner', async ({
+  test('E2E-MIG-005 (Flow D-2): Metadata complete → env-cutover guidance → target rows/ids → ".env setup needed" banner', async ({
     page,
     request,
   }, testInfo) => {
@@ -1129,7 +1068,7 @@ test.describe('Unified migration mode (E2E-MIG-001..008)', () => {
     await expect(banner).toContainText('.env setup needed');
   });
 
-  test('E2E-MIG-006 (A5): env-sourced blob destination → completed modal shows manual .env guidance', async ({
+  test('E2E-MIG-006 (Flow A5): Env-sourced blob destination → completed modal shows manual .env guidance', async ({
     page,
     request,
   }, testInfo) => {
@@ -1194,7 +1133,7 @@ test.describe('Unified migration mode (E2E-MIG-001..008)', () => {
   // lands between progress ticks stays observable and the target transaction
   // ROLLBACKs. This test now asserts the correct (previously expected-to-fail)
   // behavior instead of a test.fail() placeholder.
-  test('E2E-MIG-007 (B5): metadata cancel → job cancelled, gate cleared, target rolled back', async ({
+  test('E2E-MIG-007 (Flow B5): Metadata cancel → job cancelled, gate cleared, target rolled back', async ({
     page,
     request,
   }, testInfo) => {

@@ -809,3 +809,50 @@ Resolves the A2 defect above (webdav-mode uploads never reach `sync_status='acti
   - MIG-006 kept intact (env-sourced modal assertions) — only the seeding call removed; real uploads now satisfy the snapshot.
 - **Verification:** `e2e/migration.spec.ts` (8 tests × desktop+mobile) → 16/16 pass; regression `e2e/admin-config.spec.ts` + `e2e/setup-wizard.spec.ts` (desktop+mobile) → 32/32 pass. No Case A findings.
 - **Uncertainty:** MIG-002/E3 rely on `emptyS3Bucket()` for exact `listS3Keys()` counts; safe because the migration spec runs alone with `--workers=1` (no other spec writes to `e2e-test-bucket` concurrently). The resume "skipped" job counter for the fast 2-file E3 rerun is not asserted via the job payload (the gate can clear before the jobId is readable); the no-duplicate proof is instead asserted deterministically via the DB (unchanged key set) + S3 (unchanged object count).
+
+---
+
+## 2026-09-02 — E2E infra findings exposed during naming/consolidation verification
+
+- **Area:** `e2e/global-setup.ts`, `e2e/global-teardown.ts`, `playwright.config.ts`
+- **Classification:** Case A (infra/environment gap, not a spec-logic error). Both pre-existing;
+  no spec-logic regression in the refactor.
+- **Finding 1 — webdav-mode `NoSuchBucket`:** after every Playwright run, `global-teardown`
+  runs `docker compose down -v`, wiping the MinIO volume (and the `e2e-test-bucket`). In webdav
+  mode `global-setup` skips `ensureS3Bucket()` (s3-mode only), but the webdav-mode app still
+  writes some blobs to S3, so a webdav run started right after any completed run fails all
+  upload-based tests with `NoSuchBucket: The specified bucket does not exist` until the bucket
+  is recreated manually (`server/testing/minioTestUtils.js` `ensureBucket`). First hit
+  independently by the hermetic-scaffolding sub-agent; reproduced across the full webdav suite.
+- **Finding 2 — per-project data isolation ordering:** Playwright runs all dependency-only
+  setup projects before any test project, so `webdav-mobile-setup` (and `s3-mobile-setup`) reset
+  the DB BEFORE the desktop project's tests. The mobile project then ran on desktop-polluted
+  data; once the desktop project leaves enough root items to exceed the client's 50-root-item
+  render cap, mobile uploads never render and the suite fails. The default-waves run masked this
+  (low volume); later-waves (explorer-advanced + mypage-admin create many root folders) exposed
+  it. **Fixed** in `playwright.config.ts`: `${backendMode}-mobile-setup` now depends on
+  `${backendMode}-desktop`, ordering the reset immediately before the mobile project.
+- **Verification:** after both fixes — webdav default 105/3, webdav later-waves 181/5, s3 default
+  153/3, s3 later-waves 183/3 (all green, `--workers=1`).
+
+---
+
+## 2026-09-02 — Migration E2E `NoSuchBucket` flake (residual from the bucket-infra gap)
+
+- **Area:** `e2e/global-setup.ts`, `e2e/helpers/minio.ts`, `e2e/migration.spec.ts`
+- **Classification:** Case A (infra/environment gap — no spec-logic error). Follow-up to the
+  Finding 1 entry above: the gap surfaces deterministically in the migration spec.
+- **Symptom:** repeated `migration-mobile` runs failed ~2/3 with
+  `NoSuchBucket: The specified bucket does not exist` at `emptyS3Bucket` (minio.ts:80), raised
+  from MIG-001's per-case bucket baseline. The failure pattern (first run after a manual bucket
+  creation passed, subsequent runs failed) matched the teardown `down -v` wiping the bucket.
+- **Evidence:** run-to-run correlation — every completed Playwright run removes the MinIO volume;
+  webdav-mode global-setup skipped `ensureS3Bucket`; `ListObjectsV2` on a missing bucket throws.
+  One-off "flaky" MIG-001 in the earlier combined run was the same root cause.
+- **Fix (applied):**
+  1. `e2e/global-setup.ts` — ensure the bucket in BOTH modes (`waitForMinio` + `ensureS3Bucket`
+     unconditionally; `emptyS3Bucket` still s3-only). MinIO always starts via `up -d`.
+  2. `e2e/helpers/minio.ts` — new `ensureS3BucketExists()` (HeadBucket → CreateBucket on
+     404/403), called at the top of `emptyS3Bucket`, so the migration baseline is self-sufficient.
+- **Verification:** with the bucket wiped before the loop, migration-mobile 3/3 pass; full
+  webdav later-waves re-run 181 passed / 5 skipped.

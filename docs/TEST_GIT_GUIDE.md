@@ -142,8 +142,11 @@ npm run test:e2e:webdav
 # also brings the Docker stack up and waits for healthy containers first)
 E2E_BACKEND_MODE=webdav npm run e2e:server
 
-# Run gated later waves (P1/P2 scenarios)
-E2E_LATER_WAVES=1 npm run test:e2e
+# Essential-only run (core file-exploration flows; skips mypage-admin and the
+# hermetic setup-wizard/admin-config/migration suites). Full suite is the default.
+npm run test:e2e:core
+npm run test:e2e:core:s3
+npm run test:e2e:core:webdav
 
 # Run only the setup-wizard project (hermetic scratch instance on :5003;
 # independent of E2E_BACKEND_MODE except for Case 2)

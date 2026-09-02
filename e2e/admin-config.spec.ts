@@ -8,12 +8,16 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
 import {
   ensureClientBuild,
   killScratch,
+  openSystemSettings,
   queryScratchSqlite,
   readEnvFile,
   scratchDirFor,
+  seedWebdavSettings,
   spawnScratchServer,
   waitForScratchHealth,
+  writeScratchEnv,
 } from './helpers/setupScratch';
+import { loginWithCredentials } from './helpers/auth';
 
 /**
  * Admin "Advanced settings" config editor UI/UX (PLAN.md §9, Q3).
@@ -105,47 +109,6 @@ async function detectWebdavReachable(): Promise<boolean> {
   }
 }
 
-type SqliteDatabase = {
-  run: (sql: string, params: unknown[], cb: (err: Error | null) => void) => void;
-  close: (cb?: (err: Error | null) => void) => void;
-};
-
-// Pre-seed the scratch metadata sqlite with DB-sourced WebDAV connection keys
-// BEFORE the server's first boot so `setup_complete` derives true and the
-// editor rows are editable (D1). The settings table schema mirrors the
-// converted DDL (CREATE TABLE IF NOT EXISTS makes the boot re-init a no-op).
-async function seedWebdavSettings(dir: string): Promise<void> {
-  const dbPath = path.join(dir, 'webdav.db');
-  const { Database } = require('sqlite3') as { Database: new (path: string) => SqliteDatabase };
-  const db = new Database(dbPath);
-  const exec = (sql: string, params: unknown[] = []): Promise<void> =>
-    new Promise((resolve, reject) => {
-      db.run(sql, params, (err) => (err ? reject(err) : resolve()));
-    });
-  try {
-    await exec(
-      `CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL,
-        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-      )`
-    );
-    const rows: Array<[string, string]> = [
-      ['WEBDAV_URL', WEBDAV_BASE],
-      ['WEBDAV_USERNAME', 'e2etest'],
-      ['WEBDAV_PASSWORD', 'e2etest123'],
-      ['WEBDAV_AUTH_TYPE', 'auto'],
-    ];
-    for (const [key, value] of rows) {
-      await exec(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`, [key, value]);
-    }
-  } finally {
-    await new Promise<void>((resolve, reject) =>
-      db.close((err) => (err ? reject(err) : resolve()))
-    );
-  }
-}
-
 let scratch: string;
 let spawned: ReturnType<typeof spawnScratchServer> | null = null;
 
@@ -155,28 +118,22 @@ let spawned: ReturnType<typeof spawnScratchServer> | null = null;
 // across workers and their :5003 scratch servers collide.
 test.describe.configure({ mode: 'serial' });
 
-function writeScratchEnv(dir: string): void {
-  const lines = [
-    'PORT=5003',
-    'WEA_STORAGE_BACKEND=sqlite',
-    'WEA_FILE_STORAGE=webdav',
-    // WebDAV connection keys are deliberately NOT in the .env: they are seeded
-    // into the sqlite DB (see seedWebdavSettings) so the editor rows are
-    // DB-sourced/editable and the D1 save-gating tests can exercise them.
-    'WEBDAV_UPSTREAM_URL=http://127.0.0.1:8090',
-    'JWT_SECRET=admin-config-e2e-jwt-secret',
-    `ADMIN_DEFAULT_PASSWORD=${ADMIN_PASSWORD}`,
-    `encrypt_secret_key=${ENCRYPT_KEY}`,
-    '',
-  ];
-  fs.writeFileSync(path.join(dir, '.env'), lines.join('\n'));
-}
-
 test.beforeEach(async () => {
   scratch = scratchDirFor(CASE_ID);
   fs.rmSync(scratch, { recursive: true, force: true });
   fs.mkdirSync(scratch, { recursive: true });
-  writeScratchEnv(scratch);
+  writeScratchEnv(scratch, {
+    PORT: '5003',
+    WEA_STORAGE_BACKEND: 'sqlite',
+    WEA_FILE_STORAGE: 'webdav',
+    // WebDAV connection keys are deliberately NOT in the .env: they are seeded
+    // into the sqlite DB (see seedWebdavSettings) so the editor rows are
+    // DB-sourced/editable and the D1 save-gating tests can exercise them.
+    WEBDAV_UPSTREAM_URL: WEBDAV_BASE,
+    JWT_SECRET: 'admin-config-e2e-jwt-secret',
+    ADMIN_DEFAULT_PASSWORD: ADMIN_PASSWORD,
+    encrypt_secret_key: ENCRYPT_KEY,
+  });
   await seedWebdavSettings(scratch);
   ensureClientBuild();
   spawned = spawnScratchServer(scratch);
@@ -222,17 +179,6 @@ async function putConfig(
   expect(res.ok()).toBeTruthy();
 }
 
-async function loginAsAdmin(page: Page): Promise<void> {
-  await page.goto('/login');
-  await expect(page.locator('input[name="username"]')).toBeVisible();
-  await page.locator('input[name="username"]').fill('admin');
-  await page.locator('input[name="password"]').fill(ADMIN_PASSWORD);
-  await Promise.all([
-    page.waitForURL(/\/files(?:\/.*)?$/),
-    page.locator('form button[type="submit"]').click(),
-  ]);
-}
-
 // On narrow (mobile) viewports the transient success Snackbar (bottom-center)
 // overlays the Save button, so a plain click is intercepted. Force-click Save
 // and then dismiss the Snackbar so the next interaction is never blocked.
@@ -268,25 +214,6 @@ async function saveConfig(page: Page): Promise<void> {
   }
 }
 
-async function openSystemSettings(page: Page): Promise<void> {
-  await page.goto('/mypage');
-  // MyPage returns null until the async getMe() resolves; on mobile the category
-  // sidebar lives in a non-keepMounted SwipeableDrawer. A one-shot isVisible()/
-  // count() right after goto races React mount — both resolve to 0/0 before the
-  // app loads, the drawer is never opened, and the later click() times out against
-  // the unmounted drawer content. Wait for the MyPage shell first, then branch on
-  // the mobile-only menu button.
-  const systemSettings = page.getByRole('button', { name: /system settings/i });
-  const menuButton = page.locator('button[aria-label="My page"]');
-  await expect(menuButton.or(systemSettings).first()).toBeVisible({ timeout: 20000 });
-  if ((await menuButton.count()) > 0) {
-    await menuButton.click();
-    await expect(page.locator('.MuiDrawer-paper')).toBeVisible();
-  }
-  await systemSettings.click();
-  await expect(page.getByRole('heading', { level: 6, name: /system settings/i })).toBeVisible();
-}
-
 async function openAdvancedSettings(page: Page): Promise<void> {
   await openSystemSettings(page);
   await page.locator('#advanced-settings-header').click();
@@ -296,8 +223,8 @@ async function openAdvancedSettings(page: Page): Promise<void> {
 
 const isLocked = (entry: ConfigEntry): boolean => entry.source === 'env' || entry.tier === 'T0';
 
-test.describe('Admin config editor (Advanced settings)', () => {
-  test('field state matrix: source/tier drives enabled/disabled per row', async ({
+test.describe('admin config editor (advanced settings)', () => {
+  test('E2E-ADMINCFG-001: Field state matrix drives per-row enabled/disabled state', async ({
     page,
     request,
   }) => {
@@ -305,7 +232,7 @@ test.describe('Admin config editor (Advanced settings)', () => {
     await putConfig(request, { S3_BUCKET: 'db-bucket', GC_ORPHAN_TTL_DAYS: '7' });
     const config = await getConfig(request);
 
-    await loginAsAdmin(page);
+    await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
     await openAdvancedSettings(page);
 
     let envRows = 0;
@@ -338,11 +265,11 @@ test.describe('Admin config editor (Advanced settings)', () => {
     await expect(page.getByText('Set in .env (env takes precedence)')).toHaveCount(envRows);
   });
 
-  test('save feedback: T2 applied immediately, T1 flagged restart required', async ({
+  test('E2E-ADMINCFG-002: Save feedback applies T2 immediately and flags T1 for restart', async ({
     page,
     request,
   }) => {
-    await loginAsAdmin(page);
+    await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
     await openAdvancedSettings(page);
 
     const save = page.getByTestId('config-save');
@@ -375,7 +302,7 @@ test.describe('Admin config editor (Advanced settings)', () => {
     expect(config.FFMPEG_PATH.source).toBe('db');
   });
 
-  test('key_lost_warning surfaces in the admin UI when the master key is missing', async ({
+  test('E2E-ADMINCFG-003: A missing master key surfaces a key-lost warning in the admin UI', async ({
     page,
     request,
   }) => {
@@ -393,14 +320,14 @@ test.describe('Admin config editor (Advanced settings)', () => {
     spawned = spawnScratchServer(scratch);
     await waitForScratchHealth(spawned);
 
-    await loginAsAdmin(page);
+    await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
     await openSystemSettings(page);
 
     await expect(page.getByTestId('key-lost-warning')).toBeVisible();
     await expect(page.getByTestId('key-lost-warning')).toContainText('Encryption key lost');
   });
 
-  test('secret lifecycle: masked, unchanged kept, blank new value kept, new value stored encrypted', async ({
+  test('E2E-ADMINCFG-004: Secret lifecycle masks values, keeps unchanged input, and stores new values encrypted', async ({
     page,
     request,
   }) => {
@@ -409,7 +336,7 @@ test.describe('Admin config editor (Advanced settings)', () => {
     const env = readEnvFile(scratch);
     const masterKey = env.encrypt_secret_key;
 
-    await loginAsAdmin(page);
+    await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
     await openAdvancedSettings(page);
 
     const secretInput = page.getByTestId('config-input-EMAIL_PASSWORD');
@@ -461,8 +388,11 @@ test.describe('Admin config editor (Advanced settings)', () => {
     await expect.poll(decryptDbSecret).toBe('new-secret');
   });
 
-  test('T1 change persists across a server restart (source db)', async ({ page, request }) => {
-    await loginAsAdmin(page);
+  test('E2E-ADMINCFG-005: A T1 change persists across a server restart (source db)', async ({
+    page,
+    request,
+  }) => {
+    await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
     await openAdvancedSettings(page);
 
     // FFMPEG_PATH is a non-connection T1 key (Save not gated by D1), so the
@@ -480,16 +410,16 @@ test.describe('Admin config editor (Advanced settings)', () => {
     expect(config.FFMPEG_PATH.value).toBe('/usr/bin/ffmpeg');
     expect(config.FFMPEG_PATH.source).toBe('db');
 
-    await loginAsAdmin(page);
+    await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
     await openAdvancedSettings(page);
     await expect(page.getByTestId('config-input-FFMPEG_PATH')).toHaveValue('/usr/bin/ffmpeg');
   });
 
-  test('connection-key gating: editing WEBDAV_URL blocks Save and a failed test keeps it blocked', async ({
+  test('E2E-ADMINCFG-006: Editing WEBDAV_URL blocks Save until a connection test passes', async ({
     page,
     request,
   }) => {
-    await loginAsAdmin(page);
+    await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
     await openAdvancedSettings(page);
 
     // The WebDAV keys are DB-seeded → editable rows, not env-locked (D1 needs
@@ -522,12 +452,12 @@ test.describe('Admin config editor (Advanced settings)', () => {
     await expect(save).toBeDisabled();
   });
 
-  test('connection-key gating: a passing test enables Save, editing invalidates', async ({
+  test('E2E-ADMINCFG-007: A passing connection test enables Save and editing invalidates it', async ({
     page,
   }) => {
     test.skip(!(await detectWebdavReachable()), 'WebDAV :8090 unreachable — skipping success path');
 
-    await loginAsAdmin(page);
+    await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
     await openAdvancedSettings(page);
 
     const save = page.getByTestId('config-save');
@@ -551,11 +481,11 @@ test.describe('Admin config editor (Advanced settings)', () => {
     await expect(save).toBeDisabled();
   });
 
-  test('non-connection keys save without requiring a connection test', async ({
+  test('E2E-ADMINCFG-008: Non-connection keys save without a connection test', async ({
     page,
     request,
   }) => {
-    await loginAsAdmin(page);
+    await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
     await openAdvancedSettings(page);
 
     const save = page.getByTestId('config-save');
@@ -569,8 +499,10 @@ test.describe('Admin config editor (Advanced settings)', () => {
     await expect.poll(() => getConfig(request).then((c) => c.GC_ORPHAN_TTL_DAYS.value)).toBe('7');
   });
 
-  test('T0 metadata group is absent from Advanced settings (D5)', async ({ page }) => {
-    await loginAsAdmin(page);
+  test('E2E-ADMINCFG-009: The T0 metadata group is absent from Advanced settings (D5)', async ({
+    page,
+  }) => {
+    await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
     await openAdvancedSettings(page);
 
     await expect(page.getByTestId('config-input-WEA_STORAGE_BACKEND')).toHaveCount(0);
@@ -578,8 +510,8 @@ test.describe('Admin config editor (Advanced settings)', () => {
   });
 });
 
-test.describe('Phase B backend health & config/test API', () => {
-  test('System Settings backend-health card lists only failing backends', async ({
+test.describe('phase B: backend health & config/test api', () => {
+  test('E2E-ADMINCFG-010: The backend-health card lists only failing backends', async ({
     page,
     request,
   }) => {
@@ -604,7 +536,7 @@ test.describe('Phase B backend health & config/test API', () => {
     const health = (await healthRes.json()).backends;
     expect(health.webdav.status).toBe('fail');
 
-    await loginAsAdmin(page);
+    await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
     await openSystemSettings(page);
 
     const card = page.getByTestId('backend-health-card');
@@ -616,14 +548,16 @@ test.describe('Phase B backend health & config/test API', () => {
     await expect(card).not.toContainText(/s3/);
   });
 
-  test('no backend-health card when nothing is failing', async ({ page }) => {
-    await loginAsAdmin(page);
+  test('E2E-ADMINCFG-011: No backend-health card appears when nothing is failing', async ({
+    page,
+  }) => {
+    await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
     await openSystemSettings(page);
 
     await expect(page.getByTestId('backend-health-card')).toHaveCount(0);
   });
 
-  test('file screen shows the admin backend-health banner when a backend is failing', async ({
+  test('E2E-ADMINCFG-012: The file screen shows the backend-health banner when a backend is failing', async ({
     page,
     request,
   }) => {
@@ -650,7 +584,7 @@ test.describe('Phase B backend health & config/test API', () => {
     const webdavStatus = (await healthRes.json()).backends.webdav.status as string;
     expect(['ok', 'fail']).toContain(webdavStatus);
 
-    await loginAsAdmin(page);
+    await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
     const healthResp = page.waitForResponse((r) => r.url().includes('/api/health'));
     await page.goto('/files');
     await healthResp;

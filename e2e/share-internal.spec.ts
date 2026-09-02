@@ -104,7 +104,9 @@ async function gotoFolderByPath(page: Page, request: any, serverPath: string) {
   await page.goto(nodeUrl(nodeId));
 }
 
-test.describe.serial('internal sharing request -> __shared__', () => {
+test.describe.configure({ mode: 'serial' });
+
+test.describe('internal sharing request -> __shared__', () => {
   let fixtures: InternalSharingFixtures;
 
   test.beforeAll(async ({ request }, testInfo) => {
@@ -168,7 +170,7 @@ test.describe.serial('internal sharing request -> __shared__', () => {
     };
   });
 
-  test("E2E-OVERLAY-003: Request access to another user's content from protected UI", async ({
+  test("E2E-OVERLAY-003: Requests access to another user's content from protected UI", async ({
     page,
     request,
   }) => {
@@ -457,7 +459,7 @@ test.describe.serial('internal sharing request -> __shared__', () => {
     await expect(listingItems).toHaveCount(0);
   });
 
-  test('[P0] E2E-OVERLAY-011: Grant on a folder reaches content 2 levels down and the grandchild is downloadable', async ({
+  test('E2E-OVERLAY-011: Grant on a folder reaches content 2 levels down and the grandchild is downloadable', async ({
     page,
     request,
   }, testInfo) => {

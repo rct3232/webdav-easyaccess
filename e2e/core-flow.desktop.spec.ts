@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test';
 
 import { loginAsAdmin } from './helpers/auth';
-import { openFabAction, openItemActions } from './helpers/explorer';
-import { buildName, fileItem } from './helpers/files';
-import { switchViewMode, setSortMode } from './helpers/explorer-advanced';
+import { openItemActions } from './helpers/explorer';
+import { buildName, createFolderViaUi, fileItem, uploadFileViaUi } from './helpers/files';
+import { switchViewMode, setSortMode } from './helpers/explorer-controls';
 import {
   doubleClickItem,
   ctrlClickItem,
@@ -14,31 +14,18 @@ import {
 import { getSessionToken, gotoFilesPath, resolveNodeId } from './helpers/resolvePath';
 
 async function createTestFolder(page: any, folderName: string) {
-  await openFabAction(page, 'Create folder');
-  const dialog = page.getByRole('dialog');
-  await expect(dialog.getByTestId('create-folder-name-input')).toBeVisible();
-  await dialog.getByTestId('create-folder-name-input').fill(folderName);
-  await dialog.getByTestId('create-folder-submit').click();
+  await createFolderViaUi(page, folderName);
 }
 
 async function createTestFile(page: any, fileName: string) {
-  await openFabAction(page, 'Upload file');
-  const dialog = page.getByRole('dialog');
-  const fileInput = dialog.getByTestId('upload-dialog-file-input');
-  await expect(fileInput).toBeVisible();
-
-  // Upload a dummy file
-  await fileInput.setInputFiles({
-    name: fileName,
+  await uploadFileViaUi(page, {
+    fileName,
     mimeType: 'text/plain',
     buffer: Buffer.from('test content'),
   });
-
-  await dialog.getByTestId('upload-dialog-submit').click();
-  await expect(dialog).not.toBeVisible();
 }
 
-test.describe('explorer advanced (desktop)', () => {
+test.describe('core flow (desktop)', () => {
   test('E2E-DESKTOP-001: Double-click opens folder or preview', async ({ page }, testInfo) => {
     // 1. Login as admin
     await loginAsAdmin(page);
@@ -435,61 +422,5 @@ test.describe('explorer advanced (desktop)', () => {
     await expect(page).toHaveURL(/\/files\/__recent__(?:\/.*)?$/);
     await expect(fileItem(page, `/${fileName}`)).toHaveCount(0, { timeout: 20_000 });
     await expect(page.locator(`[data-file-node-id="${nodeId}"]`)).toHaveCount(0);
-  });
-
-  test('E2E-BULK-007: Conflict resolution dialog appears when move/copy would collide', async ({
-    page,
-    request,
-  }, testInfo) => {
-    // 1. Login as admin
-    await loginAsAdmin(page);
-
-    // 2. Setup: Create two folders, each containing a file with the same name
-    const folderA = buildName(testInfo, 'conflict-folder-a');
-    const folderB = buildName(testInfo, 'conflict-folder-b');
-    const conflictFileName = 'conflict_test.txt';
-
-    await createTestFolder(page, folderA);
-    await createTestFolder(page, folderB);
-
-    // Upload file to folderA
-    await gotoFilesPath(page, request, `/${folderA}`);
-    await createTestFile(page, conflictFileName);
-
-    // Upload file to folderB
-    await gotoFilesPath(page, request, `/${folderB}`);
-    await createTestFile(page, conflictFileName);
-
-    // 3. Action: Move file from folderA to folderB
-    await gotoFilesPath(page, request, `/${folderA}`);
-    await page.locator(`[data-file-path="/${folderA}/${conflictFileName}"]`).click();
-
-    // Trigger bulk move
-    await page.getByTestId('bulk-action-move').click();
-
-    // Select folderB in the folder picker
-    const pickerDialog = page.getByRole('dialog');
-    await expect(pickerDialog).toBeVisible();
-
-    // Navigate to root via breadcrumb to find folderB
-    const rootBreadcrumb = pickerDialog.locator('.MuiBreadcrumbs-root button').first();
-    await rootBreadcrumb.click();
-
-    // Wait for the folder list to be populated and the loader to disappear
-    await expect(pickerDialog.getByRole('progressbar')).not.toBeVisible();
-
-    // Select folderB - ensure we wait for it to be attached and visible
-    const folderBItem = pickerDialog.locator('li').filter({ hasText: folderB });
-    await expect(folderBItem).toBeVisible({ timeout: 10000 });
-    await folderBItem.click();
-    await pickerDialog.getByRole('button', { name: 'Select', exact: true }).click();
-
-    // 4. Assertion: Verify conflict resolution dialog appears
-    const conflictDialog = page.getByRole('dialog');
-    await expect(conflictDialog).toBeVisible();
-
-    await expect(conflictDialog).toContainText('conflict', { ignoreCase: true });
-    await expect(conflictDialog.getByRole('button', { name: /skip/i })).toBeVisible();
-    await expect(conflictDialog.getByRole('button', { name: /merge/i })).toBeVisible();
   });
 });

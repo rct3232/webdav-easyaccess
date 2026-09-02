@@ -5,7 +5,6 @@ import {
   ensurePendingUser,
   ensureRejectedUser,
   gotoAsAnonymous,
-  loginAsAdmin,
   loginAsUser,
   setRegistrationEnabled,
   getTestSuffix,
@@ -45,13 +44,6 @@ test('E2E-AUTH-003: Login page loads and renders form', async ({ page }) => {
 
   await expect(page).toHaveURL(/\/login$/);
   await expectLoginFormVisible(page);
-});
-
-test('E2E-AUTH-004: Successful admin login lands in explorer', async ({ page }) => {
-  await loginAsAdmin(page);
-
-  await expect(page).toHaveURL(/\/files(?:\/.*)?$/);
-  await expect(page.getByTestId('file-actions-fab')).toBeVisible();
 });
 
 test('E2E-AUTH-005: Successful standard-user login lands in user-owned explorer path', async ({

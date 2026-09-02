@@ -42,13 +42,19 @@ cp .env.example .env
 
 > **Note (first-run wizard):** When the app boots with **no** `.env` file, the web-based
 > first-run **setup wizard** ([`docs/features/setup-wizard.md`](features/setup-wizard.md))
-> lets you configure the keys below from the browser (metadata/blob backend, admin
-> account, JWT secret, optional SMTP/CORS/port). Per the **config-source-resolution**
+> lets you configure the keys below from the browser (file-storage backend, admin
+> account, JWT secret, optional SMTP/CORS/port). While setup is incomplete the server binds
+> `127.0.0.1` only — use an on-host browser, an SSH tunnel, or the **CLI setup tool**
+> ([`docs/features/setup-cli.md`](features/setup-cli.md)) for headless/remote hosts. Per the
+> **config-source-resolution**
 > model ([`docs/features/config-source-resolution.md`](features/config-source-resolution.md)),
-> the wizard writes **only the T0 startup keys** (metadata connection `WEA_STORAGE_BACKEND`
-> / `WEA_PG_*` / `WEA_SQLITE_PATH`, the DB-secret master key `encrypt_secret_key`, and
-> `JWT_SECRET`) into `.env`; **every other value is stored in the metadata DB `settings`
-> table** and read back at boot (`.env` always wins when a value is present there). A
+> the wizard/CLI write the startup-critical keys `JWT_SECRET` (and `encrypt_secret_key` only
+> when auto-generated) into `.env`;
+> **every other value is stored in the metadata DB `settings`
+> table** and read back at boot (`.env` always wins when a value is present there). The
+> **metadata connection is `.env`-owned**: `WEA_STORAGE_BACKEND` (`/WEA_PG_*` /
+> `WEA_SQLITE_PATH`) must be declared in `.env` before boot and is **never written by the
+> wizard/CLI**. A
 > restart completes the setup. The reference table below remains canonical for the T0
 > `.env` set and for manual/container configuration of DB-stored keys.
 
@@ -170,7 +176,7 @@ Moves physical blobs between the two supported blob backends (WebDAV and S3) in 
 
 **Direction and cutover (migration mode)**
 
-The migration direction is never selected — it follows from the current `WEA_FILE_STORAGE`. `GET /api/admin/migration/info` reports the derived `{ source, direction }`. Starting an **apply** run from the storage-migration dialog (System Settings) enters **migration mode**: the whole app locks (all routes return `503 migrationInProgress` except health/login/migration/status) and the browser **auto-redirects to `/migration`**, which shows node-count progress (`% = copied/total`), the current file label, and copied/skipped/failed counters. The run is cancellable mid-copy and resumable on re-run.
+The migration direction is never selected — it follows from the current `WEA_FILE_STORAGE`. `GET /api/admin/migration/info` reports the derived `{ source, direction }`. Starting an **apply** run from the storage-migration dialog (System Settings) enters **migration mode**: the whole app locks (all routes return `503 migrationInProgress` except health/login/migration/status) and the operator's browser **auto-redirects to `/migration`**, which shows node-count progress (`% = copied/total`), the current file label, and copied/skipped/failed counters. Regular users (and anonymous visitors) are shown the generic `/maintenance` screen instead of the operator page. The run is cancellable mid-copy and resumable on re-run.
 
 Both directions follow the same cutover shape:
 
@@ -265,10 +271,56 @@ On Apple Silicon hosts, prefer a multi-architecture WebDAV image for the E2E com
 
 ## 5. Security and Initial Admin Setup
 
-1.  **Default admin account**:
-    - On first run, an account is created with username `admin` and password `admin` (or `ADMIN_DEFAULT_PASSWORD` from `.env`).
-    - **Change the admin password immediately after first login.**
-2.  **HTTPS recommended**:
-    - Auth tokens and WebDAV credentials are sent over the network; production deployments must use **HTTPS** via Nginx, Caddy, etc.
-3.  **Browser session**:
-    - Auth tokens are stored in `sessionStorage` for security. Closing the browser tab or window logs you out automatically.
+### First-run network posture (loopback-only)
+
+While the app is **not yet configured** (`setup_complete === false`) the HTTP server binds to
+`127.0.0.1` only. This is a hard rule with **no opt-out**: a fresh/partial install is never
+reachable from another machine, so its unauthenticated setup surface
+(`/setup`, `/api/setup/*`, the setup-mode login) cannot be claimed or attacked remotely. Once
+the configuration is complete, a restart makes the server bind all interfaces (the default), at
+which point a reverse proxy can publish it.
+
+Complete the first run using **one** of:
+
+1. **Browser on the host** — open `http://127.0.0.1:<PORT>` and follow the wizard.
+2. **Browser + SSH tunnel** — from a machine with a browser: `ssh -L 5001:127.0.0.1:5001
+user@host`, then open `http://127.0.0.1:5001`.
+3. **No browser (headless/remote)** — run the **CLI setup tool** on the host:
+   `node server/scripts/setup.js` (interactive) or `node server/scripts/setup.js --help` for
+   the flag-driven non-interactive mode; feature spec: `docs/features/setup-cli.md`. Equivalent
+   to pre-populating the configuration directly (see below).
+4. **env-only first run (containerized/automated)** — inject every key the completeness rules
+   require (`WEA_STORAGE_BACKEND` + backend block, `WEA_FILE_STORAGE` + its credential block,
+   `JWT_SECRET`, and any non-default settings) via environment. `setup_complete` is derived, so
+   the app boots fully configured on the first run, never enters setup mode, and binds all
+   interfaces immediately. `.env` never needs to exist.
+
+### Default admin account
+
+- On first run, an account is created with username `admin` and password `admin` (or
+  `ADMIN_DEFAULT_PASSWORD` from `.env`).
+- **Change the admin password immediately after first login.**
+
+### HTTPS recommended
+
+- Auth tokens and WebDAV credentials are sent over the network; production deployments must use
+  **HTTPS** via Nginx, Caddy, etc.
+
+### Browser session
+
+- Auth tokens are stored in `sessionStorage` for security. Closing the browser tab or window
+  logs you out automatically.
+
+### Reverse-proxy hardening checklist
+
+- [ ] **Publish only after the first run is complete.** Do not expose the port in the reverse
+      proxy (or a firewall/NAT rule) while `setup_complete === false` — even though the app
+      binds loopback only, keeping the proxy rule out until first run is complete removes all
+      accidental-exposure risk. Complete setup over SSH or with the CLI, restart, then publish.
+- [ ] Serve the app over HTTPS and set `CORS_ORIGINS` to your public origin(s) in production
+      (`CORS_ORIGINS` unset ⇒ allow-all with a warning).
+- [ ] During a storage migration (migration mode) regular users see a generic maintenance
+      screen (`/maintenance`); the operator `/migration` progress page is admin-only. No
+      restriction is needed at the proxy for these.
+- [ ] Keep `JWT_SECRET` out of version control and rotate it if it was ever exposed.
+- [ ] Restrict `/api/health` exposure at the proxy if you do not want liveness probes public.

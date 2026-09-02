@@ -30,6 +30,10 @@
     "failed": "로그인에 실패했습니다.",
     "logoAlt": "WebDAV EasyAccess"
   },
+  "maintenance": {
+    "title": "시스템 점검 중입니다",
+    "body": "시스템 점검 중이어서 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 이용해 주세요."
+  },
   "register": {
     "title": "회원가입",
     "username": "사용자명",

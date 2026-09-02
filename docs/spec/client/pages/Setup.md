@@ -36,7 +36,7 @@ Feature Source-of-Truth: [setup-wizard.md](../../../features/setup-wizard.md).
 
 ### 2.4 Route Protection
 
-- **No** `PrivateRoute`; public page registered outside `MainLayout`, next to `/login`/`/register` in `client/src/App.js:64-98` (standalone like Login).
+- **No** `PrivateRoute`; public page registered outside `MainLayout`, next to `/login`/`/register` in `client/src/App.js:69-105` (standalone like Login).
 - Post-setup lockout: if `setup_complete === true` on mount, the page renders `<Navigate to="/login" replace />` (or equivalent redirect from the hook).
 - Login-page redirect: `client/src/pages/Login/hooks/useLoginForm.js` already fetches public settings on mount (`:26-43`); when `setup_complete === false` it navigates to `/setup` with `replace: true`.
 

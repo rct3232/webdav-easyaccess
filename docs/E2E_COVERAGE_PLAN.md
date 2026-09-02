@@ -185,7 +185,7 @@ This is the target ownership map for future Playwright growth.
 | `e2e/core-flow.mobile.spec.ts`  | mobile core-flow interactions: long-press selection, action sheet, folder-tree toggle                                                                                        |
 | `e2e/setup-wizard.spec.ts`      | first-run setup wizard cases 1–4 (hermetic scratch instance on `:5003`, sqlite/PG-scratch isolation); runs in both `setup-wizard-desktop` and `setup-wizard-mobile` projects |
 | `e2e/admin-config.spec.ts`      | admin config editor source/tier matrix, secret lifecycle, backend-health (hermetic `admin-config-desktop`/`admin-config-mobile` projects)                                    |
-| `e2e/migration.spec.ts`         | unified migration mode flows A–E (hermetic `migration-desktop`/`migration-mobile` projects)                                                                                  |
+| `e2e/migration.spec.ts`         | unified migration mode flows A–F (hermetic `migration-desktop`/`migration-mobile` projects)                                                                                  |
 | `00-project-setup.spec.ts`      | per-project DB reset infrastructure, executed only from `${backendMode}-{desktop,mobile}-setup` dependency projects                                                          |
 
 The shared core-flow coverage lives in `e2e/core-flow.shared.spec.ts`, including the
@@ -351,16 +351,17 @@ Current expansion note:
 
 ### Migration mode (hermetic)
 
-| ID          | Domain    | Flow                                                                             | Status  | Planned spec file       | Notes                                                                      |
-| ----------- | --------- | -------------------------------------------------------------------------------- | ------- | ----------------------- | -------------------------------------------------------------------------- |
-| E2E-MIG-001 | Migration | Flow A: blob dry-run then apply happy path                                       | covered | `e2e/migration.spec.ts` | hermetic `migration-desktop`/`migration-mobile` projects (scratch `:5003`) |
-| E2E-MIG-002 | Migration | Flow B: blob cancel mid-copy, resume via shouldSkip, no duplicate blobs          | covered | `e2e/migration.spec.ts` |                                                                            |
-| E2E-MIG-003 | Migration | Flow C: gate hold — app-guard redirect, `/login` allow-list, 409 on second start | covered | `e2e/migration.spec.ts` |                                                                            |
-| E2E-MIG-004 | Migration | Flow D-1: metadata scan → empty target → seeded target wipe alert                | covered | `e2e/migration.spec.ts` |                                                                            |
-| E2E-MIG-005 | Migration | Flow D-2: metadata complete → env-cutover guidance → target rows/ids             | covered | `e2e/migration.spec.ts` |                                                                            |
-| E2E-MIG-006 | Migration | A5: env-sourced blob destination → completed modal shows manual `.env` guidance  | covered | `e2e/migration.spec.ts` |                                                                            |
-| E2E-MIG-007 | Migration | B5: metadata cancel → job cancelled, gate cleared, target rolled back            | covered | `e2e/migration.spec.ts` |                                                                            |
-| E2E-MIG-008 | Migration | E3: native webdav file (no `object_map`) snapshotted + migrated; rerun skipped   | covered | `e2e/migration.spec.ts` |                                                                            |
+| ID          | Domain    | Flow                                                                                                                                | Status  | Planned spec file       | Notes                                                                      |
+| ----------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------- | ----------------------- | -------------------------------------------------------------------------- |
+| E2E-MIG-001 | Migration | Flow A: blob dry-run then apply happy path                                                                                          | covered | `e2e/migration.spec.ts` | hermetic `migration-desktop`/`migration-mobile` projects (scratch `:5003`) |
+| E2E-MIG-002 | Migration | Flow B: blob cancel mid-copy, resume via shouldSkip, no duplicate blobs                                                             | covered | `e2e/migration.spec.ts` |                                                                            |
+| E2E-MIG-003 | Migration | Flow C: gate hold — app-guard redirect, `/login` allow-list, 409 on second start                                                    | covered | `e2e/migration.spec.ts` |                                                                            |
+| E2E-MIG-004 | Migration | Flow D-1: metadata scan → empty target → seeded target wipe alert                                                                   | covered | `e2e/migration.spec.ts` |                                                                            |
+| E2E-MIG-005 | Migration | Flow D-2: metadata complete → env-cutover guidance → target rows/ids                                                                | covered | `e2e/migration.spec.ts` |                                                                            |
+| E2E-MIG-006 | Migration | A5: env-sourced blob destination → completed modal shows manual `.env` guidance                                                     | covered | `e2e/migration.spec.ts` |                                                                            |
+| E2E-MIG-007 | Migration | B5: metadata cancel → job cancelled, gate cleared, target rolled back                                                               | covered | `e2e/migration.spec.ts` |                                                                            |
+| E2E-MIG-008 | Migration | E3: native webdav file (no `object_map`) snapshotted + migrated; rerun skipped                                                      | covered | `e2e/migration.spec.ts` |                                                                            |
+| E2E-MIG-009 | Migration | Flow F: role-aware gate hold — admin stays on `/migration`, regular user + anonymous visitor land on the public `/maintenance` page | covered | `e2e/migration.spec.ts` |                                                                            |
 
 ### Admin config editor (hermetic)
 

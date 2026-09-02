@@ -56,7 +56,11 @@ These boundaries are intentionally written at the **feature level** (not as a fi
 
 ### Routing
 
-- **Public:** `/login`, `/register`, `/setup`. No auth required.
+- **Public:** `/login`, `/register`, `/setup`, `/migration`, `/maintenance`. No auth required.
+  `/migration` (operator progress) and `/maintenance` (generic maintenance screen) are
+  reachable only meaningfully while a migration is active; the role-aware app-guard routes
+  admin → `/migration` and regular/anonymous sessions → `/maintenance` — see
+  [migration-mode.md](migration-mode.md) "Role-aware lock UX".
 - **Setup wizard:** `/setup` — first-run setup wizard, rendered outside `MainLayout` (standalone, like Login). Full flow, gating, and security contract in [setup-wizard.md](setup-wizard.md). Redirect rules:
   - The login page redirects to `/setup` when `setup_complete` is `false` (fetched from `GET /api/settings/public`; see `docs/spec/server/routes/settings.md`).
   - `/setup` redirects to `/login` when setup is already complete (covers revisits after restart).

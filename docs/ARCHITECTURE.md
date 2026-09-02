@@ -183,8 +183,9 @@ an admin API + config dialogs (no standalone CLI; the legacy
   explicit `wipeTarget` confirm → copy; cancel = rollback). Backed by
   `server/domains/admin/services/metadataMigrationService.js`.
 - Runs under **migration mode**: while a migration is active a gate middleware returns
-  `503 migrationInProgress` for all routes except an allow-list, and the `/migration` page forces
-  the operator to stay until the terminal state.
+  `503 migrationInProgress` for all routes except an allow-list. The role-aware app-guard keeps
+  the authenticated admin operator on `/migration` until the terminal state; regular users and
+  anonymous visitors see the generic `/maintenance` page.
 - Final cutover is a manual `.env` edit + restart (the DB connection is T0/`.env`-owned); the
   ".env setup needed" banner guides it while the non-active backend holds data.
 

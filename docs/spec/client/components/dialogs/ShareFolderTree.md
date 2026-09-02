@@ -24,6 +24,7 @@
 | Name                 | Type     | Required | Default | Description                                                      |
 | -------------------- | -------- | -------- | ------- | ---------------------------------------------------------------- |
 | rootNodeId           | number   | Y        | -       | Root node id                                                     |
+| baseFolderNodeId     | number   | N        | null    | Base folder nodeId of the share subtree; scopes the derived folder-access view and the admin permission-save target (`homeFolderNodeId`) |
 | folderTree           | Map      | Y        | -       | NodeId -> node map                                               |
 | expandedNodeIds      | Set      | Y        | -       | Expanded node ids                                                |
 | loadingNodeIds       | Set      | Y        | -       | Loading node ids                                                 |
@@ -36,7 +37,7 @@
 | users                | array    | N        | -       | Users list                                                       |
 | getUserName          | function | Y        | -       | Get username                                                     |
 | hasPermissionChanged | boolean  | Y        | -       | Has changes                                                      |
-| setFolderMenuAnchor  | function | Y        | -       | Menu anchor                                                      |
+| setFolderMenuAnchor  | function | Y        | -       | Called on menu open with the anchor element (`e.currentTarget` of the clicked menu button) |
 | setFolderMenuNodeId  | function | Y        | -       | Menu node id                                                     |
 | loadingPermissions   | boolean  | Y        | -       | Loading                                                          |
 | isMobile             | boolean  | Y        | -       | Mobile                                                           |
@@ -47,7 +48,7 @@
 | Callback            | When invoked    | Arguments |
 | ------------------- | --------------- | --------- |
 | toggleExpand        | Expand/collapse | (nodeId)  |
-| setFolderMenuAnchor | Menu open       | -         |
+| setFolderMenuAnchor | Menu open       | (element) – clicked menu-button anchor (`e.currentTarget`) |
 | setFolderMenuNodeId | Menu node id    | (nodeId)  |
 
 ### 2.4 Dependencies

@@ -56,12 +56,7 @@
 
 ## 3. Document drift backlog (residual after the 2026-09-02 alignment)
 
-| ID | Item | Source |
-| -- | ---- | ------ |
-| 3-1 | Blob-job payload still described with the extended shape in a few spots (`progress:{percent,currentLabel}`) while code + `tools/blob-migration.md` §4.4 store scalar `progress` + top-level `current`/`results`. | `docs/features/migration-mode.md` (:18/:250/:307/:308) |
-| 3-2 | `setFolderMenuAnchor` argument documented as "-" (code passes `e.currentTarget`); code `baseFolderNodeId` prop undocumented. | `docs/spec/client/components/dialogs/ShareFolderTree.md` §2.3 |
-| 3-3 | `admin.health.*` i18n keys used by the backend-health card not listed. | `docs/spec/client/components/mypage/content/SystemSettingsContent.md` §2.5 |
-| 3-4 | Spec tree folder naming inconsistent (`store/` vs `stores/`, `service/` vs `services/`); contents and source paths are accurate. | `docs/spec/server/{store,stores,service,services}` |
+Resolved 2026-09-02 — all four residual items (3-1…3-4) closed; see §5 Wave 3 log.
 
 ## 4. Deferred & future work (decided — no active owner)
 
@@ -109,6 +104,14 @@
 - **C-1 (envFileWriter allowlist):** dropped the never-written metadata-backend T0 keys (`WEA_STORAGE_BACKEND`, `WEA_PG_*`) and `ADMIN_DEFAULT_PASSWORD` from `WIZARD_WRITABLE_KEYS`, rewrote the module comment (retired `PLAN.md` reference) and the allowlist test to assert the removed keys stay absent; swapped test fixtures to the still-allowlisted `WEA_FILE_STORAGE`. Commit `1b7f19d` (+ merge).
 - **C-4 (setup suite PG gating):** suite self-declares SQLite-only under `test:ci:pg` (`WEA_STORAGE_BACKEND=postgresql`): all six top-level `describe` groups bound to `describe.skip` and the top-level `beforeAll`/`afterAll` DB bootstrap early-returns, so the mocked `pg` (no `Pool`) is never reached. Verified: PG-override run reports the suite skipped, default sqlite run 51/51 passes. Commit `81d1980` (+ merge).
 - **Verification:** full server `test:ci` green after each merge (87 suites / 1658 passed, 5 skipped); eslint clean.
+
+### 2026-09-02 — Wave 3 (residual doc-drift fixes 3-1…3-4)
+
+- **3-1 (blob payload wording):** `migration-mode.md` now describes blob jobs with scalar `progress` + top-level `current`/`results` and metadata jobs with extended `progress:{percent,currentLabel}` (removed the stale "extended job payload" phrasing at the spec-link lines and the blobs/jobs API rows). Commit `4a5a3a7`.
+- **3-2 (ShareFolderTree spec):** added the missing `baseFolderNodeId` prop row and documented `setFolderMenuAnchor`'s anchor-element argument (`e.currentTarget`) in §2.2/§2.3. Commit `b3f112a`.
+- **3-3 (i18n list):** added the `admin.health.*` keys (`title`/`fail`/`hintPrefix`/`lastChecked` with `{ time }`) plus `admin.runMigration`/`admin.runMetadataMigration` to `SystemSettingsContent.md` §2.5 — all confirmed present in `en.json`/`ko.json`. Commit `9daf13c`.
+- **3-4 (spec tree folders):** moved `stores/migrationJobStore.md` → `store/` and `service/composition.md` → `services/` (`git mv`, empty dirs removed); verified zero references to the old paths. Commit `38f4204`.
+- **Verification:** docs-only; residual-drift greps clean (no `extended payload`, health keys listed, old spec-folder paths gone).
 
 ### Historical completed improvement backlog (pre-2026-09-02)
 

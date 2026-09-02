@@ -4,18 +4,13 @@ const fs = require('fs');
 const path = require('path');
 
 /**
- * The only keys the setup wizard is allowed to write. Matches the wizard-writable
- * set in PLAN.md §5.3 behavior step 2 and docs/spec/server/routes/setup.md.
+ * The only keys the setup wizard is allowed to write via writeEnv
+ * (docs/spec/server/routes/setup.md). applySetup currently emits only JWT_SECRET
+ * and an auto-generated encrypt_secret_key; the metadata-backend T0 keys
+ * (WEA_STORAGE_BACKEND, WEA_PG_*) and ADMIN_DEFAULT_PASSWORD are .env-owned
+ * (D6/D7) and never written by apply, so they are deliberately absent here.
  */
 const WIZARD_WRITABLE_KEYS = Object.freeze([
-  'WEA_STORAGE_BACKEND',
-  'WEA_PG_HOST',
-  'WEA_PG_PORT',
-  'WEA_PG_DATABASE',
-  'WEA_PG_USER',
-  'WEA_PG_PASSWORD',
-  'WEA_PG_SSL',
-  'WEA_PG_MAX',
   'WEA_FILE_STORAGE',
   'S3_BUCKET',
   'AWS_REGION',
@@ -30,7 +25,6 @@ const WIZARD_WRITABLE_KEYS = Object.freeze([
   'JWT_EXPIRES_IN',
   'PORT',
   'CORS_ORIGINS',
-  'ADMIN_DEFAULT_PASSWORD',
   'EMAIL_HOST',
   'EMAIL_PORT',
   'EMAIL_USER',

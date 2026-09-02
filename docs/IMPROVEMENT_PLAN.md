@@ -21,7 +21,6 @@
 | DEF-3 | DEFERRED | `encrypt_secret_key` rotation tooling. | `docs/features/config-source-resolution.md` |
 | DEF-4 | DEFERRED | Blob migration source-delete mode (`--delete-mode`). | `docs/spec/server/tools/blob-migration.md`, `docs/SETUP.md` |
 | DEF-5 | DEFERRED | HTTP Range/206 support on public share download. | `docs/spec/server/routes/sharePublic.md` |
-| DEF-6 | DEFERRED | Future raw-WebDAV protocol mount behind the migration gate. | `docs/spec/server/infrastructure/migrationGate.md` |
 | DEF-7 | DEFERRED | Multi-version object history (`version_number > 1`). | `docs/spec/server/services/blobStorageService.md`, `docs/spec/server/store/fileNodesStore.md`, `docs/features/core-service-layer.md` |
 | DEF-8 | DEFERRED | Redis-backed cache / operationProgress store. | `docs/spec/server/services/downloadService.md`, `docs/ARCHITECTURE.md` |
 | DEF-9 | DEFERRED | schemaManager checksum-based modified-DDL detection. | `docs/spec/server/infrastructure/schemaManager.md` |

@@ -10,12 +10,18 @@ const laterWavesEnabled = process.env.E2E_LATER_WAVES === '1';
 const isQuiet = process.env.E2E_QUIET === '1';
 
 const desktopSpecMatch = laterWavesEnabled
-  ? /(?:00-project-setup|auth|share-public|core-flow\.shared|desktop-core-flow|mypage-user|share-internal|mypage-admin|explorer-advanced\.desktop)\.spec\.ts$/
-  : /(?:00-project-setup|auth|share-public|core-flow\.shared|desktop-core-flow|mypage-user|share-internal)\.spec\.ts$/;
+  ? /(?:auth|share-public|core-flow\.shared|desktop-core-flow|mypage-user|share-internal|mypage-admin|explorer-advanced\.desktop)\.spec\.ts$/
+  : /(?:auth|share-public|core-flow\.shared|desktop-core-flow|mypage-user|share-internal)\.spec\.ts$/;
 
 const mobileSpecMatch = laterWavesEnabled
-  ? /(?:00-project-setup|auth|share-public|core-flow\.shared|mobile-core-flow|mypage-user|share-internal|mypage-admin|explorer-advanced\.mobile)\.spec\.ts$/
-  : /(?:00-project-setup|auth|share-public|core-flow\.shared|mobile-core-flow|mypage-user|share-internal)\.spec\.ts$/;
+  ? /(?:auth|share-public|core-flow\.shared|mobile-core-flow|mypage-user|share-internal|mypage-admin|explorer-advanced\.mobile)\.spec\.ts$/
+  : /(?:auth|share-public|core-flow\.shared|mobile-core-flow|mypage-user|share-internal)\.spec\.ts$/;
+
+// Per-project data isolation (TESTING_STRATEGY.md "Per-project data isolation via
+// setup projects"): the shared E2E DB must be reset once per dependent project.
+// Each test project gets its OWN setup sibling that runs `00-project-setup.spec.ts`
+// before it — never one shared setup (a dependencies setup runs once per run).
+const setupSpecMatch = /00-project-setup\.spec\.ts$/;
 
 // Only the projects for the active E2E_BACKEND_MODE are defined, so
 // `npm run test:e2e:s3` (E2E_BACKEND_MODE=s3) runs the s3-* projects only and
@@ -26,16 +32,26 @@ type PlaywrightProject = NonNullable<Parameters<typeof defineConfig>[0]['project
 
 const projects: PlaywrightProject[] = [
   {
+    name: `${backendMode}-desktop-setup`,
+    testMatch: setupSpecMatch,
+  },
+  {
     name: `${backendMode}-desktop`,
     testMatch: desktopSpecMatch,
+    dependencies: [`${backendMode}-desktop-setup`],
     use: {
       browserName: 'chromium',
       viewport: { width: 1280, height: 720 },
     },
   },
   {
+    name: `${backendMode}-mobile-setup`,
+    testMatch: setupSpecMatch,
+  },
+  {
     name: `${backendMode}-mobile`,
     testMatch: mobileSpecMatch,
+    dependencies: [`${backendMode}-mobile-setup`],
     use: {
       browserName: 'webkit',
       viewport: { width: 390, height: 844 },

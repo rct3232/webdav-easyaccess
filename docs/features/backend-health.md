@@ -25,16 +25,23 @@ backends (only a per-user 500 toast). This feature adds:
    records to an in-memory tracker (classified); any success marks the backend OK
    (self-recovery). No active polling. Admin login + file-manager load naturally exercise all
    three backends.
-2. **Surfaces (D3)** — Admin: System Settings top status card + file-screen admin-only banner.
-   The card appears **only when an in-use backend is failing** and lists **only the failing
-   in-use backends** (name + `admin.health.fail` + classification hint/code + last-checked);
-   healthy/unknown backends are never listed, and **backends that are not currently active are
-   never listed** (active = metadata backend `WEA_STORAGE_BACKEND` + file backend
-   `WEA_FILE_STORAGE`). The boot WebDAV probe runs only when WebDAV is the active file backend,
-   so an unused backend cannot produce a false alert. Terminal: transition-only logs
-   (`[backend-health] … OK→FAIL / FAIL→OK`). Normal user: friendly message only for
-   connection-class failures (`files.storageUnavailable`); existing 404/403/etc. keep current
-   messages; DB-down → maintenance notice.
+2. **Surfaces (D3)** — Admin: System Settings top status card + file-screen warning banner.
+   Regular users: the SAME file-screen warning banner but with simplified copy that conveys only
+   that the service is temporarily unavailable (no backend/key detail). The card (admin) appears
+   **only when an in-use backend is failing** and lists **only the failing in-use backends**
+   (name + `admin.health.fail` + classification hint/code + last-checked); healthy/unknown
+   backends are never listed, and **backends that are not currently active are never listed**
+   (active = metadata backend `WEA_STORAGE_BACKEND` + file backend `WEA_FILE_STORAGE`). The
+   file-screen banner (all roles) is scoped to the ACTIVE FILE backend (`s3`/`webdav`) using the
+   public `activeFileStorage` field from `GET /api/health` — it needs no admin config access.
+   Banner copy: admins see `admin.health.banner`; non-admins see the simplified
+   `files.storageUnavailable` text.    Metadata-DB outages stay on the admin card + per-operation
+   `files.maintenanceNotice` messages (not on the file-screen banner). The boot WebDAV probe runs
+   only when WebDAV is the active file backend, so an unused backend cannot produce a false
+   alert. Terminal: transition-only logs
+   (`[backend-health] … OK→FAIL / FAIL→OK`). Per-operation failures for normal users keep the
+   existing friendly messages (connection-class → `files.storageUnavailable`; DB-down →
+   `files.maintenanceNotice`; 404/403/etc. unchanged).
 3. **Connection-key save gating (D1)** — editing a connection key in Advanced settings blocks
    Save until a connection test **with the pending values** passes; changing a connection key
    invalidates the result. Non-connection keys don't require a test.
@@ -72,8 +79,8 @@ to the stored value. Non-connection keys save without a test.
 
 ## Security
 
-- Public `GET /api/health` exposes only per-backend status strings (`ok`/`fail`/`unknown`) —
-  no codes, hints, or secrets.
+- Public `GET /api/health` exposes only per-backend status strings (`ok`/`fail`/`unknown`) plus
+  the non-sensitive `activeFileStorage` field (`s3`/`webdav`) — no codes, hints, or secrets.
 - `GET /api/admin/health` (admin-only) exposes the full tracker snapshot (code/hint/last-checked).
 - User-facing messages never leak backend internals (D8).
 

@@ -25,6 +25,7 @@
 {
   "status": "ok",
   "messageCode": "serverMessages.api.healthOk",
+  "activeFileStorage": "s3", // "s3" | "webdav" — effective WEA_FILE_STORAGE at boot (default "s3")
   "backends": {
     "postgresql": "ok", // "ok" | "fail" | "unknown"
     "s3": "unknown",
@@ -35,6 +36,10 @@
 
 - Backends come from `getHealth()`, reduced to the **status string only** — never codes, hints,
   reasons, or secrets (D3/D8).
+- `activeFileStorage` is the effective file-storage backend (`process.env.WEA_FILE_STORAGE`, which
+  `configResolver.populateT1Env` refreshes from env → DB at boot; default `'s3'` when unset). It is
+  additive and public so any authenticated client can decide whether the ACTIVE file backend is
+  failing without needing the admin-only config endpoint.
 
 ### 2.3 GET /api/admin/health (admin)
 
@@ -83,6 +88,6 @@
 
 ## 3. Verification Scenarios
 
-- [ ] `GET /api/health` returns `{ status, messageCode, backends }` with only status strings
+- [ ] `GET /api/health` returns `{ status, messageCode, activeFileStorage, backends }` with only status strings for the three backends and `activeFileStorage` ∈ `{s3, webdav}`
 - [ ] `GET /api/admin/health` 401 unauthenticated; 403 non-admin
 - [ ] `GET /api/admin/health` 200 returns the full snapshot for the three backends

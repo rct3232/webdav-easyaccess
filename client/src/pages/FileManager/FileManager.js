@@ -39,7 +39,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const [contentAreaDraggedParentNodeId, setContentAreaDraggedParentNodeId] = useState(null);
   const [contentAreaDragType, setContentAreaDragType] = useState(null);
   const [backendHealthStatuses, setBackendHealthStatuses] = useState(null);
-  const [activeBackends, setActiveBackends] = useState(null);
+  const [activeFileStorage, setActiveFileStorage] = useState(null);
 
   const isShareLinkMode = Boolean(shareToken && linkInfo);
   const shareRootPath = useMemo(
@@ -638,40 +638,27 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   }, [handleOperationComplete]);
 
   useEffect(() => {
-    if (!user?.is_admin) {
-      setBackendHealthStatuses(null);
-      setActiveBackends(null);
-      return;
-    }
+    // Every authenticated session (admin or not) reads the public /api/health
+    // so the file-screen banner can warn non-admin users too. The public payload
+    // carries the active file backend, so no admin config call is needed.
     let active = true;
     adminService
       .getPublicHealth()
       .then((data) => {
-        if (active) setBackendHealthStatuses(data?.backends || null);
-      })
-      .catch(() => {
-        if (active) setBackendHealthStatuses(null);
-      });
-    // Active backends (metadata backend + file backend) so unused backends
-    // never trigger the banner (D3).
-    adminService
-      .getConfigStatus()
-      .then((data) => {
         if (!active) return;
-        const cfg = data?.config || {};
-        const set = new Set();
-        if (cfg.WEA_STORAGE_BACKEND?.value === 'postgresql') set.add('postgresql');
-        if (cfg.WEA_FILE_STORAGE?.value === 's3') set.add('s3');
-        if (cfg.WEA_FILE_STORAGE?.value === 'webdav') set.add('webdav');
-        setActiveBackends(set);
+        setBackendHealthStatuses(data?.backends || null);
+        setActiveFileStorage(data?.activeFileStorage || null);
       })
       .catch(() => {
-        if (active) setActiveBackends(null);
+        if (active) {
+          setBackendHealthStatuses(null);
+          setActiveFileStorage(null);
+        }
       });
     return () => {
       active = false;
     };
-  }, [user]);
+  }, []);
 
   const shareContextProps = useMemo(
     () => ({
@@ -692,9 +679,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       fileContentRef,
       scrollContainerRef,
       backendHealth: backendHealthStatuses,
-      activeBackends,
+      activeFileStorage,
     }),
-    [user, navigate, isMobile, backendHealthStatuses, activeBackends]
+    [user, navigate, isMobile, backendHealthStatuses, activeFileStorage]
   );
 
   const overlayStateProps = useMemo(

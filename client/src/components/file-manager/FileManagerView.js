@@ -66,7 +66,7 @@ const FileManagerView = ({
     fileContentRef,
     scrollContainerRef,
     backendHealth,
-    activeBackends,
+    activeFileStorage,
   } = shellContext;
   const {
     drawerOpen,
@@ -416,12 +416,17 @@ const FileManagerView = ({
             downloadOnly={isShareLinkMode}
           />
 
-          {user?.is_admin &&
+          {user &&
+            !isShareLinkMode &&
             backendHealth &&
-            activeBackends &&
-            [...activeBackends].some((backend) => backendHealth[backend] === 'fail') && (
-              <Alert severity="warning" sx={{ mx: 2, mb: 1 }} data-testid="backend-health-banner">
-                {t('admin.health.banner')}
+            activeFileStorage &&
+            backendHealth[activeFileStorage] === 'fail' && (
+              <Alert
+                severity="warning"
+                sx={{ mx: 2, mb: 1 }}
+                data-testid="backend-health-banner"
+              >
+                {user?.is_admin ? t('admin.health.banner') : t('files.storageUnavailable')}
               </Alert>
             )}
 

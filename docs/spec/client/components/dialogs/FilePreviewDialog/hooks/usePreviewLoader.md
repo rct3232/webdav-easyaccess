@@ -50,12 +50,14 @@
 
 - A failure is ignored ONLY when the **caller** aborted the request (`signal.aborted` is true — user navigated away, dialog closed, or effect re-ran).
 - `httpClient` converts both caller aborts AND its own transport timeout into an error with `code='ECONNABORTED'`; the two are distinguished by `signal.aborted`, never by the error code alone. A transport timeout (caller signal NOT aborted) is a real failure.
-- Preview blob fetches (text/pdf/image) pass a bounded `timeout` (10 s, `PREVIEW_FETCH_TIMEOUT_MS`)
-  and disable transport retries (`maxRetries: 0`), so a backend failure surfaces within seconds:
-  a fast server 500 errors immediately (no ~7 s backoff retries) and a hung backend aborts after
-  10 s instead of the 5-minute transport default.
+- Preview blob fetches (text/pdf/image) disable transport retries (`maxRetries: 0`), so a fast
+  server error (e.g. an S3/WebDAV auth failure that the storage provider answers immediately)
+  surfaces to the user right away instead of after ~7 s of backoff retries. The transport total
+  timeout stays at the httpClient default (5 min) — no short cap is applied, so slow-but-working
+  transfers on a healthy backend are never cut off.
 - The client cannot detect an unreachable backend itself — the server-side storage attempt must
-  first fail or time out. These bounds keep that wait to seconds, not minutes.
+  first fail or time out. A hung backend therefore resolves via the transport timeout; bounding
+  that further is a server-side concern, not a client timeout.
 - Other errors: message resolution is `getServerErrorDisplay(error.response.data, t)` when the server returned an `errorCode` (connection-class failures map to the friendly `files.storageUnavailable` text); otherwise the generic `t('preview.loadFail')`. In every non-abort failure `setLoading(false)` is called so the spinner always resolves.
 - Failed loads do not keep `loading=true` — the spinner clears and an error is shown.
 
@@ -70,6 +72,7 @@
 - [ ] Transport timeout (`code='ECONNABORTED'` with caller signal NOT aborted) sets `error` and `loading=false` — no infinite spinner
 - [ ] Server `errorCode` on the response is surfaced via `getServerErrorDisplay` (connection-class codes → `files.storageUnavailable`)
 - [ ] Network error without a server response sets `error` (generic preview message) and `loading=false`
+- [ ] A fast server error is not transport-retried (maxRetries 0) — no backoff delay before the error shows
 - [ ] A settled request never leaves `loading=true`
 
 ### 2.8 Edge Cases

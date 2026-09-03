@@ -329,6 +329,7 @@ module.exports = {
   deriveReason,
   probeError,
   probeS3,
+  probePostgresql,
   classifyPgError,
   classifyS3Error,
   classifyS3BucketError,

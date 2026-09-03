@@ -502,6 +502,38 @@ describe('FileManagerView', () => {
     expect(screen.queryByTestId('backend-health-banner')).not.toBeInTheDocument();
   });
 
+  it('renders the banner for non-admin users when the active metadata DB (postgresql) is failing', async () => {
+    const props = createProps({
+      shellContext: {
+        ...createProps().shellContext,
+        user: { id: 'user-1', username: 'user1', is_admin: false },
+        backendHealth: { postgresql: 'fail', s3: 'ok', webdav: 'unknown' },
+        activeFileStorage: 's3',
+        activeMetadataBackend: 'postgresql',
+      },
+    });
+    renderWithProviders(<FileManagerView {...props} />);
+
+    expect(await screen.findByTestId('backend-health-banner')).toBeInTheDocument();
+    expect(screen.getByText(/service database is unavailable/i)).toBeInTheDocument();
+  });
+
+  it('does not render the banner when the failing postgresql backend is not active (sqlite)', async () => {
+    const props = createProps({
+      shellContext: {
+        ...createProps().shellContext,
+        user: { id: 'user-1', username: 'user1', is_admin: false },
+        backendHealth: { postgresql: 'fail', s3: 'ok', webdav: 'unknown' },
+        activeFileStorage: 's3',
+        activeMetadataBackend: 'sqlite',
+      },
+    });
+    renderWithProviders(<FileManagerView {...props} />);
+
+    await screen.findByTestId('explorer-container');
+    expect(screen.queryByTestId('backend-health-banner')).not.toBeInTheDocument();
+  });
+
   it('routes non-share folder-tree clicks through handleLeaveSharePathClick in share mode', async () => {
     const props = createProps({
       shareContext: {

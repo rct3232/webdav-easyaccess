@@ -35,6 +35,7 @@ Registry / resolver contracts: `docs/spec/server/infrastructure/configRegistry.m
 ### 2.3 Middleware Used
 
 - `authenticateToken` + `isAdmin` (cloned from `server/domains/admin/routes/settings.js:24-30` — `User.findById(req.user.id)`, throws `serverErrors.admin.adminRequired` → 403 when not admin).
+- **Exception — `GET /api/admin/health`:** authorized with `authenticateToken` + a stateless check on the JWT `is_admin` claim (no `User.findById`), so the endpoint works during a metadata-DB outage.
 - The setup-mode guard (503 `setup.incomplete`) is applied at mount time in `server/index.js`, so the admin config surface is reachable only when setup is complete.
 
 ### 2.4 Request/Response Spec

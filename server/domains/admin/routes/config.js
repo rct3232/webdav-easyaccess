@@ -105,6 +105,17 @@ const isAdmin = asyncHandler(async (req, res, next) => {
   next();
 });
 
+// Stateless admin check for GET /api/admin/health only: trusts the JWT
+// is_admin claim (set by authenticateToken) instead of a DB-backed
+// User.findById lookup, so the health snapshot stays reachable during a
+// metadata-DB outage and the admin health card can render the failure.
+const isAdminFromToken = asyncHandler(async (req, res, next) => {
+  if (!req.user?.is_admin) {
+    throw createError(SERVER_ERROR_CODES.admin.adminRequired, HTTP_STATUS.FORBIDDEN);
+  }
+  next();
+});
+
 // Get effective config (masked secrets, source/tier/secret per registry key).
 router.get(
   '/config',
@@ -230,7 +241,8 @@ router.post(
 );
 
 // Admin health snapshot: full per-backend tracker state (code/hint/lastChecked).
-router.get('/health', authenticateToken, isAdmin, (req, res) => {
+// Stateless token-claim admin check (no DB read) so it works during a DB outage.
+router.get('/health', authenticateToken, isAdminFromToken, (req, res) => {
   res.json({ backends: getBackendHealth().getHealth() });
 });
 

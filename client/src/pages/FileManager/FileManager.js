@@ -44,6 +44,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const [contentAreaDragType, setContentAreaDragType] = useState(null);
   const [backendHealthStatuses, setBackendHealthStatuses] = useState(null);
   const [activeFileStorage, setActiveFileStorage] = useState(null);
+  const [activeMetadataBackend, setActiveMetadataBackend] = useState(null);
 
   const isShareLinkMode = Boolean(shareToken && linkInfo);
   const shareRootPath = useMemo(
@@ -644,10 +645,11 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   useEffect(() => {
     // Every authenticated session (admin or not) reads the public /api/health
     // so the file-screen banner can warn non-admin users too. The public payload
-    // carries the active file backend, so no admin config call is needed.
+    // carries the active file backend AND active metadata backend, so no admin
+    // config call is needed.
     // Health is polled while the screen is mounted: a backend failure recorded
-    // mid-session (e.g. a failed upload/download) must flip the banner without
-    // requiring a page remount — for every role.
+    // mid-session (e.g. a failed upload/download or a metadata-DB drop) must
+    // flip the banner without requiring a page remount — for every role.
     let active = true;
     const refreshHealth = () => {
       adminService
@@ -656,11 +658,13 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           if (!active) return;
           setBackendHealthStatuses(data?.backends || null);
           setActiveFileStorage(data?.activeFileStorage || null);
+          setActiveMetadataBackend(data?.activeMetadataBackend || null);
         })
         .catch(() => {
           if (active) {
             setBackendHealthStatuses(null);
             setActiveFileStorage(null);
+            setActiveMetadataBackend(null);
           }
         });
     };
@@ -692,8 +696,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       scrollContainerRef,
       backendHealth: backendHealthStatuses,
       activeFileStorage,
+      activeMetadataBackend,
     }),
-    [user, navigate, isMobile, backendHealthStatuses, activeFileStorage]
+    [user, navigate, isMobile, backendHealthStatuses, activeFileStorage, activeMetadataBackend]
   );
 
   const overlayStateProps = useMemo(

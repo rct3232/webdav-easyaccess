@@ -32,13 +32,13 @@ backends (only a per-user 500 toast). This feature adds:
    (name + `admin.health.fail` + classification hint/code + last-checked); healthy/unknown
    backends are never listed, and **backends that are not currently active are never listed**
    (active = metadata backend `WEA_STORAGE_BACKEND` + file backend `WEA_FILE_STORAGE`). The
-   file-screen banner (all roles) is scoped to the ACTIVE FILE backend (`s3`/`webdav`) using the
-   public `activeFileStorage` field from `GET /api/health` — it needs no admin config access.
-   Banner copy: admins see `admin.health.banner`; non-admins see the simplified
-   `files.storageUnavailable` text.    Metadata-DB outages stay on the admin card + per-operation
-   `files.maintenanceNotice` messages (not on the file-screen banner). The boot WebDAV probe runs
-   only when WebDAV is the active file backend, so an unused backend cannot produce a false
-   alert. Terminal: transition-only logs
+   file-screen banner (all roles) covers the ACTIVE backends using the public
+   `activeFileStorage` + `activeMetadataBackend` fields from `GET /api/health` — no admin config
+   access needed. Banner copy: admins see `admin.health.banner`; non-admins see a simplified
+   message that matches the failing backend type — `files.maintenanceNotice` when the metadata
+   DB (postgresql) is failing, `files.storageUnavailable` when a file backend is failing. The
+   boot WebDAV probe runs only when WebDAV is the active file backend, so an unused backend
+   cannot produce a false alert. Terminal: transition-only logs
    (`[backend-health] … OK→FAIL / FAIL→OK`). Per-operation failures for normal users keep the
    existing friendly messages (connection-class → `files.storageUnavailable`; DB-down →
    `files.maintenanceNotice`; 404/403/etc. unchanged).
@@ -58,7 +58,7 @@ backends (only a per-user 500 toast). This feature adds:
 
 | Backend      | Failure hook                                                                                        | Success hook                                   |
 | ------------ | --------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| `postgresql` | `mapDatabaseError` (when `getBackend()==='postgresql'`), pool `error` handler                       | `withTransaction` connect/commit, pool connect |
+| `postgresql` | `mapDatabaseError` connection-class mapping (shutdown `57P01`, exhaustion `53300`, reachability `ECONNREFUSED`/`ENOTFOUND`/`EAI_AGAIN`/`ETIMEDOUT`/`ECONNRESET`, client `query_timeout` expiry, auth `28P01`/`28000`), pg pool idle-client `error` handler, `withTransaction` connect failure | `withTransaction` connect/commit, pool connect |
 | `s3`         | `S3BlobStore` operation catch                                                                       | `S3BlobStore` operation resolve                |
 | `webdav`     | `webdavTest.testConnection` throw, `WebdavBlobStore` catch, `utils/webdav.js` `listDirectory` catch | corresponding success                          |
 

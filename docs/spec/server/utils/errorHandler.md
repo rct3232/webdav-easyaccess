@@ -39,11 +39,14 @@
 - mapDatabaseError:
   - input: DB error object (`code`, `constraint`, `detail`, `message`)
   - output: existing Error with normalized `status`, `errorCode`, optional `params`
-  - SQLSTATE mapping baseline:
+  - SQLSTATE/error-code mapping baseline:
     - `23505` -> 409 `errorHandler.databaseConflict`
     - `23503`, `23514`, `22P02` -> 400 `errorHandler.databaseConstraintViolation`
     - `57P01`, `53300` -> 503 `errorHandler.databaseUnavailable`
+    - reachability/system codes (`ECONNREFUSED`, `ENOTFOUND`, `EAI_AGAIN`, `ETIMEDOUT`, `ECONNRESET`) and client `query_timeout` expiry ("Query read timeout") -> 503 `errorHandler.databaseUnavailable`
+    - auth codes (`28P01`, `28000`) -> 503 `errorHandler.databaseUnavailable`
     - fallback -> 500 `errorHandler.databaseQueryFailed`
+  - Passive health reporting: only `databaseUnavailable`-mapped errors report `postgresql` to the backend-health tracker, classified `unreachable` (reachability/timeout/shutdown) vs `auth` (`28P01`/`28000`).
 
 ### 2.4 Dependencies
 

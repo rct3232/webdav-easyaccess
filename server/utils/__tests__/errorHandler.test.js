@@ -230,6 +230,46 @@ describe('errorHandler', () => {
       expect(pg.reason).toBe('sorry, too many clients already');
     });
 
+    it('maps reachability/system errors to 503 databaseUnavailable and reports unreachable', () => {
+      const tracker = require('../../infrastructure/backendHealth').getBackendHealth();
+      tracker.reset();
+
+      for (const code of ['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT', 'ECONNRESET']) {
+        const mapped = mapDatabaseError({ code, message: 'socket hang' });
+        expect(mapped.status).toBe(HTTP_STATUS.SERVICE_UNAVAILABLE);
+        expect(mapped.errorCode).toBe(SERVER_ERROR_CODES.errorHandler.databaseUnavailable);
+      }
+      expect(tracker.getHealth().postgresql.status).toBe('fail');
+      expect(tracker.getHealth().postgresql.code).toBe('unreachable');
+    });
+
+    it('maps the pg client query_timeout expiry to 503 databaseUnavailable', () => {
+      const mapped = mapDatabaseError({ message: 'Query read timeout', code: undefined });
+      expect(mapped.status).toBe(HTTP_STATUS.SERVICE_UNAVAILABLE);
+      expect(mapped.errorCode).toBe(SERVER_ERROR_CODES.errorHandler.databaseUnavailable);
+    });
+
+    it('maps postgresql auth failures (28P01) to 503 and reports auth', () => {
+      const tracker = require('../../infrastructure/backendHealth').getBackendHealth();
+      tracker.reset();
+      const mapped = mapDatabaseError({
+        code: '28P01',
+        message: 'password authentication failed for user "app"',
+      });
+      expect(mapped.status).toBe(HTTP_STATUS.SERVICE_UNAVAILABLE);
+      expect(mapped.errorCode).toBe(SERVER_ERROR_CODES.errorHandler.databaseUnavailable);
+      const pg = tracker.getHealth().postgresql;
+      expect(pg.status).toBe('fail');
+      expect(pg.code).toBe('auth');
+    });
+
+    it('does not report non-connection fallback errors (500) to the health tracker', () => {
+      const tracker = require('../../infrastructure/backendHealth').getBackendHealth();
+      tracker.reset();
+      mapDatabaseError({ code: 'XX000' });
+      expect(tracker.getHealth().postgresql.status).toBe('unknown');
+    });
+
     it('leaves the backend health snapshot untouched for non-connection error codes', () => {
       const tracker = require('../../infrastructure/backendHealth').getBackendHealth();
       tracker.reset();

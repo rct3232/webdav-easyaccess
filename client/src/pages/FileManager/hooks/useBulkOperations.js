@@ -93,17 +93,17 @@ export const useBulkOperations = (
     [t]
   );
 
-  const handleBulkMove = () => {
+  const handleBulkMove = useCallback(() => {
     dismissFailedItems();
     setFolderPickerAction('move');
     setFolderPickerOpen(true);
-  };
+  }, [dismissFailedItems]);
 
-  const handleBulkCopy = () => {
+  const handleBulkCopy = useCallback(() => {
     dismissFailedItems();
     setFolderPickerAction('copy');
     setFolderPickerOpen(true);
-  };
+  }, [dismissFailedItems]);
 
   const handleBulkDelete = useCallback(
     async (retryData = null, onConfirm = null) => {
@@ -316,7 +316,7 @@ export const useBulkOperations = (
     ]
   );
 
-  const handleBulkDownload = async () => {
+  const handleBulkDownload = useCallback(async () => {
     if (selectedNodeIds.size === 0) return;
     dismissFailedItems();
     setSelectionMode(false);
@@ -377,7 +377,15 @@ export const useBulkOperations = (
         error: error.message,
       });
     }
-  };
+  }, [
+    selectedNodeIds,
+    dismissFailedItems,
+    setSelectionMode,
+    updateProgress,
+    shareToken,
+    t,
+    setSelectedFiles,
+  ]);
 
   /**
    * Execute bulk operation after pre-checks (Job + polling)
@@ -740,24 +748,27 @@ export const useBulkOperations = (
     [bulkConflictData, executeBulkOperation]
   );
 
-  const handleRetry = async (progressId) => {
-    const progressItem = progressItems.find((item) => item.id === progressId);
-    if (!progressItem || !progressItem.retryData) {
-      console.error('Retry data not found for progress item:', progressId);
-      return;
-    }
-    const { type, nodeIds, destinationParentNodeId, startedNodeId } = progressItem.retryData;
-    if (type === 'delete') {
-      await handleBulkDelete({ nodeIds, progressId, startedNodeId });
-    } else if (type === 'move' || type === 'copy') {
-      await handleFolderPickerSelect(destinationParentNodeId, {
-        type,
-        nodeIds,
-        progressId,
-        startedNodeId,
-      });
-    }
-  };
+  const handleRetry = useCallback(
+    async (progressId) => {
+      const progressItem = progressItems.find((item) => item.id === progressId);
+      if (!progressItem || !progressItem.retryData) {
+        console.error('Retry data not found for progress item:', progressId);
+        return;
+      }
+      const { type, nodeIds, destinationParentNodeId, startedNodeId } = progressItem.retryData;
+      if (type === 'delete') {
+        await handleBulkDelete({ nodeIds, progressId, startedNodeId });
+      } else if (type === 'move' || type === 'copy') {
+        await handleFolderPickerSelect(destinationParentNodeId, {
+          type,
+          nodeIds,
+          progressId,
+          startedNodeId,
+        });
+      }
+    },
+    [progressItems, handleBulkDelete, handleFolderPickerSelect]
+  );
 
   const handleCancelBulkOperation = useCallback(
     async (progressId) => {

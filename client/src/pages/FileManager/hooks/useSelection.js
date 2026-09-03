@@ -26,7 +26,7 @@ export const useSelection = (displayedFiles, allFiles = null) => {
     prevSelectedCountRef.current = count;
   }, [selectionMode, selectedFiles.size]);
 
-  const handleToggleSelectionMode = () => {
+  const handleToggleSelectionMode = useCallback(() => {
     setSelectionMode((prev) => {
       const next = !prev;
       if (next) skipNextAutoExitRef.current = true;
@@ -34,17 +34,17 @@ export const useSelection = (displayedFiles, allFiles = null) => {
     });
     setSelectedFiles(new Set());
     lastSelectedIndexRef.current = null;
-  };
+  }, []);
 
-  const handleSelectAll = () => {
+  const handleSelectAll = useCallback(() => {
     setSelectedFiles(new Set(filesForSelectAll.map((file) => getEntryKey(file))));
-  };
+  }, [filesForSelectAll]);
 
-  const handleDeselectAll = () => {
+  const handleDeselectAll = useCallback(() => {
     setSelectedFiles(new Set());
-  };
+  }, []);
 
-  const handleFileCheck = (file, checked) => {
+  const handleFileCheck = useCallback((file, checked) => {
     setSelectedFiles((prev) => {
       const newSet = new Set(prev);
       if (checked) {
@@ -54,9 +54,9 @@ export const useSelection = (displayedFiles, allFiles = null) => {
       }
       return newSet;
     });
-  };
+  }, []);
 
-  const toggleFileSelection = (file) => {
+  const toggleFileSelection = useCallback((file) => {
     setSelectedFiles((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(getEntryKey(file))) {
@@ -66,7 +66,7 @@ export const useSelection = (displayedFiles, allFiles = null) => {
       }
       return newSet;
     });
-  };
+  }, []);
 
   const selectRange = useCallback(
     (fromIndex, toIndex) => {

@@ -48,8 +48,10 @@
 
 ### 2.6 Error Handling
 
-- `AbortError` is silently swallowed (cancelled request).
-- Other errors: `setError(t('preview.loadFail'))`, `setLoading(false)`.
+- A failure is ignored ONLY when the **caller** aborted the request (`signal.aborted` is true — user navigated away, dialog closed, or effect re-ran).
+- `httpClient` converts both caller aborts AND its own transport timeout into an error with `code='ECONNABORTED'`; the two are distinguished by `signal.aborted`, never by the error code alone. A transport timeout (caller signal NOT aborted) is a real failure.
+- Other errors: message resolution is `getServerErrorDisplay(error.response.data, t)` when the server returned an `errorCode` (connection-class failures map to the friendly `files.storageUnavailable` text); otherwise the generic `t('preview.loadFail')`. In every non-abort failure `setLoading(false)` is called so the spinner always resolves.
+- Failed loads do not keep `loading=true` — the spinner clears and an error is shown.
 
 ### 2.7 Verification Scenarios
 
@@ -58,8 +60,11 @@
 - [ ] After successful video load: `loading=false`, `previewUrl` is a stream URL
 - [ ] After successful text load: `loading=false`, `textContent` is a string
 - [ ] After successful PDF load: `loading=false`, `previewUrl` and `previewBlob` are set
-- [ ] AbortError does not set error state
-- [ ] Network error sets `error` string and `loading=false`
+- [ ] AbortError (caller signal aborted) does not set error state
+- [ ] Transport timeout (`code='ECONNABORTED'` with caller signal NOT aborted) sets `error` and `loading=false` — no infinite spinner
+- [ ] Server `errorCode` on the response is surfaced via `getServerErrorDisplay` (connection-class codes → `files.storageUnavailable`)
+- [ ] Network error without a server response sets `error` (generic preview message) and `loading=false`
+- [ ] A settled request never leaves `loading=true`
 
 ### 2.8 Edge Cases
 

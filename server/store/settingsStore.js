@@ -125,6 +125,39 @@ async function set(key, value) {
   throw new Error('No database backend configured');
 }
 
+async function listRows() {
+  if (isPostgresqlBackend()) {
+    try {
+      const pool = getPgPool();
+      const res = await pool.query(`SELECT key, value, updated_at FROM settings`);
+      return res.rows.map((row) => ({
+        key: row.key,
+        value: row.value,
+        updated_at: row.updated_at,
+      }));
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
+  if (isSqliteBackend()) {
+    try {
+      const res = await withSqliteTransaction(async (client) => {
+        return client.query(`SELECT key, value, updated_at FROM settings`);
+      });
+      return res.rows.map((row) => ({
+        key: row.key,
+        value: row.value,
+        updated_at: row.updated_at,
+      }));
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
+  throw new Error('No database backend configured');
+}
+
 async function getAll() {
   const s = await readSettings();
   const rest = { ...s };
@@ -141,5 +174,6 @@ module.exports = {
   get,
   set,
   getAll,
+  listRows,
   isRegistrationEnabled,
 };

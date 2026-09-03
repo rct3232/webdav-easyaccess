@@ -14,7 +14,6 @@ const path = require('path');
 
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { createError } = require('../../utils/errorHandler');
-const { encryptSecret, generateKey } = require('../../utils/configEncryption');
 const { SETUP_INVALID_PAYLOAD_CODE } = require('../../infrastructure/backendProbe');
 const { isT0, isSecret, getDefault, TIER } = require('../../infrastructure/configRegistry');
 const { getSharedResolver } = require('../../infrastructure/configResolver');
@@ -304,10 +303,6 @@ function partitionEntries(entries) {
   return { envEntries, dbEntries };
 }
 
-function encryptSecretValue(value, masterKey) {
-  return JSON.stringify(encryptSecret(String(value), masterKey));
-}
-
 /**
  * Normalize the effective config so masked-but-unset secrets drive
  * `missing` / `setup_complete` / `current` correctly. See the mask-drop rule
@@ -328,16 +323,13 @@ function normalizeEffectiveForStatus(effective) {
 
 /**
  * Upsert non-T0 wizard values into the metadata DB through the app's own
- * Settings model (plaintext config as-is; the store JSON-stringifies on PG /
- * stores raw TEXT on sqlite; a secret is the JSON string of the encrypted
- * payload).
+ * Settings model. Values are stored as plaintext strings; the store
+ * JSON-stringifies on PG / stores raw TEXT on sqlite.
  * @param {Record<string, string>} dbEntries DB-partition config entries
- * @param {string} masterKey encrypt_secret_key used to seal secrets
  */
-async function writeSettings(dbEntries, masterKey) {
+async function writeSettings(dbEntries) {
   for (const [key, value] of Object.entries(dbEntries)) {
-    if (isSecret(key)) await Settings.set(key, encryptSecretValue(value, masterKey));
-    else await Settings.set(key, value);
+    await Settings.set(key, value);
   }
 }
 
@@ -364,8 +356,8 @@ async function updateAdminPassword(password) {
  * 1. validate (same rules + message as the wizard),
  * 2. build entries, drop masked ('****') unchanged secrets,
  * 3. partition T0 (.env) vs DB-settings entries,
- * 4. keep-or-generate encrypt_secret_key and write the .env FIRST,
- * 5. update the admin password, then upsert DB settings (secrets encrypted),
+ * 4. write the .env FIRST,
+ * 5. update the admin password, then upsert DB settings as plaintext,
  * 6. invalidate the shared resolver cache.
  *
  * @param {*} body raw apply payload
@@ -385,22 +377,15 @@ async function applySetup(body) {
 
   const entries = buildEnvEntries(body);
 
-  // Masked (unchanged) secrets keep their existing DB ciphertext — the
-  // only-re-encrypt-on-new-value rule (PLAN §7 / D6). The client sends the
-  // prefill mask '****' for a secret it did not edit; validation accepts it
-  // (non-empty) but writeSettings must NOT re-encrypt it, so drop it here.
+  // Masked (unchanged) secrets keep their existing DB value — the
+  // keep-existing rule. The client sends the prefill mask '****' for a secret
+  // it did not edit; validation accepts it (non-empty) but writeSettings must
+  // NOT overwrite the stored value, so drop it here.
   for (const [key, value] of Object.entries(entries)) {
     if (isSecret(key) && value === '****') delete entries[key];
   }
 
   const { envEntries, dbEntries } = partitionEntries(entries);
-
-  // encrypt_secret_key lifecycle (PLAN §7): keep an existing key — never
-  // regenerate it and never write it to .env. Only auto-generate when none
-  // exists; the generated key is T0 / .env-only and used to encrypt this
-  // apply's DB secrets.
-  const masterKey = process.env.encrypt_secret_key || generateKey();
-  if (!process.env.encrypt_secret_key) envEntries.encrypt_secret_key = masterKey;
 
   // Write .env FIRST (atomic temp-file + rename). If it fails, the DB has not
   // been touched, so boot still shows setup mode — a failed apply can never
@@ -413,7 +398,7 @@ async function applySetup(body) {
   // so a failure cannot leave the credential changed mid-apply.
   await updateAdminPassword(String(body.admin.password));
 
-  await writeSettings(dbEntries, masterKey);
+  await writeSettings(dbEntries);
 
   // Clear the shared T2 cache so the DB writes are visible to restart-free
   // (T2) reads immediately after this apply.

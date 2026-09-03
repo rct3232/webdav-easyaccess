@@ -5,7 +5,6 @@ const express = require('express');
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { asyncHandler, createError } = require('../../utils/errorHandler');
-const { hasEncryptedRows } = require('../../utils/configEncryption');
 const {
   SETUP_INVALID_PAYLOAD_CODE,
   SETUP_TEST_FAILED_CODE,
@@ -19,7 +18,6 @@ const {
 const { computeSetupStatus } = require('../../infrastructure/setupStatus');
 const { isSecret } = require('../../infrastructure/configRegistry');
 const { getSharedResolver } = require('../../infrastructure/configResolver');
-const Settings = require('../../models/Settings');
 const {
   EFFECTIVE_SECRET_MASK,
   applySetup,
@@ -167,15 +165,7 @@ router.get(
       effectiveConfig: normalizeEffectiveForStatus(effective),
     });
 
-    // key-lost warning (PLAN §7): an encrypted DB secret row cannot be
-    // decrypted/prefilled without the master key. Detection is shape-only — this
-    // path never decrypts, so prefill cannot leak plaintext.
-    const all = await Settings.getAll();
-
-    res.json({
-      ...status,
-      key_lost_warning: Boolean(hasEncryptedRows(all) && !process.env.encrypt_secret_key),
-    });
+    res.json(status);
   })
 );
 
@@ -244,13 +234,12 @@ router.post(
       if (metadata == null || metadata.backend !== 'postgresql') {
         // sqlite (or missing metadata) is already prefilled from the app's own
         // store via GET /status on mount.
-        return res.json({ current: {}, key_lost_warning: false });
+        return res.json({ current: {} });
       }
 
       const rows = await readSettingsRows(metadata);
       res.json({
         current: buildPrefillCurrent(rows),
-        key_lost_warning: Boolean(hasEncryptedRows(rows) && !process.env.encrypt_secret_key),
       });
     } catch (error) {
       // Same error shape + classified codes as POST /test so the client renders

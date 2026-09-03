@@ -34,7 +34,6 @@ const CONFIG_ENTRIES = Object.freeze([
   { key: 'WEA_PG_CONNECTION_TIMEOUT_MS', tier: TIER.T0, secret: false, default: 10000 },
   { key: 'NODE_ENV', tier: TIER.T0, secret: false },
   { key: 'DOTENV_CONFIG_PATH', tier: TIER.T0, secret: false },
-  { key: 'encrypt_secret_key', tier: TIER.T0, secret: true },
   {
     key: 'JWT_SECRET',
     tier: TIER.T0,

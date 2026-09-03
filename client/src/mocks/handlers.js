@@ -957,7 +957,7 @@ export const handlers = [
 
   // --- Admin: effective config (docs/spec/server/routes/config.md) ---
   http.get(`${API_BASE}/admin/config`, () => {
-    return HttpResponse.json({ config: mockAdminConfig, key_lost_warning: false });
+    return HttpResponse.json({ config: mockAdminConfig });
   }),
 
   http.put(`${API_BASE}/admin/config`, async ({ request }) => {
@@ -980,7 +980,7 @@ export const handlers = [
         return errorResponse('serverErrors.admin.configEnvSourcedProtected', 400, { key });
       }
       if (entry.secret) {
-        // Masked/blank secret keeps its existing ciphertext (only-re-encrypt-on-new-value).
+        // Masked/blank secret is kept as-is (server preserves the stored value).
         if (value === undefined || value === null || value === '' || value === '****') {
           continue;
         }
@@ -1007,7 +1007,6 @@ export const handlers = [
       findings: [],
       summary: {
         drift: 0,
-        alerts: 0,
         shadowed: 0,
         envOnly: 0,
         dbOnly: 0,
@@ -1024,7 +1023,6 @@ export const handlers = [
         findings: [],
         summary: {
           drift: 0,
-          alerts: 0,
           shadowed: 0,
           envOnly: 0,
           dbOnly: 0,

@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
-import { createRequire } from 'node:module';
 
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
@@ -10,7 +9,6 @@ import {
   killScratch,
   openSystemSettings,
   queryScratchSqlite,
-  readEnvFile,
   scratchDirFor,
   seedWebdavSettings,
   spawnScratchServer,
@@ -33,15 +31,13 @@ import { loginWithCredentials } from './helpers/auth';
  * the scratch `.env`: they are pre-seeded into the scratch sqlite DB before the
  * server's first boot, so they resolve as DB-sourced (editable) and setup stays
  * complete (Phase B D1 gating requires editable connection keys; the F4 guard
- * locks env-sourced rows). WEBDAV_PASSWORD is stored as plaintext (legacy row)
- * so the key_lost restart case (master key removed) still boots complete.
+ * locks env-sourced rows). App-layer field encryption was removed, so DB secret
+ * rows (e.g. WEBDAV_PASSWORD) are plaintext strings the server reads directly.
  *
  * Never touches the shared E2E state. Requires the docker infra (webdav :8090)
  * only for the success-path gating tests (guarded) and the scratch server's
  * boot-time webdav probe, which warns on failure.
  */
-
-const require = createRequire(__filename);
 
 const SCRATCH_BASE = 'http://127.0.0.1:5003';
 const WEBDAV_BASE = 'http://127.0.0.1:8090';
@@ -49,12 +45,6 @@ const WEBDAV_AUTH = Buffer.from('e2etest:e2etest123').toString('base64');
 
 const CASE_ID = 'admin-config';
 const ADMIN_PASSWORD = 'AdminConfigE2e!123';
-// Deterministic 32-byte hex master key (also written into the scratch .env).
-const ENCRYPT_KEY = 'a'.repeat(64);
-
-const { decryptSecret } = require('../server/utils/configEncryption') as {
-  decryptSecret: (payload: unknown, passphrase: string) => string;
-};
 
 type ConfigEntry = {
   value?: string;
@@ -132,7 +122,6 @@ test.beforeEach(async () => {
     WEBDAV_UPSTREAM_URL: WEBDAV_BASE,
     JWT_SECRET: 'admin-config-e2e-jwt-secret',
     ADMIN_DEFAULT_PASSWORD: ADMIN_PASSWORD,
-    encrypt_secret_key: ENCRYPT_KEY,
   });
   await seedWebdavSettings(scratch);
   ensureClientBuild();
@@ -302,39 +291,15 @@ test.describe('admin config editor (advanced settings)', () => {
     expect(config.FFMPEG_PATH.source).toBe('db');
   });
 
-  test('E2E-ADMINCFG-003: A missing master key surfaces a key-lost warning in the admin UI', async ({
-    page,
-    request,
-  }) => {
-    // Create an encrypted settings row while the master key is present.
-    await putConfig(request, { EMAIL_PASSWORD: 'initial-secret' });
+  // E2E-ADMINCFG-003 was removed with app-layer field encryption (W-A): DB
+  // secret rows are plaintext and always readable, so no key-lost warning
+  // surface exists to test (docs/E2E_COVERAGE_PLAN.md row kept for ID stability).
 
-    // Remove the master key from .env and restart the scratch server.
-    await killScratch(spawned!);
-    const envPath = path.join(scratch, '.env');
-    const envLines = fs
-      .readFileSync(envPath, 'utf8')
-      .split('\n')
-      .filter((line) => !line.startsWith('encrypt_secret_key='));
-    fs.writeFileSync(envPath, envLines.join('\n'));
-    spawned = spawnScratchServer(scratch);
-    await waitForScratchHealth(spawned);
-
-    await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
-    await openSystemSettings(page);
-
-    await expect(page.getByTestId('key-lost-warning')).toBeVisible();
-    await expect(page.getByTestId('key-lost-warning')).toContainText('Encryption key lost');
-  });
-
-  test('E2E-ADMINCFG-004: Secret lifecycle masks values, keeps unchanged input, and stores new values encrypted', async ({
+  test('E2E-ADMINCFG-004: Secret lifecycle masks values, keeps unchanged input, and stores new values plaintext', async ({
     page,
     request,
   }) => {
     await putConfig(request, { EMAIL_PASSWORD: 'initial-secret' });
-
-    const env = readEnvFile(scratch);
-    const masterKey = env.encrypt_secret_key;
 
     await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
     await openAdvancedSettings(page);
@@ -351,41 +316,37 @@ test.describe('admin config editor (advanced settings)', () => {
       );
       return rows[0].value;
     };
-    const decryptDbSecret = async (): Promise<string> => {
-      const payload = JSON.parse(await rawSecret());
-      return decryptSecret(payload, masterKey);
-    };
 
-    // 1) Leave the secret untouched, save another change → ciphertext kept byte-for-byte.
-    const before1 = await rawSecret();
+    // 1) PUT stored the new secret as plaintext (no encryption payload).
+    expect(await rawSecret()).toBe('initial-secret');
+
+    // 2) Leave the secret untouched, save another change → plaintext kept as-is.
     await page.getByTestId('config-input-GC_ORPHAN_TTL_DAYS').fill('9');
     await saveConfig(page);
     await expect.poll(() => getConfig(request).then((c) => c.GC_ORPHAN_TTL_DAYS.value)).toBe('9');
-    expect(await rawSecret()).toBe(before1);
+    expect(await rawSecret()).toBe('initial-secret');
 
-    // 2) "Set new value" but leave it blank → still kept.
+    // 3) "Set new value" but leave it blank → still kept.
     await page.getByTestId('config-secret-toggle-EMAIL_PASSWORD').click();
     await page.getByTestId('config-input-GC_ORPHAN_TTL_DAYS').fill('10');
     await saveConfig(page);
     await expect.poll(() => getConfig(request).then((c) => c.GC_ORPHAN_TTL_DAYS.value)).toBe('10');
-    expect(await rawSecret()).toBe(before1);
+    expect(await rawSecret()).toBe('initial-secret');
 
-    // 3) "Set new value" and type → stored encrypted with the new plaintext.
+    // 4) "Set new value" and type → stored plaintext with the new value.
     await page.getByTestId('config-secret-toggle-EMAIL_PASSWORD').click();
     await page.getByTestId('config-secret-new-EMAIL_PASSWORD').fill('new-secret');
     await page.getByTestId('config-input-GC_ORPHAN_TTL_DAYS').fill('11');
     await saveConfig(page);
     await expect.poll(() => getConfig(request).then((c) => c.GC_ORPHAN_TTL_DAYS.value)).toBe('11');
-    await expect.poll(decryptDbSecret).toBe('new-secret');
-    expect(await rawSecret()).not.toBe(before1);
+    expect(await rawSecret()).toBe('new-secret');
 
-    // 4) Re-save without touching the secret → ciphertext unchanged (no re-encrypt).
-    const before4 = await rawSecret();
+    // 5) Re-save without touching the secret → stored value unchanged (no rewrite).
+    const before5 = await rawSecret();
     await page.getByTestId('config-input-GC_ORPHAN_TTL_DAYS').fill('12');
     await saveConfig(page);
     await expect.poll(() => getConfig(request).then((c) => c.GC_ORPHAN_TTL_DAYS.value)).toBe('12');
-    expect(await rawSecret()).toBe(before4);
-    await expect.poll(decryptDbSecret).toBe('new-secret');
+    expect(await rawSecret()).toBe(before5);
   });
 
   test('E2E-ADMINCFG-005: A T1 change persists across a server restart (source db)', async ({

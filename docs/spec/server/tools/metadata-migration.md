@@ -119,7 +119,7 @@ type-specific. The metadata job carries the **extended** shape:
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled',
   stage: 'scan' | 'schema' | 'wipe' | 'copy' | 'done' | null,
   progress: { percent: number, currentLabel: string | null },   // extended progress — NOT the blob scalar
-  results: { status?: string, tablesCopied?: [{ name, rows }], totalRows?, schemaApplied?, wiped?, warning? },
+  results: { status?: string, tablesCopied?: [{ name, rows }], totalRows?, schemaApplied?, wiped? },
   errorMessage: string | null,      // failure reason (error is also set on the store row)
   configPersist: null,              // metadata never persists destination config (blob apply only, D10)
   createdAt: string,                // ISO (the store records createdAt; no startedAt on the job)
@@ -132,7 +132,7 @@ type-specific. The metadata job carries the **extended** shape:
   (e.g. "Copying users … 3,420/5,100"). On completion the worker records
   `progress: { percent: 100, currentLabel: null }`.
 - `results` is the metadata-migration service result (`{ status: 'completed', tablesCopied,
-  totalRows, schemaApplied, wiped, warning? }`, or `{ status: 'cancelled' }`).
+  totalRows, schemaApplied, wiped }`, or `{ status: 'cancelled' }`).
 - **Blob jobs differ:** they keep the legacy scalar `progress` (number) with the current file
   path at the top-level `current` field — see `docs/spec/server/tools/blob-migration.md`
   §4.4. The `/migration` page renders either shape.
@@ -142,7 +142,7 @@ type-specific. The metadata job carries the **extended** shape:
 ## 4. T0 ".env setup needed" manual cutover (D11, D13)
 
 The DB connection is `.env`-owned (T0: `WEA_STORAGE_BACKEND` + `WEA_PG_*` / `WEA_SQLITE_PATH`,
-`encrypt_secret_key`, `JWT_SECRET`). A metadata migration only copies data; it **never edits
+`JWT_SECRET`). A metadata migration only copies data; it **never edits
 `.env`**. The final step stays manual:
 
 1. The migration completes; `/migration` shows the terminal modal with next-step guidance

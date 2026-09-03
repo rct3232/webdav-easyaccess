@@ -38,11 +38,6 @@ const { initMetadataStore } = require('../../../store/bootstrap');
 const User = require('../../../models/User');
 const Settings = require('../../../models/Settings');
 const { getSharedResolver } = require('../../../infrastructure/configResolver');
-const {
-  encryptSecret,
-  decryptSecret,
-  isEncryptedPayload,
-} = require('../../../utils/configEncryption');
 const { errorHandler } = require('../../../utils/errorHandler');
 const requestLogger = require('../../../middleware/requestLogger');
 const { Client: MockPgClient } = require('pg');
@@ -96,7 +91,6 @@ const WIZARD_ENV_KEYS = [
   'EMAIL_FROM_NAME',
   'DOTENV_CONFIG_PATH',
   'WEA_SQLITE_PATH',
-  'encrypt_secret_key',
 ];
 const SAVED_ENV = {};
 
@@ -239,51 +233,21 @@ describeIfSqlite('GET /api/setup/status', () => {
     expect(res.body.current.WEBDAV_PASSWORD).toBe('****');
   });
 
-  it('reports key_lost_warning when an encrypted DB row exists and encrypt_secret_key is absent', async () => {
+  it('does not return a key_lost_warning field (masking is presentation-only)', async () => {
     setIncompleteBaseline();
-    delete process.env.encrypt_secret_key;
     const getAllSpy = jest.spyOn(Settings, 'getAll').mockResolvedValue({
-      EMAIL_PASSWORD: JSON.stringify(encryptSecret('smtp-secret', 'previously-used-key')),
+      EMAIL_PASSWORD: 'smtp-secret',
     });
 
     try {
       const res = await request(app).get('/api/setup/status');
 
       expect(res.status).toBe(200);
-      expect(res.body.key_lost_warning).toBe(true);
-      expect(res.body.setup_complete).toBe(false);
-      expect(res.body.missing).toContain('S3_BUCKET');
-    } finally {
-      getAllSpy.mockRestore();
-    }
-  });
-
-  it('does not report key_lost_warning when encrypt_secret_key is present', async () => {
-    setIncompleteBaseline();
-    process.env.encrypt_secret_key = 'current-key';
-    const getAllSpy = jest.spyOn(Settings, 'getAll').mockResolvedValue({
-      EMAIL_PASSWORD: JSON.stringify(encryptSecret('smtp-secret', 'current-key')),
-    });
-
-    try {
-      const res = await request(app).get('/api/setup/status');
-
-      expect(res.status).toBe(200);
-      expect(res.body.key_lost_warning).toBe(false);
+      expect(res.body).not.toHaveProperty('key_lost_warning');
       expect(res.body.current.EMAIL_PASSWORD).toBe('****');
     } finally {
       getAllSpy.mockRestore();
-      delete process.env.encrypt_secret_key;
     }
-  });
-
-  it('does not report key_lost_warning when no encrypted rows exist', async () => {
-    setIncompleteBaseline();
-    delete process.env.encrypt_secret_key;
-
-    const res = await request(app).get('/api/setup/status');
-
-    expect(res.body.key_lost_warning).toBe(false);
   });
 });
 
@@ -303,7 +267,7 @@ describeIfSqlite('POST /api/setup/apply', () => {
     invalidateSpy.mockRestore();
   });
 
-  it('sqlite + webdav: writes only T0 keys to .env, non-T0 keys to the DB (secrets encrypted), updates the admin password', async () => {
+  it('sqlite + webdav: writes only T0 keys to .env, non-T0 keys to the DB (secrets plaintext), updates the admin password', async () => {
     const envPath = makeEnvPath('sqlite-webdav');
     process.env.DOTENV_CONFIG_PATH = envPath;
 
@@ -336,9 +300,9 @@ describeIfSqlite('POST /api/setup/apply', () => {
 
     expect(mockWriteEnv).toHaveBeenCalledTimes(1);
     const [, envEntries] = mockWriteEnv.mock.calls[0];
-    expect(Object.keys(envEntries).sort()).toEqual(['JWT_SECRET', 'encrypt_secret_key']);
+    expect(Object.keys(envEntries).sort()).toEqual(['JWT_SECRET']);
     expect(envEntries.JWT_SECRET).toBe('super-secret-jwt');
-    expect(envEntries.encrypt_secret_key).toMatch(/^[a-f0-9]{64}$/);
+    expect(envEntries).not.toHaveProperty('encrypt_secret_key');
     expect(envEntries).not.toHaveProperty('WEA_STORAGE_BACKEND');
     expect(envEntries).not.toHaveProperty('WEA_PG_HOST');
     expect(envEntries).not.toHaveProperty('WEA_FILE_STORAGE');
@@ -346,7 +310,6 @@ describeIfSqlite('POST /api/setup/apply', () => {
     expect(envEntries).not.toHaveProperty('EMAIL_HOST');
     expect(envEntries).not.toHaveProperty('ADMIN_DEFAULT_PASSWORD');
 
-    const masterKey = envEntries.encrypt_secret_key;
     const written = Object.fromEntries(settingsSetSpy.mock.calls);
     expect(Object.keys(written).sort()).toEqual([
       'CORS_ORIGINS',
@@ -376,14 +339,11 @@ describeIfSqlite('POST /api/setup/apply', () => {
     expect(written.EMAIL_USER).toBe('mail-user');
     expect(written.EMAIL_SECURE).toBe('false');
     expect(written.EMAIL_FROM_NAME).toBe('WebDAV');
+    expect(written.WEBDAV_PASSWORD).toBe('dav-pass');
+    expect(written.EMAIL_PASSWORD).toBe('mail-pass');
     expect(written).not.toHaveProperty('WEA_STORAGE_BACKEND');
     expect(written).not.toHaveProperty('WEA_PG_HOST');
     expect(written).not.toHaveProperty('JWT_SECRET');
-
-    expect(isEncryptedPayload(JSON.parse(written.WEBDAV_PASSWORD))).toBe(true);
-    expect(isEncryptedPayload(JSON.parse(written.EMAIL_PASSWORD))).toBe(true);
-    expect(decryptSecret(JSON.parse(written.WEBDAV_PASSWORD), masterKey)).toBe('dav-pass');
-    expect(decryptSecret(JSON.parse(written.EMAIL_PASSWORD), masterKey)).toBe('mail-pass');
 
     const admin = await User.findByUsername('admin');
     expect(admin).toBeTruthy();
@@ -391,38 +351,6 @@ describeIfSqlite('POST /api/setup/apply', () => {
     expect(await bcrypt.compare(ADMIN_PASSWORD, admin.password)).toBe(false);
 
     expect(invalidateSpy).toHaveBeenCalled();
-  });
-
-  it('keeps an existing encrypt_secret_key: not regenerated, not written to .env, used to encrypt', async () => {
-    process.env.encrypt_secret_key = 'pre-existing-key';
-    const envPath = makeEnvPath('sqlite-webdav-keep-key');
-    process.env.DOTENV_CONFIG_PATH = envPath;
-
-    const res = await request(app)
-      .post('/api/setup/apply')
-      .send({
-        metadata: { backend: 'sqlite' },
-        file: {
-          backend: 'webdav',
-          url: 'https://dav.example.com',
-          username: 'dav-user',
-          password: 'dav-pass',
-        },
-        admin: { password: 'new-admin-pass' },
-        jwt: { secret: 'super-secret-jwt', expiresIn: '30m' },
-      });
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ restart_required: true });
-
-    const [, envEntries] = mockWriteEnv.mock.calls[0];
-    expect(Object.keys(envEntries).sort()).toEqual(['JWT_SECRET']);
-    expect(envEntries).not.toHaveProperty('encrypt_secret_key');
-    expect(envEntries).not.toHaveProperty('WEA_STORAGE_BACKEND');
-    expect(process.env.encrypt_secret_key).toBe('pre-existing-key');
-
-    const written = Object.fromEntries(settingsSetSpy.mock.calls);
-    expect(decryptSecret(JSON.parse(written.WEBDAV_PASSWORD), 'pre-existing-key')).toBe('dav-pass');
   });
 
   it('sqlite + webdav: empty-string optional server/email ports are tolerated and PORT/EMAIL_PORT are not stored', async () => {
@@ -450,7 +378,8 @@ describeIfSqlite('POST /api/setup/apply', () => {
     expect(res.body).toEqual({ restart_required: true });
 
     const [, envEntries] = mockWriteEnv.mock.calls[0];
-    expect(Object.keys(envEntries).sort()).toEqual(['JWT_SECRET', 'encrypt_secret_key']);
+    expect(Object.keys(envEntries).sort()).toEqual(['JWT_SECRET']);
+    expect(envEntries).not.toHaveProperty('encrypt_secret_key');
     expect(envEntries).not.toHaveProperty('WEA_STORAGE_BACKEND');
     expect(envEntries).not.toHaveProperty('PORT');
     expect(envEntries).not.toHaveProperty('EMAIL_PORT');
@@ -466,7 +395,7 @@ describeIfSqlite('POST /api/setup/apply', () => {
     expect(written.EMAIL_SECURE).toBe('false');
   });
 
-  it('sqlite + s3: a masked (unchanged) secret keeps its existing ciphertext — not re-encrypted', async () => {
+  it('sqlite + s3: a masked (unchanged) secret is dropped and keeps its existing stored value', async () => {
     const envPath = makeEnvPath('sqlite-s3-masked');
     process.env.DOTENV_CONFIG_PATH = envPath;
 
@@ -1086,14 +1015,10 @@ describeIfSqlite('POST /api/setup/prefill', () => {
     ssl: false,
   };
 
-  it('postgresql: prefills plaintext config, masks secrets, key_lost_warning true when an encrypted row exists and the key is absent', async () => {
-    delete process.env.encrypt_secret_key;
+  it('postgresql: prefills plaintext config and masks secret rows', async () => {
     setupPgRows([
       { key: 'EMAIL_HOST', value: 'smtp.example.com' },
-      {
-        key: 'EMAIL_PASSWORD',
-        value: JSON.stringify({ enc: 'aes-256-gcm', iv: 'a', tag: 'b', data: 'c' }),
-      },
+      { key: 'EMAIL_PASSWORD', value: 'smtp-pw' },
     ]);
 
     const res = await request(app).post('/api/setup/prefill').send({ metadata: pgMetadata });
@@ -1101,7 +1026,6 @@ describeIfSqlite('POST /api/setup/prefill', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       current: { EMAIL_HOST: 'smtp.example.com', EMAIL_PASSWORD: '****' },
-      key_lost_warning: true,
     });
     expect(MockPgClient).toHaveBeenCalledTimes(1);
     expect(MockPgClient.mock.calls[0][0]).toMatchObject({
@@ -1114,35 +1038,13 @@ describeIfSqlite('POST /api/setup/prefill', () => {
     });
   });
 
-  it('postgresql: key_lost_warning false when encrypt_secret_key is present', async () => {
-    process.env.encrypt_secret_key = 'current-key';
-    setupPgRows([
-      {
-        key: 'EMAIL_PASSWORD',
-        value: JSON.stringify({ enc: 'aes-256-gcm', iv: 'a', tag: 'b', data: 'c' }),
-      },
-    ]);
-
-    try {
-      const res = await request(app).post('/api/setup/prefill').send({ metadata: pgMetadata });
-
-      expect(res.status).toBe(200);
-      expect(res.body).toEqual({
-        current: { EMAIL_PASSWORD: '****' },
-        key_lost_warning: false,
-      });
-    } finally {
-      delete process.env.encrypt_secret_key;
-    }
-  });
-
-  it('postgresql: a legacy plaintext secret row is still masked', async () => {
+  it('postgresql: a plaintext secret row is masked and never surfaced', async () => {
     setupPgRows([{ key: 'EMAIL_PASSWORD', value: 'smtp-pw' }]);
 
     const res = await request(app).post('/api/setup/prefill').send({ metadata: pgMetadata });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ current: { EMAIL_PASSWORD: '****' }, key_lost_warning: false });
+    expect(res.body).toEqual({ current: { EMAIL_PASSWORD: '****' } });
   });
 
   it('postgresql: a missing settings table (42P01) yields empty rows', async () => {
@@ -1157,10 +1059,10 @@ describeIfSqlite('POST /api/setup/prefill', () => {
     const res = await request(app).post('/api/setup/prefill').send({ metadata: pgMetadata });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ current: {}, key_lost_warning: false });
+    expect(res.body).toEqual({ current: {} });
   });
 
-  it('sqlite metadata returns empty current and no warning (sqlite is prefilled via /status)', async () => {
+  it('sqlite metadata returns empty current (sqlite is prefilled via /status)', async () => {
     const res = await request(app)
       .post('/api/setup/prefill')
       .send({
@@ -1168,7 +1070,7 @@ describeIfSqlite('POST /api/setup/prefill', () => {
       });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ current: {}, key_lost_warning: false });
+    expect(res.body).toEqual({ current: {} });
     expect(MockPgClient).not.toHaveBeenCalled();
   });
 
@@ -1302,7 +1204,6 @@ describeIfSqlite('setupCore (shared apply core)', () => {
   afterEach(() => {
     settingsSetSpy.mockRestore();
     invalidateSpy.mockRestore();
-    delete process.env.encrypt_secret_key;
   });
 
   it('validateApplyPayload: returns null for a valid payload and error detail otherwise', () => {
@@ -1357,16 +1258,15 @@ describeIfSqlite('setupCore (shared apply core)', () => {
     expect(result).toEqual({ restart_required: true });
     expect(mockWriteEnv).toHaveBeenCalledTimes(1);
     const [, envEntries] = mockWriteEnv.mock.calls[0];
-    expect(Object.keys(envEntries).sort()).toEqual(['JWT_SECRET', 'encrypt_secret_key']);
+    expect(Object.keys(envEntries).sort()).toEqual(['JWT_SECRET']);
     expect(envEntries.JWT_SECRET).toBe('core-jwt-secret');
-    expect(envEntries.encrypt_secret_key).toMatch(/^[a-f0-9]{64}$/);
+    expect(envEntries).not.toHaveProperty('encrypt_secret_key');
 
-    const masterKey = envEntries.encrypt_secret_key;
     const written = Object.fromEntries(settingsSetSpy.mock.calls);
     expect(written.WEA_FILE_STORAGE).toBe('webdav');
     expect(written.WEBDAV_URL).toBe('https://dav.example.com');
-    expect(decryptSecret(JSON.parse(written.WEBDAV_PASSWORD), masterKey)).toBe('dav-pass');
-    expect(decryptSecret(JSON.parse(written.EMAIL_PASSWORD), masterKey)).toBe('mail-pass');
+    expect(written.WEBDAV_PASSWORD).toBe('dav-pass');
+    expect(written.EMAIL_PASSWORD).toBe('mail-pass');
     expect(invalidateSpy).toHaveBeenCalled();
 
     const admin = await User.findByUsername('admin');
@@ -1388,7 +1288,7 @@ describeIfSqlite('setupCore (shared apply core)', () => {
     expect(invalidateSpy).not.toHaveBeenCalled();
   });
 
-  it('applySetup: a masked (unchanged) secret is dropped, not re-encrypted', async () => {
+  it('applySetup: a masked (unchanged) secret is dropped, not overwritten', async () => {
     const payload = {
       metadata: { backend: 'sqlite' },
       file: {
@@ -1411,9 +1311,7 @@ describeIfSqlite('setupCore (shared apply core)', () => {
     expect(mockWriteEnv).toHaveBeenCalledTimes(1);
   });
 
-  it('applySetup: an existing encrypt_secret_key is kept, never written to .env', async () => {
-    process.env.encrypt_secret_key = 'core-pre-existing-key';
-
+  it('applySetup: writes only JWT_SECRET to .env (no master key is ever written)', async () => {
     const result = await setupCore.applySetup(validWebdavPayload());
     expect(result).toEqual({ restart_required: true });
 
@@ -1422,8 +1320,6 @@ describeIfSqlite('setupCore (shared apply core)', () => {
     expect(envEntries).not.toHaveProperty('encrypt_secret_key');
 
     const written = Object.fromEntries(settingsSetSpy.mock.calls);
-    expect(decryptSecret(JSON.parse(written.WEBDAV_PASSWORD), 'core-pre-existing-key')).toBe(
-      'dav-pass'
-    );
+    expect(written.WEBDAV_PASSWORD).toBe('dav-pass');
   });
 });

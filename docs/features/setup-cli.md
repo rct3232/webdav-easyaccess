@@ -29,11 +29,11 @@ The CLI performs the **exact same apply as `POST /api/setup/apply`**, through th
 
 - validates the collected blocks (`validateApplyPayload` semantics),
 - partitions T0 (`.env`) vs DB-`settings` entries,
-- writes `.env` atomically (`0600`, backup file) — the metadata-backend T0 keys stay
-  env-owned and are never written by apply,
+- writes `.env` atomically (`0600`, backup file) — only the T0 subset of the payload
+  (`JWT_SECRET`); the metadata-backend T0 keys stay env-owned and are never written by apply,
 - updates the `admin` account password,
-- upserts DB-`settings` rows, encrypting secrets under the master key
-  (`encrypt_secret_key`, kept-or-generated like the wizard),
+- upserts DB-`settings` rows as **plaintext** (secret values included; a masked `'****'`
+  secret input preserves the previously stored value),
 - clears the shared config-resolver cache.
 
 Result parity means: after `apply`, `computeSetupStatus` reports `setup_complete: true` and a
@@ -103,7 +103,7 @@ so "what the CLI sees" is "what the next server boot sees".
 - Interactive/flag parsing, required-field validation errors (exit non-zero, nothing written).
 - Refusal with exit code when `setup_complete === true`.
 - `--status` prints the derived state with secrets masked.
-- Apply on a throwaway sqlite store: `.env` written `0600` with expected keys; `settings` rows
-  upserted (secrets encrypted); `computeSetupStatus` becomes `setup_complete: true`;
-  `--status` after apply reports complete.
+- Apply on a throwaway sqlite store: `.env` written `0600` with the expected keys (only the
+  T0 subset, i.e. `JWT_SECRET`); `settings` rows upserted (secrets stored as plaintext);
+  `computeSetupStatus` becomes `setup_complete: true`; `--status` after apply reports complete.
 - `--check` runs the file-backend probe without writing.

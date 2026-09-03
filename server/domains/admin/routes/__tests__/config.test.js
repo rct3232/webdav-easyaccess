@@ -32,7 +32,6 @@ const {
 } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { generateToken } = require('../../../../utils/auth');
 const { setSharedResolver } = require('../../../../infrastructure/configResolver');
-const { decryptSecret, encryptSecret } = require('../../../../utils/configEncryption');
 const { errorHandler } = require('../../../../utils/errorHandler');
 const setupModeGuard = require('../../../../middleware/setupModeGuard');
 const configRoutes = require('../../routes/config');
@@ -68,7 +67,6 @@ let app;
 
 beforeEach(() => {
   jest.clearAllMocks();
-  delete process.env.encrypt_secret_key;
   fakeResolver.getEffectiveConfig.mockResolvedValue({});
   setSharedResolver(fakeResolver);
   getBackendHealth.mockReturnValue(mockHealth);
@@ -78,7 +76,6 @@ beforeEach(() => {
 
 afterEach(() => {
   setSharedResolver(null);
-  delete process.env.encrypt_secret_key;
 });
 
 describe('GET /api/admin/config', () => {
@@ -107,38 +104,8 @@ describe('GET /api/admin/config', () => {
       CORS_ORIGINS: { value: '', source: 'default', tier: 'T2', secret: false },
       PORT: { value: '5001', source: 'default', tier: 'T1', secret: false },
     });
-    expect(res.body.key_lost_warning).toBe(false);
+    expect(res.body).not.toHaveProperty('key_lost_warning');
     expect(fakeResolver.getEffectiveConfig).toHaveBeenCalledTimes(1);
-  });
-
-  it('flags key_lost_warning when encrypted rows exist without the master key', async () => {
-    fakeResolver.getEffectiveConfig.mockResolvedValue({});
-    Settings.getAll.mockResolvedValue({
-      EMAIL_PASSWORD: JSON.stringify(encryptSecret('hunter2', 'some-master-key')),
-    });
-    delete process.env.encrypt_secret_key;
-
-    const res = await request(app)
-      .get('/api/admin/config')
-      .set('Authorization', `Bearer ${buildToken()}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.key_lost_warning).toBe(true);
-  });
-
-  it('does not flag key_lost_warning when the master key is present', async () => {
-    fakeResolver.getEffectiveConfig.mockResolvedValue({});
-    Settings.getAll.mockResolvedValue({
-      EMAIL_PASSWORD: JSON.stringify(encryptSecret('hunter2', 'some-master-key')),
-    });
-    process.env.encrypt_secret_key = 'some-master-key';
-
-    const res = await request(app)
-      .get('/api/admin/config')
-      .set('Authorization', `Bearer ${buildToken()}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.key_lost_warning).toBe(false);
   });
 });
 
@@ -293,9 +260,7 @@ describe('PUT /api/admin/config', () => {
     expect(fakeResolver.invalidateCache).not.toHaveBeenCalled();
   });
 
-  it('encrypts a new secret value and stores a JSON-stringified payload', async () => {
-    process.env.encrypt_secret_key = 'test-master-key';
-
+  it('stores a new secret value as plaintext', async () => {
     const res = await request(app)
       .put('/api/admin/config')
       .set('Authorization', `Bearer ${buildToken()}`)
@@ -303,21 +268,12 @@ describe('PUT /api/admin/config', () => {
 
     expect(res.status).toBe(200);
     expect(Settings.set).toHaveBeenCalledTimes(1);
-    const [calledKey, storedValue] = Settings.set.mock.calls[0];
-    expect(calledKey).toBe('EMAIL_PASSWORD');
-    const payload = JSON.parse(storedValue);
-    expect(payload.enc).toBe('aes-256-gcm');
-    expect(payload.iv).toEqual(expect.any(String));
-    expect(payload.tag).toEqual(expect.any(String));
-    expect(payload.data).toEqual(expect.any(String));
-    expect(decryptSecret(payload, 'test-master-key')).toBe('hunter2');
+    expect(Settings.set).toHaveBeenCalledWith('EMAIL_PASSWORD', 'hunter2');
     expect(fakeResolver.invalidateCache).toHaveBeenCalledWith(['EMAIL_PASSWORD']);
     expect(res.body.restartRequired).toEqual(['EMAIL_PASSWORD']);
   });
 
   it('reports applied for a written T2 secret key', async () => {
-    process.env.encrypt_secret_key = 'test-master-key';
-
     const res = await request(app)
       .put('/api/admin/config')
       .set('Authorization', `Bearer ${buildToken()}`)
@@ -325,25 +281,9 @@ describe('PUT /api/admin/config', () => {
 
     expect(res.status).toBe(200);
     expect(Settings.set).toHaveBeenCalledTimes(1);
-    const [calledKey, storedValue] = Settings.set.mock.calls[0];
-    expect(calledKey).toBe('THUMBNAIL_TOKEN_SECRET');
-    expect(decryptSecret(JSON.parse(storedValue), 'test-master-key')).toBe('tok-secret');
+    expect(Settings.set).toHaveBeenCalledWith('THUMBNAIL_TOKEN_SECRET', 'tok-secret');
     expect(fakeResolver.invalidateCache).toHaveBeenCalledWith(['THUMBNAIL_TOKEN_SECRET']);
     expect(res.body.applied).toEqual(['THUMBNAIL_TOKEN_SECRET']);
-  });
-
-  it('returns 500 configEncryptKeyMissing when a new secret value has no master key', async () => {
-    delete process.env.encrypt_secret_key;
-
-    const res = await request(app)
-      .put('/api/admin/config')
-      .set('Authorization', `Bearer ${buildToken()}`)
-      .send({ values: { EMAIL_PASSWORD: 'hunter2' } });
-
-    expect(res.status).toBe(500);
-    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.configEncryptKeyMissing);
-    expect(Settings.set).not.toHaveBeenCalled();
-    expect(fakeResolver.invalidateCache).not.toHaveBeenCalled();
   });
 });
 
@@ -440,7 +380,6 @@ describe('GET /api/admin/config/sync-report', () => {
       findings: [{ key: 'PORT', status: 'env-only', secret: false, dbUpdatedAt: null }],
       summary: {
         drift: 0,
-        alerts: 0,
         shadowed: 0,
         envOnly: 1,
         dbOnly: 0,
@@ -489,31 +428,6 @@ describe('GET /api/admin/config/sync-report', () => {
     expect(port.status).toBe('db-only');
     expect(res.body.summary.envOnly).toBe(0);
     expect(res.body.exitCode).toBe(0);
-  });
-
-  it('reports key-lost (alert, exit 1) for an undecryptable db-only secret row', async () => {
-    delete process.env.encrypt_secret_key;
-    fakeResolver.getEffectiveConfig.mockResolvedValue({});
-    Settings.listRows.mockResolvedValue([
-      {
-        key: 'EMAIL_PASSWORD',
-        value: JSON.stringify(encryptSecret('hidden', 'some-lost-key')),
-        updated_at: new Date('2026-09-03T10:00:00.000Z'),
-      },
-    ]);
-
-    const res = await request(app)
-      .get('/api/admin/config/sync-report')
-      .set('Authorization', `Bearer ${buildToken()}`);
-
-    expect(res.status).toBe(200);
-    const secret = res.body.findings.find((f) => f.key === 'EMAIL_PASSWORD');
-    expect(secret.status).toBe('key-lost');
-    expect(secret.secret).toBe(true);
-    expect(secret.dbUpdatedAt).toBe('2026-09-03T10:00:00.000Z');
-    expect(res.body.summary.alerts).toBe(1);
-    expect(res.body.exitCode).toBe(1);
-    expect(JSON.stringify(res.body)).not.toContain('hidden');
   });
 });
 
@@ -578,28 +492,8 @@ describe('POST /api/admin/config/sync-from-env', () => {
     expect(res.body.report.exitCode).toBe(0);
   });
 
-  it('returns 500 configSyncEncryptKeyMissing when an env-set secret has no master key', async () => {
+  it('mirrors an env-set secret into the DB as plaintext', async () => {
     process.env.WEBDAV_PASSWORD = 'dav-pass';
-    delete process.env.encrypt_secret_key;
-    fakeResolver.getEffectiveConfig.mockResolvedValue({
-      WEBDAV_PASSWORD: { value: '****', source: 'env', tier: 'T2', secret: true },
-    });
-    Settings.listRows.mockResolvedValue([]);
-
-    const res = await request(app)
-      .post('/api/admin/config/sync-from-env')
-      .set('Authorization', `Bearer ${buildToken()}`)
-      .send({});
-
-    expect(res.status).toBe(500);
-    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.configSyncEncryptKeyMissing);
-    expect(Settings.set).not.toHaveBeenCalled();
-    expect(fakeResolver.invalidateCache).not.toHaveBeenCalled();
-  });
-
-  it('encrypts an env-set secret under the master key', async () => {
-    process.env.WEBDAV_PASSWORD = 'dav-pass';
-    process.env.encrypt_secret_key = 'test-master-key';
     fakeResolver.getEffectiveConfig.mockResolvedValue({
       WEBDAV_PASSWORD: { value: '****', source: 'env', tier: 'T2', secret: true },
     });
@@ -612,9 +506,7 @@ describe('POST /api/admin/config/sync-from-env', () => {
 
     expect(res.status).toBe(200);
     expect(Settings.set).toHaveBeenCalledTimes(1);
-    const [calledKey, storedValue] = Settings.set.mock.calls[0];
-    expect(calledKey).toBe('WEBDAV_PASSWORD');
-    expect(decryptSecret(JSON.parse(storedValue), 'test-master-key')).toBe('dav-pass');
+    expect(Settings.set).toHaveBeenCalledWith('WEBDAV_PASSWORD', 'dav-pass');
     expect(fakeResolver.invalidateCache).toHaveBeenCalledWith(['WEBDAV_PASSWORD']);
     expect(res.body.writes).toEqual([
       { key: 'WEBDAV_PASSWORD', secret: true, status: 'updated' },

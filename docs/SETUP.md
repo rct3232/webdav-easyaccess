@@ -48,10 +48,10 @@ cp .env.example .env
 > ([`docs/features/setup-cli.md`](features/setup-cli.md)) for headless/remote hosts. Per the
 > **config-source-resolution**
 > model ([`docs/features/config-source-resolution.md`](features/config-source-resolution.md)),
-> the wizard/CLI write the startup-critical keys `JWT_SECRET` (and `encrypt_secret_key` only
-> when auto-generated) into `.env`;
-> **every other value is stored in the metadata DB `settings`
-> table** and read back at boot (`.env` always wins when a value is present there). The
+> the wizard/CLI write only the startup-critical T0 key `JWT_SECRET` into `.env`;
+> **every other value — including secret values — is stored in the metadata DB `settings`
+> table** as plaintext and read back at boot (`.env` always wins when a value is present
+> there). The
 > **metadata connection is `.env`-owned**: `WEA_STORAGE_BACKEND` (`/WEA_PG_*` /
 > `WEA_SQLITE_PATH`) must be declared in `.env` before boot and is **never written by the
 > wizard/CLI**. A
@@ -68,11 +68,11 @@ cp .env.example .env
 | **S3_BUCKET**                    |   DB   |   Only when `WEA_FILE_STORAGE=s3`   | S3 bucket name for blob storage                                                                                                                                    | -                  |
 | **AWS_REGION**                   |   DB   |   Only when `WEA_FILE_STORAGE=s3`   | AWS region of the S3 bucket                                                                                                                                        | -                  |
 | **AWS_ACCESS_KEY_ID**            |   DB   |   Only when `WEA_FILE_STORAGE=s3`   | AWS access key ID for S3                                                                                                                                           | -                  |
-| **AWS_SECRET_ACCESS_KEY**        |   DB   |   Only when `WEA_FILE_STORAGE=s3`   | AWS secret access key for S3 (encrypted at rest)                                                                                                                   | -                  |
+| **AWS_SECRET_ACCESS_KEY**        |   DB   |   Only when `WEA_FILE_STORAGE=s3`   | AWS secret access key for S3                                                                                                                                      | -                  |
 | **S3_ENDPOINT**                  |   DB   |                 No                  | Custom S3-compatible endpoint (e.g. MinIO); empty for AWS                                                                                                          | -                  |
 | **WEBDAV_URL**                   |   DB   | Only when `WEA_FILE_STORAGE=webdav` | WebDAV server base URL (e.g. `https://dav.example.com`)                                                                                                            | -                  |
 | **WEBDAV_USERNAME**              |   DB   | Only when `WEA_FILE_STORAGE=webdav` | WebDAV server account name                                                                                                                                         | -                  |
-| **WEBDAV_PASSWORD**              |   DB   | Only when `WEA_FILE_STORAGE=webdav` | WebDAV server password (encrypted at rest)                                                                                                                         | -                  |
+| **WEBDAV_PASSWORD**              |   DB   | Only when `WEA_FILE_STORAGE=webdav` | WebDAV server password                                                                                                                                             | -                  |
 | **JWT_SECRET**                   |   T0   |                 Yes                 | Secret key for token signing (must change in production!)                                                                                                          | -                  |
 | **PORT**                         |   DB   |                 No                  | Server port                                                                                                                                                        | `5001`             |
 | **CORS_ORIGINS**                 |   DB   |                 No                  | Allowed browser origins (comma-separated)                                                                                                                          | `*` (with warning) |
@@ -88,7 +88,6 @@ cp .env.example .env
 | **WEA_PG_IDLE_TIMEOUT_MS**       |   T0   |                 No                  | PostgreSQL pool idle timeout (ms)                                                                                                                                  | `30000`            |
 | **WEA_PG_CONNECTION_TIMEOUT_MS** |   T0   |                 No                  | PostgreSQL pool connection timeout (ms)                                                                                                                            | `10000`            |
 | **PGSSLMODE**                    |   T0   |                 No                  | Optional CLI/client SSL mode (for tools such as `psql`)                                                                                                            | `prefer`           |
-| **encrypt_secret_key**           |   T0   |                 Yes                 | Master key for DB-stored secrets (AES-256-GCM). Wizard auto-generates when absent and keeps an existing value. Losing it makes encrypted DB secrets unrecoverable. | -                  |
 | **MAX_THUMBNAIL_SIZE**           |   DB   |                 No                  | Max thumbnail resolution (pixels)                                                                                                                                  | `300`              |
 | **FFMPEG_PATH**                  |   DB   |                 No                  | Absolute path to FFmpeg executable (when auto-detect fails)                                                                                                        | `ffmpeg` (PATH)    |
 | **WEBDAV_AUTH_TYPE**             |   DB   |                 No                  | WebDAV auth method (`auto`, `basic`, `digest`)                                                                                                                     | `auto`             |
@@ -96,10 +95,11 @@ cp .env.example .env
 | **JWT_EXPIRES_IN**               |   DB   |                 No                  | Login session duration (e.g. `30m`, `1h`, `7d`)                                                                                                                    | `30m`              |
 | **EMAIL\_\***                    |   DB   |                 No                  | SMTP settings for signup/approval notifications (HOST, PORT, USER, PASS, etc.)                                                                                     | -                  |
 
-> **Secrets at rest:** DB-stored secrets (`EMAIL_PASSWORD`, `WEBDAV_PASSWORD`,
-> `AWS_SECRET_ACCESS_KEY`, `ADMIN_DEFAULT_PASSWORD`) are encrypted with AES-256-GCM under
-> `encrypt_secret_key` (T0, `.env`). A DB backup leak exposes ciphertext only; plaintext
-> requires both the DB and `.env`.
+> **Secret values:** DB-stored secret keys (`EMAIL_PASSWORD`, `WEBDAV_PASSWORD`,
+> `AWS_SECRET_ACCESS_KEY`, `ADMIN_DEFAULT_PASSWORD`) are stored as **plaintext strings** in
+> the `settings` table; the registry `secret` flag only masks them (`****`) on API/UI
+> surfaces. A DB backup leak therefore exposes these values in plaintext — treat DB backups
+> with the same care as `.env`.
 
 ## 3. Metadata Storage Configuration
 
@@ -115,8 +115,7 @@ The system supports PostgreSQL-backed and SQLite-backed metadata with the same s
 > ```dotenv
 > WEA_STORAGE_BACKEND=sqlite        # or postgresql with WEA_PG_* below
 > WEA_SQLITE_PATH=/path/to/webdav.db
-> JWT_SECRET=change-me
-> encrypt_secret_key=change-me-too   # auto-generated by the wizard when absent
+> JWT_SECRET=change-me               # non-T0 values are stored in the DB by the wizard
 > ```
 
 1.  **SQLite backend (`sqlite`)** (default):
@@ -180,7 +179,7 @@ The migration direction is never selected — it follows from the current `WEA_F
 
 Both directions follow the same cutover shape:
 
-1. **Run the copy (`apply`)** — dialog destination credentials are used for the copy; on completion the destination config is **auto-persisted** (DB-sourced storage keys are written to the DB `settings` table, secrets AES-encrypted; env-sourced keys are reported as `skippedEnvSourced` and you edit `.env` manually instead). A `dry-run` also enters migration mode (its enumeration progress is shown on `/migration`) but writes nothing.
+1. **Run the copy (`apply`)** — dialog destination credentials are used for the copy; on completion the destination config is **auto-persisted** (DB-sourced storage keys are written to the DB `settings` table as plaintext, secret values included; env-sourced keys are reported as `skippedEnvSourced` and you edit `.env` manually instead). A `dry-run` also enters migration mode (its enumeration progress is shown on `/migration`) but writes nothing.
 2. **Restart the app** — storage config is boot-frozen (`WEA_FILE_STORAGE` + the backend block are read once at startup), so a restart is strictly required for the switch to take effect.
 3. **Verify** — after restart the active backend is probed at boot (WebDAV probe, or the S3 probe) and the backend-health card reflects the new backend.
 
@@ -224,60 +223,28 @@ node server/scripts/migrateBlobs.js --dest-type=webdav \
 
 > **Active — see `docs/spec/server/tools/config-sync.md` for the full spec.**
 
-Detects drift between `.env` values and the metadata DB `settings` rows for every non-T0 config key (`.env` always wins per the config-source-resolution model, so a DB row under an env-set key is a shadow copy that can go stale), alerts on it, and optionally reconciles the DB rows to mirror `.env`. T0 keys (`.env`-owned, incl. `JWT_SECRET` / `encrypt_secret_key`) are never reported or written; DB rows are never deleted; secrets are always masked (`****`). Feature spec: `docs/features/config-sync.md`.
+Detects drift between `.env` values and the metadata DB `settings` rows for every non-T0 config key (`.env` always wins per the config-source-resolution model, so a DB row under an env-set key is a shadow copy that can go stale), alerts on it, and optionally reconciles the DB rows to mirror `.env`. T0 keys (`.env`-owned, incl. `JWT_SECRET`) are never reported or written; DB rows are never deleted; comparison is plaintext string equality on every key; secret values are always masked (`****`) in output. Feature spec: `docs/features/config-sync.md`.
 
 **Usage**
 
 ```bash
-# 1) Drift report (read-only, default mode). Exit 0 = clean, 1 = drift or key-lost alert
+# 1) Drift report (read-only, default mode). Exit 0 = clean, 1 = drift
 node server/scripts/configSync.js --check
 
 # 2) Same report, machine-readable (single JSON document: findings + summary + exitCode)
 node server/scripts/configSync.js --check --json
 
-# 3) Reconcile: upsert DB rows for every non-T0 key set in .env (secrets re-encrypted
-#    under encrypt_secret_key), then re-run the check in-process. Requires --yes
+# 3) Reconcile: upsert DB rows for every non-T0 key set in .env (plaintext), then re-run
+#    the check in-process. Requires --yes
 node server/scripts/configSync.js --apply --yes
 ```
 
-**Report statuses**: `differs` (drift → exit 1), `key-lost` (encrypted DB row without a usable `encrypt_secret_key` → exit 1), `shadowed` / `env-only` / `db-only` (informational), each with `db_updated_at` for DB-backed findings.
+**Report statuses**: `differs` (drift → exit 1), `shadowed` / `env-only` / `db-only` (informational), each with `db_updated_at` for DB-backed findings. There is no key-loss status — DB rows are plaintext and always readable.
 
 **Rules**
 
 - `--apply` requires `--yes`; without it the run is a usage error (exit 2).
-- `--apply` aborts with exit 1 (DB unchanged) when a secret key is set in `.env` but `encrypt_secret_key` is absent.
 - The tool boots the metadata schema only (no default-admin seeding) and never writes `.env`; a running server is unaffected until its next config read/restart, as with any other `settings` change.
-
-### Encrypt Key Rotation: `encrypt_secret_key` (`rotateEncryptKey`)
-
-> **Active — see `docs/spec/server/tools/encrypt-key-rotation.md` for the full spec.**
-
-Rotates the T0 master key under which DB secrets are AES-256-GCM-encrypted: it re-encrypts every encrypted `settings` row from the old key to a new one. A default dry-run verifies the old key can read every row (counts, no writes); an explicit apply path is **DB-first** — all rows are re-encrypted under the new key, and only then is the new key written to `.env` (atomic, `0600`, with a `.env.bak-*` backup of the old key). Legacy plaintext secret rows are reported (`legacy-plaintext`) but never rewritten. Feature spec: `docs/features/encrypt-key-rotation.md`.
-
-**Usage**
-
-```bash
-# 1) Dry-run (read-only, default mode). Exit 0 = every row decrypts under the old key,
-#    1 = a row failed. Pass --generate or --new-key to also verify it would round-trip:
-node server/scripts/rotateEncryptKey.js
-node server/scripts/rotateEncryptKey.js --generate
-
-# 2) Apply — auto-generate a new key, re-encrypt all rows, then write it to .env (requires --yes)
-node server/scripts/rotateEncryptKey.js --apply --yes --generate
-
-# 3) Apply — use an explicit passphrase as the new key (requires --yes)
-node server/scripts/rotateEncryptKey.js --apply --yes --new-key=<passphrase>
-```
-
-**Rules**
-
-- Dry-run is the default (no flags, or `--dry-run`) and performs no writes.
-- `--apply` requires `--yes` and exactly one of `--generate` / `--new-key=<passphrase>`; otherwise a usage error (exit 2).
-- The old key is read from `encrypt_secret_key` after the `.env` load; if it is absent the tool refuses (exit 1) without reading or writing the DB or `.env`.
-- Apply is DB-first: it decrypts every candidate row first (any failure → zero writes, exit 1), re-encrypts all rows, and writes the new key to `.env` last; the printed `.env backup: <path>` is where the old key is preserved.
-- Key material is never printed: `--generate` reports `generated`, `--new-key` reports `provided`.
-- A mid-apply failure is recoverable by re-running with the previous key from the `.env.bak-*` backup.
-- The tool boots the metadata schema only (no default-admin seeding) and writes only `encrypt_secret_key` to `.env`; a running server is unaffected until its next restart.
 
 ### Transaction and Concurrency Notes (postgresql)
 

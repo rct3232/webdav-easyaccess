@@ -300,17 +300,6 @@ describe('SystemSettingsContent', () => {
     expect(screen.getAllByText(/set in .env/i).length).toBeGreaterThan(0);
   });
 
-  it('shows a key-lost warning banner when the config status reports it', async () => {
-    server.use(
-      http.get('/api/admin/config', () => HttpResponse.json({ config: {}, key_lost_warning: true }))
-    );
-
-    renderSystemSettingsContent();
-
-    expect(await screen.findByTestId('key-lost-warning')).toBeInTheDocument();
-    expect(screen.getByText(/encryption key lost/i)).toBeInTheDocument();
-  });
-
   it('hides the backend-health card when no backend is failing', async () => {
     renderSystemSettingsContent();
 
@@ -330,7 +319,6 @@ describe('SystemSettingsContent', () => {
             WEA_STORAGE_BACKEND: { value: 'postgresql', source: 'env', tier: 'T0', secret: false },
             WEA_FILE_STORAGE: { value: 's3', source: 'default', tier: 'T1', secret: false },
           },
-          key_lost_warning: false,
         })
       ),
       http.get('/api/admin/health', () =>
@@ -386,16 +374,6 @@ describe('SystemSettingsContent', () => {
     expect(screen.queryByTestId('backend-health-card')).not.toBeInTheDocument();
   });
 
-  it('does not show a key-lost warning banner when the master key is present', async () => {
-    renderSystemSettingsContent();
-
-    await waitFor(() => {
-      expect(screen.getByText(/allow registration/i)).toBeInTheDocument();
-    });
-
-    expect(screen.queryByTestId('key-lost-warning')).not.toBeInTheDocument();
-  });
-
   it('renders the Sync environment → DB row alongside the cleanup rows', async () => {
     renderSystemSettingsContent();
 
@@ -412,7 +390,6 @@ describe('SystemSettingsContent', () => {
           findings: [],
           summary: {
             drift: 0,
-            alerts: 0,
             shadowed: 0,
             envOnly: 0,
             dbOnly: 0,
@@ -453,7 +430,6 @@ describe('SystemSettingsContent', () => {
           ],
           summary: {
             drift: 1,
-            alerts: 0,
             shadowed: 0,
             envOnly: 1,
             dbOnly: 0,
@@ -473,7 +449,6 @@ describe('SystemSettingsContent', () => {
             findings: [],
             summary: {
               drift: 0,
-              alerts: 0,
               shadowed: 0,
               envOnly: 0,
               dbOnly: 0,
@@ -511,38 +486,6 @@ describe('SystemSettingsContent', () => {
     });
   });
 
-  it('shows a key-lost note when the preview reports alerts', async () => {
-    const user = userEvent.setup();
-    server.use(
-      http.get('/api/admin/config/sync-report', () =>
-        HttpResponse.json({
-          findings: [
-            { key: 'EMAIL_PASSWORD', status: 'key-lost', secret: true, dbUpdatedAt: '2026-09-03T10:00:00.000Z' },
-          ],
-          summary: {
-            drift: 0,
-            alerts: 1,
-            shadowed: 0,
-            envOnly: 0,
-            dbOnly: 0,
-            total: 1,
-          },
-          exitCode: 1,
-        })
-      )
-    );
-
-    renderSystemSettingsContent();
-
-    const trigger = await screen.findByRole('button', { name: /sync now/i });
-    await user.click(trigger);
-
-    const dialog = await screen.findByRole('dialog', { name: /database sync/i });
-    expect(within(dialog).getByText(/1 encrypted value/i)).toBeInTheDocument();
-    // Only key-lost alerts → nothing actionable, Apply stays disabled.
-    expect(within(dialog).getByTestId('config-sync-apply')).toBeDisabled();
-  });
-
   it('keeps the dialog open with an inline error when apply fails', async () => {
     const user = userEvent.setup();
     server.use(
@@ -553,7 +496,6 @@ describe('SystemSettingsContent', () => {
           ],
           summary: {
             drift: 0,
-            alerts: 0,
             shadowed: 0,
             envOnly: 1,
             dbOnly: 0,
@@ -563,10 +505,7 @@ describe('SystemSettingsContent', () => {
         })
       ),
       http.post('/api/admin/config/sync-from-env', () =>
-        HttpResponse.json(
-          { errorCode: 'serverErrors.admin.configSyncEncryptKeyMissing' },
-          { status: 500 }
-        )
+        HttpResponse.json({ error: 'Sync apply failed' }, { status: 500 })
       )
     );
 
@@ -581,7 +520,7 @@ describe('SystemSettingsContent', () => {
     await user.click(applyButton);
 
     await waitFor(() => {
-      expect(within(dialog).getByText(/nothing was synced/i)).toBeInTheDocument();
+      expect(within(dialog).getByText(/sync apply failed/i)).toBeInTheDocument();
     });
     expect(screen.getByRole('dialog', { name: /database sync/i })).toBeInTheDocument();
   });

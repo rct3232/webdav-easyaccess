@@ -236,10 +236,10 @@ The existing blob migration core (`migrationService`, admin API `POST
    copy stops. Partial progress is kept (source preserved) and rerun resumes via the existing
    `shouldSkip` resume markers. The `runCopy` loop gains a cancel check.
 5. **Auto-persist of the destination config (D10):** when an `apply` completes, **DB-sourced**
-   storage keys are persisted to the DB via `Settings.set` (secrets AES-256-GCM-encrypted under
-   `encrypt_secret_key`, then `getSharedResolver().invalidateCache`), and the job records
+   storage keys are persisted to the DB via `Settings.set` (secret values written as
+   **plaintext strings**, then `getSharedResolver().invalidateCache`), and the job records
    `configPersist { persisted, skippedEnvSourced }`. **Env-sourced** keys fall back to the
-   existing manual `.env` guidance (there is no env↔DB sync tool). Either way a restart is
+   existing manual `.env` guidance. Either way a restart is
    required — storage config is boot-frozen (`process.env.WEA_FILE_STORAGE` is snapshotted at
    composition/blobstore creation).
 6. **Restart → boot probe (D12):** after restart, the active backend is verified at boot — the
@@ -288,7 +288,7 @@ it.
 | D7  | `/migration` content | Progress only: determinate %, current-operation label, counters. No per-step/table list.                                                                                                                                                                                               |
 | D8  | Blob progress        | Node-count based: `% = progress/total` over the snapshot; current file label shown.                                                                                                                                                                                                    |
 | D9  | Terminal UX          | No header back button; auto modal popup on terminal state with summary + "Go to settings".                                                                                                                                                                                             |
-| D10 | F2 persist           | After blob `apply`: DB-sourced storage keys persist to DB (`Settings.set`, secrets encrypted, `invalidateCache`), job carries `configPersist { persisted, skippedEnvSourced }`; env-sourced keys → manual `.env` guidance.                                                             |
+| D10 | F2 persist           | After blob `apply`: DB-sourced storage keys persist to DB (`Settings.set`, secrets stored as plaintext, `invalidateCache`), job carries `configPersist { persisted, skippedEnvSourced }`; env-sourced keys → manual `.env` guidance.                                                             |
 | D11 | Final DB cutover     | T0 keys env-owned; final step is manual env edit + restart; UI guides it and the server shows a persistent banner.                                                                                                                                                                     |
 | D12 | Boot verification    | Add an S3 boot probe symmetric to the WebDAV one (warn-only).                                                                                                                                                                                                                          |
 | D13 | ".env setup needed"  | `metadataPresence` detection for the non-active backend, exposed via an admin endpoint, banner in System Settings with a link to the migration flow.                                                                                                                                   |

@@ -43,7 +43,7 @@ Display metadata (`labelKey`, `group`, `inputType`, `options`, `helpKey`) is def
 `GET /api/admin/config` → `{ config: { "<KEY>": { value, source: 'env'|'db'|'default', tier: 'T0'|'T1'|'T2', secret: boolean } } }`.
 
 - `adminService.getConfig()` normalizes to the `config` map.
-- Secrets always arrive masked as `"****"` — never display a decrypted value.
+- Secrets always arrive masked as `"****"` — the server never sends a secret value to the client.
 - `adminService.updateConfig(values)` → `PUT /api/admin/config` with `{ values }`; returns `{ applied, restartRequired, messageCode }`.
 
 ### 2.6 CONFIG_DISPLAY_META
@@ -72,7 +72,7 @@ display group for them.)
 **Intentionally omitted** (no display entry → not rendered):
 
 - `registration_enabled` — stays in the main settings rows (above the accordion), never duplicated.
-- `WEA_PG_PASSWORD`, `encrypt_secret_key`, `JWT_SECRET` — T0 `.env`-only secrets; not editable via this route and not displayed (reduces sensitive surface).
+- `WEA_PG_PASSWORD`, `JWT_SECRET` — T0 `.env`-only secrets; not editable via this route and not displayed (reduces sensitive surface).
 
 ### 2.7 Read-Only Rules
 
@@ -85,7 +85,7 @@ A row is read-only (inputs disabled) when `source === 'env'` **or** `tier === 'T
 
 - Always displayed as the mask `"****"` (server never sends plaintext).
 - A "Set new value" toggle (`admin.config.setNewValue`) reveals an empty password field.
-- Blank / null / `'****'` on save → the key is **skipped** (keeps existing ciphertext; "only re-encrypt on new value").
+- Blank / null / `'****'` on save → the key is **skipped** (keeps the existing stored value — masked input never overwrites a stored secret).
 - `source === 'env'` secrets are read-only (no toggle).
 
 ### 2.9 Connection-Key Save Gating (D1)
@@ -128,7 +128,7 @@ A row is read-only (inputs disabled) when `source === 'env'` **or** `tier === 'T
 - `admin.config.group.metadata`, `admin.config.group.fileStorage`, `admin.config.group.serverSecurity`, `admin.config.group.email`, `admin.config.group.runtime`
 - `admin.config.key.<KEY>` for every displayed key
 - `admin.config.help.CORS_ORIGINS` (optional help; `setup.expiresInHelp` reused for expiry keys)
-- New server codes: `serverErrors.admin.configUnknownKey`, `serverErrors.admin.configT0Protected`, `serverErrors.admin.configInvalidPayload`, `serverErrors.admin.configEncryptKeyMissing`, `serverErrors.admin.configEnvSourcedProtected`, `serverMessages.admin.configSaved`
+- New server codes: `serverErrors.admin.configUnknownKey`, `serverErrors.admin.configT0Protected`, `serverErrors.admin.configInvalidPayload`, `serverErrors.admin.configEnvSourcedProtected`, `serverMessages.admin.configSaved`
 
 ### 2.12 Verification Scenarios
 

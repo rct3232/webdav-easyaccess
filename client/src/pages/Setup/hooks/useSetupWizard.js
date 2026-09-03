@@ -301,8 +301,8 @@ export function useSetupWizard() {
     const jwtSecret =
       !form.jwt.secret || form.jwt.secret === SECRET_MASK ? generateJwtSecret() : form.jwt.secret;
     // A masked (unchanged) secret is sent as the '****' marker so the server can
-    // keep its existing value (only-re-encrypt-on-new-value). The metadata DB
-    // connection is .env-owned (D6/D7) and never appears in the apply payload.
+    // keep its existing value. The metadata DB connection is .env-owned (D6/D7)
+    // and never appears in the apply payload.
     const file =
       form.fileBackend === 's3'
         ? {

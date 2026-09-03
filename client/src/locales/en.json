@@ -375,8 +375,6 @@
     "statusApproved": "Approved",
     "statusRejected": "Rejected",
     "systemSettings": "System settings",
-    "keyLostWarning": "Encryption key lost",
-    "keyLostWarningDetail": "The server's secret encryption key (encrypt_secret_key) is missing but encrypted settings exist in the database. Stored secrets cannot be decrypted until the key is restored.",
     "registrationEnabled": "Allow registration",
     "registrationEnabledDesc": "Show sign-up button on login page",
     "showHiddenFiles": "Show hidden files",
@@ -401,7 +399,6 @@
     "configSyncPreviewChanges": "{{updated}} key(s) will be updated and {{added}} key(s) will be added to the database settings.",
     "configSyncPreviewUpdatedKeys": "Will update: {{keys}}",
     "configSyncPreviewAddedKeys": "Will add: {{keys}}",
-    "configSyncPreviewKeyLost": "{{count}} encrypted value(s) cannot be decrypted (encryption key missing). They are left unchanged and will keep alerting.",
     "configSyncConfirmScope": "Only values the server is currently using are copied. Startup-only keys (.env) are never stored, and no database row is deleted.",
     "configSyncApplyFail": "Failed to sync environment values into the database settings.",
     "configSyncDone": "Database settings synced from the environment.",
@@ -818,9 +815,7 @@
       "configUnknownKey": "Unknown configuration key: {{key}}.",
       "configT0Protected": "The key {{key}} is a startup (.env) setting and cannot be changed here.",
       "configEnvSourcedProtected": "The key {{key}} is set in .env and cannot be changed here (env takes precedence).",
-      "configInvalidPayload": "Invalid configuration payload.",
-      "configEncryptKeyMissing": "The secret encryption key is missing on the server. Configuration was not saved.",
-      "configSyncEncryptKeyMissing": "The secret encryption key (encrypt_secret_key) is missing, so environment secrets cannot be stored in the database. Nothing was synced."
+      "configInvalidPayload": "Invalid configuration payload."
     },
     "migrationInProgress": "A migration is already in progress. The app is locked until it finishes.",
     "users": {

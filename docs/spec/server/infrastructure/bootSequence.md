@@ -25,14 +25,15 @@ lets DB-sourced configuration take effect before require-time consts are capture
    bootStatus = computeSetupStatus(process.env, { effectiveConfig: effective })
 6. if bootStatus.setup_complete:
      populateT1Env(resolver, process.env)
-       — for each T1 registry key absent from env, copy the effective value
-         (decrypted DB secrets) into process.env so require-time consts see it.
+       — for each T1 registry key absent from env, resolve the DB-sourced
+         plaintext value (settings rows are no longer encrypted) and copy it
+         into process.env so require-time consts see it.
      (CORS production warning uses the effective value.)
    else:
      setup mode — no env population; the wizard serves non-T0 only (D7).
 7. await ensureDefaultAdmin()
    — reads process.env.ADMIN_DEFAULT_PASSWORD, which may now be a DB-sourced,
-     decrypted T1 value (the wizard stores it in DB for the postgresql path).
+     plaintext T1 value (the wizard stores it in DB for the postgresql path).
 8. backendHealth.reset() — reset the in-memory health tracker for a fresh process.
    (A transition callback for [backend-health] OK→FAIL / FAIL→OK logging is installed.)
 9. mount / listen:
@@ -45,7 +46,7 @@ lets DB-sourced configuration take effect before require-time consts are capture
 ## 3. Why admin seeding is deferred
 
 `ensureDefaultAdmin` reads `ADMIN_DEFAULT_PASSWORD` from the env. Under the two-layer model
-that value may live in the DB `settings` row (encrypted). It must therefore run only after the
+that value may live in the DB `settings` row (plaintext; T1). It must therefore run only after the
 resolver is primed and T1 values are populated, or the admin would be created with the built-in
 default password.
 

@@ -59,7 +59,6 @@ const SystemSettingsContent = () => {
   const [configSyncApplying, setConfigSyncApplying] = useState(false);
   const [configSyncReport, setConfigSyncReport] = useState(null);
   const [configSyncError, setConfigSyncError] = useState('');
-  const [keyLostWarning, setKeyLostWarning] = useState(false);
   const [backendHealth, setBackendHealth] = useState({});
   const [activeBackends, setActiveBackends] = useState(() => new Set());
   const [metadataPresence, setMetadataPresence] = useState(null);
@@ -73,10 +72,9 @@ const SystemSettingsContent = () => {
     }
   }, [t]);
 
-  const loadKeyLostWarning = useCallback(async () => {
+  const loadActiveBackends = useCallback(async () => {
     try {
       const data = await adminService.getConfigStatus();
-      setKeyLostWarning(Boolean(data?.key_lost_warning));
       // Derive the backends actually in use so unused backends never alert (D3):
       // metadata backend = WEA_STORAGE_BACKEND, file backend = WEA_FILE_STORAGE.
       const cfg = data?.config || {};
@@ -86,7 +84,6 @@ const SystemSettingsContent = () => {
       if (cfg.WEA_FILE_STORAGE?.value === 'webdav') active.add('webdav');
       setActiveBackends(active);
     } catch {
-      setKeyLostWarning(false);
       setActiveBackends(new Set());
     }
   }, []);
@@ -111,10 +108,10 @@ const SystemSettingsContent = () => {
 
   useEffect(() => {
     loadSettings();
-    loadKeyLostWarning();
+    loadActiveBackends();
     loadHealth();
     loadMigrationPresence();
-  }, [loadSettings, loadKeyLostWarning, loadHealth, loadMigrationPresence]);
+  }, [loadSettings, loadActiveBackends, loadHealth, loadMigrationPresence]);
 
   const handleToggleRegistration = async () => {
     const newValue = tempSettings.registration_enabled === 'true' ? 'false' : 'true';
@@ -243,7 +240,6 @@ const SystemSettingsContent = () => {
   const syncFindings = configSyncReport?.findings || [];
   const toUpdateKeys = syncFindings.filter((f) => f.status === 'differs').map((f) => f.key);
   const toAddKeys = syncFindings.filter((f) => f.status === 'env-only').map((f) => f.key);
-  const configSyncKeyLostCount = syncSummary?.alerts || 0;
 
   return (
     <Box>
@@ -269,12 +265,6 @@ const SystemSettingsContent = () => {
               </li>
             ))}
           </Box>
-        </Alert>
-      )}
-      {keyLostWarning && (
-        <Alert severity="warning" sx={{ mb: 3 }} data-testid="key-lost-warning">
-          <Typography variant="subtitle2">{t('admin.keyLostWarning')}</Typography>
-          <Typography variant="body2">{t('admin.keyLostWarningDetail')}</Typography>
         </Alert>
       )}
       {metadataPresence?.otherHasData && (
@@ -546,11 +536,6 @@ const SystemSettingsContent = () => {
                 </>
               ) : (
                 <DialogContentText>{t('admin.configSyncPreviewNoChanges')}</DialogContentText>
-              )}
-              {configSyncKeyLostCount > 0 && (
-                <Alert severity="warning" sx={{ mt: 2 }}>
-                  {t('admin.configSyncPreviewKeyLost', { count: configSyncKeyLostCount })}
-                </Alert>
               )}
               <DialogContentText color="text.secondary" sx={{ mt: 2 }}>
                 {t('admin.configSyncConfirmScope')}

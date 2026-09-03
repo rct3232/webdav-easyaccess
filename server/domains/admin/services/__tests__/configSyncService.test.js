@@ -7,15 +7,7 @@
  * the service contract directly with a fake settings store and injected env source.
  */
 
-const {
-  buildConfigSyncReport,
-  syncConfigSyncEnv,
-  ConfigSyncAbortError,
-} = require('../configSyncService');
-const {
-  encryptSecret,
-  decryptSecret,
-} = require('../../../../utils/configEncryption');
+const { buildConfigSyncReport, syncConfigSyncEnv } = require('../configSyncService');
 
 const TS = new Date('2026-09-03T10:00:00.000Z');
 
@@ -50,7 +42,6 @@ describe('configSyncService.buildConfigSyncReport', () => {
     const report = await buildConfigSyncReport({
       settings,
       envValueOf: fromMap(env),
-      masterKey: undefined,
     });
 
     const byKey = new Map(report.findings.map((f) => [f.key, f]));
@@ -61,7 +52,6 @@ describe('configSyncService.buildConfigSyncReport', () => {
     expect(byKey.get('CORS_ORIGINS').dbUpdatedAt).toBeNull();
     expect(report.summary).toEqual({
       drift: 1,
-      alerts: 0,
       shadowed: 1,
       envOnly: 1,
       dbOnly: 1,
@@ -70,31 +60,44 @@ describe('configSyncService.buildConfigSyncReport', () => {
     expect(report.exitCode).toBe(1);
   });
 
-  it('flags an undecryptable encrypted row as key-lost even when env is absent', async () => {
+  it('classifies a secret row by plaintext comparison (differs / shadowed)', async () => {
     const settings = fakeSettings([
-      {
-        key: 'EMAIL_PASSWORD',
-        value: JSON.stringify(encryptSecret('hidden', 'some-lost-key')),
-        updated_at: TS,
-      },
+      { key: 'WEBDAV_PASSWORD', value: 'old-pass', updated_at: TS },
+    ]);
+    const env = new Map([['WEBDAV_PASSWORD', 'new-pass']]);
+
+    const report = await buildConfigSyncReport({
+      settings,
+      envValueOf: fromMap(env),
+    });
+
+    const secret = report.findings.find((f) => f.key === 'WEBDAV_PASSWORD');
+    expect(secret.status).toBe('differs');
+    expect(secret.secret).toBe(true);
+    expect(report.summary.drift).toBe(1);
+    expect(report.exitCode).toBe(1);
+  });
+
+  it('classifies a db-only secret row as db-only (no env), exit 0', async () => {
+    const settings = fakeSettings([
+      { key: 'EMAIL_PASSWORD', value: 'stored-secret', updated_at: TS },
     ]);
 
     const report = await buildConfigSyncReport({
       settings,
       envValueOf: () => undefined,
-      masterKey: undefined,
     });
 
     expect(report.findings).toEqual([
       {
         key: 'EMAIL_PASSWORD',
-        status: 'key-lost',
+        status: 'db-only',
         secret: true,
         dbUpdatedAt: '2026-09-03T10:00:00.000Z',
       },
     ]);
-    expect(report.summary.alerts).toBe(1);
-    expect(report.exitCode).toBe(1);
+    expect(report.summary.alerts).toBeUndefined();
+    expect(report.exitCode).toBe(0);
   });
 });
 
@@ -113,7 +116,6 @@ describe('configSyncService.syncConfigSyncEnv', () => {
     const result = await syncConfigSyncEnv({
       settings,
       envValueOf: fromMap(env),
-      masterKey: undefined,
     });
 
     expect(settings.set).toHaveBeenCalledTimes(1);
@@ -130,53 +132,27 @@ describe('configSyncService.syncConfigSyncEnv', () => {
 
   it('never writes T0 keys even when env-sourced', async () => {
     const settings = fakeSettings([]);
-    const env = new Map([
-      ['JWT_SECRET', 'jwt-t0'],
-      ['encrypt_secret_key', 't0-master'],
-    ]);
+    const env = new Map([['JWT_SECRET', 'jwt-t0']]);
 
     const result = await syncConfigSyncEnv({
       settings,
       envValueOf: fromMap(env),
-      masterKey: undefined,
     });
 
     expect(settings.set).not.toHaveBeenCalled();
     expect(result.writes).toEqual([]);
   });
 
-  it('aborts with ConfigSyncAbortError before any write when a secret target lacks a master key', async () => {
-    const settings = fakeSettings([]);
-    const env = new Map([['WEBDAV_PASSWORD', 'dav-pass']]);
-
-    await expect(
-      syncConfigSyncEnv({ settings, envValueOf: fromMap(env), masterKey: undefined })
-    ).rejects.toBeInstanceOf(ConfigSyncAbortError);
-
-    expect(settings.set).not.toHaveBeenCalled();
-  });
-
-  it('re-encrypts an env-set secret under the supplied master key', async () => {
-    const masterKey = 'master-key';
+  it('writes an env-set secret into the DB as plaintext', async () => {
     const settings = fakeSettings([
-      {
-        key: 'WEBDAV_PASSWORD',
-        value: JSON.stringify(encryptSecret('old-pass', masterKey)),
-        updated_at: TS,
-      },
+      { key: 'WEBDAV_PASSWORD', value: 'old-pass', updated_at: TS },
     ]);
     const env = new Map([['WEBDAV_PASSWORD', 'new-pass']]);
 
-    const result = await syncConfigSyncEnv({
-      settings,
-      envValueOf: fromMap(env),
-      masterKey,
-    });
+    const result = await syncConfigSyncEnv({ settings, envValueOf: fromMap(env) });
 
     expect(settings.set).toHaveBeenCalledTimes(1);
-    const [calledKey, stored] = settings.set.mock.calls[0];
-    expect(calledKey).toBe('WEBDAV_PASSWORD');
-    expect(decryptSecret(JSON.parse(stored), masterKey)).toBe('new-pass');
+    expect(settings.set).toHaveBeenCalledWith('WEBDAV_PASSWORD', 'new-pass');
     expect(result.writes[0].status).toBe('updated');
   });
 });

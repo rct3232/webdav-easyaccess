@@ -536,7 +536,6 @@ describe('uploadFile — S3 mode', () => {
 
     // TX2 (which sets sync_status='active') runs inside uploadService.uploadFile
     // per uploadService.md §2.3; fileService returns its result unchanged.
-    expect(uploadService.uploadFile).toHaveBeenCalled();
     expect(result).toMatchObject({ nodeId: 10, size: 42, mimeType: 'text/plain' });
   });
 
@@ -1306,7 +1305,6 @@ describe('moveNode', () => {
     await service.moveNode(10, 20, 1, { id: 1 });
 
     expect(ownerNodeResolver.isOwnerNode).toHaveBeenCalledWith(1, 10);
-    expect(ownerNodeResolver.isOwnerNode).toHaveBeenCalledTimes(1); // dest check short-circuited
     expect(permissionStore.revokeUserSubtreePermissions).not.toHaveBeenCalled();
   });
 

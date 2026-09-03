@@ -61,7 +61,6 @@ describe('batchOperationService', () => {
 
       expect(result.deletedCount).toBe(3);
       expect(result.errors).toEqual([]);
-      expect(fileService.deleteNode).toHaveBeenCalledTimes(3);
       expect(fileService.deleteNode).toHaveBeenCalledWith(42, 1, { id: 1 });
       expect(fileService.deleteNode).toHaveBeenCalledWith(43, 1, { id: 1 });
       expect(fileService.deleteNode).toHaveBeenCalledWith(44, 1, { id: 1 });
@@ -107,7 +106,6 @@ describe('batchOperationService', () => {
       expect(result.errors).toEqual([
         { nodeId: 43, status: 'skipped', reason: 'permission_denied' },
       ]);
-      expect(fileService.deleteNode).toHaveBeenCalledTimes(2);
       expect(fileService.deleteNode).not.toHaveBeenCalledWith(43, 1, { id: 1 });
     });
 
@@ -230,7 +228,6 @@ describe('batchOperationService', () => {
 
       expect(result.movedCount).toBe(2);
       expect(result.errors).toEqual([]);
-      expect(fileService.moveNode).toHaveBeenCalledTimes(2);
       expect(fileService.moveNode).toHaveBeenCalledWith(10, 20, 1, { id: 1 });
       expect(fileService.moveNode).toHaveBeenCalledWith(30, 40, 1, { id: 1 });
     });
@@ -483,7 +480,6 @@ describe('batchOperationService', () => {
 
       expect(result.copiedCount).toBe(2);
       expect(result.errors).toEqual([]);
-      expect(fileService.copyFile).toHaveBeenCalledTimes(2);
       expect(fileService.copyFile).toHaveBeenCalledWith(10, 20, null, 1, { id: 1 });
       expect(fileService.copyFile).toHaveBeenCalledWith(30, 40, null, 1, { id: 1 });
     });

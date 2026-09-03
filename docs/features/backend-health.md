@@ -11,7 +11,7 @@ Detailed contracts:
 - `docs/spec/server/routes/config.md` — `POST /api/admin/config/test`.
 - `docs/spec/server/routes/setup.md` — D7 wizard scope (non-T0 only).
 - `docs/spec/server/infrastructure/bootSequence.md` — D6 boot rule.
-- `docs/spec/client/components/SystemConfigEditor.md` — D5 (T0 removal) + D1 (connection gating).
+- `docs/spec/client/components/SystemConfigEditor.md` — two-section config editor (Section A "Runtime settings" editable / Section B "Deploy-time / platform configuration" read-only) + D1 (connection gating).
 - `docs/spec/client/components/SystemSettingsContent.md`, `docs/spec/client/components/file-manager/FileManagerView.md` — D3 surfaces.
 
 ---

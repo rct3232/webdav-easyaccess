@@ -444,6 +444,10 @@
       "secretKeepExisting": "Leave blank to keep the current value.",
       "connectionTest": "Test connection",
       "connectionTestRequired": "Save is blocked until the connection test passes.",
+      "sectionTitleRuntime": "Runtime settings",
+      "sectionTitlePlatform": "Deploy-time configuration",
+      "platformIntro": "Set at deploy time via environment variables or .env. Values here are managed externally and cannot be edited here; change them in your deployment configuration and restart.",
+      "unset": "(unset)",
       "help": {
         "CORS_ORIGINS": "Comma-separated list of allowed origins"
       },
@@ -461,6 +465,7 @@
         "WEA_PG_PORT": "PostgreSQL port",
         "WEA_PG_DATABASE": "PostgreSQL database",
         "WEA_PG_USER": "PostgreSQL user",
+        "WEA_PG_PASSWORD": "PostgreSQL password",
         "WEA_PG_SSL": "PostgreSQL SSL",
         "WEA_PG_MAX": "PostgreSQL max connections",
         "WEA_PG_IDLE_TIMEOUT_MS": "PostgreSQL idle timeout (ms)",
@@ -491,6 +496,7 @@
         "LOGIN_RATE_LIMIT_MAX": "Login rate limit max attempts",
         "LOGIN_RATE_LIMIT_WINDOW_MS": "Login rate limit window (ms)",
         "JWT_EXPIRES_IN": "JWT expires in",
+        "JWT_SECRET": "JWT signing secret",
         "ADMIN_DEFAULT_PASSWORD": "Admin default password",
         "WEA_DISABLE_DEFAULT_ADMIN": "Disable default admin",
         "HOSTNAME": "Hostname",

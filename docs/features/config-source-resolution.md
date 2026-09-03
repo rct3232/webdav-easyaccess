@@ -201,16 +201,16 @@ Consequently, when `.env` has the PG connection info, boot still branches on wha
 
 **Placement: no sidebar category.** The config editor lives inside the existing System Settings
 page as an "Advanced settings" accordion (`MUI Accordion`) within
-`SystemSettingsContent.js`. (A full-screen modal is the fallback if the editor proves too long.)
+`SystemSettingsContent.js`.
 
 | Item         | Location                                                                                        |
 | ------------ | ----------------------------------------------------------------------------------------------- |
-| Component    | `client/src/components/mypage/content/SystemConfigEditor.js` (new) — inside the accordion       |
+| Component    | `client/src/components/mypage/content/SystemConfigEditor.js` — inside the accordion          |
 | Registry     | none — no new mypage category (`myPageRegistry.js` unchanged)                                   |
 | Service      | `client/src/services/adminService.js`: `getConfig()` / `updateConfig(values)`                   |
 | Server route | `server/domains/admin/routes/config.js` (new): `GET /config` + `PUT /config` under `/api/admin` |
 | MSW          | `client/src/mocks/handlers.js`: `GET/PUT /api/admin/config` + reset state                       |
-| i18n         | en/ko `admin.advancedSettings` (accordion title) + `admin.config.*` (groups, generic strings)   |
+| i18n         | en/ko `admin.advancedSettings` (accordion title) + `admin.config.*` (section titles, section note, subgroups, generic strings) |
 
 **GET `/api/admin/config`** →
 `{ config: { "<envKey>": { value, source: 'env'|'db'|'default', tier, secret } } }` for every
@@ -222,23 +222,44 @@ map; the server registry is authoritative for tier/secret/source.
 
 - The "Advanced settings" accordion sits below the main settings rows; config is fetched
   lazily on first expand.
-- Grouped sections (File storage, Server & security, Email, Runtime). **The Metadata (T0)
-  group is removed from the editor entirely (D5)** — the DB connection is `.env`-owned and the
-  backend is verified via the health card, not an in-editor metadata section.
+- **Two top-level sections (config UI section split, 2026-09):**
+  - **Section A — "Runtime settings" (editable).** The four existing subgroups (File storage,
+    Server & security, Email, Runtime) render only keys whose effective state is editable:
+    registry tier T1/T2 AND `source !== 'env'` (db/default). All type-aware inputs, the
+    masked-secret "set new value" flow, the per-field tier badges and the connection-test
+    gating live here, unchanged.
+  - **Section B — "Deploy-time / platform configuration" (read-only).** Rendered below
+    Section A as a flat read-only list in registry order (the order keys arrive in the GET
+    payload). A key is platform-managed — listed here, never editable — when `tier === 'T0'`
+    **or** `source === 'env'`. Section B therefore shows **all T0 keys** (the metadata DB/boot
+    set — `WEA_STORAGE_BACKEND`, `WEA_SQLITE_PATH`, `WEA_PG_*` incl. `WEA_PG_PASSWORD`, `NODE_ENV`,
+    `DOTENV_CONFIG_PATH`, `JWT_SECRET` — previously hidden from the editor) **plus any T1/T2 key
+    whose effective `source === 'env'`**. Each row shows the translated label, the value
+    (masked `'****'` for secrets; "(unset)"-style text when undefined) and a caption with the
+    tier + a "set in env" note. An intro note explains that these values are provided at deploy
+    time (env / `.env`), cannot be edited here, and require a deployment change + restart.
+  - This **supersedes the earlier "Metadata (T0) group removed (D5)" behavior**: T0 keys are no
+    longer hidden — they are shown read-only — and the per-row env/T0 "locked field" styling
+    inside the editable list is gone: an env-sourced or T0 key is never rendered as a disabled
+    editable field, it is relocated to Section B. The metadata DB connection / boot secrets stay
+    non-editable (health-card verification for the DB is unchanged).
+  - **Classification is state-driven** from the GET payload (`source` / `tier`); there is no
+    static key list and **no server change** — `PUT` still rejects (400) T0 keys
+    (`configT0Protected`) and keys whose current source is `env` (`configEnvSourcedProtected`),
+    so Section A membership cannot be bypassed via the API (F4).
 - **Connection-key save gating (D1):** editing an S3/WebDAV connection key (see
   `docs/features/backend-health.md`) blocks Save until `POST /api/admin/config/test` with the
   pending values passes; changing a connection key invalidates the result; non-connection keys
-  save without a test.
-- Type-aware inputs (TextField / Switch / Select / Number); **source=env rows are read-only**
-  with a "Set in `.env` (env takes precedence)" note (D9) — DB edits would be silently ignored
-  while the env var is present. The server **enforces** this
-  too: `PUT` rejects (400) a write to a key whose current source is `env`, so the UI rule
-  cannot be bypassed via the API (F4).
-- **Secrets:** always masked as `'****'`; a "set new value" toggle reveals the field;
-  submitting `'****'` or blank on save = keep the existing stored value (keep-existing); a new
-  value is written to the DB as plaintext.
-- **Save:** dirty-tracked "Save changes" → `PUT { values: { KEY: value } }` (changed keys
-  only) → server validates allowlist/types (T0 keys rejected), upserts `settingsStore`
+  save without a test. Connection keys are editable only when db/default-sourced (Section A);
+  an env-sourced connection key appears read-only in Section B (D9 rationale unchanged: a DB
+  edit would be silently shadowed while the env var is present).
+- **Secrets:** Section A secrets are always masked as `'****'`; a "set new value" toggle
+  reveals the field; submitting `'****'` or blank on save = keep the existing stored value
+  (keep-existing); a new value is written to the DB as plaintext. Section B secrets are masked
+  `'****'` and never editable (no toggle).
+- **Save:** dirty-tracked "Save changes" → `PUT { values: { KEY: value } }` (changed **Section A**
+  keys only; Section B is never submitted) → server validates allowlist/types (T0 keys rejected),
+  upserts `settingsStore`
   (plaintext), invalidates T2 cache → responds
   `{ applied: [T2 keys], restartRequired: [T1 keys], messageCode }`.
 - **Feedback:** Snackbar + "restart required" Alert banner listing the T1 keys changed
@@ -271,12 +292,13 @@ The setup-mode guard (503 `setup.incomplete`) continues to block admin-write rou
   plaintext — treat DB backups with the same care as the `.env` file (a plaintext-backup leak
   replaces the former "ciphertext only" property). Residual: ciphertext rows written by older
   versions are not auto-migrated; the operator may need to clean them up manually if any exist.
-- Secrets are never returned in plaintext over the API (`"****"`); a new value is the only
-  write path for a secret (set-new-value toggle).
+- Secrets are never returned in plaintext over the API (`"****"`); in Section A the only write
+  path for a secret is the set-new-value toggle, and Section B secrets are read-only masked rows.
 - T0 keys (`WEA_PG_*`, `JWT_SECRET`, …) are rejected by `PUT` — they
   can only live in `.env` (D2/D4/D7).
-- `source=env` rows are read-only in the UI, and `PUT` rejects (400) an env-sourced write
-  server-side — a DB copy would be silently shadowed by the env value (D1/F4).
+- `source=env` keys are read-only in the UI (Section B summary, never an editable field), and
+  `PUT` rejects (400) an env-sourced write server-side — a DB copy would be silently shadowed by
+  the env value (D1/F4).
 - Without encryption there is no master-key lifecycle: no key to keep, lose, or rotate, and no
   key-loss warning on any surface.
 
@@ -290,6 +312,10 @@ Representative observable behaviors to cover:
   env-configured equivalent; `.env` values win when present.
 - T2 changes via admin UI take effect immediately; T1 changes require restart and are flagged
   as such.
+- The admin editor shows two sections: Section A lists only editable T1/T2 keys
+  (`source` db/default) in the existing subgroups; Section B lists every T0 key plus env-sourced
+  T1/T2 keys read-only in registry order (secrets masked `'****'`, undefined values shown as
+  "(unset)") with a tier + "set in env" caption. `PUT` still rejects T0 and env-sourced writes.
 - Secret rows round-trip as plaintext: a value written via the admin UI or wizard apply is
   stored verbatim and read back verbatim on the server; env-sourced secrets are never read from
   DB.

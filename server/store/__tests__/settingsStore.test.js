@@ -3,7 +3,7 @@
  * Verifies get, set, getAll, isRegistrationEnabled. CRUD and error cases.
  */
 const settingsStore = require('@server/store/settingsStore');
-const { createTestDatabase } = require('@server/test-utils');
+const { createTestDatabase, dbRun } = require('@server/test-utils');
 
 describe('settingsStore', () => {
   let dbCleanup;
@@ -42,6 +42,46 @@ describe('settingsStore', () => {
       const all = await settingsStore.getAll();
       expect(typeof all).toBe('object');
       expect(all).not.toHaveProperty('updated_at');
+    });
+  });
+
+  describe('listRows', () => {
+    it('returns [] when the settings table is empty', async () => {
+      await dbRun(`DELETE FROM settings`);
+      const rows = await settingsStore.listRows();
+      expect(rows).toEqual([]);
+    });
+
+    it('returns key, raw value and updated_at for each row', async () => {
+      await dbRun(`DELETE FROM settings`);
+      const payload = JSON.stringify({
+        enc: 'aes-256-gcm',
+        iv: 'aWY=',
+        tag: 'dGFn',
+        data: 'ZGF0YQ==',
+      });
+      await settingsStore.set('listrows_plain', 'plain-value');
+      await settingsStore.set('listrows_secret', payload);
+
+      const rows = await settingsStore.listRows();
+      expect(rows).toHaveLength(2);
+
+      const plain = rows.find((row) => row.key === 'listrows_plain');
+      expect(plain).toBeTruthy();
+      expect(plain.value).toBe('plain-value');
+      expect(new Date(plain.updated_at).getTime()).not.toBeNaN();
+
+      const secret = rows.find((row) => row.key === 'listrows_secret');
+      expect(secret).toBeTruthy();
+      // value is left raw (not unwrapped): the stored JSON payload string
+      expect(secret.value).toBe(payload);
+      expect(JSON.parse(secret.value)).toEqual({
+        enc: 'aes-256-gcm',
+        iv: 'aWY=',
+        tag: 'dGFn',
+        data: 'ZGF0YQ==',
+      });
+      expect(new Date(secret.updated_at).getTime()).not.toBeNaN();
     });
   });
 

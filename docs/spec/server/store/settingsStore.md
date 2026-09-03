@@ -22,6 +22,7 @@
 | get                   | (key) => Promise\<\*\>                 | Get value; undefined keys → null       |
 | set                   | (key, value) => Promise\<{ success }\> | Set (values stringified)               |
 | getAll                | () => Promise\<object\>                | All keys except updated_at             |
+| listRows              | () => Promise\<{ key, value, updated_at }[]\> | Every row with `updated_at`; `value` left raw (callers unwrap JSON) — used by the configSync CLI (`docs/spec/server/tools/config-sync.md`) and key-rotation tooling |
 | isRegistrationEnabled | () => Promise\<boolean\>               | get('registration_enabled') === 'true' |
 
 > **Removed in Phase 7:** `ensureSettingsFile` — FsJSON bootstrap file creation; settings are DB rows only.

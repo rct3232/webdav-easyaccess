@@ -46,12 +46,14 @@ describe('usePreviewLoader', () => {
     expect(result.current.error).toBeNull();
     expect(result.current.previewUrl).toBeDefined();
 
-    // Preview fetches are bounded (short timeout, no transport retries) so a
-    // backend failure surfaces within seconds instead of after minutes.
+    // Preview fetches disable transport retries so a fast server error shows
+    // immediately; no short timeout cap is applied (slow-but-working transfers
+    // on a healthy backend use the transport default).
     expect(fileService.getFileBlob).toHaveBeenCalledWith(
       imageFile.nodeId,
-      expect.objectContaining({ timeout: 10000, maxRetries: 0 })
+      expect.objectContaining({ maxRetries: 0 })
     );
+    expect(fileService.getFileBlob.mock.calls[0][1]).not.toHaveProperty('timeout');
   });
 
   it('resolves a transport timeout to an error instead of spinning forever', async () => {

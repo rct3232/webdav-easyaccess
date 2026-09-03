@@ -73,7 +73,6 @@ const PG_PASSWORD = 'e2etest';
 
 const ADMIN_PASSWORD = 'MigrationE2e!123';
 const JWT_SECRET = 'migration-e2e-jwt-secret';
-const ENCRYPT_KEY = 'a'.repeat(64);
 
 const textFixture = readTestFileFixture(TEST_FILES.smallText);
 
@@ -147,7 +146,6 @@ async function bootScratch(testInfo: TestInfo, opts: BootOptions): Promise<void>
     WEBDAV_UPSTREAM_URL: WEBDAV_BASE,
     JWT_SECRET,
     ADMIN_DEFAULT_PASSWORD: ADMIN_PASSWORD,
-    encrypt_secret_key: ENCRYPT_KEY,
     ...(pgDb
       ? {
           WEA_PG_HOST: PG_HOST,

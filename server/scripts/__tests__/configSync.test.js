@@ -16,7 +16,6 @@ const { getEntries } = require('../../infrastructure/configRegistry');
 const { closeSqliteDb } = require('../../store/storage');
 const { initMetadataSchema } = require('../../store/bootstrap');
 const Settings = require('../../models/Settings');
-const { encryptSecret, decryptSecret, isEncryptedPayload } = require('../../utils/configEncryption');
 
 // Every registry key is read from process.env by the CLI; save at load time
 // and restore after every test so no test leaks config into another.
@@ -94,7 +93,7 @@ async function seedDbRows() {
 }
 
 describe('configSync.js --check', () => {
-  it('fresh env with no DB rows exits 0 with zero drift/alerts and excludes T0 keys', async () => {
+  it('fresh env with no DB rows exits 0 with zero drift and excludes T0 keys', async () => {
     freshScratchEnv();
     seedEnv({ PORT: '5001', JWT_SECRET: 'jwt-t0-secret' });
     await seedDbRows();
@@ -108,8 +107,7 @@ describe('configSync.js --check', () => {
     expect(all).toContain('PORT');
     expect(all).not.toContain('JWT_SECRET');
     expect(all).not.toContain('differs');
-    expect(all).not.toContain('key-lost');
-    expect(all).toMatch(/summary: drift: 0, alerts: 0/);
+    expect(all).toMatch(/summary: drift: 0, informational: 1/);
   });
 
   it('a DB row equal to the env value is shadowed (informational), exit 0', async () => {
@@ -125,7 +123,7 @@ describe('configSync.js --check', () => {
     const all = lines.log.join('\n');
     expect(all).toMatch(/shadowed\s+PORT/);
     expect(all).toMatch(/env-only\s+EMAIL_HOST/);
-    expect(all).toMatch(/summary: drift: 0, alerts: 0/);
+    expect(all).toMatch(/summary: drift: 0, informational: 2/);
   });
 
   it('a DB row differing from the env value is drift, exit 1, with db_updated_at', async () => {
@@ -144,7 +142,7 @@ describe('configSync.js --check', () => {
     expect(all).toMatch(/db_updated_at=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/);
     expect(all).toMatch(/db-only\s+EMAIL_HOST/);
     expect(all).toMatch(/env-only\s+CORS_ORIGINS/);
-    expect(all).toMatch(/summary: drift: 1, alerts: 0/);
+    expect(all).toMatch(/summary: drift: 1, informational: 2/);
     expect(all).toMatch(/exit code: 1/);
     // drift is reported, but no plaintext value is ever echoed
     expect(all).not.toContain('6001');
@@ -153,13 +151,9 @@ describe('configSync.js --check', () => {
 
   it('a differing secret row is drift, exit 1, and the secret is masked', async () => {
     freshScratchEnv();
-    const masterKey = 'master-check-key';
-    seedEnv({ WEBDAV_PASSWORD: 'new-pass', encrypt_secret_key: masterKey });
+    seedEnv({ WEBDAV_PASSWORD: 'new-pass' });
     await seedDbRows();
-    await Settings.set(
-      'WEBDAV_PASSWORD',
-      JSON.stringify(encryptSecret('old-pass', masterKey))
-    );
+    await Settings.set('WEBDAV_PASSWORD', 'old-pass');
     const { output, lines } = makeOutput();
 
     const code = await main(['--check'], { output, input: NON_TTY_INPUT });
@@ -170,18 +164,14 @@ describe('configSync.js --check', () => {
     expect(all).toContain('****');
     expect(all).not.toContain('old-pass');
     expect(all).not.toContain('new-pass');
-    expect(all).toMatch(/summary: drift: 1, alerts: 0/);
+    expect(all).toMatch(/summary: drift: 1, informational: 0/);
   });
 
-  it('an equal secret row is shadowed (compared via decryption), exit 0, masked', async () => {
+  it('an equal secret row is shadowed (compared as plaintext), exit 0, masked', async () => {
     freshScratchEnv();
-    const masterKey = 'master-equal-key';
-    seedEnv({ WEBDAV_PASSWORD: 'same-pass', encrypt_secret_key: masterKey });
+    seedEnv({ WEBDAV_PASSWORD: 'same-pass' });
     await seedDbRows();
-    await Settings.set(
-      'WEBDAV_PASSWORD',
-      JSON.stringify(encryptSecret('same-pass', masterKey))
-    );
+    await Settings.set('WEBDAV_PASSWORD', 'same-pass');
     const { output, lines } = makeOutput();
 
     const code = await main(['--check'], { output, input: NON_TTY_INPUT });
@@ -191,39 +181,30 @@ describe('configSync.js --check', () => {
     expect(all).toMatch(/shadowed\s+WEBDAV_PASSWORD/);
     expect(all).toContain('****');
     expect(all).not.toContain('same-pass');
+    expect(all).toMatch(/summary: drift: 0, informational: 1/);
   });
 
-  it('encrypted rows without encrypt_secret_key are key-lost alerts, exit 1', async () => {
+  it('a db-only secret row is informational (shadowed/env/db classification), exit 0', async () => {
     freshScratchEnv();
-    seedEnv({ WEBDAV_USERNAME: 'dav-user' });
     await seedDbRows();
-    // env-set secret whose row cannot be decrypted: no master key at all
-    await Settings.set('WEBDAV_PASSWORD', JSON.stringify(encryptSecret('hidden-secret', 'lost-key')));
-    // db-only secret whose row cannot be decrypted
-    await Settings.set('EMAIL_PASSWORD', JSON.stringify(encryptSecret('other-hidden', 'lost-key')));
+    await Settings.set('EMAIL_PASSWORD', 'stored-secret');
     const { output, lines } = makeOutput();
 
     const code = await main(['--check'], { output, input: NON_TTY_INPUT });
 
-    expect(code).toBe(1);
+    expect(code).toBe(0);
     const all = lines.log.join('\n');
-    expect(all).toMatch(/key-lost\s+WEBDAV_PASSWORD/);
-    expect(all).toMatch(/key-lost\s+EMAIL_PASSWORD/);
-    expect(all).not.toContain('hidden-secret');
-    expect(all).not.toContain('other-hidden');
-    expect(all).toMatch(/summary: drift: 0, alerts: 2/);
+    expect(all).toMatch(/db-only\s+EMAIL_PASSWORD/);
+    expect(all).not.toContain('stored-secret');
+    expect(all).toMatch(/summary: drift: 0, informational: 1/);
   });
 
   it('--json emits a machine-readable report with stable fields', async () => {
     freshScratchEnv();
-    const masterKey = 'master-json-key';
-    seedEnv({ PORT: '5001', WEBDAV_PASSWORD: 'json-pass', encrypt_secret_key: masterKey });
+    seedEnv({ PORT: '5001', WEBDAV_PASSWORD: 'json-pass' });
     await seedDbRows();
     await Settings.set('PORT', '6001');
-    await Settings.set(
-      'WEBDAV_PASSWORD',
-      JSON.stringify(encryptSecret('json-old-pass', masterKey))
-    );
+    await Settings.set('WEBDAV_PASSWORD', 'json-old-pass');
     const { output, lines } = makeOutput();
 
     const code = await main(['--check', '--json'], { output, input: NON_TTY_INPUT });
@@ -241,7 +222,6 @@ describe('configSync.js --check', () => {
     expect(secret.secret).toBe(true);
     expect(report.summary).toEqual({
       drift: 2,
-      alerts: 0,
       shadowed: 0,
       envOnly: 0,
       dbOnly: 0,
@@ -267,23 +247,18 @@ describe('configSync.js --apply', () => {
     expect(lines.log.join('\n')).toBe('');
   });
 
-  it('--apply --yes mirrors .env into the DB (secrets re-encrypted), never writes T0, and the post-apply check is clean', async () => {
+  it('--apply --yes mirrors .env into the DB as plaintext (secrets included), never writes T0, and the post-apply check is clean', async () => {
     freshScratchEnv();
-    const masterKey = 'master-apply-key';
     seedEnv({
       PORT: '5001',
       WEBDAV_URL: 'https://dav.example.com',
       WEBDAV_PASSWORD: 'dav-pass',
       JWT_SECRET: 'jwt-t0-secret',
-      encrypt_secret_key: masterKey,
     });
     await seedDbRows();
     await Settings.set('PORT', '6001'); // drift -> updated
     await Settings.set('WEBDAV_URL', 'https://dav.example.com'); // equal -> unchanged
-    await Settings.set(
-      'WEBDAV_PASSWORD',
-      JSON.stringify(encryptSecret('old-pass', masterKey))
-    ); // drift -> re-encrypted
+    await Settings.set('WEBDAV_PASSWORD', 'old-pass'); // drift -> updated
     const { output, lines } = makeOutput();
 
     const code = await main(['--apply', '--yes'], { output, input: NON_TTY_INPUT });
@@ -296,31 +271,14 @@ describe('configSync.js --apply', () => {
     expect(all).not.toContain('dav-pass');
     expect(all).not.toContain('old-pass');
     expect(all).not.toContain('jwt-t0-secret');
-    expect(all).toMatch(/summary: drift: 0, alerts: 0/);
+    expect(all).toMatch(/summary: drift: 0, informational: 3/);
 
     const rows = await Settings.getAll();
     expect(rows.PORT).toBe('5001');
     expect(rows.WEBDAV_URL).toBe('https://dav.example.com');
-    const secret = JSON.parse(rows.WEBDAV_PASSWORD);
-    expect(isEncryptedPayload(secret)).toBe(true);
-    expect(decryptSecret(secret, masterKey)).toBe('dav-pass');
+    expect(rows.WEBDAV_PASSWORD).toBe('dav-pass');
     // T0 keys are never written to the DB
     expect(rows).not.toHaveProperty('JWT_SECRET');
-    expect(rows).not.toHaveProperty('encrypt_secret_key');
     expect(rows).not.toHaveProperty('WEA_STORAGE_BACKEND');
-  });
-
-  it('--apply --yes aborts (exit 1, DB unchanged) when a secret needs writing but encrypt_secret_key is absent', async () => {
-    freshScratchEnv();
-    seedEnv({ WEBDAV_PASSWORD: 'dav-pass', PORT: '5001' });
-    await seedDbRows();
-    const { output, lines } = makeOutput();
-
-    const code = await main(['--apply', '--yes'], { output, input: NON_TTY_INPUT });
-
-    expect(code).toBe(1);
-    expect(lines.error.join('\n')).toMatch(/encrypt_secret_key/);
-    const rows = await Settings.getAll();
-    expect(Object.keys(rows)).toEqual([]);
   });
 });

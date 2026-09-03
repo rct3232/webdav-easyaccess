@@ -3,8 +3,8 @@
 /**
  * Unit tests for persistStorageConfigToDb (PLAN D10 / docs/spec/server/tools/
  * blob-migration.md §4.4). Black-box: asserts observable DB writes (Settings.set
- * payloads), secret AES-GCM encryption, env-sourced skipping, and resolver-cache
- * invalidation. Settings and the shared resolver are mocked; the encryption and
+ * payloads — plaintext, secrets included), env-sourced skipping, and
+ * resolver-cache invalidation. Settings and the shared resolver are mocked; the
  * registry helpers are the real implementations.
  */
 
@@ -22,19 +22,10 @@ jest.mock('../../../../infrastructure/configResolver', () => ({
 }));
 
 const { persistStorageConfigToDb } = require('../migrationService');
-const { decryptSecret } = require('../../../../utils/configEncryption');
-
-const SAVED_ENCRYPT_KEY = process.env.encrypt_secret_key;
 
 beforeEach(() => {
   jest.clearAllMocks();
-  process.env.encrypt_secret_key = 'test-master-key';
   mockResolver.getEffectiveConfig.mockResolvedValue({});
-});
-
-afterEach(() => {
-  if (SAVED_ENCRYPT_KEY === undefined) delete process.env.encrypt_secret_key;
-  else process.env.encrypt_secret_key = SAVED_ENCRYPT_KEY;
 });
 
 function setCallsForKey(key) {
@@ -42,7 +33,7 @@ function setCallsForKey(key) {
 }
 
 describe('persistStorageConfigToDb', () => {
-  it('persists the full s3 mapping: plaintext non-secrets, AES-encrypted secret', async () => {
+  it('persists the full s3 mapping as plaintext (secrets included)', async () => {
     const result = await persistStorageConfigToDb({
       type: 's3',
       bucket: 'my-bucket',
@@ -67,18 +58,12 @@ describe('persistStorageConfigToDb', () => {
     expect(setCallsForKey('AWS_REGION')).toEqual(['us-east-1']);
     expect(setCallsForKey('AWS_ACCESS_KEY_ID')).toEqual(['ak123']);
     expect(setCallsForKey('S3_ENDPOINT')).toEqual(['https://minio.local']);
-
-    const secretStored = setCallsForKey('AWS_SECRET_ACCESS_KEY');
-    expect(secretStored).toHaveLength(1);
-    const payload = JSON.parse(secretStored[0]);
-    expect(payload.enc).toBe('aes-256-gcm');
-    expect(decryptSecret(payload, 'test-master-key')).toBe('super-secret');
-    expect(secretStored[0]).not.toContain('super-secret');
+    expect(setCallsForKey('AWS_SECRET_ACCESS_KEY')).toEqual(['super-secret']);
 
     expect(mockResolver.invalidateCache).toHaveBeenCalledWith(result.persisted);
   });
 
-  it('persists the webdav mapping with the password encrypted', async () => {
+  it('persists the webdav mapping with the password as plaintext', async () => {
     const result = await persistStorageConfigToDb({
       type: 'webdav',
       url: 'https://dav.example.com',
@@ -98,8 +83,7 @@ describe('persistStorageConfigToDb', () => {
     expect(setCallsForKey('WEBDAV_URL')).toEqual(['https://dav.example.com']);
     expect(setCallsForKey('WEBDAV_USERNAME')).toEqual(['dav-user']);
     expect(setCallsForKey('WEBDAV_AUTH_TYPE')).toEqual(['digest']);
-    const passStored = setCallsForKey('WEBDAV_PASSWORD');
-    expect(decryptSecret(JSON.parse(passStored[0]), 'test-master-key')).toBe('dav-pass');
+    expect(setCallsForKey('WEBDAV_PASSWORD')).toEqual(['dav-pass']);
   });
 
   it('skips env-sourced keys and reports them in skippedEnvSourced', async () => {
@@ -141,24 +125,6 @@ describe('persistStorageConfigToDb', () => {
 
     expect(result.persisted).not.toContain('S3_ENDPOINT');
     expect(setCallsForKey('S3_ENDPOINT')).toEqual([]);
-  });
-
-  it('throws (missing master key) when a secret must be persisted and encrypt_secret_key is unset', async () => {
-    delete process.env.encrypt_secret_key;
-
-    await expect(
-      persistStorageConfigToDb({
-        type: 's3',
-        bucket: 'b',
-        region: 'r',
-        accessKey: 'ak',
-        secretKey: 'sk',
-      })
-    ).rejects.toThrow(/encrypt_secret_key is not set/);
-
-    // The secret was never written.
-    expect(setCallsForKey('AWS_SECRET_ACCESS_KEY')).toEqual([]);
-    expect(mockResolver.invalidateCache).not.toHaveBeenCalled();
   });
 
   it('returns empty results and skips invalidateCache for an unknown dest type', async () => {

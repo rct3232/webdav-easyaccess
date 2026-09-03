@@ -149,7 +149,6 @@ describe('writeEnv', () => {
 
   it('exports a frozen allowlist of wizard-writable keys', () => {
     expect(WIZARD_WRITABLE_KEYS).toContain('JWT_SECRET');
-    expect(WIZARD_WRITABLE_KEYS).toContain('encrypt_secret_key');
     expect(WIZARD_WRITABLE_KEYS).toContain('AWS_SECRET_ACCESS_KEY');
     expect(WIZARD_WRITABLE_KEYS).toContain('WEBDAV_PASSWORD');
     expect(WIZARD_WRITABLE_KEYS).toContain('EMAIL_FROM_NAME');
@@ -160,6 +159,7 @@ describe('writeEnv', () => {
     expect(WIZARD_WRITABLE_KEYS).not.toContain('WEA_PG_HOST');
     expect(WIZARD_WRITABLE_KEYS).not.toContain('WEA_PG_PASSWORD');
     expect(WIZARD_WRITABLE_KEYS).not.toContain('ADMIN_DEFAULT_PASSWORD');
+    expect(WIZARD_WRITABLE_KEYS).not.toContain('encrypt_secret_key');
     expect(Object.isFrozen(WIZARD_WRITABLE_KEYS)).toBe(true);
   });
 });

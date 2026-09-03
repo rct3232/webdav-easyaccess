@@ -359,8 +359,9 @@ export function execScratchSqlite(dbPath: string, sql: string): Promise<void> {
  * app's webdav blob store resolves WEBDAV_URL from the DB (to `url`) and
  * `setup_complete` derives true. The settings table schema mirrors the
  * converted DDL (CREATE TABLE IF NOT EXISTS makes the boot re-init a no-op).
- * WEBDAV_PASSWORD is stored as plaintext (legacy row) so key-lost restart cases
- * still boot complete. Defaults `url` to the shared WEBDAV_BASE.
+ * App-layer field encryption was removed, so secret rows (WEBDAV_PASSWORD) are
+ * stored as plaintext and read back directly by the server. Defaults `url` to
+ * the shared WEBDAV_BASE.
  */
 export async function seedWebdavSettings(scratchDir: string, url = WEBDAV_BASE): Promise<void> {
   const dbPath = path.join(scratchDir, 'webdav.db');

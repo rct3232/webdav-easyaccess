@@ -18,7 +18,6 @@ const { closeSqliteDb } = require('../../store/storage');
 const Settings = require('../../models/Settings');
 const User = require('../../models/User');
 const backendProbe = require('../../infrastructure/backendProbe');
-const { isEncryptedPayload, decryptSecret } = require('../../utils/configEncryption');
 
 // Keys the CLI boot/apply reads or writes. Saved at load time (after the
 // shared test-setup.js ran) and restored after every test.
@@ -32,7 +31,6 @@ const MANAGED_KEYS = [
   'WEA_FILE_STORAGE',
   'JWT_SECRET',
   'JWT_EXPIRES_IN',
-  'encrypt_secret_key',
   'S3_BUCKET',
   'AWS_REGION',
   'AWS_ACCESS_KEY_ID',
@@ -285,7 +283,7 @@ describe('setup.js apply guard rails', () => {
 });
 
 describe('setup.js apply happy path (throwaway sqlite store)', () => {
-  it('applies the full webdav config, writes .env 0600, upserts encrypted DB rows, updates the admin password, and flips status to complete', async () => {
+  it('applies the full webdav config, writes .env 0600, upserts plaintext DB rows, updates the admin password, and flips status to complete', async () => {
     const { envPath } = freshScratchEnv();
     const { output, lines } = makeOutput();
     const args = [
@@ -323,7 +321,7 @@ describe('setup.js apply happy path (throwaway sqlite store)', () => {
     expect(fs.statSync(envPath).mode & 0o777).toBe(0o600);
     const env = readEnvFile(envPath);
     expect(env.JWT_SECRET).toBe('explicit-jwt-secret');
-    expect(env.encrypt_secret_key).toMatch(/^[a-f0-9]{64}$/);
+    expect(env).not.toHaveProperty('encrypt_secret_key');
     for (const key of [
       'WEA_STORAGE_BACKEND',
       'WEA_FILE_STORAGE',
@@ -344,13 +342,8 @@ describe('setup.js apply happy path (throwaway sqlite store)', () => {
     expect(rows.CORS_ORIGINS).toBe('http://localhost:3000');
     expect(rows.JWT_EXPIRES_IN).toBe('30m');
     expect(rows.EMAIL_HOST).toBe('smtp.example.com');
-
-    const webdavSecret = JSON.parse(rows.WEBDAV_PASSWORD);
-    const emailSecret = JSON.parse(rows.EMAIL_PASSWORD);
-    expect(isEncryptedPayload(webdavSecret)).toBe(true);
-    expect(isEncryptedPayload(emailSecret)).toBe(true);
-    expect(decryptSecret(webdavSecret, env.encrypt_secret_key)).toBe('dav-pass');
-    expect(decryptSecret(emailSecret, env.encrypt_secret_key)).toBe('mail-pass');
+    expect(rows.WEBDAV_PASSWORD).toBe('dav-pass');
+    expect(rows.EMAIL_PASSWORD).toBe('mail-pass');
     expect(rows).not.toHaveProperty('JWT_SECRET');
 
     const admin = await User.findByUsername('admin');
@@ -388,9 +381,9 @@ describe('setup.js apply happy path (throwaway sqlite store)', () => {
 
     const env = readEnvFile(envPath);
     expect(env.JWT_SECRET).toMatch(/^[a-f0-9]{64}$/);
+    expect(env).not.toHaveProperty('encrypt_secret_key');
     const rows = await Settings.getAll();
-    const secret = JSON.parse(rows.WEBDAV_PASSWORD);
-    expect(decryptSecret(secret, env.encrypt_secret_key)).toBe('env-webdav-pass');
+    expect(rows.WEBDAV_PASSWORD).toBe('env-webdav-pass');
 
     const admin = await User.findByUsername('admin');
     expect(await bcrypt.compare('env-admin-pass', admin.password)).toBe(true);

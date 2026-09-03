@@ -5,9 +5,10 @@
  *
  * Detects drift between the .env values and the metadata DB `settings` rows
  * for every non-T0 config-registry key, reports it (default `--check` mode,
- * exit 1 on drift or key-loss alerts), and optionally reconciles the DB rows
- * to mirror .env (`--apply --yes`). T0 keys are .env-owned and are never
- * reported or written; DB rows are never deleted.
+ * exit 1 on drift), and optionally reconciles the DB rows to mirror .env
+ * (`--apply --yes`). DB rows are plaintext (secret values included), so every
+ * comparison is a plaintext string comparison. T0 keys are .env-owned and are
+ * never reported or written; DB rows are never deleted.
  *
  * @see docs/features/config-sync.md
  */
@@ -23,7 +24,6 @@ const { initMetadataSchema } = require('../store/bootstrap');
 const {
   buildConfigSyncReport,
   syncConfigSyncEnv,
-  ConfigSyncAbortError,
 } = require('../domains/admin/services/configSyncService');
 
 // This file lives in <server>/scripts, so the server root is one level up —
@@ -44,8 +44,7 @@ Flags:
   --check   report .env vs DB settings drift (default mode, read-only)
   --json    emit a machine-readable JSON report instead of human-readable lines
   --apply   write mode: upsert a DB row for every non-T0 registry key set in
-            .env so it mirrors .env (secrets re-encrypted under encrypt_secret_key);
-            requires --yes
+            .env so it mirrors .env (plaintext, secrets included); requires --yes
   --yes     confirm --apply writes; without it the run is a usage error (exit 2)
 
 Scope and safety:
@@ -53,12 +52,11 @@ Scope and safety:
     are compared or written; T0 keys are .env-only and excluded from the report
   - .env always wins (D1): a DB row under an env-set key is a shadow copy
   - DB rows are never deleted; secrets are always masked (****) in output
-  - encrypted DB rows without a usable encrypt_secret_key are reported as
-    key-lost alerts (exit 1); their values are never shown
+  - every value comparison is plaintext string equality — DB rows are plaintext
 
 Exit codes:
-  0 no drift and no alerts (or --apply completed with a clean post-apply check)
-  1 drift or key-lost alert found, or apply aborted/failed
+  0 no drift (or --apply completed with a clean post-apply check)
+  1 drift found, or a write failed (apply aborted)
   2 usage error (unknown flag, --apply without --yes)
 `;
 
@@ -132,7 +130,6 @@ function renderCheck(output, report, json) {
   output.log('configSync: .env vs DB settings (non-T0 registry keys)');
   const groups = [
     ['DRIFT', ['differs']],
-    ['ALERTS', ['key-lost']],
     ['INFORMATIONAL', ['shadowed', 'env-only', 'db-only']],
   ];
   for (const [label, statuses] of groups) {
@@ -148,9 +145,7 @@ function renderCheck(output, report, json) {
   }
   const s = report.summary;
   output.log(
-    `summary: drift: ${s.drift}, alerts: ${s.alerts}, informational: ${
-      s.shadowed + s.envOnly + s.dbOnly
-    }`
+    `summary: drift: ${s.drift}, informational: ${s.shadowed + s.envOnly + s.dbOnly}`
   );
   output.log(`exit code: ${report.exitCode}`);
 }
@@ -162,7 +157,6 @@ async function runCheck(output, json) {
     const report = await buildConfigSyncReport({
       settings: Settings,
       envValueOf: (key) => process.env[key],
-      masterKey: process.env.encrypt_secret_key,
     });
     renderCheck(output, report, json);
     return report.exitCode;
@@ -188,7 +182,6 @@ async function runApply(output, json) {
   }
 
   const envValueOf = (key) => process.env[key];
-  const masterKey = process.env.encrypt_secret_key;
 
   let writes;
   let report;
@@ -196,13 +189,8 @@ async function runApply(output, json) {
     ({ writes, report } = await syncConfigSyncEnv({
       settings: Settings,
       envValueOf,
-      masterKey,
     }));
   } catch (error) {
-    if (error instanceof ConfigSyncAbortError) {
-      output.error(`configSync --apply aborted: ${error.message}`);
-      return 1;
-    }
     output.error(`configSync --apply failed: ${describeError(error)}`);
     return 1;
   }
@@ -225,7 +213,7 @@ async function runApply(output, json) {
 /**
  * CLI entry point. Modes:
  *   --help: print the reference, exit 0 (no store boot).
- *   no flags / --check: read-only drift report; exit 1 on drift or key-lost.
+ *   no flags / --check: read-only drift report; exit 1 on drift.
  *   --apply --yes: reconcile DB rows to mirror .env, then re-run the check.
  *
  * @param {string[]} argv process.argv.slice(2)

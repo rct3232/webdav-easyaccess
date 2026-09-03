@@ -20,9 +20,7 @@ const {
 const {
   buildConfigSyncReport,
   syncConfigSyncEnv,
-  ConfigSyncAbortError,
 } = require('../services/configSyncService');
-const { encryptSecret, hasEncryptedRows } = require('../../../utils/configEncryption');
 const {
   runProbe,
   classifyToHealthCode,
@@ -107,24 +105,18 @@ const isAdmin = asyncHandler(async (req, res, next) => {
   next();
 });
 
-// Get effective config (masked secrets, source/tier/secret per registry key)
-// plus a key-lost warning: encrypted DB secret rows exist but the master key
-// (encrypt_secret_key) is missing, so those secrets are undecryptable.
+// Get effective config (masked secrets, source/tier/secret per registry key).
 router.get(
   '/config',
   authenticateToken,
   isAdmin,
   asyncHandler(async (req, res) => {
-    const resolver = getSharedResolver();
-    const [config, all] = await Promise.all([resolver.getEffectiveConfig(), Settings.getAll()]);
-    res.json({
-      config,
-      key_lost_warning: Boolean(hasEncryptedRows(all) && !process.env.encrypt_secret_key),
-    });
+    const config = await getSharedResolver().getEffectiveConfig();
+    res.json({ config });
   })
 );
 
-// Update allowlisted config keys (write to DB, encrypt secrets, invalidate T2 cache)
+// Update allowlisted config keys (write plaintext to DB, invalidate T2 cache)
 router.put(
   '/config',
   authenticateToken,
@@ -165,19 +157,11 @@ router.put(
       }
 
       if (isSecret(key)) {
-        // Masked/blank secret keeps its existing ciphertext (only-re-encrypt-on-new-value).
+        // Masked/blank secret keeps its existing stored value (keep-existing).
         if (value === undefined || value === null || value === '' || value === '****') {
           continue;
         }
-        const masterKey = process.env.encrypt_secret_key;
-        if (!masterKey) {
-          throw createError(
-            SERVER_ERROR_CODES.admin.configEncryptKeyMissing,
-            HTTP_STATUS.INTERNAL_SERVER_ERROR
-          );
-        }
-        const payload = encryptSecret(String(value), masterKey);
-        await Settings.set(key, JSON.stringify(payload));
+        await Settings.set(key, String(value));
       } else {
         await Settings.set(key, String(value));
       }
@@ -265,16 +249,15 @@ router.get(
     const report = await buildConfigSyncReport({
       settings: Settings,
       envValueOf,
-      masterKey: process.env.encrypt_secret_key,
     });
     res.json(report);
   })
 );
 
 // Env→DB config-sync reconcile — the web equivalent of the CLI --apply --yes.
-// Writes env-sourced non-T0 registry values into the DB settings rows (secrets
-// encrypted), then invalidates the resolver T2 cache for the written keys so
-// the running server observes them immediately.
+// Writes env-sourced non-T0 registry values into the DB settings rows as
+// plaintext (secrets included), then invalidates the resolver T2 cache for the
+// written keys so the running server observes them immediately.
 router.post(
   '/config/sync-from-env',
   authenticateToken,
@@ -285,22 +268,10 @@ router.post(
     const envValueOf = (key) =>
       effective[key]?.source === 'env' ? process.env[key] : undefined;
 
-    let result;
-    try {
-      result = await syncConfigSyncEnv({
-        settings: Settings,
-        envValueOf,
-        masterKey: process.env.encrypt_secret_key,
-      });
-    } catch (error) {
-      if (error instanceof ConfigSyncAbortError) {
-        throw createError(
-          SERVER_ERROR_CODES.admin.configSyncEncryptKeyMissing,
-          HTTP_STATUS.INTERNAL_SERVER_ERROR
-        );
-      }
-      throw error;
-    }
+    const result = await syncConfigSyncEnv({
+      settings: Settings,
+      envValueOf,
+    });
 
     const changedKeys = result.writes.filter((w) => w.status === 'updated').map((w) => w.key);
     if (changedKeys.length > 0) {

@@ -31,7 +31,6 @@ describe('configRegistry', () => {
       ['WEA_PG_PASSWORD', 'T0'],
       ['WEA_PG_SSL', 'T0'],
       ['NODE_ENV', 'T0'],
-      ['encrypt_secret_key', 'T0'],
       ['JWT_SECRET', 'T0'],
     ])('%s is %s', (key, tier) => {
       expect(isTier(key, TIER[tier])).toBe(true);
@@ -80,7 +79,6 @@ describe('configRegistry', () => {
     it.each([
       'WEA_PG_PASSWORD',
       'JWT_SECRET',
-      'encrypt_secret_key',
       'AWS_SECRET_ACCESS_KEY',
       'WEBDAV_PASSWORD',
       'EMAIL_PASSWORD',

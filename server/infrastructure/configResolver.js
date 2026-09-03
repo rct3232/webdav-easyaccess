@@ -1,7 +1,6 @@
 'use strict';
 
 const { TIER, CONFIG_ENTRIES, getEntry } = require('./configRegistry');
-const { decryptSecret, isEncryptedPayload } = require('../utils/configEncryption');
 
 const SECRET_MASK = '****';
 
@@ -9,41 +8,15 @@ function isSet(value) {
   return value !== undefined && value !== '';
 }
 
-function tryParseJson(value) {
-  if (typeof value !== 'string') return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value;
-  }
-}
-
 /**
- * Resolve a settings row value for an entry.
- *
- * - plaintext key: the row value (string; boolean passthrough for
- *   registration_enabled) is returned as-is.
- * - secret key: an encrypted payload (object, or a JSON string thereof — the
- *   practical artifact of settingsStore.set with a serialized payload) is
- *   decrypted with env.encrypt_secret_key. A missing master key, or a
- *   decryption failure, yields undefined (never throws). A legacy plaintext
- *   string is returned as-is.
+ * Resolve a settings row value for an entry. Settings rows store plaintext
+ * string values; the stored value is returned as-is (no decryption — there is
+ * no encryption at rest). Secrets are masked presentation-side by the callers
+ * using the registry `secret` flag.
  */
-function resolveDbValue(raw, entry, env) {
+function resolveDbValue(raw) {
   if (raw === null || raw === undefined) return undefined;
-  if (!entry.secret) return raw;
-
-  const payload = tryParseJson(raw);
-  if (isEncryptedPayload(payload)) {
-    const masterKey = env.encrypt_secret_key;
-    if (!masterKey) return undefined;
-    try {
-      return decryptSecret(payload, masterKey);
-    } catch {
-      return undefined;
-    }
-  }
-  return typeof raw === 'string' ? raw : String(raw);
+  return raw;
 }
 
 /**
@@ -106,7 +79,7 @@ function createConfigResolver({ settingsStore, env = process.env, ttlMs = 5000 }
     if (entry.tier === TIER.T0) return undefined;
 
     const raw = await readRow(key);
-    const resolved = resolveDbValue(raw, entry, env);
+    const resolved = resolveDbValue(raw);
     if (resolved !== undefined) return resolved;
     return entry.default;
   }
@@ -133,7 +106,7 @@ function createConfigResolver({ settingsStore, env = process.env, ttlMs = 5000 }
         source = 'env';
       } else {
         const raw = all[key] === null || all[key] === undefined ? undefined : all[key];
-        const resolved = resolveDbValue(raw, entry, env);
+        const resolved = resolveDbValue(raw);
         if (resolved !== undefined) {
           value = resolved;
           source = 'db';
@@ -175,7 +148,7 @@ function createConfigResolver({ settingsStore, env = process.env, ttlMs = 5000 }
     if (entry.tier === TIER.T0) return undefined;
     const hit = cache.get(key);
     const resolved =
-      hit && hit.value !== undefined ? resolveDbValue(hit.value, entry, env) : undefined;
+      hit && hit.value !== undefined ? resolveDbValue(hit.value) : undefined;
     if (resolved !== undefined) return resolved;
     return entry.default;
   }
@@ -222,7 +195,7 @@ function setSharedResolver(resolver) {
  * Copy the effective value of every T1 (boot-frozen) registry key into the
  * given env object (default process.env) so require-time consumers see
  * DB-sourced values. Called at boot only when setup is complete, after
- * loadAll() primed the cache — DB secrets are decrypted here. T0 keys are
+ * loadAll() primed the cache. T0 keys are
  * never copied (env-only by contract) and T2 keys are excluded so they stay
  * lazy (per-request resolver reads). Keys already present in the env win and
  * are never overwritten (D1). Returns the list of keys written.

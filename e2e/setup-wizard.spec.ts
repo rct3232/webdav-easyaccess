@@ -184,17 +184,14 @@ async function driveWizard(page: Page, config: CaseConfig): Promise<void> {
  * The scratch `.env` written BEFORE boot 1 (D6/D7): the metadata DB connection
  * is `.env`-owned and must be declared up front — the wizard serves non-T0 only
  * and apply never writes WEA_STORAGE_BACKEND / WEA_PG_* / WEA_SQLITE_PATH.
- * PORT/NODE_ENV mirror what spawnScratchServer sets; JWT_SECRET and
- * encrypt_secret_key are pre-provisioned so apply keeps them (only-re-encrypt /
- * keep-existing master key). `encrypt_secret_key` is a fixed 64-hex value for
- * deterministic assertions.
+ * PORT/NODE_ENV mirror what spawnScratchServer sets; JWT_SECRET is
+ * pre-provisioned so apply keeps the existing value.
  */
 function buildPreBootEnv(scratch: string, config: CaseConfig): Record<string, string> {
   const env: Record<string, string> = {
     JWT_SECRET: config.jwtSecret,
     PORT: String(scratchPort),
     NODE_ENV: 'test',
-    encrypt_secret_key: 'a'.repeat(64),
   };
 
   if (config.metadata.backend === 'postgresql') {
@@ -258,8 +255,9 @@ async function isPgReachable(): Promise<boolean> {
 
 /**
  * Non-T0 wizard values that must be upserted into the metadata DB `settings`
- * table (row key = raw env var name). Secrets are stored encrypted (asserted
- * separately as an aes-256-gcm payload, never plaintext).
+ * table (row key = raw env var name). Secrets are stored as plaintext
+ * (app-layer encryption was removed) and asserted verbatim against the value
+ * the wizard wrote.
  */
 function buildExpectedDbSettings(config: CaseConfig): Record<string, string> {
   const expected: Record<string, string> = {
@@ -288,27 +286,20 @@ function buildExpectedDbSettings(config: CaseConfig): Record<string, string> {
   return expected;
 }
 
-function secretKeysFor(config: CaseConfig): string[] {
-  return config.file.backend === 'webdav' ? ['WEBDAV_PASSWORD'] : ['AWS_SECRET_ACCESS_KEY'];
-}
-
-/** sqlite stores secret rows raw (payload JSON string); PG jsonb returns the same JSON string. */
-function tryParseJson(raw: unknown): unknown {
-  if (typeof raw !== 'string') return raw;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return raw;
+/** The secret DB rows the wizard writes, as [row key, plaintext value] pairs. */
+function secretRowsFor(config: CaseConfig): Array<[string, string]> {
+  if (config.file.backend === 'webdav') {
+    return [['WEBDAV_PASSWORD', config.file.password]];
   }
+  return [['AWS_SECRET_ACCESS_KEY', config.file.secretAccessKey]];
 }
 
 /**
  * Assert the scratch `.env` after apply. apply's only `.env` writes under D7
- * are JWT_SECRET (already pre-written with the same value) and
- * encrypt_secret_key when absent — both are pre-provisioned here, so the parsed
- * file must equal the pre-boot map exactly: the backend keys
- * (WEA_STORAGE_BACKEND, WEA_SQLITE_PATH / WEA_PG_*) are still present and
- * unmodified by apply.
+ * are JWT_SECRET (already pre-written with the same value) — it is
+ * pre-provisioned here, so the parsed file must equal the pre-boot map exactly:
+ * the backend keys (WEA_STORAGE_BACKEND, WEA_SQLITE_PATH / WEA_PG_*) are still
+ * present and unmodified by apply.
  */
 function assertScratchEnv(scratchDir: string, config: CaseConfig): void {
   const env = readEnvFile(scratchDir);
@@ -318,7 +309,7 @@ function assertScratchEnv(scratchDir: string, config: CaseConfig): void {
 /** Assert the non-T0 wizard values landed in the metadata DB settings table. */
 async function assertScratchDbSettings(scratch: string, config: CaseConfig): Promise<void> {
   const expected = buildExpectedDbSettings(config);
-  const secretKeys = secretKeysFor(config);
+  const secretRows = secretRowsFor(config);
 
   if (config.metadata.backend === 'postgresql') {
     const rows = await queryScratchPg<{ key: string; value: unknown }>(
@@ -329,12 +320,8 @@ async function assertScratchDbSettings(scratch: string, config: CaseConfig): Pro
     for (const [key, value] of Object.entries(expected)) {
       expect(settings.get(key), `settings.${key}`).toBe(value);
     }
-    for (const key of secretKeys) {
-      const raw = settings.get(key);
-      expect(raw, `settings.${key} (encrypted)`).toBeDefined();
-      expect(tryParseJson(raw), `settings.${key} (encrypted)`).toMatchObject({
-        enc: 'aes-256-gcm',
-      });
+    for (const [key, value] of secretRows) {
+      expect(settings.get(key), `settings.${key} (plaintext)`).toBe(value);
     }
     return;
   }
@@ -344,16 +331,13 @@ async function assertScratchDbSettings(scratch: string, config: CaseConfig): Pro
     dbPath,
     'SELECT key, value FROM settings'
   );
-  // sqlite stores values RAW (no JSON stringify): plaintext stays a plain
-  // string (compare verbatim); a secret is the payload JSON string (parse once).
+  // sqlite stores values RAW: plaintext stays a plain string (compare verbatim).
   const byKey = new Map(rows.map((r) => [r.key, r.value]));
   for (const [key, value] of Object.entries(expected)) {
     expect(byKey.get(key), `settings.${key}`).toBe(value);
   }
-  for (const key of secretKeys) {
-    const raw = byKey.get(key);
-    expect(raw, `settings.${key} (encrypted)`).toBeDefined();
-    expect(tryParseJson(raw), `settings.${key} (encrypted)`).toMatchObject({ enc: 'aes-256-gcm' });
+  for (const [key, value] of secretRows) {
+    expect(byKey.get(key), `settings.${key} (plaintext)`).toBe(value);
   }
 }
 
@@ -610,6 +594,7 @@ test.describe('first-run setup wizard (E2E-SETUP-001..004)', () => {
     // Self-contained: repeat the sqlite+webdav flow (the Case 1 shape) to reach
     // a completed setup, then assert the security gate. Per-case lifecycle is
     // preserved (PLAN.md §7.2 step 8 cleans up after every case).
+    const webdavUrl = buildWebdavUrl('case-4-security-webdav');
     const config: CaseConfig = {
       caseId: 'case-4-security-webdav',
       adminPassword: 'SetupE2e!123',
@@ -617,7 +602,7 @@ test.describe('first-run setup wizard (E2E-SETUP-001..004)', () => {
       metadata: { backend: 'sqlite' },
       file: {
         backend: 'webdav',
-        url: buildWebdavUrl('case-4-security-webdav'),
+        url: webdavUrl,
         username: WEBDAV_USERNAME,
         password: WEBDAV_PASSWORD,
       },
@@ -633,7 +618,7 @@ test.describe('first-run setup wizard (E2E-SETUP-001..004)', () => {
       const testRes = await req.post('/api/setup/test', {
         data: {
           target: 'webdav',
-          url: config.file.url,
+          url: webdavUrl,
           username: WEBDAV_USERNAME,
           password: WEBDAV_PASSWORD,
         },

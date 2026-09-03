@@ -123,11 +123,10 @@ describe('adminService', () => {
   });
 
   describe('getConfigStatus', () => {
-    it('returns the full response payload including key_lost_warning', async () => {
+    it('returns the full response payload from GET /admin/config', async () => {
       get.mockResolvedValueOnce({
         data: {
           config: { PORT: { value: '5001', source: 'default', tier: 'T1', secret: false } },
-          key_lost_warning: true,
         },
       });
 
@@ -136,7 +135,6 @@ describe('adminService', () => {
       expect(get).toHaveBeenCalledWith('/admin/config');
       expect(result).toEqual({
         config: { PORT: { value: '5001', source: 'default', tier: 'T1', secret: false } },
-        key_lost_warning: true,
       });
     });
   });

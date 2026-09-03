@@ -12,6 +12,7 @@ jest.mock('../../../../models/Settings', () => ({
   get: jest.fn(),
   set: jest.fn().mockResolvedValue(undefined),
   getAll: jest.fn().mockResolvedValue({}),
+  listRows: jest.fn().mockResolvedValue([]),
 }));
 jest.mock('../../../../infrastructure/backendProbe', () => ({
   ...jest.requireActual('../../../../infrastructure/backendProbe'),
@@ -406,6 +407,237 @@ describe('POST /api/admin/config/test', () => {
       code: 'auth',
       reason: 'AccessDenied',
     });
+  });
+});
+
+describe('GET /api/admin/config/sync-report', () => {
+  afterEach(() => {
+    delete process.env.PORT;
+    delete process.env.WEBDAV_PASSWORD;
+  });
+
+  it('returns 401 when not authenticated', async () => {
+    const res = await request(app).get('/api/admin/config/sync-report');
+
+    expect(res.status).toBe(401);
+    expect(res.body.errorCode).toBeDefined();
+    expect(Settings.listRows).not.toHaveBeenCalled();
+  });
+
+  it('classifies env-sourced keys from the resolver (env-only, exit 0)', async () => {
+    process.env.PORT = '5001';
+    fakeResolver.getEffectiveConfig.mockResolvedValue({
+      PORT: { value: '5001', source: 'env', tier: 'T1', secret: false },
+    });
+    Settings.listRows.mockResolvedValue([]);
+
+    const res = await request(app)
+      .get('/api/admin/config/sync-report')
+      .set('Authorization', `Bearer ${buildToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      findings: [{ key: 'PORT', status: 'env-only', secret: false, dbUpdatedAt: null }],
+      summary: {
+        drift: 0,
+        alerts: 0,
+        shadowed: 0,
+        envOnly: 1,
+        dbOnly: 0,
+        total: 1,
+      },
+      exitCode: 0,
+    });
+  });
+
+  it('reports drift (differs, exit 1) when the DB row differs from the env value', async () => {
+    process.env.PORT = '5001';
+    fakeResolver.getEffectiveConfig.mockResolvedValue({
+      PORT: { value: '5001', source: 'env', tier: 'T1', secret: false },
+    });
+    Settings.listRows.mockResolvedValue([
+      { key: 'PORT', value: '6001', updated_at: new Date('2026-09-03T10:00:00.000Z') },
+    ]);
+
+    const res = await request(app)
+      .get('/api/admin/config/sync-report')
+      .set('Authorization', `Bearer ${buildToken()}`);
+
+    expect(res.status).toBe(200);
+    const port = res.body.findings.find((f) => f.key === 'PORT');
+    expect(port.status).toBe('differs');
+    expect(port.dbUpdatedAt).toBe('2026-09-03T10:00:00.000Z');
+    expect(res.body.summary.drift).toBe(1);
+    expect(res.body.exitCode).toBe(1);
+  });
+
+  it('treats a DB-backed T1 key present in process.env as db-only, not env-set', async () => {
+    process.env.PORT = '5001';
+    fakeResolver.getEffectiveConfig.mockResolvedValue({
+      PORT: { value: '5001', source: 'db', tier: 'T1', secret: false },
+    });
+    Settings.listRows.mockResolvedValue([
+      { key: 'PORT', value: '5001', updated_at: new Date('2026-09-03T10:00:00.000Z') },
+    ]);
+
+    const res = await request(app)
+      .get('/api/admin/config/sync-report')
+      .set('Authorization', `Bearer ${buildToken()}`);
+
+    expect(res.status).toBe(200);
+    const port = res.body.findings.find((f) => f.key === 'PORT');
+    expect(port.status).toBe('db-only');
+    expect(res.body.summary.envOnly).toBe(0);
+    expect(res.body.exitCode).toBe(0);
+  });
+
+  it('reports key-lost (alert, exit 1) for an undecryptable db-only secret row', async () => {
+    delete process.env.encrypt_secret_key;
+    fakeResolver.getEffectiveConfig.mockResolvedValue({});
+    Settings.listRows.mockResolvedValue([
+      {
+        key: 'EMAIL_PASSWORD',
+        value: JSON.stringify(encryptSecret('hidden', 'some-lost-key')),
+        updated_at: new Date('2026-09-03T10:00:00.000Z'),
+      },
+    ]);
+
+    const res = await request(app)
+      .get('/api/admin/config/sync-report')
+      .set('Authorization', `Bearer ${buildToken()}`);
+
+    expect(res.status).toBe(200);
+    const secret = res.body.findings.find((f) => f.key === 'EMAIL_PASSWORD');
+    expect(secret.status).toBe('key-lost');
+    expect(secret.secret).toBe(true);
+    expect(secret.dbUpdatedAt).toBe('2026-09-03T10:00:00.000Z');
+    expect(res.body.summary.alerts).toBe(1);
+    expect(res.body.exitCode).toBe(1);
+    expect(JSON.stringify(res.body)).not.toContain('hidden');
+  });
+});
+
+describe('POST /api/admin/config/sync-from-env', () => {
+  afterEach(() => {
+    delete process.env.PORT;
+    delete process.env.WEBDAV_PASSWORD;
+    delete process.env.JWT_SECRET;
+  });
+
+  it('returns 401 when not authenticated', async () => {
+    const res = await request(app).post('/api/admin/config/sync-from-env');
+
+    expect(res.status).toBe(401);
+    expect(res.body.errorCode).toBeDefined();
+    expect(Settings.set).not.toHaveBeenCalled();
+  });
+
+  it('mirrors an env-sourced plaintext key into the DB and invalidates the cache', async () => {
+    process.env.PORT = '5001';
+    fakeResolver.getEffectiveConfig.mockResolvedValue({
+      PORT: { value: '5001', source: 'env', tier: 'T1', secret: false },
+    });
+    Settings.listRows.mockResolvedValue([]);
+
+    const res = await request(app)
+      .post('/api/admin/config/sync-from-env')
+      .set('Authorization', `Bearer ${buildToken()}`)
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(Settings.set).toHaveBeenCalledTimes(1);
+    expect(Settings.set).toHaveBeenCalledWith('PORT', '5001');
+    expect(fakeResolver.invalidateCache).toHaveBeenCalledWith(['PORT']);
+    expect(res.body.writes).toEqual([
+      { key: 'PORT', secret: false, status: 'updated' },
+    ]);
+    expect(res.body.report.exitCode).toBe(0);
+    expect(res.body.messageCode).toBe(SERVER_MESSAGE_CODES.admin.configSyncDone);
+  });
+
+  it('reports unchanged (no write) when the DB row already equals the env value', async () => {
+    process.env.PORT = '5001';
+    fakeResolver.getEffectiveConfig.mockResolvedValue({
+      PORT: { value: '5001', source: 'env', tier: 'T1', secret: false },
+    });
+    Settings.listRows.mockResolvedValue([
+      { key: 'PORT', value: '5001', updated_at: new Date('2026-09-03T10:00:00.000Z') },
+    ]);
+
+    const res = await request(app)
+      .post('/api/admin/config/sync-from-env')
+      .set('Authorization', `Bearer ${buildToken()}`)
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(Settings.set).not.toHaveBeenCalled();
+    expect(fakeResolver.invalidateCache).not.toHaveBeenCalled();
+    expect(res.body.writes).toEqual([
+      { key: 'PORT', secret: false, status: 'unchanged' },
+    ]);
+    expect(res.body.report.exitCode).toBe(0);
+  });
+
+  it('returns 500 configSyncEncryptKeyMissing when an env-set secret has no master key', async () => {
+    process.env.WEBDAV_PASSWORD = 'dav-pass';
+    delete process.env.encrypt_secret_key;
+    fakeResolver.getEffectiveConfig.mockResolvedValue({
+      WEBDAV_PASSWORD: { value: '****', source: 'env', tier: 'T2', secret: true },
+    });
+    Settings.listRows.mockResolvedValue([]);
+
+    const res = await request(app)
+      .post('/api/admin/config/sync-from-env')
+      .set('Authorization', `Bearer ${buildToken()}`)
+      .send({});
+
+    expect(res.status).toBe(500);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.configSyncEncryptKeyMissing);
+    expect(Settings.set).not.toHaveBeenCalled();
+    expect(fakeResolver.invalidateCache).not.toHaveBeenCalled();
+  });
+
+  it('encrypts an env-set secret under the master key', async () => {
+    process.env.WEBDAV_PASSWORD = 'dav-pass';
+    process.env.encrypt_secret_key = 'test-master-key';
+    fakeResolver.getEffectiveConfig.mockResolvedValue({
+      WEBDAV_PASSWORD: { value: '****', source: 'env', tier: 'T2', secret: true },
+    });
+    Settings.listRows.mockResolvedValue([]);
+
+    const res = await request(app)
+      .post('/api/admin/config/sync-from-env')
+      .set('Authorization', `Bearer ${buildToken()}`)
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(Settings.set).toHaveBeenCalledTimes(1);
+    const [calledKey, storedValue] = Settings.set.mock.calls[0];
+    expect(calledKey).toBe('WEBDAV_PASSWORD');
+    expect(decryptSecret(JSON.parse(storedValue), 'test-master-key')).toBe('dav-pass');
+    expect(fakeResolver.invalidateCache).toHaveBeenCalledWith(['WEBDAV_PASSWORD']);
+    expect(res.body.writes).toEqual([
+      { key: 'WEBDAV_PASSWORD', secret: true, status: 'updated' },
+    ]);
+    expect(res.body.messageCode).toBe(SERVER_MESSAGE_CODES.admin.configSyncDone);
+  });
+
+  it('never writes T0 keys even when env-sourced', async () => {
+    process.env.JWT_SECRET = 'jwt-secret';
+    fakeResolver.getEffectiveConfig.mockResolvedValue({
+      JWT_SECRET: { value: '****', source: 'env', tier: 'T0', secret: true },
+    });
+    Settings.listRows.mockResolvedValue([]);
+
+    const res = await request(app)
+      .post('/api/admin/config/sync-from-env')
+      .set('Authorization', `Bearer ${buildToken()}`)
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(Settings.set).not.toHaveBeenCalled();
+    expect(fakeResolver.invalidateCache).not.toHaveBeenCalled();
+    expect(res.body.writes).toEqual([]);
   });
 });
 

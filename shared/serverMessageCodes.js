@@ -66,6 +66,7 @@ const SERVER_ERROR_CODES = {
     configInvalidPayload: P('serverErrors.admin', 'configInvalidPayload'),
     configEncryptKeyMissing: P('serverErrors.admin', 'configEncryptKeyMissing'),
     configEnvSourcedProtected: P('serverErrors.admin', 'configEnvSourcedProtected'),
+    configSyncEncryptKeyMissing: P('serverErrors.admin', 'configSyncEncryptKeyMissing'),
   },
   share: {
     shareLinkNotFound: P('serverErrors.share', 'shareLinkNotFound'),
@@ -222,6 +223,7 @@ const SERVER_MESSAGE_CODES = {
     repairSyncDone: P('serverMessages.admin', 'repairSyncDone'),
     migrationCancelled: P('serverMessages.admin', 'migrationCancelled'),
     configSaved: P('serverMessages.admin', 'configSaved'),
+    configSyncDone: P('serverMessages.admin', 'configSyncDone'),
   },
   folders: {
     createSuccess: P('serverMessages.folders', 'createSuccess'),

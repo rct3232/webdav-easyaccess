@@ -34,6 +34,16 @@ export const updateConfig = async (values) => {
   return response.data;
 };
 
+export const getConfigSyncReport = async () => {
+  const response = await get('/admin/config/sync-report');
+  return response.data;
+};
+
+export const syncConfigFromEnv = async () => {
+  const response = await post('/admin/config/sync-from-env', {});
+  return response.data;
+};
+
 export const approveUser = async (userId) => {
   await post(`/admin/users/${userId}/approve`);
 };

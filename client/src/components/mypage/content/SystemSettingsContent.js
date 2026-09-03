@@ -23,9 +23,13 @@ import CategoryIcon from '@mui/icons-material/Category';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import Storage from '@mui/icons-material/Storage';
 import SyncAlt from '@mui/icons-material/SyncAlt';
+import AutorenewIcon from '@mui/icons-material/Autorenew';
 import * as adminService from '../../../services/adminService';
 import { getMigrationPresence } from '../../../services/migrationService';
-import { getServerErrorDisplay } from '../../../utils/errorUtils';
+import {
+  getServerErrorDisplay,
+  getServerMessageDisplay,
+} from '../../../utils/errorUtils';
 import {
   getShowHiddenFiles,
   setShowHiddenFiles as saveShowHiddenFiles,
@@ -50,6 +54,11 @@ const SystemSettingsContent = () => {
   const [migrationOpen, setMigrationOpen] = useState(false);
   const [metadataMigrationOpen, setMetadataMigrationOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [configSyncOpen, setConfigSyncOpen] = useState(false);
+  const [configSyncLoading, setConfigSyncLoading] = useState(false);
+  const [configSyncApplying, setConfigSyncApplying] = useState(false);
+  const [configSyncReport, setConfigSyncReport] = useState(null);
+  const [configSyncError, setConfigSyncError] = useState('');
   const [keyLostWarning, setKeyLostWarning] = useState(false);
   const [backendHealth, setBackendHealth] = useState({});
   const [activeBackends, setActiveBackends] = useState(() => new Set());
@@ -181,6 +190,44 @@ const SystemSettingsContent = () => {
     }
   };
 
+  const openConfigSync = async () => {
+    setConfigSyncOpen(true);
+    setConfigSyncLoading(true);
+    setConfigSyncError('');
+    setConfigSyncReport(null);
+    try {
+      const report = await adminService.getConfigSyncReport();
+      setConfigSyncReport(report);
+    } catch (error) {
+      setConfigSyncError(
+        getServerErrorDisplay(error?.response?.data, t) || t('admin.configSyncPreviewReportFail')
+      );
+    } finally {
+      setConfigSyncLoading(false);
+    }
+  };
+
+  const handleConfigSyncApply = async () => {
+    setConfigSyncApplying(true);
+    setConfigSyncError('');
+    try {
+      const res = await adminService.syncConfigFromEnv();
+      setConfigSyncOpen(false);
+      setConfigSyncReport(null);
+      setMessage({
+        type: 'success',
+        text: getServerMessageDisplay(res, t) || t('admin.configSyncDone'),
+      });
+    } catch (error) {
+      const text =
+        getServerErrorDisplay(error?.response?.data, t) || t('admin.configSyncApplyFail');
+      setConfigSyncError(text);
+      setMessage({ type: 'error', text });
+    } finally {
+      setConfigSyncApplying(false);
+    }
+  };
+
   useEffect(() => {
     setTitle(t('admin.systemSettings'));
     setActions(null);
@@ -189,6 +236,14 @@ const SystemSettingsContent = () => {
   const failedBackends = Object.entries(backendHealth).filter(
     ([name, health]) => health?.status === 'fail' && activeBackends.has(name)
   );
+
+  const syncSummary = configSyncReport?.summary;
+  const configSyncActionable =
+    (syncSummary?.drift || 0) > 0 || (syncSummary?.envOnly || 0) > 0;
+  const syncFindings = configSyncReport?.findings || [];
+  const toUpdateKeys = syncFindings.filter((f) => f.status === 'differs').map((f) => f.key);
+  const toAddKeys = syncFindings.filter((f) => f.status === 'env-only').map((f) => f.key);
+  const configSyncKeyLostCount = syncSummary?.alerts || 0;
 
   return (
     <Box>
@@ -357,6 +412,26 @@ const SystemSettingsContent = () => {
         </IconButton>
       </Box>
 
+      <Box
+        sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}
+      >
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="body1">{t('admin.configSyncFromEnv')}</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {t('admin.configSyncFromEnvDesc')}
+          </Typography>
+        </Box>
+        <IconButton
+          onClick={openConfigSync}
+          disabled={configSyncApplying}
+          color="primary"
+          sx={{ ml: 2 }}
+          aria-label={t('admin.runConfigSync')}
+        >
+          {configSyncApplying ? <CircularProgress size={24} /> : <AutorenewIcon />}
+        </IconButton>
+      </Box>
+
       <Accordion
         expanded={advancedOpen}
         onChange={(e, expanded) => setAdvancedOpen(expanded)}
@@ -435,6 +510,72 @@ const SystemSettingsContent = () => {
         onClose={() => setMetadataMigrationOpen(false)}
         onMessage={(msg) => setMessage(msg)}
       />
+
+      <Dialog open={configSyncOpen} onClose={() => setConfigSyncOpen(false)} fullScreen>
+        <DialogTitle>{t('admin.configSyncConfirmTitle')}</DialogTitle>
+        <DialogContent>
+          {configSyncLoading ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <CircularProgress size={24} />
+              <Typography>{t('admin.configSyncPreviewLoading')}</Typography>
+            </Box>
+          ) : configSyncError ? (
+            <Alert severity="error">{configSyncError}</Alert>
+          ) : configSyncReport ? (
+            <>
+              {configSyncActionable ? (
+                <>
+                  <DialogContentText>
+                    {t('admin.configSyncPreviewChanges', {
+                      updated: syncSummary.drift,
+                      added: syncSummary.envOnly,
+                    })}
+                  </DialogContentText>
+                  {toUpdateKeys.length > 0 && (
+                    <DialogContentText>
+                      {t('admin.configSyncPreviewUpdatedKeys', {
+                        keys: toUpdateKeys.join(', '),
+                      })}
+                    </DialogContentText>
+                  )}
+                  {toAddKeys.length > 0 && (
+                    <DialogContentText>
+                      {t('admin.configSyncPreviewAddedKeys', { keys: toAddKeys.join(', ') })}
+                    </DialogContentText>
+                  )}
+                </>
+              ) : (
+                <DialogContentText>{t('admin.configSyncPreviewNoChanges')}</DialogContentText>
+              )}
+              {configSyncKeyLostCount > 0 && (
+                <Alert severity="warning" sx={{ mt: 2 }}>
+                  {t('admin.configSyncPreviewKeyLost', { count: configSyncKeyLostCount })}
+                </Alert>
+              )}
+              <DialogContentText color="text.secondary" sx={{ mt: 2 }}>
+                {t('admin.configSyncConfirmScope')}
+              </DialogContentText>
+            </>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfigSyncOpen(false)} color="primary">
+            {t('common.cancel')}
+          </Button>
+          <Button
+            onClick={handleConfigSyncApply}
+            color="primary"
+            variant="contained"
+            autoFocus
+            disabled={
+              configSyncLoading || !!configSyncError || !configSyncActionable || configSyncApplying
+            }
+            data-testid="config-sync-apply"
+          >
+            {t('admin.runConfigSync')}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar
         open={!!message.text}

@@ -24,14 +24,13 @@ jest.mock('../../store/storage', () => ({
   getBackend: jest.fn(() => 'postgresql'),
 }));
 jest.mock('../../infrastructure/backendHealth', () => {
-  const report = jest.fn();
-  return { getBackendHealth: () => ({ report }) };
+  const { createBackendHealth } = jest.requireActual('../../infrastructure/backendHealth');
+  const tracker = createBackendHealth();
+  return { getBackendHealth: () => tracker };
 });
 jest.mock('../../infrastructure/backendProbe', () => ({
   toShortReason: jest.fn((value) => (value == null ? undefined : String(value))),
 }));
-
-const healthReport = () => require('../../infrastructure/backendHealth').getBackendHealth().report;
 
 describe('errorHandler', () => {
   describe('asyncHandler', () => {
@@ -221,22 +220,23 @@ describe('errorHandler', () => {
       expect(mapped.errorCode).toBe(SERVER_ERROR_CODES.errorHandler.databaseUnavailable);
     });
 
-    it('reports postgresql unreachable to backend health when backend is postgresql', () => {
-      healthReport().mockClear();
+    it('reports postgresql unreachable in the backend health snapshot when backend is postgresql', () => {
+      const tracker = require('../../infrastructure/backendHealth').getBackendHealth();
+      tracker.reset();
       mapDatabaseError({ code: '53300', message: 'sorry, too many clients already' });
-      expect(healthReport()).toHaveBeenCalledWith('postgresql', {
-        ok: false,
-        code: 'unreachable',
-        reason: 'sorry, too many clients already',
-      });
+      const pg = tracker.getHealth().postgresql;
+      expect(pg.status).toBe('fail');
+      expect(pg.code).toBe('unreachable');
+      expect(pg.reason).toBe('sorry, too many clients already');
     });
 
-    it('does not report backend health for non-connection error codes', () => {
-      healthReport().mockClear();
+    it('leaves the backend health snapshot untouched for non-connection error codes', () => {
+      const tracker = require('../../infrastructure/backendHealth').getBackendHealth();
+      tracker.reset();
       mapDatabaseError({ code: '23505', constraint: 'users_email_key' });
       mapDatabaseError({ code: '23503', constraint: 'fk_user_id' });
       mapDatabaseError({ code: 'XX000' });
-      expect(healthReport()).not.toHaveBeenCalled();
+      expect(tracker.getHealth().postgresql.status).toBe('unknown');
     });
 
     it('uses fallback error code for unknown DB errors', () => {

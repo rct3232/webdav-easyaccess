@@ -23,7 +23,6 @@ const RealS3BlobStore = jest.requireActual('../S3BlobStore');
 const RealWebdavBlobStore = jest.requireActual('../WebdavBlobStore');
 
 const { buildDestBlobStore, deriveDirection, destinationTypeForDirection } = require('../config');
-const S3BlobStore = require('../S3BlobStore');
 const WebdavBlobStore = require('../WebdavBlobStore');
 const { createClient } = require('webdav');
 

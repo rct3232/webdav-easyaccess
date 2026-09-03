@@ -220,6 +220,34 @@ node server/scripts/migrateBlobs.js --dest-type=webdav \
 - Per-node failures are recorded and processing continues; the run only aborts on config/snapshot/destination-validation failure.
 - **Resume is automatic:** re-running an interrupted migration skips already-migrated nodes (no `--resume` flag); `--force` re-copies nodes even when an automatic resume marker is present.
 
+### Config Sync: `.env` ↔ DB (`configSync`)
+
+> **Active — see `docs/spec/server/tools/config-sync.md` for the full spec.**
+
+Detects drift between `.env` values and the metadata DB `settings` rows for every non-T0 config key (`.env` always wins per the config-source-resolution model, so a DB row under an env-set key is a shadow copy that can go stale), alerts on it, and optionally reconciles the DB rows to mirror `.env`. T0 keys (`.env`-owned, incl. `JWT_SECRET` / `encrypt_secret_key`) are never reported or written; DB rows are never deleted; secrets are always masked (`****`). Feature spec: `docs/features/config-sync.md`.
+
+**Usage**
+
+```bash
+# 1) Drift report (read-only, default mode). Exit 0 = clean, 1 = drift or key-lost alert
+node server/scripts/configSync.js --check
+
+# 2) Same report, machine-readable (single JSON document: findings + summary + exitCode)
+node server/scripts/configSync.js --check --json
+
+# 3) Reconcile: upsert DB rows for every non-T0 key set in .env (secrets re-encrypted
+#    under encrypt_secret_key), then re-run the check in-process. Requires --yes
+node server/scripts/configSync.js --apply --yes
+```
+
+**Report statuses**: `differs` (drift → exit 1), `key-lost` (encrypted DB row without a usable `encrypt_secret_key` → exit 1), `shadowed` / `env-only` / `db-only` (informational), each with `db_updated_at` for DB-backed findings.
+
+**Rules**
+
+- `--apply` requires `--yes`; without it the run is a usage error (exit 2).
+- `--apply` aborts with exit 1 (DB unchanged) when a secret key is set in `.env` but `encrypt_secret_key` is absent.
+- The tool boots the metadata schema only (no default-admin seeding) and never writes `.env`; a running server is unaffected until its next config read/restart, as with any other `settings` change.
+
 ### Transaction and Concurrency Notes (postgresql)
 
 - User creation/email change/deletion run in a single transaction.

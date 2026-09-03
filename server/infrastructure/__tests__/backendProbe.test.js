@@ -16,10 +16,15 @@ describe('backendProbe exports', () => {
     expect(typeof backendProbe.probeS3).toBe('function');
   });
 
+  it('exposes probePostgresql for probe reuse (no future W-5-style landmine)', () => {
+    expect(typeof backendProbe.probePostgresql).toBe('function');
+  });
+
   it('exposes runProbe and the classification helpers used by boot/admin-test', () => {
     expect(typeof backendProbe.runProbe).toBe('function');
     expect(typeof backendProbe.classifyToHealthCode).toBe('function');
     expect(typeof backendProbe.classifyS3BucketError).toBe('function');
+    expect(typeof backendProbe.classifyPgError).toBe('function');
     expect(typeof backendProbe.deriveReason).toBe('function');
   });
 });

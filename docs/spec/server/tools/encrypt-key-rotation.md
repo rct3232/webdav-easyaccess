@@ -151,5 +151,5 @@ new key) and reports `apply complete: 0 row(s) ...`.
 - [ ] one tampered/corrupted payload among good rows → apply aborts exit 1, **all** rows byte-identical, `.env` unchanged
 - [ ] a legacy plaintext secret row (e.g. `EMAIL_PASSWORD` as a plain string) → reported `legacy-plaintext`, untouched after apply
 - [ ] a dry-run with `--generate` / `--new-key` → each `ok` row verified to round-trip under the new key; generated key never printed
-- [ ] `writeEnv` returns the created `.bak-*` path, or `null` when no backup was made
+- [x] `writeEnv` returns the created `.bak-*` path, or `null` when no backup was made
 - [ ] smoke: `DOTENV_CONFIG_PATH=<scratch> node server/scripts/rotateEncryptKey.js --dry-run` boots the sqlite schema and prints the report without the repo `.env`

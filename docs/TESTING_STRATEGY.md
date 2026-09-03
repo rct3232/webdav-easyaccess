@@ -110,6 +110,11 @@ function createExampleMock(overrides = {}) {
 - **No access to internals:** Do not reach into internal variables, private methods, or module internals. Test only the public API.
 - **Mock inspection is limited:** Asserting on mock call counts or arguments is allowed only when the interaction itself is the behavior under test (e.g. "service X was called with param Y"). Prefer verifying the final result or observable state instead.
 
+### Delegation seams
+
+- **Spec-documented delegation pins are exempt:** A mock-call pin (`toHaveBeenCalledWith` / `toHaveBeenCalledTimes` / call absence) is exempt from the black-box rule when a spec document explicitly records that delegation tuple or absence as a contract (e.g. the per-method delegation tuples in `docs/spec/server/services/fileService.md` §2.3, or the permission-gate mandates in §3). Such pins verify a documented seam, not an implementation detail.
+- **Otherwise assert the observable:** If the behavior is observable through the module-under-test's output, state, or rendered UI, the pin must be dropped or replaced by the observable assertion (see AGENTS.md §3.1, "Verify What, Not How").
+
 ---
 
 ## Cross-cutting defect classes & semantics-first testing

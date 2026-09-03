@@ -238,9 +238,9 @@ const FilePreviewDialog = ({
           <IconButton
             onClick={retry}
             size="small"
-            color="inherit"
             aria-label={t('preview.retry')}
             title={t('preview.retry')}
+            sx={{ color: '#fff' }}
             data-testid="preview-retry-button"
           >
             <RefreshIcon />

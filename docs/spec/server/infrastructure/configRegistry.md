@@ -33,7 +33,7 @@
 
 - `key` — raw env var name (row key in the `settings` table, D11).
 - `tier` — one of `TIER.*`.
-- `secret` — boolean; drives encryption at rest (DB write path) and `****` masking in `getEffectiveConfig`.
+- `secret` — boolean; drives **presentation-level** `'****'` masking in `getEffectiveConfig` and the admin/setup surfaces. It no longer implies any encryption at rest — secret DB rows are stored plaintext like any other value.
 - `default` — optional; the **in-code default** observed at the read site. If the code has no default, the field is omitted.
 
 ### 2.4 Tier semantics (resolver contract)
@@ -44,7 +44,7 @@
 | `T1` | Boot-frozen (require-time consts) | env → DB → default; effect requires restart          |
 | `T2` | Runtime / hot                     | env → DB → default; effect immediate                 |
 
-Precedence invariant (D1): env wins whenever set; DB is read only when the env var is absent. For secrets, an env value means "do not even decrypt".
+Precedence invariant (D1): env wins whenever set; DB is read only when the env var is absent.
 
 ---
 
@@ -67,7 +67,6 @@ Precedence invariant (D1): env wins whenever set; DB is read only when the env v
 | `WEA_PG_CONNECTION_TIMEOUT_MS` | T0   | no      | `10000`                                  |
 | `NODE_ENV`                     | T0   | no      | —                                        |
 | `DOTENV_CONFIG_PATH`           | T0   | no      | —                                        |
-| `encrypt_secret_key`           | T0   | **yes** | —                                        |
 | `JWT_SECRET`                   | T0   | **yes** | `'your-secret-key-change-in-production'` |
 
 ### File storage

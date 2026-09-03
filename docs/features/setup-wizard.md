@@ -108,16 +108,18 @@ modify a `.env` file.
 ## Two-layer configuration model
 
 1. **Boot layer → `.env`:** `apply` writes the payload's startup-critical **T0 subset** —
-   `JWT_SECRET` (always) and `encrypt_secret_key` (only when auto-generated) — into the
-   _resolved active env file_ (the same path the loader used — `server/index.js:10-18`;
-   `DOTENV_CONFIG_PATH` or `<root>/.env`). A restart is required for these boot-frozen values
-   to take effect. The metadata connection (`WEA_STORAGE_BACKEND`, `WEA_PG_*`,
-   `WEA_SQLITE_PATH`) is `.env`-owned and **never written by apply**.
+   `JWT_SECRET` (always; no other key is generated) — into the _resolved active env file_
+   (the same path the loader used — `server/index.js:10-18`; `DOTENV_CONFIG_PATH` or
+   `<root>/.env`). A restart is required for these boot-frozen values to take effect. The
+   metadata connection (`WEA_STORAGE_BACKEND`, `WEA_PG_*`, `WEA_SQLITE_PATH`) is `.env`-owned
+   and **never written by apply**.
 2. **Runtime layer → DB `settings`:** `apply` upserts every **non-T0** wizard value (file
    storage, email, server/CORS, `JWT_EXPIRES_IN`) into the connected metadata DB `settings`
-   table (row key = raw env var name, D11). Per-request runtime flags such as
-   `registration_enabled` stay where they are, backed by the same dual-backend key/value store
-   (`server/store/settingsStore.js:41-127`; DDL `settings(key, value, updated_at)` at
+   table (row key = raw env var name, D11). Secret values are stored as **plaintext strings**
+   — there is no field-level encryption and no key to keep or generate. Per-request runtime
+   flags such as `registration_enabled` stay where they are, backed by the same dual-backend
+   key/value store (`server/store/settingsStore.js:41-127`; DDL
+   `settings(key, value, updated_at)` at
    `server/store/postgresql/ddl/001_initial_normalized_schema.sql:31-35`).
 
 The two layers are independent: the wizard/CLI write both the `.env` T0 subset and the

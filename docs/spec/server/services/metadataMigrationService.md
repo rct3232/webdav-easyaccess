@@ -129,13 +129,12 @@ enforced on both backends):
 
 - **`settings.value` serialization.** The two backends store the column differently:
   `settings.value` is `JSONB` in PG and raw `TEXT` in sqlite (converted by
-  `sqliteSchemaInit`). The copy must wrap accordingly:
+  `sqliteSchemaInit`). Settings rows hold plaintext values, so the copy wraps accordingly:
   - **→ PG:** write `JSON.stringify(String(value))` (the same shape `settingsStore.set` produces
-    for PG — plaintext rows become a JSON string like `"smtp.gmail.com"`; encrypted secret rows
-    already carry a JSON object and are written as their serialized JSON).
+    for PG — a row becomes a JSON string like `"smtp.gmail.com"`).
   - **→ sqlite:** write `String(value)` verbatim.
-  - Encrypted secret rows (AES-256-GCM objects) are copied **verbatim** — the ciphertext
-    survives iff the target runtime uses the same `encrypt_secret_key` (see §2.11).
+  - Values are copied verbatim as plaintext; no payload conversion or key handling is
+    involved in the settings copy.
 - **Booleans (`users.is_admin`).** sqlite stores `INTEGER 0/1` (converted from `BOOLEAN`); PG
   stores real `true/false`. The copy maps:
   - **→ PG:** `0 → false`, `1 → true`.
@@ -174,16 +173,6 @@ enforced on both backends):
 }
 ```
 
-### 2.11 `encrypt_secret_key` warning
-
-DB-stored secrets (`WEBDAV_PASSWORD`, `AWS_SECRET_ACCESS_KEY`, `EMAIL_PASSWORD`,
-`ADMIN_DEFAULT_PASSWORD`) are AES-256-GCM-encrypted under `encrypt_secret_key` (T0, `.env`).
-`settings.value` ciphertext is copied verbatim, so it decrypts correctly on the target **only if
-the target runtime uses the same `encrypt_secret_key`**. The service therefore surfaces an
-explicit warning before/after a metadata migration: the operator must keep (or set) an identical
-`encrypt_secret_key` on the target environment, or the migrated secret rows become
-undecryptable. `encrypt_secret_key` itself is never part of the migration (T0/.env-only).
-
 ---
 
 ## 3. Verification Scenarios
@@ -204,5 +193,5 @@ undecryptable. `encrypt_secret_key` itself is never part of the migration (T0/.e
 - [ ] Error mid-copy → ROLLBACK, target unchanged
 - [ ] The active backend is never written by the copy
 - [ ] `onStage` reports `scan` → `schema` → `wipe` → `copy` → `done` with a sensible `%`
-- [ ] Encrypted secret rows round-trip byte-identical; a different `encrypt_secret_key` on the
-      target triggers the warning
+- [ ] Plaintext `settings` rows (config and secret values) round-trip byte-identical with no
+      key or format handling on the target

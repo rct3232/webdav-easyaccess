@@ -59,11 +59,16 @@ open items remain outside the DEF list above.
   `docs/TESTING_STRATEGY.md`. No observable behavior change.
 - DEF-3 (env↔DB config sync/alert CLI, `server/scripts/configSync.js` — `--check` drift report
   with `key-lost` alerting + `--apply --yes` reconcile, backed by the new
-  `settingsStore.listRows()`) implemented on 2026-09-03 via `feature/env-db-sync-tool`.
+  `settingsStore.listRows()`) implemented on 2026-09-03 via `feature/env-db-sync-tool`. Its
+  `key-lost` alert status was removed the same day by W-A (`refactor/remove-app-encryption`):
+  DB `settings` secrets are stored as plaintext, so the sync tool compares plaintext strings
+  and has no key-loss concept left (see W-A note below).
 - DEF-5 (`encrypt_secret_key` rotation CLI, `server/scripts/rotateEncryptKey.js` — default dry-run
   decrypt-verify + `--apply --yes` DB-first re-encryption that writes the new key to `.env` last via
   the backed-up atomic writer, with a key-lost refusal) implemented on 2026-09-03 via
-  `feature/encrypt-key-rotation`.
+  `feature/encrypt-key-rotation`. The tool was **fully removed** the same day by W-A
+  (`refactor/remove-app-encryption`), along with the whole app-layer field-encryption design
+  it existed for (see W-A note below).
 - DEF-2 (test black-box compliance refactor, client + server) implemented on 2026-09-03 via
   `refactor/black-box-test-compliance`: dropped redundant mock-call pins in favor of observable
   assertions (client hooks/dialogs + server blobStorage/upload/config suites, orchestrator
@@ -71,3 +76,19 @@ open items remain outside the DEF list above.
   deleted the dead `createMigrationServiceMock`, and recorded the delegation-seam policy (a
   mock-call pin is exempt only where a spec documents the delegation as a contract; otherwise
   assert the observable) in `docs/TESTING_STRATEGY.md`.
+
+### W-A note (2026-09-03, `refactor/remove-app-encryption`)
+
+The following work was completed earlier the same day (see DEF-3/DEF-5 above) and is now
+**removed/current-state** as part of W-A "remove app-layer field encryption":
+
+- App-layer AES-256-GCM field encryption of DB-stored secrets is **gone**: `settings` rows hold
+  plaintext strings, the registry `secret` flag means presentation-level `'****'` masking only,
+  and no `key_lost_warning` is surfaced on any API/UI path.
+- `encrypt_secret_key` no longer exists (registry entry, `.env`/wizard generation, `.env`
+  examples all removed), and the `configEncryption` util, the `rotateEncryptKey` CLI, and their
+  specs/feature docs were deleted.
+- configSync still exists (CLI + admin web action) with plaintext comparison and no `key-lost`
+  status; T0 keys remain excluded; `--apply` writes plaintext to the DB.
+- Residual: ciphertext rows written by older versions are not auto-migrated; operators may need
+  to clean them up manually if any exist.

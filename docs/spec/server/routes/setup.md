@@ -19,8 +19,7 @@ Feature Source-of-Truth: [config-source-resolution.md](../../../features/config-
 - **Validator:** `server/infrastructure/setupStatus.js` — `computeSetupStatus(env, { effectiveConfig })` → `{ setup_complete, missing: string[], current: {…masked} }`
 - **Effective config:** `server/infrastructure/configResolver.js` (`getSharedResolver().getEffectiveConfig()`) — env-first over DB `settings` rows; secrets always masked
 - **Classification:** `server/infrastructure/configRegistry.js` (`isT0`, `isSecret`) — tiers per PLAN §4
-- **Encryption:** `server/utils/configEncryption.js` (`encryptSecret`, `isEncryptedPayload`, `generateKey`) — AES-256-GCM, master key `encrypt_secret_key`
-- **DB store:** `server/models/Settings.js` (sqlite path) — plaintext config passed as-is, secrets as `JSON.stringify(encryptSecret(…))`
+- **DB store:** `server/models/Settings.js` (sqlite path) — plaintext config passed as-is, secret values as plaintext strings too (no encryption at rest)
 - **PG direct write:** same idempotent `settings` DDL as `server/store/postgresql/ddl/001_initial_normalized_schema.sql` + upsert against the target PG
 - **Env writer:** `server/infrastructure/envFileWriter.js` — merge-write **only the T0 subset** to the resolved env path, atomic, `0600`
 - **Test file:** `server/domains/setup/__tests__/setup.test.js`
@@ -29,9 +28,9 @@ Feature Source-of-Truth: [config-source-resolution.md](../../../features/config-
 
 | Method | Path       | Auth                                              | Description                                                                                                                                                                   |
 | ------ | ---------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/status`  | None                                              | Derived setup completeness from the effective config + missing keys + safe current values (non-T0 only) + `key_lost_warning`.                                                 |
+| GET    | `/status`  | None                                              | Derived setup completeness from the effective config + missing keys + safe current values (non-T0 only).                                                                      |
 | POST   | `/test`    | None (403 `setup.complete` when already complete) | Connection test for `s3` or `webdav` targets (postgresql is `.env`-owned under D7; probed via the admin `/api/admin/config/test` instead).                                    |
-| POST   | `/apply`   | None (403 `setup.complete` when already complete) | Validate (metadata block optional; `postgresql` rejected); write **non-T0** keys to the connected metadata DB; apply admin-password effect. Returns `restart_required: true`. |
+| POST   | `/apply`   | None (403 `setup.complete` when already complete) | Validate (metadata block optional; `postgresql` rejected); write **non-T0** keys to the connected metadata DB as plaintext; apply admin-password effect. Returns `restart_required: true`. |
 | POST   | `/prefill` | None (403 `setup.complete` when already complete) | **Deprecated under D7** — metadata-driven prefill. Retained for backward compat; the wizard client prefills from `GET /status` `current` only.                                |
 
 ### 2.3 Middleware Used
@@ -49,7 +48,7 @@ Public, always available. Computes `setup_complete` from the currently **effecti
 - `file`: `WEA_FILE_STORAGE` (default `s3`) — `s3` requires the 4 `S3_*`/`AWS_*` keys (`server/infrastructure/adapters/blobstore/index.js:7-13`); `webdav` requires `WEBDAV_URL`/`WEBDAV_USERNAME`/`WEBDAV_PASSWORD`.
 - `jwt`: `JWT_SECRET` non-default required only when `NODE_ENV=production` (`server/utils/auth.js:5-12`; D7).
 
-The `current` block therefore prefills operator-entered values from the DB `settings` table (plaintext config as stored; secrets masked, never decrypted here). DB-backed secrets whose master key (`encrypt_secret_key`) is absent cannot be decrypted — the response carries a `key_lost_warning`.
+The `current` block therefore prefills operator-entered values from the DB `settings` table (plaintext values as stored; secrets masked, never surfaced here).
 
 **200:**
 
@@ -57,7 +56,6 @@ The `current` block therefore prefills operator-entered values from the DB `sett
 {
   "setup_complete": false,
   "missing": ["S3_BUCKET", "AWS_REGION", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
-  "key_lost_warning": false,
   "current": {
     // safe values for prefill (env → DB → default; secrets masked)
     "WEA_STORAGE_BACKEND": "sqlite",
@@ -70,13 +68,7 @@ The `current` block therefore prefills operator-entered values from the DB `sett
 }
 ```
 
-Masking rule: secrets (`JWT_SECRET`, `AWS_SECRET_ACCESS_KEY`, `WEBDAV_PASSWORD`, `WEA_PG_PASSWORD`, `EMAIL_PASSWORD`, `ADMIN_DEFAULT_PASSWORD`) are rendered as `"****"` when set and absent when unset.
-
-`key_lost_warning` semantics:
-
-- `true` when **any** `settings` row holds an encrypted secret payload (`isEncryptedPayload` on the parsed row) **and** `process.env.encrypt_secret_key` is absent — those rows are unrecoverable and will not be prefilled/decrypted.
-- `false` when the key is present, or when no encrypted rows exist.
-- The status endpoint never decrypts DB secrets in this path (prefill must not leak plaintext); it only inspects payload shape.
+Masking rule: secrets (`JWT_SECRET`, `AWS_SECRET_ACCESS_KEY`, `WEBDAV_PASSWORD`, `WEA_PG_PASSWORD`, `EMAIL_PASSWORD`, `ADMIN_DEFAULT_PASSWORD`) are rendered as `"****"` when set and absent when unset. DB secret rows are stored plaintext but are masked here (presentation only) — the status endpoint never leaks a stored secret value.
 
 #### POST /api/setup/test
 
@@ -124,7 +116,7 @@ Probe references:
 
 #### POST /api/setup/apply
 
-Public; **403 when already complete** (gate uses the same effective view as `/status`). Validates every block (unknown keys rejected, `400` with per-field errors), then **writes the payload's startup-critical T0 keys into the resolved `.env`** (`JWT_SECRET`, and `encrypt_secret_key` only when auto-generated) and **upserts every non-T0 key into the connected metadata DB `settings` table** (row key = raw env var name, D11). The `metadata` block is **optional** (D7); when present, `metadata.backend === 'postgresql'` is rejected `400` `fields.metadata='notAllowed'` — the DB connection is `.env`-owned (D6). The metadata-backend T0 keys (`WEA_STORAGE_BACKEND`, `WEA_PG_*`) are **never** written by apply. Implemented by the shared `setupCore.applySetup`, which is also the single apply core of the CLI setup tool (`docs/features/setup-cli.md`).
+Public; **403 when already complete** (gate uses the same effective view as `/status`). Validates every block (unknown keys rejected, `400` with per-field errors), then **writes the payload's startup-critical T0 keys into the resolved `.env`** (`JWT_SECRET`) and **upserts every non-T0 key into the connected metadata DB `settings` table as plaintext** (row key = raw env var name, D11). The `metadata` block is **optional** (D7); when present, `metadata.backend === 'postgresql'` is rejected `400` `fields.metadata='notAllowed'` — the DB connection is `.env`-owned (D6). The metadata-backend T0 keys (`WEA_STORAGE_BACKEND`, `WEA_PG_*`) are **never** written by apply. Implemented by the shared `setupCore.applySetup`, which is also the single apply core of the CLI setup tool (`docs/features/setup-cli.md`).
 
 **Request:**
 
@@ -147,23 +139,19 @@ Public; **403 when already complete** (gate uses the same effective view as `/st
 
 1. Validate every block (reject unknown keys → `400` with per-field errors).
 2. Build the full entries map (`buildEnvEntries`) from the payload (`file`/`jwt`/`server`/`email`).
-3. **Masked (unchanged) secrets keep their existing ciphertext (only-re-encrypt-on-new-value, PLAN §7):** the client sends the prefill mask `'****'` for a secret it did not edit; validation accepts it (non-empty) but apply **drops** any `'****'` secret entry before the DB write, so `writeSettings` never re-encrypts it. A genuinely new value is the only trigger to encrypt with the current master key.
+3. **Masked (unchanged) secrets keep their existing stored value:** the client sends the prefill mask `'****'` for a secret it did not edit; validation accepts it (non-empty) but apply **drops** any `'****'` secret entry before the DB write, so the stored value is never overwritten by the mask.
 4. Partition the entries by registry tier (`partitionEntries`):
    - **T0 → `.env`** (via `envFileWriter`, atomic `0600`, backup, merge-preserves unknown
      lines): `JWT_SECRET` (always written — D4 env-only; the boot auth key must exist after
-     restart) and `encrypt_secret_key` (only when auto-generated, see step 5). The
-     metadata-backend T0 keys (`WEA_STORAGE_BACKEND`, the `WEA_PG_*` subset) are explicitly
-     **excluded** — they are `.env`-owned (D6) and never written by apply.
+     restart). The metadata-backend T0 keys (`WEA_STORAGE_BACKEND`, the `WEA_PG_*` subset)
+     are explicitly **excluded** — they are `.env`-owned (D6) and never written by apply.
    - **Non-T0 → DB `settings`** (row key = raw env var name):
      `WEA_FILE_STORAGE`, `S3_BUCKET` / `AWS_REGION` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `S3_ENDPOINT` (s3), `WEBDAV_URL` / `WEBDAV_USERNAME` / `WEBDAV_PASSWORD` / `WEBDAV_AUTH_TYPE` (webdav), `PORT`, `CORS_ORIGINS`, `JWT_EXPIRES_IN`, `EMAIL_HOST` / `EMAIL_PORT` / `EMAIL_USER` / `EMAIL_PASSWORD` / `EMAIL_SECURE` / `EMAIL_FROM_NAME`.
-5. **`encrypt_secret_key` lifecycle (keep-existing, PLAN §7):**
-   - If `process.env.encrypt_secret_key` is already set → **keep it**: it is not regenerated and not written to `.env`; it is used to encrypt the DB secrets of this apply.
-   - Otherwise → **auto-generate** one (`generateKey()`), add it to the `.env` subset, and use it to encrypt this apply's DB secrets.
-6. **Write the `.env` subset FIRST** (atomic temp-file + rename). Ordering guarantee: if the `.env` write fails, the DB has not been touched, so boot still shows setup mode — a failed apply can never leave a committed-but-error "complete" state.
-7. **Update the admin password** (`updateAdminPassword`): the `admin` account already exists in the connected metadata store (seeded at boot, including setup-mode boots); apply updates its password via the app's user store after the `.env` write. If the `admin` row is unexpectedly absent it logs a warning and continues (the default credential then applies on the next boot). There is no restart dependency for the credential and no `ADMIN_DEFAULT_PASSWORD` is written.
-8. **Write non-T0 to the metadata DB through the app's `Settings` model** (`writeSettings`) on the connected store (sqlite or postgresql, as booted): plaintext config values are stored as-is (the store JSON-stringifies); a secret is stored as `JSON.stringify(encryptSecret(String(value), masterKey))`.
-9. Clear the shared T2 cache: `getSharedResolver().invalidateCache()` so the DB writes are visible immediately for restart-free (T2) reads.
-10. Respond **`200 { "restart_required": true }`**.
+5. **Write the `.env` subset FIRST** (atomic temp-file + rename). Ordering guarantee: if the `.env` write fails, the DB has not been touched, so boot still shows setup mode — a failed apply can never leave a committed-but-error "complete" state.
+6. **Update the admin password** (`updateAdminPassword`): the `admin` account already exists in the connected metadata store (seeded at boot, including setup-mode boots); apply updates its password via the app's user store after the `.env` write. If the `admin` row is unexpectedly absent it logs a warning and continues (the default credential then applies on the next boot). There is no restart dependency for the credential and no `ADMIN_DEFAULT_PASSWORD` is written.
+7. **Write non-T0 to the metadata DB through the app's `Settings` model** (`writeSettings`) on the connected store (sqlite or postgresql, as booted): every value — plaintext config **and** secret — is stored as plaintext via `Settings.set(key, String(value))` (the store JSON-stringifies on PG / stores raw TEXT on sqlite).
+8. Clear the shared T2 cache: `getSharedResolver().invalidateCache()` so the DB writes are visible immediately for restart-free (T2) reads.
+9. Respond **`200 { "restart_required": true }`**.
 
 **Idempotency/safety:** apply refuses (`403`) once `setup_complete` is true; concurrent applies are last-writer-wins (documented, single-operator assumption). The `.env` write happens before the DB write, so a failed apply leaves **no committed partial state** — the worst case is a written `.env` with an unchanged DB, which still boots into setup mode (never a false "complete").
 
@@ -188,18 +176,16 @@ Public; **403 `setup.complete` when already complete** (same `requireSetupIncomp
 ```
 
 - `metadata.backend === 'postgresql'` → direct PG read of `SELECT key, value FROM settings`.
-- `metadata.backend === 'sqlite'` or missing `metadata` → `200 { "current": {}, "key_lost_warning": false }` (sqlite is already prefilled from the app's own store via `GET /status` on mount).
+- `metadata.backend === 'sqlite'` or missing `metadata` → `200 { "current": {} }` (sqlite is already prefilled from the app's own store via `GET /status` on mount).
 
-**Success:** `200 { "current": { "<KEY>": value }, "key_lost_warning": boolean }`
+**Success:** `200 { "current": { "<KEY>": value } }`
 
 `current` build rules (`buildPrefillCurrent`):
 
-- key with `isSecret(key)` (configRegistry) → `current[key] = "****"` whenever the row exists — never plaintext; a legacy plaintext secret row is masked the same way.
-- plaintext row → the value is JSON-parsed when it is a JSON string (node-pg returns JSONB already parsed, so a plaintext config row stored as the JSON string `"host"` arrives as `host`); scalars are coerced to `String`; `null`/undefined rows are skipped.
+- key with `isSecret(key)` (configRegistry) → `current[key] = "****"` whenever the row exists — never plaintext. (Secret rows are stored plaintext but are masked at this boundary.)
+- plaintext row → the value is JSON-parsed when it is a JSON string (node-pg returns JSONB already parsed, so a plaintext row stored as the JSON string `"host"` arrives as `host`); scalars are coerced to `String`; `null`/undefined rows are skipped.
 
-`key_lost_warning` = any `settings` row holds an encrypted payload (`isEncryptedPayload` on the parsed row value) **and** `process.env.encrypt_secret_key` is absent. Purely informational — it never blocks the wizard; masked secrets still prefill as `"****"`.
-
-**Missing settings table:** on a fresh PG the `settings` table does not exist yet (`undefined_table` / pg code `42P01` or similar) → treated as empty rows (`current: {}`, `key_lost_warning: false`).
+**Missing settings table:** on a fresh PG the `settings` table does not exist yet (`undefined_table` / pg code `42P01` or similar) → treated as empty rows (`current: {}`).
 
 **Errors:** `4xx { "ok": false, "errorCode": "…", "message": "…", "reason": "…" }` — PG unreachable / auth-failed / db-missing / generic map to the **same** classified codes as `POST /test` (connection-test taxonomy in §2.4): `serverErrors.setup.test.pg.unreachable`, `serverErrors.setup.test.pg.authFailed`, `serverErrors.setup.test.pg.databaseMissing`, `serverErrors.setup.test.failed`, and `serverErrors.setup.testFailed` for missing required fields. The client treats prefill as best-effort: a failure surfaces no blocking error and the wizard still advances (the connection-test button is the explicit validator).
 
@@ -232,13 +218,11 @@ Connection-test taxonomy codes are module-local i18n keys (same `ns.key` format;
 
 ### 2.8 Integration Test Scenarios
 
-- [ ] GET /status returns derived `{ setup_complete, missing, current, key_lost_warning }` with secrets masked
+- [ ] GET /status returns derived `{ setup_complete, missing, current }` with secrets masked
 - [ ] Fresh (no env) → incomplete with the exact missing list; full s3+sqlite → complete; full pg+webdav → complete; prod + default JWT → incomplete
 - [ ] GET /status prefills `current` from DB `settings` rows (effective env-first view)
-- [ ] GET /status → `key_lost_warning: true` when an encrypted DB row exists and `encrypt_secret_key` is absent; `false` when the key is present
 - [ ] POST /test passes through postgresql/s3/webdav probe results; error shapes are `{ ok: false, errorCode, message, reason? }` with the classified taxonomy codes
-- [ ] POST /apply (sqlite+webdav): only `JWT_SECRET` (always) and an auto-generated `encrypt_secret_key` are written to `.env` (mode 0600); the metadata T0 keys (`WEA_STORAGE_BACKEND`, `WEA_PG_*`) are never written by apply; non-T0 keys are upserted into the **booted** metadata DB `settings` table with secrets encrypted (`decryptSecret` round-trips)
-- [ ] POST /apply keeps an existing `encrypt_secret_key` (not regenerated, not written to `.env`)
+- [ ] POST /apply (sqlite+webdav): only `JWT_SECRET` (always) is written to `.env` (mode 0600); the metadata T0 keys (`WEA_STORAGE_BACKEND`, `WEA_PG_*`) are never written by apply; non-T0 keys are upserted into the **booted** metadata DB `settings` table as plaintext strings (secrets included, readable back as-is)
 - [ ] POST /apply with `metadata.backend === 'postgresql'` → 400 `fields.metadata='notAllowed'` (the DB connection is `.env`-owned; apply never runs settings DDL or upserts against a target PG); a non-T0 apply upserts into the booted store's `settings` table and updates the `admin` password on that store
 - [ ] POST /apply → `restart_required: true` and `getSharedResolver().invalidateCache()` is invoked
 - [ ] POST /apply when already complete → 403 `setup.complete`

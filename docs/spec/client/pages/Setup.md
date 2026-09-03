@@ -88,7 +88,7 @@ Errors surface via `t(errorCode, params)` (existing error-display utility patter
 | getSetupStatus | `()`                                                          | `Promise<{ setup_complete, missing, current }>` | `GET /api/setup/status`   |
 | testSetup      | `(target: 'postgresql' \| 's3' \| 'webdav', payload: Object)` | `Promise<{ ok }>`                               | `POST /api/setup/test`    |
 | applySetup     | `(payload: Object)`                                           | `Promise<{ restart_required }>`                 | `POST /api/setup/apply`   |
-| prefillSetup   | `(metadata: Object)`                                          | `Promise<{ current, key_lost_warning }>`        | `POST /api/setup/prefill` |
+| prefillSetup   | `(metadata: Object)`                                          | `Promise<{ current }>`                          | `POST /api/setup/prefill` |
 
 Transport: the existing `apiClient` (`client/src/services/apiClient.js`), which delegates to
 `httpClient` (`client/src/services/httpClient.js`, `BASE_URL = '/api'` at
@@ -116,7 +116,7 @@ Transport: the existing `apiClient` (`client/src/services/apiClient.js`), which 
 - [ ] getSetupStatus returns `{ setup_complete, missing, current }`
 - [ ] testSetup sends `{ target, ...payload }` and resolves `{ ok }`
 - [ ] applySetup sends the apply body and resolves `{ restart_required }`
-- [ ] prefillSetup sends `{ metadata }` and resolves `{ current, key_lost_warning }`; failure normalizes `{ errorCode, message, reason }`
+- [ ] prefillSetup sends `{ metadata }` and resolves `{ current }`; failure normalizes `{ errorCode, message, reason }`
 - [ ] No auth token is attached (public endpoints)
 
 ---

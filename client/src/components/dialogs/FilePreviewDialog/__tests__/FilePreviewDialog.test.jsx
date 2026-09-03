@@ -258,7 +258,11 @@ describe('FilePreviewDialog', () => {
   it('uses streaming URL (not blob) for video preview', async () => {
     renderDialog(videoFile);
     await waitFor(() => {
-      expect(mockGetVideoPreviewStreamUrl).toHaveBeenCalledWith(20, expect.any(Object));
+      const source = document.querySelector('video source');
+      expect(source).not.toBeNull();
+      expect(source.getAttribute('src')).toBe(
+        '/api/files/preview-stream?path=%2Fv.mp4&ticket=t'
+      );
     });
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -277,11 +281,10 @@ describe('FilePreviewDialog', () => {
     renderDialog(openedFile, { mediaFiles });
 
     await waitFor(() => {
-      expect(mockGetFileBlob).toHaveBeenCalledWith(2, expect.any(Object));
-    });
-    await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     });
+    // The opened (non-first) file is the rendered preview target.
+    expect(screen.getByAltText('b.jpg')).toBeInTheDocument();
   });
 
   it('does not lock gallery index to 0 when mediaFiles arrives after open', async () => {
@@ -309,11 +312,9 @@ describe('FilePreviewDialog', () => {
 
     // Should not eagerly fall back to index 0 of mediaFiles (because mediaFiles is empty).
     await waitFor(() => {
-      expect(mockGetFileBlob).toHaveBeenCalledWith(2, expect.any(Object));
-    });
-    await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     });
+    expect(screen.getByAltText('b.jpg')).toBeInTheDocument();
 
     rerender(
       <FilePreviewDialog
@@ -329,8 +330,8 @@ describe('FilePreviewDialog', () => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     });
     // Must have loaded b.jpg (opened file), never a.jpg (index 0)
-    expect(mockGetFileBlob).toHaveBeenCalledWith(2, expect.any(Object));
-    expect(mockGetFileBlob).not.toHaveBeenCalledWith(1, expect.any(Object));
+    expect(screen.getByAltText('b.jpg')).toBeInTheDocument();
+    expect(screen.queryByAltText('a.jpg')).not.toBeInTheDocument();
   });
 
   it('truncates long header filename and shows tooltip on hover (desktop)', async () => {

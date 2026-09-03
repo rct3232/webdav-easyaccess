@@ -26,6 +26,10 @@ import { useFileManagerDialogs } from './hooks/useFileManagerDialogs';
 import { useContentAreaDragDrop } from './hooks/useContentAreaDragDrop';
 import FileManagerView from '../../components/file-manager/FileManagerView';
 
+// Public health re-poll: a backend failure recorded mid-session (failed upload,
+// download, etc.) must flip the banner without a page remount.
+const HEALTH_POLL_INTERVAL_MS = 15000;
+
 const FileManager = ({ shareToken, linkInfo } = {}) => {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -641,22 +645,30 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     // Every authenticated session (admin or not) reads the public /api/health
     // so the file-screen banner can warn non-admin users too. The public payload
     // carries the active file backend, so no admin config call is needed.
+    // Health is polled while the screen is mounted: a backend failure recorded
+    // mid-session (e.g. a failed upload/download) must flip the banner without
+    // requiring a page remount — for every role.
     let active = true;
-    adminService
-      .getPublicHealth()
-      .then((data) => {
-        if (!active) return;
-        setBackendHealthStatuses(data?.backends || null);
-        setActiveFileStorage(data?.activeFileStorage || null);
-      })
-      .catch(() => {
-        if (active) {
-          setBackendHealthStatuses(null);
-          setActiveFileStorage(null);
-        }
-      });
+    const refreshHealth = () => {
+      adminService
+        .getPublicHealth()
+        .then((data) => {
+          if (!active) return;
+          setBackendHealthStatuses(data?.backends || null);
+          setActiveFileStorage(data?.activeFileStorage || null);
+        })
+        .catch(() => {
+          if (active) {
+            setBackendHealthStatuses(null);
+            setActiveFileStorage(null);
+          }
+        });
+    };
+    refreshHealth();
+    const intervalId = setInterval(refreshHealth, HEALTH_POLL_INTERVAL_MS);
     return () => {
       active = false;
+      clearInterval(intervalId);
     };
   }, []);
 

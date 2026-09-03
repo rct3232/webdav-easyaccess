@@ -75,11 +75,11 @@ export const getFilesMetadata = async (nodeIds = [], options = {}) => {
 /**
  * Fetch file blob (preview, etc.)
  * @param {number} nodeId - File nodeId
- * @param {Object} options - { inline: boolean }
+ * @param {Object} options - { inline: boolean, timeout?: number, maxRetries?: number }
  * @returns {Promise<Blob>}
  */
 export const getFileBlob = async (nodeId, options = {}) => {
-  const { shareToken, inline, signal } = options;
+  const { shareToken, inline, signal, timeout, maxRetries } = options;
   const params = { nodeId };
   if (inline) params.inline = 'true';
   if (shareToken) params.shareToken = shareToken;
@@ -88,6 +88,8 @@ export const getFileBlob = async (nodeId, options = {}) => {
     responseType: 'blob',
     headers: shareTokenHeaders(shareToken),
     signal,
+    ...(timeout ? { timeout } : {}),
+    ...(maxRetries != null ? { maxRetries } : {}),
   });
   return response.data;
 };

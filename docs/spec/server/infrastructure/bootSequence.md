@@ -34,13 +34,25 @@ lets DB-sourced configuration take effect before require-time consts are capture
 7. await ensureDefaultAdmin()
    — reads process.env.ADMIN_DEFAULT_PASSWORD, which may now be a DB-sourced,
      plaintext T1 value (the wizard stores it in DB for the postgresql path).
-8. backendHealth.reset() — reset the in-memory health tracker for a fresh process.
-   (A transition callback for [backend-health] OK→FAIL / FAIL→OK logging is installed.)
-9. mount / listen:
-   - PORT resolved at listen time via resolver.getConfigSync('PORT') (T1: env → DB → default).
-   - CORS origin list resolved per request from the resolver (T2, hot).
-   - the setImmediate composition (getComposition / fail-safe / GC scheduler) runs as before;
-     its fallback still uses computeSetupStatus(process.env).setup_complete (consistent post-populate).
+8. backendHealth.reset() + install the [backend-health] OK→FAIL / FAIL→OK
+   transition logger. The reset MUST run BEFORE the boot probes below: a probe
+   failure recorded during boot must survive into the tracker so it is visible
+   on the health card and the file-screen banner immediately after login. A
+   post-probe reset would wipe it (surfaces would report `unknown` at boot).
+9. FFmpeg init (best-effort, warn-only).
+10. Boot connection probes for the ACTIVE file backend only (D3 / warn-only):
+    - WEA_FILE_STORAGE=webdav → utils/webdav `testConnection`; failure logs warn.
+    - WEA_FILE_STORAGE=s3 → `backendProbe.probeS3`; missing S3 config logs
+      SKIPPED (no failure record); probe failure records to the health tracker
+      (survives because step 8 already ran).
+    Probing an unused backend would record a false alert (D3), so only the
+    active file backend is probed.
+11. getMigrationGate().reset() — fresh-process migration gate.
+12. mount / listen:
+    - PORT resolved at listen time via resolver.getConfigSync('PORT') (T1: env → DB → default).
+    - CORS origin list resolved per request from the resolver (T2, hot).
+    - the setImmediate composition (getComposition / fail-safe / GC scheduler) runs as before;
+      its fallback still uses computeSetupStatus(process.env).setup_complete (consistent post-populate).
 ```
 
 ## 3. Why admin seeding is deferred
@@ -65,3 +77,4 @@ default password.
 - [ ] `.env` wins over DB for any T1 key (`populateT1Env` never overwrites existing env).
 - [ ] T2 keys never written into process.env (stay lazy).
 - [ ] PORT from DB used at listen; CORS origin list resolved per request.
+- [ ] A failing active-file-backend boot probe leaves the health tracker `fail` (reset runs first), so `GET /api/health` reports the failure and the file-screen banner shows immediately after login.

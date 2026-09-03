@@ -119,14 +119,12 @@ describe('writeEnv', () => {
     const p = makeEnvPath();
     fs.writeFileSync(p, 'PORT=5001\nJWT_SECRET=old\n');
 
-    writeEnv(p, { PORT: '6000', JWT_SECRET: 'new' }, { backup: true });
+    const backupPath = writeEnv(p, { PORT: '6000', JWT_SECRET: 'new' }, { backup: true });
 
     const backups = backupNames(p);
     expect(backups).toHaveLength(1);
-    expect(readLines(path.join(path.dirname(p), backups[0]))).toEqual([
-      'PORT=5001',
-      'JWT_SECRET=old',
-    ]);
+    expect(backupPath).toBe(path.join(path.dirname(p), backups[0]));
+    expect(readLines(backupPath)).toEqual(['PORT=5001', 'JWT_SECRET=old']);
     expect(readLines(p)).toEqual(['PORT=6000', 'JWT_SECRET=new']);
   });
 
@@ -134,14 +132,18 @@ describe('writeEnv', () => {
     const p = makeEnvPath();
     fs.writeFileSync(p, 'PORT=5001\n');
 
-    writeEnv(p, { PORT: '6000' }, { backup: false });
+    const backupPath = writeEnv(p, { PORT: '6000' }, { backup: false });
 
+    expect(backupPath).toBeNull();
     expect(backupNames(p)).toEqual([]);
   });
 
   it('creates no backup when the target does not exist', () => {
     const p = makeEnvPath();
-    writeEnv(p, { PORT: '5001' }, { backup: true });
+
+    const backupPath = writeEnv(p, { PORT: '5001' }, { backup: true });
+
+    expect(backupPath).toBeNull();
     expect(backupNames(p)).toEqual([]);
   });
 

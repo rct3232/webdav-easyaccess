@@ -156,28 +156,33 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     setSelectedFiles,
   } = useSelection(displayedFiles, sortedFiles);
 
+  // key(entryKey)→file 인덱스: 선택 Set의 reverse-lookup을 O(1)로 수행 (선택 크기 × 파일 수의 find 중복 제거)
+  const sortedFilesByKey = useMemo(() => {
+    const map = new Map();
+    for (const f of sortedFiles) {
+      const key = getEntryKey(f);
+      if (!map.has(key)) map.set(key, f);
+    }
+    return map;
+  }, [sortedFiles]);
+
   // 선택 모드에서 삭제/이동 버튼: 선택된 항목 모두 write 권한이 있어야 활성화
   const allSelectedHaveWrite = useMemo(() => {
     if (!selectionMode || selectedFiles.size === 0) return false;
-    const selectedKeys = Array.from(selectedFiles);
-    const selectedFileObjects = selectedKeys
-      .map((key) => sortedFiles.find((f) => getEntryKey(f) === key))
-      .filter(Boolean);
-    return (
-      selectedFileObjects.length === selectedKeys.length &&
-      selectedFileObjects.every((f) => f.hasWritePermission === true)
-    );
-  }, [selectionMode, selectedFiles, sortedFiles]);
+    return Array.from(selectedFiles).every((key) => {
+      const f = sortedFilesByKey.get(key);
+      return !!f && f.hasWritePermission === true;
+    });
+  }, [selectionMode, selectedFiles, sortedFilesByKey]);
 
   // 선택된 항목 중 읽기 전용(hasWritePermission === false) 포함 여부
   const hasReadOnlyInSelection = useMemo(() => {
     if (!selectionMode || selectedFiles.size === 0) return false;
-    const selectedKeys = Array.from(selectedFiles);
-    const selectedFileObjects = selectedKeys
-      .map((key) => sortedFiles.find((f) => getEntryKey(f) === key))
-      .filter(Boolean);
-    return selectedFileObjects.some((f) => f.hasWritePermission === false);
-  }, [selectionMode, selectedFiles, sortedFiles]);
+    return Array.from(selectedFiles).some((key) => {
+      const f = sortedFilesByKey.get(key);
+      return !!f && f.hasWritePermission === false;
+    });
+  }, [selectionMode, selectedFiles, sortedFilesByKey]);
 
   // 디렉토리 이동 시 선택 모드 해제
   useEffect(() => {
@@ -518,38 +523,33 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     ]
   );
 
-  const {
-    handlePathClick,
-    handleFileClick,
-    handleMoreClick,
-    handleLongPressSelect,
-    handleActionSheetPreview,
-  } = useExplorerInteraction({
-    isMobile,
-    isShareLinkMode,
-    selectionMode,
-    displayedFiles,
-    toggleFileSelection,
-    handleFileClickSelection,
-    enterSelectionMode,
-    setSelectedFiles,
-    navigateToExplorerPath,
-    openExplorerFolder,
-    openPreviewDialog,
-    setSelectedFile,
-    setContextMenu,
-    setActionSheetFile,
-    actionSheetFile,
-    showError,
-    t,
-    recentFileApi: {
-      trackRecentFileClick,
-      clearTracking,
-      handleRecentFileError,
-      setRecentFileToPreview,
-    },
-    handleProductPathClick,
-  });
+  const { handleFileClick, handleMoreClick, handleLongPressSelect, handleActionSheetPreview } =
+    useExplorerInteraction({
+      isMobile,
+      isShareLinkMode,
+      selectionMode,
+      displayedFiles,
+      toggleFileSelection,
+      handleFileClickSelection,
+      enterSelectionMode,
+      setSelectedFiles,
+      navigateToExplorerPath,
+      openExplorerFolder,
+      openPreviewDialog,
+      setSelectedFile,
+      setContextMenu,
+      setActionSheetFile,
+      actionSheetFile,
+      showError,
+      t,
+      recentFileApi: {
+        trackRecentFileClick,
+        clearTracking,
+        handleRecentFileError,
+        setRecentFileToPreview,
+      },
+      handleProductPathClick,
+    });
 
   const handleCreateFolderComplete = useCallback(
     (folderPath, folderName, createdNodeId) => {
@@ -996,7 +996,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       handleExplorerDrop,
       handleInternalFileDrop,
       handleLeaveSharePathClick,
-      handlePathClick,
       handleFolderTreeNodeClick,
       ancestors,
       handleScrollAreaClick,
@@ -1019,7 +1018,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       handleExplorerDrop,
       handleInternalFileDrop,
       handleLeaveSharePathClick,
-      handlePathClick,
       handleFolderTreeNodeClick,
       ancestors,
       handleScrollAreaClick,

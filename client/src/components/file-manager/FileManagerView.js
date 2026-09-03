@@ -174,7 +174,6 @@ const FileManagerView = ({
     handleExplorerDrop,
     handleInternalFileDrop,
     handleLeaveSharePathClick,
-    handlePathClick,
     handleFolderTreeNodeClick,
     ancestors,
     handleScrollAreaClick,
@@ -558,9 +557,6 @@ const FileManagerView = ({
                   selectionMode={selectionMode}
                   selectedFiles={selectedFiles}
                   onFileCheck={handleFileCheck}
-                  hasWritePermission={hasWritePermission}
-                  currentPath={currentPath}
-                  onPathClick={handlePathClick}
                   loading={loading}
                   onThumbnailsLoaded={handleThumbnailsLoaded}
                   loadMoreRef={loadMoreRef}
@@ -584,9 +580,6 @@ const FileManagerView = ({
                   selectionMode={selectionMode}
                   selectedFiles={selectedFiles}
                   onFileCheck={handleFileCheck}
-                  hasWritePermission={hasWritePermission}
-                  currentPath={currentPath}
-                  onPathClick={handlePathClick}
                   loading={loading}
                   onThumbnailsLoaded={handleThumbnailsLoaded}
                   loadMoreRef={loadMoreRef}
@@ -610,9 +603,6 @@ const FileManagerView = ({
                   selectionMode={selectionMode}
                   selectedFiles={selectedFiles}
                   onFileCheck={handleFileCheck}
-                  hasWritePermission={hasWritePermission}
-                  currentPath={currentPath}
-                  onPathClick={handlePathClick}
                   loading={loading}
                   shareToken={isShareLinkMode ? shareToken : undefined}
                 />

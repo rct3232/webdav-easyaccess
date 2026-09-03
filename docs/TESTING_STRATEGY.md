@@ -115,6 +115,12 @@ function createExampleMock(overrides = {}) {
 - **Spec-documented delegation pins are exempt:** A mock-call pin (`toHaveBeenCalledWith` / `toHaveBeenCalledTimes` / call absence) is exempt from the black-box rule when a spec document explicitly records that delegation tuple or absence as a contract (e.g. the per-method delegation tuples in `docs/spec/server/services/fileService.md` §2.3, or the permission-gate mandates in §3). Such pins verify a documented seam, not an implementation detail.
 - **Otherwise assert the observable:** If the behavior is observable through the module-under-test's output, state, or rendered UI, the pin must be dropped or replaced by the observable assertion (see AGENTS.md §3.1, "Verify What, Not How").
 
+### Performance / memoization refactors
+
+- **Memoization and callback identity are implementation details.** `React.memo`, `useCallback`/`useMemo` dependency arrays, render counts, and bail-out behavior must not be asserted by unit tests (that would reach into internals — the "How").
+- **Verification is drift-free behavior plus structural evidence.** A performance-only refactor (e.g. stabilizing handler identities, memoizing grouped props, removing dead props) is verified by ① existing black-box suites staying green with zero observable behavior/test drift, ② a commit message explaining the structural change, and ③ manual React DevTools Profiler checks where a render-count claim is made. Render-frequency or `React.memo` bail-out assertions are not added to unit tests.
+- **Spec docs describe the memoization as implemented state only.** A component may note that it is `React.memo`-wrapped as an implementation fact, but such a claim is not a unit-test checklist item.
+
 ---
 
 ## Cross-cutting defect classes & semantics-first testing

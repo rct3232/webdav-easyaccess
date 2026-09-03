@@ -67,7 +67,6 @@ Checklist for unit test writing:
 - [x] More button shown when showMoreButton; hidden when !showMoreButton; onMoreClick called with file and stopPropagation
 - [x] Selected/drop target styles
 - [x] Processing overlay
-- [x] React.memo optimization
 
 ### 2.8 Edge Cases
 

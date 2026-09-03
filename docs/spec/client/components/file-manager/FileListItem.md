@@ -66,7 +66,6 @@ Checklist for unit test writing:
 - [x] More button shown when showMoreButton; hidden when !showMoreButton; onMoreClick called with file and stopPropagation
 - [x] Thumbnail or icon displayed
 - [x] Processing overlay when isProcessing
-- [x] React.memo prevents re-render when props unchanged
 
 ### 2.8 Edge Cases
 

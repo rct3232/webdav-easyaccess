@@ -31,9 +31,6 @@
 | selectedFiles      | Set      | Y        | -       | Selected paths                                                                                             |
 | onFileCheck        | function | Y        | -       | Selection toggle handler (e.g. called when card is clicked in selection mode); no checkbox UI.             |
 | processingMap      | object   | N        | -       | Processing state map                                                                                       |
-| hasWritePermission | boolean  | N        | -       | Write permission                                                                                           |
-| currentPath        | string   | Y        | -       | Current path                                                                                               |
-| onPathClick        | function | N        | -       | Path click                                                                                                 |
 | loading            | boolean  | N        | false   | Loading state                                                                                              |
 | onThumbnailsLoaded | function | N        | -       | Thumbnail callback                                                                                         |
 | loadMoreRef        | ref      | N        | -       | Infinite scroll ref                                                                                        |

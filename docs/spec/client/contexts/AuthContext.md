@@ -34,8 +34,8 @@
 
 ### 2.4 Dependencies
 
-- React (`createContext`, `useState`, `useContext`, `useEffect`, `useCallback`)
-- `useAuthSession` (session state + actions)
+- React (`createContext`, `useContext`, `useMemo`)
+- `useAuthSession` (session state + actions; source of `user`, `loading`, `login`, `register`, `logout`)
 
 ### 2.5 Behavior
 

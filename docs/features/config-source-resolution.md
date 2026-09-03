@@ -13,6 +13,8 @@ Detailed implementation contracts live in:
 - `docs/spec/server/infrastructure/configResolver.md` — effective-config resolver + T2 cache.
 - `docs/spec/server/utils/configEncryption.md` — AES-256-GCM secret encryption.
 - `docs/spec/server/routes/setup.md` (updated) — wizard apply now targets DB storage for non-T0.
+- `docs/features/config-sync.md` + `docs/spec/server/tools/config-sync.md` — env↔DB
+  sync/alert CLI (`configSync`): drift detection, key-loss alerting, `--apply` reconcile.
 - `docs/SETUP.md` — operator environment-variable reference (updated classification).
 
 ---
@@ -43,9 +45,11 @@ connection before the metadata DB exists.
 
 - A value present in `.env` **always wins**; the DB copy is read only when the env var is
   absent. For encrypted secrets, an env value means "do not even decrypt".
-- The DB copy can therefore become stale relative to `.env`; no env-vs-DB sync/alert tool is
-  implemented today (only the `updated_at` column exists to detect such drift) — the sync/alert
-  feature is tracked in `docs/IMPROVEMENT_PLAN.md`.
+- The DB copy can therefore become stale relative to `.env`; the configSync CLI
+  (`server/scripts/configSync.js`) detects and reports env-vs-DB drift and key-loss conditions
+  (alert mode, exit 1 on drift) and can reconcile the DB rows to mirror `.env`
+  (`--apply --yes`) — `docs/features/config-sync.md` /
+  `docs/spec/server/tools/config-sync.md`.
 
 ---
 
@@ -111,8 +115,9 @@ CREATE TABLE IF NOT EXISTS settings (
   - encrypted secret (D6/D8) → object
     `{ "enc": "aes-256-gcm", "iv": "<b64>", "tag": "<b64>", "data": "<b64>" }`
 - Tier / source / restart-required are derived at runtime from the registry, never stored.
-- `updated_at` exists now; the env-vs-DB sync/alert feature it would serve is tracked in
-  `docs/IMPROVEMENT_PLAN.md`.
+- `updated_at` is consumed by the configSync drift report
+  (`docs/features/config-sync.md`), which surfaces it per DB-backed finding as
+  `db_updated_at` (ISO 8601).
 
 ---
 

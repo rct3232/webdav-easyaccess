@@ -24,7 +24,7 @@ All hooks live under `client/src/components/dialogs/FilePreviewDialog/hooks/`:
 
 | Hook                   | Responsibility                                                                                                                                                                          |
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `usePreviewLoader`     | `loading`, `error`, `previewUrl`, `previewBlob`, `textContent`, `loadPreview` callback, blob cleanup effect                                                                             |
+| `usePreviewLoader`     | `loading`, `error`, `previewUrl`, `previewBlob`, `textContent`, `loadPreview` callback, `retry` callback, blob cleanup effect                                                                             |
 | `useGalleryNavigation` | `currentMediaIndex`, `goPrev`, `goNext`, `handleTouchStart/End`, derived opened index + navigation offset, reset on close                                                               |
 | `useUIVisibility`      | `headerVisible`, `controlsVisible`, `startHideTimer`, `clearHideTimer`, `resetHideTimer`, hide timer effects                                                                            |
 | `usePlyrPlayer`        | Plyr audio/video DOM effects, `videoNotPlayable` state, controls sync effect, touchend preventDefault effect, `audioContainerRef`, `videoContainerRef`, `mediaTouchRef`                 |
@@ -107,6 +107,7 @@ All subcomponents live under `client/src/components/dialogs/FilePreviewDialog/pr
 - [ ] Gallery navigation
 - [ ] onClose
 - [ ] Error/loading states
+- [ ] Error state shows a retry icon button above the message; clicking it re-runs the preview load (`usePreviewLoader.retry`)
 - [ ] Zoom controls in header for zoomable types (PDF, image); order: zoom → download → close; zoom controls change scale
 
 ### 2.8 Content Vertical Layout
@@ -121,6 +122,7 @@ All subcomponents live under `client/src/components/dialogs/FilePreviewDialog/pr
     - `centerBox` uses `minWidth: zoomed width` and `minHeight: max(100%, zoomed height)`. The `max(100%, ...)` for height is required because block elements automatically fill container width but NOT height — without it, a landscape image shorter than the viewport would sit at the top instead of being vertically centered.
     - Reset `baseSize` when `previewUrl` changes.
 - **Loading, error, canPreview=false, default:** Vertical center. Use `flex: 1`, `minHeight: 0`, `justifyContent: 'center'`, `alignItems: 'center'`.
+  - Error state: column layout; a retry icon button (white, `preview.retry` tooltip/aria) sits above the message. The error text is white (`#fff`), not red — the dialog background is dark.
 - **Audio:** Vertical center. Use `flex: 1`, `minHeight: 0`, `justifyContent: 'center', `alignItems: 'center'`.
 - **Text:** Center when content fits; when overflow (scroll needed), switch to top align so scroll is downward only. Use ResizeObserver. Scrollbar hidden (same as PDF).
 - **PDF:** Top-aligned and scrollable inside a container that fills the available content area (flex: 1, minHeight: 0). Do not clamp height with a fixed viewport-relative value (e.g. 70vh); instead, let the PDF container inherit height from `DialogContent` so there is no unused vertical gap beneath the preview. Scrollbar hidden via CSS (scrollbar-width, ::-webkit-scrollbar) while scroll remains functional.

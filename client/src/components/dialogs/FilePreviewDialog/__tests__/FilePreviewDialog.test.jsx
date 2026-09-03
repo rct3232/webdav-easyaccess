@@ -365,4 +365,29 @@ describe('FilePreviewDialog', () => {
     const tooltip = await screen.findByRole('tooltip');
     expect(tooltip).toHaveTextContent(longName);
   });
+
+  it('shows a retry button over the preview error and reloads on click', async () => {
+    mockGetFileBlob.mockRejectedValueOnce(new Error('boom'));
+
+    const txtFile = {
+      nodeId: 11,
+      path: '/docs/err.txt',
+      basename: 'err.txt',
+      name: 'err.txt',
+      type: 'file',
+    };
+    renderDialog(txtFile);
+
+    const retryButton = await screen.findByTestId('preview-retry-button');
+
+    fireEvent.click(retryButton);
+
+    // Retry re-runs the load; the default (resolving) mock succeeds this time.
+    await waitFor(() => {
+      expect(mockGetFileBlob).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('preview-retry-button')).not.toBeInTheDocument();
+    });
+  });
 });

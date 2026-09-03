@@ -689,6 +689,7 @@
     "loadFail": "Unable to load file.",
     "pdfLoadFail": "Unable to load PDF file.",
     "pdfLoadFailWithReason": "Unable to load PDF file: {{reason}}",
+    "retry": "Retry",
     "notSupported": "This file type does not support preview.",
     "videoNotPlayable": "This format cannot be played.",
     "downloadHint": "Click the download button in the top right",

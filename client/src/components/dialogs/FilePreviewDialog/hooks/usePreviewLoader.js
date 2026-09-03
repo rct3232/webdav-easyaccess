@@ -15,6 +15,7 @@ export const usePreviewLoader = ({ open, displayFile, file, shareToken, t }) => 
   const [previewUrl, setPreviewUrl] = useState(null);
   const [previewBlob, setPreviewBlob] = useState(null);
   const [textContent, setTextContent] = useState(null);
+  const [retryNonce, setRetryNonce] = useState(0);
 
   const loadPreview = useCallback(
     async (signal) => {
@@ -99,7 +100,10 @@ export const usePreviewLoader = ({ open, displayFile, file, shareToken, t }) => 
       setLoading(true);
       setError(null);
     }
-  }, [open, displayFile, file, loadPreview]);
+  }, [open, displayFile, file, loadPreview, retryNonce]);
 
-  return { loading, error, previewUrl, previewBlob, textContent };
+  // Re-run the load for the current file (used by the error-state retry button).
+  const retry = useCallback(() => setRetryNonce((n) => n + 1), []);
+
+  return { loading, error, previewUrl, previewBlob, textContent, retry };
 };

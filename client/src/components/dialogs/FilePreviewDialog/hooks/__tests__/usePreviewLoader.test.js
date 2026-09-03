@@ -132,4 +132,21 @@ describe('usePreviewLoader', () => {
     expect(result.current.error).toBeNull();
     expect(result.current.previewUrl).toBeDefined();
   });
+
+  it('retry re-runs a failed preview load and clears the error', async () => {
+    fileService.getFileBlob.mockRejectedValueOnce(new Error('boom'));
+
+    const { result } = renderHook(() => usePreviewLoader(makeBaseProps()));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBe('preview.loadFail');
+
+    act(() => {
+      result.current.retry();
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBeNull();
+    expect(fileService.getFileBlob).toHaveBeenCalledTimes(2);
+  });
 });

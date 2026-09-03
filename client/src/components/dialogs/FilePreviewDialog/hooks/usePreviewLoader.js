@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { getFileBlob, getVideoPreviewStreamUrl } from '../../../../services/fileService';
 import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
+import { getServerErrorDisplay } from '../../../../utils/errorUtils';
 
 export const usePreviewLoader = ({ open, displayFile, file, shareToken, t }) => {
   const [loading, setLoading] = useState(true);
@@ -47,11 +48,18 @@ export const usePreviewLoader = ({ open, displayFile, file, shareToken, t }) => 
 
         setLoading(false);
       } catch (err) {
-        // Treat abort (user navigated away or effect re-ran) as non-fatal.
-        // httpClient converts AbortError to Error with code ECONNABORTED.
-        if (err?.name === 'AbortError' || err?.code === 'ECONNABORTED') return;
+        // A request is silently ignored only when the CALLER aborted it
+        // (user navigated away / effect re-ran). httpClient surfaces its own
+        // transport timeout as an error with code 'ECONNABORTED' too, but in
+        // that case our signal is NOT aborted — treat it as a real failure so
+        // the loading circle never spins indefinitely with no error shown.
+        if (signal?.aborted) return;
         console.error('Preview load error:', err);
-        setError(t('preview.loadFail'));
+        const data = err?.response?.data;
+        // Prefer the server errorCode (connection-class failures map to the
+        // friendly `files.storageUnavailable` text); fall back to the generic
+        // preview error for transport-level failures without a server response.
+        setError(data?.errorCode ? getServerErrorDisplay(data, t) : t('preview.loadFail'));
         setLoading(false);
       }
     },

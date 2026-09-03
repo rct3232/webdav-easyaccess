@@ -17,7 +17,7 @@ const path = require('path');
 const dotenv = require('dotenv');
 
 const { resolveEnvPath } = require('../infrastructure/envPath');
-const { getEntries, isT0, isSecret } = require('../infrastructure/configRegistry');
+const { getEntries, isT0 } = require('../infrastructure/configRegistry');
 const {
   encryptSecret,
   decryptSecret,

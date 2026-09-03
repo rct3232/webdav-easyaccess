@@ -48,7 +48,15 @@ open items remain outside the DEF list above.
 - DEF-1 (schemaManager checksum-based modified-DDL detection, Option A hard fail) implemented
   on 2026-09-03 via `feature/checksum-ddl-detection`.
 - DEF-4 (FileManager `useMemo`/`useCallback` performance sprint, P2/P1/P3) implemented on
-  2026-09-03 via `refactor/filemanager-memo-sprint` (P4 optional items remain open, no behavior change).
+  2026-09-03 via `refactor/filemanager-memo-sprint` (no behavior change).
+- DEF-4 residual P4 items (previously "optional, remain open") implemented on 2026-09-03 via
+  `refactor/filemanager-auth-context-perf`: `FileManager` selection reverse-lookups converted
+  from O(selection × files) `.find` scans to a `key→file` Map; `AuthContext` provider value
+  memoized by `useMemo`; dead props (`hasWritePermission`/`currentPath`/`onPathClick`) no longer
+  forwarded to the memoized `FileList`/`FileGrid`/`FileDetail` views (restoring their
+  `React.memo` bail-out on unrelated re-renders); `FileListItem`/`FileGridItem` spec memo
+  checklist claims removed and the memoization-is-implementation-detail rule recorded in
+  `docs/TESTING_STRATEGY.md`. No observable behavior change.
 - DEF-3 (env↔DB config sync/alert CLI, `server/scripts/configSync.js` — `--check` drift report
   with `key-lost` alerting + `--apply --yes` reconcile, backed by the new
   `settingsStore.listRows()`) implemented on 2026-09-03 via `feature/env-db-sync-tool`.

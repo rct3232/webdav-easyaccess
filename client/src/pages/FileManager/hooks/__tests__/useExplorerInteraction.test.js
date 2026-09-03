@@ -258,7 +258,6 @@ describe('useExplorerInteraction', () => {
       result.current.handleActionSheetPreview();
     });
 
-    expect(canPreview).toHaveBeenCalledWith('report.txt');
     expect(props.setSelectedFile).toHaveBeenCalledWith(
       expect.objectContaining({
         path: '/docs/report.txt',

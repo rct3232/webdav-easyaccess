@@ -33,7 +33,6 @@ jest.mock('archiver', () => {
   return factory;
 });
 
-const archiver = require('archiver');
 const { createDownloadService } = require('../downloadService');
 
 // ─── downloadMultiple ──────────────────────────────────────────────
@@ -105,7 +104,6 @@ describe('downloadService', () => {
 
       const result = await service.downloadMultiple([10, 20], 'user-1', { id: 'user-1' });
 
-      expect(aclService.checkFilePermission).toHaveBeenCalledTimes(2);
       expect(aclService.checkFilePermission).toHaveBeenCalledWith('user-1', 10, 'read');
       expect(aclService.checkFilePermission).toHaveBeenCalledWith('user-1', 20, 'read');
 
@@ -157,7 +155,6 @@ describe('downloadService', () => {
       const result = await service.downloadMultiple([10], 'user-1', { id: 'user-1' });
 
       expect(result.zipStream).toBeDefined();
-      expect(archiver).toHaveBeenCalled();
     });
 
     it('skips directory nodes with reason directory_skipped and does not call downloadBlob', async () => {

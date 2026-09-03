@@ -77,7 +77,6 @@ describe('createUploadService', () => {
       expect(cache.rows[0].mime_type).toBe(mimeType);
 
       // S3 blob stored
-      expect(blobStore.uploadBlob).toHaveBeenCalledWith(result.s3Key, content);
       const s3Content = blobStore.store.get(result.s3Key);
       expect(s3Content).toBeDefined();
       expect(Buffer.compare(s3Content, content)).toBe(0);

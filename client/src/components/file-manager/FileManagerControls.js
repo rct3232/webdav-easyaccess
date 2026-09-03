@@ -302,4 +302,4 @@ const FileManagerControls = ({
   );
 };
 
-export default FileManagerControls;
+export default React.memo(FileManagerControls);

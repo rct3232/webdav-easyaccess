@@ -150,4 +150,4 @@ const FileDetail = ({
   );
 };
 
-export default FileDetail;
+export default React.memo(FileDetail);

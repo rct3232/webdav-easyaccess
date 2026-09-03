@@ -391,6 +391,20 @@
     "metadataMigration": "메타데이터 마이그레이션",
     "metadataMigrationDesc": "SQLite와 PostgreSQL 간 메타데이터 복사",
     "runMetadataMigration": "메타데이터 마이그레이션 실행",
+    "configSyncFromEnv": "환경 변수 → DB 동기화",
+    "configSyncFromEnvDesc": "서버가 현재 사용 중인 값을 데이터베이스 설정으로 복사하여 섀도우 사본을 최신 상태로 유지합니다.",
+    "runConfigSync": "지금 동기화",
+    "configSyncConfirmTitle": "환경 변수 → 데이터베이스 동기화",
+    "configSyncPreviewLoading": "현재 설정을 확인하는 중...",
+    "configSyncPreviewReportFail": "동기화 보고서를 불러오지 못했습니다.",
+    "configSyncPreviewNoChanges": "동기화할 항목이 없습니다 — 데이터베이스 설정이 이미 환경 변수와 일치합니다.",
+    "configSyncPreviewChanges": "키 {{updated}}개가 업데이트되고 {{added}}개가 데이터베이스 설정에 추가됩니다.",
+    "configSyncPreviewUpdatedKeys": "업데이트 대상: {{keys}}",
+    "configSyncPreviewAddedKeys": "추가 대상: {{keys}}",
+    "configSyncPreviewKeyLost": "암호화된 값 {{count}}개를 복호화할 수 없습니다(암호화 키 없음). 변경되지 않으며 계속 경고가 표시됩니다.",
+    "configSyncConfirmScope": "서버가 현재 사용 중인 값만 복사됩니다. 시작 전용 키(.env)는 저장되지 않으며 데이터베이스 행이 삭제되지 않습니다.",
+    "configSyncApplyFail": "환경 변수를 데이터베이스 설정으로 동기화하지 못했습니다.",
+    "configSyncDone": "환경 변수를 데이터베이스 설정에 동기화했습니다.",
     "envSetupNeededTitle": ".env 설정 필요",
     "envSetupNeededBody": "{{backend}}에 메타데이터가 감지되었습니다. .env에서 해당 백엔드를 가리키고 재시작하거나, 마이그레이션을 실행하세요.",
     "envSetupNeededAction": "메타데이터 마이그레이션 열기",
@@ -802,7 +816,8 @@
       "configT0Protected": "{{key}} 키는 시작 시(.env) 설정으로 여기서 변경할 수 없습니다.",
       "configEnvSourcedProtected": "{{key}} 키는 .env에서 설정되어 여기서 변경할 수 없습니다 (env가 우선합니다).",
       "configInvalidPayload": "잘못된 설정 데이터입니다.",
-      "configEncryptKeyMissing": "서버에 시크릿 암호화 키가 없습니다. 설정이 저장되지 않았습니다."
+      "configEncryptKeyMissing": "서버에 시크릿 암호화 키가 없습니다. 설정이 저장되지 않았습니다.",
+      "configSyncEncryptKeyMissing": "시크릿 암호화 키(encrypt_secret_key)가 없어 환경 변수 시크릿을 데이터베이스에 저장할 수 없습니다. 동기화된 항목이 없습니다."
     },
     "migrationInProgress": "이미 마이그레이션이 진행 중입니다. 완료될 때까지 앱이 잠깁니다.",
     "users": {
@@ -972,7 +987,8 @@
       "permissionUpdated": "권한이 업데이트되었습니다.",
       "orphanCleanupDone": "고아 데이터 정리가 완료되었습니다.",
       "migrationCancelled": "마이그레이션이 취소되었습니다.",
-      "configSaved": "설정이 저장되었습니다."
+      "configSaved": "설정이 저장되었습니다.",
+      "configSyncDone": "환경 변수를 데이터베이스 설정에 동기화했습니다."
     },
     "share": {
       "addedToShared": "공유 항목에 추가되었습니다."

@@ -17,6 +17,11 @@ const {
   isTier,
   isSecret,
 } = require('../../../infrastructure/configRegistry');
+const {
+  buildConfigSyncReport,
+  syncConfigSyncEnv,
+  ConfigSyncAbortError,
+} = require('../services/configSyncService');
 const { encryptSecret, hasEncryptedRows } = require('../../../utils/configEncryption');
 const {
   runProbe,
@@ -244,5 +249,70 @@ router.post(
 router.get('/health', authenticateToken, isAdmin, (req, res) => {
   res.json({ backends: getBackendHealth().getHealth() });
 });
+
+// Env↔DB config-sync report (read-only). The env source is the running process
+// environment, classified through the config resolver (source: 'env'); the .env
+// file on disk is never read. Mirrors the CLI --check algorithm over the shared
+// core (configSyncService) — same findings/summary/exitCode JSON.
+router.get(
+  '/config/sync-report',
+  authenticateToken,
+  isAdmin,
+  asyncHandler(async (req, res) => {
+    const effective = await getSharedResolver().getEffectiveConfig();
+    const envValueOf = (key) =>
+      effective[key]?.source === 'env' ? process.env[key] : undefined;
+    const report = await buildConfigSyncReport({
+      settings: Settings,
+      envValueOf,
+      masterKey: process.env.encrypt_secret_key,
+    });
+    res.json(report);
+  })
+);
+
+// Env→DB config-sync reconcile — the web equivalent of the CLI --apply --yes.
+// Writes env-sourced non-T0 registry values into the DB settings rows (secrets
+// encrypted), then invalidates the resolver T2 cache for the written keys so
+// the running server observes them immediately.
+router.post(
+  '/config/sync-from-env',
+  authenticateToken,
+  isAdmin,
+  asyncHandler(async (req, res) => {
+    const resolver = getSharedResolver();
+    const effective = await resolver.getEffectiveConfig();
+    const envValueOf = (key) =>
+      effective[key]?.source === 'env' ? process.env[key] : undefined;
+
+    let result;
+    try {
+      result = await syncConfigSyncEnv({
+        settings: Settings,
+        envValueOf,
+        masterKey: process.env.encrypt_secret_key,
+      });
+    } catch (error) {
+      if (error instanceof ConfigSyncAbortError) {
+        throw createError(
+          SERVER_ERROR_CODES.admin.configSyncEncryptKeyMissing,
+          HTTP_STATUS.INTERNAL_SERVER_ERROR
+        );
+      }
+      throw error;
+    }
+
+    const changedKeys = result.writes.filter((w) => w.status === 'updated').map((w) => w.key);
+    if (changedKeys.length > 0) {
+      resolver.invalidateCache(changedKeys);
+    }
+
+    res.json({
+      writes: result.writes,
+      report: result.report,
+      messageCode: SERVER_MESSAGE_CODES.admin.configSyncDone,
+    });
+  })
+);
 
 module.exports = router;

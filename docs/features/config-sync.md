@@ -1,29 +1,55 @@
 # Config Sync (`.env` ↔ DB settings)
 
-Source-of-Truth for the **config sync/alert CLI** (`server/scripts/configSync.js`), the
-operator tool for the two-layer configuration model defined in
-`docs/features/config-source-resolution.md`. Implementation contract:
-`docs/spec/server/tools/config-sync.md`; operator usage: `docs/SETUP.md`.
+Source-of-Truth for the two-layer configuration drift surface of the model defined in
+`docs/features/config-source-resolution.md`. Two operator-facing surfaces share one
+algorithm core (`server/domains/admin/services/configSyncService.js`):
+
+- the **config sync/alert CLI** (`server/scripts/configSync.js`) — offline, reconciles the
+  on-disk `.env` file (`docs/spec/server/tools/config-sync.md`); operator usage:
+  `docs/SETUP.md`;
+- the **admin web action** (System settings → "Sync environment → DB") — on a running
+  server, reconciles the **running process environment** (`server/domains/admin/routes/config.js`).
+
+Implementation contract: `docs/spec/server/routes/config.md` (web) and
+`docs/spec/server/tools/config-sync.md` (CLI).
 
 ---
 
 ## Purpose
 
-Under the `.env`-first model (D1), a value present in `.env` **always wins**; a DB `settings`
-row under an env-set key is a shadow copy that can go stale the moment an operator edits
-`.env`. Conversely, encrypted DB rows become unreadable if `encrypt_secret_key` is lost or
-rotated out from under them. This tool makes both conditions visible and fixable without
-touching the running app:
+Under the `.env`-first model (D1), a value present in the environment **always wins**; a DB
+`settings` row under an env-set key is a shadow copy that can go stale the moment an operator
+changes the environment (`.env` file edit or a redeploy with new variables). Conversely,
+encrypted DB rows become unreadable if `encrypt_secret_key` is lost or rotated out from
+under them. The config-sync surface makes both conditions visible and fixable:
 
-- **detect** — compare every non-T0 config-registry key that is set in `.env` (or holds a DB
-  row) against the metadata DB `settings` rows and report the result;
-- **alert** — exit non-zero (1) when drift or a key-loss condition is found, so the report
-  can gate CI/CD, cron jobs, or a pre-restart check;
-- **reconcile** — optionally mirror `.env` into the DB (`--apply --yes`) so the shadow
-  copies stop being stale.
+- **detect** — compare every non-T0 config-registry key that is set in the env (or holds a
+  DB row) against the metadata DB `settings` rows and report the result;
+- **alert** — report drift / key-loss findings so they can gate CI/CD, cron jobs, a
+  pre-restart check, or an admin preview dialog;
+- **reconcile** — mirror the env into the DB so the shadow copies stop being stale.
 
-The tool reads and writes **only** the metadata DB `settings` table (via the app's own
-`Settings` store) and only **reads** `.env`. It never writes `.env`.
+Both surfaces read/write **only** the metadata DB `settings` table (via the app's own
+`Settings` store) and never write `.env`. They differ only in the env source they reconcile
+against (see "Surfaces and env source" below).
+
+---
+
+## Surfaces and env source
+
+| Surface             | Where                                                                  | Env source reconciled against                                                            |
+| ------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| CLI                 | `server/scripts/configSync.js` (`--check` / `--apply --yes`)           | the `.env` file on disk, re-read at run time (`loadDotenv`, `override: false` — real injected env still wins) |
+| Admin web action    | System settings → "Sync environment → DB" (`server/domains/admin/routes/config.js`) | the **running process environment** (`process.env`). The `.env` file on disk is never read; a key counts as env-set when the config resolver reports `source: 'env'` for it. |
+
+Implication for the web surface: because `populateT1Env` copies DB-only T1 values into
+`process.env` at boot, presence in `process.env` alone does **not** mean "operator-set env".
+The resolver's `source: 'env'` classification is the authoritative env-set test, so
+DB-backed T1 keys stay `source: 'db'` and are never treated as env targets. An operator
+edit to `.env` after boot is not visible to the web action until the server restarts (with
+the running app it is not active either) — use the CLI for on-disk `.env` reconciliation.
+Pure environment-injected deployments (no `.env` file) sync their live `process.env`
+values.
 
 ---
 
@@ -32,34 +58,37 @@ The tool reads and writes **only** the metadata DB `settings` table (via the app
 The comparison universe is every entry of the config registry
 (`server/infrastructure/configRegistry.js`) with `tier !== T0` (45 keys: T1 + T2). T0 keys
 (`WEA_PG_*`, `WEA_SQLITE_PATH`, `WEA_STORAGE_BACKEND`, `JWT_SECRET`,
-`encrypt_secret_key`, `NODE_ENV`, `DOTENV_CONFIG_PATH`, …) are `.env`-owned by design and are
-**excluded from the report and from every write** — including `JWT_SECRET` and
+`encrypt_secret_key`, `NODE_ENV`, `DOTENV_CONFIG_PATH`, …) are environment-owned by design
+and are **excluded from the report and from every write** — including `JWT_SECRET` and
 `encrypt_secret_key`.
 
-Keys set in neither `.env` nor the DB are default-governed and are **silent** (not
+Keys set in neither the env source nor the DB are default-governed and are **silent** (not
 reported).
 
 ---
 
-## Report classification (`--check`, the default mode)
+## Report classification
 
 For every non-T0 registry key:
 
 | Status       | Condition                                                                  | Severity                                   |
 | ------------ | -------------------------------------------------------------------------- | ------------------------------------------ |
-| `differs`    | key set in `.env`, DB row exists, canonical values differ                  | **DRIFT — exit 1**                         |
-| `shadowed`   | key set in `.env`, DB row exists, values equal                             | informational (env wins; the DB copy is current) |
-| `env-only`   | key set in `.env`, no DB row                                               | informational                               |
-| `db-only`    | key not set in `.env`, DB row exists                                       | informational (normal per D1)              |
-| `key-lost`   | DB row holds an encrypted payload but `encrypt_secret_key` is absent or decryption fails (auth error / unsupported algorithm) | **ALERT — exit 1** |
+| `differs`    | key set in env, DB row exists, canonical values differ                     | **DRIFT**                                  |
+| `shadowed`   | key set in env, DB row exists, values equal                                | informational (env wins; the DB copy is current) |
+| `env-only`   | key set in env, no DB row                                                  | informational                               |
+| `db-only`    | key not set in env, DB row exists                                          | informational (normal per D1)              |
+| `key-lost`   | DB row holds an encrypted payload but `encrypt_secret_key` is absent or decryption fails (auth error / unsupported algorithm) | **ALERT** |
+
+The severity column drives the CLI's exit code (see below); the web report mirrors it as
+`report.exitCode` (1 when `drift + alerts > 0`).
 
 Value comparison rules:
 
 - **Plaintext keys:** the raw DB value string is compared to the env string.
 - **Secret keys:** the DB payload is decrypted with the env `encrypt_secret_key`
   (AES-256-GCM) and compared to the env plaintext. An encrypted row that cannot be
-  decrypted is classified `key-lost` whether or not the key is also set in `.env` — the DB
-  copy is unrecoverable under the current key.
+  decrypted is classified `key-lost` whether or not the key is also set in the env source —
+  the DB copy is unrecoverable under the current key.
 - **Masking:** secret values are never shown. Secret keys are reported as
   `**** <key>` in human output and as `"secret": true` in JSON output (no `value` field is
   ever emitted). `key-lost` rows list affected keys only.
@@ -71,38 +100,60 @@ written.
 
 Output:
 
-- **Human (default):** grouped lines (`DRIFT:` / `ALERTS:` / `INFORMATIONAL:`) each carrying
-  status, key, `(secret: ****)` for secret keys, and `db_updated_at=<ISO>` for DB-backed
-  findings, followed by `summary: drift: N, alerts: N, informational: N` and an
+- **Human (CLI default):** grouped lines (`DRIFT:` / `ALERTS:` / `INFORMATIONAL:`) each
+  carrying status, key, `(secret: ****)` for secret keys, and `db_updated_at=<ISO>` for
+  DB-backed findings, followed by `summary: drift: N, alerts: N, informational: N` and an
   `exit code:` line.
-- **`--json`:** a single JSON document:
+- **`--json` (CLI):** a single JSON document:
   `{ findings: [{ key, status, secret, dbUpdatedAt }], summary: { drift, alerts, shadowed,
   envOnly, dbOnly, total }, exitCode }`.
+- **Web report (`GET /api/admin/config/sync-report`):** the same `findings` / `summary` /
+  `exitCode` JSON as the CLI `--json`, returned by the API.
 
 ---
 
-## Reconcile (`--apply --yes`)
+## Reconcile
 
-`--apply` without `--yes` is a usage error (exit 2). With both:
+CLI: `--apply --yes` (`--apply` without `--yes` is a usage error, exit 2). Web:
+`POST /api/admin/config/sync-from-env`. In both:
 
 1. **Pre-check (all-or-nothing):** if any env-set target key is a secret and
-   `encrypt_secret_key` is absent, the run aborts (exit 1) **before any write** with a clear
-   error.
-2. **Writes:** for every non-T0 registry key set in `.env`, the DB row is upserted to mirror
-   the env value through the same write path the admin config route uses
+   `encrypt_secret_key` is absent, the run aborts **before any write** with a clear error
+   (CLI: exit 1; web: 500 `serverErrors.admin.configSyncEncryptKeyMissing`).
+2. **Writes:** for every non-T0 registry key set in the env source, the DB row is upserted
+   to mirror the env value through the same write path the admin config route uses
    (`PUT /api/admin/config`, `server/domains/admin/routes/config.js`):
    - plaintext → `Settings.set(key, String(envValue))`;
    - secret → `Settings.set(key, JSON.stringify(encryptSecret(envValue, encrypt_secret_key)))`.
    A row whose current value already equals the env value (secrets compared after
    decryption) is reported `unchanged` and not rewritten; all others are reported
    `updated`.
-3. **Post-apply recheck:** the check runs again in-process and is reported; a successful
-   reconcile yields zero `differs` and exit 0 (pre-existing `key-lost` alerts on
-   db-only rows still force exit 1).
+3. **Post-apply recheck:** the check runs again in-process and is reported (CLI: rendered
+   as `post-apply check:`; web: returned as `report` in the response). A successful
+   reconcile yields zero `differs` (pre-existing `key-lost` alerts on db-only rows are
+   still reported). The web route additionally invalidates the resolver T2 cache for the
+   written keys so the running server observes them immediately.
 
 ---
 
-## Exit codes
+## Admin web action (System settings → "Sync environment → DB")
+
+The same algorithm is exposed on the running server for admins (no SSH / no CLI required):
+
+- `GET /api/admin/config/sync-report` — read-only preview (drift classification identical
+  to the CLI `--check`), consumed by the preview dialog.
+- `POST /api/admin/config/sync-from-env` — reconcile (write semantics identical to the CLI
+  `--apply --yes`), guarded by the "must not write T0 / must not delete rows" rules above.
+
+The web surface reconciles against the **running process environment**, classified through
+the config resolver (`source: 'env'`), not against the `.env` file (see "Surfaces and env
+source"). Both routes sit behind `authenticateToken` + admin and share the algorithm core
+`server/domains/admin/services/configSyncService.js`. Full request/response contract:
+`docs/spec/server/routes/config.md`.
+
+---
+
+## Exit codes (CLI only)
 
 | Code | Meaning                                                                                  |
 | ---- | ---------------------------------------------------------------------------------------- |
@@ -116,16 +167,16 @@ Output:
 ## Safety
 
 - **T0 is never written** — the write set is constructed from the registry with T0
-  filtered out; there is no flag to override this.
-- **No deletes** — reconcile upserts only; rows for keys absent from `.env` are left
-  untouched (they remain the effective value per D1).
-- **`--yes` required** for any write; the read-only report is the default mode.
+  filtered out; no surface or flag can override this.
+- **No deletes** — reconcile upserts only; rows for keys absent from the env source are
+  left untouched (they remain the effective value per D1).
+- **CLI only: `--yes` required** for any write; the read-only report is the default mode.
 - **Secrets masked** in all output; decryption happens in-process only for comparison and
   never for display.
-- The tool boots the metadata store schema-only (`initMetadataSchema`, no default-admin
-  seeding) and closes the connection on exit; it does not start the HTTP server and does
-  not affect a running app (a running server with a T2 cache sees the reconciled rows on
-  its next read after cache invalidation/restart, as with any other `settings` write).
+- The CLI boots the metadata store schema-only (`initMetadataSchema`, no default-admin
+  seeding) and closes the connection on exit; it does not start the HTTP server. The web
+  action runs inside the running server against its live store and invalidates the T2
+  resolver cache for the keys it writes.
 
 ---
 

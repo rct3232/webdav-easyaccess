@@ -17,15 +17,14 @@ const path = require('path');
 const dotenv = require('dotenv');
 
 const { resolveEnvPath } = require('../infrastructure/envPath');
-const { getEntries, isT0 } = require('../infrastructure/configRegistry');
-const {
-  encryptSecret,
-  decryptSecret,
-  isEncryptedPayload,
-} = require('../utils/configEncryption');
 const Settings = require('../models/Settings');
 const { PG_REQUIRED_KEYS } = require('../infrastructure/setupStatus');
 const { initMetadataSchema } = require('../store/bootstrap');
+const {
+  buildConfigSyncReport,
+  syncConfigSyncEnv,
+  ConfigSyncAbortError,
+} = require('../domains/admin/services/configSyncService');
 
 // This file lives in <server>/scripts, so the server root is one level up —
 // must match server/index.js:10-12 for resolveEnvPath.
@@ -69,10 +68,6 @@ function isTruthy(value) {
   if (value === true) return true;
   if (typeof value !== 'string') return false;
   return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
-}
-
-function isEnvSet(value) {
-  return value !== undefined && value !== null && String(value) !== '';
 }
 
 function describeError(error) {
@@ -124,112 +119,10 @@ async function bootStore() {
   await initMetadataSchema();
 }
 
-function tryJsonParse(raw) {
-  if (typeof raw !== 'string') return raw;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return raw;
-  }
-}
-
-function isEncryptedRowValue(raw) {
-  return isEncryptedPayload(tryJsonParse(raw));
-}
-
-function decryptRow(raw, masterKey) {
-  if (!masterKey) return null;
-  const parsed = tryJsonParse(raw);
-  if (!isEncryptedPayload(parsed)) return null;
-  try {
-    return decryptSecret(parsed, masterKey);
-  } catch {
-    return null;
-  }
-}
-
-// Normalize updated_at (pg Date object or sqlite 'YYYY-MM-DD HH:MM:SS' UTC
-// string) to an ISO string for the report.
-function toIsoTimestamp(value) {
-  if (value instanceof Date) return value.toISOString();
-  const str = String(value);
-  const m = str.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
-  if (m) {
-    return new Date(
-      Date.UTC(
-        Number(m[1]),
-        Number(m[2]) - 1,
-        Number(m[3]),
-        Number(m[4]),
-        Number(m[5]),
-        Number(m[6])
-      )
-    ).toISOString();
-  }
-  const parsed = new Date(str);
-  return Number.isNaN(parsed.getTime()) ? str : parsed.toISOString();
-}
-
-/**
- * Classify one non-T0 registry key against env and its DB row.
- * @returns {{ status: string, dbUpdatedAt: (string|null) }|undefined} undefined when set in neither env nor DB (silent)
- */
-function classify(entry, dbRow) {
-  const envValue = process.env[entry.key];
-  const envSet = isEnvSet(envValue);
-  const dbUpdatedAt = dbRow ? toIsoTimestamp(dbRow.updated_at) : null;
-
-  if (envSet && !dbRow) {
-    return { status: 'env-only', dbUpdatedAt: null };
-  }
-  if (!envSet) {
-    if (!dbRow) return undefined; // set in neither env nor DB: default-governed, silent
-    // D1: db-only is normal; but an encrypted row that cannot be decrypted is
-    // a key-lost alert regardless of env presence.
-    if (isEncryptedRowValue(dbRow.value)) {
-      const decrypted = decryptRow(dbRow.value, process.env.encrypt_secret_key);
-      if (decrypted === null) return { status: 'key-lost', dbUpdatedAt };
-    }
-    return { status: 'db-only', dbUpdatedAt };
-  }
-  const masterKey = process.env.encrypt_secret_key;
-  if (entry.secret) {
-    if (isEncryptedRowValue(dbRow.value)) {
-      const decrypted = decryptRow(dbRow.value, masterKey);
-      if (decrypted === null) return { status: 'key-lost', dbUpdatedAt };
-      return { status: decrypted === String(envValue) ? 'shadowed' : 'differs', dbUpdatedAt };
-    }
-  }
-  return { status: String(dbRow.value) === String(envValue) ? 'shadowed' : 'differs', dbUpdatedAt };
-}
-
-async function buildReport() {
-  const rows = await Settings.listRows();
-  const rowByKey = new Map(rows.map((row) => [row.key, row]));
-  const findings = [];
-  for (const entry of getEntries()) {
-    if (isT0(entry.key)) continue;
-    const result = classify(entry, rowByKey.get(entry.key));
-    if (!result) continue; // set in neither env nor DB: silent
-    findings.push({
-      key: entry.key,
-      status: result.status,
-      secret: Boolean(entry.secret),
-      dbUpdatedAt: result.dbUpdatedAt,
-    });
-  }
-  const count = (target) => findings.filter((f) => f.status === target).length;
-  const summary = {
-    drift: count('differs'),
-    alerts: count('key-lost'),
-    shadowed: count('shadowed'),
-    envOnly: count('env-only'),
-    dbOnly: count('db-only'),
-    total: findings.length,
-  };
-  const exitCode = summary.drift + summary.alerts > 0 ? 1 : 0;
-  return { findings, summary, exitCode };
-}
+// The classification / reconcile algorithm lives in the shared core
+// (../domains/admin/services/configSyncService). This CLI supplies the env
+// source from its own process.env after loadDotenv() (the on-disk .env file)
+// and renders the returned report — behavior is identical to the pre-split CLI.
 
 function renderCheck(output, report, json) {
   if (json) {
@@ -266,7 +159,11 @@ async function runCheck(output, json) {
   loadDotenv();
   try {
     await bootStore();
-    const report = await buildReport();
+    const report = await buildConfigSyncReport({
+      settings: Settings,
+      envValueOf: (key) => process.env[key],
+      masterKey: process.env.encrypt_secret_key,
+    });
     renderCheck(output, report, json);
     return report.exitCode;
   } catch (error) {
@@ -276,11 +173,10 @@ async function runCheck(output, json) {
 }
 
 /**
- * Reconcile DB rows to mirror .env for every env-set non-T0 registry key,
- * using the same write path as the admin config route (plaintext via
- * Settings.set(key, String(value)); secrets via Settings.set(key,
- * JSON.stringify(encryptSecret(value, masterKey)))). Then re-run the check
- * in-process and return its exit code.
+ * Reconcile DB rows to mirror the loaded env for every env-set non-T0 registry
+ * key, then re-run the check in-process. The algorithm lives in the shared core
+ * (../domains/admin/services/configSyncService); the CLI boots the store and
+ * renders the returned writes + post-apply report.
  */
 async function runApply(output, json) {
   loadDotenv();
@@ -291,49 +187,22 @@ async function runApply(output, json) {
     return 1;
   }
 
+  const envValueOf = (key) => process.env[key];
   const masterKey = process.env.encrypt_secret_key;
-  const targets = getEntries().filter((entry) => !isT0(entry.key) && isEnvSet(process.env[entry.key]));
-  if (targets.some((entry) => entry.secret) && !isEnvSet(masterKey)) {
-    output.error(
-      'configSync --apply aborted: a secret key is set in .env but encrypt_secret_key is ' +
-        'absent; refusing to write unencrypted or without a master key (DB unchanged).'
-    );
-    return 1;
-  }
 
-  let rowByKey;
+  let writes;
+  let report;
   try {
-    rowByKey = new Map((await Settings.listRows()).map((row) => [row.key, row]));
+    ({ writes, report } = await syncConfigSyncEnv({
+      settings: Settings,
+      envValueOf,
+      masterKey,
+    }));
   } catch (error) {
-    output.error(`configSync --apply failed: ${describeError(error)}`);
-    return 1;
-  }
-
-  const writes = [];
-  try {
-    for (const entry of targets) {
-      const envValue = String(process.env[entry.key]);
-      const dbRow = rowByKey.get(entry.key);
-      let same = false;
-      if (dbRow) {
-        if (entry.secret && isEncryptedRowValue(dbRow.value)) {
-          same = decryptRow(dbRow.value, masterKey) === envValue;
-        } else {
-          same = String(dbRow.value) === envValue;
-        }
-      }
-      if (same) {
-        writes.push({ key: entry.key, secret: Boolean(entry.secret), status: 'unchanged' });
-        continue;
-      }
-      if (entry.secret) {
-        await Settings.set(entry.key, JSON.stringify(encryptSecret(envValue, masterKey)));
-      } else {
-        await Settings.set(entry.key, envValue);
-      }
-      writes.push({ key: entry.key, secret: Boolean(entry.secret), status: 'updated' });
+    if (error instanceof ConfigSyncAbortError) {
+      output.error(`configSync --apply aborted: ${error.message}`);
+      return 1;
     }
-  } catch (error) {
     output.error(`configSync --apply failed: ${describeError(error)}`);
     return 1;
   }
@@ -348,14 +217,6 @@ async function runApply(output, json) {
       output.log(line);
     }
     output.log('post-apply check:');
-  }
-
-  let report;
-  try {
-    report = await buildReport();
-  } catch (error) {
-    output.error(`configSync --apply post-check failed: ${describeError(error)}`);
-    return 1;
   }
   renderCheck(output, report, json);
   return report.exitCode;

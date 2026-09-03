@@ -17,6 +17,7 @@ Registry / resolver contracts: `docs/spec/server/infrastructure/configRegistry.m
 ### 2.1 File Path
 
 - **Source:** `server/domains/admin/routes/config.js` (new), mounted at `/api/admin` in `server/index.js`
+- **Shared config-sync core:** `server/domains/admin/services/configSyncService.js` — `buildConfigSyncReport({ settings, envValueOf, masterKey })` and `syncConfigSyncEnv({ settings, envValueOf, masterKey })`; reused by the CLI `server/scripts/configSync.js`
 - **Resolver:** `server/infrastructure/configResolver.js` — `getSharedResolver().getEffectiveConfig()` / `.invalidateCache(keys)`
 - **Registry:** `server/infrastructure/configRegistry.js` — `getEntry(key)`, `isT0(key)`, `isTier(key, tier)`, `isSecret(key)`, `TIER`
 - **Encryption:** `server/utils/configEncryption.js` — `encryptSecret(plaintext, passphrase)`
@@ -24,11 +25,13 @@ Registry / resolver contracts: `docs/spec/server/infrastructure/configRegistry.m
 
 ### 2.2 Route List
 
-| Method | Path           | Auth          | Description                                                                                                                                    |
-| ------ | -------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/config`      | Token + Admin | Effective config: masked secrets, `value`/`source`/`tier`/`secret` per registry key + `key_lost_warning`.                                      |
-| PUT    | `/config`      | Token + Admin | Allowlisted non-T0 keys → DB `settings`, secrets encrypted, T2 cache invalidated.                                                              |
-| POST   | `/config/test` | Token + Admin | Connection test **with pending values** for a file-storage backend (s3/webdav); reuses the wizard probe/classification. Serves D1 save gating. |
+| Method | Path                   | Auth          | Description                                                                                                                                    |
+| ------ | ---------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/config`              | Token + Admin | Effective config: masked secrets, `value`/`source`/`tier`/`secret` per registry key + `key_lost_warning`.                                      |
+| PUT    | `/config`              | Token + Admin | Allowlisted non-T0 keys → DB `settings`, secrets encrypted, T2 cache invalidated.                                                              |
+| POST   | `/config/test`         | Token + Admin | Connection test **with pending values** for a file-storage backend (s3/webdav); reuses the wizard probe/classification. Serves D1 save gating. |
+| GET    | `/config/sync-report`  | Token + Admin | Read-only env↔DB drift report (config-sync classification) over the **running process environment**.                                            |
+| POST   | `/config/sync-from-env`| Token + Admin | Reconcile: mirror env-sourced non-T0 registry values into DB `settings` (secrets encrypted), then invalidate the T2 cache.                     |
 
 ### 2.3 Middleware Used
 
@@ -155,6 +158,101 @@ Tier classification after a successful write:
 
 **Errors:** 401 unauthenticated; 403 non-admin; the route sits behind `setupModeGuard` (503 while setup incomplete). Missing required fields / unsupported target → 400 `serverErrors.setup.testFailed`.
 
+#### GET /api/admin/config/sync-report
+
+Admin web preview for the config-sync action (System settings → "Sync environment → DB").
+Read-only. Feature SoT: `docs/features/config-sync.md`.
+
+**Env source:** the **running process environment** (`process.env`). A registry key is
+env-set when the **effective resolver reports `source: 'env'`** for it (`getEffectiveConfig()`,
+taken once per request). This is the authoritative test — it excludes the T1 DB values that
+`populateT1Env` copies into `process.env` at boot (`markDbSourced` → `source: 'db'`), so
+presence in `process.env` alone never makes a key a sync target. The `.env` file on disk is
+never read.
+
+**Algorithm:** shared core `server/domains/admin/services/configSyncService.js`
+(`buildConfigSyncReport({ settings, envValueOf, masterKey })`) — the same classification the
+CLI `--check` uses, over the non-T0 registry universe (T0 excluded):
+
+| Status     | Meaning                                                            |
+| ---------- | ------------------------------------------------------------------ |
+| `differs`  | env-set + DB row + values differ (secrets compared after decryption) |
+| `shadowed` | env-set + DB row + values equal                                    |
+| `env-only` | env-set + no DB row                                                |
+| `db-only`  | not env-set + DB row                                               |
+| `key-lost` | DB row holds an encrypted payload but `encrypt_secret_key` is absent or decryption fails |
+
+**200:**
+
+```jsonc
+{
+  "findings": [
+    { "key": "PORT", "status": "differs", "secret": false, "dbUpdatedAt": "2026-09-03T00:00:00.000Z" },
+    { "key": "CORS_ORIGINS", "status": "env-only", "secret": false, "dbUpdatedAt": null }
+  ],
+  "summary": { "drift": 1, "alerts": 0, "shadowed": 0, "envOnly": 1, "dbOnly": 0, "total": 2 },
+  "exitCode": 1
+}
+```
+
+- `findings`/`summary`/`exitCode` match the CLI `--json` document; `exitCode` = 1 iff
+  `drift + alerts > 0`. `dbUpdatedAt` is the row's `updated_at` as an ISO string (`null` for
+  env-only findings). Secret keys are reported with `secret: true` and **no value is ever
+  emitted**.
+- Findings are ordered in registry order; keys set in neither env nor DB are silent.
+
+**Errors:** none beyond auth/admin (401/403).
+
+#### POST /api/admin/config/sync-from-env
+
+Reconciles the DB shadow rows to mirror the running environment — the web equivalent of the
+CLI `--apply --yes` over the resolver-classified env source. Feature SoT:
+`docs/features/config-sync.md`.
+
+**Algorithm:** shared core `server/domains/admin/services/configSyncService.js`
+(`syncConfigSyncEnv({ settings, envValueOf, masterKey })`):
+
+1. **Pre-check (all-or-nothing):** targets = non-T0 registry keys with resolver
+   `source: 'env'` and a non-empty `process.env` value. If any target is a secret and
+   `process.env.encrypt_secret_key` is absent → **500** `configSyncEncryptKeyMissing`,
+   nothing written.
+2. **Write loop (registry order):** per target, compare the env value to the current DB row
+   (secrets compared after decryption; an undecryptable/missing row counts as different).
+   Equal → report `unchanged`, skip. Otherwise upsert through the same path as `PUT
+   /api/admin/config`: plaintext → `Settings.set(key, String(envValue))`; secret →
+   `Settings.set(key, JSON.stringify(encryptSecret(envValue, process.env.encrypt_secret_key)))`,
+   reporting `updated`. T0 keys are never written; rows are never deleted.
+3. **Post-apply recheck:** the check runs in-process against the live store and is returned
+   as `report`.
+4. **Cache:** `getSharedResolver().invalidateCache(updatedKeys)` so the running server
+   observes the new rows immediately (the CLI relies on restart/next read because it runs
+   out-of-band).
+
+**200:**
+
+```jsonc
+{
+  "writes": [
+    { "key": "PORT", "secret": false, "status": "updated" },
+    { "key": "CORS_ORIGINS", "secret": false, "status": "updated" }
+  ],
+  "report": {
+    "findings": [],
+    "summary": { "drift": 0, "alerts": 0, "shadowed": 0, "envOnly": 0, "dbOnly": 0, "total": 0 },
+    "exitCode": 0
+  },
+  "messageCode": "serverMessages.admin.configSyncDone"
+}
+```
+
+**Errors:**
+
+| Condition                                                                                            | Result                                                                                       |
+| ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| env-set secret target present + `process.env.encrypt_secret_key` absent                               | `500 { errorCode: 'serverErrors.admin.configSyncEncryptKeyMissing' }` (nothing written)      |
+| write failure (DB)                                                                                    | 500 through the central error handler                                                        |
+| unauthenticated / non-admin / setup-mode guard                                                         | 401 / 403 / 503 (as for the other config routes)                                             |
+
 ### 2.5 Related Documents
 
 - [api.md](../../../api.md)
@@ -171,10 +269,12 @@ New codes added to `shared/serverMessageCodes.js`:
 - `admin.configInvalidPayload` → `serverErrors.admin.configInvalidPayload` — `400`, `values` is not a non-null object.
 - `admin.configEncryptKeyMissing` → `serverErrors.admin.configEncryptKeyMissing` — `500`, `encrypt_secret_key` absent while writing a new secret value.
 - `admin.configEnvSourcedProtected` → `serverErrors.admin.configEnvSourcedProtected` — `400`, PUT value's current effective source is `'env'` (F4).
+- `admin.configSyncEncryptKeyMissing` → `serverErrors.admin.configSyncEncryptKeyMissing` — `500`, `POST /config/sync-from-env` has an env-set secret target but `encrypt_secret_key` is absent (nothing written).
 
 New message code added to `shared/serverMessageCodes.js`:
 
 - `admin.configSaved` → `serverMessages.admin.configSaved` — `200` PUT success message code.
+- `admin.configSyncDone` → `serverMessages.admin.configSyncDone` — `200` `POST /config/sync-from-env` success message code.
 
 ### 2.7 Integration Test Scenarios
 
@@ -188,3 +288,7 @@ New message code added to `shared/serverMessageCodes.js`:
 - [ ] PUT secret `'****'` / blank / null / undefined → skipped (`Settings.set` not called, cache not invalidated)
 - [ ] PUT secret new value → `Settings.set` called with a JSON-stringified AES-256-GCM payload that decrypts back to the value; cache invalidated
 - [ ] PUT secret new value without `encrypt_secret_key` → 500 `configEncryptKeyMissing`; nothing written
+- [ ] GET sync-report returns `findings`/`summary`/`exitCode` with env-set keys driven by the resolver's `source: 'env'` (DB-only T1 keys populated into `process.env` at boot are NOT reported as env-set)
+- [ ] POST sync-from-env mirrors env-sourced non-T0 keys into DB (plaintext rewritten, secrets re-encrypted and decryptable), T0 keys never written, rows not deleted, response `writes` + clean `report` + `messageCode: configSyncDone`
+- [ ] POST sync-from-env with an env-set secret target and no `encrypt_secret_key` → 500 `configSyncEncryptKeyMissing`, DB unchanged
+- [ ] POST sync-from-env invalidates the resolver cache for the written keys

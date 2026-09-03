@@ -1001,6 +1001,41 @@ export const handlers = [
     });
   }),
 
+  // --- Admin: env→DB config sync (docs/spec/server/routes/config.md) ---
+  http.get(`${API_BASE}/admin/config/sync-report`, () => {
+    return HttpResponse.json({
+      findings: [],
+      summary: {
+        drift: 0,
+        alerts: 0,
+        shadowed: 0,
+        envOnly: 0,
+        dbOnly: 0,
+        total: 0,
+      },
+      exitCode: 0,
+    });
+  }),
+
+  http.post(`${API_BASE}/admin/config/sync-from-env`, () => {
+    return HttpResponse.json({
+      writes: [],
+      report: {
+        findings: [],
+        summary: {
+          drift: 0,
+          alerts: 0,
+          shadowed: 0,
+          envOnly: 0,
+          dbOnly: 0,
+          total: 0,
+        },
+        exitCode: 0,
+      },
+      messageCode: 'serverMessages.admin.configSyncDone',
+    });
+  }),
+
   http.get(`${API_BASE}/admin/users/pending`, () => {
     return HttpResponse.json(mockAdminUsers.pending);
   }),

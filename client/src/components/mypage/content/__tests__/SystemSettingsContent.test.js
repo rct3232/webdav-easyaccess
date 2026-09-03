@@ -395,4 +395,194 @@ describe('SystemSettingsContent', () => {
 
     expect(screen.queryByTestId('key-lost-warning')).not.toBeInTheDocument();
   });
+
+  it('renders the Sync environment → DB row alongside the cleanup rows', async () => {
+    renderSystemSettingsContent();
+
+    expect(await screen.findByText(/sync environment/i)).toBeInTheDocument();
+    expect(screen.getByText(/copy the values the server is currently using/i)).toBeInTheDocument();
+    expect(screen.getByText(/metadata migration/i)).toBeInTheDocument();
+  });
+
+  it('opens the sync preview and disables Apply when nothing is actionable', async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get('/api/admin/config/sync-report', () =>
+        HttpResponse.json({
+          findings: [],
+          summary: {
+            drift: 0,
+            alerts: 0,
+            shadowed: 0,
+            envOnly: 0,
+            dbOnly: 0,
+            total: 0,
+          },
+          exitCode: 0,
+        })
+      )
+    );
+
+    renderSystemSettingsContent();
+
+    const trigger = await screen.findByRole('button', { name: /sync now/i });
+    await user.click(trigger);
+
+    const dialog = await screen.findByRole('dialog', { name: /database sync/i });
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByText(/nothing to sync/i)).toBeInTheDocument();
+
+    const applyButton = within(dialog).getByTestId('config-sync-apply');
+    expect(applyButton).toBeDisabled();
+  });
+
+  it('shows the drift summary with affected keys and applies on confirm', async () => {
+    const user = userEvent.setup();
+    let syncApplied = false;
+    server.use(
+      http.get('/api/admin/config/sync-report', () =>
+        HttpResponse.json({
+          findings: [
+            {
+              key: 'PORT',
+              status: 'differs',
+              secret: false,
+              dbUpdatedAt: '2026-09-03T10:00:00.000Z',
+            },
+            { key: 'WEBDAV_URL', status: 'env-only', secret: false, dbUpdatedAt: null },
+          ],
+          summary: {
+            drift: 1,
+            alerts: 0,
+            shadowed: 0,
+            envOnly: 1,
+            dbOnly: 0,
+            total: 2,
+          },
+          exitCode: 1,
+        })
+      ),
+      http.post('/api/admin/config/sync-from-env', () => {
+        syncApplied = true;
+        return HttpResponse.json({
+          writes: [
+            { key: 'PORT', secret: false, status: 'updated' },
+            { key: 'WEBDAV_URL', secret: false, status: 'updated' },
+          ],
+          report: {
+            findings: [],
+            summary: {
+              drift: 0,
+              alerts: 0,
+              shadowed: 0,
+              envOnly: 0,
+              dbOnly: 0,
+              total: 0,
+            },
+            exitCode: 0,
+          },
+          messageCode: 'serverMessages.admin.configSyncDone',
+        });
+      })
+    );
+
+    renderSystemSettingsContent();
+
+    const trigger = await screen.findByRole('button', { name: /sync now/i });
+    await user.click(trigger);
+
+    const dialog = await screen.findByRole('dialog', { name: /database sync/i });
+    expect(within(dialog).getByText(/will be updated and 1 key/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/will update: PORT/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/will add: WEBDAV_URL/i)).toBeInTheDocument();
+
+    const applyButton = within(dialog).getByTestId('config-sync-apply');
+    expect(applyButton).toBeEnabled();
+    await user.click(applyButton);
+
+    await waitFor(() => {
+      expect(syncApplied).toBe(true);
+    });
+    expect(screen.getByText(/synced from the environment/i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('dialog', { name: /database sync/i })
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it('shows a key-lost note when the preview reports alerts', async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get('/api/admin/config/sync-report', () =>
+        HttpResponse.json({
+          findings: [
+            { key: 'EMAIL_PASSWORD', status: 'key-lost', secret: true, dbUpdatedAt: '2026-09-03T10:00:00.000Z' },
+          ],
+          summary: {
+            drift: 0,
+            alerts: 1,
+            shadowed: 0,
+            envOnly: 0,
+            dbOnly: 0,
+            total: 1,
+          },
+          exitCode: 1,
+        })
+      )
+    );
+
+    renderSystemSettingsContent();
+
+    const trigger = await screen.findByRole('button', { name: /sync now/i });
+    await user.click(trigger);
+
+    const dialog = await screen.findByRole('dialog', { name: /database sync/i });
+    expect(within(dialog).getByText(/1 encrypted value/i)).toBeInTheDocument();
+    // Only key-lost alerts → nothing actionable, Apply stays disabled.
+    expect(within(dialog).getByTestId('config-sync-apply')).toBeDisabled();
+  });
+
+  it('keeps the dialog open with an inline error when apply fails', async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get('/api/admin/config/sync-report', () =>
+        HttpResponse.json({
+          findings: [
+            { key: 'WEBDAV_PASSWORD', status: 'env-only', secret: true, dbUpdatedAt: null },
+          ],
+          summary: {
+            drift: 0,
+            alerts: 0,
+            shadowed: 0,
+            envOnly: 1,
+            dbOnly: 0,
+            total: 1,
+          },
+          exitCode: 0,
+        })
+      ),
+      http.post('/api/admin/config/sync-from-env', () =>
+        HttpResponse.json(
+          { errorCode: 'serverErrors.admin.configSyncEncryptKeyMissing' },
+          { status: 500 }
+        )
+      )
+    );
+
+    renderSystemSettingsContent();
+
+    const trigger = await screen.findByRole('button', { name: /sync now/i });
+    await user.click(trigger);
+
+    const dialog = await screen.findByRole('dialog', { name: /database sync/i });
+    const applyButton = within(dialog).getByTestId('config-sync-apply');
+    expect(applyButton).toBeEnabled();
+    await user.click(applyButton);
+
+    await waitFor(() => {
+      expect(within(dialog).getByText(/nothing was synced/i)).toBeInTheDocument();
+    });
+    expect(screen.getByRole('dialog', { name: /database sync/i })).toBeInTheDocument();
+  });
 });

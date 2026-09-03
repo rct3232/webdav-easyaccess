@@ -149,7 +149,7 @@ These routes are for accessing shared files via a public link (token in path). A
 
 | Method | Path               | Auth | Description                                                                                                          |
 | ------ | ------------------ | ---- | -------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/health`      | None | Health check. Response: `{ status: "ok", messageCode, backends: { postgresql, s3, webdav } }` (status strings only). |
+| GET    | `/api/health`      | None | Health check. Response: `{ status: "ok", messageCode, activeFileStorage, backends: { postgresql, s3, webdav } }` (status strings only; `activeFileStorage` = effective file backend). |
 | GET    | `/api/webdav/test` | None | Test WebDAV connection.                                                                                              |
 | GET    | `/api/webdav/info` | None | WebDAV URL info (e.g. for UI).                                                                                       |
 

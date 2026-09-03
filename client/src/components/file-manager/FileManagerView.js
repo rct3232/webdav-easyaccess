@@ -67,6 +67,7 @@ const FileManagerView = ({
     scrollContainerRef,
     backendHealth,
     activeFileStorage,
+    activeMetadataBackend,
   } = shellContext;
   const {
     drawerOpen,
@@ -419,14 +420,18 @@ const FileManagerView = ({
           {user &&
             !isShareLinkMode &&
             backendHealth &&
-            activeFileStorage &&
-            backendHealth[activeFileStorage] === 'fail' && (
+            ((activeFileStorage && backendHealth[activeFileStorage] === 'fail') ||
+              (activeMetadataBackend === 'postgresql' && backendHealth.postgresql === 'fail')) && (
               <Alert
                 severity="warning"
                 sx={{ mx: 2, mb: 1 }}
                 data-testid="backend-health-banner"
               >
-                {user?.is_admin ? t('admin.health.banner') : t('files.storageUnavailable')}
+                {user?.is_admin
+                  ? t('admin.health.banner')
+                  : activeMetadataBackend === 'postgresql' && backendHealth.postgresql === 'fail'
+                    ? t('files.maintenanceNotice')
+                    : t('files.storageUnavailable')}
               </Alert>
             )}
 

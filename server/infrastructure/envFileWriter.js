@@ -72,12 +72,16 @@ function validateEntries(entries) {
  * @param {string} envPath absolute path to the env file
  * @param {Record<string, string>} entries flat key -> value map of allowlisted keys
  * @param {{ backup?: boolean }} [options]
+ * @returns {(string|null)} the `.bak-<timestamp>` backup path created when `backup` is true and the
+ *   target existed, otherwise `null` (no backup was made)
  */
 function writeEnv(envPath, entries, { backup = true } = {}) {
   validateEntries(entries);
 
+  let backupPath = null;
   if (backup && fs.existsSync(envPath)) {
-    fs.copyFileSync(envPath, `${envPath}.bak-${Date.now()}`);
+    backupPath = `${envPath}.bak-${Date.now()}`;
+    fs.copyFileSync(envPath, backupPath);
   }
 
   const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
@@ -120,6 +124,8 @@ function writeEnv(envPath, entries, { backup = true } = {}) {
     }
     throw err;
   }
+
+  return backupPath;
 }
 
 module.exports = { writeEnv, WIZARD_WRITABLE_KEYS };

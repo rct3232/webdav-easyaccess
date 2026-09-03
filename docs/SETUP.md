@@ -248,6 +248,37 @@ node server/scripts/configSync.js --apply --yes
 - `--apply` aborts with exit 1 (DB unchanged) when a secret key is set in `.env` but `encrypt_secret_key` is absent.
 - The tool boots the metadata schema only (no default-admin seeding) and never writes `.env`; a running server is unaffected until its next config read/restart, as with any other `settings` change.
 
+### Encrypt Key Rotation: `encrypt_secret_key` (`rotateEncryptKey`)
+
+> **Active — see `docs/spec/server/tools/encrypt-key-rotation.md` for the full spec.**
+
+Rotates the T0 master key under which DB secrets are AES-256-GCM-encrypted: it re-encrypts every encrypted `settings` row from the old key to a new one. A default dry-run verifies the old key can read every row (counts, no writes); an explicit apply path is **DB-first** — all rows are re-encrypted under the new key, and only then is the new key written to `.env` (atomic, `0600`, with a `.env.bak-*` backup of the old key). Legacy plaintext secret rows are reported (`legacy-plaintext`) but never rewritten. Feature spec: `docs/features/encrypt-key-rotation.md`.
+
+**Usage**
+
+```bash
+# 1) Dry-run (read-only, default mode). Exit 0 = every row decrypts under the old key,
+#    1 = a row failed. Pass --generate or --new-key to also verify it would round-trip:
+node server/scripts/rotateEncryptKey.js
+node server/scripts/rotateEncryptKey.js --generate
+
+# 2) Apply — auto-generate a new key, re-encrypt all rows, then write it to .env (requires --yes)
+node server/scripts/rotateEncryptKey.js --apply --yes --generate
+
+# 3) Apply — use an explicit passphrase as the new key (requires --yes)
+node server/scripts/rotateEncryptKey.js --apply --yes --new-key=<passphrase>
+```
+
+**Rules**
+
+- Dry-run is the default (no flags, or `--dry-run`) and performs no writes.
+- `--apply` requires `--yes` and exactly one of `--generate` / `--new-key=<passphrase>`; otherwise a usage error (exit 2).
+- The old key is read from `encrypt_secret_key` after the `.env` load; if it is absent the tool refuses (exit 1) without reading or writing the DB or `.env`.
+- Apply is DB-first: it decrypts every candidate row first (any failure → zero writes, exit 1), re-encrypts all rows, and writes the new key to `.env` last; the printed `.env backup: <path>` is where the old key is preserved.
+- Key material is never printed: `--generate` reports `generated`, `--new-key` reports `provided`.
+- A mid-apply failure is recoverable by re-running with the previous key from the `.env.bak-*` backup.
+- The tool boots the metadata schema only (no default-admin seeding) and writes only `encrypt_secret_key` to `.env`; a running server is unaffected until its next restart.
+
 ### Transaction and Concurrency Notes (postgresql)
 
 - User creation/email change/deletion run in a single transaction.

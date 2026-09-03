@@ -75,8 +75,9 @@ Call signatures listed in the props table are the contract; the view must call t
 ### 2.5 Backend-health banner (D3)
 
 - The controller (`FileManager.js`) fetches the public `GET /api/health` for every authenticated
-  session (no admin config access) and passes `backends` (status strings) + `activeFileStorage`
-  down via the shell context.
+  session (no admin config access) on mount and re-polls every 15 s while mounted, passing
+  `backends` (status strings) + `activeFileStorage` down via the shell context. Polling ensures a
+  failure recorded mid-session (e.g. a failed upload) flips the banner without a page remount.
 - The view renders a warning `Alert` (between `FileManagerControls` and the listing,
   `data-testid="backend-health-banner"`) when an authenticated, non-share session is active and
   the ACTIVE FILE backend (`backendHealth[activeFileStorage]`) is `fail`. Failures of inactive

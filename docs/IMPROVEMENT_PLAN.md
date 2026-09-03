@@ -19,7 +19,6 @@ Ordered by urgency review (2026-09-02): highest priority first.
 | ID | Status | Item | Originating doc (now references here) |
 | -- | ------ | ---- | ------------------------------------- |
 | DEF-2 | DEFERRED | Test black-box compliance refactor — client + server; audit 2026-09-02 (~155 violations in 12 files). Fragile client mock factories. | see DEF-2 detail below |
-| DEF-5 | DEFERRED | `encrypt_secret_key` rotation tooling. | `docs/features/config-source-resolution.md` |
 | DEF-6 | DEFERRED | HTTP Range/206 support on public share download. | `docs/spec/server/routes/sharePublic.md` |
 | DEF-7 | DEFERRED | Blob migration source-delete mode (`--delete-mode`). | `docs/spec/server/tools/blob-migration.md`, `docs/SETUP.md` |
 | DEF-8 | DEFERRED | Admin/operator app split (recorded, not planned). | `docs/features/migration-mode.md` |
@@ -139,3 +138,7 @@ open items remain outside the DEF list above.
 - DEF-3 (env↔DB config sync/alert CLI, `server/scripts/configSync.js` — `--check` drift report
   with `key-lost` alerting + `--apply --yes` reconcile, backed by the new
   `settingsStore.listRows()`) implemented on 2026-09-03 via `feature/env-db-sync-tool`.
+- DEF-5 (`encrypt_secret_key` rotation CLI, `server/scripts/rotateEncryptKey.js` — default dry-run
+  decrypt-verify + `--apply --yes` DB-first re-encryption that writes the new key to `.env` last via
+  the backed-up atomic writer, with a key-lost refusal) implemented on 2026-09-03 via
+  `feature/encrypt-key-rotation`.

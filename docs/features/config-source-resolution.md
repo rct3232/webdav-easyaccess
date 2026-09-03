@@ -15,6 +15,9 @@ Detailed implementation contracts live in:
 - `docs/spec/server/routes/setup.md` (updated) — wizard apply now targets DB storage for non-T0.
 - `docs/features/config-sync.md` + `docs/spec/server/tools/config-sync.md` — env↔DB
   sync/alert CLI (`configSync`): drift detection, key-loss alerting, `--apply` reconcile.
+- `docs/features/encrypt-key-rotation.md` +
+  `docs/spec/server/tools/encrypt-key-rotation.md` — `encrypt_secret_key` rotation CLI
+  (`rotateEncryptKey`): dry-run decrypt-verify, DB-first apply, `.env.bak-*` recovery.
 - `docs/SETUP.md` — operator environment-variable reference (updated classification).
 
 ---
@@ -137,8 +140,11 @@ CREATE TABLE IF NOT EXISTS settings (
      decrypted/prefilled.
   3. **only re-encrypt on new value** — a masked (unchanged) secret keeps its existing
      ciphertext; a new value is the only trigger to encrypt with the current key.
-- Rotation: changing `encrypt_secret_key` requires re-encrypting all DB secrets; no rotation
-  tooling exists today (tracked in `docs/IMPROVEMENT_PLAN.md`).
+- Rotation: changing `encrypt_secret_key` requires re-encrypting all DB secrets; this is performed by
+  the rotation CLI (`server/scripts/rotateEncryptKey.js`) — a default dry-run verifies the old key can
+  read every encrypted row (no writes), and `--apply --yes` re-encrypts all rows and writes the new
+  key to `.env` last (DB-first) with a `.env.bak-*` backup for recovery —
+  `docs/features/encrypt-key-rotation.md` / `docs/spec/server/tools/encrypt-key-rotation.md`.
 - Exposure model: a DB backup leak exposes ciphertext only; plaintext requires both DB and
   `.env` (same class as `JWT_SECRET`).
 

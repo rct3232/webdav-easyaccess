@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 
 /**
  * Centralizes content-area drag/drop: guards (mobile, selection mode, write permission),
@@ -178,10 +178,18 @@ export function useContentAreaDragDrop(options) {
     ]
   );
 
-  return {
-    handleContentAreaDragEnter,
-    handleContentAreaDragOver,
-    handleContentAreaDragLeave,
-    handleContentAreaDrop,
-  };
+  return useMemo(
+    () => ({
+      handleContentAreaDragEnter,
+      handleContentAreaDragOver,
+      handleContentAreaDragLeave,
+      handleContentAreaDrop,
+    }),
+    [
+      handleContentAreaDragEnter,
+      handleContentAreaDragOver,
+      handleContentAreaDragLeave,
+      handleContentAreaDrop,
+    ]
+  );
 }

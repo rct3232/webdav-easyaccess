@@ -130,4 +130,4 @@ const FileGrid = ({
   );
 };
 
-export default FileGrid;
+export default React.memo(FileGrid);

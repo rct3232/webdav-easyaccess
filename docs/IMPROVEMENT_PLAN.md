@@ -20,7 +20,6 @@ Ordered by urgency review (2026-09-02): highest priority first.
 | -- | ------ | ---- | ------------------------------------- |
 | DEF-2 | DEFERRED | Test black-box compliance refactor — client + server; audit 2026-09-02 (~155 violations in 12 files). Fragile client mock factories. | see DEF-2 detail below |
 | DEF-3 | DEFERRED | env↔DB sync/alert tool (D9). | `docs/features/config-source-resolution.md` |
-| DEF-4 | DEFERRED | FileManager `useMemo`/`useCallback` performance sprint (MutationObserver already applied). | former improvement-plan backlog (pre-2026-09-02, item #12) |
 | DEF-5 | DEFERRED | `encrypt_secret_key` rotation tooling. | `docs/features/config-source-resolution.md` |
 | DEF-6 | DEFERRED | HTTP Range/206 support on public share download. | `docs/spec/server/routes/sharePublic.md` |
 | DEF-7 | DEFERRED | Blob migration source-delete mode (`--delete-mode`). | `docs/spec/server/tools/blob-migration.md`, `docs/SETUP.md` |
@@ -136,3 +135,5 @@ open items remain outside the DEF list above.
 
 - DEF-1 (schemaManager checksum-based modified-DDL detection, Option A hard fail) implemented
   on 2026-09-03 via `feature/checksum-ddl-detection`.
+- DEF-4 (FileManager `useMemo`/`useCallback` performance sprint, P2/P1/P3) implemented on
+  2026-09-03 via `refactor/filemanager-memo-sprint` (P4 optional items remain open, no behavior change).

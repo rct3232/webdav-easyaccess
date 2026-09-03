@@ -67,6 +67,62 @@ export const useFileViewCommon = ({
     internalDraggedNodeId
   );
 
+  // Destructure the stable handlers so the per-file cache below can depend on
+  // stable identifiers (member-expression deps would trip exhaustive-deps).
+  const { handleDragStart, handleDragEnd, handleDragOver, handleDragLeave, handleDrop } =
+    dragAndDrop;
+
+  // Per-file drag/drop handler cache (WeakMap keyed by the file object) so rows
+  // receive referentially stable handlers across unrelated re-renders. Entries are
+  // invalidated when file identity changes (auto) or when the (isDisabled, isMobile,
+  // selectionMode) epoch used to build them changes.
+  const handlersCacheRef = useRef(new WeakMap());
+
+  const buildFileHandlers = useCallback(
+    (file, isDisabled) => {
+      const selectionModeNow = selectionModeRef.current;
+      const isMobileNow = isMobileRef.current;
+      const cached = handlersCacheRef.current.get(file);
+      if (
+        cached &&
+        cached.isDisabled === isDisabled &&
+        cached.isMobile === isMobileNow &&
+        cached.selectionMode === selectionModeNow
+      ) {
+        return cached;
+      }
+
+      const drag =
+        selectionModeNow || isMobileNow || isDisabled || file.hasWritePermission === false
+          ? emptyDragHandlers
+          : {
+              draggable: true,
+              onDragStart: (e) => handleDragStart(e, file),
+              onDragEnd: handleDragEnd,
+            };
+
+      const drop =
+        selectionModeNow || isMobileNow || isDisabled
+          ? emptyDropHandlers
+          : {
+              onDragOver: (e) => handleDragOver(e, file),
+              onDragLeave: handleDragLeave,
+              onDrop: (e) => handleDrop(e, file),
+            };
+
+      const entry = {
+        isDisabled,
+        isMobile: isMobileNow,
+        selectionMode: selectionModeNow,
+        drag,
+        drop,
+      };
+      handlersCacheRef.current.set(file, entry);
+      return entry;
+    },
+    [handleDragStart, handleDragEnd, handleDragOver, handleDragLeave, handleDrop]
+  );
+
   /**
    * Get file state for rendering
    */
@@ -102,45 +158,22 @@ export const useFileViewCommon = ({
 
   /**
    * Get drag handlers for a file
-   * ref 사용으로 selectionMode/isMobile 변경 시 함수 재생성 방지
+   * Cached per file (see buildFileHandlers) so identity is stable across
+   * unrelated re-renders; selectionMode/isMobile handled via refs.
    */
   const getDragHandlers = useCallback(
-    (file, isDisabled) => {
-      if (
-        isMobileRef.current ||
-        selectionModeRef.current ||
-        isDisabled ||
-        file.hasWritePermission === false
-      ) {
-        return emptyDragHandlers;
-      }
-
-      return {
-        draggable: true,
-        onDragStart: (e) => dragAndDrop.handleDragStart(e, file),
-        onDragEnd: dragAndDrop.handleDragEnd,
-      };
-    },
-    [dragAndDrop]
+    (file, isDisabled) => buildFileHandlers(file, isDisabled).drag,
+    [buildFileHandlers]
   );
 
   /**
    * Get drop handlers for a file
-   * ref 사용으로 selectionMode/isMobile 변경 시 함수 재생성 방지
+   * Cached per file (see buildFileHandlers) so identity is stable across
+   * unrelated re-renders; selectionMode/isMobile handled via refs.
    */
   const getDropHandlers = useCallback(
-    (file, isDisabled) => {
-      if (isMobileRef.current || selectionModeRef.current || isDisabled) {
-        return emptyDropHandlers;
-      }
-
-      return {
-        onDragOver: (e) => dragAndDrop.handleDragOver(e, file),
-        onDragLeave: dragAndDrop.handleDragLeave,
-        onDrop: (e) => dragAndDrop.handleDrop(e, file),
-      };
-    },
-    [dragAndDrop]
+    (file, isDisabled) => buildFileHandlers(file, isDisabled).drop,
+    [buildFileHandlers]
   );
 
   return {

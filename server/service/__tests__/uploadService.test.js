@@ -115,7 +115,7 @@ describe('createUploadService', () => {
   /* ------------------------------------------------------------------ */
 
   describe('uploadFile S3 PUT failure', () => {
-    it('leaves object_map as pending with no blob in S3', async () => {
+    it('rolls back the created node so no phantom file remains', async () => {
       const content = Buffer.from('s3-fail-content');
 
       blobStore.uploadBlob.mockRejectedValueOnce(new Error('S3 connection refused'));
@@ -124,25 +124,12 @@ describe('createUploadService', () => {
         uploadSvc.uploadFile(null, 'fail-s3.txt', content, 'text/plain')
       ).rejects.toThrow();
 
-      // Node was created (TX1 committed before S3 attempt)
+      // Node created by TX1 was rolled back — nothing persists in DB.
       const node = await dbQuery("SELECT * FROM file_nodes WHERE name = 'fail-s3.txt'", []);
-      expect(node.rows.length).toBe(1);
-      const nodeId = node.rows[0].id;
+      expect(node.rows.length).toBe(0);
 
-      // object_map is pending (not active, because TX2 never ran)
-      const objMap = await dbQuery('SELECT * FROM object_map WHERE file_node_id = ?', [nodeId]);
-      expect(objMap.rows.length).toBeGreaterThan(0);
-      const pendingRow = objMap.rows.find((r) => r.status === 'pending');
-      expect(pendingRow).toBeDefined();
-
-      // No active row
-      const activeRows = objMap.rows.filter((r) => r.status === 'active');
-      expect(activeRows.length).toBe(0);
-
-      // sync_status is still pending_upload (TX2 never ran to set active)
-      expect(node.rows[0].sync_status).toBe('pending_upload');
-
-      await dbRun('DELETE FROM file_nodes WHERE id = ?', [nodeId]);
+      // No blob was stored in S3 (upload rejected before any write).
+      expect(blobStore.store.size).toBe(0);
     });
   });
 
@@ -151,7 +138,7 @@ describe('createUploadService', () => {
   /* ------------------------------------------------------------------ */
 
   describe('uploadFile TX2 failure', () => {
-    it('leaves object_map pending, sync_status pending_upload, blob in S3 — GC Tier 2 recoverable', async () => {
+    it('rolls back the node and leaves the blob untracked (GC Tier 2 target)', async () => {
       const content = Buffer.from('tx2-fail-content');
 
       // Let TX1 and S3 PUT succeed, then mock completeUpload to throw during TX2
@@ -163,27 +150,22 @@ describe('createUploadService', () => {
         uploadSvc.uploadFile(null, 'fail-tx2.txt', content, 'text/plain')
       ).rejects.toThrow();
 
-      // Node was created by TX1
+      // Node created by TX1 was rolled back — nothing persists in DB.
       const node = await dbQuery("SELECT * FROM file_nodes WHERE name = 'fail-tx2.txt'", []);
-      expect(node.rows.length).toBe(1);
-      const nodeId = node.rows[0].id;
+      expect(node.rows.length).toBe(0);
 
-      // object_map stays pending (TX2 never activated it)
-      const objMap = await dbQuery('SELECT * FROM object_map WHERE file_node_id = ?', [nodeId]);
-      expect(objMap.rows.length).toBeGreaterThan(0);
-      const pendingRow = objMap.rows.find((r) => r.status === 'pending');
-      expect(pendingRow).toBeDefined();
-
-      // sync_status is still pending_upload (TX2 never set active)
-      expect(node.rows[0].sync_status).toBe('pending_upload');
-
-      // Blob was uploaded to S3 (orphaned / untracked — GC Tier 2 cleanup target)
-      const s3Key = pendingRow.s3_key;
+      // The blob was uploaded before TX2 failed and is now untracked (no DB
+      // row references its key) — GC Tier 2 (listOrphanedKeys) cleanup target.
+      const calls = blobStore.uploadBlob.mock.calls;
+      expect(calls.length).toBe(1);
+      const s3Key = calls[0][0];
       const s3Blob = blobStore.store.get(s3Key);
       expect(s3Blob).toBeDefined();
       expect(Buffer.compare(s3Blob, content)).toBe(0);
 
-      await dbRun('DELETE FROM file_nodes WHERE id = ?', [nodeId]);
+      // No object_map row references the untracked key anymore.
+      const objMap = await dbQuery('SELECT * FROM object_map WHERE s3_key = ?', [s3Key]);
+      expect(objMap.rows.length).toBe(0);
     });
   });
 

@@ -128,10 +128,10 @@ Creates a new file node and stores its content. Dispatch strategy differs by sto
 3. Atomic create + PUT:
    - For new file: `fileNodeService.createFile(parentNodeId, name)` — creates node with sync_status='active'. For overwrite: reuse existing file's nodeId.
    - `blobStorageService.uploadToWebdav(nodeId, buffer)` — synchronous PUT to remote storage (path resolution happens inside blobStorageService).
-4. If WebDAV PUT fails after DB commit: call `fileNodeService.updateSyncStatus(nodeId, 'orphaned_node')` as fail-safe, then re-throw the error.
+4. On WebDAV PUT failure — **new file**: roll back the just-created node via `fileNodeService.deleteNode(nodeId)` (best-effort), then re-throw the original error — no phantom 0-byte file remains and a retry is not blocked by a duplicate-name conflict. On WebDAV PUT failure — **overwrite**: mark `sync_status='orphaned_node'` via `fileNodeService.updateSyncStatus(nodeId, 'orphaned_node')` as fail-safe (the pre-existing node must not be deleted), then re-throw the error.
 5. Returns `{ nodeId, size: buffer.length, mimeType }`.
 
-**Failure recovery:** See Section 5 (Sync Status Fail-Safe Semantics). S3 mode follows uploadService failure table (`uploadService.md` §2.5). WebDAV mode marks orphaned_node on PUT failure.
+**Failure recovery:** See Section 5 (Sync Status Fail-Safe Semantics). S3 mode follows uploadService failure table (`uploadService.md` §2.5). WebDAV mode rolls back NEW nodes on PUT failure; an overwrite PUT failure marks orphaned_node.
 
 ---
 
@@ -277,7 +277,7 @@ Creates a copy of a source file in the destination directory. Copy semantics dif
 2. Download source content via `blobStorageService.downloadBlob(nodeId)`.
 3. Create new file_node via `fileNodeService.createFile(destinationParentNodeId, newName)`. Handle name conflict with numeric suffix.
 4. Upload copy via `blobStorageService.uploadToWebdav(copiedNodeId, downloadedBuffer)`.
-5. If upload fails after DB commit: set `sync_status = 'orphaned_node'` on copied node, re-throw error.
+5. If upload fails after DB commit: roll back the copied (new) node via `fileNodeService.deleteNode(copiedNodeId)` (best-effort), then re-throw the original error.
 6. Return `{ sourceNodeId, copiedNodeId }`.
 
 ### 2.4 Dependencies
@@ -295,8 +295,8 @@ Creates a copy of a source file in the destination directory. Copy semantics dif
 
 - **Permission denied:** Any method where the user lacks required permission and is not an admin throws a 403 error. The caller (route handler) maps this to HTTP 403.
 - **Node not found:** If nodeId or parentNodeId does not correspond to an existing file_nodes row, throw 404 error. Applies to all methods accepting node IDs.
-- **Storage failure — S3 mode:** Upload failures leave object_map in 'pending' state and sync_status as 'pending_upload'. Recoverable via retry endpoint or Phase 6 GC cleanup. See `uploadService.md` §2.5 for full failure matrix.
-- **Storage failure — WebDAV mode:** Any storage operation that fails after a DB commit sets `sync_status = 'orphaned_node'` on the affected node(s) as a fail-safe. The error is still propagated to the caller so the user sees a failure response, but the database reflects an inconsistent state that Phase 6 GC can repair.
+- **Storage failure — S3 mode:** New-file upload failures roll back the created node — nothing persists in DB (see `uploadService.md` §2.5). Overwrite failures leave the node with `sync_status='pending_upload'` and a pending object_map; no automatic recovery exists (see `docs/IMPROVEMENT_PLAN.md`).
+- **Storage failure — WebDAV mode:** NEW nodes (new-file upload, copyFile) are rolled back when the backend write fails. Failures after a DB commit on EXISTING nodes (overwrite PUT, rename/move MOVE, deleteNode per-node, directory MKCOL) set `sync_status='orphaned_node'` as a fail-safe. The error is still propagated to the caller so the user sees a failure response; recovery of `orphaned_node` rows is manual via `repair-sync` (see `docs/IMPROVEMENT_PLAN.md`).
 - **Name conflict:** renameNode with duplicate sibling name or copyFile where destination already has same name → throw conflict error (or apply numeric suffix for copy).
 - **Cycle detection:** moveNode rejects if newParentNodeId is a descendant of nodeId via getDescendantIds check inside fileNodeService.moveNode().
 
@@ -319,7 +319,7 @@ Creates a copy of a source file in the destination directory. Copy semantics dif
 
 - [ ] Creates new file_node via uploadService.uploadFile and returns nodeId, size, mimeType
 - [ ] Sets sync_status='active' on successful completion of TX1 → PUT → TX2 flow
-- [ ] Marks sync_status='pending_upload' if TX1 succeeds but S3 PUT fails (uploadService failure recovery)
+- [ ] Rolls back the created file_nodes row if TX1 succeeds but S3 PUT fails (no phantom pending row; uploadService failure recovery)
 - [ ] Rolls back file_nodes row entirely if createNode throws in TX1
 - [ ] Conflict 'skip': returns `{ nodeId, skipped: true }` when name already exists under parent
 - [ ] Conflict 'overwrite': calls uploadService.overwriteFile path for existing node
@@ -327,7 +327,7 @@ Creates a copy of a source file in the destination directory. Copy semantics dif
 #### uploadFile — WebDAV mode
 
 - [ ] Creates file_node and performs synchronous WebDAV PUT in single flow
-- [ ] Sets sync_status='orphaned_node' if WebDAV PUT fails after DB commit, then re-throws error
+- [ ] Rolls back the new node (deleteNode) if WebDAV PUT fails after DB commit; overwrite PUT failure marks orphaned_node; re-throws error
 - [ ] Returns nodeId with correct size (buffer.length) and mimeType on success
 
 #### downloadFile
@@ -370,7 +370,7 @@ Creates a copy of a source file in the destination directory. Copy semantics dif
 #### copyFile — WebDAV mode
 
 - [ ] Downloads source content, creates new file_node, uploads copy to destination path via uploadToWebdav
-- [ ] Sets orphaned_node if upload fails after node creation, re-throws error
+- [ ] Rolls back the copied node (deleteNode) if upload fails after node creation, re-throws error
 
 ---
 
@@ -403,14 +403,10 @@ The `sync_status` column on `file_nodes` tracks consistency between database met
 | Value            | Meaning                                                                                                                                                                                                                               | Set When                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `active`         | Database metadata and storage content are in sync. Node is fully usable.                                                                                                                                                              | Default for all new nodes (WebDAV mode) or after TX2 completion (S3 uploadService flow). Also set by rename/move when no storage-side operation was needed (S3 mode).                                                                                                                                                                                                                                                                                                                                                                           |
-| `pending_upload` | Node exists in DB but blob content has not been written to storage yet. Intermediate state during S3 uploads.                                                                                                                         | Set by `blobStorageService.prepareUpload()` as part of TX1 in the 4-step upload flow. Transitions to `active` after TX2 completes. If S3 PUT fails, remains `pending_upload` for retry or GC cleanup.                                                                                                                                                                                                                                                                                                                                           |
-| `orphaned_node`  | Database metadata and storage content are inconsistent. The node's DB row exists but the corresponding storage resource may be missing, at a wrong path, or in an unexpected state. Best-effort recovery is expected from Phase 6 GC. | Set by any method when a best-effort storage operation fails after the DB write committed: WebDAV PUT failure during uploadFile, WebDAV MOVE failure during renameNode/moveNode, WebDAV DELETE failure during deleteNode (per-node), WebDAV uploadToWebdav failure during copyFile, or WebDAV MKCOL failure during `blobStorageService.createDirectoryWebdav` (directory create / home-node ensure). The error is still propagated to the caller — orphaned_node is a fail-safe marker for eventual consistency repair, not silent degradation. |
+| `pending_upload` | Node exists in DB but blob content has not been written to storage yet. Intermediate state during S3 uploads.                                                                                                                         | Set by `blobStorageService.prepareUpload()` as part of TX1 in the 4-step upload flow. Transitions to `active` after TX2 completes. A failed NEW-file upload rolls the node back (no row remains — `uploadService.md` §2.5); a failed S3 OVERWRITE leaves the existing row `pending_upload` with a pending object_map (no automatic recovery — see `docs/IMPROVEMENT_PLAN.md`). |
+| `orphaned_node`  | Database metadata and storage content are inconsistent. The node's DB row exists but the corresponding storage resource may be missing, at a wrong path, or in an unexpected state.                                                    | Set by any method when a best-effort storage operation fails after the DB write committed on an EXISTING node: WebDAV overwrite PUT failure during uploadFile, WebDAV MOVE failure during renameNode/moveNode, WebDAV DELETE failure during deleteNode (per-node), or WebDAV MKCOL failure during `blobStorageService.createDirectoryWebdav` (directory create / home-node ensure). New nodes created for an upload/copy are rolled back instead of being marked. The error is still propagated to the caller — orphaned_node is a fail-safe marker for repair, not silent degradation. |
 
-**Recovery expectations:** Phase 6 GC service scans `file_nodes` for `sync_status != 'active'` rows and attempts reconciliation:
-
-- `pending_upload` nodes with no corresponding storage object → clean up DB row (orphaned pending).
-- `orphaned_node` files → attempt re-upload from cached content or mark for user review.
-- `orphaned_node` directories → attempt to repair children recursively or escalate for manual intervention.
+**Recovery of failure states:** `pending_upload` rows left by a failed overwrite and `orphaned_node` rows are currently surfaced for MANUAL repair only — `failSafeService.scanOrphanedNodes()` / `POST /api/admin/maintenance/repair-sync` (`retry-delete` / `force-active`) covers `orphaned_node`; no automated GC path removes `pending_upload` rows or untracked S3 blobs. New-file upload failures need no recovery because the node is rolled back. The automated-recovery gap is tracked in `docs/IMPROVEMENT_PLAN.md`.
 
 ---
 
@@ -421,8 +417,8 @@ The `sync_status` column on `file_nodes` tracks consistency between database met
 | User lacks required permission and is not admin                              | Both         | aclService check returns false → method throws permission denied error                                                                                                              | 403                                        |
 | nodeId does not exist in file_nodes                                          | Both         | Method throws not-found error before any operation proceeds                                                                                                                         | 404                                        |
 | parentNodeId does not exist or is a file node                                | Both         | uploadFile/listDirectoryWithPermissions throw not-found error                                                                                                                       | 404                                        |
-| S3 PUT fails during upload (network, storage full)                           | S3           | TX1 committed (pending state), S3 write failed → sync_status='pending_upload' propagated to caller as error response. Recoverable via retry or GC.                                  | 500                                        |
-| WebDAV PUT fails during upload (connection refused, timeout, remote 4xx/5xx) | WebDAV       | DB node committed with sync_status='orphaned_node', error re-thrown to caller                                                                                                       | 500                                        |
+| S3 PUT fails during upload (network, storage full)                           | S3           | New file: TX1 committed then S3 write failed → node rolled back, nothing persisted; error propagated to caller. Overwrite: node remains sync_status='pending_upload' with pending object_map (no automatic recovery).                                                                          | 500                                        |
+| WebDAV PUT fails during upload (connection refused, timeout, remote 4xx/5xx) | WebDAV       | New file: node rolled back via deleteNode, original error re-thrown. Overwrite: sync_status='orphaned_node' set on existing node, error re-thrown.                                                                                | 500                                        |
 | WebDAV MOVE fails during rename/move (remote unavailable, path conflict)     | WebDAV       | DB operation succeeded, sync_status='orphaned_node' set on affected nodes, error propagated                                                                                         | 500                                        |
 | WebDAV DELETE fails for one node in subtree delete                           | WebDAV       | Per-node: that specific descendant marked 'orphaned_node'. Remaining deletions proceed. DB deletion of entire subtree proceeds regardless. Error aggregated and returned to caller. | 207 (multi-status) or 500                  |
 | Name conflict on rename/copy                                                 | Both         | Conflict error thrown before any mutation                                                                                                                                           | 409                                        |
@@ -449,7 +445,7 @@ Complete checklist of testable behaviors per method, organized to drive the test
 
 - [ ] Creates new file_node via uploadService.uploadFile and returns { nodeId, size, mimeType }
 - [ ] Sets sync_status='active' on successful TX1 → PUT → TX2 completion
-- [ ] Leaves sync_status='pending_upload' if TX1 succeeds but S3 PUT fails (uploadService recovery state)
+- [ ] Rolls back the created file_nodes row entirely if TX1 succeeds but S3 PUT fails (uploadService recovery — no phantom row)
 - [ ] Rolls back file_nodes row entirely on TX1 failure — no orphaned DB rows
 - [ ] Conflict 'skip': returns { nodeId, skipped: true } for existing name under parent
 - [ ] Conflict default (undefined): throws conflict error for existing name
@@ -457,7 +453,7 @@ Complete checklist of testable behaviors per method, organized to drive the test
 ### uploadFile — WebDAV mode
 
 - [ ] Creates file_node and performs synchronous WebDAV PUT in single flow; returns nodeId with correct size and mimeType
-- [ ] Sets sync_status='orphaned_node' if WebDAV PUT fails after DB commit, then re-throws original error to caller
+- [ ] Rolls back the new node (deleteNode) if WebDAV PUT fails after DB commit; overwrite PUT failure marks orphaned_node; then re-throws original error to caller
 
 ### downloadFile
 
@@ -500,4 +496,4 @@ Complete checklist of testable behaviors per method, organized to drive the test
 ### copyFile — WebDAV mode
 
 - [ ] Downloads source content via downloadBlob, creates new file_node in destination, uploads copy via uploadToWebdav at resolved path
-- [ ] Sets orphaned_node if uploadToWebdav fails after file_node creation; re-throws error to caller
+- [ ] Rolls back the copied node (deleteNode) if uploadToWebdav fails after file_node creation; re-throws error to caller

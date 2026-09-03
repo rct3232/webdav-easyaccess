@@ -175,7 +175,18 @@ function createFileService(options = {}) {
     try {
       await blobStorageService.uploadToWebdav(nodeId, buffer);
     } catch (error) {
-      await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
+      if (isOverwrite) {
+        // Existing node: remote sync failed → fail-safe marker, node kept.
+        await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
+      } else {
+        // New node: roll it back so a failed upload never leaves a phantom
+        // 0-byte file in listings or blocks a retry with a duplicate-name 409.
+        try {
+          await fileNodeService.deleteNode(nodeId);
+        } catch (_) {
+          /* best-effort — surface the original upload error */
+        }
+      }
       throw error;
     }
 
@@ -389,7 +400,12 @@ function createFileService(options = {}) {
     try {
       await blobStorageService.uploadToWebdav(copiedNodeId, buffer);
     } catch (error) {
-      await fileNodeService.updateSyncStatus(copiedNodeId, 'orphaned_node');
+      // New copy node: roll it back on a failed remote write (no phantom copy).
+      try {
+        await fileNodeService.deleteNode(copiedNodeId);
+      } catch (_) {
+        /* best-effort — surface the original copy error */
+      }
       throw error;
     }
 

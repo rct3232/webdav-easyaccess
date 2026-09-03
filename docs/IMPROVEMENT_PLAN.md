@@ -24,6 +24,8 @@ Ordered by urgency review (2026-09-02): highest priority first.
 | DEF-9 | DEFERRED | Redis-backed cache / operationProgress store. | `docs/spec/server/services/downloadService.md`, `docs/ARCHITECTURE.md` |
 | DEF-10 | DEFERRED | CRA v5 → Vite migration (separate project/epic). | former improvement-plan backlog (pre-2026-09-02, item #13) |
 | DEF-11 | DEFERRED | Multi-version object history (`version_number > 1`). | `docs/spec/server/services/blobStorageService.md`, `docs/spec/server/store/fileNodesStore.md`, `docs/features/core-service-layer.md` |
+| DEF-12 | DEFERRED | S3/WebDAV **overwrite** upload failure leaves `pending_upload` (S3) / `orphaned_node` (WebDAV) row with no automatic recovery; retry endpoint + GC cleanup of `pending` object_map rows and untracked S3 blobs is unimplemented. | `docs/spec/server/services/uploadService.md` §2.5, `docs/spec/server/services/fileService.md` §4, `docs/features/core-service-layer.md` |
+| DEF-13 | DEFERRED | Process death between an upload's TX1 commit and the blob write leaves orphaned `pending_upload` rows that no automatic path cleans. | `docs/spec/server/services/uploadService.md` §2.5 |
 
 ---
 
@@ -92,3 +94,14 @@ The following work was completed earlier the same day (see DEF-3/DEF-5 above) an
   status; T0 keys remain excluded; `--apply` writes plaintext to the DB.
 - Residual: ciphertext rows written by older versions are not auto-migrated; operators may need
   to clean them up manually if any exist.
+
+### W-1 note (2026-09-03, `fix/upload-rollback-on-backend-failure`)
+
+Current-state decision recorded here because the affected spec/feature docs now reference this
+tracker instead of carrying planned statements:
+
+- A failed **new-file** upload (S3 `uploadService.uploadFile`, WebDAV new-file upload, WebDAV
+  `copyFile`) rolls the created node back — no phantom 0-byte/pending row is left in listings and
+  retries are not blocked by a duplicate-name conflict.
+- A failed **overwrite** still leaves the documented pending state (S3 `pending_upload` /
+  WebDAV `orphaned_node`) with **no automatic recovery** — see DEF-12/DEF-13.

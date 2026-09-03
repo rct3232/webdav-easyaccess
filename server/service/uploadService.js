@@ -16,11 +16,13 @@ const storage = require('../store/storage');
  * uploadFile / overwriteFile follow a 3-phase flow:
  *   TX1 (DB) → S3 PUT → TX2 (DB)
  *
- * | Failure Point | DB State                                           | S3 State          | Recovery                              |
- * |---------------|----------------------------------------------------|--------------------|---------------------------------------|
- * | TX1 fails     | ROLLBACK, nothing persisted                         | Nothing            | Idempotent retry                      |
- * | S3 PUT fails  | object_map row = 'pending'                          | Nothing (or partial) | Retry endpoint or GC Tier 1         |
- * | TX2 fails     | object_map = 'pending'; sync_status = 'pending_upload' | Blob uploaded    | GC Tier 2 cleans untracked blob      |
+ * | Method     | Failure Point | DB State                                     | S3 State             | Behavior / Recovery                    |
+ * |------------|---------------|----------------------------------------------|----------------------|----------------------------------------|
+ * | uploadFile | TX1 fails     | ROLLBACK, nothing persisted                  | Nothing              | Idempotent retry                       |
+ * | uploadFile | S3 PUT fails  | Node rolled back, nothing persisted          | Nothing (or partial) | No phantom row; partial → GC Tier 2    |
+ * | uploadFile | TX2 fails     | Node rolled back, nothing persisted          | Blob uploaded        | GC Tier 2 cleans untracked blob        |
+ * | overwrite  | TX1 fails     | ROLLBACK, original version preserved         | Nothing              | Idempotent retry                       |
+ * | overwrite  | S3 PUT/TX2 fails | pending_upload + pending object_map row  | Nothing / blob       | No automatic recovery (IMPROVEMENT_PLAN)|
  * ────────────────────────────────────────────────────────────────
  */
 function createUploadService({ fileNodeService, blobStorageService, blobStore }) {
@@ -43,6 +45,13 @@ function createUploadService({ fileNodeService, blobStorageService, blobStore })
    *   TX1: createFile + prepareUpload  →  nodeId, s3Key
    *         (outside TX) blobStore.uploadBlob(s3Key, buffer)
    *   TX2: completeUpload + updateSyncStatus('active')
+   *
+   * Steps 2–3 run inside one try: on ANY failure after TX1 committed, the
+   * just-created node is rolled back (fileNodeService.deleteNode, CASCADE also
+   * removes the pending object_map row) and the original error is re-thrown.
+   * A failed upload therefore never leaves a phantom 0-byte file in listings
+   * and never blocks a retry with a duplicate-name conflict. A blob that was
+   * fully written before a TX2 failure remains untracked in S3 (GC Tier 2).
    */
   async function uploadFile(parentNodeId, name, buffer, mimeType) {
     let nodeId;
@@ -56,14 +65,24 @@ function createUploadService({ fileNodeService, blobStorageService, blobStore })
     nodeId = node.id;
     s3Key = await blobStorageService.prepareUpload(nodeId);
 
-    // Step 2 — S3 PUT: Upload content (outside transaction)
-    await blobStore.uploadBlob(s3Key, buffer);
+    // Steps 2–3 — S3 PUT (outside TX) + TX2 finalize.
+    try {
+      await blobStore.uploadBlob(s3Key, buffer);
 
-    // Step 3 — TX2: Finalize mapping + sync status (must be atomic together)
-    await withTx(async () => {
-      await blobStorageService.completeUpload(s3Key, buffer.length, mimeType);
-      await fileNodeService.updateSyncStatus(nodeId, 'active');
-    });
+      await withTx(async () => {
+        await blobStorageService.completeUpload(s3Key, buffer.length, mimeType);
+        await fileNodeService.updateSyncStatus(nodeId, 'active');
+      });
+    } catch (error) {
+      // Roll back the newly created node so no pending/0-byte row survives.
+      // Best-effort: if DB cleanup itself fails, surface the original error.
+      try {
+        await fileNodeService.deleteNode(nodeId);
+      } catch (_) {
+        /* ignore cleanup failure — original upload error takes precedence */
+      }
+      throw error;
+    }
 
     return { nodeId, s3Key, size: buffer.length, mimeType };
   }

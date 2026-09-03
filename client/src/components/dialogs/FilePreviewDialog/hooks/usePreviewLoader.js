@@ -3,6 +3,14 @@ import { getFileBlob, getVideoPreviewStreamUrl } from '../../../../services/file
 import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
 import { getServerErrorDisplay } from '../../../../utils/errorUtils';
 
+// Preview blob fetches (text/pdf/image) must fail fast when the storage
+// backend is down. The transport default is 5 minutes (large file operations);
+// a dead backend would otherwise leave the preview loading circle spinning for
+// minutes. A bounded 10s timeout turns a hung backend into an error within
+// seconds, and disabling transport retries surfaces a fast server 500
+// immediately instead of after ~7s of backoff.
+const PREVIEW_FETCH_TIMEOUT_MS = 10000;
+
 export const usePreviewLoader = ({ open, displayFile, file, shareToken, t }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -30,7 +38,13 @@ export const usePreviewLoader = ({ open, displayFile, file, shareToken, t }) => 
           return;
         }
 
-        const blob = await getFileBlob(targetFile.nodeId, { inline: true, shareToken, signal });
+        const blob = await getFileBlob(targetFile.nodeId, {
+          inline: true,
+          shareToken,
+          signal,
+          timeout: PREVIEW_FETCH_TIMEOUT_MS,
+          maxRetries: 0,
+        });
         if (signal?.aborted) return;
 
         if (fileType === 'text') {

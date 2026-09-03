@@ -26,6 +26,7 @@
   "status": "ok",
   "messageCode": "serverMessages.api.healthOk",
   "activeFileStorage": "s3", // "s3" | "webdav" — effective WEA_FILE_STORAGE at boot (default "s3")
+  "activeMetadataBackend": "postgresql", // "postgresql" | "sqlite" — effective WEA_STORAGE_BACKEND
   "backends": {
     "postgresql": "ok", // "ok" | "fail" | "unknown"
     "s3": "unknown",
@@ -40,11 +41,15 @@
   `configResolver.populateT1Env` refreshes from env → DB at boot; default `'s3'` when unset). It is
   additive and public so any authenticated client can decide whether the ACTIVE file backend is
   failing without needing the admin-only config endpoint.
+- `activeMetadataBackend` is the effective metadata backend (`process.env.WEA_STORAGE_BACKEND`,
+  normalized to `'postgresql'`/`'sqlite'`, default `'sqlite'`). The file-screen banner uses it to
+  also cover a failing metadata DB (postgresql).
 
 ### 2.3 GET /api/admin/health (admin)
 
-`authenticateToken` + `isAdmin` (same middleware as the admin config routes). Mounted under
-`/api/admin` (behind `setupModeGuard`).
+`authenticateToken` + a **stateless** admin check (the JWT `is_admin` claim — no DB-backed
+`User.findById` lookup), so the endpoint stays reachable during a metadata-DB outage and the admin
+health card can display the failure. Mounted under `/api/admin` (behind `setupModeGuard`).
 
 **200:**
 
@@ -88,6 +93,6 @@
 
 ## 3. Verification Scenarios
 
-- [ ] `GET /api/health` returns `{ status, messageCode, activeFileStorage, backends }` with only status strings for the three backends and `activeFileStorage` ∈ `{s3, webdav}`
-- [ ] `GET /api/admin/health` 401 unauthenticated; 403 non-admin
+- [ ] `GET /api/health` returns `{ status, messageCode, activeFileStorage, activeMetadataBackend, backends }` with only status strings for the three backends and `activeFileStorage` ∈ `{s3, webdav}`, `activeMetadataBackend` ∈ `{postgresql, sqlite}`
+- [ ] `GET /api/admin/health` 401 unauthenticated; 403 non-admin (JWT claim, no DB read — works while the DB is down)
 - [ ] `GET /api/admin/health` 200 returns the full snapshot for the three backends

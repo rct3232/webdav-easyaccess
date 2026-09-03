@@ -70,6 +70,7 @@ These two environment variables are **completely independent**:
   - `WEA_PG_HOST`, `WEA_PG_PORT`, `WEA_PG_DATABASE`, `WEA_PG_USER`, `WEA_PG_PASSWORD`
   - optional `WEA_PG_SSL` (`true`/`false`)
   - optional `WEA_PG_MAX`, `WEA_PG_IDLE_TIMEOUT_MS`, `WEA_PG_CONNECTION_TIMEOUT_MS`
+  - optional `WEA_PG_QUERY_TIMEOUT_MS` (client-side pg `query_timeout`, default 60_000; `0` disables). Bounds every statement client-side so a mid-session DB drop (silent network partition) errors out instead of hanging the request indefinitely. Set `0` only for unusually long maintenance queries.
 - `getPgPool()`:
   - throws standardized `storage.postgresqlNotConfigured` when required connection env is missing
   - returns singleton `pg.Pool` instance
@@ -117,4 +118,5 @@ Permission contract source of truth for `postgresql` backend:
 
 - PostgreSQL unique violation (`23505`): mapped to 409 `errorHandler.databaseConflict`
 - PostgreSQL FK/check violations (`23503`/`23514`): mapped to 400 `errorHandler.databaseConstraintViolation`
-- PostgreSQL unavailable/timeout (`57P01`/`53300`): mapped to 503 `errorHandler.databaseUnavailable`
+- PostgreSQL unavailable/timeout (`57P01`/`53300`), client `query_timeout` expiry ("Query read timeout"), and reachability/system errors (`ECONNREFUSED`/`ENOTFOUND`/`EAI_AGAIN`/`ETIMEDOUT`/`ECONNRESET`): mapped to 503 `errorHandler.databaseUnavailable`
+- PostgreSQL auth failures (`28P01`/`28000`): mapped to 503 `errorHandler.databaseUnavailable`

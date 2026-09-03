@@ -31,12 +31,13 @@ afterAll(async () => {
 beforeEach(jest.clearAllMocks);
 
 describe('GET /api/health', () => {
-  it('returns 200 with status ok, messageCode, and backend status strings', async () => {
+  it('returns 200 with status ok, messageCode, activeFileStorage, and backend status strings', async () => {
     const res = await request(app).get('/api/health');
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('ok');
     expect(res.body.messageCode).toBeDefined();
+    expect(res.body.activeFileStorage).toMatch(/^(s3|webdav)$/);
     expect(res.body.backends).toEqual({
       postgresql: expect.stringMatching(/^(ok|fail|unknown)$/),
       s3: expect.stringMatching(/^(ok|fail|unknown)$/),

@@ -444,6 +444,10 @@
       "secretKeepExisting": "비워두면 현재 값을 유지합니다.",
       "connectionTest": "연결 테스트",
       "connectionTestRequired": "연결 테스트가 통과되어야 저장할 수 있습니다.",
+      "sectionTitleRuntime": "런타임 설정",
+      "sectionTitlePlatform": "배포 시 구성",
+      "platformIntro": "환경 변수나 .env를 통해 배포 시 설정됩니다. 이 값들은 외부에서 관리되며 여기서 편집할 수 없습니다. 배포 설정을 변경한 후 서버를 재시작하세요.",
+      "unset": "(설정 안 됨)",
       "help": {
         "CORS_ORIGINS": "허용된 출처 목록 (쉼표로 구분)"
       },
@@ -461,6 +465,7 @@
         "WEA_PG_PORT": "PostgreSQL 포트",
         "WEA_PG_DATABASE": "PostgreSQL 데이터베이스",
         "WEA_PG_USER": "PostgreSQL 사용자",
+        "WEA_PG_PASSWORD": "PostgreSQL 비밀번호",
         "WEA_PG_SSL": "PostgreSQL SSL",
         "WEA_PG_MAX": "PostgreSQL 최대 연결 수",
         "WEA_PG_IDLE_TIMEOUT_MS": "PostgreSQL 유휴 타임아웃 (ms)",
@@ -491,6 +496,7 @@
         "LOGIN_RATE_LIMIT_MAX": "로그인 시도 제한 (최대 횟수)",
         "LOGIN_RATE_LIMIT_WINDOW_MS": "로그인 시도 제한 기간 (ms)",
         "JWT_EXPIRES_IN": "JWT 만료 시간",
+        "JWT_SECRET": "JWT 서명 비밀키",
         "ADMIN_DEFAULT_PASSWORD": "관리자 기본 비밀번호",
         "WEA_DISABLE_DEFAULT_ADMIN": "기본 관리자 비활성화",
         "HOSTNAME": "호스트 이름",

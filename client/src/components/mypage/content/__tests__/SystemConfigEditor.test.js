@@ -1,14 +1,17 @@
 /**
  * SystemConfigEditor tests.
- * Verifies grouping + read-only env/T0 rows, masked secrets with set-new-value
- * toggle, dirty-tracked save (only changed keys), applied vs restartRequired
- * feedback, and blank-secret skipping.
+ * Verifies the two-section split: Section A "Runtime settings" (editable
+ * T1/T2 db/default keys in the four subgroups) and Section B "Deploy-time
+ * configuration" (read-only flat list of T0 keys + env-sourced T1/T2 keys),
+ * plus masked secrets with set-new-value, dirty-tracked save (only changed
+ * Section A keys), applied vs restartRequired feedback, and blank-secret
+ * skipping.
  * @see docs/spec/client/components/SystemConfigEditor.md
  * @see docs/spec/server/routes/config.md
  * @see docs/TESTING_STRATEGY.md
  */
 import React from 'react';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { renderWithProviders } from '../../../../test-utils';
@@ -16,12 +19,19 @@ import { server } from '../../../../setupTests';
 import SystemConfigEditor from '../SystemConfigEditor';
 
 const makeConfig = (overrides = {}) => ({
+  // T0 keys → Section B (deploy-time read-only).
+  WEA_STORAGE_BACKEND: { value: 'sqlite', source: 'env', tier: 'T0', secret: false },
+  WEA_PG_HOST: { value: '', source: 'env', tier: 'T0', secret: false },
+  WEA_PG_PASSWORD: { value: '****', source: 'env', tier: 'T0', secret: true },
+  JWT_SECRET: { value: '****', source: 'env', tier: 'T0', secret: true },
+  // Editable Section A keys (db/default source, T1/T2).
   WEA_FILE_STORAGE: { value: 's3', source: 'default', tier: 'T1', secret: false },
-  S3_BUCKET: { value: 'my-bucket', source: 'env', tier: 'T1', secret: false },
   PORT: { value: '5001', source: 'default', tier: 'T1', secret: false },
   EMAIL_HOST: { value: 'smtp.gmail.com', source: 'db', tier: 'T2', secret: false },
   EMAIL_PORT: { value: '587', source: 'db', tier: 'T2', secret: false },
   EMAIL_PASSWORD: { value: '****', source: 'db', tier: 'T2', secret: true },
+  // env-sourced T1/T2 key → Section B (not a disabled Section A input).
+  S3_BUCKET: { value: 'my-bucket', source: 'env', tier: 'T1', secret: false },
   ...overrides,
 });
 
@@ -62,25 +72,70 @@ function renderEditor({ config = makeConfig(), onSnackbar } = {}) {
 }
 
 describe('SystemConfigEditor', () => {
-  it('renders groups, skips the removed metadata group, disables env rows', async () => {
+  it('renders Section A editable groups and Section B deploy-time rows', async () => {
     renderEditor();
 
-    expect(await screen.findByText(/server & security/i)).toBeInTheDocument();
+    // Section A header + editable db/default T1/T2 inputs with the subgroup UI.
+    expect(await screen.findByText(/runtime settings/i)).toBeInTheDocument();
+    expect(screen.getByText(/server & security/i)).toBeInTheDocument();
     expect(screen.getAllByText(/file storage/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/email/i)).toBeInTheDocument();
-    // No runtime keys in the config → group skipped.
-    expect(screen.queryByText(/^runtime$/i)).not.toBeInTheDocument();
-
-    // Metadata (T0) group is removed (D5): never rendered.
-    expect(screen.queryByText(/metadata/i)).not.toBeInTheDocument();
-    expect(screen.queryAllByTestId('config-input-WEA_STORAGE_BACKEND')).toHaveLength(0);
-
-    const s3Bucket = screen.getByLabelText(/s3 bucket/i);
-    expect(s3Bucket).toBeDisabled();
-    expect(screen.getAllByText(/set in .env/i).length).toBeGreaterThan(0);
 
     const port = screen.getByLabelText(/server port/i);
     expect(port).not.toBeDisabled();
+    expect(screen.getByLabelText(/smtp host/i)).not.toBeDisabled();
+    expect(screen.getByLabelText(/file storage type/i)).not.toBeDisabled();
+
+    // Section B header + intro note.
+    expect(screen.getByText(/deploy-time configuration/i)).toBeInTheDocument();
+    expect(screen.getByText(/managed externally and cannot be edited here/i)).toBeInTheDocument();
+
+    // T0 keys render as Section B rows.
+    expect(screen.getByTestId('platform-config-row-WEA_STORAGE_BACKEND')).toBeInTheDocument();
+    expect(screen.getByTestId('platform-config-row-JWT_SECRET')).toBeInTheDocument();
+
+    // env-sourced T1/T2 keys live in Section B: no disabled Section A input.
+    expect(screen.getByTestId('platform-config-row-S3_BUCKET')).toBeInTheDocument();
+    expect(screen.queryByTestId('config-input-S3_BUCKET')).not.toBeInTheDocument();
+  });
+
+  it('renders Section B values read-only with masked secrets and unset placeholders', async () => {
+    renderEditor();
+
+    await screen.findByText(/deploy-time configuration/i);
+
+    // Masked secret row: value '****', no reveal/set-new-value control.
+    const secretRow = screen.getByTestId('platform-config-row-WEA_PG_PASSWORD');
+    expect(within(secretRow).getByText('****')).toBeInTheDocument();
+    expect(within(secretRow).getByText(/T0 · Set in .env \(env takes precedence\)/i)).toBeInTheDocument();
+    expect(within(secretRow).queryByRole('button')).not.toBeInTheDocument();
+
+    // Undefined/empty value row shows the "(unset)" placeholder.
+    const unsetRow = screen.getByTestId('platform-config-row-WEA_PG_HOST');
+    expect(within(unsetRow).getByText('(unset)')).toBeInTheDocument();
+
+    // env-sourced T1 key shows its real (masked-on-server) value read-only.
+    const envRow = screen.getByTestId('platform-config-row-S3_BUCKET');
+    expect(within(envRow).getByText('my-bucket')).toBeInTheDocument();
+    expect(within(envRow).getByText(/T1 · Set in .env \(env takes precedence\)/i)).toBeInTheDocument();
+  });
+
+  it('renders a Section A select and editable switch for db/default keys', async () => {
+    renderEditor({
+      config: makeConfig({
+        EMAIL_SECURE: { value: false, source: 'db', tier: 'T2', secret: false },
+        WEA_SKIP_GC_SCHEDULER: { value: false, source: 'db', tier: 'T2', secret: false },
+      }),
+    });
+
+    expect(await screen.findByLabelText(/smtp host/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/file storage type/i)).not.toBeDisabled();
+
+    const emailSecureSwitch = screen.getByTestId('config-input-EMAIL_SECURE');
+    expect(emailSecureSwitch).not.toBeDisabled();
+
+    const skipGcSwitch = screen.getByTestId('config-input-WEA_SKIP_GC_SCHEDULER');
+    expect(skipGcSwitch).not.toBeDisabled();
   });
 
   it('masks secrets and reveals a set-new-value field on toggle', async () => {
@@ -97,7 +152,7 @@ describe('SystemConfigEditor', () => {
     expect(secretField).toHaveValue('new-pass');
   });
 
-  it('sends only changed keys on save and reports success via onSnackbar', async () => {
+  it('sends only changed Section A keys on save and reports success via onSnackbar', async () => {
     let putBody;
     mockPutConfig((body) => {
       putBody = body;
@@ -164,13 +219,14 @@ describe('SystemConfigEditor', () => {
     expect(screen.queryByTestId('config-restart-banner')).not.toBeInTheDocument();
   });
 
-  it('renders a per-field tier badge on editable fields', async () => {
+  it('renders a per-field tier badge on editable fields only', async () => {
     renderEditor();
 
     expect(await screen.findByTestId('config-tier-PORT')).toHaveTextContent('Restart required');
     expect(screen.getByTestId('config-tier-EMAIL_HOST')).toHaveTextContent('Applies immediately');
-    // Read-only env rows get no tier badge.
+    // env-sourced / T0 keys are Section B rows — never a Section A tier badge.
     expect(screen.queryByTestId('config-tier-S3_BUCKET')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('config-tier-WEA_STORAGE_BACKEND')).not.toBeInTheDocument();
   });
 
   it('skips blank secret new values on save but sends typed ones', async () => {

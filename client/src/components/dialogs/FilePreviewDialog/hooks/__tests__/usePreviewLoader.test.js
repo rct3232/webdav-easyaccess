@@ -45,6 +45,13 @@ describe('usePreviewLoader', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.error).toBeNull();
     expect(result.current.previewUrl).toBeDefined();
+
+    // Preview fetches are bounded (short timeout, no transport retries) so a
+    // backend failure surfaces within seconds instead of after minutes.
+    expect(fileService.getFileBlob).toHaveBeenCalledWith(
+      imageFile.nodeId,
+      expect.objectContaining({ timeout: 10000, maxRetries: 0 })
+    );
   });
 
   it('resolves a transport timeout to an error instead of spinning forever', async () => {

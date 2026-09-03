@@ -57,6 +57,10 @@ function resolvePgConfig() {
     max: parseNumberEnv(process.env.WEA_PG_MAX, 10),
     idleTimeoutMillis: parseNumberEnv(process.env.WEA_PG_IDLE_TIMEOUT_MS, 30_000),
     connectionTimeoutMillis: parseNumberEnv(process.env.WEA_PG_CONNECTION_TIMEOUT_MS, 10_000),
+    // Client-side per-statement bound (pg query_timeout). Bounds queries so a
+    // mid-session DB drop (silent network partition) errors out instead of
+    // hanging the request indefinitely. 0 disables (for long maintenance runs).
+    query_timeout: parseNumberEnv(process.env.WEA_PG_QUERY_TIMEOUT_MS, 60_000),
     ssl: parseBooleanEnv(process.env.WEA_PG_SSL) ? { rejectUnauthorized: false } : false,
   };
 }
@@ -221,9 +225,10 @@ async function withTransaction(callback) {
     client = await pool.connect();
   } catch (error) {
     const { getBackendHealth } = require('../infrastructure/backendHealth');
+    const rawCode = String((error && (error.code || error.errno)) || '').toUpperCase();
     getBackendHealth().report('postgresql', {
       ok: false,
-      code: 'unreachable',
+      code: rawCode === '28P01' || rawCode === '28000' ? 'auth' : 'unreachable',
       reason: error.message,
     });
     throw mapDatabaseError(error);

@@ -5,6 +5,22 @@
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
+// System-level node-pg connection codes that indicate the DB is unreachable.
+const PG_UNREACHABLE_SYSTEM_CODES = [
+  'ECONNREFUSED',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'ETIMEDOUT',
+  'ECONNRESET',
+  'EPIPE',
+];
+
+// PostgreSQL SQLSTATE codes that indicate an authentication failure.
+const PG_AUTH_CODES = ['28P01', '28000'];
+
+// pg client-side query_timeout expiry (no SQLSTATE; detected via message).
+const PG_QUERY_READ_TIMEOUT_MSG = /query read timeout/i;
+
 /**
  * Wraps async route handlers to automatically catch errors
  * Usage: router.get('/path', asyncHandler(async (req, res) => { ... }))
@@ -152,7 +168,11 @@ function mapDatabaseError(error, options = {}) {
     options.fallbackErrorCode || SERVER_ERROR_CODES.errorHandler.databaseQueryFailed;
 
   const code = error?.code;
+  const rawCode = String(code || error?.errno || '').toUpperCase();
+  const message = error?.message || '';
   let mapped;
+  let healthCode; // undefined => not a connection-class failure, do not report
+
   if (code === '23505') {
     mapped = createError(SERVER_ERROR_CODES.errorHandler.databaseConflict, HTTP_STATUS.CONFLICT);
     if (error?.constraint) mapped.params = { constraint: error.constraint };
@@ -163,25 +183,45 @@ function mapDatabaseError(error, options = {}) {
     );
     if (error?.constraint) mapped.params = { constraint: error.constraint };
   } else if (code === '57P01' || code === '53300') {
+    // Graceful shutdown / pool exhaustion.
     mapped = createError(
       SERVER_ERROR_CODES.errorHandler.databaseUnavailable,
       HTTP_STATUS.SERVICE_UNAVAILABLE
     );
+    healthCode = 'unreachable';
+  } else if (PG_AUTH_CODES.includes(rawCode)) {
+    // Credential rotation / wrong password (28P01, 28000).
+    mapped = createError(
+      SERVER_ERROR_CODES.errorHandler.databaseUnavailable,
+      HTTP_STATUS.SERVICE_UNAVAILABLE
+    );
+    healthCode = 'auth';
+  } else if (
+    PG_UNREACHABLE_SYSTEM_CODES.includes(rawCode) ||
+    PG_QUERY_READ_TIMEOUT_MSG.test(message)
+  ) {
+    // Silent network drop (system codes) or the client query_timeout expiry
+    // ("Query read timeout") — the query never got a usable answer.
+    mapped = createError(
+      SERVER_ERROR_CODES.errorHandler.databaseUnavailable,
+      HTTP_STATUS.SERVICE_UNAVAILABLE
+    );
+    healthCode = 'unreachable';
   } else {
     mapped = createError(fallbackErrorCode, HTTP_STATUS.INTERNAL_SERVER_ERROR);
   }
 
   // Passive backend-health reporting (D2): only connection-class failures
-  // (unreachable DB) are recorded; conflict/constraint codes are not.
-  if (mapped.errorCode === SERVER_ERROR_CODES.errorHandler.databaseUnavailable) {
+  // (unreachable DB / auth) are recorded; conflict/constraint codes are not.
+  if (mapped.errorCode === SERVER_ERROR_CODES.errorHandler.databaseUnavailable && healthCode) {
     const { getBackend } = require('../store/storage');
     if (getBackend() === 'postgresql') {
       const { getBackendHealth } = require('../infrastructure/backendHealth');
       const { toShortReason } = require('../infrastructure/backendProbe');
       getBackendHealth().report('postgresql', {
         ok: false,
-        code: 'unreachable',
-        reason: toShortReason(error?.message),
+        code: healthCode,
+        reason: toShortReason(message),
       });
     }
   }

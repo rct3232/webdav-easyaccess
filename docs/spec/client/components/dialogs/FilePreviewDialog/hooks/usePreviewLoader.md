@@ -34,6 +34,7 @@
 | previewBlob | Blob\|null   | Raw Blob (PDF only, for react-pdf `file` prop)                                       |
 | textContent | string\|null | Decoded text (text files only)                                                       |
 | loadPreview | function     | `(signal: AbortSignal) => Promise<void>` — triggers a fetch; called by parent effect |
+| retry       | function     | Re-triggers a fresh preview load for the current file (increments an internal nonce the load effect depends on). Used by the dialog's error-state retry button. |
 
 ### 2.4 Dependencies
 
@@ -74,6 +75,7 @@
 - [ ] Network error without a server response sets `error` (generic preview message) and `loading=false`
 - [ ] A fast server error is not transport-retried (maxRetries 0) — no backoff delay before the error shows
 - [ ] A settled request never leaves `loading=true`
+- [ ] `retry()` after a failure re-runs the load for the current file and clears the previous error
 
 ### 2.8 Edge Cases
 

@@ -36,17 +36,11 @@ function parseNumberEnv(value, fallback) {
 
 /**
  * Resolve the PostgreSQL connection from env. Mirrors storage.js
- * `resolvePgConfig` (same WEA_PG_* keys + defaults); the storage module does
+ * `resolvePgConfig` (same WEA_DB_* keys + defaults); the storage module does
  * not export it and it must not be modified for this passive detector.
  */
 function resolvePgConfigFromEnv() {
-  const requiredKeys = [
-    'WEA_PG_HOST',
-    'WEA_PG_PORT',
-    'WEA_PG_DATABASE',
-    'WEA_PG_USER',
-    'WEA_PG_PASSWORD',
-  ];
+  const requiredKeys = ['WEA_DB_HOST', 'WEA_DB_DATABASE', 'WEA_DB_USER', 'WEA_DB_PASSWORD'];
   const missing = requiredKeys.filter((key) => !process.env[key]);
   if (missing.length > 0) {
     const error = new Error(`PostgreSQL is not configured (missing ${missing.join(', ')})`);
@@ -55,12 +49,12 @@ function resolvePgConfigFromEnv() {
   }
 
   return {
-    host: process.env.WEA_PG_HOST,
-    port: parseNumberEnv(process.env.WEA_PG_PORT, 5432),
-    database: process.env.WEA_PG_DATABASE,
-    user: process.env.WEA_PG_USER,
-    password: process.env.WEA_PG_PASSWORD,
-    ssl: parseBooleanEnv(process.env.WEA_PG_SSL) ? { rejectUnauthorized: false } : false,
+    host: process.env.WEA_DB_HOST,
+    port: parseNumberEnv(process.env.WEA_DB_PORT, 5432),
+    database: process.env.WEA_DB_DATABASE,
+    user: process.env.WEA_DB_USER,
+    password: process.env.WEA_DB_PASSWORD,
+    ssl: parseBooleanEnv(process.env.WEA_DB_SSL) ? { rejectUnauthorized: false } : false,
   };
 }
 

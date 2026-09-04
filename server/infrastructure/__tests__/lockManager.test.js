@@ -64,8 +64,12 @@ describe('locks store', () => {
       jest.resetModules();
       process.env = {
         ...originalEnv,
-        WEA_STORAGE_BACKEND: 'postgresql',
+        WEA_DB_HOST: 'localhost',
+        WEA_DB_DATABASE: 'testdb',
+        WEA_DB_USER: 'test',
+        WEA_DB_PASSWORD: 'secret',
       };
+      delete process.env.WEA_STORAGE_BACKEND;
     });
 
     afterEach(() => {

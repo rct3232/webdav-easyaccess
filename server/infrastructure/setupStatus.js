@@ -13,7 +13,7 @@ const SECRET_KEYS = new Set([
   'JWT_SECRET',
   'ADMIN_DEFAULT_PASSWORD',
   'EMAIL_PASSWORD',
-  'WEA_PG_PASSWORD',
+  'WEA_DB_PASSWORD',
 ]);
 
 const WIZARD_WRITABLE_KEYS = [
@@ -40,21 +40,19 @@ const WIZARD_WRITABLE_KEYS = [
   'EMAIL_FROM_NAME',
 ];
 
-const PG_REQUIRED_KEYS = [
-  'WEA_PG_HOST',
-  'WEA_PG_PORT',
-  'WEA_PG_DATABASE',
-  'WEA_PG_USER',
-  'WEA_PG_PASSWORD',
-];
+// The four identity keys that decide whether a remote database is configured.
+// Presence-based metadata-backend selection (docs/spec/server/store/storage.md
+// §2.4): any of them set → remote PostgreSQL (partial set = missing keys), none
+// set → sqlite (default).
+const DB_REQUIRED_KEYS = ['WEA_DB_HOST', 'WEA_DB_DATABASE', 'WEA_DB_USER', 'WEA_DB_PASSWORD'];
 
 const S3_REQUIRED_KEYS = ['S3_BUCKET', 'AWS_REGION', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'];
 
 const WEBDAV_REQUIRED_KEYS = ['WEBDAV_URL', 'WEBDAV_USERNAME', 'WEBDAV_PASSWORD'];
 
 function metadataMissing(env) {
-  if (env.WEA_STORAGE_BACKEND === 'postgresql') {
-    return PG_REQUIRED_KEYS.filter((key) => !env[key]);
+  if (DB_REQUIRED_KEYS.some((key) => env[key])) {
+    return DB_REQUIRED_KEYS.filter((key) => !env[key]);
   }
   return [];
 }
@@ -120,4 +118,4 @@ function computeSetupStatus(env = {}, options = {}) {
   };
 }
 
-module.exports = { computeSetupStatus, PG_REQUIRED_KEYS };
+module.exports = { computeSetupStatus, DB_REQUIRED_KEYS };

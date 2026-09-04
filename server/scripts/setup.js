@@ -17,7 +17,7 @@ const dotenv = require('dotenv');
 const readline = require('readline');
 
 const { resolveEnvPath } = require('../infrastructure/envPath');
-const { computeSetupStatus, PG_REQUIRED_KEYS } = require('../infrastructure/setupStatus');
+const { computeSetupStatus } = require('../infrastructure/setupStatus');
 const {
   createConfigResolver,
   setSharedResolver,
@@ -98,8 +98,8 @@ WEA_SETUP_<UPPER_FLAG> (e.g. WEA_SETUP_ADMIN_PASSWORD, WEA_SETUP_WEBDAV_PASSWORD
 WEA_SETUP_AWS_SECRET_ACCESS_KEY). Secrets are never echoed; on an interactive
 terminal a missing secret is prompted for with hidden input.
 
-The metadata backend (WEA_STORAGE_BACKEND + the WEA_PG_* block, or the sqlite
-path) is .env-owned and never set by this tool.
+The metadata backend (the remote WEA_DB_* block, or the default sqlite store)
+is .env-owned and never set by this tool.
 
 Exit codes:
   0 success (help/status/probe-ok/apply-ok)
@@ -322,18 +322,9 @@ function probePayloadFromFile(file) {
 }
 
 // Boot subset of server/index.js runBoot (lines 228-267): schema, resolver
-// prime + install, default-admin seeding. PG requires the same WEA_PG_* keys
-// the server boot checks before touching the store.
+// prime + install, default-admin seeding. Backend selection is presence-based
+// and validated inside storage.getBackend (partial WEA_DB_* throws here).
 async function bootSetupStore() {
-  const { getBackend } = require('../store/storage');
-  if (getBackend() === 'postgresql') {
-    const missing = PG_REQUIRED_KEYS.filter((key) => !process.env[key]);
-    if (missing.length > 0) {
-      throw new Error(
-        `WEA_STORAGE_BACKEND=postgresql requires ${missing.join(', ')} in env/.env. Aborting.`
-      );
-    }
-  }
   await initMetadataSchema();
   const resolver = createConfigResolver({ settingsStore: Settings });
   await resolver.loadAll();

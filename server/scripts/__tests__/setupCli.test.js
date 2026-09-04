@@ -23,7 +23,6 @@ const backendProbe = require('../../infrastructure/backendProbe');
 // shared test-setup.js ran) and restored after every test.
 const MANAGED_KEYS = [
   'NODE_ENV',
-  'WEA_STORAGE_BACKEND',
   'WEA_SQLITE_PATH',
   'WEA_DISABLE_DEFAULT_ADMIN',
   'ADMIN_DEFAULT_PASSWORD',
@@ -52,13 +51,13 @@ const MANAGED_KEYS = [
   'WEA_SETUP_WEBDAV_PASSWORD',
   'WEA_SETUP_AWS_SECRET_ACCESS_KEY',
   'WEA_SETUP_JWT_SECRET',
-  'WEA_PG_HOST',
-  'WEA_PG_PORT',
-  'WEA_PG_DATABASE',
-  'WEA_PG_USER',
-  'WEA_PG_PASSWORD',
-  'WEA_PG_SSL',
-  'WEA_PG_MAX',
+  'WEA_DB_HOST',
+  'WEA_DB_PORT',
+  'WEA_DB_DATABASE',
+  'WEA_DB_USER',
+  'WEA_DB_PASSWORD',
+  'WEA_DB_SSL',
+  'WEA_DB_MAX',
 ];
 
 const SAVED_ENV = {};
@@ -79,7 +78,9 @@ const NON_TTY_INPUT = { isTTY: false };
 
 function setBaselineSqliteEnv() {
   for (const key of MANAGED_KEYS) delete process.env[key];
-  process.env.WEA_STORAGE_BACKEND = 'sqlite';
+  // No WEA_DB_* identity key set → the metadata backend defaults to sqlite
+  // (presence-based; there is no WEA_STORAGE_BACKEND switch anymore).
+  delete process.env.WEA_STORAGE_BACKEND;
 }
 
 function setCompleteWebdavEnv() {
@@ -323,7 +324,8 @@ describe('setup.js apply happy path (throwaway sqlite store)', () => {
     expect(env.JWT_SECRET).toBe('explicit-jwt-secret');
     expect(env).not.toHaveProperty('encrypt_secret_key');
     for (const key of [
-      'WEA_STORAGE_BACKEND',
+      'WEA_DB_HOST',
+      'WEA_DB_PASSWORD',
       'WEA_FILE_STORAGE',
       'WEBDAV_URL',
       'WEBDAV_USERNAME',

@@ -11,8 +11,9 @@
  *  - sqliteToPostgresql: the source is a REAL sqlite file; the target is a
  *    fake pg.Client, so PG-specific serialization (JSON-string settings.value,
  *    real booleans, setval) is asserted on the captured call log.
- *  - A real sqlite -> PG roundtrip runs only under test:ci:pg
- *    (WEA_STORAGE_BACKEND=postgresql), using a dedicated throwaway database.
+ *  - A real sqlite -> PG roundtrip runs only under test:ci:pg (all four
+ *    WEA_DB_* identity keys present in the environment), using a dedicated
+ *    throwaway database.
  */
 
 const fs = require('fs');
@@ -727,15 +728,16 @@ describe('runMigration sqliteToPostgresql (real sqlite source -> fake PG target)
 // ---------------------------------------------------------------------------
 
 const PG_BASE = {
-  host: process.env.WEA_PG_HOST || '127.0.0.1',
-  port: Number(process.env.WEA_PG_PORT) || 5432,
-  user: process.env.WEA_PG_USER || 'e2etest',
-  password: process.env.WEA_PG_PASSWORD || 'e2etest',
+  host: process.env.WEA_DB_HOST || '127.0.0.1',
+  port: Number(process.env.WEA_DB_PORT) || 5432,
+  user: process.env.WEA_DB_USER || 'e2etest',
+  password: process.env.WEA_DB_PASSWORD || 'e2etest',
 };
 
-// The real PG roundtrip runs only under test:ci:pg (WEA_STORAGE_BACKEND=postgresql);
-// under the sqlite test:ci run the tests are skipped.
-const roundtripIt = process.env.WEA_STORAGE_BACKEND === 'postgresql' ? it : it.skip;
+// The real PG roundtrip runs only under test:ci:pg, where all four WEA_DB_*
+// identity keys are present; under the sqlite test:ci run the tests are skipped.
+const ROUNDTRIP_IDENTITY_KEYS = ['WEA_DB_HOST', 'WEA_DB_DATABASE', 'WEA_DB_USER', 'WEA_DB_PASSWORD'];
+const roundtripIt = ROUNDTRIP_IDENTITY_KEYS.every((key) => process.env[key]) ? it : it.skip;
 
 describe('roundtrip sqlite -> postgresql (real PG)', () => {
   async function withPgDatabase(name, fn) {

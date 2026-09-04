@@ -37,12 +37,12 @@ const SECRET_MASK = '****';
 // the real stored value is resolved through the resolver before probing.
 const TARGET_CONNECTION_FIELDS = {
   postgresql: {
-    WEA_PG_HOST: 'host',
-    WEA_PG_PORT: 'port',
-    WEA_PG_DATABASE: 'database',
-    WEA_PG_USER: 'user',
-    WEA_PG_PASSWORD: 'password',
-    WEA_PG_SSL: 'ssl',
+    WEA_DB_HOST: 'host',
+    WEA_DB_PORT: 'port',
+    WEA_DB_DATABASE: 'database',
+    WEA_DB_USER: 'user',
+    WEA_DB_PASSWORD: 'password',
+    WEA_DB_SSL: 'ssl',
   },
   s3: {
     S3_BUCKET: 'bucket',

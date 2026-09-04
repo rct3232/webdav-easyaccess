@@ -21,17 +21,20 @@ const TIER = Object.freeze({
 
 const CONFIG_ENTRIES = Object.freeze([
   // ── T0 — .env only (metadata / startup) ────────────────────────────────
-  { key: 'WEA_STORAGE_BACKEND', tier: TIER.T0, secret: false, default: 'sqlite' },
+  // Metadata backend selection is presence-based (docs/spec/server/store/
+  // storage.md §2.4): any of WEA_DB_HOST/DATABASE/USER/PASSWORD set → remote
+  // PostgreSQL; none set → sqlite. There is no WEA_STORAGE_BACKEND key.
   { key: 'WEA_SQLITE_PATH', tier: TIER.T0, secret: false },
-  { key: 'WEA_PG_HOST', tier: TIER.T0, secret: false },
-  { key: 'WEA_PG_PORT', tier: TIER.T0, secret: false, default: 5432 },
-  { key: 'WEA_PG_DATABASE', tier: TIER.T0, secret: false },
-  { key: 'WEA_PG_USER', tier: TIER.T0, secret: false },
-  { key: 'WEA_PG_PASSWORD', tier: TIER.T0, secret: true },
-  { key: 'WEA_PG_SSL', tier: TIER.T0, secret: false, default: false },
-  { key: 'WEA_PG_MAX', tier: TIER.T0, secret: false, default: 10 },
-  { key: 'WEA_PG_IDLE_TIMEOUT_MS', tier: TIER.T0, secret: false, default: 30000 },
-  { key: 'WEA_PG_CONNECTION_TIMEOUT_MS', tier: TIER.T0, secret: false, default: 10000 },
+  { key: 'WEA_DB_HOST', tier: TIER.T0, secret: false },
+  { key: 'WEA_DB_PORT', tier: TIER.T0, secret: false, default: 5432 },
+  { key: 'WEA_DB_DATABASE', tier: TIER.T0, secret: false },
+  { key: 'WEA_DB_USER', tier: TIER.T0, secret: false },
+  { key: 'WEA_DB_PASSWORD', tier: TIER.T0, secret: true },
+  { key: 'WEA_DB_SSL', tier: TIER.T0, secret: false, default: false },
+  { key: 'WEA_DB_MAX', tier: TIER.T0, secret: false, default: 10 },
+  { key: 'WEA_DB_IDLE_TIMEOUT_MS', tier: TIER.T0, secret: false, default: 30000 },
+  { key: 'WEA_DB_CONNECTION_TIMEOUT_MS', tier: TIER.T0, secret: false, default: 10000 },
+  { key: 'WEA_DB_QUERY_TIMEOUT_MS', tier: TIER.T0, secret: false, default: 60000 },
   { key: 'NODE_ENV', tier: TIER.T0, secret: false },
   { key: 'DOTENV_CONFIG_PATH', tier: TIER.T0, secret: false },
   {

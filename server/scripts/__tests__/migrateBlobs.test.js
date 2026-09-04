@@ -1,6 +1,8 @@
 'use strict';
 
-process.env.WEA_STORAGE_BACKEND = process.env.WEA_STORAGE_BACKEND || 'sqlite';
+// Backend selection is presence-based and normalized by the shared test-setup
+// (server/test-setup.js): sqlite by default, PostgreSQL under test:ci:pg when
+// all four WEA_DB_* identity keys are present.
 
 const { buildDestBlobStore } = require('../../infrastructure/adapters/blobstore/config');
 const { runMigrationCli } = require('../migrateBlobs');

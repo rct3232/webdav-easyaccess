@@ -31,12 +31,11 @@ describe('computeSetupStatus', () => {
   describe('full postgresql + webdav', () => {
     it('is complete', () => {
       const env = {
-        WEA_STORAGE_BACKEND: 'postgresql',
-        WEA_PG_HOST: 'db.example.com',
-        WEA_PG_PORT: '5432',
-        WEA_PG_DATABASE: 'webdav',
-        WEA_PG_USER: 'admin',
-        WEA_PG_PASSWORD: 'pg-pass',
+        WEA_DB_HOST: 'db.example.com',
+        WEA_DB_PORT: '5432',
+        WEA_DB_DATABASE: 'webdav',
+        WEA_DB_USER: 'admin',
+        WEA_DB_PASSWORD: 'pg-pass',
         WEA_FILE_STORAGE: 'webdav',
         WEBDAV_URL: 'https://dav.example.com',
         WEBDAV_USERNAME: 'dav-user',
@@ -95,11 +94,10 @@ describe('computeSetupStatus', () => {
   describe('current prefill values', () => {
     it('masks secrets, hides unset secrets, and reflects non-secrets', () => {
       const env = {
-        WEA_STORAGE_BACKEND: 'postgresql',
+        WEA_DB_HOST: 'db.example.com',
+        WEA_DB_PASSWORD: 'pg-pass',
         PORT: '5001',
         JWT_SECRET: 'top-secret',
-        WEA_PG_HOST: 'db.example.com',
-        WEA_PG_PASSWORD: 'pg-pass',
         AWS_SECRET_ACCESS_KEY: 'aws-secret',
         WEBDAV_PASSWORD: 'dav-pass',
         EMAIL_HOST: 'smtp.example.com',
@@ -109,9 +107,8 @@ describe('computeSetupStatus', () => {
       expect(current.AWS_SECRET_ACCESS_KEY).toBe('****');
       expect(current.WEBDAV_PASSWORD).toBe('****');
       // Metadata/T0 keys are no longer wizard-writable (D7) — never in `current`.
-      expect(current.WEA_STORAGE_BACKEND).toBeUndefined();
-      expect(current.WEA_PG_HOST).toBeUndefined();
-      expect(current.WEA_PG_PASSWORD).toBeUndefined();
+      expect(current.WEA_DB_HOST).toBeUndefined();
+      expect(current.WEA_DB_PASSWORD).toBeUndefined();
       expect(current.PORT).toBe('5001');
       expect(current.EMAIL_HOST).toBe('smtp.example.com');
       expect(current.EMAIL_PASSWORD).toBeUndefined();
@@ -121,11 +118,11 @@ describe('computeSetupStatus', () => {
     });
   });
 
-  describe('postgresql backend', () => {
-    it('lists missing WEA_PG_* keys when backend is postgresql', () => {
+  describe('postgresql backend (presence-based)', () => {
+    it('lists missing WEA_DB_* identity keys when only some WEA_DB_* are set', () => {
       const env = {
-        WEA_STORAGE_BACKEND: 'postgresql',
-        WEA_PG_HOST: 'db.example.com',
+        WEA_DB_HOST: 'db.example.com',
+        WEA_DB_PORT: '5432',
         WEA_FILE_STORAGE: 's3',
         S3_BUCKET: 'my-bucket',
         AWS_REGION: 'us-east-1',
@@ -134,12 +131,7 @@ describe('computeSetupStatus', () => {
       };
       const status = computeSetupStatus(env);
       expect(status.setup_complete).toBe(false);
-      expect(status.missing).toEqual([
-        'WEA_PG_PORT',
-        'WEA_PG_DATABASE',
-        'WEA_PG_USER',
-        'WEA_PG_PASSWORD',
-      ]);
+      expect(status.missing).toEqual(['WEA_DB_DATABASE', 'WEA_DB_USER', 'WEA_DB_PASSWORD']);
     });
   });
 
@@ -147,7 +139,6 @@ describe('computeSetupStatus', () => {
     it('completes a config that raw env alone cannot (DB provides S3 keys)', () => {
       const env = {}; // no file/admin keys in env
       const effectiveConfig = {
-        WEA_STORAGE_BACKEND: { value: 'sqlite', source: 'default', tier: 'T0', secret: false },
         WEA_FILE_STORAGE: { value: 's3', source: 'default', tier: 'T1', secret: false },
         S3_BUCKET: { value: 'my-bucket', source: 'db', tier: 'T1', secret: false },
         AWS_REGION: { value: 'us-east-1', source: 'db', tier: 'T1', secret: false },
@@ -159,11 +150,10 @@ describe('computeSetupStatus', () => {
       expect(status.missing).toEqual([]);
     });
 
-    it('respects metadata backend from effective view (postgresql requires WEA_PG_*)', () => {
+    it('respects the metadata backend from the effective view (partial WEA_DB_* yields missing identity keys)', () => {
       const env = {};
       const effectiveConfig = {
-        WEA_STORAGE_BACKEND: { value: 'postgresql', source: 'env', tier: 'T0', secret: false },
-        WEA_PG_HOST: { value: 'db.example.com', source: 'env', tier: 'T0', secret: false },
+        WEA_DB_HOST: { value: 'db.example.com', source: 'env', tier: 'T0', secret: false },
         WEA_FILE_STORAGE: { value: 's3', source: 'default', tier: 'T1', secret: false },
         S3_BUCKET: { value: 'my-bucket', source: 'db', tier: 'T1', secret: false },
         AWS_REGION: { value: 'us-east-1', source: 'db', tier: 'T1', secret: false },
@@ -172,18 +162,12 @@ describe('computeSetupStatus', () => {
       };
       const status = computeSetupStatus(env, { effectiveConfig });
       expect(status.setup_complete).toBe(false);
-      expect(status.missing).toEqual([
-        'WEA_PG_PORT',
-        'WEA_PG_DATABASE',
-        'WEA_PG_USER',
-        'WEA_PG_PASSWORD',
-      ]);
+      expect(status.missing).toEqual(['WEA_DB_DATABASE', 'WEA_DB_USER', 'WEA_DB_PASSWORD']);
     });
 
     it('honors webdav backend and masked password presence from DB', () => {
       const env = {};
       const effectiveConfig = {
-        WEA_STORAGE_BACKEND: { value: 'sqlite', source: 'default', tier: 'T0', secret: false },
         WEA_FILE_STORAGE: { value: 'webdav', source: 'db', tier: 'T1', secret: false },
         WEBDAV_URL: { value: 'https://dav.example.com', source: 'db', tier: 'T1', secret: false },
         WEBDAV_USERNAME: { value: 'dav-user', source: 'db', tier: 'T1', secret: false },
@@ -198,7 +182,6 @@ describe('computeSetupStatus', () => {
       const env = { NODE_ENV: 'production' };
       const effectiveConfig = {
         NODE_ENV: { value: 'production', source: 'env', tier: 'T0', secret: false },
-        WEA_STORAGE_BACKEND: { value: 'sqlite', source: 'default', tier: 'T0', secret: false },
         WEA_FILE_STORAGE: { value: 's3', source: 'default', tier: 'T1', secret: false },
         S3_BUCKET: { value: 'my-bucket', source: 'db', tier: 'T1', secret: false },
         AWS_REGION: { value: 'us-east-1', source: 'db', tier: 'T1', secret: false },

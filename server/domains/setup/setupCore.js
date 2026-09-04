@@ -47,15 +47,17 @@ const EMAIL_KEYS = ['host', 'port', 'user', 'password', 'secure', 'fromName'];
 const FILE_KEYS_UNION = [...new Set([...S3_KEYS, ...WEBDAV_KEYS])];
 const TOP_LEVEL_KEYS = ['metadata', 'file', 'admin', 'jwt', 'server', 'email'];
 
+// The .env-owned metadata-backend T0 keys. The remote-DB block decides the
+// metadata backend by presence (see store/storage.getBackend); apply never
+// produces or writes these keys — the DB connection is operator-owned (D6).
 const METADATA_T0_KEYS = [
-  'WEA_STORAGE_BACKEND',
-  'WEA_PG_HOST',
-  'WEA_PG_PORT',
-  'WEA_PG_DATABASE',
-  'WEA_PG_USER',
-  'WEA_PG_PASSWORD',
-  'WEA_PG_SSL',
-  'WEA_PG_MAX',
+  'WEA_DB_HOST',
+  'WEA_DB_PORT',
+  'WEA_DB_DATABASE',
+  'WEA_DB_USER',
+  'WEA_DB_PASSWORD',
+  'WEA_DB_SSL',
+  'WEA_DB_MAX',
 ];
 
 const EFFECTIVE_SECRET_MASK = '****';
@@ -283,9 +285,9 @@ function buildEnvEntries(body) {
  * raw env var name). Classification comes from the config registry, never a
  * local allowlist, so the wizard cannot drift from the tier model.
  *
- * The metadata backend T0 keys (WEA_STORAGE_BACKEND, WEA_PG_*) are excluded
- * from the .env partition: the DB connection is `.env`-owned (D6) and the
- * wizard serves non-T0 only (D7), so they are never written by apply.
+ * The metadata backend T0 keys (the WEA_DB_* block) are excluded from the
+ * .env partition: the DB connection is `.env`-owned (D6) and the wizard
+ * serves non-T0 only (D7), so they are never written by apply.
  * @param {Record<string, string>} entries flat key → value map
  * @returns {{ envEntries: Record<string, string>, dbEntries: Record<string, string> }}
  */

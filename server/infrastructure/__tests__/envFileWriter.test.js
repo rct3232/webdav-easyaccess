@@ -155,9 +155,9 @@ describe('writeEnv', () => {
     expect(WIZARD_WRITABLE_KEYS).toContain('WEA_FILE_STORAGE');
     // Metadata-backend T0 keys (.env-owned, D6) and ADMIN_DEFAULT_PASSWORD are
     // never written by apply, so they must not be wizard-writable.
-    expect(WIZARD_WRITABLE_KEYS).not.toContain('WEA_STORAGE_BACKEND');
-    expect(WIZARD_WRITABLE_KEYS).not.toContain('WEA_PG_HOST');
-    expect(WIZARD_WRITABLE_KEYS).not.toContain('WEA_PG_PASSWORD');
+    expect(WIZARD_WRITABLE_KEYS).not.toContain('WEA_SQLITE_PATH');
+    expect(WIZARD_WRITABLE_KEYS).not.toContain('WEA_DB_HOST');
+    expect(WIZARD_WRITABLE_KEYS).not.toContain('WEA_DB_PASSWORD');
     expect(WIZARD_WRITABLE_KEYS).not.toContain('ADMIN_DEFAULT_PASSWORD');
     expect(WIZARD_WRITABLE_KEYS).not.toContain('encrypt_secret_key');
     expect(Object.isFrozen(WIZARD_WRITABLE_KEYS)).toBe(true);

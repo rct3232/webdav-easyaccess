@@ -67,12 +67,17 @@ function freshScratchEnv() {
   envPath = path.join(tmpDir, '.env');
   dbPath = path.join(tmpDir, 'store.db');
   for (const key of MANAGED_KEYS) delete process.env[key];
-  process.env.WEA_STORAGE_BACKEND = 'sqlite';
+  // No WEA_DB_* identity key set → the metadata backend defaults to sqlite.
+  delete process.env.WEA_DB_HOST;
+  delete process.env.WEA_DB_DATABASE;
+  delete process.env.WEA_DB_USER;
+  delete process.env.WEA_DB_PASSWORD;
+  delete process.env.WEA_STORAGE_BACKEND;
   process.env.WEA_SQLITE_PATH = dbPath;
   process.env.DOTENV_CONFIG_PATH = envPath;
   // Always write a real .env file so loadDotenv resolves it (never the repo
   // .env); baseline content only.
-  fs.writeFileSync(envPath, 'WEA_STORAGE_BACKEND=sqlite\n');
+  fs.writeFileSync(envPath, '\n');
   return { envPath, dbPath };
 }
 
@@ -80,7 +85,7 @@ function freshScratchEnv() {
 // server boot would read), matching the setupCli convention of driving the
 // CLI through process.env.
 function seedEnv(entries) {
-  const lines = ['WEA_STORAGE_BACKEND=sqlite'];
+  const lines = [];
   for (const [key, value] of Object.entries(entries)) {
     lines.push(`${key}=${value}`);
     process.env[key] = String(value);
@@ -279,6 +284,6 @@ describe('configSync.js --apply', () => {
     expect(rows.WEBDAV_PASSWORD).toBe('dav-pass');
     // T0 keys are never written to the DB
     expect(rows).not.toHaveProperty('JWT_SECRET');
-    expect(rows).not.toHaveProperty('WEA_STORAGE_BACKEND');
+    expect(rows).not.toHaveProperty('WEA_SQLITE_PATH');
   });
 });

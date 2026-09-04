@@ -84,6 +84,17 @@ function createPostgresqlShareLinkStorageMock() {
     isSqliteBackend: () => false,
     getPgPool: () => ({ query }),
     withTransaction: async (callback) => callback({ query }),
+    // The shareLinkStore facade delegates through the executor seam
+    // (docs/spec/server/store/executor.md); supply a postgres executor built
+    // on the same in-memory query mock.
+    getExecutor: () => ({
+      dialect: 'postgres',
+      query: async (sql, params) => query(sql, params),
+      run: async (sql, params) => query(sql, params),
+      transaction: async (fn) => fn({ query, run: async (s, p) => query(s, p) }),
+      isUniqueConflict: (err) => err && err.code === '23505',
+      close: async () => {},
+    }),
   });
 }
 

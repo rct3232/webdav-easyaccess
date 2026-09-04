@@ -66,3 +66,9 @@ D8 depends on D5–D7; D9/D10 last.
   `infrastructure/adapters/metadata` user adapters removed and `isLinkExpired`
   moved to `server/store/isLinkExpired.js`; `UserRepository` conformance suite
   green. `test:ci` green (93 suites / 1726 passed).
+- 2026-09-04: **D5 done** — `RecentFilesRepository` + `ShareLinkRepository`
+  (interfaces + sqlite/postgres impls), `recentFilesStore`/`shareLinkStore`
+  converted to facades; shareLinkStore PG-mock test supplies an executor via
+  the storage mock (pattern for remaining mock-PG suites). Conformance suites
+  green; `test:ci` green (95 suites / 1742 passed). Remaining: D6 FileNode,
+  D7 Permission, D8 raw-row assert cleanup, D9 PG-leg shrink, D10 close-out.

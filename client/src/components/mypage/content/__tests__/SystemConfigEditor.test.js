@@ -20,9 +20,9 @@ import SystemConfigEditor from '../SystemConfigEditor';
 
 const makeConfig = (overrides = {}) => ({
   // T0 keys → Section B (deploy-time read-only).
-  WEA_STORAGE_BACKEND: { value: 'sqlite', source: 'env', tier: 'T0', secret: false },
-  WEA_PG_HOST: { value: '', source: 'env', tier: 'T0', secret: false },
-  WEA_PG_PASSWORD: { value: '****', source: 'env', tier: 'T0', secret: true },
+  WEA_DB_HOST: { value: '', source: 'env', tier: 'T0', secret: false },
+  WEA_DB_PASSWORD: { value: '****', source: 'env', tier: 'T0', secret: true },
+  WEA_DB_QUERY_TIMEOUT_MS: { value: '60000', source: 'default', tier: 'T0', secret: false },
   JWT_SECRET: { value: '****', source: 'env', tier: 'T0', secret: true },
   // Editable Section A keys (db/default source, T1/T2).
   WEA_FILE_STORAGE: { value: 's3', source: 'default', tier: 'T1', secret: false },
@@ -91,8 +91,11 @@ describe('SystemConfigEditor', () => {
     expect(screen.getByText(/managed externally and cannot be edited here/i)).toBeInTheDocument();
 
     // T0 keys render as Section B rows.
-    expect(screen.getByTestId('platform-config-row-WEA_STORAGE_BACKEND')).toBeInTheDocument();
+    expect(screen.getByTestId('platform-config-row-WEA_DB_HOST')).toBeInTheDocument();
     expect(screen.getByTestId('platform-config-row-JWT_SECRET')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('platform-config-row-WEA_DB_QUERY_TIMEOUT_MS')
+    ).toBeInTheDocument();
 
     // env-sourced T1/T2 keys live in Section B: no disabled Section A input.
     expect(screen.getByTestId('platform-config-row-S3_BUCKET')).toBeInTheDocument();
@@ -105,13 +108,13 @@ describe('SystemConfigEditor', () => {
     await screen.findByText(/deploy-time configuration/i);
 
     // Masked secret row: value '****', no reveal/set-new-value control.
-    const secretRow = screen.getByTestId('platform-config-row-WEA_PG_PASSWORD');
+    const secretRow = screen.getByTestId('platform-config-row-WEA_DB_PASSWORD');
     expect(within(secretRow).getByText('****')).toBeInTheDocument();
     expect(within(secretRow).getByText(/T0 · Set in .env \(env takes precedence\)/i)).toBeInTheDocument();
     expect(within(secretRow).queryByRole('button')).not.toBeInTheDocument();
 
     // Undefined/empty value row shows the "(unset)" placeholder.
-    const unsetRow = screen.getByTestId('platform-config-row-WEA_PG_HOST');
+    const unsetRow = screen.getByTestId('platform-config-row-WEA_DB_HOST');
     expect(within(unsetRow).getByText('(unset)')).toBeInTheDocument();
 
     // env-sourced T1 key shows its real (masked-on-server) value read-only.
@@ -226,7 +229,7 @@ describe('SystemConfigEditor', () => {
     expect(screen.getByTestId('config-tier-EMAIL_HOST')).toHaveTextContent('Applies immediately');
     // env-sourced / T0 keys are Section B rows — never a Section A tier badge.
     expect(screen.queryByTestId('config-tier-S3_BUCKET')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('config-tier-WEA_STORAGE_BACKEND')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('config-tier-WEA_DB_HOST')).not.toBeInTheDocument();
   });
 
   it('skips blank secret new values on save but sends typed ones', async () => {

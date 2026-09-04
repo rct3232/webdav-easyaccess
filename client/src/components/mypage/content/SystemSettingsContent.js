@@ -76,10 +76,17 @@ const SystemSettingsContent = () => {
     try {
       const data = await adminService.getConfigStatus();
       // Derive the backends actually in use so unused backends never alert (D3):
-      // metadata backend = WEA_STORAGE_BACKEND, file backend = WEA_FILE_STORAGE.
+      // metadata backend = presence of any WEA_DB_* credential (else sqlite),
+      // file backend = WEA_FILE_STORAGE.
       const cfg = data?.config || {};
       const active = new Set();
-      if (cfg.WEA_STORAGE_BACKEND?.value === 'postgresql') active.add('postgresql');
+      const dbCredentialSet = [
+        'WEA_DB_HOST',
+        'WEA_DB_DATABASE',
+        'WEA_DB_USER',
+        'WEA_DB_PASSWORD',
+      ];
+      if (dbCredentialSet.some((key) => cfg[key]?.value)) active.add('postgresql');
       if (cfg.WEA_FILE_STORAGE?.value === 's3') active.add('s3');
       if (cfg.WEA_FILE_STORAGE?.value === 'webdav') active.add('webdav');
       setActiveBackends(active);

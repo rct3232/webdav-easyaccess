@@ -88,17 +88,17 @@ describe('createConfigResolver', () => {
 
   describe('T0 (env only)', () => {
     it('never reads the DB or applies a default for T0 keys', async () => {
-      const store = createFakeStore({ WEA_PG_HOST: 'db-host', WEA_PG_PORT: 1111 });
+      const store = createFakeStore({ WEA_DB_HOST: 'db-host', WEA_DB_PORT: 1111 });
       const resolver = makeResolver(store, {});
-      await expect(resolver.getConfig('WEA_PG_HOST')).resolves.toBeUndefined();
-      await expect(resolver.getConfig('WEA_PG_PORT')).resolves.toBeUndefined();
+      await expect(resolver.getConfig('WEA_DB_HOST')).resolves.toBeUndefined();
+      await expect(resolver.getConfig('WEA_DB_PORT')).resolves.toBeUndefined();
       expect(store.calls.get).toHaveLength(0);
     });
 
     it('returns the env value for a T0 key when present', async () => {
       const store = createFakeStore({});
-      const resolver = makeResolver(store, { WEA_PG_HOST: 'env-host' });
-      await expect(resolver.getConfig('WEA_PG_HOST')).resolves.toBe('env-host');
+      const resolver = makeResolver(store, { WEA_DB_HOST: 'env-host' });
+      await expect(resolver.getConfig('WEA_DB_HOST')).resolves.toBe('env-host');
     });
   });
 
@@ -163,7 +163,7 @@ describe('createConfigResolver', () => {
         secret: false,
       });
       expect(config.PORT).toEqual({ value: 5001, source: 'default', tier: 'T1', secret: false });
-      expect(config.WEA_PG_HOST).toEqual({
+      expect(config.WEA_DB_HOST).toEqual({
         value: undefined,
         source: 'env',
         tier: 'T0',
@@ -300,7 +300,7 @@ describe('createConfigResolver', () => {
     it('returns undefined for T0 keys when env is absent', () => {
       const resolver = makeResolver(createFakeStore({}), {});
       expect(resolver.getConfigSync('JWT_SECRET')).toBeUndefined();
-      expect(resolver.getConfigSync('WEA_PG_PORT')).toBeUndefined();
+      expect(resolver.getConfigSync('WEA_DB_PORT')).toBeUndefined();
     });
 
     it('returns a cached plaintext DB secret synchronously', async () => {
@@ -339,11 +339,11 @@ describe('createConfigResolver', () => {
       expect(env.WEBDAV_USERNAME).toBe('dav-user');
       expect(env.EMAIL_HOST).toBe('smtp.example.com'); // T1 — populated at boot
       expect(env.CORS_ORIGINS).toBeUndefined(); // T2 — must stay lazy
-      expect(env.WEA_PG_HOST).toBeUndefined(); // T0 — env only
+      expect(env.WEA_DB_HOST).toBeUndefined(); // T0 — env only
       expect(populated).toContain('WEBDAV_URL');
       expect(populated).toContain('EMAIL_HOST');
       expect(populated).not.toContain('CORS_ORIGINS');
-      expect(populated).not.toContain('WEA_PG_HOST');
+      expect(populated).not.toContain('WEA_DB_HOST');
     });
 
     it('copies DB-sourced plaintext secrets into the env', async () => {

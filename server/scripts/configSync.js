@@ -19,7 +19,6 @@ const dotenv = require('dotenv');
 
 const { resolveEnvPath } = require('../infrastructure/envPath');
 const Settings = require('../models/Settings');
-const { PG_REQUIRED_KEYS } = require('../infrastructure/setupStatus');
 const { initMetadataSchema } = require('../store/bootstrap');
 const {
   buildConfigSyncReport,
@@ -102,18 +101,10 @@ function loadDotenv() {
   }
 }
 
-// Boot subset of server/index.js runBoot: PG required-key pre-check, then the
-// schema only (no default-admin seeding).
+// Boot subset of server/index.js runBoot: schema only (no default-admin
+// seeding). Backend selection is presence-based and validated inside
+// storage.getBackend (partial WEA_DB_* throws here).
 async function bootStore() {
-  const { getBackend } = require('../store/storage');
-  if (getBackend() === 'postgresql') {
-    const missing = PG_REQUIRED_KEYS.filter((key) => !process.env[key]);
-    if (missing.length > 0) {
-      throw new Error(
-        `WEA_STORAGE_BACKEND=postgresql requires ${missing.join(', ')} in env/.env. Aborting.`
-      );
-    }
-  }
   await initMetadataSchema();
 }
 

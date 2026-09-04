@@ -48,7 +48,10 @@ const { Client: MockPgClient } = require('pg');
 // jest-mocked 'pg' (Client only, no Pool) and throw. So on a PG backend run
 // the whole suite self-declares SQLite-only: every test is skipped and the
 // suite-level DB bootstrap is bypassed.
-const RUN_UNDER_PG = process.env.WEA_STORAGE_BACKEND === 'postgresql';
+// Backend selection is presence-based: PostgreSQL only when all four WEA_DB_*
+// identity keys are present in the environment.
+const DB_IDENTITY_KEYS = ['WEA_DB_HOST', 'WEA_DB_DATABASE', 'WEA_DB_USER', 'WEA_DB_PASSWORD'];
+const RUN_UNDER_PG = DB_IDENTITY_KEYS.every((key) => process.env[key]);
 
 // Bind describe to skip when the storage backend is postgresql (SQLite-only suite).
 const describeIfSqlite = RUN_UNDER_PG ? describe.skip : describe;
@@ -60,18 +63,17 @@ const TMP_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'setup-routes-'));
 const ADMIN_PASSWORD = 'admin-old-password';
 
 const WIZARD_ENV_KEYS = [
-  'WEA_STORAGE_BACKEND',
   'WEA_FILE_STORAGE',
   'PORT',
   'JWT_SECRET',
   'JWT_EXPIRES_IN',
-  'WEA_PG_HOST',
-  'WEA_PG_PORT',
-  'WEA_PG_DATABASE',
-  'WEA_PG_USER',
-  'WEA_PG_PASSWORD',
-  'WEA_PG_SSL',
-  'WEA_PG_MAX',
+  'WEA_DB_HOST',
+  'WEA_DB_PORT',
+  'WEA_DB_DATABASE',
+  'WEA_DB_USER',
+  'WEA_DB_PASSWORD',
+  'WEA_DB_SSL',
+  'WEA_DB_MAX',
   'S3_BUCKET',
   'AWS_REGION',
   'AWS_ACCESS_KEY_ID',
@@ -96,15 +98,16 @@ const SAVED_ENV = {};
 
 function setIncompleteBaseline() {
   for (const key of WIZARD_ENV_KEYS) {
-    if (key !== 'WEA_STORAGE_BACKEND' && key !== 'WEA_SQLITE_PATH' && key !== 'WEA_FILE_STORAGE')
-      delete process.env[key];
+    if (key !== 'WEA_SQLITE_PATH' && key !== 'WEA_FILE_STORAGE') delete process.env[key];
   }
+  // No WEA_DB_* identity key set → the metadata backend defaults to sqlite.
+  for (const key of DB_IDENTITY_KEYS) delete process.env[key];
+  delete process.env.WEA_STORAGE_BACKEND;
   process.env.WEA_FILE_STORAGE = 's3';
 }
 
 function setCompleteWebdavEnv() {
   setIncompleteBaseline();
-  process.env.WEA_STORAGE_BACKEND = 'sqlite';
   process.env.WEA_FILE_STORAGE = 'webdav';
   process.env.WEBDAV_URL = 'https://dav.example.com';
   process.env.WEBDAV_USERNAME = 'dav-user';
@@ -208,7 +211,8 @@ describeIfSqlite('GET /api/setup/status', () => {
     expect(res.body.current).toMatchObject({
       WEA_FILE_STORAGE: 's3',
     });
-    expect(res.body.current.WEA_STORAGE_BACKEND).toBeUndefined();
+    // Metadata-backend T0 keys are never part of `current` (wizard-writable only).
+    expect(res.body.current.WEA_DB_HOST).toBeUndefined();
     expect(res.body.current.JWT_SECRET).toBeUndefined();
   });
 
@@ -303,8 +307,9 @@ describeIfSqlite('POST /api/setup/apply', () => {
     expect(Object.keys(envEntries).sort()).toEqual(['JWT_SECRET']);
     expect(envEntries.JWT_SECRET).toBe('super-secret-jwt');
     expect(envEntries).not.toHaveProperty('encrypt_secret_key');
-    expect(envEntries).not.toHaveProperty('WEA_STORAGE_BACKEND');
-    expect(envEntries).not.toHaveProperty('WEA_PG_HOST');
+    // Metadata-backend T0 keys (the WEA_DB_* block) are never written to .env.
+    expect(envEntries).not.toHaveProperty('WEA_DB_HOST');
+    expect(envEntries).not.toHaveProperty('WEA_DB_PASSWORD');
     expect(envEntries).not.toHaveProperty('WEA_FILE_STORAGE');
     expect(envEntries).not.toHaveProperty('WEBDAV_URL');
     expect(envEntries).not.toHaveProperty('EMAIL_HOST');
@@ -341,8 +346,9 @@ describeIfSqlite('POST /api/setup/apply', () => {
     expect(written.EMAIL_FROM_NAME).toBe('WebDAV');
     expect(written.WEBDAV_PASSWORD).toBe('dav-pass');
     expect(written.EMAIL_PASSWORD).toBe('mail-pass');
-    expect(written).not.toHaveProperty('WEA_STORAGE_BACKEND');
-    expect(written).not.toHaveProperty('WEA_PG_HOST');
+    // Metadata-backend T0 keys are never stored as settings rows.
+    expect(written).not.toHaveProperty('WEA_DB_HOST');
+    expect(written).not.toHaveProperty('WEA_DB_PASSWORD');
     expect(written).not.toHaveProperty('JWT_SECRET');
 
     const admin = await User.findByUsername('admin');
@@ -380,7 +386,7 @@ describeIfSqlite('POST /api/setup/apply', () => {
     const [, envEntries] = mockWriteEnv.mock.calls[0];
     expect(Object.keys(envEntries).sort()).toEqual(['JWT_SECRET']);
     expect(envEntries).not.toHaveProperty('encrypt_secret_key');
-    expect(envEntries).not.toHaveProperty('WEA_STORAGE_BACKEND');
+    expect(envEntries).not.toHaveProperty('WEA_DB_HOST');
     expect(envEntries).not.toHaveProperty('PORT');
     expect(envEntries).not.toHaveProperty('EMAIL_PORT');
 
@@ -430,7 +436,6 @@ describeIfSqlite('POST /api/setup/apply', () => {
   it('postgresql metadata backend is rejected 400 with fields.metadata = notAllowed and a clear message', async () => {
     const envPath = makeEnvPath('pg-masked-password');
     process.env.DOTENV_CONFIG_PATH = envPath;
-    process.env.WEA_PG_PASSWORD = 'env-pg-pass';
 
     const res = await request(app)
       .post('/api/setup/apply')
@@ -1247,7 +1252,7 @@ describeIfSqlite('setupCore (shared apply core)', () => {
     expect(dbEntries.WEBDAV_PASSWORD).toBe('dav-pass');
 
     // Metadata-backend T0 keys are excluded from the .env partition entirely.
-    const pgT0 = setupCore.partitionEntries({ WEA_PG_HOST: 'db.local' });
+    const pgT0 = setupCore.partitionEntries({ WEA_DB_HOST: 'db.local' });
     expect(pgT0.envEntries).toEqual({});
     expect(pgT0.dbEntries).toEqual({});
   });

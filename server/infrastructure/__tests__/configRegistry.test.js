@@ -27,9 +27,11 @@ describe('configRegistry', () => {
 
   describe('classification spot-checks (PLAN §4)', () => {
     it.each([
-      ['WEA_STORAGE_BACKEND', 'T0'],
-      ['WEA_PG_PASSWORD', 'T0'],
-      ['WEA_PG_SSL', 'T0'],
+      ['WEA_SQLITE_PATH', 'T0'],
+      ['WEA_DB_HOST', 'T0'],
+      ['WEA_DB_PASSWORD', 'T0'],
+      ['WEA_DB_SSL', 'T0'],
+      ['WEA_DB_QUERY_TIMEOUT_MS', 'T0'],
       ['NODE_ENV', 'T0'],
       ['JWT_SECRET', 'T0'],
     ])('%s is %s', (key, tier) => {
@@ -77,7 +79,7 @@ describe('configRegistry', () => {
 
   describe('secret flag (D6/D8 + task list)', () => {
     it.each([
-      'WEA_PG_PASSWORD',
+      'WEA_DB_PASSWORD',
       'JWT_SECRET',
       'AWS_SECRET_ACCESS_KEY',
       'WEBDAV_PASSWORD',
@@ -88,8 +90,9 @@ describe('configRegistry', () => {
     });
 
     it.each([
-      'WEA_STORAGE_BACKEND',
-      'WEA_PG_HOST',
+      'WEA_SQLITE_PATH',
+      'WEA_DB_HOST',
+      'WEA_DB_QUERY_TIMEOUT_MS',
       'S3_BUCKET',
       'WEBDAV_URL',
       'WEBDAV_AUTH_TYPE',
@@ -123,11 +126,12 @@ describe('configRegistry', () => {
     it('exposes in-code defaults for the audited set', () => {
       expect(getDefault('PORT')).toBe(5001);
       expect(getDefault('WEA_FILE_STORAGE')).toBe('s3');
-      expect(getDefault('WEA_STORAGE_BACKEND')).toBe('sqlite');
-      expect(getDefault('WEA_PG_SSL')).toBe(false);
-      expect(getDefault('WEA_PG_MAX')).toBe(10);
-      expect(getDefault('WEA_PG_IDLE_TIMEOUT_MS')).toBe(30000);
-      expect(getDefault('WEA_PG_CONNECTION_TIMEOUT_MS')).toBe(10000);
+      expect(getDefault('WEA_DB_PORT')).toBe(5432);
+      expect(getDefault('WEA_DB_SSL')).toBe(false);
+      expect(getDefault('WEA_DB_MAX')).toBe(10);
+      expect(getDefault('WEA_DB_IDLE_TIMEOUT_MS')).toBe(30000);
+      expect(getDefault('WEA_DB_CONNECTION_TIMEOUT_MS')).toBe(10000);
+      expect(getDefault('WEA_DB_QUERY_TIMEOUT_MS')).toBe(60000);
       expect(getDefault('MAX_THUMBNAIL_SIZE')).toBe(300);
       expect(getDefault('THUMBNAIL_CONCURRENCY_LIMIT')).toBe(10);
       expect(getDefault('GC_INTERVAL_MS')).toBe(0);
@@ -143,7 +147,8 @@ describe('configRegistry', () => {
 
     it('returns undefined for keys without a code default', () => {
       expect(getDefault('NODE_ENV')).toBeUndefined();
-      expect(getDefault('WEA_PG_HOST')).toBeUndefined();
+      expect(getDefault('WEA_SQLITE_PATH')).toBeUndefined();
+      expect(getDefault('WEA_DB_HOST')).toBeUndefined();
       expect(getDefault('EMAIL_HOST')).toBeUndefined();
       expect(getDefault('WEBDAV_URL')).toBeUndefined();
       expect(getDefault('unknown-key')).toBeUndefined();
@@ -162,17 +167,17 @@ describe('configRegistry', () => {
   it('contains every env var read under server/ (inventory check)', () => {
     const keys = CONFIG_ENTRIES.map((entry) => entry.key);
     for (const key of [
-      'WEA_STORAGE_BACKEND',
       'WEA_SQLITE_PATH',
-      'WEA_PG_HOST',
-      'WEA_PG_PORT',
-      'WEA_PG_DATABASE',
-      'WEA_PG_USER',
-      'WEA_PG_PASSWORD',
-      'WEA_PG_SSL',
-      'WEA_PG_MAX',
-      'WEA_PG_IDLE_TIMEOUT_MS',
-      'WEA_PG_CONNECTION_TIMEOUT_MS',
+      'WEA_DB_HOST',
+      'WEA_DB_PORT',
+      'WEA_DB_DATABASE',
+      'WEA_DB_USER',
+      'WEA_DB_PASSWORD',
+      'WEA_DB_SSL',
+      'WEA_DB_MAX',
+      'WEA_DB_IDLE_TIMEOUT_MS',
+      'WEA_DB_CONNECTION_TIMEOUT_MS',
+      'WEA_DB_QUERY_TIMEOUT_MS',
       'NODE_ENV',
       'DOTENV_CONFIG_PATH',
       'JWT_SECRET',
@@ -213,13 +218,13 @@ describe('configRegistry', () => {
     const keys = CONFIG_ENTRIES.map((entry) => entry.key);
     const orderOf = (key) => keys.indexOf(key);
 
-    expect(orderOf('WEA_STORAGE_BACKEND')).toBeLessThan(orderOf('WEA_FILE_STORAGE'));
+    expect(orderOf('WEA_SQLITE_PATH')).toBeLessThan(orderOf('WEA_FILE_STORAGE'));
     expect(orderOf('WEA_FILE_STORAGE')).toBeLessThan(orderOf('PORT'));
     expect(orderOf('PORT')).toBeLessThan(orderOf('EMAIL_HOST'));
     expect(orderOf('EMAIL_HOST')).toBeLessThan(orderOf('registration_enabled'));
 
     const t0 = CONFIG_ENTRIES.filter((entry) => entry.tier === TIER.T0);
-    expect(t0[0].key).toBe('WEA_STORAGE_BACKEND');
+    expect(t0[0].key).toBe('WEA_SQLITE_PATH');
     expect(t0[t0.length - 1].key).toBe('JWT_SECRET');
   });
 });

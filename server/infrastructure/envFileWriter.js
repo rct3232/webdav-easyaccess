@@ -6,8 +6,8 @@ const path = require('path');
 /**
  * The only keys the setup wizard is allowed to write via writeEnv
  * (docs/spec/server/routes/setup.md). applySetup currently emits only the T0
- * subset it manages (JWT_SECRET); the metadata-backend T0 keys
- * (WEA_STORAGE_BACKEND, WEA_PG_*) and ADMIN_DEFAULT_PASSWORD are .env-owned
+ * subset it manages (JWT_SECRET); the metadata-backend T0 keys (the WEA_DB_*
+ * block) and ADMIN_DEFAULT_PASSWORD are .env-owned
  * (D6/D7) and never written by apply, so they are deliberately absent here.
  */
 const WIZARD_WRITABLE_KEYS = Object.freeze([

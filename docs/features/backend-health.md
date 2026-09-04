@@ -31,7 +31,9 @@ backends (only a per-user 500 toast). This feature adds:
    **only when an in-use backend is failing** and lists **only the failing in-use backends**
    (name + `admin.health.fail` + classification hint/code + last-checked); healthy/unknown
    backends are never listed, and **backends that are not currently active are never listed**
-   (active = metadata backend `WEA_STORAGE_BACKEND` + file backend `WEA_FILE_STORAGE`). The
+   (active = the metadata backend reported as `activeMetadataBackend` — PostgreSQL when the
+   remote `WEA_DB_*` credentials are set, SQLite otherwise — plus the file backend
+   `WEA_FILE_STORAGE`). The
    file-screen banner (all roles) covers the ACTIVE backends using the public
    `activeFileStorage` + `activeMetadataBackend` fields from `GET /api/health` — no admin config
    access needed. Banner copy: admins see `admin.health.banner`; non-admins see a simplified
@@ -45,9 +47,10 @@ backends (only a per-user 500 toast). This feature adds:
 3. **Connection-key save gating (D1)** — editing a connection key in Advanced settings blocks
    Save until a connection test **with the pending values** passes; changing a connection key
    invalidates the result. Non-connection keys don't require a test.
-4. **Boot rule (D6)** — `WEA_STORAGE_BACKEND` unset → sqlite (kept); explicit `sqlite` →
-   allowed; `postgresql` → `WEA_PG_HOST/PORT/DATABASE/USER/PASSWORD` required; incomplete →
-   clear terminal `[config]` error + `process.exit(1)` (the DB connection is `.env`-owned).
+4. **Boot rule (D6)** — none of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD`
+   set → sqlite (default); all four set → the remote PostgreSQL backend; a partial set (some
+   but not all four) → clear terminal `[config]` error listing the missing keys +
+   `process.exit(1)` (the DB connection is `.env`-owned).
 5. **Wizard scope (D7)** — wizard serves **non-T0 only**: reachable when the DB is connected but
    non-T0 config is incomplete. The `.env → sqlite wizard` first-boot path is removed (the DB
    connection is `.env`/env-owned).
@@ -90,7 +93,8 @@ to the stored value. Non-connection keys save without a test.
 
 - Backend failure from any user attempt records to the tracker; admin sees the card/banner;
   terminal logs only transitions; user sees the friendly message for connection-class failures.
-- k3s boot with `postgresql` + incomplete `WEA_PG_*` → clear terminal error + `exit(1)`.
+- k3s boot with a partial remote DB set (some but not all of `WEA_DB_HOST`/`WEA_DB_DATABASE`/
+  `WEA_DB_USER`/`WEA_DB_PASSWORD`) → clear terminal error + `exit(1)`.
 - Editing a connection key cannot Save until a pending-values test passes; non-connection keys
   save without a test.
 - No schema change; server + client `test:ci` and the E2E suites stay green.

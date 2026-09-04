@@ -27,7 +27,9 @@ Today the app reads configuration from `process.env` at require time
 persists values across both layers. This feature describes the two-layer model in detail:
 
 1. **T0 (startup) — `.env` only:** just enough to connect to the metadata DB
-   (`WEA_STORAGE_BACKEND`, `WEA_PG_*` / `WEA_SQLITE_PATH`, `NODE_ENV`,
+   (the remote-DB block `WEA_DB_HOST` / `WEA_DB_DATABASE` / `WEA_DB_USER` /
+   `WEA_DB_PASSWORD` plus optional pool/SSL keys — selecting the PostgreSQL backend
+   when any is set — or `WEA_SQLITE_PATH` for the default SQLite backend, `NODE_ENV`,
    `DOTENV_CONFIG_PATH`) and `JWT_SECRET`.
 2. **Everything else — DB `settings` table with `.env` fallback:** a value present in `.env`
    always wins (D1); otherwise the DB row is used; otherwise the built-in default.
@@ -64,9 +66,9 @@ connection before the metadata DB exists.
 
 ### Variable classification
 
-**T0 — `.env` only** (D2, D4, D7): `WEA_STORAGE_BACKEND`, `WEA_SQLITE_PATH`, `WEA_PG_HOST`,
-`WEA_PG_PORT`, `WEA_PG_DATABASE`, `WEA_PG_USER`, `WEA_PG_PASSWORD`, `WEA_PG_SSL`, `WEA_PG_MAX`,
-`WEA_PG_IDLE_TIMEOUT_MS`, `WEA_PG_CONNECTION_TIMEOUT_MS`, `PGSSLMODE`, `NODE_ENV`,
+**T0 — `.env` only** (D2, D4, D7): `WEA_SQLITE_PATH`, `WEA_DB_HOST`, `WEA_DB_PORT`,
+`WEA_DB_DATABASE`, `WEA_DB_USER`, `WEA_DB_PASSWORD`, `WEA_DB_SSL`, `WEA_DB_MAX`,
+`WEA_DB_IDLE_TIMEOUT_MS`, `WEA_DB_CONNECTION_TIMEOUT_MS`, `PGSSLMODE`, `NODE_ENV`,
 `DOTENV_CONFIG_PATH`, `JWT_SECRET`.
 Rationale: the metadata DB cannot be reached before its own connection info exists;
 `JWT_SECRET` is the boot auth key (D4) and, like the metadata connection, is startup-critical
@@ -148,9 +150,9 @@ Apply (`POST /api/setup/apply`, shared by the wizard and the CLI via
 metadata DB by default; only T0 keys are written to `.env`.
 
 - **`.env` gets only `JWT_SECRET`.** The apply payload never produces metadata entries
-  (`buildEnvEntries` emits no `WEA_STORAGE_BACKEND` / `WEA_PG_*` / `WEA_SQLITE_PATH` keys),
-  and `partitionEntries` (`setupCore.js`) additionally drops the `WEA_STORAGE_BACKEND` /
-  `WEA_PG_*` set — the DB connection is `.env`-owned, so apply never writes it. No other
+  (`buildEnvEntries` emits no `WEA_DB_*` / `WEA_SQLITE_PATH` keys), and `partitionEntries`
+  (`setupCore.js`) additionally drops the `WEA_DB_*` / `WEA_SQLITE_PATH` set — the DB
+  connection is `.env`-owned, so apply never writes it. No other
   key (in particular no master/encryption key) is generated or written to `.env`.
 - **Metadata backend `postgresql` is rejected with 400 `metadata.backend: notAllowed`**
   (`validateMetadata` via `validateApplyPayload`, `setupCore.js`) — PostgreSQL metadata is
@@ -176,7 +178,7 @@ metadata DB by default; only T0 keys are written to `.env`.
 
 1. Load `.env` → T0 (metadata connection + `NODE_ENV` + `JWT_SECRET`).
 2. Connect to the metadata DB using T0 only (D10: failure = boot failure). For sqlite this is
-   the local store; for postgresql the `WEA_PG_*` connection.
+   the local store; for the remote backend the `WEA_DB_*` connection.
 3. Compute the **effective config** = env-first over the plaintext DB `settings` rows and
    derive `setup_complete` from it.
    - `setup_complete=false` → run in **setup mode** (wizard serves; reads/applies against the
@@ -232,7 +234,7 @@ map; the server registry is authoritative for tier/secret/source.
     Section A as a flat read-only list in registry order (the order keys arrive in the GET
     payload). A key is platform-managed — listed here, never editable — when `tier === 'T0'`
     **or** `source === 'env'`. Section B therefore shows **all T0 keys** (the metadata DB/boot
-    set — `WEA_STORAGE_BACKEND`, `WEA_SQLITE_PATH`, `WEA_PG_*` incl. `WEA_PG_PASSWORD`, `NODE_ENV`,
+    set — `WEA_SQLITE_PATH`, the `WEA_DB_*` remote-DB block incl. `WEA_DB_PASSWORD`, `NODE_ENV`,
     `DOTENV_CONFIG_PATH`, `JWT_SECRET` — previously hidden from the editor) **plus any T1/T2 key
     whose effective `source === 'env'`**. Each row shows the translated label, the value
     (masked `'****'` for secrets; "(unset)"-style text when undefined) and a caption with the
@@ -294,7 +296,7 @@ The setup-mode guard (503 `setup.incomplete`) continues to block admin-write rou
   versions are not auto-migrated; the operator may need to clean them up manually if any exist.
 - Secrets are never returned in plaintext over the API (`"****"`); in Section A the only write
   path for a secret is the set-new-value toggle, and Section B secrets are read-only masked rows.
-- T0 keys (`WEA_PG_*`, `JWT_SECRET`, …) are rejected by `PUT` — they
+- T0 keys (`WEA_DB_*`, `WEA_SQLITE_PATH`, `JWT_SECRET`, …) are rejected by `PUT` — they
   can only live in `.env` (D2/D4/D7).
 - `source=env` keys are read-only in the UI (Section B summary, never an editable field), and
   `PUT` rejects (400) an env-sourced write server-side — a DB copy would be silently shadowed by

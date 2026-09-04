@@ -56,7 +56,7 @@ values.
 
 The comparison universe is every entry of the config registry
 (`server/infrastructure/configRegistry.js`) with `tier !== T0` (45 keys: T1 + T2). T0 keys
-(`WEA_PG_*`, `WEA_SQLITE_PATH`, `WEA_STORAGE_BACKEND`, `JWT_SECRET`, `NODE_ENV`,
+(`WEA_DB_*`, `WEA_SQLITE_PATH`, `JWT_SECRET`, `NODE_ENV`,
 `DOTENV_CONFIG_PATH`, …) are environment-owned by design
 and are **excluded from the report and from every write** — including `JWT_SECRET`.
 

@@ -56,7 +56,7 @@ Body:
 
 ```jsonc
 {
-  "targetBackend": "postgresql", // must be the NON-active backend (source = WEA_STORAGE_BACKEND)
+  "targetBackend": "postgresql", // must be the NON-active backend (source = the presence-selected active backend: any WEA_DB_* credential → postgresql, else sqlite)
   "pg": {
     // required when targetBackend === 'postgresql'
     "host": "…",
@@ -141,19 +141,21 @@ type-specific. The metadata job carries the **extended** shape:
 
 ## 4. T0 ".env setup needed" manual cutover (D11, D13)
 
-The DB connection is `.env`-owned (T0: `WEA_STORAGE_BACKEND` + `WEA_PG_*` / `WEA_SQLITE_PATH`,
-`JWT_SECRET`). A metadata migration only copies data; it **never edits
+The DB connection is `.env`-owned (T0: the `WEA_DB_*` credential block — presence-selected
+backend — `WEA_SQLITE_PATH`, `JWT_SECRET`). A metadata migration only copies data; it **never edits
 `.env`**. The final step stays manual:
 
 1. The migration completes; `/migration` shows the terminal modal with next-step guidance
-   ("set `WEA_STORAGE_BACKEND=postgresql` (+ `WEA_PG_*`) in `.env` and restart" — or the reverse).
+   ("set the `WEA_DB_*` credentials in `.env` and restart to boot on the migrated PostgreSQL DB" — or remove them to return to sqlite).
 2. The operator edits `.env` and restarts the server.
 3. **".env setup needed" banner:** while the non-active backend still holds metadata
    (`metadataPresence`, D13), System Settings shows a persistent banner with a link to the
    migration flow. After cutover + restart the old backend becomes the non-active one; the banner
    flips to point the other way, and clears once the old data is gone.
-4. Boot verification: PG pre-flight exits on missing `WEA_PG_*` (unchanged); the new backend's
-   health is verified via the boot probe (WebDAV or the new S3 probe, D12) and the health card.
+4. Boot verification: a partial `WEA_DB_*` set (some but not all of the four credentials) is a
+   boot-time configuration error listing the missing keys; a complete-but-unreachable remote still
+   boots and reports via `/api/health`. The new backend's health is verified via the boot probe
+   (WebDAV or the new S3 probe, D12) and the health card.
 
 The same banner logic means the operator can also cut over **before** migrating: the banner
 points to the migration dialog, they migrate, then restart.

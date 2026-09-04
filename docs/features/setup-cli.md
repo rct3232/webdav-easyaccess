@@ -77,14 +77,15 @@ and masked secret input, then offers the connection check before writing.
 
 ### 2.4 Metadata backend
 
-Mirrors the wizard/D7 rules: the metadata backend (`WEA_STORAGE_BACKEND` + the `WEA_PG_*`
-block, or the sqlite path) is **`.env`-owned** and never set by apply. The CLI:
+Mirrors the wizard/D7 rules: the metadata backend (the remote-DB block `WEA_DB_HOST` /
+`WEA_DB_DATABASE` / `WEA_DB_USER` / `WEA_DB_PASSWORD`, or the SQLite `WEA_SQLITE_PATH` default)
+is **`.env`-owned** and never set by apply. The CLI:
 
-- **sqlite (default)** — operates on the app's default store (`data/webdav.db`) when no `.env`
-  exists, and writes `.env` for the first time.
-- **postgresql** — requires `WEA_STORAGE_BACKEND=postgresql` + `WEA_PG_*` already declared in
-  `.env` (as the server does), boots the store against it, and writes the remaining DB-`settings`
-  rows there.
+- **sqlite (default)** — when no remote DB keys are set, operates on the app's default store
+  (`data/webdav.db`) when no `.env` exists, and writes `.env` for the first time.
+- **postgresql** — requires the full remote DB block (`WEA_DB_HOST`, `WEA_DB_DATABASE`,
+  `WEA_DB_USER`, `WEA_DB_PASSWORD`) already declared in `.env` (as the server does), boots the
+  store against it, and writes the remaining DB-`settings` rows there.
 
 The CLI loads the environment exactly like the server boot (`dotenv` config path resolution),
 so "what the CLI sees" is "what the next server boot sees".

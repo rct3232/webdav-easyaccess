@@ -53,10 +53,10 @@ Key properties:
 - **Cancellation (D4):** DB migration = one target transaction → cancel = **ROLLBACK**, both
   sides unharmed. Blob migration = cancel flag set immediately, the current node finishes then
   stops; partial progress is kept (source preserved) and resumed on rerun (`shouldSkip`).
-- **Final cutover is manual (D11):** the T0 keys (`WEA_STORAGE_BACKEND`, `WEA_PG_*`) are
-  env-owned by design; the final step stays a manual `.env` edit + restart. The UI guides it
-  (".env setup needed") and the server shows a persistent banner while data lives in the
-  non-active backend.
+- **Final cutover is manual (D11):** the T0 keys (the remote-DB block `WEA_DB_*` /
+  `WEA_SQLITE_PATH`) are env-owned by design; the final step stays a manual `.env` edit +
+  restart. The UI guides it (".env setup needed") and the server shows a persistent banner while
+  data lives in the non-active backend.
 
 ---
 
@@ -188,8 +188,8 @@ locally.
 ## DB metadata migration flow (F1, D5, D6)
 
 Metadata migration is an **admin-API + dialog** feature (D14) — there is no standalone CLI. The
-target is always the **non-active** metadata backend: when `WEA_STORAGE_BACKEND=sqlite` the
-target is `postgresql`, and vice versa.
+target is always the **non-active** metadata backend: when the SQLite backend is active (no
+remote DB keys set) the target is `postgresql`, and vice versa.
 
 **Flow (D5/D6):**
 
@@ -209,7 +209,7 @@ target is `postgresql`, and vice versa.
    of both.
 5. **Cancel = rollback (D4):** because the whole operation (schema + wipe + copy) runs in one
    target transaction, cancelling rolls back every write — both sides are unharmed.
-6. **Final cutover stays manual (D11):** the T0 keys (`WEA_STORAGE_BACKEND`, `WEA_PG_*` /
+6. **Final cutover stays manual (D11):** the T0 keys (the remote-DB block `WEA_DB_*` /
    `WEA_SQLITE_PATH`) are `.env`-owned, so the last step is a manual `.env` edit + restart. The
    UI guides it and the server shows a **persistent ".env setup needed" banner** while the
    non-active backend still holds metadata (D13).

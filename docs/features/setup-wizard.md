@@ -32,8 +32,9 @@ Key properties:
 
 - **Persistence target:** non-T0 settings are upserted into the connected metadata DB
   `settings` table (`POST /api/setup/apply`); **T0 keys (the DB connection) are never written by
-  the wizard** — they are `.env`-owned (decisions **D5/D6/D7**, Phase B). A first-boot `.env`
-  must declare `WEA_STORAGE_BACKEND` (see `docs/SETUP.md`).
+  the wizard** — they are `.env`-owned (decisions **D5/D6/D7**, Phase B). The metadata backend
+  is the default SQLite unless the remote DB keys (`WEA_DB_*`) are declared in `.env` — see
+  `docs/SETUP.md`.
 - **Restart handling:** a "Restart required" screen only (decision **D2**). No self re-exec;
   the operator restarts the process.
 - **Scope:** the wizard serves **non-T0 only** — file storage, email, server/CORS, and the
@@ -76,7 +77,6 @@ effective (resolved) configuration, computed by the setup-status validator
   "setup_complete": false,
   "missing": ["S3_BUCKET", "AWS_REGION", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
   "current": {
-    "WEA_STORAGE_BACKEND": "sqlite",
     "WEA_FILE_STORAGE": "s3",
     "PORT": "5001",
     "JWT_SECRET": "****",
@@ -89,7 +89,8 @@ effective (resolved) configuration, computed by the setup-status validator
 - `current` carries safe values for prefill; secrets are masked (`"****"`) when set and
   absent when unset.
 - The validator is pure `process.env` inspection — no DB, no blob-store imports. It
-  re-implements the required-key lists (`S3_*`, `WEA_PG_*`, `WEBDAV_*`) locally and must not
+  re-implements the required-key lists (`S3_*`, `WEBDAV_*`, and the remote-DB `WEA_DB_*`
+  credential set) locally and must not
   import `resolveS3Config`/`resolvePgConfig` to avoid a require cycle with `utils/auth`.
 
 Desired consequences:
@@ -111,7 +112,7 @@ modify a `.env` file.
    `JWT_SECRET` (always; no other key is generated) — into the _resolved active env file_
    (the same path the loader used — `server/index.js:10-18`; `DOTENV_CONFIG_PATH` or
    `<root>/.env`). A restart is required for these boot-frozen values to take effect. The
-   metadata connection (`WEA_STORAGE_BACKEND`, `WEA_PG_*`, `WEA_SQLITE_PATH`) is `.env`-owned
+   metadata connection (the remote `WEA_DB_*` block / `WEA_SQLITE_PATH`) is `.env`-owned
    and **never written by apply**.
 2. **Runtime layer → DB `settings`:** `apply` upserts every **non-T0** wizard value (file
    storage, email, server/CORS, `JWT_EXPIRES_IN`) into the connected metadata DB `settings`
@@ -133,7 +134,7 @@ DB `settings` rows, while the existing admin settings routes never write `.env`.
 
 | Block      | Env keys                                 | Rule                                                                                                                                                                                                      |
 | ---------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `metadata` | `WEA_STORAGE_BACKEND` (default `sqlite`) | sqlite is always resolvable; `postgresql` requires the 5 `WEA_PG_*` keys (reuse `resolvePgConfig` semantics, `server/store/storage.js:32-47`)                                                             |
+| `metadata` | remote DB block / SQLite (default) | SQLite is always resolvable when no remote DB keys are set; setting any of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` selects the PostgreSQL backend and all four are required (reuse `resolvePgConfig` semantics, `server/store/storage.js:32-47`) |
 | `file`     | `WEA_FILE_STORAGE` (default `s3`)        | `s3` requires the 4 `S3_*`/`AWS_*` keys (reuse `resolveS3Config` semantics, `server/infrastructure/adapters/blobstore/index.js:7-13`); `webdav` requires `WEBDAV_URL`/`WEBDAV_USERNAME`/`WEBDAV_PASSWORD` |
 | `jwt`      | `JWT_SECRET`                             | non-default required **only when** `NODE_ENV=production` (the `auth.js` require-time prod throw is relaxed to a warning in setup mode — D7, below)                                                        |
 

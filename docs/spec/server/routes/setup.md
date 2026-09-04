@@ -5,7 +5,7 @@
 | Item       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Mount path | `/api/setup`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| Role       | First-run setup wizard backend: reports derived setup-completeness state from the **effective** (env-first over DB) config, runs connection tests (s3/webdav), and persists wizard-chosen **non-T0** configuration into the connected metadata DB `settings` table. The metadata (DB) connection is `.env`-owned (D6/D7): the wizard never writes `WEA_STORAGE_BACKEND`/`WEA_PG_*` and rejects a `metadata` block whose backend is `postgresql`. Public while setup is incomplete; auto-gated with 403 once complete. |
+| Role       | First-run setup wizard backend: reports derived setup-completeness state from the **effective** (env-first over DB) config, runs connection tests (s3/webdav), and persists wizard-chosen **non-T0** configuration into the connected metadata DB `settings` table. The metadata (DB) connection is `.env`-owned (D6/D7): the backend is selected by **presence** of the `WEA_DB_*` credential block (any of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` set → remote PostgreSQL; none set → sqlite default; a partial set is a boot-time configuration error). The wizard never writes these metadata-backend T0 keys (only a sqlite-default configuration is available through the wizard; a remote DB requires operator `.env` edits) and rejects a `metadata` block whose backend is `postgresql`. Public while setup is incomplete; auto-gated with 403 once complete. |
 
 Feature Source-of-Truth: [config-source-resolution.md](../../../features/config-source-resolution.md) (§7 wizard apply, §8 boot order) and [setup-wizard.md](../../../features/setup-wizard.md).
 
@@ -44,7 +44,7 @@ Feature Source-of-Truth: [config-source-resolution.md](../../../features/config-
 
 Public, always available. Computes `setup_complete` from the currently **effective** (env-first over DB `settings` rows) configuration via `getSharedResolver().getEffectiveConfig()` merged into `process.env` per the completeness rules (feature doc §"Boot order"):
 
-- `metadata`: `WEA_STORAGE_BACKEND` (default `sqlite`) — sqlite always resolvable; `postgresql` requires the 5 `WEA_PG_*` keys (`server/store/storage.js:32-47`).
+- `metadata`: presence-selected — sqlite (default) when none of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` is set; the remote PostgreSQL backend when all four are set (a partial set is a boot-time configuration error listing the missing keys; `server/store/storage.js:getBackend()`).
 - `file`: `WEA_FILE_STORAGE` (default `s3`) — `s3` requires the 4 `S3_*`/`AWS_*` keys (`server/infrastructure/adapters/blobstore/index.js:7-13`); `webdav` requires `WEBDAV_URL`/`WEBDAV_USERNAME`/`WEBDAV_PASSWORD`.
 - `jwt`: `JWT_SECRET` non-default required only when `NODE_ENV=production` (`server/utils/auth.js:5-12`; D7).
 
@@ -58,7 +58,7 @@ The `current` block therefore prefills operator-entered values from the DB `sett
   "missing": ["S3_BUCKET", "AWS_REGION", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
   "current": {
     // safe values for prefill (env → DB → default; secrets masked)
-    "WEA_STORAGE_BACKEND": "sqlite",
+    // metadata backend is presence-derived (WEA_DB_* creds → postgresql, else sqlite), not a current key
     "WEA_FILE_STORAGE": "s3",
     "PORT": "5001",
     "JWT_SECRET": "****",
@@ -68,7 +68,7 @@ The `current` block therefore prefills operator-entered values from the DB `sett
 }
 ```
 
-Masking rule: secrets (`JWT_SECRET`, `AWS_SECRET_ACCESS_KEY`, `WEBDAV_PASSWORD`, `WEA_PG_PASSWORD`, `EMAIL_PASSWORD`, `ADMIN_DEFAULT_PASSWORD`) are rendered as `"****"` when set and absent when unset. DB secret rows are stored plaintext but are masked here (presentation only) — the status endpoint never leaks a stored secret value.
+Masking rule: secrets (`JWT_SECRET`, `AWS_SECRET_ACCESS_KEY`, `WEBDAV_PASSWORD`, `WEA_DB_PASSWORD`, `EMAIL_PASSWORD`, `ADMIN_DEFAULT_PASSWORD`) are rendered as `"****"` when set and absent when unset. DB secret rows are stored plaintext but are masked here (presentation only) — the status endpoint never leaks a stored secret value.
 
 #### POST /api/setup/test
 
@@ -104,7 +104,7 @@ Public; **403 `setup.complete` when already complete**. Accepts one of three tar
 | S3         | anything else                                                 | `serverErrors.setup.test.failed`                                       |
 | WebDAV     | unchanged                                                     | existing `serverErrors.webdav.*` / `serverErrors.api.webdavTestFailed` |
 
-- S3 probe is **two-step**: (1) `ListObjectsV2` (`MaxKeys: 1`) on the target bucket — 200 ⇒ bucket exists + credentials valid (this is what distinguishes a missing bucket, since `HeadObject`'s 404 `NotFound` is ambiguous on MinIO/S3); `NoSuchBucket`/`NotFound` 404 ⇒ `bucketMissing`; (2) `HeadObject` on a random `__wea_setup_probe_<uuid>` key — 404 `NotFound`/`NoSuchKey` (key simply absent) is treated as **success**; `403` ⇒ `accessDenied`. Success is only reported when both steps pass.
+- S3 probe is **two-step**: (1) `ListObjectsV2` (`MaxKeys: 1`) on the target bucket — 200 → bucket exists + credentials valid (this is what distinguishes a missing bucket, since `HeadObject`'s 404 `NotFound` is ambiguous on MinIO/S3); `NoSuchBucket`/`NotFound` 404 → `bucketMissing`; (2) `HeadObject` on a random `__wea_setup_probe_<uuid>` key — 404 `NotFound`/`NoSuchKey` (key simply absent) is treated as **success**; `403` → `accessDenied`. Success is only reported when both steps pass.
 - Missing-required-fields (`Missing required fields: …`) and unsupported-target (`Unsupported target: …`) errors remain `serverErrors.setup.testFailed`.
 - WebDAV's generic failure uses `serverErrors.api.webdavTestFailed`, whose template contains `{{reason}}`; the client interpolates it via `t(errorCode, { reason })`.
 
@@ -116,7 +116,7 @@ Probe references:
 
 #### POST /api/setup/apply
 
-Public; **403 when already complete** (gate uses the same effective view as `/status`). Validates every block (unknown keys rejected, `400` with per-field errors), then **writes the payload's startup-critical T0 keys into the resolved `.env`** (`JWT_SECRET`) and **upserts every non-T0 key into the connected metadata DB `settings` table as plaintext** (row key = raw env var name, D11). The `metadata` block is **optional** (D7); when present, `metadata.backend === 'postgresql'` is rejected `400` `fields.metadata='notAllowed'` — the DB connection is `.env`-owned (D6). The metadata-backend T0 keys (`WEA_STORAGE_BACKEND`, `WEA_PG_*`) are **never** written by apply. Implemented by the shared `setupCore.applySetup`, which is also the single apply core of the CLI setup tool (`docs/features/setup-cli.md`).
+Public; **403 when already complete** (gate uses the same effective view as `/status`). Validates every block (unknown keys rejected, `400` with per-field errors), then **writes the payload's startup-critical T0 keys into the resolved `.env`** (`JWT_SECRET`) and **upserts every non-T0 key into the connected metadata DB `settings` table as plaintext** (row key = raw env var name, D11). The `metadata` block is **optional** (D7); when present, `metadata.backend === 'postgresql'` is rejected `400` `fields.metadata='notAllowed'` — the DB connection is `.env`-owned (D6): the backend is presence-selected at boot (any `WEA_DB_*` credential → PostgreSQL, else sqlite default), and apply upserts into the **booted** store's `settings` table regardless of which backend that is. The metadata-backend T0 keys (the `WEA_DB_*` block and `WEA_SQLITE_PATH`) are **never** written by apply. Implemented by the shared `setupCore.applySetup`, which is also the single apply core of the CLI setup tool (`docs/features/setup-cli.md`).
 
 **Request:**
 
@@ -143,8 +143,8 @@ Public; **403 when already complete** (gate uses the same effective view as `/st
 4. Partition the entries by registry tier (`partitionEntries`):
    - **T0 → `.env`** (via `envFileWriter`, atomic `0600`, backup, merge-preserves unknown
      lines): `JWT_SECRET` (always written — D4 env-only; the boot auth key must exist after
-     restart). The metadata-backend T0 keys (`WEA_STORAGE_BACKEND`, the `WEA_PG_*` subset)
-     are explicitly **excluded** — they are `.env`-owned (D6) and never written by apply.
+     restart). The metadata-backend T0 keys (the `WEA_DB_*` block and `WEA_SQLITE_PATH`)
+     are explicitly **excluded** — they are `.env`-owned (D6), presence-selected at boot, and never written by apply.
    - **Non-T0 → DB `settings`** (row key = raw env var name):
      `WEA_FILE_STORAGE`, `S3_BUCKET` / `AWS_REGION` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `S3_ENDPOINT` (s3), `WEBDAV_URL` / `WEBDAV_USERNAME` / `WEBDAV_PASSWORD` / `WEBDAV_AUTH_TYPE` (webdav), `PORT`, `CORS_ORIGINS`, `JWT_EXPIRES_IN`, `EMAIL_HOST` / `EMAIL_PORT` / `EMAIL_USER` / `EMAIL_PASSWORD` / `EMAIL_SECURE` / `EMAIL_FROM_NAME`.
 5. **Write the `.env` subset FIRST** (atomic temp-file + rename). Ordering guarantee: if the `.env` write fails, the DB has not been touched, so boot still shows setup mode — a failed apply can never leave a committed-but-error "complete" state.
@@ -222,7 +222,7 @@ Connection-test taxonomy codes are module-local i18n keys (same `ns.key` format;
 - [ ] Fresh (no env) → incomplete with the exact missing list; full s3+sqlite → complete; full pg+webdav → complete; prod + default JWT → incomplete
 - [ ] GET /status prefills `current` from DB `settings` rows (effective env-first view)
 - [ ] POST /test passes through postgresql/s3/webdav probe results; error shapes are `{ ok: false, errorCode, message, reason? }` with the classified taxonomy codes
-- [ ] POST /apply (sqlite+webdav): only `JWT_SECRET` (always) is written to `.env` (mode 0600); the metadata T0 keys (`WEA_STORAGE_BACKEND`, `WEA_PG_*`) are never written by apply; non-T0 keys are upserted into the **booted** metadata DB `settings` table as plaintext strings (secrets included, readable back as-is)
+- [ ] POST /apply (sqlite+webdav): only `JWT_SECRET` (always) is written to `.env` (mode 0600); the metadata T0 keys (the `WEA_DB_*` block, `WEA_SQLITE_PATH`) are never written by apply; non-T0 keys are upserted into the **booted** metadata DB `settings` table as plaintext strings (secrets included, readable back as-is)
 - [ ] POST /apply with `metadata.backend === 'postgresql'` → 400 `fields.metadata='notAllowed'` (the DB connection is `.env`-owned; apply never runs settings DDL or upserts against a target PG); a non-T0 apply upserts into the booted store's `settings` table and updates the `admin` password on that store
 - [ ] POST /apply → `restart_required: true` and `getSharedResolver().invalidateCache()` is invoked
 - [ ] POST /apply when already complete → 403 `setup.complete`

@@ -81,7 +81,7 @@ The adapter layer sits between domains and physical storage, providing interchan
 
 | Adapter            | Location                             | Purpose                                                                                                                                                                                                                                                                                                                |
 | ------------------ | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Metadata adapters  | `infrastructure/adapters/metadata/`  | Abstracts user, permission, settings, share-link, and recent-file persistence. Factory: `createMetadataAdapter()` selects backend via `WEA_STORAGE_BACKEND`.                                                                                                                                                           |
+| Metadata adapters  | `infrastructure/adapters/metadata/`  | Abstracts user, permission, settings, share-link, and recent-file persistence. Factory: `createMetadataAdapter()` selects the backend from the presence of the remote DB credentials (`WEA_DB_*`), else the SQLite default.                                                                                                                                                     |
 | File store adapter | `infrastructure/adapters/filestore/` | Wraps file operations behind the `FileStoreAdapter` interface. In **webdav blob mode** (`WEA_FILE_STORAGE=webdav`), `WebdavFileStoreAdapter` delegates to `utils/webdav.js`; in **s3 mode** (`WEA_FILE_STORAGE=s3`, the default) blob content is served by `S3BlobStore` instead. Factory: `createFileStoreAdapter()`. |
 | Cache adapter      | `infrastructure/adapters/cache/`     | In-memory LRU cache used for client caching, thumbnail storage, etc. Factory: `createCacheAdapter()`. Extensible for Redis in future.                                                                                                                                                                                  |
 
@@ -102,7 +102,7 @@ Cross-cutting infrastructure modules live in `server/infrastructure/`:
 | Health Routes      | `healthRoutes.js`     | Unauthenticated `GET /api/health` endpoint for liveness probes. Mounted at `/api`.                                                                                        |
 | WebDAV Routes      | `webdavRoutes.js`     | Diagnostic endpoints: `GET /api/webdav/test` (connectivity) and `GET /api/webdav/info` (URL display). No auth required.                                                   |
 | WebDAV Test        | `webdavTest.js`       | Connection test logic extracted from webdav.js. Creates ephemeral client, probes root directory, returns structured result.                                               |
-| SQLite Schema Init | `sqliteSchemaInit.js` | Converts PostgreSQL DDL to SQLite-compatible SQL and executes against the SQLite connection. Used during bootstrap when `WEA_STORAGE_BACKEND=sqlite`.                     |
+| SQLite Schema Init | `sqliteSchemaInit.js` | Converts PostgreSQL DDL to SQLite-compatible SQL and executes against the SQLite connection. Used during bootstrap when the SQLite backend is active (no remote DB keys set).                     |
 
 ### 1.3 Middleware Pipeline
 
@@ -170,7 +170,9 @@ flowchart TD
 
 ### 2.1 Metadata Store
 
-Metadata storage is selected by `WEA_STORAGE_BACKEND` and keeps the same store API across backends.
+Metadata storage is SQLite by default; setting any of the remote DB credential keys
+(`WEA_DB_HOST` / `WEA_DB_DATABASE` / `WEA_DB_USER` / `WEA_DB_PASSWORD`) selects the
+PostgreSQL backend. The store API is the same across backends.
 
 - **Backend selection**:
   - `sqlite` (default): SQLite via better-sqlite3 for development/testing.
@@ -181,7 +183,7 @@ Metadata storage is selected by `WEA_STORAGE_BACKEND` and keeps the same store A
 
 #### PostgreSQL Normalized Schema
 
-When `WEA_STORAGE_BACKEND=postgresql`, metadata is persisted in normalized tables:
+When the remote PostgreSQL backend is active, metadata is persisted in normalized tables:
 `users`, `settings`, `permissions_user_paths`, `permissions_user_files`, `permissions_shares`,
 `share_links`, `recent_files`, `permission_requests`, and `locks`.
 

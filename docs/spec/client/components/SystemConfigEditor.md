@@ -82,8 +82,8 @@ platform-managed — listed in Section B, never editable — when `tier === 'T0'
 `source === 'env'`:
 
 - **All T0 keys the server returns**, including the metadata DB/boot set that previously had no
-  editor surface (`WEA_STORAGE_BACKEND`, `WEA_SQLITE_PATH`, `WEA_PG_*` — incl. the
-  `WEA_PG_PASSWORD` secret — `NODE_ENV`, `DOTENV_CONFIG_PATH`) and the boot auth secret
+  editor surface (`WEA_SQLITE_PATH`, the `WEA_DB_*` block — incl. the
+  `WEA_DB_PASSWORD` secret — `NODE_ENV`, `DOTENV_CONFIG_PATH`) and the boot auth secret
   `JWT_SECRET`. The former "Metadata (T0) group removed (D5)" behavior is **superseded**: these
   keys are no longer hidden; they are shown read-only here, so the metadata DB / boot secrets are
   visible without being editable.
@@ -129,7 +129,7 @@ Section A input; it is moved out to the Section B summary.
 **Section B (platform-managed secrets):**
 
 - Rendered in the read-only summary, always masked as `"****"` — no toggle, no input. This is why
-  `JWT_SECRET` and `WEA_PG_PASSWORD` can be displayed without widening the sensitive surface.
+  `JWT_SECRET` and `WEA_DB_PASSWORD` can be displayed without widening the sensitive surface.
 - An undefined Section B value (secret or not) renders as the `admin.config.unset`
   "(unset)"-style text.
 
@@ -177,9 +177,9 @@ Section A input; it is moved out to the Section B summary.
 - `admin.config.platformIntro` — Section B intro note: values are provided at deploy time (env / `.env`), cannot be edited here, and require a deployment change + restart
 - `admin.config.unset` — "(unset)"-style text for undefined Section B values
 - `admin.config.key.<KEY>` for every displayed key (Section A and Section B); the Section B set
-  needs new labels for the previously-hidden T0 secrets `admin.config.key.WEA_PG_PASSWORD` and
-  `admin.config.key.JWT_SECRET` (the other T0 labels — `WEA_STORAGE_BACKEND`, `WEA_SQLITE_PATH`,
-  `WEA_PG_HOST`…`WEA_PG_CONNECTION_TIMEOUT_MS`, `NODE_ENV`, `DOTENV_CONFIG_PATH` — already exist)
+  needs new labels for the previously-hidden T0 secrets `admin.config.key.WEA_DB_PASSWORD` and
+  `admin.config.key.JWT_SECRET` (the other T0 labels — `WEA_SQLITE_PATH`,
+  `WEA_DB_HOST`…`WEA_DB_CONNECTION_TIMEOUT_MS`, `NODE_ENV`, `DOTENV_CONFIG_PATH` — already exist)
 - `admin.config.help.CORS_ORIGINS` (optional help; `setup.expiresInHelp` reused for expiry keys)
 - New server codes: `serverErrors.admin.configUnknownKey`, `serverErrors.admin.configT0Protected`, `serverErrors.admin.configInvalidPayload`, `serverErrors.admin.configEnvSourcedProtected`, `serverMessages.admin.configSaved`
 

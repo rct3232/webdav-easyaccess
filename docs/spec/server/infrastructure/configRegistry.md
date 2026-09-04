@@ -54,17 +54,16 @@ Precedence invariant (D1): env wins whenever set; DB is read only when the env v
 
 | key                            | tier | secret  | default                                  |
 | ------------------------------ | ---- | ------- | ---------------------------------------- |
-| `WEA_STORAGE_BACKEND`          | T0   | no      | `'sqlite'`                               |
 | `WEA_SQLITE_PATH`              | T0   | no      | —                                        |
-| `WEA_PG_HOST`                  | T0   | no      | —                                        |
-| `WEA_PG_PORT`                  | T0   | no      | `5432`                                   |
-| `WEA_PG_DATABASE`              | T0   | no      | —                                        |
-| `WEA_PG_USER`                  | T0   | no      | —                                        |
-| `WEA_PG_PASSWORD`              | T0   | **yes** | —                                        |
-| `WEA_PG_SSL`                   | T0   | no      | `false`                                  |
-| `WEA_PG_MAX`                   | T0   | no      | `10`                                     |
-| `WEA_PG_IDLE_TIMEOUT_MS`       | T0   | no      | `30000`                                  |
-| `WEA_PG_CONNECTION_TIMEOUT_MS` | T0   | no      | `10000`                                  |
+| `WEA_DB_HOST`                  | T0   | no      | —                                        |
+| `WEA_DB_PORT`                  | T0   | no      | `5432`                                   |
+| `WEA_DB_DATABASE`              | T0   | no      | —                                        |
+| `WEA_DB_USER`                  | T0   | no      | —                                        |
+| `WEA_DB_PASSWORD`              | T0   | **yes** | —                                        |
+| `WEA_DB_SSL`                   | T0   | no      | `false`                                  |
+| `WEA_DB_MAX`                   | T0   | no      | `10`                                     |
+| `WEA_DB_IDLE_TIMEOUT_MS`       | T0   | no      | `30000`                                  |
+| `WEA_DB_CONNECTION_TIMEOUT_MS` | T0   | no      | `10000`                                  |
 | `NODE_ENV`                     | T0   | no      | —                                        |
 | `DOTENV_CONFIG_PATH`           | T0   | no      | —                                        |
 | `JWT_SECRET`                   | T0   | **yes** | `'your-secret-key-change-in-production'` |

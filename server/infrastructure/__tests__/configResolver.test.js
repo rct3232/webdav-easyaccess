@@ -454,4 +454,39 @@ describe('createConfigResolver', () => {
       expect(effective.WEBDAV_URL.value).toBe('https://env.example.com');
     });
   });
+
+  describe('dbOnly keys (env override disabled)', () => {
+    it('ignores env and resolves the DB row for getConfig', async () => {
+      const store = createFakeStore({ GC_ORPHAN_TTL_DAYS: '5' });
+      const resolver = makeResolver(store, { GC_ORPHAN_TTL_DAYS: '30' });
+      await expect(resolver.getConfig('GC_ORPHAN_TTL_DAYS')).resolves.toBe('5');
+    });
+
+    it('ignores env and falls back to the built-in default when no DB row exists', async () => {
+      const store = createFakeStore({});
+      const resolver = makeResolver(store, { GC_ORPHAN_TTL_DAYS: '30', JWT_EXPIRES_IN: '7d' });
+      await expect(resolver.getConfig('GC_ORPHAN_TTL_DAYS')).resolves.toBe(1);
+      await expect(resolver.getConfig('JWT_EXPIRES_IN')).resolves.toBe('30m');
+    });
+
+    it('reports source db/default (never env) in getEffectiveConfig', async () => {
+      const store = createFakeStore({ GC_ORPHAN_TTL_DAYS: '5' });
+      const resolver = makeResolver(store, { GC_ORPHAN_TTL_DAYS: '30' });
+      const effective = await resolver.getEffectiveConfig();
+      expect(effective.GC_ORPHAN_TTL_DAYS).toMatchObject({ value: '5', source: 'db' });
+      expect(effective.JWT_EXPIRES_IN).toMatchObject({ value: '30m', source: 'default' });
+    });
+
+    it('does not mirror dbOnly T1 keys into env during populateT1Env', async () => {
+      const store = createFakeStore({ GC_INTERVAL_MS: '3600000' });
+      const resolver = makeResolver(store, {});
+      await resolver.loadAll();
+
+      const env = {};
+      const populated = populateT1Env(resolver, env);
+      expect(populated).not.toContain('GC_INTERVAL_MS');
+      expect(env.GC_INTERVAL_MS).toBeUndefined();
+      await expect(resolver.getConfig('GC_INTERVAL_MS')).resolves.toBe('3600000');
+    });
+  });
 });

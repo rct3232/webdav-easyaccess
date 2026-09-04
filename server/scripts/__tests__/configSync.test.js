@@ -72,7 +72,6 @@ function freshScratchEnv() {
   delete process.env.WEA_DB_DATABASE;
   delete process.env.WEA_DB_USER;
   delete process.env.WEA_DB_PASSWORD;
-  delete process.env.WEA_STORAGE_BACKEND;
   process.env.WEA_SQLITE_PATH = dbPath;
   process.env.DOTENV_CONFIG_PATH = envPath;
   // Always write a real .env file so loadDotenv resolves it (never the repo

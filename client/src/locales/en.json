@@ -493,7 +493,6 @@
         "WEA_PREVIEW_TICKET_TTL_MS": "Preview ticket TTL (ms)",
         "PORT": "Server port",
         "CORS_ORIGINS": "CORS origins",
-        "CORS_ORIGIN": "CORS origin",
         "LOGIN_RATE_LIMIT_MAX": "Login rate limit max attempts",
         "LOGIN_RATE_LIMIT_WINDOW_MS": "Login rate limit window (ms)",
         "JWT_EXPIRES_IN": "JWT expires in",

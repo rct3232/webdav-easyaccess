@@ -29,9 +29,10 @@ function getThumbnailHash(nodeId) {
   return crypto.createHash('md5').update(String(nodeId)).digest('hex');
 }
 
-// THUMBNAIL_TOKEN_SECRET / THUMBNAIL_TOKEN_EXPIRY are T2 (lazy): read the
-// effective values (env → DB → default) per sign/verify so DB-sourced edits
-// apply without a restart. Keep the original JWT_SECRET fallback chain.
+// THUMBNAIL_TOKEN_SECRET / THUMBNAIL_TOKEN_EXPIRY are DB-only (registry
+// dbOnly): read the effective values (DB row → built-in default) per
+// sign/verify so DB-sourced edits apply without a restart. Keep the original
+// JWT_SECRET fallback chain.
 async function resolveThumbnailTokenConfig() {
   const resolver = getSharedResolver();
   const [tokenSecret, jwtSecret, expiry] = await Promise.all([
@@ -203,9 +204,11 @@ async function limitConcurrency(tasks, concurrency = 10) {
 }
 
 async function ensureThumbnailsBatch(nodeIds) {
-  const CONCURRENCY_LIMIT = parseInt(process.env.THUMBNAIL_CONCURRENCY_LIMIT) || 10;
+  const resolver = getSharedResolver();
+  const raw = await resolver.getConfig('THUMBNAIL_CONCURRENCY_LIMIT');
+  const concurrency = parseInt(raw, 10) || 10;
   const tasks = nodeIds.map((nodeId) => () => ensureThumbnail(nodeId));
-  const urls = await limitConcurrency(tasks, CONCURRENCY_LIMIT);
+  const urls = await limitConcurrency(tasks, concurrency);
   return nodeIds.map((nodeId, index) => ({ nodeId, thumbnailUrl: urls[index] }));
 }
 

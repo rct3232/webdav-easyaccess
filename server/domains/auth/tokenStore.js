@@ -2,9 +2,18 @@ const crypto = require('crypto');
 const { createCacheAdapter } = require('../../infrastructure/adapters/cache');
 const userStore = require('../../store/userStore');
 
-const REFRESH_TOKEN_EXPIRES_IN_DAYS =
-  parseInt(process.env.REFRESH_TOKEN_EXPIRES_IN_DAYS || '7', 10) || 7;
-const REFRESH_TOKEN_TTL_MS = REFRESH_TOKEN_EXPIRES_IN_DAYS * 24 * 60 * 60 * 1000;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+// REFRESH_TOKEN_EXPIRES_IN_DAYS is DB-only (registry dbOnly): the TTL is
+// resolved through the shared config resolver (DB row → built-in default 7) at
+// issue time so admin/DB edits apply without a restart. There is no module-load
+// snapshot of process.env.
+function refreshTokenTtlMs() {
+  const { getSharedResolver } = require('../../infrastructure/configResolver');
+  const raw = Number(getSharedResolver().getConfigSync('REFRESH_TOKEN_EXPIRES_IN_DAYS'));
+  const days = Number.isFinite(raw) && raw > 0 ? raw : 7;
+  return days * MS_PER_DAY;
+}
 
 let _cache = null;
 
@@ -24,7 +33,7 @@ function generateRefreshTokenId() {
 }
 
 function addRefreshToken(tokenId, userId) {
-  _getCache().set(`refresh:${tokenId}`, { userId }, REFRESH_TOKEN_TTL_MS);
+  _getCache().set(`refresh:${tokenId}`, { userId }, refreshTokenTtlMs());
 }
 
 async function validateRefreshToken(tokenId) {
@@ -53,7 +62,7 @@ function deleteAllRefreshTokensForUser(userId) {
 }
 
 module.exports = {
-  REFRESH_TOKEN_EXPIRES_IN_DAYS,
+  refreshTokenTtlMs,
   setCacheAdapter,
   generateRefreshTokenId,
   addRefreshToken,

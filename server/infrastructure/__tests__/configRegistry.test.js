@@ -227,4 +227,33 @@ describe('configRegistry', () => {
     expect(t0[0].key).toBe('WEA_SQLITE_PATH');
     expect(t0[t0.length - 1].key).toBe('JWT_SECRET');
   });
+
+  it('marks the DB-only tuning keys and leaves operator keys env-overridable', () => {
+    const byKey = new Map(CONFIG_ENTRIES.map((entry) => [entry.key, entry]));
+    for (const key of [
+      'GC_ORPHAN_TTL_DAYS',
+      'GC_INTERVAL_MS',
+      'JWT_EXPIRES_IN',
+      'LOGIN_RATE_LIMIT_MAX',
+      'LOGIN_RATE_LIMIT_WINDOW_MS',
+      'THUMBNAIL_CONCURRENCY_LIMIT',
+      'REFRESH_TOKEN_EXPIRES_IN_DAYS',
+      'USER_CACHE_TTL_MS',
+      'PERMISSION_CACHE_TTL_MS',
+      'PERMISSIONS_EXISTENCE_INDEX_TTL_MS',
+      'PERMISSIONS_EXISTENCE_RECONCILE_BATCH_SIZE',
+      'PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY',
+      'MAX_THUMBNAIL_SIZE',
+      'THUMBNAIL_TOKEN_SECRET',
+      'THUMBNAIL_TOKEN_EXPIRY',
+      'FFMPEG_INIT_TIMEOUT_MS',
+      'WEA_PREVIEW_TICKET_TTL_MS',
+      'HOSTNAME',
+    ]) {
+      expect(byKey.get(key).dbOnly).toBe(true);
+    }
+    for (const key of ['CORS_ORIGINS', 'WEA_FILE_STORAGE', 'FFMPEG_PATH', 'EMAIL_HOST', 'PORT']) {
+      expect(byKey.get(key).dbOnly).toBeUndefined();
+    }
+  });
 });

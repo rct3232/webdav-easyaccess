@@ -43,15 +43,15 @@ const requestLogger = require('../../../middleware/requestLogger');
 const { Client: MockPgClient } = require('pg');
 
 // This suite drives the setup wizard against a real isolated sqlite metadata
-// store (SQLite-only). Under test:ci:pg the storage backend boots as
+// store (SQLite-only). Under the real-PG jest leg the storage backend would be
 // postgresql, where initMetadataStore would reach storage.getPgPool() -> the
 // jest-mocked 'pg' (Client only, no Pool) and throw. So on a PG backend run
 // the whole suite self-declares SQLite-only: every test is skipped and the
 // suite-level DB bootstrap is bypassed.
-// Backend selection is presence-based: PostgreSQL only when all four WEA_DB_*
-// identity keys are present in the environment.
-const DB_IDENTITY_KEYS = ['WEA_DB_HOST', 'WEA_DB_DATABASE', 'WEA_DB_USER', 'WEA_DB_PASSWORD'];
-const RUN_UNDER_PG = DB_IDENTITY_KEYS.every((key) => process.env[key]);
+// The real-PG leg is signalled by the dedicated WEA_TEST_PG_* test namespace
+// (production WEA_DB_* is never present in a jest process).
+const TEST_PG_KEYS = ['WEA_TEST_PG_HOST', 'WEA_TEST_PG_DATABASE', 'WEA_TEST_PG_USER', 'WEA_TEST_PG_PASSWORD'];
+const RUN_UNDER_PG = TEST_PG_KEYS.every((key) => !!process.env[key]);
 
 // Bind describe to skip when the storage backend is postgresql (SQLite-only suite).
 const describeIfSqlite = RUN_UNDER_PG ? describe.skip : describe;
@@ -100,9 +100,11 @@ function setIncompleteBaseline() {
   for (const key of WIZARD_ENV_KEYS) {
     if (key !== 'WEA_SQLITE_PATH' && key !== 'WEA_FILE_STORAGE') delete process.env[key];
   }
-  // No WEA_DB_* identity key set → the metadata backend defaults to sqlite.
-  for (const key of DB_IDENTITY_KEYS) delete process.env[key];
-  delete process.env.WEA_STORAGE_BACKEND;
+  // test-setup.js already blanked any ambient WEA_DB_* identity keys; deleting
+  // them here keeps the sqlite baseline explicit.
+  for (const key of ['WEA_DB_HOST', 'WEA_DB_DATABASE', 'WEA_DB_USER', 'WEA_DB_PASSWORD']) {
+    delete process.env[key];
+  }
   process.env.WEA_FILE_STORAGE = 's3';
 }
 

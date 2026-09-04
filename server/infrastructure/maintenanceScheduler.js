@@ -6,7 +6,8 @@
  * never fatal.
  *
  * Scheduling config:
- *   GC_INTERVAL_MS            - cron interval in ms; 0/unset disables scheduling
+ *   GC_INTERVAL_MS            - DB-only cron interval in ms (registry dbOnly);
+ *                               0/unset disables scheduling
  *   GC_ORPHAN_TTL_DAYS        - orphan age threshold (consumed by gcService)
  *   WEA_SKIP_GC_SCHEDULER     - test seam; any truthy value disables scheduling
  */
@@ -18,7 +19,11 @@ function shouldSkip() {
 }
 
 function resolveIntervalMs() {
-  const raw = Number(process.env.GC_INTERVAL_MS);
+  // GC_INTERVAL_MS is DB-only (registry dbOnly); the shared resolver was primed
+  // with the DB settings at boot (loadAll), so getConfigSync sees the DB row or
+  // the built-in default (0 = disabled). Env is intentionally ignored here.
+  const { getSharedResolver } = require('./configResolver');
+  const raw = Number(getSharedResolver().getConfigSync('GC_INTERVAL_MS'));
   return Number.isFinite(raw) && raw > 0 ? raw : 0;
 }
 

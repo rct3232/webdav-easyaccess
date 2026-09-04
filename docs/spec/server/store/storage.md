@@ -126,3 +126,17 @@ Permission contract source of truth for `postgresql` backend:
 - PostgreSQL FK/check violations (`23503`/`23514`): mapped to 400 `errorHandler.databaseConstraintViolation`
 - PostgreSQL unavailable/timeout (`57P01`/`53300`), client `query_timeout` expiry ("Query read timeout"), and reachability/system errors (`ECONNREFUSED`/`ENOTFOUND`/`EAI_AGAIN`/`ETIMEDOUT`/`ECONNRESET`): mapped to 503 `errorHandler.databaseUnavailable`
 - PostgreSQL auth failures (`28P01`/`28000`): mapped to 503 `errorHandler.databaseUnavailable`
+
+### 2.8 Test-only backend override seam (jest)
+
+The jest harness must never point production `WEA_DB_*` env at a real database, so a
+test-only override seam exists on `storage` (safe to ship — it refuses to engage unless
+`NODE_ENV === 'test'`).
+
+- `storage.setTestBackend(type, { pool })` — `type` is `'postgresql'` | `'sqlite'`.
+  Throws when `NODE_ENV !== 'test'` or when a pool is supplied without `type === 'postgresql'`.
+- `storage.clearTestBackend()` — removes the override and restores env-presence behaviour.
+- While an override is active: `getBackend()` returns the override type, `getPgPool()`
+  returns the injected pool (when postgresql), and `closePgPool()` ends + clears it.
+- The override is only ever created by `createTestDatabase()` from the dedicated
+  `WEA_TEST_PG_*` test namespace; operator/production `.env` never contains those keys.

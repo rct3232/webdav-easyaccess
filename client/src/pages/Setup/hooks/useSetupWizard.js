@@ -81,12 +81,7 @@ function prefillForm(prev, current) {
   next.s3 = {
     ...next.s3,
     bucket: current.S3_BUCKET != null ? current.S3_BUCKET : next.s3.bucket,
-    region:
-      current.AWS_REGION != null
-        ? current.AWS_REGION
-        : current.S3_REGION != null
-          ? current.S3_REGION
-          : next.s3.region,
+    region: current.AWS_REGION != null ? current.AWS_REGION : next.s3.region,
     accessKeyId:
       current.AWS_ACCESS_KEY_ID != null ? current.AWS_ACCESS_KEY_ID : next.s3.accessKeyId,
     secretAccessKey:

@@ -74,7 +74,9 @@ function createConfigResolver({ settingsStore, env = process.env, ttlMs = 5000 }
     const entry = getEntry(key);
     if (!entry) return undefined;
 
-    const envValue = isDbSourced(key) ? undefined : env[key];
+    // dbOnly entries are never env-driven: value comes from the DB settings row
+    // (when set) or the built-in default. T0/operator env keys stay env-first.
+    const envValue = !entry.dbOnly && !isDbSourced(key) ? env[key] : undefined;
     if (isSet(envValue)) return envValue;
     if (entry.tier === TIER.T0) return undefined;
 
@@ -94,7 +96,8 @@ function createConfigResolver({ settingsStore, env = process.env, ttlMs = 5000 }
     const out = {};
     for (const entry of CONFIG_ENTRIES) {
       const { key, tier, secret } = entry;
-      const envValue = isDbSourced(key) ? undefined : env[key];
+      // dbOnly entries are never env-driven (DB row → built-in default).
+      const envValue = !entry.dbOnly && !isDbSourced(key) ? env[key] : undefined;
       let value;
       let source;
 
@@ -149,7 +152,8 @@ function createConfigResolver({ settingsStore, env = process.env, ttlMs = 5000 }
   function getConfigSync(key) {
     const entry = getEntry(key);
     if (!entry) return undefined;
-    const envValue = isDbSourced(key) ? undefined : env[key];
+    // dbOnly entries are never env-driven (DB row → built-in default).
+    const envValue = !entry.dbOnly && !isDbSourced(key) ? env[key] : undefined;
     if (isSet(envValue)) return envValue;
     if (entry.tier === TIER.T0) return undefined;
     const hit = cache.get(key);
@@ -214,6 +218,9 @@ function populateT1Env(resolver, env = process.env) {
   const populated = [];
   for (const entry of CONFIG_ENTRIES) {
     if (entry.tier !== TIER.T1) continue;
+    // dbOnly keys are resolved through the resolver (DB → default); they are
+    // not mirrored into env.
+    if (entry.dbOnly) continue;
     if (entry.key in env) continue;
     const value = resolver.getConfigSync(entry.key);
     if (value !== undefined) {

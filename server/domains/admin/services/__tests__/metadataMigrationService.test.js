@@ -728,16 +728,16 @@ describe('runMigration sqliteToPostgresql (real sqlite source -> fake PG target)
 // ---------------------------------------------------------------------------
 
 const PG_BASE = {
-  host: process.env.WEA_DB_HOST || '127.0.0.1',
-  port: Number(process.env.WEA_DB_PORT) || 5432,
-  user: process.env.WEA_DB_USER || 'e2etest',
-  password: process.env.WEA_DB_PASSWORD || 'e2etest',
+  host: process.env.WEA_TEST_PG_HOST || '127.0.0.1',
+  port: Number(process.env.WEA_TEST_PG_PORT) || 5433,
+  user: process.env.WEA_TEST_PG_USER || 'e2etest',
+  password: process.env.WEA_TEST_PG_PASSWORD || 'e2etest',
 };
 
-// The real PG roundtrip runs only under test:ci:pg, where all four WEA_DB_*
-// identity keys are present; under the sqlite test:ci run the tests are skipped.
-const ROUNDTRIP_IDENTITY_KEYS = ['WEA_DB_HOST', 'WEA_DB_DATABASE', 'WEA_DB_USER', 'WEA_DB_PASSWORD'];
-const roundtripIt = ROUNDTRIP_IDENTITY_KEYS.every((key) => process.env[key]) ? it : it.skip;
+// The real PG roundtrip runs only under the WEA_TEST_PG_* jest leg (test:ci:pg);
+// under the default sqlite test:ci run the tests are skipped.
+const ROUNDTRIP_PG_KEYS = ['WEA_TEST_PG_HOST', 'WEA_TEST_PG_DATABASE', 'WEA_TEST_PG_USER', 'WEA_TEST_PG_PASSWORD'];
+const roundtripIt = ROUNDTRIP_PG_KEYS.every((key) => !!process.env[key]) ? it : it.skip;
 
 describe('roundtrip sqlite -> postgresql (real PG)', () => {
   async function withPgDatabase(name, fn) {

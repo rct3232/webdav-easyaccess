@@ -51,6 +51,17 @@ D8 depends on D5–D7; D9/D10 last.
 - 2026-09-04: env-config cleanup (A/B/C) merged to dev (`08b928c`); test
   namespace isolation (`WEA_TEST_PG_*`, storage override seam) is the foundation
   this plan builds on.
+- **Status: D1–D7, D9 complete; D10 verified; D8 partially deferred (see note
+  below).** Commits on `refactor/db-interface-pilots`: `9a1ed90` (D1–D4),
+  `0133f85` (D6 — includes D5), `7bc7d5f` (D7), `7eba277` (D9).
+
+Final verification (D10, 2026-09-04):
+- `npm run lint` (server + client + shared) clean.
+- server `test:ci` (sqlite, coverage): 96 suites / 1754 passed.
+- server `test:ci:pg:adapters` (real PostgreSQL): 13 suites / 176 passed.
+- All store domains now execute through the executor seam; dialect branching
+  is confined to `server/infrastructure/db/` and `server/store/repositories/`
+  (+ permission repositories under domains/permissions/stores/repositories/).
 - 2026-09-04: **D1 done** — `docs/spec/server/store/executor.md` +
   `docs/spec/server/store/repository-contract.md` written (docs-first).
 - 2026-09-04: **D2 done** — executor seam implemented

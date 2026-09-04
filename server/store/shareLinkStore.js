@@ -4,7 +4,7 @@ const storage = require('./storage');
 const { mapDatabaseError, createError } = require('../utils/errorHandler');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { toIsoString } = require('../utils/sharedHelpers');
-const { isLinkExpired } = require('../infrastructure/adapters/metadata/isLinkExpired');
+const { isLinkExpired } = require('./isLinkExpired');
 
 function isPostgresqlBackend() {
   return storage.getBackend() === 'postgresql';

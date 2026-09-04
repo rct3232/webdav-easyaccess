@@ -17,6 +17,7 @@ This document defines the mandatory workflows and standards for all agents worki
 2. **Read**: Review the identified documents.
 3. **Update**: Modify or add spec/feature docs (`docs/spec/`, `docs/features/`) before implementation.
 4. **Implement**: Proceed to code changes only after docs are updated.
+5. **Track unresolved work in one place**: Unresolved, undecided, or unimplemented items must be recorded only in `docs/IMPROVEMENT_PLAN.md`. Spec/feature docs describe the current implemented/decided state and must not carry planned/future or "pending implementation"/"target contract" statements.
 
 ### 2.2 Branching Convention
 
@@ -30,7 +31,7 @@ This document defines the mandatory workflows and standards for all agents worki
 3. **Switch to the branch**: Work on the created branch, not directly on `main` or `dev`.
 4. **Exception (no branch needed)**: Trivial single-commit work — documentation cleanup, simple hotfixes (≤ 1 file, ≤ 10 lines) — may be committed directly without creating a new branch.
 5. **Merge to dev after completion**: When work is done on a feature branch:
-   - Run all unit and integration tests (`npm run test:ci` in both `client/` and `server/`). Only proceed if all pass.
+   - Run all unit and integration tests (`npm run test:ci` in both `client/` and `server/`), plus the E2E specs related to the change. Only proceed if all pass.
    - Switch to `dev`, merge the feature branch, then delete the feature branch.
    - **Never merge directly to `main`**. The `main` branch is protected by CI/CD pipelines that automatically create PRs; management and review of those PRs is handled by the user.
 
@@ -65,4 +66,4 @@ This document defines the mandatory workflows and standards for all agents worki
    - **Case A (Source Error)**: Implementation violates spec → **STOP** and ask user.
    - **Case B (Test Error)**: Test misinterprets spec/asserts on internals → **Proceed** to fix test.
    - **Case C (Spec Error)**: Spec is undefined or ambiguous → **STOP** and ask user.
-3. **Recording**: Log the incident in `docs/fail_log.md`.
+3. **Recording**: Log the incident in `docs/RCA_LOG.md`.

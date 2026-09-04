@@ -11,8 +11,9 @@
  *  - sqliteToPostgresql: the source is a REAL sqlite file; the target is a
  *    fake pg.Client, so PG-specific serialization (JSON-string settings.value,
  *    real booleans, setval) is asserted on the captured call log.
- *  - A real sqlite -> PG roundtrip runs only under test:ci:pg
- *    (WEA_STORAGE_BACKEND=postgresql), using a dedicated throwaway database.
+ *  - A real sqlite -> PG roundtrip runs only under test:ci:pg (all four
+ *    WEA_DB_* identity keys present in the environment), using a dedicated
+ *    throwaway database.
  */
 
 const fs = require('fs');
@@ -22,7 +23,6 @@ const sqlite3 = require('sqlite3').verbose();
 
 const { initSqliteSchema } = require('../../../../infrastructure/sqliteSchemaInit');
 const { createMetadataMigrationService } = require('../metadataMigrationService');
-const { encryptSecret } = require('../../../../utils/configEncryption');
 
 // ---------------------------------------------------------------------------
 // Fake pg.Client: serves scripted source rows or captures target writes.
@@ -303,13 +303,6 @@ afterAll(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-const SAVED_ENCRYPT_KEY = process.env.encrypt_secret_key;
-
-afterEach(() => {
-  if (SAVED_ENCRYPT_KEY === undefined) delete process.env.encrypt_secret_key;
-  else process.env.encrypt_secret_key = SAVED_ENCRYPT_KEY;
-});
-
 function makeSqlitePath(label) {
   return path.join(tmpDir, `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.db`);
 }
@@ -527,18 +520,16 @@ describe('runMigration postgresqlToSqlite (fake PG source -> real sqlite target)
     expect(users).toEqual([]);
   });
 
-  it('reports encryptSecretKeyMissing when the source holds encrypted settings and no master key', async () => {
-    const sourcePath = makeSqlitePath('src-enc');
+  it('copies a plaintext secret-key settings row verbatim (JSON-wrapped for PG, no key handling)', async () => {
+    const sourcePath = makeSqlitePath('src-plain-secret');
     const src = await createSchemaDb(sourcePath);
-    const payload = JSON.stringify(encryptSecret('s3cr3t', 'master-key'));
     await run(
       src,
-      `INSERT INTO settings (key, value, updated_at) VALUES ('WEBDAV_PASSWORD', ?, ?)`,
-      [payload, ts()]
+      `INSERT INTO settings (key, value, updated_at) VALUES ('WEBDAV_PASSWORD', 's3cr3t', ?)`,
+      [ts()]
     );
     await closeDb(src);
 
-    delete process.env.encrypt_secret_key;
     const fake = new FakePg({
       schemaExists: true,
       tables: { users: sourceDataForFake().users, file_nodes: sourceDataForFake().file_nodes },
@@ -553,32 +544,15 @@ describe('runMigration postgresqlToSqlite (fake PG source -> real sqlite target)
       },
     });
 
-    expect(result.warning).toBe('encryptSecretKeyMissing');
-  });
-
-  it('omits the warning when encrypt_secret_key is present', async () => {
-    const sourcePath = makeSqlitePath('src-enc2');
-    const src = await createSchemaDb(sourcePath);
-    const payload = JSON.stringify(encryptSecret('s3cr3t', 'master-key'));
-    await run(
-      src,
-      `INSERT INTO settings (key, value, updated_at) VALUES ('WEBDAV_PASSWORD', ?, ?)`,
-      [payload, ts()]
-    );
-    await closeDb(src);
-
-    process.env.encrypt_secret_key = 'master-key';
-    const fake = new FakePg({ schemaExists: true, tables: {} });
-    const service = createMetadataMigrationService({ pgConnectionProvider: () => fake });
-    const result = await service.runMigration({
-      direction: 'sqliteToPostgresql',
-      source: { sqlitePath: sourcePath },
-      target: {
-        backend: 'postgresql',
-        pg: { host: 'h', port: 5432, database: 'd', user: 'u', password: 'p' },
-      },
-    });
+    expect(result.status).toBe('completed');
     expect(result.warning).toBeUndefined();
+    const settingsInsert = fake.calls.find((c) => /^INSERT INTO "settings"/.test(c.sql.trim()));
+    const pairs = [];
+    for (let i = 0; i < settingsInsert.params.length; i += 3) {
+      pairs.push([settingsInsert.params[i], settingsInsert.params[i + 1]]);
+    }
+    const settingsMap = Object.fromEntries(pairs);
+    expect(settingsMap.WEBDAV_PASSWORD).toBe('"s3cr3t"');
   });
 });
 
@@ -754,15 +728,16 @@ describe('runMigration sqliteToPostgresql (real sqlite source -> fake PG target)
 // ---------------------------------------------------------------------------
 
 const PG_BASE = {
-  host: process.env.WEA_PG_HOST || '127.0.0.1',
-  port: Number(process.env.WEA_PG_PORT) || 5432,
-  user: process.env.WEA_PG_USER || 'e2etest',
-  password: process.env.WEA_PG_PASSWORD || 'e2etest',
+  host: process.env.WEA_DB_HOST || '127.0.0.1',
+  port: Number(process.env.WEA_DB_PORT) || 5432,
+  user: process.env.WEA_DB_USER || 'e2etest',
+  password: process.env.WEA_DB_PASSWORD || 'e2etest',
 };
 
-// The real PG roundtrip runs only under test:ci:pg (WEA_STORAGE_BACKEND=postgresql);
-// under the sqlite test:ci run the tests are skipped.
-const roundtripIt = process.env.WEA_STORAGE_BACKEND === 'postgresql' ? it : it.skip;
+// The real PG roundtrip runs only under test:ci:pg, where all four WEA_DB_*
+// identity keys are present; under the sqlite test:ci run the tests are skipped.
+const ROUNDTRIP_IDENTITY_KEYS = ['WEA_DB_HOST', 'WEA_DB_DATABASE', 'WEA_DB_USER', 'WEA_DB_PASSWORD'];
+const roundtripIt = ROUNDTRIP_IDENTITY_KEYS.every((key) => process.env[key]) ? it : it.skip;
 
 describe('roundtrip sqlite -> postgresql (real PG)', () => {
   async function withPgDatabase(name, fn) {
@@ -788,15 +763,13 @@ describe('roundtrip sqlite -> postgresql (real PG)', () => {
   }
 
   roundtripIt('round-trips data with correct serialization and sequence resync', async () => {
-    const { decryptSecret } = require('../../../../utils/configEncryption');
     const sourcePath = makeSqlitePath('roundtrip-src');
     const src = await createSchemaDb(sourcePath);
     await seedSourceData(src);
-    const encPayload = JSON.stringify(encryptSecret('secret-val', 'master-key'));
     await run(
       src,
-      `INSERT INTO settings (key, value, updated_at) VALUES ('WEBDAV_PASSWORD', ?, ?)`,
-      [encPayload, ts()]
+      `INSERT INTO settings (key, value, updated_at) VALUES ('WEBDAV_PASSWORD', 'secret-val', ?)`,
+      [ts()]
     );
     await closeDb(src);
 
@@ -804,7 +777,6 @@ describe('roundtrip sqlite -> postgresql (real PG)', () => {
 
     await withPgDatabase(dbName, async (client) => {
       const service = createMetadataMigrationService();
-      delete process.env.encrypt_secret_key;
       const result = await service.runMigration({
         direction: 'sqliteToPostgresql',
         source: { sqlitePath: sourcePath },
@@ -815,7 +787,7 @@ describe('roundtrip sqlite -> postgresql (real PG)', () => {
       });
       expect(result.status).toBe('completed');
       expect(result.schemaApplied).toBe(true);
-      expect(result.warning).toBe('encryptSecretKeyMissing'); // no env key in this process
+      expect(result.warning).toBeUndefined();
 
       const users = await client.query('SELECT id, username, is_admin FROM users ORDER BY id');
       expect(users.rows).toEqual([
@@ -827,8 +799,8 @@ describe('roundtrip sqlite -> postgresql (real PG)', () => {
       const byKey = Object.fromEntries(settings.rows.map((r) => [r.key, r.value]));
       expect(byKey.smtp_host).toBe('smtp.gmail.com'); // JSON-string unwrapped by node-pg
       expect(byKey.registration_enabled).toBe('true');
-      // Encrypted row survived verbatim and decrypts with the same master key.
-      expect(decryptSecret(JSON.parse(byKey.WEBDAV_PASSWORD), 'master-key')).toBe('secret-val');
+      // Plaintext secret row round-trips byte-identical (no key/format handling).
+      expect(byKey.WEBDAV_PASSWORD).toBe('secret-val');
 
       // Sequence resync: a new insert does not collide with the copied ids.
       const ins = await client.query(

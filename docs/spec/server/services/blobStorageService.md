@@ -286,7 +286,7 @@ Uploads blob via WebDAV path. Guards on node existence.
 
 ## 6. Version Number Policy
 
-Single-version mode: `version_number` is always 1 in all INSERT operations. The `UNIQUE(file_node_id, version_number)` constraint exists for future version history expansion but currently only one active version per node is maintained.
+Single-version mode is enforced at the store level: before each insert the node's previous active `object_map` row is orphaned (`status='orphaned'`), so **at most one active version per node** exists at any time. New rows are inserted at `version_number = MAX(version_number) + 1` for the node (`upsertObjectMap`, fileNodesStore.js:579-622) — previous rows are orphaned (never deleted/reused), so the insert never collides with the `UNIQUE (file_node_id, version_number)` constraint (`object_map_version_unique`, 001_initial_normalized_schema.sql:64). Full version history expansion is tracked in `docs/IMPROVEMENT_PLAN.md`.
 
 ## 7. Verification Scenarios
 

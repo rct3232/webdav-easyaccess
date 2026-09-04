@@ -38,7 +38,53 @@ const GROUP_LABEL_KEYS = {
 
 // Display metadata only. The server registry (configRegistry.js) is
 // authoritative for tier/secret/source; keys without an entry are skipped.
+// Group `metadata`/inputType are unused for rendering — T0 keys are always
+// deploy-time (Section B), never Section A inputs — but each needs a label.
 const CONFIG_DISPLAY_META = {
+  // ── Metadata / boot (Section B: deploy-time read-only) ─────────────────
+  WEA_SQLITE_PATH: {
+    labelKey: 'admin.config.key.WEA_SQLITE_PATH',
+    group: 'metadata',
+    inputType: 'text',
+  },
+  WEA_DB_HOST: { labelKey: 'admin.config.key.WEA_DB_HOST', group: 'metadata', inputType: 'text' },
+  WEA_DB_PORT: { labelKey: 'admin.config.key.WEA_DB_PORT', group: 'metadata', inputType: 'text' },
+  WEA_DB_DATABASE: {
+    labelKey: 'admin.config.key.WEA_DB_DATABASE',
+    group: 'metadata',
+    inputType: 'text',
+  },
+  WEA_DB_USER: { labelKey: 'admin.config.key.WEA_DB_USER', group: 'metadata', inputType: 'text' },
+  WEA_DB_PASSWORD: {
+    labelKey: 'admin.config.key.WEA_DB_PASSWORD',
+    group: 'metadata',
+    inputType: 'text',
+  },
+  WEA_DB_SSL: { labelKey: 'admin.config.key.WEA_DB_SSL', group: 'metadata', inputType: 'text' },
+  WEA_DB_MAX: { labelKey: 'admin.config.key.WEA_DB_MAX', group: 'metadata', inputType: 'text' },
+  WEA_DB_IDLE_TIMEOUT_MS: {
+    labelKey: 'admin.config.key.WEA_DB_IDLE_TIMEOUT_MS',
+    group: 'metadata',
+    inputType: 'text',
+  },
+  WEA_DB_CONNECTION_TIMEOUT_MS: {
+    labelKey: 'admin.config.key.WEA_DB_CONNECTION_TIMEOUT_MS',
+    group: 'metadata',
+    inputType: 'text',
+  },
+  WEA_DB_QUERY_TIMEOUT_MS: {
+    labelKey: 'admin.config.key.WEA_DB_QUERY_TIMEOUT_MS',
+    group: 'metadata',
+    inputType: 'text',
+  },
+  NODE_ENV: { labelKey: 'admin.config.key.NODE_ENV', group: 'metadata', inputType: 'text' },
+  DOTENV_CONFIG_PATH: {
+    labelKey: 'admin.config.key.DOTENV_CONFIG_PATH',
+    group: 'metadata',
+    inputType: 'text',
+  },
+  JWT_SECRET: { labelKey: 'admin.config.key.JWT_SECRET', group: 'metadata', inputType: 'text' },
+
   // ── File storage ────────────────────────────────────────────────────────
   WEA_FILE_STORAGE: {
     labelKey: 'admin.config.key.WEA_FILE_STORAGE',
@@ -250,6 +296,12 @@ const toStr = (value) => {
   return String(value);
 };
 
+// Effective-state classification, derived purely from the GET payload
+// (`source` / `tier`). Section A (editable) = T1/T2 keys whose effective
+// source is not env; Section B (deploy-time read-only) = everything else.
+const isEditable = (entry) => entry && entry.tier !== 'T0' && entry.source !== 'env';
+const isPlatformManaged = (entry) => entry && (entry.tier === 'T0' || entry.source === 'env');
+
 // Mirrors the setup-wizard resolver: prefer a translation of the server
 // errorCode; fall back to the raw message, then to the default key.
 const resolveTestErrorMessage = (err, t, fallbackKey) => {
@@ -304,6 +356,24 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
     loadConfig();
   };
 
+  // Section A = editable keys (T1/T2, effective source not env) that have a
+  // display entry; Section B = platform-managed keys (T0, or env-sourced
+  // T1/T2) in the registry/GET order. Section A keys are the only editable,
+  // dirty-tracked and save-submitted values.
+  const sectionAKeys = useMemo(() => {
+    if (!config) return [];
+    return Object.keys(config).filter(
+      (key) => CONFIG_DISPLAY_META[key] && isEditable(config[key])
+    );
+  }, [config]);
+
+  const sectionBKeys = useMemo(() => {
+    if (!config) return [];
+    return Object.keys(config).filter(
+      (key) => CONFIG_DISPLAY_META[key] && isPlatformManaged(config[key])
+    );
+  }, [config]);
+
   const handleChange = (key, value) => {
     if (CONNECTION_KEYS.has(key)) {
       setConnectionTest({ status: 'idle', message: '', reason: '' });
@@ -317,8 +387,7 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
 
   const dirtyKeys = useMemo(() => {
     const keys = new Set();
-    if (!config) return keys;
-    Object.keys(CONFIG_DISPLAY_META).forEach((key) => {
+    sectionAKeys.forEach((key) => {
       const entry = config[key];
       if (!entry) return;
       const current = values[key];
@@ -329,7 +398,7 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
       }
     });
     return keys;
-  }, [config, values]);
+  }, [config, sectionAKeys, values]);
 
   const hasDirty = dirtyKeys.size > 0;
 
@@ -567,6 +636,31 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
     return renderTextField(key);
   };
 
+  // Section B row: read-only summary reading from the (server-masked) config
+  // payload, never from the editable `values` state.
+  const renderPlatformRow = (key) => {
+    const meta = CONFIG_DISPLAY_META[key];
+    const entry = config[key];
+    const isUnset = entry.value === null || entry.value === undefined || entry.value === '';
+    const value = entry.secret
+      ? SECRET_MASK
+      : isUnset
+        ? t('admin.config.unset')
+        : String(entry.value);
+
+    return (
+      <Box key={key} sx={{ mb: 2 }} data-testid={`platform-config-row-${key}`}>
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+          {t(meta.labelKey)}
+        </Typography>
+        <Typography variant="body2">{value}</Typography>
+        <Typography variant="caption" color="text.secondary">
+          {`${entry.tier} · ${t('admin.config.setInEnv')}`}
+        </Typography>
+      </Box>
+    );
+  };
+
   if (!active) return null;
 
   if (loadError && !config) {
@@ -598,71 +692,76 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
 
   return (
     <Box>
-      {GROUP_ORDER.map((group) => {
-        const keys = Object.keys(CONFIG_DISPLAY_META).filter(
-          (key) => CONFIG_DISPLAY_META[key].group === group && config[key]
-        );
-        if (keys.length === 0) return null;
-        return (
-          <Box key={group} sx={{ mb: 3 }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-              {t(GROUP_LABEL_KEYS[group])}
-            </Typography>
-            {group === 'fileStorage' && hasConnectionDirty && (
-              <Box sx={{ mb: 2 }}>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={handleTestConnection}
-                  disabled={connectionTest.status === 'testing' || saving}
-                  startIcon={
-                    connectionTest.status === 'testing' ? (
-                      <CircularProgress size={14} color="inherit" />
-                    ) : null
-                  }
-                  data-testid="config-test-connection"
-                >
-                  {t('admin.config.connectionTest')}
-                </Button>
-                {connectionTest.status === 'testing' && (
-                  <Typography
-                    variant="body2"
-                    sx={{ mt: 0.5 }}
-                    data-testid="config-connection-test-status"
+      <Typography variant="h6" data-testid="config-section-a-title">
+        {t('admin.config.sectionTitleRuntime')}
+      </Typography>
+      <Box sx={{ mt: 1 }}>
+        {GROUP_ORDER.map((group) => {
+          const keys = sectionAKeys.filter(
+            (key) => CONFIG_DISPLAY_META[key].group === group
+          );
+          if (keys.length === 0) return null;
+          return (
+            <Box key={group} sx={{ mb: 3 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+                {t(GROUP_LABEL_KEYS[group])}
+              </Typography>
+              {group === 'fileStorage' && hasConnectionDirty && (
+                <Box sx={{ mb: 2 }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={handleTestConnection}
+                    disabled={connectionTest.status === 'testing' || saving}
+                    startIcon={
+                      connectionTest.status === 'testing' ? (
+                        <CircularProgress size={14} color="inherit" />
+                      ) : null
+                    }
+                    data-testid="config-test-connection"
                   >
-                    {t('setup.testing')}
-                  </Typography>
-                )}
-                {connectionTest.status === 'ok' && (
-                  <Typography
-                    variant="body2"
-                    color="success.main"
-                    sx={{ mt: 0.5 }}
-                    data-testid="config-connection-test-status"
-                  >
-                    {connectionTest.message}
-                  </Typography>
-                )}
-                {connectionTest.status === 'error' && (
-                  <Box data-testid="config-connection-test-status">
-                    <Typography variant="body2" color="error.main" sx={{ mt: 0.5 }}>
+                    {t('admin.config.connectionTest')}
+                  </Button>
+                  {connectionTest.status === 'testing' && (
+                    <Typography
+                      variant="body2"
+                      sx={{ mt: 0.5 }}
+                      data-testid="config-connection-test-status"
+                    >
+                      {t('setup.testing')}
+                    </Typography>
+                  )}
+                  {connectionTest.status === 'ok' && (
+                    <Typography
+                      variant="body2"
+                      color="success.main"
+                      sx={{ mt: 0.5 }}
+                      data-testid="config-connection-test-status"
+                    >
                       {connectionTest.message}
                     </Typography>
-                    {connectionTest.reason && (
-                      <Typography variant="caption" color="error.main" sx={{ display: 'block' }}>
-                        {connectionTest.reason}
+                  )}
+                  {connectionTest.status === 'error' && (
+                    <Box data-testid="config-connection-test-status">
+                      <Typography variant="body2" color="error.main" sx={{ mt: 0.5 }}>
+                        {connectionTest.message}
                       </Typography>
-                    )}
-                  </Box>
-                )}
-              </Box>
-            )}
-            {keys.map((key) => (
-              <React.Fragment key={key}>{renderField(key)}</React.Fragment>
-            ))}
-          </Box>
-        );
-      })}
+                      {connectionTest.reason && (
+                        <Typography variant="caption" color="error.main" sx={{ display: 'block' }}>
+                          {connectionTest.reason}
+                        </Typography>
+                      )}
+                    </Box>
+                  )}
+                </Box>
+              )}
+              {keys.map((key) => (
+                <React.Fragment key={key}>{renderField(key)}</React.Fragment>
+              ))}
+            </Box>
+          );
+        })}
+      </Box>
 
       {appliedKeys.length > 0 && (
         <Alert severity="success" sx={{ mt: 2 }} data-testid="config-applied-banner">
@@ -704,6 +803,18 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
           {saving ? t('admin.config.saving') : t('admin.config.save')}
         </Button>
       </Box>
+
+      {sectionBKeys.length > 0 && (
+        <Box sx={{ mt: 4 }}>
+          <Typography variant="h6" data-testid="config-section-b-title">
+            {t('admin.config.sectionTitlePlatform')}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            {t('admin.config.platformIntro')}
+          </Typography>
+          {sectionBKeys.map((key) => renderPlatformRow(key))}
+        </Box>
+      )}
     </Box>
   );
 };

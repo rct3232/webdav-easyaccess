@@ -31,8 +31,6 @@
 | selectedFiles      | Set      | Y        | -       | Selected file paths                                                                            |
 | onFileCheck        | function | Y        | -       | Selection toggle handler (used by row interactions in selection mode; no checkbox UI required) |
 | processingMap      | object   | N        | -       | Map of path -> processing state                                                                |
-| currentPath        | string   | Y        | -       | Current folder path                                                                            |
-| onPathClick        | function | N        | -       | Path click handler                                                                             |
 | loading            | boolean  | N        | false   | Shows skeleton when true and files empty                                                       |
 | onThumbnailsLoaded | function | N        | -       | Callback when thumbnails loaded                                                                |
 | loadMoreRef        | ref      | N        | -       | Ref for infinite scroll sentinel                                                               |

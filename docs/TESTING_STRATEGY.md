@@ -34,7 +34,7 @@ Current layout is summarized in [client/TEST_SUMMARY.md](../client/TEST_SUMMARY.
 - **Avoid logic-heavy mocks:** Mock factories should primarily return fixed values and simple `jest.fn()` stubs. Avoid re-implementing production branching inside mocks.
 - **Use shared factories for repeated dependencies:** When the same mock shape appears in 3+ files, move it to a shared factory/helper.
 - **Reset policy:** Use `jest.clearAllMocks()` in `beforeEach` by default. Use `jest.resetAllMocks()` only when previous mock implementations must be fully reset. Use `jest.restoreAllMocks()` when spies on real methods are used.
-- **Document decisions in fail log:** If a mocking approach causes regressions or infra incompatibility, record RCA in `.cursor/fail_log.md` and update this strategy/spec docs before broad migration.
+- **Document decisions in the RCA log:** If a mocking approach causes regressions or infra incompatibility, record the RCA in `docs/RCA_LOG.md` and update this strategy/spec docs before broad migration.
 
 ### Adapter mock contract fidelity
 
@@ -50,7 +50,7 @@ Current layout is summarized in [client/TEST_SUMMARY.md](../client/TEST_SUMMARY.
 
 - **MSW (Mock Service Worker):** API calls are mocked via handlers in `client/src/mocks/` for integration-style component/page tests. Keep handlers in sync with [api.md](api.md) and [shared-contracts.md](shared-contracts.md).
 - **Service/unit tests:** For isolated service or adapter behavior, module-level mocks (`jest.mock`) are allowed and often preferred.
-- **Known guardrails from RCA:** In this repository, avoid broad MSW migration for cases already recorded in `.cursor/fail_log.md` (for example, Node/Jest compatibility around axios response propagation and `request.formData()` parsing in jsdom).
+- **Known guardrails from RCA:** In this repository, avoid broad MSW migration for cases already recorded in `docs/IMPROVEMENT_PLAN.md` (for example, Node/Jest compatibility around axios response propagation and `request.formData()` parsing in jsdom).
 - **Jest polyfill guardrail:** In jsdom + undici tests, expose only the minimum globals required for stable runtime. Do not instantiate `new MessageChannel()` only to infer constructor types, and avoid unnecessary global `MessageChannel` wiring when `MessagePort` alone is sufficient. These patterns can leave open `MESSAGEPORT` handles and block graceful Jest worker shutdown. If a temporary channel fallback is unavoidable, close/unref both ports immediately.
 - **Blob `.stream()` polyfill:** jsdom's `Blob` does not implement `.stream()`, but undici's `Response` (used by MSW) requires it. In `client/src/jest-polyfills.js`, polyfill `Blob.prototype.stream` (FileReader-based). Note: a slow retry backoff once masked a `TypeError: object.stream is not a function` in bulk-download tests — making failures fast exposes latent environment gaps, so keep polyfills complete even when tests appear to pass.
 - **Unhandled MSW request policy:** `onUnhandledRequest: 'warn'` leaves unhandled requests to fail as network errors, which then feed the client retry logic and can cost ~7s of real backoff time per test. Keep MSW handlers in sync with the contract (`api.md`, `shared-contracts.md`) so no request falls through, and prefer explicit fallback handlers over silent network errors.
@@ -80,7 +80,7 @@ The blob-migration feature (bidirectional WebDAV ↔ S3; spec: `docs/spec/server
 
 - **Injection only:** `migrationService` takes `srcBlobStore` and `buildDestBlobStore` as injected deps. Tests inject `createFakeBlobStore()` (`server/testing/mocks/fakeBlobStore.js`) and a fake `buildDestBlobStore`; real adapters (`WebdavBlobStore`/`S3BlobStore`) are never constructed inside tests. Assert via `jest.spyOn` on their constructors where feasible.
 - **Fake BlobStore contract:** `createFakeBlobStore()` is an in-memory store with REAL behavior (`uploadBlob`, `downloadBlob`, `deleteBlob`, `headBlob`, `createDirectory`/`ensureDirectoryExists`, `listKeys`). It supports failure injection (`failOn(key)`, `failNextN(n)`) and records writes (`writtenKeys()`/`writtenPaths()`, `count()`) for "only destination written", "no duplicate copy", and dry-run no-write assertions. This is contract fidelity (a real adapter mock honoring `docs/spec/server/store/blobstore.md`), not speculative logic.
-- **Temp sqlite only:** tests run against temp sqlite via `createTestDatabase()` (`WEA_STORAGE_BACKEND=sqlite`). No real PG host, no network.
+- **Temp sqlite only:** tests run against temp sqlite via `createTestDatabase()` with no `WEA_DB_*` credentials set (sqlite default). No real PG host, no network.
 - **CLI tests are in-process:** call the exported `runMigrationCli(argv, { migrationService: fake, output })` directly — no subprocess, no network. Cover usage errors, the `--yes`/`--apply` gate, `--check-env`, dry-run-first, and dest config from flags + env.
 - **Network guard:** migration test suites stub `net.Socket.connect` and `http.request` to throw, so any accidental socket attempt FAILS the test. Combined with CI lacking real credentials (`.env` gitignored), this is defense in depth.
 - **Never use real WebDAV/S3/PG** in migration tests; the migration admin route tests assert the 202 + poll + cancel contract with the worker disabled (`WEA_SKIP_MIGRATION_WORKER`).
@@ -109,6 +109,17 @@ function createExampleMock(overrides = {}) {
 - **Verify What, not How:** Assert on observable outcomes (public inputs and outputs, side effects visible to callers), not implementation details.
 - **No access to internals:** Do not reach into internal variables, private methods, or module internals. Test only the public API.
 - **Mock inspection is limited:** Asserting on mock call counts or arguments is allowed only when the interaction itself is the behavior under test (e.g. "service X was called with param Y"). Prefer verifying the final result or observable state instead.
+
+### Delegation seams
+
+- **Spec-documented delegation pins are exempt:** A mock-call pin (`toHaveBeenCalledWith` / `toHaveBeenCalledTimes` / call absence) is exempt from the black-box rule when a spec document explicitly records that delegation tuple or absence as a contract (e.g. the per-method delegation tuples in `docs/spec/server/services/fileService.md` §2.3, or the permission-gate mandates in §3). Such pins verify a documented seam, not an implementation detail.
+- **Otherwise assert the observable:** If the behavior is observable through the module-under-test's output, state, or rendered UI, the pin must be dropped or replaced by the observable assertion (see AGENTS.md §3.1, "Verify What, Not How").
+
+### Performance / memoization refactors
+
+- **Memoization and callback identity are implementation details.** `React.memo`, `useCallback`/`useMemo` dependency arrays, render counts, and bail-out behavior must not be asserted by unit tests (that would reach into internals — the "How").
+- **Verification is drift-free behavior plus structural evidence.** A performance-only refactor (e.g. stabilizing handler identities, memoizing grouped props, removing dead props) is verified by ① existing black-box suites staying green with zero observable behavior/test drift, ② a commit message explaining the structural change, and ③ manual React DevTools Profiler checks where a render-count claim is made. Render-frequency or `React.memo` bail-out assertions are not added to unit tests.
+- **Spec docs describe the memoization as implemented state only.** A component may note that it is `React.memo`-wrapped as an implementation fact, but such a claim is not a unit-test checklist item.
 
 ---
 
@@ -211,7 +222,7 @@ Apply uniformly to every spec in `e2e/`:
 - **Filename style**: `<name>.<platform>.spec.ts` dot suffix for platform files (`core-flow.shared`, `core-flow.desktop`, `core-flow.mobile`). No hyphen-prefix platform files.
 - For E2E setup phases (creating test folders/files as prerequisites), avoid timing-sensitive UI seams like SpeedDial open/transition states; prefer stable API endpoints (e.g. folder create + multipart upload) to make prerequisites deterministic.
 - When using Playwright `APIRequestContext` for setup or cleanup, pass URL query strings with `params`, not `query`, so contract-required request parameters actually reach the server.
-- **Hermetic scratch projects (setup wizard):** the first-run setup spec runs in dedicated `setup-wizard-desktop` / `setup-wizard-mobile` Playwright projects that never reuse the shared `.env.e2e` boot state. Each test spawns its own scratch server instance on `:5003` (own env file via `DOTENV_CONFIG_PATH`, own sqlite path, own scratch PG DB) and supervises its own process lifecycle, because restart is the behavior under test (PLAN.md §7). The spec is serial within the describe and cleans up per case in `afterEach` (kill the scratch child, remove the scratch dir, drop the scratch PG database). Keep these projects additive — do not fold them into the mode-prefixed project matrix.
+- **Hermetic scratch projects (setup wizard):** the first-run setup spec runs in dedicated `setup-wizard-desktop` / `setup-wizard-mobile` Playwright projects that never reuse the shared `.env.e2e` boot state. Each test spawns its own scratch server instance on `:5003` (own env file via `DOTENV_CONFIG_PATH`, own sqlite path, own scratch PG DB) and supervises its own process lifecycle, because restart is the behavior under test. The spec is serial within the describe and cleans up per case in `afterEach` (kill the scratch child, remove the scratch dir, drop the scratch PG database). Keep these projects additive — do not fold them into the mode-prefixed project matrix.
 - **Per-project data isolation via setup projects:** the shared E2E database accumulates state across projects (Playwright caps the initial render at 50 root items, so a later project's file upload can sort past the cap and never render). The `00-project-setup.spec.ts` reset must therefore run once **per dependent project**, not once per run. Express this with Playwright project `dependencies`, NOT by relying on a `00-` filename prefix being matched by each test project:
   - Give the mode-prefixed test projects a dedicated sibling setup project (e.g. `${backendMode}-desktop-setup` / `${backendMode}-mobile-setup`) whose `testMatch` matches only `00-project-setup.spec.ts`, and list that setup project in the test project's `dependencies`.
   - **Do not** point multiple dependent projects at one shared setup project: a `dependencies` setup project runs exactly once per run, so the second dependent project would start from the first one's dirty DB, silently breaking isolation.
@@ -334,9 +345,9 @@ When a test fails (during development, CI, or when fixing regressions):
    - **B** — Bug in the test itself
    - **C** — Spec/contract mismatch
 3. **Act:** Apply the fix (or update spec) according to the classification. Do not modify code before classifying.
-4. **Record:** Add an entry to [.cursor/fail_log.md](../.cursor/fail_log.md) with date, summary, classification, and action taken.
+4. **Record:** Add an entry to [docs/RCA_LOG.md](RCA_LOG.md) with date, summary, classification, and action taken.
 
-This RCA (Root Cause Analysis) procedure is mandatory. See [.cursor/rules/rca-on-test-failure.mdc](../.cursor/rules/rca-on-test-failure.mdc) for the full rule.
+This RCA (Root Cause Analysis) procedure is mandatory. See [AGENTS.md](../AGENTS.md) §3.2 for the full rule.
 
 ---
 

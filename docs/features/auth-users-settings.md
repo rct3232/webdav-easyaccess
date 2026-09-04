@@ -33,7 +33,7 @@ The `/api/auth/me` endpoint provides the current user. User APIs support listing
 **Input rules (validation):**
 
 - Username, email, password: required on register/login where applicable. Validation uses `shared/validation.js` (e.g. `validateUsername`, `validateEmail`, `validatePassword`). Server returns 400 with appropriate `errorCode` for invalid input.
-- Passwords: minimum/maximum length enforced; password change requires `currentPassword` and `newPassword`.
+- Passwords: minimum/maximum length enforced; a password change (`PUT /api/users/:id/password`) takes a single `password` field (no current-password check).
 
 **Rate limit (login):**
 
@@ -100,7 +100,7 @@ Pages and UI components present states and trigger actions; they should not impl
 | `/api/users`                 | GET    | Token | List users (e.g. for share dialogs).                                                                                                           |
 | `/api/users/approved`        | GET    | Token | List approved users only.                                                                                                                      |
 | `/api/users/:id`             | GET    | Token | Get user by id.                                                                                                                                |
-| `/api/users/:id/password`    | PUT    | Token | Change password. Body: `currentPassword`, `newPassword`. Only self (or admin) allowed; success invalidates other sessions via `token_version`. |
+| `/api/users/:id/password`    | PUT    | Token | Change own password. Body: `{ password }`. Self-only — a target id other than the caller returns 403; success revokes the user's sessions via `revokeAllUserTokens` (refresh-token deletion). |
 | `/api/users/:id/email`       | PUT    | Token | Update email. Only self (or admin) allowed.                                                                                                    |
 | `/api/users/:id/permissions` | PUT    | Token | Update current user's own permissions (e.g. home folder).                                                                                      |
 
@@ -187,8 +187,8 @@ Browser-flow anchors for shared Playwright auth helpers:
 - **Duplicate username/email:** Register with existing username or email → 400 with appropriate `errorCode`.
 - **Pending/rejected login:** User with status `pending` or `rejected` → 403 with corresponding `errorCode`; no token returned.
 - **Rate limit:** Excessive login attempts from same IP → 429 with `errorCode` for rate limit and `Retry-After` header; after successful login, failures for that key are cleared.
-- **Password change invalidates tokens:** After changing password (server increments `token_version`), existing tokens no longer valid; next request with old token gets 401 and client logs out.
-- **Self-only updates:** Only the authenticated user (or admin) can change their own password/email; others get 403.
+- **Password change revokes sessions:** After a password change the server revokes the user's refresh tokens (`revokeAllUserTokens`), so the previous session can no longer refresh; the client then logs out or re-authenticates with the new password.
+- **Self-only updates:** Only the authenticated user can change their own password/email; a request targeting any other user id returns 403.
 - **Public settings:** `GET /api/settings/public` returns without auth and includes signup-enabled flag; register page uses it to show/hide signup.
 
 Use [TESTING_STRATEGY.md](../TESTING_STRATEGY.md) for unit vs integration and mocking (e.g. MSW for client, test JWT for server).

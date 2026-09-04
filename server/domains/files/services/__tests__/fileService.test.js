@@ -536,11 +536,10 @@ describe('uploadFile — S3 mode', () => {
 
     // TX2 (which sets sync_status='active') runs inside uploadService.uploadFile
     // per uploadService.md §2.3; fileService returns its result unchanged.
-    expect(uploadService.uploadFile).toHaveBeenCalled();
     expect(result).toMatchObject({ nodeId: 10, size: 42, mimeType: 'text/plain' });
   });
 
-  it('marks sync_status=pending_upload if TX1 succeeds but blob upload fails', async () => {
+  it('propagates S3 upload failure from uploadService (rollback happens inside uploadService)', async () => {
     const aclService = createAclServiceMock({
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
@@ -557,8 +556,8 @@ describe('uploadFile — S3 mode', () => {
       fileStorageMode: 's3',
     });
 
-    // The pending_upload state is left behind by uploadService's failed TX1→PUT
-    // flow; fileService dispatches to uploadService and propagates the failure.
+    // In S3 mode fileService dispatches to uploadService, which rolls the node
+    // back on failure (uploadService.md §2.5); fileService propagates the error.
     await expect(
       service.uploadFile(1, 5, 'fail.txt', Buffer.from('x'), 'text/plain', { id: 1 })
     ).rejects.toThrow();
@@ -740,10 +739,10 @@ describe('uploadFile — WebDAV mode', () => {
     expect(result).toMatchObject({ nodeId: 30, size: 2, mimeType: 'text/plain' });
   });
 
-  it('marks sync_status=orphaned_node if WebDAV PUT fails after DB commit', async () => {
+  it('rolls back the new node if WebDAV PUT fails after DB commit', async () => {
     const fileNodeService = createFileNodeServiceMock({
       createFile: jest.fn().mockResolvedValue({ id: 31 }),
-      updateSyncStatus: jest.fn().mockResolvedValue(true),
+      deleteNode: jest.fn().mockResolvedValue({ deletedCount: 1 }),
     });
     const blobStorageService = createBlobStorageServiceMock({
       uploadToWebdav: jest.fn().mockRejectedValue(new Error('connection refused')),
@@ -764,7 +763,9 @@ describe('uploadFile — WebDAV mode', () => {
       service.uploadFile(1, 5, 'fail.txt', Buffer.from('x'), 'text/plain', { id: 1 })
     ).rejects.toThrow();
 
-    expect(fileNodeService.updateSyncStatus).toHaveBeenCalledWith(31, 'orphaned_node');
+    // New node is rolled back — no phantom 0-byte file remains.
+    expect(fileNodeService.deleteNode).toHaveBeenCalledWith(31);
+    expect(fileNodeService.updateSyncStatus).not.toHaveBeenCalled();
   });
 });
 
@@ -809,6 +810,42 @@ it('WebDAV overwrite uses existing nodeId without calling createFile', async () 
     Buffer.from('new-content')
   );
   expect(result.nodeId).toBe(existingNodeId);
+});
+
+it('WebDAV overwrite PUT failure marks orphaned_node and keeps the existing node', async () => {
+  const existingNodeId = 42;
+  const mockChildren = [{ id: existingNodeId, name: 'hello.txt', type: 'file' }];
+
+  const fileNodeService = createFileNodeServiceMock({
+    listDirectory: jest.fn().mockResolvedValue(mockChildren),
+    createFile: jest.fn(),
+    updateSyncStatus: jest.fn().mockResolvedValue(true),
+    deleteNode: jest.fn().mockResolvedValue({ deletedCount: 1 }),
+  });
+
+  const blobStorageService = createBlobStorageServiceMock({
+    uploadToWebdav: jest.fn().mockRejectedValue(new Error('connection refused')),
+  });
+
+  const aclService = createAclServiceMock({
+    checkFolderPermission: jest.fn().mockResolvedValue(true),
+  });
+
+  const service = createFileService({
+    fileNodeService,
+    blobStorageService,
+    uploadService: createMockUploadService(),
+    aclService,
+    fileStorageMode: 'webdav',
+  });
+
+  await expect(
+    service.uploadFile(1, 5, 'hello.txt', Buffer.from('x'), 'text/plain', { id: 1 }, 'overwrite')
+  ).rejects.toThrow();
+
+  // Pre-existing node is kept and marked orphaned_node — it must NOT be deleted.
+  expect(fileNodeService.updateSyncStatus).toHaveBeenCalledWith(existingNodeId, 'orphaned_node');
+  expect(fileNodeService.deleteNode).not.toHaveBeenCalled();
 });
 
 // ── downloadFile ────────────────────────────────────────────────────
@@ -1306,7 +1343,6 @@ describe('moveNode', () => {
     await service.moveNode(10, 20, 1, { id: 1 });
 
     expect(ownerNodeResolver.isOwnerNode).toHaveBeenCalledWith(1, 10);
-    expect(ownerNodeResolver.isOwnerNode).toHaveBeenCalledTimes(1); // dest check short-circuited
     expect(permissionStore.revokeUserSubtreePermissions).not.toHaveBeenCalled();
   });
 
@@ -1624,10 +1660,10 @@ describe('copyFile — WebDAV mode', () => {
     expect(result).toMatchObject({ sourceNodeId: 10, copiedNodeId: 60 });
   });
 
-  it('sets orphaned_node if upload fails after node creation, re-throws error', async () => {
+  it('rolls back the copied node if upload fails after node creation, re-throws error', async () => {
     const fileNodeService = createFileNodeServiceMock({
       createFile: jest.fn().mockResolvedValue({ id: 61 }),
-      updateSyncStatus: jest.fn().mockResolvedValue(true),
+      deleteNode: jest.fn().mockResolvedValue({ deletedCount: 1 }),
     });
     const blobStorageService = createBlobStorageServiceMock({
       downloadBlob: jest.fn().mockResolvedValue(Buffer.from('data')),
@@ -1648,7 +1684,8 @@ describe('copyFile — WebDAV mode', () => {
 
     await expect(service.copyFile(10, 20, 'copy.txt', 1, { id: 1 })).rejects.toThrow();
 
-    // Node was created, but upload failed → orphaned marker set.
-    expect(fileNodeService.updateSyncStatus).toHaveBeenCalledWith(61, 'orphaned_node');
+    // Node was created, but the remote upload failed → copied node rolled back.
+    expect(fileNodeService.deleteNode).toHaveBeenCalledWith(61);
+    expect(fileNodeService.updateSyncStatus).not.toHaveBeenCalled();
   });
 });

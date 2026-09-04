@@ -4,8 +4,8 @@
 
 | Item            | Description                                                                                                                                                                                                                                                                                |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Role            | Single authoritative catalog of every `process.env` config key the server reads, classified into tiers (T0/T1/T2), flagged secret or not, with the in-code default (if any). Consumed by `configResolver`, the boot snapshot loader (T3), the admin config API (T4) and setup status (T6). |
-| Source of truth | `PLAN.md` §3/§4 and `docs/features/config-source-resolution.md` (variable classification)                                                                                                                                                                                                  |
+| Role            | Single authoritative catalog of every `process.env` config key the server reads, classified into tiers (T0/T1/T2), flagged secret or not, with the in-code default (if any). Consumed by `configResolver` for runtime resolution, `configResolver.populateT1Env` for the boot env mirror (server/index.js:254), the admin config API (server/domains/admin/routes/config.js), and the setup routes (server/domains/setup/). |
+| Source of truth | `docs/features/config-source-resolution.md` (variable classification)                                                                                                                                  |
 
 ---
 
@@ -33,7 +33,7 @@
 
 - `key` — raw env var name (row key in the `settings` table, D11).
 - `tier` — one of `TIER.*`.
-- `secret` — boolean; drives encryption at rest (DB write path) and `****` masking in `getEffectiveConfig`.
+- `secret` — boolean; drives **presentation-level** `'****'` masking in `getEffectiveConfig` and the admin/setup surfaces. It no longer implies any encryption at rest — secret DB rows are stored plaintext like any other value.
 - `default` — optional; the **in-code default** observed at the read site. If the code has no default, the field is omitted.
 
 ### 2.4 Tier semantics (resolver contract)
@@ -44,7 +44,12 @@
 | `T1` | Boot-frozen (require-time consts) | env → DB → default; effect requires restart          |
 | `T2` | Runtime / hot                     | env → DB → default; effect immediate                 |
 
-Precedence invariant (D1): env wins whenever set; DB is read only when the env var is absent. For secrets, an env value means "do not even decrypt".
+`JWT_SECRET` is the **optional T0 exception**: env-owned and boot-frozen, but **not
+required**. When the env var is unset/empty the read site generates an ephemeral random
+secret at boot for that process (restart → new secret → sessions invalidated); only a set
+value is used verbatim.
+
+Precedence invariant (D1): env wins whenever set; DB is read only when the env var is absent.
 
 ---
 
@@ -54,21 +59,19 @@ Precedence invariant (D1): env wins whenever set; DB is read only when the env v
 
 | key                            | tier | secret  | default                                  |
 | ------------------------------ | ---- | ------- | ---------------------------------------- |
-| `WEA_STORAGE_BACKEND`          | T0   | no      | `'sqlite'`                               |
 | `WEA_SQLITE_PATH`              | T0   | no      | —                                        |
-| `WEA_PG_HOST`                  | T0   | no      | —                                        |
-| `WEA_PG_PORT`                  | T0   | no      | `5432`                                   |
-| `WEA_PG_DATABASE`              | T0   | no      | —                                        |
-| `WEA_PG_USER`                  | T0   | no      | —                                        |
-| `WEA_PG_PASSWORD`              | T0   | **yes** | —                                        |
-| `WEA_PG_SSL`                   | T0   | no      | `false`                                  |
-| `WEA_PG_MAX`                   | T0   | no      | `10`                                     |
-| `WEA_PG_IDLE_TIMEOUT_MS`       | T0   | no      | `30000`                                  |
-| `WEA_PG_CONNECTION_TIMEOUT_MS` | T0   | no      | `10000`                                  |
+| `WEA_DB_HOST`                  | T0   | no      | —                                        |
+| `WEA_DB_PORT`                  | T0   | no      | `5432`                                   |
+| `WEA_DB_DATABASE`              | T0   | no      | —                                        |
+| `WEA_DB_USER`                  | T0   | no      | —                                        |
+| `WEA_DB_PASSWORD`              | T0   | **yes** | —                                        |
+| `WEA_DB_SSL`                   | T0   | no      | `false`                                  |
+| `WEA_DB_MAX`                   | T0   | no      | `10`                                     |
+| `WEA_DB_IDLE_TIMEOUT_MS`       | T0   | no      | `30000`                                  |
+| `WEA_DB_CONNECTION_TIMEOUT_MS` | T0   | no      | `10000`                                  |
 | `NODE_ENV`                     | T0   | no      | —                                        |
 | `DOTENV_CONFIG_PATH`           | T0   | no      | —                                        |
-| `encrypt_secret_key`           | T0   | **yes** | —                                        |
-| `JWT_SECRET`                   | T0   | **yes** | `'your-secret-key-change-in-production'` |
+| `JWT_SECRET`                   | T0   | **yes** | — (none — unset → ephemeral per-boot random)         |
 
 ### File storage
 
@@ -87,7 +90,7 @@ Precedence invariant (D1): env wins whenever set; DB is read only when the env v
 | `WEBDAV_UPSTREAM_URL`         | T2   | no      | —                    |
 | `MAX_THUMBNAIL_SIZE`          | T2   | no      | `300`                |
 | `THUMBNAIL_CONCURRENCY_LIMIT` | T1   | no      | `10`                 |
-| `THUMBNAIL_TOKEN_SECRET`      | T2   | no      | `'thumbnail-secret'` |
+| `THUMBNAIL_TOKEN_SECRET`      | T2   | **yes** | `'thumbnail-secret'` |
 | `THUMBNAIL_TOKEN_EXPIRY`      | T2   | no      | `'15m'`              |
 | `FFMPEG_PATH`                 | T1   | no      | —                    |
 | `FFMPEG_INIT_TIMEOUT_MS`      | T2   | no      | `2000`               |

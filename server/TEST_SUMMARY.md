@@ -2,13 +2,13 @@
 
 ## Overview
 
-Summary of the test implementation for the Express.js server application. All tests follow **black-box testing**: assertions focus on observable outcomes (return values, API responses, HTTP status codes), not implementation details. WebDAV, blob stores, and data stores use test doubles or in-memory storage. Test files are colocated with source under `domains/<x>/` (routes, services, stores, policy), plus shared `service/`, `store/`, `infrastructure/`, `middleware/`, `models/`, and `utils/`. See [docs/TESTING_STRATEGY.md](../docs/TESTING_STRATEGY.md) and [.cursor/rules/testing-principles.mdc](../.cursor/rules/testing-principles.mdc).
+Summary of the test implementation for the Express.js server application. All tests follow **black-box testing**: assertions focus on observable outcomes (return values, API responses, HTTP status codes), not implementation details. WebDAV, blob stores, and data stores use test doubles or in-memory storage. Test files are colocated with source under `domains/<x>/` (routes, services, stores, policy), plus shared `service/`, `store/`, `infrastructure/`, `middleware/`, `models/`, and `utils/`. See [docs/TESTING_STRATEGY.md](../docs/TESTING_STRATEGY.md).
 
 ## Test Statistics
 
-- **Total Test Suites**: 66
-- **Total Tests**: 1122 (1119 passed, 3 skipped)
-- **Pass Rate**: 100% (1119 passed, 0 failed) ✅
+- **Total Test Suites**: 87 (as of 2026-09-02)
+- **Total Tests**: 1663 (1658 passed, 5 skipped)
+- **Pass Rate**: 100% (1658 passed, 0 failed) ✅
 - **Execution Time**: Reported per run by `npm run test`
 
 ## Test Breakdown by Category
@@ -117,7 +117,7 @@ The per-module and overall coverage percentages previously published in this fil
 
 ## Conclusion
 
-- 1119 tests across 66 suites, 100% pass rate (3 skipped)
+- 1658 tests across 87 suites, 100% pass rate (5 skipped, as of 2026-09-02)
 - Tests are colocated with source: domain routes/services/stores/policy under `domains/<x>/`, shared layer under `service/` and `store/`, plus `infrastructure/`, `middleware/`, `models/`, `utils/`
 - Route integration tests cover main API endpoints via Supertest
 - Test infrastructure and commands documented

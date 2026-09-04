@@ -48,19 +48,21 @@ cp .env.example .env
 > ([`docs/features/setup-cli.md`](features/setup-cli.md)) for headless/remote hosts. Per the
 > **config-source-resolution**
 > model ([`docs/features/config-source-resolution.md`](features/config-source-resolution.md)),
-> the wizard/CLI write the startup-critical keys `JWT_SECRET` (and `encrypt_secret_key` only
-> when auto-generated) into `.env`;
-> **every other value is stored in the metadata DB `settings`
-> table** and read back at boot (`.env` always wins when a value is present there). The
-> **metadata connection is `.env`-owned**: `WEA_STORAGE_BACKEND` (`/WEA_PG_*` /
-> `WEA_SQLITE_PATH`) must be declared in `.env` before boot and is **never written by the
-> wizard/CLI**. A
+> the wizard/CLI write `JWT_SECRET` into `.env` **only when the operator supplies one** (the
+> `jwt` block is optional — omitted, the server uses an ephemeral per-boot secret);
+> **every other value — including secret values — is stored in the metadata DB `settings`
+> table** as plaintext and read back at boot (`.env` always wins when a value is present
+> there). The
+> **metadata connection is `.env`-owned**: the remote DB block (`WEA_DB_HOST` /
+> `WEA_DB_DATABASE` / `WEA_DB_USER` / `WEA_DB_PASSWORD`, plus optional `WEA_DB_PORT` /
+> pool/SSL keys) — or the default SQLite backend's `WEA_SQLITE_PATH` — must be declared in
+> `.env` before boot and is **never written by the wizard/CLI**. A
 > restart completes the setup. The reference table below remains canonical for the T0
 > `.env` set and for manual/container configuration of DB-stored keys.
 
 ### Environment Variable Reference
 
-**Source column** — `T0` = must live in `.env` (startup-critical / `.env`-only, D2/D4/D7); `DB` = may be stored in the metadata DB `settings` table (via the wizard or the admin "Advanced settings" editor); a `.env` value always wins over the DB row (D1).
+**Source column** — `T0` = `.env`-owned (read at boot / `.env`-only, D2/D4/D7); `DB` = may be stored in the metadata DB `settings` table (via the wizard or the admin "Advanced settings" editor); a `.env` value always wins over the DB row (D1). T0 does not imply required: `JWT_SECRET` is `.env`-owned but **optional** (unset/empty → ephemeral random secret generated at boot).
 
 | Variable                         | Source |              Required               | Description                                                                                                                                                        | Default            |
 | :------------------------------- | :----: | :---------------------------------: | :----------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------- |
@@ -68,27 +70,25 @@ cp .env.example .env
 | **S3_BUCKET**                    |   DB   |   Only when `WEA_FILE_STORAGE=s3`   | S3 bucket name for blob storage                                                                                                                                    | -                  |
 | **AWS_REGION**                   |   DB   |   Only when `WEA_FILE_STORAGE=s3`   | AWS region of the S3 bucket                                                                                                                                        | -                  |
 | **AWS_ACCESS_KEY_ID**            |   DB   |   Only when `WEA_FILE_STORAGE=s3`   | AWS access key ID for S3                                                                                                                                           | -                  |
-| **AWS_SECRET_ACCESS_KEY**        |   DB   |   Only when `WEA_FILE_STORAGE=s3`   | AWS secret access key for S3 (encrypted at rest)                                                                                                                   | -                  |
+| **AWS_SECRET_ACCESS_KEY**        |   DB   |   Only when `WEA_FILE_STORAGE=s3`   | AWS secret access key for S3                                                                                                                                      | -                  |
 | **S3_ENDPOINT**                  |   DB   |                 No                  | Custom S3-compatible endpoint (e.g. MinIO); empty for AWS                                                                                                          | -                  |
 | **WEBDAV_URL**                   |   DB   | Only when `WEA_FILE_STORAGE=webdav` | WebDAV server base URL (e.g. `https://dav.example.com`)                                                                                                            | -                  |
 | **WEBDAV_USERNAME**              |   DB   | Only when `WEA_FILE_STORAGE=webdav` | WebDAV server account name                                                                                                                                         | -                  |
-| **WEBDAV_PASSWORD**              |   DB   | Only when `WEA_FILE_STORAGE=webdav` | WebDAV server password (encrypted at rest)                                                                                                                         | -                  |
-| **JWT_SECRET**                   |   T0   |                 Yes                 | Secret key for token signing (must change in production!)                                                                                                          | -                  |
+| **WEBDAV_PASSWORD**              |   DB   | Only when `WEA_FILE_STORAGE=webdav` | WebDAV server password                                                                                                                                             | -                  |
+| **JWT_SECRET**                   |   T0   |                 No                  | JWT signing key. Optional — unset/empty ⇒ ephemeral random secret generated at boot (restart invalidates all sessions). Set one unified value across instances; the legacy placeholder only warns. | -                  |
 | **PORT**                         |   DB   |                 No                  | Server port                                                                                                                                                        | `5001`             |
 | **CORS_ORIGINS**                 |   DB   |                 No                  | Allowed browser origins (comma-separated)                                                                                                                          | `*` (with warning) |
-| **WEA_STORAGE_BACKEND**          |   T0   |                 No                  | Metadata storage backend (`sqlite` or `postgresql`)                                                                                                                | `sqlite`           |
-| **WEA_SQLITE_PATH**              |   T0   |                 No                  | Path to the SQLite metadata database file                                                                                                                          | `data/webdav.db`   |
-| **WEA_PG_HOST**                  |   T0   |                 No                  | PostgreSQL host when using `postgresql` backend                                                                                                                    | -                  |
-| **WEA_PG_PORT**                  |   T0   |                 No                  | PostgreSQL port when using `postgresql` backend                                                                                                                    | `5432`             |
-| **WEA_PG_DATABASE**              |   T0   |                 No                  | PostgreSQL database name when using `postgresql` backend                                                                                                           | -                  |
-| **WEA_PG_USER**                  |   T0   |                 No                  | PostgreSQL user when using `postgresql` backend                                                                                                                    | -                  |
-| **WEA_PG_PASSWORD**              |   T0   |                 No                  | PostgreSQL password when using `postgresql` backend                                                                                                                | -                  |
-| **WEA_PG_SSL**                   |   T0   |                 No                  | Enable PostgreSQL TLS from app pool (`true`/`false`)                                                                                                               | `false`            |
-| **WEA_PG_MAX**                   |   T0   |                 No                  | PostgreSQL pool max connections                                                                                                                                    | `10`               |
-| **WEA_PG_IDLE_TIMEOUT_MS**       |   T0   |                 No                  | PostgreSQL pool idle timeout (ms)                                                                                                                                  | `30000`            |
-| **WEA_PG_CONNECTION_TIMEOUT_MS** |   T0   |                 No                  | PostgreSQL pool connection timeout (ms)                                                                                                                            | `10000`            |
+| **WEA_SQLITE_PATH**              |   T0   |                 No                  | Path to the SQLite metadata database file (SQLite is the default metadata backend when no remote DB keys are set)                                                  | `data/webdav.db`   |
+| **WEA_DB_HOST**                  |   T0   |         Only with remote DB         | Remote PostgreSQL host; with DATABASE/USER/PASSWORD it selects the remote metadata backend (all four required together)                                            | -                  |
+| **WEA_DB_PORT**                  |   T0   |                 No                  | Remote PostgreSQL port                                                                                                                                             | `5432`             |
+| **WEA_DB_DATABASE**              |   T0   |         Only with remote DB         | Remote PostgreSQL database name                                                                                                                                    | -                  |
+| **WEA_DB_USER**                  |   T0   |         Only with remote DB         | Remote PostgreSQL user                                                                                                                                             | -                  |
+| **WEA_DB_PASSWORD**              |   T0   |         Only with remote DB         | Remote PostgreSQL password (secret)                                                                                                                                | -                  |
+| **WEA_DB_SSL**                   |   T0   |                 No                  | Enable remote PostgreSQL TLS from app pool (`true`/`false`)                                                                                                        | `false`            |
+| **WEA_DB_MAX**                   |   T0   |                 No                  | Remote PostgreSQL pool max connections                                                                                                                             | `10`               |
+| **WEA_DB_IDLE_TIMEOUT_MS**       |   T0   |                 No                  | Remote PostgreSQL pool idle timeout (ms)                                                                                                                           | `30000`            |
+| **WEA_DB_CONNECTION_TIMEOUT_MS** |   T0   |                 No                  | Remote PostgreSQL pool connection timeout (ms)                                                                                                                     | `10000`            |
 | **PGSSLMODE**                    |   T0   |                 No                  | Optional CLI/client SSL mode (for tools such as `psql`)                                                                                                            | `prefer`           |
-| **encrypt_secret_key**           |   T0   |                 Yes                 | Master key for DB-stored secrets (AES-256-GCM). Wizard auto-generates when absent and keeps an existing value. Losing it makes encrypted DB secrets unrecoverable. | -                  |
 | **MAX_THUMBNAIL_SIZE**           |   DB   |                 No                  | Max thumbnail resolution (pixels)                                                                                                                                  | `300`              |
 | **FFMPEG_PATH**                  |   DB   |                 No                  | Absolute path to FFmpeg executable (when auto-detect fails)                                                                                                        | `ffmpeg` (PATH)    |
 | **WEBDAV_AUTH_TYPE**             |   DB   |                 No                  | WebDAV auth method (`auto`, `basic`, `digest`)                                                                                                                     | `auto`             |
@@ -96,36 +96,48 @@ cp .env.example .env
 | **JWT_EXPIRES_IN**               |   DB   |                 No                  | Login session duration (e.g. `30m`, `1h`, `7d`)                                                                                                                    | `30m`              |
 | **EMAIL\_\***                    |   DB   |                 No                  | SMTP settings for signup/approval notifications (HOST, PORT, USER, PASS, etc.)                                                                                     | -                  |
 
-> **Secrets at rest:** DB-stored secrets (`EMAIL_PASSWORD`, `WEBDAV_PASSWORD`,
-> `AWS_SECRET_ACCESS_KEY`, `ADMIN_DEFAULT_PASSWORD`) are encrypted with AES-256-GCM under
-> `encrypt_secret_key` (T0, `.env`). A DB backup leak exposes ciphertext only; plaintext
-> requires both the DB and `.env`.
+> **Secret values:** DB-stored secret keys (`EMAIL_PASSWORD`, `WEBDAV_PASSWORD`,
+> `AWS_SECRET_ACCESS_KEY`, `ADMIN_DEFAULT_PASSWORD`) are stored as **plaintext strings** in
+> the `settings` table; the registry `secret` flag only masks them (`****`) on API/UI
+> surfaces. A DB backup leak therefore exposes these values in plaintext — treat DB backups
+> with the same care as `.env`.
 
 ## 3. Metadata Storage Configuration
 
-The system supports PostgreSQL-backed and SQLite-backed metadata with the same store interfaces. The legacy `fs`/`webdav` metadata backends are removed (Phase 7).
+The system supports a SQLite-backed (default) and a remote PostgreSQL-backed metadata store with the same store interfaces. The legacy `fs`/`webdav` metadata backends are removed (Phase 7).
 
-> **The metadata (DB) connection is `.env`-owned.** `WEA_STORAGE_BACKEND` (and the `WEA_PG_*`
-> block when `postgresql`) must be declared in `.env`/env before boot; it is **not** configurable
-> through the admin UI or the setup wizard (D5/D6/D7). A `postgresql` backend with any
-> `WEA_PG_HOST/PORT/DATABASE/USER/PASSWORD` missing aborts boot with a clear terminal error.
+> **The metadata (DB) connection is `.env`-owned.** The remote DB block (`WEA_DB_HOST`,
+> `WEA_DB_DATABASE`, `WEA_DB_USER`, `WEA_DB_PASSWORD`, plus optional pool/SSL keys) and the
+> SQLite path (`WEA_SQLITE_PATH`) must be declared in `.env`/env before boot; the metadata
+> backend is **not** configurable through the admin UI or the setup wizard (D5/D6/D7).
+> Setting any one of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` selects
+> the remote PostgreSQL backend; an incomplete set (at least one set but not all four) aborts
+> boot with a clear terminal error that lists the missing keys. When none of them is set, the
+> default SQLite backend is used.
 > The setup wizard then serves only non-T0 settings (file storage, email, server, runtime) into
 > the connected DB. A minimal first-boot `.env` is:
 >
 > ```dotenv
-> WEA_STORAGE_BACKEND=sqlite        # or postgresql with WEA_PG_* below
+> # SQLite (default): no remote DB keys set
 > WEA_SQLITE_PATH=/path/to/webdav.db
-> JWT_SECRET=change-me
-> encrypt_secret_key=change-me-too   # auto-generated by the wizard when absent
+> # or remote PostgreSQL: all four WEA_DB_* keys required
+> WEA_DB_HOST=db.example.com
+> WEA_DB_DATABASE=webdav_easyaccess
+> WEA_DB_USER=webdav
+> WEA_DB_PASSWORD=change-me
+> # JWT_SECRET is OPTIONAL: omit it and the server generates an ephemeral per-boot secret
+> # (restart -> new secret -> all sessions invalidated). Non-T0 values (file storage,
+> # email, server) are stored in the DB by the wizard.
+> # JWT_SECRET=change-me
 > ```
 
 1.  **SQLite backend (`sqlite`)** (default):
     - Stores metadata in a local SQLite database file (development/testing).
-    - Set `WEA_STORAGE_BACKEND=sqlite` and `WEA_SQLITE_PATH=/path/to/webdav.db`.
+    - Used when no remote DB keys are set; optionally set `WEA_SQLITE_PATH=/path/to/webdav.db`.
 2.  **PostgreSQL backend (`postgresql`)**:
     - Stores metadata in normalized relational tables (`users`, `settings`, `permissions_*`, `share_links`, `recent_files`, `permission_requests`, `locks`).
     - Recommended for stronger consistency and high-concurrency metadata operations.
-    - Set `WEA_STORAGE_BACKEND=postgresql` and provide `WEA_PG_HOST`, `WEA_PG_PORT`, `WEA_PG_DATABASE`, `WEA_PG_USER`, `WEA_PG_PASSWORD` (plus optional pool/SSL settings).
+    - Provide `WEA_DB_HOST`, `WEA_DB_PORT`, `WEA_DB_DATABASE`, `WEA_DB_USER`, `WEA_DB_PASSWORD` (plus optional pool/SSL settings) — all four credential keys are required together.
 
 ### File Storage (Blob) Configuration
 
@@ -133,7 +145,7 @@ File/blob storage is selected independently of the metadata backend:
 
 - **`WEA_FILE_STORAGE=s3`** (default): blob content lives in S3. Requires `S3_BUCKET`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`; optionally `S3_ENDPOINT` for an S3-compatible service (e.g. MinIO). WebDAV settings are unused in this mode.
 - **`WEA_FILE_STORAGE=webdav`**: blob content lives on the WebDAV server. Requires `WEBDAV_URL`, `WEBDAV_USERNAME`, `WEBDAV_PASSWORD`.
-- The file-storage backend is independent of the metadata backend (`WEA_STORAGE_BACKEND`): either blob backend can be combined with either metadata backend.
+- The file-storage backend is independent of the metadata backend (SQLite or remote PostgreSQL): either blob backend can be combined with either metadata backend.
 - Migrating blob content between the two backends (WebDAV ↔ S3) is supported — see [Data Migration: WebDAV ↔ S3](#data-migration-webdav--s3).
 
 ### PostgreSQL Initialization (v2)
@@ -146,11 +158,11 @@ To apply the DDL manually (equivalent to what startup does), instead:
 
 1.  Apply the initial normalized DDL:
     ```bash
-    PGPASSWORD="$WEA_PG_PASSWORD" psql \
-      -h "$WEA_PG_HOST" \
-      -p "${WEA_PG_PORT:-5432}" \
-      -U "$WEA_PG_USER" \
-      -d "$WEA_PG_DATABASE" \
+    PGPASSWORD="$WEA_DB_PASSWORD" psql \
+      -h "$WEA_DB_HOST" \
+      -p "${WEA_DB_PORT:-5432}" \
+      -U "$WEA_DB_USER" \
+      -d "$WEA_DB_DATABASE" \
       -f server/store/postgresql/ddl/001_initial_normalized_schema.sql
     ```
 2.  Verify schema apply status using your DB tooling (for example `\dt` / `\d` in `psql`) and treat the DDL file as canonical:
@@ -172,7 +184,7 @@ Moves physical blobs between the two supported blob backends (WebDAV and S3) in 
 
 - The **direction** is auto-derived from the current app config (`WEA_FILE_STORAGE`): source = the env mode, destination = the other backend. The server is the single source of truth; only the **destination** config is user input (`--dest-*` flags or `DEST_*` env; e.g. `DEST_TYPE=s3`, `DEST_S3_BUCKET`, ... or `DEST_TYPE=webdav`, `DEST_WEBDAV_URL`, ...). `DEST_TYPE` must match the derived destination (`s3` for a webdav source, `webdav` for an s3 source).
 - The migration run uses a **snapshot approach**: the active file-node set is enumerated once at start; the tool reads only from source and writes only to the destination store plus the required DB updates. The app remains fully usable during the copy.
-- **Source blobs are never deleted** in the MVP (a delete mode is a follow-up).
+- **Source blobs are never deleted** (a delete-mode follow-up is tracked in `docs/IMPROVEMENT_PLAN.md`).
 
 **Direction and cutover (migration mode)**
 
@@ -180,7 +192,7 @@ The migration direction is never selected — it follows from the current `WEA_F
 
 Both directions follow the same cutover shape:
 
-1. **Run the copy (`apply`)** — dialog destination credentials are used for the copy; on completion the destination config is **auto-persisted** (DB-sourced storage keys are written to the DB `settings` table, secrets AES-encrypted; env-sourced keys are reported as `skippedEnvSourced` and you edit `.env` manually instead). A `dry-run` also enters migration mode (its enumeration progress is shown on `/migration`) but writes nothing.
+1. **Run the copy (`apply`)** — dialog destination credentials are used for the copy; on completion the destination config is **auto-persisted** (DB-sourced storage keys are written to the DB `settings` table as plaintext, secret values included; env-sourced keys are reported as `skippedEnvSourced` and you edit `.env` manually instead). A `dry-run` also enters migration mode (its enumeration progress is shown on `/migration`) but writes nothing.
 2. **Restart the app** — storage config is boot-frozen (`WEA_FILE_STORAGE` + the backend block are read once at startup), so a restart is strictly required for the switch to take effect.
 3. **Verify** — after restart the active backend is probed at boot (WebDAV probe, or the S3 probe) and the backend-health card reflects the new backend.
 
@@ -220,6 +232,33 @@ node server/scripts/migrateBlobs.js --dest-type=webdav \
 - Per-node failures are recorded and processing continues; the run only aborts on config/snapshot/destination-validation failure.
 - **Resume is automatic:** re-running an interrupted migration skips already-migrated nodes (no `--resume` flag); `--force` re-copies nodes even when an automatic resume marker is present.
 
+### Config Sync: `.env` ↔ DB (`configSync`)
+
+> **Active — see `docs/spec/server/tools/config-sync.md` for the full spec.**
+
+Detects drift between `.env` values and the metadata DB `settings` rows for every non-T0 config key (`.env` always wins per the config-source-resolution model, so a DB row under an env-set key is a shadow copy that can go stale), alerts on it, and optionally reconciles the DB rows to mirror `.env`. T0 keys (`.env`-owned, incl. `JWT_SECRET`) are never reported or written; DB rows are never deleted; comparison is plaintext string equality on every key; secret values are always masked (`****`) in output. Feature spec: `docs/features/config-sync.md`.
+
+**Usage**
+
+```bash
+# 1) Drift report (read-only, default mode). Exit 0 = clean, 1 = drift
+node server/scripts/configSync.js --check
+
+# 2) Same report, machine-readable (single JSON document: findings + summary + exitCode)
+node server/scripts/configSync.js --check --json
+
+# 3) Reconcile: upsert DB rows for every non-T0 key set in .env (plaintext), then re-run
+#    the check in-process. Requires --yes
+node server/scripts/configSync.js --apply --yes
+```
+
+**Report statuses**: `differs` (drift → exit 1), `shadowed` / `env-only` / `db-only` (informational), each with `db_updated_at` for DB-backed findings. There is no key-loss status — DB rows are plaintext and always readable.
+
+**Rules**
+
+- `--apply` requires `--yes`; without it the run is a usage error (exit 2).
+- The tool boots the metadata schema only (no default-admin seeding) and never writes `.env`; a running server is unaffected until its next config read/restart, as with any other `settings` change.
+
 ### Transaction and Concurrency Notes (postgresql)
 
 - User creation/email change/deletion run in a single transaction.
@@ -231,10 +270,10 @@ node server/scripts/migrateBlobs.js --dest-type=webdav \
 
 Use this checklist for deployment/runtime validation only:
 
-- [ ] `WEA_STORAGE_BACKEND` and backend-specific env keys are set as intended.
+- [ ] Metadata backend env keys are set as intended (the remote `WEA_DB_*` block is either complete or absent — partial sets abort boot).
 - [ ] Required DDL has been applied (`001`). On a fresh DB the server applies it automatically at startup; on a migrated target DB the migration tool applies it first.
 - [ ] Blob migration (WebDAV ↔ S3, `docs/spec/server/tools/blob-migration.md`) ran a `dry-run` before `apply` and report warnings are resolved; cutover steps (persist/restart/probe) followed.
-- [ ] Metadata migration (sqlite ↔ PG, `docs/spec/server/tools/metadata-migration.md`) used `target-scan` + explicit wipe confirm; `.env` cutover (`WEA_STORAGE_BACKEND` + `WEA_PG_*`) and restart performed; ".env setup needed" banner resolved.
+- [ ] Metadata migration (sqlite ↔ PG, `docs/spec/server/tools/metadata-migration.md`) used `target-scan` + explicit wipe confirm; `.env` cutover (the remote `WEA_DB_*` block) and restart performed; ".env setup needed" banner resolved.
 - [ ] `/api/health` returns healthy status after server start.
 
 For store contract validation, use `docs/spec/server/store/*.md`.
@@ -290,8 +329,11 @@ user@host`, then open `http://127.0.0.1:5001`.
    the flag-driven non-interactive mode; feature spec: `docs/features/setup-cli.md`. Equivalent
    to pre-populating the configuration directly (see below).
 4. **env-only first run (containerized/automated)** — inject every key the completeness rules
-   require (`WEA_STORAGE_BACKEND` + backend block, `WEA_FILE_STORAGE` + its credential block,
-   `JWT_SECRET`, and any non-default settings) via environment. `setup_complete` is derived, so
+   require (the remote `WEA_DB_*` block when PostgreSQL metadata is used — none is required for
+   the default SQLite backend — `WEA_FILE_STORAGE` + its credential block, and any non-default
+   settings) via environment. `JWT_SECRET` is **not** part of completeness: a single instance
+   may rely on the ephemeral per-boot fallback, while multi-instance deployments must inject one
+   unified `JWT_SECRET`. `setup_complete` is derived, so
    the app boots fully configured on the first run, never enters setup mode, and binds all
    interfaces immediately. `.env` never needs to exist.
 

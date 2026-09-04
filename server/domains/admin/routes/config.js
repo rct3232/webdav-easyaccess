@@ -17,7 +17,10 @@ const {
   isTier,
   isSecret,
 } = require('../../../infrastructure/configRegistry');
-const { encryptSecret, hasEncryptedRows } = require('../../../utils/configEncryption');
+const {
+  buildConfigSyncReport,
+  syncConfigSyncEnv,
+} = require('../services/configSyncService');
 const {
   runProbe,
   classifyToHealthCode,
@@ -34,12 +37,12 @@ const SECRET_MASK = '****';
 // the real stored value is resolved through the resolver before probing.
 const TARGET_CONNECTION_FIELDS = {
   postgresql: {
-    WEA_PG_HOST: 'host',
-    WEA_PG_PORT: 'port',
-    WEA_PG_DATABASE: 'database',
-    WEA_PG_USER: 'user',
-    WEA_PG_PASSWORD: 'password',
-    WEA_PG_SSL: 'ssl',
+    WEA_DB_HOST: 'host',
+    WEA_DB_PORT: 'port',
+    WEA_DB_DATABASE: 'database',
+    WEA_DB_USER: 'user',
+    WEA_DB_PASSWORD: 'password',
+    WEA_DB_SSL: 'ssl',
   },
   s3: {
     S3_BUCKET: 'bucket',
@@ -102,24 +105,29 @@ const isAdmin = asyncHandler(async (req, res, next) => {
   next();
 });
 
-// Get effective config (masked secrets, source/tier/secret per registry key)
-// plus a key-lost warning: encrypted DB secret rows exist but the master key
-// (encrypt_secret_key) is missing, so those secrets are undecryptable.
+// Stateless admin check for GET /api/admin/health only: trusts the JWT
+// is_admin claim (set by authenticateToken) instead of a DB-backed
+// User.findById lookup, so the health snapshot stays reachable during a
+// metadata-DB outage and the admin health card can render the failure.
+const isAdminFromToken = asyncHandler(async (req, res, next) => {
+  if (!req.user?.is_admin) {
+    throw createError(SERVER_ERROR_CODES.admin.adminRequired, HTTP_STATUS.FORBIDDEN);
+  }
+  next();
+});
+
+// Get effective config (masked secrets, source/tier/secret per registry key).
 router.get(
   '/config',
   authenticateToken,
   isAdmin,
   asyncHandler(async (req, res) => {
-    const resolver = getSharedResolver();
-    const [config, all] = await Promise.all([resolver.getEffectiveConfig(), Settings.getAll()]);
-    res.json({
-      config,
-      key_lost_warning: Boolean(hasEncryptedRows(all) && !process.env.encrypt_secret_key),
-    });
+    const config = await getSharedResolver().getEffectiveConfig();
+    res.json({ config });
   })
 );
 
-// Update allowlisted config keys (write to DB, encrypt secrets, invalidate T2 cache)
+// Update allowlisted config keys (write plaintext to DB, invalidate T2 cache)
 router.put(
   '/config',
   authenticateToken,
@@ -160,19 +168,11 @@ router.put(
       }
 
       if (isSecret(key)) {
-        // Masked/blank secret keeps its existing ciphertext (only-re-encrypt-on-new-value).
+        // Masked/blank secret keeps its existing stored value (keep-existing).
         if (value === undefined || value === null || value === '' || value === '****') {
           continue;
         }
-        const masterKey = process.env.encrypt_secret_key;
-        if (!masterKey) {
-          throw createError(
-            SERVER_ERROR_CODES.admin.configEncryptKeyMissing,
-            HTTP_STATUS.INTERNAL_SERVER_ERROR
-          );
-        }
-        const payload = encryptSecret(String(value), masterKey);
-        await Settings.set(key, JSON.stringify(payload));
+        await Settings.set(key, String(value));
       } else {
         await Settings.set(key, String(value));
       }
@@ -241,8 +241,61 @@ router.post(
 );
 
 // Admin health snapshot: full per-backend tracker state (code/hint/lastChecked).
-router.get('/health', authenticateToken, isAdmin, (req, res) => {
+// Stateless token-claim admin check (no DB read) so it works during a DB outage.
+router.get('/health', authenticateToken, isAdminFromToken, (req, res) => {
   res.json({ backends: getBackendHealth().getHealth() });
 });
+
+// Env↔DB config-sync report (read-only). The env source is the running process
+// environment, classified through the config resolver (source: 'env'); the .env
+// file on disk is never read. Mirrors the CLI --check algorithm over the shared
+// core (configSyncService) — same findings/summary/exitCode JSON.
+router.get(
+  '/config/sync-report',
+  authenticateToken,
+  isAdmin,
+  asyncHandler(async (req, res) => {
+    const effective = await getSharedResolver().getEffectiveConfig();
+    const envValueOf = (key) =>
+      effective[key]?.source === 'env' ? process.env[key] : undefined;
+    const report = await buildConfigSyncReport({
+      settings: Settings,
+      envValueOf,
+    });
+    res.json(report);
+  })
+);
+
+// Env→DB config-sync reconcile — the web equivalent of the CLI --apply --yes.
+// Writes env-sourced non-T0 registry values into the DB settings rows as
+// plaintext (secrets included), then invalidates the resolver T2 cache for the
+// written keys so the running server observes them immediately.
+router.post(
+  '/config/sync-from-env',
+  authenticateToken,
+  isAdmin,
+  asyncHandler(async (req, res) => {
+    const resolver = getSharedResolver();
+    const effective = await resolver.getEffectiveConfig();
+    const envValueOf = (key) =>
+      effective[key]?.source === 'env' ? process.env[key] : undefined;
+
+    const result = await syncConfigSyncEnv({
+      settings: Settings,
+      envValueOf,
+    });
+
+    const changedKeys = result.writes.filter((w) => w.status === 'updated').map((w) => w.key);
+    if (changedKeys.length > 0) {
+      resolver.invalidateCache(changedKeys);
+    }
+
+    res.json({
+      writes: result.writes,
+      report: result.report,
+      messageCode: SERVER_MESSAGE_CODES.admin.configSyncDone,
+    });
+  })
+);
 
 module.exports = router;

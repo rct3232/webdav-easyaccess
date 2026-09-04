@@ -18,13 +18,11 @@ const { closeSqliteDb } = require('../../store/storage');
 const Settings = require('../../models/Settings');
 const User = require('../../models/User');
 const backendProbe = require('../../infrastructure/backendProbe');
-const { isEncryptedPayload, decryptSecret } = require('../../utils/configEncryption');
 
 // Keys the CLI boot/apply reads or writes. Saved at load time (after the
 // shared test-setup.js ran) and restored after every test.
 const MANAGED_KEYS = [
   'NODE_ENV',
-  'WEA_STORAGE_BACKEND',
   'WEA_SQLITE_PATH',
   'WEA_DISABLE_DEFAULT_ADMIN',
   'ADMIN_DEFAULT_PASSWORD',
@@ -32,7 +30,6 @@ const MANAGED_KEYS = [
   'WEA_FILE_STORAGE',
   'JWT_SECRET',
   'JWT_EXPIRES_IN',
-  'encrypt_secret_key',
   'S3_BUCKET',
   'AWS_REGION',
   'AWS_ACCESS_KEY_ID',
@@ -54,13 +51,13 @@ const MANAGED_KEYS = [
   'WEA_SETUP_WEBDAV_PASSWORD',
   'WEA_SETUP_AWS_SECRET_ACCESS_KEY',
   'WEA_SETUP_JWT_SECRET',
-  'WEA_PG_HOST',
-  'WEA_PG_PORT',
-  'WEA_PG_DATABASE',
-  'WEA_PG_USER',
-  'WEA_PG_PASSWORD',
-  'WEA_PG_SSL',
-  'WEA_PG_MAX',
+  'WEA_DB_HOST',
+  'WEA_DB_PORT',
+  'WEA_DB_DATABASE',
+  'WEA_DB_USER',
+  'WEA_DB_PASSWORD',
+  'WEA_DB_SSL',
+  'WEA_DB_MAX',
 ];
 
 const SAVED_ENV = {};
@@ -81,7 +78,9 @@ const NON_TTY_INPUT = { isTTY: false };
 
 function setBaselineSqliteEnv() {
   for (const key of MANAGED_KEYS) delete process.env[key];
-  process.env.WEA_STORAGE_BACKEND = 'sqlite';
+  // No WEA_DB_* identity key set → the metadata backend defaults to sqlite
+  // (presence-based; there is no WEA_STORAGE_BACKEND switch anymore).
+  delete process.env.WEA_STORAGE_BACKEND;
 }
 
 function setCompleteWebdavEnv() {
@@ -285,7 +284,7 @@ describe('setup.js apply guard rails', () => {
 });
 
 describe('setup.js apply happy path (throwaway sqlite store)', () => {
-  it('applies the full webdav config, writes .env 0600, upserts encrypted DB rows, updates the admin password, and flips status to complete', async () => {
+  it('applies the full webdav config, writes .env 0600, upserts plaintext DB rows, updates the admin password, and flips status to complete', async () => {
     const { envPath } = freshScratchEnv();
     const { output, lines } = makeOutput();
     const args = [
@@ -323,9 +322,10 @@ describe('setup.js apply happy path (throwaway sqlite store)', () => {
     expect(fs.statSync(envPath).mode & 0o777).toBe(0o600);
     const env = readEnvFile(envPath);
     expect(env.JWT_SECRET).toBe('explicit-jwt-secret');
-    expect(env.encrypt_secret_key).toMatch(/^[a-f0-9]{64}$/);
+    expect(env).not.toHaveProperty('encrypt_secret_key');
     for (const key of [
-      'WEA_STORAGE_BACKEND',
+      'WEA_DB_HOST',
+      'WEA_DB_PASSWORD',
       'WEA_FILE_STORAGE',
       'WEBDAV_URL',
       'WEBDAV_USERNAME',
@@ -344,13 +344,8 @@ describe('setup.js apply happy path (throwaway sqlite store)', () => {
     expect(rows.CORS_ORIGINS).toBe('http://localhost:3000');
     expect(rows.JWT_EXPIRES_IN).toBe('30m');
     expect(rows.EMAIL_HOST).toBe('smtp.example.com');
-
-    const webdavSecret = JSON.parse(rows.WEBDAV_PASSWORD);
-    const emailSecret = JSON.parse(rows.EMAIL_PASSWORD);
-    expect(isEncryptedPayload(webdavSecret)).toBe(true);
-    expect(isEncryptedPayload(emailSecret)).toBe(true);
-    expect(decryptSecret(webdavSecret, env.encrypt_secret_key)).toBe('dav-pass');
-    expect(decryptSecret(emailSecret, env.encrypt_secret_key)).toBe('mail-pass');
+    expect(rows.WEBDAV_PASSWORD).toBe('dav-pass');
+    expect(rows.EMAIL_PASSWORD).toBe('mail-pass');
     expect(rows).not.toHaveProperty('JWT_SECRET');
 
     const admin = await User.findByUsername('admin');
@@ -367,7 +362,7 @@ describe('setup.js apply happy path (throwaway sqlite store)', () => {
     expect(status.missing).toEqual([]);
   });
 
-  it('accepts secrets from WEA_SETUP_* env vars and never echoes them', async () => {
+  it('accepts secrets from WEA_SETUP_* env vars, never echoes them, and writes no .env when no JWT secret is supplied', async () => {
     const { envPath } = freshScratchEnv();
     process.env.WEA_SETUP_ADMIN_PASSWORD = 'env-admin-pass';
     process.env.WEA_SETUP_WEBDAV_PASSWORD = 'env-webdav-pass';
@@ -386,11 +381,43 @@ describe('setup.js apply happy path (throwaway sqlite store)', () => {
     expect(allOut).not.toContain('env-webdav-pass');
     expect(allOut).not.toContain('env-admin-pass');
 
-    const env = readEnvFile(envPath);
-    expect(env.JWT_SECRET).toMatch(/^[a-f0-9]{64}$/);
+    // No --jwt-secret / WEA_SETUP_JWT_SECRET supplied: JWT_SECRET is optional
+    // and nothing is written to .env (the server signs with an ephemeral
+    // per-boot secret), so the .env partition is empty and no file is created.
+    expect(fs.existsSync(envPath)).toBe(false);
     const rows = await Settings.getAll();
-    const secret = JSON.parse(rows.WEBDAV_PASSWORD);
-    expect(decryptSecret(secret, env.encrypt_secret_key)).toBe('env-webdav-pass');
+    expect(rows.WEBDAV_PASSWORD).toBe('env-webdav-pass');
+    expect(rows).not.toHaveProperty('JWT_SECRET');
+
+    const admin = await User.findByUsername('admin');
+    expect(await bcrypt.compare('env-admin-pass', admin.password)).toBe(true);
+  });
+
+  it('writes JWT_SECRET to .env when supplied via the WEA_SETUP_JWT_SECRET env var', async () => {
+    const { envPath } = freshScratchEnv();
+    process.env.WEA_SETUP_ADMIN_PASSWORD = 'env-admin-pass';
+    process.env.WEA_SETUP_WEBDAV_PASSWORD = 'env-webdav-pass';
+    process.env.WEA_SETUP_JWT_SECRET = 'env-supplied-jwt-secret';
+    const { output, lines } = makeOutput();
+    const args = [
+      '--yes',
+      '--file-backend=webdav',
+      '--webdav-url=https://dav.example.com',
+      '--webdav-username=dav-user',
+    ];
+
+    const code = await main(args, { output, input: NON_TTY_INPUT });
+
+    expect(code).toBe(0);
+    const allOut = [...lines.log, ...lines.error].join('\n');
+    expect(allOut).not.toContain('env-supplied-jwt-secret');
+
+    expect(fs.existsSync(envPath)).toBe(true);
+    const env = readEnvFile(envPath);
+    expect(env.JWT_SECRET).toBe('env-supplied-jwt-secret');
+    expect(env).not.toHaveProperty('encrypt_secret_key');
+    const rows = await Settings.getAll();
+    expect(rows.WEBDAV_PASSWORD).toBe('env-webdav-pass');
 
     const admin = await User.findByUsername('admin');
     expect(await bcrypt.compare('env-admin-pass', admin.password)).toBe(true);

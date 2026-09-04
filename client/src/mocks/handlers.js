@@ -61,9 +61,16 @@ export const mockAdminUsers = {
 // T1 = restartRequired.
 export function createDefaultMockAdminConfig() {
   return {
-    WEA_STORAGE_BACKEND: { value: 'sqlite', source: 'env', tier: 'T0', secret: false },
-    WEA_PG_HOST: { value: 'db.internal', source: 'env', tier: 'T0', secret: false },
-    WEA_PG_PORT: { value: '5432', source: 'default', tier: 'T0', secret: false },
+    WEA_DB_HOST: { value: 'db.internal', source: 'env', tier: 'T0', secret: false },
+    WEA_DB_PORT: { value: '5432', source: 'default', tier: 'T0', secret: false },
+    WEA_DB_DATABASE: { value: 'webdav', source: 'env', tier: 'T0', secret: false },
+    WEA_DB_USER: { value: 'wea', source: 'env', tier: 'T0', secret: false },
+    WEA_DB_PASSWORD: { value: '****', source: 'env', tier: 'T0', secret: true },
+    WEA_DB_SSL: { value: 'false', source: 'default', tier: 'T0', secret: false },
+    WEA_DB_MAX: { value: '10', source: 'default', tier: 'T0', secret: false },
+    WEA_DB_IDLE_TIMEOUT_MS: { value: '30000', source: 'default', tier: 'T0', secret: false },
+    WEA_DB_CONNECTION_TIMEOUT_MS: { value: '10000', source: 'default', tier: 'T0', secret: false },
+    WEA_DB_QUERY_TIMEOUT_MS: { value: '60000', source: 'default', tier: 'T0', secret: false },
     WEA_FILE_STORAGE: { value: 's3', source: 'default', tier: 'T1', secret: false },
     S3_BUCKET: { value: 'my-bucket', source: 'env', tier: 'T1', secret: false },
     AWS_REGION: { value: 'us-east-1', source: 'env', tier: 'T1', secret: false },
@@ -871,7 +878,6 @@ export const handlers = [
       setup_complete: false,
       missing: ['S3_BUCKET', 'AWS_REGION', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'],
       current: {
-        WEA_STORAGE_BACKEND: 'sqlite',
         WEA_FILE_STORAGE: 's3',
         PORT: '5001',
         JWT_SECRET: '',
@@ -957,7 +963,7 @@ export const handlers = [
 
   // --- Admin: effective config (docs/spec/server/routes/config.md) ---
   http.get(`${API_BASE}/admin/config`, () => {
-    return HttpResponse.json({ config: mockAdminConfig, key_lost_warning: false });
+    return HttpResponse.json({ config: mockAdminConfig });
   }),
 
   http.put(`${API_BASE}/admin/config`, async ({ request }) => {
@@ -980,7 +986,7 @@ export const handlers = [
         return errorResponse('serverErrors.admin.configEnvSourcedProtected', 400, { key });
       }
       if (entry.secret) {
-        // Masked/blank secret keeps its existing ciphertext (only-re-encrypt-on-new-value).
+        // Masked/blank secret is kept as-is (server preserves the stored value).
         if (value === undefined || value === null || value === '' || value === '****') {
           continue;
         }
@@ -998,6 +1004,39 @@ export const handlers = [
       applied,
       restartRequired,
       messageCode: 'serverMessages.admin.configSaved',
+    });
+  }),
+
+  // --- Admin: env→DB config sync (docs/spec/server/routes/config.md) ---
+  http.get(`${API_BASE}/admin/config/sync-report`, () => {
+    return HttpResponse.json({
+      findings: [],
+      summary: {
+        drift: 0,
+        shadowed: 0,
+        envOnly: 0,
+        dbOnly: 0,
+        total: 0,
+      },
+      exitCode: 0,
+    });
+  }),
+
+  http.post(`${API_BASE}/admin/config/sync-from-env`, () => {
+    return HttpResponse.json({
+      writes: [],
+      report: {
+        findings: [],
+        summary: {
+          drift: 0,
+          shadowed: 0,
+          envOnly: 0,
+          dbOnly: 0,
+          total: 0,
+        },
+        exitCode: 0,
+      },
+      messageCode: 'serverMessages.admin.configSyncDone',
     });
   }),
 

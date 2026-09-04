@@ -1,30 +1,33 @@
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
-const { computeSetupStatus } = require('../infrastructure/setupStatus');
 const { getSharedResolver } = require('../infrastructure/configResolver');
 
+// The well-known insecure default some templates still ship. When explicitly
+// set it is used as-is but triggers a "change it" warning — never an error.
 const DEFAULT_JWT_SECRET = 'your-secret-key-change-in-production';
-const JWT_SECRET = process.env.JWT_SECRET || DEFAULT_JWT_SECRET;
 
-// Fail fast in production if JWT_SECRET is not configured and setup is complete.
-// In setup mode (first run) a prod install with a default secret boots with a
-// warning instead of crashing so the wizard is reachable (D7, §5.2.1).
-if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEFAULT_JWT_SECRET) {
-  const { setup_complete } = computeSetupStatus(process.env);
-  if (setup_complete) {
-    throw new Error('JWT_SECRET must be set in production'); // defense-in-depth; unreachable per §5.1
-  }
-  console.warn(
-    '[setup-mode] NODE_ENV=production with default JWT_SECRET — booting in setup mode; the wizard must set JWT_SECRET before restart'
-  );
-}
+// JWT_SECRET is an optional, .env-owned T0 key (docs/features/
+// config-source-resolution.md). Resolution is frozen at require time:
+// - when the env var is set, it is used verbatim (the legacy default only warns);
+// - when it is unset/empty, an ephemeral random secret is generated for THIS
+//   boot. A restart yields a new secret and invalidates every outstanding
+//   session (full re-login; refresh tokens are in-memory). Multi-instance
+//   deployments MUST set one unified JWT_SECRET so all instances share the key.
+const envSecret =
+  process.env.JWT_SECRET && process.env.JWT_SECRET.trim() !== '' ? process.env.JWT_SECRET : null;
+const JWT_SECRET = envSecret || crypto.randomBytes(48).toString('hex');
 
-// Warn in development when using the default secret.
-if (JWT_SECRET === DEFAULT_JWT_SECRET) {
+if (envSecret === DEFAULT_JWT_SECRET) {
   // eslint-disable-next-line no-console
   console.warn(
     '⚠️  JWT_SECRET is using the default value. Set the JWT_SECRET environment variable for security.'
+  );
+} else if (envSecret === null && process.env.NODE_ENV !== 'test') {
+  // eslint-disable-next-line no-console
+  console.warn(
+    '⚠️  JWT_SECRET is unset — generated an ephemeral random secret for this boot. A restart will invalidate all sessions; set one unified JWT_SECRET for multi-instance deployments.'
   );
 }
 

@@ -39,14 +39,14 @@ export const scratchPort = SCRATCH_PORT;
 const CONFIG_ENV_KEYS = [
   'DOTENV_CONFIG_PATH',
   'WEA_SQLITE_PATH',
-  'WEA_STORAGE_BACKEND',
-  'WEA_PG_HOST',
-  'WEA_PG_PORT',
-  'WEA_PG_DATABASE',
-  'WEA_PG_USER',
-  'WEA_PG_PASSWORD',
-  'WEA_PG_SSL',
-  'WEA_PG_MAX',
+  'WEA_DB_HOST',
+  'WEA_DB_PORT',
+  'WEA_DB_DATABASE',
+  'WEA_DB_USER',
+  'WEA_DB_PASSWORD',
+  'WEA_DB_SSL',
+  'WEA_DB_MAX',
+  'WEA_DB_QUERY_TIMEOUT_MS',
   'WEA_FILE_STORAGE',
   'S3_BUCKET',
   'S3_REGION',
@@ -79,8 +79,8 @@ const CONFIG_ENV_KEYS = [
 // connect to the e2e Postgres superuser on the host-exposed :5433.
 const PG_HOST = '127.0.0.1';
 const PG_PORT = 5433;
-const PG_USER = process.env.WEA_PG_USER || 'e2etest';
-const PG_PASSWORD = process.env.WEA_PG_PASSWORD || 'e2etest';
+const PG_USER = process.env.WEA_DB_USER || 'e2etest';
+const PG_PASSWORD = process.env.WEA_DB_PASSWORD || 'e2etest';
 
 // bytemark/webdav container defaults (mirror e2e/global-setup.ts).
 const WEBDAV_BASE = 'http://127.0.0.1:8090';
@@ -359,8 +359,9 @@ export function execScratchSqlite(dbPath: string, sql: string): Promise<void> {
  * app's webdav blob store resolves WEBDAV_URL from the DB (to `url`) and
  * `setup_complete` derives true. The settings table schema mirrors the
  * converted DDL (CREATE TABLE IF NOT EXISTS makes the boot re-init a no-op).
- * WEBDAV_PASSWORD is stored as plaintext (legacy row) so key-lost restart cases
- * still boot complete. Defaults `url` to the shared WEBDAV_BASE.
+ * App-layer field encryption was removed, so secret rows (WEBDAV_PASSWORD) are
+ * stored as plaintext and read back directly by the server. Defaults `url` to
+ * the shared WEBDAV_BASE.
  */
 export async function seedWebdavSettings(scratchDir: string, url = WEBDAV_BASE): Promise<void> {
   const dbPath = path.join(scratchDir, 'webdav.db');

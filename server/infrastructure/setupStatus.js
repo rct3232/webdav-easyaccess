@@ -1,10 +1,5 @@
 'use strict';
 
-// Mirrors server/utils/auth.js:5 (JWT_SECRET fallback). Duplicated locally on
-// purpose so this module stays dependency-free — importing auth.js would create
-// a require cycle, since auth.js consumes computeSetupStatus (see §5.2.1).
-const DEFAULT_JWT_SECRET = 'your-secret-key-change-in-production';
-
 const SECRET_MASK = '****';
 
 const SECRET_KEYS = new Set([
@@ -13,7 +8,7 @@ const SECRET_KEYS = new Set([
   'JWT_SECRET',
   'ADMIN_DEFAULT_PASSWORD',
   'EMAIL_PASSWORD',
-  'WEA_PG_PASSWORD',
+  'WEA_DB_PASSWORD',
 ]);
 
 const WIZARD_WRITABLE_KEYS = [
@@ -40,21 +35,19 @@ const WIZARD_WRITABLE_KEYS = [
   'EMAIL_FROM_NAME',
 ];
 
-const PG_REQUIRED_KEYS = [
-  'WEA_PG_HOST',
-  'WEA_PG_PORT',
-  'WEA_PG_DATABASE',
-  'WEA_PG_USER',
-  'WEA_PG_PASSWORD',
-];
+// The four identity keys that decide whether a remote database is configured.
+// Presence-based metadata-backend selection (docs/spec/server/store/storage.md
+// §2.4): any of them set → remote PostgreSQL (partial set = missing keys), none
+// set → sqlite (default).
+const DB_REQUIRED_KEYS = ['WEA_DB_HOST', 'WEA_DB_DATABASE', 'WEA_DB_USER', 'WEA_DB_PASSWORD'];
 
 const S3_REQUIRED_KEYS = ['S3_BUCKET', 'AWS_REGION', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'];
 
 const WEBDAV_REQUIRED_KEYS = ['WEBDAV_URL', 'WEBDAV_USERNAME', 'WEBDAV_PASSWORD'];
 
 function metadataMissing(env) {
-  if (env.WEA_STORAGE_BACKEND === 'postgresql') {
-    return PG_REQUIRED_KEYS.filter((key) => !env[key]);
+  if (DB_REQUIRED_KEYS.some((key) => env[key])) {
+    return DB_REQUIRED_KEYS.filter((key) => !env[key]);
   }
   return [];
 }
@@ -64,12 +57,6 @@ function fileMissing(env) {
     return WEBDAV_REQUIRED_KEYS.filter((key) => !env[key]);
   }
   return S3_REQUIRED_KEYS.filter((key) => !env[key]);
-}
-
-function jwtMissing(env) {
-  if (env.NODE_ENV !== 'production') return [];
-  if (env.JWT_SECRET && env.JWT_SECRET !== DEFAULT_JWT_SECRET) return [];
-  return ['JWT_SECRET'];
 }
 
 function buildCurrent(env) {
@@ -111,13 +98,14 @@ function computeSetupStatus(env = {}, options = {}) {
   const view = options.effectiveConfig ? mergeEffective(env, options.effectiveConfig) : env;
   const missingMetadata = metadataMissing(view);
   const missingFile = fileMissing(view);
-  const missingJwt = jwtMissing(view);
+  // JWT_SECRET is optional (docs/features/config-source-resolution.md): it is
+  // never a completeness condition — an unset secret falls back to an ephemeral
+  // per-boot random in server/utils/auth.js.
   return {
-    setup_complete:
-      missingMetadata.length === 0 && missingFile.length === 0 && missingJwt.length === 0,
-    missing: [...missingMetadata, ...missingFile, ...missingJwt],
+    setup_complete: missingMetadata.length === 0 && missingFile.length === 0,
+    missing: [...missingMetadata, ...missingFile],
     current: buildCurrent(view),
   };
 }
 
-module.exports = { computeSetupStatus, PG_REQUIRED_KEYS };
+module.exports = { computeSetupStatus, DB_REQUIRED_KEYS };

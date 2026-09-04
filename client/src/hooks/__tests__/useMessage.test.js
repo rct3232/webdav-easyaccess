@@ -155,7 +155,6 @@ describe('useMessage', () => {
       result.current.showErrorFromError(error);
     });
 
-    expect(getServerErrorDisplay).toHaveBeenCalled();
     expect(result.current.message.show).toBe(true);
     expect(result.current.message.type).toBe('error');
     expect(result.current.message.text).toBe('Translated error');

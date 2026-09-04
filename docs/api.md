@@ -149,7 +149,7 @@ These routes are for accessing shared files via a public link (token in path). A
 
 | Method | Path               | Auth | Description                                                                                                          |
 | ------ | ------------------ | ---- | -------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/health`      | None | Health check. Response: `{ status: "ok", messageCode, backends: { postgresql, s3, webdav } }` (status strings only). |
+| GET    | `/api/health`      | None | Health check. Response: `{ status: "ok", messageCode, activeFileStorage, backends: { postgresql, s3, webdav } }` (status strings only; `activeFileStorage` = effective file backend). |
 | GET    | `/api/webdav/test` | None | Test WebDAV connection.                                                                                              |
 | GET    | `/api/webdav/info` | None | WebDAV URL info (e.g. for UI).                                                                                       |
 
@@ -163,8 +163,8 @@ All admin routes require a valid JWT and admin role (`isAdmin`).
 | ------ | ------------------------ | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET    | `/api/admin/settings`    | Token + Admin | Get system settings.                                                                                                                                                                                            |
 | PUT    | `/api/admin/settings`    | Token + Admin | Update system settings.                                                                                                                                                                                         |
-| GET    | `/api/admin/config`      | Token + Admin | Effective config: masked secrets, `value`/`source`/`tier`/`secret` per registry key, plus `key_lost_warning`.                                                                                                   |
-| PUT    | `/api/admin/config`      | Token + Admin | Write allowlisted non-T0 config keys to DB (secrets encrypted, T2 cache invalidated); rejects `source=env` keys (400). Body: `{ values: { KEY: value } }`. Returns `{ applied, restartRequired, messageCode }`. |
+| GET    | `/api/admin/config`      | Token + Admin | Effective config: `value`/`source`/`tier`/`secret` per registry key. Set secrets are masked `"****"`; unset secrets have no `value` (field omitted).                                                  |
+| PUT    | `/api/admin/config`      | Token + Admin | Write allowlisted non-T0 config keys to DB as plaintext (masked `'****'`/blank secrets keep the stored value; T2 cache invalidated); rejects `source=env` and T0 keys (400). Body: `{ values: { KEY: value } }`. Returns `{ applied, restartRequired, messageCode }`. |
 | POST   | `/api/admin/config/test` | Token + Admin | Connection test with pending values for a file-storage backend. Body: `{ target: "s3"\|"webdav", ...pendingKeys }`. Returns `{ ok: true }` or `{ ok: false, errorCode, message, reason? }`.                     |
 | GET    | `/api/admin/health`      | Token + Admin | Backend-health snapshot (per-backend status/code/hint/last-checked).                                                                                                                                            |
 
@@ -207,7 +207,7 @@ return `403 setup.complete`. Full contract: `docs/spec/server/routes/setup.md`.
 | ------ | ------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------- |
 | GET    | `/api/setup/status` | None | Setup status: `{ setup_complete, missing: string[], current: {…masked} }`.                                                 |
 | POST   | `/api/setup/test`   | None | Test a connection target (`postgresql` / `s3` / `webdav`). 403 `setup.complete` when already complete.                     |
-| POST   | `/api/setup/apply`  | None | Write the configured keys to `.env`. Returns `200 { restart_required: true }`. 403 `setup.complete` when already complete. |
+| POST   | `/api/setup/apply`  | None | Persist configured keys: when the optional `jwt` block is supplied, write its `JWT_SECRET` to `.env`; every non-T0 value (secrets as plaintext) is stored in the metadata DB `settings` table. Returns `200 { restart_required: true }`. 403 `setup.complete` when already complete. |
 
 ---
 

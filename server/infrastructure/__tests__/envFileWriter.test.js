@@ -34,24 +34,24 @@ afterAll(() => {
 describe('writeEnv', () => {
   it('creates the file with allowlisted entries when it does not exist', () => {
     const p = makeEnvPath();
-    writeEnv(p, { WEA_STORAGE_BACKEND: 'sqlite', PORT: '5001' });
+    writeEnv(p, { WEA_FILE_STORAGE: 'sqlite', PORT: '5001' });
     expect(fs.existsSync(p)).toBe(true);
-    expect(readLines(p)).toEqual(['WEA_STORAGE_BACKEND=sqlite', 'PORT=5001']);
+    expect(readLines(p)).toEqual(['WEA_FILE_STORAGE=sqlite', 'PORT=5001']);
   });
 
   it('preserves unknown keys and comment lines verbatim while upserting allowlisted keys', () => {
     const p = makeEnvPath();
     fs.writeFileSync(
       p,
-      '# Database settings\nWEA_STORAGE_BACKEND=sqlite\nCUSTOM_FLAG=keep-me\nPORT=5001\n'
+      '# Storage settings\nWEA_FILE_STORAGE=sqlite\nCUSTOM_FLAG=keep-me\nPORT=5001\n'
     );
 
-    writeEnv(p, { WEA_STORAGE_BACKEND: 'postgresql', EMAIL_HOST: 'smtp.example.com' });
+    writeEnv(p, { WEA_FILE_STORAGE: 'webdav', EMAIL_HOST: 'smtp.example.com' });
 
     const lines = readLines(p);
     expect(lines).toEqual([
-      '# Database settings',
-      'WEA_STORAGE_BACKEND=postgresql',
+      '# Storage settings',
+      'WEA_FILE_STORAGE=webdav',
       'CUSTOM_FLAG=keep-me',
       'PORT=5001',
       'EMAIL_HOST=smtp.example.com',
@@ -60,12 +60,12 @@ describe('writeEnv', () => {
 
   it('replaces an allowlisted key in place, preserving its position', () => {
     const p = makeEnvPath();
-    fs.writeFileSync(p, 'PORT=5001\nWEA_STORAGE_BACKEND=sqlite\nJWT_SECRET=old\n');
+    fs.writeFileSync(p, 'PORT=5001\nWEA_FILE_STORAGE=sqlite\nJWT_SECRET=old\n');
 
-    writeEnv(p, { WEA_STORAGE_BACKEND: 'postgresql', JWT_SECRET: 'new' });
+    writeEnv(p, { WEA_FILE_STORAGE: 'webdav', JWT_SECRET: 'new' });
 
     const lines = readLines(p);
-    expect(lines).toEqual(['PORT=5001', 'WEA_STORAGE_BACKEND=postgresql', 'JWT_SECRET=new']);
+    expect(lines).toEqual(['PORT=5001', 'WEA_FILE_STORAGE=webdav', 'JWT_SECRET=new']);
   });
 
   it('throws on a key outside the allowlist and leaves the file untouched', () => {
@@ -119,14 +119,12 @@ describe('writeEnv', () => {
     const p = makeEnvPath();
     fs.writeFileSync(p, 'PORT=5001\nJWT_SECRET=old\n');
 
-    writeEnv(p, { PORT: '6000', JWT_SECRET: 'new' }, { backup: true });
+    const backupPath = writeEnv(p, { PORT: '6000', JWT_SECRET: 'new' }, { backup: true });
 
     const backups = backupNames(p);
     expect(backups).toHaveLength(1);
-    expect(readLines(path.join(path.dirname(p), backups[0]))).toEqual([
-      'PORT=5001',
-      'JWT_SECRET=old',
-    ]);
+    expect(backupPath).toBe(path.join(path.dirname(p), backups[0]));
+    expect(readLines(backupPath)).toEqual(['PORT=5001', 'JWT_SECRET=old']);
     expect(readLines(p)).toEqual(['PORT=6000', 'JWT_SECRET=new']);
   });
 
@@ -134,24 +132,34 @@ describe('writeEnv', () => {
     const p = makeEnvPath();
     fs.writeFileSync(p, 'PORT=5001\n');
 
-    writeEnv(p, { PORT: '6000' }, { backup: false });
+    const backupPath = writeEnv(p, { PORT: '6000' }, { backup: false });
 
+    expect(backupPath).toBeNull();
     expect(backupNames(p)).toEqual([]);
   });
 
   it('creates no backup when the target does not exist', () => {
     const p = makeEnvPath();
-    writeEnv(p, { PORT: '5001' }, { backup: true });
+
+    const backupPath = writeEnv(p, { PORT: '5001' }, { backup: true });
+
+    expect(backupPath).toBeNull();
     expect(backupNames(p)).toEqual([]);
   });
 
   it('exports a frozen allowlist of wizard-writable keys', () => {
-    expect(WIZARD_WRITABLE_KEYS).toContain('WEA_STORAGE_BACKEND');
-    expect(WIZARD_WRITABLE_KEYS).toContain('WEA_PG_PASSWORD');
+    expect(WIZARD_WRITABLE_KEYS).toContain('JWT_SECRET');
     expect(WIZARD_WRITABLE_KEYS).toContain('AWS_SECRET_ACCESS_KEY');
     expect(WIZARD_WRITABLE_KEYS).toContain('WEBDAV_PASSWORD');
     expect(WIZARD_WRITABLE_KEYS).toContain('EMAIL_FROM_NAME');
-    expect(WIZARD_WRITABLE_KEYS).toContain('encrypt_secret_key');
+    expect(WIZARD_WRITABLE_KEYS).toContain('WEA_FILE_STORAGE');
+    // Metadata-backend T0 keys (.env-owned, D6) and ADMIN_DEFAULT_PASSWORD are
+    // never written by apply, so they must not be wizard-writable.
+    expect(WIZARD_WRITABLE_KEYS).not.toContain('WEA_SQLITE_PATH');
+    expect(WIZARD_WRITABLE_KEYS).not.toContain('WEA_DB_HOST');
+    expect(WIZARD_WRITABLE_KEYS).not.toContain('WEA_DB_PASSWORD');
+    expect(WIZARD_WRITABLE_KEYS).not.toContain('ADMIN_DEFAULT_PASSWORD');
+    expect(WIZARD_WRITABLE_KEYS).not.toContain('encrypt_secret_key');
     expect(Object.isFrozen(WIZARD_WRITABLE_KEYS)).toBe(true);
   });
 });

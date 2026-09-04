@@ -484,4 +484,156 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
       }
     });
   });
+
+  // =========================================================================
+  // Group 5: Modified-DDL detection
+  // =========================================================================
+  describe('modified-DDL detection', () => {
+    let db;
+    let SchemaManager;
+
+    beforeAll(async () => {
+      db = await openMemoryDb();
+      db.run('PRAGMA foreign_keys = ON');
+      db.run('PRAGMA defer_foreign_keys = ON');
+
+      jest.doMock('../../store/storage', () => {
+        const { createStorageMock } = require('@testing/mocks/storeMocks');
+        return createStorageMock({
+          getSqliteConnection: () => db,
+          sqliteQuery: (sql, params = []) =>
+            new Promise((resolve, reject) => {
+              db.all(sql, params || [], (err, rows) =>
+                err ? reject(err) : resolve({ rows: rows || [] })
+              );
+            }),
+          sqliteRun: (sql, params = []) =>
+            new Promise((resolve, reject) => {
+              db.run(sql, params || [], function (err) {
+                if (err) reject(err);
+                else resolve({ changes: this.changes, lastID: this.lastID });
+              });
+            }),
+          withSqliteTransaction: async (callback) => {
+            await new Promise((resolve, reject) =>
+              db.run('BEGIN', (err) => (err ? reject(err) : resolve()))
+            );
+            try {
+              const client = {
+                query: (sql, params) =>
+                  new Promise((resolve, reject) => {
+                    db.all(sql, params || [], (err, rows) =>
+                      err ? reject(err) : resolve({ rows: rows || [] })
+                    );
+                  }),
+              };
+              const result = await callback(client);
+              await new Promise((resolve, reject) =>
+                db.run('COMMIT', (err) => (err ? reject(err) : resolve()))
+              );
+              return result;
+            } catch (e) {
+              await new Promise((resolve) => db.run('ROLLBACK', resolve));
+              throw e;
+            }
+          },
+        });
+      });
+
+      jest.isolateModules(() => {
+        SchemaManager = require('../schemaManager');
+      });
+    });
+
+    afterAll(async () => {
+      await closeDb(db);
+    });
+
+    function query(sql, params = []) {
+      return new Promise((resolve, reject) => {
+        db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows || [])));
+      });
+    }
+
+    function run(sql, params = []) {
+      return new Promise((resolve, reject) => {
+        db.run(sql, params || [], function (err) {
+          if (err) reject(err);
+          else resolve({ changes: this.changes, lastID: this.lastID });
+        });
+      });
+    }
+
+    async function getUserTables() {
+      const rows = await query(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+      );
+      return rows.map((r) => r.name);
+    }
+
+    async function corruptStoredChecksum(filename) {
+      const bogus = '0'.repeat(64);
+      await run('UPDATE _schema_migrations SET checksum = ? WHERE filename = ?', [
+        bogus,
+        filename,
+      ]);
+      return bogus;
+    }
+
+    it('throws a hard error naming the file and both checksums when a stored checksum mismatches', async () => {
+      await SchemaManager.applyPendingMigrations('sqlite');
+
+      const ddlFiles = fs.readdirSync(DDL_DIR).filter((f) => f.endsWith('.sql')).sort();
+      expect(ddlFiles.length).toBeGreaterThan(0);
+      const filename = ddlFiles[0];
+      const actualChecksum = crypto
+        .createHash('sha256')
+        .update(fs.readFileSync(path.join(DDL_DIR, filename), 'utf8'))
+        .digest('hex');
+      const bogusChecksum = await corruptStoredChecksum(filename);
+      expect(bogusChecksum).not.toBe(actualChecksum);
+
+      const rowsBefore = await query(
+        'SELECT filename, checksum, applied_at FROM _schema_migrations ORDER BY filename'
+      );
+      const tablesBefore = await getUserTables();
+
+      let error;
+      try {
+        await SchemaManager.applyPendingMigrations('sqlite');
+      } catch (e) {
+        error = e;
+      }
+
+      expect(error).toBeDefined();
+      expect(error.message).toContain(`Schema drift: DDL file '${filename}'`);
+      expect(error.message).toContain(bogusChecksum);
+      expect(error.message).toContain(actualChecksum);
+
+      const rowsAfter = await query(
+        'SELECT filename, checksum, applied_at FROM _schema_migrations ORDER BY filename'
+      );
+      expect(rowsAfter).toEqual(rowsBefore);
+      expect(await getUserTables()).toEqual(tablesBefore);
+    });
+
+    it('repeated runs keep failing deterministically with no side effects', async () => {
+      const rowsBefore = await query(
+        'SELECT filename, checksum, applied_at FROM _schema_migrations ORDER BY filename'
+      );
+      const tablesBefore = await getUserTables();
+
+      await expect(SchemaManager.applyPendingMigrations('sqlite')).rejects.toThrow(
+        /Schema drift/
+      );
+      await expect(SchemaManager.applyPendingMigrations('sqlite')).rejects.toThrow(
+        /Schema drift/
+      );
+
+      expect(
+        await query('SELECT filename, checksum, applied_at FROM _schema_migrations ORDER BY filename')
+      ).toEqual(rowsBefore);
+      expect(await getUserTables()).toEqual(tablesBefore);
+    });
+  });
 });

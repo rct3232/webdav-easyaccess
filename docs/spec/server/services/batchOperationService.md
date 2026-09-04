@@ -126,7 +126,7 @@ Copies multiple files to destination directories in sequence. Copy semantics are
 
 1. **Permission gate — source read:** If not admin, call `aclService.checkFilePermission(userId, copy.sourceNodeId, PERMISSIONS.READ)`. If false, push error with `status: 'skipped'` and reason `'permission_denied'` and skip to next item.
 2. **Permission gate — destination write:** If not admin, call `aclService.checkFolderPermission(userId, copy.destinationParentNodeId, PERMISSIONS.WRITE)`. If false, push error with `status: 'skipped'` and reason `'permission_denied'` and skip to next item. Both source read and destination write failures produce the same single `'permission_denied'` reason.
-3. **Delegation:** Call `fileService.copyFile(copy.sourceNodeId, copy.destinationParentNodeId, userId, user)`. On success, increment copiedCount.
+3. **Delegation:** Call `fileService.copyFile(copy.sourceNodeId, copy.destinationParentNodeId, copy.newName || null, userId, user)`. On success, increment copiedCount.
 4. **Error capture:** If fileService.copyFile throws (e.g., no active blob for source, name conflict), push `{ sourceNodeId: copy.sourceNodeId, destinationParentNodeId: copy.destinationParentNodeId, status: 'failed', reason: error.message }` to errors and continue with next item.
 
 **Processing order:** Sequential iteration over copies array. Partial failures are recorded; remaining items still processed.

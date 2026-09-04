@@ -1,16 +1,15 @@
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
-import { createRequire } from 'node:module';
 
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 import {
   ensureClientBuild,
+  ensureWebdavSubtree,
   killScratch,
   openSystemSettings,
   queryScratchSqlite,
-  readEnvFile,
   scratchDirFor,
   seedWebdavSettings,
   spawnScratchServer,
@@ -33,15 +32,13 @@ import { loginWithCredentials } from './helpers/auth';
  * the scratch `.env`: they are pre-seeded into the scratch sqlite DB before the
  * server's first boot, so they resolve as DB-sourced (editable) and setup stays
  * complete (Phase B D1 gating requires editable connection keys; the F4 guard
- * locks env-sourced rows). WEBDAV_PASSWORD is stored as plaintext (legacy row)
- * so the key_lost restart case (master key removed) still boots complete.
+ * locks env-sourced rows). App-layer field encryption was removed, so DB secret
+ * rows (e.g. WEBDAV_PASSWORD) are plaintext strings the server reads directly.
  *
  * Never touches the shared E2E state. Requires the docker infra (webdav :8090)
  * only for the success-path gating tests (guarded) and the scratch server's
  * boot-time webdav probe, which warns on failure.
  */
-
-const require = createRequire(__filename);
 
 const SCRATCH_BASE = 'http://127.0.0.1:5003';
 const WEBDAV_BASE = 'http://127.0.0.1:8090';
@@ -49,12 +46,6 @@ const WEBDAV_AUTH = Buffer.from('e2etest:e2etest123').toString('base64');
 
 const CASE_ID = 'admin-config';
 const ADMIN_PASSWORD = 'AdminConfigE2e!123';
-// Deterministic 32-byte hex master key (also written into the scratch .env).
-const ENCRYPT_KEY = 'a'.repeat(64);
-
-const { decryptSecret } = require('../server/utils/configEncryption') as {
-  decryptSecret: (payload: unknown, passphrase: string) => string;
-};
 
 type ConfigEntry = {
   value?: string;
@@ -66,10 +57,12 @@ type ConfigEntry = {
 // PROPFIND :8090 (mirrors e2e/global-setup.ts): a 200/207 means the bytemark
 // container answers directory listings, i.e. a webdav connection test would
 // succeed. Retries for a few seconds because the container can still be
-// settling right after a docker-compose recreate; memoized for the worker run.
+// settling right after a docker-compose recreate. Only a SUCCESS is memoized —
+// the container may come up mid-suite, so a transient "unreachable" must not
+// lock later callers out (E2E-ADMINCFG-011 settles after the container is up).
 let webdavReachableCache: boolean | null = null;
 async function detectWebdavReachable(): Promise<boolean> {
-  if (webdavReachableCache !== null) return webdavReachableCache;
+  if (webdavReachableCache === true) return true;
 
   const probeOnce = (): Promise<boolean> =>
     new Promise((resolve) => {
@@ -102,7 +95,6 @@ async function detectWebdavReachable(): Promise<boolean> {
       return true;
     }
     if (Date.now() - startedAt >= 15_000) {
-      webdavReachableCache = false;
       return false;
     }
     await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -124,17 +116,23 @@ test.beforeEach(async () => {
   fs.mkdirSync(scratch, { recursive: true });
   writeScratchEnv(scratch, {
     PORT: '5003',
-    WEA_STORAGE_BACKEND: 'sqlite',
     WEA_FILE_STORAGE: 'webdav',
+    // Metadata backend stays sqlite by default: no WEA_DB_* identity keys are
+    // written, so presence-based selection boots the scratch sqlite store.
     // WebDAV connection keys are deliberately NOT in the .env: they are seeded
     // into the sqlite DB (see seedWebdavSettings) so the editor rows are
     // DB-sourced/editable and the D1 save-gating tests can exercise them.
     WEBDAV_UPSTREAM_URL: WEBDAV_BASE,
     JWT_SECRET: 'admin-config-e2e-jwt-secret',
     ADMIN_DEFAULT_PASSWORD: ADMIN_PASSWORD,
-    encrypt_secret_key: ENCRYPT_KEY,
   });
   await seedWebdavSettings(scratch);
+  // global-setup wipes the webdav container's DAV root (bind mount) and only
+  // restarts the container in webdav mode — in s3 mode the root is gone and
+  // Apache 403s every DAV method. Restore it (restart + PROPFIND wait) so the
+  // scratch boot probe succeeds (no spurious backend-health card) and the
+  // success-path tests (007) and "nothing failing" (011) can run.
+  await ensureWebdavSubtree(CASE_ID);
   ensureClientBuild();
   spawned = spawnScratchServer(scratch);
   await waitForScratchHealth(spawned!);
@@ -235,24 +233,34 @@ test.describe('admin config editor (advanced settings)', () => {
     await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
     await openAdvancedSettings(page);
 
+    // Section A (editable): T1/T2 rows whose effective source is not env render
+    // a config-input-* field. Section B (deploy-time read-only): env/T0 rows are
+    // platform-config-row-* summaries that never render an editable input.
     let envRows = 0;
     for (const [key, entry] of Object.entries(config)) {
       const input = page.getByTestId(`config-input-${key}`);
-      if ((await input.count()) === 0) continue; // not displayed in the editor
-      if (entry.source === 'env') envRows += 1;
+      const platformRow = page.getByTestId(`platform-config-row-${key}`);
+      const hasInput = (await input.count()) > 0;
+      const hasPlatformRow = (await platformRow.count()) > 0;
+      if (!hasInput && !hasPlatformRow) continue; // not displayed in the editor
 
+      if (isLocked(entry)) {
+        // Section B — env/T0 rows are read-only platform summaries.
+        await expect(input, `platform row ${key} must not render an input`).toHaveCount(0);
+        await expect(platformRow, `platform row ${key}`).toHaveCount(1);
+        if (entry.source === 'env') envRows += 1;
+        continue;
+      }
+
+      // Section A — editable rows.
       if (entry.secret) {
         // The masked display is always read-only; the "set new value" toggle is
-        // the edit affordance and must be present only for editable secrets.
+        // the edit affordance for editable secrets.
         await expect(input, `masked display ${key}`).toBeDisabled();
-        const toggle = page.getByTestId(`config-secret-toggle-${key}`);
-        if (isLocked(entry)) {
-          await expect(toggle, `locked secret ${key}`).toHaveCount(0);
-        } else {
-          await expect(toggle, `editable secret ${key}`).toBeVisible();
-        }
-      } else if (isLocked(entry)) {
-        await expect(input, `locked ${key}`).toBeDisabled();
+        await expect(
+          page.getByTestId(`config-secret-toggle-${key}`),
+          `editable secret ${key}`
+        ).toBeVisible();
       } else {
         await expect(input, `editable ${key}`).toBeEnabled();
       }
@@ -302,39 +310,15 @@ test.describe('admin config editor (advanced settings)', () => {
     expect(config.FFMPEG_PATH.source).toBe('db');
   });
 
-  test('E2E-ADMINCFG-003: A missing master key surfaces a key-lost warning in the admin UI', async ({
-    page,
-    request,
-  }) => {
-    // Create an encrypted settings row while the master key is present.
-    await putConfig(request, { EMAIL_PASSWORD: 'initial-secret' });
+  // E2E-ADMINCFG-003 was removed with app-layer field encryption (W-A): DB
+  // secret rows are plaintext and always readable, so no key-lost warning
+  // surface exists to test (docs/E2E_COVERAGE_PLAN.md row kept for ID stability).
 
-    // Remove the master key from .env and restart the scratch server.
-    await killScratch(spawned!);
-    const envPath = path.join(scratch, '.env');
-    const envLines = fs
-      .readFileSync(envPath, 'utf8')
-      .split('\n')
-      .filter((line) => !line.startsWith('encrypt_secret_key='));
-    fs.writeFileSync(envPath, envLines.join('\n'));
-    spawned = spawnScratchServer(scratch);
-    await waitForScratchHealth(spawned);
-
-    await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
-    await openSystemSettings(page);
-
-    await expect(page.getByTestId('key-lost-warning')).toBeVisible();
-    await expect(page.getByTestId('key-lost-warning')).toContainText('Encryption key lost');
-  });
-
-  test('E2E-ADMINCFG-004: Secret lifecycle masks values, keeps unchanged input, and stores new values encrypted', async ({
+  test('E2E-ADMINCFG-004: Secret lifecycle masks values, keeps unchanged input, and stores new values plaintext', async ({
     page,
     request,
   }) => {
     await putConfig(request, { EMAIL_PASSWORD: 'initial-secret' });
-
-    const env = readEnvFile(scratch);
-    const masterKey = env.encrypt_secret_key;
 
     await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
     await openAdvancedSettings(page);
@@ -351,41 +335,37 @@ test.describe('admin config editor (advanced settings)', () => {
       );
       return rows[0].value;
     };
-    const decryptDbSecret = async (): Promise<string> => {
-      const payload = JSON.parse(await rawSecret());
-      return decryptSecret(payload, masterKey);
-    };
 
-    // 1) Leave the secret untouched, save another change → ciphertext kept byte-for-byte.
-    const before1 = await rawSecret();
+    // 1) PUT stored the new secret as plaintext (no encryption payload).
+    expect(await rawSecret()).toBe('initial-secret');
+
+    // 2) Leave the secret untouched, save another change → plaintext kept as-is.
     await page.getByTestId('config-input-GC_ORPHAN_TTL_DAYS').fill('9');
     await saveConfig(page);
     await expect.poll(() => getConfig(request).then((c) => c.GC_ORPHAN_TTL_DAYS.value)).toBe('9');
-    expect(await rawSecret()).toBe(before1);
+    expect(await rawSecret()).toBe('initial-secret');
 
-    // 2) "Set new value" but leave it blank → still kept.
+    // 3) "Set new value" but leave it blank → still kept.
     await page.getByTestId('config-secret-toggle-EMAIL_PASSWORD').click();
     await page.getByTestId('config-input-GC_ORPHAN_TTL_DAYS').fill('10');
     await saveConfig(page);
     await expect.poll(() => getConfig(request).then((c) => c.GC_ORPHAN_TTL_DAYS.value)).toBe('10');
-    expect(await rawSecret()).toBe(before1);
+    expect(await rawSecret()).toBe('initial-secret');
 
-    // 3) "Set new value" and type → stored encrypted with the new plaintext.
+    // 4) "Set new value" and type → stored plaintext with the new value.
     await page.getByTestId('config-secret-toggle-EMAIL_PASSWORD').click();
     await page.getByTestId('config-secret-new-EMAIL_PASSWORD').fill('new-secret');
     await page.getByTestId('config-input-GC_ORPHAN_TTL_DAYS').fill('11');
     await saveConfig(page);
     await expect.poll(() => getConfig(request).then((c) => c.GC_ORPHAN_TTL_DAYS.value)).toBe('11');
-    await expect.poll(decryptDbSecret).toBe('new-secret');
-    expect(await rawSecret()).not.toBe(before1);
+    expect(await rawSecret()).toBe('new-secret');
 
-    // 4) Re-save without touching the secret → ciphertext unchanged (no re-encrypt).
-    const before4 = await rawSecret();
+    // 5) Re-save without touching the secret → stored value unchanged (no rewrite).
+    const before5 = await rawSecret();
     await page.getByTestId('config-input-GC_ORPHAN_TTL_DAYS').fill('12');
     await saveConfig(page);
     await expect.poll(() => getConfig(request).then((c) => c.GC_ORPHAN_TTL_DAYS.value)).toBe('12');
-    expect(await rawSecret()).toBe(before4);
-    await expect.poll(decryptDbSecret).toBe('new-secret');
+    expect(await rawSecret()).toBe(before5);
   });
 
   test('E2E-ADMINCFG-005: A T1 change persists across a server restart (source db)', async ({
@@ -505,8 +485,12 @@ test.describe('admin config editor (advanced settings)', () => {
     await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
     await openAdvancedSettings(page);
 
-    await expect(page.getByTestId('config-input-WEA_STORAGE_BACKEND')).toHaveCount(0);
-    await expect(page.getByTestId('config-input-WEA_PG_HOST')).toHaveCount(0);
+    // Deploy-time T0 rows (the WEA_DB_* metadata block / WEA_SQLITE_PATH) are
+    // read-only (Section B) — never rendered as editable inputs, so no
+    // `config-input-*` element exists for them.
+    await expect(page.getByTestId('config-input-WEA_DB_HOST')).toHaveCount(0);
+    await expect(page.getByTestId('config-input-WEA_SQLITE_PATH')).toHaveCount(0);
+    await expect(page.getByTestId('config-input-WEA_DB_PASSWORD')).toHaveCount(0);
   });
 });
 
@@ -550,7 +534,27 @@ test.describe('phase B: backend health & config/test api', () => {
 
   test('E2E-ADMINCFG-011: No backend-health card appears when nothing is failing', async ({
     page,
+    request,
   }) => {
+    // The card only appears when an active backend is failing. WebDAV :8090 must
+    // be reachable for the premise to hold (otherwise skip, like 007). The
+    // boot-time webdav probe can race container startup, so settle the tracker
+    // deterministically with a successful connection probe first — the same
+    // seeding pattern E2E-ADMINCFG-012 uses for its failing-backend case.
+    test.skip(
+      !(await detectWebdavReachable()),
+      'WebDAV :8090 unreachable — skipping (cannot be "nothing failing")'
+    );
+    const token = await loginToken(request);
+    await request.post(`${SCRATCH_BASE}/api/admin/config/test`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: {
+        target: 'webdav',
+        WEBDAV_URL: WEBDAV_BASE,
+        WEBDAV_USERNAME: 'e2etest',
+        WEBDAV_PASSWORD: 'e2etest123',
+      },
+    });
     await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
     await openSystemSettings(page);
 

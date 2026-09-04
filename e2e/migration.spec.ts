@@ -73,7 +73,6 @@ const PG_PASSWORD = 'e2etest';
 
 const ADMIN_PASSWORD = 'MigrationE2e!123';
 const JWT_SECRET = 'migration-e2e-jwt-secret';
-const ENCRYPT_KEY = 'a'.repeat(64);
 
 const textFixture = readTestFileFixture(TEST_FILES.smallText);
 
@@ -115,14 +114,23 @@ type BootOptions = {
   caseId: string;
   /** Ensure the isolated webdav subtree and seed WEBDAV_* DB settings. */
   withWebdav?: boolean;
-  /** Create a scratch PG target DB and point the server's WEA_PG_* at it. */
+  /**
+   * Create a scratch PG target database for this case (dropped in afterEach).
+   * The migration worker reaches it via the explicit dialog/API target
+   * connection, never through the boot env — these cases boot the app on the
+   * sqlite source, so no WEA_DB_* identity keys are written (sqlite is the
+   * presence-selected default). A flow that later points the app at the target
+   * passes the full WEA_DB_* block to the respawned server.
+   */
   withPgTarget?: boolean;
   extraEnv?: Record<string, string>;
 };
 
 /**
  * Per-test scratch lifecycle: fresh dir + .env, optional webdav subtree / scratch
- * PG target, then boot the server on :5003 and wait for health.
+ * PG target, then boot the server on :5003 and wait for health. Every case
+ * boots on sqlite (the migration source): no WEA_DB_* identity keys in the
+ * env means presence-based selection defaults to the sqlite backend.
  */
 async function bootScratch(testInfo: TestInfo, opts: BootOptions): Promise<void> {
   const scratch = scratchDirFor(`migration-${opts.caseId}`);
@@ -142,21 +150,10 @@ async function bootScratch(testInfo: TestInfo, opts: BootOptions): Promise<void>
   const env: Record<string, string> = {
     PORT: '5003',
     NODE_ENV: 'test',
-    WEA_STORAGE_BACKEND: 'sqlite',
     WEA_FILE_STORAGE: 'webdav',
     WEBDAV_UPSTREAM_URL: WEBDAV_BASE,
     JWT_SECRET,
     ADMIN_DEFAULT_PASSWORD: ADMIN_PASSWORD,
-    encrypt_secret_key: ENCRYPT_KEY,
-    ...(pgDb
-      ? {
-          WEA_PG_HOST: PG_HOST,
-          WEA_PG_PORT: PG_PORT,
-          WEA_PG_DATABASE: pgDb,
-          WEA_PG_USER: PG_USER,
-          WEA_PG_PASSWORD: PG_PASSWORD,
-        }
-      : {}),
     ...opts.extraEnv,
   };
   writeScratchEnv(scratch, env);
@@ -1183,11 +1180,29 @@ test.describe('unified migration mode (E2E-MIG-001..009)', () => {
     );
     expect(tSettings).toEqual(srcSettings);
 
-    // B8: Go to settings → System Settings shows the ".env setup needed" banner
-    // (presence detected in the non-active postgresql backend).
+    // B8: Go to settings → System Settings is reachable (gate cleared).
     await page.getByRole('dialog').getByRole('button', { name: 'Go to settings' }).click();
     await page.waitForURL(/\/mypage/);
     await assertOnSystemSettings(page);
+
+    // B8/D11: the final cutover is a manual .env step — repoint the app's
+    // WEA_DB_* block at the migrated PG database and restart. The source sqlite
+    // backend still holds the metadata, so presence detection (D13) keeps the
+    // ".env setup needed" banner visible after the cutover (the metadata
+    // backend is presence-selected, so a sqlite-active boot cannot carry the
+    // WEA_DB_* identity keys needed to reach the PG target).
+    await killScratch(spawned!);
+    spawned = spawnScratchServer(currentScratch!, {
+      WEA_DB_HOST: PG_HOST,
+      WEA_DB_PORT: PG_PORT,
+      WEA_DB_DATABASE: pgDb,
+      WEA_DB_USER: PG_USER,
+      WEA_DB_PASSWORD: PG_PASSWORD,
+    });
+    await waitForScratchHealth(spawned);
+
+    await loginAsAdminUi(page);
+    await openSystemSettings(page);
     const banner = page.getByTestId('env-setup-needed-banner');
     await expect(banner).toBeVisible();
     await expect(banner).toContainText('.env setup needed');

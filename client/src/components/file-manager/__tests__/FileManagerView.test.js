@@ -452,13 +452,13 @@ describe('FileManagerView', () => {
     expect(props.overlayState.setLeaveShareConfirmTargetPath).toHaveBeenCalledWith(null);
   });
 
-  it('renders the admin-only backend-health banner when an active backend is fail', async () => {
+  it('renders the backend-health banner (admin copy) when the active file backend is fail', async () => {
     const props = createProps({
       shellContext: {
         ...createProps().shellContext,
         user: { id: 'user-1', username: 'admin1', is_admin: true },
         backendHealth: { postgresql: 'ok', s3: 'ok', webdav: 'fail' },
-        activeBackends: new Set(['webdav']),
+        activeFileStorage: 'webdav',
       },
     });
     renderWithProviders(<FileManagerView {...props} />);
@@ -467,14 +467,32 @@ describe('FileManagerView', () => {
     expect(screen.getByText(/backend is experiencing connection problems/i)).toBeInTheDocument();
   });
 
-  it('does not render the banner when the failing backend is not in use', async () => {
+  it('renders the backend-health banner for non-admin users with simplified copy', async () => {
+    const props = createProps({
+      shellContext: {
+        ...createProps().shellContext,
+        user: { id: 'user-1', username: 'user1', is_admin: false },
+        backendHealth: { postgresql: 'ok', s3: 'ok', webdav: 'fail' },
+        activeFileStorage: 'webdav',
+      },
+    });
+    renderWithProviders(<FileManagerView {...props} />);
+
+    expect(await screen.findByTestId('backend-health-banner')).toBeInTheDocument();
+    expect(screen.getByText(/Storage is temporarily unavailable/i)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/backend is experiencing connection problems/i)
+    ).not.toBeInTheDocument();
+  });
+
+  it('does not render the banner when the active file backend is not fail', async () => {
     const props = createProps({
       shellContext: {
         ...createProps().shellContext,
         user: { id: 'user-1', username: 'admin1', is_admin: true },
         // WebDAV is failing but s3 is the active file backend → no banner.
         backendHealth: { postgresql: 'ok', s3: 'unknown', webdav: 'fail' },
-        activeBackends: new Set(['s3']),
+        activeFileStorage: 's3',
       },
     });
     renderWithProviders(<FileManagerView {...props} />);
@@ -484,21 +502,35 @@ describe('FileManagerView', () => {
     expect(screen.queryByTestId('backend-health-banner')).not.toBeInTheDocument();
   });
 
-  it('does not render the backend-health banner for non-admin users', async () => {
+  it('renders the banner for non-admin users when the active metadata DB (postgresql) is failing', async () => {
     const props = createProps({
       shellContext: {
         ...createProps().shellContext,
         user: { id: 'user-1', username: 'user1', is_admin: false },
-        backendHealth: { postgresql: 'ok', s3: 'ok', webdav: 'fail' },
-        activeBackends: new Set(['webdav']),
+        backendHealth: { postgresql: 'fail', s3: 'ok', webdav: 'unknown' },
+        activeFileStorage: 's3',
+        activeMetadataBackend: 'postgresql',
       },
     });
     renderWithProviders(<FileManagerView {...props} />);
 
-    await waitFor(() => {
-      expect(folderTreeGateway.getUserSharedFolderPermissions).toHaveBeenCalled();
-    });
+    expect(await screen.findByTestId('backend-health-banner')).toBeInTheDocument();
+    expect(screen.getByText(/service database is unavailable/i)).toBeInTheDocument();
+  });
 
+  it('does not render the banner when the failing postgresql backend is not active (sqlite)', async () => {
+    const props = createProps({
+      shellContext: {
+        ...createProps().shellContext,
+        user: { id: 'user-1', username: 'user1', is_admin: false },
+        backendHealth: { postgresql: 'fail', s3: 'ok', webdav: 'unknown' },
+        activeFileStorage: 's3',
+        activeMetadataBackend: 'sqlite',
+      },
+    });
+    renderWithProviders(<FileManagerView {...props} />);
+
+    await screen.findByTestId('explorer-container');
     expect(screen.queryByTestId('backend-health-banner')).not.toBeInTheDocument();
   });
 

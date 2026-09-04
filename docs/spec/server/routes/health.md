@@ -5,7 +5,7 @@
 | Item            | Description                                                                                                                                                                                        |
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role            | Liveness/health surfaces. `GET /api/health` (public) stays a liveness probe and now includes per-backend status strings. `GET /api/admin/health` (admin) returns the full backend-health snapshot. |
-| Source of truth | `docs/features/backend-health.md`, `PLAN.md` Phase B (B1, D3)                                                                                                                                      |
+| Source of truth | `docs/features/backend-health.md` (decisions B1, D3)                                                                                                                                      |
 
 ---
 
@@ -25,6 +25,8 @@
 {
   "status": "ok",
   "messageCode": "serverMessages.api.healthOk",
+  "activeFileStorage": "s3", // "s3" | "webdav" — effective WEA_FILE_STORAGE at boot (default "s3")
+  "activeMetadataBackend": "postgresql", // "postgresql" | "sqlite" — resolved from presence of WEA_DB_* credentials
   "backends": {
     "postgresql": "ok", // "ok" | "fail" | "unknown"
     "s3": "unknown",
@@ -35,11 +37,19 @@
 
 - Backends come from `getHealth()`, reduced to the **status string only** — never codes, hints,
   reasons, or secrets (D3/D8).
+- `activeFileStorage` is the effective file-storage backend (`process.env.WEA_FILE_STORAGE`, which
+  `configResolver.populateT1Env` refreshes from env → DB at boot; default `'s3'` when unset). It is
+  additive and public so any authenticated client can decide whether the ACTIVE file backend is
+  failing without needing the admin-only config endpoint.
+- `activeMetadataBackend` is the effective metadata backend (`'postgresql'` when any of
+  `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` is set, `'sqlite'` otherwise).
+  The file-screen banner uses it to also cover a failing metadata DB (postgresql).
 
 ### 2.3 GET /api/admin/health (admin)
 
-`authenticateToken` + `isAdmin` (same middleware as the admin config routes). Mounted under
-`/api/admin` (behind `setupModeGuard`).
+`authenticateToken` + a **stateless** admin check (the JWT `is_admin` claim — no DB-backed
+`User.findById` lookup), so the endpoint stays reachable during a metadata-DB outage and the admin
+health card can display the failure. Mounted under `/api/admin` (behind `setupModeGuard`).
 
 **200:**
 
@@ -83,6 +93,6 @@
 
 ## 3. Verification Scenarios
 
-- [ ] `GET /api/health` returns `{ status, messageCode, backends }` with only status strings
-- [ ] `GET /api/admin/health` 401 unauthenticated; 403 non-admin
+- [ ] `GET /api/health` returns `{ status, messageCode, activeFileStorage, activeMetadataBackend, backends }` with only status strings for the three backends and `activeFileStorage` ∈ `{s3, webdav}`, `activeMetadataBackend` ∈ `{postgresql, sqlite}`
+- [ ] `GET /api/admin/health` 401 unauthenticated; 403 non-admin (JWT claim, no DB read — works while the DB is down)
 - [ ] `GET /api/admin/health` 200 returns the full snapshot for the three backends

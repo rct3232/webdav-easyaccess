@@ -38,7 +38,7 @@ flowchart LR
 - **Auth**: JWT
 - **Blob storage**: `@aws-sdk/client-s3` (default S3/MinIO) or the `webdav` client (webdav mode)
 - **Thumbnails**: Sharp (FFmpeg required for video)
-- **Metadata store**: DB-backed (`WEA_STORAGE_BACKEND`: `sqlite` default, `postgresql`)
+- **Metadata store**: DB-backed (SQLite by default; PostgreSQL when the remote `WEA_DB_*` credentials are set)
 
 ## Documentation
 
@@ -96,7 +96,6 @@ npm start
 
 ### Required
 
-- **JWT_SECRET**: JWT signing key (must be changed in production; server will not start if unset)
 - **PORT**: Server port (default `5001`)
 - **WEA_FILE_STORAGE**: File content blob storage backend (default `s3`; `webdav` is an option)
 - **S3_BUCKET**: S3/MinIO bucket name (required in default `s3` mode)
@@ -107,11 +106,13 @@ npm start
 
 - **S3_ENDPOINT**: Custom S3 endpoint URL for MinIO/compatible services (forces path-style access; optional in `s3` mode)
 - **WEBDAV_URL / WEBDAV_USERNAME / WEBDAV_PASSWORD**: WebDAV server URL (path prefix allowed) and credentials — **required only when `WEA_FILE_STORAGE=webdav`**
+- **JWT_SECRET**: JWT signing key. Optional — when unset (or empty) an ephemeral random secret is generated at boot; a restart then invalidates all sessions. Multi-instance deployments must set one unified `JWT_SECRET`. When set, the legacy default placeholder only warns. Changes take effect on restart.
 - **JWT_EXPIRES_IN**: JWT expiration (default `30m`, e.g. `15m`, `1h`)
 - **EMAIL_HOST/EMAIL_PORT/EMAIL_SECURE/EMAIL_USER/EMAIL_PASSWORD/EMAIL_FROM_NAME**: SMTP for signup/approval notifications
 - **ADMIN_DEFAULT_PASSWORD**: Default admin password (default `admin`)
 - **WEA_DISABLE_DEFAULT_ADMIN**: Disable default admin auto-creation (`true`)
-- **WEA_STORAGE_BACKEND**: Metadata storage backend (`sqlite` default, `postgresql`)
+- **WEA_DB_HOST / WEA_DB_DATABASE / WEA_DB_USER / WEA_DB_PASSWORD**: Remote PostgreSQL metadata DB connection (optional; setting any of these selects the PostgreSQL backend — all four are required — otherwise the default SQLite backend is used)
+- **WEA_DB_PORT / WEA_DB_SSL**: PostgreSQL port (default `5432`) and TLS toggle (default `false`)
 - **CORS_ORIGINS / CORS_ORIGIN**: Allowed CORS origins (recommended in production; comma-separated)
 - **LOGIN_RATE_LIMIT_WINDOW_MS / LOGIN_RATE_LIMIT_MAX**: Login rate limit (best-effort, in-memory)
 - **WEBDAV_AUTH_TYPE**: `auto` / `basic` / `digest`

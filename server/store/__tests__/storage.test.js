@@ -1,6 +1,9 @@
 /**
  * storage tests.
- * Verifies getBackend() deprecation logic and postgres infrastructure helpers.
+ * Verifies presence-based backend selection in getBackend() and postgres
+ * infrastructure helpers. Backend decision: any of the four WEA_DB_* identity
+ * keys set → remote PostgreSQL; none set → sqlite (docs/spec/server/store/
+ * storage.md §2.4). There is no WEA_STORAGE_BACKEND key anymore.
  */
 
 jest.mock('../../infrastructure/backendHealth', () => {
@@ -10,61 +13,73 @@ jest.mock('../../infrastructure/backendHealth', () => {
 
 const healthReport = () => require('../../infrastructure/backendHealth').getBackendHealth().report;
 
-describe('getBackend', () => {
-  const originalEnv = process.env.WEA_STORAGE_BACKEND;
+const DB_IDENTITY_KEYS = ['WEA_DB_HOST', 'WEA_DB_DATABASE', 'WEA_DB_USER', 'WEA_DB_PASSWORD'];
+
+function setRemoteDbEnv() {
+  process.env.WEA_DB_HOST = 'localhost';
+  process.env.WEA_DB_PORT = '5432';
+  process.env.WEA_DB_DATABASE = 'testdb';
+  process.env.WEA_DB_USER = 'test';
+  process.env.WEA_DB_PASSWORD = 'secret';
+  delete process.env.WEA_STORAGE_BACKEND;
+}
+
+function clearRemoteDbEnv() {
+  for (const key of DB_IDENTITY_KEYS) delete process.env[key];
+}
+
+describe('getBackend (presence-based metadata backend)', () => {
+  const originalEnv = {};
+  for (const key of DB_IDENTITY_KEYS) originalEnv[key] = process.env[key];
   const originalConsoleWarn = console.warn;
 
   afterEach(() => {
     // Reset environment and modules
-    if (originalEnv === undefined) {
-      delete process.env.WEA_STORAGE_BACKEND;
-    } else {
-      process.env.WEA_STORAGE_BACKEND = originalEnv;
+    for (const key of DB_IDENTITY_KEYS) {
+      if (originalEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = originalEnv[key];
     }
+    delete process.env.WEA_STORAGE_BACKEND;
     jest.resetModules();
     console.warn = originalConsoleWarn;
   });
 
-  it('throws for fs backend (removed in Phase 7)', () => {
-    process.env.WEA_STORAGE_BACKEND = 'fs';
+  it('defaults to sqlite when no WEA_DB_* identity key is set', () => {
+    clearRemoteDbEnv();
     const storage = require('@server/store/storage');
-    expect(() => storage.getBackend()).toThrow(/Invalid WEA_STORAGE_BACKEND='fs'/);
+    expect(storage.getBackend()).toBe('sqlite');
+    expect(storage.hasRemoteDbCredentials()).toBe(false);
   });
 
-  it('throws for webdav backend (removed in Phase 7)', () => {
-    process.env.WEA_STORAGE_BACKEND = 'webdav';
+  it('resolves postgresql when all four WEA_DB_* identity keys are set', () => {
+    setRemoteDbEnv();
     const storage = require('@server/store/storage');
-    expect(() => storage.getBackend()).toThrow(/Invalid WEA_STORAGE_BACKEND='webdav'/);
+    expect(storage.getBackend()).toBe('postgresql');
+    expect(storage.hasRemoteDbCredentials()).toBe(true);
   });
 
-  it('passes through postgresql unchanged', () => {
+  it('throws listing the missing WEA_DB_* keys on a partial credential set', () => {
+    process.env.WEA_DB_HOST = 'db.local';
+    process.env.WEA_DB_USER = 'user';
+    const storage = require('@server/store/storage');
+    expect(storage.hasRemoteDbCredentials()).toBe(true);
+    expect(() => storage.getBackend()).toThrow(/Partial WEA_DB_\* configuration/);
+    expect(() => storage.getBackend()).toThrow(/WEA_DB_DATABASE/);
+    expect(() => storage.getBackend()).toThrow(/WEA_DB_PASSWORD/);
+  });
+
+  it('a single WEA_DB_* identity key opts into the remote backend and fails loudly', () => {
+    process.env.WEA_DB_HOST = 'db.local';
+    const storage = require('@server/store/storage');
+    expect(storage.hasRemoteDbCredentials()).toBe(true);
+    expect(() => storage.getBackend()).toThrow(/missing WEA_DB_DATABASE/);
+  });
+
+  it('silently ignores a leftover WEA_STORAGE_BACKEND value (presence decides)', () => {
+    clearRemoteDbEnv();
     process.env.WEA_STORAGE_BACKEND = 'postgresql';
     const storage = require('@server/store/storage');
-    expect(storage.getBackend()).toBe('postgresql');
-  });
-
-  it('passes through sqlite unchanged', () => {
-    process.env.WEA_STORAGE_BACKEND = 'sqlite';
-    const storage = require('@server/store/storage');
     expect(storage.getBackend()).toBe('sqlite');
-  });
-
-  it('defaults to sqlite for empty/undefined value', () => {
-    delete process.env.WEA_STORAGE_BACKEND;
-    const storage = require('@server/store/storage');
-    expect(storage.getBackend()).toBe('sqlite');
-  });
-
-  it('passes through pg alias', () => {
-    process.env.WEA_STORAGE_BACKEND = 'pg';
-    const storage = require('@server/store/storage');
-    expect(storage.getBackend()).toBe('postgresql');
-  });
-
-  it('passes through postgres alias', () => {
-    process.env.WEA_STORAGE_BACKEND = 'postgres';
-    const storage = require('@server/store/storage');
-    expect(storage.getBackend()).toBe('postgresql');
   });
 });
 
@@ -84,18 +99,13 @@ describe('postgres infrastructure helpers', () => {
   });
 
   it('getBackend resolves postgresql backend', () => {
-    process.env.WEA_STORAGE_BACKEND = 'postgresql';
+    setRemoteDbEnv();
     const isolatedStorage = require('@server/store/storage');
     expect(isolatedStorage.getBackend()).toBe('postgresql');
   });
 
   it('withTransaction commits on success', async () => {
-    process.env.WEA_STORAGE_BACKEND = 'postgresql';
-    process.env.WEA_PG_HOST = 'localhost';
-    process.env.WEA_PG_PORT = '5432';
-    process.env.WEA_PG_DATABASE = 'testdb';
-    process.env.WEA_PG_USER = 'test';
-    process.env.WEA_PG_PASSWORD = 'secret';
+    setRemoteDbEnv();
 
     const query = jest.fn(async (sql) => ({ rows: [{ sql }] }));
     const client = {
@@ -121,12 +131,7 @@ describe('postgres infrastructure helpers', () => {
   });
 
   it('withTransaction rolls back and maps DB errors', async () => {
-    process.env.WEA_STORAGE_BACKEND = 'postgresql';
-    process.env.WEA_PG_HOST = 'localhost';
-    process.env.WEA_PG_PORT = '5432';
-    process.env.WEA_PG_DATABASE = 'testdb';
-    process.env.WEA_PG_USER = 'test';
-    process.env.WEA_PG_PASSWORD = 'secret';
+    setRemoteDbEnv();
 
     const query = jest.fn(async () => ({ rows: [] }));
     const client = {
@@ -161,12 +166,7 @@ describe('postgres backend health reporting', () => {
   beforeEach(() => {
     jest.resetModules();
     process.env = { ...originalEnv };
-    process.env.WEA_STORAGE_BACKEND = 'postgresql';
-    process.env.WEA_PG_HOST = 'localhost';
-    process.env.WEA_PG_PORT = '5432';
-    process.env.WEA_PG_DATABASE = 'testdb';
-    process.env.WEA_PG_USER = 'test';
-    process.env.WEA_PG_PASSWORD = 'secret';
+    setRemoteDbEnv();
   });
 
   afterEach(async () => {

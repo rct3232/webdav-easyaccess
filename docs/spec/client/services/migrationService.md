@@ -5,7 +5,7 @@
 | Item         | Description                                                                                                                                                                       |
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role         | Admin blob-migration API: get the derived migration direction, start a migration job, poll its status, cancel it. Thin wrapper around `apiClient` (same style as `adminService`). |
-| Related docs | `PLAN.md` module G (client) + module E (admin routes contract); `docs/spec/client/components/mypage/content/MigrationDialog.md`                                                   |
+| Related docs | Admin migration routes (`docs/spec/server/routes/admin.md`); `docs/spec/client/components/mypage/content/MigrationDialog.md` |
 
 ---
 
@@ -27,7 +27,7 @@
 
 - All require admin JWT.
 
-### 2.3 Request/Response Contract (aligned with PLAN.md module E)
+### 2.3 Request/Response Contract
 
 **GET /api/admin/migration/info**
 

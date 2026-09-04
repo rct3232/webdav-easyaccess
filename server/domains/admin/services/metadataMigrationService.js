@@ -31,7 +31,6 @@ const path = require('path');
 
 const schemaManager = require('../../../infrastructure/schemaManager');
 const { initSqliteSchema } = require('../../../infrastructure/sqliteSchemaInit');
-const { hasEncryptedRows } = require('../../../utils/configEncryption');
 
 // Copy order = FK dependency order (matches docs/spec §2.7).
 const COPY_ORDER = [
@@ -108,29 +107,23 @@ function defaultSqlitePath() {
   return process.env.WEA_SQLITE_PATH || path.join(__dirname, '../../../../data/webdav.db');
 }
 
-// Resolve PG connection config from an explicit payload or the WEA_PG_* env
+// Resolve PG connection config from an explicit payload or the WEA_DB_* env
 // (mirrors storage.resolvePgConfig, which is not exported).
 function resolvePgConfig(pg) {
   if (!pg) {
-    const required = [
-      'WEA_PG_HOST',
-      'WEA_PG_PORT',
-      'WEA_PG_DATABASE',
-      'WEA_PG_USER',
-      'WEA_PG_PASSWORD',
-    ];
+    const required = ['WEA_DB_HOST', 'WEA_DB_DATABASE', 'WEA_DB_USER', 'WEA_DB_PASSWORD'];
     const missing = required.filter((key) => !process.env[key]);
     if (missing.length > 0) {
       throw new Error(`PostgreSQL is not configured; missing env: ${missing.join(', ')}`);
     }
     return {
-      host: process.env.WEA_PG_HOST,
-      port: Number(process.env.WEA_PG_PORT) || 5432,
-      database: process.env.WEA_PG_DATABASE,
-      user: process.env.WEA_PG_USER,
-      password: process.env.WEA_PG_PASSWORD,
-      connectionTimeoutMillis: Number(process.env.WEA_PG_CONNECTION_TIMEOUT_MS) || 5000,
-      ssl: ['1', 'true', 'yes', 'on'].includes((process.env.WEA_PG_SSL || '').trim().toLowerCase())
+      host: process.env.WEA_DB_HOST,
+      port: Number(process.env.WEA_DB_PORT) || 5432,
+      database: process.env.WEA_DB_DATABASE,
+      user: process.env.WEA_DB_USER,
+      password: process.env.WEA_DB_PASSWORD,
+      connectionTimeoutMillis: Number(process.env.WEA_DB_CONNECTION_TIMEOUT_MS) || 5000,
+      ssl: ['1', 'true', 'yes', 'on'].includes((process.env.WEA_DB_SSL || '').trim().toLowerCase())
         ? { rejectUnauthorized: false }
         : false,
     };
@@ -411,15 +404,6 @@ async function resyncSequences(targetBackend, targetExec) {
   }
 }
 
-async function sourceHasEncryptedRows(sourceBackend, sourceExec) {
-  try {
-    const { rows } = await sourceExec.query('SELECT key, value FROM settings');
-    return hasEncryptedRows(rows);
-  } catch {
-    return false;
-  }
-}
-
 async function buildScanResult(backend, tables) {
   const schemaExists = tables.some((t) => t.name === 'users' || t.name === 'settings');
   return {
@@ -522,7 +506,7 @@ function createMetadataMigrationService(deps = {}) {
    *   onProgress?: (stage: string, table: string|null, done: number, total: number) => void,
    *   isCancelled?: () => boolean,
    * }} args
-   * @returns {Promise<{ status: 'completed', tablesCopied: [{name, rows}], totalRows, schemaApplied, wiped, warning? } | { status: 'cancelled' }>}
+   * @returns {Promise<{ status: 'completed', tablesCopied: [{name, rows}], totalRows, schemaApplied, wiped } | { status: 'cancelled' }>}
    */
   async function runMigration({
     direction,
@@ -612,13 +596,8 @@ function createMetadataMigrationService(deps = {}) {
         // --- sequence resync (setval / sqlite_sequence) ---
         await resyncSequences(targetBackend, targetExec);
 
-        // --- encrypt_secret_key warning (spec §2.11) ---
-        const hasEncrypted = await sourceHasEncryptedRows(sourceBackend, sourceExec);
-        const warning =
-          hasEncrypted && !process.env.encrypt_secret_key ? 'encryptSecretKeyMissing' : undefined;
-
         emit(onProgress, 'done', null, grandTotal, grandTotal);
-        return { status: 'completed', tablesCopied, totalRows, schemaApplied, wiped, warning };
+        return { status: 'completed', tablesCopied, totalRows, schemaApplied, wiped };
       };
 
       return await runInTargetTransaction(targetBackend, targetConn, runSteps);

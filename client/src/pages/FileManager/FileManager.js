@@ -26,6 +26,10 @@ import { useFileManagerDialogs } from './hooks/useFileManagerDialogs';
 import { useContentAreaDragDrop } from './hooks/useContentAreaDragDrop';
 import FileManagerView from '../../components/file-manager/FileManagerView';
 
+// Public health re-poll: a backend failure recorded mid-session (failed upload,
+// download, etc.) must flip the banner without a page remount.
+const HEALTH_POLL_INTERVAL_MS = 15000;
+
 const FileManager = ({ shareToken, linkInfo } = {}) => {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -39,7 +43,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const [contentAreaDraggedParentNodeId, setContentAreaDraggedParentNodeId] = useState(null);
   const [contentAreaDragType, setContentAreaDragType] = useState(null);
   const [backendHealthStatuses, setBackendHealthStatuses] = useState(null);
-  const [activeBackends, setActiveBackends] = useState(null);
+  const [activeFileStorage, setActiveFileStorage] = useState(null);
+  const [activeMetadataBackend, setActiveMetadataBackend] = useState(null);
 
   const isShareLinkMode = Boolean(shareToken && linkInfo);
   const shareRootPath = useMemo(
@@ -156,28 +161,33 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     setSelectedFiles,
   } = useSelection(displayedFiles, sortedFiles);
 
+  // key(entryKey)→file 인덱스: 선택 Set의 reverse-lookup을 O(1)로 수행 (선택 크기 × 파일 수의 find 중복 제거)
+  const sortedFilesByKey = useMemo(() => {
+    const map = new Map();
+    for (const f of sortedFiles) {
+      const key = getEntryKey(f);
+      if (!map.has(key)) map.set(key, f);
+    }
+    return map;
+  }, [sortedFiles]);
+
   // 선택 모드에서 삭제/이동 버튼: 선택된 항목 모두 write 권한이 있어야 활성화
   const allSelectedHaveWrite = useMemo(() => {
     if (!selectionMode || selectedFiles.size === 0) return false;
-    const selectedKeys = Array.from(selectedFiles);
-    const selectedFileObjects = selectedKeys
-      .map((key) => sortedFiles.find((f) => getEntryKey(f) === key))
-      .filter(Boolean);
-    return (
-      selectedFileObjects.length === selectedKeys.length &&
-      selectedFileObjects.every((f) => f.hasWritePermission === true)
-    );
-  }, [selectionMode, selectedFiles, sortedFiles]);
+    return Array.from(selectedFiles).every((key) => {
+      const f = sortedFilesByKey.get(key);
+      return !!f && f.hasWritePermission === true;
+    });
+  }, [selectionMode, selectedFiles, sortedFilesByKey]);
 
   // 선택된 항목 중 읽기 전용(hasWritePermission === false) 포함 여부
   const hasReadOnlyInSelection = useMemo(() => {
     if (!selectionMode || selectedFiles.size === 0) return false;
-    const selectedKeys = Array.from(selectedFiles);
-    const selectedFileObjects = selectedKeys
-      .map((key) => sortedFiles.find((f) => getEntryKey(f) === key))
-      .filter(Boolean);
-    return selectedFileObjects.some((f) => f.hasWritePermission === false);
-  }, [selectionMode, selectedFiles, sortedFiles]);
+    return Array.from(selectedFiles).some((key) => {
+      const f = sortedFilesByKey.get(key);
+      return !!f && f.hasWritePermission === false;
+    });
+  }, [selectionMode, selectedFiles, sortedFilesByKey]);
 
   // 디렉토리 이동 시 선택 모드 해제
   useEffect(() => {
@@ -518,38 +528,33 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     ]
   );
 
-  const {
-    handlePathClick,
-    handleFileClick,
-    handleMoreClick,
-    handleLongPressSelect,
-    handleActionSheetPreview,
-  } = useExplorerInteraction({
-    isMobile,
-    isShareLinkMode,
-    selectionMode,
-    displayedFiles,
-    toggleFileSelection,
-    handleFileClickSelection,
-    enterSelectionMode,
-    setSelectedFiles,
-    navigateToExplorerPath,
-    openExplorerFolder,
-    openPreviewDialog,
-    setSelectedFile,
-    setContextMenu,
-    setActionSheetFile,
-    actionSheetFile,
-    showError,
-    t,
-    recentFileApi: {
-      trackRecentFileClick,
-      clearTracking,
-      handleRecentFileError,
-      setRecentFileToPreview,
-    },
-    handleProductPathClick,
-  });
+  const { handleFileClick, handleMoreClick, handleLongPressSelect, handleActionSheetPreview } =
+    useExplorerInteraction({
+      isMobile,
+      isShareLinkMode,
+      selectionMode,
+      displayedFiles,
+      toggleFileSelection,
+      handleFileClickSelection,
+      enterSelectionMode,
+      setSelectedFiles,
+      navigateToExplorerPath,
+      openExplorerFolder,
+      openPreviewDialog,
+      setSelectedFile,
+      setContextMenu,
+      setActionSheetFile,
+      actionSheetFile,
+      showError,
+      t,
+      recentFileApi: {
+        trackRecentFileClick,
+        clearTracking,
+        handleRecentFileError,
+        setRecentFileToPreview,
+      },
+      handleProductPathClick,
+    });
 
   const handleCreateFolderComplete = useCallback(
     (folderPath, folderName, createdNodeId) => {
@@ -564,7 +569,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         });
       }
 
-      handleOperationComplete({ opType: 'createFolder', startedPath: folderPath });
+      handleOperationComplete({ opType: 'createFolder', startedNodeId: parentNodeId });
       closeCreateFolderDialog();
 
       setTimeout(() => {
@@ -634,44 +639,42 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   );
 
   const onShareTargetSave = useCallback(() => {
-    handleOperationComplete({ opType: 'refresh', startedPath: currentPathRef.current });
+    handleOperationComplete({ opType: 'refresh', startedNodeId: currentNodeIdRef.current });
   }, [handleOperationComplete]);
 
   useEffect(() => {
-    if (!user?.is_admin) {
-      setBackendHealthStatuses(null);
-      setActiveBackends(null);
-      return;
-    }
+    // Every authenticated session (admin or not) reads the public /api/health
+    // so the file-screen banner can warn non-admin users too. The public payload
+    // carries the active file backend AND active metadata backend, so no admin
+    // config call is needed.
+    // Health is polled while the screen is mounted: a backend failure recorded
+    // mid-session (e.g. a failed upload/download or a metadata-DB drop) must
+    // flip the banner without requiring a page remount — for every role.
     let active = true;
-    adminService
-      .getPublicHealth()
-      .then((data) => {
-        if (active) setBackendHealthStatuses(data?.backends || null);
-      })
-      .catch(() => {
-        if (active) setBackendHealthStatuses(null);
-      });
-    // Active backends (metadata backend + file backend) so unused backends
-    // never trigger the banner (D3).
-    adminService
-      .getConfigStatus()
-      .then((data) => {
-        if (!active) return;
-        const cfg = data?.config || {};
-        const set = new Set();
-        if (cfg.WEA_STORAGE_BACKEND?.value === 'postgresql') set.add('postgresql');
-        if (cfg.WEA_FILE_STORAGE?.value === 's3') set.add('s3');
-        if (cfg.WEA_FILE_STORAGE?.value === 'webdav') set.add('webdav');
-        setActiveBackends(set);
-      })
-      .catch(() => {
-        if (active) setActiveBackends(null);
-      });
+    const refreshHealth = () => {
+      adminService
+        .getPublicHealth()
+        .then((data) => {
+          if (!active) return;
+          setBackendHealthStatuses(data?.backends || null);
+          setActiveFileStorage(data?.activeFileStorage || null);
+          setActiveMetadataBackend(data?.activeMetadataBackend || null);
+        })
+        .catch(() => {
+          if (active) {
+            setBackendHealthStatuses(null);
+            setActiveFileStorage(null);
+            setActiveMetadataBackend(null);
+          }
+        });
+    };
+    refreshHealth();
+    const intervalId = setInterval(refreshHealth, HEALTH_POLL_INTERVAL_MS);
     return () => {
       active = false;
+      clearInterval(intervalId);
     };
-  }, [user]);
+  }, []);
 
   const shareContextProps = useMemo(
     () => ({
@@ -692,9 +695,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       fileContentRef,
       scrollContainerRef,
       backendHealth: backendHealthStatuses,
-      activeBackends,
+      activeFileStorage,
+      activeMetadataBackend,
     }),
-    [user, navigate, isMobile, backendHealthStatuses, activeBackends]
+    [user, navigate, isMobile, backendHealthStatuses, activeFileStorage, activeMetadataBackend]
   );
 
   const overlayStateProps = useMemo(
@@ -996,7 +1000,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       handleExplorerDrop,
       handleInternalFileDrop,
       handleLeaveSharePathClick,
-      handlePathClick,
       handleFolderTreeNodeClick,
       ancestors,
       handleScrollAreaClick,
@@ -1019,7 +1022,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       handleExplorerDrop,
       handleInternalFileDrop,
       handleLeaveSharePathClick,
-      handlePathClick,
       handleFolderTreeNodeClick,
       ancestors,
       handleScrollAreaClick,

@@ -6,7 +6,7 @@
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Role                      | `AuthProvider`: exposes authentication/session state and public auth actions (`login`, `register`, `logout`) through React context. Session-only auth is backed by `sessionStorage`. |
 | Used by                   | App root and any component needing `useAuth()` (e.g. `PrivateRoute`, login/register pages, `FileManager`).                                                                           |
-| Depends on (split target) | `useAuthSession` (session state + actions). Auth error handling (`401`/`403`) remains the responsibility of `apiClient`.                                                             |
+| Depends on | `useAuthSession` (session state + actions, fully delegated). Auth error handling (`401`/`403`) remains the responsibility of `apiClient`. |
 
 ---
 
@@ -34,8 +34,8 @@
 
 ### 2.4 Dependencies
 
-- React (`createContext`, `useState`, `useContext`, `useEffect`, `useCallback`)
-- `useAuthSession` (split target)
+- React (`createContext`, `useContext`, `useMemo`)
+- `useAuthSession` (session state + actions; source of `user`, `loading`, `login`, `register`, `logout`)
 
 ### 2.5 Behavior
 

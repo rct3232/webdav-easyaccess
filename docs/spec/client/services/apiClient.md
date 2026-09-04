@@ -6,7 +6,7 @@
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role                      | Centralized API client (fetch-based) that unifies request/response parsing, auth token injection, auth error handling (401 refresh + 403 navigation), and retry behavior. |
 | Used by                   | `services/*` modules (e.g. `authService`) and any client code that needs consistent `/api/*` request behavior.                                                            |
-| Depends on (split target) | `httpClient` (transport + retry + parsing), `authTokenStore` (token persistence + refresh + x-new-token application), `authNavigationPolicy` (redirect/back rules).       |
+| Depends on (delegated) | `httpClient` (transport + retry + parsing), `authTokenStore` (token persistence + refresh + x-new-token application), `authNavigationPolicy` (redirect/back rules).       |
 
 ---
 
@@ -73,7 +73,7 @@ Shared request defaults:
 - Retry applies only to network failures and 5xx statuses (4xx never triggers transport retry).
 - Timeout aborts (`ECONNABORTED`) are surfaced immediately and are not retried.
 
-### 2.5 Dependencies (split target)
+### 2.5 Dependencies (delegated)
 
 - `httpClient`: transport + retry + parsing
 - `authTokenStore`: sessionStorage persistence, `x-new-token` application, refresh endpoint

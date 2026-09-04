@@ -2,11 +2,6 @@ import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 import { getContentType } from '@webdav-easyaccess/shared/fileTypes';
 import i18n from '../i18n';
 import { get, post, put } from './apiClient';
-import {
-  checkPermission as checkPermissionApi,
-  grantPermission as grantPermissionApi,
-  revokePermission as revokePermissionApi,
-} from './permissionService';
 
 const API_BASE = '/files';
 
@@ -80,11 +75,11 @@ export const getFilesMetadata = async (nodeIds = [], options = {}) => {
 /**
  * Fetch file blob (preview, etc.)
  * @param {number} nodeId - File nodeId
- * @param {Object} options - { inline: boolean }
+ * @param {Object} options - { inline: boolean, timeout?: number, maxRetries?: number }
  * @returns {Promise<Blob>}
  */
 export const getFileBlob = async (nodeId, options = {}) => {
-  const { shareToken, inline, signal } = options;
+  const { shareToken, inline, signal, timeout, maxRetries } = options;
   const params = { nodeId };
   if (inline) params.inline = 'true';
   if (shareToken) params.shareToken = shareToken;
@@ -93,6 +88,8 @@ export const getFileBlob = async (nodeId, options = {}) => {
     responseType: 'blob',
     headers: shareTokenHeaders(shareToken),
     signal,
+    ...(timeout ? { timeout } : {}),
+    ...(maxRetries != null ? { maxRetries } : {}),
   });
   return response.data;
 };
@@ -530,34 +527,6 @@ export const getDownloadProgress = async (downloadId, options = {}) => {
   });
   return response.data;
 };
-
-/** Check effective permission for a node (folder or file). Delegates to unified permissionService. */
-export const checkPermission = async (nodeId) => {
-  return checkPermissionApi(nodeId);
-};
-
-/** Check effective permission for a file node. Delegates to unified permissionService. */
-export const checkFilePermission = async (fileNodeId) => {
-  return checkPermissionApi(fileNodeId);
-};
-
-/** Grant file-level permission. Delegates to unified permissionService (target: 'file'). */
-export const grantFilePermission = async ({ userId, fileNodeId, permission }) => {
-  await grantPermissionApi({ userId, nodeId: fileNodeId, permission, target: 'file' });
-};
-
-/** Revoke file-level permission. Delegates to unified permissionService (target: 'file'). */
-export const revokeFilePermission = async ({ userId, fileNodeId }) => {
-  await revokePermissionApi({ userId, nodeId: fileNodeId, target: 'file' });
-};
-
-/** Update file-level permission. Delegates to unified permissionService (target: 'file'). */
-export const updateFilePermission = async ({ userId, fileNodeId, permission }) => {
-  await grantPermissionApi({ userId, nodeId: fileNodeId, permission, target: 'file' });
-};
-
-/** List current user's file-level permissions. Re-exported from permissionService. */
-export { listFilePermissions } from './permissionService';
 
 export const requestThumbnailsBatch = async (nodeIds, options = {}) => {
   const { shareToken } = options;

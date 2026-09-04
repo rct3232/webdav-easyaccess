@@ -6,15 +6,16 @@ metadata DB migration flow (F1), the blob migration cutover flow (F2), the auto-
 destination config, the ".env setup needed" banner, the S3 boot probe, and the manual env
 cutover contract.
 
-Working plan with decisions D1–D14 and progress log: `PLAN.md` (root,
-`feature/migration-mode`).
+Working decisions D1–D14 are recorded in this document ([Decisions summary
+(D1–D14)](#decisions-summary-d1d14)); the feature's progress log lives in the repository's
+commit history (`git log`).
 
 Detailed implementation contracts live in:
 
 - `docs/spec/server/infrastructure/migrationGate.md` — gate state, transitions, gating middleware + allow-list, `503 migrationInProgress`.
 - `docs/spec/server/services/metadataMigrationService.md` — target scan, schema apply, transactional wipe+copy, rollback.
 - `docs/spec/server/tools/metadata-migration.md` — the admin-API metadata migration path (`target-scan`, `POST /metadata`).
-- `docs/spec/server/tools/blob-migration.md` (updated) — blob migration spec incl. `configPersist` (D10), cancel semantics, `/migration`-page execution, extended job payload.
+- `docs/spec/server/tools/blob-migration.md` (updated) — blob migration spec incl. `configPersist` (D10), cancel semantics, `/migration`-page execution, and the type-specific job payload (blob jobs keep scalar `progress` + top-level `current`/`results`; see §4.4).
 - `docs/SETUP.md` — operator env reference and the updated cutover runbook.
 - `docs/ARCHITECTURE.md` — the (now supported) metadata migration path.
 
@@ -52,10 +53,10 @@ Key properties:
 - **Cancellation (D4):** DB migration = one target transaction → cancel = **ROLLBACK**, both
   sides unharmed. Blob migration = cancel flag set immediately, the current node finishes then
   stops; partial progress is kept (source preserved) and resumed on rerun (`shouldSkip`).
-- **Final cutover is manual (D11):** the T0 keys (`WEA_STORAGE_BACKEND`, `WEA_PG_*`) are
-  env-owned by design; the final step stays a manual `.env` edit + restart. The UI guides it
-  (".env setup needed") and the server shows a persistent banner while data lives in the
-  non-active backend.
+- **Final cutover is manual (D11):** the T0 keys (the remote-DB block `WEA_DB_*` /
+  `WEA_SQLITE_PATH`) are env-owned by design; the final step stays a manual `.env` edit +
+  restart. The UI guides it (".env setup needed") and the server shows a persistent banner while
+  data lives in the non-active backend.
 
 ---
 
@@ -91,7 +92,7 @@ A gating middleware installed in `server/index.js` (see
 'migrationInProgress', ... }` **except** the allow-list:
   - `GET /api/health` — liveness stays open.
   - `POST /api/auth/login` — authentication stays open so the operator can reach `/migration`
-    after a session expiry. _(PLAN D3 refers to this as the admin login; the real route is
+    after a session expiry. _(Decision D3 lists this as the admin login; the real route is
     `POST /api/auth/login`, mounted from `server/domains/auth/routes.js`.)_
   - `/api/admin/migration/*` — the admin migration API (start/cancel/poll, target-scan) stays
     open so a running migration can be observed and cancelled.
@@ -187,8 +188,8 @@ locally.
 ## DB metadata migration flow (F1, D5, D6)
 
 Metadata migration is an **admin-API + dialog** feature (D14) — there is no standalone CLI. The
-target is always the **non-active** metadata backend: when `WEA_STORAGE_BACKEND=sqlite` the
-target is `postgresql`, and vice versa.
+target is always the **non-active** metadata backend: when the SQLite backend is active (no
+remote DB keys set) the target is `postgresql`, and vice versa.
 
 **Flow (D5/D6):**
 
@@ -208,7 +209,7 @@ target is `postgresql`, and vice versa.
    of both.
 5. **Cancel = rollback (D4):** because the whole operation (schema + wipe + copy) runs in one
    target transaction, cancelling rolls back every write — both sides are unharmed.
-6. **Final cutover stays manual (D11):** the T0 keys (`WEA_STORAGE_BACKEND`, `WEA_PG_*` /
+6. **Final cutover stays manual (D11):** the T0 keys (the remote-DB block `WEA_DB_*` /
    `WEA_SQLITE_PATH`) are `.env`-owned, so the last step is a manual `.env` edit + restart. The
    UI guides it and the server shows a **persistent ".env setup needed" banner** while the
    non-active backend still holds metadata (D13).
@@ -235,10 +236,10 @@ The existing blob migration core (`migrationService`, admin API `POST
    copy stops. Partial progress is kept (source preserved) and rerun resumes via the existing
    `shouldSkip` resume markers. The `runCopy` loop gains a cancel check.
 5. **Auto-persist of the destination config (D10):** when an `apply` completes, **DB-sourced**
-   storage keys are persisted to the DB via `Settings.set` (secrets AES-256-GCM-encrypted under
-   `encrypt_secret_key`, then `getSharedResolver().invalidateCache`), and the job records
+   storage keys are persisted to the DB via `Settings.set` (secret values written as
+   **plaintext strings**, then `getSharedResolver().invalidateCache`), and the job records
    `configPersist { persisted, skippedEnvSourced }`. **Env-sourced** keys fall back to the
-   existing manual `.env` guidance (there is no env↔DB sync tool). Either way a restart is
+   existing manual `.env` guidance. Either way a restart is
    required — storage config is boot-frozen (`process.env.WEA_FILE_STORAGE` is snapshotted at
    composition/blobstore creation).
 6. **Restart → boot probe (D12):** after restart, the active backend is verified at boot — the
@@ -246,7 +247,7 @@ The existing blob migration core (`migrationService`, admin API `POST
    backend-health card.
 
 Full spec: `docs/spec/server/tools/blob-migration.md` (updated for `configPersist`, cancel
-semantics, `/migration`-page execution, extended job payload).
+semantics, `/migration`-page execution, type-specific job payload).
 
 ---
 
@@ -287,7 +288,7 @@ it.
 | D7  | `/migration` content | Progress only: determinate %, current-operation label, counters. No per-step/table list.                                                                                                                                                                                               |
 | D8  | Blob progress        | Node-count based: `% = progress/total` over the snapshot; current file label shown.                                                                                                                                                                                                    |
 | D9  | Terminal UX          | No header back button; auto modal popup on terminal state with summary + "Go to settings".                                                                                                                                                                                             |
-| D10 | F2 persist           | After blob `apply`: DB-sourced storage keys persist to DB (`Settings.set`, secrets encrypted, `invalidateCache`), job carries `configPersist { persisted, skippedEnvSourced }`; env-sourced keys → manual `.env` guidance.                                                             |
+| D10 | F2 persist           | After blob `apply`: DB-sourced storage keys persist to DB (`Settings.set`, secrets stored as plaintext, `invalidateCache`), job carries `configPersist { persisted, skippedEnvSourced }`; env-sourced keys → manual `.env` guidance.                                                             |
 | D11 | Final DB cutover     | T0 keys env-owned; final step is manual env edit + restart; UI guides it and the server shows a persistent banner.                                                                                                                                                                     |
 | D12 | Boot verification    | Add an S3 boot probe symmetric to the WebDAV one (warn-only).                                                                                                                                                                                                                          |
 | D13 | ".env setup needed"  | `metadataPresence` detection for the non-active backend, exposed via an admin endpoint, banner in System Settings with a link to the migration flow.                                                                                                                                   |
@@ -303,8 +304,8 @@ it.
 | `GET /api/admin/migration/target-scan`         | Token + Admin            | Metadata target scan: `schemaExists` + per-table row counts                                                                                                                                           |
 | `POST /api/admin/migration/metadata`           | Token + Admin            | Start a metadata DB migration. Body `{ targetBackend, pg?, sqlitePath?, wipeTarget? }`; gate set; cancel = rollback                                                                                   |
 | `GET /api/admin/migration/info`                | Token + Admin            | Derived blob direction `{ source, direction }` (existing)                                                                                                                                             |
-| `POST /api/admin/migration/blobs`              | Token + Admin            | Start a blob migration job; both `dry-run` and `apply` set the gate (existing, extended payload)                                                                                                      |
-| `GET /api/admin/migration/jobs/:jobId`         | Token + Admin            | Job status/progress (existing, extended payload)                                                                                                                                                      |
+| `POST /api/admin/migration/blobs`              | Token + Admin            | Start a blob migration job; both `dry-run` and `apply` set the gate (existing; blob jobs keep scalar `progress` + top-level `current`/`results`)                                                                                    |
+| `GET /api/admin/migration/jobs/:jobId`         | Token + Admin            | Job status/progress (existing; type-specific payload: blob scalar `progress` + top-level `current`/`results`, metadata extended `{ percent, currentLabel }`)                                                                       |
 | `POST /api/admin/migration/jobs/:jobId/cancel` | Token + Admin            | Cancel a running job (existing)                                                                                                                                                                       |
 
 While the gate is active all non-allow-listed routes return `503 migrationInProgress`
@@ -336,10 +337,4 @@ Representative observable behaviors to cover:
 
 ## Future work
 
-- **Separate admin/operator app (recorded, not planned):** admin settings, `/setup`, and
-  `/migration` could be extracted into a dedicated operator build served under its own route
-  (e.g. `/admin`) and gated at the document-serving boundary (cookie auth). It would remove the
-  "operator page shell loads but its API is 403" cosmetic surface, but requires an auth-cookie
-  refactor and does NOT change the two bootstrap windows (`/setup` runs before any admin
-  exists; `/migration` must be reachable before login) — those are closed by the loopback-only
-  setup binding and the role-aware maintenance split described above.
+Future admin/operator app split — tracked in `docs/IMPROVEMENT_PLAN.md`.

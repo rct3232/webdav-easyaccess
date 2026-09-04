@@ -14,9 +14,8 @@ const path = require('path');
 
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { createError } = require('../../utils/errorHandler');
-const { encryptSecret, generateKey } = require('../../utils/configEncryption');
 const { SETUP_INVALID_PAYLOAD_CODE } = require('../../infrastructure/backendProbe');
-const { isT0, isSecret, getDefault, TIER } = require('../../infrastructure/configRegistry');
+const { isT0, isSecret } = require('../../infrastructure/configRegistry');
 const { getSharedResolver } = require('../../infrastructure/configResolver');
 const { resolveEnvPath } = require('../../infrastructure/envPath');
 const { writeEnv } = require('../../infrastructure/envFileWriter');
@@ -48,15 +47,17 @@ const EMAIL_KEYS = ['host', 'port', 'user', 'password', 'secure', 'fromName'];
 const FILE_KEYS_UNION = [...new Set([...S3_KEYS, ...WEBDAV_KEYS])];
 const TOP_LEVEL_KEYS = ['metadata', 'file', 'admin', 'jwt', 'server', 'email'];
 
+// The .env-owned metadata-backend T0 keys. The remote-DB block decides the
+// metadata backend by presence (see store/storage.getBackend); apply never
+// produces or writes these keys — the DB connection is operator-owned (D6).
 const METADATA_T0_KEYS = [
-  'WEA_STORAGE_BACKEND',
-  'WEA_PG_HOST',
-  'WEA_PG_PORT',
-  'WEA_PG_DATABASE',
-  'WEA_PG_USER',
-  'WEA_PG_PASSWORD',
-  'WEA_PG_SSL',
-  'WEA_PG_MAX',
+  'WEA_DB_HOST',
+  'WEA_DB_PORT',
+  'WEA_DB_DATABASE',
+  'WEA_DB_USER',
+  'WEA_DB_PASSWORD',
+  'WEA_DB_SSL',
+  'WEA_DB_MAX',
 ];
 
 const EFFECTIVE_SECRET_MASK = '****';
@@ -169,8 +170,11 @@ function validateAdmin(block, fields) {
 }
 
 function validateJwt(block, fields) {
+  // The jwt block is optional: an absent/blank secret means "do not write a
+  // JWT secret" and the server falls back to an ephemeral per-boot secret
+  // (docs/features/setup-wizard.md D7).
+  if (block == null) return;
   if (!validateBlockObject(block, JWT_KEYS, 'jwt', fields)) return;
-  if (isMissing(block.secret)) fields['jwt.secret'] = 'required';
 }
 
 function validateServer(block, fields) {
@@ -254,8 +258,10 @@ function buildEnvEntries(body) {
     if (!isMissing(file.authType)) entries.WEBDAV_AUTH_TYPE = String(file.authType);
   }
 
-  entries.JWT_SECRET = String(jwt.secret);
-  if (!isMissing(jwt.expiresIn)) entries.JWT_EXPIRES_IN = String(jwt.expiresIn);
+  // The jwt block is optional: JWT_SECRET is written only when the operator
+  // supplies one — otherwise the server generates an ephemeral per-boot secret.
+  if (jwt != null && !isMissing(jwt.secret)) entries.JWT_SECRET = String(jwt.secret);
+  if (jwt != null && !isMissing(jwt.expiresIn)) entries.JWT_EXPIRES_IN = String(jwt.expiresIn);
 
   if (body.server != null) {
     if (body.server.port !== undefined && String(body.server.port).trim() !== '') {
@@ -284,9 +290,9 @@ function buildEnvEntries(body) {
  * raw env var name). Classification comes from the config registry, never a
  * local allowlist, so the wizard cannot drift from the tier model.
  *
- * The metadata backend T0 keys (WEA_STORAGE_BACKEND, WEA_PG_*) are excluded
- * from the .env partition: the DB connection is `.env`-owned (D6) and the
- * wizard serves non-T0 only (D7), so they are never written by apply.
+ * The metadata backend T0 keys (the WEA_DB_* block) are excluded from the
+ * .env partition: the DB connection is `.env`-owned (D6) and the wizard
+ * serves non-T0 only (D7), so they are never written by apply.
  * @param {Record<string, string>} entries flat key → value map
  * @returns {{ envEntries: Record<string, string>, dbEntries: Record<string, string> }}
  */
@@ -304,40 +310,15 @@ function partitionEntries(entries) {
   return { envEntries, dbEntries };
 }
 
-function encryptSecretValue(value, masterKey) {
-  return JSON.stringify(encryptSecret(String(value), masterKey));
-}
-
-/**
- * Normalize the effective config so masked-but-unset secrets drive
- * `missing` / `setup_complete` / `current` correctly. See the mask-drop rule
- * explained at the call site in routes.js (Q1b).
- * @param {Record<string, object>} effective configResolver effective config
- * @returns {Record<string, object>} effective config with unset masks removed
- */
-function normalizeEffectiveForStatus(effective) {
-  const out = { ...effective };
-  for (const [key, meta] of Object.entries(effective)) {
-    if (!meta.secret || meta.value !== EFFECTIVE_SECRET_MASK) continue;
-    const t0Unset = meta.tier === TIER.T0 && !process.env[key];
-    const dbUnset = meta.source === 'default' && getDefault(key) === undefined;
-    if (t0Unset || dbUnset) out[key] = { ...meta, value: undefined };
-  }
-  return out;
-}
-
 /**
  * Upsert non-T0 wizard values into the metadata DB through the app's own
- * Settings model (plaintext config as-is; the store JSON-stringifies on PG /
- * stores raw TEXT on sqlite; a secret is the JSON string of the encrypted
- * payload).
+ * Settings model. Values are stored as plaintext strings; the store
+ * JSON-stringifies on PG / stores raw TEXT on sqlite.
  * @param {Record<string, string>} dbEntries DB-partition config entries
- * @param {string} masterKey encrypt_secret_key used to seal secrets
  */
-async function writeSettings(dbEntries, masterKey) {
+async function writeSettings(dbEntries) {
   for (const [key, value] of Object.entries(dbEntries)) {
-    if (isSecret(key)) await Settings.set(key, encryptSecretValue(value, masterKey));
-    else await Settings.set(key, value);
+    await Settings.set(key, value);
   }
 }
 
@@ -364,8 +345,8 @@ async function updateAdminPassword(password) {
  * 1. validate (same rules + message as the wizard),
  * 2. build entries, drop masked ('****') unchanged secrets,
  * 3. partition T0 (.env) vs DB-settings entries,
- * 4. keep-or-generate encrypt_secret_key and write the .env FIRST,
- * 5. update the admin password, then upsert DB settings (secrets encrypted),
+ * 4. write the .env FIRST,
+ * 5. update the admin password, then upsert DB settings as plaintext,
  * 6. invalidate the shared resolver cache.
  *
  * @param {*} body raw apply payload
@@ -385,35 +366,32 @@ async function applySetup(body) {
 
   const entries = buildEnvEntries(body);
 
-  // Masked (unchanged) secrets keep their existing DB ciphertext — the
-  // only-re-encrypt-on-new-value rule (PLAN §7 / D6). The client sends the
-  // prefill mask '****' for a secret it did not edit; validation accepts it
-  // (non-empty) but writeSettings must NOT re-encrypt it, so drop it here.
+  // Masked (unchanged) secrets keep their existing DB value — the
+  // keep-existing rule. The client sends the prefill mask '****' for a secret
+  // it did not edit; validation accepts it (non-empty) but writeSettings must
+  // NOT overwrite the stored value, so drop it here.
   for (const [key, value] of Object.entries(entries)) {
     if (isSecret(key) && value === '****') delete entries[key];
   }
 
   const { envEntries, dbEntries } = partitionEntries(entries);
 
-  // encrypt_secret_key lifecycle (PLAN §7): keep an existing key — never
-  // regenerate it and never write it to .env. Only auto-generate when none
-  // exists; the generated key is T0 / .env-only and used to encrypt this
-  // apply's DB secrets.
-  const masterKey = process.env.encrypt_secret_key || generateKey();
-  if (!process.env.encrypt_secret_key) envEntries.encrypt_secret_key = masterKey;
-
-  // Write .env FIRST (atomic temp-file + rename). If it fails, the DB has not
-  // been touched, so boot still shows setup mode — a failed apply can never
-  // leave a committed-but-error "complete" state (the non-atomic bug that
-  // surfaced when a 400'd apply still left the DB configured).
-  const envPath = resolveEnvPath(SERVER_ROOT);
-  writeEnv(envPath, envEntries);
+  // Write .env FIRST (atomic temp-file + rename), but only when there is a T0
+  // value to persist — an apply without a supplied JWT secret has an empty .env
+  // partition. If the write fails, the DB has not been touched, so boot still
+  // shows setup mode — a failed apply can never leave a committed-but-error
+  // "complete" state (the non-atomic bug that surfaced when a 400'd apply
+  // still left the DB configured).
+  if (Object.keys(envEntries).length > 0) {
+    const envPath = resolveEnvPath(SERVER_ROOT);
+    writeEnv(envPath, envEntries);
+  }
 
   // sqlite admin password update happens only after the .env write succeeded,
   // so a failure cannot leave the credential changed mid-apply.
   await updateAdminPassword(String(body.admin.password));
 
-  await writeSettings(dbEntries, masterKey);
+  await writeSettings(dbEntries);
 
   // Clear the shared T2 cache so the DB writes are visible to restart-free
   // (T2) reads immediately after this apply.
@@ -427,7 +405,6 @@ module.exports = {
   applySetup,
   buildEnvEntries,
   isMissing,
-  normalizeEffectiveForStatus,
   partitionEntries,
   validateApplyPayload,
 };

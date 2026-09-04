@@ -72,14 +72,22 @@ Call signatures listed in the props table are the contract; the view must call t
 - **Forbidden imports:** `client/src/services/*`, gateways (including `explorerGateway`), router hooks, browser APIs, storage utilities.
 - **Reference implementation:** extracted from `client/src/pages/FileManager/FileManager.js` during Phase 3.1.
 
-### 2.5 Admin backend-health banner (D3)
+### 2.5 Backend-health banner (D3)
 
-- The controller (`FileManager.js`) fetches `GET /api/health` (backend status strings) and
-  `GET /api/admin/config` (to derive the **active** backends: `WEA_STORAGE_BACKEND` for metadata
-  - `WEA_FILE_STORAGE` for file storage), passing both down via the shell context.
-- The view renders an admin-only `Alert` (between `FileManagerControls` and the listing,
-  `data-testid="backend-health-banner"`) when `isAdmin`, any **active** backend is `fail`, and
-  `activeBackends` is populated. Failures from inactive backends never trigger it.
+- The controller (`FileManager.js`) fetches the public `GET /api/health` for every authenticated
+  session (no admin config access) on mount and re-polls every 15 s while mounted, passing
+  `backends` (status strings) + `activeFileStorage` + `activeMetadataBackend` down via the shell
+  context. Polling ensures a failure recorded mid-session (e.g. a failed upload or DB drop) flips
+  the banner without a page remount.
+- The view renders a warning `Alert` (between `FileManagerControls` and the listing,
+  `data-testid="backend-health-banner"`) when an authenticated, non-share session is active and an
+  ACTIVE backend is `fail`: the active FILE backend (`backendHealth[activeFileStorage]`), or the
+  metadata backend when it is `postgresql` (`activeMetadataBackend === 'postgresql' &&
+  backendHealth.postgresql === 'fail'`). Failures of inactive backends never trigger it.
+- Copy is role-based: admins see `admin.health.banner`. Non-admin text matches the failing backend
+  type — `files.maintenanceNotice` when the metadata DB is failing, otherwise
+  `files.storageUnavailable` — conveying only that the service is unavailable (no backend/key
+  detail). The System Settings health card remains admin-only.
 - The view never performs the health fetch itself (presentational boundary).
 
 ### 2.6 Verification Scenarios
@@ -92,7 +100,10 @@ These scenarios should be covered by a dedicated component test in `client/src/c
 - [ ] Folder tree and overlay slots render in the same layout positions as today.
 - [ ] Progress drawer renders from `progress` props and calls provided retry/cancel callbacks without owning the operation logic.
 - [ ] In share-link mode, the folder tree routes non-share section clicks through `onLeaveShareClick` (`interaction.handleLeaveSharePathClick`) so the hosting shell can open the leave-share confirmation; the leave-share `ConfirmDialog` renders from `overlayState` (leave-share state) and confirms via `handleLeaveShareConfirm`.
-- [ ] Admin-only backend-health banner renders when any backend is `fail`; absent for non-admins.
+- [ ] Backend-health banner renders for admins (detailed copy) when the active file backend is `fail`
+- [ ] Backend-health banner renders for non-admin users (simplified `files.storageUnavailable` copy) when the active file backend is `fail`
+- [ ] Backend-health banner renders when the active metadata DB (`postgresql`) is `fail` — non-admin copy is `files.maintenanceNotice`
+- [ ] Banner is absent when no active backend is `fail`, or in share-link mode
 
 ### 2.6 Edge Cases
 

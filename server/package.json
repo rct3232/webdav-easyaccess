@@ -10,7 +10,7 @@
     "test:unit": "NODE_OPTIONS=--max-old-space-size=8192 jest --testPathIgnorePatterns='/routes/__tests__/'",
     "test:integration": "NODE_OPTIONS=--max-old-space-size=8192 jest --testMatch='**/routes/__tests__/*.test.js'",
     "test:ci": "NODE_OPTIONS=--max-old-space-size=8192 jest --ci --coverage --maxWorkers=2",
-    "test:ci:pg": "NODE_OPTIONS=--max-old-space-size=8192 WEA_STORAGE_BACKEND=postgresql WEA_PG_HOST=127.0.0.1 WEA_PG_PORT=5433 WEA_PG_USER=e2etest WEA_PG_PASSWORD=e2etest WEA_PG_DATABASE=webdav_test jest --ci --runInBand",
+    "test:ci:pg": "NODE_OPTIONS=--max-old-space-size=8192 WEA_TEST_REMOTE=1 WEA_DB_HOST=127.0.0.1 WEA_DB_PORT=5433 WEA_DB_USER=e2etest WEA_DB_PASSWORD=e2etest WEA_DB_DATABASE=webdav_test jest --ci --runInBand",
     "test:coverage": "NODE_OPTIONS=--max-old-space-size=8192 jest --coverage",
     "test:mutation": "stryker run",
     "lint": "eslint .",

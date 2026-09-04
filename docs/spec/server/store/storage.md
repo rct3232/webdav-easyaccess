@@ -21,7 +21,7 @@
 
 | Method          | Signature                      | Description                                                                                                                                                                                                                                                                                                                                                       |
 | --------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| getBackend      | () => 'postgresql' \| 'sqlite' | Resolved from `WEA_STORAGE_BACKEND`. Accepts aliases: `postgresql`/`postgres`/`pg` → `'postgresql'`; `sqlite` → `'sqlite'`; empty/undefined → `'sqlite'` (default). **Any other value throws a terminal `Error`** (e.g. removed `fs`/`filesystem`/`webdav`, or a typo) — the boot path (`runBoot().catch`) exits with `process.exit(1)`. No silent fallback (F6). |
+| getBackend      | () => 'postgresql' \| 'sqlite' | Resolved from the generic remote-DB credential block: if at least one of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` is set, the backend is `'postgresql'`; a partial set (some but not all four) is a terminal boot-time configuration error listing the missing keys — the boot path (`runBoot().catch`) exits with `process.exit(1)`. None of the four set → `'sqlite'` (default). No silent fallback for a remote intent (F6). |
 | isSqliteBackend | () => boolean                  | Returns `true` if `getBackend() === 'sqlite'`                                                                                                                                                                                                                                                                                                                     |
 
 #### PostgreSQL Helpers
@@ -50,26 +50,37 @@
 - pg (Pool), backend-specific SQL helpers
 - errorHandler (`createError`, `mapDatabaseError`), SERVER_ERROR_CODES
 
-### 2.4 `WEA_STORAGE_BACKEND` vs `WEA_FILE_STORAGE`
+### 2.4 Metadata backend vs `WEA_FILE_STORAGE`
 
-These two environment variables are **completely independent**:
+The metadata backend and file-content storage are **completely independent**:
 
-| Variable              | Purpose                    | Values                           | Handled By                |
-| --------------------- | -------------------------- | -------------------------------- | ------------------------- |
-| `WEA_STORAGE_BACKEND` | Metadata persistence layer | `sqlite` (default), `postgresql` | `storage.js:getBackend()` |
-| `WEA_FILE_STORAGE`    | File content blob storage  | `s3` (default), `webdav`         | Phase 1 S3 adapter        |
+| Concern            | Purpose                   | Selection / values                                                                                                        | Handled By                |
+| ------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| Metadata backend   | Metadata persistence      | `postgresql` when any of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` is set; `sqlite` (default) when none is set | `storage.js:getBackend()` |
+| `WEA_FILE_STORAGE` | File content blob storage | `s3` (default), `webdav`                                                                                                  | Phase 1 S3 adapter        |
 
-`WEA_STORAGE_BACKEND` no longer accepts `fs` or `webdav` metadata values (removed in Phase 7); any unrecognized **non-empty** value is a terminal boot error (no silent `sqlite` fallback, F6). An unset/empty value defaults to `sqlite`. File content storage via `WEA_FILE_STORAGE=webdav` (WebDAV) or `WEA_FILE_STORAGE=s3` (S3) is unaffected.
+The metadata backend is chosen by the **presence** of the generic remote-DB credential block,
+not by a free-form storage-backend variable. Setting at least one of `WEA_DB_HOST`,
+`WEA_DB_DATABASE`, `WEA_DB_USER`, `WEA_DB_PASSWORD` selects the remote database (PostgreSQL is
+the only supported remote engine); setting none selects SQLite (default). A partial credential
+set (some but not all four) is a boot-time configuration error listing the missing keys — there
+is no silent `sqlite` fallback for a remote intent (F6). File content storage via
+`WEA_FILE_STORAGE=webdav` (WebDAV) or `WEA_FILE_STORAGE=s3` (S3) is unaffected.
 
-**D6 boot rule:** the DB connection is `.env`-owned. When `WEA_STORAGE_BACKEND=postgresql`, the boot pre-flight (`runBoot`, `server/index.js`) requires `WEA_PG_HOST/PORT/DATABASE/USER/PASSWORD`; any missing key → `console.error('[config] … requires <keys> …')` + `process.exit(1)`. `resolvePgConfig`'s `storage.postgresqlNotConfigured` throw remains as a runtime guard.
+**D6 boot rule:** the DB connection is `.env`-owned. The boot pre-flight (`runBoot`,
+`server/index.js`) selects the remote backend when any of the four `WEA_DB_*` credential keys is
+present; a partial set (some but not all) → `console.error('[config] … requires <keys> …')` +
+`process.exit(1)`. `resolvePgConfig`'s `storage.postgresqlNotConfigured` throw remains as a
+runtime guard.
 
 ### 2.4 PostgreSQL Infrastructure Contract
 
-- Backend selector accepts `WEA_STORAGE_BACKEND=postgresql`.
+- Backend selector returns `'postgresql'` when the remote-DB credential block is present.
 - Pool configuration uses environment values:
-  - `WEA_PG_HOST`, `WEA_PG_PORT`, `WEA_PG_DATABASE`, `WEA_PG_USER`, `WEA_PG_PASSWORD`
-  - optional `WEA_PG_SSL` (`true`/`false`)
-  - optional `WEA_PG_MAX`, `WEA_PG_IDLE_TIMEOUT_MS`, `WEA_PG_CONNECTION_TIMEOUT_MS`
+  - `WEA_DB_HOST`, `WEA_DB_PORT`, `WEA_DB_DATABASE`, `WEA_DB_USER`, `WEA_DB_PASSWORD`
+  - optional `WEA_DB_SSL` (`true`/`false`)
+  - optional `WEA_DB_MAX`, `WEA_DB_IDLE_TIMEOUT_MS`, `WEA_DB_CONNECTION_TIMEOUT_MS`
+  - optional `WEA_DB_QUERY_TIMEOUT_MS` (client-side pg `query_timeout`, default 60_000; `0` disables). Bounds every statement client-side so a mid-session DB drop (silent network partition) errors out instead of hanging the request indefinitely. Set `0` only for unusually long maintenance queries.
 - `getPgPool()`:
   - throws standardized `storage.postgresqlNotConfigured` when required connection env is missing
   - returns singleton `pg.Pool` instance
@@ -100,13 +111,9 @@ Permission contract source of truth for `postgresql` backend:
 
 ### 2.7 Verification Scenarios
 
-- [ ] getBackend: WEA_STORAGE_BACKEND=postgresql → postgresql
-- [ ] getBackend: WEA_STORAGE_BACKEND=fs → throws (fs removed in Phase 7)
-- [ ] getBackend: WEA_STORAGE_BACKEND=webdav → throws
-- [ ] getBackend: WEA_STORAGE_BACKEND= (empty) → sqlite (default)
-- [ ] getBackend: WEA_STORAGE_BACKEND=postgres → postgresql (alias)
-- [ ] getBackend: WEA_STORAGE_BACKEND=pg → postgresql (alias)
-- [ ] getBackend: WEA_STORAGE_BACKEND=sqlite → sqlite
+- [ ] getBackend: none of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` set → sqlite (default)
+- [ ] getBackend: all of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` set → postgresql
+- [ ] boot pre-flight: partial `WEA_DB_*` set (some but not all of the four) → terminal `[config]` error listing the missing keys
 - [ ] backend parity: shared store-facing behaviors remain consistent across `sqlite` and `postgresql` for equivalent inputs (shape, ordering, not-found handling)
 - [ ] getPgPool: missing env throws `storage.postgresqlNotConfigured`
 - [ ] getPgPool: returns singleton pool across repeated calls
@@ -117,4 +124,5 @@ Permission contract source of truth for `postgresql` backend:
 
 - PostgreSQL unique violation (`23505`): mapped to 409 `errorHandler.databaseConflict`
 - PostgreSQL FK/check violations (`23503`/`23514`): mapped to 400 `errorHandler.databaseConstraintViolation`
-- PostgreSQL unavailable/timeout (`57P01`/`53300`): mapped to 503 `errorHandler.databaseUnavailable`
+- PostgreSQL unavailable/timeout (`57P01`/`53300`), client `query_timeout` expiry ("Query read timeout"), and reachability/system errors (`ECONNREFUSED`/`ENOTFOUND`/`EAI_AGAIN`/`ETIMEDOUT`/`ECONNRESET`): mapped to 503 `errorHandler.databaseUnavailable`
+- PostgreSQL auth failures (`28P01`/`28000`): mapped to 503 `errorHandler.databaseUnavailable`

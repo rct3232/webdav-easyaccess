@@ -30,9 +30,6 @@
 | selectionMode      | boolean  | Y        | -       | Selection mode active (row shows light primary background when selected) |
 | selectedFiles      | Set      | Y        | -       | Selected paths                                                           |
 | processingMap      | object   | N        | -       | Processing state                                                         |
-| hasWritePermission | boolean  | N        | -       | Write permission                                                         |
-| currentPath        | string   | Y        | -       | Current path                                                             |
-| onPathClick        | function | N        | -       | Path click                                                               |
 | loading            | boolean  | N        | false   | Loading state                                                            |
 
 ### 2.3 Callback Signatures

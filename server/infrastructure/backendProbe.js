@@ -47,11 +47,11 @@ function pickField(payload, primary, aliases) {
 
 /**
  * The PG password may arrive masked ('****') when prefilled; a direct PG
- * connection then falls back to the app's process.env.WEA_PG_PASSWORD. A typed
+ * connection then falls back to the app's process.env.WEA_DB_PASSWORD. A typed
  * (non-masked) password is always used verbatim.
  */
 function resolvePgPassword(password) {
-  return password === SECRET_MASK || isMissing(password) ? process.env.WEA_PG_PASSWORD : password;
+  return password === SECRET_MASK || isMissing(password) ? process.env.WEA_DB_PASSWORD : password;
 }
 
 function toShortReason(value) {
@@ -328,6 +328,8 @@ module.exports = {
   toShortReason,
   deriveReason,
   probeError,
+  probeS3,
+  probePostgresql,
   classifyPgError,
   classifyS3Error,
   classifyS3BucketError,

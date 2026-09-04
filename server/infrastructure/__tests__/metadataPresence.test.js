@@ -68,6 +68,36 @@ const realNow = Date.now.bind(Date);
 
 const SAVED_SQLITE_PATH = process.env.WEA_SQLITE_PATH;
 
+// WEA_DB_* keys this suite drives. Backend selection is presence-based, so
+// each test opts into a remote (PG) scenario explicitly. The prior values are
+// snapshotted and restored so sibling suites never inherit a leftover identity
+// set (which would silently flip them to the remote backend).
+const DB_TEST_KEYS = [
+  'WEA_DB_HOST',
+  'WEA_DB_PORT',
+  'WEA_DB_DATABASE',
+  'WEA_DB_USER',
+  'WEA_DB_PASSWORD',
+];
+
+const SAVED_DB_ENV = {};
+for (const key of DB_TEST_KEYS) SAVED_DB_ENV[key] = process.env[key];
+
+function setDbEnv() {
+  process.env.WEA_DB_HOST = '127.0.0.1';
+  process.env.WEA_DB_PORT = '5432';
+  process.env.WEA_DB_DATABASE = 'db';
+  process.env.WEA_DB_USER = 'u';
+  process.env.WEA_DB_PASSWORD = 'p';
+}
+
+function restoreDbEnv() {
+  for (const key of DB_TEST_KEYS) {
+    if (SAVED_DB_ENV[key] === undefined) delete process.env[key];
+    else process.env[key] = SAVED_DB_ENV[key];
+  }
+}
+
 beforeAll(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'metadata-presence-'));
 });
@@ -80,23 +110,22 @@ beforeEach(() => {
   clearPresenceCache();
   jest.clearAllMocks();
   nowSpy = jest.spyOn(Date, 'now').mockImplementation(() => realNow());
-  // Unset PG env so each test opts in explicitly.
-  for (const key of [
-    'WEA_PG_HOST',
-    'WEA_PG_PORT',
-    'WEA_PG_DATABASE',
-    'WEA_PG_USER',
-    'WEA_PG_PASSWORD',
-  ]) {
+  // Unset the WEA_DB_* env so each test opts in explicitly (no identity key
+  // set → sqlite is the default backend).
+  for (const key of DB_TEST_KEYS) {
     delete process.env[key];
   }
+  delete process.env.WEA_STORAGE_BACKEND;
 });
 
 afterEach(() => {
   nowSpy.mockRestore();
   if (SAVED_SQLITE_PATH === undefined) delete process.env.WEA_SQLITE_PATH;
   else process.env.WEA_SQLITE_PATH = SAVED_SQLITE_PATH;
-  process.env.WEA_STORAGE_BACKEND = 'sqlite';
+  // Restore the prior WEA_DB_* state (sqlite default under test:ci; the real
+  // remote identity set under test:ci:pg) so sibling suites are unaffected.
+  restoreDbEnv();
+  delete process.env.WEA_STORAGE_BACKEND;
 });
 
 describe('getOtherBackend', () => {
@@ -111,7 +140,6 @@ describe('getOtherBackend', () => {
 describe('SQLite detection (active backend = postgresql)', () => {
   beforeEach(() => {
     getBackend.mockReturnValue('postgresql');
-    process.env.WEA_STORAGE_BACKEND = 'postgresql';
   });
 
   it('returns otherHasData=false and does not create the file when it is missing', async () => {
@@ -172,7 +200,6 @@ describe('SQLite detection (active backend = postgresql)', () => {
 describe('PostgreSQL detection (active backend = sqlite)', () => {
   beforeEach(() => {
     getBackend.mockReturnValue('sqlite');
-    process.env.WEA_STORAGE_BACKEND = 'sqlite';
   });
 
   it('returns an error note and never throws when PG is unconfigured', async () => {
@@ -191,11 +218,7 @@ describe('PostgreSQL detection (active backend = sqlite)', () => {
   });
 
   it('returns otherHasData=false when the settings table does not exist', async () => {
-    process.env.WEA_PG_HOST = '127.0.0.1';
-    process.env.WEA_PG_PORT = '5432';
-    process.env.WEA_PG_DATABASE = 'db';
-    process.env.WEA_PG_USER = 'u';
-    process.env.WEA_PG_PASSWORD = 'p';
+    setDbEnv();
     MockPgClient.mockImplementation(() => makePgClient({ relation: null }));
 
     const result = await checkMetadataPresence();
@@ -207,11 +230,7 @@ describe('PostgreSQL detection (active backend = sqlite)', () => {
   });
 
   it('returns otherHasData=false when settings exists with zero rows', async () => {
-    process.env.WEA_PG_HOST = '127.0.0.1';
-    process.env.WEA_PG_PORT = '5432';
-    process.env.WEA_PG_DATABASE = 'db';
-    process.env.WEA_PG_USER = 'u';
-    process.env.WEA_PG_PASSWORD = 'p';
+    setDbEnv();
     MockPgClient.mockImplementation(() => makePgClient({ relation: 'public.settings', count: 0 }));
 
     const result = await checkMetadataPresence();
@@ -220,11 +239,7 @@ describe('PostgreSQL detection (active backend = sqlite)', () => {
   });
 
   it('returns otherHasData=true with the row count when settings has rows', async () => {
-    process.env.WEA_PG_HOST = '127.0.0.1';
-    process.env.WEA_PG_PORT = '5432';
-    process.env.WEA_PG_DATABASE = 'db';
-    process.env.WEA_PG_USER = 'u';
-    process.env.WEA_PG_PASSWORD = 'p';
+    setDbEnv();
     MockPgClient.mockImplementation(() => makePgClient({ relation: 'public.settings', count: 3 }));
 
     const result = await checkMetadataPresence();
@@ -239,12 +254,7 @@ describe('PostgreSQL detection (active backend = sqlite)', () => {
 describe('TTL cache behavior', () => {
   beforeEach(() => {
     getBackend.mockReturnValue('sqlite');
-    process.env.WEA_STORAGE_BACKEND = 'sqlite';
-    process.env.WEA_PG_HOST = '127.0.0.1';
-    process.env.WEA_PG_PORT = '5432';
-    process.env.WEA_PG_DATABASE = 'db';
-    process.env.WEA_PG_USER = 'u';
-    process.env.WEA_PG_PASSWORD = 'p';
+    setDbEnv();
   });
 
   it('reuses the cached result within the TTL (no re-probe)', async () => {

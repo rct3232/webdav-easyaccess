@@ -228,17 +228,10 @@ if (fs.existsSync(clientBuildPath)) {
 const { initMetadataSchema, ensureDefaultAdmin } = require('./store/bootstrap');
 
 async function runBoot() {
-  const { getBackend } = require('./store/storage');
-  const { PG_REQUIRED_KEYS } = require('./infrastructure/setupStatus');
-  if (getBackend() === 'postgresql') {
-    const missing = PG_REQUIRED_KEYS.filter((key) => !process.env[key]);
-    if (missing.length > 0) {
-      console.error(
-        `[config] WEA_STORAGE_BACKEND=postgresql requires ${missing.join(', ')} in env/.env. Aborting.`
-      );
-      process.exit(1);
-    }
-  }
+  // Backend selection is presence-based and validated inside
+  // storage.getBackend(): a partial WEA_DB_* credential set throws a terminal
+  // error that surfaces here (runBoot().catch → process.exit(1)); a
+  // complete-but-unreachable remote boots and reports via /api/health.
 
   await initMetadataSchema();
   console.log('Metadata store initialized');
@@ -281,6 +274,22 @@ async function runBoot() {
   } catch (e) {
     console.warn('⚠ FFmpeg initialization failed. Video thumbnails are disabled.');
   }
+
+  // Reset the in-memory health tracker BEFORE the boot probes below so a probe
+  // failure recorded during boot is retained in the tracker — otherwise a
+  // post-probe reset would wipe it and the health card / file-screen banner
+  // would report 'unknown' immediately after login despite a boot failure.
+  // Install the transition logger first so boot probe transitions are logged.
+  getBackendHealth().reset();
+  getBackendHealth().setOnTransition((backend, { from, to, code, reason }) => {
+    if (to === 'fail')
+      console.error(
+        `[backend-health] ${backend}: ${from} → FAIL` +
+          (code ? ` (${code})` : '') +
+          (reason ? ` — ${reason}` : '')
+      );
+    else console.log(`[backend-health] ${backend}: ${from} → OK`);
+  });
 
   // Test WebDAV connection on startup — only when WebDAV is the active file
   // backend. Probing an unused backend would record a false health alert (D3).
@@ -343,17 +352,6 @@ async function runBoot() {
   // a migration leaves the gate inactive (blob jobs are process-local and
   // lost; metadata jobs are transactional/rolled back).
   getMigrationGate().reset();
-
-  getBackendHealth().reset();
-  getBackendHealth().setOnTransition((backend, { from, to, code, reason }) => {
-    if (to === 'fail')
-      console.error(
-        `[backend-health] ${backend}: ${from} → FAIL` +
-          (code ? ` (${code})` : '') +
-          (reason ? ` — ${reason}` : '')
-      );
-    else console.log(`[backend-health] ${backend}: ${from} → OK`);
-  });
 
   if (require.main === module) {
     // PORT is T1 (boot-frozen, env → DB → default): resolve at listen time so

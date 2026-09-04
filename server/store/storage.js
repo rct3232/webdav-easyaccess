@@ -7,16 +7,35 @@ const { createError, mapDatabaseError } = require('../utils/errorHandler');
 let pgPool = null;
 let sqliteDb = null;
 
+// The four identity keys that decide whether a remote database is configured.
+// Presence-based backend selection (docs/spec/server/store/storage.md §2.4):
+// any of them set → remote (PostgreSQL, the only supported remote engine);
+// none set → sqlite (default). PORT/SSL/pool keys alone never select a backend
+// (they all have defaults and are meaningless without the identity block).
+const REMOTE_DB_REQUIRED_KEYS = [
+  'WEA_DB_HOST',
+  'WEA_DB_DATABASE',
+  'WEA_DB_USER',
+  'WEA_DB_PASSWORD',
+];
+
+function hasRemoteDbCredentials() {
+  return REMOTE_DB_REQUIRED_KEYS.some((key) => !!process.env[key]);
+}
+
 function getBackend() {
-  const forced = (process.env.WEA_STORAGE_BACKEND || '').toLowerCase();
-  if (forced === 'postgresql' || forced === 'postgres' || forced === 'pg') return 'postgresql';
-  if (forced === 'sqlite') return 'sqlite';
-  if (!forced) return 'sqlite';
-  // Unrecognized non-empty value: fail loudly instead of silently booting
-  // sqlite — a typo would otherwise shadow the operator's intended backend.
-  throw new Error(
-    `Invalid WEA_STORAGE_BACKEND='${process.env.WEA_STORAGE_BACKEND}'. Valid values: 'sqlite', 'postgresql'.`
-  );
+  if (!hasRemoteDbCredentials()) return 'sqlite';
+  // Partial remote intent: fail loudly instead of silently booting sqlite — a
+  // leftover/partial WEA_DB_* block would otherwise shadow the operator's
+  // intended remote database.
+  const missing = REMOTE_DB_REQUIRED_KEYS.filter((key) => !process.env[key]);
+  if (missing.length > 0) {
+    throw new Error(
+      `Partial WEA_DB_* configuration: missing ${missing.join(', ')}. ` +
+        `All of ${REMOTE_DB_REQUIRED_KEYS.join(', ')} are required in env/.env to use the remote database backend.`
+    );
+  }
+  return 'postgresql';
 }
 
 function isSqliteBackend() {
@@ -34,14 +53,7 @@ function parseNumberEnv(value, fallback) {
 }
 
 function resolvePgConfig() {
-  const requiredKeys = [
-    'WEA_PG_HOST',
-    'WEA_PG_PORT',
-    'WEA_PG_DATABASE',
-    'WEA_PG_USER',
-    'WEA_PG_PASSWORD',
-  ];
-  const missing = requiredKeys.filter((key) => !process.env[key]);
+  const missing = REMOTE_DB_REQUIRED_KEYS.filter((key) => !process.env[key]);
   if (missing.length > 0) {
     throw createError(SERVER_ERROR_CODES.storage.postgresqlNotConfigured, 500, {
       missing: missing.join(','),
@@ -49,15 +61,19 @@ function resolvePgConfig() {
   }
 
   return {
-    host: process.env.WEA_PG_HOST,
-    port: parseNumberEnv(process.env.WEA_PG_PORT, 5432),
-    database: process.env.WEA_PG_DATABASE,
-    user: process.env.WEA_PG_USER,
-    password: process.env.WEA_PG_PASSWORD,
-    max: parseNumberEnv(process.env.WEA_PG_MAX, 10),
-    idleTimeoutMillis: parseNumberEnv(process.env.WEA_PG_IDLE_TIMEOUT_MS, 30_000),
-    connectionTimeoutMillis: parseNumberEnv(process.env.WEA_PG_CONNECTION_TIMEOUT_MS, 10_000),
-    ssl: parseBooleanEnv(process.env.WEA_PG_SSL) ? { rejectUnauthorized: false } : false,
+    host: process.env.WEA_DB_HOST,
+    port: parseNumberEnv(process.env.WEA_DB_PORT, 5432),
+    database: process.env.WEA_DB_DATABASE,
+    user: process.env.WEA_DB_USER,
+    password: process.env.WEA_DB_PASSWORD,
+    max: parseNumberEnv(process.env.WEA_DB_MAX, 10),
+    idleTimeoutMillis: parseNumberEnv(process.env.WEA_DB_IDLE_TIMEOUT_MS, 30_000),
+    connectionTimeoutMillis: parseNumberEnv(process.env.WEA_DB_CONNECTION_TIMEOUT_MS, 10_000),
+    // Client-side per-statement bound (pg query_timeout). Bounds queries so a
+    // mid-session DB drop (silent network partition) errors out instead of
+    // hanging the request indefinitely. 0 disables (for long maintenance runs).
+    query_timeout: parseNumberEnv(process.env.WEA_DB_QUERY_TIMEOUT_MS, 60_000),
+    ssl: parseBooleanEnv(process.env.WEA_DB_SSL) ? { rejectUnauthorized: false } : false,
   };
 }
 
@@ -221,9 +237,10 @@ async function withTransaction(callback) {
     client = await pool.connect();
   } catch (error) {
     const { getBackendHealth } = require('../infrastructure/backendHealth');
+    const rawCode = String((error && (error.code || error.errno)) || '').toUpperCase();
     getBackendHealth().report('postgresql', {
       ok: false,
-      code: 'unreachable',
+      code: rawCode === '28P01' || rawCode === '28000' ? 'auth' : 'unreachable',
       reason: error.message,
     });
     throw mapDatabaseError(error);
@@ -251,6 +268,7 @@ async function withTransaction(callback) {
 
 module.exports = {
   getBackend,
+  hasRemoteDbCredentials,
   isSqliteBackend,
   getPgPool,
   withTransaction,

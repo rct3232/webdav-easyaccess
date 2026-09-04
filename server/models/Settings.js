@@ -13,6 +13,10 @@ class Settings {
     return await settingsStore.getAll();
   }
 
+  static async listRows() {
+    return await settingsStore.listRows();
+  }
+
   static async isRegistrationEnabled() {
     return await settingsStore.isRegistrationEnabled();
   }

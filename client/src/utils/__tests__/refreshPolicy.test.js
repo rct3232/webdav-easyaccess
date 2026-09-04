@@ -1,6 +1,6 @@
 /**
  * refreshPolicy tests: shouldRefreshAfterOperation.
- * Verifies observable outcome (boolean) per path/op rules; paths normalized.
+ * Verifies observable outcome (boolean) per nodeId/op rules; nodeIds compared by identity.
  * @see docs/spec/client/utils/refreshPolicy.md
  * @see docs/TESTING_STRATEGY.md
  */
@@ -9,24 +9,24 @@ import { shouldRefreshAfterOperation } from '../refreshPolicy';
 describe('refreshPolicy', () => {
   describe('shouldRefreshAfterOperation', () => {
     describe('move', () => {
-      it('returns true when current path equals started path', () => {
+      it('returns true when current nodeId equals started nodeId', () => {
         expect(
           shouldRefreshAfterOperation({
             opType: 'move',
-            startedPath: '/a',
-            currentPathNow: '/a',
-            targetPath: '/b',
+            startedNodeId: 1,
+            currentNodeIdNow: 1,
+            targetParentNodeId: 2,
           })
         ).toBe(true);
       });
 
-      it('returns true when user navigated to target path', () => {
+      it('returns true when user navigated to target parent nodeId', () => {
         expect(
           shouldRefreshAfterOperation({
             opType: 'move',
-            startedPath: '/a',
-            currentPathNow: '/b',
-            targetPath: '/b',
+            startedNodeId: 1,
+            currentNodeIdNow: 2,
+            targetParentNodeId: 2,
           })
         ).toBe(true);
       });
@@ -35,22 +35,33 @@ describe('refreshPolicy', () => {
         expect(
           shouldRefreshAfterOperation({
             opType: 'move',
-            startedPath: '/a',
-            currentPathNow: '/c',
-            targetPath: '/b',
+            startedNodeId: 1,
+            currentNodeIdNow: 3,
+            targetParentNodeId: 2,
           })
         ).toBe(false);
       });
 
-      it('returns false for target match when targetPath is null', () => {
+      it('returns false for target match when targetParentNodeId is null', () => {
         expect(
           shouldRefreshAfterOperation({
             opType: 'move',
-            startedPath: '/a',
-            currentPathNow: '/x',
-            targetPath: null,
+            startedNodeId: 1,
+            currentNodeIdNow: 2,
+            targetParentNodeId: null,
           })
         ).toBe(false);
+      });
+
+      it('returns true when still on started root (null nodeIds identical)', () => {
+        expect(
+          shouldRefreshAfterOperation({
+            opType: 'move',
+            startedNodeId: null,
+            currentNodeIdNow: null,
+            targetParentNodeId: null,
+          })
+        ).toBe(true);
       });
     });
 
@@ -59,20 +70,20 @@ describe('refreshPolicy', () => {
         expect(
           shouldRefreshAfterOperation({
             opType: 'copy',
-            startedPath: '/docs',
-            currentPathNow: '/docs',
-            targetPath: '/backup',
+            startedNodeId: 10,
+            currentNodeIdNow: 10,
+            targetParentNodeId: 20,
           })
         ).toBe(true);
       });
 
-      it('returns true when current equals target', () => {
+      it('returns true when current equals target parent', () => {
         expect(
           shouldRefreshAfterOperation({
             opType: 'copy',
-            startedPath: '/docs',
-            currentPathNow: '/backup',
-            targetPath: '/backup',
+            startedNodeId: 10,
+            currentNodeIdNow: 20,
+            targetParentNodeId: 20,
           })
         ).toBe(true);
       });
@@ -81,22 +92,22 @@ describe('refreshPolicy', () => {
         expect(
           shouldRefreshAfterOperation({
             opType: 'copy',
-            startedPath: '/docs',
-            currentPathNow: '/other',
-            targetPath: '/backup',
+            startedNodeId: 10,
+            currentNodeIdNow: 30,
+            targetParentNodeId: 20,
           })
         ).toBe(false);
       });
     });
 
     describe('delete / other ops', () => {
-      it('returns true when still on started path', () => {
+      it('returns true when still on started nodeId', () => {
         expect(
           shouldRefreshAfterOperation({
             opType: 'delete',
-            startedPath: '/a',
-            currentPathNow: '/a',
-            targetPath: null,
+            startedNodeId: 1,
+            currentNodeIdNow: 1,
+            targetParentNodeId: null,
           })
         ).toBe(true);
       });
@@ -105,44 +116,53 @@ describe('refreshPolicy', () => {
         expect(
           shouldRefreshAfterOperation({
             opType: 'delete',
-            startedPath: '/a',
-            currentPathNow: '/b',
-            targetPath: null,
+            startedNodeId: 1,
+            currentNodeIdNow: 2,
+            targetParentNodeId: null,
           })
         ).toBe(false);
       });
 
-      it('treats opType null/undefined as refresh (same-path only)', () => {
+      it('treats opType null/undefined as refresh (same nodeId only)', () => {
         expect(
           shouldRefreshAfterOperation({
             opType: null,
-            startedPath: '/a',
-            currentPathNow: '/a',
-            targetPath: '/b',
+            startedNodeId: 1,
+            currentNodeIdNow: 1,
+            targetParentNodeId: 2,
           })
         ).toBe(true);
         expect(
           shouldRefreshAfterOperation({
             opType: undefined,
-            startedPath: '/a',
-            currentPathNow: '/b',
-            targetPath: '/b',
+            startedNodeId: 1,
+            currentNodeIdNow: 2,
+            targetParentNodeId: 2,
           })
         ).toBe(false);
       });
     });
 
-    describe('path normalization', () => {
-      it('normalizes paths before comparison', () => {
-        // normalizePath (shared) typically adds leading slash and trims trailing
+    describe('identity comparison', () => {
+      it('does not match different nodeIds', () => {
+        expect(
+          shouldRefreshAfterOperation({
+            opType: 'refresh',
+            startedNodeId: 5,
+            currentNodeIdNow: 6,
+          })
+        ).toBe(false);
+      });
+
+      it('does not treat null target as a match when current differs from started', () => {
         expect(
           shouldRefreshAfterOperation({
             opType: 'move',
-            startedPath: '/a/',
-            currentPathNow: '/a',
-            targetPath: '/b',
+            startedNodeId: 5,
+            currentNodeIdNow: null,
+            targetParentNodeId: null,
           })
-        ).toBe(true);
+        ).toBe(false);
       });
     });
   });

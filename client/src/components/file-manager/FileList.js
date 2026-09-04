@@ -121,4 +121,4 @@ const FileList = ({
   );
 };
 
-export default FileList;
+export default React.memo(FileList);

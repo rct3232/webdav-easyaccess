@@ -70,7 +70,10 @@ These boundaries are intentionally written at the **feature level** (not as a fi
 
 #### Routing contracts (migration-sensitive)
 
-These are stable user-visible contracts that must remain true during router upgrades (including React Router v6 → v7 migration work):
+These are stable user-visible contracts that must remain true across router upgrades. The
+client runs on **React Router v7** (`react-router-dom` `^7` in `client/package.json`);
+runtime routing uses the data router (`createBrowserRouter` + `RouterProvider` in
+`client/src/App.js`), so the former v6 opt-in future-flag behaviors are the baseline.
 
 - **Explorer route remains the splat owner:** `/files/*` is the only route that owns the explorer “current folder” path derived from a splat param. The explorer path is represented as an absolute path string starting with `/` (e.g. `/`, `/Documents`, `/a/b`).
 - **Splat path is owned by FileManager listing/navigation seams:** the FileManager shell wires route params into `useFileManager` (and/or the navigation seam). It must not duplicate splat parsing in multiple places.
@@ -79,19 +82,18 @@ These are stable user-visible contracts that must remain true during router upgr
   - Unauthenticated access to `/files/*` and `/mypage` redirects to `/login`.
   - `/admin` redirects to `/mypage` with `location.state.category` set so MyPage opens the Admin category (see MyPage spec for normalization rules).
 
-#### Router upgrade flags and consistency
+#### Runtime/test router parity (React Router v7)
 
-When adopting router future flags in v6 (to surface v7 behavior changes early), ensure the same flags are enabled in:
+Tests must exercise routing through the same router APIs as the runtime:
 
-- **Runtime router setup** (the app router).
-- **Test router setup** (Jest helpers using `createMemoryRouter` / `RouterProvider`).
+- **Runtime router setup** — the app uses `createBrowserRouter` + `RouterProvider`.
+- **Test router setup** — Jest route-level tests use `createMemoryRouter` +
+  `RouterProvider`. On v7 no future-flag configuration is required; the v7 behaviors
+  (`v7_startTransition`, `v7_relativeSplatPath`) are the baseline and apply identically in
+  both setups.
 
-At minimum, enable:
-
-- `v7_startTransition`
-- `v7_relativeSplatPath`
-
-Once the client is upgraded to React Router v7, these behaviors are treated as the baseline and **tests must continue to exercise routing via the same router APIs** (`createBrowserRouter`/`createMemoryRouter` + `RouterProvider`) so `/files/*` splat parsing and nested layout behavior remain consistent with runtime.
+This keeps `/files/*` splat parsing and nested-layout behavior consistent between the app and
+its tests.
 
 ### MyPage (Chrome-style layout)
 
@@ -136,7 +138,7 @@ Once the client is upgraded to React Router v7, these behaviors are treated as t
 - **Share link mode:** When `shareToken` and `linkInfo` are passed (e.g. from ShareLinkLoader), file manager shows only the share root; write actions may be disabled; “Add to my permissions” and “Login” available via FAB or header.
 - **Internal sharing outcomes:** Internal sharing does not route through `/share/:token`. When access is granted through permissions or approved requests, the browser-visible entry point is the authenticated explorer, especially `__shared__`, with the main observable distinction being read-only versus write-capable actions.
 
-- **Single-file download (iOS + single file):** On iOS (e.g. iPhone Chrome), downloading a single file (any type) uses a share-sheet–friendly path so the user can save to Files or Photos. **Policy:** (1) The app creates a `File` from the blob and calls `navigator.canShare({ files: [file] })` with the actual file; if true, it uses the Web Share API so the system share sheet appears; the user chooses "Save to Files" or similar. (2) If `canShare` returns false or share fails (non-AbortError), the app falls back to blob + `<a download>` + `visibilitychange` revoke. (3) All other cases (desktop, folder download, multi-file zip) keep the existing blob + `<a download>` behavior. **User guidance:** When the share sheet is shown, the UI may show a short hint (e.g. tooltip or toast) that the user can save the file. See `docs/spec/client/services/fileService.md` (§ 2.3) for the service-level spec.
+- **Single-file download (iOS + single file):** On iOS (e.g. iPhone Chrome), downloading a single file (any type) uses a share-sheet–friendly path so the user can save to Files or Photos. **Policy:** (1) The app creates a `File` from the blob and calls `navigator.canShare({ files: [file] })` with the actual file; if true, it uses the Web Share API so the system share sheet appears; the user chooses "Save to Files" or similar. (2) If `canShare` returns false or share fails (non-AbortError), the app falls back to blob + `<a download>` + `visibilitychange` revoke. (3) All other cases (desktop, folder download, multi-file zip) keep the existing blob + `<a download>` behavior. **User guidance:** When the share sheet is shown, no in-app hint is displayed (decided 2026-09-02); the share sheet itself provides native save options. See `docs/spec/client/services/fileService.md` (§ 2.3) for the service-level spec.
 
 ### Share link screen (`/share/:token`)
 
@@ -232,10 +234,10 @@ Browser-versus-lower-layer split:
 
 Use [TESTING_STRATEGY.md](../TESTING_STRATEGY.md): MSW for API, React Testing Library for components and user flows.
 
-### Router-test guidance (React Router v6 future flags)
+### Router-test guidance (React Router v7)
 
 - Prefer `createMemoryRouter` + `RouterProvider` for route-level tests that exercise splats, redirects, nested layouts, and `Outlet`.
-- If the runtime router enables future flags (see above), test helpers must enable the same flags to avoid “works in app, fails in tests” splat/relative-navigation drift.
+- Route-level tests use the same router APIs as the runtime data router (see [Runtime/test router parity](#runtimetest-router-parity-react-router-v7)); no future-flag configuration is needed on v7.
 
 ### Mock policy for client tests
 
@@ -243,6 +245,6 @@ Use [TESTING_STRATEGY.md](../TESTING_STRATEGY.md): MSW for API, React Testing Li
 - Unit-oriented hook/util/service tests may use module mocks when this keeps tests deterministic and focused on public outcomes.
 - For mixed tests, keep UI environment mocks (router/i18n/responsive) at module level and use MSW only for network behavior that is stable in the current test runtime.
 - When a page scenario is not about shell-only chrome such as the sidebar tree or background recent-file subscriptions, those seams may be replaced with lighter doubles so the test stays focused on the explorer outcome and avoids unrelated async `act(...)` noise.
-- When migrating from module mocks to MSW, consult `.cursor/fail_log.md` first and avoid known unstable patterns (for example, request body parsing that depends on `request.formData()` in jsdom-based runs).
+- When migrating from module mocks to MSW, consult `docs/IMPROVEMENT_PLAN.md` first and avoid known unstable patterns (for example, request body parsing that depends on `request.formData()` in jsdom-based runs).
 - Test runtime polyfills in `client/src/jest-polyfills.js` must not create persistent `MessageChannel` instances during module initialization. Prefer minimal runtime wiring (e.g. `MessagePort` only when sufficient) to avoid open-handle leaks (`MESSAGEPORT`) at Jest shutdown.
 - For render-time async hooks, prefer waiting for a stable user-visible anchor after render or interaction rather than relying on one microtask turn. If a hook test needs tighter control, resolve gateway mocks from a deferred promise inside `act`.

@@ -10,14 +10,13 @@
  * @see docs/features/setup-cli.md
  */
 
-const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const dotenv = require('dotenv');
 const readline = require('readline');
 
 const { resolveEnvPath } = require('../infrastructure/envPath');
-const { computeSetupStatus, PG_REQUIRED_KEYS } = require('../infrastructure/setupStatus');
+const { computeSetupStatus } = require('../infrastructure/setupStatus');
 const {
   createConfigResolver,
   setSharedResolver,
@@ -84,7 +83,7 @@ Apply / check flags (values use --flag=value):
   --webdav-password=PASS                                 WebDAV password
   --webdav-auth-type=auto|basic|digest                   optional WebDAV auth type
   --admin-password=PASS                                  new admin password (username is fixed 'admin')
-  --jwt-secret=SECRET                                    JWT signing secret (crypto-generated when omitted)
+  --jwt-secret=SECRET                                    JWT signing secret (optional — when omitted the server generates an ephemeral per-boot secret)
   --jwt-expires-in=DURATION                              session duration, e.g. 30m or 7d
   --port=NUMBER                                          server port
   --cors-origins=LIST                                    allowed browser origins (comma-separated)
@@ -98,8 +97,8 @@ WEA_SETUP_<UPPER_FLAG> (e.g. WEA_SETUP_ADMIN_PASSWORD, WEA_SETUP_WEBDAV_PASSWORD
 WEA_SETUP_AWS_SECRET_ACCESS_KEY). Secrets are never echoed; on an interactive
 terminal a missing secret is prompted for with hidden input.
 
-The metadata backend (WEA_STORAGE_BACKEND + the WEA_PG_* block, or the sqlite
-path) is .env-owned and never set by this tool.
+The metadata backend (the remote WEA_DB_* block, or the default sqlite store)
+is .env-owned and never set by this tool.
 
 Exit codes:
   0 success (help/status/probe-ok/apply-ok)
@@ -284,14 +283,11 @@ async function collectApplyFromFlags(values, env, prompter) {
   };
 }
 
-function generateJwtSecret() {
-  return crypto.randomBytes(32).toString('hex');
-}
-
 /**
  * Build the shared apply payload from a collected answer object. The metadata
  * block is never set: the metadata backend is .env-owned (wizard D7 rule).
- * A missing JWT secret is auto-generated (crypto-secure) like the wizard.
+ * The jwt block is optional — a secret is sent only when the operator supplied
+ * one; otherwise the server generates an ephemeral per-boot secret.
  */
 function toApplyPayload(collected) {
   const file = {};
@@ -303,9 +299,11 @@ function toApplyPayload(collected) {
   const payload = {
     file,
     admin: { password: collected.adminPassword },
-    jwt: { secret: isNonEmpty(collected.jwtSecret) ? collected.jwtSecret : generateJwtSecret() },
   };
-  if (isNonEmpty(collected.jwtExpiresIn)) payload.jwt.expiresIn = collected.jwtExpiresIn;
+  const jwt = {};
+  if (isNonEmpty(collected.jwtSecret)) jwt.secret = collected.jwtSecret;
+  if (isNonEmpty(collected.jwtExpiresIn)) jwt.expiresIn = collected.jwtExpiresIn;
+  if (Object.keys(jwt).length > 0) payload.jwt = jwt;
   if (collected.server && Object.keys(collected.server).length > 0)
     payload.server = collected.server;
   if (collected.email && Object.keys(collected.email).length > 0) payload.email = collected.email;
@@ -322,18 +320,9 @@ function probePayloadFromFile(file) {
 }
 
 // Boot subset of server/index.js runBoot (lines 228-267): schema, resolver
-// prime + install, default-admin seeding. PG requires the same WEA_PG_* keys
-// the server boot checks before touching the store.
+// prime + install, default-admin seeding. Backend selection is presence-based
+// and validated inside storage.getBackend (partial WEA_DB_* throws here).
 async function bootSetupStore() {
-  const { getBackend } = require('../store/storage');
-  if (getBackend() === 'postgresql') {
-    const missing = PG_REQUIRED_KEYS.filter((key) => !process.env[key]);
-    if (missing.length > 0) {
-      throw new Error(
-        `WEA_STORAGE_BACKEND=postgresql requires ${missing.join(', ')} in env/.env. Aborting.`
-      );
-    }
-  }
   await initMetadataSchema();
   const resolver = createConfigResolver({ settingsStore: Settings });
   await resolver.loadAll();
@@ -342,13 +331,12 @@ async function bootSetupStore() {
 }
 
 // Derived state exactly as the setup routes compute it (requireSetupIncomplete
-// in routes.js:144-157 and GET /api/setup/status): effective config normalized
-// for status (mask-drop rule), then the pure required-key completeness rules.
+// in routes.js:144-157 and GET /api/setup/status): the resolver's effective
+// config (unset secrets already resolve to undefined — no mask-drop step is
+// needed) feeds the pure required-key completeness rules.
 async function readSetupStatus() {
   const effective = await getSharedResolver().getEffectiveConfig();
-  return computeSetupStatus(process.env, {
-    effectiveConfig: setupCore.normalizeEffectiveForStatus(effective),
-  });
+  return computeSetupStatus(process.env, { effectiveConfig: effective });
 }
 
 async function isSetupComplete() {
@@ -514,7 +502,7 @@ async function collectInteractive(prompter, current) {
   ).trim();
   const jwtDefaultHint = (await isSecretSet(current, 'JWT_SECRET'))
     ? 'Enter to keep the existing secret'
-    : 'Enter to auto-generate';
+    : 'Enter to skip (the server generates an ephemeral secret per boot)';
   const jwtInput = (await prompter.askHidden(`JWT signing secret (${jwtDefaultHint}): `)).trim();
   let jwtSecret;
   if (jwtInput === '') {

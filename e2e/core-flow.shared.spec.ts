@@ -68,14 +68,43 @@ async function selectTwoFiles(
   secondFilePath: string
 ) {
   if (isMobile) {
-    await longPressItem(page, firstFilePath);
+    // Long-press the first, then tap the second and verify BOTH items are
+    // selected. WebKit synthetic taps can intermittently mis-target right after
+    // the bulk toolbar mounts (selection count drops to 0 and the toolbar
+    // disappears — see the s3-mobile E2E-BULK-002 CI flake). When a tap goes
+    // astray, reset via "Deselect all" and redo the sequence (bounded).
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (attempt > 0) {
+        if (
+          await page
+            .getByTestId('bulk-action-deselect-all')
+            .isVisible()
+            .catch(() => false)
+        ) {
+          await page.getByTestId('bulk-action-deselect-all').click();
+          await expect(page.getByTestId('bulk-action-move')).not.toBeVisible();
+        }
+      }
+      await longPressItem(page, firstFilePath);
+      await fileItem(page, secondFilePath).click();
+      try {
+        await expect(fileItem(page, firstFilePath)).toHaveAttribute('aria-selected', 'true', {
+          timeout: 2500,
+        });
+        await expect(fileItem(page, secondFilePath)).toHaveAttribute('aria-selected', 'true', {
+          timeout: 2500,
+        });
+        break;
+      } catch {
+        // Mis-targeted tap; retry the whole sequence.
+      }
+    }
     await expect(page.getByTestId('bulk-action-move')).toBeVisible();
-    await fileItem(page, secondFilePath).click();
   } else {
     await fileItem(page, firstFilePath).click();
     await fileItem(page, secondFilePath).click({ modifiers: ['Meta'] });
+    await expect(page.getByTestId('bulk-action-move')).toBeVisible();
   }
-  await expect(page.getByTestId('bulk-action-move')).toBeVisible();
 }
 
 async function openPreviewableItem(page: Page, isMobile: boolean, filePath: string) {

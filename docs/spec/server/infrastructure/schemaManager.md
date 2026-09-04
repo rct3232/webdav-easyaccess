@@ -37,17 +37,21 @@ CREATE TABLE _schema_migrations (
 
 1. Create `_schema_migrations` table if not exists
 2. Glob all `ddl/*.sql` files, sorted alphabetically
-3. For each file NOT in `_schema_migrations`:
-   a. Read DDL content
-   b. Compute SHA-256 checksum
-   c. If sqlite backend: apply `convertPostgresToSqlite()`
-   d. Execute statements within a transaction
-   e. INSERT into `_schema_migrations` { filename, applied_at, checksum }
+3. For each file:
+   a. Read DDL content and compute its SHA-256 checksum
+   b. Look up the file in `_schema_migrations`:
+      - **Row exists, checksum matches** → skip (idempotent no-op)
+      - **Row exists, checksum differs** → throw a hard error naming the file and
+        both checksums (stored vs current) — modified-DDL detection, fail fast
+      - **No row** → apply:
+        i. If sqlite backend: apply `convertPostgresToSqlite()`
+        ii. Execute statements within a transaction
+        iii. INSERT into `_schema_migrations` { filename, applied_at, checksum }
 
 ### 2.5 Key Properties
 
 - **Idempotent**: Running twice produces no changes (second run detects all files as already applied)
-- **Checksum tracking**: Each file's SHA-256 is recorded; modified DDL files can be detected in future phases
+- **Modified-DDL detection**: Each file's SHA-256 is recorded at apply time and re-verified on every run; a checksum mismatch for an already-applied file is a hard boot error (fail fast) naming the file and both checksums, consistent with the §2.8 deployment contract
 - **Called at startup**: `applyPendingMigrations('postgresql')` is invoked from `server/store/bootstrap.js` `initMetadataStore()` for the non-SQLite branch, before `ensureDefaultAdmin()`. The SQLite path is unchanged and uses `initSqliteSchema()` (converter-based) instead — `applyPendingMigrations('sqlite')` is exercised only by its unit tests.
 
 ### 2.6 Dependencies
@@ -63,6 +67,7 @@ CREATE TABLE _schema_migrations (
 - [ ] Pending migration detection: only unapplied files execute
 - [ ] Idempotency: second call produces zero SQL executions
 - [ ] SHA-256 checksum recorded for each applied file
+- [ ] Modified-DDL detection: a pre-existing row whose stored checksum differs from the file's current SHA-256 → `applyPendingMigrations` throws a hard error naming the file and both checksums; repeated runs keep failing deterministically with no further side effects
 - [ ] `initMetadataStore()` applies PG DDL at startup for the non-SQLite branch before `ensureDefaultAdmin()`; SQLite path behavior unchanged
 
 ### 2.8 Deployment Contract (PostgreSQL)

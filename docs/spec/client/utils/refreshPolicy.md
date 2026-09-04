@@ -4,7 +4,7 @@
 
 | Item | Description                                                                                                                                                                                                                                                                                                                                                                                           |
 | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role | Decide whether to refresh the current directory listing after an async operation completes, preventing stale-closure refreshes when the user navigates elsewhere. Used by command orchestration (see `docs/spec/client/hooks/useExplorerCommands.md`). Move/copy can refresh when the user is on either the started nodeId or target nodeId; other ops refresh only when still on the started nodeId. |
+| Role | Decide whether to refresh the current directory listing after an async operation completes, preventing stale-closure refreshes when the user navigates elsewhere. Used by command orchestration (see `docs/spec/client/hooks/useExplorerCommands.md`). Move/copy can refresh when the user is on either the started nodeId or the target parent nodeId; other ops refresh only when still on the started nodeId. |
 
 ---
 
@@ -19,9 +19,7 @@
 
 | Function                    | (input) => return                                                      |
 | --------------------------- | ---------------------------------------------------------------------- |
-| shouldRefreshAfterOperation | ({ opType, startedNodeId, currentNodeIdNow, targetNodeId }) => boolean |
-
-> **Note (pending implementation):** The current source still accepts `startedPath` / `currentPathNow` / `targetPath` and normalizes via `pathUtils.normalizePath`; the nodeId rename is the end-state.
+| shouldRefreshAfterOperation | ({ opType, startedNodeId, currentNodeIdNow, targetParentNodeId }) => boolean |
 
 ### 2.3 Dependencies
 
@@ -29,16 +27,16 @@
 
 ### 2.4 Rules
 
-- **move/copy:** refresh if `currentNodeIdNow === startedNodeId` OR `currentNodeIdNow === targetNodeId`
+- **move/copy:** refresh if `currentNodeIdNow === startedNodeId` OR `currentNodeIdNow === targetParentNodeId`
 - **other ops (delete, etc.):** refresh only if `currentNodeIdNow === startedNodeId`
 - NodeIds are compared by identity
 
 ### 2.5 Verification Scenarios
 
-- [ ] move: same nodeId → true; navigated to target nodeId → true; navigated elsewhere → false
+- [ ] move: same nodeId → true; navigated to target parent nodeId → true; navigated elsewhere → false
 - [ ] copy: same behavior as move
 - [ ] delete/refresh: same nodeId → true; navigated away → false
-- [ ] targetNodeId null for move/copy → no target match
+- [ ] targetParentNodeId null for move/copy → no target match
 
 ### 2.6 Edge Cases
 

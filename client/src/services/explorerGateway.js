@@ -166,8 +166,8 @@ export const addExplorerRecentFile = async (file, options) => {
   return addRecentFile(file, options);
 };
 
-export const removeExplorerRecentFile = async (path, options) => {
-  return removeRecentFile(path, options);
+export const removeExplorerRecentFile = async (nodeId, options) => {
+  return removeRecentFile(nodeId, options);
 };
 
 export const subscribeToRecentFiles = (callback) => {

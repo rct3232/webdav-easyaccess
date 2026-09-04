@@ -9,8 +9,8 @@
 | Files      | routes added to `server/domains/admin/routes/migration.js` (mounted at `/api/admin`, behind `authenticateToken` + `isAdmin`)                                                                                                                                                                                                   |
 | Test files | `server/domains/admin/routes/__tests__/migration.test.js` (extended); `test:ci:pg` for the sqlite↔PG roundtrip                                                                                                                                                                                                                 |
 
-Source of truth: `docs/features/migration-mode.md`, `docs/spec/server/services/metadataMigrationService.md`,
-`PLAN.md` (`feature/migration-mode`, D4–D6, D11, D14).
+Source of truth: `docs/features/migration-mode.md` (decisions D4–D6, D11, D14),
+`docs/spec/server/services/metadataMigrationService.md`.
 
 There is **no CLI** for metadata migration. The in-app dialog (System Settings → metadata
 migration) drives the endpoints below; the flow is target-scan → wipe alert → explicit confirm →
@@ -56,7 +56,7 @@ Body:
 
 ```jsonc
 {
-  "targetBackend": "postgresql", // must be the NON-active backend (source = WEA_STORAGE_BACKEND)
+  "targetBackend": "postgresql", // must be the NON-active backend (source = the presence-selected active backend: any WEA_DB_* credential → postgresql, else sqlite)
   "pg": {
     // required when targetBackend === 'postgresql'
     "host": "…",
@@ -96,52 +96,66 @@ Responses:
 
 - The worker reports `stage` (`scan`/`schema`/`wipe`/`copy`/`done`), an overall determinate `%`
   (per-source-table `COUNT(*)` pre-aggregation), and `progress.currentLabel` (current table +
-  rows) into the extended job payload (PLAN §4/§5).
+  rows) into the job payload (see §3).
 - Cancellation: `POST /api/admin/migration/jobs/:jobId/cancel` reuses the existing blob cancel
   route for the gate-level job; the metadata worker aborts the transaction → **ROLLBACK**, both
   sides unharmed.
 
 ---
 
-## 3. Extended job payload (shared with blob migration)
+## 3. Job payload (metadata vs blob shapes differ)
 
-Both migration types publish the same extended job shape (PLAN §5), so the `/migration` page
-renders uniformly:
+The metadata and blob jobs do **not** share one identical payload; both rows are created by
+the same in-memory store (`migrationJobStore.create`,
+`server/domains/admin/stores/migrationJobStore.js`), but the `progress` field is
+type-specific. The metadata job carries the **extended** shape:
 
 ```js
 {
-  id: string,                    // gate jobId
-  type: 'metadata' | 'blobs',
-  direction: 'sqlite-to-postgresql' | 'postgresql-to-sqlite'   // metadata
-             | 'webdav-to-s3' | 's3-to-webdav',                // blobs
+  jobId: string,                    // gate jobId (field is jobId, not id)
+  type: 'metadata',
+  direction: 'sqliteToPostgresql' | 'postgresqlToSqlite',   // camelCase; blobs use 'webdav-to-s3' / 's3-to-webdav'
+  mode: 'apply',                    // metadata jobs are always apply
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled',
   stage: 'scan' | 'schema' | 'wipe' | 'copy' | 'done' | null,
-  progress: { percent, currentLabel, counters? },
-  results?: any,                 // metadata: per-table counts; blobs: { copied, skipped, failed, errors }
-  startedAt: string,
-  completedAt?: string,
-  error?: string,                // human failure reason (replaces/extends blob errorMessage)
-  configPersist?: { persisted, skippedEnvSourced },   // blobs apply only (D10)
+  progress: { percent: number, currentLabel: string | null },   // extended progress — NOT the blob scalar
+  results: { status?: string, tablesCopied?: [{ name, rows }], totalRows?, schemaApplied?, wiped? },
+  errorMessage: string | null,      // failure reason (error is also set on the store row)
+  configPersist: null,              // metadata never persists destination config (blob apply only, D10)
+  createdAt: string,                // ISO (the store records createdAt; no startedAt on the job)
+  completedAt: string | null,
 }
 ```
+
+- `progress.percent` is derived from the per-source-table `COUNT(*)` pre-aggregation
+  (`Σ done / Σ total`); `progress.currentLabel` is the current table + rows
+  (e.g. "Copying users … 3,420/5,100"). On completion the worker records
+  `progress: { percent: 100, currentLabel: null }`.
+- `results` is the metadata-migration service result (`{ status: 'completed', tablesCopied,
+  totalRows, schemaApplied, wiped }`, or `{ status: 'cancelled' }`).
+- **Blob jobs differ:** they keep the legacy scalar `progress` (number) with the current file
+  path at the top-level `current` field — see `docs/spec/server/tools/blob-migration.md`
+  §4.4. The `/migration` page renders either shape.
 
 ---
 
 ## 4. T0 ".env setup needed" manual cutover (D11, D13)
 
-The DB connection is `.env`-owned (T0: `WEA_STORAGE_BACKEND` + `WEA_PG_*` / `WEA_SQLITE_PATH`,
-`encrypt_secret_key`, `JWT_SECRET`). A metadata migration only copies data; it **never edits
+The DB connection is `.env`-owned (T0: the `WEA_DB_*` credential block — presence-selected
+backend — `WEA_SQLITE_PATH`, `JWT_SECRET`). A metadata migration only copies data; it **never edits
 `.env`**. The final step stays manual:
 
 1. The migration completes; `/migration` shows the terminal modal with next-step guidance
-   ("set `WEA_STORAGE_BACKEND=postgresql` (+ `WEA_PG_*`) in `.env` and restart" — or the reverse).
+   ("set the `WEA_DB_*` credentials in `.env` and restart to boot on the migrated PostgreSQL DB" — or remove them to return to sqlite).
 2. The operator edits `.env` and restarts the server.
 3. **".env setup needed" banner:** while the non-active backend still holds metadata
    (`metadataPresence`, D13), System Settings shows a persistent banner with a link to the
    migration flow. After cutover + restart the old backend becomes the non-active one; the banner
    flips to point the other way, and clears once the old data is gone.
-4. Boot verification: PG pre-flight exits on missing `WEA_PG_*` (unchanged); the new backend's
-   health is verified via the boot probe (WebDAV or the new S3 probe, D12) and the health card.
+4. Boot verification: a partial `WEA_DB_*` set (some but not all of the four credentials) is a
+   boot-time configuration error listing the missing keys; a complete-but-unreachable remote still
+   boots and reports via `/api/health`. The new backend's health is verified via the boot probe
+   (WebDAV or the new S3 probe, D12) and the health card.
 
 The same banner logic means the operator can also cut over **before** migrating: the banner
 points to the migration dialog, they migrate, then restart.

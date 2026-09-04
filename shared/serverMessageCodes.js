@@ -64,7 +64,6 @@ const SERVER_ERROR_CODES = {
     configUnknownKey: P('serverErrors.admin', 'configUnknownKey'),
     configT0Protected: P('serverErrors.admin', 'configT0Protected'),
     configInvalidPayload: P('serverErrors.admin', 'configInvalidPayload'),
-    configEncryptKeyMissing: P('serverErrors.admin', 'configEncryptKeyMissing'),
     configEnvSourcedProtected: P('serverErrors.admin', 'configEnvSourcedProtected'),
   },
   share: {
@@ -222,6 +221,7 @@ const SERVER_MESSAGE_CODES = {
     repairSyncDone: P('serverMessages.admin', 'repairSyncDone'),
     migrationCancelled: P('serverMessages.admin', 'migrationCancelled'),
     configSaved: P('serverMessages.admin', 'configSaved'),
+    configSyncDone: P('serverMessages.admin', 'configSyncDone'),
   },
   folders: {
     createSuccess: P('serverMessages.folders', 'createSuccess'),

@@ -1,4 +1,4 @@
-import React, { createContext, useContext } from 'react';
+import React, { createContext, useContext, useMemo } from 'react';
 import { useAuthSession } from '../hooks/useAuthSession';
 
 export const AuthContext = createContext();
@@ -14,9 +14,10 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const { user, loading, login, register, logout, isAuthenticated } = useAuthSession();
 
-  return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, isAuthenticated }}>
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo(
+    () => ({ user, loading, login, register, logout, isAuthenticated }),
+    [user, loading, login, register, logout, isAuthenticated]
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

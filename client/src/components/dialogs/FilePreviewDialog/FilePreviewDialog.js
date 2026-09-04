@@ -11,7 +11,7 @@ import {
   Tooltip,
   Popover,
 } from '@mui/material';
-import { Close as CloseIcon, Download as DownloadIcon } from '@mui/icons-material';
+import { Close as CloseIcon, Download as DownloadIcon, Refresh as RefreshIcon } from '@mui/icons-material';
 import { downloadFile } from '../../../services/fileService';
 import { pdfjs } from 'react-pdf';
 import { useResponsive } from '../../../hooks/useResponsive';
@@ -117,7 +117,7 @@ const FilePreviewDialog = ({
   const needsZoom = ZOOMABLE_PREVIEW_TYPES.includes(previewFileType);
 
   // Step 3: Preview loader (must run before useZoomInputs, which depends on loading)
-  const { loading, error, previewUrl, previewBlob, textContent } = usePreviewLoader({
+  const { loading, error, previewUrl, previewBlob, textContent, retry } = usePreviewLoader({
     open,
     displayFile,
     file,
@@ -229,11 +229,23 @@ const FilePreviewDialog = ({
             flex: 1,
             minHeight: 0,
             display: 'flex',
+            flexDirection: 'column',
             justifyContent: 'center',
             alignItems: 'center',
+            gap: 1,
           }}
         >
-          <Typography sx={{ color: '#f44336' }}>{error}</Typography>
+          <IconButton
+            onClick={retry}
+            size="small"
+            aria-label={t('preview.retry')}
+            title={t('preview.retry')}
+            sx={{ color: '#fff' }}
+            data-testid="preview-retry-button"
+          >
+            <RefreshIcon />
+          </IconButton>
+          <Typography sx={{ color: '#fff' }}>{error}</Typography>
         </Box>
       );
     }

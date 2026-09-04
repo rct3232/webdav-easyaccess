@@ -1,33 +1,27 @@
 export function createFileServiceMock(overrides = {}) {
   return {
-    listFiles: jest.fn(),
-    resolvePath: jest.fn(),
-    getAncestors: jest.fn(),
-    getWebDAVInfo: jest.fn(),
-    checkPermission: jest.fn(),
-    listFilePermissions: jest.fn(),
-    getFilesMetadata: jest.fn(),
-    getFileBlob: jest.fn(),
-    getVideoPreviewStreamUrl: jest.fn(),
-    downloadFile: jest.fn(),
-    uploadFile: jest.fn(),
-    uploadMultipleFiles: jest.fn(),
-    renameFile: jest.fn(),
-    createFolder: jest.fn(),
-    getFolderStats: jest.fn(),
-    checkConflicts: jest.fn(),
-    downloadMultipleFiles: jest.fn(),
-    getDownloadProgress: jest.fn(),
-    checkFilePermission: jest.fn(),
-    grantFilePermission: jest.fn(),
-    revokeFilePermission: jest.fn(),
-    updateFilePermission: jest.fn(),
-    requestThumbnailsBatch: jest.fn(),
-    batchDeleteFiles: jest.fn(),
-    batchMoveFiles: jest.fn(),
-    batchCopyFiles: jest.fn(),
-    getBulkOperationStatus: jest.fn(),
-    cancelBulkOperation: jest.fn(),
+    listFiles: jest.fn().mockResolvedValue([]),
+    resolvePath: jest.fn().mockResolvedValue(null),
+    getAncestors: jest.fn().mockResolvedValue({ ancestors: [] }),
+    getWebDAVInfo: jest.fn().mockResolvedValue(null),
+    getFilesMetadata: jest.fn().mockResolvedValue([]),
+    getFileBlob: jest.fn().mockResolvedValue(new Blob()),
+    getVideoPreviewStreamUrl: jest.fn().mockResolvedValue(''),
+    downloadFile: jest.fn().mockResolvedValue(undefined),
+    uploadFile: jest.fn().mockResolvedValue(null),
+    uploadMultipleFiles: jest.fn().mockResolvedValue({ results: [], errors: [] }),
+    renameFile: jest.fn().mockResolvedValue(null),
+    createFolder: jest.fn().mockResolvedValue(null),
+    getFolderStats: jest.fn().mockResolvedValue({ fileCount: 0, totalSize: 0 }),
+    checkConflicts: jest.fn().mockResolvedValue([]),
+    downloadMultipleFiles: jest.fn().mockResolvedValue(null),
+    getDownloadProgress: jest.fn().mockResolvedValue(null),
+    requestThumbnailsBatch: jest.fn().mockResolvedValue({ thumbnails: [] }),
+    batchDeleteFiles: jest.fn().mockResolvedValue({ jobId: null }),
+    batchMoveFiles: jest.fn().mockResolvedValue({ jobId: null }),
+    batchCopyFiles: jest.fn().mockResolvedValue({ jobId: null }),
+    getBulkOperationStatus: jest.fn().mockResolvedValue(null),
+    cancelBulkOperation: jest.fn().mockResolvedValue(null),
     ...overrides,
   };
 }
@@ -130,15 +124,6 @@ export function createLocalStorageUiMock(overrides = {}) {
 export function createFileUtilsMock(overrides = {}) {
   return {
     canPreview: jest.fn(() => true),
-    ...overrides,
-  };
-}
-
-export function createMigrationServiceMock(overrides = {}) {
-  return {
-    startBlobMigration: jest.fn(),
-    getBlobMigrationStatus: jest.fn(),
-    cancelBlobMigration: jest.fn(),
     ...overrides,
   };
 }

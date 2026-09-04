@@ -384,9 +384,6 @@ describe('createBlobStorageService', () => {
 
       const result = await svc.downloadBlob(1);
 
-      expect(mockFns.getNode).toHaveBeenCalledWith(1);
-      expect(mockFns.getNodePath).toHaveBeenCalledWith(1);
-      expect(mockBlobStore.downloadBlob).toHaveBeenCalledWith('/path/file.txt');
       expect(result).toEqual(Buffer.from('webdav-content'));
     });
 

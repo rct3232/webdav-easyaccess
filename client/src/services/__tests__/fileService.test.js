@@ -30,13 +30,6 @@ jest.mock('../apiClient', () => ({
   put: jest.fn(),
 }));
 
-jest.mock('../permissionService', () => ({
-  checkPermission: jest.fn(),
-  grantPermission: jest.fn(),
-  revokePermission: jest.fn(),
-  listFilePermissions: jest.fn(),
-}));
-
 describe('fileService', () => {
   beforeEach(() => {
     jest.clearAllMocks();

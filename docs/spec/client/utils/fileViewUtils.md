@@ -29,7 +29,7 @@
 - React, `@mui/icons-material` (DriveFileMove, ContentCopy, Delete)
 - File shape: { nodeId, path, type, hasReadPermission }
 - processingMap: Map<nodeId, processingType>
-- `getEntryKey` is the single entry-key helper for selection/processing state: nodeId when available, path fallback ONLY for entries lacking a nodeId (synthetic `/__recent__` entries, Phase 5 scope)
+- `getEntryKey` is the single entry-key helper for selection/processing state: `file.nodeId` when available, path fallback ONLY for entries lacking a nodeId (e.g. recent-file entries whose nodeId is absent)
 
 ### 2.4 getFileItemState Logic
 

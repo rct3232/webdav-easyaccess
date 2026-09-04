@@ -6,9 +6,6 @@ const {
   setSharedResolver,
   populateT1Env,
 } = require('../configResolver');
-const { encryptSecret } = require('../../utils/configEncryption');
-
-const MASTER_KEY = 'test-master-key';
 
 function createFakeStore(initial = {}) {
   const rows = new Map(Object.entries(initial));
@@ -91,63 +88,37 @@ describe('createConfigResolver', () => {
 
   describe('T0 (env only)', () => {
     it('never reads the DB or applies a default for T0 keys', async () => {
-      const store = createFakeStore({ WEA_PG_HOST: 'db-host', WEA_PG_PORT: 1111 });
+      const store = createFakeStore({ WEA_DB_HOST: 'db-host', WEA_DB_PORT: 1111 });
       const resolver = makeResolver(store, {});
-      await expect(resolver.getConfig('WEA_PG_HOST')).resolves.toBeUndefined();
-      await expect(resolver.getConfig('WEA_PG_PORT')).resolves.toBeUndefined();
+      await expect(resolver.getConfig('WEA_DB_HOST')).resolves.toBeUndefined();
+      await expect(resolver.getConfig('WEA_DB_PORT')).resolves.toBeUndefined();
       expect(store.calls.get).toHaveLength(0);
     });
 
     it('returns the env value for a T0 key when present', async () => {
       const store = createFakeStore({});
-      const resolver = makeResolver(store, { WEA_PG_HOST: 'env-host' });
-      await expect(resolver.getConfig('WEA_PG_HOST')).resolves.toBe('env-host');
+      const resolver = makeResolver(store, { WEA_DB_HOST: 'env-host' });
+      await expect(resolver.getConfig('WEA_DB_HOST')).resolves.toBe('env-host');
     });
   });
 
   describe('secret handling', () => {
-    it('decrypts a DB secret on read only when env is absent', async () => {
-      const payload = encryptSecret('db-pass', MASTER_KEY);
-      const store = createFakeStore({ EMAIL_PASSWORD: payload });
-      const resolver = makeResolver(store, { encrypt_secret_key: MASTER_KEY });
+    it('returns a DB secret row as plaintext when env is absent', async () => {
+      const store = createFakeStore({ EMAIL_PASSWORD: 'db-pass' });
+      const resolver = makeResolver(store, {});
       await expect(resolver.getConfig('EMAIL_PASSWORD')).resolves.toBe('db-pass');
     });
 
-    it('never decrypts when the env value is present', async () => {
-      const payload = encryptSecret('db-pass', MASTER_KEY);
-      const store = createFakeStore({ EMAIL_PASSWORD: payload });
-      const resolver = makeResolver(store, {
-        EMAIL_PASSWORD: 'env-pass',
-        encrypt_secret_key: MASTER_KEY,
-      });
+    it('never reads the DB when the env value is present', async () => {
+      const store = createFakeStore({ EMAIL_PASSWORD: 'db-pass' });
+      const resolver = makeResolver(store, { EMAIL_PASSWORD: 'env-pass' });
       await expect(resolver.getConfig('EMAIL_PASSWORD')).resolves.toBe('env-pass');
       expect(store.calls.get).not.toContain('EMAIL_PASSWORD');
     });
 
-    it('decrypts a JSON-string payload (settingsStore.set serialization artifact)', async () => {
-      const payload = JSON.stringify(encryptSecret('db-pass', MASTER_KEY));
-      const store = createFakeStore({ EMAIL_PASSWORD: payload });
-      const resolver = makeResolver(store, { encrypt_secret_key: MASTER_KEY });
-      await expect(resolver.getConfig('EMAIL_PASSWORD')).resolves.toBe('db-pass');
-    });
-
-    it('returns a legacy plaintext secret row as-is', async () => {
-      const store = createFakeStore({ EMAIL_PASSWORD: 'legacy-pass' });
+    it('returns undefined when no source has a value and there is no default', async () => {
+      const store = createFakeStore({});
       const resolver = makeResolver(store, {});
-      await expect(resolver.getConfig('EMAIL_PASSWORD')).resolves.toBe('legacy-pass');
-    });
-
-    it('returns undefined when the master key is missing and decryption is needed', async () => {
-      const payload = encryptSecret('db-pass', MASTER_KEY);
-      const store = createFakeStore({ EMAIL_PASSWORD: payload });
-      const resolver = makeResolver(store, {});
-      await expect(resolver.getConfig('EMAIL_PASSWORD')).resolves.toBeUndefined();
-    });
-
-    it('returns undefined on a decryption failure without throwing', async () => {
-      const payload = encryptSecret('db-pass', MASTER_KEY);
-      const store = createFakeStore({ EMAIL_PASSWORD: payload });
-      const resolver = makeResolver(store, { encrypt_secret_key: 'different-key' });
       await expect(resolver.getConfig('EMAIL_PASSWORD')).resolves.toBeUndefined();
     });
   });
@@ -192,7 +163,7 @@ describe('createConfigResolver', () => {
         secret: false,
       });
       expect(config.PORT).toEqual({ value: 5001, source: 'default', tier: 'T1', secret: false });
-      expect(config.WEA_PG_HOST).toEqual({
+      expect(config.WEA_DB_HOST).toEqual({
         value: undefined,
         source: 'env',
         tier: 'T0',
@@ -202,11 +173,9 @@ describe('createConfigResolver', () => {
     });
 
     it('masks secrets with **** while keeping the source truthful', async () => {
-      const payload = encryptSecret('db-pass', MASTER_KEY);
-      const store = createFakeStore({ WEBDAV_PASSWORD: payload });
+      const store = createFakeStore({ WEBDAV_PASSWORD: 'db-pass' });
       const resolver = makeResolver(store, {
         EMAIL_PASSWORD: 'env-pass',
-        encrypt_secret_key: MASTER_KEY,
       });
 
       const config = await resolver.getEffectiveConfig();
@@ -220,6 +189,38 @@ describe('createConfigResolver', () => {
       expect(config.WEBDAV_PASSWORD).toEqual({
         value: '****',
         source: 'db',
+        tier: 'T1',
+        secret: true,
+      });
+    });
+
+    it('does not mask an UNSET secret — value stays undefined (no fake presence)', async () => {
+      const store = createFakeStore({});
+      const resolver = makeResolver(store, {});
+
+      const config = await resolver.getEffectiveConfig();
+
+      expect(config.JWT_SECRET).toEqual({
+        value: undefined,
+        source: 'env',
+        tier: 'T0',
+        secret: true,
+      });
+      expect(config.WEA_DB_PASSWORD).toEqual({
+        value: undefined,
+        source: 'env',
+        tier: 'T0',
+        secret: true,
+      });
+      expect(config.EMAIL_PASSWORD).toEqual({
+        value: undefined,
+        source: 'default',
+        tier: 'T1',
+        secret: true,
+      });
+      expect(config.AWS_SECRET_ACCESS_KEY).toEqual({
+        value: undefined,
+        source: 'default',
         tier: 'T1',
         secret: true,
       });
@@ -331,13 +332,12 @@ describe('createConfigResolver', () => {
     it('returns undefined for T0 keys when env is absent', () => {
       const resolver = makeResolver(createFakeStore({}), {});
       expect(resolver.getConfigSync('JWT_SECRET')).toBeUndefined();
-      expect(resolver.getConfigSync('WEA_PG_PORT')).toBeUndefined();
+      expect(resolver.getConfigSync('WEA_DB_PORT')).toBeUndefined();
     });
 
-    it('decrypts a cached encrypted DB secret synchronously', async () => {
-      const payload = encryptSecret('smtp-password', MASTER_KEY);
-      const store = createFakeStore({ EMAIL_PASSWORD: JSON.stringify(payload) });
-      const resolver = makeResolver(store, { encrypt_secret_key: MASTER_KEY });
+    it('returns a cached plaintext DB secret synchronously', async () => {
+      const store = createFakeStore({ EMAIL_PASSWORD: 'smtp-password' });
+      const resolver = makeResolver(store, {});
       await resolver.loadAll();
 
       expect(resolver.getConfigSync('EMAIL_PASSWORD')).toBe('smtp-password');
@@ -371,17 +371,16 @@ describe('createConfigResolver', () => {
       expect(env.WEBDAV_USERNAME).toBe('dav-user');
       expect(env.EMAIL_HOST).toBe('smtp.example.com'); // T1 — populated at boot
       expect(env.CORS_ORIGINS).toBeUndefined(); // T2 — must stay lazy
-      expect(env.WEA_PG_HOST).toBeUndefined(); // T0 — env only
+      expect(env.WEA_DB_HOST).toBeUndefined(); // T0 — env only
       expect(populated).toContain('WEBDAV_URL');
       expect(populated).toContain('EMAIL_HOST');
       expect(populated).not.toContain('CORS_ORIGINS');
-      expect(populated).not.toContain('WEA_PG_HOST');
+      expect(populated).not.toContain('WEA_DB_HOST');
     });
 
-    it('decrypts DB-sourced secrets before writing them', async () => {
-      const payload = encryptSecret('dav-secret', MASTER_KEY);
-      const store = createFakeStore({ WEBDAV_PASSWORD: payload });
-      const resolver = makeResolver(store, { encrypt_secret_key: MASTER_KEY });
+    it('copies DB-sourced plaintext secrets into the env', async () => {
+      const store = createFakeStore({ WEBDAV_PASSWORD: 'dav-secret' });
+      const resolver = makeResolver(store, {});
       await resolver.loadAll();
 
       const env = {};

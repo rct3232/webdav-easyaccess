@@ -66,7 +66,8 @@ const FileManagerView = ({
     fileContentRef,
     scrollContainerRef,
     backendHealth,
-    activeBackends,
+    activeFileStorage,
+    activeMetadataBackend,
   } = shellContext;
   const {
     drawerOpen,
@@ -174,7 +175,6 @@ const FileManagerView = ({
     handleExplorerDrop,
     handleInternalFileDrop,
     handleLeaveSharePathClick,
-    handlePathClick,
     handleFolderTreeNodeClick,
     ancestors,
     handleScrollAreaClick,
@@ -417,12 +417,21 @@ const FileManagerView = ({
             downloadOnly={isShareLinkMode}
           />
 
-          {user?.is_admin &&
+          {user &&
+            !isShareLinkMode &&
             backendHealth &&
-            activeBackends &&
-            [...activeBackends].some((backend) => backendHealth[backend] === 'fail') && (
-              <Alert severity="warning" sx={{ mx: 2, mb: 1 }} data-testid="backend-health-banner">
-                {t('admin.health.banner')}
+            ((activeFileStorage && backendHealth[activeFileStorage] === 'fail') ||
+              (activeMetadataBackend === 'postgresql' && backendHealth.postgresql === 'fail')) && (
+              <Alert
+                severity="warning"
+                sx={{ mx: 2, mb: 1 }}
+                data-testid="backend-health-banner"
+              >
+                {user?.is_admin
+                  ? t('admin.health.banner')
+                  : activeMetadataBackend === 'postgresql' && backendHealth.postgresql === 'fail'
+                    ? t('files.maintenanceNotice')
+                    : t('files.storageUnavailable')}
               </Alert>
             )}
 
@@ -558,9 +567,6 @@ const FileManagerView = ({
                   selectionMode={selectionMode}
                   selectedFiles={selectedFiles}
                   onFileCheck={handleFileCheck}
-                  hasWritePermission={hasWritePermission}
-                  currentPath={currentPath}
-                  onPathClick={handlePathClick}
                   loading={loading}
                   onThumbnailsLoaded={handleThumbnailsLoaded}
                   loadMoreRef={loadMoreRef}
@@ -584,9 +590,6 @@ const FileManagerView = ({
                   selectionMode={selectionMode}
                   selectedFiles={selectedFiles}
                   onFileCheck={handleFileCheck}
-                  hasWritePermission={hasWritePermission}
-                  currentPath={currentPath}
-                  onPathClick={handlePathClick}
                   loading={loading}
                   onThumbnailsLoaded={handleThumbnailsLoaded}
                   loadMoreRef={loadMoreRef}
@@ -610,9 +613,6 @@ const FileManagerView = ({
                   selectionMode={selectionMode}
                   selectedFiles={selectedFiles}
                   onFileCheck={handleFileCheck}
-                  hasWritePermission={hasWritePermission}
-                  currentPath={currentPath}
-                  onPathClick={handlePathClick}
                   loading={loading}
                   shareToken={isShareLinkMode ? shareToken : undefined}
                 />

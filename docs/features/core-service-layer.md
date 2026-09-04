@@ -154,11 +154,17 @@ sequenceDiagram
 
 ## Failure recovery
 
-| Failure Point | DB State                                                      | S3 State          | Recovery Path                                                               |
-| ------------- | ------------------------------------------------------------- | ----------------- | --------------------------------------------------------------------------- |
-| TX1 fails     | ROLLBACK, nothing persisted                                   | Nothing           | Idempotent retry                                                            |
-| S3 PUT fails  | `object_map` row is `pending`, `sync_status='pending_upload'` | Nothing in S3     | Manual retry or GC Tier 1 (orphan pending entries)                          |
-| TX2 fails     | `object_map` row is `pending`; `sync_status='pending_upload'` | Blob exists in S3 | GC Tier 2: `listOrphanedKeys` finds S3 blob with no DB mapping → deletes it |
+| Failure Point | DB State                                                                                          | S3 State          | Recovery Path                                                                                          |
+| ------------- | ------------------------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------ |
+| TX1 fails     | ROLLBACK, nothing persisted                                                                       | Nothing           | Idempotent retry                                                                                       |
+| S3 PUT fails  | New-file upload: node rolled back (deleteNode), nothing persisted                                 | Nothing or partial object | None needed — no visible residue; untracked partial object is a Tier 2 GC target                |
+| TX2 fails     | New-file upload: node rolled back (deleteNode), nothing persisted                                 | Blob exists in S3 | Blob is untracked; GC Tier 2: `listOrphanedKeys` finds S3 blob with no DB mapping → deletes it          |
+| S3 PUT / TX2 fails (overwrite of an existing file) | Node remains `sync_status='pending_upload'` with a pending `object_map` row       | Nothing or new blob | No automatic recovery implemented (manual/GC gap — see `docs/IMPROVEMENT_PLAN.md`)                  |
+
+> Note: `uploadService.uploadFile` (new file) rolls back the created node on any failure after TX1 so
+> a failed upload never leaves a phantom 0-byte file in listings. `overwriteFile` (existing file) is
+> protected at TX1 only — a post-TX1 failure leaves the pending state; automatic recovery for that
+> path is not implemented (tracked in `docs/IMPROVEMENT_PLAN.md`).
 
 ---
 

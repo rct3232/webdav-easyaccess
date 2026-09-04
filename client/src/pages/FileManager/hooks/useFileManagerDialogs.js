@@ -32,27 +32,97 @@ export const useFileManagerDialogs = () => {
   const [mobilePickerFile, setMobilePickerFile] = useState(null);
   const [mobilePickerAction, setMobilePickerAction] = useState(null);
 
+  // Destructure the stable open/close fns so setter deps reference stable identifiers
+  // (member-expression deps would trip react-hooks/exhaustive-deps under --max-warnings 0).
+  const { open: openUpload, close: closeUpload } = uploadDialog;
+  const { open: openCreateFolder, close: closeCreateFolder } = createFolderDialog;
+  const { open: openPreview, close: closePreview } = previewDialog;
+  const { open: openRename, close: closeRename } = renameDialog;
+  const { open: openShare, close: closeShare } = shareDialog;
+  const { open: openShareV2, close: closeShareV2 } = shareDialogV2;
+  const { open: openProperties, close: closeProperties } = propertiesDialog;
+  const { open: openBulkDelete, close: closeBulkDelete } = bulkDeleteDialog;
+  const { open: openActionSheet, close: closeActionSheetFn } = actionSheet;
+
   // Custom open/close handlers for rename dialog
   const openRenameDialog = useCallback(
     (file) => {
       if (file) {
         setRenameNewName(file.basename || file.name);
       }
-      renameDialog.open(file);
+      openRename(file);
     },
-    [renameDialog]
+    [openRename]
   );
 
   const closeRenameDialog = useCallback(() => {
-    renameDialog.close();
+    closeRename();
     setRenameNewName('');
     setRenameError('');
-  }, [renameDialog]);
+  }, [closeRename]);
 
   // Custom close handler for action sheet
   const closeActionSheet = useCallback(() => {
-    actionSheet.close();
-  }, [actionSheet]);
+    closeActionSheetFn();
+  }, [closeActionSheetFn]);
+
+  // Stable direct-control setters (identity preserved across renders)
+  const setUploadDialogOpen = useCallback(
+    (open) => (open ? openUpload() : closeUpload()),
+    [openUpload, closeUpload]
+  );
+  const setCreateFolderDialogOpen = useCallback(
+    (open) => (open ? openCreateFolder() : closeCreateFolder()),
+    [openCreateFolder, closeCreateFolder]
+  );
+  const setPreviewDialogOpen = useCallback(
+    (open) => (open ? openPreview() : closePreview()),
+    [openPreview, closePreview]
+  );
+  const setRenameDialogOpen = useCallback(
+    (open) => (open ? openRename() : closeRenameDialog()),
+    [openRename, closeRenameDialog]
+  );
+  const setShareDialogOpen = useCallback(
+    (open) => (open ? openShare() : closeShare()),
+    [openShare, closeShare]
+  );
+  const setShareDialogV2Open = useCallback(
+    (open) => (open ? openShareV2() : closeShareV2()),
+    [openShareV2, closeShareV2]
+  );
+  const setPropertiesDialogOpen = useCallback(
+    (open) => (open ? openProperties() : closeProperties()),
+    [openProperties, closeProperties]
+  );
+  const setBulkDeleteDialogOpen = useCallback(
+    (open) => (open ? openBulkDelete() : closeBulkDelete()),
+    [openBulkDelete, closeBulkDelete]
+  );
+  const setActionSheetOpen = useCallback(
+    (open) => (open ? openActionSheet() : closeActionSheet()),
+    [openActionSheet, closeActionSheet]
+  );
+  const setMobileRenameFile = useCallback(
+    (file) => (file ? openRename(file) : closeRename()),
+    [openRename, closeRename]
+  );
+  const setMobileShareFile = useCallback(
+    (file) => (file ? openShare(file) : closeShare()),
+    [openShare, closeShare]
+  );
+  const setShareDialogV2File = useCallback(
+    (file) => (file ? openShareV2(file) : closeShareV2()),
+    [openShareV2, closeShareV2]
+  );
+  const setMobilePropertiesFile = useCallback(
+    (file) => (file ? openProperties(file) : closeProperties()),
+    [openProperties, closeProperties]
+  );
+  const setBulkDeleteFilePaths = useCallback(
+    (paths) => (paths?.length > 0 ? openBulkDelete(paths) : closeBulkDelete()),
+    [openBulkDelete, closeBulkDelete]
+  );
 
   return {
     // States - maintaining backward compatibility
@@ -80,28 +150,25 @@ export const useFileManagerDialogs = () => {
     mobilePickerAction,
 
     // State Setters (for cases where direct control is needed)
-    setUploadDialogOpen: (open) => (open ? uploadDialog.open() : uploadDialog.close()),
-    setCreateFolderDialogOpen: (open) =>
-      open ? createFolderDialog.open() : createFolderDialog.close(),
-    setPreviewDialogOpen: (open) => (open ? previewDialog.open() : previewDialog.close()),
-    setRenameDialogOpen: (open) => (open ? renameDialog.open() : closeRenameDialog()),
-    setShareDialogOpen: (open) => (open ? shareDialog.open() : shareDialog.close()),
-    setShareDialogV2Open: (open) => (open ? shareDialogV2.open() : shareDialogV2.close()),
-    setPropertiesDialogOpen: (open) => (open ? propertiesDialog.open() : propertiesDialog.close()),
-    setBulkDeleteDialogOpen: (open) => (open ? bulkDeleteDialog.open() : bulkDeleteDialog.close()),
-    setActionSheetOpen: (open) => (open ? actionSheet.open() : actionSheet.close()),
-    setActionSheetFile: (file) => actionSheet.open(file),
+    setUploadDialogOpen,
+    setCreateFolderDialogOpen,
+    setPreviewDialogOpen,
+    setRenameDialogOpen,
+    setShareDialogOpen,
+    setShareDialogV2Open,
+    setPropertiesDialogOpen,
+    setBulkDeleteDialogOpen,
+    setActionSheetOpen,
+    setActionSheetFile: actionSheet.open,
     setSelectedFile,
     setContextMenu,
     setRenameNewName,
     setRenameError,
-    setMobileRenameFile: (file) => (file ? renameDialog.open(file) : renameDialog.close()),
-    setMobileShareFile: (file) => (file ? shareDialog.open(file) : shareDialog.close()),
-    setShareDialogV2File: (file) => (file ? shareDialogV2.open(file) : shareDialogV2.close()),
-    setMobilePropertiesFile: (file) =>
-      file ? propertiesDialog.open(file) : propertiesDialog.close(),
-    setBulkDeleteFilePaths: (paths) =>
-      paths?.length > 0 ? bulkDeleteDialog.open(paths) : bulkDeleteDialog.close(),
+    setMobileRenameFile,
+    setMobileShareFile,
+    setShareDialogV2File,
+    setMobilePropertiesFile,
+    setBulkDeleteFilePaths,
     setMobilePickerFile,
     setMobilePickerAction,
 

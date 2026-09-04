@@ -6,13 +6,11 @@ const {
   deriveDirection,
   destinationTypeForDirection,
 } = require('../../../infrastructure/adapters/blobstore/config');
-const { isSecret } = require('../../../infrastructure/configRegistry');
-const { encryptSecret } = require('../../../utils/configEncryption');
 const Settings = require('../../../models/Settings');
 const { getSharedResolver } = require('../../../infrastructure/configResolver');
 
 // Registry keys written when an `apply` run completes (D10/F2). Secret keys
-// (AWS_SECRET_ACCESS_KEY, WEBDAV_PASSWORD) are AES-encrypted before storage.
+// (AWS_SECRET_ACCESS_KEY, WEBDAV_PASSWORD) are stored as plaintext strings.
 const STORAGE_PERSIST_MAP = {
   s3: [
     { key: 'WEA_FILE_STORAGE', valueFrom: 'type' },
@@ -37,9 +35,9 @@ const STORAGE_PERSIST_MAP = {
  * For every mapped registry key with a non-empty value in `destConfig`, the
  * current effective source is checked first: env-sourced keys are skipped
  * (there is no env <-> DB sync tool; the operator edits `.env` instead).
- * DB/default-sourced keys are written via Settings.set — secrets are
- * AES-256-GCM encrypted under `encrypt_secret_key`, then invalidated from the
- * resolver cache. Returns `{ persisted, skippedEnvSourced }`.
+ * DB/default-sourced keys are written via Settings.set as plaintext strings
+ * (secret values included), then invalidated from the resolver cache. Returns
+ * `{ persisted, skippedEnvSourced }`.
  *
  * @param {{ type: 's3'|'webdav', [k: string]: any }} destConfig
  * @returns {Promise<{ persisted: string[], skippedEnvSourced: string[] }>}
@@ -65,16 +63,7 @@ async function persistStorageConfigToDb(destConfig) {
       continue;
     }
 
-    if (isSecret(key)) {
-      const masterKey = process.env.encrypt_secret_key;
-      if (!masterKey) {
-        throw new Error(`Cannot persist secret ${key}: encrypt_secret_key is not set`);
-      }
-      const payload = encryptSecret(values[key], masterKey);
-      await Settings.set(key, JSON.stringify(payload));
-    } else {
-      await Settings.set(key, values[key]);
-    }
+    await Settings.set(key, values[key]);
     persisted.push(key);
   }
 

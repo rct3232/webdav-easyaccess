@@ -5,7 +5,8 @@
  * Builds a minimal express app mounting the setup router directly (T5 will
  * mount it in server/index.js). envFileWriter is mocked so the test can assert
  * exactly which (T0) keys reach .env; the metadata store is a real isolated
- * sqlite DB (createTestDatabase).
+ * sqlite DB (createTestDatabase). SQLite-only: the suite self-skips under
+ * test:ci:pg (RUN_UNDER_PG), where the storage backend is postgresql.
  * @see docs/spec/server/routes/setup.md
  */
 const mockWriteEnv = jest.fn();
@@ -37,14 +38,23 @@ const { initMetadataStore } = require('../../../store/bootstrap');
 const User = require('../../../models/User');
 const Settings = require('../../../models/Settings');
 const { getSharedResolver } = require('../../../infrastructure/configResolver');
-const {
-  encryptSecret,
-  decryptSecret,
-  isEncryptedPayload,
-} = require('../../../utils/configEncryption');
 const { errorHandler } = require('../../../utils/errorHandler');
 const requestLogger = require('../../../middleware/requestLogger');
 const { Client: MockPgClient } = require('pg');
+
+// This suite drives the setup wizard against a real isolated sqlite metadata
+// store (SQLite-only). Under test:ci:pg the storage backend boots as
+// postgresql, where initMetadataStore would reach storage.getPgPool() -> the
+// jest-mocked 'pg' (Client only, no Pool) and throw. So on a PG backend run
+// the whole suite self-declares SQLite-only: every test is skipped and the
+// suite-level DB bootstrap is bypassed.
+// Backend selection is presence-based: PostgreSQL only when all four WEA_DB_*
+// identity keys are present in the environment.
+const DB_IDENTITY_KEYS = ['WEA_DB_HOST', 'WEA_DB_DATABASE', 'WEA_DB_USER', 'WEA_DB_PASSWORD'];
+const RUN_UNDER_PG = DB_IDENTITY_KEYS.every((key) => process.env[key]);
+
+// Bind describe to skip when the storage backend is postgresql (SQLite-only suite).
+const describeIfSqlite = RUN_UNDER_PG ? describe.skip : describe;
 
 const setupRouter = require('../routes');
 const setupCore = require('../setupCore');
@@ -53,18 +63,17 @@ const TMP_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'setup-routes-'));
 const ADMIN_PASSWORD = 'admin-old-password';
 
 const WIZARD_ENV_KEYS = [
-  'WEA_STORAGE_BACKEND',
   'WEA_FILE_STORAGE',
   'PORT',
   'JWT_SECRET',
   'JWT_EXPIRES_IN',
-  'WEA_PG_HOST',
-  'WEA_PG_PORT',
-  'WEA_PG_DATABASE',
-  'WEA_PG_USER',
-  'WEA_PG_PASSWORD',
-  'WEA_PG_SSL',
-  'WEA_PG_MAX',
+  'WEA_DB_HOST',
+  'WEA_DB_PORT',
+  'WEA_DB_DATABASE',
+  'WEA_DB_USER',
+  'WEA_DB_PASSWORD',
+  'WEA_DB_SSL',
+  'WEA_DB_MAX',
   'S3_BUCKET',
   'AWS_REGION',
   'AWS_ACCESS_KEY_ID',
@@ -84,21 +93,21 @@ const WIZARD_ENV_KEYS = [
   'EMAIL_FROM_NAME',
   'DOTENV_CONFIG_PATH',
   'WEA_SQLITE_PATH',
-  'encrypt_secret_key',
 ];
 const SAVED_ENV = {};
 
 function setIncompleteBaseline() {
   for (const key of WIZARD_ENV_KEYS) {
-    if (key !== 'WEA_STORAGE_BACKEND' && key !== 'WEA_SQLITE_PATH' && key !== 'WEA_FILE_STORAGE')
-      delete process.env[key];
+    if (key !== 'WEA_SQLITE_PATH' && key !== 'WEA_FILE_STORAGE') delete process.env[key];
   }
+  // No WEA_DB_* identity key set → the metadata backend defaults to sqlite.
+  for (const key of DB_IDENTITY_KEYS) delete process.env[key];
+  delete process.env.WEA_STORAGE_BACKEND;
   process.env.WEA_FILE_STORAGE = 's3';
 }
 
 function setCompleteWebdavEnv() {
   setIncompleteBaseline();
-  process.env.WEA_STORAGE_BACKEND = 'sqlite';
   process.env.WEA_FILE_STORAGE = 'webdav';
   process.env.WEBDAV_URL = 'https://dav.example.com';
   process.env.WEBDAV_USERNAME = 'dav-user';
@@ -157,6 +166,8 @@ let dbCleanup;
 let adminUser;
 
 beforeAll(async () => {
+  if (RUN_UNDER_PG) return;
+
   for (const key of WIZARD_ENV_KEYS) SAVED_ENV[key] = process.env[key];
 
   const db = await createTestDatabase();
@@ -168,6 +179,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  if (RUN_UNDER_PG) return;
+
   for (const key of WIZARD_ENV_KEYS) {
     if (SAVED_ENV[key] === undefined) delete process.env[key];
     else process.env[key] = SAVED_ENV[key];
@@ -185,7 +198,7 @@ beforeEach(async () => {
   setupS3HeadBlob(makeNoSuchKeyError());
 });
 
-describe('GET /api/setup/status', () => {
+describeIfSqlite('GET /api/setup/status', () => {
   it('returns incomplete status with missing s3 keys and masked current values', async () => {
     setIncompleteBaseline();
     const res = await request(app).get('/api/setup/status');
@@ -198,7 +211,8 @@ describe('GET /api/setup/status', () => {
     expect(res.body.current).toMatchObject({
       WEA_FILE_STORAGE: 's3',
     });
-    expect(res.body.current.WEA_STORAGE_BACKEND).toBeUndefined();
+    // Metadata-backend T0 keys are never part of `current` (wizard-writable only).
+    expect(res.body.current.WEA_DB_HOST).toBeUndefined();
     expect(res.body.current.JWT_SECRET).toBeUndefined();
   });
 
@@ -223,55 +237,25 @@ describe('GET /api/setup/status', () => {
     expect(res.body.current.WEBDAV_PASSWORD).toBe('****');
   });
 
-  it('reports key_lost_warning when an encrypted DB row exists and encrypt_secret_key is absent', async () => {
+  it('does not return a key_lost_warning field (masking is presentation-only)', async () => {
     setIncompleteBaseline();
-    delete process.env.encrypt_secret_key;
     const getAllSpy = jest.spyOn(Settings, 'getAll').mockResolvedValue({
-      EMAIL_PASSWORD: JSON.stringify(encryptSecret('smtp-secret', 'previously-used-key')),
+      EMAIL_PASSWORD: 'smtp-secret',
     });
 
     try {
       const res = await request(app).get('/api/setup/status');
 
       expect(res.status).toBe(200);
-      expect(res.body.key_lost_warning).toBe(true);
-      expect(res.body.setup_complete).toBe(false);
-      expect(res.body.missing).toContain('S3_BUCKET');
-    } finally {
-      getAllSpy.mockRestore();
-    }
-  });
-
-  it('does not report key_lost_warning when encrypt_secret_key is present', async () => {
-    setIncompleteBaseline();
-    process.env.encrypt_secret_key = 'current-key';
-    const getAllSpy = jest.spyOn(Settings, 'getAll').mockResolvedValue({
-      EMAIL_PASSWORD: JSON.stringify(encryptSecret('smtp-secret', 'current-key')),
-    });
-
-    try {
-      const res = await request(app).get('/api/setup/status');
-
-      expect(res.status).toBe(200);
-      expect(res.body.key_lost_warning).toBe(false);
+      expect(res.body).not.toHaveProperty('key_lost_warning');
       expect(res.body.current.EMAIL_PASSWORD).toBe('****');
     } finally {
       getAllSpy.mockRestore();
-      delete process.env.encrypt_secret_key;
     }
-  });
-
-  it('does not report key_lost_warning when no encrypted rows exist', async () => {
-    setIncompleteBaseline();
-    delete process.env.encrypt_secret_key;
-
-    const res = await request(app).get('/api/setup/status');
-
-    expect(res.body.key_lost_warning).toBe(false);
   });
 });
 
-describe('POST /api/setup/apply', () => {
+describeIfSqlite('POST /api/setup/apply', () => {
   let settingsSetSpy;
   let invalidateSpy;
 
@@ -287,7 +271,7 @@ describe('POST /api/setup/apply', () => {
     invalidateSpy.mockRestore();
   });
 
-  it('sqlite + webdav: writes only T0 keys to .env, non-T0 keys to the DB (secrets encrypted), updates the admin password', async () => {
+  it('sqlite + webdav: writes only T0 keys to .env, non-T0 keys to the DB (secrets plaintext), updates the admin password', async () => {
     const envPath = makeEnvPath('sqlite-webdav');
     process.env.DOTENV_CONFIG_PATH = envPath;
 
@@ -320,17 +304,17 @@ describe('POST /api/setup/apply', () => {
 
     expect(mockWriteEnv).toHaveBeenCalledTimes(1);
     const [, envEntries] = mockWriteEnv.mock.calls[0];
-    expect(Object.keys(envEntries).sort()).toEqual(['JWT_SECRET', 'encrypt_secret_key']);
+    expect(Object.keys(envEntries).sort()).toEqual(['JWT_SECRET']);
     expect(envEntries.JWT_SECRET).toBe('super-secret-jwt');
-    expect(envEntries.encrypt_secret_key).toMatch(/^[a-f0-9]{64}$/);
-    expect(envEntries).not.toHaveProperty('WEA_STORAGE_BACKEND');
-    expect(envEntries).not.toHaveProperty('WEA_PG_HOST');
+    expect(envEntries).not.toHaveProperty('encrypt_secret_key');
+    // Metadata-backend T0 keys (the WEA_DB_* block) are never written to .env.
+    expect(envEntries).not.toHaveProperty('WEA_DB_HOST');
+    expect(envEntries).not.toHaveProperty('WEA_DB_PASSWORD');
     expect(envEntries).not.toHaveProperty('WEA_FILE_STORAGE');
     expect(envEntries).not.toHaveProperty('WEBDAV_URL');
     expect(envEntries).not.toHaveProperty('EMAIL_HOST');
     expect(envEntries).not.toHaveProperty('ADMIN_DEFAULT_PASSWORD');
 
-    const masterKey = envEntries.encrypt_secret_key;
     const written = Object.fromEntries(settingsSetSpy.mock.calls);
     expect(Object.keys(written).sort()).toEqual([
       'CORS_ORIGINS',
@@ -360,14 +344,12 @@ describe('POST /api/setup/apply', () => {
     expect(written.EMAIL_USER).toBe('mail-user');
     expect(written.EMAIL_SECURE).toBe('false');
     expect(written.EMAIL_FROM_NAME).toBe('WebDAV');
-    expect(written).not.toHaveProperty('WEA_STORAGE_BACKEND');
-    expect(written).not.toHaveProperty('WEA_PG_HOST');
+    expect(written.WEBDAV_PASSWORD).toBe('dav-pass');
+    expect(written.EMAIL_PASSWORD).toBe('mail-pass');
+    // Metadata-backend T0 keys are never stored as settings rows.
+    expect(written).not.toHaveProperty('WEA_DB_HOST');
+    expect(written).not.toHaveProperty('WEA_DB_PASSWORD');
     expect(written).not.toHaveProperty('JWT_SECRET');
-
-    expect(isEncryptedPayload(JSON.parse(written.WEBDAV_PASSWORD))).toBe(true);
-    expect(isEncryptedPayload(JSON.parse(written.EMAIL_PASSWORD))).toBe(true);
-    expect(decryptSecret(JSON.parse(written.WEBDAV_PASSWORD), masterKey)).toBe('dav-pass');
-    expect(decryptSecret(JSON.parse(written.EMAIL_PASSWORD), masterKey)).toBe('mail-pass');
 
     const admin = await User.findByUsername('admin');
     expect(admin).toBeTruthy();
@@ -375,38 +357,6 @@ describe('POST /api/setup/apply', () => {
     expect(await bcrypt.compare(ADMIN_PASSWORD, admin.password)).toBe(false);
 
     expect(invalidateSpy).toHaveBeenCalled();
-  });
-
-  it('keeps an existing encrypt_secret_key: not regenerated, not written to .env, used to encrypt', async () => {
-    process.env.encrypt_secret_key = 'pre-existing-key';
-    const envPath = makeEnvPath('sqlite-webdav-keep-key');
-    process.env.DOTENV_CONFIG_PATH = envPath;
-
-    const res = await request(app)
-      .post('/api/setup/apply')
-      .send({
-        metadata: { backend: 'sqlite' },
-        file: {
-          backend: 'webdav',
-          url: 'https://dav.example.com',
-          username: 'dav-user',
-          password: 'dav-pass',
-        },
-        admin: { password: 'new-admin-pass' },
-        jwt: { secret: 'super-secret-jwt', expiresIn: '30m' },
-      });
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ restart_required: true });
-
-    const [, envEntries] = mockWriteEnv.mock.calls[0];
-    expect(Object.keys(envEntries).sort()).toEqual(['JWT_SECRET']);
-    expect(envEntries).not.toHaveProperty('encrypt_secret_key');
-    expect(envEntries).not.toHaveProperty('WEA_STORAGE_BACKEND');
-    expect(process.env.encrypt_secret_key).toBe('pre-existing-key');
-
-    const written = Object.fromEntries(settingsSetSpy.mock.calls);
-    expect(decryptSecret(JSON.parse(written.WEBDAV_PASSWORD), 'pre-existing-key')).toBe('dav-pass');
   });
 
   it('sqlite + webdav: empty-string optional server/email ports are tolerated and PORT/EMAIL_PORT are not stored', async () => {
@@ -434,8 +384,9 @@ describe('POST /api/setup/apply', () => {
     expect(res.body).toEqual({ restart_required: true });
 
     const [, envEntries] = mockWriteEnv.mock.calls[0];
-    expect(Object.keys(envEntries).sort()).toEqual(['JWT_SECRET', 'encrypt_secret_key']);
-    expect(envEntries).not.toHaveProperty('WEA_STORAGE_BACKEND');
+    expect(Object.keys(envEntries).sort()).toEqual(['JWT_SECRET']);
+    expect(envEntries).not.toHaveProperty('encrypt_secret_key');
+    expect(envEntries).not.toHaveProperty('WEA_DB_HOST');
     expect(envEntries).not.toHaveProperty('PORT');
     expect(envEntries).not.toHaveProperty('EMAIL_PORT');
 
@@ -450,7 +401,7 @@ describe('POST /api/setup/apply', () => {
     expect(written.EMAIL_SECURE).toBe('false');
   });
 
-  it('sqlite + s3: a masked (unchanged) secret keeps its existing ciphertext — not re-encrypted', async () => {
+  it('sqlite + s3: a masked (unchanged) secret is dropped and keeps its existing stored value', async () => {
     const envPath = makeEnvPath('sqlite-s3-masked');
     process.env.DOTENV_CONFIG_PATH = envPath;
 
@@ -485,7 +436,6 @@ describe('POST /api/setup/apply', () => {
   it('postgresql metadata backend is rejected 400 with fields.metadata = notAllowed and a clear message', async () => {
     const envPath = makeEnvPath('pg-masked-password');
     process.env.DOTENV_CONFIG_PATH = envPath;
-    process.env.WEA_PG_PASSWORD = 'env-pg-pass';
 
     const res = await request(app)
       .post('/api/setup/apply')
@@ -580,19 +530,66 @@ describe('POST /api/setup/apply', () => {
     expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.setup.complete);
   });
 
-  it('returns 400 per-field when required blocks are missing (jwt.secret)', async () => {
+  it('accepts an empty jwt block (blank secret) and writes no .env partition', async () => {
+    const envPath = makeEnvPath('sqlite-webdav-no-jwt');
+    process.env.DOTENV_CONFIG_PATH = envPath;
+
     const res = await request(app)
       .post('/api/setup/apply')
       .send({
         metadata: { backend: 'sqlite' },
-        file: { backend: 'webdav', url: 'https://dav.example.com', username: 'u', password: 'p' },
-        admin: { password: 'pass' },
-        jwt: {},
+        file: {
+          backend: 'webdav',
+          url: 'https://dav.example.com',
+          username: 'u',
+          password: 'p',
+        },
+        admin: { password: 'new-admin-pass' },
+        jwt: { secret: '' },
       });
 
-    expect(res.status).toBe(400);
-    expect(res.body.errorCode).toBe('serverErrors.setup.invalidPayload');
-    expect(res.body.fields['jwt.secret']).toBe('required');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ restart_required: true });
+
+    // No supplied JWT secret -> the T0 .env partition is empty and the .env
+    // write is skipped entirely (JWT_SECRET absent; ephemeral per boot).
+    expect(mockWriteEnv).not.toHaveBeenCalled();
+    expect(fs.existsSync(envPath)).toBe(false);
+
+    const written = Object.fromEntries(settingsSetSpy.mock.calls);
+    expect(written.WEA_FILE_STORAGE).toBe('webdav');
+    expect(written.WEBDAV_URL).toBe('https://dav.example.com');
+    expect(written).not.toHaveProperty('JWT_SECRET');
+    expect(written).not.toHaveProperty('JWT_EXPIRES_IN');
+
+    const admin = await User.findByUsername('admin');
+    expect(await bcrypt.compare('new-admin-pass', admin.password)).toBe(true);
+  });
+
+  it('accepts a payload with no jwt block at all', async () => {
+    const envPath = makeEnvPath('sqlite-webdav-no-jwt-block');
+    process.env.DOTENV_CONFIG_PATH = envPath;
+
+    const res = await request(app)
+      .post('/api/setup/apply')
+      .send({
+        metadata: { backend: 'sqlite' },
+        file: {
+          backend: 'webdav',
+          url: 'https://dav.example.com',
+          username: 'u',
+          password: 'p',
+        },
+        admin: { password: 'new-admin-pass' },
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ restart_required: true });
+    expect(mockWriteEnv).not.toHaveBeenCalled();
+    expect(fs.existsSync(envPath)).toBe(false);
+
+    const written = Object.fromEntries(settingsSetSpy.mock.calls);
+    expect(written).not.toHaveProperty('JWT_SECRET');
   });
 
   it('returns 400 per-field for missing s3 keys and an unknown key', async () => {
@@ -631,7 +628,7 @@ describe('POST /api/setup/apply', () => {
   });
 });
 
-describe('POST /api/setup/test', () => {
+describeIfSqlite('POST /api/setup/test', () => {
   it('postgresql: 200 ok:true on a successful connection', async () => {
     const res = await request(app).post('/api/setup/test').send({
       target: 'postgresql',
@@ -1051,7 +1048,7 @@ describe('POST /api/setup/test', () => {
   });
 });
 
-describe('POST /api/setup/prefill', () => {
+describeIfSqlite('POST /api/setup/prefill', () => {
   function setupPgRows(rows) {
     MockPgClient.mockImplementation(() => {
       const client = makePgClient();
@@ -1070,14 +1067,10 @@ describe('POST /api/setup/prefill', () => {
     ssl: false,
   };
 
-  it('postgresql: prefills plaintext config, masks secrets, key_lost_warning true when an encrypted row exists and the key is absent', async () => {
-    delete process.env.encrypt_secret_key;
+  it('postgresql: prefills plaintext config and masks secret rows', async () => {
     setupPgRows([
       { key: 'EMAIL_HOST', value: 'smtp.example.com' },
-      {
-        key: 'EMAIL_PASSWORD',
-        value: JSON.stringify({ enc: 'aes-256-gcm', iv: 'a', tag: 'b', data: 'c' }),
-      },
+      { key: 'EMAIL_PASSWORD', value: 'smtp-pw' },
     ]);
 
     const res = await request(app).post('/api/setup/prefill').send({ metadata: pgMetadata });
@@ -1085,7 +1078,6 @@ describe('POST /api/setup/prefill', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       current: { EMAIL_HOST: 'smtp.example.com', EMAIL_PASSWORD: '****' },
-      key_lost_warning: true,
     });
     expect(MockPgClient).toHaveBeenCalledTimes(1);
     expect(MockPgClient.mock.calls[0][0]).toMatchObject({
@@ -1098,35 +1090,13 @@ describe('POST /api/setup/prefill', () => {
     });
   });
 
-  it('postgresql: key_lost_warning false when encrypt_secret_key is present', async () => {
-    process.env.encrypt_secret_key = 'current-key';
-    setupPgRows([
-      {
-        key: 'EMAIL_PASSWORD',
-        value: JSON.stringify({ enc: 'aes-256-gcm', iv: 'a', tag: 'b', data: 'c' }),
-      },
-    ]);
-
-    try {
-      const res = await request(app).post('/api/setup/prefill').send({ metadata: pgMetadata });
-
-      expect(res.status).toBe(200);
-      expect(res.body).toEqual({
-        current: { EMAIL_PASSWORD: '****' },
-        key_lost_warning: false,
-      });
-    } finally {
-      delete process.env.encrypt_secret_key;
-    }
-  });
-
-  it('postgresql: a legacy plaintext secret row is still masked', async () => {
+  it('postgresql: a plaintext secret row is masked and never surfaced', async () => {
     setupPgRows([{ key: 'EMAIL_PASSWORD', value: 'smtp-pw' }]);
 
     const res = await request(app).post('/api/setup/prefill').send({ metadata: pgMetadata });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ current: { EMAIL_PASSWORD: '****' }, key_lost_warning: false });
+    expect(res.body).toEqual({ current: { EMAIL_PASSWORD: '****' } });
   });
 
   it('postgresql: a missing settings table (42P01) yields empty rows', async () => {
@@ -1141,10 +1111,10 @@ describe('POST /api/setup/prefill', () => {
     const res = await request(app).post('/api/setup/prefill').send({ metadata: pgMetadata });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ current: {}, key_lost_warning: false });
+    expect(res.body).toEqual({ current: {} });
   });
 
-  it('sqlite metadata returns empty current and no warning (sqlite is prefilled via /status)', async () => {
+  it('sqlite metadata returns empty current (sqlite is prefilled via /status)', async () => {
     const res = await request(app)
       .post('/api/setup/prefill')
       .send({
@@ -1152,7 +1122,7 @@ describe('POST /api/setup/prefill', () => {
       });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ current: {}, key_lost_warning: false });
+    expect(res.body).toEqual({ current: {} });
     expect(MockPgClient).not.toHaveBeenCalled();
   });
 
@@ -1203,7 +1173,7 @@ describe('POST /api/setup/prefill', () => {
   });
 });
 
-describe('request logger', () => {
+describeIfSqlite('request logger', () => {
   it('logs the apply request without leaking the body', async () => {
     const envPath = makeEnvPath('logger');
     process.env.DOTENV_CONFIG_PATH = envPath;
@@ -1247,7 +1217,7 @@ describe('request logger', () => {
   });
 });
 
-describe('setupCore (shared apply core)', () => {
+describeIfSqlite('setupCore (shared apply core)', () => {
   let settingsSetSpy;
   let invalidateSpy;
 
@@ -1286,7 +1256,6 @@ describe('setupCore (shared apply core)', () => {
   afterEach(() => {
     settingsSetSpy.mockRestore();
     invalidateSpy.mockRestore();
-    delete process.env.encrypt_secret_key;
   });
 
   it('validateApplyPayload: returns null for a valid payload and error detail otherwise', () => {
@@ -1296,13 +1265,23 @@ describe('setupCore (shared apply core)', () => {
       message: 'Invalid setup payload',
       fields: { body: 'invalid' },
     });
-    const missingJwt = setupCore.validateApplyPayload({
-      metadata: { backend: 'sqlite' },
-      file: { backend: 'webdav', url: 'https://dav.example.com', username: 'u', password: 'p' },
-      admin: { password: 'pass' },
-      jwt: {},
-    });
-    expect(missingJwt.fields['jwt.secret']).toBe('required');
+    // The jwt block is optional: an empty block or a completely absent block is
+    // valid (the server falls back to an ephemeral per-boot secret).
+    expect(
+      setupCore.validateApplyPayload({
+        metadata: { backend: 'sqlite' },
+        file: { backend: 'webdav', url: 'https://dav.example.com', username: 'u', password: 'p' },
+        admin: { password: 'pass' },
+        jwt: {},
+      })
+    ).toBeNull();
+    expect(
+      setupCore.validateApplyPayload({
+        metadata: { backend: 'sqlite' },
+        file: { backend: 'webdav', url: 'https://dav.example.com', username: 'u', password: 'p' },
+        admin: { password: 'pass' },
+      })
+    ).toBeNull();
   });
 
   it('validateApplyPayload: postgresql metadata is rejected with the wizard message', () => {
@@ -1330,9 +1309,30 @@ describe('setupCore (shared apply core)', () => {
     expect(dbEntries.WEBDAV_PASSWORD).toBe('dav-pass');
 
     // Metadata-backend T0 keys are excluded from the .env partition entirely.
-    const pgT0 = setupCore.partitionEntries({ WEA_PG_HOST: 'db.local' });
+    const pgT0 = setupCore.partitionEntries({ WEA_DB_HOST: 'db.local' });
     expect(pgT0.envEntries).toEqual({});
     expect(pgT0.dbEntries).toEqual({});
+  });
+
+  it('buildEnvEntries + partitionEntries: without a supplied secret the entries carry no JWT_SECRET and the .env partition is empty', () => {
+    const noJwtEntries = setupCore.buildEnvEntries({
+      metadata: { backend: 'sqlite' },
+      file: {
+        backend: 'webdav',
+        url: 'https://dav.example.com',
+        username: 'dav-user',
+        password: 'dav-pass',
+      },
+      admin: { password: 'core-admin-pass' },
+    });
+    expect(noJwtEntries.WEA_FILE_STORAGE).toBe('webdav');
+    expect(noJwtEntries).not.toHaveProperty('JWT_SECRET');
+    expect(noJwtEntries).not.toHaveProperty('JWT_EXPIRES_IN');
+
+    const { envEntries, dbEntries } = setupCore.partitionEntries(noJwtEntries);
+    expect(envEntries).toEqual({});
+    expect(dbEntries.WEA_FILE_STORAGE).toBe('webdav');
+    expect(dbEntries).not.toHaveProperty('JWT_SECRET');
   });
 
   it('applySetup: valid webdav payload applies wizard-identically and returns restart_required', async () => {
@@ -1341,16 +1341,15 @@ describe('setupCore (shared apply core)', () => {
     expect(result).toEqual({ restart_required: true });
     expect(mockWriteEnv).toHaveBeenCalledTimes(1);
     const [, envEntries] = mockWriteEnv.mock.calls[0];
-    expect(Object.keys(envEntries).sort()).toEqual(['JWT_SECRET', 'encrypt_secret_key']);
+    expect(Object.keys(envEntries).sort()).toEqual(['JWT_SECRET']);
     expect(envEntries.JWT_SECRET).toBe('core-jwt-secret');
-    expect(envEntries.encrypt_secret_key).toMatch(/^[a-f0-9]{64}$/);
+    expect(envEntries).not.toHaveProperty('encrypt_secret_key');
 
-    const masterKey = envEntries.encrypt_secret_key;
     const written = Object.fromEntries(settingsSetSpy.mock.calls);
     expect(written.WEA_FILE_STORAGE).toBe('webdav');
     expect(written.WEBDAV_URL).toBe('https://dav.example.com');
-    expect(decryptSecret(JSON.parse(written.WEBDAV_PASSWORD), masterKey)).toBe('dav-pass');
-    expect(decryptSecret(JSON.parse(written.EMAIL_PASSWORD), masterKey)).toBe('mail-pass');
+    expect(written.WEBDAV_PASSWORD).toBe('dav-pass');
+    expect(written.EMAIL_PASSWORD).toBe('mail-pass');
     expect(invalidateSpy).toHaveBeenCalled();
 
     const admin = await User.findByUsername('admin');
@@ -1360,19 +1359,53 @@ describe('setupCore (shared apply core)', () => {
 
   it('applySetup: rejects an invalid payload with the typed 400 error and writes nothing', async () => {
     const payload = validWebdavPayload();
-    payload.jwt = {};
+    delete payload.file.url;
 
     await expect(setupCore.applySetup(payload)).rejects.toMatchObject({
       errorCode: 'serverErrors.setup.invalidPayload',
       message: 'Invalid setup payload',
-      fields: { 'jwt.secret': 'required' },
+      fields: { 'file.url': 'required' },
     });
     expect(mockWriteEnv).not.toHaveBeenCalled();
     expect(settingsSetSpy).not.toHaveBeenCalled();
     expect(invalidateSpy).not.toHaveBeenCalled();
   });
 
-  it('applySetup: a masked (unchanged) secret is dropped, not re-encrypted', async () => {
+  it('applySetup: an empty jwt block applies cleanly, writes no .env partition and no JWT rows', async () => {
+    const payload = validWebdavPayload();
+    payload.jwt = {};
+
+    const result = await setupCore.applySetup(payload);
+    expect(result).toEqual({ restart_required: true });
+
+    // The .env partition is empty (no supplied JWT secret) so writeEnv is
+    // skipped entirely and no JWT_SECRET/JWT_EXPIRES_IN row is persisted.
+    expect(mockWriteEnv).not.toHaveBeenCalled();
+    const written = Object.fromEntries(settingsSetSpy.mock.calls);
+    expect(written.WEA_FILE_STORAGE).toBe('webdav');
+    expect(written.WEBDAV_PASSWORD).toBe('dav-pass');
+    expect(written).not.toHaveProperty('JWT_SECRET');
+    expect(written).not.toHaveProperty('JWT_EXPIRES_IN');
+    expect(invalidateSpy).toHaveBeenCalled();
+
+    const admin = await User.findByUsername('admin');
+    expect(await bcrypt.compare('core-admin-pass', admin.password)).toBe(true);
+  });
+
+  it('applySetup: a payload without a jwt block writes no .env partition and keeps .env absent', async () => {
+    const payload = validWebdavPayload();
+    delete payload.jwt;
+
+    const envPath = makeEnvPath('setupcore-no-jwt');
+    process.env.DOTENV_CONFIG_PATH = envPath;
+
+    const result = await setupCore.applySetup(payload);
+    expect(result).toEqual({ restart_required: true });
+    expect(mockWriteEnv).not.toHaveBeenCalled();
+    expect(fs.existsSync(envPath)).toBe(false);
+  });
+
+  it('applySetup: a masked (unchanged) secret is dropped, not overwritten', async () => {
     const payload = {
       metadata: { backend: 'sqlite' },
       file: {
@@ -1395,9 +1428,7 @@ describe('setupCore (shared apply core)', () => {
     expect(mockWriteEnv).toHaveBeenCalledTimes(1);
   });
 
-  it('applySetup: an existing encrypt_secret_key is kept, never written to .env', async () => {
-    process.env.encrypt_secret_key = 'core-pre-existing-key';
-
+  it('applySetup: writes only JWT_SECRET to .env (no master key is ever written)', async () => {
     const result = await setupCore.applySetup(validWebdavPayload());
     expect(result).toEqual({ restart_required: true });
 
@@ -1406,8 +1437,6 @@ describe('setupCore (shared apply core)', () => {
     expect(envEntries).not.toHaveProperty('encrypt_secret_key');
 
     const written = Object.fromEntries(settingsSetSpy.mock.calls);
-    expect(decryptSecret(JSON.parse(written.WEBDAV_PASSWORD), 'core-pre-existing-key')).toBe(
-      'dav-pass'
-    );
+    expect(written.WEBDAV_PASSWORD).toBe('dav-pass');
   });
 });

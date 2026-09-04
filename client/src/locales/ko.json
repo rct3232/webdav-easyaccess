@@ -85,6 +85,7 @@
     "adminUsernameFixed": "사용자명은 \"admin\"으로 고정됩니다.",
     "adminPassword": "관리자 비밀번호",
     "jwtSecret": "JWT 시크릿",
+    "jwtSecretHelp": "선택 사항. 비워 두면 부팅마다 임시 난수 키로 토큰을 서명합니다(재시작 시 모두 로그아웃). 재시작 후에도 세션을 유지하려면 값을 설정하고, 멀티 인스턴스 환경에서는 모든 인스턴스에 동일한 값을 설정하세요.",
     "regenerate": "재생성",
     "expiresIn": "토큰 만료 시간",
     "expiresInHelp": "예: 30m, 1h, 7d (기본값: 30m)",
@@ -375,8 +376,6 @@
     "statusApproved": "승인됨",
     "statusRejected": "거절됨",
     "systemSettings": "시스템 설정",
-    "keyLostWarning": "암호화 키 유실",
-    "keyLostWarningDetail": "서버의 시크릿 암호화 키(encrypt_secret_key)가 없는데 데이터베이스에 암호화된 설정이 있습니다. 키를 복원하기 전까지 저장된 시크릿은 복호화할 수 없습니다.",
     "registrationEnabled": "회원가입 허용",
     "registrationEnabledDesc": "로그인 페이지에서 회원가입 버튼 표시",
     "showHiddenFiles": "숨김 파일 보기",
@@ -391,6 +390,19 @@
     "metadataMigration": "메타데이터 마이그레이션",
     "metadataMigrationDesc": "SQLite와 PostgreSQL 간 메타데이터 복사",
     "runMetadataMigration": "메타데이터 마이그레이션 실행",
+    "configSyncFromEnv": "환경 변수 → DB 동기화",
+    "configSyncFromEnvDesc": "서버가 현재 사용 중인 값을 데이터베이스 설정으로 복사하여 섀도우 사본을 최신 상태로 유지합니다.",
+    "runConfigSync": "지금 동기화",
+    "configSyncConfirmTitle": "환경 변수 → 데이터베이스 동기화",
+    "configSyncPreviewLoading": "현재 설정을 확인하는 중...",
+    "configSyncPreviewReportFail": "동기화 보고서를 불러오지 못했습니다.",
+    "configSyncPreviewNoChanges": "동기화할 항목이 없습니다 — 데이터베이스 설정이 이미 환경 변수와 일치합니다.",
+    "configSyncPreviewChanges": "키 {{updated}}개가 업데이트되고 {{added}}개가 데이터베이스 설정에 추가됩니다.",
+    "configSyncPreviewUpdatedKeys": "업데이트 대상: {{keys}}",
+    "configSyncPreviewAddedKeys": "추가 대상: {{keys}}",
+    "configSyncConfirmScope": "서버가 현재 사용 중인 값만 복사됩니다. 시작 전용 키(.env)는 저장되지 않으며 데이터베이스 행이 삭제되지 않습니다.",
+    "configSyncApplyFail": "환경 변수를 데이터베이스 설정으로 동기화하지 못했습니다.",
+    "configSyncDone": "환경 변수를 데이터베이스 설정에 동기화했습니다.",
     "envSetupNeededTitle": ".env 설정 필요",
     "envSetupNeededBody": "{{backend}}에 메타데이터가 감지되었습니다. .env에서 해당 백엔드를 가리키고 재시작하거나, 마이그레이션을 실행하세요.",
     "envSetupNeededAction": "메타데이터 마이그레이션 열기",
@@ -433,6 +445,10 @@
       "secretKeepExisting": "비워두면 현재 값을 유지합니다.",
       "connectionTest": "연결 테스트",
       "connectionTestRequired": "연결 테스트가 통과되어야 저장할 수 있습니다.",
+      "sectionTitleRuntime": "런타임 설정",
+      "sectionTitlePlatform": "배포 시 구성",
+      "platformIntro": "환경 변수나 .env를 통해 배포 시 설정됩니다. 이 값들은 외부에서 관리되며 여기서 편집할 수 없습니다. 배포 설정을 변경한 후 서버를 재시작하세요.",
+      "unset": "(설정 안 됨)",
       "help": {
         "CORS_ORIGINS": "허용된 출처 목록 (쉼표로 구분)"
       },
@@ -444,16 +460,17 @@
         "runtime": "런타임"
       },
       "key": {
-        "WEA_STORAGE_BACKEND": "메타데이터 저장소 종류",
         "WEA_SQLITE_PATH": "SQLite 경로",
-        "WEA_PG_HOST": "PostgreSQL 호스트",
-        "WEA_PG_PORT": "PostgreSQL 포트",
-        "WEA_PG_DATABASE": "PostgreSQL 데이터베이스",
-        "WEA_PG_USER": "PostgreSQL 사용자",
-        "WEA_PG_SSL": "PostgreSQL SSL",
-        "WEA_PG_MAX": "PostgreSQL 최대 연결 수",
-        "WEA_PG_IDLE_TIMEOUT_MS": "PostgreSQL 유휴 타임아웃 (ms)",
-        "WEA_PG_CONNECTION_TIMEOUT_MS": "PostgreSQL 연결 타임아웃 (ms)",
+        "WEA_DB_HOST": "데이터베이스 호스트",
+        "WEA_DB_PORT": "데이터베이스 포트",
+        "WEA_DB_DATABASE": "데이터베이스 이름",
+        "WEA_DB_USER": "데이터베이스 사용자",
+        "WEA_DB_PASSWORD": "데이터베이스 비밀번호",
+        "WEA_DB_SSL": "데이터베이스 SSL",
+        "WEA_DB_MAX": "데이터베이스 최대 연결 수",
+        "WEA_DB_IDLE_TIMEOUT_MS": "데이터베이스 유휴 타임아웃 (ms)",
+        "WEA_DB_CONNECTION_TIMEOUT_MS": "데이터베이스 연결 타임아웃 (ms)",
+        "WEA_DB_QUERY_TIMEOUT_MS": "데이터베이스 쿼리 타임아웃 (ms)",
         "NODE_ENV": "Node 환경",
         "DOTENV_CONFIG_PATH": "환경 변수 파일 경로",
         "WEA_FILE_STORAGE": "파일 저장소 종류",
@@ -480,6 +497,7 @@
         "LOGIN_RATE_LIMIT_MAX": "로그인 시도 제한 (최대 횟수)",
         "LOGIN_RATE_LIMIT_WINDOW_MS": "로그인 시도 제한 기간 (ms)",
         "JWT_EXPIRES_IN": "JWT 만료 시간",
+        "JWT_SECRET": "JWT 서명 비밀키",
         "ADMIN_DEFAULT_PASSWORD": "관리자 기본 비밀번호",
         "WEA_DISABLE_DEFAULT_ADMIN": "기본 관리자 비활성화",
         "HOSTNAME": "호스트 이름",
@@ -558,7 +576,7 @@
     "start": "마이그레이션 시작",
     "starting": "시작 중...",
     "startFail": "마이그레이션을 시작하지 못했습니다.",
-    "envNote": "마이그레이션 완료 후 .env에서 WEA_STORAGE_BACKEND(및 WEA_PG_* / WEA_SQLITE_PATH 값)를 업데이트하고 서버를 재시작하여 전환을 완료하세요."
+    "envNote": "마이그레이션 완료 후 .env에서 WEA_DB_* / WEA_SQLITE_PATH 값을 편집하고 서버를 재시작하여 전환을 완료하세요. 메타데이터 백엔드는 WEA_DB_* 설정의 존재 여부에 따라 선택됩니다."
   },
   "migrationPage": {
     "title": "마이그레이션",
@@ -589,7 +607,7 @@
     "loading": "마이그레이션 불러오는 중...",
     "errorReason": "사유: {{reason}}",
     "terminalCompletedTitle": "마이그레이션 완료",
-    "terminalCompletedMetadataBody": "{{backend}}로의 메타데이터 마이그레이션이 완료되었습니다. 전환을 완료하려면 .env에서 WEA_STORAGE_BACKEND와 WEA_PG_* / WEA_SQLITE_PATH 값을 업데이트한 후 서버를 재시작하세요.",
+    "terminalCompletedMetadataBody": "{{backend}}로의 메타데이터 마이그레이션이 완료되었습니다. 전환을 완료하려면 .env에서 WEA_DB_* / WEA_SQLITE_PATH 값을 편집한 후 서버를 재시작하세요. 메타데이터 백엔드는 WEA_DB_* 설정의 존재 여부에 따라 선택됩니다.",
     "terminalCompletedBlobsPersistedBody": "블롭 마이그레이션이 완료되었습니다. 대상 스토리지 구성({{keys}})이 서버 설정에 저장되었습니다. 전환을 완료하려면 서버를 재시작하세요.",
     "terminalCompletedBlobsEnvSourcedBody": "블롭 마이그레이션이 완료되었습니다. 대상 스토리지는 환경 변수({{keys}})로 구성되어 있습니다. .env에서 수동으로 업데이트한 후 서버를 재시작하여 전환을 완료하세요.",
     "terminalCompletedBlobsDefaultBody": "블롭 마이그레이션이 완료되었습니다. 스토리지 전환을 완료하려면 서버를 재시작하세요.",
@@ -669,6 +687,7 @@
     "loadFail": "파일을 불러올 수 없습니다.",
     "pdfLoadFail": "PDF 파일을 불러올 수 없습니다.",
     "pdfLoadFailWithReason": "PDF 파일을 불러올 수 없습니다: {{reason}}",
+    "retry": "재시도",
     "notSupported": "이 파일 형식은 미리보기를 지원하지 않습니다.",
     "videoNotPlayable": "재생할 수 없는 형식입니다",
     "downloadHint": "우측 상단의 다운로드 버튼을 클릭하세요",
@@ -801,8 +820,7 @@
       "configUnknownKey": "알 수 없는 설정 키: {{key}}.",
       "configT0Protected": "{{key}} 키는 시작 시(.env) 설정으로 여기서 변경할 수 없습니다.",
       "configEnvSourcedProtected": "{{key}} 키는 .env에서 설정되어 여기서 변경할 수 없습니다 (env가 우선합니다).",
-      "configInvalidPayload": "잘못된 설정 데이터입니다.",
-      "configEncryptKeyMissing": "서버에 시크릿 암호화 키가 없습니다. 설정이 저장되지 않았습니다."
+      "configInvalidPayload": "잘못된 설정 데이터입니다."
     },
     "migrationInProgress": "이미 마이그레이션이 진행 중입니다. 완료될 때까지 앱이 잠깁니다.",
     "users": {
@@ -938,7 +956,7 @@
     },
     "storage": {
       "invalidPathMapping": "잘못된 경로 매핑입니다.",
-      "postgresqlNotConfigured": "PostgreSQL이 설정되지 않았습니다. WEA_PG_* 설정을 확인하세요."
+      "postgresqlNotConfigured": "PostgreSQL이 설정되지 않았습니다. .env의 WEA_DB_* 설정을 확인하세요."
     },
     "utilsAuth": {
       "accessTokenRequired": "액세스 토큰이 필요합니다.",
@@ -972,7 +990,8 @@
       "permissionUpdated": "권한이 업데이트되었습니다.",
       "orphanCleanupDone": "고아 데이터 정리가 완료되었습니다.",
       "migrationCancelled": "마이그레이션이 취소되었습니다.",
-      "configSaved": "설정이 저장되었습니다."
+      "configSaved": "설정이 저장되었습니다.",
+      "configSyncDone": "환경 변수를 데이터베이스 설정에 동기화했습니다."
     },
     "share": {
       "addedToShared": "공유 항목에 추가되었습니다."

@@ -23,9 +23,9 @@ Move physical blobs between the WebDAV and S3 backends while keeping the DB meta
 - **Source-native webdav snapshot + post-copy activation:** a `webdav-to-s3` run snapshots native webdav files even without an `object_map` row (see §6) and, after each successful copy, sets the node `sync_status='active'` so the post-cutover S3 state matches the S3 lifecycle model.
 - **Mandatory dry-run before any write:** an `--apply` run first performs a dry pass; any failure blocks all writes.
 - **Per-node failure isolation:** a failing node is recorded and processing continues.
-- **Source-blob preservation:** source blobs are never deleted in the MVP.
+- **Source-blob preservation:** source blobs are never deleted (a `--delete-mode` follow-up is tracked in `docs/IMPROVEMENT_PLAN.md`).
 
-**Unified migration mode (PLAN `feature/migration-mode`, D1–D4, D7–D10):**
+**Unified migration mode (decisions D1–D4, D7–D10 in `docs/features/migration-mode.md`):**
 
 - **Execution moves to `/migration`:** starting a **`dry-run` or `apply`** run from the
   `MigrationDialog` sets the migration gate and **auto-redirects to `/migration`**; the operator is
@@ -117,37 +117,48 @@ The in-app UI calls this endpoint when the migration dialog opens to show a read
 - A `dry-run` also enters migration mode (gate active, progress on `/migration`); on completion it
   shows only the dry-run summary — nothing was written.
 
-### 4.4 Job payload (extended) and `configPersist` (D10)
+### 4.4 Job payload and `configPersist` (D10)
 
-Both migration types publish the same extended job shape so the `/migration` page renders
-uniformly (PLAN `feature/migration-mode` §4/§5):
+Blob and metadata jobs do **not** share one identical shape; they only share the same
+in-memory store row (`migrationJobStore.create`,
+`server/domains/admin/stores/migrationJobStore.js`). The `progress` field is type-specific:
+
+- **Blob jobs** keep the **legacy scalar** progress and carry the current file path at the
+  top level (`runMigrationWorker` writes it from the migration service `onProgress`):
 
 ```js
 {
-  id: string,                    // gate jobId
-  type: 'blobs' | 'metadata',
-  direction: 'webdav-to-s3' | 's3-to-webdav',     // blobs
+  jobId: string,                    // gate jobId (field is jobId, not id)
+  type: 'blobs',
+  direction: 'webdav-to-s3' | 's3-to-webdav',
+  mode: 'dry-run' | 'apply',
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled',
-  stage: 'scan' | 'schema' | 'wipe' | 'copy' | 'done' | null,   // 'copy' for blobs
-  progress: { percent, currentLabel, counters? },
-  results?: { copied: number, skipped: number, failed: number, errors: [] },
-  startedAt: string,
-  completedAt?: string,
-  error?: string,                // failure reason (replaces/extends blob errorMessage)
-  configPersist?: { persisted: boolean, skippedEnvSourced: boolean },   // apply only
+  stage: 'copy' | null,
+  progress: number,                 // scalar done-node count — NOT { percent, currentLabel }
+  total: number,                    // enumerated snapshot node count
+  current: string | null,           // current file path label (top-level, not nested)
+  results: { copied: number, skipped: number, failed: number, errors: [] },
+  errorMessage: string | null,      // failure reason
+  configPersist: { persisted: string[], skippedEnvSourced: string[] } | null,  // apply only
+  createdAt: string,                // ISO (the store records createdAt; no startedAt on the job)
+  completedAt: string | null,
 }
 ```
 
-- **Blob `%`:** `progress.percent = progress / total` over the snapshot node count (D8);
-  `currentLabel` carries the current file path (the existing `current` field).
+- **Metadata jobs** instead carry the extended `progress: { percent, currentLabel }` plus a
+  `stage` (`scan`/`schema`/`wipe`/`copy`/`done`) — see
+  `docs/spec/server/tools/metadata-migration.md` §3.
+- **Blob `%`:** `progress / total` over the snapshot node count (D8); the current-file label
+  is the top-level `current` field. The `/migration` page derives the percent and current
+  label from either shape (`client/src/pages/Migration/MigrationPage.js`).
 - **`configPersist`:** set only when `mode === 'apply'` reaches `completed`. Computed by
-  `persistStorageConfigToDb(destConfig)`:
-  - DB-sourced storage keys (`source !== 'env'` for the `WEA_FILE_STORAGE`/`S3_*`/`WEBDAV_*`
-    block) are written with `Settings.set` — secrets AES-256-GCM-encrypted under
-    `encrypt_secret_key`, then `getSharedResolver().invalidateCache()` — and reported as
-    `persisted: true`.
-  - Env-sourced keys are skipped and reported via `skippedEnvSourced: true` (no env↔DB sync
-    tool); the UI shows the manual `.env` guidance instead.
+  `persistStorageConfigToDb(destConfig)`, which returns **arrays of keys**, not booleans:
+  - DB-sourced storage keys (`current[key].source !== 'env'` for the
+    `WEA_FILE_STORAGE`/`S3_*`/`WEBDAV_*` block) are written with `Settings.set` — secrets
+    AES-256-GCM-encrypted under `encrypt_secret_key`, then
+    `getSharedResolver().invalidateCache()` — and pushed to `configPersist.persisted`.
+  - Env-sourced keys are skipped and pushed to `configPersist.skippedEnvSourced` (no env↔DB
+    sync tool); the UI shows the manual `.env` guidance instead.
   - A restart is required in both cases (storage config is boot-frozen:
     `process.env.WEA_FILE_STORAGE` is snapshotted when the composition/blobstore is created).
 
@@ -249,7 +260,8 @@ reaches a terminal state.
 | `webdav-to-s3` | Upsert row → `(storage_backend='s3', s3_key=<UUID>, active)`.                                                                                 |
 | `s3-to-webdav` | Flip `storage_backend='webdav'` inline after the webdav upload succeeds; `s3_key` is retained (a legacy reference; harmless; helps rollback). |
 
-There is **no** transition that nulls `s3_key`. Source blobs are never deleted (delete-mode remains a follow-up).
+There is **no** transition that nulls `s3_key`. Source blobs are never deleted (a delete-mode
+follow-up is tracked in `docs/IMPROVEMENT_PLAN.md`).
 
 ---
 
@@ -267,9 +279,11 @@ Resume is **automatic and always on** — there is no `--resume` flag or UI chec
 ## 9. Dry-Run and Safety Gates
 
 1. **Dry-run is mandatory before any write:** `--apply` first performs the dry-run pass (config validation + snapshot enumeration + destination connectivity); any failure blocks all writes (exit code `1`). `--dry-run` / `--check-env` never write.
-2. **Source blobs are never deleted** in the MVP. `--delete-mode` is a follow-up.
+2. **Source blobs are never deleted** (a `--delete-mode` follow-up is tracked in
+   `docs/IMPROVEMENT_PLAN.md`).
 3. **`.wea` is a normal folder** — included in migration like any other node.
-4. **`--force` re-copy** is included (overrides the automatic resume skip); `--delete-mode` is not.
+4. **`--force` re-copy** is included (overrides the automatic resume skip); `--delete-mode` is
+   not (tracked in `docs/IMPROVEMENT_PLAN.md`).
 5. **Per-node failure isolation:** a failing node is caught, recorded in `errors`, and processing continues. The run only aborts when config/snapshot/destination validation fails.
 6. **Cancellation:** the cancel flag is set immediately; the current node finishes then the copy stops (cancel check in the `runCopy` loop). Partial progress is kept and resumed on rerun; the source is never touched.
 
@@ -305,7 +319,7 @@ Resume is **automatic and always on** — there is no `--resume` flag or UI chec
 - [ ] Unknown flag combination exits `2` with a usage message
 - [ ] `runMigrationCli` output includes progress and a summary of copied/skipped/failed
 
-**Migration-mode additions (PLAN D1–D4, D8, D10):**
+**Migration-mode additions (decisions D1–D4, D8, D10 in `docs/features/migration-mode.md`):**
 
 - [ ] Any start (both `apply` and `dry-run`) sets the migration gate and the client auto-redirects to `/migration`; a `dry-run` enters migration mode too but writes nothing
 - [ ] Progress is node-count based (`% = progress/total` over the snapshot) with a current-file label and copied/skipped/failed counters

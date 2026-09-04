@@ -18,12 +18,7 @@ const {
 const { computeSetupStatus } = require('../../infrastructure/setupStatus');
 const { isSecret } = require('../../infrastructure/configRegistry');
 const { getSharedResolver } = require('../../infrastructure/configResolver');
-const {
-  EFFECTIVE_SECRET_MASK,
-  applySetup,
-  isMissing,
-  normalizeEffectiveForStatus,
-} = require('./setupCore');
+const { EFFECTIVE_SECRET_MASK, applySetup, isMissing } = require('./setupCore');
 
 // Thin HTTP shell over the shared apply core: payload validation, env building,
 // T0/DB partition, encryption and the write orchestration live in setupCore.js,
@@ -142,9 +137,7 @@ async function readSettingsRows(metadata) {
 async function requireSetupIncomplete(req, res, next) {
   try {
     const effective = await getSharedResolver().getEffectiveConfig();
-    const { setup_complete } = computeSetupStatus(process.env, {
-      effectiveConfig: normalizeEffectiveForStatus(effective),
-    });
+    const { setup_complete } = computeSetupStatus(process.env, { effectiveConfig: effective });
     if (setup_complete) {
       return next(createError(SERVER_ERROR_CODES.setup.complete, HTTP_STATUS.FORBIDDEN));
     }
@@ -161,9 +154,7 @@ router.get(
   '/status',
   asyncHandler(async (req, res) => {
     const effective = await getSharedResolver().getEffectiveConfig();
-    const status = computeSetupStatus(process.env, {
-      effectiveConfig: normalizeEffectiveForStatus(effective),
-    });
+    const status = computeSetupStatus(process.env, { effectiveConfig: effective });
 
     res.json(status);
   })

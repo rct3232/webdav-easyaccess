@@ -117,7 +117,13 @@ function createConfigResolver({ settingsStore, env = process.env, ttlMs = 5000 }
       }
 
       out[key] = {
-        value: secret ? SECRET_MASK : value,
+        // Mask only secrets that actually have a value. An unset/empty secret
+        // resolves to `undefined` (or stays empty) — never the literal mask —
+        // so presence-based derivations (setupStatus metadata/file-backend
+        // checks) cannot mistake a fabricated '****' for a configured secret
+        // (configResolver spec §2.6; e.g. an unset WEA_DB_PASSWORD must not
+        // select the PostgreSQL metadata backend).
+        value: secret && isSet(value) ? SECRET_MASK : value,
         source,
         tier,
         secret: Boolean(secret),

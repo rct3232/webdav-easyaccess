@@ -23,7 +23,7 @@
 | `createConfigResolver` | `({ settingsStore, env = process.env, ttlMs = 5000 }) => resolver` | Factory. `settingsStore` must expose `get(key)` and `getAll()` (see §2.4). Throws `TypeError` when the store contract is not met.                                                                                                                 |
 | `getConfig`            | `async (key) => value \| undefined`                                | Resolved value for one key. String for config keys; for `registration_enabled` the raw DB boolean (or string) is passed through; `undefined` when unresolvable. Never returns a default for `registration_enabled`.                               |
 | `getConfigSync`        | `(key) => value \| undefined`                                      | Synchronous read for require-time consumers: env → cached DB row → default. DB values are visible only after `loadAll()` or an async read seeded the cache.                                                                           |
-| `getEffectiveConfig`   | `async () => { key: { value, source, tier, secret } }`             | Every registry entry. Secrets are **always** `'****'` (never surfaced in plaintext). `source` ∈ `'env' \| 'db' \| 'default'`.                                                                                                                                 |
+| `getEffectiveConfig`   | `async () => { key: { value, source, tier, secret } }`             | Every registry entry. A secret that **has an effective value** is masked `'****'` (never surfaced in plaintext); an **unset** secret resolves to `value: undefined` so it is never mistaken for a configured value. `source` ∈ `'env' \| 'db' \| 'default'`. |
 | `invalidateCache`      | `(keys?) => void`                                                  | Drop the cached rows for the given key(s); all cached rows when called with no arguments.                                                                                                                                                         |
 | `loadAll`              | `async () => void`                                                 | Prime the DB row cache from `settingsStore.getAll()` (bulk read) — called at boot before serving.                                                                                                                                                 |
 | `getSharedResolver`    | `() => resolver`                                                   | The process-wide resolver instance. Lazily created with `settingsStore = Settings` model on first call (no DB connection at require time). Used by the boot path, the admin config route, and T2 consumers so writes invalidate one shared cache. |
@@ -75,12 +75,17 @@ For each registry entry, resolved with the same rule as `getConfig` against a si
 
 | condition           | value                                                                | source      |
 | ------------------- | -------------------------------------------------------------------- | ----------- |
-| env set (non-empty) | env value (or `'****'` if secret)                                    | `'env'`     |
-| tier T0, env unset  | `undefined` (or `'****'` if secret)                                  | `'env'`     |
-| DB row resolves     | stored row value (or `'****'` if secret)                             | `'db'`      |
-| otherwise           | `entry.default` (or `'****'` if secret; `undefined` when no default) | `'default'` |
+| env set (non-empty) | env value; masked `'****'` if secret                                 | `'env'`     |
+| tier T0, env unset  | `undefined` (secret or not)                                          | `'env'`     |
+| DB row resolves     | stored row value; masked `'****'` if secret                           | `'db'`      |
+| otherwise           | `entry.default`; masked `'****'` if secret; `undefined` when no default (secret or not) | `'default'` |
 
-Secrets are never surfaced to this call — `value` is always `'****'`, while `source`/`tier`/`secret` remain truthful. Masking is driven purely by the registry `secret` flag; rows are plaintext.
+Masking applies **only when a value actually exists** — an unset secret's `value` is `undefined`
+(so the field is absent from JSON payloads), never the literal `'****'`. This keeps
+presence-based derivation truthful: `setupStatus` merges these entries into its view and would
+otherwise read a fabricated mask as a configured secret (e.g. an unset `WEA_DB_PASSWORD` must
+not select the PostgreSQL metadata backend). `source`/`tier`/`secret` remain truthful for every
+entry; masking is driven purely by the registry `secret` flag and rows are plaintext.
 
 ## 3. Dependencies
 
@@ -99,7 +104,7 @@ Secrets are never surfaced to this call — `value` is always `'****'`, while `s
 - [ ] env wins over DB and over default.
 - [ ] DB fallback when env absent.
 - [ ] default fallback when neither env nor DB has the key.
-- [ ] `getEffectiveConfig` masks secrets and reports source/tier.
+- [ ] `getEffectiveConfig` masks set secrets and reports source/tier; an unset secret returns `value: undefined` (not `'****'`).
 - [ ] `invalidateCache` + TTL reload re-read the store.
 - [ ] `registration_enabled` boolean passthrough.
 - [ ] `getConfigSync` serves env/cached-DB/default with no DB reads.

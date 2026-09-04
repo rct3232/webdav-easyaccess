@@ -194,6 +194,38 @@ describe('createConfigResolver', () => {
       });
     });
 
+    it('does not mask an UNSET secret — value stays undefined (no fake presence)', async () => {
+      const store = createFakeStore({});
+      const resolver = makeResolver(store, {});
+
+      const config = await resolver.getEffectiveConfig();
+
+      expect(config.JWT_SECRET).toEqual({
+        value: undefined,
+        source: 'env',
+        tier: 'T0',
+        secret: true,
+      });
+      expect(config.WEA_DB_PASSWORD).toEqual({
+        value: undefined,
+        source: 'env',
+        tier: 'T0',
+        secret: true,
+      });
+      expect(config.EMAIL_PASSWORD).toEqual({
+        value: undefined,
+        source: 'default',
+        tier: 'T1',
+        secret: true,
+      });
+      expect(config.AWS_SECRET_ACCESS_KEY).toEqual({
+        value: undefined,
+        source: 'default',
+        tier: 'T1',
+        secret: true,
+      });
+    });
+
     it('does a single bulk getAll and seeds the per-key cache', async () => {
       const store = createFakeStore({ EMAIL_HOST: 'db-host' });
       const resolver = makeResolver(store, {});

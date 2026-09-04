@@ -195,6 +195,24 @@ describe('computeSetupStatus', () => {
       expect(status.missing).not.toContain('JWT_SECRET');
     });
 
+    it('does not treat an UNSET WEA_DB_PASSWORD (value undefined) as a configured PostgreSQL block', () => {
+      // Regression for the e2e 503 bug: a sqlite-metadata boot with DB-seeded
+      // webdav config must derive complete. The resolver now reports the unset
+      // secret as value: undefined (never the literal '****'), so the merged
+      // presence check must not select PostgreSQL.
+      const env = { WEA_FILE_STORAGE: 'webdav' };
+      const effectiveConfig = {
+        WEA_FILE_STORAGE: { value: 'webdav', source: 'env', tier: 'T1', secret: false },
+        WEA_DB_PASSWORD: { value: undefined, source: 'env', tier: 'T0', secret: true },
+        WEBDAV_URL: { value: 'http://dav.example.com', source: 'db', tier: 'T1', secret: false },
+        WEBDAV_USERNAME: { value: 'dav-user', source: 'db', tier: 'T1', secret: false },
+        WEBDAV_PASSWORD: { value: '****', source: 'db', tier: 'T1', secret: true },
+      };
+      const status = computeSetupStatus(env, { effectiveConfig });
+      expect(status.setup_complete).toBe(true);
+      expect(status.missing).toEqual([]);
+    });
+
     it('keeps backward compatibility when no effectiveConfig is given', () => {
       const env = {
         S3_BUCKET: 'my-bucket',

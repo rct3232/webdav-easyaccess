@@ -331,13 +331,12 @@ async function bootSetupStore() {
 }
 
 // Derived state exactly as the setup routes compute it (requireSetupIncomplete
-// in routes.js:144-157 and GET /api/setup/status): effective config normalized
-// for status (mask-drop rule), then the pure required-key completeness rules.
+// in routes.js:144-157 and GET /api/setup/status): the resolver's effective
+// config (unset secrets already resolve to undefined — no mask-drop step is
+// needed) feeds the pure required-key completeness rules.
 async function readSetupStatus() {
   const effective = await getSharedResolver().getEffectiveConfig();
-  return computeSetupStatus(process.env, {
-    effectiveConfig: setupCore.normalizeEffectiveForStatus(effective),
-  });
+  return computeSetupStatus(process.env, { effectiveConfig: effective });
 }
 
 async function isSetupComplete() {

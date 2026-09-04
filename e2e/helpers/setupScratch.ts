@@ -39,14 +39,14 @@ export const scratchPort = SCRATCH_PORT;
 const CONFIG_ENV_KEYS = [
   'DOTENV_CONFIG_PATH',
   'WEA_SQLITE_PATH',
-  'WEA_STORAGE_BACKEND',
-  'WEA_PG_HOST',
-  'WEA_PG_PORT',
-  'WEA_PG_DATABASE',
-  'WEA_PG_USER',
-  'WEA_PG_PASSWORD',
-  'WEA_PG_SSL',
-  'WEA_PG_MAX',
+  'WEA_DB_HOST',
+  'WEA_DB_PORT',
+  'WEA_DB_DATABASE',
+  'WEA_DB_USER',
+  'WEA_DB_PASSWORD',
+  'WEA_DB_SSL',
+  'WEA_DB_MAX',
+  'WEA_DB_QUERY_TIMEOUT_MS',
   'WEA_FILE_STORAGE',
   'S3_BUCKET',
   'S3_REGION',
@@ -79,8 +79,8 @@ const CONFIG_ENV_KEYS = [
 // connect to the e2e Postgres superuser on the host-exposed :5433.
 const PG_HOST = '127.0.0.1';
 const PG_PORT = 5433;
-const PG_USER = process.env.WEA_PG_USER || 'e2etest';
-const PG_PASSWORD = process.env.WEA_PG_PASSWORD || 'e2etest';
+const PG_USER = process.env.WEA_DB_USER || 'e2etest';
+const PG_PASSWORD = process.env.WEA_DB_PASSWORD || 'e2etest';
 
 // bytemark/webdav container defaults (mirror e2e/global-setup.ts).
 const WEBDAV_BASE = 'http://127.0.0.1:8090';

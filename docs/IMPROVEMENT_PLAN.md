@@ -1,6 +1,6 @@
 # Codebase Improvement Plan — Consolidated Open-Item Tracker
 
-> **Updated**: 2026-09-03
+> **Updated**: 2026-09-04
 > **Purpose**: This is the **single tracking document** for every unresolved, undecided, or
 > unimplemented item in the repository.
 >
@@ -26,6 +26,22 @@ Ordered by urgency review (2026-09-02): highest priority first.
 | DEF-11 | DEFERRED | Multi-version object history (`version_number > 1`). | `docs/spec/server/services/blobStorageService.md`, `docs/spec/server/store/fileNodesStore.md`, `docs/features/core-service-layer.md` |
 | DEF-12 | DEFERRED | S3/WebDAV **overwrite** upload failure leaves `pending_upload` (S3) / `orphaned_node` (WebDAV) row with no automatic recovery; retry endpoint + GC cleanup of `pending` object_map rows and untracked S3 blobs is unimplemented. | `docs/spec/server/services/uploadService.md` §2.5, `docs/spec/server/services/fileService.md` §4, `docs/features/core-service-layer.md` |
 | DEF-13 | DEFERRED | Process death between an upload's TX1 commit and the blob write leaves orphaned `pending_upload` rows that no automatic path cleans. | `docs/spec/server/services/uploadService.md` §2.5 |
+| DEF-14 | DEFERRED | Universal ORM / multi-RDBMS metadata backend: generalize the metadata store beyond the current sqlite + PostgreSQL pair to MySQL, MariaDB, MSSQL and Oracle via a dialect-abstraction layer, plus boot-time engine auto-detection from a generic connection block. ORM/query-builder choice (Sequelize vs Knex) and the detection algorithm are undecided — see DEF-14 note below. | `docs/spec/server/store/storage.md`, `docs/features/config-source-resolution.md`, `docs/spec/server/infrastructure/configRegistry.md` |
+
+---
+
+### DEF-14 note (2026-09-04) — Universal ORM / multi-RDBMS metadata backend
+
+Open, deferred item (no active owner). Recorded here per AGENTS.md §2.1; **not** written into any spec/feature doc.
+
+- **Current state**: the metadata store supports only `sqlite` (`sqlite3`) and `postgresql` (`pg`). The query layer is hand-written raw SQL with inline pg/sqlite dialect branches (~14 production `.js` files; ~65 branch sites; ~201 `$n` / ~79 `?` placeholder tokens; 3 timestamp idioms; `RETURNING` / `ON CONFLICT` / `::`-cast usage). There is a single PG DDL (`server/store/postgresql/ddl/001_initial_normalized_schema.sql`) that is regex-transpiled to SQLite at runtime (`convertPostgresToSqlite`, `server/infrastructure/sqliteSchemaInit.js`) — a path that does not stretch to a 3rd dialect.
+- **Target**: serve any of PostgreSQL / MySQL / MariaDB / MSSQL / Oracle from one engine-agnostic connection block (`WEA_DB_*`), with the engine auto-detected at boot by attempting candidate drivers and fingerprinting the version banner (`SELECT version()` / `VERSION()` / `@@VERSION` / `v$version`), port hints (5432/3306/1433/1521) as a fast first guess.
+- **Open / undecided**:
+  - ORM/query-builder choice — Sequelize v6 (`postgres | mysql | mariadb | sqlite | mssql | oracle`, ships `authenticate()`) vs Knex (`pg | mysql | mariadb | sqlite3 | oracledb | mssql`, schema-builder + migrations). Decision deliberately deferred until the env-config refactor below lands.
+  - Per-engine DDL/migration strategy (replaces the PG-canonical + regex-transpile model).
+  - Generalization of code-level backend identifiers baked today (`'postgresql'`/`'sqlite'` in health keys, `activeMetadataBackend`, `postgresqlNotConfigured` error code, sqlite↔pg migration directions, `mapDatabaseError` PG SQLSTATE mapping).
+  - Metadata migration tooling beyond sqlite↔pg; e2e/docker-compose matrices (only PostgreSQL is provisioned today).
+- **Related active workstream**: the prerequisite env/boot refactor — removal of `WEA_STORAGE_BACKEND` and rename of `WEA_PG_*` → `WEA_DB_*` (engine-agnostic naming, presence-based backend selection) — is being executed as an active workstream tracked in `PLAN.md` (2026-09-04). That refactor intentionally keeps runtime support at sqlite + PostgreSQL; wiring the other engines is this item.
 
 ---
 

@@ -11,10 +11,13 @@ lets DB-sourced configuration take effect before require-time consts are capture
 
 ```
 1. Load .env → process.env (dotenv, override: false). T0 keys are read here.
-2. [D6] Pre-flight backend check (top of runBoot):
-     - invalid WEA_STORAGE_BACKEND → getBackend() throws (terminal, exit 1 via runBoot catch).
-     - WEA_STORAGE_BACKEND=postgresql with any of WEA_PG_HOST/PORT/DATABASE/USER/PASSWORD
-       missing → console.error('[config] … requires <keys> …') + process.exit(1).
+2. [D6] Pre-flight metadata-backend resolution (top of runBoot):
+     - the backend is resolved from the generic remote-DB credential block: setting at least one
+       of WEA_DB_HOST / WEA_DB_DATABASE / WEA_DB_USER / WEA_DB_PASSWORD selects the remote
+       database (PostgreSQL is the only supported remote engine); setting none selects SQLite.
+     - a partial set (some but not all of the four) → console.error('[config] … requires <keys> …')
+       + process.exit(1), listing the missing keys. A complete-but-unreachable remote still boots
+       and reports the outage via GET /api/health.
        The DB connection is .env-owned; there is no sqlite-wizard fallback for it (D6/D7).
 3. initMetadataSchema()            — connect the metadata DB + apply schema/migrations.
                                     (No admin seeding — deferred until after env population.)
@@ -70,8 +73,8 @@ default password.
 
 ## 5. Verification
 
-- [ ] Fresh boot (no `.env`, sqlite): **removed under D6/D7** — the DB connection is `.env`-owned; `WEA_STORAGE_BACKEND` must be declared. Wizard serves non-T0 only when the DB is connected but non-T0 config is incomplete.
-- [ ] `WEA_STORAGE_BACKEND=postgresql` + missing `WEA_PG_*` → `[config]` error listing the missing keys + `exit(1)`.
+- [ ] Fresh boot (no `.env`, no remote-DB credentials): metadata backend defaults to SQLite; the DB connects locally and the wizard serves non-T0 only while non-T0 config is incomplete.
+- [ ] Partial `WEA_DB_*` credential set (some but not all of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD`) → `[config]` error listing the missing keys + `exit(1)`.
 - [ ] Full config in DB (T0 in `.env`): boots, T1 values visible to require-time consts,
       `ADMIN_DEFAULT_PASSWORD` honored when DB-sourced.
 - [ ] `.env` wins over DB for any T1 key (`populateT1Env` never overwrites existing env).

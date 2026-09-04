@@ -52,7 +52,7 @@ Canonical middleware flow, middleware responsibilities, and route exclusions are
 
 ### Metadata store and locking
 
-- **Storage backend selection:** `WEA_STORAGE_BACKEND` (`sqlite` default, `postgresql`) with stable store interfaces across backends. `fs` and `webdav` metadata backends are removed (Phase 7).
+- **Storage backend selection:** SQLite by default; the remote PostgreSQL backend is used when the remote DB credentials (`WEA_DB_HOST`, `WEA_DB_DATABASE`, `WEA_DB_USER`, `WEA_DB_PASSWORD`) are set (all four required together), with stable store interfaces across backends. `fs` and `webdav` metadata backends are removed (Phase 7).
 - **Canonical schema/constraints:** `server/store/postgresql/ddl/001_initial_normalized_schema.sql`.
 - **Canonical env/runtime parser:** `server/store/storage.js`.
 - **Locking contract:** `server/infrastructure/lockManager.js` (backend-specific lock implementation; feature-level guarantee is race-safe metadata writes). Supports PostgreSQL and SQLite lock strategies with TTL expiry and stale-lock cleanup. Exports `acquireLock()` and `withLock()`.
@@ -65,7 +65,7 @@ Cross-cutting infrastructure modules reside in `server/infrastructure/`:
 - **Health routes** (`healthRoutes.js`): Unauthenticated `GET /api/health` endpoint for liveness probes. Mounted at `/api`.
 - **WebDAV diagnostic routes** (`webdavRoutes.js`): No-auth endpoints `GET /api/webdav/test` and `GET /api/webdav/info` for connectivity checks and URL display. Connection test logic is extracted to `webdavTest.js`.
 - **Lock manager** (`lockManager.js`): Distributed lock abstraction supporting PostgreSQL and SQLite backends with retry, TTL expiry, and stale-lock cleanup.
-- **SQLite schema init** (`sqliteSchemaInit.js`): Converts PostgreSQL DDL to SQLite-compatible SQL for bootstrap when `WEA_STORAGE_BACKEND=sqlite`.
+- **SQLite schema init** (`sqliteSchemaInit.js`): Converts PostgreSQL DDL to SQLite-compatible SQL for bootstrap when the SQLite backend is active (no remote DB keys set).
 
 These modules are mounted in `server/index.js` alongside the domain routes.
 

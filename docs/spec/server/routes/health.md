@@ -26,7 +26,7 @@
   "status": "ok",
   "messageCode": "serverMessages.api.healthOk",
   "activeFileStorage": "s3", // "s3" | "webdav" — effective WEA_FILE_STORAGE at boot (default "s3")
-  "activeMetadataBackend": "postgresql", // "postgresql" | "sqlite" — effective WEA_STORAGE_BACKEND
+  "activeMetadataBackend": "postgresql", // "postgresql" | "sqlite" — resolved from presence of WEA_DB_* credentials
   "backends": {
     "postgresql": "ok", // "ok" | "fail" | "unknown"
     "s3": "unknown",
@@ -41,9 +41,9 @@
   `configResolver.populateT1Env` refreshes from env → DB at boot; default `'s3'` when unset). It is
   additive and public so any authenticated client can decide whether the ACTIVE file backend is
   failing without needing the admin-only config endpoint.
-- `activeMetadataBackend` is the effective metadata backend (`process.env.WEA_STORAGE_BACKEND`,
-  normalized to `'postgresql'`/`'sqlite'`, default `'sqlite'`). The file-screen banner uses it to
-  also cover a failing metadata DB (postgresql).
+- `activeMetadataBackend` is the effective metadata backend (`'postgresql'` when any of
+  `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` is set, `'sqlite'` otherwise).
+  The file-screen banner uses it to also cover a failing metadata DB (postgresql).
 
 ### 2.3 GET /api/admin/health (admin)
 

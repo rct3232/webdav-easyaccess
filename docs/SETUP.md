@@ -52,9 +52,10 @@ cp .env.example .env
 > **every other value — including secret values — is stored in the metadata DB `settings`
 > table** as plaintext and read back at boot (`.env` always wins when a value is present
 > there). The
-> **metadata connection is `.env`-owned**: `WEA_STORAGE_BACKEND` (`/WEA_PG_*` /
-> `WEA_SQLITE_PATH`) must be declared in `.env` before boot and is **never written by the
-> wizard/CLI**. A
+> **metadata connection is `.env`-owned**: the remote DB block (`WEA_DB_HOST` /
+> `WEA_DB_DATABASE` / `WEA_DB_USER` / `WEA_DB_PASSWORD`, plus optional `WEA_DB_PORT` /
+> pool/SSL keys) — or the default SQLite backend's `WEA_SQLITE_PATH` — must be declared in
+> `.env` before boot and is **never written by the wizard/CLI**. A
 > restart completes the setup. The reference table below remains canonical for the T0
 > `.env` set and for manual/container configuration of DB-stored keys.
 
@@ -76,17 +77,16 @@ cp .env.example .env
 | **JWT_SECRET**                   |   T0   |                 Yes                 | Secret key for token signing (must change in production!)                                                                                                          | -                  |
 | **PORT**                         |   DB   |                 No                  | Server port                                                                                                                                                        | `5001`             |
 | **CORS_ORIGINS**                 |   DB   |                 No                  | Allowed browser origins (comma-separated)                                                                                                                          | `*` (with warning) |
-| **WEA_STORAGE_BACKEND**          |   T0   |                 No                  | Metadata storage backend (`sqlite` or `postgresql`)                                                                                                                | `sqlite`           |
-| **WEA_SQLITE_PATH**              |   T0   |                 No                  | Path to the SQLite metadata database file                                                                                                                          | `data/webdav.db`   |
-| **WEA_PG_HOST**                  |   T0   |                 No                  | PostgreSQL host when using `postgresql` backend                                                                                                                    | -                  |
-| **WEA_PG_PORT**                  |   T0   |                 No                  | PostgreSQL port when using `postgresql` backend                                                                                                                    | `5432`             |
-| **WEA_PG_DATABASE**              |   T0   |                 No                  | PostgreSQL database name when using `postgresql` backend                                                                                                           | -                  |
-| **WEA_PG_USER**                  |   T0   |                 No                  | PostgreSQL user when using `postgresql` backend                                                                                                                    | -                  |
-| **WEA_PG_PASSWORD**              |   T0   |                 No                  | PostgreSQL password when using `postgresql` backend                                                                                                                | -                  |
-| **WEA_PG_SSL**                   |   T0   |                 No                  | Enable PostgreSQL TLS from app pool (`true`/`false`)                                                                                                               | `false`            |
-| **WEA_PG_MAX**                   |   T0   |                 No                  | PostgreSQL pool max connections                                                                                                                                    | `10`               |
-| **WEA_PG_IDLE_TIMEOUT_MS**       |   T0   |                 No                  | PostgreSQL pool idle timeout (ms)                                                                                                                                  | `30000`            |
-| **WEA_PG_CONNECTION_TIMEOUT_MS** |   T0   |                 No                  | PostgreSQL pool connection timeout (ms)                                                                                                                            | `10000`            |
+| **WEA_SQLITE_PATH**              |   T0   |                 No                  | Path to the SQLite metadata database file (SQLite is the default metadata backend when no remote DB keys are set)                                                  | `data/webdav.db`   |
+| **WEA_DB_HOST**                  |   T0   |         Only with remote DB         | Remote PostgreSQL host; with DATABASE/USER/PASSWORD it selects the remote metadata backend (all four required together)                                            | -                  |
+| **WEA_DB_PORT**                  |   T0   |                 No                  | Remote PostgreSQL port                                                                                                                                             | `5432`             |
+| **WEA_DB_DATABASE**              |   T0   |         Only with remote DB         | Remote PostgreSQL database name                                                                                                                                    | -                  |
+| **WEA_DB_USER**                  |   T0   |         Only with remote DB         | Remote PostgreSQL user                                                                                                                                             | -                  |
+| **WEA_DB_PASSWORD**              |   T0   |         Only with remote DB         | Remote PostgreSQL password (secret)                                                                                                                                | -                  |
+| **WEA_DB_SSL**                   |   T0   |                 No                  | Enable remote PostgreSQL TLS from app pool (`true`/`false`)                                                                                                        | `false`            |
+| **WEA_DB_MAX**                   |   T0   |                 No                  | Remote PostgreSQL pool max connections                                                                                                                             | `10`               |
+| **WEA_DB_IDLE_TIMEOUT_MS**       |   T0   |                 No                  | Remote PostgreSQL pool idle timeout (ms)                                                                                                                           | `30000`            |
+| **WEA_DB_CONNECTION_TIMEOUT_MS** |   T0   |                 No                  | Remote PostgreSQL pool connection timeout (ms)                                                                                                                     | `10000`            |
 | **PGSSLMODE**                    |   T0   |                 No                  | Optional CLI/client SSL mode (for tools such as `psql`)                                                                                                            | `prefer`           |
 | **MAX_THUMBNAIL_SIZE**           |   DB   |                 No                  | Max thumbnail resolution (pixels)                                                                                                                                  | `300`              |
 | **FFMPEG_PATH**                  |   DB   |                 No                  | Absolute path to FFmpeg executable (when auto-detect fails)                                                                                                        | `ffmpeg` (PATH)    |
@@ -103,28 +103,37 @@ cp .env.example .env
 
 ## 3. Metadata Storage Configuration
 
-The system supports PostgreSQL-backed and SQLite-backed metadata with the same store interfaces. The legacy `fs`/`webdav` metadata backends are removed (Phase 7).
+The system supports a SQLite-backed (default) and a remote PostgreSQL-backed metadata store with the same store interfaces. The legacy `fs`/`webdav` metadata backends are removed (Phase 7).
 
-> **The metadata (DB) connection is `.env`-owned.** `WEA_STORAGE_BACKEND` (and the `WEA_PG_*`
-> block when `postgresql`) must be declared in `.env`/env before boot; it is **not** configurable
-> through the admin UI or the setup wizard (D5/D6/D7). A `postgresql` backend with any
-> `WEA_PG_HOST/PORT/DATABASE/USER/PASSWORD` missing aborts boot with a clear terminal error.
+> **The metadata (DB) connection is `.env`-owned.** The remote DB block (`WEA_DB_HOST`,
+> `WEA_DB_DATABASE`, `WEA_DB_USER`, `WEA_DB_PASSWORD`, plus optional pool/SSL keys) and the
+> SQLite path (`WEA_SQLITE_PATH`) must be declared in `.env`/env before boot; the metadata
+> backend is **not** configurable through the admin UI or the setup wizard (D5/D6/D7).
+> Setting any one of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` selects
+> the remote PostgreSQL backend; an incomplete set (at least one set but not all four) aborts
+> boot with a clear terminal error that lists the missing keys. When none of them is set, the
+> default SQLite backend is used.
 > The setup wizard then serves only non-T0 settings (file storage, email, server, runtime) into
 > the connected DB. A minimal first-boot `.env` is:
 >
 > ```dotenv
-> WEA_STORAGE_BACKEND=sqlite        # or postgresql with WEA_PG_* below
+> # SQLite (default): no remote DB keys set
 > WEA_SQLITE_PATH=/path/to/webdav.db
+> # or remote PostgreSQL: all four WEA_DB_* keys required
+> WEA_DB_HOST=db.example.com
+> WEA_DB_DATABASE=webdav_easyaccess
+> WEA_DB_USER=webdav
+> WEA_DB_PASSWORD=change-me
 > JWT_SECRET=change-me               # non-T0 values are stored in the DB by the wizard
 > ```
 
 1.  **SQLite backend (`sqlite`)** (default):
     - Stores metadata in a local SQLite database file (development/testing).
-    - Set `WEA_STORAGE_BACKEND=sqlite` and `WEA_SQLITE_PATH=/path/to/webdav.db`.
+    - Used when no remote DB keys are set; optionally set `WEA_SQLITE_PATH=/path/to/webdav.db`.
 2.  **PostgreSQL backend (`postgresql`)**:
     - Stores metadata in normalized relational tables (`users`, `settings`, `permissions_*`, `share_links`, `recent_files`, `permission_requests`, `locks`).
     - Recommended for stronger consistency and high-concurrency metadata operations.
-    - Set `WEA_STORAGE_BACKEND=postgresql` and provide `WEA_PG_HOST`, `WEA_PG_PORT`, `WEA_PG_DATABASE`, `WEA_PG_USER`, `WEA_PG_PASSWORD` (plus optional pool/SSL settings).
+    - Provide `WEA_DB_HOST`, `WEA_DB_PORT`, `WEA_DB_DATABASE`, `WEA_DB_USER`, `WEA_DB_PASSWORD` (plus optional pool/SSL settings) — all four credential keys are required together.
 
 ### File Storage (Blob) Configuration
 
@@ -132,7 +141,7 @@ File/blob storage is selected independently of the metadata backend:
 
 - **`WEA_FILE_STORAGE=s3`** (default): blob content lives in S3. Requires `S3_BUCKET`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`; optionally `S3_ENDPOINT` for an S3-compatible service (e.g. MinIO). WebDAV settings are unused in this mode.
 - **`WEA_FILE_STORAGE=webdav`**: blob content lives on the WebDAV server. Requires `WEBDAV_URL`, `WEBDAV_USERNAME`, `WEBDAV_PASSWORD`.
-- The file-storage backend is independent of the metadata backend (`WEA_STORAGE_BACKEND`): either blob backend can be combined with either metadata backend.
+- The file-storage backend is independent of the metadata backend (SQLite or remote PostgreSQL): either blob backend can be combined with either metadata backend.
 - Migrating blob content between the two backends (WebDAV ↔ S3) is supported — see [Data Migration: WebDAV ↔ S3](#data-migration-webdav--s3).
 
 ### PostgreSQL Initialization (v2)
@@ -145,11 +154,11 @@ To apply the DDL manually (equivalent to what startup does), instead:
 
 1.  Apply the initial normalized DDL:
     ```bash
-    PGPASSWORD="$WEA_PG_PASSWORD" psql \
-      -h "$WEA_PG_HOST" \
-      -p "${WEA_PG_PORT:-5432}" \
-      -U "$WEA_PG_USER" \
-      -d "$WEA_PG_DATABASE" \
+    PGPASSWORD="$WEA_DB_PASSWORD" psql \
+      -h "$WEA_DB_HOST" \
+      -p "${WEA_DB_PORT:-5432}" \
+      -U "$WEA_DB_USER" \
+      -d "$WEA_DB_DATABASE" \
       -f server/store/postgresql/ddl/001_initial_normalized_schema.sql
     ```
 2.  Verify schema apply status using your DB tooling (for example `\dt` / `\d` in `psql`) and treat the DDL file as canonical:
@@ -257,10 +266,10 @@ node server/scripts/configSync.js --apply --yes
 
 Use this checklist for deployment/runtime validation only:
 
-- [ ] `WEA_STORAGE_BACKEND` and backend-specific env keys are set as intended.
+- [ ] Metadata backend env keys are set as intended (the remote `WEA_DB_*` block is either complete or absent — partial sets abort boot).
 - [ ] Required DDL has been applied (`001`). On a fresh DB the server applies it automatically at startup; on a migrated target DB the migration tool applies it first.
 - [ ] Blob migration (WebDAV ↔ S3, `docs/spec/server/tools/blob-migration.md`) ran a `dry-run` before `apply` and report warnings are resolved; cutover steps (persist/restart/probe) followed.
-- [ ] Metadata migration (sqlite ↔ PG, `docs/spec/server/tools/metadata-migration.md`) used `target-scan` + explicit wipe confirm; `.env` cutover (`WEA_STORAGE_BACKEND` + `WEA_PG_*`) and restart performed; ".env setup needed" banner resolved.
+- [ ] Metadata migration (sqlite ↔ PG, `docs/spec/server/tools/metadata-migration.md`) used `target-scan` + explicit wipe confirm; `.env` cutover (the remote `WEA_DB_*` block) and restart performed; ".env setup needed" banner resolved.
 - [ ] `/api/health` returns healthy status after server start.
 
 For store contract validation, use `docs/spec/server/store/*.md`.
@@ -316,7 +325,8 @@ user@host`, then open `http://127.0.0.1:5001`.
    the flag-driven non-interactive mode; feature spec: `docs/features/setup-cli.md`. Equivalent
    to pre-populating the configuration directly (see below).
 4. **env-only first run (containerized/automated)** — inject every key the completeness rules
-   require (`WEA_STORAGE_BACKEND` + backend block, `WEA_FILE_STORAGE` + its credential block,
+   require (the remote `WEA_DB_*` block when PostgreSQL metadata is used — none is required for
+   the default SQLite backend — `WEA_FILE_STORAGE` + its credential block,
    `JWT_SECRET`, and any non-default settings) via environment. `setup_complete` is derived, so
    the app boots fully configured on the first run, never enters setup mode, and binds all
    interfaces immediately. `.env` never needs to exist.

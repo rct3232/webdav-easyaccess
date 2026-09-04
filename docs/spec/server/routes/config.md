@@ -51,7 +51,7 @@ Registry / resolver contracts: `docs/spec/server/infrastructure/configRegistry.m
     "EMAIL_PASSWORD": { "value": "****", "source": "db", "tier": "T1", "secret": true },
     "PORT": { "value": "5001", "source": "default", "tier": "T1", "secret": false },
     "CORS_ORIGINS": { "value": "", "source": "default", "tier": "T2", "secret": false },
-    "WEA_PG_HOST": { "value": "db.internal", "source": "env", "tier": "T0", "secret": false },
+    "WEA_DB_HOST": { "value": "db.internal", "source": "env", "tier": "T0", "secret": false },
   }
 }
 ```

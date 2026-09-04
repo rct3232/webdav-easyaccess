@@ -136,8 +136,11 @@ values (e.g. `EMAIL_PASSWORD`, `WEBDAV_PASSWORD`, `AWS_SECRET_ACCESS_KEY`) are p
 masking only**:
 
 - Effective-config surfaces (`GET /api/admin/config`, `GET /api/setup/status`,
-  `POST /api/setup/prefill`) and the setup/admin UIs render a set secret as `'****'` and never
-  return the stored value to the client.
+  `POST /api/setup/prefill`) and the setup/admin UIs render a **set** secret as `'****'` and never
+  return the stored value to the client. An **unset** secret has no effective value (`undefined`,
+  omitted from JSON) — it is never fabricated into `'****'`, so presence/completeness checks
+  (metadata-backend and file-backend selection, `setup_complete`) never mistake it for a
+  configured secret.
 - **keep-existing on masked write:** a secret submitted as `'****'` (or blank/absent) leaves
   the previously stored value untouched; only an explicit new value overwrites the DB row
   (written as plaintext). This applies on the admin config `PUT`, wizard/CLI `apply`, and the
@@ -198,7 +201,9 @@ metadata DB by default; only T0 keys are written to `.env`.
 
 `setup_complete` = the metadata connection resolvable from `.env` **AND** the required
 non-T0 blocks satisfiable from the **effective config** (env-first over DB rows). `JWT_SECRET`
-is not part of this decision.
+is not part of this decision. Presence checks run against the merged effective view in which an
+unset secret resolves to `undefined` — it never contributes a fabricated `'****'`, so e.g. an
+unset `WEA_DB_PASSWORD` cannot make the metadata backend look like PostgreSQL.
 Consequently, when `.env` has the PG connection info, boot still branches on what the DB holds:
 
 1. **DB lacks required non-T0 config** → `setup_complete=false` → wizard shown; it reads and
@@ -224,7 +229,9 @@ page as an "Advanced settings" accordion (`MUI Accordion`) within
 
 **GET `/api/admin/config`** →
 `{ config: { "<envKey>": { value, source: 'env'|'db'|'default', tier, secret } } }` for every
-registry key; secrets always `"****"` (never returned to the client). Display metadata
+registry key. Set secrets are masked `"****"` (never returned to the client); **unset** secrets
+carry no `value` (the field is omitted) so an operator/API consumer can tell a secret is not
+configured. Display metadata
 (`labelKey`, `group`, `inputType`, `options`) lives client-side in a `CONFIG_DISPLAY_META`
 map; the server registry is authoritative for tier/secret/source.
 

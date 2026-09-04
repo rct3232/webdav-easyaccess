@@ -57,7 +57,7 @@ Registry / resolver contracts: `docs/spec/server/infrastructure/configRegistry.m
 ```
 
 - One entry per registry key (`configRegistry.getEntries()`), iterated in registry order.
-- `value` — the **effective** value: env (when set, D1) → DB `settings` row (plaintext, as stored) → built-in default. Secret keys are always the mask `"****"` (never surfaced to the client; DB rows are plaintext but masked at this boundary).
+- `value` — the **effective** value: env (when set, D1) → DB `settings` row (plaintext, as stored) → built-in default. A secret that has a value is the mask `"****"` (never surfaced to the client; DB rows are plaintext but masked at this boundary); an **unset** secret's `value` is `undefined` (the JSON field is omitted) so an absent secret is never reported as configured.
 - `source` — `'env'` | `'db'` | `'default'` (the layer that supplied `value`).
 - `tier` — `'T0'` | `'T1'` | `'T2'` (registry classification, PLAN §3).
 - `secret` — boolean; true ⇒ masked on read (presentation only). It does **not** imply encryption at rest.

@@ -15,7 +15,7 @@ const path = require('path');
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { createError } = require('../../utils/errorHandler');
 const { SETUP_INVALID_PAYLOAD_CODE } = require('../../infrastructure/backendProbe');
-const { isT0, isSecret, getDefault, TIER } = require('../../infrastructure/configRegistry');
+const { isT0, isSecret } = require('../../infrastructure/configRegistry');
 const { getSharedResolver } = require('../../infrastructure/configResolver');
 const { resolveEnvPath } = require('../../infrastructure/envPath');
 const { writeEnv } = require('../../infrastructure/envFileWriter');
@@ -311,24 +311,6 @@ function partitionEntries(entries) {
 }
 
 /**
- * Normalize the effective config so masked-but-unset secrets drive
- * `missing` / `setup_complete` / `current` correctly. See the mask-drop rule
- * explained at the call site in routes.js (Q1b).
- * @param {Record<string, object>} effective configResolver effective config
- * @returns {Record<string, object>} effective config with unset masks removed
- */
-function normalizeEffectiveForStatus(effective) {
-  const out = { ...effective };
-  for (const [key, meta] of Object.entries(effective)) {
-    if (!meta.secret || meta.value !== EFFECTIVE_SECRET_MASK) continue;
-    const t0Unset = meta.tier === TIER.T0 && !process.env[key];
-    const dbUnset = meta.source === 'default' && getDefault(key) === undefined;
-    if (t0Unset || dbUnset) out[key] = { ...meta, value: undefined };
-  }
-  return out;
-}
-
-/**
  * Upsert non-T0 wizard values into the metadata DB through the app's own
  * Settings model. Values are stored as plaintext strings; the store
  * JSON-stringifies on PG / stores raw TEXT on sqlite.
@@ -423,7 +405,6 @@ module.exports = {
   applySetup,
   buildEnvEntries,
   isMissing,
-  normalizeEffectiveForStatus,
   partitionEntries,
   validateApplyPayload,
 };

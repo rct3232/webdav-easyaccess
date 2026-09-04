@@ -26,6 +26,10 @@ lets DB-sourced configuration take effect before require-time consts are capture
    setSharedResolver(resolver)     — install the process-wide instance (admin route + T2 consumers).
 5. effective = await resolver.getEffectiveConfig()
    bootStatus = computeSetupStatus(process.env, { effectiveConfig: effective })
+   — The effective map masks only **set** secrets; an unset secret carries `value: undefined`
+     (see configResolver spec §2.6), so the merged presence/completeness checks below are
+     truthful: an unset `WEA_DB_PASSWORD` does not select PostgreSQL and an unset file-backend
+     secret does not satisfy its required-key set.
 6. if bootStatus.setup_complete:
      populateT1Env(resolver, process.env)
        — for each T1 registry key absent from env, resolve the DB-sourced

@@ -6,6 +6,7 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
 
 import {
   ensureClientBuild,
+  ensureWebdavSubtree,
   killScratch,
   openSystemSettings,
   queryScratchSqlite,
@@ -56,10 +57,12 @@ type ConfigEntry = {
 // PROPFIND :8090 (mirrors e2e/global-setup.ts): a 200/207 means the bytemark
 // container answers directory listings, i.e. a webdav connection test would
 // succeed. Retries for a few seconds because the container can still be
-// settling right after a docker-compose recreate; memoized for the worker run.
+// settling right after a docker-compose recreate. Only a SUCCESS is memoized —
+// the container may come up mid-suite, so a transient "unreachable" must not
+// lock later callers out (E2E-ADMINCFG-011 settles after the container is up).
 let webdavReachableCache: boolean | null = null;
 async function detectWebdavReachable(): Promise<boolean> {
-  if (webdavReachableCache !== null) return webdavReachableCache;
+  if (webdavReachableCache === true) return true;
 
   const probeOnce = (): Promise<boolean> =>
     new Promise((resolve) => {
@@ -92,7 +95,6 @@ async function detectWebdavReachable(): Promise<boolean> {
       return true;
     }
     if (Date.now() - startedAt >= 15_000) {
-      webdavReachableCache = false;
       return false;
     }
     await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -125,6 +127,12 @@ test.beforeEach(async () => {
     ADMIN_DEFAULT_PASSWORD: ADMIN_PASSWORD,
   });
   await seedWebdavSettings(scratch);
+  // global-setup wipes the webdav container's DAV root (bind mount) and only
+  // restarts the container in webdav mode — in s3 mode the root is gone and
+  // Apache 403s every DAV method. Restore it (restart + PROPFIND wait) so the
+  // scratch boot probe succeeds (no spurious backend-health card) and the
+  // success-path tests (007) and "nothing failing" (011) can run.
+  await ensureWebdavSubtree(CASE_ID);
   ensureClientBuild();
   spawned = spawnScratchServer(scratch);
   await waitForScratchHealth(spawned!);
@@ -225,24 +233,34 @@ test.describe('admin config editor (advanced settings)', () => {
     await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
     await openAdvancedSettings(page);
 
+    // Section A (editable): T1/T2 rows whose effective source is not env render
+    // a config-input-* field. Section B (deploy-time read-only): env/T0 rows are
+    // platform-config-row-* summaries that never render an editable input.
     let envRows = 0;
     for (const [key, entry] of Object.entries(config)) {
       const input = page.getByTestId(`config-input-${key}`);
-      if ((await input.count()) === 0) continue; // not displayed in the editor
-      if (entry.source === 'env') envRows += 1;
+      const platformRow = page.getByTestId(`platform-config-row-${key}`);
+      const hasInput = (await input.count()) > 0;
+      const hasPlatformRow = (await platformRow.count()) > 0;
+      if (!hasInput && !hasPlatformRow) continue; // not displayed in the editor
 
+      if (isLocked(entry)) {
+        // Section B — env/T0 rows are read-only platform summaries.
+        await expect(input, `platform row ${key} must not render an input`).toHaveCount(0);
+        await expect(platformRow, `platform row ${key}`).toHaveCount(1);
+        if (entry.source === 'env') envRows += 1;
+        continue;
+      }
+
+      // Section A — editable rows.
       if (entry.secret) {
         // The masked display is always read-only; the "set new value" toggle is
-        // the edit affordance and must be present only for editable secrets.
+        // the edit affordance for editable secrets.
         await expect(input, `masked display ${key}`).toBeDisabled();
-        const toggle = page.getByTestId(`config-secret-toggle-${key}`);
-        if (isLocked(entry)) {
-          await expect(toggle, `locked secret ${key}`).toHaveCount(0);
-        } else {
-          await expect(toggle, `editable secret ${key}`).toBeVisible();
-        }
-      } else if (isLocked(entry)) {
-        await expect(input, `locked ${key}`).toBeDisabled();
+        await expect(
+          page.getByTestId(`config-secret-toggle-${key}`),
+          `editable secret ${key}`
+        ).toBeVisible();
       } else {
         await expect(input, `editable ${key}`).toBeEnabled();
       }
@@ -516,7 +534,27 @@ test.describe('phase B: backend health & config/test api', () => {
 
   test('E2E-ADMINCFG-011: No backend-health card appears when nothing is failing', async ({
     page,
+    request,
   }) => {
+    // The card only appears when an active backend is failing. WebDAV :8090 must
+    // be reachable for the premise to hold (otherwise skip, like 007). The
+    // boot-time webdav probe can race container startup, so settle the tracker
+    // deterministically with a successful connection probe first — the same
+    // seeding pattern E2E-ADMINCFG-012 uses for its failing-backend case.
+    test.skip(
+      !(await detectWebdavReachable()),
+      'WebDAV :8090 unreachable — skipping (cannot be "nothing failing")'
+    );
+    const token = await loginToken(request);
+    await request.post(`${SCRATCH_BASE}/api/admin/config/test`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: {
+        target: 'webdav',
+        WEBDAV_URL: WEBDAV_BASE,
+        WEBDAV_USERNAME: 'e2etest',
+        WEBDAV_PASSWORD: 'e2etest123',
+      },
+    });
     await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
     await openSystemSettings(page);
 

@@ -41,3 +41,23 @@
   docs updated (configResolver spec §2.6, routes/config spec, api.md,
   config-source-resolution, bootSequence) + regression unit tests added. Verified end-to-end by
   a `-r` preload simulation (guarded PUT 200) and by the full unit + e2e suites.
+
+### 2026-09-04 — E2E-ADMINCFG-001 expects the pre-Section-B row model (Case B)
+
+- **Summary**: after the Case A fix landed, admin-config E2E-ADMINCFG-001 (desktop+mobile)
+  failed at `expect(getByText('Set in .env (env takes precedence)')).toHaveCount(envRows)` with
+  envRows=0 vs 18-19 caption elements. A migration-mobile run also flaked once (dialog timing).
+- **Diagnosis**: the assertion was written for the pre-2026-09-03 editor where env-sourced rows
+  rendered a disabled `config-input-*` in the editable list. Since W-B (Section A/B split,
+  b3d1252) env/T0 rows are read-only `platform-config-row-*` summaries (spec
+  SystemConfigEditor.md §"two top-level sections"; client jest test) and never render a
+  `config-input`, so envRows was always 0 while Section B captions numbered >0. Latent since
+  W-B and masked because (a) the Case A 503 previously aborted this test before the assertion,
+  and (b) local e2e runs served a stale `client/build` (Sep 2) whose pre-Section-B UI made the
+  stale assertion pass; CI builds fresh and exposed it.
+- **Classification**: **Case B (Test Error)** — the client matches its spec; the e2e assertion
+  was stale.
+- **Action taken**: rewrote E2E-ADMINCFG-001's per-row loop to the Section model — env/T0 rows
+  assert `config-input` absent + `platform-config-row-${key}` present, envRows counts displayed
+  env-sourced Section B rows, Section A rows assert masked/disabled/toggle or enabled state as
+  before; full e2e re-run on a fresh client build.

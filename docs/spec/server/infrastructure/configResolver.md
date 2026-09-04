@@ -36,14 +36,16 @@
 getConfig(key):
   1. entry = registry.getEntry(key); unknown key → undefined
   2. env value present (defined and non-empty) → return it            # env wins, no DB read
+     (step skipped for dbOnly entries — see §2.3 note)
   3. entry.tier === T0 → undefined                                     # .env only (no DB, no default)
   4. DB row (cache-aware):
-        - secret key or plaintext key → use the stored row value as-is
-        - row missing → fall through
+         - secret key or plaintext key → use the stored row value as-is
+         - row missing → fall through
   5. entry.default (when defined) → return it; else undefined
 ```
 
 - **Env precedence (D1):** an env value always wins and the DB is not touched. For secrets, an env value means "do not even read the DB".
+- **dbOnly entries (registry `dbOnly: true`):** never env-driven. Step 2 is skipped, so resolution is DB row → built-in default only; `getEffectiveConfig` reports `source:'db'` or `'default'` (never `'env'`), `populateT1Env` does not mirror them into `process.env`, and `configSync`/setup never treat env as authoritative. See `docs/features/config-source-resolution.md` and `docs/spec/server/infrastructure/configRegistry.md` §2.3.
 - **Boot-mirrored T1 keys (`markDbSourced`):** `populateT1Env` copies DB-sourced T1 values into `process.env` so require-time consts see them. Those keys are recorded as DB-sourced, so the resolver **skips the env-first step** for them — the DB row is the source (`'db'`), the env copy is just a boot mirror. Without this, every DB-backed T1 key would report `source:'env'` and the admin UI would lock it. A genuinely operator-set env value (present before boot population) is never mirrored and keeps `source:'env'`.
 - **Empty-string env values** are treated as unset (matches codebase `process.env.X || default` conventions).
 - **DB value shapes (D11):** `settings` rows store plaintext values — a JSON string on PG (parsed back to the string by the store on read) and raw TEXT on sqlite. The resolver returns a row's value **as stored**; there is no payload shape to detect and no master key dependency.

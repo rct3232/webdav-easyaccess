@@ -27,8 +27,8 @@
  *
  * Requires the full WEA_DB_* identity block (WEA_DB_HOST / WEA_DB_PORT /
  * WEA_DB_DATABASE / WEA_DB_USER / WEA_DB_PASSWORD) in process env — presence
- * of these keys selects the remote PostgreSQL backend (there is no
- * WEA_STORAGE_BACKEND key anymore). global-setup passes them explicitly.
+ * of these keys selects the remote PostgreSQL backend. global-setup passes them
+ * explicitly.
  */
 
 const bcrypt = require('bcryptjs');

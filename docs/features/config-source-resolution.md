@@ -35,7 +35,12 @@ persists values across both layers. This feature describes the two-layer model i
    yields a new secret and invalidates all sessions); multi-instance deployments must set one
    unified value.
 2. **Everything else — DB `settings` table with `.env` fallback:** a value present in `.env`
-   always wins (D1); otherwise the DB row is used; otherwise the built-in default.
+   always wins (D1); otherwise the DB row is used; otherwise the built-in default. **Exception:
+   DB-only keys** (registry `dbOnly: true` — internal tuning knobs such as `JWT_EXPIRES_IN`,
+   `GC_ORPHAN_TTL_DAYS`, `LOGIN_RATE_LIMIT_*`, thumbnail/cache settings). Their value comes
+   **only** from the DB settings row or the built-in default; an env value is intentionally
+   ignored, and `configSync` never treats env as authoritative for them. They are edited via the
+   admin "Advanced settings" UI.
 
 This enables operator-facing config management (admin "Advanced settings" UI, hot reload for
 runtime-safe keys) while keeping the boot path decoupled from anything that requires a DB
@@ -47,15 +52,17 @@ connection before the metadata DB exists.
 
 ```
 .env (when set) → DB settings row (when set) → built-in default
+(DB-only keys: DB settings row → built-in default; env is never read)
 ```
 
-- A value present in `.env` **always wins**; the DB copy is read only when the env var is
-  absent.
+- A value present in `.env` **always wins** for env-overridable keys; the DB copy is read only
+  when the env var is absent. For **DB-only** keys the precedence is DB row → built-in default
+  and an env value is ignored.
 - The DB copy can therefore become stale relative to `.env`; the configSync CLI/web action
   (`server/domains/admin/services/configSyncService.js` shared core) detects and reports
   env-vs-DB drift and can reconcile the DB rows to mirror `.env` (`--apply --yes` / the admin
   "Sync environment → DB" action) — `docs/features/config-sync.md` /
-  `docs/spec/server/tools/config-sync.md`.
+  `docs/spec/server/tools/config-sync.md`. DB-only keys never appear in that drift set.
 
 ---
 
@@ -71,7 +78,7 @@ connection before the metadata DB exists.
 
 **T0 — `.env` only** (D2, D4, D7): `WEA_SQLITE_PATH`, `WEA_DB_HOST`, `WEA_DB_PORT`,
 `WEA_DB_DATABASE`, `WEA_DB_USER`, `WEA_DB_PASSWORD`, `WEA_DB_SSL`, `WEA_DB_MAX`,
-`WEA_DB_IDLE_TIMEOUT_MS`, `WEA_DB_CONNECTION_TIMEOUT_MS`, `PGSSLMODE`, `NODE_ENV`,
+`WEA_DB_IDLE_TIMEOUT_MS`, `WEA_DB_CONNECTION_TIMEOUT_MS`, `NODE_ENV`,
 `DOTENV_CONFIG_PATH`, `JWT_SECRET`.
 Rationale: the metadata DB cannot be reached before its own connection info exists.
 `JWT_SECRET` is the boot auth key (D4): it stays `.env`-only and frozen at require time, but it

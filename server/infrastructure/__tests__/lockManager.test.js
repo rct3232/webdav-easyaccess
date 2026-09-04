@@ -69,7 +69,6 @@ describe('locks store', () => {
         WEA_DB_USER: 'test',
         WEA_DB_PASSWORD: 'secret',
       };
-      delete process.env.WEA_STORAGE_BACKEND;
     });
 
     afterEach(() => {

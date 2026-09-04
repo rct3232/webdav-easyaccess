@@ -3,7 +3,7 @@
  * Verifies presence-based backend selection in getBackend() and postgres
  * infrastructure helpers. Backend decision: any of the four WEA_DB_* identity
  * keys set → remote PostgreSQL; none set → sqlite (docs/spec/server/store/
- * storage.md §2.4). There is no WEA_STORAGE_BACKEND key anymore.
+ * storage.md §2.4).
  */
 
 jest.mock('../../infrastructure/backendHealth', () => {
@@ -21,7 +21,6 @@ function setRemoteDbEnv() {
   process.env.WEA_DB_DATABASE = 'testdb';
   process.env.WEA_DB_USER = 'test';
   process.env.WEA_DB_PASSWORD = 'secret';
-  delete process.env.WEA_STORAGE_BACKEND;
 }
 
 function clearRemoteDbEnv() {
@@ -39,7 +38,6 @@ describe('getBackend (presence-based metadata backend)', () => {
       if (originalEnv[key] === undefined) delete process.env[key];
       else process.env[key] = originalEnv[key];
     }
-    delete process.env.WEA_STORAGE_BACKEND;
     jest.resetModules();
     console.warn = originalConsoleWarn;
   });
@@ -73,13 +71,6 @@ describe('getBackend (presence-based metadata backend)', () => {
     const storage = require('@server/store/storage');
     expect(storage.hasRemoteDbCredentials()).toBe(true);
     expect(() => storage.getBackend()).toThrow(/missing WEA_DB_DATABASE/);
-  });
-
-  it('silently ignores a leftover WEA_STORAGE_BACKEND value (presence decides)', () => {
-    clearRemoteDbEnv();
-    process.env.WEA_STORAGE_BACKEND = 'postgresql';
-    const storage = require('@server/store/storage');
-    expect(storage.getBackend()).toBe('sqlite');
   });
 });
 
@@ -242,5 +233,52 @@ describe('postgres backend health reporting', () => {
       code: 'unreachable',
       reason: 'connect ECONNREFUSED',
     });
+  });
+});
+
+describe('test-only backend override seam (docs/spec/server/store/storage.md §2.8)', () => {
+  const fakePool = () => ({ query: jest.fn().mockResolvedValue({ rows: [] }), end: jest.fn().mockResolvedValue() });
+
+  afterEach(() => {
+    jest.dontMock('pg');
+    delete require.cache[require.resolve('@server/store/storage')];
+  });
+
+  it('getBackend/getPgPool honour the override regardless of env', () => {
+    clearRemoteDbEnv();
+    const storage = require('@server/store/storage');
+    expect(storage.getBackend()).toBe('sqlite');
+
+    const pool = fakePool();
+    storage.setTestBackend('postgresql', pool);
+    expect(storage.getBackend()).toBe('postgresql');
+    expect(storage.isSqliteBackend()).toBe(false);
+    expect(storage.isTestBackendOverridden()).toBe(true);
+    expect(storage.getPgPool()).toBe(pool);
+  });
+
+  it('clearTestBackend restores env-presence selection', () => {
+    clearRemoteDbEnv();
+    const storage = require('@server/store/storage');
+    storage.setTestBackend('postgresql', fakePool());
+    storage.clearTestBackend();
+    expect(storage.isTestBackendOverridden()).toBe(false);
+    expect(storage.getBackend()).toBe('sqlite');
+  });
+
+  it('throws for a non-postgresql type', () => {
+    const storage = require('@server/store/storage');
+    expect(() => storage.setTestBackend('sqlite', fakePool())).toThrow(/only supports the postgresql/);
+  });
+
+  it('throws when NODE_ENV is not test', () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    try {
+      process.env.NODE_ENV = 'production';
+      const storage = require('@server/store/storage');
+      expect(() => storage.setTestBackend('postgresql', fakePool())).toThrow(/only available under NODE_ENV=test/);
+    } finally {
+      process.env.NODE_ENV = originalNodeEnv;
+    }
   });
 });

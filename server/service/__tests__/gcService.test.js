@@ -3,6 +3,7 @@
 const { createTestDatabase, dbQuery, dbRun } = require('../../test-utils');
 const { createFileNodesStore } = require('../../store/fileNodesStore');
 const { createGcService } = require('../gcService');
+const { getSharedResolver } = require('../../infrastructure/configResolver');
 
 function createFakeBlobStore({ listOrphaned = [] } = {}) {
   const deleted = [];
@@ -282,11 +283,16 @@ describe('createGcService', () => {
   /* ------------------------------------------------------------------ */
 
   describe('orphan TTL', () => {
-    it('defaults to GC_ORPHAN_TTL_DAYS env when no config is supplied', async () => {
-      const prev = process.env.GC_ORPHAN_TTL_DAYS;
-      process.env.GC_ORPHAN_TTL_DAYS = '30';
+    it('defaults to the DB-sourced GC_ORPHAN_TTL_DAYS when no config is supplied', async () => {
+      const resolver = getSharedResolver();
+      await dbRun(
+        `INSERT INTO settings (key, value) VALUES (?, ?)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
+        ['GC_ORPHAN_TTL_DAYS', '30']
+      );
+      resolver.invalidateCache('GC_ORPHAN_TTL_DAYS');
       try {
-        const envGc = createGcService({ blobStore, fileNodesStore, fileStorageMode: 's3' });
+        const dbGc = createGcService({ blobStore, fileNodesStore, fileStorageMode: 's3' });
         const node = await fileNodesStore.createNode(null, `ttl-${Date.now()}`, 'file');
         const key = `ttl-key-${Date.now()}`;
         await insertObjectMapRow({
@@ -296,16 +302,13 @@ describe('createGcService', () => {
           daysAgo: 10,
         });
 
-        const results = await envGc.runGcCycle();
+        const results = await dbGc.runGcCycle();
 
         // 10 days old < 30 day TTL → not collected
         expect(results.tier1.orphanedRows).toBe(0);
       } finally {
-        if (prev === undefined) {
-          delete process.env.GC_ORPHAN_TTL_DAYS;
-        } else {
-          process.env.GC_ORPHAN_TTL_DAYS = prev;
-        }
+        await dbRun('DELETE FROM settings WHERE key = ?', ['GC_ORPHAN_TTL_DAYS']);
+        resolver.invalidateCache('GC_ORPHAN_TTL_DAYS');
       }
     });
 

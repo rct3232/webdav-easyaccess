@@ -41,7 +41,7 @@ Open, deferred item (no active owner). Recorded here per AGENTS.md §2.1; **not*
   - Per-engine DDL/migration strategy (replaces the PG-canonical + regex-transpile model).
   - Generalization of code-level backend identifiers baked today (`'postgresql'`/`'sqlite'` in health keys, `activeMetadataBackend`, `postgresqlNotConfigured` error code, sqlite↔pg migration directions, `mapDatabaseError` PG SQLSTATE mapping).
   - Metadata migration tooling beyond sqlite↔pg; e2e/docker-compose matrices (only PostgreSQL is provisioned today).
-- **Related active workstream**: the prerequisite env/boot refactor — removal of `WEA_STORAGE_BACKEND` and rename of `WEA_PG_*` → `WEA_DB_*` (engine-agnostic naming, presence-based backend selection) — is being executed as an active workstream tracked in `PLAN.md` (2026-09-04). That refactor intentionally keeps runtime support at sqlite + PostgreSQL; wiring the other engines is this item.
+- **Related active workstream**: the prerequisite env/boot refactor — removal of `WEA_STORAGE_BACKEND` and rename of `WEA_PG_*` → `WEA_DB_*` (engine-agnostic naming, presence-based backend selection) — landed on 2026-09-04 (W-9, `3a51213`), and the follow-up env-config cleanup landed the same day: jest is isolated from production `WEA_DB_*` (dedicated `WEA_TEST_PG_*` + storage test-only override), orphan/legacy env keys were removed, and internal tuning keys became DB-only (`dbOnly`, admin "Advanced settings"). Runtime support intentionally stays at sqlite + PostgreSQL; wiring the other engines is this item.
 
 ---
 

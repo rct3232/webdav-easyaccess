@@ -82,7 +82,10 @@ async function buildConfigSyncReport({ settings, envValueOf }) {
   const findings = [];
   for (const entry of getEntries()) {
     if (isT0(entry.key)) continue;
-    const result = classifyEntry(entry, envValueOf(entry.key), rowByKey.get(entry.key));
+    // dbOnly keys are DB-governed; env is never an authoritative source for
+    // them, so they can only ever report as db-only (or stay silent on default).
+    const envValue = entry.dbOnly ? undefined : envValueOf(entry.key);
+    const result = classifyEntry(entry, envValue, rowByKey.get(entry.key));
     if (!result) continue; // set in neither env nor DB: silent
     findings.push({
       key: entry.key,
@@ -116,7 +119,7 @@ async function buildConfigSyncReport({ settings, envValueOf }) {
  */
 async function syncConfigSyncEnv({ settings, envValueOf }) {
   const targets = getEntries().filter(
-    (entry) => !isT0(entry.key) && isEnvSet(envValueOf(entry.key))
+    (entry) => !isT0(entry.key) && !entry.dbOnly && isEnvSet(envValueOf(entry.key))
   );
 
   const rowByKey = new Map((await settings.listRows()).map((row) => [row.key, row]));

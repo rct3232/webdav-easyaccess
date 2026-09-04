@@ -469,7 +469,6 @@ describe('POST /api/admin/maintenance/repair-sync', () => {
 
 describe('POST /api/admin/maintenance/gc (S3 mode): delete -> lazy blob -> GC reclaims it', () => {
   let admin, homeNodeId;
-  const previousTtl = process.env.GC_ORPHAN_TTL_DAYS;
 
   beforeEach(jest.clearAllMocks);
 
@@ -477,7 +476,6 @@ describe('POST /api/admin/maintenance/gc (S3 mode): delete -> lazy blob -> GC re
     process.env.WEA_FILE_STORAGE = 's3';
     wireS3Mock();
     await useS3Mode();
-    process.env.GC_ORPHAN_TTL_DAYS = '0';
 
     admin = await createAuthenticatedTestUser({
       username: `admin-gc-s3-${Date.now()}`,
@@ -491,11 +489,6 @@ describe('POST /api/admin/maintenance/gc (S3 mode): delete -> lazy blob -> GC re
   afterAll(async () => {
     process.env.WEA_FILE_STORAGE = 'webdav';
     await useWebdavMode();
-    if (previousTtl === undefined) {
-      delete process.env.GC_ORPHAN_TTL_DAYS;
-    } else {
-      process.env.GC_ORPHAN_TTL_DAYS = previousTtl;
-    }
   });
 
   it('delete leaves the blob in the store; GC removes it while the active control survives', async () => {

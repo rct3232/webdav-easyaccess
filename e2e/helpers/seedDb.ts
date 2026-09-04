@@ -21,8 +21,7 @@ export const SEED_USERS = [
 // `e2e/00-project-setup.spec.ts` (once per project, for data isolation).
 //
 // Backend selection is presence-based: the full `WEA_DB_*` identity block below
-// (host/port/database/user/password) selects the remote PostgreSQL backend —
-// there is no `WEA_STORAGE_BACKEND` key anymore.
+// (host/port/database/user/password) selects the remote PostgreSQL backend.
 //
 // `envOverrides` is merged over the defaults so each caller can pass its own
 // env bits without re-implementing the seed environment.

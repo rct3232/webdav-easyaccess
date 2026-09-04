@@ -493,7 +493,6 @@
         "WEA_PREVIEW_TICKET_TTL_MS": "미리보기 티켓 TTL (ms)",
         "PORT": "서버 포트",
         "CORS_ORIGINS": "CORS 허용 출처",
-        "CORS_ORIGIN": "CORS 출처",
         "LOGIN_RATE_LIMIT_MAX": "로그인 시도 제한 (최대 횟수)",
         "LOGIN_RATE_LIMIT_WINDOW_MS": "로그인 시도 제한 기간 (ms)",
         "JWT_EXPIRES_IN": "JWT 만료 시간",

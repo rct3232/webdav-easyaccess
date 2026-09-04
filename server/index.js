@@ -42,11 +42,7 @@ function parseOriginList(raw) {
 }
 
 function resolveAllowedOrigins(resolver) {
-  return resolver.getConfig('CORS_ORIGINS').then((value) => {
-    const list = parseOriginList(value);
-    if (list.length > 0) return list;
-    return resolver.getConfig('CORS_ORIGIN').then(parseOriginList);
-  });
+  return resolver.getConfig('CORS_ORIGINS').then(parseOriginList);
 }
 
 /**
@@ -249,9 +245,7 @@ async function runBoot() {
 
   // Production allow-all warning, using the effective CORS value at boot.
   if (process.env.NODE_ENV === 'production') {
-    const corsList = parseOriginList(
-      resolver.getConfigSync('CORS_ORIGINS') || resolver.getConfigSync('CORS_ORIGIN')
-    );
+    const corsList = parseOriginList(resolver.getConfigSync('CORS_ORIGINS'));
     if (corsList.length === 0) {
       console.warn('Warning: CORS_ORIGINS is not set. Allowing all origins in production.');
     }

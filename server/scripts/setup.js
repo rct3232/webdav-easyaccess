@@ -10,7 +10,6 @@
  * @see docs/features/setup-cli.md
  */
 
-const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const dotenv = require('dotenv');
@@ -84,7 +83,7 @@ Apply / check flags (values use --flag=value):
   --webdav-password=PASS                                 WebDAV password
   --webdav-auth-type=auto|basic|digest                   optional WebDAV auth type
   --admin-password=PASS                                  new admin password (username is fixed 'admin')
-  --jwt-secret=SECRET                                    JWT signing secret (crypto-generated when omitted)
+  --jwt-secret=SECRET                                    JWT signing secret (optional — when omitted the server generates an ephemeral per-boot secret)
   --jwt-expires-in=DURATION                              session duration, e.g. 30m or 7d
   --port=NUMBER                                          server port
   --cors-origins=LIST                                    allowed browser origins (comma-separated)
@@ -284,14 +283,11 @@ async function collectApplyFromFlags(values, env, prompter) {
   };
 }
 
-function generateJwtSecret() {
-  return crypto.randomBytes(32).toString('hex');
-}
-
 /**
  * Build the shared apply payload from a collected answer object. The metadata
  * block is never set: the metadata backend is .env-owned (wizard D7 rule).
- * A missing JWT secret is auto-generated (crypto-secure) like the wizard.
+ * The jwt block is optional — a secret is sent only when the operator supplied
+ * one; otherwise the server generates an ephemeral per-boot secret.
  */
 function toApplyPayload(collected) {
   const file = {};
@@ -303,9 +299,11 @@ function toApplyPayload(collected) {
   const payload = {
     file,
     admin: { password: collected.adminPassword },
-    jwt: { secret: isNonEmpty(collected.jwtSecret) ? collected.jwtSecret : generateJwtSecret() },
   };
-  if (isNonEmpty(collected.jwtExpiresIn)) payload.jwt.expiresIn = collected.jwtExpiresIn;
+  const jwt = {};
+  if (isNonEmpty(collected.jwtSecret)) jwt.secret = collected.jwtSecret;
+  if (isNonEmpty(collected.jwtExpiresIn)) jwt.expiresIn = collected.jwtExpiresIn;
+  if (Object.keys(jwt).length > 0) payload.jwt = jwt;
   if (collected.server && Object.keys(collected.server).length > 0)
     payload.server = collected.server;
   if (collected.email && Object.keys(collected.email).length > 0) payload.email = collected.email;
@@ -505,7 +503,7 @@ async function collectInteractive(prompter, current) {
   ).trim();
   const jwtDefaultHint = (await isSecretSet(current, 'JWT_SECRET'))
     ? 'Enter to keep the existing secret'
-    : 'Enter to auto-generate';
+    : 'Enter to skip (the server generates an ephemeral secret per boot)';
   const jwtInput = (await prompter.askHidden(`JWT signing secret (${jwtDefaultHint}): `)).trim();
   let jwtSecret;
   if (jwtInput === '') {

@@ -37,12 +37,9 @@ const CONFIG_ENTRIES = Object.freeze([
   { key: 'WEA_DB_QUERY_TIMEOUT_MS', tier: TIER.T0, secret: false, default: 60000 },
   { key: 'NODE_ENV', tier: TIER.T0, secret: false },
   { key: 'DOTENV_CONFIG_PATH', tier: TIER.T0, secret: false },
-  {
-    key: 'JWT_SECRET',
-    tier: TIER.T0,
-    secret: true,
-    default: 'your-secret-key-change-in-production',
-  },
+  // No `default`: JWT_SECRET is optional — when unset/empty the server signs
+  // with an ephemeral per-boot random secret (see server/utils/auth.js).
+  { key: 'JWT_SECRET', tier: TIER.T0, secret: true },
 
   // ── File storage ───────────────────────────────────────────────────────
   { key: 'WEA_FILE_STORAGE', tier: TIER.T1, secret: false, default: 's3' },

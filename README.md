@@ -96,7 +96,6 @@ npm start
 
 ### Required
 
-- **JWT_SECRET**: JWT signing key (must be changed in production; server will not start if unset)
 - **PORT**: Server port (default `5001`)
 - **WEA_FILE_STORAGE**: File content blob storage backend (default `s3`; `webdav` is an option)
 - **S3_BUCKET**: S3/MinIO bucket name (required in default `s3` mode)
@@ -107,6 +106,7 @@ npm start
 
 - **S3_ENDPOINT**: Custom S3 endpoint URL for MinIO/compatible services (forces path-style access; optional in `s3` mode)
 - **WEBDAV_URL / WEBDAV_USERNAME / WEBDAV_PASSWORD**: WebDAV server URL (path prefix allowed) and credentials — **required only when `WEA_FILE_STORAGE=webdav`**
+- **JWT_SECRET**: JWT signing key. Optional — when unset (or empty) an ephemeral random secret is generated at boot; a restart then invalidates all sessions. Multi-instance deployments must set one unified `JWT_SECRET`. When set, the legacy default placeholder only warns. Changes take effect on restart.
 - **JWT_EXPIRES_IN**: JWT expiration (default `30m`, e.g. `15m`, `1h`)
 - **EMAIL_HOST/EMAIL_PORT/EMAIL_SECURE/EMAIL_USER/EMAIL_PASSWORD/EMAIL_FROM_NAME**: SMTP for signup/approval notifications
 - **ADMIN_DEFAULT_PASSWORD**: Default admin password (default `admin`)

@@ -334,6 +334,125 @@ describe('Setup wizard', () => {
     expect(applyBody.metadata).toBeUndefined();
   });
 
+  it('leaves the JWT secret blank on a fresh setup and advances with a blank secret', async () => {
+    const user = userEvent.setup();
+    render(renderSetup());
+    await waitForReady();
+
+    await fillS3Fields(user);
+    await passTest(user);
+    await clickNext(user);
+
+    expect(screen.getByLabelText(/jwt secret/i)).toHaveValue('');
+    await user.type(screen.getByLabelText(/admin password/i), 'admin123');
+    await clickNext(user);
+    expect(screen.getByLabelText(/server port/i)).toBeInTheDocument();
+  });
+
+  it('omits jwt.secret from the apply payload when the JWT secret is left blank', async () => {
+    let applyBody = null;
+    server.use(
+      http.post('/api/setup/apply', async ({ request }) => {
+        applyBody = await request.json();
+        return HttpResponse.json({ restart_required: true });
+      })
+    );
+
+    const user = userEvent.setup();
+    render(renderSetup());
+    await waitForReady();
+
+    await fillS3Fields(user);
+    await passTest(user);
+    await clickNext(user);
+    await user.type(screen.getByLabelText(/admin password/i), 'admin123');
+    await clickNext(user);
+    await clickNext(user); // optional
+    await user.click(screen.getByRole('button', { name: /apply & finish/i }));
+
+    await waitFor(() => {
+      expect(applyBody).not.toBeNull();
+    });
+    expect(applyBody.jwt.secret).toBeUndefined();
+    expect(applyBody.jwt.expiresIn).toBe('30m');
+  });
+
+  it('sends an operator-supplied JWT secret in the apply payload', async () => {
+    let applyBody = null;
+    server.use(
+      http.post('/api/setup/apply', async ({ request }) => {
+        applyBody = await request.json();
+        return HttpResponse.json({ restart_required: true });
+      })
+    );
+
+    const user = userEvent.setup();
+    render(renderSetup());
+    await waitForReady();
+
+    await fillS3Fields(user);
+    await passTest(user);
+    await clickNext(user);
+    await user.type(screen.getByLabelText(/admin password/i), 'admin123');
+    await user.type(screen.getByLabelText(/jwt secret/i), 'an-operator-secret');
+    await clickNext(user);
+    await clickNext(user); // optional
+    await user.click(screen.getByRole('button', { name: /apply & finish/i }));
+
+    await waitFor(() => {
+      expect(applyBody).not.toBeNull();
+    });
+    expect(applyBody.jwt.secret).toBe('an-operator-secret');
+    expect(applyBody.jwt.expiresIn).toBe('30m');
+  });
+
+  it('preserves a masked JWT secret prefill as the **** marker in the apply payload', async () => {
+    server.use(
+      http.get('/api/setup/status', () =>
+        HttpResponse.json({
+          setup_complete: false,
+          missing: [],
+          current: {
+            WEA_FILE_STORAGE: 's3',
+            PORT: '5001',
+            JWT_SECRET: '****',
+            S3_BUCKET: 'prefilled-bucket',
+            AWS_REGION: 'us-east-1',
+            AWS_ACCESS_KEY_ID: 'prefilled-key',
+            AWS_SECRET_ACCESS_KEY: '****',
+          },
+        })
+      )
+    );
+
+    let applyBody = null;
+    server.use(
+      http.post('/api/setup/apply', async ({ request }) => {
+        applyBody = await request.json();
+        return HttpResponse.json({ restart_required: true });
+      })
+    );
+
+    const user = userEvent.setup();
+    render(renderSetup());
+    await waitForReady();
+
+    expect(screen.getByLabelText(/secret access key/i)).toHaveValue('****');
+    await passTest(user);
+    await clickNext(user);
+    expect(screen.getByLabelText(/jwt secret/i)).toHaveValue('****');
+    await user.type(screen.getByLabelText(/admin password/i), 'admin123');
+    await clickNext(user);
+    await clickNext(user); // optional
+    await user.click(screen.getByRole('button', { name: /apply & finish/i }));
+
+    await waitFor(() => {
+      expect(applyBody).not.toBeNull();
+    });
+    expect(applyBody.jwt.secret).toBe('****');
+    expect(applyBody.jwt.expiresIn).toBe('30m');
+  });
+
   it('disables Next until the connection test passes (s3 step)', async () => {
     const user = userEvent.setup();
     render(renderSetup());

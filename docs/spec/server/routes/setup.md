@@ -46,7 +46,7 @@ Public, always available. Computes `setup_complete` from the currently **effecti
 
 - `metadata`: presence-selected — sqlite (default) when none of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` is set; the remote PostgreSQL backend when all four are set (a partial set is a boot-time configuration error listing the missing keys; `server/store/storage.js:getBackend()`).
 - `file`: `WEA_FILE_STORAGE` (default `s3`) — `s3` requires the 4 `S3_*`/`AWS_*` keys (`server/infrastructure/adapters/blobstore/index.js:7-13`); `webdav` requires `WEBDAV_URL`/`WEBDAV_USERNAME`/`WEBDAV_PASSWORD`.
-- `jwt`: `JWT_SECRET` non-default required only when `NODE_ENV=production` (`server/utils/auth.js:5-12`; D7).
+- `jwt`: never a completeness factor — `JWT_SECRET` is optional in every environment and does not gate `setup_complete`.
 
 The `current` block therefore prefills operator-entered values from the DB `settings` table (plaintext values as stored; secrets masked, never surfaced here).
 
@@ -116,7 +116,7 @@ Probe references:
 
 #### POST /api/setup/apply
 
-Public; **403 when already complete** (gate uses the same effective view as `/status`). Validates every block (unknown keys rejected, `400` with per-field errors), then **writes the payload's startup-critical T0 keys into the resolved `.env`** (`JWT_SECRET`) and **upserts every non-T0 key into the connected metadata DB `settings` table as plaintext** (row key = raw env var name, D11). The `metadata` block is **optional** (D7); when present, `metadata.backend === 'postgresql'` is rejected `400` `fields.metadata='notAllowed'` — the DB connection is `.env`-owned (D6): the backend is presence-selected at boot (any `WEA_DB_*` credential → PostgreSQL, else sqlite default), and apply upserts into the **booted** store's `settings` table regardless of which backend that is. The metadata-backend T0 keys (the `WEA_DB_*` block and `WEA_SQLITE_PATH`) are **never** written by apply. Implemented by the shared `setupCore.applySetup`, which is also the single apply core of the CLI setup tool (`docs/features/setup-cli.md`).
+Public; **403 when already complete** (gate uses the same effective view as `/status`). Validates every block (unknown keys rejected, `400` with per-field errors), then **writes the supplied `JWT_SECRET` T0 value into the resolved `.env` when present in the payload** (the jwt block is optional) and **upserts every non-T0 key into the connected metadata DB `settings` table as plaintext** (row key = raw env var name, D11). The `metadata` block is **optional** (D7); when present, `metadata.backend === 'postgresql'` is rejected `400` `fields.metadata='notAllowed'` — the DB connection is `.env`-owned (D6): the backend is presence-selected at boot (any `WEA_DB_*` credential → PostgreSQL, else sqlite default), and apply upserts into the **booted** store's `settings` table regardless of which backend that is. The metadata-backend T0 keys (the `WEA_DB_*` block and `WEA_SQLITE_PATH`) are **never** written by apply. Implemented by the shared `setupCore.applySetup`, which is also the single apply core of the CLI setup tool (`docs/features/setup-cli.md`).
 
 **Request:**
 
@@ -142,9 +142,10 @@ Public; **403 when already complete** (gate uses the same effective view as `/st
 3. **Masked (unchanged) secrets keep their existing stored value:** the client sends the prefill mask `'****'` for a secret it did not edit; validation accepts it (non-empty) but apply **drops** any `'****'` secret entry before the DB write, so the stored value is never overwritten by the mask.
 4. Partition the entries by registry tier (`partitionEntries`):
    - **T0 → `.env`** (via `envFileWriter`, atomic `0600`, backup, merge-preserves unknown
-     lines): `JWT_SECRET` (always written — D4 env-only; the boot auth key must exist after
-     restart). The metadata-backend T0 keys (the `WEA_DB_*` block and `WEA_SQLITE_PATH`)
-     are explicitly **excluded** — they are `.env`-owned (D6), presence-selected at boot, and never written by apply.
+     lines): `JWT_SECRET` (written only when the payload supplies a non-empty value — D4
+     env-only; the jwt block is optional, and an apply without one writes nothing to `.env`).
+     The metadata-backend T0 keys (the `WEA_DB_*` block and `WEA_SQLITE_PATH`) are explicitly
+     **excluded** — they are `.env`-owned (D6), presence-selected at boot, and never written by apply.
    - **Non-T0 → DB `settings`** (row key = raw env var name):
      `WEA_FILE_STORAGE`, `S3_BUCKET` / `AWS_REGION` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `S3_ENDPOINT` (s3), `WEBDAV_URL` / `WEBDAV_USERNAME` / `WEBDAV_PASSWORD` / `WEBDAV_AUTH_TYPE` (webdav), `PORT`, `CORS_ORIGINS`, `JWT_EXPIRES_IN`, `EMAIL_HOST` / `EMAIL_PORT` / `EMAIL_USER` / `EMAIL_PASSWORD` / `EMAIL_SECURE` / `EMAIL_FROM_NAME`.
 5. **Write the `.env` subset FIRST** (atomic temp-file + rename). Ordering guarantee: if the `.env` write fails, the DB has not been touched, so boot still shows setup mode — a failed apply can never leave a committed-but-error "complete" state.
@@ -219,10 +220,10 @@ Connection-test taxonomy codes are module-local i18n keys (same `ns.key` format;
 ### 2.8 Integration Test Scenarios
 
 - [ ] GET /status returns derived `{ setup_complete, missing, current }` with secrets masked
-- [ ] Fresh (no env) → incomplete with the exact missing list; full s3+sqlite → complete; full pg+webdav → complete; prod + default JWT → incomplete
+- [ ] Fresh (no env) → incomplete with the exact missing list; full s3+sqlite → complete; full pg+webdav → complete; prod with unset or default `JWT_SECRET` → complete (jwt never gates `setup_complete`)
 - [ ] GET /status prefills `current` from DB `settings` rows (effective env-first view)
 - [ ] POST /test passes through postgresql/s3/webdav probe results; error shapes are `{ ok: false, errorCode, message, reason? }` with the classified taxonomy codes
-- [ ] POST /apply (sqlite+webdav): only `JWT_SECRET` (always) is written to `.env` (mode 0600); the metadata T0 keys (the `WEA_DB_*` block, `WEA_SQLITE_PATH`) are never written by apply; non-T0 keys are upserted into the **booted** metadata DB `settings` table as plaintext strings (secrets included, readable back as-is)
+- [ ] POST /apply (sqlite+webdav, jwt supplied): `JWT_SECRET` is written to `.env` (mode 0600) only when the payload supplies one; an apply with no jwt block writes no `.env` T0 value; the metadata T0 keys (the `WEA_DB_*` block, `WEA_SQLITE_PATH`) are never written by apply; non-T0 keys are upserted into the **booted** metadata DB `settings` table as plaintext strings (secrets included, readable back as-is)
 - [ ] POST /apply with `metadata.backend === 'postgresql'` → 400 `fields.metadata='notAllowed'` (the DB connection is `.env`-owned; apply never runs settings DDL or upserts against a target PG); a non-T0 apply upserts into the booted store's `settings` table and updates the `admin` password on that store
 - [ ] POST /apply → `restart_required: true` and `getSharedResolver().invalidateCache()` is invoked
 - [ ] POST /apply when already complete → 403 `setup.complete`

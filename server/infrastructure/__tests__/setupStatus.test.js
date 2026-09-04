@@ -47,45 +47,46 @@ describe('computeSetupStatus', () => {
     });
   });
 
-  describe('jwt in production', () => {
-    it('is incomplete when JWT_SECRET equals the default', () => {
-      const env = {
-        NODE_ENV: 'production',
-        JWT_SECRET: 'your-secret-key-change-in-production',
-        S3_BUCKET: 'my-bucket',
-        AWS_REGION: 'us-east-1',
-        AWS_ACCESS_KEY_ID: 'AKIAEXAMPLE',
-        AWS_SECRET_ACCESS_KEY: 'secret-value',
-      };
-      const status = computeSetupStatus(env);
-      expect(status.setup_complete).toBe(false);
-      expect(status.missing).toContain('JWT_SECRET');
+  describe('JWT_SECRET is never a completeness condition (any NODE_ENV)', () => {
+    // JWT_SECRET is optional (docs/features/config-source-resolution.md): an
+    // unset secret falls back to an ephemeral per-boot random in auth.js, so it
+    // never gates setup_complete and never appears in `missing`.
+    const fullS3Env = {
+      S3_BUCKET: 'my-bucket',
+      AWS_REGION: 'us-east-1',
+      AWS_ACCESS_KEY_ID: 'AKIAEXAMPLE',
+      AWS_SECRET_ACCESS_KEY: 'secret-value',
+    };
+
+    it('is complete in production when JWT_SECRET is unset', () => {
+      const status = computeSetupStatus({ NODE_ENV: 'production', ...fullS3Env });
+      expect(status.setup_complete).toBe(true);
+      expect(status.missing).toEqual([]);
+      expect(status.missing).not.toContain('JWT_SECRET');
     });
 
-    it('is complete with a non-default JWT_SECRET', () => {
-      const env = {
+    it('is complete in production when JWT_SECRET equals the legacy placeholder', () => {
+      const status = computeSetupStatus({
         NODE_ENV: 'production',
-        JWT_SECRET: 'a-real-secret',
-        S3_BUCKET: 'my-bucket',
-        AWS_REGION: 'us-east-1',
-        AWS_ACCESS_KEY_ID: 'AKIAEXAMPLE',
-        AWS_SECRET_ACCESS_KEY: 'secret-value',
-      };
-      const status = computeSetupStatus(env);
+        JWT_SECRET: 'your-secret-key-change-in-production',
+        ...fullS3Env,
+      });
       expect(status.setup_complete).toBe(true);
       expect(status.missing).toEqual([]);
     });
 
-    it('does not require JWT_SECRET outside production', () => {
-      const env = {
+    it('is complete in production with a non-default JWT_SECRET', () => {
+      const status = computeSetupStatus({ NODE_ENV: 'production', JWT_SECRET: 'a-real-secret', ...fullS3Env });
+      expect(status.setup_complete).toBe(true);
+      expect(status.missing).toEqual([]);
+    });
+
+    it('is complete in non-production environments too (no special-casing)', () => {
+      const status = computeSetupStatus({
         NODE_ENV: 'development',
         JWT_SECRET: 'your-secret-key-change-in-production',
-        S3_BUCKET: 'my-bucket',
-        AWS_REGION: 'us-east-1',
-        AWS_ACCESS_KEY_ID: 'AKIAEXAMPLE',
-        AWS_SECRET_ACCESS_KEY: 'secret-value',
-      };
-      const status = computeSetupStatus(env);
+        ...fullS3Env,
+      });
       expect(status.setup_complete).toBe(true);
       expect(status.missing).toEqual([]);
     });
@@ -178,7 +179,7 @@ describe('computeSetupStatus', () => {
       expect(status.missing).toEqual([]);
     });
 
-    it('still requires JWT_SECRET in production when effective value is masked', () => {
+    it('does not treat a masked effective JWT_SECRET as a completeness gap in production', () => {
       const env = { NODE_ENV: 'production' };
       const effectiveConfig = {
         NODE_ENV: { value: 'production', source: 'env', tier: 'T0', secret: false },
@@ -189,8 +190,9 @@ describe('computeSetupStatus', () => {
         AWS_SECRET_ACCESS_KEY: { value: '****', source: 'db', tier: 'T1', secret: true },
       };
       const status = computeSetupStatus(env, { effectiveConfig });
-      expect(status.setup_complete).toBe(false);
-      expect(status.missing).toContain('JWT_SECRET');
+      expect(status.setup_complete).toBe(true);
+      expect(status.missing).toEqual([]);
+      expect(status.missing).not.toContain('JWT_SECRET');
     });
 
     it('keeps backward compatibility when no effectiveConfig is given', () => {

@@ -44,6 +44,11 @@
 | `T1` | Boot-frozen (require-time consts) | env → DB → default; effect requires restart          |
 | `T2` | Runtime / hot                     | env → DB → default; effect immediate                 |
 
+`JWT_SECRET` is the **optional T0 exception**: env-owned and boot-frozen, but **not
+required**. When the env var is unset/empty the read site generates an ephemeral random
+secret at boot for that process (restart → new secret → sessions invalidated); only a set
+value is used verbatim.
+
 Precedence invariant (D1): env wins whenever set; DB is read only when the env var is absent.
 
 ---
@@ -66,7 +71,7 @@ Precedence invariant (D1): env wins whenever set; DB is read only when the env v
 | `WEA_DB_CONNECTION_TIMEOUT_MS` | T0   | no      | `10000`                                  |
 | `NODE_ENV`                     | T0   | no      | —                                        |
 | `DOTENV_CONFIG_PATH`           | T0   | no      | —                                        |
-| `JWT_SECRET`                   | T0   | **yes** | `'your-secret-key-change-in-production'` |
+| `JWT_SECRET`                   | T0   | **yes** | — (none — unset → ephemeral per-boot random)         |
 
 ### File storage
 

@@ -26,11 +26,14 @@ Today the app reads configuration from `process.env` at require time
 (`server/index.js:10-18`) plus the metadata DB `settings` table, and the first-run wizard
 persists values across both layers. This feature describes the two-layer model in detail:
 
-1. **T0 (startup) — `.env` only:** just enough to connect to the metadata DB
-   (the remote-DB block `WEA_DB_HOST` / `WEA_DB_DATABASE` / `WEA_DB_USER` /
+1. **T0 (startup) — `.env` only:** the boot-required set is just enough to connect to the
+   metadata DB (the remote-DB block `WEA_DB_HOST` / `WEA_DB_DATABASE` / `WEA_DB_USER` /
    `WEA_DB_PASSWORD` plus optional pool/SSL keys — selecting the PostgreSQL backend
    when any is set — or `WEA_SQLITE_PATH` for the default SQLite backend, `NODE_ENV`,
-   `DOTENV_CONFIG_PATH`) and `JWT_SECRET`.
+   `DOTENV_CONFIG_PATH`). `JWT_SECRET` is also `.env`-owned T0 but **optional**: when unset or
+   empty the server generates an ephemeral random secret at boot for that process (a restart
+   yields a new secret and invalidates all sessions); multi-instance deployments must set one
+   unified value.
 2. **Everything else — DB `settings` table with `.env` fallback:** a value present in `.env`
    always wins (D1); otherwise the DB row is used; otherwise the built-in default.
 
@@ -70,9 +73,11 @@ connection before the metadata DB exists.
 `WEA_DB_DATABASE`, `WEA_DB_USER`, `WEA_DB_PASSWORD`, `WEA_DB_SSL`, `WEA_DB_MAX`,
 `WEA_DB_IDLE_TIMEOUT_MS`, `WEA_DB_CONNECTION_TIMEOUT_MS`, `PGSSLMODE`, `NODE_ENV`,
 `DOTENV_CONFIG_PATH`, `JWT_SECRET`.
-Rationale: the metadata DB cannot be reached before its own connection info exists;
-`JWT_SECRET` is the boot auth key (D4) and, like the metadata connection, is startup-critical
-and `.env`-only.
+Rationale: the metadata DB cannot be reached before its own connection info exists.
+`JWT_SECRET` is the boot auth key (D4): it stays `.env`-only and frozen at require time, but it
+is **optional** — when unset or empty the server generates an ephemeral random secret at boot
+for that process (a restart yields a new secret and invalidates all sessions). Multi-instance
+deployments must set one unified `JWT_SECRET` so every instance signs with the same secret.
 
 **T1 — env → DB fallback, restart required (boot-frozen):** `PORT`, `WEA_FILE_STORAGE`,
 `S3_BUCKET`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (secret, D8),
@@ -149,11 +154,12 @@ Apply (`POST /api/setup/apply`, shared by the wizard and the CLI via
 `server/domains/setup/setupCore.js` `applySetup`) stores operator-entered values in the
 metadata DB by default; only T0 keys are written to `.env`.
 
-- **`.env` gets only `JWT_SECRET`.** The apply payload never produces metadata entries
-  (`buildEnvEntries` emits no `WEA_DB_*` / `WEA_SQLITE_PATH` keys), and `partitionEntries`
-  (`setupCore.js`) additionally drops the `WEA_DB_*` / `WEA_SQLITE_PATH` set — the DB
-  connection is `.env`-owned, so apply never writes it. No other
-  key (in particular no master/encryption key) is generated or written to `.env`.
+- **`.env` gets only `JWT_SECRET`, and only when the operator supplies one.** An omitted `jwt`
+  payload block leaves `.env` untouched and the boot-time ephemeral random secret applies. The
+  apply payload never produces metadata entries (`buildEnvEntries` emits no `WEA_DB_*` /
+  `WEA_SQLITE_PATH` keys), and `partitionEntries` (`setupCore.js`) additionally drops the
+  `WEA_DB_*` / `WEA_SQLITE_PATH` set — the DB connection is `.env`-owned, so apply never writes
+  it. No other key (in particular no master/encryption key) is generated or written to `.env`.
 - **Metadata backend `postgresql` is rejected with 400 `metadata.backend: notAllowed`**
   (`validateMetadata` via `validateApplyPayload`, `setupCore.js`) — PostgreSQL metadata is
   not configurable through the wizard/CLI apply.
@@ -176,7 +182,8 @@ metadata DB by default; only T0 keys are written to `.env`.
 
 ## Boot order
 
-1. Load `.env` → T0 (metadata connection + `NODE_ENV` + `JWT_SECRET`).
+1. Load `.env` → T0 (metadata connection + `NODE_ENV`; plus `JWT_SECRET`, which is optional —
+   an ephemeral random fallback is generated at boot when it is unset).
 2. Connect to the metadata DB using T0 only (D10: failure = boot failure). For sqlite this is
    the local store; for the remote backend the `WEA_DB_*` connection.
 3. Compute the **effective config** = env-first over the plaintext DB `settings` rows and
@@ -189,8 +196,9 @@ metadata DB by default; only T0 keys are written to `.env`.
 
 ### Setup-vs-boot decision (`setup_complete`)
 
-`setup_complete` = T0 resolvable (metadata connection from `.env`) **AND** the required
-non-T0 blocks are satisfiable from the **effective config** (env-first over DB rows).
+`setup_complete` = the metadata connection resolvable from `.env` **AND** the required
+non-T0 blocks satisfiable from the **effective config** (env-first over DB rows). `JWT_SECRET`
+is not part of this decision.
 Consequently, when `.env` has the PG connection info, boot still branches on what the DB holds:
 
 1. **DB lacks required non-T0 config** → `setup_complete=false` → wizard shown; it reads and
@@ -321,8 +329,9 @@ Representative observable behaviors to cover:
 - Secret rows round-trip as plaintext: a value written via the admin UI or wizard apply is
   stored verbatim and read back verbatim on the server; env-sourced secrets are never read from
   DB.
-- Wizard apply writes `JWT_SECRET` to `.env` and the rest (secrets included) to the DB as
-  plaintext; existing full-`.env` installs keep working unchanged (`.env` wins).
+- Wizard apply writes `JWT_SECRET` to `.env` only when the operator supplies one (an empty `jwt`
+  block writes nothing and the boot-time ephemeral secret applies); the rest (secrets included)
+  goes to the DB as plaintext; existing full-`.env` installs keep working unchanged (`.env` wins).
 - Masked `'****'`/blank secret submissions keep the previously stored value on every write
   path; a new value overwrites it.
 - `GET /api/setup/status`, `GET /api/admin/config`, and `POST /api/setup/prefill` never return

@@ -29,8 +29,10 @@ The CLI performs the **exact same apply as `POST /api/setup/apply`**, through th
 
 - validates the collected blocks (`validateApplyPayload` semantics),
 - partitions T0 (`.env`) vs DB-`settings` entries,
-- writes `.env` atomically (`0600`, backup file) — only the T0 subset of the payload
-  (`JWT_SECRET`); the metadata-backend T0 keys stay env-owned and are never written by apply,
+- writes `.env` atomically (`0600`, backup file) — `JWT_SECRET` only when a secret is
+  supplied (the CLI no longer auto-generates-and-persists a default; omitting it is valid and
+  the server then falls back to an ephemeral per-boot secret); the metadata-backend T0 keys
+  stay env-owned and are never written by apply,
 - updates the `admin` account password,
 - upserts DB-`settings` rows as **plaintext** (secret values included; a masked `'****'`
   secret input preserves the previously stored value),
@@ -64,7 +66,7 @@ restart (or a fresh boot) binds all interfaces and runs fully configured.
 | `--webdav-url` / `--webdav-username` / `--webdav-password`                                                   | webdav                | WebDAV credential block.                                                                                        |
 | `--webdav-auth-type`                                                                                         | webdav (opt)          | `auto`/`basic`/`digest`.                                                                                        |
 | `--admin-password`                                                                                           | apply                 | New `admin` password (username fixed to `admin`).                                                               |
-| `--jwt-secret`                                                                                               | apply (opt)           | JWT signing secret; auto-generated (crypto-secure) when omitted.                                                |
+| `--jwt-secret`                                                                                               | apply (opt)           | Optional JWT signing secret — no auto-generated default write. If supplied it is persisted to `.env` (survives restarts); if omitted nothing is written and the server uses an ephemeral per-boot secret (restart invalidates all sessions). Multi-instance deployments must set one unified value. |
 | `--jwt-expires-in`                                                                                           | opt                   | Session duration (e.g. `30m`, `7d`).                                                                            |
 | `--port`                                                                                                     | opt                   | Server port.                                                                                                    |
 | `--cors-origins`                                                                                             | opt                   | Allowed browser origins (comma-separated).                                                                      |
@@ -104,7 +106,8 @@ so "what the CLI sees" is "what the next server boot sees".
 - Interactive/flag parsing, required-field validation errors (exit non-zero, nothing written).
 - Refusal with exit code when `setup_complete === true`.
 - `--status` prints the derived state with secrets masked.
-- Apply on a throwaway sqlite store: `.env` written `0600` with the expected keys (only the
-  T0 subset, i.e. `JWT_SECRET`); `settings` rows upserted (secrets stored as plaintext);
+- Apply on a throwaway sqlite store: `.env` written `0600` and containing `JWT_SECRET` only
+  when a secret was supplied (an omitted secret writes nothing and the server falls back to an
+  ephemeral per-boot secret); `settings` rows upserted (secrets stored as plaintext);
   `computeSetupStatus` becomes `setup_complete: true`; `--status` after apply reports complete.
 - `--check` runs the file-backend probe without writing.

@@ -362,7 +362,7 @@ describe('setup.js apply happy path (throwaway sqlite store)', () => {
     expect(status.missing).toEqual([]);
   });
 
-  it('accepts secrets from WEA_SETUP_* env vars and never echoes them', async () => {
+  it('accepts secrets from WEA_SETUP_* env vars, never echoes them, and writes no .env when no JWT secret is supplied', async () => {
     const { envPath } = freshScratchEnv();
     process.env.WEA_SETUP_ADMIN_PASSWORD = 'env-admin-pass';
     process.env.WEA_SETUP_WEBDAV_PASSWORD = 'env-webdav-pass';
@@ -381,8 +381,40 @@ describe('setup.js apply happy path (throwaway sqlite store)', () => {
     expect(allOut).not.toContain('env-webdav-pass');
     expect(allOut).not.toContain('env-admin-pass');
 
+    // No --jwt-secret / WEA_SETUP_JWT_SECRET supplied: JWT_SECRET is optional
+    // and nothing is written to .env (the server signs with an ephemeral
+    // per-boot secret), so the .env partition is empty and no file is created.
+    expect(fs.existsSync(envPath)).toBe(false);
+    const rows = await Settings.getAll();
+    expect(rows.WEBDAV_PASSWORD).toBe('env-webdav-pass');
+    expect(rows).not.toHaveProperty('JWT_SECRET');
+
+    const admin = await User.findByUsername('admin');
+    expect(await bcrypt.compare('env-admin-pass', admin.password)).toBe(true);
+  });
+
+  it('writes JWT_SECRET to .env when supplied via the WEA_SETUP_JWT_SECRET env var', async () => {
+    const { envPath } = freshScratchEnv();
+    process.env.WEA_SETUP_ADMIN_PASSWORD = 'env-admin-pass';
+    process.env.WEA_SETUP_WEBDAV_PASSWORD = 'env-webdav-pass';
+    process.env.WEA_SETUP_JWT_SECRET = 'env-supplied-jwt-secret';
+    const { output, lines } = makeOutput();
+    const args = [
+      '--yes',
+      '--file-backend=webdav',
+      '--webdav-url=https://dav.example.com',
+      '--webdav-username=dav-user',
+    ];
+
+    const code = await main(args, { output, input: NON_TTY_INPUT });
+
+    expect(code).toBe(0);
+    const allOut = [...lines.log, ...lines.error].join('\n');
+    expect(allOut).not.toContain('env-supplied-jwt-secret');
+
+    expect(fs.existsSync(envPath)).toBe(true);
     const env = readEnvFile(envPath);
-    expect(env.JWT_SECRET).toMatch(/^[a-f0-9]{64}$/);
+    expect(env.JWT_SECRET).toBe('env-supplied-jwt-secret');
     expect(env).not.toHaveProperty('encrypt_secret_key');
     const rows = await Settings.getAll();
     expect(rows.WEBDAV_PASSWORD).toBe('env-webdav-pass');

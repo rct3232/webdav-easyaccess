@@ -107,7 +107,7 @@ function prefillForm(prev, current) {
 
   next.jwt = {
     ...next.jwt,
-    secret: current.JWT_SECRET ? SECRET_MASK : next.jwt.secret || generateJwtSecret(),
+    secret: current.JWT_SECRET ? SECRET_MASK : '',
     expiresIn: current.JWT_EXPIRES_IN != null ? current.JWT_EXPIRES_IN : next.jwt.expiresIn,
   };
   next.server = {
@@ -298,11 +298,6 @@ export function useSetupWizard() {
   );
 
   const buildApplyPayload = useCallback(() => {
-    const jwtSecret =
-      !form.jwt.secret || form.jwt.secret === SECRET_MASK ? generateJwtSecret() : form.jwt.secret;
-    // A masked (unchanged) secret is sent as the '****' marker so the server can
-    // keep its existing value. The metadata DB connection is .env-owned (D6/D7)
-    // and never appears in the apply payload.
     const file =
       form.fileBackend === 's3'
         ? {
@@ -320,10 +315,17 @@ export function useSetupWizard() {
             password: form.webdav.password,
             authType: 'auto',
           };
+    // A masked (unchanged) secret is sent as the '****' marker so the server can
+    // keep its existing value. The metadata DB connection is .env-owned (D6/D7)
+    // and never appears in the apply payload.
+    const jwt = {
+      ...(form.jwt.secret ? { secret: form.jwt.secret } : {}),
+      expiresIn: form.jwt.expiresIn || DEFAULT_EXPIRES_IN,
+    };
     return {
       file,
       admin: { password: form.admin.password },
-      jwt: { secret: jwtSecret, expiresIn: form.jwt.expiresIn || DEFAULT_EXPIRES_IN },
+      jwt,
       server: { port: form.server.port, corsOrigins: form.server.corsOrigins },
       email: {
         host: form.email.host,
@@ -376,6 +378,7 @@ export function useSetupWizard() {
       adminUsernameFixed: t('setup.adminUsernameFixed'),
       adminPassword: t('setup.adminPassword'),
       jwtSecret: t('setup.jwtSecret'),
+      jwtSecretHelp: t('setup.jwtSecretHelp'),
       regenerate: t('setup.regenerate'),
       expiresIn: t('setup.expiresIn'),
       expiresInHelp: t('setup.expiresInHelp'),
@@ -433,8 +436,6 @@ function validateStep(step, form, t) {
   if (step === 1) {
     const passwordError = validatePassword(form.admin.password, { minLength: 6 });
     if (passwordError) return getValidationMessage(passwordError, t);
-    const secretError = validateRequired(form.jwt.secret, t('setup.jwtSecret'));
-    if (secretError) return getValidationMessage(secretError, t);
     return null;
   }
   return null;

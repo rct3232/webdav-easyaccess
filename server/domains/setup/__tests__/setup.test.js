@@ -530,19 +530,66 @@ describeIfSqlite('POST /api/setup/apply', () => {
     expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.setup.complete);
   });
 
-  it('returns 400 per-field when required blocks are missing (jwt.secret)', async () => {
+  it('accepts an empty jwt block (blank secret) and writes no .env partition', async () => {
+    const envPath = makeEnvPath('sqlite-webdav-no-jwt');
+    process.env.DOTENV_CONFIG_PATH = envPath;
+
     const res = await request(app)
       .post('/api/setup/apply')
       .send({
         metadata: { backend: 'sqlite' },
-        file: { backend: 'webdav', url: 'https://dav.example.com', username: 'u', password: 'p' },
-        admin: { password: 'pass' },
-        jwt: {},
+        file: {
+          backend: 'webdav',
+          url: 'https://dav.example.com',
+          username: 'u',
+          password: 'p',
+        },
+        admin: { password: 'new-admin-pass' },
+        jwt: { secret: '' },
       });
 
-    expect(res.status).toBe(400);
-    expect(res.body.errorCode).toBe('serverErrors.setup.invalidPayload');
-    expect(res.body.fields['jwt.secret']).toBe('required');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ restart_required: true });
+
+    // No supplied JWT secret -> the T0 .env partition is empty and the .env
+    // write is skipped entirely (JWT_SECRET absent; ephemeral per boot).
+    expect(mockWriteEnv).not.toHaveBeenCalled();
+    expect(fs.existsSync(envPath)).toBe(false);
+
+    const written = Object.fromEntries(settingsSetSpy.mock.calls);
+    expect(written.WEA_FILE_STORAGE).toBe('webdav');
+    expect(written.WEBDAV_URL).toBe('https://dav.example.com');
+    expect(written).not.toHaveProperty('JWT_SECRET');
+    expect(written).not.toHaveProperty('JWT_EXPIRES_IN');
+
+    const admin = await User.findByUsername('admin');
+    expect(await bcrypt.compare('new-admin-pass', admin.password)).toBe(true);
+  });
+
+  it('accepts a payload with no jwt block at all', async () => {
+    const envPath = makeEnvPath('sqlite-webdav-no-jwt-block');
+    process.env.DOTENV_CONFIG_PATH = envPath;
+
+    const res = await request(app)
+      .post('/api/setup/apply')
+      .send({
+        metadata: { backend: 'sqlite' },
+        file: {
+          backend: 'webdav',
+          url: 'https://dav.example.com',
+          username: 'u',
+          password: 'p',
+        },
+        admin: { password: 'new-admin-pass' },
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ restart_required: true });
+    expect(mockWriteEnv).not.toHaveBeenCalled();
+    expect(fs.existsSync(envPath)).toBe(false);
+
+    const written = Object.fromEntries(settingsSetSpy.mock.calls);
+    expect(written).not.toHaveProperty('JWT_SECRET');
   });
 
   it('returns 400 per-field for missing s3 keys and an unknown key', async () => {
@@ -1218,13 +1265,23 @@ describeIfSqlite('setupCore (shared apply core)', () => {
       message: 'Invalid setup payload',
       fields: { body: 'invalid' },
     });
-    const missingJwt = setupCore.validateApplyPayload({
-      metadata: { backend: 'sqlite' },
-      file: { backend: 'webdav', url: 'https://dav.example.com', username: 'u', password: 'p' },
-      admin: { password: 'pass' },
-      jwt: {},
-    });
-    expect(missingJwt.fields['jwt.secret']).toBe('required');
+    // The jwt block is optional: an empty block or a completely absent block is
+    // valid (the server falls back to an ephemeral per-boot secret).
+    expect(
+      setupCore.validateApplyPayload({
+        metadata: { backend: 'sqlite' },
+        file: { backend: 'webdav', url: 'https://dav.example.com', username: 'u', password: 'p' },
+        admin: { password: 'pass' },
+        jwt: {},
+      })
+    ).toBeNull();
+    expect(
+      setupCore.validateApplyPayload({
+        metadata: { backend: 'sqlite' },
+        file: { backend: 'webdav', url: 'https://dav.example.com', username: 'u', password: 'p' },
+        admin: { password: 'pass' },
+      })
+    ).toBeNull();
   });
 
   it('validateApplyPayload: postgresql metadata is rejected with the wizard message', () => {
@@ -1257,6 +1314,27 @@ describeIfSqlite('setupCore (shared apply core)', () => {
     expect(pgT0.dbEntries).toEqual({});
   });
 
+  it('buildEnvEntries + partitionEntries: without a supplied secret the entries carry no JWT_SECRET and the .env partition is empty', () => {
+    const noJwtEntries = setupCore.buildEnvEntries({
+      metadata: { backend: 'sqlite' },
+      file: {
+        backend: 'webdav',
+        url: 'https://dav.example.com',
+        username: 'dav-user',
+        password: 'dav-pass',
+      },
+      admin: { password: 'core-admin-pass' },
+    });
+    expect(noJwtEntries.WEA_FILE_STORAGE).toBe('webdav');
+    expect(noJwtEntries).not.toHaveProperty('JWT_SECRET');
+    expect(noJwtEntries).not.toHaveProperty('JWT_EXPIRES_IN');
+
+    const { envEntries, dbEntries } = setupCore.partitionEntries(noJwtEntries);
+    expect(envEntries).toEqual({});
+    expect(dbEntries.WEA_FILE_STORAGE).toBe('webdav');
+    expect(dbEntries).not.toHaveProperty('JWT_SECRET');
+  });
+
   it('applySetup: valid webdav payload applies wizard-identically and returns restart_required', async () => {
     const result = await setupCore.applySetup(validWebdavPayload());
 
@@ -1281,16 +1359,50 @@ describeIfSqlite('setupCore (shared apply core)', () => {
 
   it('applySetup: rejects an invalid payload with the typed 400 error and writes nothing', async () => {
     const payload = validWebdavPayload();
-    payload.jwt = {};
+    delete payload.file.url;
 
     await expect(setupCore.applySetup(payload)).rejects.toMatchObject({
       errorCode: 'serverErrors.setup.invalidPayload',
       message: 'Invalid setup payload',
-      fields: { 'jwt.secret': 'required' },
+      fields: { 'file.url': 'required' },
     });
     expect(mockWriteEnv).not.toHaveBeenCalled();
     expect(settingsSetSpy).not.toHaveBeenCalled();
     expect(invalidateSpy).not.toHaveBeenCalled();
+  });
+
+  it('applySetup: an empty jwt block applies cleanly, writes no .env partition and no JWT rows', async () => {
+    const payload = validWebdavPayload();
+    payload.jwt = {};
+
+    const result = await setupCore.applySetup(payload);
+    expect(result).toEqual({ restart_required: true });
+
+    // The .env partition is empty (no supplied JWT secret) so writeEnv is
+    // skipped entirely and no JWT_SECRET/JWT_EXPIRES_IN row is persisted.
+    expect(mockWriteEnv).not.toHaveBeenCalled();
+    const written = Object.fromEntries(settingsSetSpy.mock.calls);
+    expect(written.WEA_FILE_STORAGE).toBe('webdav');
+    expect(written.WEBDAV_PASSWORD).toBe('dav-pass');
+    expect(written).not.toHaveProperty('JWT_SECRET');
+    expect(written).not.toHaveProperty('JWT_EXPIRES_IN');
+    expect(invalidateSpy).toHaveBeenCalled();
+
+    const admin = await User.findByUsername('admin');
+    expect(await bcrypt.compare('core-admin-pass', admin.password)).toBe(true);
+  });
+
+  it('applySetup: a payload without a jwt block writes no .env partition and keeps .env absent', async () => {
+    const payload = validWebdavPayload();
+    delete payload.jwt;
+
+    const envPath = makeEnvPath('setupcore-no-jwt');
+    process.env.DOTENV_CONFIG_PATH = envPath;
+
+    const result = await setupCore.applySetup(payload);
+    expect(result).toEqual({ restart_required: true });
+    expect(mockWriteEnv).not.toHaveBeenCalled();
+    expect(fs.existsSync(envPath)).toBe(false);
   });
 
   it('applySetup: a masked (unchanged) secret is dropped, not overwritten', async () => {

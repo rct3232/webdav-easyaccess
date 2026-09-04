@@ -207,7 +207,7 @@ return `403 setup.complete`. Full contract: `docs/spec/server/routes/setup.md`.
 | ------ | ------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------- |
 | GET    | `/api/setup/status` | None | Setup status: `{ setup_complete, missing: string[], current: {…masked} }`.                                                 |
 | POST   | `/api/setup/test`   | None | Test a connection target (`postgresql` / `s3` / `webdav`). 403 `setup.complete` when already complete.                     |
-| POST   | `/api/setup/apply`  | None | Persist configured keys: write `JWT_SECRET` to `.env` and every non-T0 value (secrets as plaintext) to the metadata DB `settings` table. Returns `200 { restart_required: true }`. 403 `setup.complete` when already complete. |
+| POST   | `/api/setup/apply`  | None | Persist configured keys: when the optional `jwt` block is supplied, write its `JWT_SECRET` to `.env`; every non-T0 value (secrets as plaintext) is stored in the metadata DB `settings` table. Returns `200 { restart_required: true }`. 403 `setup.complete` when already complete. |
 
 ---
 

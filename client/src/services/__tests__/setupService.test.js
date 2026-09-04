@@ -18,7 +18,6 @@ describe('setupService', () => {
             'AWS_SECRET_ACCESS_KEY',
           ]),
           current: expect.objectContaining({
-            WEA_STORAGE_BACKEND: 'sqlite',
             WEA_FILE_STORAGE: 's3',
             PORT: '5001',
             JWT_SECRET: '',

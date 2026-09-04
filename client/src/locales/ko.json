@@ -459,17 +459,17 @@
         "runtime": "런타임"
       },
       "key": {
-        "WEA_STORAGE_BACKEND": "메타데이터 저장소 종류",
         "WEA_SQLITE_PATH": "SQLite 경로",
-        "WEA_PG_HOST": "PostgreSQL 호스트",
-        "WEA_PG_PORT": "PostgreSQL 포트",
-        "WEA_PG_DATABASE": "PostgreSQL 데이터베이스",
-        "WEA_PG_USER": "PostgreSQL 사용자",
-        "WEA_PG_PASSWORD": "PostgreSQL 비밀번호",
-        "WEA_PG_SSL": "PostgreSQL SSL",
-        "WEA_PG_MAX": "PostgreSQL 최대 연결 수",
-        "WEA_PG_IDLE_TIMEOUT_MS": "PostgreSQL 유휴 타임아웃 (ms)",
-        "WEA_PG_CONNECTION_TIMEOUT_MS": "PostgreSQL 연결 타임아웃 (ms)",
+        "WEA_DB_HOST": "데이터베이스 호스트",
+        "WEA_DB_PORT": "데이터베이스 포트",
+        "WEA_DB_DATABASE": "데이터베이스 이름",
+        "WEA_DB_USER": "데이터베이스 사용자",
+        "WEA_DB_PASSWORD": "데이터베이스 비밀번호",
+        "WEA_DB_SSL": "데이터베이스 SSL",
+        "WEA_DB_MAX": "데이터베이스 최대 연결 수",
+        "WEA_DB_IDLE_TIMEOUT_MS": "데이터베이스 유휴 타임아웃 (ms)",
+        "WEA_DB_CONNECTION_TIMEOUT_MS": "데이터베이스 연결 타임아웃 (ms)",
+        "WEA_DB_QUERY_TIMEOUT_MS": "데이터베이스 쿼리 타임아웃 (ms)",
         "NODE_ENV": "Node 환경",
         "DOTENV_CONFIG_PATH": "환경 변수 파일 경로",
         "WEA_FILE_STORAGE": "파일 저장소 종류",
@@ -575,7 +575,7 @@
     "start": "마이그레이션 시작",
     "starting": "시작 중...",
     "startFail": "마이그레이션을 시작하지 못했습니다.",
-    "envNote": "마이그레이션 완료 후 .env에서 WEA_STORAGE_BACKEND(및 WEA_PG_* / WEA_SQLITE_PATH 값)를 업데이트하고 서버를 재시작하여 전환을 완료하세요."
+    "envNote": "마이그레이션 완료 후 .env에서 WEA_DB_* / WEA_SQLITE_PATH 값을 편집하고 서버를 재시작하여 전환을 완료하세요. 메타데이터 백엔드는 WEA_DB_* 설정의 존재 여부에 따라 선택됩니다."
   },
   "migrationPage": {
     "title": "마이그레이션",
@@ -606,7 +606,7 @@
     "loading": "마이그레이션 불러오는 중...",
     "errorReason": "사유: {{reason}}",
     "terminalCompletedTitle": "마이그레이션 완료",
-    "terminalCompletedMetadataBody": "{{backend}}로의 메타데이터 마이그레이션이 완료되었습니다. 전환을 완료하려면 .env에서 WEA_STORAGE_BACKEND와 WEA_PG_* / WEA_SQLITE_PATH 값을 업데이트한 후 서버를 재시작하세요.",
+    "terminalCompletedMetadataBody": "{{backend}}로의 메타데이터 마이그레이션이 완료되었습니다. 전환을 완료하려면 .env에서 WEA_DB_* / WEA_SQLITE_PATH 값을 편집한 후 서버를 재시작하세요. 메타데이터 백엔드는 WEA_DB_* 설정의 존재 여부에 따라 선택됩니다.",
     "terminalCompletedBlobsPersistedBody": "블롭 마이그레이션이 완료되었습니다. 대상 스토리지 구성({{keys}})이 서버 설정에 저장되었습니다. 전환을 완료하려면 서버를 재시작하세요.",
     "terminalCompletedBlobsEnvSourcedBody": "블롭 마이그레이션이 완료되었습니다. 대상 스토리지는 환경 변수({{keys}})로 구성되어 있습니다. .env에서 수동으로 업데이트한 후 서버를 재시작하여 전환을 완료하세요.",
     "terminalCompletedBlobsDefaultBody": "블롭 마이그레이션이 완료되었습니다. 스토리지 전환을 완료하려면 서버를 재시작하세요.",
@@ -955,7 +955,7 @@
     },
     "storage": {
       "invalidPathMapping": "잘못된 경로 매핑입니다.",
-      "postgresqlNotConfigured": "PostgreSQL이 설정되지 않았습니다. WEA_PG_* 설정을 확인하세요."
+      "postgresqlNotConfigured": "PostgreSQL이 설정되지 않았습니다. .env의 WEA_DB_* 설정을 확인하세요."
     },
     "utilsAuth": {
       "accessTokenRequired": "액세스 토큰이 필요합니다.",

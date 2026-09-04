@@ -42,38 +42,38 @@ const GROUP_LABEL_KEYS = {
 // deploy-time (Section B), never Section A inputs — but each needs a label.
 const CONFIG_DISPLAY_META = {
   // ── Metadata / boot (Section B: deploy-time read-only) ─────────────────
-  WEA_STORAGE_BACKEND: {
-    labelKey: 'admin.config.key.WEA_STORAGE_BACKEND',
-    group: 'metadata',
-    inputType: 'text',
-  },
   WEA_SQLITE_PATH: {
     labelKey: 'admin.config.key.WEA_SQLITE_PATH',
     group: 'metadata',
     inputType: 'text',
   },
-  WEA_PG_HOST: { labelKey: 'admin.config.key.WEA_PG_HOST', group: 'metadata', inputType: 'text' },
-  WEA_PG_PORT: { labelKey: 'admin.config.key.WEA_PG_PORT', group: 'metadata', inputType: 'text' },
-  WEA_PG_DATABASE: {
-    labelKey: 'admin.config.key.WEA_PG_DATABASE',
+  WEA_DB_HOST: { labelKey: 'admin.config.key.WEA_DB_HOST', group: 'metadata', inputType: 'text' },
+  WEA_DB_PORT: { labelKey: 'admin.config.key.WEA_DB_PORT', group: 'metadata', inputType: 'text' },
+  WEA_DB_DATABASE: {
+    labelKey: 'admin.config.key.WEA_DB_DATABASE',
     group: 'metadata',
     inputType: 'text',
   },
-  WEA_PG_USER: { labelKey: 'admin.config.key.WEA_PG_USER', group: 'metadata', inputType: 'text' },
-  WEA_PG_PASSWORD: {
-    labelKey: 'admin.config.key.WEA_PG_PASSWORD',
+  WEA_DB_USER: { labelKey: 'admin.config.key.WEA_DB_USER', group: 'metadata', inputType: 'text' },
+  WEA_DB_PASSWORD: {
+    labelKey: 'admin.config.key.WEA_DB_PASSWORD',
     group: 'metadata',
     inputType: 'text',
   },
-  WEA_PG_SSL: { labelKey: 'admin.config.key.WEA_PG_SSL', group: 'metadata', inputType: 'text' },
-  WEA_PG_MAX: { labelKey: 'admin.config.key.WEA_PG_MAX', group: 'metadata', inputType: 'text' },
-  WEA_PG_IDLE_TIMEOUT_MS: {
-    labelKey: 'admin.config.key.WEA_PG_IDLE_TIMEOUT_MS',
+  WEA_DB_SSL: { labelKey: 'admin.config.key.WEA_DB_SSL', group: 'metadata', inputType: 'text' },
+  WEA_DB_MAX: { labelKey: 'admin.config.key.WEA_DB_MAX', group: 'metadata', inputType: 'text' },
+  WEA_DB_IDLE_TIMEOUT_MS: {
+    labelKey: 'admin.config.key.WEA_DB_IDLE_TIMEOUT_MS',
     group: 'metadata',
     inputType: 'text',
   },
-  WEA_PG_CONNECTION_TIMEOUT_MS: {
-    labelKey: 'admin.config.key.WEA_PG_CONNECTION_TIMEOUT_MS',
+  WEA_DB_CONNECTION_TIMEOUT_MS: {
+    labelKey: 'admin.config.key.WEA_DB_CONNECTION_TIMEOUT_MS',
+    group: 'metadata',
+    inputType: 'text',
+  },
+  WEA_DB_QUERY_TIMEOUT_MS: {
+    labelKey: 'admin.config.key.WEA_DB_QUERY_TIMEOUT_MS',
     group: 'metadata',
     inputType: 'text',
   },

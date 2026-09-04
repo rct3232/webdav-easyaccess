@@ -61,9 +61,16 @@ export const mockAdminUsers = {
 // T1 = restartRequired.
 export function createDefaultMockAdminConfig() {
   return {
-    WEA_STORAGE_BACKEND: { value: 'sqlite', source: 'env', tier: 'T0', secret: false },
-    WEA_PG_HOST: { value: 'db.internal', source: 'env', tier: 'T0', secret: false },
-    WEA_PG_PORT: { value: '5432', source: 'default', tier: 'T0', secret: false },
+    WEA_DB_HOST: { value: 'db.internal', source: 'env', tier: 'T0', secret: false },
+    WEA_DB_PORT: { value: '5432', source: 'default', tier: 'T0', secret: false },
+    WEA_DB_DATABASE: { value: 'webdav', source: 'env', tier: 'T0', secret: false },
+    WEA_DB_USER: { value: 'wea', source: 'env', tier: 'T0', secret: false },
+    WEA_DB_PASSWORD: { value: '****', source: 'env', tier: 'T0', secret: true },
+    WEA_DB_SSL: { value: 'false', source: 'default', tier: 'T0', secret: false },
+    WEA_DB_MAX: { value: '10', source: 'default', tier: 'T0', secret: false },
+    WEA_DB_IDLE_TIMEOUT_MS: { value: '30000', source: 'default', tier: 'T0', secret: false },
+    WEA_DB_CONNECTION_TIMEOUT_MS: { value: '10000', source: 'default', tier: 'T0', secret: false },
+    WEA_DB_QUERY_TIMEOUT_MS: { value: '60000', source: 'default', tier: 'T0', secret: false },
     WEA_FILE_STORAGE: { value: 's3', source: 'default', tier: 'T1', secret: false },
     S3_BUCKET: { value: 'my-bucket', source: 'env', tier: 'T1', secret: false },
     AWS_REGION: { value: 'us-east-1', source: 'env', tier: 'T1', secret: false },
@@ -871,7 +878,6 @@ export const handlers = [
       setup_complete: false,
       missing: ['S3_BUCKET', 'AWS_REGION', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'],
       current: {
-        WEA_STORAGE_BACKEND: 'sqlite',
         WEA_FILE_STORAGE: 's3',
         PORT: '5001',
         JWT_SECRET: '',

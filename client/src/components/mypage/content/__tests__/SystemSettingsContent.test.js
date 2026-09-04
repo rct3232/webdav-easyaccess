@@ -316,7 +316,7 @@ describe('SystemSettingsContent', () => {
       http.get('/api/admin/config', () =>
         HttpResponse.json({
           config: {
-            WEA_STORAGE_BACKEND: { value: 'postgresql', source: 'env', tier: 'T0', secret: false },
+            WEA_DB_HOST: { value: 'db.internal', source: 'env', tier: 'T0', secret: false },
             WEA_FILE_STORAGE: { value: 's3', source: 'default', tier: 'T1', secret: false },
           },
         })
@@ -370,7 +370,8 @@ describe('SystemSettingsContent', () => {
       expect(screen.getByText(/allow registration/i)).toBeInTheDocument();
     });
 
-    // Default MSW config: WEA_STORAGE_BACKEND=sqlite, WEA_FILE_STORAGE=s3 → active = { s3 }.
+    // Default MSW config: WEA_DB_HOST set (postgresql active) + WEA_FILE_STORAGE=s3
+    // → active = { postgresql, s3 }; webdav failing but NOT active → no alert.
     expect(screen.queryByTestId('backend-health-card')).not.toBeInTheDocument();
   });
 

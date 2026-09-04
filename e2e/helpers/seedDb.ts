@@ -20,6 +20,10 @@ export const SEED_USERS = [
 // values. Shared by `e2e/global-setup.ts` (once per run) and
 // `e2e/00-project-setup.spec.ts` (once per project, for data isolation).
 //
+// Backend selection is presence-based: the full `WEA_DB_*` identity block below
+// (host/port/database/user/password) selects the remote PostgreSQL backend —
+// there is no `WEA_STORAGE_BACKEND` key anymore.
+//
 // `envOverrides` is merged over the defaults so each caller can pass its own
 // env bits without re-implementing the seed environment.
 export function runSeedDb(envOverrides: NodeJS.ProcessEnv = {}) {
@@ -27,13 +31,12 @@ export function runSeedDb(envOverrides: NodeJS.ProcessEnv = {}) {
   const seedScript = path.join(rootDir, 'e2e', 'global-setup.seed-db.cjs');
   const seedEnv: NodeJS.ProcessEnv = {
     ...process.env,
-    WEA_STORAGE_BACKEND: 'postgresql',
     WEA_FILE_STORAGE: backendMode === 'webdav' ? 'webdav' : 's3',
-    WEA_PG_HOST: '127.0.0.1',
-    WEA_PG_PORT: process.env.WEA_PG_PORT || '5433',
-    WEA_PG_DATABASE: process.env.WEA_PG_DATABASE || 'webdav_e2e',
-    WEA_PG_USER: process.env.WEA_PG_USER || 'e2etest',
-    WEA_PG_PASSWORD: process.env.WEA_PG_PASSWORD || 'e2etest',
+    WEA_DB_HOST: '127.0.0.1',
+    WEA_DB_PORT: process.env.WEA_DB_PORT || '5433',
+    WEA_DB_DATABASE: process.env.WEA_DB_DATABASE || 'webdav_e2e',
+    WEA_DB_USER: process.env.WEA_DB_USER || 'e2etest',
+    WEA_DB_PASSWORD: process.env.WEA_DB_PASSWORD || 'e2etest',
     ADMIN_DEFAULT_PASSWORD: process.env.ADMIN_DEFAULT_PASSWORD || 'admin',
     NODE_ENV: 'test',
   };

@@ -114,8 +114,9 @@ test.beforeEach(async () => {
   fs.mkdirSync(scratch, { recursive: true });
   writeScratchEnv(scratch, {
     PORT: '5003',
-    WEA_STORAGE_BACKEND: 'sqlite',
     WEA_FILE_STORAGE: 'webdav',
+    // Metadata backend stays sqlite by default: no WEA_DB_* identity keys are
+    // written, so presence-based selection boots the scratch sqlite store.
     // WebDAV connection keys are deliberately NOT in the .env: they are seeded
     // into the sqlite DB (see seedWebdavSettings) so the editor rows are
     // DB-sourced/editable and the D1 save-gating tests can exercise them.
@@ -466,8 +467,12 @@ test.describe('admin config editor (advanced settings)', () => {
     await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
     await openAdvancedSettings(page);
 
-    await expect(page.getByTestId('config-input-WEA_STORAGE_BACKEND')).toHaveCount(0);
-    await expect(page.getByTestId('config-input-WEA_PG_HOST')).toHaveCount(0);
+    // Deploy-time T0 rows (the WEA_DB_* metadata block / WEA_SQLITE_PATH) are
+    // read-only (Section B) — never rendered as editable inputs, so no
+    // `config-input-*` element exists for them.
+    await expect(page.getByTestId('config-input-WEA_DB_HOST')).toHaveCount(0);
+    await expect(page.getByTestId('config-input-WEA_SQLITE_PATH')).toHaveCount(0);
+    await expect(page.getByTestId('config-input-WEA_DB_PASSWORD')).toHaveCount(0);
   });
 });
 

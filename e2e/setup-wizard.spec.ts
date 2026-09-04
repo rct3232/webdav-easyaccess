@@ -33,10 +33,11 @@ import {
  * (restart is the behavior under test), then verifies the configured app.
  *
  * D6/D7 (Phase B): the metadata DB connection is `.env`-owned, so each case
- * writes a scratch `.env` BEFORE boot 1 that declares the backend explicitly
- * (sqlite + WEA_SQLITE_PATH, or postgresql + full WEA_PG_*). The wizard serves
- * non-T0 only (no metadata step) and apply never writes WEA_STORAGE_BACKEND /
- * WEA_PG_* / WEA_SQLITE_PATH — the pre-written keys are asserted as present and
+ * writes a scratch `.env` BEFORE boot 1 that declares the metadata backend
+ * (sqlite is the default when no WEA_DB_* identity key is set; the postgresql
+ * cases write the full WEA_DB_* block). The wizard serves non-T0 only (no
+ * metadata step) and apply never writes the T0 metadata keys (WEA_DB_* /
+ * WEA_SQLITE_PATH) — the pre-written keys are asserted as present and
  * unmodified. The same file survives the boot1 → restart → boot2 sequence via
  * spawnScratchServer's DOTENV_CONFIG_PATH.
  *
@@ -183,8 +184,10 @@ async function driveWizard(page: Page, config: CaseConfig): Promise<void> {
 /**
  * The scratch `.env` written BEFORE boot 1 (D6/D7): the metadata DB connection
  * is `.env`-owned and must be declared up front — the wizard serves non-T0 only
- * and apply never writes WEA_STORAGE_BACKEND / WEA_PG_* / WEA_SQLITE_PATH.
- * PORT/NODE_ENV mirror what spawnScratchServer sets; JWT_SECRET is
+ * and apply never writes the T0 metadata keys. Backend selection is
+ * presence-based: postgresql cases write the full `WEA_DB_*` identity block;
+ * sqlite cases write only WEA_SQLITE_PATH (no WEA_DB_* key → sqlite is the
+ * default). PORT/NODE_ENV mirror what spawnScratchServer sets; JWT_SECRET is
  * pre-provisioned so apply keeps the existing value.
  */
 function buildPreBootEnv(scratch: string, config: CaseConfig): Record<string, string> {
@@ -196,16 +199,14 @@ function buildPreBootEnv(scratch: string, config: CaseConfig): Record<string, st
 
   if (config.metadata.backend === 'postgresql') {
     Object.assign(env, {
-      WEA_STORAGE_BACKEND: 'postgresql',
-      WEA_PG_HOST: config.metadata.host,
-      WEA_PG_PORT: config.metadata.port,
-      WEA_PG_DATABASE: config.metadata.database,
-      WEA_PG_USER: config.metadata.user,
-      WEA_PG_PASSWORD: config.metadata.password,
+      WEA_DB_HOST: config.metadata.host,
+      WEA_DB_PORT: config.metadata.port,
+      WEA_DB_DATABASE: config.metadata.database,
+      WEA_DB_USER: config.metadata.user,
+      WEA_DB_PASSWORD: config.metadata.password,
     });
   } else {
     Object.assign(env, {
-      WEA_STORAGE_BACKEND: 'sqlite',
       WEA_SQLITE_PATH: path.join(scratch, 'webdav.db'),
     });
   }
@@ -298,8 +299,8 @@ function secretRowsFor(config: CaseConfig): Array<[string, string]> {
  * Assert the scratch `.env` after apply. apply's only `.env` writes under D7
  * are JWT_SECRET (already pre-written with the same value) — it is
  * pre-provisioned here, so the parsed file must equal the pre-boot map exactly:
- * the backend keys (WEA_STORAGE_BACKEND, WEA_SQLITE_PATH / WEA_PG_*) are still
- * present and unmodified by apply.
+ * the T0 metadata keys (the WEA_DB_* identity block / WEA_SQLITE_PATH) are
+ * still present and unmodified by apply.
  */
 function assertScratchEnv(scratchDir: string, config: CaseConfig): void {
   const env = readEnvFile(scratchDir);
@@ -571,9 +572,9 @@ test.describe('first-run setup wizard (E2E-SETUP-001..004)', () => {
         };
         expect(await bcrypt.compare(cfg.adminPassword, admins[0].password)).toBeTruthy();
 
-        // Under D6/D7 the default-sqlite fallback boot no longer exists: the
-        // pre-boot .env declared postgresql, so the scratch sqlite file is never
-        // created.
+        // Under D6/D7 the pre-boot .env declares the postgresql metadata
+        // backend (the full WEA_DB_* identity block), so the scratch sqlite
+        // file is never created.
         const dbPath = path.join(scratch, 'webdav.db');
         expect(fs.existsSync(dbPath)).toBeFalsy();
 

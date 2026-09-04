@@ -56,8 +56,7 @@ describe('RecentFilesRepository conformance', () => {
     await new Promise((resolve) => setTimeout(resolve, 1100));
     const list = await repo.addRecentFile(user.id, n2.nodeId);
 
-    expect(Array.isArray(list)).toBe(true);
-    expect(list.length).toBeGreaterThanOrEqual(2);
+    expect(list.length).toBe(2);
     expect(list[0].fileNodeId).toBe(Number(n2.nodeId));
     for (const entry of list) {
       expect(typeof entry.fileNodeId).toBe('number');

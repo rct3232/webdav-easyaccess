@@ -17,6 +17,17 @@ SELECT p.permission, a.depth FROM ${table} p
  WHERE a.descendant_id = ${phNode} AND p.${identityColumn} = ${phIdentity}
  ORDER BY a.depth ASC ${limitOne ? 'LIMIT 1' : ''}`.trim();
 
+/**
+ * Every grant row anchoring on an ancestor of `node` for the identity
+ * (hasPermissionsInPath contract): returns p.file_node_id (the ACTUAL grant
+ * anchor node — which can differ from the queried descendant), no ORDER BY and
+ * no LIMIT, matching the pre-rewrite store query exactly.
+ */
+const buildPathGrantsSql = (table, phIdentity, phNode, identityColumn = 'user_id') => `
+SELECT p.file_node_id, p.permission, a.depth FROM ${table} p
+ JOIN node_ancestors a ON a.ancestor_id = p.file_node_id
+ WHERE a.descendant_id = ${phNode} AND p.${identityColumn} = ${phIdentity}`.trim();
+
 const buildSharedSql = (table, ph1, ph2, excludeOwn) => {
   const exclusion = excludeOwn
     ? ` AND p.file_node_id NOT IN (
@@ -43,6 +54,7 @@ const buildSubtreeRemovalSql = (table, ph1, ph2) =>
 
 module.exports = {
   buildAncestorPermSelect,
+  buildPathGrantsSql,
   buildSharedSql,
   buildRemovalSql,
   buildSubtreeRemovalSql,

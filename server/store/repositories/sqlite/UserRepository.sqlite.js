@@ -118,9 +118,9 @@ module.exports = function createSqliteUserRepository(executor) {
           return mapUserRow(inserted.rows[0]);
         });
       } catch (error) {
-        // The duplicate pre-checks run inside the transaction; the unique
-        // constraint is a defensive backstop (raw driver error classification).
-        if (executor.isUniqueConflict(error)) throwUsernameTaken();
+        // Duplicate detection is the in-transaction pre-check (as in the former
+        // adapters). executor.transaction() already maps driver errors, so no
+        // raw-driver classification is possible at this layer.
         throw mapDatabaseError(error);
       }
     },

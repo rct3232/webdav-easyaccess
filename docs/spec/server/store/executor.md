@@ -34,9 +34,13 @@
  *   postgres implementation appends `RETURNING <pk>` to the statement
  *   (introspecting `pg_index`, cached per table) and reads the first returned
  *   column. SQL that already contains RETURNING is left untouched.
- *   When the statement itself carries RETURNING, both implementations return
- *   the returned rows as `rows` (and `changes` = row count) — sqlite routes
- *   such statements through `db.all`, because `db.run` discards RETURNING rows.
+ *   When the statement itself carries RETURNING, rows are surfaced as
+ *   `rows` (with `changes` = row count) on sqlite (which routes such
+ *   statements through `db.all`, because `db.run` discards RETURNING rows)
+ *   and on the postgres **transactional** `tx.run`. The postgres **top-level**
+ *   `run` consumes the first RETURNING column for `lastId` and does not
+ *   surface the full rows — use `query`/`tx.run` when the returned rows are
+ *   needed.
  * @property {<T>(fn: (tx) => Promise<T>) => Promise<T>} transaction
  *   Runs `fn` inside one transaction; commits on resolve, rolls back on throw.
  *   `tx` exposes the same `query`/`run` shape bound to the open transaction.

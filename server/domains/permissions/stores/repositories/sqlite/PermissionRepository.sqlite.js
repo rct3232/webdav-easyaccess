@@ -3,6 +3,7 @@
 const { mapDatabaseError } = require('../../../../../utils/errorHandler');
 const {
   buildAncestorPermSelect,
+  buildPathGrantsSql,
   buildSharedSql,
   buildRemovalSql,
   buildSubtreeRemovalSql,
@@ -156,10 +157,14 @@ module.exports = function createSqlitePermissionRepository(executor) {
     async findPathPermissionsForNode(userId, nodeId) {
       try {
         const { rows } = await executor.query(
-          buildAncestorPermSelect('permissions_user_paths', 'p.permission', '?', '?', false),
+          buildPathGrantsSql('permissions_user_paths', '?', '?'),
           [Number(nodeId), Number(userId)]
         );
-        return rows.map((r) => ({ file_node_id: Number(nodeId), permission: r.permission, depth: Number(r.depth) }));
+        return rows.map((r) => ({
+          file_node_id: Number(r.file_node_id),
+          permission: r.permission,
+          depth: Number(r.depth),
+        }));
       } catch (error) {
         throw mapDatabaseError(error);
       }

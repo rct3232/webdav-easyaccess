@@ -92,6 +92,22 @@ describe('sqliteExecutor (own isolated temp sqlite DB, both legs)', () => {
     expect(executor.isUniqueConflict(new Error('something else'))).toBe(false);
     expect(executor.isUniqueConflict(null)).toBe(false);
   });
+
+  it('RETURNING detection ignores the word inside string literals', async () => {
+    // A plain write whose inline value happens to contain "RETURNING" must take
+    // the db.run path (changes/lastId), not the db.all path.
+    const executor = require('@server/infrastructure/db/sqliteExecutor');
+    const res = await executor.run(
+      "INSERT INTO settings (key, value) VALUES (?, ?)",
+      ['literal-returning-key', 'text says RETURNING inside']
+    );
+    expect(res.changes).toBe(1);
+    expect(res.lastId).toBeGreaterThan(0);
+    const { rows } = await executor.query('SELECT value FROM settings WHERE key = ?', [
+      'literal-returning-key',
+    ]);
+    expect(rows[0].value).toBe('text says RETURNING inside');
+  });
 });
 
 describe('postgresExecutor (storage/pool mocked)', () => {

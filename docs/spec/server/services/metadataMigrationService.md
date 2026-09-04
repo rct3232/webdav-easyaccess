@@ -7,7 +7,7 @@
 | Role       | Metadata DB migration engine: moves all metadata rows between the `sqlite` and `postgresql` backends (both directions) via direct target connections. Performs a target scan, applies the schema to an explicit target, and runs a single-transaction wipe + copy whose cancellation rolls back everything. |
 | Depends on | `server/infrastructure/backendProbe.js` (`probePostgresql` pattern for direct `pg.Client` connections), `server/infrastructure/schemaManager.js` / `sqliteSchemaInit.js` (`convertPostgresToSqlite`), the settings-value contract of `server/store/settingsStore.js`                                        |
 | Files      | `server/domains/admin/services/metadataMigrationService.js` (new)                                                                                                                                                                                                                                           |
-| Test files | `server/domains/admin/services/__tests__/metadataMigrationService.test.js` (new; sqlite↔PG roundtrip under `test:ci:pg`)                                                                                                                                                                                    |
+| Test files | `server/domains/admin/services/__tests__/metadataMigrationService.test.js` (new; sqlite↔PG roundtrip under `test:ci:pg:adapters`)                                                                                                                                                                                    |
 
 Source of truth: `docs/features/migration-mode.md`, `docs/spec/server/tools/metadata-migration.md`,
 `docs/features/migration-mode.md` (decisions D4–D6, D11, D14).

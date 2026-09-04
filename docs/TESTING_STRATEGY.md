@@ -21,6 +21,33 @@ Current layout is summarized in [client/TEST_SUMMARY.md](../client/TEST_SUMMARY.
 
 ---
 
+## DB test tiers (metadata storage)
+
+The server's DB access flows through the executor seam and per-domain
+repositories (`docs/spec/server/store/executor.md`,
+`docs/spec/server/store/repository-contract.md`). Tests are tiered accordingly:
+
+| Tier | What | Backend | Where |
+| ---- | ---- | ------- | ----- |
+| **L0 unit** | Pure logic; storage mocked at the executor/store boundary | none | `**/__tests__` (no DB) |
+| **L1 functional** | Routes/services/models — observable behavior through APIs | **sqlite only** (per-suite temp DB) | `**/__tests__` DB suites; default `test:ci` leg |
+| **L2 adapter conformance** | Repository interfaces against real storage: CRUD/upsert/RETURNING/type mapping/transactions/locking/schema/migrations | real sqlite + **real PostgreSQL** (`WEA_TEST_PG_*`, serial) | `server/store/repositories/__tests__/*.conformance.test.js` + executor/schema/migration suites; `test:ci:pg:adapters` |
+| **L3 cross-DB smoke** | Representative store roundtrip + migration apply-once per supported RDB | each RDB | subset inside the adapter leg |
+
+Rules:
+
+- **Functional suites never target PostgreSQL.** Real-PG regressions are the
+  responsibility of L2/L3; jest processes cannot receive production `WEA_DB_*`
+  credentials (see "DB namespace isolation" below), and the disposable
+  `webdav_test` database is self-provisioned by the test harness when missing.
+- **Repository conformance suites are backend-agnostic by design** — they call
+  `createTestDatabase()` and assert behavior on whichever backend is active,
+  so the same file covers sqlite (default leg) and PostgreSQL (adapter leg).
+- The former full-suite PostgreSQL leg (`test:ci:pg`) is retired; the adapter
+  leg (`test:ci:pg:adapters`) is the only real-PG jest entry point.
+
+---
+
 ## Mocking
 
 ### Schema-first principle

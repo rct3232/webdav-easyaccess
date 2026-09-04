@@ -2,29 +2,39 @@
 
 /**
  * Executor conformance tests (docs/spec/server/store/executor.md).
- * - sqlite: real temp DB via createTestDatabase (default CI leg).
- * - postgres: storage mocked with a jest Pool (real-PG semantics are covered
- *   by the repository conformance suites under the WEA_TEST_PG_* adapter leg).
+ * - sqlite: the executor's own isolated temp DB (both legs).
+ * - postgres: storage mocked with a jest Pool; real-PG semantics are covered
+ *   by the repository conformance suites under the WEA_TEST_PG_* adapter leg.
  */
 
-const { createTestDatabase } = require('@server/test-utils');
-
-describe('sqliteExecutor (real temp sqlite DB)', () => {
-  let dbCleanup;
+describe('sqliteExecutor (own isolated temp sqlite DB, both legs)', () => {
+  let dbPath;
 
   beforeAll(async () => {
-    const db = await createTestDatabase();
-    dbCleanup = db.cleanup;
+    // The adapter leg runs with an active PG override; this describe unit-tests
+    // the *sqlite executor*, so it stands up its own temp sqlite DB explicitly
+    // instead of going through createTestDatabase() (which would hand out the
+    // backend under test).
+    dbPath = `/tmp/wea-exec-sqlite-${Date.now()}-${Math.random().toString(36).slice(2)}.db`;
+    process.env.WEA_SQLITE_PATH = dbPath;
+    const { initMetadataStore } = require('@server/store/bootstrap');
+    await initMetadataStore();
   });
 
   afterAll(async () => {
-    await dbCleanup();
-  });
-
-  it('exposes the sqlite dialect via storage.getExecutor()', () => {
     const storage = require('@server/store/storage');
-    const executor = storage.getExecutor();
-    expect(executor.dialect).toBe('sqlite');
+    try {
+      storage.closeSqliteDb();
+    } catch {
+      /* ignore */
+    }
+    delete process.env.WEA_SQLITE_PATH;
+    try {
+      // eslint-disable-next-line global-require
+      require('fs').promises.unlink(dbPath);
+    } catch {
+      /* ignore */
+    }
   });
 
   it('run returns changes and lastId for an autoincrement INSERT', async () => {

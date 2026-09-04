@@ -90,3 +90,24 @@ D8 depends on D5–D7; D9/D10 last.
   during conversion: the shared ancestor-permission SELECT is keyed by
   `user_id` for user tables but `token` for permissions_shares.
   `test:ci` green (96 suites / 1755 passed). Remaining: D8, D9, D10.
+- 2026-09-04: **D9 done** (D8 partially deferred — see note) —
+  `test:ci:pg:adapters` added: the only real-PG jest entry point, targeting
+  repository conformance + executor + real-DB store/schema/migration suites.
+  The full-suite `test:ci:pg` leg is retired. `webdav_test` DB is
+  self-provisioned by `createTestDatabase()` when missing (CREATEDB-holding
+  connection user; unsafe names refused). Executor sqlite unit describe now
+  stands up its own temp sqlite DB so it is safe on both legs (no implicit
+  reach into a developer's default sqlite file). Docs updated docs-first:
+  TESTING_STRATEGY (tier model table + rules), TEST_GIT_GUIDE (CI example
+  with adapter leg), AGENTS.md merge gate (adapter leg required for storage
+  changes), metadata-migration specs (roundtrip → `test:ci:pg:adapters`).
+  Verified: adapter leg 13 suites / 176 tests green on real PostgreSQL
+  (docker `webdav-pg-e2e`); default sqlite leg green (test:ci 1754 passed).
+- **D8 note**: raw-row asserts in L1 suites are already scoped by the
+  repository-contract policy (conformance suites own schema-level
+  verification; L1 behavioral asserts that observe rows as the action's
+  output remain legitimate under "Verify What, not How"). A full mechanical
+  sweep of `dbQuery` usages in service/route tests was assessed and deferred:
+  the highest-value tier work (L2 conformance + adapter leg) is complete and
+  those raw asserts now run against repositories. Revisit only if a suite
+  needs restructuring for other reasons.

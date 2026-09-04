@@ -48,7 +48,8 @@ cp .env.example .env
 > ([`docs/features/setup-cli.md`](features/setup-cli.md)) for headless/remote hosts. Per the
 > **config-source-resolution**
 > model ([`docs/features/config-source-resolution.md`](features/config-source-resolution.md)),
-> the wizard/CLI write only the startup-critical T0 key `JWT_SECRET` into `.env`;
+> the wizard/CLI write `JWT_SECRET` into `.env` **only when the operator supplies one** (the
+> `jwt` block is optional — omitted, the server uses an ephemeral per-boot secret);
 > **every other value — including secret values — is stored in the metadata DB `settings`
 > table** as plaintext and read back at boot (`.env` always wins when a value is present
 > there). The
@@ -61,7 +62,7 @@ cp .env.example .env
 
 ### Environment Variable Reference
 
-**Source column** — `T0` = must live in `.env` (startup-critical / `.env`-only, D2/D4/D7); `DB` = may be stored in the metadata DB `settings` table (via the wizard or the admin "Advanced settings" editor); a `.env` value always wins over the DB row (D1).
+**Source column** — `T0` = `.env`-owned (read at boot / `.env`-only, D2/D4/D7); `DB` = may be stored in the metadata DB `settings` table (via the wizard or the admin "Advanced settings" editor); a `.env` value always wins over the DB row (D1). T0 does not imply required: `JWT_SECRET` is `.env`-owned but **optional** (unset/empty → ephemeral random secret generated at boot).
 
 | Variable                         | Source |              Required               | Description                                                                                                                                                        | Default            |
 | :------------------------------- | :----: | :---------------------------------: | :----------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------- |
@@ -74,7 +75,7 @@ cp .env.example .env
 | **WEBDAV_URL**                   |   DB   | Only when `WEA_FILE_STORAGE=webdav` | WebDAV server base URL (e.g. `https://dav.example.com`)                                                                                                            | -                  |
 | **WEBDAV_USERNAME**              |   DB   | Only when `WEA_FILE_STORAGE=webdav` | WebDAV server account name                                                                                                                                         | -                  |
 | **WEBDAV_PASSWORD**              |   DB   | Only when `WEA_FILE_STORAGE=webdav` | WebDAV server password                                                                                                                                             | -                  |
-| **JWT_SECRET**                   |   T0   |                 Yes                 | Secret key for token signing (must change in production!)                                                                                                          | -                  |
+| **JWT_SECRET**                   |   T0   |                 No                  | JWT signing key. Optional — unset/empty ⇒ ephemeral random secret generated at boot (restart invalidates all sessions). Set one unified value across instances; the legacy placeholder only warns. | -                  |
 | **PORT**                         |   DB   |                 No                  | Server port                                                                                                                                                        | `5001`             |
 | **CORS_ORIGINS**                 |   DB   |                 No                  | Allowed browser origins (comma-separated)                                                                                                                          | `*` (with warning) |
 | **WEA_SQLITE_PATH**              |   T0   |                 No                  | Path to the SQLite metadata database file (SQLite is the default metadata backend when no remote DB keys are set)                                                  | `data/webdav.db`   |
@@ -124,7 +125,10 @@ The system supports a SQLite-backed (default) and a remote PostgreSQL-backed met
 > WEA_DB_DATABASE=webdav_easyaccess
 > WEA_DB_USER=webdav
 > WEA_DB_PASSWORD=change-me
-> JWT_SECRET=change-me               # non-T0 values are stored in the DB by the wizard
+> # JWT_SECRET is OPTIONAL: omit it and the server generates an ephemeral per-boot secret
+> # (restart -> new secret -> all sessions invalidated). Non-T0 values (file storage,
+> # email, server) are stored in the DB by the wizard.
+> # JWT_SECRET=change-me
 > ```
 
 1.  **SQLite backend (`sqlite`)** (default):
@@ -326,8 +330,10 @@ user@host`, then open `http://127.0.0.1:5001`.
    to pre-populating the configuration directly (see below).
 4. **env-only first run (containerized/automated)** — inject every key the completeness rules
    require (the remote `WEA_DB_*` block when PostgreSQL metadata is used — none is required for
-   the default SQLite backend — `WEA_FILE_STORAGE` + its credential block,
-   `JWT_SECRET`, and any non-default settings) via environment. `setup_complete` is derived, so
+   the default SQLite backend — `WEA_FILE_STORAGE` + its credential block, and any non-default
+   settings) via environment. `JWT_SECRET` is **not** part of completeness: a single instance
+   may rely on the ephemeral per-boot fallback, while multi-instance deployments must inject one
+   unified `JWT_SECRET`. `setup_complete` is derived, so
    the app boots fully configured on the first run, never enters setup mode, and binds all
    interfaces immediately. `.env` never needs to exist.
 

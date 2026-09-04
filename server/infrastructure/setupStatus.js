@@ -1,10 +1,5 @@
 'use strict';
 
-// Mirrors server/utils/auth.js:5 (JWT_SECRET fallback). Duplicated locally on
-// purpose so this module stays dependency-free — importing auth.js would create
-// a require cycle, since auth.js consumes computeSetupStatus (see §5.2.1).
-const DEFAULT_JWT_SECRET = 'your-secret-key-change-in-production';
-
 const SECRET_MASK = '****';
 
 const SECRET_KEYS = new Set([
@@ -64,12 +59,6 @@ function fileMissing(env) {
   return S3_REQUIRED_KEYS.filter((key) => !env[key]);
 }
 
-function jwtMissing(env) {
-  if (env.NODE_ENV !== 'production') return [];
-  if (env.JWT_SECRET && env.JWT_SECRET !== DEFAULT_JWT_SECRET) return [];
-  return ['JWT_SECRET'];
-}
-
 function buildCurrent(env) {
   const current = {};
   for (const key of WIZARD_WRITABLE_KEYS) {
@@ -109,11 +98,12 @@ function computeSetupStatus(env = {}, options = {}) {
   const view = options.effectiveConfig ? mergeEffective(env, options.effectiveConfig) : env;
   const missingMetadata = metadataMissing(view);
   const missingFile = fileMissing(view);
-  const missingJwt = jwtMissing(view);
+  // JWT_SECRET is optional (docs/features/config-source-resolution.md): it is
+  // never a completeness condition — an unset secret falls back to an ephemeral
+  // per-boot random in server/utils/auth.js.
   return {
-    setup_complete:
-      missingMetadata.length === 0 && missingFile.length === 0 && missingJwt.length === 0,
-    missing: [...missingMetadata, ...missingFile, ...missingJwt],
+    setup_complete: missingMetadata.length === 0 && missingFile.length === 0,
+    missing: [...missingMetadata, ...missingFile],
     current: buildCurrent(view),
   };
 }

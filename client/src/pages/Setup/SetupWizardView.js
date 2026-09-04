@@ -213,10 +213,10 @@ const SetupWizardView = ({
       <TextField
         fullWidth
         margin="normal"
-        required
         label={viewModel.jwtSecret}
         value={form.jwt.secret}
         onChange={onFieldChange('jwt', 'secret')}
+        helperText={viewModel.jwtSecretHelp}
         inputProps={{ 'data-testid': 'setup-jwt-secret' }}
       />
       <Button variant="outlined" onClick={onRegenerateSecret}>

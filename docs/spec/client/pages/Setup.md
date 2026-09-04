@@ -5,7 +5,7 @@
 | Item       | Description                                                                                                                                                                                                                                                                                                        |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Route path | `/setup`                                                                                                                                                                                                                                                                                                           |
-| Role       | First-run setup wizard. Public page (outside `MainLayout`), shown when the server reports `setup_complete: false`. Walks the operator through metadata, file storage, admin password + JWT, optional settings, apply, and a "Restart required" screen. Unreachable once setup is complete (redirects to `/login`). |
+| Role       | First-run setup wizard. Public page (outside `MainLayout`), shown when the server reports `setup_complete: false`. Walks the operator through metadata, file storage, admin password, an optional JWT secret, optional settings, apply, and a "Restart required" screen. Unreachable once setup is complete (redirects to `/login`). |
 
 Feature Source-of-Truth: [setup-wizard.md](../../../features/setup-wizard.md).
 
@@ -32,7 +32,7 @@ Feature Source-of-Truth: [setup-wizard.md](../../../features/setup-wizard.md).
 ### 2.3 Main Child Components
 
 - `SetupWizardView` (pure MUI view) — step container rendered from prepared state + callbacks provided by `useSetupWizard`
-- Per-step fields/components: Metadata step, File storage step, Admin + JWT step, Optional step, Apply step, "Restart required" screen
+- Per-step fields/components: Metadata step, File storage step, Admin + JWT (optional secret) step, Optional step, Apply step, "Restart required" screen
 
 ### 2.4 Route Protection
 
@@ -46,9 +46,9 @@ Wizard steps:
 
 1. **Metadata** — choose sqlite (default) or postgresql (host/port/database/user/password/ssl + "Test connection" via `testSetup('postgresql', …)`). When `postgresql` is selected and the operator clicks **Next**, the wizard issues an **async prefill fetch** (`prefillSetup`) against the **target PG directly** using the entered credentials and merges the returned values into the form (file storage, jwt/server, email, admin). Best-effort: a prefill failure does **not** block advancing to the next step — the connection-test button is the explicit validator, and the form keeps whatever was already prefilled from `status.current` on mount.
 2. **File storage** — choose s3 (bucket/region/access key/secret/endpoint + "Test connection" via `testSetup('s3', …)`) or webdav (url/username/password + "Test connection" via `testSetup('webdav', …)`).
-3. **Admin password + JWT** — admin password (username fixed to `admin`, D6); JWT secret client-generated via `crypto.getRandomValues` with a regenerate button; optional expires-in.
+3. **Admin password + JWT** — admin password (username fixed to `admin`, D6); the JWT secret is **optional** — leaving it blank is allowed, and the server then uses a per-boot ephemeral secret (restart invalidates all sessions; set one value for multi-instance deployments). A random value can be filled via `crypto.getRandomValues` with a regenerate button; optional expires-in.
 4. **Optional** — port, CORS origins, SMTP (host/port/user/password/secure/from).
-5. **Apply** — `applySetup(payload)` with the collected `{ metadata, file, admin, jwt, server, email }` blocks.
+5. **Apply** — `applySetup(payload)` with the collected `{ metadata, file, admin, server, email }` blocks plus the optional `jwt` block (sent only when a JWT secret was supplied).
 6. **"Restart required" screen** — shown on `200 { restart_required: true }`; instructs the operator to restart the server. No self re-exec.
 
 Errors surface via `t(errorCode, params)` (existing error-display utility pattern). Connection-test failures render the translated primary message from the `errorCode` plus an optional muted `reason` detail line. Invalid field values are shown inline per step.
@@ -58,7 +58,7 @@ Errors surface via `t(errorCode, params)` (existing error-display utility patter
 - [ ] Initial render loads status; incomplete state renders the first wizard step
 - [ ] Step navigation ① → ② → ③ → ④ → ⑤ in order
 - [ ] Connection-test states: pending spinner, success, failure message
-- [ ] JWT secret generation and regenerate
+- [ ] JWT secret field is optional: leaving it blank is allowed (no `jwt` block sent → server ephemeral fallback); fill and regenerate produce a value
 - [ ] Apply success → "Restart required" screen rendered
 - [ ] `setup_complete: true` on mount → redirect to `/login`
 - [ ] Masked prefill values from `status.current` are rendered (secrets shown as masked/blank)

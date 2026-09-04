@@ -85,6 +85,7 @@
     "adminUsernameFixed": "The username is fixed to \"admin\".",
     "adminPassword": "Admin password",
     "jwtSecret": "JWT secret",
+    "jwtSecretHelp": "Optional. Leave blank to sign tokens with a random secret generated per boot — a restart then signs everyone out. Set one to keep sessions across restarts, and one shared value across instances in multi-instance deployments.",
     "regenerate": "Regenerate",
     "expiresIn": "Token expires in",
     "expiresInHelp": "e.g. 30m, 1h, 7d (default: 30m)",

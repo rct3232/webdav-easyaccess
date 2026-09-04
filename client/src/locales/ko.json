@@ -85,6 +85,7 @@
     "adminUsernameFixed": "사용자명은 \"admin\"으로 고정됩니다.",
     "adminPassword": "관리자 비밀번호",
     "jwtSecret": "JWT 시크릿",
+    "jwtSecretHelp": "선택 사항. 비워 두면 부팅마다 임시 난수 키로 토큰을 서명합니다(재시작 시 모두 로그아웃). 재시작 후에도 세션을 유지하려면 값을 설정하고, 멀티 인스턴스 환경에서는 모든 인스턴스에 동일한 값을 설정하세요.",
     "regenerate": "재생성",
     "expiresIn": "토큰 만료 시간",
     "expiresInHelp": "예: 30m, 1h, 7d (기본값: 30m)",

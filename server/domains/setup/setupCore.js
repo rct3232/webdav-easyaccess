@@ -170,8 +170,11 @@ function validateAdmin(block, fields) {
 }
 
 function validateJwt(block, fields) {
+  // The jwt block is optional: an absent/blank secret means "do not write a
+  // JWT secret" and the server falls back to an ephemeral per-boot secret
+  // (docs/features/setup-wizard.md D7).
+  if (block == null) return;
   if (!validateBlockObject(block, JWT_KEYS, 'jwt', fields)) return;
-  if (isMissing(block.secret)) fields['jwt.secret'] = 'required';
 }
 
 function validateServer(block, fields) {
@@ -255,8 +258,10 @@ function buildEnvEntries(body) {
     if (!isMissing(file.authType)) entries.WEBDAV_AUTH_TYPE = String(file.authType);
   }
 
-  entries.JWT_SECRET = String(jwt.secret);
-  if (!isMissing(jwt.expiresIn)) entries.JWT_EXPIRES_IN = String(jwt.expiresIn);
+  // The jwt block is optional: JWT_SECRET is written only when the operator
+  // supplies one — otherwise the server generates an ephemeral per-boot secret.
+  if (jwt != null && !isMissing(jwt.secret)) entries.JWT_SECRET = String(jwt.secret);
+  if (jwt != null && !isMissing(jwt.expiresIn)) entries.JWT_EXPIRES_IN = String(jwt.expiresIn);
 
   if (body.server != null) {
     if (body.server.port !== undefined && String(body.server.port).trim() !== '') {
@@ -389,12 +394,16 @@ async function applySetup(body) {
 
   const { envEntries, dbEntries } = partitionEntries(entries);
 
-  // Write .env FIRST (atomic temp-file + rename). If it fails, the DB has not
-  // been touched, so boot still shows setup mode — a failed apply can never
-  // leave a committed-but-error "complete" state (the non-atomic bug that
-  // surfaced when a 400'd apply still left the DB configured).
-  const envPath = resolveEnvPath(SERVER_ROOT);
-  writeEnv(envPath, envEntries);
+  // Write .env FIRST (atomic temp-file + rename), but only when there is a T0
+  // value to persist — an apply without a supplied JWT secret has an empty .env
+  // partition. If the write fails, the DB has not been touched, so boot still
+  // shows setup mode — a failed apply can never leave a committed-but-error
+  // "complete" state (the non-atomic bug that surfaced when a 400'd apply
+  // still left the DB configured).
+  if (Object.keys(envEntries).length > 0) {
+    const envPath = resolveEnvPath(SERVER_ROOT);
+    writeEnv(envPath, envEntries);
+  }
 
   // sqlite admin password update happens only after the .env write succeeded,
   // so a failure cannot leave the credential changed mid-apply.

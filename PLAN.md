@@ -72,3 +72,10 @@ D8 depends on D5–D7; D9/D10 last.
   the storage mock (pattern for remaining mock-PG suites). Conformance suites
   green; `test:ci` green (95 suites / 1742 passed). Remaining: D6 FileNode,
   D7 Permission, D8 raw-row assert cleanup, D9 PG-leg shrink, D10 close-out.
+- 2026-09-04: **D6 done** — `FileNodeRepository` (interface + sqlite/postgres
+  impls + shared `fileNodeShared.js` mappers; 31 methods, the largest dialect
+  surface) with `fileNodesStore` converted to a facade. Conformance suite (13
+  tests: node/child CRUD, ancestor closure, path resolution, object_map
+  lifecycle, filecache, user root) green on the active backend; `test:ci`
+  green (96 suites / 1755 passed). Remaining: D7 Permission stores, D8 raw-row
+  assert cleanup, D9 PG-leg shrink, D10 close-out.

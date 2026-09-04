@@ -79,3 +79,14 @@ D8 depends on D5–D7; D9/D10 last.
   lifecycle, filecache, user root) green on the active backend; `test:ci`
   green (96 suites / 1755 passed). Remaining: D7 Permission stores, D8 raw-row
   assert cleanup, D9 PG-leg shrink, D10 close-out.
+- 2026-09-04: **D7 done** — `PermissionRepository` + `PermissionRequestRepository`
+  (interfaces + sqlite/postgres impls + shared SQL builders
+  `permissionShared.js`/`permissionRequestShared.js`). Both permission stores
+  converted to facades that keep the domain side-effects (user-permission
+  cache, ACL existence-index invalidation, meetsRank policy, request
+  validation); mock-PG/sqlite store unit tests now supply executors through
+  their storage mocks. Executor `run()` gains the RETURNING-rows contract
+  (sqlite routes RETURNING statements through db.all). Notable catch fixed
+  during conversion: the shared ancestor-permission SELECT is keyed by
+  `user_id` for user tables but `token` for permissions_shares.
+  `test:ci` green (96 suites / 1755 passed). Remaining: D8, D9, D10.

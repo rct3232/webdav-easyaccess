@@ -289,6 +289,20 @@ describe('permissionStore (nodeId)', () => {
         },
         query: async (sql, params) => mockClient.query(sql, params),
       }),
+      // Facades execute through the executor seam — supply a sqlite executor
+      // built on the same in-memory mock client.
+      getExecutor: () => ({
+        dialect: 'sqlite',
+        query: async (sql, params) => mockClient.query(sql, params),
+        run: async (sql, params) => mockClient.run(sql, params),
+        transaction: async (fn) =>
+          fn({
+            query: async (sql, params) => mockClient.query(sql, params),
+            run: async (sql, params) => mockClient.run(sql, params),
+          }),
+        isUniqueConflict: () => false,
+        close: async () => {},
+      }),
     }));
 
     jest.doMock('../../../../store/locks', () => {

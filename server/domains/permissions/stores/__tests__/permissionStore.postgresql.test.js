@@ -91,6 +91,20 @@ describe('permissionStore (postgresql) admin permission round-trip', () => {
         exists: jest.fn(),
         readFile: jest.fn(),
         writeFile: jest.fn(),
+        // Facades execute through the executor seam — supply a postgres
+        // executor built on the same in-memory mocks.
+        getExecutor: () => ({
+          dialect: 'postgres',
+          query: async (sql, params) => poolQuery(sql, params),
+          run: async (sql, params) => poolQuery(sql, params),
+          transaction: async (fn) =>
+            fn({
+              query: async (sql, params) => txQuery(sql, params),
+              run: async (sql, params) => txQuery(sql, params),
+            }),
+          isUniqueConflict: (err) => err && err.code === '23505',
+          close: async () => {},
+        }),
       });
     });
     jest.doMock('../../../../infrastructure/lockManager', () => {

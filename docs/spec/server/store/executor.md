@@ -27,13 +27,16 @@
  * @property {(sql: string, params?: Array) => Promise<{ rows: Array }>} query
  *   Read path. Returns rows as plain objects (snake_case columns as defined in
  *   the schema). No row mapping beyond what the driver returns.
- * @property {(sql: string, params?: Array) => Promise<{ changes: number, lastId?: number }>} run
+ * @property {(sql: string, params?: Array) => Promise<{ changes: number, lastId?: number, rows?: Array }>} run
  *   Write path (INSERT/UPDATE/DELETE/DDL). `lastId` is the generated id of an
  *   INSERT into a single-column-PK table (`undefined` otherwise). Implementors
  *   normalise the driver difference: sqlite uses `lastID` from `db.run`; the
  *   postgres implementation appends `RETURNING <pk>` to the statement
  *   (introspecting `pg_index`, cached per table) and reads the first returned
  *   column. SQL that already contains RETURNING is left untouched.
+ *   When the statement itself carries RETURNING, both implementations return
+ *   the returned rows as `rows` (and `changes` = row count) — sqlite routes
+ *   such statements through `db.all`, because `db.run` discards RETURNING rows.
  * @property {<T>(fn: (tx) => Promise<T>) => Promise<T>} transaction
  *   Runs `fn` inside one transaction; commits on resolve, rolls back on throw.
  *   `tx` exposes the same `query`/`run` shape bound to the open transaction.

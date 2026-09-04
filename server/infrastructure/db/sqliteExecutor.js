@@ -24,6 +24,13 @@ module.exports = {
 
   async run(sql, params = []) {
     try {
+      // Statements with RETURNING need db.all (rows); plain writes use db.run
+      // (changes + lastID). Mirrors the contract: run() returns lastId for
+      // single-PK INSERTs and `rows` when the statement returns rows.
+      if (/RETURNING/i.test(sql)) {
+        const res = await storage.sqliteQuery(sql, params);
+        return { changes: res.rows.length, rows: res.rows };
+      }
       const res = await storage.sqliteRun(sql, params);
       return { changes: res.changes, lastId: res.lastID };
     } catch (error) {
@@ -36,6 +43,10 @@ module.exports = {
       fn({
         query: (sql, params = []) => client.query(sql, params),
         run: async (sql, params = []) => {
+          if (/RETURNING/i.test(sql)) {
+            const res = await client.query(sql, params);
+            return { changes: res.rows.length, rows: res.rows };
+          }
           const res = await client.run(sql, params);
           return { changes: res.changes, lastId: res.lastID };
         },

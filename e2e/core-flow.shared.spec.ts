@@ -10,6 +10,7 @@ import {
   createFolderViaUi,
   downloadFile,
   fileItem,
+  flushPrivateWorkspaceCleanups,
   listNodeChildren,
   openFolderPickerAndSelectDestination,
   openFolderRouteAndWaitForItems,
@@ -30,6 +31,10 @@ import {
   resolveNodeId,
   resolvePathOrNull,
 } from './helpers/resolvePath';
+
+test.afterEach(async ({ request }) => {
+  await flushPrivateWorkspaceCleanups(request);
+});
 
 const textFixtureBuffer = readTestFileFixture(TEST_FILES.smallText);
 const imageFixtureBuffer = readTestFileFixture(TEST_FILES.smallImage);

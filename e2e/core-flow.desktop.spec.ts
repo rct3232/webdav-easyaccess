@@ -5,6 +5,7 @@ import {
   buildName,
   createFolderViaUi,
   fileItem,
+  flushPrivateWorkspaceCleanups,
   openPrivateWorkspace,
   uploadFileViaUi,
 } from './helpers/files';
@@ -31,6 +32,10 @@ async function createTestFile(page: any, fileName: string) {
 }
 
 test.describe('core flow (desktop)', () => {
+  test.afterEach(async ({ request }) => {
+    await flushPrivateWorkspaceCleanups(request);
+  });
+
   test('E2E-DESKTOP-001: Double-click opens folder or preview', async ({
     page,
     request,

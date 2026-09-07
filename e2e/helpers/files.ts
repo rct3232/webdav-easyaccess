@@ -31,8 +31,45 @@ export async function openPrivateWorkspace(
   if (existing === null) {
     await createFolderAt(request, token, null, base);
   }
+  trackWorkspaceCleanup(token, `/${base}`);
   await gotoFilesPath(page, request, `/${base}`);
   return base;
+}
+
+const pendingWorkspaceCleanups: Array<{ token: string; basePath: string }> = [];
+
+function trackWorkspaceCleanup(token: string, basePath: string) {
+  pendingWorkspaceCleanups.push({ token, basePath });
+}
+
+/**
+ * Delete a case-owned folder (and its subtree) via the API. Tolerant of the
+ * folder having already been moved/renamed/deleted by the case itself.
+ */
+async function deleteFolderAt(
+  request: APIRequestContext,
+  token: string,
+  folderPath: string
+): Promise<void> {
+  const nodeId = await resolvePathOrNull(request, token, folderPath);
+  if (nodeId === null) return;
+  const res = await request.delete('/api/files/delete', {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { nodeId },
+  });
+  expect(res.ok()).toBeTruthy();
+}
+
+/**
+ * Deletes every case-owned base folder registered for the current test. Call
+ * from a per-file `test.afterEach` so per-case data never accumulates at the
+ * filesystem root across a run (assertion-context containment cleanup).
+ */
+export async function flushPrivateWorkspaceCleanups(request: APIRequestContext): Promise<void> {
+  const pending = pendingWorkspaceCleanups.splice(0, pendingWorkspaceCleanups.length);
+  for (const cleanup of pending) {
+    await deleteFolderAt(request, cleanup.token, cleanup.basePath);
+  }
 }
 
 export function fileItem(page: Page, filePath: string) {

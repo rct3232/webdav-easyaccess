@@ -1,6 +1,7 @@
-import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import { type Page, type TestInfo } from '@playwright/test';
 
 import { TEST_FILES } from './fixtures/test-data';
+import { ADMIN_STATE, expect, test } from './fixtures/authenticated';
 import { loginAsAdmin, loginAsUser, loginAsUserApi } from './helpers/auth';
 import { breadcrumbChip, openItemActions } from './helpers/explorer';
 import {
@@ -31,6 +32,8 @@ import {
   resolveNodeId,
   resolvePathOrNull,
 } from './helpers/resolvePath';
+
+test.use({ storageState: ADMIN_STATE });
 
 test.afterEach(async ({ request }) => {
   await flushPrivateWorkspaceCleanups(request);

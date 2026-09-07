@@ -265,6 +265,10 @@ Apply uniformly to every spec in `e2e/`:
 - Each case deletes its owned base folder in `afterEach` (API delete, tolerant of the folder having already been moved/renamed/deleted by the case), so the shared admin root never accumulates one folder per case across a run.
 - Prefer parallel-safe cases; a case/file must be serial only when it mutates shared users/settings or depends on prior cases (state the reason).
 
+### Authenticated-session reuse (L1)
+
+- Default to an authenticated session for admin-actor cases via a per-file `storageState` (see `e2e/fixtures/authenticated.ts`); only auth-state cases start unauthenticated or perform a UI login. New cases must not repeat a UI login the seeded session already provides.
+
 ### Minimum flow coverage
 
 - Desktop flow: login plus CRUD happy paths that exercise create folder, upload, rename, and delete.
@@ -326,6 +330,7 @@ Detailed browser-flow inventory, rollout order, and planned Playwright ownership
 ### New or modified E2E spec
 
 - Create/assert data only inside a case-owned folder; never assert visibility in a shared listing (assertion-context containment).
+- Do not repeat a UI login when a seeded per-file `storageState` session already provides it (see `e2e/fixtures/authenticated.ts`); only auth-state cases start unauthenticated or perform a UI login.
 - Verify order-independence before enabling parallel workers: run the affected project with `--workers=1` and `--workers=2` and confirm an identical passed/skipped set (repeat 3×).
 
 ---

@@ -4,9 +4,17 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { cleanDir, runSeedDb } from './helpers/seedDb';
+import { TEST_USERS } from './fixtures/test-data';
 
 const rootDir = process.cwd();
 const backendMode = process.env.E2E_BACKEND_MODE || 's3';
+
+// E2E API server and client origin mirror `playwright.config.ts` webServer /
+// baseURL. The login below runs in globalSetup, AFTER Playwright has booted the
+// webServer (Playwright 1.58 task order: plugins/webServer -> globalSetup).
+const E2E_API_ORIGIN = 'http://127.0.0.1:5002';
+const E2E_APP_ORIGIN = 'http://localhost:3000';
+const ADMIN_STATE_PATH = path.join(rootDir, 'e2e-data', 'state', 'admin.json');
 
 // createRequire needs a module filename; we never rely on __filename so this
 // works both under Playwright's CJS transpile and a direct Node ESM import.
@@ -191,6 +199,60 @@ function seedPostgresql() {
   }
 }
 
+/**
+ * L1 (authenticated-session reuse): perform ONE admin login against the running
+ * E2E API server (started by Playwright's webServer before globalSetup) and
+ * persist the tokens as a Playwright storageState file. Playwright cannot seed
+ * sessionStorage through storageState, so the file seeds NON-app localStorage
+ * keys (`e2e.accessToken` / `e2e.refreshToken`) that the shared
+ * `e2e/fixtures/authenticated.ts` init-script copies into sessionStorage when a
+ * page first loads. If the login fails we throw: a stale/empty state must never
+ * silently unauthenticate the admin-actor suites.
+ */
+async function seedAdminStorageState() {
+  const loginResponse = await fetch(`${E2E_API_ORIGIN}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      username: TEST_USERS.admin.username,
+      password: TEST_USERS.admin.password,
+    }),
+  });
+
+  if (!loginResponse.ok) {
+    const errorBody = await loginResponse.text();
+    throw new Error(
+      `E2E admin login for storageState failed with status ${loginResponse.status}: ${errorBody}`
+    );
+  }
+
+  const body = await loginResponse.json();
+  const accessToken = body?.token;
+  const refreshToken = body?.refreshToken ?? '';
+  if (typeof accessToken !== 'string' || accessToken.length === 0) {
+    throw new Error(
+      `E2E admin login returned no access token (response shape: ${JSON.stringify(body)})`
+    );
+  }
+
+  const state = {
+    cookies: [],
+    origins: [
+      {
+        origin: E2E_APP_ORIGIN,
+        localStorage: [
+          { name: 'e2e.accessToken', value: accessToken },
+          { name: 'e2e.refreshToken', value: refreshToken },
+        ],
+      },
+    ],
+  };
+
+  fs.mkdirSync(path.dirname(ADMIN_STATE_PATH), { recursive: true });
+  fs.writeFileSync(ADMIN_STATE_PATH, JSON.stringify(state, null, 2));
+  console.log(`E2E admin storageState seeded at ${ADMIN_STATE_PATH}`);
+}
+
 export default async function globalSetup() {
   cleanDir('test-results');
   cleanDir('playwright-report');
@@ -245,4 +307,9 @@ export default async function globalSetup() {
   // reachable again so no later suite (webdav mode or the hermetic scratch
   // suites in s3 mode) has to perform a lazy mid-run restart.
   await waitForWebdav(60_000);
+
+  // Last step: the DB seed above guarantees admin exists (ADMIN_DEFAULT_PASSWORD
+  // = 'admin', see `e2e/fixtures/test-data.ts`), so a login now yields the
+  // seeded admin session the admin-actor suites share via storageState.
+  await seedAdminStorageState();
 }

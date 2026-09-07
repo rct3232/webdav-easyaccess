@@ -1,15 +1,12 @@
-import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import { type Page, type TestInfo } from '@playwright/test';
 
-import {
-  ensureApprovedUser,
-  ensurePendingUser,
-  getTestSuffix,
-  loginAsAdmin,
-  loginAsUser,
-} from './helpers/auth';
+import { ensureApprovedUser, ensurePendingUser, getTestSuffix, loginAsUser } from './helpers/auth';
 import { buildName } from './helpers/files';
 import { getSessionToken, resolveNodeId } from './helpers/resolvePath';
 import { TEST_USERS } from './fixtures/test-data';
+import { ADMIN_STATE, expect, test } from './fixtures/authenticated';
+
+test.use({ storageState: ADMIN_STATE });
 
 test.describe.configure({ mode: 'serial' });
 
@@ -156,7 +153,6 @@ test.describe('mypage admin flows (E2E-ADMIN-001..008)', () => {
     const isMobile = isMobileProject(testInfo);
     const suffix = getTestSuffix(testInfo);
     await ensureApprovedUser(request, 'user1', suffix);
-    await loginAsAdmin(page);
 
     await page.goto('/admin');
 
@@ -178,7 +174,6 @@ test.describe('mypage admin flows (E2E-ADMIN-001..008)', () => {
     const isMobile = isMobileProject(testInfo);
     const suffix = getTestSuffix(testInfo);
     await ensureApprovedUser(request, 'user1', suffix);
-    await loginAsAdmin(page);
 
     await page.goto('/mypage');
 
@@ -191,7 +186,6 @@ test.describe('mypage admin flows (E2E-ADMIN-001..008)', () => {
     const suffix = getTestSuffix(testInfo);
     await ensureApprovedUser(request, 'user1', suffix);
     await ensurePendingUser(request, 'user2', suffix);
-    await loginAsAdmin(page);
 
     await page.goto('/mypage');
     await openMyPageCategory(page, isMobile, 'Users');
@@ -245,7 +239,6 @@ test.describe('mypage admin flows (E2E-ADMIN-001..008)', () => {
     const suffix = getTestSuffix(testInfo);
     await ensureApprovedUser(request, 'user1', suffix);
     await ensurePendingUser(request, 'user3', suffix);
-    await loginAsAdmin(page);
 
     await page.goto('/mypage');
     await openMyPageCategory(page, isMobile, 'Users');
@@ -294,7 +287,6 @@ test.describe('mypage admin flows (E2E-ADMIN-001..008)', () => {
     const isMobile = isMobileProject(testInfo);
     const suffix = getTestSuffix(testInfo);
     await ensureApprovedUser(request, 'user1', suffix);
-    await loginAsAdmin(page);
 
     await page.goto('/mypage');
     await openMyPageCategory(page, isMobile, 'Users');
@@ -358,7 +350,6 @@ test.describe('mypage admin flows (E2E-ADMIN-001..008)', () => {
     const suffix = getTestSuffix(testInfo);
     await ensureApprovedUser(request, 'user1', suffix);
     await ensureApprovedUser(request, 'user2', suffix);
-    await loginAsAdmin(page);
 
     await page.goto('/mypage');
     await openMyPageCategory(page, isMobile, 'Users');
@@ -403,7 +394,6 @@ test.describe('mypage admin flows (E2E-ADMIN-001..008)', () => {
     const isMobile = isMobileProject(testInfo);
     const suffix = getTestSuffix(testInfo);
     await ensureApprovedUser(request, 'user1', suffix);
-    await loginAsAdmin(page);
 
     await page.goto('/mypage');
     await openMyPageCategory(page, isMobile, 'System settings');
@@ -426,7 +416,12 @@ test.describe('mypage admin flows (E2E-ADMIN-001..008)', () => {
     const isMobile = isMobileProject(testInfo);
     const suffix = getTestSuffix(testInfo);
     await ensureApprovedUser(request, 'user1', suffix);
-    await loginAsAdmin(page);
+
+    // The file-level storageState already authenticates the admin session; this
+    // navigation lets the init-script copy the seeded token into sessionStorage
+    // before it is read below (see e2e/fixtures/authenticated.ts).
+    await page.goto('/mypage');
+    const adminToken = await getSessionToken(page);
 
     // Absence precondition injection: give the non-admin user own folders so a
     // self-grant leak into `__shared__` (class A/H) would be user-visible before
@@ -434,11 +429,9 @@ test.describe('mypage admin flows (E2E-ADMIN-001..008)', () => {
     const targetUsername = `${TEST_USERS.user1.username}_${suffix}`;
     const ownFolderName = buildName(testInfo, 'cleanup-own-folder');
     const ownFolderPath = `/${targetUsername}/${ownFolderName}`;
-    const adminToken = await getSessionToken(page);
     await createFolderViaApi(request, adminToken, ownFolderPath);
     const ownFolderNodeId = await resolveNodeId(request, adminToken, ownFolderPath);
 
-    await page.goto('/mypage');
     await openMyPageCategory(page, isMobile, 'System settings');
 
     const cleanupIcon = page.locator('button[aria-label="Clean up"]');

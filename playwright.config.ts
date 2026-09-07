@@ -244,7 +244,11 @@ export default defineConfig({
       stderr: isQuiet ? 'ignore' : 'pipe',
     },
     {
-      command: 'npm run e2e:client',
+      // L3: serve the PRODUCTION client build (scripts/e2e-serve-client.js) —
+      // builds once when client/build is missing, then serves it on :3000 with
+      // an /api proxy to the E2E API server. Faster than the webpack dev server
+      // and exercises the shipped bundle. Dev iteration uses `npm run e2e:client`.
+      command: 'node scripts/e2e-serve-client.js',
       url: 'http://localhost:3000',
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,

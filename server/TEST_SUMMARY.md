@@ -2,13 +2,14 @@
 
 ## Overview
 
-Summary of the test implementation for the Express.js server application. All tests follow **black-box testing**: assertions focus on observable outcomes (return values, API responses, HTTP status codes), not implementation details. WebDAV, blob stores, and data stores use test doubles or in-memory storage. Test files are colocated with source under `domains/<x>/` (routes, services, stores, policy), plus shared `service/`, `store/`, `infrastructure/`, `middleware/`, `models/`, and `utils/`. See [docs/TESTING_STRATEGY.md](../docs/TESTING_STRATEGY.md).
+Summary of the test implementation for the Express.js server application. All tests follow **black-box testing**: assertions focus on observable outcomes (return values, API responses, HTTP status codes), not implementation details. WebDAV and blob stores use test doubles; data stores follow the tiered model in [docs/TESTING_STRATEGY.md](../docs/TESTING_STRATEGY.md) — L1 functional suites run against doubles or per-suite real sqlite, while L2 repository conformance suites run against real sqlite (default `test:ci` leg) and, under the adapter leg, real PostgreSQL. Test files are colocated with source under `domains/<x>/` (routes, services, stores, policy), plus shared `service/`, `store/`, `infrastructure/`, `middleware/`, `models/`, and `utils/`.
 
 ## Test Statistics
 
-- **Total Test Suites**: 87 (as of 2026-09-02)
-- **Total Tests**: 1663 (1658 passed, 5 skipped)
-- **Pass Rate**: 100% (1658 passed, 0 failed) ✅
+- **Total Test Suites**: 98 (sqlite `test:ci`, as of 2026-09-04)
+- **Total Tests**: 1780 (1775 passed, 5 skipped)
+- **Pass Rate**: 100% (1775 passed, 0 failed) ✅
+- **Real-PostgreSQL adapter leg** (`test:ci:pg:adapters`): 15 suites / 197 tests
 - **Execution Time**: Reported per run by `npm run test`
 
 ## Test Breakdown by Category
@@ -40,7 +41,7 @@ Single modules in isolation (models, middleware, utils, domain-internal stores).
 
 ### Service Tests
 
-Domain services, policies, and stores plus the shared service/store layer. Persistence and external adapters use test doubles.
+Domain services, policies, and stores plus the shared service/store layer. Persistence and external adapters use test doubles (the permission store suites below mock the driver — they are not real-PostgreSQL runs).
 
 | Test File                                                                 | Notes                         |
 | ------------------------------------------------------------------------- | ----------------------------- |
@@ -51,7 +52,7 @@ Domain services, policies, and stores plus the shared service/store layer. Persi
 | `domains/permissions/policy/__tests__/ownerNodeResolver.test.js`          | Owner node resolution         |
 | `domains/permissions/policy/__tests__/permissionPolicy.test.js`           | Permission policy             |
 | `domains/permissions/services/__tests__/aclService.test.js`               | ACL service                   |
-| `domains/permissions/stores/__tests__/permissionStore.postgresql.test.js` | Permission store (PostgreSQL) |
+| `domains/permissions/stores/__tests__/permissionStore.postgresql.test.js` | Permission store (mocked PG driver — unit test, not a real-PG run) |
 | `domains/permissions/stores/__tests__/permissionStore.test.js`            | Permission store              |
 | `domains/permissions/stores/__tests__/requestStore.test.js`               | Permission request store      |
 | `domains/thumbnails/services/__tests__/thumbnail.test.js`                 | Thumbnail generation service  |
@@ -69,7 +70,7 @@ Domain services, policies, and stores plus the shared service/store layer. Persi
 
 ### Infrastructure Tests
 
-Schema, storage, locking, scheduling, and blob store adapters.
+Schema, storage, locking, scheduling, executor seam, and blob store adapters.
 
 | Test File                                                              | Notes                 |
 | ---------------------------------------------------------------------- | --------------------- |
@@ -78,9 +79,24 @@ Schema, storage, locking, scheduling, and blob store adapters.
 | `infrastructure/__tests__/maintenanceScheduler.test.js`                | Maintenance scheduler |
 | `infrastructure/__tests__/schemaManager.test.js`                       | Schema manager        |
 | `infrastructure/__tests__/sqliteSchemaInit.test.js`                    | SQLite schema init    |
+| `infrastructure/db/__tests__/executor.test.js`                         | Executor seam (L2)    |
 | `infrastructure/adapters/blobstore/__tests__/blobstoreFactory.test.js` | Blob store factory    |
 | `infrastructure/adapters/blobstore/__tests__/S3BlobStore.test.js`      | S3 blob store         |
 | `infrastructure/adapters/blobstore/__tests__/WebdavBlobStore.test.js`  | WebDAV blob store     |
+
+### Repository Conformance Tests (L2)
+
+Repository interfaces run against the active backend via `createTestDatabase()` — real sqlite on the default `test:ci` leg, real PostgreSQL on the `test:ci:pg:adapters` leg (see `docs/spec/server/store/repository-contract.md`).
+
+| Test File                                                                 | Notes                                          |
+| ------------------------------------------------------------------------- | ---------------------------------------------- |
+| `store/repositories/__tests__/SettingsRepository.conformance.test.js`     | Settings repository conformance                |
+| `store/repositories/__tests__/UserRepository.conformance.test.js`         | User repository conformance                    |
+| `store/repositories/__tests__/ShareLinkRepository.conformance.test.js`    | ShareLink repository conformance               |
+| `store/repositories/__tests__/RecentFilesRepository.conformance.test.js`  | RecentFiles repository conformance             |
+| `store/repositories/__tests__/FileNodeRepository.conformance.test.js`     | FileNode repository conformance                |
+| `domains/permissions/stores/repositories/__tests__/PermissionRepository.conformance.test.js`        | Permission repository conformance              |
+| `domains/permissions/stores/repositories/__tests__/PermissionRequestRepository.conformance.test.js` | Permission request repository conformance      |
 
 ### Integration Tests
 
@@ -117,8 +133,9 @@ The per-module and overall coverage percentages previously published in this fil
 
 ## Conclusion
 
-- 1658 tests across 87 suites, 100% pass rate (5 skipped, as of 2026-09-02)
+- 1775 tests across 98 suites, 100% pass rate (5 skipped, as of 2026-09-04, sqlite `test:ci`); real-PostgreSQL adapter leg `test:ci:pg:adapters`: 15 suites / 197 tests
 - Tests are colocated with source: domain routes/services/stores/policy under `domains/<x>/`, shared layer under `service/` and `store/`, plus `infrastructure/`, `middleware/`, `models/`, `utils/`
 - Route integration tests cover main API endpoints via Supertest
+- L2 repository conformance suites (store + permission repositories, executor) run against real sqlite and, on the adapter leg, real PostgreSQL
 - Test infrastructure and commands documented
 - RCA procedure for failures defined

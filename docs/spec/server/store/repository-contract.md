@@ -11,10 +11,10 @@
 
 ### 2.1 File Paths
 
-- **Interface + factory:** `server/store/repositories/<Domain>Repository.js` (JSDoc `@typedef <Domain>Repository` plus `create<Domain>Repository(executor)`).
-- **Implementations:** `server/store/repositories/sqlite/<Domain>Repository.sqlite.js`, `server/store/repositories/postgres/<Domain>Repository.postgres.js`.
-- **Facades:** the existing store modules (`server/store/settingsStore.js`, `server/store/userStore.js`, domain stores …) become thin delegates: they obtain `storage.getExecutor()` and forward to the repository built from it. **Service/route call sites are not changed** — the store module path and exported method names are preserved.
-- **Conformance tests (L2):** `server/store/repositories/__tests__/<domain>.conformance.test.js` — run against the active backend via `createTestDatabase()` (sqlite in the default CI leg; real PostgreSQL under the `WEA_TEST_PG_*` adapter leg).
+- **Interface + factory:** `server/store/repositories/<Domain>Repository.js` (JSDoc `@typedef <Domain>Repository` plus `create<Domain>Repository(executor)`). Domain-store repositories keep the same shape under their domain, e.g. `server/domains/permissions/stores/repositories/<Domain>Repository.js`.
+- **Implementations:** `server/store/repositories/sqlite/<Domain>Repository.sqlite.js`, `server/store/repositories/postgres/<Domain>Repository.postgres.js` — and the matching `sqlite/`+`postgres/` twins under a domain-store repository path (domain repos may share builders via a `<domain>Shared.js`).
+- **Facades:** the existing store modules (`server/store/settingsStore.js`, `server/store/userStore.js`, domain stores such as `server/domains/permissions/stores/permissionStore.js` …) become thin delegates: they obtain `storage.getExecutor()` and forward to the repository built from it. **Service/route call sites are not changed** — the store module path and exported method names are preserved.
+- **Conformance tests (L2):** `server/store/repositories/__tests__/<domain>.conformance.test.js` and `server/domains/permissions/stores/repositories/__tests__/<domain>.conformance.test.js` — run against the active backend via `createTestDatabase()` (sqlite in the default CI leg; real PostgreSQL under the `WEA_TEST_PG_*` adapter leg). The executor seam itself is exercised by `server/infrastructure/db/__tests__/executor.test.js`.
 
 ### 2.2 Rules
 
@@ -28,7 +28,7 @@
 ### 2.3 Pilot order
 
 1. `SettingsRepository` (smallest seam; consumed by `configResolver`, admin config, configSync, setup).
-2. `UserRepository` (absorbs the used half of `infrastructure/adapters/metadata`; the vestigial share-link half is dropped — `ShareLinkRepository` owns that domain).
+2. `UserRepository` (absorbs the user half of the deleted metadata-adapter module; the vestigial share-link half is dropped — `ShareLinkRepository` owns that domain).
 3. `RecentFilesRepository`, `ShareLinkRepository`.
 4. `FileNodeRepository`, then `PermissionRepository` / `PermissionRequestRepository` (largest dialect surfaces — contract tests written first, conversion split into steps).
 5. Out of repository scope (kept as adapter-conformance targets, not repositories): `lockManager` (locking strategies), `schemaManager`/DDL pipeline, `metadataMigrationService` (cross-dialect tooling).

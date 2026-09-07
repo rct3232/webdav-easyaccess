@@ -39,11 +39,11 @@
 
 ### 2.5 Dependencies
 
-- PostgresqlMetadataAdapter / SqliteMetadataAdapter
+- repositories/RecentFilesRepository.js + storage.getExecutor()
 
 ### 2.6 Verification Scenarios
 
 - [ ] addRecentFile dedupes by node_id; new entry at front; cap at 20
 - [ ] removeRecentFile filters by file_node_id
 - [ ] Missing entries → [] from getUserRecentFiles
-- [ ] PostgreSQL: unique `(user_id, file_node_id)` prevents duplicates under concurrent inserts
+- [ ] PostgreSQL: unique `(user_id, file_node_id)` prevents duplicates under concurrent inserts (covered by the conformance suite on the real-PG adapter leg — `server/store/repositories/__tests__/RecentFilesRepository.conformance.test.js`)

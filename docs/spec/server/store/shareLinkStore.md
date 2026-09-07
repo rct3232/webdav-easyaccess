@@ -13,7 +13,8 @@
 ### 2.1 File Path
 
 - **Source:** `server/store/shareLinkStore.js`
-- **Test file:** `server/store/__tests__/shareLinkStore.test.js`
+- **Test file:** `server/domains/sharing/__tests__/shareLinkStore.test.js`
+- **L2 conformance:** `server/store/repositories/__tests__/ShareLinkRepository.conformance.test.js` (sqlite default leg; real PostgreSQL under the `test:ci:pg:adapters` leg)
 
 ### 2.2 Main Methods
 
@@ -39,7 +40,7 @@
 
 ### 2.5 Dependencies
 
-- PostgresqlMetadataAdapter / SqliteMetadataAdapter
+- storage.getExecutor() + repositories/ShareLinkRepository.js (+ impls); isLinkExpired at server/store/isLinkExpired.js
 - errorHandler, SERVER_ERROR_CODES
 
 ### 2.6 Verification Scenarios
@@ -49,4 +50,4 @@
 - [ ] getUserShareLinks filters by createdBy, sorts by createdAt desc
 - [ ] updateShareLink merges updates; 404 when not found
 - [ ] isLinkExpired: no expiresAt → false; past date → true
-- [ ] PostgreSQL: concurrent `incrementDownloadCount` calls preserve all increments
+- [ ] PostgreSQL: concurrent `incrementDownloadCount` calls preserve all increments (covered by the conformance suite on the real-PG adapter leg — `server/store/repositories/__tests__/ShareLinkRepository.conformance.test.js`)

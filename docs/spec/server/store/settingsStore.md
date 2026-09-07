@@ -44,11 +44,11 @@
 
 ### 2.6 Dependencies
 
-- storage (getBackend, withTransaction, getPgPool, isSqliteBackend, getSqliteConnection, withSqliteTransaction)
+- storage.getExecutor() + repositories/SettingsRepository.js (upsert SQL lives in repositories/{sqlite,postgres}/)
 
 ### 2.7 Verification Scenarios
 
 - [ ] get returns value or null for unknown key
 - [ ] set upserts by key
 - [ ] isRegistrationEnabled true only when 'true' string
-- [ ] PostgreSQL: set upserts by `key` and preserves latest value
+- [ ] PostgreSQL: set upserts by `key` and preserves latest value (covered by the conformance suite on the real-PG adapter leg — `server/store/repositories/__tests__/SettingsRepository.conformance.test.js`)

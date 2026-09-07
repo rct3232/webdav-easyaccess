@@ -31,7 +31,7 @@ repositories (`docs/spec/server/store/executor.md`,
 | ---- | ---- | ------- | ----- |
 | **L0 unit** | Pure logic; storage mocked at the executor/store boundary | none | `**/__tests__` (no DB) |
 | **L1 functional** | Routes/services/models — observable behavior through APIs | **sqlite only** (per-suite temp DB) | `**/__tests__` DB suites; default `test:ci` leg |
-| **L2 adapter conformance** | Repository interfaces against real storage: CRUD/upsert/RETURNING/type mapping/transactions/locking/schema/migrations | real sqlite + **real PostgreSQL** (`WEA_TEST_PG_*`, serial) | `server/store/repositories/__tests__/*.conformance.test.js` + executor/schema/migration suites; `test:ci:pg:adapters` |
+| **L2 adapter conformance** | Repository interfaces against real storage: CRUD/upsert/RETURNING/type mapping/transactions/locking/schema/migrations | real sqlite + **real PostgreSQL** (`WEA_TEST_PG_*`, serial) | `server/store/repositories/__tests__/*.conformance.test.js` + `server/domains/permissions/stores/repositories/__tests__/*.conformance.test.js` + executor suite (`server/infrastructure/db/__tests__/executor.test.js`) + schema/migration suites; `test:ci:pg:adapters` |
 | **L3 cross-DB smoke** | Representative store roundtrip + migration apply-once per supported RDB | each RDB | subset inside the adapter leg |
 
 Rules:
@@ -43,7 +43,7 @@ Rules:
 - **Repository conformance suites are backend-agnostic by design** — they call
   `createTestDatabase()` and assert behavior on whichever backend is active,
   so the same file covers sqlite (default leg) and PostgreSQL (adapter leg).
-- The former full-suite PostgreSQL leg (`test:ci:pg`) is retired; the adapter
+- The former full-suite real-PostgreSQL jest leg is retired; the adapter
   leg (`test:ci:pg:adapters`) is the only real-PG jest entry point.
 
 ---

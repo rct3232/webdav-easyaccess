@@ -6,13 +6,13 @@ This document describes the Phase 2 core service layer architecture for filesyst
 
 ## Overview
 
-The core service layer provides filesystem tree management, blob lifecycle control, and upload orchestration for the S3+PostgreSQL storage backend. The architecture follows a layered dependency model with factory-function-based dependency injection consistent with existing `createFileService` and `createBlobStore` conventions. Transaction ownership lives at the orchestration layer only — individual service methods are transaction-agnostic.
+The core service layer provides filesystem tree management, blob lifecycle control, and upload orchestration for the S3/WebDAV blob backend and the DB metadata store (SQLite by default; PostgreSQL when the remote `WEA_DB_*` block is set). The architecture follows a layered dependency model with factory-function-based dependency injection consistent with existing `createFileService` and `createBlobStore` conventions. Transaction ownership lives at the orchestration layer only — individual service methods are transaction-agnostic.
 
 ```
 uploadService.js          ← Orchestration (TX1 → S3 PUT → TX2 flow)
   ├── fileNodeService.js   ← Tree operations (create/move/rename/delete/list/resolvePath)
   │       └── _ancestryHelper.js ← Closure table maintenance
-  │               └── fileNodesStore.js ← SQL query layer (PostgreSQL / SQLite branching)
+  │               └── fileNodesStore.js ← facade → FileNodeRepository → per-dialect impl (sqlite | postgres) via storage.getExecutor() → DbExecutor (infrastructure/db)
   └── blobStorageService.js ← Blob lifecycle (prepareUpload → completeUpload → download)
           └── S3BlobStore / NoOpBlobStore (Phase 1 adapters)
 ```
@@ -27,7 +27,7 @@ uploadService.js          ← Orchestration (TX1 → S3 PUT → TX2 flow)
 | `fileNodeService`    | Tree CRUD, cycle detection, path resolution, ancestor chain dispatching             | No closure table algorithms (delegates to `_ancestryHelper`)                          |
 | `_ancestryHelper`    | Closure table algorithms: build on insert, rebuild on move (BFS), cleanup on delete | No DB queries; calls only `fileNodesStore` methods                                    |
 | `blobStorageService` | Object map lifecycle (`pending→active→orphaned`), filecache metadata writes         | No direct S3 operations except `downloadBlob` pass-through and `overwriteBlob` upload |
-| `fileNodesStore`     | SQL query execution, PostgreSQL/SQLite branching                                    | No transaction wrapping; no business logic beyond single-row/batch SQL                |
+| `fileNodesStore`     | Facade over `FileNodeRepository`; SQL/dialect code lives in the repository impls, executed through the `DbExecutor` | No transaction wrapping; no business logic beyond delegation to `FileNodeRepository` |
 
 These boundaries are about **who owns data mutations and orchestration concerns**; they define the service contract surface that tests verify against.
 
@@ -173,6 +173,7 @@ sequenceDiagram
 ### Unit vs integration split
 
 - **fileNodesStore tests:** In-memory SQLite backend, verify all CRUD + ancestor + object_map operations. No mocks — real database queries.
+- **Repository conformance:** per-dialect SQL behavior is covered by `server/store/repositories/__tests__/FileNodeRepository.conformance.test.js` — runs on real SQLite by default and on real PostgreSQL under the adapter leg (`test:ci:pg:adapters`).
 - **\_ancestryHelper tests:** Real `fileNodesStore` against in-memory SQLite. Verify closure table correctness at depth 0/1/N after every mutation.
 - **blobStorageService tests:** `s3Mock` for S3 operations, real SQLite for DB layer. Verify `pending→active→orphaned` transitions.
 - **uploadService tests:** Integration test with real SQLite + `s3Mock`. Simulate failure at each of 3 points (TX1, S3 PUT, TX2), verify recoverable state after each.

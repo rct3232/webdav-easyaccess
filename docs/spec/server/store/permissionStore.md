@@ -69,9 +69,9 @@
 The following modules were deleted during Wave 4 and their responsibilities absorbed by the store:
 
 - **`permissionFacade.js`** (`server/domains/permissions/services/permissionFacade.js`) — previously a thin wrapper around permission operations; all callers now import `permissionStore` directly.
-- **`models/Permission.js`** (`server/models/Permission.js`) — legacy Permission model class replaced by the store's direct SQL queries via the metadata adapter layer.
+- **`models/Permission.js`** (`server/models/Permission.js`) — legacy Permission model class replaced by repository SQL executed through the executor seam.
 
-The `permissionStore` is now the sole source of truth for all permission CRUD and query operations. No facade or model abstraction sits between callers and the store.
+The `permissionStore` is now a facade over the permission repositories: it owns the user-permission cache + ACL existence-index invalidation and the `meetsRank`/validation policy, and delegates all storage to `repositories/PermissionRepository.js` (`sqlite/` + `postgres/` dialect impls) via `storage.getExecutor()` (permission requests likewise delegate to `PermissionRequestRepository`). Callers import the facade; no model abstraction sits between them and the repositories.
 
 ### 2.3 Transaction Boundaries
 
@@ -92,7 +92,7 @@ Constraint/index details are canonical in:
 
 ### 2.5 Dependencies
 
-- PostgresqlMetadataAdapter / SqliteMetadataAdapter
+- storage.getExecutor() + repositories/PermissionRepository.js (sqlite/ + postgres/ impls)
 - locks, userStore
 - shared constants (PERMISSIONS)
 - errorHandler, SERVER_ERROR_CODES
@@ -110,6 +110,7 @@ Constraint/index details are canonical in:
 - [ ] PostgreSQL: duplicate grant upserts/replaces permission without duplicate rows
 - [ ] PostgreSQL: permission check constraint rejects invalid values
 - [ ] PostgreSQL: `grant(..., 'admin')` is preserved on read and `checkPermission(..., 'admin')` returns true
+- [ ] The three PostgreSQL items above are covered on the real-PG adapter leg by `domains/permissions/stores/repositories/__tests__/PermissionRepository.conformance.test.js`
 - [ ] Ancestor inheritance (§2.7): granting on ancestor nodeId propagates to descendants via closure table traversal
 - [ ] `revokeUserSubtreePermissions`: removes the user's rows on the subtree root AND all descendants (depth ≥ 0) from both `permissions_user_paths` and `permissions_user_files`; rows outside the subtree are preserved
 

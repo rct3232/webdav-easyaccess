@@ -14,12 +14,17 @@ import { expect, type Page } from '@playwright/test';
  * unusable for these specs because they spawn and supervise their own scratch
  * instance — in the wizard case restart is the behavior under test.
  *
- * Every helper here is scratch-owned: own port (:5003), own `.env` via
- * `DOTENV_CONFIG_PATH`, own sqlite path, own scratch PG database
- * (`webdav_e2e_setup`, separate from the read-only `webdav_e2e` used by the
- * shared E2E infrastructure). `pg` is required via `createRequire` (ships no
- * types; the local structural type keeps the surface typed without a new
- * dependency).
+ * Every helper here is scratch-owned: own `.env` via `DOTENV_CONFIG_PATH`, own
+ * sqlite path, own scratch PG database (`webdav_e2e_setup`, separate from the
+ * read-only `webdav_e2e` used by the shared E2E infrastructure).
+ *
+ * Port contract (Option A Phase 1): each hermetic suite owns ONE distinct
+ * scratch port so the suites can run concurrently — setup-wizard :5003
+ * (the exported `scratchPort`), admin-config :5010, migration :5011. The port
+ * is passed explicitly to `spawnScratchServer`/`waitForScratchHealth` and must
+ * match the suite's playwright.config.ts baseURL. `pg` is required via
+ * `createRequire` (ships no types; the local structural type keeps the surface
+ * typed without a new dependency).
  */
 
 const require = createRequire(__filename);
@@ -27,9 +32,8 @@ const require = createRequire(__filename);
 const rootDir = process.cwd();
 const SCRATCH_ROOT = path.join(rootDir, 'e2e-data', 'setup-wizard');
 const SCRATCH_PORT = 5003;
-const SCRATCH_BASE = `http://127.0.0.1:${SCRATCH_PORT}`;
 
-/** The scratch server port (mirrors playwright.config.ts setup-wizard baseURL). */
+/** The setup-wizard suite's scratch server port (mirrors playwright.config.ts setup-wizard baseURL). */
 export const scratchPort = SCRATCH_PORT;
 
 // The wizard is the only writer of the keys below. Stripping them from the
@@ -127,16 +131,18 @@ export function ensureClientBuild(): void {
 /**
  * Spawn the scratch server (boot 1 or boot 2) with hermetic isolation:
  * cwd=scratch (so the bare dotenv fallback reads `<scratch>/.env`, never a
- * developer's root `.env`), own port, own env file path, own sqlite path.
+ * developer's root `.env`), explicit suite port (see module header), own env
+ * file path, own sqlite path.
  */
 export function spawnScratchServer(
   scratchDir: string,
+  port: number,
   extraEnv: NodeJS.ProcessEnv = {}
 ): ChildProcess {
   const childEnv: NodeJS.ProcessEnv = { ...process.env };
   for (const key of CONFIG_ENV_KEYS) delete childEnv[key];
   Object.assign(childEnv, {
-    PORT: String(SCRATCH_PORT),
+    PORT: String(port),
     NODE_ENV: 'test',
     DOTENV_CONFIG_PATH: path.join(scratchDir, '.env'),
     WEA_SQLITE_PATH: path.join(scratchDir, 'webdav.db'),
@@ -149,23 +155,19 @@ export function spawnScratchServer(
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
-  child.stdout?.on('data', (d: Buffer) =>
-    process.stdout.write(`[setup-scratch:${SCRATCH_PORT}] ${d}`)
-  );
-  child.stderr?.on('data', (d: Buffer) =>
-    process.stderr.write(`[setup-scratch:${SCRATCH_PORT}] ${d}`)
-  );
+  child.stdout?.on('data', (d: Buffer) => process.stdout.write(`[setup-scratch:${port}] ${d}`));
+  child.stderr?.on('data', (d: Buffer) => process.stderr.write(`[setup-scratch:${port}] ${d}`));
 
   return child;
 }
 
-function pollHealth(timeoutMs: number): Promise<void> {
+function pollHealth(timeoutMs: number, port: number): Promise<void> {
   return new Promise((resolve, reject) => {
     const startedAt = Date.now();
     let settled = false;
 
     const attempt = () => {
-      const req = http.get(`${SCRATCH_BASE}/api/health`, (res) => {
+      const req = http.get(`http://127.0.0.1:${port}/api/health`, (res) => {
         res.resume();
         if (res.statusCode === 200) {
           if (!settled) {
@@ -184,9 +186,7 @@ function pollHealth(timeoutMs: number): Promise<void> {
       if (Date.now() - startedAt >= timeoutMs) {
         settled = true;
         reject(
-          new Error(
-            `Scratch server on :${SCRATCH_PORT} did not become healthy within ${timeoutMs}ms`
-          )
+          new Error(`Scratch server on :${port} did not become healthy within ${timeoutMs}ms`)
         );
         return;
       }
@@ -198,8 +198,12 @@ function pollHealth(timeoutMs: number): Promise<void> {
 }
 
 /** Poll `/api/health` until 200. Server only listens after metadata init, so health 200 implies boot completed. */
-export function waitForScratchHealth(child: ChildProcess, timeoutMs = 60_000): Promise<void> {
-  return pollHealth(timeoutMs).catch((err) => {
+export function waitForScratchHealth(
+  child: ChildProcess,
+  port: number,
+  timeoutMs = 60_000
+): Promise<void> {
+  return pollHealth(timeoutMs, port).catch((err) => {
     throw new Error(
       `${err.message}; child exited: ${child.exitCode !== null ? `code ${child.exitCode}` : 'still running'}`
     );
@@ -391,12 +395,12 @@ export async function seedWebdavSettings(scratchDir: string, url = WEBDAV_BASE):
  * pointed at the subtree so each scratch case keeps its blobs isolated on the
  * always-up webdav server.
  *
- * global-setup wipes `data/webdav` (the container's bind mount) unconditionally,
- * but only restarts the webdav container in webdav mode. In s3 mode the in-container
- * dav root is deleted with no restart, so Apache 403s every DAV method until the
- * container is restarted. We therefore restore the dav root first (restart +
- * PROPFIND wait) when it is missing, then MKCOL each missing segment with retry
- * (mod_dav can still be settling right after the restart).
+ * global-setup wipes `data/webdav` (the container's bind mount) unconditionally
+ * and restarts the webdav container in both modes, so the dav root is normally
+ * already restored here. This PROPFIND check is a belt-and-braces safety net for
+ * the `reuseExistingServer` developer loop; it restarts only when the root is
+ * still missing, then MKCOL each missing segment with retry (mod_dav can still
+ * be settling right after the restart).
  */
 export async function ensureWebdavSubtree(caseId: string): Promise<void> {
   await ensureWebdavRootReady();

@@ -150,58 +150,69 @@ if (backendMode === 'webdav') {
     );
 
     // Additive, hermetic projects (setup-wizard / admin-config / migration).
-    // They spawn their own scratch servers on the fixed :5003 port and their
-    // migration suite empties the shared S3 bucket, so they can never overlap
-    // the platform/admin projects OR each other. They are therefore chained in
-    // strict project order AFTER the full platform chain (`adminMobile`), which
-    // also keeps the s3 run safe when workers>1. Their scratch servers always
-    // boot a webdav-mode file backend, so the s3 run still exercises real
-    // WebDAV wiring.
+    // They spawn their own scratch servers and are isolated per suite (Option A
+    // Phase 1): each suite owns ONE distinct scratch port (:5003 wizard, :5010
+    // admin-config, :5011 migration) mirrored by its baseURL below, and the
+    // migration suite targets its own dedicated MinIO bucket. Phase 2 lifted the
+    // strict chain: the suites are now INDEPENDENT siblings, so they can overlap
+    // the platform/admin projects and each other on idle workers. A suite's
+    // mobile variant still depends on its desktop variant so one suite never
+    // overlaps itself on the same port. Their scratch servers always boot a
+    // webdav-mode file backend, so the s3 run still exercises real WebDAV wiring.
     const hermeticSpecs: Array<{
       name: string;
       spec: RegExp;
-      use: typeof desktopUse;
-      dependsOn: string;
+      use: typeof desktopUse | typeof mobileUse;
+      baseURL: string;
     }> = [
       {
         name: 'setup-wizard-desktop',
         spec: /setup-wizard\.spec\.ts$/,
         use: desktopUse,
-        dependsOn: adminMobile,
+        baseURL: 'http://localhost:5003',
       },
       {
         name: 'setup-wizard-mobile',
         spec: /setup-wizard\.spec\.ts$/,
         use: mobileUse,
-        dependsOn: '',
+        baseURL: 'http://localhost:5003',
       },
       {
         name: 'admin-config-desktop',
         spec: /admin-config\.spec\.ts$/,
         use: desktopUse,
-        dependsOn: '',
+        baseURL: 'http://localhost:5010',
       },
       {
         name: 'admin-config-mobile',
         spec: /admin-config\.spec\.ts$/,
         use: mobileUse,
-        dependsOn: '',
+        baseURL: 'http://localhost:5010',
       },
-      { name: 'migration-desktop', spec: /migration\.spec\.ts$/, use: desktopUse, dependsOn: '' },
-      { name: 'migration-mobile', spec: /migration\.spec\.ts$/, use: mobileUse, dependsOn: '' },
+      {
+        name: 'migration-desktop',
+        spec: /migration\.spec\.ts$/,
+        use: desktopUse,
+        baseURL: 'http://localhost:5011',
+      },
+      {
+        name: 'migration-mobile',
+        spec: /migration\.spec\.ts$/,
+        use: mobileUse,
+        baseURL: 'http://localhost:5011',
+      },
     ];
-    hermeticSpecs[0].dependsOn = adminMobile;
-    for (let i = 1; i < hermeticSpecs.length; i += 1) {
-      hermeticSpecs[i].dependsOn = hermeticSpecs[i - 1].name;
-    }
     for (const h of hermeticSpecs) {
+      const dependencies = h.name.endsWith('-mobile')
+        ? [h.name.replace(/-mobile$/, '-desktop')]
+        : [];
       projects.push({
         name: h.name,
         testMatch: h.spec,
-        dependencies: [h.dependsOn],
+        dependencies,
         use: {
           ...h.use,
-          baseURL: 'http://localhost:5003',
+          baseURL: h.baseURL,
         },
       });
     }

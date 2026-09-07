@@ -21,6 +21,11 @@ const E2E_S3_ACCESS_KEY = process.env.AWS_ACCESS_KEY_ID || 'minioadmin';
 const E2E_S3_SECRET_KEY = process.env.AWS_SECRET_ACCESS_KEY || 'minioadmin';
 const E2E_S3_BUCKET = process.env.S3_BUCKET || 'e2e-test-bucket';
 
+// Dedicated MinIO bucket for the migration E2E suite. Migration targets blobs at
+// this bucket (its spec passes it to helpers/minio.ts), never the shared
+// platform bucket, so the suite can run concurrently with the s3 platform tests.
+const E2E_MIGRATION_S3_BUCKET = 'e2e-migration-bucket';
+
 const webdavBaseUrl = 'http://127.0.0.1:8090/';
 const webdavAuth = Buffer.from('e2etest:e2etest123').toString('base64');
 
@@ -149,26 +154,26 @@ function waitForMinio(timeoutMs: number) {
   });
 }
 
-async function emptyS3Bucket() {
+async function emptyS3Bucket(bucket: string) {
   const { emptyBucket } = require(path.join(rootDir, 'server/testing/minioTestUtils.js'));
   const deleted = await emptyBucket({
     endpoint: E2E_S3_ENDPOINT,
     region: E2E_S3_REGION,
-    bucket: E2E_S3_BUCKET,
+    bucket,
     credentials: {
       accessKeyId: E2E_S3_ACCESS_KEY,
       secretAccessKey: E2E_S3_SECRET_KEY,
     },
   });
-  console.log(`S3 bucket emptied: ${deleted} object(s) removed from ${E2E_S3_BUCKET}`);
+  console.log(`S3 bucket emptied: ${deleted} object(s) removed from ${bucket}`);
 }
 
-async function ensureS3Bucket() {
+async function ensureS3Bucket(bucket: string) {
   const { ensureBucket } = require(path.join(rootDir, 'server/testing/minioTestUtils.js'));
   const result = await ensureBucket({
     endpoint: E2E_S3_ENDPOINT,
     region: E2E_S3_REGION,
-    bucket: E2E_S3_BUCKET,
+    bucket,
     credentials: {
       accessKeyId: E2E_S3_ACCESS_KEY,
       secretAccessKey: E2E_S3_SECRET_KEY,
@@ -206,23 +211,29 @@ export default async function globalSetup() {
     stdio: 'inherit',
   });
 
-  if (backendMode === 'webdav') {
-    // `cleanDir('data/webdav')` above deletes the host bind-mount source while
-    // the bytemark container is running, which empties `/var/lib/dav` inside
-    // the container (Apache then 403s every DAV method — MKCOL, PUT, DELETE).
-    // Restart the container so its entrypoint re-creates `/var/lib/dav/data`.
-    console.log('Recreating the WebDAV DAV root (restarting webdav-e2e-test)...');
-    execFileSync('docker', ['restart', 'webdav-e2e-test'], { cwd: rootDir, stdio: 'inherit' });
-  }
+  // `cleanDir('data/webdav')` above deletes the host bind-mount source while
+  // the bytemark container is running, which empties `/var/lib/dav` inside the
+  // container (Apache then 403s every DAV method — MKCOL, PUT, DELETE).
+  // Restart the container so its entrypoint re-creates `/var/lib/dav/data`.
+  // This runs in BOTH modes: the s3-mode run also hosts the hermetic
+  // setup-wizard / admin-config / migration suites, whose scratch servers boot
+  // a webdav-mode file backend against this container's subtree. Restarting
+  // once up-front removes the mid-run lazy restarts the scratch helpers used
+  // to perform in s3 mode.
+  console.log('Recreating the WebDAV DAV root (restarting webdav-e2e-test)...');
+  execFileSync('docker', ['restart', 'webdav-e2e-test'], { cwd: rootDir, stdio: 'inherit' });
 
   // MinIO runs in both modes and both the webdav-mode app (some blob writes)
-  // and the migration E2E target the S3 bucket, so the bucket must exist in
-  // both modes. s3 mode additionally empties it for a deterministic baseline.
+  // and the migration E2E target the S3 buckets, so the buckets must exist in
+  // both modes. s3 mode additionally empties the platform bucket for a
+  // deterministic baseline; the dedicated migration bucket is not emptied here
+  // (its spec empties it per case).
   await waitForMinio(30_000);
   if (backendMode === 's3') {
-    await emptyS3Bucket();
+    await emptyS3Bucket(E2E_S3_BUCKET);
   }
-  await ensureS3Bucket();
+  await ensureS3Bucket(E2E_S3_BUCKET);
+  await ensureS3Bucket(E2E_MIGRATION_S3_BUCKET);
 
   // Fresh data state WITHOUT killing the running server: the seed script
   // TRUNCATEs all app tables (preserving `_schema_migrations` so the schema is
@@ -230,7 +241,8 @@ export default async function globalSetup() {
   // `file_nodes` roots.
   seedPostgresql();
 
-  if (backendMode === 'webdav') {
-    await waitForWebdav(60_000);
-  }
+  // The restart above briefly drops the container; wait until the DAV root is
+  // reachable again so no later suite (webdav mode or the hermetic scratch
+  // suites in s3 mode) has to perform a lazy mid-run restart.
+  await waitForWebdav(60_000);
 }

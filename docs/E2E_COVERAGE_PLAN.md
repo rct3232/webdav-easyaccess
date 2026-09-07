@@ -474,9 +474,12 @@ Practical rule:
 - Anything touching admin/config/migration tooling, or before merging → full `npm run test:e2e` (s3).
 - Runs use Playwright's default worker pool (half the logical cores; min 1) —
   order-independence is guaranteed by containment; in full mode mypage-admin runs
-  in dedicated post-reset projects and the hermetic suites run strictly after the
-  platform chain. Override anytime with e.g.
-  `npm run test:e2e:core:s3 -- --workers=1`.
+  in dedicated post-reset projects. The hermetic additive suites
+  (setup-wizard/admin-config/migration) are isolated per suite (distinct scratch
+  ports :5003/:5010/:5011 and a dedicated migration MinIO bucket) and are
+  independent siblings, so they overlap the platform chain and each other on
+  idle workers; a full-run overlap benefit appears from `--workers=3` up.
+  Override anytime with e.g. `npm run test:e2e:core:s3 -- --workers=1`.
 
 ## Out of Scope for Playwright-First Coverage
 

@@ -74,6 +74,7 @@ Those scenarios should still be tested, but often outside Playwright.
 - Prefer navigation result, visible UI state, rendered text, disabled/enabled state, dialog presence, and item visibility over internal request inspection.
 - Use request inspection only when the interaction itself is the behavior under test and there is no clearer user-visible anchor.
 - Assert only inside listings the case owns; a shared/unbounded listing (e.g. the admin root) is not a valid assertion anchor (assertion-context containment — [TESTING_STRATEGY.md](TESTING_STRATEGY.md)).
+- Each case removes its owned base folder via the API in `afterEach`, so per-case data never accumulates in shared listings across a run.
 
 ### Feature-doc anchors
 

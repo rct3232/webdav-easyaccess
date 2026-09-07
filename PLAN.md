@@ -136,3 +136,11 @@ W4 needs W1 gate; W3 optional after W2.
   scripts — Playwright now auto-sizes workers to half the logical cores (min 1).
   Core s3 at the auto value (3 workers on this 6-core machine) matches the w1
   baseline exactly (122 exec / 119 pass / 0 fail / 3 skip); wall ≈ 4.1 min.
+- 2026-09-07 (fix branch, E2E hardening): each case-owned workspace base folder
+  is now deleted via the API in `test.afterEach`
+  (`flushPrivateWorkspaceCleanups` in `e2e/helpers/files.ts`), so the admin root
+  never accumulates ~40 `workspace-*` folders per run (root-cap drift removed).
+  Bare `getByRole('alert')` in E2E-ADMIN-003/004 scoped to the success text
+  (same class as the E2E-ADMIN-008 fix). Docs updated docs-first (TESTING_STRATEGY
+  + E2E_COVERAGE_PLAN containment lines). Verified: full s3 185 pass / 3 skip /
+  0 fail; webdav smoke 10/10 — both equal to baseline.

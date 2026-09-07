@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import {
   buildName,
   createFolderViaUi,
+  flushPrivateWorkspaceCleanups,
   openPrivateWorkspace,
   uploadFileViaUi,
 } from './helpers/files';
@@ -27,6 +28,10 @@ async function createTestFile(page: any, fileName: string) {
 }
 
 test.describe('core flow (mobile)', () => {
+  test.afterEach(async ({ request }) => {
+    await flushPrivateWorkspaceCleanups(request);
+  });
+
   test('E2E-MOBILE-001: Long-press enters selection mode', async ({ page, request }, testInfo) => {
     // Log browser console messages to the terminal
     page.on('console', (msg) => console.log(`[BROWSER] ${msg.text()}`));

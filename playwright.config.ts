@@ -1,3 +1,5 @@
+import path from 'path';
+
 import { defineConfig } from '@playwright/test';
 
 const requestedMode = process.env.E2E_BACKEND_MODE || 's3';
@@ -212,6 +214,7 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
+  reporter: [['list'], [path.join(__dirname, 'e2e', 'reporters', 'test-end-logger.js')]],
   globalSetup: './e2e/global-setup.ts',
   globalTeardown: './e2e/global-teardown.ts',
   use: {

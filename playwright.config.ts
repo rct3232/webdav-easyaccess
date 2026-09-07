@@ -225,9 +225,6 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
-  // Pre-CI gate fail-fast: abort the whole run once the first test fails in CI.
-  // Local runs keep running to report the full picture (0 = unlimited).
-  maxFailures: process.env.CI ? 1 : 0,
   reporter: [['list'], [path.join(__dirname, 'e2e', 'reporters', 'test-end-logger.js')]],
   globalSetup: './e2e/global-setup.ts',
   globalTeardown: './e2e/global-teardown.ts',

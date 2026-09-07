@@ -448,7 +448,12 @@ test.describe('mypage admin flows (E2E-ADMIN-001..008)', () => {
 
     await confirmDialog.getByRole('button', { name: /Clean up/i }).click();
 
-    await expect(page.getByRole('alert')).toBeVisible();
+    // Scope to the cleanup-completion alert: the System settings page can also
+    // show a persistent env-setup warning banner (role=alert), which would trip
+    // strict mode on a bare getByRole('alert').
+    await expect(
+      page.getByRole('alert').filter({ hasText: /Cleanup complete|정리 완료/i })
+    ).toBeVisible();
 
     // Absence regression (class H): after cleanup, the non-admin user's shared view
     // shows no self-grant leftovers — empty for a user who only has own folders.

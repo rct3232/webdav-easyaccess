@@ -3,13 +3,36 @@ import path from 'node:path';
 
 import { APIRequestContext, expect, Page, TestInfo } from '@playwright/test';
 
+import { loginAsAdmin } from './auth';
 import { openFabAction } from './explorer';
-import { gotoFilesPath } from './resolvePath';
+import { getSessionToken, gotoFilesPath, resolvePathOrNull } from './resolvePath';
 
 export function buildName(testInfo: TestInfo, prefix: string, extension = '') {
   const projectSlug = testInfo.project.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
   const titleSlug = testInfo.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
   return `${prefix}-${projectSlug}-${titleSlug}-${Date.now()}${extension}`;
+}
+
+/**
+ * Assertion-context containment (see docs/TESTING_STRATEGY.md): logs in as admin
+ * and opens a per-test-owned base folder at the filesystem root. Every item the
+ * caller later creates/asserts must live under `/<base>/`, never at the root
+ * listing. Logs in as admin itself (no prior login expected).
+ */
+export async function openPrivateWorkspace(
+  page: Page,
+  request: APIRequestContext,
+  testInfo: TestInfo
+): Promise<string> {
+  const base = buildName(testInfo, 'workspace');
+  await loginAsAdmin(page);
+  const token = await getSessionToken(page);
+  const existing = await resolvePathOrNull(request, token, `/${base}`);
+  if (existing === null) {
+    await createFolderAt(request, token, null, base);
+  }
+  await gotoFilesPath(page, request, `/${base}`);
+  return base;
 }
 
 export function fileItem(page: Page, filePath: string) {
@@ -112,7 +135,7 @@ export async function openFolderRouteAndWaitForItems(
 export async function createFolderAt(
   request: APIRequestContext,
   token: string,
-  parentNodeId: number,
+  parentNodeId: number | null,
   name: string
 ): Promise<number> {
   const res = await request.post('/api/folders/create', {

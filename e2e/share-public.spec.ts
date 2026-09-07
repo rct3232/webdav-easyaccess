@@ -20,6 +20,11 @@ import { TEST_FILES } from './fixtures/test-data';
 const imageFixtureBuffer = readTestFileFixture(TEST_FILES.smallImage);
 
 test.describe('public share link', () => {
+  // Serial (assertion-context containment policy, docs/TESTING_STRATEGY.md): the
+  // file-scope fixture tree is project-scoped only and would be re-created per
+  // worker if this file split across parallel workers.
+  test.describe.configure({ mode: 'serial' });
+
   let fixtures: PublicShareFixtures;
 
   test.beforeAll(async ({ request }, testInfo) => {

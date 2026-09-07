@@ -245,16 +245,24 @@ Apply uniformly to every spec in `e2e/`:
   - IDs should be declared in numeric order within each file. Exception: a serial suite whose execution order is load-bearing (e.g. migration job-state sequences) keeps its execution order.
   - Every `test()` carries an ID. Setup-only infrastructure tests use a documented `E2E-SETUP-NNN` slot.
 - **Suite title format**: lowercase sentence case. Platform-owned suites append `(desktop)` or `(mobile)`. Hermetic families append their ID range, e.g. `first-run setup wizard (E2E-SETUP-001..004)`.
-- **Serialization**: use `test.describe.configure({ mode: 'serial' })` (never the anonymous `test.describe.serial`). Suites that mutate shared per-project DB state are serial.
+- **Serialization**: use `test.describe.configure({ mode: 'serial' })` (never the anonymous `test.describe.serial`). Suites that mutate shared per-project DB state are serial. Prefer parallel-safe cases (assertion-context containment); serial is required only when a suite mutates shared per-project DB state or depends on prior cases.
 - **Skips**: every `test.skip`/`test.fixme` carries a reason string. Platform ownership goes in `testMatch`/project assignment, not inline project skips (exception above).
 - **Filename style**: `<name>.<platform>.spec.ts` dot suffix for platform files (`core-flow.shared`, `core-flow.desktop`, `core-flow.mobile`). No hyphen-prefix platform files.
 - For E2E setup phases (creating test folders/files as prerequisites), avoid timing-sensitive UI seams like SpeedDial open/transition states; prefer stable API endpoints (e.g. folder create + multipart upload) to make prerequisites deterministic.
 - When using Playwright `APIRequestContext` for setup or cleanup, pass URL query strings with `params`, not `query`, so contract-required request parameters actually reach the server.
 - **Hermetic scratch projects (setup wizard):** the first-run setup spec runs in dedicated `setup-wizard-desktop` / `setup-wizard-mobile` Playwright projects that never reuse the shared `.env.e2e` boot state. Each test spawns its own scratch server instance on `:5003` (own env file via `DOTENV_CONFIG_PATH`, own sqlite path, own scratch PG DB) and supervises its own process lifecycle, because restart is the behavior under test. The spec is serial within the describe and cleans up per case in `afterEach` (kill the scratch child, remove the scratch dir, drop the scratch PG database). Keep these projects additive — do not fold them into the mode-prefixed project matrix.
-- **Per-project data isolation via setup projects:** the shared E2E database accumulates state across projects (Playwright caps the initial render at 50 root items, so a later project's file upload can sort past the cap and never render). The `00-project-setup.spec.ts` reset must therefore run once **per dependent project**, not once per run. Express this with Playwright project `dependencies`, NOT by relying on a `00-` filename prefix being matched by each test project:
+- **Per-project data isolation via setup projects:** the shared E2E database accumulates state across projects (Playwright caps the initial render at 50 root items, so a later project's file upload can sort past the cap and never render; root-cap pressure is a symptom of asserting in shared listings — see assertion-context containment). The `00-project-setup.spec.ts` reset must therefore run once **per dependent project**, not once per run. Express this with Playwright project `dependencies`, NOT by relying on a `00-` filename prefix being matched by each test project:
   - Give the mode-prefixed test projects a dedicated sibling setup project (e.g. `${backendMode}-desktop-setup` / `${backendMode}-mobile-setup`) whose `testMatch` matches only `00-project-setup.spec.ts`, and list that setup project in the test project's `dependencies`.
   - **Do not** point multiple dependent projects at one shared setup project: a `dependencies` setup project runs exactly once per run, so the second dependent project would start from the first one's dirty DB, silently breaking isolation.
   - A failing setup run blocks all its dependent tests (they do not execute on a dirty DB). Use `--no-deps` to skip setup explicitly when running a subset.
+
+### Assertion-context containment
+
+- The admin home is the filesystem root, and the client renders at most 50 items per listing (infinite scroll). Visibility assertions against a shared listing couple a case to creation order and break once the listing exceeds the render window under parallel workers.
+- Create and assert items only inside a case-owned folder (named via `buildName`); never assert item visibility in the admin root or another shared listing.
+- Seed the owned base folder through the stable API (resolve-or-create) and navigate into it; exercise UI creation flows (FAB, upload) inside it.
+- A case may render-and-assert only in a listing bounded to its own data.
+- Prefer parallel-safe cases; a case/file must be serial only when it mutates shared users/settings or depends on prior cases (state the reason).
 
 ### Minimum flow coverage
 
@@ -313,6 +321,11 @@ Detailed browser-flow inventory, rollout order, and planned Playwright ownership
 ### New cleanup or migration logic
 
 - Assert cascade completeness _and_ anchor preservation (e.g. home-root ADMIN survives self-grant cleanup).
+
+### New or modified E2E spec
+
+- Create/assert data only inside a case-owned folder; never assert visibility in a shared listing (assertion-context containment).
+- Verify order-independence before enabling parallel workers: run the affected project with `--workers=1` and `--workers=2` and confirm an identical passed/skipped set (repeat 3×).
 
 ---
 

@@ -35,3 +35,6 @@ ffprobe.exe
 
 # Stale storage backend artifacts
 server/undefined/
+
+# Playwright timing baselines (local runs)
+test-results-w1/

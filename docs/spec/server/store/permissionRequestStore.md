@@ -13,7 +13,7 @@
 ### 2.1 File Path
 
 - **Source:** `server/domains/permissions/stores/permissionRequestStore.js`
-- **Test file:** `server/domains/permissions/routes/__tests__/permissionRequests.test.js` (route-level integration tests; no dedicated store unit test)
+- **Test file:** `server/domains/permissions/routes/__tests__/permissionRequests.test.js` (route-level integration tests; no dedicated store unit test); a repository conformance suite now exists at `server/domains/permissions/stores/repositories/__tests__/PermissionRequestRepository.conformance.test.js`
 
 ### 2.2 Main Methods
 
@@ -52,7 +52,7 @@ A new request is considered a duplicate if there already exists a row with match
 
 ### 2.7 Dependencies
 
-- PostgresqlMetadataAdapter / SqliteMetadataAdapter
+- storage.getExecutor() + repositories/PermissionRequestRepository.js (sqlite/ + postgres/ impls)
 - locks.withLock
 - shared constants (PERMISSIONS, PERMISSION_REQUEST_STATUS)
 - errorHandler, SERVER_ERROR_CODES
@@ -62,5 +62,5 @@ A new request is considered a duplicate if there already exists a row with match
 - [ ] createRequest returns request; duplicate pending for same `(requester_id, owner_id, requested_permission, file_node_id)` returns existing
 - [ ] listInbox/listOutbox filter by owner/requester and status
 - [ ] updateStatus: PENDING → clear resolved_at/resolved_by; approved/rejected → set
-- [ ] PostgreSQL: partial unique index prevents duplicate pending requests for same tuple
+- [ ] PostgreSQL: partial unique index prevents duplicate pending requests for same tuple — covered on the real-PG adapter leg by `domains/permissions/stores/repositories/__tests__/PermissionRequestRepository.conformance.test.js`
 - [ ] ON DELETE CASCADE removes request when target `file_nodes` row is deleted

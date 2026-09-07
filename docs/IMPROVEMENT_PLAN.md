@@ -26,22 +26,50 @@ Ordered by urgency review (2026-09-02): highest priority first.
 | DEF-11 | DEFERRED | Multi-version object history (`version_number > 1`). | `docs/spec/server/services/blobStorageService.md`, `docs/spec/server/store/fileNodesStore.md`, `docs/features/core-service-layer.md` |
 | DEF-12 | DEFERRED | S3/WebDAV **overwrite** upload failure leaves `pending_upload` (S3) / `orphaned_node` (WebDAV) row with no automatic recovery; retry endpoint + GC cleanup of `pending` object_map rows and untracked S3 blobs is unimplemented. | `docs/spec/server/services/uploadService.md` §2.5, `docs/spec/server/services/fileService.md` §4, `docs/features/core-service-layer.md` |
 | DEF-13 | DEFERRED | Process death between an upload's TX1 commit and the blob write leaves orphaned `pending_upload` rows that no automatic path cleans. | `docs/spec/server/services/uploadService.md` §2.5 |
-| DEF-14 | DEFERRED | Universal ORM / multi-RDBMS metadata backend: generalize the metadata store beyond the current sqlite + PostgreSQL pair to MySQL, MariaDB, MSSQL and Oracle via a dialect-abstraction layer, plus boot-time engine auto-detection from a generic connection block. ORM/query-builder choice (Sequelize vs Knex) and the detection algorithm are undecided — see DEF-14 note below. | `docs/spec/server/store/storage.md`, `docs/features/config-source-resolution.md`, `docs/spec/server/infrastructure/configRegistry.md` |
+| DEF-14 | DEFERRED (trigger-gated) | New-RDB adoption gate: generalize the metadata store beyond the current sqlite + PostgreSQL pair to MySQL, MariaDB, MSSQL and Oracle via boot-time engine auto-detection from a generic connection block. **Decision (2026-09-04): do NOT adopt an ORM today** — keep the executor seam + per-dialect repositories + per-engine conformance for sqlite/PG. **Introduce a single-source query layer (ORM/query builder) at the moment a second new engine is actually added** (evaluate Drizzle/Kysely first). Full rationale in the DEF-14 note. | `docs/spec/server/store/storage.md`, `docs/features/config-source-resolution.md`, `docs/spec/server/infrastructure/configRegistry.md`, `docs/spec/server/store/executor.md`, `docs/spec/server/store/repository-contract.md` |
 
 ---
 
-### DEF-14 note (2026-09-04) — Universal ORM / multi-RDBMS metadata backend
+### DEF-14 note (2026-09-04) — New-RDB adoption gate: ORM decision
 
-Open, deferred item (no active owner). Recorded here per AGENTS.md §2.1; **not** written into any spec/feature doc.
+Deferred, trigger-gated item (no active owner). Recorded here per AGENTS.md §2.1; **not**
+written into any spec/feature doc.
 
-- **Current state**: the metadata store supports only `sqlite` (`sqlite3`) and `postgresql` (`pg`). The query layer is hand-written raw SQL with inline pg/sqlite dialect branches (~14 production `.js` files; ~65 branch sites; ~201 `$n` / ~79 `?` placeholder tokens; 3 timestamp idioms; `RETURNING` / `ON CONFLICT` / `::`-cast usage). There is a single PG DDL (`server/store/postgresql/ddl/001_initial_normalized_schema.sql`) that is regex-transpiled to SQLite at runtime (`convertPostgresToSqlite`, `server/infrastructure/sqliteSchemaInit.js`) — a path that does not stretch to a 3rd dialect.
-- **Target**: serve any of PostgreSQL / MySQL / MariaDB / MSSQL / Oracle from one engine-agnostic connection block (`WEA_DB_*`), with the engine auto-detected at boot by attempting candidate drivers and fingerprinting the version banner (`SELECT version()` / `VERSION()` / `@@VERSION` / `v$version`), port hints (5432/3306/1433/1521) as a fast first guess.
-- **Open / undecided**:
-  - ORM/query-builder choice — Sequelize v6 (`postgres | mysql | mariadb | sqlite | mssql | oracle`, ships `authenticate()`) vs Knex (`pg | mysql | mariadb | sqlite3 | oracledb | mssql`, schema-builder + migrations). Decision deliberately deferred until the env-config refactor below lands.
+- **Current state (updated 2026-09-04)**: the metadata store supports only `sqlite` and
+  `postgresql`, and the D-phase DB-interface work landed: all dialect branching is now
+  confined to a small executor seam (`server/infrastructure/db/`), per-domain repositories
+  (`server/store/repositories/*` + `domains/permissions/stores/repositories/*`), with the
+  stores as facades over repository contracts. Services never see SQL or dialect branches.
+  Schema stays PG-canonical and is transpiled to sqlite (`convertPostgresToSqlite`). The
+  backend-agnostic L2 conformance suites run the same behavioural contract against both
+  real engines (sqlite in `test:ci`, PostgreSQL in `test:ci:pg:adapters`).
+- **Decided (2026-09-04)**: do NOT adopt an ORM/query builder for the current sqlite+PG
+  support. The executor + two-dialect repositories + per-engine conformance is the standing
+  architecture; a query layer would require reworking the DDL/migration pipeline and still
+  need raw escape hatches for the ancestor-closure, partial-index, GC-interval and JSONB-vs-
+  TEXT constructs, while engine-behaviour differences (ordering ties, locking, isolation,
+  timestamp precision) would still need the same conformance suites.
+- **Trigger**: introducing the NEXT engine from the DEF-14 target list (MySQL / MariaDB /
+  MSSQL / Oracle — only when it enters the real deployment/test matrix) is the decision
+  point to introduce a single-source query layer (one implementation instead of N dialect
+  files). Evaluation order at that point: **Drizzle / Kysely** first (typed query builders
+  with sqlite/pg/mysql/mariadb dialect compilation and raw-SQL escape hatches); the
+  originally-listed Sequelize (ORM-first, heavy) and Knex (builder-first) are fallback
+  candidates. The repository interfaces and facades stay; the ORM replaces the per-dialect
+  repository *implementations* only, and per-engine conformance suites remain mandatory.
+- **Remaining undecided (only relevant at the trigger)**:
   - Per-engine DDL/migration strategy (replaces the PG-canonical + regex-transpile model).
-  - Generalization of code-level backend identifiers baked today (`'postgresql'`/`'sqlite'` in health keys, `activeMetadataBackend`, `postgresqlNotConfigured` error code, sqlite↔pg migration directions, `mapDatabaseError` PG SQLSTATE mapping).
-  - Metadata migration tooling beyond sqlite↔pg; e2e/docker-compose matrices (only PostgreSQL is provisioned today).
-- **Related active workstream**: the prerequisite env/boot refactor — removal of `WEA_STORAGE_BACKEND` and rename of `WEA_PG_*` → `WEA_DB_*` (engine-agnostic naming, presence-based backend selection) — landed on 2026-09-04 (W-9, `3a51213`), and the follow-up env-config cleanup landed the same day: jest is isolated from production `WEA_DB_*` (dedicated `WEA_TEST_PG_*` + storage test-only override), orphan/legacy env keys were removed, and internal tuning keys became DB-only (`dbOnly`, admin "Advanced settings"). Runtime support intentionally stays at sqlite + PostgreSQL; wiring the other engines is this item.
+  - Generalization of code-level backend identifiers baked today (`'postgresql'`/`'sqlite'`
+    in health keys, `activeMetadataBackend`, `postgresqlNotConfigured` error code, sqlite↔pg
+    migration directions, `mapDatabaseError` PG SQLSTATE mapping).
+  - Metadata migration tooling beyond sqlite↔pg; e2e/docker-compose matrices (only
+    PostgreSQL is provisioned today).
+- **Related workstream (landed)**: the engine-agnostic connection block with presence-based
+  selection (`WEA_DB_*`, W-9 `3a51213`), the env-config cleanup (jest isolation via
+  `WEA_TEST_PG_*` + storage test-only override, DB-only tuning keys), and the DB-interface
+  rollout (executor seam + repositories + L2 conformance + adapter-leg retirement of the
+  full-suite PG run). Runtime support intentionally stays at sqlite + PostgreSQL; wiring a
+  new engine is the trigger for the ORM decision above.
 
 ---
 

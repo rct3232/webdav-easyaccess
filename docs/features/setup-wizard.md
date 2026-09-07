@@ -19,8 +19,10 @@ When the app boots with incomplete configuration (e.g. a fresh install with no `
 enters **setup mode** and serves a first-run **setup wizard UI** at `/setup`. The operator
 configures the metadata backend, file-storage backend and credentials, the admin account,
 an optional JWT secret, and optional SMTP/CORS/port settings through the browser. The wizard persists
-the result by **merging into the app's dotenv file** (`.env`), then instructs a server restart.
-After restart the app is fully configured and the wizard is no longer reachable.
+the result by **upserting non-T0 values into the metadata DB `settings` table** (row key = raw
+env var name); of the T0 keys only an optional `JWT_SECRET` is written to `.env`. It then
+instructs a server restart — after restart the app is fully configured and the wizard is no
+longer reachable.
 
 While setup mode is active the HTTP server **binds to `127.0.0.1` only** (see
 [Network exposure (loopback-only binding)](#network-exposure-loopback-only-binding)), so the
@@ -123,8 +125,9 @@ modify a `.env` file.
    storage, email, server/CORS, `JWT_EXPIRES_IN`) into the connected metadata DB `settings`
    table (row key = raw env var name, D11). Secret values are stored as **plaintext strings**
    — there is no field-level encryption and no key to keep or generate. Per-request runtime
-   flags such as `registration_enabled` stay where they are, backed by the same dual-backend
-   key/value store (`server/store/settingsStore.js:41-127`; DDL
+   flags such as `registration_enabled` stay where they are, backed by the `SettingsRepository`
+   facade (`server/store/repositories/SettingsRepository.js` with `sqlite/` and `postgres/`
+   implementations, executed through the `DbExecutor` seam); DDL
    `settings(key, value, updated_at)` at
    `server/store/postgresql/ddl/001_initial_normalized_schema.sql:31-35`).
 

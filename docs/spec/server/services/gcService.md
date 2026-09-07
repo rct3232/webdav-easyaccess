@@ -131,18 +131,21 @@ Startup hook (Task 6.3). Scans orphaned nodes and returns a report. It never per
 
 ---
 
-## 4. Store Additions (`server/store/fileNodesStore.js`)
+## 4. Repository Additions (`server/store/repositories/FileNodeRepository.js`)
 
-New methods required by the services:
+New methods required by the services. The `fileNodesStore` facade forwards them unchanged to
+`FileNodeRepository`; each method's dialect SQL lives in the repository twins
+(`server/store/repositories/sqlite/FileNodeRepository.sqlite.js` /
+`server/store/repositories/postgres/FileNodeRepository.postgres.js`), executed through the executor seam:
 
 | Method                              | Query                                                                                                 |
 | ----------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `getOrphanedObjects(olderThanDays)` | `object_map WHERE status='orphaned' AND created_at < NOW() - INTERVAL` / `datetime('now', '-N days')` |
 | `getAllActiveS3Keys()`              | `SELECT s3_key FROM object_map WHERE status='active' AND s3_key IS NOT NULL`                          |
-| `deleteObjectMapRows(ids)`          | `DELETE FROM object_map WHERE id IN (...)`, SQLite branch per-row via `sqliteRun`                     |
+| `deleteObjectMapRows(ids)`          | `DELETE FROM object_map WHERE id IN (...)`, SQLite branch per-row via `executor.run` in the sqlite dialect twin                     |
 | `getNodesBySyncStatus(status)`      | `file_nodes WHERE sync_status = ?`                                                                    |
 
-All four are dual-backend (PostgreSQL / SQLite) following the existing `fileNodesStore.js` branching pattern (`isPg`).
+All four are dual-backend (PostgreSQL / SQLite), implemented in the `FileNodeRepository` dialect twins behind the executor seam (no store-internal dialect branching in the service).
 
 ---
 

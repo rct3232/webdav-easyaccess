@@ -13,7 +13,7 @@
 ### 2.1 File Path
 
 - **Source:** `server/store/storage.js`
-- **Test file:** `server/infrastructure/__tests__/storage.test.js`
+- **Test file:** `server/store/__tests__/storage.test.js`
 
 ### 2.2 Main Methods
 
@@ -23,6 +23,7 @@
 | --------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | getBackend      | () => 'postgresql' \| 'sqlite' | Resolved from the generic remote-DB credential block: if at least one of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` is set, the backend is `'postgresql'`; a partial set (some but not all four) is a terminal boot-time configuration error listing the missing keys — the boot path (`runBoot().catch`) exits with `process.exit(1)`. None of the four set → `'sqlite'` (default). No silent fallback for a remote intent (F6). |
 | isSqliteBackend | () => boolean                  | Returns `true` if `getBackend() === 'sqlite'`                                                                                                                                                                                                                                                                                                                     |
+| getExecutor     | () => DbExecutor               | Returns the backend executor for the active backend: `sqliteExecutor` or `postgresExecutor` (see `docs/spec/server/store/executor.md` §2.4)                                                                                                                                                                                                                        |
 
 #### PostgreSQL Helpers
 
@@ -36,7 +37,7 @@
 
 | Method                | Signature                  | Description                              |
 | --------------------- | -------------------------- | ---------------------------------------- |
-| getSqliteConnection   | () => Database             | Returns better-sqlite3 Database instance |
+| getSqliteConnection   | () => Database             | Returns node-sqlite3 Database instance    |
 | withSqliteTransaction | (callback) => Promise\<T\> | Executes callback in SQLite transaction  |
 | closeSqliteDb         | () => void                 | Close SQLite database                    |
 
@@ -101,8 +102,9 @@ Canonical source for table definitions, constraints, and indexes:
 
 The schema is applied at startup: `server/store/bootstrap.js` `initMetadataStore()` calls `applyPendingMigrations('postgresql')` (see `docs/spec/server/infrastructure/schemaManager.md`) for the non-SQLite branch before `ensureDefaultAdmin()`. The DDL is intended for a **fresh empty database only** — a misconfigured app pointed at an existing/old DB must fail loudly at boot; no "already exists" tolerance is added.
 
-This spec intentionally does not duplicate full DDL text. Store modules consume this schema through
-backend selector functions while keeping route-level contracts unchanged.
+This spec intentionally does not duplicate full DDL text. The per-dialect repository implementations
+consume this schema; store modules are facades that delegate through `storage.getExecutor()` while
+keeping route-level contracts unchanged.
 
 Permission contract source of truth for `postgresql` backend:
 
@@ -133,8 +135,9 @@ The jest harness must never point production `WEA_DB_*` env at a real database, 
 test-only override seam exists on `storage` (safe to ship — it refuses to engage unless
 `NODE_ENV === 'test'`).
 
-- `storage.setTestBackend(type, { pool })` — `type` is `'postgresql'` | `'sqlite'`.
-  Throws when `NODE_ENV !== 'test'` or when a pool is supplied without `type === 'postgresql'`.
+- `storage.setTestBackend(type, { pool })` — `type` is `'postgresql'` only (the code throws
+  for any other type). Throws when `NODE_ENV !== 'test'` or when a pool is supplied without
+  `type === 'postgresql'`.
 - `storage.clearTestBackend()` — removes the override and restores env-presence behaviour.
 - While an override is active: `getBackend()` returns the override type, `getPgPool()`
   returns the injected pool (when postgresql), and `closePgPool()` ends + clears it.

@@ -295,8 +295,17 @@ jobs:
       - name: Run client tests
         run: cd client && npm run test:ci
 
-      - name: Run server tests
+      - name: Run server tests (sqlite)
         run: cd server && npm run test:ci
+
+      # Tiered real-PostgreSQL coverage (PLAN.md: functional suites run on
+      # sqlite once; per-RDB adapter conformance runs against real PG).
+      # The disposable `webdav_test` DB is self-provisioned by the test
+      # harness when missing (see server/test-utils.js).
+      - name: Run server adapter tests (postgresql)
+        run: |
+          docker compose -f docker-compose.e2e.yml up -d postgresql-e2e
+          cd server && npm run test:ci:pg:adapters
 
       - name: Upload coverage
         uses: codecov/codecov-action@v2
@@ -309,7 +318,7 @@ jobs:
 ### Current Status
 
 - **Client**: 1397 tests across 156 suites, 100% pass rate (as of 2026-09-02). See `client/TEST_SUMMARY.md`.
-- **Server**: 1658 passed / 5 skipped across 87 suites, 100% pass rate (as of 2026-09-02). See `server/TEST_SUMMARY.md`.
+- **Server**: 1775 passed / 5 skipped across 98 suites, 100% pass rate (sqlite `test:ci`, as of 2026-09-04); real-PG adapter leg `test:ci:pg:adapters`: 15 suites / 197 tests. See `server/TEST_SUMMARY.md`.
 - Coverage figures are measured per run via `npm run test:coverage` and recorded in the respective `TEST_SUMMARY.md`.
 
 ### Recommended Targets

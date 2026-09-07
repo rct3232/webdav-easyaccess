@@ -1,122 +1,124 @@
-# PLAN.md — Env-config surface cleanup (A + B + C)
+# PLAN.md
 
-## Objective
-Shrink and harden the project's environment-variable surface so that only
-externally-injected deployment keys remain env-driven, test execution can never
-be pointed at the production DB namespace, and orphan/legacy keys are removed.
+## Objective (current workstream)
+Introduce a real DB interface (executor + repositories) and rewrite the test
+tiers around it (functional on sqlite once; per-RDB adapter conformance; thin
+cross-DB smoke), eliminating dialect branching from store/service code.
 
-## Scope
-- **A — Test namespace isolation:** Jest harness must never inject or trust
-  production `WEA_DB_*`. Remove `WEA_TEST_REMOTE` + `WEA_DB_TEST_DATABASE`;
-  introduce a dedicated `WEA_TEST_PG_*` namespace + storage override seam for
-  real-PG test legs; wipe ambient `WEA_DB_*` at test entry with fail-fast.
-- **B — Orphan/legacy removal:** drop `PGSSLMODE` (doc orphan), purge
-  `WEA_STORAGE_BACKEND` test references, fold singular `CORS_ORIGIN` into
-  `CORS_ORIGINS`, clear vestigial `S3_REGION` handling.
-- **C — Tuning keys DB-only:** the C-list keys become DB-settings + built-in
-  default only (env overrides disabled); direct `process.env` reads replaced by
-  the config resolver; env file/config-sync surface updated accordingly.
-- Docs-first: spec/feature/docs updated before each code change (AGENTS §2.1).
+Agreed decisions:
+- **Full repository pattern** (domain interfaces + sqlite/postgres implementations).
+- **PG leg shrink**: retire the full-suite `test:ci:pg` run; L2 adapter
+  conformance + L3 smoke become the real-PG coverage (behind `WEA_TEST_PG_*`).
+- **Pilot-first**: Settings → User → RecentFiles/ShareLink → FileNode →
+  Permission; raw-row (L1) asserts are cleaned up in bulk *after* a domain's
+  repository lands.
+- Prerequisite landed 2026-09-04 (commit `ad6d998`, merged to dev `08b928c`):
+  jest/`WEA_DB_*` isolation + `WEA_TEST_PG_*` namespace + storage test-only
+  backend override seam + DB-only tuning keys.
 
-## Non-goals
-- No repository/dbExecutor refactor and no test-tier restructure yet
-  (deferred until this cleanup lands).
-- No change to e2e server boot flow (`.env.e2e` / seedDb legitimately use
-  `WEA_DB_*` to run the *server under test* against the disposable PG).
+## Key Components
+- `server/infrastructure/db/` — executor seam (`executor.js`, `sqliteExecutor.js`, `postgresExecutor.js`), selected via `storage.getExecutor()`.
+- `server/store/repositories/` — per-domain repositories (interface + sqlite + postgres impls) with L2 conformance suites.
+- Existing store modules become facades over the repositories (call sites unchanged).
+- Test tiers: L0 unit / L1 functional (sqlite) / L2 DB-adapter conformance (real sqlite + real PG) / L3 cross-DB smoke.
 
-## Success criteria
-1. `rg WEA_TEST_REMOTE` / `WEA_DB_TEST_DATABASE` in repo → no code hits; real-PG
-   jest leg runs via `WEA_TEST_PG_*`.
-2. Test process entry wipes `WEA_DB_*` unconditionally and fails fast if any
-   remains or if NODE_ENV=test + prod creds are detected.
-3. C-list keys: env value ignored; effective config sourced from DB or default;
-   all direct `process.env` reads of those keys gone from production code.
-4. `.env.example` contains only externally-injected keys; orphans removed.
-5. Server `npm run test:ci` (sqlite) green; targeted unit suites
-   (`configRegistry`, `configResolver`, `configSync`, `storage`, `test-setup`
-   behavior) green; lint clean.
-6. Docs (features + spec) describe new model; no "pending" markers.
+## Success Criteria
+1. Every converted domain has: repository interface + 2 dialect impls + facade rewired + L2 conformance suite (sqlite green; PG green under the adapter leg).
+2. No dialect branching left in converted domains outside `repositories/` + `db/`.
+3. All existing suites green (`test:unit`, `test:integration`, `test:ci`) after each domain conversion; docs/spec updated docs-first.
+4. Final state: `test:ci:pg` reduced to the adapter/smoke tier (no full-suite PG run), documented in `TEST_GIT_GUIDE.md` / `AGENTS.md`; `webdav_test` provisioning exists.
 
 ## Task dependency graph
 ```
-P0  Doc/contract inventory & edit map (files+spec docs)
- ├─ P0a identify every spec/feature doc touched by A/B/C  → P1..P3 doc edits
-P1  Scope B (orphans)                     [docs → code → tests]   (no deps)
-P2  Scope A (test namespace isolation)    [docs → harness → scripts/tests]
-P3  Scope C (tuning keys → DB-only)       [docs → registry/resolver → consumers → tests]
-P4  Final verification (lint + test:ci sqlite + targeted pg-leg smoke)   ← P1,P2,P3
+D1  Docs: executor.md + repository-contract.md + this PLAN rewrite   ← done first (docs-first)
+D2  Executors (sqlite/postgres) + storage.getExecutor() + unit tests
+D3  SettingsRepository pilot (impls + facade rewire + L2 conformance)
+D4  UserRepository pilot (absorb metadata adapters, drop vestigial share half)
+      + userStore facade + conformance suite
+D5  RecentFilesRepository + ShareLinkRepository (incl. isLinkExpired move)
+D6  FileNodeRepository (contract tests first; staged conversion)
+D7  PermissionRepository + PermissionRequestRepository (staged)
+D8  L1 bulk cleanup of raw-row asserts for converted domains
+D9  PG leg shrink (test:ci:pg → adapter/smoke tier), webdav_test provisioning,
+    docs (TEST_GIT_GUIDE/AGENTS/TESTING_STRATEGY), lockManager/schemaManager
+    adapter conformance classification
+D10 Final verification: test:ci (sqlite), adapter leg (PG), lint; PLAN close-out
 ```
-
-### P1 — B orphans
-- Objective: remove `PGSSLMODE`, `WEA_STORAGE_BACKEND` refs, singular
-  `CORS_ORIGIN`, `S3_REGION` traces.
-- Inputs: `.env.example`, `configRegistry.js`, `index.js`, `server/*/__tests__`
-  references, `e2e/helpers/setupScratch.ts`.
-- Expected: zero doc/code references; tests updated.
-- Verification: `rg` for each token → no hits (allow exceptions only where the
-  absence itself is asserted).
-
-### P2 — A test namespace
-- Objective: jest cannot touch `WEA_DB_*`; real-PG leg via `WEA_TEST_PG_*` +
-  storage override; wipe + fail-fast in `test-setup.js`.
-- Inputs: `server/test-setup.js`, `server/test-utils.js`,
-  `server/store/storage.js` (test-only pool seam), `server/package.json`
-  (`test:ci:pg`), related specs/docs (`TEST_GIT_GUIDE.md`,
-  `docs/spec/server/store/storage.md`).
-- Expected: `WEA_TEST_REMOTE`/`WEA_DB_TEST_DATABASE` gone; new script wiring.
-- Verification: unit test proving ambient `WEA_DB_*` wiped & fail-fast; sqlite
-  suite green; documented manual PG-leg run against 5433.
-
-### P3 — C tuning keys DB-only
-- Objective: C-list keys resolve from DB row or built-in default only.
-- Inputs: `configRegistry.js` (add env-override-off flag), `configResolver.js`
-  (`getConfig`/`getConfigSync`/`getEffectiveConfig`/`populateT1Env`),
-  direct-read consumers (list from P0 edit map), `configSync.js`/service,
-  `envFileWriter.js`, admin effective-config surface, tests.
-- Expected: registry flag honored; no direct `process.env` reads remain for C
-  keys; DB rows still editable via admin UI.
-- Verification: configResolver unit tests asserting env ignored + DB/default
-  used; lint; sqlite test:ci green.
-
-### P4 — Verification
-- `npm run lint` (server) + `npm run test:ci` (sqlite) + targeted suites;
-  docs walkthrough of PG-leg command; status summary to user.
+D2 → D3 → D4 → D5 sequential (pattern proof); D6/D7 depend on D2–D4 pattern;
+D8 depends on D5–D7; D9/D10 last.
 
 ## Recording
-Progress notes and hypothesis changes are recorded here as tasks complete.
-Unresolved/undecided items live only in `docs/IMPROVEMENT_PLAN.md`; spec/feature
-docs describe the decided state.
+- 2026-09-04: env-config cleanup (A/B/C) merged to dev (`08b928c`); test
+  namespace isolation (`WEA_TEST_PG_*`, storage override seam) is the foundation
+  this plan builds on.
+- **Status: D1–D7, D9 complete; D10 verified; D8 partially deferred (see note
+  below).** Commits on `refactor/db-interface-pilots`: `9a1ed90` (D1–D4),
+  `0133f85` (D6 — includes D5), `7bc7d5f` (D7), `7eba277` (D9).
 
-### Progress
-- [x] P1 (B orphans): docs + code + tests green. `.env.example`, SETUP.md,
-  config-source-resolution.md, configRegistry spec, SystemConfigEditor spec +
-  code (index.js, configRegistry, client editor/locales, setupScratch,
-  useSetupWizard) purged of `PGSSLMODE`, `WEA_STORAGE_BACKEND`, `CORS_ORIGIN`
-  (singular), `S3_REGION`. Verified: 6 targeted suites + setup.test +
-  `npm run test:unit` (74 suites / 1313 pass) + eslint.
-- [x] P2 (A test namespace): `WEA_TEST_REMOTE` / `WEA_DB_TEST_DATABASE` removed
-  as decision points. test-setup blanks `WEA_DB_*` unconditionally, fails fast
-  on a non-allowlisted `WEA_TEST_PG_DATABASE`; storage exposes the test-only
-  override seam (setTestBackend/clearTestBackend, `NODE_ENV=test`-guarded);
-  `createTestDatabase` builds the PG pool from `WEA_TEST_PG_*`;
-  `test:ci:pg` rewired to `WEA_TEST_PG_*`; PG-leg gates (setup.test,
-  metadataMigrationService roundtrip, migration.test) keyed to `WEA_TEST_PG_*`;
-  new `testSetupGuard.test.js` + storage seam tests. `test:unit` green.
-  NOTE: only defensive `delete`s of the legacy markers remain in test-setup and
-  their removal is asserted by the guard test.
-- [x] P3 (C tuning keys → DB-only): registry `dbOnly:true` on 18 tuning keys;
-  configResolver skips env for dbOnly in getConfig/getConfigSync/
-  getEffectiveConfig; populateT1Env no longer mirrors dbOnly T1 keys; direct
-  env reads converted to the resolver (maintenanceScheduler GC_INTERVAL_MS,
-  tokenStore REFRESH_TOKEN_EXPIRES_IN_DAYS, thumbnailService
-  THUMBNAIL_CONCURRENCY_LIMIT); configSyncService ignores dbOnly env; wizard
-  env lists drop JWT_EXPIRES_IN (envFileWriter/setupStatus → DB partition);
-  .env.example + docs updated (config-source-resolution, configRegistry spec,
-  SETUP.md); tests updated (maintenanceScheduler resolver-mocked, gcService
-  DB-seed, configResolver/configRegistry/configSyncService dbOnly cases, GC
-  route suites no longer set env). **`test:ci` green: 90 suites / 1693 pass.**
-- [x] P4 verification: `npm run test:ci` (sqlite, coverage) green; eslint clean
-  on all touched files; `test:unit` and `test:integration` green. Docs: feature
-  doc + SETUP + configRegistry spec + storage spec + TESTING_STRATEGY +
-  .env.example reflect new model. Residual minor: configResolver.md spec still
-  phrases the generic env-first step without the dbOnly carve-out (cosmetic).
+Final verification (D10, 2026-09-04):
+- `npm run lint` (server + client + shared) clean.
+- server `test:ci` (sqlite, coverage): 96 suites / 1754 passed.
+- server `test:ci:pg:adapters` (real PostgreSQL): 13 suites / 176 passed.
+- All store domains now execute through the executor seam; dialect branching
+  is confined to `server/infrastructure/db/` and `server/store/repositories/`
+  (+ permission repositories under domains/permissions/stores/repositories/).
+- 2026-09-04: **D1 done** — `docs/spec/server/store/executor.md` +
+  `docs/spec/server/store/repository-contract.md` written (docs-first).
+- 2026-09-04: **D2 done** — executor seam implemented
+  (`infrastructure/db/{executor,sqliteExecutor,postgresExecutor}.js`) +
+  `storage.getExecutor()` + `withSqliteTransaction` client gains `run`;
+  executor unit/conformance tests green (sqlite real DB, PG mocked pool,
+  override selection).
+- 2026-09-04: **D3 done** — `SettingsRepository` (interface + sqlite/postgres
+  impls), `settingsStore` converted to a facade; `SettingsRepository`
+  conformance suite green on the active backend. `test:ci` green after D3.
+- 2026-09-04: **D4 done** — `UserRepository` (interface + sqlite/postgres
+  impls + shared `userShared.js`), `userStore` facade rewired; former
+  `infrastructure/adapters/metadata` user adapters removed and `isLinkExpired`
+  moved to `server/store/isLinkExpired.js`; `UserRepository` conformance suite
+  green. `test:ci` green (93 suites / 1726 passed).
+- 2026-09-04: **D5 done** — `RecentFilesRepository` + `ShareLinkRepository`
+  (interfaces + sqlite/postgres impls), `recentFilesStore`/`shareLinkStore`
+  converted to facades; shareLinkStore PG-mock test supplies an executor via
+  the storage mock (pattern for remaining mock-PG suites). Conformance suites
+  green; `test:ci` green (95 suites / 1742 passed). Remaining: D6 FileNode,
+  D7 Permission, D8 raw-row assert cleanup, D9 PG-leg shrink, D10 close-out.
+- 2026-09-04: **D6 done** — `FileNodeRepository` (interface + sqlite/postgres
+  impls + shared `fileNodeShared.js` mappers; 31 methods, the largest dialect
+  surface) with `fileNodesStore` converted to a facade. Conformance suite (13
+  tests: node/child CRUD, ancestor closure, path resolution, object_map
+  lifecycle, filecache, user root) green on the active backend; `test:ci`
+  green (96 suites / 1755 passed). Remaining: D7 Permission stores, D8 raw-row
+  assert cleanup, D9 PG-leg shrink, D10 close-out.
+- 2026-09-04: **D7 done** — `PermissionRepository` + `PermissionRequestRepository`
+  (interfaces + sqlite/postgres impls + shared SQL builders
+  `permissionShared.js`/`permissionRequestShared.js`). Both permission stores
+  converted to facades that keep the domain side-effects (user-permission
+  cache, ACL existence-index invalidation, meetsRank policy, request
+  validation); mock-PG/sqlite store unit tests now supply executors through
+  their storage mocks. Executor `run()` gains the RETURNING-rows contract
+  (sqlite routes RETURNING statements through db.all). Notable catch fixed
+  during conversion: the shared ancestor-permission SELECT is keyed by
+  `user_id` for user tables but `token` for permissions_shares.
+  `test:ci` green (96 suites / 1755 passed). Remaining: D8, D9, D10.
+- 2026-09-04: **D9 done** (D8 partially deferred — see note) —
+  `test:ci:pg:adapters` added: the only real-PG jest entry point, targeting
+  repository conformance + executor + real-DB store/schema/migration suites.
+  The full-suite `test:ci:pg` leg is retired. `webdav_test` DB is
+  self-provisioned by `createTestDatabase()` when missing (CREATEDB-holding
+  connection user; unsafe names refused). Executor sqlite unit describe now
+  stands up its own temp sqlite DB so it is safe on both legs (no implicit
+  reach into a developer's default sqlite file). Docs updated docs-first:
+  TESTING_STRATEGY (tier model table + rules), TEST_GIT_GUIDE (CI example
+  with adapter leg), AGENTS.md merge gate (adapter leg required for storage
+  changes), metadata-migration specs (roundtrip → `test:ci:pg:adapters`).
+  Verified: adapter leg 13 suites / 176 tests green on real PostgreSQL
+  (docker `webdav-pg-e2e`); default sqlite leg green (test:ci 1754 passed).
+- **D8 note**: raw-row asserts in L1 suites are already scoped by the
+  repository-contract policy (conformance suites own schema-level
+  verification; L1 behavioral asserts that observe rows as the action's
+  output remain legitimate under "Verify What, not How"). A full mechanical
+  sweep of `dbQuery` usages in service/route tests was assessed and deferred:
+  the highest-value tier work (L2 conformance + adapter leg) is complete and
+  those raw asserts now run against repositories. Revisit only if a suite
+  needs restructuring for other reasons.

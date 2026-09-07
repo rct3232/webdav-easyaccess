@@ -246,14 +246,17 @@ function sqliteRun(sql, params = []) {
 let sqliteTransactionQueue = Promise.resolve();
 
 async function withSqliteTransaction(callback) {
-  const run = async () => {
-    await sqliteRun('BEGIN');
-    try {
-      const client = {
-        query: (sql, params = []) => sqliteQuery(sql, params),
-        release: () => {},
-      };
-      const result = await callback(client);
+    const run = async () => {
+      await sqliteRun('BEGIN');
+      try {
+        const client = {
+          query: (sql, params = []) => sqliteQuery(sql, params),
+          // Writes inside a transaction go through the same serialized
+          // single-connection helpers (executor transaction contract, §2.3).
+          run: (sql, params = []) => sqliteRun(sql, params),
+          release: () => {},
+        };
+        const result = await callback(client);
       await sqliteRun('COMMIT');
       return result;
     } catch (error) {
@@ -310,6 +313,20 @@ async function withTransaction(callback) {
   }
 }
 
+/**
+ * Active backend-neutral executor (docs/spec/server/store/executor.md).
+ * Selected by getBackend() — including the jest test-only override — so
+ * repositories never branch on the backend themselves. Requires the metadata
+ * store to be configured (getBackend throws for a partial remote block).
+ */
+function getExecutor() {
+  const backend = getBackend();
+  if (backend === 'postgresql') {
+    return require('../infrastructure/db/postgresExecutor');
+  }
+  return require('../infrastructure/db/sqliteExecutor');
+}
+
 module.exports = {
   getBackend,
   hasRemoteDbCredentials,
@@ -325,4 +342,5 @@ module.exports = {
   setTestBackend,
   clearTestBackend,
   isTestBackendOverridden,
+  getExecutor,
 };

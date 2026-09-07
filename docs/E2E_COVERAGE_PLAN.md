@@ -471,10 +471,11 @@ Practical rule:
 
 - Core-file-feature change → `npm run test:e2e:core:s3` + `npm run test:e2e:webdav` (smoke).
 - Anything touching admin/config/migration tooling, or before merging → full `npm run test:e2e` (s3).
-- Runs default to `--workers=2` (order-independence guaranteed by containment;
-  in full mode mypage-admin runs in dedicated post-reset projects and the
-  hermetic suites run strictly after the platform chain). Override anytime with
-  e.g. `npm run test:e2e:core:s3 -- --workers=1`.
+- Runs use Playwright's default worker pool (half the logical cores; min 1) —
+  order-independence is guaranteed by containment; in full mode mypage-admin runs
+  in dedicated post-reset projects and the hermetic suites run strictly after the
+  platform chain. Override anytime with e.g.
+  `npm run test:e2e:core:s3 -- --workers=1`.
 
 ## Out of Scope for Playwright-First Coverage
 

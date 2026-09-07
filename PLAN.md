@@ -132,3 +132,7 @@ W4 needs W1 gate; W3 optional after W2.
   normal-path costs, so trimming them only raises flake risk. Resolution: keep
   hermetic suites as-is; a real-webdav server leg (W3 option B) would be the
   prerequisite for any future depth move — recorded in IMPROVEMENT_PLAN.
+- 2026-09-07 (post-merge): explicit `--workers=N` flags removed from all e2e
+  scripts — Playwright now auto-sizes workers to half the logical cores (min 1).
+  Core s3 at the auto value (3 workers on this 6-core machine) matches the w1
+  baseline exactly (122 exec / 119 pass / 0 fail / 3 skip); wall ≈ 4.1 min.

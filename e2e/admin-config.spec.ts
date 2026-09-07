@@ -22,7 +22,7 @@ import { loginWithCredentials } from './helpers/auth';
  * Admin "Advanced settings" config editor UI/UX (PLAN.md §9, Q3).
  *
  * Hermetic by design: each case spawns its own fully-configured scratch server
- * on :5003 (own `.env`, own sqlite) so the config editor's field-state matrix
+ * on :5010 (own `.env`, own sqlite) so the config editor's field-state matrix
  * (source/tier → enabled/disabled), save feedback (applied vs restartRequired),
  * secret lifecycle and post-restart persistence are deterministic. The server
  * boots setup_complete=true (webdav file storage, sqlite metadata) so the admin
@@ -40,7 +40,11 @@ import { loginWithCredentials } from './helpers/auth';
  * boot-time webdav probe, which warns on failure.
  */
 
-const SCRATCH_BASE = 'http://127.0.0.1:5003';
+// This suite's dedicated scratch port (Option A Phase 1): one distinct port per
+// hermetic suite — setup-wizard :5003, admin-config :5010, migration :5011 —
+// so the suites can run concurrently. Must match playwright.config.ts.
+const SCRATCH_PORT = 5010;
+const SCRATCH_BASE = `http://127.0.0.1:${SCRATCH_PORT}`;
 const WEBDAV_BASE = 'http://127.0.0.1:8090';
 const WEBDAV_AUTH = Buffer.from('e2etest:e2etest123').toString('base64');
 
@@ -104,10 +108,10 @@ async function detectWebdavReachable(): Promise<boolean> {
 let scratch: string;
 let spawned: ReturnType<typeof spawnScratchServer> | null = null;
 
-// The scratch harness binds a fixed port (:5003) and uses a single scratch dir,
+// The scratch harness binds a fixed port (:5010) and uses a single scratch dir,
 // so the whole file must run in one worker (serial). Same convention as
 // setup-wizard.spec.ts; without it Playwright's fullyParallel splits the file
-// across workers and their :5003 scratch servers collide.
+// across workers and their :5010 scratch servers collide.
 test.describe.configure({ mode: 'serial' });
 
 test.beforeEach(async () => {
@@ -115,7 +119,7 @@ test.beforeEach(async () => {
   fs.rmSync(scratch, { recursive: true, force: true });
   fs.mkdirSync(scratch, { recursive: true });
   writeScratchEnv(scratch, {
-    PORT: '5003',
+    PORT: String(SCRATCH_PORT),
     WEA_FILE_STORAGE: 'webdav',
     // Metadata backend stays sqlite by default: no WEA_DB_* identity keys are
     // written, so presence-based selection boots the scratch sqlite store.
@@ -127,15 +131,16 @@ test.beforeEach(async () => {
     ADMIN_DEFAULT_PASSWORD: ADMIN_PASSWORD,
   });
   await seedWebdavSettings(scratch);
-  // global-setup wipes the webdav container's DAV root (bind mount) and only
-  // restarts the container in webdav mode — in s3 mode the root is gone and
-  // Apache 403s every DAV method. Restore it (restart + PROPFIND wait) so the
-  // scratch boot probe succeeds (no spurious backend-health card) and the
-  // success-path tests (007) and "nothing failing" (011) can run.
+  // global-setup wipes the webdav container's DAV root (bind mount) and
+  // restarts the container in both modes, so the root is already restored here.
+  // ensureWebdavSubtree still MKCOLs this case's subtree (and self-heals if the
+  // container is still settling) so the scratch boot probe succeeds (no
+  // spurious backend-health card) and the success-path tests (007) and
+  // "nothing failing" (011) can run.
   await ensureWebdavSubtree(CASE_ID);
   ensureClientBuild();
-  spawned = spawnScratchServer(scratch);
-  await waitForScratchHealth(spawned!);
+  spawned = spawnScratchServer(scratch, SCRATCH_PORT);
+  await waitForScratchHealth(spawned!, SCRATCH_PORT);
 });
 
 test.afterEach(async () => {
@@ -383,8 +388,8 @@ test.describe('admin config editor (advanced settings)', () => {
 
     // Restart the scratch server (same .env + sqlite persist in the scratch dir).
     await killScratch(spawned!);
-    spawned = spawnScratchServer(scratch);
-    await waitForScratchHealth(spawned);
+    spawned = spawnScratchServer(scratch, SCRATCH_PORT);
+    await waitForScratchHealth(spawned, SCRATCH_PORT);
 
     const config = await getConfig(request);
     expect(config.FFMPEG_PATH.value).toBe('/usr/bin/ffmpeg');

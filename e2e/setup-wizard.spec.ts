@@ -93,7 +93,7 @@ test.afterEach(async () => {
     currentScratch = null;
   }
   if (usedScratchPgDb) {
-    await dropScratchPgDb().catch(() => {});
+    await dropScratchPgDb(SCRATCH_PG_DB).catch(() => {});
     usedScratchPgDb = false;
   }
 });
@@ -418,7 +418,7 @@ async function runSetupScenario(
   writeScratchEnv(scratch, buildPreBootEnv(scratch, config));
 
   if (config.metadata.backend === 'postgresql') {
-    await createScratchPgDb();
+    await createScratchPgDb(SCRATCH_PG_DB);
     usedScratchPgDb = true;
   }
   if (config.file.backend === 'webdav') {
@@ -427,9 +427,9 @@ async function runSetupScenario(
 
   // Boot 1 — DB already connected via the pre-written .env; the server must
   // come up in setup mode because the non-T0 (file-storage) config is missing.
-  const boot1 = spawnScratchServer(scratch);
+  const boot1 = spawnScratchServer(scratch, scratchPort);
   spawnedChild = boot1;
-  await waitForScratchHealth(boot1);
+  await waitForScratchHealth(boot1, scratchPort);
 
   await driveWizard(page, config);
   assertScratchEnv(scratch, config);
@@ -438,9 +438,9 @@ async function runSetupScenario(
   // Restart — the .env now exists; boot 2 must boot fully configured.
   await killScratch(boot1);
   spawnedChild = null;
-  const boot2 = spawnScratchServer(scratch);
+  const boot2 = spawnScratchServer(scratch, scratchPort);
   spawnedChild = boot2;
-  await waitForScratchHealth(boot2);
+  await waitForScratchHealth(boot2, scratchPort);
 
   await afterRestart({ scratch, page, request, config });
 }

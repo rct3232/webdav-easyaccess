@@ -3,7 +3,6 @@ import path from 'node:path';
 
 import { APIRequestContext, expect, Page, TestInfo } from '@playwright/test';
 
-import { loginAsAdmin } from './auth';
 import { openFabAction } from './explorer';
 import { getSessionToken, gotoFilesPath, resolvePathOrNull } from './resolvePath';
 
@@ -14,10 +13,13 @@ export function buildName(testInfo: TestInfo, prefix: string, extension = '') {
 }
 
 /**
- * Assertion-context containment (see docs/TESTING_STRATEGY.md): logs in as admin
- * and opens a per-test-owned base folder at the filesystem root. Every item the
- * caller later creates/asserts must live under `/<base>/`, never at the root
- * listing. Logs in as admin itself (no prior login expected).
+ * Assertion-context containment (see docs/TESTING_STRATEGY.md): opens a
+ * per-test-owned base folder at the filesystem root for the seeded admin
+ * session (see `e2e/fixtures/authenticated.ts`). Every item the caller later
+ * creates/asserts must live under `/<base>/`, never at the root listing. The
+ * caller's file-level `storageState` provides the admin session; the first
+ * navigation below lets the init-script copy the seeded token into
+ * sessionStorage before it is read.
  */
 export async function openPrivateWorkspace(
   page: Page,
@@ -25,7 +27,7 @@ export async function openPrivateWorkspace(
   testInfo: TestInfo
 ): Promise<string> {
   const base = buildName(testInfo, 'workspace');
-  await loginAsAdmin(page);
+  await page.goto('/files');
   const token = await getSessionToken(page);
   const existing = await resolvePathOrNull(request, token, `/${base}`);
   if (existing === null) {

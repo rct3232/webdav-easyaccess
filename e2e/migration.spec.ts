@@ -29,15 +29,19 @@ import {
  * Unified migration mode E2E (PLAN.md D1–D14, docs/features/migration-mode.md).
  *
  * Hermetic by design: every case spawns its own fully-configured scratch server
- * on :5003 (own .env via DOTENV_CONFIG_PATH, own sqlite, own scratch PG target
+ * on :5011 (own .env via DOTENV_CONFIG_PATH, own sqlite, own scratch PG target
  * database) and drives the migration dialogs + /migration page in the browser.
- * The shared :5002 server / `webdav_e2e` PG database / `e2e-test-bucket` are
- * only used for the docker infra (webdav :8090 subtree, minio :9010 bucket,
- * scratch PG superuser on :5433) — never pointed at by a migration target.
+ * The shared :5002 server / `webdav_e2e` PG database are never pointed at by a
+ * migration target; the shared docker infra (webdav :8090 subtree, MinIO :9010
+ * dedicated bucket, scratch PG superuser on :5433) is used for provisioning
+ * only.
  *
  * The migration gate is process-global, so every migration must run against its
  * own scratch server with the per-test before/after kill, serialized (the fixed
- * :5003 port also forces this, same convention as admin-config / setup-wizard).
+ * :5011 port also forces this, same convention as admin-config / setup-wizard).
+ * Blob migrations target the DEDICATED `e2e-migration-bucket` (never the shared
+ * `e2e-test-bucket`), so this suite can run concurrently with the s3 platform
+ * tests.
  *
  * Test-side deviations from the original task notes (all verified against the
  * running feature code before being made):
@@ -58,10 +62,17 @@ import {
  *   force-redirect to /migration is the only navigation.
  */
 
-const SCRATCH_BASE = 'http://127.0.0.1:5003';
+// This suite's dedicated scratch port and MinIO bucket (Option A Phase 1): one
+// distinct port per hermetic suite — setup-wizard :5003, admin-config :5010,
+// migration :5011 — and a dedicated bucket so this suite never touches the
+// shared `e2e-test-bucket` the s3 platform tests write to. Must match
+// playwright.config.ts / e2e/global-setup.ts.
+const SCRATCH_PORT = 5011;
+const SCRATCH_BASE = `http://127.0.0.1:${SCRATCH_PORT}`;
 const WEBDAV_BASE = 'http://127.0.0.1:8090';
 const S3_ENDPOINT = 'http://127.0.0.1:9010';
-const S3_BUCKET = 'e2e-test-bucket';
+const MIGRATION_S3_BUCKET = 'e2e-migration-bucket';
+const S3_BUCKET = MIGRATION_S3_BUCKET;
 const S3_REGION = 'us-east-1';
 const S3_ACCESS_KEY = 'minioadmin';
 const S3_SECRET_KEY = 'minioadmin';
@@ -90,7 +101,7 @@ const METADATA_DDL = fs.readFileSync(
   'utf8'
 );
 
-// Each case boots a fresh scratch server (:5003) + seeds + drives the full UI
+// Each case boots a fresh scratch server (:5011) + seeds + drives the full UI
 // flow, so the default 30s test timeout is far too short. 240s per case.
 test.describe.configure({ mode: 'serial', timeout: 240_000 });
 
@@ -128,7 +139,7 @@ type BootOptions = {
 
 /**
  * Per-test scratch lifecycle: fresh dir + .env, optional webdav subtree / scratch
- * PG target, then boot the server on :5003 and wait for health. Every case
+ * PG target, then boot the server on :5011 and wait for health. Every case
  * boots on sqlite (the migration source): no WEA_DB_* identity keys in the
  * env means presence-based selection defaults to the sqlite backend.
  */
@@ -148,7 +159,7 @@ async function bootScratch(testInfo: TestInfo, opts: BootOptions): Promise<void>
   }
 
   const env: Record<string, string> = {
-    PORT: '5003',
+    PORT: String(SCRATCH_PORT),
     NODE_ENV: 'test',
     WEA_FILE_STORAGE: 'webdav',
     WEBDAV_UPSTREAM_URL: WEBDAV_BASE,
@@ -169,8 +180,8 @@ async function bootScratch(testInfo: TestInfo, opts: BootOptions): Promise<void>
     await createScratchPgDb(pgDb);
   }
 
-  spawned = spawnScratchServer(scratch);
-  await waitForScratchHealth(spawned);
+  spawned = spawnScratchServer(scratch, SCRATCH_PORT);
+  await waitForScratchHealth(spawned, SCRATCH_PORT);
 
   testInfo.annotations.push({ type: 'migration-case', description: opts.caseId });
 }
@@ -360,8 +371,9 @@ async function assertRealWebdavPrecondition(dbPath: string, nodeIds: number[]): 
  * Assert the post-migration state for a list of uploaded webdav-source nodes
  * (the fix's new behavior): an active `s3` object_map row per file, every
  * node `sync_status='active'`, the S3 objects present (count + existence).
- * The exact `listS3Keys()` count is only meaningful when the destination
- * bucket was emptied before the run (each blob case calls `emptyS3Bucket`).
+ * The exact `listS3Keys(MIGRATION_S3_BUCKET)` count is only meaningful when the
+ * destination bucket was emptied before the run (each blob case calls
+ * `emptyS3Bucket(MIGRATION_S3_BUCKET)`).
  */
 async function assertPostMigrationBlobState(
   dbPath: string,
@@ -383,9 +395,10 @@ async function assertPostMigrationBlobState(
   );
   for (const row of nodes) expect(row.sync_status).toBe('active');
 
-  const s3Keys = await listS3Keys();
+  const s3Keys = await listS3Keys(MIGRATION_S3_BUCKET);
   expect(s3Keys).toHaveLength(nodeIds.length);
-  for (const row of activeRows) expect(await blobExists(row.s3_key as string)).toBe(true);
+  for (const row of activeRows)
+    expect(await blobExists(row.s3_key as string, MIGRATION_S3_BUCKET)).toBe(true);
 
   return activeRows as Array<{ file_node_id: number; s3_key: string }>;
 }
@@ -486,7 +499,7 @@ test.describe('unified migration mode (E2E-MIG-001..009)', () => {
     const dbPath = path.join(currentScratch!, 'webdav.db');
     await assertRealWebdavPrecondition(dbPath, fileNodeIds);
     // Deterministic S3 count baseline for the no-extra-objects assertions.
-    await emptyS3Bucket();
+    await emptyS3Bucket(MIGRATION_S3_BUCKET);
 
     await loginAsAdminUi(page);
     await openSystemSettings(page);
@@ -516,7 +529,7 @@ test.describe('unified migration mode (E2E-MIG-001..009)', () => {
       'SELECT COUNT(*) AS cnt FROM object_map'
     );
     expect(Number(mapsAfterDryRun[0].cnt)).toBe(0);
-    expect(await listS3Keys()).toHaveLength(0);
+    expect(await listS3Keys(MIGRATION_S3_BUCKET)).toHaveLength(0);
     await page.getByRole('dialog').getByRole('button', { name: 'Go to settings' }).click();
     await page.waitForURL(/\/mypage/);
     await assertOnSystemSettings(page);
@@ -574,7 +587,7 @@ test.describe('unified migration mode (E2E-MIG-001..009)', () => {
     // deterministic S3 baseline so the final count proves "no duplicates".
     const dbPath = path.join(currentScratch!, 'webdav.db');
     await assertRealWebdavPrecondition(dbPath, fileNodeIds);
-    await emptyS3Bucket();
+    await emptyS3Bucket(MIGRATION_S3_BUCKET);
 
     await loginAsAdminUi(page);
     await openSystemSettings(page);
@@ -734,7 +747,7 @@ test.describe('unified migration mode (E2E-MIG-001..009)', () => {
     // No duplicate blobs: the destination holds exactly one object per file —
     // the resume/skip (s3_key marker) prevented any re-copy on the rerun. And
     // every node reached the fix's post-migration lifecycle state.
-    expect(await listS3Keys()).toHaveLength(fileNodeIds.length);
+    expect(await listS3Keys(MIGRATION_S3_BUCKET)).toHaveLength(fileNodeIds.length);
     const postResumeNodes = await queryScratchSqlite<{ id: number; sync_status: string }>(
       dbPath,
       `SELECT id, sync_status FROM file_nodes WHERE id IN (${fileNodeIds.join(', ')})
@@ -768,7 +781,7 @@ test.describe('unified migration mode (E2E-MIG-001..009)', () => {
       'SELECT COUNT(*) AS cnt FROM object_map'
     );
     expect(Number(globalMaps[0].cnt)).toBe(0);
-    await emptyS3Bucket();
+    await emptyS3Bucket(MIGRATION_S3_BUCKET);
 
     await loginAsAdminUi(page);
     await openSystemSettings(page);
@@ -815,7 +828,7 @@ test.describe('unified migration mode (E2E-MIG-001..009)', () => {
     expect(mapsAfterRun2.map((r) => r.s3_key).sort()).toEqual(
       keysAfterRun1.map((r) => r.s3_key).sort()
     );
-    const s3KeysAfterRun2 = await listS3Keys();
+    const s3KeysAfterRun2 = await listS3Keys(MIGRATION_S3_BUCKET);
     expect(s3KeysAfterRun2).toHaveLength(fileNodeIds.length);
 
     const nodesAfterRun2 = await queryScratchSqlite<{ id: number; sync_status: string }>(
@@ -938,7 +951,7 @@ test.describe('unified migration mode (E2E-MIG-001..009)', () => {
     });
     expect(createUser.status()).toBe(201);
 
-    const userContext = await browser.newContext({ baseURL: 'http://localhost:5003' });
+    const userContext = await browser.newContext({ baseURL: `http://localhost:${SCRATCH_PORT}` });
     const userPage = await userContext.newPage();
     await loginWithCredentials(userPage, userName, userPassword);
     // Let the SPA settle on /files while the gate is still inactive (no 503s),
@@ -1005,7 +1018,7 @@ test.describe('unified migration mode (E2E-MIG-001..009)', () => {
     // Role c — anonymous visitor: a fresh context with no storage state hits the
     // public, non-exempt /migration route directly and is redirected to the
     // public /maintenance page (which renders no operational metadata either).
-    const anonContext = await browser.newContext({ baseURL: 'http://localhost:5003' });
+    const anonContext = await browser.newContext({ baseURL: `http://localhost:${SCRATCH_PORT}` });
     const anonPage = await anonContext.newPage();
     await anonPage.goto('/migration');
     await expect(anonPage).toHaveURL(/\/maintenance/, { timeout: 15_000 });
@@ -1192,14 +1205,14 @@ test.describe('unified migration mode (E2E-MIG-001..009)', () => {
     // backend is presence-selected, so a sqlite-active boot cannot carry the
     // WEA_DB_* identity keys needed to reach the PG target).
     await killScratch(spawned!);
-    spawned = spawnScratchServer(currentScratch!, {
+    spawned = spawnScratchServer(currentScratch!, SCRATCH_PORT, {
       WEA_DB_HOST: PG_HOST,
       WEA_DB_PORT: PG_PORT,
       WEA_DB_DATABASE: pgDb,
       WEA_DB_USER: PG_USER,
       WEA_DB_PASSWORD: PG_PASSWORD,
     });
-    await waitForScratchHealth(spawned);
+    await waitForScratchHealth(spawned, SCRATCH_PORT);
 
     await loginAsAdminUi(page);
     await openSystemSettings(page);

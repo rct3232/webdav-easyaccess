@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { ADMIN_STATE, expect, test } from './fixtures/authenticated';
 
 import {
   buildName,
@@ -26,6 +26,8 @@ async function createTestFile(page: any, fileName: string) {
     buffer: Buffer.from('test content'),
   });
 }
+
+test.use({ storageState: ADMIN_STATE });
 
 test.describe('core flow (mobile)', () => {
   test.afterEach(async ({ request }) => {

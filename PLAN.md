@@ -144,3 +144,39 @@ W4 needs W1 gate; W3 optional after W2.
   (same class as the E2E-ADMIN-008 fix). Docs updated docs-first (TESTING_STRATEGY
   + E2E_COVERAGE_PLAN containment lines). Verified: full s3 185 pass / 3 skip /
   0 fail; webdav smoke 10/10 — both equal to baseline.
+
+## Option A (hermetic overlap) — plan (2026-09-07, awaiting go)
+Goal: remove hermetic sequential tail (~7.2 min of the ~19 min run on the CI
+host) by letting hermetic suites run concurrently with the platform chain and,
+after isolation, with each other.
+
+Isolation preconditions (each must land before the scheduling change):
+1. webdav container restart once up-front: after the `data/webdav` wipe,
+   restart `webdav-e2e-test` in BOTH modes in `global-setup` (remove lazy
+   `ensureWebdavRootReady` docker restarts mid-run, setupScratch.ts:415).
+2. Scratch port parametrized per hermetic project (setupScratch.ts SCRATCH_PORT
+   constant → port map per project; spawn/health/kill + config baseURL aligned).
+3. Scratch PG database name unique per suite (createScratchPgDb default
+   `webdav_e2e_setup` — give setup-wizard/admin-config/migration distinct names;
+   audit scratch-dir caseId uniqueness).
+4. Migration S3 bucket isolated (its scratch env + minio assertions move to a
+   dedicated bucket so it never empties the bucket the s3 platform legs write).
+Phase 1: land 1–4, keep chaining; verify each hermetic suite green at workers=1.
+Phase 2: drop hermetic dependencies (independent projects) + run full at
+workers>=3 on the dev box; verify result-set identical to chained baseline and
+measure wall. Repeat 3×.
+Phase 3: same on the Jenkins host (4-core) via pipeline; keep or roll back by
+measured wall. Docs: E2E_COVERAGE_PLAN/TEST_GIT_GUIDE run rules + workers note.
+
+Option A progress (2026-09-07):
+- Phase 1 DONE: per-suite scratch ports (:5003 wizard / :5010 admin-config /
+  :5011 migration), explicit port threading through setupScratch helpers and all
+  three specs; scratch PG names explicit/distinct; webdav container restart moved
+  up-front to global-setup (both modes); migration dedicated MinIO bucket
+  (`e2e-migration-bucket`) wired through minio helpers + scratch env + global
+  setup; hermetic baseURLs aligned. Gate: setup-wizard ∥ admin-config ∥
+  migration desktop run CONCURRENTLY on 3 ports → 24/24 pass.
+- Phase 2 DONE: hermetic dependency chain lifted (independent siblings; mobile
+  variant still depends on its desktop). Full s3 @ workers=3 run three times:
+  185 expected / 3 skipped / 0 unexpected / 0 flaky every run; wall ≈ 7.0 min
+  (vs ≈ 9.3 min for the chained full @ workers=2). Webdav smoke re-run: 10/10.

@@ -45,11 +45,13 @@ const VALID_PAYLOAD = {
   dest: { type: 's3', bucket: 'test-bucket', accessKey: 'ak', secretKey: 'sk' },
 };
 
-// Backend-agnostic metadata target: the active backend depends on the env
-// (sqlite under test:ci, postgresql under test:ci:pg), so the target is the
-// OTHER backend.
-const ACTIVE_METADATA_BACKEND = require('../../../../store/storage').getBackend();
-const OTHER_METADATA_BACKEND = ACTIVE_METADATA_BACKEND === 'sqlite' ? 'postgresql' : 'sqlite';
+// Backend-agnostic metadata target: the active backend depends on the jest leg
+// (sqlite under test:ci, postgresql under the real-PG test:ci:pg leg signalled
+// by the dedicated WEA_TEST_PG_* namespace), so the target is the OTHER backend.
+const TEST_PG_KEYS = ['WEA_TEST_PG_HOST', 'WEA_TEST_PG_DATABASE', 'WEA_TEST_PG_USER', 'WEA_TEST_PG_PASSWORD'];
+const RUN_UNDER_PG_LEG = TEST_PG_KEYS.every((key) => !!process.env[key]);
+const ACTIVE_METADATA_BACKEND = RUN_UNDER_PG_LEG ? 'postgresql' : 'sqlite';
+const OTHER_METADATA_BACKEND = RUN_UNDER_PG_LEG ? 'sqlite' : 'postgresql';
 
 function makeMetadataPayload(targetBackend = OTHER_METADATA_BACKEND, overrides = {}) {
   const payload = { targetBackend, wipeTarget: false };

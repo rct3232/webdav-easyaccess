@@ -10,9 +10,11 @@ import {
   createFolderViaUi,
   downloadFile,
   fileItem,
+  flushPrivateWorkspaceCleanups,
   listNodeChildren,
   openFolderPickerAndSelectDestination,
   openFolderRouteAndWaitForItems,
+  openPrivateWorkspace,
   readTestFileFixture,
   uploadFileAt,
   uploadFileViaUi,
@@ -29,6 +31,10 @@ import {
   resolveNodeId,
   resolvePathOrNull,
 } from './helpers/resolvePath';
+
+test.afterEach(async ({ request }) => {
+  await flushPrivateWorkspaceCleanups(request);
+});
 
 const textFixtureBuffer = readTestFileFixture(TEST_FILES.smallText);
 const imageFixtureBuffer = readTestFileFixture(TEST_FILES.smallImage);
@@ -125,14 +131,14 @@ test('E2E-EXP-002: Direct route entry loads a nested folder path', async ({
   page,
   request,
 }, testInfo) => {
+  const base = await openPrivateWorkspace(page, request, testInfo);
   const parentFolderName = buildName(testInfo, 'direct-route-parent');
   const childFolderName = buildName(testInfo, 'direct-route-child');
   const markerFileName = buildName(testInfo, 'direct-route-marker', '.txt');
-  const parentFolderPath = `/${parentFolderName}`;
+  const parentFolderPath = `/${base}/${parentFolderName}`;
   const childFolderPath = `${parentFolderPath}/${childFolderName}`;
   const markerFilePath = `${childFolderPath}/${markerFileName}`;
 
-  await loginAsAdmin(page);
   await createFolderViaUi(page, parentFolderName);
   await expect(fileItem(page, parentFolderPath)).toBeVisible();
 
@@ -148,7 +154,7 @@ test('E2E-EXP-002: Direct route entry loads a nested folder path', async ({
   });
   await expect(fileItem(page, markerFilePath)).toBeVisible();
 
-  await page.goto('/files');
+  await gotoFilesPath(page, request, `/${base}`);
   await gotoFilesPath(page, request, childFolderPath);
 
   await expect(fileItem(page, markerFilePath)).toBeVisible();
@@ -160,14 +166,14 @@ test('E2E-EXP-003: Breadcrumb navigation changes current folder', async ({
   page,
   request,
 }, testInfo) => {
+  const base = await openPrivateWorkspace(page, request, testInfo);
   const parentFolderName = buildName(testInfo, 'breadcrumb-parent');
   const childFolderName = buildName(testInfo, 'breadcrumb-child');
   const nestedFileName = buildName(testInfo, 'breadcrumb-marker', '.txt');
-  const parentFolderPath = `/${parentFolderName}`;
+  const parentFolderPath = `/${base}/${parentFolderName}`;
   const childFolderPath = `${parentFolderPath}/${childFolderName}`;
   const nestedFilePath = `${childFolderPath}/${nestedFileName}`;
 
-  await loginAsAdmin(page);
   await createFolderViaUi(page, parentFolderName);
 
   await gotoFilesPath(page, request, parentFolderPath);
@@ -188,18 +194,19 @@ test('E2E-EXP-003: Breadcrumb navigation changes current folder', async ({
 });
 
 test('E2E-EXP-004: Creates a folder from the FAB', async ({ page, request }, testInfo) => {
+  const base = await openPrivateWorkspace(page, request, testInfo);
   const folderName = buildName(testInfo, 'flow-folder');
+  const folderPath = `/${base}/${folderName}`;
 
-  await loginAsAdmin(page);
   await createFolderViaUi(page, folderName);
 
-  await expect(fileItem(page, `/${folderName}`)).toBeVisible();
+  await expect(fileItem(page, folderPath)).toBeVisible();
 
   // Absence regression (class A): a folder the user created themselves must never
   // surface in the "Shared" collection. Inject the failure precondition (the own
   // folder exists) and assert the user cannot see it as shared content.
   const bearerToken = await getSessionToken(page);
-  const ownNodeId = await resolveNodeId(request, bearerToken, `/${folderName}`);
+  const ownNodeId = await resolveNodeId(request, bearerToken, folderPath);
 
   await page.goto('/files/__shared__');
   await expect(page).toHaveURL(/\/files\/__shared__(?:\/.*)?$/);
@@ -218,27 +225,29 @@ test('E2E-EXP-004: Creates a folder from the FAB', async ({ page, request }, tes
   await expect(folderTree.getByRole('button', { name: /Shared/i })).toHaveCount(0);
 });
 
-test('E2E-EXP-005: Uploads a file from the dialog', async ({ page }, testInfo) => {
+test('E2E-EXP-005: Uploads a file from the dialog', async ({ page, request }, testInfo) => {
+  const base = await openPrivateWorkspace(page, request, testInfo);
   const fileName = buildName(testInfo, 'flow-upload', '.txt');
 
-  await loginAsAdmin(page);
   await uploadFileViaUi(page, {
     fileName,
     mimeType: 'text/plain',
     buffer: textFixtureBuffer,
   });
 
-  await expect(fileItem(page, `/${fileName}`)).toBeVisible();
+  await expect(fileItem(page, `/${base}/${fileName}`)).toBeVisible();
 });
 
-test('E2E-EXP-006: Renames an item from platform-specific actions', async ({ page }, testInfo) => {
+test('E2E-EXP-006: Renames an item from platform-specific actions', async ({
+  page,
+  request,
+}, testInfo) => {
+  const base = await openPrivateWorkspace(page, request, testInfo);
   const isMobile = isMobileProject(testInfo);
   const originalName = buildName(testInfo, 'flow-rename-source');
   const renamedName = buildName(testInfo, 'flow-renamed');
-  const originalPath = `/${originalName}`;
-  const renamedPath = `/${renamedName}`;
-
-  await loginAsAdmin(page);
+  const originalPath = `/${base}/${originalName}`;
+  const renamedPath = `/${base}/${renamedName}`;
 
   await createFolderViaUi(page, originalName);
   await expect(fileItem(page, originalPath)).toBeVisible();
@@ -262,12 +271,12 @@ test('E2E-EXP-006: Renames an item from platform-specific actions', async ({ pag
   await expect(fileItem(page, renamedPath)).toHaveCount(0);
 });
 
-test('E2E-EXP-008: Opens a previewable file', async ({ page }, testInfo) => {
+test('E2E-EXP-008: Opens a previewable file', async ({ page, request }, testInfo) => {
+  const base = await openPrivateWorkspace(page, request, testInfo);
   const isMobile = isMobileProject(testInfo);
   const imageFileName = buildName(testInfo, 'preview-image', '.jpg');
-  const imageFilePath = `/${imageFileName}`;
+  const imageFilePath = `/${base}/${imageFileName}`;
 
-  await loginAsAdmin(page);
   await uploadFileViaUi(page, {
     fileName: imageFileName,
     mimeType: 'image/jpeg',
@@ -382,12 +391,13 @@ test('E2E-EXP-013: Moves a file across folders and keeps its content byte-identi
 
 test('E2E-BULK-001: Enters selection mode and shows the bulk toolbar', async ({
   page,
+  request,
 }, testInfo) => {
+  const base = await openPrivateWorkspace(page, request, testInfo);
   const isMobile = isMobileProject(testInfo);
   const folderName = buildName(testInfo, 'bulk-select-folder');
-  const folderPath = `/${folderName}`;
+  const folderPath = `/${base}/${folderName}`;
 
-  await loginAsAdmin(page);
   await createFolderViaUi(page, folderName);
   await expect(fileItem(page, folderPath)).toBeVisible();
 
@@ -403,18 +413,18 @@ test('E2E-BULK-002: Moves selected items to another folder', async ({
   page,
   request,
 }, testInfo) => {
+  const base = await openPrivateWorkspace(page, request, testInfo);
   const isMobile = isMobileProject(testInfo);
   const srcFile1Name = buildName(testInfo, 'bulk-move-src-1', '.txt');
   const srcFile2Name = buildName(testInfo, 'bulk-move-src-2', '.txt');
-  const srcFile1Path = `/${srcFile1Name}`;
-  const srcFile2Path = `/${srcFile2Name}`;
+  const srcFile1Path = `/${base}/${srcFile1Name}`;
+  const srcFile2Path = `/${base}/${srcFile2Name}`;
 
   const destFolderName = buildName(testInfo, 'bulk-move-dest-folder');
-  const destFolderPath = `/${destFolderName}`;
+  const destFolderPath = `/${base}/${destFolderName}`;
   const destFile1Path = `${destFolderPath}/${srcFile1Name}`;
   const destFile2Path = `${destFolderPath}/${srcFile2Name}`;
 
-  await loginAsAdmin(page);
   await uploadFileViaUi(page, {
     fileName: srcFile1Name,
     mimeType: 'text/plain',
@@ -442,18 +452,18 @@ test('E2E-BULK-003: Copies selected items to another folder', async ({
   page,
   request,
 }, testInfo) => {
+  const base = await openPrivateWorkspace(page, request, testInfo);
   const isMobile = isMobileProject(testInfo);
   const srcFile1Name = buildName(testInfo, 'bulk-copy-src-1', '.txt');
   const srcFile2Name = buildName(testInfo, 'bulk-copy-src-2', '.txt');
-  const srcFile1Path = `/${srcFile1Name}`;
-  const srcFile2Path = `/${srcFile2Name}`;
+  const srcFile1Path = `/${base}/${srcFile1Name}`;
+  const srcFile2Path = `/${base}/${srcFile2Name}`;
 
   const destFolderName = buildName(testInfo, 'bulk-copy-dest-folder');
-  const destFolderPath = `/${destFolderName}`;
+  const destFolderPath = `/${base}/${destFolderName}`;
   const destFile1Path = `${destFolderPath}/${srcFile1Name}`;
   const destFile2Path = `${destFolderPath}/${srcFile2Name}`;
 
-  await loginAsAdmin(page);
   await uploadFileViaUi(page, {
     fileName: srcFile1Name,
     mimeType: 'text/plain',
@@ -482,14 +492,14 @@ test('E2E-BULK-003: Copies selected items to another folder', async ({
   ]);
 });
 
-test('E2E-BULK-004: Deletes selected items', async ({ page }, testInfo) => {
+test('E2E-BULK-004: Deletes selected items', async ({ page, request }, testInfo) => {
+  const base = await openPrivateWorkspace(page, request, testInfo);
   const isMobile = isMobileProject(testInfo);
   const srcFile1Name = buildName(testInfo, 'bulk-delete-src-1', '.txt');
   const srcFile2Name = buildName(testInfo, 'bulk-delete-src-2', '.txt');
-  const srcFile1Path = `/${srcFile1Name}`;
-  const srcFile2Path = `/${srcFile2Name}`;
+  const srcFile1Path = `/${base}/${srcFile1Name}`;
+  const srcFile2Path = `/${base}/${srcFile2Name}`;
 
-  await loginAsAdmin(page);
   await uploadFileViaUi(page, {
     fileName: srcFile1Name,
     mimeType: 'text/plain',
@@ -511,15 +521,15 @@ test('E2E-BULK-004: Deletes selected items', async ({ page }, testInfo) => {
   await expect(fileItem(page, srcFile2Path)).toHaveCount(0);
 });
 
-test('E2E-BULK-006: Mobile multi-download is disabled', async ({ page }, testInfo) => {
+test('E2E-BULK-006: Mobile multi-download is disabled', async ({ page, request }, testInfo) => {
   test.skip(!isMobileProject(testInfo), 'E2E-BULK-006 is mobile-only');
 
+  const base = await openPrivateWorkspace(page, request, testInfo);
   const srcFile1Name = buildName(testInfo, 'bulk-download-src-1', '.txt');
   const srcFile2Name = buildName(testInfo, 'bulk-download-src-2', '.txt');
-  const srcFile1Path = `/${srcFile1Name}`;
-  const srcFile2Path = `/${srcFile2Name}`;
+  const srcFile1Path = `/${base}/${srcFile1Name}`;
+  const srcFile2Path = `/${base}/${srcFile2Name}`;
 
-  await loginAsAdmin(page);
   await uploadFileViaUi(page, {
     fileName: srcFile1Name,
     mimeType: 'text/plain',
@@ -545,38 +555,46 @@ test('E2E-BULK-007: Conflict resolution dialog appears when move/copy would coll
   page,
   request,
 }, testInfo) => {
+  const base = await openPrivateWorkspace(page, request, testInfo);
   const isMobile = isMobileProject(testInfo);
   const folderA = buildName(testInfo, 'conflict-folder-a');
   const folderB = buildName(testInfo, 'conflict-folder-b');
   const conflictFileName = 'conflict_test.txt';
 
-  await loginAsAdmin(page);
   await createFolderViaUi(page, folderA);
   await createFolderViaUi(page, folderB);
 
-  await gotoFilesPath(page, request, `/${folderA}`);
+  await gotoFilesPath(page, request, `/${base}/${folderA}`);
   await uploadFileViaUi(page, {
     fileName: conflictFileName,
     mimeType: 'text/plain',
     buffer: textFixtureBuffer,
   });
 
-  await gotoFilesPath(page, request, `/${folderB}`);
+  await gotoFilesPath(page, request, `/${base}/${folderB}`);
   await uploadFileViaUi(page, {
     fileName: conflictFileName,
     mimeType: 'text/plain',
     buffer: textFixtureBuffer,
   });
 
-  await gotoFilesPath(page, request, `/${folderA}`);
-  await selectSingleItemForBulk(page, isMobile, `/${folderA}/${conflictFileName}`);
+  await gotoFilesPath(page, request, `/${base}/${folderA}`);
+  await selectSingleItemForBulk(page, isMobile, `/${base}/${folderA}/${conflictFileName}`);
 
   await page.getByTestId('bulk-action-move').click();
 
   const pickerDialog = page.getByRole('dialog');
   await expect(pickerDialog).toBeVisible();
 
+  // The picker opens listing the current folder's subfolders (none inside
+  // folderA). Go to the filesystem root via the first breadcrumb, descend into
+  // the per-test base folder, then pick folderB as the destination.
   await pickerDialog.locator('.MuiBreadcrumbs-root button').first().click();
+  await expect(pickerDialog.getByRole('progressbar')).not.toBeVisible();
+
+  const baseFolderItem = pickerDialog.locator('li').filter({ hasText: base });
+  await expect(baseFolderItem).toBeVisible({ timeout: 10000 });
+  await baseFolderItem.click();
   await expect(pickerDialog.getByRole('progressbar')).not.toBeVisible();
 
   const folderBItem = pickerDialog.locator('li').filter({ hasText: folderB });

@@ -1,7 +1,12 @@
 import { expect, test } from '@playwright/test';
 
-import { loginAsAdmin } from './helpers/auth';
-import { buildName, createFolderViaUi, uploadFileViaUi } from './helpers/files';
+import {
+  buildName,
+  createFolderViaUi,
+  flushPrivateWorkspaceCleanups,
+  openPrivateWorkspace,
+  uploadFileViaUi,
+} from './helpers/files';
 import {
   longPressItem,
   toggleFolderTree,
@@ -23,19 +28,23 @@ async function createTestFile(page: any, fileName: string) {
 }
 
 test.describe('core flow (mobile)', () => {
-  test('E2E-MOBILE-001: Long-press enters selection mode', async ({ page }, testInfo) => {
+  test.afterEach(async ({ request }) => {
+    await flushPrivateWorkspaceCleanups(request);
+  });
+
+  test('E2E-MOBILE-001: Long-press enters selection mode', async ({ page, request }, testInfo) => {
     // Log browser console messages to the terminal
     page.on('console', (msg) => console.log(`[BROWSER] ${msg.text()}`));
 
-    // 1. Login as admin
-    await loginAsAdmin(page);
+    // 1. Open the per-test workspace (logs in as admin and enters its base folder)
+    const base = await openPrivateWorkspace(page, request, testInfo);
 
-    // 2. Setup: Create a test file in root
+    // 2. Setup: Create a test file inside the base folder
     const fileName = buildName(testInfo, 'mobile-long-press') + '.txt';
     await createTestFile(page, fileName);
 
-    // 3. Navigate to /files
-    await page.goto('/files');
+    // 3. Reload the base folder listing
+    await gotoFilesPath(page, request, `/${base}`);
     await page.waitForLoadState('networkidle');
 
     // Wait for refresh indicator to be fully invisible (opacity 0) to ensure layout is stable
@@ -52,7 +61,7 @@ test.describe('core flow (mobile)', () => {
     await expect(page.getByTestId('file-actions-fab')).toBeVisible();
 
     // 4. Trigger Long-Press on the file
-    await longPressItem(page, `/${fileName}`);
+    await longPressItem(page, `/${base}/${fileName}`);
 
     // 5. Verify Selection Mode UI (Active): Bulk action buttons should be visible
     await expect(page.getByTestId('bulk-action-move')).toBeVisible();
@@ -71,23 +80,26 @@ test.describe('core flow (mobile)', () => {
     await expect(page.getByTestId('view-mode-detail')).not.toBeVisible();
 
     // 7. Verify Item Selection: The long-pressed item should have the visual selection indicator
-    await expect(page.locator(`[data-file-path="/${fileName}"]`)).toHaveAttribute(
+    await expect(page.locator(`[data-file-path="/${base}/${fileName}"]`)).toHaveAttribute(
       'aria-selected',
       'true'
     );
   });
 
-  test('E2E-MOBILE-002: Action sheet opens from more button', async ({ page }, testInfo) => {
-    // 1. Login as admin
-    await loginAsAdmin(page);
+  test('E2E-MOBILE-002: Action sheet opens from more button', async ({
+    page,
+    request,
+  }, testInfo) => {
+    // 1. Open the per-test workspace (logs in as admin and enters its base folder)
+    const base = await openPrivateWorkspace(page, request, testInfo);
 
-    // 2. Setup: Create a test file in root
+    // 2. Setup: Create a test file inside the base folder
     const fileName = buildName(testInfo, 'mobile-action-sheet') + '.txt';
     await createTestFile(page, fileName);
-    const filePath = `/${fileName}`;
+    const filePath = `/${base}/${fileName}`;
 
-    // 3. Navigate to /files
-    await page.goto('/files');
+    // 3. Reload the base folder listing
+    await gotoFilesPath(page, request, `/${base}`);
 
     // 4. Trigger Action Sheet (openActionSheet already guarantees it's open)
     await openActionSheet(page, filePath);
@@ -104,16 +116,17 @@ test.describe('core flow (mobile)', () => {
 
   test('E2E-MOBILE-003: Breadcrumb toggle opens and closes folder tree section', async ({
     page,
+    request,
   }, testInfo) => {
-    // 1. Login as admin
-    await loginAsAdmin(page);
+    // 1. Open the per-test workspace (logs in as admin and enters its base folder)
+    const base = await openPrivateWorkspace(page, request, testInfo);
 
     // 2. Setup: Create a test folder to ensure the tree has content
     const folderName = buildName(testInfo, 'mobile-tree-toggle');
     await createTestFolder(page, folderName);
 
-    // 3. Navigate to /files
-    await page.goto('/files');
+    // 3. Reload the base folder listing
+    await gotoFilesPath(page, request, `/${base}`);
 
     // 4. Open Folder Tree
     await toggleFolderTree(page);

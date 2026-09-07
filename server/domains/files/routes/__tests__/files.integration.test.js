@@ -528,7 +528,6 @@ describe('S5.0-SCENARIO-5: S3 mode delete cascade', () => {
    ======================================================================== */
 describe('S5.0-SCENARIO-5B: GC route reclaims an untracked S3 blob (Tier 2)', () => {
   let admin;
-  const previousTtl = process.env.GC_ORPHAN_TTL_DAYS;
 
   beforeEach(jest.clearAllMocks);
 
@@ -536,20 +535,11 @@ describe('S5.0-SCENARIO-5B: GC route reclaims an untracked S3 blob (Tier 2)', ()
     currentMockS3 = createS3Mock();
     wireS3Mock(currentMockS3);
     await useS3Mode();
-    process.env.GC_ORPHAN_TTL_DAYS = '0';
 
     admin = await createAuthenticatedTestUser({
       isAdmin: true,
       username: `gcuntracked-${Date.now()}`,
     });
-  });
-
-  afterAll(() => {
-    if (previousTtl === undefined) {
-      delete process.env.GC_ORPHAN_TTL_DAYS;
-    } else {
-      process.env.GC_ORPHAN_TTL_DAYS = previousTtl;
-    }
   });
 
   it('GC deletes a directly-placed blob that has no object_map row', async () => {

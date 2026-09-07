@@ -10,6 +10,15 @@
 
 ## 2. Implementation Spec
 
+> **Layering:** `server/store/fileNodesStore.js` is a facade — it contains no SQL and forwards
+> each method unchanged (facade parity) to `server/store/repositories/FileNodeRepository.js`,
+> built over `storage.getExecutor()`. The dialect SQL lives in the repository twins
+> (`server/store/repositories/sqlite/FileNodeRepository.sqlite.js` /
+> `server/store/repositories/postgres/FileNodeRepository.postgres.js`); the SQL patterns listed
+> throughout this spec are the ones those implementations execute. Conformance:
+> `server/store/repositories/__tests__/FileNodeRepository.conformance.test.js` (real sqlite in
+> `test:ci`, real PostgreSQL on the `test:ci:pg:adapters` leg).
+
 ### 2.1 Tables
 
 | Table            | Purpose                                                                                                                                                                                                                                               |
@@ -75,7 +84,7 @@ This spec does not duplicate full DDL text.
 | ----------------------------------- | ------------------------------------------------------------------------------------------------- | ------------- |
 | `getOrphanedObjects(olderThanDays)` | SELECT \* WHERE status='orphaned' AND created_at < NOW() - interval / `datetime('now','-N days')` | rows[]        |
 | `getAllActiveS3Keys()`              | SELECT s3_key WHERE status='active' AND s3_key IS NOT NULL                                        | string[]      |
-| `deleteObjectMapRows(ids)`          | DELETE WHERE id IN (...); SQLite per-row via `sqliteRun`                                          | `{ changes }` |
+| `deleteObjectMapRows(ids)`          | DELETE WHERE id IN (...); SQLite branch per-row via `executor.run` in `FileNodeRepository.sqlite.js` | `{ changes }` |
 | `getNodesBySyncStatus(status)`      | SELECT \* FROM file_nodes WHERE sync_status=?                                                     | mapped rows[] |
 | `getNodesBySyncStatusNot(status)`   | SELECT \* FROM file_nodes WHERE sync_status != ?                                                  | mapped rows[] |
 
@@ -87,6 +96,11 @@ This spec does not duplicate full DDL text.
 | `deleteCache(fileNodeId)`                              | DELETE WHERE file_node_id=?  | `{ changes }` |
 
 ### 2.5 PostgreSQL vs SQLite Branching
+
+These dialect differences live in the repository implementations behind the executor seam —
+`server/store/repositories/sqlite/FileNodeRepository.sqlite.js` / `server/store/repositories/postgres/FileNodeRepository.postgres.js` —
+not in the facade, which executes no SQL. The `RETURNING`/`lastID`, `NOW()`/`datetime('now')`
+and placeholder markers shown across the method tables in §2.4 are the same dialect twins' work.
 
 | Operation             | PostgreSQL                | SQLite                   |
 | --------------------- | ------------------------- | ------------------------ |

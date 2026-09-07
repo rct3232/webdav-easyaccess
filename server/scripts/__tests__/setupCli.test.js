@@ -79,8 +79,7 @@ const NON_TTY_INPUT = { isTTY: false };
 function setBaselineSqliteEnv() {
   for (const key of MANAGED_KEYS) delete process.env[key];
   // No WEA_DB_* identity key set → the metadata backend defaults to sqlite
-  // (presence-based; there is no WEA_STORAGE_BACKEND switch anymore).
-  delete process.env.WEA_STORAGE_BACKEND;
+  // (presence-based backend selection).
 }
 
 function setCompleteWebdavEnv() {

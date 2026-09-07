@@ -32,14 +32,20 @@ function isSqliteBackend() {
 /**
  * Create an isolated test database.
  * For SQLite: creates a unique file-based DB per test suite (no shared :memory:).
- * For PostgreSQL: uses the externally-managed PG connection.
+ * For PostgreSQL: the real-PG test leg is driven by the dedicated WEA_TEST_PG_*
+ * namespace (see test-setup.js). A pg Pool is built from it and injected through
+ * storage.setTestBackend so the harness never touches production WEA_DB_* env.
  * Use in beforeAll; call cleanup() in afterAll.
  * @returns {Promise<{ dir: string|null, cleanup: () => Promise<void> }>}
  */
-async function createTestDatabase() {
-  const backend = storage.getBackend();
+const TEST_PG_KEYS = ['WEA_TEST_PG_HOST', 'WEA_TEST_PG_PORT', 'WEA_TEST_PG_USER', 'WEA_TEST_PG_PASSWORD', 'WEA_TEST_PG_DATABASE'];
 
-  if (backend === 'sqlite') {
+function wantsRemoteTestPg() {
+  return TEST_PG_KEYS.some((key) => !!process.env[key]) || storage.isTestBackendOverridden();
+}
+
+async function createTestDatabase() {
+  if (!wantsRemoteTestPg()) {
     const dbPath = `/tmp/wea-test-${crypto.randomUUID()}.db`;
     const prevSqlitePath = process.env.WEA_SQLITE_PATH;
 
@@ -72,9 +78,52 @@ async function createTestDatabase() {
     };
   }
 
-  // PostgreSQL path: apply the (idempotent) schema, then wipe every table so
-  // each suite starts clean. The shared pool is process-lifetime; suites run
-  // serially (--runInBand) which is what makes per-suite truncation safe.
+  // PostgreSQL path: build a pool from the WEA_TEST_PG_* namespace and inject it
+  // through the storage test-only override, then apply the (idempotent) schema
+  // and wipe every table so each suite starts clean. Suites run serially
+  // (--runInBand) which is what makes per-suite truncation safe.
+  if (!storage.isTestBackendOverridden()) {
+    // eslint-disable-next-line global-require
+    const { Pool } = require('pg');
+    const dbName = process.env.WEA_TEST_PG_DATABASE || 'webdav_test';
+    // Self-provision the disposable test database when it does not exist yet
+    // (the jest PG leg targets `webdav_test`, which no compose file creates).
+    // Requires a connection user with CREATEDB — the e2e compose user has it.
+    try {
+      const probe = new Pool({
+        host: process.env.WEA_TEST_PG_HOST || '127.0.0.1',
+        port: Number(process.env.WEA_TEST_PG_PORT || 5433),
+        database: 'postgres',
+        user: process.env.WEA_TEST_PG_USER || 'e2etest',
+        password: process.env.WEA_TEST_PG_PASSWORD || 'e2etest',
+      });
+      try {
+        const res = await probe.query('SELECT 1 FROM pg_database WHERE datname = $1', [dbName]);
+        if (res.rows.length === 0) {
+          // Identifier quoting: DB names in the allowlist are plain, but quote
+          // defensively. CREATE DATABASE cannot use bound parameters.
+          const safeName = dbName.replace(/[^A-Za-z0-9_]/g, '');
+          if (safeName !== dbName || safeName.length === 0) {
+            throw new Error(`Refusing to create test database with unsafe name: ${dbName}`);
+          }
+          await probe.query(`CREATE DATABASE ${safeName}`);
+        }
+      } finally {
+        await probe.end();
+      }
+    } catch {
+      // Probe failures (no CREATEDB, unreachable) fall through — the schema
+      // init below fails with a clear error if the DB really is missing.
+    }
+    const pool = new Pool({
+      host: process.env.WEA_TEST_PG_HOST || '127.0.0.1',
+      port: Number(process.env.WEA_TEST_PG_PORT || 5433),
+      database: dbName,
+      user: process.env.WEA_TEST_PG_USER || 'e2etest',
+      password: process.env.WEA_TEST_PG_PASSWORD || 'e2etest',
+    });
+    storage.setTestBackend('postgresql', pool);
+  }
   await initMetadataStore();
   await truncateAllTables();
 

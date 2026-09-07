@@ -220,7 +220,9 @@ test.describe('mypage admin flows (E2E-ADMIN-001..008)', () => {
 
     await approveResponse;
 
-    await expect(page.getByRole('alert')).toBeVisible();
+    // Scope to the approval alert: a bare getByRole('alert') would trip strict
+    // mode (or green on an unrelated alert) once a second role=alert exists.
+    await expect(page.getByRole('alert').filter({ hasText: /has been approved/i })).toBeVisible();
     await expect(page.getByText(/has been approved/i)).toBeVisible();
 
     const approvedUserCard = page
@@ -272,7 +274,8 @@ test.describe('mypage admin flows (E2E-ADMIN-001..008)', () => {
 
     await rejectResponse;
 
-    await expect(page.getByRole('alert')).toBeVisible();
+    // Scope to the rejection alert (see E2E-ADMIN-003): never a bare alert.
+    await expect(page.getByRole('alert').filter({ hasText: /has been rejected/i })).toBeVisible();
     await expect(page.getByText(/has been rejected/i)).toBeVisible();
 
     const rejectedUserCard = page
@@ -448,7 +451,12 @@ test.describe('mypage admin flows (E2E-ADMIN-001..008)', () => {
 
     await confirmDialog.getByRole('button', { name: /Clean up/i }).click();
 
-    await expect(page.getByRole('alert')).toBeVisible();
+    // Scope to the cleanup-completion alert: the System settings page can also
+    // show a persistent env-setup warning banner (role=alert), which would trip
+    // strict mode on a bare getByRole('alert').
+    await expect(
+      page.getByRole('alert').filter({ hasText: /Cleanup complete|정리 완료/i })
+    ).toBeVisible();
 
     // Absence regression (class H): after cleanup, the non-admin user's shared view
     // shows no self-grant leftovers — empty for a user who only has own folders.

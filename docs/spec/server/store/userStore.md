@@ -14,6 +14,7 @@
 
 - **Source:** `server/store/userStore.js`
 - **Test file:** `server/store/__tests__/userStore.test.js`
+- **L2 conformance:** `server/store/repositories/__tests__/UserRepository.conformance.test.js` (sqlite default leg; real PostgreSQL under the `test:ci:pg:adapters` leg)
 
 ### 2.2 Main Methods
 
@@ -53,7 +54,7 @@
 
 ### 2.6 Dependencies
 
-- PostgresqlMetadataAdapter / SqliteMetadataAdapter (via store adapter)
+- storage.getExecutor() + repositories/UserRepository.js (sqlite/ + postgres/ dialect implementations)
 - errorHandler.createError, SERVER_ERROR_CODES
 
 ### 2.7 Verification Scenarios
@@ -62,5 +63,5 @@
 - [ ] findByUsername, findByEmail, findById return user or undefined
 - [ ] findAll returns array sorted by created_at desc
 - [ ] updateStatus, updateEmail, updatePassword, deleteUser mutate correctly
-- [ ] PostgreSQL: unique constraint violations map to duplicate username/email errors
-- [ ] PostgreSQL: updateEmail persists canonical email + email_hash in same transaction
+- [ ] PostgreSQL: unique constraint violations map to duplicate username/email errors (covered by the conformance suite on the real-PG adapter leg — `server/store/repositories/__tests__/UserRepository.conformance.test.js`)
+- [ ] PostgreSQL: updateEmail persists canonical email + email_hash in same transaction (covered by the conformance suite on the real-PG adapter leg — `server/store/repositories/__tests__/UserRepository.conformance.test.js`)

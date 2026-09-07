@@ -21,7 +21,7 @@
 | Export           | Signature                                       | Description                                                                 |
 | ---------------- | ----------------------------------------------- | --------------------------------------------------------------------------- |
 | `TIER`           | `Object.freeze({ T0, T1, T2 })`                 | Tier constants (string values `'T0'`/`'T1'`/`'T2'`).                        |
-| `CONFIG_ENTRIES` | frozen `Array<{ key, tier, secret, default? }>` | The complete catalog, ordered for UI grouping. Each entry object is frozen. |
+| `CONFIG_ENTRIES` | frozen `Array<{ key, tier, secret, dbOnly?, default? }>` | The complete catalog, ordered for UI grouping. Each entry object is frozen. |
 | `getEntries`     | `() => Array`                                   | Returns `CONFIG_ENTRIES`.                                                   |
 | `getEntry`       | `(key) => entry \| undefined`                   | Lookup by raw env var name; `undefined` when unknown.                       |
 | `isT0`           | `(key) => boolean`                              | True when the key is registered as `TIER.T0`.                               |
@@ -34,6 +34,7 @@
 - `key` — raw env var name (row key in the `settings` table, D11).
 - `tier` — one of `TIER.*`.
 - `secret` — boolean; drives **presentation-level** `'****'` masking in `getEffectiveConfig` and the admin/setup surfaces. It no longer implies any encryption at rest — secret DB rows are stored plaintext like any other value.
+- `dbOnly` — optional boolean. When `true` the key is **never env-driven**: `configResolver` resolves it from the DB settings row or the built-in default only, `populateT1Env` does not mirror it into `process.env`, and `configSync`/setup-wizard never treat env as authoritative (value is written to the DB `settings` table). Internal tuning knobs (e.g. `JWT_EXPIRES_IN`, `GC_ORPHAN_TTL_DAYS`, rate-limit/cache/thumbnail settings) are `dbOnly`.
 - `default` — optional; the **in-code default** observed at the read site. If the code has no default, the field is omitted.
 
 ### 2.4 Tier semantics (resolver contract)
@@ -43,6 +44,9 @@
 | `T0` | Startup-critical, `.env` only     | env only (no DB, no default applied by the resolver) |
 | `T1` | Boot-frozen (require-time consts) | env → DB → default; effect requires restart          |
 | `T2` | Runtime / hot                     | env → DB → default; effect immediate                 |
+
+A `dbOnly` entry at any tier resolves as **DB → default** (env ignored); T1/T2 then only
+affect restart-vs-immediate effect of DB edits.
 
 `JWT_SECRET` is the **optional T0 exception**: env-owned and boot-frozen, but **not
 required**. When the env var is unset/empty the read site generates an ephemeral random
@@ -102,7 +106,6 @@ Precedence invariant (D1): env wins whenever set; DB is read only when the env v
 | ---------------------------- | ---- | ------- | --------- |
 | `PORT`                       | T1   | no      | `5001`    |
 | `CORS_ORIGINS`               | T2   | no      | `''`      |
-| `CORS_ORIGIN`                | T2   | no      | `''`      |
 | `LOGIN_RATE_LIMIT_MAX`       | T2   | no      | `20`      |
 | `LOGIN_RATE_LIMIT_WINDOW_MS` | T2   | no      | `900000`  |
 | `JWT_EXPIRES_IN`             | T2   | no      | `'30m'`   |

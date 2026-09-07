@@ -88,7 +88,6 @@ cp .env.example .env
 | **WEA_DB_MAX**                   |   T0   |                 No                  | Remote PostgreSQL pool max connections                                                                                                                             | `10`               |
 | **WEA_DB_IDLE_TIMEOUT_MS**       |   T0   |                 No                  | Remote PostgreSQL pool idle timeout (ms)                                                                                                                           | `30000`            |
 | **WEA_DB_CONNECTION_TIMEOUT_MS** |   T0   |                 No                  | Remote PostgreSQL pool connection timeout (ms)                                                                                                                     | `10000`            |
-| **PGSSLMODE**                    |   T0   |                 No                  | Optional CLI/client SSL mode (for tools such as `psql`)                                                                                                            | `prefer`           |
 | **MAX_THUMBNAIL_SIZE**           |   DB   |                 No                  | Max thumbnail resolution (pixels)                                                                                                                                  | `300`              |
 | **FFMPEG_PATH**                  |   DB   |                 No                  | Absolute path to FFmpeg executable (when auto-detect fails)                                                                                                        | `ffmpeg` (PATH)    |
 | **WEBDAV_AUTH_TYPE**             |   DB   |                 No                  | WebDAV auth method (`auto`, `basic`, `digest`)                                                                                                                     | `auto`             |
@@ -101,6 +100,16 @@ cp .env.example .env
 > the `settings` table; the registry `secret` flag only masks them (`****`) on API/UI
 > surfaces. A DB backup leak therefore exposes these values in plaintext — treat DB backups
 > with the same care as `.env`.
+
+> **DB-only (runtime) keys:** a set of internal tuning keys is **not env-driven** — an env
+> value is ignored and the value comes from the DB `settings` row or the built-in default,
+> edited via the admin "Advanced settings" UI. This set includes `JWT_EXPIRES_IN`,
+> `GC_INTERVAL_MS`, `GC_ORPHAN_TTL_DAYS`, `LOGIN_RATE_LIMIT_MAX` / `LOGIN_RATE_LIMIT_WINDOW_MS`,
+> `REFRESH_TOKEN_EXPIRES_IN_DAYS`, `USER_CACHE_TTL_MS`, `PERMISSION_CACHE_TTL_MS`,
+> `PERMISSIONS_EXISTENCE_INDEX_TTL_MS`, `PERMISSIONS_EXISTENCE_RECONCILE_BATCH_SIZE`,
+> `PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY`, `MAX_THUMBNAIL_SIZE`,
+> `THUMBNAIL_CONCURRENCY_LIMIT`, `THUMBNAIL_TOKEN_SECRET`, `THUMBNAIL_TOKEN_EXPIRY`,
+> `FFMPEG_INIT_TIMEOUT_MS`, `WEA_PREVIEW_TICKET_TTL_MS`, `HOSTNAME` (registry `dbOnly` flag).
 
 ## 3. Metadata Storage Configuration
 

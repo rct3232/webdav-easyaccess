@@ -155,4 +155,31 @@ describe('configSyncService.syncConfigSyncEnv', () => {
     expect(settings.set).toHaveBeenCalledWith('WEBDAV_PASSWORD', 'new-pass');
     expect(result.writes[0].status).toBe('updated');
   });
+
+  it('never treats env as authoritative for dbOnly keys', async () => {
+    const settings = fakeSettings([]);
+    const env = new Map([
+      ['GC_ORPHAN_TTL_DAYS', '0'], // dbOnly — env must be ignored
+      ['JWT_EXPIRES_IN', '7d'], // dbOnly — env must be ignored
+    ]);
+
+    const report = await buildConfigSyncReport({ settings, envValueOf: fromMap(env) });
+    const keys = report.findings.map((f) => f.key);
+    expect(keys).not.toContain('GC_ORPHAN_TTL_DAYS');
+    expect(keys).not.toContain('JWT_EXPIRES_IN');
+
+    const result = await syncConfigSyncEnv({ settings, envValueOf: fromMap(env) });
+    expect(settings.set).not.toHaveBeenCalled();
+    expect(result.writes).toEqual([]);
+  });
+
+  it('reports dbOnly keys as db-only (never env-only/differs) when a row exists', async () => {
+    const settings = fakeSettings([{ key: 'GC_ORPHAN_TTL_DAYS', value: '5', updated_at: TS }]);
+    const env = new Map([['GC_ORPHAN_TTL_DAYS', '30']]);
+
+    const report = await buildConfigSyncReport({ settings, envValueOf: fromMap(env) });
+    const finding = report.findings.find((f) => f.key === 'GC_ORPHAN_TTL_DAYS');
+    expect(finding).toBeDefined();
+    expect(finding.status).toBe('db-only');
+  });
 });

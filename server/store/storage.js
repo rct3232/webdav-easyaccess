@@ -7,6 +7,13 @@ const { createError, mapDatabaseError } = require('../utils/errorHandler');
 let pgPool = null;
 let sqliteDb = null;
 
+// Test-only backend override (docs/spec/server/store/storage.md §2.8). When a
+// jest suite needs a real PostgreSQL connection it injects a pool here through
+// createTestDatabase() — production code never calls this, and it refuses to
+// engage unless NODE_ENV=test. While active it replaces env-presence selection,
+// so tests never have to receive production WEA_DB_* credentials.
+let testBackend = null;
+
 // The four identity keys that decide whether a remote database is configured.
 // Presence-based backend selection (docs/spec/server/store/storage.md §2.4):
 // any of them set → remote (PostgreSQL, the only supported remote engine);
@@ -24,6 +31,7 @@ function hasRemoteDbCredentials() {
 }
 
 function getBackend() {
+  if (testBackend) return testBackend.type;
   if (!hasRemoteDbCredentials()) return 'sqlite';
   // Partial remote intent: fail loudly instead of silently booting sqlite — a
   // leftover/partial WEA_DB_* block would otherwise shadow the operator's
@@ -40,6 +48,35 @@ function getBackend() {
 
 function isSqliteBackend() {
   return getBackend() === 'sqlite';
+}
+
+/**
+ * Test-only: inject a PostgreSQL pool that overrides env-presence selection.
+ * Only createTestDatabase() uses this, from the dedicated WEA_TEST_PG_*
+ * namespace. Safe to ship — throws unless NODE_ENV=test.
+ * @param {'postgresql'} type
+ * @param {import('pg').Pool} pool
+ */
+function setTestBackend(type, pool) {
+  if (process.env.NODE_ENV !== 'test') {
+    throw new Error('storage.setTestBackend is only available under NODE_ENV=test');
+  }
+  if (type !== 'postgresql') {
+    throw new Error('storage.setTestBackend only supports the postgresql test backend');
+  }
+  if (!pool || typeof pool.query !== 'function') {
+    throw new Error('storage.setTestBackend requires a pg Pool');
+  }
+  testBackend = { type, pool };
+}
+
+/** Test-only: clear a previously injected backend, restoring env-presence logic. */
+function clearTestBackend() {
+  testBackend = null;
+}
+
+function isTestBackendOverridden() {
+  return testBackend !== null;
 }
 
 function parseBooleanEnv(value) {
@@ -78,6 +115,7 @@ function resolvePgConfig() {
 }
 
 function getPgPool() {
+  if (testBackend) return testBackend.pool;
   if (pgPool) return pgPool;
   let Pool;
   try {
@@ -106,6 +144,12 @@ function getPgPool() {
 }
 
 async function closePgPool() {
+  if (testBackend) {
+    const pool = testBackend.pool;
+    testBackend = null;
+    await pool.end();
+    return;
+  }
   if (!pgPool) return;
   const pool = pgPool;
   pgPool = null;
@@ -202,14 +246,17 @@ function sqliteRun(sql, params = []) {
 let sqliteTransactionQueue = Promise.resolve();
 
 async function withSqliteTransaction(callback) {
-  const run = async () => {
-    await sqliteRun('BEGIN');
-    try {
-      const client = {
-        query: (sql, params = []) => sqliteQuery(sql, params),
-        release: () => {},
-      };
-      const result = await callback(client);
+    const run = async () => {
+      await sqliteRun('BEGIN');
+      try {
+        const client = {
+          query: (sql, params = []) => sqliteQuery(sql, params),
+          // Writes inside a transaction go through the same serialized
+          // single-connection helpers (executor transaction contract, §2.3).
+          run: (sql, params = []) => sqliteRun(sql, params),
+          release: () => {},
+        };
+        const result = await callback(client);
       await sqliteRun('COMMIT');
       return result;
     } catch (error) {
@@ -266,6 +313,20 @@ async function withTransaction(callback) {
   }
 }
 
+/**
+ * Active backend-neutral executor (docs/spec/server/store/executor.md).
+ * Selected by getBackend() — including the jest test-only override — so
+ * repositories never branch on the backend themselves. Requires the metadata
+ * store to be configured (getBackend throws for a partial remote block).
+ */
+function getExecutor() {
+  const backend = getBackend();
+  if (backend === 'postgresql') {
+    return require('../infrastructure/db/postgresExecutor');
+  }
+  return require('../infrastructure/db/sqliteExecutor');
+}
+
 module.exports = {
   getBackend,
   hasRemoteDbCredentials,
@@ -278,4 +339,8 @@ module.exports = {
   sqliteRun,
   withSqliteTransaction,
   closeSqliteDb,
+  setTestBackend,
+  clearTestBackend,
+  isTestBackendOverridden,
+  getExecutor,
 };

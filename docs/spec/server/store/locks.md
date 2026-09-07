@@ -13,7 +13,7 @@
 ### 2.1 File Path
 
 - **Source:** `server/store/locks.js` is a **1-line re-export** of `server/infrastructure/lockManager.js` — that module holds the implementation (`acquireLock`/`withLock`, exports at lockManager.js:175-178)
-- **Test file:** `server/store/__tests__/locks.test.js`
+- **Test file:** `server/infrastructure/__tests__/lockManager.test.js`
 
 ### 2.2 Main Methods
 

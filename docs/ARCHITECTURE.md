@@ -60,6 +60,7 @@ server/domains/
 │   ├── routes/        # index.js, filePermissions.js, folderPermissions.js, queries.js, permissionRequests.js
 │   ├── services/      # aclService.js, permissionFacade.js
 │   └── stores/        # permissionStore.js, permissionRequestStore.js, permissionExistenceIndex.js
+│       └── repositories/  # PermissionRepository.js, PermissionRequestRepository.js (+ sqlite/ + postgres/ dialect impls)
 ├── recentFiles/
 │   ├── routes.js
 │   └── service.js
@@ -77,18 +78,25 @@ Domains are mounted in `server/index.js` under their respective API prefixes. Cr
 
 ### 1.1 Adapter Layer
 
-The adapter layer sits between domains and physical storage, providing interchangeable backends:
+The adapter layer sits between domains and physical storage, providing interchangeable blob, file, and cache backends. Metadata persistence is not an adapter — it runs through per-domain repositories on the backend-neutral `DbExecutor` seam (see the metadata-persistence note below and §2.1):
 
-| Adapter            | Location                             | Purpose                                                                                                                                                                                                                                                                                                                |
-| ------------------ | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Metadata adapters  | `infrastructure/adapters/metadata/`  | Abstracts user, permission, settings, share-link, and recent-file persistence. Factory: `createMetadataAdapter()` selects the backend from the presence of the remote DB credentials (`WEA_DB_*`), else the SQLite default.                                                                                                                                                     |
-| File store adapter | `infrastructure/adapters/filestore/` | Wraps file operations behind the `FileStoreAdapter` interface. In **webdav blob mode** (`WEA_FILE_STORAGE=webdav`), `WebdavFileStoreAdapter` delegates to `utils/webdav.js`; in **s3 mode** (`WEA_FILE_STORAGE=s3`, the default) blob content is served by `S3BlobStore` instead. Factory: `createFileStoreAdapter()`. |
-| Cache adapter      | `infrastructure/adapters/cache/`     | In-memory LRU cache used for client caching, thumbnail storage, etc. Factory: `createCacheAdapter()`. Extensible for Redis in future.                                                                                                                                                                                  |
+| Adapter            | Location                             | Purpose                                                                                                                                                                                                                                                                                                                   |
+| ------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| File store adapter | `infrastructure/adapters/filestore/` | Wraps file operations behind the `FileStoreAdapter` interface. In **webdav blob mode** (`WEA_FILE_STORAGE=webdav`), `WebdavFileStoreAdapter` delegates to `utils/webdav.js`; in **s3 mode** (`WEA_FILE_STORAGE=s3`, the default) blob content is served by `S3BlobStore` instead. Factory: `createFileStoreAdapter()`.    |
+| Cache adapter      | `infrastructure/adapters/cache/`     | In-memory LRU cache used for client caching, thumbnail storage, etc. Factory: `createCacheAdapter()`. Extensible for Redis in future.                                                                                                                                                                                     |
 
-**Metadata adapter implementations:**
+**Metadata persistence (not an adapter):**
 
-- `PostgresqlMetadataAdapter` — normalized PostgreSQL schema (recommended for production)
-- `SqliteMetadataAdapter` — SQLite via better-sqlite3 (default, for development/testing)
+Metadata is persisted through per-domain repositories under `server/store/repositories/` and
+`server/domains/permissions/stores/repositories/`, each exposing a shared interface plus
+`sqlite/` and `postgres/` dialect implementations (Settings, User, ShareLink, RecentFiles,
+FileNode; Permission, PermissionRequest). Repositories execute on the backend-neutral
+`DbExecutor` seam (`server/infrastructure/db/executor.js`, implemented per dialect by
+`sqliteExecutor.js` / `postgresExecutor.js`), selected by `storage.getExecutor()` from the
+remote DB credential keys (`WEA_DB_*`) or the SQLite default. Store modules (`userStore`,
+`settingsStore`, `shareLinkStore`, `recentFilesStore`, `fileNodesStore`, `permissionStore`,
+`permissionRequestStore`) are thin facades: they obtain `storage.getExecutor()` and delegate
+every method to the matching repository — they contain no SQL and no dialect branching.
 
 Blob store adapters (S3 / WebDAV) and their contract are covered by `docs/spec/server/store/blobstore.md`.
 
@@ -99,6 +107,7 @@ Cross-cutting infrastructure modules live in `server/infrastructure/`:
 | Module             | File                  | Responsibility                                                                                                                                                            |
 | ------------------ | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Lock Manager       | `lockManager.js`      | Distributed locking for metadata writes. Supports PostgreSQL and SQLite lock strategies with TTL expiry and stale-lock cleanup. Exports `acquireLock()` and `withLock()`. |
+| DB Executor Seam   | `db/executor.js`      | Backend-neutral metadata execution seam (`query` / `run` / `transaction` / `isUniqueConflict` / `close`), implemented per dialect by `db/sqliteExecutor.js` and `db/postgresExecutor.js`. Selected by `storage.getExecutor()`; executes the per-domain repository SQL (§1.1 / §2.1). |
 | Health Routes      | `healthRoutes.js`     | Unauthenticated `GET /api/health` endpoint for liveness probes. Mounted at `/api`.                                                                                        |
 | WebDAV Routes      | `webdavRoutes.js`     | Diagnostic endpoints: `GET /api/webdav/test` (connectivity) and `GET /api/webdav/info` (URL display). No auth required.                                                   |
 | WebDAV Test        | `webdavTest.js`       | Connection test logic extracted from webdav.js. Creates ephemeral client, probes root directory, returns structured result.                                               |
@@ -175,11 +184,16 @@ Metadata storage is SQLite by default; setting any of the remote DB credential k
 PostgreSQL backend. The store API is the same across backends.
 
 - **Backend selection**:
-  - `sqlite` (default): SQLite via better-sqlite3 for development/testing.
+  - `sqlite` (default): SQLite via the node `sqlite3` driver for development/testing.
   - `postgresql`: Normalized relational schema for metadata and locks (recommended for production).
 - **Interface parity**:
   - Store public interfaces remain stable across backends.
-  - `userStore`, `permissionStore`, `settingsStore`, `shareLinkStore`, `recentFilesStore`, and `permissionRequestStore` keep the same exported method contracts while using backend-specific persistence.
+  - `userStore`, `settingsStore`, `shareLinkStore`, `recentFilesStore`, `fileNodesStore`,
+    `permissionStore`, and `permissionRequestStore` keep identical exported method contracts as
+    thin facades that delegate to per-dialect repositories behind `storage.getExecutor()`. The
+    dialect-specific SQL lives only in the repository `sqlite/` / `postgres/` implementations
+    under `server/store/repositories/` (and `server/domains/permissions/stores/repositories/`);
+    store modules contain no dialect branching.
 
 #### PostgreSQL Normalized Schema
 
@@ -222,9 +236,13 @@ A **distributed lock** mechanism (`server/infrastructure/lockManager.js`, export
 
 - **postgresql/sqlite**: lock rows are acquired with `INSERT ... ON CONFLICT` semantics, validated by owner token, and released with TTL-aware cleanup (`expires_at < NOW()`).
 
-#### Transaction Boundaries (PostgreSQL Backend)
+#### Transaction Boundaries (Executor Transaction)
 
-For `postgresql`, write paths use explicit transaction boundaries in store-layer operations:
+Repository mutation methods run inside `executor.transaction()` on **both** dialects — there is
+no PostgreSQL-only transaction path. The executor delegates per dialect: `postgresExecutor`
+routes through `storage.withTransaction` (pooled `BEGIN` / `COMMIT` / `ROLLBACK`), and
+`sqliteExecutor` through the serialized `storage.withSqliteTransaction` queue. The concrete write
+paths below are backend-independent store-layer operations:
 
 1.  **User lifecycle** (`createUser`, `updateEmail`, `deleteUser`): single transaction including index-equivalent uniqueness and related cleanup.
 2.  **Permission mutations** (`grant*`, `revoke*`, rewrite/revoke-prefix): transaction per mutation unit for atomic ACL updates.

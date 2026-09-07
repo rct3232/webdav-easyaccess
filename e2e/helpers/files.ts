@@ -3,13 +3,73 @@ import path from 'node:path';
 
 import { APIRequestContext, expect, Page, TestInfo } from '@playwright/test';
 
+import { loginAsAdmin } from './auth';
 import { openFabAction } from './explorer';
-import { gotoFilesPath } from './resolvePath';
+import { getSessionToken, gotoFilesPath, resolvePathOrNull } from './resolvePath';
 
 export function buildName(testInfo: TestInfo, prefix: string, extension = '') {
   const projectSlug = testInfo.project.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
   const titleSlug = testInfo.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
   return `${prefix}-${projectSlug}-${titleSlug}-${Date.now()}${extension}`;
+}
+
+/**
+ * Assertion-context containment (see docs/TESTING_STRATEGY.md): logs in as admin
+ * and opens a per-test-owned base folder at the filesystem root. Every item the
+ * caller later creates/asserts must live under `/<base>/`, never at the root
+ * listing. Logs in as admin itself (no prior login expected).
+ */
+export async function openPrivateWorkspace(
+  page: Page,
+  request: APIRequestContext,
+  testInfo: TestInfo
+): Promise<string> {
+  const base = buildName(testInfo, 'workspace');
+  await loginAsAdmin(page);
+  const token = await getSessionToken(page);
+  const existing = await resolvePathOrNull(request, token, `/${base}`);
+  if (existing === null) {
+    await createFolderAt(request, token, null, base);
+  }
+  trackWorkspaceCleanup(token, `/${base}`);
+  await gotoFilesPath(page, request, `/${base}`);
+  return base;
+}
+
+const pendingWorkspaceCleanups: Array<{ token: string; basePath: string }> = [];
+
+function trackWorkspaceCleanup(token: string, basePath: string) {
+  pendingWorkspaceCleanups.push({ token, basePath });
+}
+
+/**
+ * Delete a case-owned folder (and its subtree) via the API. Tolerant of the
+ * folder having already been moved/renamed/deleted by the case itself.
+ */
+async function deleteFolderAt(
+  request: APIRequestContext,
+  token: string,
+  folderPath: string
+): Promise<void> {
+  const nodeId = await resolvePathOrNull(request, token, folderPath);
+  if (nodeId === null) return;
+  const res = await request.delete('/api/files/delete', {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { nodeId },
+  });
+  expect(res.ok()).toBeTruthy();
+}
+
+/**
+ * Deletes every case-owned base folder registered for the current test. Call
+ * from a per-file `test.afterEach` so per-case data never accumulates at the
+ * filesystem root across a run (assertion-context containment cleanup).
+ */
+export async function flushPrivateWorkspaceCleanups(request: APIRequestContext): Promise<void> {
+  const pending = pendingWorkspaceCleanups.splice(0, pendingWorkspaceCleanups.length);
+  for (const cleanup of pending) {
+    await deleteFolderAt(request, cleanup.token, cleanup.basePath);
+  }
 }
 
 export function fileItem(page: Page, filePath: string) {
@@ -112,7 +172,7 @@ export async function openFolderRouteAndWaitForItems(
 export async function createFolderAt(
   request: APIRequestContext,
   token: string,
-  parentNodeId: number,
+  parentNodeId: number | null,
   name: string
 ): Promise<number> {
   const res = await request.post('/api/folders/create', {

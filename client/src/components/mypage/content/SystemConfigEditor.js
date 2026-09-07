@@ -182,11 +182,6 @@ const CONFIG_DISPLAY_META = {
     inputType: 'text',
     helpKey: 'admin.config.help.CORS_ORIGINS',
   },
-  CORS_ORIGIN: {
-    labelKey: 'admin.config.key.CORS_ORIGIN',
-    group: 'serverSecurity',
-    inputType: 'text',
-  },
   LOGIN_RATE_LIMIT_MAX: {
     labelKey: 'admin.config.key.LOGIN_RATE_LIMIT_MAX',
     group: 'serverSecurity',

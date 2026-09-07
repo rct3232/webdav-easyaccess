@@ -7,14 +7,14 @@
 | Role       | Metadata DB migration engine: moves all metadata rows between the `sqlite` and `postgresql` backends (both directions) via direct target connections. Performs a target scan, applies the schema to an explicit target, and runs a single-transaction wipe + copy whose cancellation rolls back everything. |
 | Depends on | `server/infrastructure/backendProbe.js` (`probePostgresql` pattern for direct `pg.Client` connections), `server/infrastructure/schemaManager.js` / `sqliteSchemaInit.js` (`convertPostgresToSqlite`), the settings-value contract of `server/store/settingsStore.js`                                        |
 | Files      | `server/domains/admin/services/metadataMigrationService.js` (new)                                                                                                                                                                                                                                           |
-| Test files | `server/domains/admin/services/__tests__/metadataMigrationService.test.js` (new; sqlite↔PG roundtrip under `test:ci:pg`)                                                                                                                                                                                    |
+| Test files | `server/domains/admin/services/__tests__/metadataMigrationService.test.js` (new; sqlite↔PG roundtrip under `test:ci:pg:adapters`)                                                                                                                                                                                    |
 
 Source of truth: `docs/features/migration-mode.md`, `docs/spec/server/tools/metadata-migration.md`,
 `docs/features/migration-mode.md` (decisions D4–D6, D11, D14).
 
 The service operates on **direct target connections** (`pg.Client` for PostgreSQL,
-`better-sqlite3` for SQLite) — it does **not** use the app's own metadata adapter/store layer,
-which is tied to the active backend. The active backend is never touched by the copy.
+node `sqlite3` (`sqlite3.Database`) for SQLite) — it does **not** use the app's own store/repository layer (which is
+tied to the active backend); it connects directly. The active backend is never touched by the copy.
 
 ---
 
@@ -28,7 +28,7 @@ which is tied to the active backend. The active backend is never touched by the 
 | ---------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `getBackend`           | function | Returns the active metadata backend (`'sqlite'` \| `'postgresql'`) from `server/store/storage.js`. Used to derive the migration direction (target = the other backend).                                                                |
 | `pgConnectionProvider` | function | `(pgConfig) => pg.Client` — direct PG connection factory. Defaults to a `pg.Client` built like `probePostgresql` in `server/infrastructure/backendProbe.js` (host/port/database/user/password, ssl option, `connectionTimeoutMillis`). |
-| `sqliteFactory`        | function | `(path) => sqlite connection` — direct SQLite factory (better-sqlite3).                                                                                                                                                                |
+| `sqliteFactory`        | function | `(path) => sqlite connection` — direct SQLite factory (node sqlite3, `sqlite3.Database`).                                                                                                                                                                |
 
 ### 2.2 Public API
 

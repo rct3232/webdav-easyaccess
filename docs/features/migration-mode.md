@@ -196,7 +196,7 @@ remote DB keys set) the target is `postgresql`, and vice versa.
 1. **Configure in the dialog** (System Settings → metadata migration): target connection fields
    (PG: host/port/database/user/password; sqlite: path). D1 — the dialog is the config surface.
 2. **Target scan:** the server connects to the explicit target (direct `pg.Client` /
-   `better-sqlite3` connection, following the `probePostgresql` pattern in
+   node `sqlite3` connection (`sqlite3.Database`), following the `probePostgresql` pattern in
    `server/infrastructure/backendProbe.js`) and reports `schemaExists` + per-table row counts
    (`GET /api/admin/migration/target-scan`, see `docs/spec/server/tools/metadata-migration.md`).
 3. **Wipe alert:** if the target already holds data, the config dialog shows a wipe alert listing

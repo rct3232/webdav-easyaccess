@@ -21,6 +21,33 @@ Current layout is summarized in [client/TEST_SUMMARY.md](../client/TEST_SUMMARY.
 
 ---
 
+## DB test tiers (metadata storage)
+
+The server's DB access flows through the executor seam and per-domain
+repositories (`docs/spec/server/store/executor.md`,
+`docs/spec/server/store/repository-contract.md`). Tests are tiered accordingly:
+
+| Tier | What | Backend | Where |
+| ---- | ---- | ------- | ----- |
+| **L0 unit** | Pure logic; storage mocked at the executor/store boundary | none | `**/__tests__` (no DB) |
+| **L1 functional** | Routes/services/models — observable behavior through APIs | **sqlite only** (per-suite temp DB) | `**/__tests__` DB suites; default `test:ci` leg |
+| **L2 adapter conformance** | Repository interfaces against real storage: CRUD/upsert/RETURNING/type mapping/transactions/locking/schema/migrations | real sqlite + **real PostgreSQL** (`WEA_TEST_PG_*`, serial) | `server/store/repositories/__tests__/*.conformance.test.js` + `server/domains/permissions/stores/repositories/__tests__/*.conformance.test.js` + executor suite (`server/infrastructure/db/__tests__/executor.test.js`) + schema/migration suites; `test:ci:pg:adapters` |
+| **L3 cross-DB smoke** | Representative store roundtrip + migration apply-once per supported RDB | each RDB | subset inside the adapter leg |
+
+Rules:
+
+- **Functional suites never target PostgreSQL.** Real-PG regressions are the
+  responsibility of L2/L3; jest processes cannot receive production `WEA_DB_*`
+  credentials (see "DB namespace isolation" below), and the disposable
+  `webdav_test` database is self-provisioned by the test harness when missing.
+- **Repository conformance suites are backend-agnostic by design** — they call
+  `createTestDatabase()` and assert behavior on whichever backend is active,
+  so the same file covers sqlite (default leg) and PostgreSQL (adapter leg).
+- The former full-suite real-PostgreSQL jest leg is retired; the adapter
+  leg (`test:ci:pg:adapters`) is the only real-PG jest entry point.
+
+---
+
 ## Mocking
 
 ### Schema-first principle
@@ -71,6 +98,7 @@ Current layout is summarized in [client/TEST_SUMMARY.md](../client/TEST_SUMMARY.
 - **Route mock reuse:** Prefer shared server mock factories (for example, WebDAV and email) over repeated in-file mock object literals.
 - **Override pattern:** Use `createXMock(overrides)` and only override behavior required by each scenario.
 - **Disable bulk workers:** Set `process.env.WEA_SKIP_BULK_WORKER = '1'` in `server/test-setup.js` so the `setImmediate` batch worker never schedules during tests. Tests assert the batch API contract (202 + jobId) rather than worker completion, so skipping the worker avoids open handles and teardown stalls.
+- **DB namespace isolation:** Jest suites never receive production `WEA_DB_*`. `server/test-setup.js` wipes them at entry (and fails fast if a real-PG request is made without the test namespace); the real-PostgreSQL leg is driven by the dedicated `WEA_TEST_PG_*` namespace consumed only by `createTestDatabase()` via the storage test-only override seam (`docs/spec/server/store/storage.md` §2.8).
 - **Timer hygiene:** Unref non-essential timers that would otherwise hold the event loop open during tests (e.g. the 5-minute download-progress cleanup timer in `operationProgress.js` uses `.unref()`). This prevents Jest's "worker failed to exit gracefully / force exited" stall. Use `--detectOpenHandles` to confirm the leak source before editing.
 - **Console output policy:** In `server/test-setup.js`, silence `console.log` (`jest.spyOn(console, 'log').mockImplementation(() => {})`) to suppress per-request `requestLogger` noise, but preserve `console.warn` and `console.error` so tests that assert on deprecation warnings (e.g. `storage.test.js`) keep working. Tests that assert on `console.log` output must re-spy the implementation themselves (see `requestLogger.test.js`). Keep `verbose: false` in `jest.config.js` to reduce printed test-name overhead.
 
@@ -217,16 +245,25 @@ Apply uniformly to every spec in `e2e/`:
   - IDs should be declared in numeric order within each file. Exception: a serial suite whose execution order is load-bearing (e.g. migration job-state sequences) keeps its execution order.
   - Every `test()` carries an ID. Setup-only infrastructure tests use a documented `E2E-SETUP-NNN` slot.
 - **Suite title format**: lowercase sentence case. Platform-owned suites append `(desktop)` or `(mobile)`. Hermetic families append their ID range, e.g. `first-run setup wizard (E2E-SETUP-001..004)`.
-- **Serialization**: use `test.describe.configure({ mode: 'serial' })` (never the anonymous `test.describe.serial`). Suites that mutate shared per-project DB state are serial.
+- **Serialization**: use `test.describe.configure({ mode: 'serial' })` (never the anonymous `test.describe.serial`). Suites that mutate shared per-project DB state are serial. Prefer parallel-safe cases (assertion-context containment); serial is required only when a suite mutates shared per-project DB state or depends on prior cases.
 - **Skips**: every `test.skip`/`test.fixme` carries a reason string. Platform ownership goes in `testMatch`/project assignment, not inline project skips (exception above).
 - **Filename style**: `<name>.<platform>.spec.ts` dot suffix for platform files (`core-flow.shared`, `core-flow.desktop`, `core-flow.mobile`). No hyphen-prefix platform files.
 - For E2E setup phases (creating test folders/files as prerequisites), avoid timing-sensitive UI seams like SpeedDial open/transition states; prefer stable API endpoints (e.g. folder create + multipart upload) to make prerequisites deterministic.
 - When using Playwright `APIRequestContext` for setup or cleanup, pass URL query strings with `params`, not `query`, so contract-required request parameters actually reach the server.
 - **Hermetic scratch projects (setup wizard):** the first-run setup spec runs in dedicated `setup-wizard-desktop` / `setup-wizard-mobile` Playwright projects that never reuse the shared `.env.e2e` boot state. Each test spawns its own scratch server instance on `:5003` (own env file via `DOTENV_CONFIG_PATH`, own sqlite path, own scratch PG DB) and supervises its own process lifecycle, because restart is the behavior under test. The spec is serial within the describe and cleans up per case in `afterEach` (kill the scratch child, remove the scratch dir, drop the scratch PG database). Keep these projects additive — do not fold them into the mode-prefixed project matrix.
-- **Per-project data isolation via setup projects:** the shared E2E database accumulates state across projects (Playwright caps the initial render at 50 root items, so a later project's file upload can sort past the cap and never render). The `00-project-setup.spec.ts` reset must therefore run once **per dependent project**, not once per run. Express this with Playwright project `dependencies`, NOT by relying on a `00-` filename prefix being matched by each test project:
+- **Per-project data isolation via setup projects:** the shared E2E database accumulates state across projects (Playwright caps the initial render at 50 root items, so a later project's file upload can sort past the cap and never render; root-cap pressure is a symptom of asserting in shared listings — see assertion-context containment). The `00-project-setup.spec.ts` reset must therefore run once **per dependent project**, not once per run. Express this with Playwright project `dependencies`, NOT by relying on a `00-` filename prefix being matched by each test project:
   - Give the mode-prefixed test projects a dedicated sibling setup project (e.g. `${backendMode}-desktop-setup` / `${backendMode}-mobile-setup`) whose `testMatch` matches only `00-project-setup.spec.ts`, and list that setup project in the test project's `dependencies`.
   - **Do not** point multiple dependent projects at one shared setup project: a `dependencies` setup project runs exactly once per run, so the second dependent project would start from the first one's dirty DB, silently breaking isolation.
   - A failing setup run blocks all its dependent tests (they do not execute on a dirty DB). Use `--no-deps` to skip setup explicitly when running a subset.
+
+### Assertion-context containment
+
+- The admin home is the filesystem root, and the client renders at most 50 items per listing (infinite scroll). Visibility assertions against a shared listing couple a case to creation order and break once the listing exceeds the render window under parallel workers.
+- Create and assert items only inside a case-owned folder (named via `buildName`); never assert item visibility in the admin root or another shared listing.
+- Seed the owned base folder through the stable API (resolve-or-create) and navigate into it; exercise UI creation flows (FAB, upload) inside it.
+- A case may render-and-assert only in a listing bounded to its own data.
+- Each case deletes its owned base folder in `afterEach` (API delete, tolerant of the folder having already been moved/renamed/deleted by the case), so the shared admin root never accumulates one folder per case across a run.
+- Prefer parallel-safe cases; a case/file must be serial only when it mutates shared users/settings or depends on prior cases (state the reason).
 
 ### Minimum flow coverage
 
@@ -285,6 +322,11 @@ Detailed browser-flow inventory, rollout order, and planned Playwright ownership
 ### New cleanup or migration logic
 
 - Assert cascade completeness _and_ anchor preservation (e.g. home-root ADMIN survives self-grant cleanup).
+
+### New or modified E2E spec
+
+- Create/assert data only inside a case-owned folder; never assert visibility in a shared listing (assertion-context containment).
+- Verify order-independence before enabling parallel workers: run the affected project with `--workers=1` and `--workers=2` and confirm an identical passed/skipped set (repeat 3×).
 
 ---
 

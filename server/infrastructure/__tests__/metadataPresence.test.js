@@ -115,17 +115,15 @@ beforeEach(() => {
   for (const key of DB_TEST_KEYS) {
     delete process.env[key];
   }
-  delete process.env.WEA_STORAGE_BACKEND;
 });
 
 afterEach(() => {
   nowSpy.mockRestore();
   if (SAVED_SQLITE_PATH === undefined) delete process.env.WEA_SQLITE_PATH;
   else process.env.WEA_SQLITE_PATH = SAVED_SQLITE_PATH;
-  // Restore the prior WEA_DB_* state (sqlite default under test:ci; the real
-  // remote identity set under test:ci:pg) so sibling suites are unaffected.
+  // Restore the WEA_DB_* state captured at module load (jest suites never run
+  // against production WEA_DB_*; presence decisions in this suite are mocked).
   restoreDbEnv();
-  delete process.env.WEA_STORAGE_BACKEND;
 });
 
 describe('getOtherBackend', () => {

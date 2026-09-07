@@ -32,6 +32,7 @@ This document defines the mandatory workflows and standards for all agents worki
 4. **Exception (no branch needed)**: Trivial single-commit work — documentation cleanup, simple hotfixes (≤ 1 file, ≤ 10 lines) — may be committed directly without creating a new branch.
 5. **Merge to dev after completion**: When work is done on a feature branch:
    - Run all unit and integration tests (`npm run test:ci` in both `client/` and `server/`), plus the E2E specs related to the change. Only proceed if all pass.
+   - When the change touches server storage (executor, repositories, schema, migrations), also run the real-PostgreSQL adapter leg: `cd server && npm run test:ci:pg:adapters` (requires the e2e PostgreSQL container: `docker compose -f docker-compose.e2e.yml up -d postgresql-e2e`).
    - Switch to `dev`, merge the feature branch, then delete the feature branch.
    - **Never merge directly to `main`**. The `main` branch is protected by CI/CD pipelines that automatically create PRs; management and review of those PRs is handled by the user.
 

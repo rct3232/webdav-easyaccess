@@ -73,6 +73,8 @@ Those scenarios should still be tested, but often outside Playwright.
 - Verify user-visible outcomes, not implementation details.
 - Prefer navigation result, visible UI state, rendered text, disabled/enabled state, dialog presence, and item visibility over internal request inspection.
 - Use request inspection only when the interaction itself is the behavior under test and there is no clearer user-visible anchor.
+- Assert only inside listings the case owns; a shared/unbounded listing (e.g. the admin root) is not a valid assertion anchor (assertion-context containment — [TESTING_STRATEGY.md](TESTING_STRATEGY.md)).
+- Each case removes its owned base folder via the API in `afterEach`, so per-case data never accumulates in shared listings across a run.
 
 ### Feature-doc anchors
 
@@ -449,29 +451,32 @@ Use the following staged order when expanding browser coverage:
 8. `P1` advanced desktop/mobile interactions, including MyPage mobile drawer coverage
 9. `P2` infra-sensitive gestures, denied/no-op drag-and-drop smoke, and deferred single-file logged-in share guardrails
 
-### Essential vs. full runs (`E2E_CORE`)
+### Backend-mode matrix (Option A) and essential runs (`E2E_CORE`)
 
-The full E2E suite (default `npm run test:e2e`) runs every spec. For quick feedback when
-modifying **core file-exploration features**, run the essential subset with
-`npm run test:e2e:core` (`E2E_CORE=1`):
-
-- **Essential (still runs with `E2E_CORE=1`):** the core user-facing file-management flows —
-  `auth`, `core-flow.shared`, `core-flow.desktop`, `core-flow.mobile`, `share-public`,
-  `share-internal`, `mypage-user` (both backend modes). These cover auth/login, explorer CRUD,
-  navigation, selection, view/sort/search, `__recent__`, bulk ops, public/internal sharing, and
-  account/sharing management.
-- **Non-essential (skipped with `E2E_CORE=1`):** features that change independently of the core
-  file-exploration flows — `mypage-admin` (admin user management/settings) and the hermetic
-  projects (`setup-wizard`, `admin-config`, `migration`).
-
-`00-project-setup.spec.ts` (per-project DB isolation) is infrastructure and always runs.
-Mode variants: `npm run test:e2e:core:s3` / `npm run test:e2e:core:webdav`.
+- The full UI E2E suite (default `npm run test:e2e`, `E2E_BACKEND_MODE=s3`) is the
+  **single canonical UI run**: essentials + `mypage-admin` + the hermetic projects
+  (setup-wizard/admin-config/migration boot their own webdav-mode scratch servers,
+  so real-WebDAV wiring coverage stays in the s3 run).
+- `E2E_BACKEND_MODE=webdav` (`npm run test:e2e:webdav`) is a **thin backend-wiring
+  smoke** (chromium desktop): it greps the real-webdav nets out of the shared
+  specs — `E2E-EXP-001/002/004/005/008` (login, explorer, FAB create, UI upload,
+  preview) and `E2E-EXP-012/013`, `E2E-SHARE-011`, `E2E-OVERLAY-011` (content
+  integrity over a real webdav store). Desktop only: backend wiring is not a UI
+  surface, so the mobile webdav leg is not duplicated. Storage-internal webdav
+  behavior is a server-tier concern (`docs/TESTING_STRATEGY.md`).
+- The full webdav UI duplicate is retired (Option A, 2026-09-07).
+- **Essential vs full** (`E2E_CORE=1`) selects the s3 subsets only; the webdav
+  smoke is unchanged by `E2E_CORE`.
 
 Practical rule:
 
-- Core-feature change → `npm run test:e2e:core:webdav` + `npm run test:e2e:core:s3`.
-- Anything touching admin/config/migration tooling, or before merging → full
-  `npm run test:e2e:webdav` / `npm run test:e2e:s3`.
+- Core-file-feature change → `npm run test:e2e:core:s3` + `npm run test:e2e:webdav` (smoke).
+- Anything touching admin/config/migration tooling, or before merging → full `npm run test:e2e` (s3).
+- Runs use Playwright's default worker pool (half the logical cores; min 1) —
+  order-independence is guaranteed by containment; in full mode mypage-admin runs
+  in dedicated post-reset projects and the hermetic suites run strictly after the
+  platform chain. Override anytime with e.g.
+  `npm run test:e2e:core:s3 -- --workers=1`.
 
 ## Out of Scope for Playwright-First Coverage
 

@@ -1,43 +1,57 @@
 'use strict';
 
-const { createMetadataAdapter } = require('../infrastructure/adapters/metadata');
+/**
+ * userStore facade — delegates to UserRepository (the backend-neutral
+ * repository pattern, docs/spec/server/store/repository-contract.md). The
+ * exported getter surface is unchanged for all consumers (models/User, auth,
+ * admin, setup, bootstrap, test-utils).
+ */
+const storage = require('./storage');
+const createUserRepository = require('./repositories/UserRepository');
 
-let _adapter;
+// One repository per dialect; `getExecutor()` switches on the active backend
+// (including the jest test-only override).
+const reposByDialect = new Map();
 
-function getAdapter() {
-  if (!_adapter) _adapter = createMetadataAdapter();
-  return _adapter;
+function getRepository() {
+  const executor = storage.getExecutor();
+  let repo = reposByDialect.get(executor.dialect);
+  if (!repo) {
+    repo = createUserRepository(executor);
+    reposByDialect.set(executor.dialect, repo);
+  }
+  return repo;
 }
 
 module.exports = {
   get findByUsername() {
-    return getAdapter().findByUsername;
+    return getRepository().findByUsername;
   },
   get findByEmail() {
-    return getAdapter().findByEmail;
+    return getRepository().findByEmail;
   },
   get findById() {
-    return getAdapter().findById;
+    return getRepository().findById;
   },
   get findAll() {
-    return getAdapter().findAll;
+    return getRepository().findAll;
   },
   get findByStatus() {
-    return getAdapter().findByStatus;
+    return getRepository().findByStatus;
   },
   get createUser() {
-    return getAdapter().createUser;
+    return getRepository().createUser;
   },
   get updateStatus() {
-    return getAdapter().updateStatus;
+    return getRepository().updateStatus;
   },
   get updateEmail() {
-    return getAdapter().updateEmail;
+    return getRepository().updateEmail;
   },
   get updatePassword() {
-    return getAdapter().updatePassword;
+    return getRepository().updatePassword;
   },
   get deleteUser() {
-    return getAdapter().deleteUser;
+    return getRepository().deleteUser;
   },
 };

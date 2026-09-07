@@ -4,7 +4,7 @@
 
 | Item | Description                                                                                                                                                                                                         |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role | DDL discovery + PostgreSQL→SQLite conversion for SQLite schema initialization. Reads `ddl/*.sql` files via directory listing, converts PostgreSQL types to SQLite equivalents, and executes against better-sqlite3. |
+| Role | DDL discovery + PostgreSQL→SQLite conversion for SQLite schema initialization. Reads `ddl/*.sql` files via directory listing, converts PostgreSQL types to SQLite equivalents, and executes against node sqlite3 (sqlite3 driver). |
 
 ---
 
@@ -46,7 +46,7 @@ Pass-through (no conversion needed):
 ### 2.4 Dependencies
 
 - DDL file discovery via `fs.readdir` on `server/store/postgresql/ddl/` (`.sql` files, sorted alphabetically)
-- better-sqlite3 (via `storage.getSqliteConnection()`)
+- node sqlite3 (sqlite3 driver) (via `storage.getSqliteConnection()`)
 - PRAGMAs (`foreign_keys = ON`, `defer_foreign_keys = ON`) are set in `storage.js` and test setup, not in this module
 
 ### 2.5 Verification Scenarios

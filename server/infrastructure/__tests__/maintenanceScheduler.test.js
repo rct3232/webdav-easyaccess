@@ -1,11 +1,23 @@
 'use strict';
 
+let mockGetConfigSync;
+
+jest.mock('../configResolver', () => ({
+  getSharedResolver: () => ({
+    getConfigSync: (key) => (mockGetConfigSync ? mockGetConfigSync(key) : undefined),
+  }),
+}));
+
 const {
   startGcScheduler,
   runStartupFailSafeRecovery,
   shouldSkip,
   resolveIntervalMs,
 } = require('../maintenanceScheduler');
+
+function setIntervalValue(value) {
+  mockGetConfigSync = (key) => (key === 'GC_INTERVAL_MS' ? value : undefined);
+}
 
 describe('maintenanceScheduler', () => {
   describe('shouldSkip', () => {
@@ -30,32 +42,33 @@ describe('maintenanceScheduler', () => {
   });
 
   describe('resolveIntervalMs', () => {
-    const saved = process.env.GC_INTERVAL_MS;
-
     afterEach(() => {
-      if (saved === undefined) delete process.env.GC_INTERVAL_MS;
-      else process.env.GC_INTERVAL_MS = saved;
+      mockGetConfigSync = undefined;
     });
 
-    it('returns 0 when unset', () => {
-      delete process.env.GC_INTERVAL_MS;
+    it('returns 0 when the DB-only value is unset', () => {
+      setIntervalValue(undefined);
       expect(resolveIntervalMs()).toBe(0);
     });
 
     it('returns the configured positive interval', () => {
-      process.env.GC_INTERVAL_MS = '3600000';
+      setIntervalValue('3600000');
       expect(resolveIntervalMs()).toBe(3600000);
     });
 
     it('returns 0 for zero or invalid values', () => {
-      process.env.GC_INTERVAL_MS = '0';
+      setIntervalValue('0');
       expect(resolveIntervalMs()).toBe(0);
-      process.env.GC_INTERVAL_MS = 'not-a-number';
+      setIntervalValue('not-a-number');
       expect(resolveIntervalMs()).toBe(0);
     });
   });
 
   describe('startGcScheduler', () => {
+    afterEach(() => {
+      mockGetConfigSync = undefined;
+    });
+
     it('returns null when scheduling is disabled (skip flag)', () => {
       const prev = process.env.WEA_SKIP_GC_SCHEDULER;
       process.env.WEA_SKIP_GC_SCHEDULER = '1';
@@ -69,22 +82,15 @@ describe('maintenanceScheduler', () => {
     });
 
     it('returns null when GC_INTERVAL_MS is unset', () => {
-      const prev = process.env.GC_INTERVAL_MS;
-      delete process.env.GC_INTERVAL_MS;
-      try {
-        const timer = startGcScheduler({ gcService: { runGcCycle: jest.fn() } });
-        expect(timer).toBeNull();
-      } finally {
-        if (prev === undefined) delete process.env.GC_INTERVAL_MS;
-        else process.env.GC_INTERVAL_MS = prev;
-      }
+      setIntervalValue(undefined);
+      const timer = startGcScheduler({ gcService: { runGcCycle: jest.fn() } });
+      expect(timer).toBeNull();
     });
 
     it('schedules a periodic run when configured', () => {
       jest.useFakeTimers();
-      const prev = process.env.GC_INTERVAL_MS;
       const prevSkip = process.env.WEA_SKIP_GC_SCHEDULER;
-      process.env.GC_INTERVAL_MS = '1000';
+      setIntervalValue('1000');
       delete process.env.WEA_SKIP_GC_SCHEDULER;
 
       try {
@@ -97,8 +103,6 @@ describe('maintenanceScheduler', () => {
 
         clearInterval(timer);
       } finally {
-        if (prev === undefined) delete process.env.GC_INTERVAL_MS;
-        else process.env.GC_INTERVAL_MS = prev;
         if (prevSkip === undefined) delete process.env.WEA_SKIP_GC_SCHEDULER;
         else process.env.WEA_SKIP_GC_SCHEDULER = prevSkip;
         jest.useRealTimers();

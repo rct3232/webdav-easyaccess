@@ -19,11 +19,13 @@ import { server } from '../../../../setupTests';
 import SystemConfigEditor from '../SystemConfigEditor';
 
 const makeConfig = (overrides = {}) => ({
-  // T0 keys → Section B (deploy-time read-only).
-  WEA_DB_HOST: { value: '', source: 'env', tier: 'T0', secret: false },
+  // T0 keys → Section B (deploy-time read-only). Unset values arrive with the
+  // `value` field omitted (server contract: only SET secrets are masked; an
+  // unset secret's JSON value is dropped — see routes/config.md).
+  WEA_DB_HOST: { source: 'env', tier: 'T0', secret: false },
   WEA_DB_PASSWORD: { value: '****', source: 'env', tier: 'T0', secret: true },
   WEA_DB_QUERY_TIMEOUT_MS: { value: '60000', source: 'default', tier: 'T0', secret: false },
-  JWT_SECRET: { value: '****', source: 'env', tier: 'T0', secret: true },
+  JWT_SECRET: { source: 'env', tier: 'T0', secret: true },
   // Editable Section A keys (db/default source, T1/T2).
   WEA_FILE_STORAGE: { value: 's3', source: 'default', tier: 'T1', secret: false },
   PORT: { value: '5001', source: 'default', tier: 'T1', secret: false },
@@ -116,6 +118,12 @@ describe('SystemConfigEditor', () => {
     // Undefined/empty value row shows the "(unset)" placeholder.
     const unsetRow = screen.getByTestId('platform-config-row-WEA_DB_HOST');
     expect(within(unsetRow).getByText('(unset)')).toBeInTheDocument();
+
+    // An UNSET secret (value omitted by the server) also shows "(unset)" —
+    // presence is preserved, so an optional secret is never shown as `****`.
+    const unsetSecretRow = screen.getByTestId('platform-config-row-JWT_SECRET');
+    expect(within(unsetSecretRow).getByText('(unset)')).toBeInTheDocument();
+    expect(within(unsetSecretRow).queryByText('****')).not.toBeInTheDocument();
 
     // env-sourced T1 key shows its real (masked-on-server) value read-only.
     const envRow = screen.getByTestId('platform-config-row-S3_BUCKET');

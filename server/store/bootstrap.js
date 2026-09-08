@@ -34,7 +34,7 @@ async function ensureDefaultAdmin() {
  * Connect the metadata DB and apply the schema/migrations only (no admin
  * seeding). Used by the boot path so the config resolver can be primed and
  * the process.env T1 population can happen BEFORE ensureDefaultAdmin reads
- * ADMIN_DEFAULT_PASSWORD (which may now be a DB-sourced, decrypted value).
+ * ADMIN_DEFAULT_PASSWORD (which may now be a DB-sourced, plaintext value).
  */
 async function initMetadataSchema() {
   if (isSqliteBackend()) {

@@ -21,8 +21,8 @@ const { getSharedResolver } = require('../../infrastructure/configResolver');
 const { EFFECTIVE_SECRET_MASK, applySetup, isMissing } = require('./setupCore');
 
 // Thin HTTP shell over the shared apply core: payload validation, env building,
-// T0/DB partition, encryption and the write orchestration live in setupCore.js,
-// which the first-run CLI setup tool also consumes (docs/features/setup-cli.md).
+// T0/DB partition and the write orchestration live in setupCore.js, which the
+// first-run CLI setup tool also consumes (docs/features/setup-cli.md).
 // The prefill-only PG direct reads below stay here — they are wizard-only.
 
 /**
@@ -30,8 +30,8 @@ const { EFFECTIVE_SECRET_MASK, applySetup, isMissing } = require('./setupCore');
  * from the target metadata DB (Q1b — setup-phase reads are always direct).
  *
  * - secret keys (configRegistry `isSecret`) → masked `'****'` whenever the row
- *   exists; never plaintext, regardless of how the row is stored (encrypted
- *   payload or legacy plaintext).
+ *   exists; never plaintext on the wire, regardless of the stored form (rows
+ *   are plaintext at rest — app-layer encryption was removed, W-A).
  * - plaintext rows → JSON-parse when the value is a JSON string (node-pg
  *   returns JSONB already parsed, so a row stored as the JSON string `"host"`
  *   arrives as `host`); scalars are coerced to String; null/undefined skipped.

@@ -233,7 +233,7 @@ describe('PUT /api/admin/config', () => {
     expect(res.body.restartRequired).toEqual(['PORT']);
   });
 
-  it('skips masked/blank/null secret values (keeps existing ciphertext)', async () => {
+  it('skips masked/blank/null secret values (keeps the existing stored value)', async () => {
     const res = await request(app)
       .put('/api/admin/config')
       .set('Authorization', `Bearer ${buildToken()}`)

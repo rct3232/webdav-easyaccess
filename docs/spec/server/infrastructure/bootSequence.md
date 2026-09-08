@@ -15,9 +15,11 @@ lets DB-sourced configuration take effect before require-time consts are capture
      - the backend is resolved from the generic remote-DB credential block: setting at least one
        of WEA_DB_HOST / WEA_DB_DATABASE / WEA_DB_USER / WEA_DB_PASSWORD selects the remote
        database (PostgreSQL is the only supported remote engine); setting none selects SQLite.
-     - a partial set (some but not all of the four) → console.error('[config] … requires <keys> …')
-       + process.exit(1), listing the missing keys. A complete-but-unreachable remote still boots
-       and reports the outage via GET /api/health.
+     - a partial set (some but not all of the four) → storage.getBackend() throws
+       `Partial WEA_DB_* configuration: missing <keys> …` (server/store/storage.js); the
+       runBoot() catch in server/index.js logs `Initialization failed: <err>` and calls
+       process.exit(1), listing the missing keys. A complete-but-unreachable remote still
+       boots and reports the outage via GET /api/health.
        The DB connection is .env-owned; there is no sqlite-wizard fallback for it (D6/D7).
 3. initMetadataSchema()            — connect the metadata DB + apply schema/migrations.
                                     (No admin seeding — deferred until after env population.)
@@ -78,7 +80,7 @@ default password.
 ## 5. Verification
 
 - [ ] Fresh boot (no `.env`, no remote-DB credentials): metadata backend defaults to SQLite; the DB connects locally and the wizard serves non-T0 only while non-T0 config is incomplete.
-- [ ] Partial `WEA_DB_*` credential set (some but not all of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD`) → `[config]` error listing the missing keys + `exit(1)`.
+- [ ] Partial `WEA_DB_*` credential set (some but not all of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD`) → boot fails: `storage.getBackend()` throws `Partial WEA_DB_* configuration: missing <keys> …`, the `runBoot()` catch logs `Initialization failed: …`, then `process.exit(1)`.
 - [ ] Full config in DB (T0 in `.env`): boots, T1 values visible to require-time consts,
       `ADMIN_DEFAULT_PASSWORD` honored when DB-sourced.
 - [ ] `.env` wins over DB for any T1 key (`populateT1Env` never overwrites existing env).

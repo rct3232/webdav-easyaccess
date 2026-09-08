@@ -4,7 +4,7 @@
 
 | Item            | Description                                                                                                                                                                                                                                                                                |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Role            | Single authoritative catalog of every `process.env` config key the server reads, classified into tiers (T0/T1/T2), flagged secret or not, with the in-code default (if any). Consumed by `configResolver` for runtime resolution, `configResolver.populateT1Env` for the boot env mirror (server/index.js:254), the admin config API (server/domains/admin/routes/config.js), and the setup routes (server/domains/setup/). |
+| Role            | Single authoritative catalog of every `process.env` config key the server reads, classified into tiers (T0/T1/T2), flagged secret or not, with the in-code default (if any). Consumed by `configResolver` for runtime resolution, `configResolver.populateT1Env` for the boot env mirror (server/index.js:243), the admin config API (server/domains/admin/routes/config.js), and the setup routes (server/domains/setup/). |
 | Source of truth | `docs/features/config-source-resolution.md` (variable classification)                                                                                                                                  |
 
 ---
@@ -73,6 +73,7 @@ Precedence invariant (D1): env wins whenever set; DB is read only when the env v
 | `WEA_DB_MAX`                   | T0   | no      | `10`                                     |
 | `WEA_DB_IDLE_TIMEOUT_MS`       | T0   | no      | `30000`                                  |
 | `WEA_DB_CONNECTION_TIMEOUT_MS` | T0   | no      | `10000`                                  |
+| `WEA_DB_QUERY_TIMEOUT_MS`      | T0   | no      | `60000`                                  |
 | `NODE_ENV`                     | T0   | no      | —                                        |
 | `DOTENV_CONFIG_PATH`           | T0   | no      | —                                        |
 | `JWT_SECRET`                   | T0   | **yes** | — (none — unset → ephemeral per-boot random)         |

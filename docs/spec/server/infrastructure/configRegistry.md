@@ -41,7 +41,7 @@
 
 | Tier | Meaning                           | Source chain                                         |
 | ---- | --------------------------------- | ---------------------------------------------------- |
-| `T0` | Startup-critical, `.env` only     | env only (no DB, no default applied by the resolver) |
+| `T0` | `.env` only — boot-required metadata keys; `JWT_SECRET` is the optional exception | env only (no DB, no default applied by the resolver) |
 | `T1` | Boot-frozen (require-time consts) | env → DB → default; effect requires restart          |
 | `T2` | Runtime / hot                     | env → DB → default; effect immediate                 |
 

@@ -126,7 +126,7 @@ Creates a new file node and stores its content. Dispatch strategy differs by sto
 1. Permission gate: same as S3 mode.
 2. Conflict check: same as S3 mode.
 3. Atomic create + PUT:
-   - For new file: `fileNodeService.createFile(parentNodeId, name)` — creates node with sync_status='active'. For overwrite: reuse existing file's nodeId.
+   - For new file: `fileNodeService.createFile(parentNodeId, name)` — creates the node with the repository default `sync_status='pending_upload'` (same as S3 mode; WebDAV native nodes keep this value for their whole lifetime under normal operation — see §4). For overwrite: reuse existing file's nodeId.
    - `blobStorageService.uploadToWebdav(nodeId, buffer)` — synchronous PUT to remote storage (path resolution happens inside blobStorageService).
 4. On WebDAV PUT failure — **new file**: roll back the just-created node via `fileNodeService.deleteNode(nodeId)` (best-effort), then re-throw the original error — no phantom 0-byte file remains and a retry is not blocked by a duplicate-name conflict. On WebDAV PUT failure — **overwrite**: mark `sync_status='orphaned_node'` via `fileNodeService.updateSyncStatus(nodeId, 'orphaned_node')` as fail-safe (the pre-existing node must not be deleted), then re-throw the error.
 5. Returns `{ nodeId, size: buffer.length, mimeType }`.
@@ -238,7 +238,7 @@ Deletes a node and its entire subtree. For WebDAV mode, attempts best-effort sto
    - **S3 mode:** No direct storage call needed at this layer. blobStorageService.deleteBlob is called per-file as part of the fileNodeService.deleteNode cascade, which marks object_map rows orphaned. Actual S3 deletion deferred to Phase 6 GC.
    - **WebDAV mode:** Build cleanup list as `[...descendantIds].reverse().concat([nodeId])` — deepest descendants first, then the target node itself. For each id: call `blobStorageService.deleteBlob(descId)` in a try/catch; on failure set `sync_status = 'orphaned_node'` via `fileNodeService.updateSyncStatus(descId, 'orphaned_node')` and continue (do not abort remaining deletions).
 5. DB deletion: `fileNodeService.deleteNode(nodeId)` — wrapped in TX, cleans up node_ancestors + triggers FK CASCADE for object_map, filecache rows.
-6. Return `{ deletedCount: descendantIds.length }`.
+6. Return `{ deletedCount: descendantIds.length + 1 }`.
 
 **DB operations:** getDescendantIds (SELECT), per-node updateSyncStatus (UPDATE) on WebDAV failures, deleteNode (TX: DELETE node_ancestors + DELETE file_nodes → CASCADE to object_map, filecache).
 
@@ -268,8 +268,9 @@ Creates a copy of a source file in the destination directory. Copy semantics dif
 3. Check sharing: count how many file_nodes currently reference this s3_key via `blobStorageService.countActiveObjectsByS3Key(s3Key)`.
    - If count === 1 (exclusive ownership): create new file_node + INSERT new object_map row referencing the SAME s3_key with status='active'. Zero-copy, instant.
    - If count > 1 (shared blob): call `blobStorageService.duplicateBlob(s3Key)` to download-and-upload a private copy under a new key, then link it via `blobStorageService.linkObject(newCopiedNodeId, newS3Key)`.
-4. New file node uses `newName` param; name conflict → numeric suffix via `createFile` behavior.
-5. Return `{ sourceNodeId, copiedNodeId }`.
+4. After linking the blob, set the copied node to `fileNodeService.updateSyncStatus(copiedNodeId, 'active')`. A copy is immediately usable and migratable — it must not stay on the repository `pending_upload` default, because s3→webdav migration snapshots enumerate only `sync_status='active'` file nodes (`migrationService.md`), and a `pending_upload` copy would be dropped from the destination at cutover.
+5. New file node uses `newName` param; name conflict → numeric suffix via `createFile` behavior.
+6. Return `{ sourceNodeId, copiedNodeId }`.
 
 **WebDAV Mode (actual blob copy):**
 
@@ -296,7 +297,7 @@ Creates a copy of a source file in the destination directory. Copy semantics dif
 - **Permission denied:** Any method where the user lacks required permission and is not an admin throws a 403 error. The caller (route handler) maps this to HTTP 403.
 - **Node not found:** If nodeId or parentNodeId does not correspond to an existing file_nodes row, throw 404 error. Applies to all methods accepting node IDs.
 - **Storage failure — S3 mode:** New-file upload failures roll back the created node — nothing persists in DB (see `uploadService.md` §2.5). Overwrite failures leave the node with `sync_status='pending_upload'` and a pending object_map; no automatic recovery exists (see `docs/IMPROVEMENT_PLAN.md`).
-- **Storage failure — WebDAV mode:** NEW nodes (new-file upload, copyFile) are rolled back when the backend write fails. Failures after a DB commit on EXISTING nodes (overwrite PUT, rename/move MOVE, deleteNode per-node, directory MKCOL) set `sync_status='orphaned_node'` as a fail-safe. The error is still propagated to the caller so the user sees a failure response; recovery of `orphaned_node` rows is manual via `repair-sync` (see `docs/IMPROVEMENT_PLAN.md`).
+- **Storage failure — WebDAV mode:** NEW nodes (new-file upload, copyFile) are rolled back when the backend write fails. Failures after a DB commit on EXISTING nodes (overwrite PUT, rename/move re-upload, deleteNode per-node, directory MKCOL) set `sync_status='orphaned_node'` as a fail-safe. The error is still propagated to the caller so the user sees a failure response; recovery of `orphaned_node` rows is manual via `repair-sync` (see `docs/IMPROVEMENT_PLAN.md`).
 - **Name conflict:** renameNode with duplicate sibling name or copyFile where destination already has same name → throw conflict error (or apply numeric suffix for copy).
 - **Cycle detection:** moveNode rejects if newParentNodeId is a descendant of nodeId via getDescendantIds check inside fileNodeService.moveNode().
 
@@ -340,7 +341,7 @@ Creates a copy of a source file in the destination directory. Copy semantics dif
 #### renameNode
 
 - [ ] S3 mode: updates name in file_nodes only; no blobStorageService calls (blob key independent of name)
-- [ ] WebDAV mode: attempts best-effort storage MOVE; sets orphaned_node on failure without rolling back DB rename
+- [ ] WebDAV mode: attempts the "download content → DB rename → re-upload" sync (not a native storage MOVE); sets orphaned_node on re-upload failure without rolling back DB rename
 - [ ] Throws validation error for empty newName or names containing path separators
 - [ ] Throws conflict error if new name duplicates existing sibling under same parent
 
@@ -348,7 +349,7 @@ Creates a copy of a source file in the destination directory. Copy semantics dif
 
 - [ ] Updates parent_id and rebuilds closure table via fileNodeService.moveNode in TX
 - [ ] S3 mode: no storage operation (blob key decoupled from tree position)
-- [ ] WebDAV mode: attempts best-effort MOVE; marks orphaned_node on failure without rolling back DB move
+- [ ] WebDAV mode: attempts the "download content → DB move → re-upload" sync (not a native storage MOVE); marks orphaned_node on re-upload failure without rolling back DB move
 - [ ] Rejects cycle: throws when newParentNodeId is a descendant of nodeId
 - [ ] Ownership transfer (D6): a non-admin mover that owns the node and moves it OUTSIDE the mover's home subtree has its explicit rows on the moved subtree revoked via revokeUserSubtreePermissions (root + descendants); the mover's home-root ADMIN row is preserved
 - [ ] Non-transfer: moving within the mover's own home, or moving a node the mover merely received a grant on (does not own it), does NOT revoke any rows
@@ -365,6 +366,7 @@ Creates a copy of a source file in the destination directory. Copy semantics dif
 
 - [ ] Zero-copy: new file_node + object_map referencing same s3_key when source blob exclusively owned (count=1)
 - [ ] Duplicates blob via duplicateBlob when source s3_key is shared by multiple nodes (count>1)
+- [ ] Copied node ends `sync_status='active'` (`updateSyncStatus(copiedNodeId, 'active')` after the blob link) — a copy is never left on the `pending_upload` default, so it stays enumerable by s3→webdav migration snapshots
 - [ ] Checks read permission on source and write permission on destination parent before proceeding
 
 #### copyFile — WebDAV mode
@@ -402,9 +404,9 @@ The `sync_status` column on `file_nodes` tracks consistency between database met
 
 | Value            | Meaning                                                                                                                                                                                                                               | Set When                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `active`         | Database metadata and storage content are in sync. Node is fully usable.                                                                                                                                                              | Default for all new nodes (WebDAV mode) or after TX2 completion (S3 uploadService flow). Also set by rename/move when no storage-side operation was needed (S3 mode).                                                                                                                                                                                                                                                                                                                                                                           |
-| `pending_upload` | Node exists in DB but blob content has not been written to storage yet. Intermediate state during S3 uploads.                                                                                                                         | Set by `blobStorageService.prepareUpload()` as part of TX1 in the 4-step upload flow. Transitions to `active` after TX2 completes. A failed NEW-file upload rolls the node back (no row remains — `uploadService.md` §2.5); a failed S3 OVERWRITE leaves the existing row `pending_upload` with a pending object_map (no automatic recovery — see `docs/IMPROVEMENT_PLAN.md`). |
-| `orphaned_node`  | Database metadata and storage content are inconsistent. The node's DB row exists but the corresponding storage resource may be missing, at a wrong path, or in an unexpected state.                                                    | Set by any method when a best-effort storage operation fails after the DB write committed on an EXISTING node: WebDAV overwrite PUT failure during uploadFile, WebDAV MOVE failure during renameNode/moveNode, WebDAV DELETE failure during deleteNode (per-node), or WebDAV MKCOL failure during `blobStorageService.createDirectoryWebdav` (directory create / home-node ensure). New nodes created for an upload/copy are rolled back instead of being marked. The error is still propagated to the caller — orphaned_node is a fail-safe marker for repair, not silent degradation. |
+| `active`         | Database metadata and storage content are in sync. Node is fully usable.                                                                                                                                                              | S3-mode end state: set by `uploadService` TX2 (`completeUpload` + `updateSyncStatus(nodeId, 'active')`) after new-file uploads and overwrites, and by `copyFile` (S3) immediately after the blob is linked. WebDAV mode never sets `active` on a normal path (native nodes stay `pending_upload`); `active` appears there only via webdav→s3 migration and manual `repair-sync force-active`. rename/move never write it — a node keeps its existing value (S3 renames/moves leave an already-`active` node untouched). |
+| `pending_upload` | Node exists in DB but blob content has not been written to storage yet (S3). The repository `createNode` default in both modes.                                                                                                        | INSERTed by `createNode` for **every** new row (file or directory, S3 or WebDAV; the DDL `'active'` default is always overridden). In **S3 mode** it is the intermediate state of the upload flow: `prepareUpload` marks the object_map `pending` and TX2 flips both node and object_map to `active`; a failed NEW-file upload rolls the row back (`uploadService.md` §2.5); a failed S3 OVERWRITE leaves the existing row `pending_upload` with a pending object_map (no automatic recovery — `docs/IMPROVEMENT_PLAN.md`). In **WebDAV mode** nodes keep `pending_upload` for their whole lifetime under normal operation — the backend is path-addressed and only the `orphaned_node` boundary is operational, so the value is never read by listing/download/migration-enumeration there. |
+| `orphaned_node`  | Database metadata and storage content are inconsistent. The node's DB row exists but the corresponding storage resource may be missing, at a wrong path, or in an unexpected state.                                                    | Set by any method when a best-effort storage operation fails after the DB write committed on an EXISTING node: WebDAV overwrite PUT failure during uploadFile, WebDAV re-upload failure during renameNode/moveNode (the "download content → DB rename/move → re-upload" pattern is not a native MOVE), WebDAV DELETE failure during deleteNode (per-node), or WebDAV MKCOL failure during `blobStorageService.createDirectoryWebdav` (directory create / home-node ensure). New nodes created for an upload/copy are rolled back instead of being marked. The error is still propagated to the caller — orphaned_node is a fail-safe marker for repair, not silent degradation. |
 
 **Recovery of failure states:** `pending_upload` rows left by a failed overwrite and `orphaned_node` rows are currently surfaced for MANUAL repair only — `failSafeService.scanOrphanedNodes()` / `POST /api/admin/maintenance/repair-sync` (`retry-delete` / `force-active`) covers `orphaned_node`; no automated GC path removes `pending_upload` rows or untracked S3 blobs. New-file upload failures need no recovery because the node is rolled back. The automated-recovery gap is tracked in `docs/IMPROVEMENT_PLAN.md`.
 
@@ -419,7 +421,7 @@ The `sync_status` column on `file_nodes` tracks consistency between database met
 | parentNodeId does not exist or is a file node                                | Both         | uploadFile/listDirectoryWithPermissions throw not-found error                                                                                                                       | 404                                        |
 | S3 PUT fails during upload (network, storage full)                           | S3           | New file: TX1 committed then S3 write failed → node rolled back, nothing persisted; error propagated to caller. Overwrite: node remains sync_status='pending_upload' with pending object_map (no automatic recovery).                                                                          | 500                                        |
 | WebDAV PUT fails during upload (connection refused, timeout, remote 4xx/5xx) | WebDAV       | New file: node rolled back via deleteNode, original error re-thrown. Overwrite: sync_status='orphaned_node' set on existing node, error re-thrown.                                                                                | 500                                        |
-| WebDAV MOVE fails during rename/move (remote unavailable, path conflict)     | WebDAV       | DB operation succeeded, sync_status='orphaned_node' set on affected nodes, error propagated                                                                                         | 500                                        |
+| WebDAV re-upload fails during rename/move (remote unavailable, path conflict) | WebDAV       | DB operation succeeded, sync_status='orphaned_node' set on affected nodes, error propagated                                                                                         | 500                                        |
 | WebDAV DELETE fails for one node in subtree delete                           | WebDAV       | Per-node: that specific descendant marked 'orphaned_node'. Remaining deletions proceed. DB deletion of entire subtree proceeds regardless. Error aggregated and returned to caller. | 207 (multi-status) or 500                  |
 | Name conflict on rename/copy                                                 | Both         | Conflict error thrown before any mutation                                                                                                                                           | 409                                        |
 | Cycle detected on moveNode                                                   | Both         | fileNodeService.moveNode rejects after getDescendantIds check; no DB mutation occurs                                                                                                | 400                                        |
@@ -465,7 +467,7 @@ Complete checklist of testable behaviors per method, organized to drive the test
 ### renameNode
 
 - [ ] S3 mode: updates name in file_nodes DB only; zero blobStorageService calls
-- [ ] WebDAV mode: attempts best-effort storage MOVE via blobStorageService; sets orphaned_node on failure without rolling back DB rename
+- [ ] WebDAV mode: attempts the "download content → DB rename → re-upload" sync via blobStorageService; sets orphaned_node on failure without rolling back DB rename
 - [ ] Throws validation error for empty newName or names containing `/` or `\`
 - [ ] Throws conflict error if new name duplicates existing sibling under same parent (UNIQUE constraint violation from DB)
 
@@ -473,7 +475,7 @@ Complete checklist of testable behaviors per method, organized to drive the test
 
 - [ ] Updates parent_id and rebuilds closure table via fileNodeService.moveNode in TX
 - [ ] S3 mode: no storage operation invoked (blob key decoupled from tree position)
-- [ ] WebDAV mode: attempts best-effort MOVE on remote; sets orphaned_node on failure without rolling back DB move
+- [ ] WebDAV mode: attempts the "download content → DB move → re-upload" sync on remote; sets orphaned_node on re-upload failure without rolling back DB move
 - [ ] Rejects cycle: throws when newParentNodeId is a descendant of nodeId
 - [ ] Ownership transfer (D6): non-admin mover that owned the node moves it into another user's home subtree → mover's rows on the moved subtree are revoked (both tables, root included); shared listing no longer surfaces it
 - [ ] Received grant preserved: a mover that does NOT own the node (merely received a grant) moving it within the owning user's home keeps its grant row intact
@@ -491,6 +493,7 @@ Complete checklist of testable behaviors per method, organized to drive the test
 
 - [ ] Zero-copy when source blob exclusively owned (countActiveObjectsByS3Key === 1): new file_node + object_map row referencing same s3_key with status='active'
 - [ ] Duplicates blob via duplicateBlob when source s3_key shared by multiple nodes: downloads, re-uploads under new key, links copy to new key
+- [ ] Ends the copied node at `sync_status='active'` via updateSyncStatus after the link (never left `pending_upload`)
 - [ ] Checks read permission on source node and write permission on destination parent before proceeding
 
 ### copyFile — WebDAV mode

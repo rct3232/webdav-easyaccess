@@ -4,9 +4,9 @@
 
 | Item               | Description                                                                                                                                                                                                                                                                    |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Role               | NodeId breadcrumb: renders the current folder's ancestor chain (`ancestors: [{ nodeId, name }]` supplied by the `GET /files/list` response) as chips. Shown on all viewports (mobile and desktop). The first chip is the **home chip**, which represents the acting user's own home scope (see 2.6). shareRootPath: share mode (path within share). Optional folder tree toggle. |
+| Role               | NodeId breadcrumb: renders the current folder's ancestor chain (`ancestors: [{ nodeId, name }]` fetched via `fileService.getAncestors`, hitting the dedicated `GET /files/ancestors` endpoint) as chips. Shown on all viewports (mobile and desktop). The first chip is the **home chip**, which represents the acting user's own home scope (see 2.6). shareRootPath: share mode (path within share). Optional folder tree toggle. |
 | Used in            | FileManager                                                                                                                                                                                                                                                                    |
-| Related components | `GET /files/list` `ancestors` chain                                                                                                                                                                                                                                            |
+| Related components | `GET /files/ancestors` ancestor chain (`fileService.getAncestors`), consumed in `useFileManager`                                                                                                                                                                               |
 
 ### 1.1 Home chip semantics (root cause of the home-duplication defect)
 
@@ -40,7 +40,7 @@
 
 | Name                 | Type     | Required | Default | Description                                                                              |
 | -------------------- | -------- | -------- | ------- | ---------------------------------------------------------------------------------------- |
-| ancestors            | array    | Y        | -       | Current folder's ancestor chain `[{ nodeId, name }]` from the `GET /files/list` response |
+| ancestors            | array    | Y        | -       | Current folder's ancestor chain `[{ nodeId, name }]`, fetched via `fileService.getAncestors` (`GET /files/ancestors`) in `useFileManager` |
 | onNodeClick          | function | Y        | -       | Ancestor chip click (by nodeId)                                                          |
 | user                 | object   | N        | -       | User                                                                                     |
 | onToggleFolderTree   | function | N        | -       | Toggle folder tree                                                                       |
@@ -58,13 +58,13 @@
 
 ### 2.4 Dependencies
 
-- **imports:** the `ancestors` chain provided in the `GET /files/list` response (server builds it via the ancestor-chain helper)
+- **imports:** the `ancestors` chain comes from the dedicated `fileService.getAncestors` service call (`GET /files/ancestors`), invoked in `useFileManager` and passed via the `ancestors` prop (server builds the chain via the ancestor-chain helper)
 - **Reference implementation:** `client/src/components/file-manager/Breadcrumb.js`
 - No client-side shared-permission path loading is needed for segment derivation; segment names and nodeIds come from the server-provided ancestor chain.
 
 ### 2.5 i18n Keys
 
-- nav.home, nav.sharedFolders, nav.recentFiles
+- nav.home, nav.recentShort, nav.shared, nav.sharedFolder, nav.folderTreeOpen, nav.folderTreeClose
 
 ### 2.6 Home chip (leading chip)
 

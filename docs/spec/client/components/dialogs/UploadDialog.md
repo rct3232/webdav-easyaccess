@@ -19,19 +19,19 @@
 
 ### 2.2 Props
 
-| Name          | Type     | Required | Default | Description                                   |
-| ------------- | -------- | -------- | ------- | --------------------------------------------- |
-| open          | boolean  | Y        | -       | Dialog open                                   |
-| onClose       | function | Y        | -       | Close handler                                 |
-| currentPath   | string   | Y        | -       | Upload destination path                       |
-| onUploadStart | function | Y        | -       | Called with (fileList, currentPath) on upload |
+| Name          | Type     | Required | Default | Description                                    |
+| ------------- | -------- | -------- | ------- | ---------------------------------------------- |
+| open          | boolean  | Y        | -       | Dialog open                                    |
+| onClose       | function | Y        | -       | Close handler                                  |
+| parentNodeId  | number   | Y        | -       | Upload destination parent nodeId               |
+| onUploadStart | function | Y        | -       | Called with (fileList, parentNodeId) on upload |
 
 ### 2.3 Callback Signatures
 
-| Callback      | When invoked        | Arguments                               |
-| ------------- | ------------------- | --------------------------------------- |
-| onClose       | Dialog close        | -                                       |
-| onUploadStart | Upload button click | (fileList: File[], currentPath: string) |
+| Callback      | When invoked        | Arguments                                   |
+| ------------- | ------------------- | ------------------------------------------- |
+| onClose       | Dialog close        | -                                           |
+| onUploadStart | Upload button click | (fileList: File[], parentNodeId: number)    |
 
 ### 2.4 Dependencies
 
@@ -45,7 +45,9 @@
 
 ### 2.6 i18n Keys
 
-- `dialogs.uploadTitle`, `dialogs.upload`, `common.cancel`, `dialogs.uploadDropzone`, `dialogs.removeFile`
+- `dialogs.uploadTitle`, `dialogs.upload`, `common.cancel`
+- Dropzone hint: `dialogs.uploadDropHere` (drag active), `dialogs.uploadDropOrClick` (default)
+- Per-file remove uses an icon-only close button (no i18n label)
 
 ### 2.7 Conditional Rendering
 
@@ -60,10 +62,10 @@
 
 - [ ] Dropzone accepts files
 - [ ] Remove file
-- [ ] onUploadStart called with fileList, currentPath
+- [ ] onUploadStart called with fileList, parentNodeId
 - [ ] Files cleared on close
 - [ ] Desktop: file input allows multiple (unit test mocks useResponsive as non-mobile)
 
 ### 2.9 Edge Cases
 
-- onUploadStart called twice: once without args (dismiss), then with (fileList, currentPath)
+- onUploadStart called twice: once without args (dismiss), then with (fileList, parentNodeId)

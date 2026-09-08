@@ -17,12 +17,13 @@
 
 ### 2.2 Input Parameters
 
-| Name        | Type     | Required | Description                                                       |
-| ----------- | -------- | -------- | ----------------------------------------------------------------- |
-| displayFile | object   | N        | Currently displayed file (gallery-resolved); falls back to `file` |
-| file        | object   | Y        | Original file prop passed to dialog                               |
-| shareToken  | string   | N        | Share token for authenticated requests                            |
-| t           | function | Y        | i18n translation function                                         |
+| Name        | Type     | Required | Description                                                                          |
+| ----------- | -------- | -------- | ------------------------------------------------------------------------------------ |
+| open        | boolean  | Y        | Dialog open flag; drives the hook's internal load/reset effect (`true` + target file → fetch; `false` → reset preview state) |
+| displayFile | object   | N        | Currently displayed file (gallery-resolved); falls back to `file`                    |
+| file        | object   | Y        | Original file prop passed to dialog                                                  |
+| shareToken  | string   | N        | Share token for authenticated requests                                               |
+| t           | function | Y        | i18n translation function                                                            |
 
 ### 2.3 Return Value / State
 
@@ -33,7 +34,6 @@
 | previewUrl  | string\|null | Blob URL or stream URL for the preview                                               |
 | previewBlob | Blob\|null   | Raw Blob (PDF only, for react-pdf `file` prop)                                       |
 | textContent | string\|null | Decoded text (text files only)                                                       |
-| loadPreview | function     | `(signal: AbortSignal) => Promise<void>` — triggers a fetch; called by parent effect |
 | retry       | function     | Re-triggers a fresh preview load for the current file (increments an internal nonce the load effect depends on). Used by the dialog's error-state retry button. |
 
 ### 2.4 Dependencies
@@ -44,12 +44,13 @@
 
 ### 2.5 Side Effects
 
-- Blob URL cleanup: on state reset (dialog close), `URL.revokeObjectURL` is called on the previous `previewUrl` if it starts with `blob:`.
-- Resets `previewUrl`, `previewBlob`, `textContent`, `numPages`, `loading`, `error` when dialog closes (`open` becomes false via the parent's `useEffect` that calls `loadPreview`).
+- The fetch effect lives INSIDE the hook. When `open` is true and a target file exists, the effect creates its own `AbortController`, starts the fetch, and returns `() => controller.abort()` as its cleanup; when `open` is false or there is no target file it resets preview state. The effect depends on `open`, `displayFile`, `file`, `loadPreview`, and the internal `retryNonce`.
+- Blob URL cleanup: on state reset (dialog close / no target file, i.e. `open` false), the reset branch calls `URL.revokeObjectURL` on the previous `previewUrl` if it starts with `blob:`.
+- Resets `previewUrl` (revoking any `blob:` URL), `previewBlob`, `textContent`, and sets `loading=true` / `error=null` when `open` becomes false or no target file is set — via the hook's own effect, not a parent `useEffect`.
 
 ### 2.6 Error Handling
 
-- A failure is ignored ONLY when the **caller** aborted the request (`signal.aborted` is true — user navigated away, dialog closed, or effect re-ran).
+- A failure is ignored ONLY when the request was aborted (`signal.aborted` is true — the hook's own effect cleanup aborted the fetch because the dialog closed, the target file changed, or `retry` re-ran the effect).
 - `httpClient` converts both caller aborts AND its own transport timeout into an error with `code='ECONNABORTED'`; the two are distinguished by `signal.aborted`, never by the error code alone. A transport timeout (caller signal NOT aborted) is a real failure.
 - Preview blob fetches (text/pdf/image) disable transport retries (`maxRetries: 0`), so a fast
   server error (e.g. an S3/WebDAV auth failure that the storage provider answers immediately)
@@ -79,6 +80,6 @@
 
 ### 2.8 Edge Cases
 
-- AbortController signal passed from caller; stale requests aborted when `displayFile` changes.
+- The hook creates its own `AbortController` per effect run; the effect cleanup aborts stale in-flight requests when `open`, `displayFile`, `file`, or the internal `retryNonce` changes.
 - `signal.aborted` checked after every `await` before calling setState.
-- Blob URL from previous preview revoked before setting new one.
+- Blob URL from previous preview revoked when the state-reset branch runs (before a new load starts).

@@ -180,3 +180,21 @@ Option A progress (2026-09-07):
   variant still depends on its desktop). Full s3 @ workers=3 run three times:
   185 expected / 3 skipped / 0 unexpected / 0 flaky every run; wall ≈ 7.0 min
   (vs ≈ 9.3 min for the chained full @ workers=2). Webdav smoke re-run: 10/10.
+
+## Workstream 2026-09-08: doc-drift reconciliation + audit-found code fixes
+
+Audit (recent 100 commits x all code/docs) found outdated docs (A/B/C list):
+- A1 CODE-BUG: `SystemConfigEditor` renders unset secrets as `****` instead of
+  `(unset)` (`renderPlatformRow` masks before the isUnset check).
+- A2 E2E: `E2E-ADMINCFG-009` still asserts the D5 "T0 group absent" model that
+  the W-B Section A/B split superseded; assertions are vacuous.
+- A3 CODE-BUG (P2): S3 `copyFile` leaves new nodes `sync_status='pending_upload'`
+  (+ active `object_map`); s3→webdav migration snapshots only `active` nodes, so
+  copied files are dropped from the destination at cutover.
+- B: doc drift list (config/env, db/service/store, client-ui, e2e groups) —
+  see git branch messages `fix/*`, `docs/reconcile-*` (2026-09-08).
+- C: stale code comments/fixtures referencing removed app-layer encryption.
+
+Per-commit body details live in the branch commits themselves. Waves:
+fix/unset-secret-display → fix/s3-copy-sync-status → test/admincfg-009-rewrite
+→ docs/reconcile-{env-config,db-service,client-ui,e2e}.

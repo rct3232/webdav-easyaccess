@@ -16,7 +16,7 @@
 
 - **Source:** `client/src/components/dialogs/FilePreviewDialog/FilePreviewDialog.js`
 - **Entry point (re-export):** `client/src/components/dialogs/FilePreviewDialog/index.js`
-- **Test file:** `client/src/components/dialogs/__tests__/FilePreviewDialog.test.js`
+- **Test file:** `client/src/components/dialogs/FilePreviewDialog/__tests__/FilePreviewDialog.test.jsx`
 
 ### 2.2a Local Hooks
 
@@ -24,7 +24,7 @@ All hooks live under `client/src/components/dialogs/FilePreviewDialog/hooks/`:
 
 | Hook                   | Responsibility                                                                                                                                                                          |
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `usePreviewLoader`     | `loading`, `error`, `previewUrl`, `previewBlob`, `textContent`, `loadPreview` callback, `retry` callback, blob cleanup effect                                                                             |
+| `usePreviewLoader`     | `loading`, `error`, `previewUrl`, `previewBlob`, `textContent`, `retry` callback, hook-internal fetch/abort effect keyed off `open`, blob cleanup effect                                        |
 | `useGalleryNavigation` | `currentMediaIndex`, `goPrev`, `goNext`, `handleTouchStart/End`, derived opened index + navigation offset, reset on close                                                               |
 | `useUIVisibility`      | `headerVisible`, `controlsVisible`, `startHideTimer`, `clearHideTimer`, `resetHideTimer`, hide timer effects                                                                            |
 | `usePlyrPlayer`        | Plyr audio/video DOM effects, `videoNotPlayable` state, controls sync effect, touchend preventDefault effect, `audioContainerRef`, `videoContainerRef`, `mediaTouchRef`                 |
@@ -97,7 +97,7 @@ All subcomponents live under `client/src/components/dialogs/FilePreviewDialog/pr
 - Text: pre/code
 - Gallery mode when mediaFiles.length > 1 (image/video)
 - **Gallery index:** `openedIndex` is derived during render via `mediaFiles.findIndex(f => f.path === file.path)`. `navigationOffset` (state) tracks prev/next from the opened index. `currentMediaIndex = clamp(openedIndex + navigationOffset, 0, mediaFiles.length - 1)`; falls back to 0 when `openedIndex < 0`. This ensures the correct index on first paint so PreviewThumbnailBar does not animate scroll on open. Reset `navigationOffset` when the dialog closes or when `file.path` changes.
-- **Preview race condition prevention:** `loadPreview` must use an `AbortController` signal to cancel stale in-flight requests. When `displayFile` changes (e.g. gallery navigation or `mediaFiles` update), the previous fetch must be aborted before the new one starts. The calling `useEffect` creates an `AbortController`, passes its `signal` to `loadPreview`, and returns `() => controller.abort()` as the cleanup. Inside `loadPreview`, `signal.aborted` is checked after each `await` before calling any `setState`. `AbortError` exceptions are silently swallowed (not treated as preview errors). `getFileBlob` forwards the signal to the underlying `get()` call.
+- **Preview race condition prevention:** The fetch effect lives INSIDE `usePreviewLoader` (no `loadPreview` is exposed to the dialog). When `open` is true and a target file exists, the hook's effect creates its own `AbortController`, starts the fetch, and returns `() => controller.abort()` as its cleanup, so stale in-flight requests are aborted when the dialog closes or `displayFile` changes (e.g. gallery navigation or `mediaFiles` update) before a new fetch starts. Inside the hook, `signal.aborted` is checked after each `await` before calling any `setState`. Aborted requests are silently ignored (not treated as preview errors). `getFileBlob` forwards the signal to the underlying `get()` call.
 - **Video preview:** PreviewThumbnailBar is hidden (avoids conflict with Plyr controls)
 - Auto-hide UI after 2s
 

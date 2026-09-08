@@ -83,10 +83,10 @@ const FolderTree = ({
               <BaseFolderTreeItem
                 node={{
                   nodeId: homeNodeId,
-                  name: user?.is_admin ? t('nav.home') : user?.username || t('nav.home'),
+                  name: t('nav.home'),
                 }}
                 path={undefined}
-                name={user?.is_admin ? t('nav.home') : user?.username || t('nav.home')}
+                name={t('nav.home')}
                 level={0}
                 currentNodeId={currentNodeId}
                 onNodeClick={nonShareOnNodeClick}
@@ -103,6 +103,7 @@ const FolderTree = ({
                 internalDraggedNodeId={internalDraggedNodeId}
                 isMobile={isMobile}
                 icon={<HomeIcon fontSize="small" />}
+                openIcon={<HomeIcon fontSize="small" />}
               />
 
               <SharedFoldersSection

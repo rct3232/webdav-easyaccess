@@ -556,9 +556,9 @@ describe('FileManagerView', () => {
 
     const tree = screen.getByTestId('folder-tree');
     await waitFor(() => {
-      expect(within(tree).getByText('user1')).toBeInTheDocument();
+      expect(within(tree).getByText('Home')).toBeInTheDocument();
     });
-    fireEvent.click(within(tree).getByText('user1'));
+    fireEvent.click(within(tree).getByText('Home'));
 
     expect(props.explorerHandlers.interaction.handleLeaveSharePathClick).toHaveBeenCalledWith(7);
   });

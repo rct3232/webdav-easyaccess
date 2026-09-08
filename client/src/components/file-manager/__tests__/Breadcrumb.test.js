@@ -44,9 +44,53 @@ describe('Breadcrumb', () => {
         ]}
       />
     );
-    expect(screen.getByText('testuser')).toBeInTheDocument();
     expect(screen.getByText('docs')).toBeInTheDocument();
     expect(screen.getByText('project')).toBeInTheDocument();
+  });
+
+  it('trims the acting user home node so it never renders as an extra chip', () => {
+    renderWithProviders(
+      <Breadcrumb
+        {...defaultProps}
+        currentPath="/testuser/docs/project"
+        ancestors={[
+          { nodeId: 1, name: 'testuser' },
+          { nodeId: 2, name: 'docs' },
+          { nodeId: 3, name: 'project' },
+        ]}
+      />
+    );
+    expect(screen.getByText('Home')).toBeInTheDocument();
+    expect(screen.queryByText('testuser')).not.toBeInTheDocument();
+    expect(screen.getByText('docs')).toBeInTheDocument();
+    expect(screen.getByText('project')).toBeInTheDocument();
+  });
+
+  it('renders the full ancestor chain for an admin (no home-node trimming)', () => {
+    renderWithProviders(
+      <Breadcrumb
+        {...defaultProps}
+        user={{ id: '9', username: 'admin', is_admin: true, rootNodeId: 11 }}
+        currentPath="/admin/docs/project"
+        ancestors={[
+          { nodeId: 11, name: 'admin' },
+          { nodeId: 2, name: 'docs' },
+          { nodeId: 3, name: 'project' },
+        ]}
+      />
+    );
+    expect(screen.getByText('Home')).toBeInTheDocument();
+    expect(screen.getByText('admin')).toBeInTheDocument();
+    expect(screen.getByText('docs')).toBeInTheDocument();
+    expect(screen.getByText('project')).toBeInTheDocument();
+  });
+
+  it('routes the admin home chip to the filesystem root (null target)', () => {
+    renderWithProviders(
+      <Breadcrumb {...defaultProps} user={{ id: '9', username: 'admin', is_admin: true }} />
+    );
+    fireEvent.click(screen.getByText('Home'));
+    expect(defaultProps.onNodeClick).toHaveBeenCalledWith(null);
   });
 
   it('calls onNodeClick with the ancestor nodeId when a segment chip is clicked', () => {

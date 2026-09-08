@@ -28,7 +28,7 @@ Auto-created if missing:
 ```sql
 CREATE TABLE _schema_migrations (
   filename TEXT PRIMARY KEY,
-  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  applied_at TIMESTAMPTZ DEFAULT NOW(),
   checksum TEXT NOT NULL
 );
 ```
@@ -45,8 +45,18 @@ CREATE TABLE _schema_migrations (
         both checksums (stored vs current) — modified-DDL detection, fail fast
       - **No row** → apply:
         i. If sqlite backend: apply `convertPostgresToSqlite()`
-        ii. Execute statements within a transaction
+        ii. Execute the file's statements — transaction mode is backend-dependent (see below)
         iii. INSERT into `_schema_migrations` { filename, applied_at, checksum }
+
+**Execution mode per backend:**
+
+- **PostgreSQL, boot path (no explicit client):** the whole DDL file executes in one
+  transaction via `storage.withTransaction` (the file keeps its `BEGIN`/`COMMIT` wrapper).
+- **PostgreSQL, explicit `pgClient`:** the file's `BEGIN`/`COMMIT` wrapper is stripped and the
+  statements run on the caller-supplied client — the caller owns the transaction
+  (`metadataMigrationService` applies the DDL inside its own target transaction).
+- **SQLite:** the `BEGIN`/`COMMIT` statements are stripped and the remaining statements run
+  individually with no wrapping transaction.
 
 ### 2.5 Key Properties
 

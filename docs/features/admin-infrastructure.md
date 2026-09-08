@@ -20,7 +20,10 @@ Administrators are users with `is_admin` set. Admin routes require a valid JWT a
 ### Admin role and middleware
 
 - **isAdmin:** Determined by `user.is_admin` (from metadata store). Stored in JWT payload for quick checks; admin routes re-load user and enforce `is_admin`.
-- **Admin middleware:** Each admin route module (`server/domains/admin/routes/settings.js`, `userManagement.js`, `maintenance.js`) defines a local `isAdmin` handler that loads the user by `req.user.id` and returns 403 with `errorCode: admin.adminRequired` if not admin. All admin routes use `authenticateToken` then `isAdmin`.
+- **Admin middleware:** Each admin route module (`server/domains/admin/routes/settings.js`,
+  `userManagement.js`, `maintenance.js`, `config.js`) defines a local `isAdmin` handler that
+  loads the user by `req.user.id` and returns 403 with `errorCode: admin.adminRequired` if not
+  admin. All admin routes use `authenticateToken` then `isAdmin`.
 - **Pipeline boundary:** Full middleware ordering and exclusions are documented in `docs/ARCHITECTURE.md` and are not duplicated here.
 
 ### Admin APIs
@@ -34,6 +37,7 @@ Administrators are users with `is_admin` set. Admin routes require a valid JWT a
 | Permissions      | `GET /api/admin/folders/list`, `PUT /api/admin/users/:id/permissions`                                                                                      | List folders for permission UI; set user folder permissions.                                                                                                    |
 | Cleanup          | `POST /api/admin/permissions/ensure-home-owner-admin`, `POST /api/admin/cleanup/orphaned`                                                                  | Ensure home owner has admin on home folder; remove redundant self-grants on users' own subtrees; clean orphaned metadata.                                       |
 | Maintenance (GC) | `POST /api/admin/maintenance/gc`, `POST /api/admin/maintenance/repair-sync`                                                                                | Run one orphaned-blob GC cycle; manually resolve `orphaned_node` rows.                                                                                          |
+| Config           | `GET /api/admin/config`, `PUT /api/admin/config`, `POST /api/admin/config/test`, `GET /api/admin/config/sync-report`, `POST /api/admin/config/sync-from-env`, `GET /api/admin/health` | View/update the effective-config registry (env → DB → defaults, secrets masked); connection-test pending values; env↔DB config-sync report + reconcile; admin backend-health snapshot. Spec: `docs/spec/server/tools/config-sync.md`. |
 | Blob migration   | `GET /api/admin/migration/info`, `POST /api/admin/migration/blobs`, `GET /api/admin/migration/jobs/:jobId`, `POST /api/admin/migration/jobs/:jobId/cancel` | Fetch derived direction/source, start a bidirectional WebDAV ↔ S3 blob migration, poll its status, cancel it. Spec: `docs/spec/server/tools/blob-migration.md`. |
 
 See [api.md](../api.md) for exact methods, paths, and bodies.

@@ -52,7 +52,7 @@ sequenceDiagram
     Note over US,S3: TX1
     US->>FNS: createFileNode(parentId, name, type)
     FNS->>AH: buildAncestorsForNode(nodeId)
-    AH->>FStore: insertClosureTableRows(nodeId, ancestors)
+    AH->>FStore: insertAncestorRows(rows)
     FStore-->>US: ok
     US->>BS: prepareUpload(nodeId)
     BS->>FStore: upsertObjectMap(pending)

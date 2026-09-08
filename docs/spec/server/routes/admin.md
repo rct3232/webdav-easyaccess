@@ -19,6 +19,7 @@ The original monolithic `server/routes/admin.js` has been split into separate ro
 | -------------- | ----------------------------------------------- | -------------------------------------- | --------------------------------------------------------- |
 | userManagement | `server/domains/admin/routes/userManagement.js` | `/api/admin`                           | `server/domains/admin/routes/__tests__/admin.test.js`     |
 | settings       | `server/domains/admin/routes/settings.js`       | `/api/admin`, `/api/settings` (public) | `server/domains/admin/routes/__tests__/settings.test.js`  |
+| config         | `server/domains/admin/routes/config.js`         | `/api/admin`                           | `server/domains/admin/routes/__tests__/config.test.js`    |
 | maintenance    | `server/domains/admin/routes/maintenance.js`    | `/api/admin`                           | `server/domains/admin/routes/__tests__/admin.test.js`     |
 | migration      | `server/domains/admin/routes/migration.js`      | `/api/admin`                           | `server/domains/admin/routes/__tests__/migration.test.js` |
 
@@ -68,16 +69,38 @@ The existing result keys (`deletedPermissionFiles`, `deletedUserFiles`, `deleted
 
 #### 2.2.4 migration (`/api/admin`)
 
-Bidirectional WebDAV ↔ S3 blob migration (202 + poll contract). Service: `domains/admin/services/migrationService.js`; job tracking: `domains/admin/stores/migrationJobStore.js`. Worker runs via `setImmediate` and honours the `WEA_SKIP_MIGRATION_WORKER` test seam (skips worker scheduling without changing defaults).
+Blob migration (bidirectional WebDAV ↔ S3) and metadata DB migration (sqlite ↔ PostgreSQL),
+both with a 202 + poll job contract. Services: `domains/admin/services/migrationService.js`
+(blobs) and `domains/admin/services/metadataMigrationService.js` (metadata); job tracking:
+`domains/admin/stores/migrationJobStore.js`. Workers run via `setImmediate` and honour the
+`WEA_SKIP_MIGRATION_WORKER` test seam (skips worker scheduling without changing defaults).
 
 | Method | Path                            | Auth          | Description                                                                                                                                                                                                                                                                     |
 | ------ | ------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET    | `/migration/info`               | Token + Admin | Get the derived migration context. Returns `200 { source: 'webdav' \| 's3', direction: 'webdav-to-s3' \| 's3-to-webdav' }` (direction derived from the app config).                                                                                                             |
+| GET    | `/migration/target-scan`        | Token + Admin | Read-only scan of an explicit (non-active) metadata target backend. Params/body: `{ targetBackend, pg?, sqlitePath? }` (PG also accepted as flat `?host=&port=...` query params). Returns `200 { backend, connected, schemaExists, tables: [{ name, rows }], totalRows, checkedAt }`. |
 | POST   | `/migration/blobs`              | Token + Admin | Start a blob migration job. Body: `{ mode: 'dry-run' \| 'apply', force?, dest: { type:'s3', ... } \| { type:'webdav', ... } }` — no `direction`; the server derives it from the app config and validates `dest.type` matches the expected destination. Returns `202 { jobId }`. |
-| GET    | `/migration/jobs/:jobId`        | Token + Admin | Get migration job status/progress. Returns `200 { jobShape }`.                                                                                                                                                                                                                  |
+| POST   | `/migration/metadata`           | Token + Admin | Start a metadata DB migration job. Body: `{ targetBackend, pg?, sqlitePath?, wipeTarget? }` — target backend must be the non-active one. Returns `202 { jobId }`; cancel = ROLLBACK of the target transaction. Full contract: `docs/spec/server/tools/metadata-migration.md`. |
+| GET    | `/migration/jobs/:jobId`        | Token + Admin | Get migration job status/progress. Returns `200 { jobShape }` — the in-memory store row (`type`, `stage`, `configPersist` etc.; `progress` is type-specific). See `docs/spec/server/store/migrationJobStore.md`.                                                                                  |
 | POST   | `/migration/jobs/:jobId/cancel` | Token + Admin | Cancel a running migration job. Returns `200 { messageCode, jobId }`.                                                                                                                                                                                                           |
 
-Destination config fields and the authoritative migration rules are documented in `docs/spec/server/tools/blob-migration.md`.
+Destination config fields and the authoritative blob-migration rules are documented in `docs/spec/server/tools/blob-migration.md`.
+
+#### 2.2.5 config (`/api/admin`)
+
+Effective-configuration management (env → DB → defaults registry). Service: the config resolver
+(`server/infrastructure/configResolver.js`); config-sync endpoints delegate to
+`server/service/configSyncService.js` — the same shared core as the `config-sync` CLI. See
+`docs/spec/server/tools/config-sync.md`.
+
+| Method | Path                    | Auth          | Description                                                                                                                                               |
+| ------ | ----------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/config`               | Token + Admin | Get effective config: `200 { config }` — every registry key with source/tier + masked secrets.                                                            |
+| PUT    | `/config`               | Token + Admin | Update allowlisted config keys. Body: `{ values }` — plaintext writes to DB; rejects unknown/T0/env-sourced keys. Returns `{ applied, restartRequired, messageCode }`. |
+| POST   | `/config/test`          | Token + Admin | Connection test with pending values. Body: `{ target, ...pending }`. Records outcome to the backend-health tracker.                                        |
+| GET    | `/config/sync-report`   | Token + Admin | Env↔DB config-sync report (read-only), mirroring the CLI `--check` findings/summary/exitCode JSON.                                                        |
+| POST   | `/config/sync-from-env` | Token + Admin | Env→DB config-sync reconcile (web equivalent of CLI `--apply --yes`): writes env-sourced non-T0 registry values as plaintext, then invalidates the T2 cache. |
+| GET    | `/health`               | Token + Admin | Admin health snapshot: `200 { backends }` — full per-backend tracker state (code/hint/lastChecked); stateless token-claim admin check (no DB read).          |
 
 ### 2.3 Middleware Used
 
@@ -111,9 +134,20 @@ Destination config fields and the authoritative migration rules are documented i
 #### migration
 
 - **GET /migration/info:** 200: `{ source: 'webdav' | 's3', direction: 'webdav-to-s3' | 's3-to-webdav' }` (direction derived from the app config `WEA_FILE_STORAGE`); 403 for non-admin.
+- **GET /migration/target-scan:** Params/body `{ targetBackend, pg?, sqlitePath? }`. 200: `{ backend, connected, schemaExists, tables: [{ name, rows }], totalRows, checkedAt }`; 400 on invalid/incomplete target payload; 403 for non-admin. (Full contract: `docs/spec/server/tools/metadata-migration.md`.)
 - **POST /migration/blobs:** Body: `{ mode, force?, dest }` — no `direction`. The server derives the direction from the app config and validates `dest.type` equals the expected destination (webdav source → `'s3'`, s3 source → `'webdav'`). 202: `{ jobId }`; 400 on invalid payload (bad mode, dest config, or `dest.type` mismatch); 403 for non-admin; 409 when a migration job is already running.
-- **GET /migration/jobs/:jobId:** 200: migration job shape `{ jobId, direction, mode, status, progress, total, current, results { copied, skipped, failed, errors }, errorMessage, createdAt, completedAt }`; 404 for unknown/expired job.
+- **POST /migration/metadata:** Body: `{ targetBackend, pg?, sqlitePath?, wipeTarget? }` — target backend must differ from the active backend. 202: `{ jobId }`; 400 on invalid payload; 403 for non-admin; 409 when the migration gate is active or a job is already running. (Full contract: `docs/spec/server/tools/metadata-migration.md`.)
+- **GET /migration/jobs/:jobId:** 200: the in-memory store row — `{ jobId, type, direction, mode, status, stage, progress, total, current, results { copied, skipped, failed, errors }, errorMessage, configPersist, createdAt, completedAt }`. `progress` is type-specific: integer done-node count for blob jobs, `{ percent, currentLabel }` for metadata jobs; `current` is `string | null` (blob worker writes a path string). Job shape: `docs/spec/server/store/migrationJobStore.md`. 404 for unknown/expired job.
 - **POST /migration/jobs/:jobId/cancel:** 200: `{ messageCode, jobId }`; 404 for unknown/expired job.
+
+#### config
+
+- **GET /config:** 200: `{ config }` (per-key source/tier, secrets masked).
+- **PUT /config:** Body: `{ values: { key: value } }`. 200: `{ applied, restartRequired, messageCode }`; 400 on unknown key (`configUnknownKey`), T0-protected key, env-sourced key, or non-object `values`.
+- **POST /config/test:** Body: `{ target: 'webdav' | 's3', ...pending }`. 200: probe result; probe failure also reports to the backend-health tracker.
+- **GET /config/sync-report:** 200: config-sync findings/summary/exitCode JSON.
+- **POST /config/sync-from-env:** 200: sync result (writes env-sourced non-T0 values as plaintext, invalidates T2 cache).
+- **GET /health:** 200: `{ backends }` per-backend tracker state.
 
 ### 2.5 Service Layers
 

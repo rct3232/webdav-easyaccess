@@ -180,12 +180,21 @@ The existing job system is preserved. The batchOperationService produces the sam
 
 ### 5.2 Worker Dispatch
 
-`runBulkJobWorker(jobId)` acts as a thin dispatcher:
+The exported `scheduleBulkWorker(jobId)` schedules the internal worker
+(`_processBulkJob(jobId)`, `batchOperationService.js:11`) for asynchronous execution via
+`setImmediate` (respecting the `WEA_SKIP_BULK_WORKER` test seam). `_processBulkJob` acts as the
+dispatcher:
 
-1. Reads job from opStore to extract `job.payload` containing `nodeIds`, `moves`, or `copies`.
-2. Calls the corresponding batchOperationService method (`batchDelete`, `batchMove`, or `batchCopy`).
-3. Writes progress updates via operation-progress store as each item completes (success or error).
-4. On finalization, writes aggregate result `{ count, errors }` back to the job record.
+1. Reads the job from `opStore.getJob(jobId)` and extracts `job.operation`
+   (`'delete'` | `'move'` | `'copy'`) plus `job.payload`.
+2. Dispatches on `job.operation` to the corresponding batchOperationService method:
+   `batchDelete(job.payload.nodeIds, job.userId)`, `batchMove(job.payload.moves, job.userId, …)`,
+   or `batchCopy(job.payload.copies, job.userId, …)`.
+3. Sets the job `running` at start; an unknown operation marks the job `failed`.
+4. On success, writes the aggregate result back to the job record: `completed` with
+   `progress` = the result's count (`deletedCount`/`movedCount`/`copiedCount`),
+   `total` = `job.total`, and `results` = `result.errors`. Failures set `failed` with
+   `errorMessage`.
 
 ### 5.2 Payload Format
 

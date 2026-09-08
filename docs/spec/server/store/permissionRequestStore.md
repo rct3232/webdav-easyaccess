@@ -42,7 +42,7 @@
 
 ### 2.5 Deduplication
 
-A new request is considered a duplicate if there already exists a row with matching `(requester_id, owner_id, requested_permission, file_node_id)` and `status = 'pending'`. The partial unique index enforces this at the database level; application code must catch the duplicate-key error and return the existing pending request.
+A new request is considered a duplicate if there already exists a row with matching `(requester_id, owner_id, requested_permission, file_node_id)` and `status = 'pending'`. Dedup is enforced by an **in-transaction SELECT pre-check** that returns the existing pending row before inserting (both dialect implementations, e.g. `PermissionRequestRepository.sqlite.js` / `.postgres.js` `insertPendingRequest`): inside the insert transaction, the repository first selects the newest pending row for the tuple and returns it if found, otherwise inserts. There is **no duplicate-key error catch** — the partial unique index is a backstop, not the dedup path. `repository-contract.md` describes the same pre-check.
 
 ### 2.6 Transaction Boundaries
 

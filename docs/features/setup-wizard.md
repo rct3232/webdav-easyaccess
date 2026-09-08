@@ -42,9 +42,10 @@ Key properties:
 - **Restart handling:** a "Restart required" screen only (decision **D2**). No self re-exec;
   the operator restarts the process.
 - **Scope:** the wizard serves **non-T0 only** — file storage, email, server/CORS, and the
-  admin password (decision **D7**, Phase B). The metadata-backend step (sqlite/PostgreSQL radio)
-  is removed; PostgreSQL connectivity is boot-verified (D6) and monitored by the backend-health
-  card.
+  admin password (decision **D7**, Phase B). The one T0 exception is the **optional**
+  `JWT_SECRET`, written to `.env` only when the operator supplies one (see the Admin-account
+  bullet below). The metadata-backend step (sqlite/PostgreSQL radio) is removed; PostgreSQL
+  connectivity is boot-verified (D6) and monitored by the backend-health card.
 - **Admin account:** username is fixed to `admin` (matches `ensureDefaultAdmin`); the wizard
   sets the admin **password** only (decision **D6**). `JWT_SECRET` is **optional** (D7): the
   wizard writes it to `.env` only when the operator supplies one — otherwise the boot-time
@@ -146,9 +147,9 @@ settings routes never write `.env`.
 | `metadata` | remote DB block / SQLite (default) | SQLite is always resolvable when no remote DB keys are set; setting any of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` selects the PostgreSQL backend and all four are required (reuse `resolvePgConfig` semantics, `server/store/storage.js:32-47`) |
 | `file`     | `WEA_FILE_STORAGE` (default `s3`)        | `s3` requires the 4 `S3_*`/`AWS_*` keys (reuse `resolveS3Config` semantics, `server/infrastructure/adapters/blobstore/index.js:7-13`); `webdav` requires `WEBDAV_URL`/`WEBDAV_USERNAME`/`WEBDAV_PASSWORD` |
 
-`JWT_SECRET` is never a completeness condition: a boot whose secret is default, placeholder, or
-unset is never incomplete on its account — an unset secret triggers the boot-time ephemeral
-random fallback, and the placeholder only triggers a "change it" warning.
+`JWT_SECRET` is never a completeness condition: a boot whose secret is the legacy placeholder
+or unset is never incomplete on its account — an unset/empty secret triggers the boot-time
+ephemeral random fallback, and the explicitly set placeholder only triggers a "change it" warning.
 
 ---
 
@@ -173,9 +174,10 @@ chooses a metadata backend — the DB connection is `.env`-owned, so a `metadata
 
 ## Restart contract
 
-Env-derived configuration is **frozen at require time** — module-const captures such as
-`JWT_SECRET`/`JWT_EXPIRES_IN` (`server/utils/auth.js:6-7`), plus refresh TTLs, rate limits,
-and thumbnail secrets. When `JWT_SECRET` is unset or empty at boot, `utils/auth` captures an
+Boot-frozen configuration is captured at require time — notably `JWT_SECRET`, resolved at
+module load in `server/utils/auth.js` (`JWT_EXPIRES_IN`, by contrast, is a T2/hot key read
+lazily at sign time, not a require-time capture). When `JWT_SECRET` is unset or empty at boot,
+`utils/auth` captures an
 **ephemeral random secret generated for that process** — a restart yields a new secret and
 invalidates all existing sessions (full re-login; refresh tokens are in-memory). A restart is
 therefore mandatory after any wizard write:

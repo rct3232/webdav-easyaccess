@@ -142,8 +142,9 @@ type-specific. The metadata job carries the **extended** shape:
 ## 4. T0 ".env setup needed" manual cutover (D11, D13)
 
 The DB connection is `.env`-owned (T0: the `WEA_DB_*` credential block — presence-selected
-backend — `WEA_SQLITE_PATH`, `JWT_SECRET`). A metadata migration only copies data; it **never edits
-`.env`**. The final step stays manual:
+backend — and `WEA_SQLITE_PATH`). `JWT_SECRET` is also T0 but **optional** (unset/empty →
+ephemeral per-boot secret), so a cutover needs no action for it. A metadata migration only
+copies data; it **never edits `.env`**. The final step stays manual:
 
 1. The migration completes; `/migration` shows the terminal modal with next-step guidance
    ("set the `WEA_DB_*` credentials in `.env` and restart to boot on the migrated PostgreSQL DB" — or remove them to return to sqlite).

@@ -264,6 +264,7 @@ Apply uniformly to every spec in `e2e/`:
 - A case may render-and-assert only in a listing bounded to its own data.
 - Each case deletes its owned base folder in `afterEach` (API delete, tolerant of the folder having already been moved/renamed/deleted by the case), so the shared admin root never accumulates one folder per case across a run.
 - Prefer parallel-safe cases; a case/file must be serial only when it mutates shared users/settings or depends on prior cases (state the reason).
+- A standard user's own home is role-scoped (a top-level node named after the username), not the admin root. Home-root label assertions (the breadcrumb first chip and the folder-tree home row render "Home", never the acting username — `E2E-EXP-014`) run only against that user's own home folder, never a shared listing.
 
 ### Authenticated-session reuse (L1)
 

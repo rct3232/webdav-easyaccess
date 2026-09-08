@@ -130,8 +130,12 @@ test.describe('public share link', () => {
       await toggle.click();
     }
 
-    // In share mode for an authenticated non-admin user, the sidebar home item is their username.
-    await page.getByRole('button', { name: fixtures.approvedUsername, exact: true }).click();
+    // In share mode for an authenticated non-admin user, the sidebar home item is the
+    // leave-share affordance back to their own home — labeled "Home" (not the username).
+    await page
+      .getByTestId('folder-tree')
+      .getByRole('button', { name: 'Home', exact: true })
+      .click();
 
     await expect(page.getByTestId('confirm-dialog-confirm')).toBeVisible(); // leave-share confirm
     await page.getByTestId('confirm-dialog-confirm').click();

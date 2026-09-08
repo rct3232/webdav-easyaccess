@@ -392,6 +392,41 @@ test('E2E-EXP-013: Moves a file across folders and keeps its content byte-identi
   await expect(fileItem(page, oldFilePath)).toHaveCount(0);
 });
 
+test('E2E-EXP-014: Standard-user home shows Home labels in breadcrumb and folder tree', async ({
+  page,
+  request,
+}, testInfo) => {
+  const isMobile = isMobileProject(testInfo);
+  const childFolderName = buildName(testInfo, 'home-label-child');
+  const childFolderPath = `/user1/${childFolderName}`;
+
+  const token = await loginAsUserApi(request, 'user1');
+  const homeNodeId = await resolveNodeId(request, token, '/user1');
+  await createFolderAt(request, token, homeNodeId, childFolderName);
+
+  await loginAsUser(page, 'user1');
+  await gotoFilesPath(page, request, childFolderPath);
+
+  // Breadcrumb: first chip is Home; the username home node is never an extra chip.
+  const breadcrumb = page.getByTestId('breadcrumb');
+  await expect(breadcrumb.getByRole('button', { name: 'Home', exact: true })).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(
+    breadcrumb.getByRole('button', { name: childFolderName, exact: true })
+  ).toBeVisible();
+  await expect(breadcrumb.getByRole('button', { name: 'user1', exact: true })).toHaveCount(0);
+
+  // Folder tree: home row is Home (never the username); the home row stays selectable.
+  const folderTree = page.getByTestId('folder-tree');
+  if (isMobile) {
+    await page.locator('button[title="Open folder tree"]').click();
+  }
+  await expect(folderTree).toBeVisible({ timeout: 20_000 });
+  await expect(folderTree.getByRole('button', { name: 'Home', exact: true }).first()).toBeVisible();
+  await expect(folderTree.getByRole('button', { name: 'user1', exact: true })).toHaveCount(0);
+});
+
 test('E2E-BULK-001: Enters selection mode and shows the bulk toolbar', async ({
   page,
   request,

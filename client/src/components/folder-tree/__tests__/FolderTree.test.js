@@ -59,11 +59,12 @@ describe('FolderTree', () => {
     onRecentFilesChange.mockImplementation(() => jest.fn());
   });
 
-  it('renders home item for non-admin user', async () => {
+  it('renders the Home row for a non-admin user', async () => {
     renderWithProviders(<FolderTree {...defaultProps} />);
     await waitFor(() => {
-      expect(screen.getByText('testuser')).toBeInTheDocument();
+      expect(screen.getByText('Home')).toBeInTheDocument();
     });
+    expect(screen.queryByText('testuser')).not.toBeInTheDocument();
   });
 
   it('renders home label for admin user', async () => {
@@ -78,9 +79,9 @@ describe('FolderTree', () => {
   it('calls onNodeClick with the home nodeId when home clicked', async () => {
     renderWithProviders(<FolderTree {...defaultProps} />);
     await waitFor(() => {
-      expect(screen.getByText('testuser')).toBeInTheDocument();
+      expect(screen.getByText('Home')).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByText('testuser'));
+    fireEvent.click(screen.getByText('Home'));
     expect(defaultProps.onNodeClick).toHaveBeenCalledWith(1);
   });
 
@@ -100,9 +101,9 @@ describe('FolderTree', () => {
       />
     );
     await waitFor(() => {
-      expect(screen.getByText('testuser')).toBeInTheDocument();
+      expect(screen.getByText('Home')).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByText('testuser'));
+    fireEvent.click(screen.getByText('Home'));
     expect(onLeaveShareClick).toHaveBeenCalledWith(1);
     expect(defaultProps.onNodeClick).not.toHaveBeenCalledWith(1);
   });

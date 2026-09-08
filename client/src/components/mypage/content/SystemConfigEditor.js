@@ -637,7 +637,7 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
     const meta = CONFIG_DISPLAY_META[key];
     const entry = config[key];
     const isUnset = entry.value === null || entry.value === undefined || entry.value === '';
-    const value = entry.secret
+    const value = entry.secret && !isUnset
       ? SECRET_MASK
       : isUnset
         ? t('admin.config.unset')

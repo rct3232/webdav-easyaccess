@@ -4,7 +4,7 @@
 
 | Item               | Description                                                                                                                                                                                                                                                    |
 | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role               | Admin "Advanced settings" config editor: reads the effective config (`GET /api/admin/config`) and renders **two top-level sections** — Section A "Runtime settings" (editable) and Section B "Deploy-time / platform configuration" (read-only). Section A renders the four existing subgroups of type-aware editable inputs (TextField / Switch / Select / Number / secret) for T1/T2 keys whose effective source is not `env`; Section B renders a flat read-only summary of T0 keys plus env-sourced T1/T2 keys. Edits are dirty-tracked and only changed Section A keys are written via `PUT /api/admin/config`. |
+| Role               | Admin "Advanced settings" config editor: reads the effective config (`GET /api/admin/config`) and renders **two top-level sections** — Section A "Runtime settings" (editable) and Section B "Deploy-time configuration" (read-only). Section A renders the four existing subgroups of type-aware editable inputs (TextField / Switch / Select / Number / secret) for T1/T2 keys whose effective source is not `env`; Section B renders a flat read-only summary of T0 keys plus env-sourced T1/T2 keys. Edits are dirty-tracked and only changed Section A keys are written via `PUT /api/admin/config`. |
 | Used in            | `SystemSettingsContent` inside the "Advanced settings" MUI Accordion (below the main settings rows).                                                                                                                                                           |
 | Related components | `adminService.getConfig` / `adminService.updateConfig`, `SystemSettingsContent` (page-level Snackbar via `onSnackbar`)                                                                                                                                         |
 | API contract       | `docs/spec/server/routes/config.md`, feature SoT `docs/features/config-source-resolution.md`                                                                                                                                                                   |
@@ -43,7 +43,7 @@ Display metadata (`labelKey`, `group`, `inputType`, `options`, `helpKey`) is def
 `GET /api/admin/config` → `{ config: { "<KEY>": { value, source: 'env'|'db'|'default', tier: 'T0'|'T1'|'T2', secret: boolean } } }`.
 
 - `adminService.getConfig()` normalizes to the `config` map.
-- Secrets always arrive masked as `"****"` — the server never sends a secret value to the client.
+- Only **set** secrets arrive masked as `"****"` — the server never sends a secret value to the client. A secret with no effective value arrives with `value` omitted (the JSON field is dropped by the server; see `docs/spec/server/routes/config.md`), so an unset secret is never reported as configured.
 - `adminService.updateConfig(values)` → `PUT /api/admin/config` with `{ values }`; returns `{ applied, restartRequired, messageCode }`.
 - **State-driven classification (no server change):** the payload is authoritative for section
   membership. The client derives it purely from `tier` / `source`:
@@ -128,8 +128,11 @@ Section A input; it is moved out to the Section B summary.
 
 **Section B (platform-managed secrets):**
 
-- Rendered in the read-only summary, always masked as `"****"` — no toggle, no input. This is why
-  `JWT_SECRET` and `WEA_DB_PASSWORD` can be displayed without widening the sensitive surface.
+- Rendered in the read-only summary. A **set** secret shows the mask `"****"`; an **unset** secret
+  shows the `admin.config.unset` "(unset)"-style text — presence is preserved, so an optional
+  secret that is not configured (e.g. unset `JWT_SECRET`, unset `WEA_DB_PASSWORD`) is never
+  indistinguishable from a configured one. No toggle, no input — this is why `JWT_SECRET` and
+  `WEA_DB_PASSWORD` can be displayed without widening the sensitive surface.
 - An undefined Section B value (secret or not) renders as the `admin.config.unset`
   "(unset)"-style text.
 
@@ -173,7 +176,7 @@ Section A input; it is moved out to the Section B summary.
 - `admin.config.tierRestart`, `admin.config.tierImmediate`
 - `admin.config.setInEnv`, `admin.config.setNewValue`, `admin.config.secretKeepExisting`
 - `admin.config.group.fileStorage`, `admin.config.group.serverSecurity`, `admin.config.group.email`, `admin.config.group.runtime` (Section A subgroup titles)
-- `admin.config.sectionTitleRuntime` ("Runtime settings"), `admin.config.sectionTitlePlatform` ("Deploy-time / platform configuration") — Section A / Section B headers
+- `admin.config.sectionTitleRuntime` ("Runtime settings"), `admin.config.sectionTitlePlatform` ("Deploy-time configuration") — Section A / Section B headers
 - `admin.config.platformIntro` — Section B intro note: values are provided at deploy time (env / `.env`), cannot be edited here, and require a deployment change + restart
 - `admin.config.unset` — "(unset)"-style text for undefined Section B values
 - `admin.config.key.<KEY>` for every displayed key (Section A and Section B); the Section B set
@@ -185,7 +188,7 @@ Section A input; it is moved out to the Section B summary.
 
 ### 2.12 Verification Scenarios
 
-- [ ] Renders two top-level sections: Section A "Runtime settings" and Section B "Deploy-time / platform configuration" (Section A shows its four subgroups; empty subgroups are skipped)
+- [ ] Renders two top-level sections: Section A "Runtime settings" and Section B "Deploy-time configuration" (Section A shows its four subgroups; empty subgroups are skipped)
 - [ ] Section A shows only editable keys (T1/T2 with `source` db/default); Section B lists all T0 keys plus env-sourced T1/T2 keys, in registry/GET order
 - [ ] Section B rows are read-only (no input controls): secret values masked `'****'`, undefined values show the "(unset)"-style text, and each row has a tier + "set in env" caption; the intro note renders once under the section title
 - [ ] A key's section membership follows the GET payload: same key flips to Section B when its `source` becomes `env` (no static list)

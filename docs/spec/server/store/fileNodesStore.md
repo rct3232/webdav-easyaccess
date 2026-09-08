@@ -56,6 +56,7 @@ This spec does not duplicate full DDL text.
 | `deleteNodeTree(nodeIds)`            | DELETE WHERE id IN (...); CASCADE handles descendants + object_map + filecache + node_ancestors | `{ changes }`                              |
 | `updateSyncStatus(id, status)`       | UPDATE SET sync_status=?, updated_at=NOW()                                                      | `{ changes }`                              |
 | `resolvePathSegment(parentId, name)` | SELECT id WHERE parent_id=? AND name=?                                                          | `{ id }` \| null                           |
+| `getUserRootNode(userId)`            | Look up user by id (userStore), then SELECT \* WHERE parent_id IS NULL AND name=<username> LIMIT 1 | node row \| null (the user's home node)   |
 
 #### node_ancestors Methods
 
@@ -64,8 +65,10 @@ This spec does not duplicate full DDL text.
 | `insertAncestorRows(rows)`                  | Bulk INSERT INTO node_ancestors; rows: `[{ ancestorId, descendantId, depth }]` | `{ changes }`                                       |
 | `deleteAncestorByDescendant(descendantIds)` | DELETE WHERE descendant_id IN (...)                                            | `{ changes }`                                       |
 | `deleteAncestorByAncestor(ancestorIds)`     | DELETE WHERE ancestor_id IN (...)                                              | `{ changes }`                                       |
-| `getDescendantIds(ancestorId)`              | SELECT descendant_id WHERE ancestor_id=?                                       | `[id, ...]`                                         |
-| `getAncestorChain(descendantId)`            | SELECT ancestor_id, depth WHERE descendant_id=? ORDER BY depth DESC            | `[{ ancestorId, depth }, ...]` — root is last entry |
+| `getDescendantIds(ancestorId)`            | SELECT descendant_id WHERE ancestor_id=?                                       | `[id, ...]`                                         |
+| `getDescendants(ancestorId)`              | SELECT n.\* FROM file_nodes n JOIN node_ancestors a ON a.descendant_id=n.id WHERE a.ancestor_id=? | descendant node rows `row[]` (mapped like `getNode`) |
+| `isAncestor(ancestorId, descendantId)`    | SELECT 1 FROM node_ancestors WHERE ancestor_id=? AND descendant_id=? LIMIT 1   | boolean (true if a closure row exists)              |
+| `getAncestorChain(descendantId)`          | SELECT ancestor_id, depth WHERE descendant_id=? ORDER BY depth DESC            | `[{ ancestorId, depth }, ...]` — root is last entry |
 
 #### object_map Methods
 
@@ -77,6 +80,8 @@ This spec does not duplicate full DDL text.
 | `getObjectMapByS3Key(s3Key)`                 | SELECT \* WHERE s3_key=? AND status IN ('pending', 'active')                                                                                                          | row \| null   |
 | `activateObject(s3Key)`                      | UPDATE SET status='active' WHERE s3_key=? AND status='pending'                                                                                                        | `{ changes }` |
 | `orphanObject(s3Key)`                        | UPDATE SET status='orphaned' WHERE s3_key=? AND status IN ('active', 'pending')                                                                                       | `{ changes }` |
+| `countActiveObjectsByS3Key(s3Key)`           | SELECT COUNT(\*) WHERE s3_key=? AND status='active'                                                                                                                    | `number`      |
+| `setObjectMapBackendWebdav(fileNodeId)`      | UPDATE object_map SET storage_backend='webdav' WHERE file_node_id=? AND status='active'                                                                               | `{ changes }` |
 
 #### GC support methods (Phase 6)
 
@@ -93,6 +98,7 @@ This spec does not duplicate full DDL text.
 | Method                                                 | SQL Pattern                  | Returns       |
 | ------------------------------------------------------ | ---------------------------- | ------------- |
 | `upsertCache(fileNodeId, size, mimeType, contentHash)` | INSERT ON CONFLICT DO UPDATE | `{ changes }` |
+| `getCache(fileNodeId)`                                 | SELECT \* WHERE file_node_id=? LIMIT 1 | row \| null   |
 | `deleteCache(fileNodeId)`                              | DELETE WHERE file_node_id=?  | `{ changes }` |
 
 ### 2.5 PostgreSQL vs SQLite Branching

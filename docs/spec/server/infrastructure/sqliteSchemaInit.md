@@ -17,10 +17,10 @@
 
 ### 2.2 Main Methods
 
-| Method                  | Signature             | Description                                                                                                                                 |
-| ----------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| initSqliteSchema        | () => Promise\<void\> | DDL discovery via `fs.readdir`, type conversion, execute against SQLite DB. Reads DB handle internally via `storage.getSqliteConnection()`. |
-| convertPostgresToSqlite | (ddl) => string       | Convert PostgreSQL DDL to SQLite-compatible SQL                                                                                             |
+| Method                  | Signature                          | Description                                                                                                                                                                                |
+| ----------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| initSqliteSchema        | ({ connection?, path? }) => Promise\<{ connection }\> | DDL discovery via `fs.readdir`, type conversion, execute against SQLite DB. Returns `{ connection }`. Three modes: no-arg boot form applies to the active backend (`storage.getSqliteConnection()`); `{ connection }` applies to a caller-supplied `sqlite3.Database` (used by `metadataMigrationService` against the migration-target connection; the caller owns its lifecycle); `{ path }` opens a temporary DB at `path` (`PRAGMA foreign_keys = ON`), applies the DDL, then closes it. |
+| convertPostgresToSqlite | (ddl) => string                     | Convert PostgreSQL DDL to SQLite-compatible SQL                                                                                                                                             |
 
 ### 2.3 Type Conversions (`convertPostgresToSqlite`)
 
@@ -46,8 +46,12 @@ Pass-through (no conversion needed):
 ### 2.4 Dependencies
 
 - DDL file discovery via `fs.readdir` on `server/store/postgresql/ddl/` (`.sql` files, sorted alphabetically)
-- node sqlite3 (sqlite3 driver) (via `storage.getSqliteConnection()`)
-- PRAGMAs (`foreign_keys = ON`, `defer_foreign_keys = ON`) are set in `storage.js` and test setup, not in this module
+- node sqlite3 (sqlite3 driver) (via `storage.getSqliteConnection()`, or the caller-supplied `connection`)
+- PRAGMA handling: `server/store/storage.js` sets only `journal_mode = WAL` and `foreign_keys = ON`
+  on the app connection; `defer_foreign_keys` is set only in test setups (e.g.
+  `server/infrastructure/__tests__/schemaManager.test.js`) and by `metadataMigrationService`
+  before its target transaction. This module itself sets `foreign_keys = ON` only on a DB it
+  opens itself (the `{ path }` mode).
 
 ### 2.5 Verification Scenarios
 

@@ -70,7 +70,9 @@ is no silent `sqlite` fallback for a remote intent (F6). File content storage vi
 
 **D6 boot rule:** the DB connection is `.env`-owned. The boot pre-flight (`runBoot`,
 `server/index.js`) selects the remote backend when any of the four `WEA_DB_*` credential keys is
-present; a partial set (some but not all) → `console.error('[config] … requires <keys> …')` +
+present; a partial set (some but not all) → `storage.getBackend()` throws
+`Partial WEA_DB_* configuration: missing <keys> …`, which the boot catch
+(`server/index.js` `runBoot().catch`) logs as `Initialization failed: …` before
 `process.exit(1)`. `resolvePgConfig`'s `storage.postgresqlNotConfigured` throw remains as a
 runtime guard.
 
@@ -115,7 +117,7 @@ Permission contract source of truth for `postgresql` backend:
 
 - [ ] getBackend: none of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` set → sqlite (default)
 - [ ] getBackend: all of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` set → postgresql
-- [ ] boot pre-flight: partial `WEA_DB_*` set (some but not all of the four) → terminal `[config]` error listing the missing keys
+- [ ] boot pre-flight: partial `WEA_DB_*` set (some but not all of the four) → terminal `Partial WEA_DB_* configuration` error listing the missing keys, logged as `Initialization failed: …` before `process.exit(1)`
 - [ ] backend parity: shared store-facing behaviors remain consistent across `sqlite` and `postgresql` for equivalent inputs (shape, ordering, not-found handling)
 - [ ] getPgPool: missing env throws `storage.postgresqlNotConfigured`
 - [ ] getPgPool: returns singleton pool across repeated calls

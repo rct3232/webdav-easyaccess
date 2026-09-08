@@ -266,12 +266,18 @@ Settings renders a persistent banner with a link to the migration flow.
 
 ## S3 boot probe (D12)
 
-Today only the WebDAV backend has a warn-only boot probe (`server/index.js:214-228`); S3 has
-none. This feature adds a **symmetric S3 boot probe**: at boot, when `WEA_FILE_STORAGE=s3`, probe
-the active S3 config and report the result to the backend-health tracker
-(`getBackendHealth().report('s3', ...)`) as warn-only (never a boot failure). After a post-restart
-cutover to either backend, the boot probe verifies the new backend and the health card reflects
-it.
+Both backends now have a **warn-only boot probe** (never a boot failure):
+
+- **WebDAV** (`server/index.js:290-306`): when `WEA_FILE_STORAGE=webdav`, runs `testConnection()`
+  and logs `✓ … SUCCESS` or `⚠ … FAILED` with a hint pointing at the effective configuration.
+- **S3** (`server/index.js:312-343`): a symmetric probe that runs when `WEA_FILE_STORAGE=s3`.
+  A missing S3 configuration logs `⚠ … SKIPPED`; otherwise `probeS3` runs and the result is
+  reported to the backend-health tracker — `getBackendHealth().report('s3', { ok: true })` on
+  success, `getBackendHealth().report('s3', { ok: false, code, reason, hint: 's3.bootProbe' })`
+  on failure — warn-only, never a boot failure.
+
+After a post-restart cutover to either backend, the boot probe verifies the new backend and the
+backend-health card reflects it.
 
 ---
 

@@ -388,6 +388,11 @@ function createFileService(options = {}) {
       const newFile = await fileNodeService.createFile(destinationParentNodeId, targetName);
       const copiedNodeId = newFile.id;
       await blobStorageService.linkObject(copiedNodeId, effectiveS3Key);
+      // A copy is immediately usable and migratable: mirror the S3 upload
+      // lifecycle end-state ('active') instead of leaving the new node
+      // pending_upload, which would drop it from s3→webdav migration snapshots
+      // (they enumerate only sync_status='active' file nodes).
+      await fileNodeService.updateSyncStatus(copiedNodeId, 'active');
 
       return { sourceNodeId: nodeId, copiedNodeId };
     }

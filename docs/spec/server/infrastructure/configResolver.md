@@ -5,7 +5,7 @@
 | Item        | Description                                                                                                                                                                                                                                                                                                                        |
 | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role        | Resolves the effective configuration value for any registered key using the D1 chain `.env → DB settings row → built-in default`, with per-tier source rules, a small TTL cache for T2 reads, and a masked effective-config report for the admin GET and setup status. DB `settings` rows hold plaintext values — there is no field-level encryption at rest and no decryption on read. |
-| Consumed by | the boot path (`populateT1Env` env mirror at server/index.js:254), the admin config API (server/domains/admin/routes/config.js), and setup routes / setup status (`computeSetupStatus` consumes the `getEffectiveConfig` map). |
+| Consumed by | the boot path (`populateT1Env` env mirror at server/index.js:243), the admin config API (server/domains/admin/routes/config.js), and setup routes / setup status (`computeSetupStatus` consumes the `getEffectiveConfig` map). |
 
 ---
 

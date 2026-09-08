@@ -55,7 +55,7 @@ values.
 ## Scope: non-T0 registry keys only
 
 The comparison universe is every entry of the config registry
-(`server/infrastructure/configRegistry.js`) with `tier !== T0` (45 keys: T1 + T2). T0 keys
+(`server/infrastructure/configRegistry.js`) with `tier !== T0` (44 keys: T1 + T2). T0 keys
 (`WEA_DB_*`, `WEA_SQLITE_PATH`, `JWT_SECRET`, `NODE_ENV`,
 `DOTENV_CONFIG_PATH`, …) are environment-owned by design
 and are **excluded from the report and from every write** — including `JWT_SECRET`.

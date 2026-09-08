@@ -71,8 +71,9 @@ npm run dev
 - Access: `http://localhost:3000`
 
 > **First run:** If no `.env` exists yet, the server boots into **setup mode** and a
-> browser-based **setup wizard** (`/setup`) configures the metadata/blob backends, the
-> admin account, and the JWT secret, then writes `.env` and asks for a restart. See
+> browser-based **setup wizard** (`/setup`) configures the metadata/blob backends and the
+> admin account. An optional JWT secret may be written to `.env`; all other settings are
+> stored in the metadata DB. Finish, then restart the server. See
 > [docs/features/setup-wizard.md](docs/features/setup-wizard.md).
 
 ## Production
@@ -92,7 +93,9 @@ npm start
 
 ## Environment Variables (.env)
 
-`.env` should be placed at the **repository root**. The server reads it (required), and the client proxy uses `PORT` during development.
+`.env` should be placed at the **repository root**. The server reads configuration from the
+environment (a `.env` file is one way to provide it) plus DB-managed settings; the client
+proxy uses `PORT` during development.
 
 ### Required
 
@@ -107,19 +110,16 @@ npm start
 - **S3_ENDPOINT**: Custom S3 endpoint URL for MinIO/compatible services (forces path-style access; optional in `s3` mode)
 - **WEBDAV_URL / WEBDAV_USERNAME / WEBDAV_PASSWORD**: WebDAV server URL (path prefix allowed) and credentials — **required only when `WEA_FILE_STORAGE=webdav`**
 - **JWT_SECRET**: JWT signing key. Optional — when unset (or empty) an ephemeral random secret is generated at boot; a restart then invalidates all sessions. Multi-instance deployments must set one unified `JWT_SECRET`. When set, the legacy default placeholder only warns. Changes take effect on restart.
-- **JWT_EXPIRES_IN**: JWT expiration (default `30m`, e.g. `15m`, `1h`)
 - **EMAIL_HOST/EMAIL_PORT/EMAIL_SECURE/EMAIL_USER/EMAIL_PASSWORD/EMAIL_FROM_NAME**: SMTP for signup/approval notifications
 - **ADMIN_DEFAULT_PASSWORD**: Default admin password (default `admin`)
 - **WEA_DISABLE_DEFAULT_ADMIN**: Disable default admin auto-creation (`true`)
 - **WEA_DB_HOST / WEA_DB_DATABASE / WEA_DB_USER / WEA_DB_PASSWORD**: Remote PostgreSQL metadata DB connection (optional; setting any of these selects the PostgreSQL backend — all four are required — otherwise the default SQLite backend is used)
 - **WEA_DB_PORT / WEA_DB_SSL**: PostgreSQL port (default `5432`) and TLS toggle (default `false`)
 - **CORS_ORIGINS / CORS_ORIGIN**: Allowed CORS origins (recommended in production; comma-separated)
-- **LOGIN_RATE_LIMIT_WINDOW_MS / LOGIN_RATE_LIMIT_MAX**: Login rate limit (best-effort, in-memory)
 - **WEBDAV_AUTH_TYPE**: `auto` / `basic` / `digest`
 - **WEBDAV_UPSTREAM_URL**: Upstream base URL for MOVE/COPY issues behind a proxy (502, etc.)
-- **MAX_THUMBNAIL_SIZE**: Max thumbnail resolution (default `300`)
 - **FFMPEG_PATH**: FFmpeg path (when auto-detect fails)
-- **THUMBNAIL_CONCURRENCY_LIMIT**: Max concurrent thumbnail tasks (default `10`)
+- **DB-managed keys** (e.g. `JWT_EXPIRES_IN`, login rate limits, thumbnail sizes/tokens, GC): edited via the admin **Advanced settings** UI or the setup wizard — an env value for them is intentionally ignored. See [docs/SETUP.md](docs/SETUP.md).
 
 ## Security Notes
 

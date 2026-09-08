@@ -1558,6 +1558,8 @@ describe('copyFile — S3 mode', () => {
     expect(blobStorageService.getActiveS3Key).toHaveBeenCalledWith(10);
     expect(fileNodeService.createFile).toHaveBeenCalledWith(20, 'copy.txt');
     expect(blobStorageService.linkObject).toHaveBeenCalledWith(50, 'key-original');
+    // A copy is immediately usable and migratable — never left pending_upload.
+    expect(fileNodeService.updateSyncStatus).toHaveBeenCalledWith(50, 'active');
     expect(blobStorageService.duplicateBlob).not.toHaveBeenCalled();
     expect(result).toMatchObject({ sourceNodeId: 10, copiedNodeId: 50 });
   });
@@ -1590,6 +1592,7 @@ describe('copyFile — S3 mode', () => {
 
     expect(blobStorageService.duplicateBlob).toHaveBeenCalledWith('key-shared');
     expect(blobStorageService.linkObject).toHaveBeenCalledWith(51, 'key-copy');
+    expect(fileNodeService.updateSyncStatus).toHaveBeenCalledWith(51, 'active');
     expect(result).toMatchObject({ sourceNodeId: 10, copiedNodeId: 51 });
   });
 

@@ -57,9 +57,17 @@ const Breadcrumb = ({
   })();
 
   // Non-share: ancestor chain from the server-provided ancestors response (self last).
+  // The home chip already represents the acting user's home scope, so a non-admin user's
+  // own home node (rootNodeId) is never rendered as an extra chip (admin rootNodeId is
+  // null / the filesystem root, which has no DB node, so nothing is trimmed for admins).
   const chainSegments = isShareMode
     ? []
-    : (ancestors || []).map((a) => ({ nodeId: a.nodeId, name: a.name }));
+    : (ancestors || [])
+        .filter(
+          (a) =>
+            !(user && !user.is_admin && user.rootNodeId != null && a.nodeId === user.rootNodeId)
+        )
+        .map((a) => ({ nodeId: a.nodeId, name: a.name }));
 
   const segments = isShareMode ? shareSegments : chainSegments;
 
@@ -83,8 +91,8 @@ const Breadcrumb = ({
     homeClickTarget = '/__shared__';
   } else {
     homeIcon = <HomeIcon />;
-    homeLabel = user?.is_admin ? t('nav.all') : t('nav.home');
-    homeClickTarget = user?.rootNodeId ?? null;
+    homeLabel = t('nav.home');
+    homeClickTarget = user?.is_admin ? null : (user?.rootNodeId ?? null);
   }
 
   // Auto-scroll to the right when the location changes
@@ -106,6 +114,7 @@ const Breadcrumb = ({
     >
       <Box
         ref={scrollContainerRef}
+        data-testid="breadcrumb"
         sx={{
           display: 'flex',
           alignItems: 'center',

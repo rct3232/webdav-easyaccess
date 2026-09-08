@@ -64,6 +64,16 @@
 - Shared/recent sections expandable
 - shareLinkSection when provided
 
+### 2.7 Home (leading) row
+
+- Label: `nav.home` (홈 / Home) for **all roles and all modes** — never the acting user's
+  username. (Admin home row label was already `nav.home`; non-admin row is relabeled from the
+  username, see Breadcrumb spec §1.1 for the underlying home model.)
+- Icon: the home icon is shown in **both collapsed and expanded states** (the home row passes an
+  `openIcon`), so auto-expanding the home row never swaps the home icon for a generic folder icon.
+- Click target semantics are unchanged: home row nodeId is `homeNodeId`
+  (admin → `null` = filesystem root; non-admin → `user.rootNodeId`).
+
 ### 2.7 Verification Scenarios
 
 - [ ] Clicking a folder calls `onNodeClick(nodeId)` with the clicked folder's node id.

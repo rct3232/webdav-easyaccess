@@ -5,7 +5,7 @@
 | Item       | Description                                                                                                                                                                                                                                                                                                                                                                                                     |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Role       | Operator CLI that detects drift between `.env` values and the metadata DB `settings` rows for every non-T0 config-registry key, reports it (alert mode, exit 1 on drift), and optionally reconciles the DB rows to mirror `.env` (`--apply --yes`). Feature spec: `docs/features/config-sync.md`. |
-| Depends on | config registry (`server/infrastructure/configRegistry.js`), `settingsStore.listRows()` (`server/store/settingsStore.js`), `Settings` model, env path resolution (`server/infrastructure/envPath.js`), store bootstrap (`server/store/bootstrap.js` — `initMetadataSchema` only), PG pre-check list (`server/infrastructure/setupStatus.js` — `PG_REQUIRED_KEYS`) |
+| Depends on | config registry (`server/infrastructure/configRegistry.js`), `settingsStore.listRows()` (`server/store/settingsStore.js`), `Settings` model, env path resolution (`server/infrastructure/envPath.js`), store bootstrap (`server/store/bootstrap.js` — `initMetadataSchema` only; backend selection/validation inside the store boot via `storage.getBackend()`, whose required-key set matches `DB_REQUIRED_KEYS` in `server/infrastructure/setupStatus.js`) |
 | Files      | `server/scripts/configSync.js` (CLI entry; exported `main(argv, deps)` with injected `output = { log, error, warn }` — the `setup.js` convention); algorithm core shared with the admin web action: `server/domains/admin/services/configSyncService.js` (`buildConfigSyncReport`, `syncConfigSyncEnv`)                                                                                                                                                                          |
 | Test files | `server/scripts/__tests__/configSync.test.js` (hermetic temp-dir `.env` + sqlite, in-process `main()`, `setupCli.test.js` pattern); `server/store/__tests__/settingsStore.test.js` (`listRows` coverage)                                                                                                                          |
 
@@ -63,8 +63,11 @@ argument is a usage error (exit 2) and boots nothing.
 3. `loadDotenv()` — the CLI resolves the same `DOTENV_CONFIG_PATH`-aware path as
    `server/index.js` (`resolveEnvPath`, `SERVER_ROOT = path.join(__dirname, '..')`) and loads
    it with `override: false`, so real process env still wins over the file.
-4. Boot the metadata store: PG required-key pre-check (`PG_REQUIRED_KEYS`), then
-   `initMetadataSchema()` only — **not** `initMetadataStore()` (no default-admin seeding).
+4. Boot the metadata store: `initMetadataSchema()` only — **not** `initMetadataStore()` (no
+   default-admin seeding). There is no separate PG pre-check step: backend selection runs inside
+   the store boot, and a partial `WEA_DB_*` set throws `storage.getBackend()`'s
+   `Partial WEA_DB_* configuration: missing <keys> …` error (the same four-key requirement
+   `DB_REQUIRED_KEYS` in `server/infrastructure/setupStatus.js`).
 5. Run the mode (`runCheck` / `runApply`); the `require.main === module` guard closes the
    pool/sqlite handle and exits with the returned code.
 

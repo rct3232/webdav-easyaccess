@@ -44,7 +44,7 @@ Each domain encapsulates its own routes, services, stores, and policy logic unde
 ```
 server/domains/
 ├── admin/
-│   ├── routes/        # settings.js, users.js, userManagement.js, maintenance.js
+│   ├── routes/        # config.js, maintenance.js, migration.js, migrationStatus.js, settings.js, userManagement.js, users.js
 │   └── services/      # cleanupService.js, userService.js
 ├── auth/
 │   ├── routes/        # (nested test files)

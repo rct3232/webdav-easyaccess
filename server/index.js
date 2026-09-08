@@ -218,7 +218,8 @@ if (fs.existsSync(clientBuildPath)) {
 //      resolver so T2 consumers and the admin config route share one cache
 //   3. compute the effective config and derive setup_complete from it
 //   4. when complete: populate process.env with T1 values from the resolver
-//      (decrypted DB secrets) so existing require-time consts see them; then
+//      (DB settings rows are plaintext — no decryption) so existing require-time
+//      consts see them; then
 //      seed the default admin (ADMIN_DEFAULT_PASSWORD may be DB-sourced now)
 //   5. when incomplete: setup mode — no env population, wizard serves
 const { initMetadataSchema, ensureDefaultAdmin } = require('./store/bootstrap');

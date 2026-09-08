@@ -59,12 +59,12 @@
 
 ### 2.6 Layout (CSS Grid)
 
-Uses CSS Grid (breakpoint-based `repeat(N, 1fr)`), not MUI Grid:
+Uses CSS Grid (responsive `gridTemplateColumns`), not MUI Grid:
 
 - **Container:** `Box` with `display: 'grid'`, `gridTemplateColumns` (responsive), `gap`.
-- **Breakpoints:** `xs: repeat(2, 1fr)`, `sm: repeat(3, 1fr)`, `md: repeat(4, 1fr)`, `lg: repeat(6, 1fr)`, `xl: repeat(6, 1fr)` — fixed column count per breakpoint; item width = container width / N (filename-independent).
+- **Breakpoints:** `xs: repeat(2, 1fr)`, `sm: repeat(3, 1fr)`, `md: repeat(4, 1fr)`, `lg: repeat(6, 1fr)`, `xl: repeat(auto-fill, minmax(150px, 1fr))` — fixed column count from xs to lg (item width = container width / N); at `xl` columns auto-fill to a minimum width of 150px, so the column count adapts to the available width.
 - **Grid item:** `minWidth: 0` so content does not expand beyond column; ellipsis on long filenames.
-- **Gap:** `1.5` on mobile, `2` on PC (aligned with `isMobile`).
+- **Gap:** `1.5` at `xs`, `2` from `md` up.
 - **loadMore area:** `gridColumn: '1 / -1'` to span full width.
 
 ### 2.7 Conditional Rendering

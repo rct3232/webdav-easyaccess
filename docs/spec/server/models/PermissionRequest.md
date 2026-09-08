@@ -4,7 +4,7 @@
 
 | Item | Description                                                                                                                                                                  |
 | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role | Permission request model: ensureFile, create, findById, listInbox, listOutbox, updateStatus, deleteByRequesterId, rejectByOwnerId. Thin wrapper over permissionRequestStore. |
+| Role | Permission request model: create, findById, listInbox, listOutbox, updateStatus, deleteByRequesterId, rejectByOwnerId. Thin wrapper over permissionRequestStore. |
 
 ---
 
@@ -19,7 +19,6 @@
 
 | Method              | Signature                                  | Description                                         |
 | ------------------- | ------------------------------------------ | --------------------------------------------------- |
-| ensureFile          | () => Promise\<void\>                      | permissionRequestStore.ensurePermissionRequestsFile |
 | create              | (payload) => Promise\<object\>             | permissionRequestStore.createRequest                |
 | findById            | (id) => Promise\<object \| null\>          | permissionRequestStore.getById                      |
 | listInbox           | (ownerId, opts) => Promise\<Array\>        | permissionRequestStore.listInbox                    |

@@ -353,6 +353,15 @@ describe('S5.0-SCENARIO-4: S3 mode copy-on-write', () => {
     const keys = new Set(dbResult.rows.map((r) => r.s3_key));
     // CoW: exactly one unique key shared between both nodes
     expect(keys.size).toBe(1);
+
+    // A copy is immediately usable and migratable: the node must end
+    // sync_status='active', never left on the repository 'pending_upload'
+    // default (which would drop it from s3→webdav migration snapshots).
+    const nodeStatus = await dbQuery('SELECT sync_status FROM file_nodes WHERE id = ?', [
+      targetNodeId,
+    ]);
+    expect(nodeStatus.rows).toHaveLength(1);
+    expect(nodeStatus.rows[0].sync_status).toBe('active');
   });
 
   it('source file remains downloadable after copy', async () => {

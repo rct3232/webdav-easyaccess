@@ -484,18 +484,44 @@ test.describe('admin config editor (advanced settings)', () => {
     await expect.poll(() => getConfig(request).then((c) => c.GC_ORPHAN_TTL_DAYS.value)).toBe('7');
   });
 
-  test('E2E-ADMINCFG-009: The T0 metadata group is absent from Advanced settings (D5)', async ({
+  test('E2E-ADMINCFG-009: T0 keys render read-only in Section B, in registry order', async ({
     page,
   }) => {
     await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
     await openAdvancedSettings(page);
 
-    // Deploy-time T0 rows (the WEA_DB_* metadata block / WEA_SQLITE_PATH) are
-    // read-only (Section B) — never rendered as editable inputs, so no
-    // `config-input-*` element exists for them.
-    await expect(page.getByTestId('config-input-WEA_DB_HOST')).toHaveCount(0);
-    await expect(page.getByTestId('config-input-WEA_SQLITE_PATH')).toHaveCount(0);
-    await expect(page.getByTestId('config-input-WEA_DB_PASSWORD')).toHaveCount(0);
+    // Deploy-time T0 rows (the WEA_DB_* metadata block / WEA_SQLITE_PATH /
+    // JWT_SECRET) are present as read-only Section B summaries — never as
+    // editable inputs. This supersedes the D5 "T0 metadata group absent"
+    // assertion: the Section A/B split (W-B) moved these rows into the
+    // Deploy-time summary instead of hiding them.
+    for (const key of ['WEA_SQLITE_PATH', 'WEA_DB_HOST', 'WEA_DB_PASSWORD', 'JWT_SECRET']) {
+      await expect(page.getByTestId(`config-input-${key}`)).toHaveCount(0);
+      await expect(page.getByTestId(`platform-config-row-${key}`)).toHaveCount(1);
+    }
+
+    // Section B rows appear in registry order (the server returns config in
+    // configRegistry sequence and the editor renders rows in the same order).
+    const rowIds = await page
+      .locator('[data-testid^="platform-config-row-"]')
+      .evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')));
+    const pos = (key: string) => rowIds.indexOf(`platform-config-row-${key}`);
+    expect(pos('WEA_SQLITE_PATH')).toBeGreaterThanOrEqual(0);
+    expect(pos('WEA_DB_HOST')).toBeGreaterThan(pos('WEA_SQLITE_PATH'));
+    expect(pos('WEA_DB_PASSWORD')).toBeGreaterThan(pos('WEA_DB_HOST'));
+    expect(pos('JWT_SECRET')).toBeGreaterThan(pos('WEA_DB_PASSWORD'));
+
+    // Secret presence is preserved: a SET env secret (JWT_SECRET is in the
+    // scratch .env) is masked '****'; an UNSET secret (WEA_DB_PASSWORD has no
+    // env value in the sqlite scratch boot) shows the '(unset)' text and is
+    // never reported as '****'.
+    const jwtRow = page.getByTestId('platform-config-row-JWT_SECRET');
+    await expect(jwtRow).toContainText('****');
+    await expect(jwtRow).not.toContainText('(unset)');
+
+    const passwordRow = page.getByTestId('platform-config-row-WEA_DB_PASSWORD');
+    await expect(passwordRow).toContainText('(unset)');
+    await expect(passwordRow).not.toContainText('****');
   });
 });
 

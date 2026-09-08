@@ -37,10 +37,10 @@ Move physical blobs between the WebDAV and S3 backends while keeping the DB meta
   stops (the `runCopy` loop gains a cancel check). Partial progress is kept (source preserved)
   and resumed on rerun via the existing `shouldSkip` markers.
 - **Auto-persist of the destination config (D10):** when an **`apply`** completes, DB-sourced
-  storage keys are persisted to the DB (`Settings.set`, secrets AES-encrypted with
-  `encrypt_secret_key`, then `invalidateCache`), and the job records
-  `configPersist { persisted, skippedEnvSourced }`. Env-sourced keys fall back to the manual
-  `.env` guidance. A restart is still required (storage config is boot-frozen).
+  storage keys are written to the DB via `Settings.set` as plaintext strings (secret values
+  included), then `getSharedResolver().invalidateCache(persisted)` is called, and the job
+  records `configPersist { persisted, skippedEnvSourced }`. Env-sourced keys fall back to the
+  manual `.env` guidance. A restart is still required (storage config is boot-frozen).
 
 The migration core (`migrationService`) is shared between the CLI and the admin API, so both entry points enforce the same contracts, resume markers, and DB rules.
 
@@ -154,9 +154,10 @@ in-memory store row (`migrationJobStore.create`,
 - **`configPersist`:** set only when `mode === 'apply'` reaches `completed`. Computed by
   `persistStorageConfigToDb(destConfig)`, which returns **arrays of keys**, not booleans:
   - DB-sourced storage keys (`current[key].source !== 'env'` for the
-    `WEA_FILE_STORAGE`/`S3_*`/`WEBDAV_*` block) are written with `Settings.set` — secrets
-    AES-256-GCM-encrypted under `encrypt_secret_key`, then
-    `getSharedResolver().invalidateCache()` — and pushed to `configPersist.persisted`.
+    `WEA_FILE_STORAGE`/`S3_*`/`WEBDAV_*` block) are written with `Settings.set` as
+    plaintext strings (secret values included — there is no app-layer encryption),
+    then `getSharedResolver().invalidateCache(persisted)` — and pushed to
+    `configPersist.persisted`.
   - Env-sourced keys are skipped and pushed to `configPersist.skippedEnvSourced` (no env↔DB
     sync tool); the UI shows the manual `.env` guidance instead.
   - A restart is required in both cases (storage config is boot-frozen:

@@ -49,8 +49,10 @@ backends (only a per-user 500 toast). This feature adds:
    invalidates the result. Non-connection keys don't require a test.
 4. **Boot rule (D6)** — none of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD`
    set → sqlite (default); all four set → the remote PostgreSQL backend; a partial set (some
-   but not all four) → clear terminal `[config]` error listing the missing keys +
-   `process.exit(1)` (the DB connection is `.env`-owned).
+   but not all four) → boot fails: `storage.getBackend()` throws
+   `Partial WEA_DB_* configuration: missing <keys> …`, `server/index.js` logs
+   `Initialization failed: <err>` and exits via `process.exit(1)` (the DB connection is
+   `.env`-owned).
 5. **Wizard scope (D7)** — wizard serves **non-T0 only**: reachable when the DB is connected but
    non-T0 config is incomplete. The `.env → sqlite wizard` first-boot path is removed (the DB
    connection is `.env`/env-owned).
@@ -82,8 +84,10 @@ to the stored value. Non-connection keys save without a test.
 
 ## Security
 
-- Public `GET /api/health` exposes only per-backend status strings (`ok`/`fail`/`unknown`) plus
-  the non-sensitive `activeFileStorage` field (`s3`/`webdav`) — no codes, hints, or secrets.
+- Public `GET /api/health` exposes only backend status strings — `status: "ok"`, `messageCode`,
+  the non-sensitive `activeFileStorage` (`s3`/`webdav`) and `activeMetadataBackend`
+  (`postgresql`/`sqlite`) fields, and `backends` with per-backend status strings
+  (`ok`/`fail`/`unknown`) — no codes, hints, or secrets.
 - `GET /api/admin/health` (admin-only) exposes the full tracker snapshot (code/hint/last-checked).
 - User-facing messages never leak backend internals (D8).
 

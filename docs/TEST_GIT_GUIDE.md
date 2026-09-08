@@ -152,18 +152,14 @@ npm run test:e2e:core:s3
 # Webdav-mode smoke also via the core alias (identical project set).
 npm run test:e2e:core:webdav
 
-# Run only the setup-wizard project (hermetic scratch instance on :5003;
-# independent of E2E_BACKEND_MODE except for Case 2)
-npx playwright test --project=setup-wizard-desktop
-npx playwright test --project=setup-wizard-mobile
-
-# Explicit backend mode for the setup projects. E2E_BACKEND_MODE only gates
-# Case 2 (E2E-SETUP-002): it needs MinIO (s3 mode) and self-skips in webdav
-# mode. Cases 1/3/4 run in both modes.
+# Run only the setup-wizard project (hermetic scratch instance on :5003). The
+# setup-wizard-desktop/-mobile projects are defined ONLY when E2E_BACKEND_MODE=s3
+# (full-mode matrix): playwright.config.ts builds the hermetic projects in its
+# non-webdav branch. Under E2E_BACKEND_MODE=webdav the only projects are
+# webdav-smoke-setup + webdav-smoke-desktop, which grep the EXP/SHARE/OVERLAY
+# nets and never include the wizard suite.
 E2E_BACKEND_MODE=s3 npx playwright test --project=setup-wizard-desktop
-E2E_BACKEND_MODE=webdav npx playwright test --project=setup-wizard-desktop
 E2E_BACKEND_MODE=s3 npx playwright test --project=setup-wizard-mobile
-E2E_BACKEND_MODE=webdav npx playwright test --project=setup-wizard-mobile
 ```
 
 Required assumptions:

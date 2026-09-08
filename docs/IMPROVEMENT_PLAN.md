@@ -1,6 +1,6 @@
 # Codebase Improvement Plan — Consolidated Open-Item Tracker
 
-> **Updated**: 2026-09-04
+> **Updated**: 2026-09-08
 > **Purpose**: This is the **single tracking document** for every unresolved, undecided, or
 > unimplemented item in the repository.
 >
@@ -8,7 +8,7 @@
 > state. Planned/future/"pending implementation"/"target contract" work must **not** be written
 > into individual docs — record it here instead (see AGENTS.md §2.1).
 >
-> **Status legend**: `DEFERRED`
+> **Status legend**: `DEFERRED`, `DONE`
 
 ---
 
@@ -27,7 +27,7 @@ Ordered by urgency review (2026-09-02): highest priority first.
 | DEF-12 | DEFERRED | S3/WebDAV **overwrite** upload failure leaves `pending_upload` (S3) / `orphaned_node` (WebDAV) row with no automatic recovery; retry endpoint + GC cleanup of `pending` object_map rows and untracked S3 blobs is unimplemented. | `docs/spec/server/services/uploadService.md` §2.5, `docs/spec/server/services/fileService.md` §4, `docs/features/core-service-layer.md` |
 | DEF-13 | DEFERRED | Process death between an upload's TX1 commit and the blob write leaves orphaned `pending_upload` rows that no automatic path cleans. | `docs/spec/server/services/uploadService.md` §2.5 |
 | DEF-14 | DEFERRED (trigger-gated) | New-RDB adoption gate: generalize the metadata store beyond the current sqlite + PostgreSQL pair to MySQL, MariaDB, MSSQL and Oracle via boot-time engine auto-detection from a generic connection block. **Decision (2026-09-04): do NOT adopt an ORM today** — keep the executor seam + per-dialect repositories + per-engine conformance for sqlite/PG. **Introduce a single-source query layer (ORM/query builder) at the moment a second new engine is actually added** (evaluate Drizzle/Kysely first). Full rationale in the DEF-14 note. | `docs/spec/server/store/storage.md`, `docs/features/config-source-resolution.md`, `docs/spec/server/infrastructure/configRegistry.md`, `docs/spec/server/store/executor.md`, `docs/spec/server/store/repository-contract.md` |
-| DEF-15 | DEFERRED | E2E assertion-context containment refactor: convert `core-flow.*` to per-case owned folders (assertion-context containment, docs/TESTING_STRATEGY.md), then enable intra-project `--workers>1`; hermetic overlap requires scratch-port/bucket isolation + webdav-restart fix. | `docs/TESTING_STRATEGY.md`, `PLAN.md` (W4/W5) |
+| DEF-15 | DONE | E2E assertion-context containment + hermetic overlap IMPLEMENTED on 2026-09-07 (PLAN.md W4/W4b/W5/W10 + Option A Phases 1–2; see the DEF-15 note): `core-flow.*` create/assert only inside per-case owned folders (docs/TESTING_STRATEGY.md); explicit `--workers=N` flags removed (Playwright auto-sizes to half the logical cores); the hermetic suites are independent siblings with per-suite scratch ports :5003/:5010/:5011, distinct scratch PG DBs, a dedicated migration bucket, and an up-front webdav restart. | `docs/TESTING_STRATEGY.md`, `PLAN.md` (W4/W5) |
 
 ---
 
@@ -151,24 +151,32 @@ tracker instead of carrying planned statements:
 - A failed **overwrite** still leaves the documented pending state (S3 `pending_upload` /
   WebDAV `orphaned_node`) with **no automatic recovery** — see DEF-12/DEF-13.
 
-### DEF-15 note (2026-09-07) — E2E assertion-context containment refactor
+### DEF-15 note (2026-09-07) — E2E assertion-context containment refactor (IMPLEMENTED)
 
-Deferred, no active owner. Recorded here per AGENTS.md §2.1; **not** written into spec/feature docs.
+Resolved on 2026-09-07 (PLAN.md W4/W4b/W5/W10 + Option A Phases 1–2). Recorded here per
+AGENTS.md §2.1. Root cause and shipped state:
 
-- Root cause: the admin home is the filesystem root and the client renders at most 50 items per
-  listing, so visibility assertions against the shared root couple tests to creation order and
-  block `--workers>1`.
-- Progress (2026-09-07): containment policy landed in `docs/TESTING_STRATEGY.md`; core-flow specs
-  converted to per-case owned folders; `test:e2e`, `test:e2e:s3` and the core scripts default to
-  `--workers=2`. Full s3 @ workers=2 is green (185 pass / 3 skip / 0 fail) with mypage-admin in
-  dedicated post-reset projects and hermetic suites chained after the platform chain.
+- Root cause (fixed): the admin home is the filesystem root and the client renders at most 50
+  items per listing, so visibility assertions against the shared root coupled tests to creation
+  order and blocked intra-project parallelism. The containment policy landed in
+  `docs/TESTING_STRATEGY.md` (§ Assertion-context containment); the core-flow specs now
+  create/assert only inside a per-case owned base folder under the root (`openPrivateWorkspace`
+  in `e2e/helpers/files.ts`) and delete that base folder via the API in `test.afterEach`
+  (`flushPrivateWorkspaceCleanups`), so per-case data never accumulates at the root across a run.
+- Auto-sized workers (post-merge 2026-09-07): explicit `--workers=N` flags were removed from all
+  e2e scripts — Playwright now auto-sizes the pool to half the logical cores (min 1). Runs at the
+  auto value match the baseline sets (full s3 185 pass / 3 skip / 0 fail; core 122 exec / 119
+  pass / 3 skip).
+- Hermetic overlap (W5 + Option A Phases 1–2): mypage-admin moved to dedicated post-reset
+  projects (B2); share-public's describe is serial (B3). The hermetic suites
+  (setup-wizard/admin-config/migration) are now INDEPENDENT siblings — each owns a distinct
+  scratch port (:5003 wizard / :5010 admin-config / :5011 migration) mirrored by its
+  playwright.config baseURL, distinct scratch PG DB names (wizard `webdav_e2e_setup`, migration
+  `webdav_e2e_migration_<case>`), and migration targets a dedicated MinIO bucket
+  (`e2e-migration-bucket`). The webdav container restart is done once up-front in
+  `e2e/global-setup.ts` (both modes), removing the mid-run lazy restarts. A suite's mobile
+  variant still depends on its desktop, so one suite never overlaps itself on its own port.
 - W6 reassessment (2026-09-07): the migration/setup/admin-config "depth" is NOT trimmed — those
   deep DB/.env/blob asserts are the suite's only real-webdav / real-config-write coverage (server
   tier tests those paths with mocked/fake stores only), and hermetic test time is only ≈ 4 min.
-  Prerequisite for any future depth move: a real-webdav server leg (see W3 option B). Remaining
-  optional: true hermetic overlap (per-project scratch ports + dedicated migration bucket).
-- Target: core-flow specs create/assert only inside per-case owned folders (policy landed in
-  `docs/TESTING_STRATEGY.md` § Assertion-context containment); then enable intra-project
-  parallelism. Companion fixes: auth↔mypage-admin shared-state locators, share-public fixture
-  duplication, hermetic scratch-port/bucket isolation, webdav-container restart after the
-  `data/webdav` wipe.
+  Prerequisite for any future depth move: a real-webdav server leg (see W3 option B).

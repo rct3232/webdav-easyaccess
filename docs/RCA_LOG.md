@@ -61,3 +61,27 @@
   assert `config-input` absent + `platform-config-row-${key}` present, envRows counts displayed
   env-sourced Section B rows, Section A rows assert masked/disabled/toggle or enabled state as
   before; full e2e re-run on a fresh client build.
+
+### 2026-09-08 — Standard-user home duplicates the username in breadcrumb/folder-tree (Case C)
+
+- **Summary**: for a standard (non-admin) user whose home is the top-level directory named after
+  their username, the explorer rendered the home twice: the breadcrumb showed `Home > {username >
+  …` (home chip + the username node as the first ancestor chip), and the sidebar folder-tree home
+  row was labeled with the raw username and displayed a generic open-folder icon (not a home icon)
+  whenever it was expanded. Expected display is `Home > {folder…}`.
+- **Diagnosis**: docs cross-check (docs/spec/client/components/file-manager/Breadcrumb.md,
+  folder-tree/FolderTree.md, folder-tree/BaseFolderTreeItem.md, server/routes/auth.md, api.md).
+  Documented concepts — user home = `/{username}` root node (`auth.md:49`), admin home =
+  filesystem root `/`, breadcrumb = server ancestor chain chips (`Breadcrumb.md:7`),
+  `icon`/`openIcon` are injectable props. Undocumented — the home-chip/home-row **label string**,
+  whether the username ancestor is trimmed in favor of the home chip, and the home-row icon in the
+  expanded state. Both the duplicate and the "home chip + trimmed chain" renderings are therefore
+  consistent with the docs; the specific contract is undefined.
+- **Classification**: **Case C (Spec Error — undefined/ambiguous)**. No explicit spec statement
+  was violated.
+- **Action taken**: spec defined first (docs-first) — `Breadcrumb.md` §1.1/§2.6-2.9 (home chip =
+  `nav.home` for all roles; non-admin own-home node trimmed from the ancestor chips by nodeId with
+  an `!is_admin` guard; admin untouched), `FolderTree.md` §2.7 (home row = `nav.home`, home icon in
+  expanded state via `openIcon`). Then implemented client fix (Breadcrumb.js, FolderTree.js), unit
+  tests (+ admin scenarios), and the E2E regression net `E2E-EXP-014` plus the `E2E-SHARE-007`
+  locator update.

@@ -188,6 +188,12 @@ Key gap: **no subsystem scans or repairs `pending_upload`**; s3-source migration
   admin-infrastructure.md, core-service-layer.md); 2 Case B RCA entries (guarded-shape fixtures,
   version_number collisions). DEF-12/DEF-13 rows updated. Keep-set integration decision recorded:
   orphaned arm must include stuck-node keys or Tier 2 defeats the guard.
+- 2026-09-09: **Item 4 done (S2 ∥ P1 in worktrees)** — S2 closed DEF-12/13 completely (scan/
+  repair gated S3-mode-only after review found WebDAV healthy files are pending_upload for life;
+  D5a/D5d landed); P1 landed the trash schema. Both merged to dev; final gate server 1849 /
+  client 1421 / PG leg 207 / core e2e (s3) 121 pass. Merge-loss incident (new files dropped by
+  `git add -u`) restored + RCA recorded. Remaining in the workstream: S7 (DEF-11), P2–P9 (DEF-16),
+  DEF-19 (lint), DEF-17/18 (separate).
 
 ## Next (updated 2026-09-09)
 - [x] Item 1: `docs/IMPROVEMENT_PLAN.md` registration (DEF-16/17/18 + retention-GC note).
@@ -225,4 +231,8 @@ Key gap: **no subsystem scans or repairs `pending_upload`**; s3-source migration
   on sqlite requires a table rebuild (transpiler emits it); `schemaManager` sqlite path applies
   each file in one transaction (PG parity). Docs-first spec updates: fileNodesStore.md §2.1-2.2,
   storage.md §2.5, schemaManager.md, sqliteSchemaInit.md, metadataMigrationService.md,
-  ARCHITECTURE.md, IMPROVEMENT_PLAN.md. Verified server test:ci 99 suites / 1821 pass; PG leg 206.
+  ARCHITECTURE.md, IMPROVEMENT_PLAN.md. Post-merge gate on dev: server 99 suites / 1849 pass,
+  PG leg 207, core e2e (s3) 121 pass / 3 skip. **Incident**: the slice's two NEW files were
+  dropped by a tracked-only `git add -u` stage (worktree removal then deleted them) — restored
+  with a rebuilt schema test suite + RCA entry (`5a60718`); new files must always be staged
+  explicitly.

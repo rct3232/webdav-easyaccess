@@ -184,6 +184,44 @@ describe('FileNodeRepository conformance', () => {
     expect(row.storage_backend).toBe('webdav');
   });
 
+  it('reactivateObjectMapRow flips an orphaned row back to active', async () => {
+    const node = await repo.createNode(null, uniqueName('fn-react'), 'file');
+    const key = uniqueName('fn-react-key');
+
+    await repo.upsertObjectMap(node.id, key, 'pending');
+    await repo.activateObject(key);
+    await repo.orphanObject(key);
+
+    const { dbQuery } = require('@server/test-utils');
+    const orphaned = await dbQuery('SELECT id FROM object_map WHERE s3_key = ?', [key]);
+    expect(orphaned.rows.length).toBe(1);
+
+    const res = await repo.reactivateObjectMapRow(Number(orphaned.rows[0].id));
+    expect(res.changes).toBe(1);
+
+    const active = await repo.getActiveObject(node.id);
+    expect(active.s3_key).toBe(key);
+    expect(active.status).toBe('active');
+  });
+
+  it('reactivateObjectMapRow leaves non-orphaned rows untouched', async () => {
+    const node = await repo.createNode(null, uniqueName('fn-react-nonorphan'), 'file');
+    const key = uniqueName('fn-react-nonorphan-key');
+
+    await repo.insertObject(node.id, key, 'pending');
+    const pendingRow = await repo.getObjectMapByS3Key(key);
+    expect((await repo.reactivateObjectMapRow(pendingRow.id)).changes).toBe(0);
+    expect((await repo.getObjectMapByS3Key(key)).status).toBe('pending');
+
+    await repo.activateObject(key);
+    const activeRow = await repo.getActiveObject(node.id);
+    expect((await repo.reactivateObjectMapRow(activeRow.id)).changes).toBe(0);
+  });
+
+  it('reactivateObjectMapRow with an unknown id changes nothing', async () => {
+    expect((await repo.reactivateObjectMapRow(99999999)).changes).toBe(0);
+  });
+
   it('filecache: upsert insert/update, get, delete', async () => {
     const node = await repo.createNode(null, uniqueName('fn-cache'), 'file');
 

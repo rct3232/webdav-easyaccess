@@ -349,6 +349,18 @@ module.exports = function createPostgresFileNodeRepository(executor) {
       }
     },
 
+    async reactivateObjectMapRow(id) {
+      try {
+        const res = await executor.run(
+          `UPDATE object_map SET status = 'active' WHERE id = $1 AND status = 'orphaned'`,
+          [Number(id)]
+        );
+        return { changes: res.changes };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
     async countActiveObjectsByS3Key(s3Key) {
       try {
         const { rows } = await executor.query(

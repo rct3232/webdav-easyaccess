@@ -33,6 +33,7 @@ describe('createUploadService', () => {
       fileNodeService,
       blobStorageService,
       blobStore,
+      fileNodesStore,
     });
   });
 
@@ -271,6 +272,123 @@ describe('createUploadService', () => {
         origResult.nodeId,
       ]);
       expect(node.rows[0].sync_status).toBe('active');
+
+      // TX1 failure happens before steps 2–3: no rollback side-effects.
+      expect(blobStore.deleteBlob).not.toHaveBeenCalled();
+
+      await dbRun('DELETE FROM file_nodes WHERE id = ?', [origResult.nodeId]);
+    });
+  });
+
+  /* ------------------------------------------------------------------ */
+  /*  V9: overwriteFile S3 PUT failure — pre-state rollback (DEF-12)     */
+  /* ------------------------------------------------------------------ */
+
+  describe('overwriteFile S3 PUT failure', () => {
+    it('rolls back to pre-state: node active, old row reactivated, pending row and blob deleted', async () => {
+      const originalContent = Buffer.from('original-content-for-s3-fail');
+      const origResult = await uploadSvc.uploadFile(
+        null,
+        'overwrite-s3fail.txt',
+        originalContent,
+        'text/plain'
+      );
+
+      const oldS3Key = origResult.s3Key;
+
+      blobStore.uploadBlob.mockRejectedValueOnce(new Error('S3 overwrite PUT failure'));
+
+      const newContent = Buffer.from('should-not-appear');
+      await expect(
+        uploadSvc.overwriteFile(origResult.nodeId, newContent, 'application/octet-stream')
+      ).rejects.toThrow('S3 overwrite PUT failure');
+
+      // Node restored to active
+      const node = await dbQuery('SELECT sync_status FROM file_nodes WHERE id = ?', [
+        origResult.nodeId,
+      ]);
+      expect(node.rows[0].sync_status).toBe('active');
+
+      // Old s3_key row reactivated (last-good version preserved)
+      const oldRow = await dbQuery('SELECT status FROM object_map WHERE s3_key = ?', [oldS3Key]);
+      expect(oldRow.rows.length).toBe(1);
+      expect(oldRow.rows[0].status).toBe('active');
+
+      // No row exists for the new (failed) s3Key
+      const newS3Key = blobStore.uploadBlob.mock.calls[blobStore.uploadBlob.mock.calls.length - 1][0];
+      const newRow = await dbQuery('SELECT * FROM object_map WHERE s3_key = ?', [newS3Key]);
+      expect(newRow.rows.length).toBe(0);
+
+      // Pending blob deleted best-effort; last-good blob kept
+      expect(blobStore.deleteBlob).toHaveBeenCalledWith(newS3Key);
+      expect(blobStore.store.get(oldS3Key)).toBeDefined();
+
+      // filecache values unchanged (old)
+      const cache = await dbQuery('SELECT * FROM filecache WHERE file_node_id = ?', [
+        origResult.nodeId,
+      ]);
+      expect(cache.rows.length).toBe(1);
+      expect(cache.rows[0].size).toBe(originalContent.length);
+      expect(cache.rows[0].mime_type).toBe('text/plain');
+
+      await dbRun('DELETE FROM file_nodes WHERE id = ?', [origResult.nodeId]);
+    });
+  });
+
+  /* ------------------------------------------------------------------ */
+  /*  V10: overwriteFile TX2 failure — pre-state rollback (DEF-12)       */
+  /* ------------------------------------------------------------------ */
+
+  describe('overwriteFile TX2 failure', () => {
+    it('rolls back to pre-state including filecache re-assert and re-throws', async () => {
+      const originalContent = Buffer.from('original-content-for-tx2-fail');
+      const origResult = await uploadSvc.uploadFile(
+        null,
+        'overwrite-tx2fail.txt',
+        originalContent,
+        'text/plain'
+      );
+
+      const oldS3Key = origResult.s3Key;
+
+      jest
+        .spyOn(blobStorageService, 'completeUpload')
+        .mockRejectedValueOnce(new Error('TX2 overwrite failure'));
+
+      const newContent = Buffer.from('tx2-fail-new-content');
+      // The TX helper surfaces TX2 errors mapped through mapDatabaseError
+      // (same idiom as V4) — assert propagation, not the raw substring.
+      await expect(
+        uploadSvc.overwriteFile(origResult.nodeId, newContent, 'application/pdf')
+      ).rejects.toThrow();
+
+      // Node restored to active
+      const node = await dbQuery('SELECT sync_status FROM file_nodes WHERE id = ?', [
+        origResult.nodeId,
+      ]);
+      expect(node.rows[0].sync_status).toBe('active');
+
+      // Old s3_key row reactivated (last-good version preserved)
+      const oldRow = await dbQuery('SELECT status FROM object_map WHERE s3_key = ?', [oldS3Key]);
+      expect(oldRow.rows.length).toBe(1);
+      expect(oldRow.rows[0].status).toBe('active');
+
+      // Pending v_{k+1} row deleted
+      const newS3Key = blobStore.uploadBlob.mock.calls[blobStore.uploadBlob.mock.calls.length - 1][0];
+      const newRow = await dbQuery('SELECT * FROM object_map WHERE s3_key = ?', [newS3Key]);
+      expect(newRow.rows.length).toBe(0);
+
+      // New blob deleted best-effort; last-good blob kept
+      expect(blobStore.deleteBlob).toHaveBeenCalledWith(newS3Key);
+      expect(blobStore.store.get(oldS3Key)).toBeDefined();
+
+      // filecache values unchanged (old)
+      const cache = await dbQuery('SELECT * FROM filecache WHERE file_node_id = ?', [
+        origResult.nodeId,
+      ]);
+      expect(cache.rows.length).toBe(1);
+      expect(cache.rows[0].size).toBe(originalContent.length);
+      expect(cache.rows[0].mime_type).toBe('text/plain');
 
       await dbRun('DELETE FROM file_nodes WHERE id = ?', [origResult.nodeId]);
     });

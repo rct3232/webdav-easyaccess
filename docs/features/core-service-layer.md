@@ -85,11 +85,15 @@ sequenceDiagram
 
     C->>US: overwrite({ nodeId, file })
 
+    Note over US,FStore: Pre-state capture
+    US->>FStore: getActiveObject(nodeId)
+    FStore-->>US: preState (active row id, s3Key) + current filecache values
+
     Note over US,S3: TX1
     US->>BS: prepareUpload(nodeId)
     BS->>FStore: orphan old active row
     BS->>FStore: insert new pending row
-    FStore-->>US: s3Key
+    FStore-->>US: newS3Key
     US->>FStore: updateSyncStatus('pending_upload')
 
     Note over US,S3: S3 PUT (outside transaction)
@@ -104,6 +108,11 @@ sequenceDiagram
 
     US-->>C: { nodeId, s3Key, size, mimeType }
 ```
+
+If the S3 PUT or TX2 fails, a best-effort rollback (one TX) reactivates the pre-state active row
+(`reactivateObjectMapRow(preState.id)`), restores `sync_status='active'`, deletes the pending
+v_{k+1} row, deletes the new blob (`deleteBlob(newS3Key)`) and re-asserts the captured filecache
+values. The last-good blob B_k is never deleted; the original error is re-thrown.
 
 ### Download flow
 
@@ -159,12 +168,14 @@ sequenceDiagram
 | TX1 fails     | ROLLBACK, nothing persisted                                                                       | Nothing           | Idempotent retry                                                                                       |
 | S3 PUT fails  | New-file upload: node rolled back (deleteNode), nothing persisted                                 | Nothing or partial object | None needed — no visible residue; untracked partial object is a Tier 2 GC target                |
 | TX2 fails     | New-file upload: node rolled back (deleteNode), nothing persisted                                 | Blob exists in S3 | Blob is untracked; GC Tier 2: `listOrphanedKeys` finds S3 blob with no DB mapping → deletes it          |
-| S3 PUT / TX2 fails (overwrite of an existing file) | Node remains `sync_status='pending_upload'` with a pending `object_map` row       | Nothing or new blob | No automatic recovery implemented (manual/GC gap — see `docs/IMPROVEMENT_PLAN.md`)                  |
+| S3 PUT / TX2 fails (overwrite of an existing file) | Rolled back to pre-state: node `active`, previous active row reactivated, pending v_{k+1} row deleted | Pending blob deleted best-effort; last-good blob B_k kept | File remains downloadable as the previous version; only a rollback's own failure leaves `sync_status='pending_upload'` (scan/repair + GC cleanup — DEF-12/13, `docs/IMPROVEMENT_PLAN.md`) |
 
 > Note: `uploadService.uploadFile` (new file) rolls back the created node on any failure after TX1 so
-> a failed upload never leaves a phantom 0-byte file in listings. `overwriteFile` (existing file) is
-> protected at TX1 only — a post-TX1 failure leaves the pending state; automatic recovery for that
-> path is not implemented (tracked in `docs/IMPROVEMENT_PLAN.md`).
+> a failed upload never leaves a phantom 0-byte file in listings. `overwriteFile` (existing file)
+> rolls back to the captured pre-state on S3 PUT or TX2 failure — the previous active `object_map`
+> row is reactivated, the node returns to `active`, and the last-good blob is kept, so the file stays
+> downloadable as the previous version. Only if the rollback itself fails does the `pending_upload`
+> stuck state remain (handled by scan/repair + GC cleanup — DEF-12/13, `docs/IMPROVEMENT_PLAN.md`).
 
 ---
 
@@ -192,4 +203,4 @@ Use [TESTING_STRATEGY.md](../TESTING_STRATEGY.md) for contract and mocking guida
 
 - **Phase 2 delivered S3 mode only.** WebDAV blob storage support was deferred from Phase 2 to Phase 4 (not Phase 3), where `blobStorageService` was extended with a `WebdavBlobStore` adapter (Phase 4 Task 4.0). Blob mode is selected via `WEA_FILE_STORAGE=s3|webdav`.
 - **Phase 4 added a composition root** (`server/service/composition.js`): it builds `fileNodeService`, `blobStorageService`, `uploadService`, `aclService`, and `fileService` once at startup. The blob store (S3BlobStore vs WebdavBlobStore) and file storage mode (`fileStorageMode` from `WEA_FILE_STORAGE`, default `'s3'`) are resolved there and injected into the services, so no service reads backend-specific config directly.
-- **Version history** infrastructure is in place (`version_number` column in `object_map`) but single-version mode is enforced (always `version_number=1`). Multi-version support is a future expansion.
+- **Version history** infrastructure is in place (`version_number` column in `object_map`); `version_number` increments per node on every `upsertObjectMap` (prior versions become orphaned rows), while only the `active` row is used for reads. Multi-version browse/restore is a future expansion.

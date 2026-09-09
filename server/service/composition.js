@@ -40,6 +40,7 @@ function createComposition(overrides = {}) {
       fileNodeService,
       blobStorageService,
       blobStore,
+      fileNodesStore,
     });
 
   const effectiveAclService = overrides.aclService || aclService;

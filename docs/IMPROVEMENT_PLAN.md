@@ -18,7 +18,7 @@ Ordered by urgency review (2026-09-08): highest priority first.
 
 | ID | Status | Item | Originating doc (now references here) |
 | -- | ------ | ---- | ------------------------------------- |
-| DEF-12 | DEFERRED | S3/WebDAV **overwrite** upload failure leaves `pending_upload` (S3) / `orphaned_node` (WebDAV) row with no automatic recovery; retry endpoint + GC cleanup of `pending` object_map rows and untracked S3 blobs is unimplemented. | `docs/spec/server/services/uploadService.md` §2.5, `docs/spec/server/services/fileService.md` §4, `docs/features/core-service-layer.md` |
+| DEF-12 | DEFERRED (R1 landed 2026-09-09) | S3 **overwrite** failure now rolls back to the pre-state — node back to `active`, previous active object_map row reactivated, pending v_{k+1} row + blob deleted, file re-downloadable as the previous version (`uploadService.md` §2.3/§2.5). Remaining: R2 `pending_upload` scan/repair + startup report (DEF-13), R3 GC cleanup of `pending` object_map rows and untracked S3 blobs, WebDAV `overwrite` `orphaned_node` recovery incl. D5a (`retry-delete` deletes the remote blob) + D5d (`force-active` remote-existence check). | `docs/spec/server/services/uploadService.md` §2.5, `docs/spec/server/services/fileService.md` §4, `docs/features/core-service-layer.md` |
 | DEF-13 | DEFERRED | Process death between an upload's TX1 commit and the blob write leaves orphaned `pending_upload` rows that no automatic path cleans. | `docs/spec/server/services/uploadService.md` §2.5 |
 | DEF-6 | DEFERRED | HTTP Range/206 support on public share download. | `docs/spec/server/routes/sharePublic.md` |
 | DEF-7 | DEFERRED | Blob migration source-delete mode (`--delete-mode`). | `docs/spec/server/tools/blob-migration.md`, `docs/SETUP.md` |
@@ -29,6 +29,7 @@ Ordered by urgency review (2026-09-08): highest priority first.
 | DEF-10 | DEFERRED | CRA v5 → Vite migration (separate project/epic). | former improvement-plan backlog (pre-2026-09-02, item #13) |
 | DEF-14 | DEFERRED (trigger-gated) | New-RDB adoption gate: generalize the metadata store beyond the current sqlite + PostgreSQL pair to MySQL, MariaDB, MSSQL and Oracle via boot-time engine auto-detection from a generic connection block. **Decision (2026-09-04): do NOT adopt an ORM today** — keep the executor seam + per-dialect repositories + per-engine conformance for sqlite/PG. **Introduce a single-source query layer (ORM/query builder) at the moment a second new engine is actually added** (evaluate Drizzle/Kysely first). Full rationale in the DEF-14 note. | `docs/spec/server/store/storage.md`, `docs/features/config-source-resolution.md`, `docs/spec/server/infrastructure/configRegistry.md`, `docs/spec/server/store/executor.md`, `docs/spec/server/store/repository-contract.md` |
 | DEF-17 | DEFERRED | WebDAV rename/move leaves the **old-path** remote file undeleted — a physical orphan both on success and on re-upload failure; a failed remote delete leaves an orphan with no DB row. Separate fix from DEF-12/13: capture the old path and delete it (no reconciliation sweep). | `docs/spec/server/services/fileService.md` |
+| DEF-19 | DEFERRED | `npm run lint:ci` fails on `dev` (pre-existing since `00c762c`): `e2e/reporters/test-end-logger.js` reports 4 × `no-undef` (`require`/`process`/`console`/`module`) — the file is a Node reporter but the ESLint environment for it doesn't declare Node globals. Unrelated to the S1 branch; found while running the S1 merge gate on 2026-09-09. | `e2e/reporters/test-end-logger.js` |
 | DEF-18 | DEFERRED (retention-gated) | WebDAV remote↔DB reconciliation sweep ("Tier 2" for WebDAV; today `WebdavBlobStore.listOrphanedKeys()` returns `[]`). Must be **retention-category aware** (active/trash/version/garbage), NOT a naive "delete anything not in DB" walk — co-design with DEF-16/DEF-11. | `docs/spec/server/services/gcService.md` |
 
 ---
@@ -150,8 +151,10 @@ tracker instead of carrying planned statements:
 - A failed **new-file** upload (S3 `uploadService.uploadFile`, WebDAV new-file upload, WebDAV
   `copyFile`) rolls the created node back — no phantom 0-byte/pending row is left in listings and
   retries are not blocked by a duplicate-name conflict.
-- A failed **overwrite** still leaves the documented pending state (S3 `pending_upload` /
-  WebDAV `orphaned_node`) with **no automatic recovery** — see DEF-12/DEF-13.
+- A failed **overwrite** no longer leaves a stuck state on S3: since S1 (2026-09-09,
+  `fix/upload-overwrite-recovery`) the S3 overwrite rolls back to the pre-state on S3 PUT/TX2
+  failure (previous version stays downloadable). The WebDAV overwrite `orphaned_node` path still
+  has no automatic recovery — see DEF-12/DEF-13.
 
 ### DEF-15 note (2026-09-07) — E2E assertion-context containment refactor (IMPLEMENTED)
 

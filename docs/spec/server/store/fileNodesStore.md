@@ -74,12 +74,13 @@ This spec does not duplicate full DDL text.
 
 | Method                                       | SQL Pattern                                                                                                                                                           | Returns       |
 | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| `upsertObjectMap(fileNodeId, s3Key, status)` | If active row exists for fileNodeId: UPDATE SET status='orphaned'. Then INSERT INTO object_map (file_node_id, s3_key, storage_backend='s3', version_number=1, status) | `{ changes }` |
+| `upsertObjectMap(fileNodeId, s3Key, status)` | If active row exists for fileNodeId: UPDATE SET status='orphaned'. Then INSERT INTO object_map (file_node_id, s3_key, storage_backend='s3', version_number=COALESCE(MAX(version_number),0)+1, status) — version_number increments per node on every upsert (prior versions become orphaned rows) | `{ changes }` |
 | `insertObject(fileNodeId, s3Key, status)`    | INSERT INTO object_map                                                                                                                                                | `{ changes }` |
 | `getActiveObject(fileNodeId)`                | SELECT \* WHERE file_node_id=? AND status='active' LIMIT 1                                                                                                            | row \| null   |
 | `getObjectMapByS3Key(s3Key)`                 | SELECT \* WHERE s3_key=? AND status IN ('pending', 'active')                                                                                                          | row \| null   |
 | `activateObject(s3Key)`                      | UPDATE SET status='active' WHERE s3_key=? AND status='pending'                                                                                                        | `{ changes }` |
 | `orphanObject(s3Key)`                        | UPDATE SET status='orphaned' WHERE s3_key=? AND status IN ('active', 'pending')                                                                                       | `{ changes }` |
+| `reactivateObjectMapRow(id)`                 | UPDATE object_map SET status='active' WHERE id=? AND status='orphaned'                                                                                                | `{ changes }` |
 | `countActiveObjectsByS3Key(s3Key)`           | SELECT COUNT(\*) WHERE s3_key=? AND status='active'                                                                                                                    | `number`      |
 | `setObjectMapBackendWebdav(fileNodeId)`      | UPDATE object_map SET storage_backend='webdav' WHERE file_node_id=? AND status='active'                                                                               | `{ changes }` |
 
@@ -128,4 +129,5 @@ and placeholder markers shown across the method tables in §2.4 are the same dia
 - [ ] Self-referencing `file_nodes.parent_id` FK works on both PostgreSQL and SQLite with deferred foreign keys
 - [ ] object_map pending→active→orphaned lifecycle transitions work correctly
 - [ ] upsertObjectMap orphans previous active row before inserting new pending
-- [ ] version_number is always 1 in single-version mode
+- [ ] version_number increments per node on every upsertObjectMap (1, 2, 3, ... on repeated overwrites; prior versions become orphaned rows)
+- [ ] reactivateObjectMapRow flips a single orphaned row back to active (guarded by `status='orphaned'`); a row that is not orphaned is left untouched and `{ changes }` is 0

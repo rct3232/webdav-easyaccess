@@ -85,3 +85,23 @@
   expanded state via `openIcon`). Then implemented client fix (Breadcrumb.js, FolderTree.js), unit
   tests (+ admin scenarios), and the E2E regression net `E2E-EXP-014` plus the `E2E-SHARE-007`
   locator update.
+
+### 2026-09-09 — S1 TX2-failure test asserted the raw error message across the TX boundary (Case B)
+
+- **Summary**: during S1 implementation (`fix/upload-overwrite-recovery`), the new
+  `overwriteFile TX2 failure` unit test failed: it asserted
+  `rejects.toThrow('TX2 overwrite failure')` on the error thrown inside the TX2 `withTx`, but the
+  observed error differed.
+- **Diagnosis**: `withSqliteTransaction`/`withTransaction` (server/store/storage.js:262-268,
+  304-310) route every error thrown inside a transaction through `mapDatabaseError` before
+  surfacing it, so the raw message is not observable at the service boundary. This is pre-existing,
+  shared TX-boundary behavior, not introduced by S1; the sibling V4 test already asserts
+  substring-less `rejects.toThrow()` for the same reason (uploadService.test.js:149-152). The S3
+  PUT failure test keeps its message assertion because `uploadBlob` runs outside the TX and the raw
+  error propagates directly.
+- **Classification**: **Case B (Test Error)** — the test asserted on a value the documented
+  boundary does not preserve; the implementation matches spec (uploadService.md §2.7: "error
+  propagated").
+- **Action taken**: TX2 test changed to substring-less `rejects.toThrow()` (matches V4 idiom);
+  rollback-outcome assertions (node active, previous row active, pending row deleted, blob deleted)
+  unchanged. Targeted suites 3/3, server `test:ci` 98 suites / 1783 pass, PG adapter leg 203 pass.

@@ -175,8 +175,18 @@ Key gap: **no subsystem scans or repairs `pending_upload`**; s3-source migration
   policy decisions + DEF-12/13 D1–D4 confirmed.
 - 2026-09-09: `docs/IMPROVEMENT_PLAN.md` updated (DEF-16/17/18 registered + retention-GC note).
 - 2026-09-09: PLAN.md rewritten to this workstream (prior E2E + doc-drift content removed; both closed).
+- 2026-09-09: **S1 done** — R1 overwrite rollback + F6 `reactivateObjectMapRow`; docs-first spec
+  updates (uploadService.md §2.2–2.7, fileNodesStore.md §2.4/§2.7 incl. version_number drift,
+  core-service-layer.md, fileService.md); RCA_LOG Case B entry (TX-boundary error-message
+  assertion). DEF-12 row + W-1 note updated; unrelated pre-existing `lint:ci` failure on dev
+  registered as DEF-19.
 
-## Next (approved 2026-09-09)
+## Next (updated 2026-09-09)
 - [x] Item 1: `docs/IMPROVEMENT_PLAN.md` registration (DEF-16/17/18 + retention-GC note).
-- [ ] Item 2: begin **S1 (R1 rollback)** or **P1 (trash schema)** — docs-first, either order
-  (independent). Awaiting go.
+- [x] Item 2: **S1 (R1 rollback)** — done 2026-09-09 via `fix/upload-overwrite-recovery` (merged
+  to dev): F6 `reactivateObjectMapRow` (sqlite+pg+conformance) + `overwriteFile` pre-state capture
+  and best-effort rollback; specs updated docs-first; RCA Case B logged; verified server 1783 /
+  client 1421 / PG leg 203 / core e2e (s3) 121 pass. Pre-existing dev `lint:ci` failure registered
+  as DEF-19 (unrelated).
+- [ ] Item 3: **S3 (R3 GC foundation)** on the critical path (S2 after/with it); **P1 (trash
+  schema)** may start in parallel — docs-first. Awaiting go.

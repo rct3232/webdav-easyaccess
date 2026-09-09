@@ -49,6 +49,7 @@ function createFileNodesStore() {
     getObjectMapByS3Key: (...args) => repo.getObjectMapByS3Key(...args),
     activateObject: (...args) => repo.activateObject(...args),
     orphanObject: (...args) => repo.orphanObject(...args),
+    reactivateObjectMapRow: (...args) => repo.reactivateObjectMapRow(...args),
     countActiveObjectsByS3Key: (...args) => repo.countActiveObjectsByS3Key(...args),
     setObjectMapBackendWebdav: (...args) => repo.setObjectMapBackendWebdav(...args),
     upsertCache: (...args) => repo.upsertCache(...args),

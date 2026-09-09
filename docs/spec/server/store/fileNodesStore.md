@@ -89,7 +89,10 @@ This spec does not duplicate full DDL text.
 | Method                              | SQL Pattern                                                                                       | Returns       |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------- | ------------- |
 | `getOrphanedObjects(olderThanDays)` | SELECT \* WHERE status='orphaned' AND created_at < NOW() - interval / `datetime('now','-N days')` | rows[]        |
-| `getAllActiveS3Keys()`              | SELECT s3_key WHERE status='active' AND s3_key IS NOT NULL                                        | string[]      |
+| `getOrphanedObjectsWithNodeState(olderThanDays)` | Orphaned rows older than cutoff, LEFT JOIN file_nodes (node sync status) + EXISTS active-row subquery | rows[] annotated with `node_sync_status` and `has_active` |
+| `getStalePendingObjects(staleThanDays)` | SELECT \* WHERE status='pending' AND created_at < cutoff AND node sync_status='pending_upload' | rows[]        |
+| `getKeptS3Keys()`                   | UNION of active ∪ orphaned (version) ∪ pending-on-pending_upload-node `s3_key` values; no trash arm, no age filters | string[]      |
+| `getAllActiveS3Keys()`              | SELECT s3_key WHERE status='active' AND s3_key IS NOT NULL (retained for facade parity; no GC caller) | string[]      |
 | `deleteObjectMapRows(ids)`          | DELETE WHERE id IN (...); SQLite branch per-row via `executor.run` in `FileNodeRepository.sqlite.js` | `{ changes }` |
 | `getNodesBySyncStatus(status)`      | SELECT \* FROM file_nodes WHERE sync_status=?                                                     | mapped rows[] |
 | `getNodesBySyncStatusNot(status)`   | SELECT \* FROM file_nodes WHERE sync_status != ?                                                  | mapped rows[] |
@@ -131,3 +134,6 @@ and placeholder markers shown across the method tables in §2.4 are the same dia
 - [ ] upsertObjectMap orphans previous active row before inserting new pending
 - [ ] version_number increments per node on every upsertObjectMap (1, 2, 3, ... on repeated overwrites; prior versions become orphaned rows)
 - [ ] reactivateObjectMapRow flips a single orphaned row back to active (guarded by `status='orphaned'`); a row that is not orphaned is left untouched and `{ changes }` is 0
+- [ ] getKeptS3Keys UNION membership: active keys, orphaned keys, and pending keys on `pending_upload` nodes are all returned; pending keys on other node states are excluded
+- [ ] getOrphanedObjectsWithNodeState annotation: each row carries the correct `node_sync_status` and `has_active` (true when an active row exists for the same node); a node-less orphan (LEFT JOIN miss) is annotated accordingly
+- [ ] getStalePendingObjects filter: returns only `pending` rows on `pending_upload` nodes older than the cutoff; younger rows and pending rows on other node states are excluded

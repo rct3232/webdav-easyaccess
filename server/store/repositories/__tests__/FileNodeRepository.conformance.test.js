@@ -161,6 +161,99 @@ describe('FileNodeRepository conformance', () => {
     expect(del.changes).toBe(1);
   });
 
+  it('getKeptS3Keys unions active, orphaned and pending-on-pending_upload keys', async () => {
+    const { dbRun } = require('@server/test-utils');
+    const stuckNode = await repo.createNode(null, uniqueName('fn-kept-stuck'), 'file');
+    const orphanedKey = uniqueName('fn-kept-orphan');
+    const pendingKey = uniqueName('fn-kept-pending');
+    await repo.insertObject(stuckNode.id, orphanedKey, 'orphaned');
+    await dbRun(
+      `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
+       VALUES (?, ?, 's3', 2, 'pending')`,
+      [stuckNode.id, pendingKey]
+    );
+
+    const activeNode = await repo.createNode(null, uniqueName('fn-kept-active'), 'file');
+    const activeKey = uniqueName('fn-kept-active-key');
+    await repo.insertObject(activeNode.id, activeKey, 'active');
+
+    const liveNode = await repo.createNode(null, uniqueName('fn-kept-live'), 'file');
+    await repo.updateSyncStatus(liveNode.id, 'active');
+    const pendingOnLiveKey = uniqueName('fn-kept-pending-live');
+    await repo.insertObject(liveNode.id, pendingOnLiveKey, 'pending');
+
+    const kept = await repo.getKeptS3Keys();
+    expect(kept).toContain(activeKey);
+    expect(kept).toContain(orphanedKey);
+    expect(kept).toContain(pendingKey);
+    expect(kept).not.toContain(pendingOnLiveKey);
+  });
+
+  it('getOrphanedObjectsWithNodeState annotates node sync status and has_active', async () => {
+    const { dbRun } = require('@server/test-utils');
+    const stuckNode = await repo.createNode(null, uniqueName('fn-state-stuck'), 'file');
+    const stuckKey = uniqueName('fn-state-stuck-key');
+    await repo.insertObject(stuckNode.id, stuckKey, 'orphaned');
+
+    const liveNode = await repo.createNode(null, uniqueName('fn-state-live'), 'file');
+    const liveActiveKey = uniqueName('fn-state-live-active');
+    const liveOrphanKey = uniqueName('fn-state-live-orphan');
+    await repo.insertObject(liveNode.id, liveActiveKey, 'active');
+    await dbRun(
+      `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
+       VALUES (?, ?, 's3', 2, 'orphaned')`,
+      [liveNode.id, liveOrphanKey]
+    );
+
+    const freshNode = await repo.createNode(null, uniqueName('fn-state-fresh'), 'file');
+    const freshKey = uniqueName('fn-state-fresh-key');
+    await repo.insertObject(freshNode.id, freshKey, 'orphaned');
+
+    const aged = new Date(Date.now() - 5 * 86400_000).toISOString();
+    await dbRun('UPDATE object_map SET created_at = ? WHERE s3_key = ?', [aged, stuckKey]);
+    await dbRun('UPDATE object_map SET created_at = ? WHERE s3_key = ?', [aged, liveOrphanKey]);
+
+    const orphaned = await repo.getOrphanedObjectsWithNodeState(1);
+    const stuckRow = orphaned.find((r) => r.s3_key === stuckKey);
+    expect(stuckRow).toBeDefined();
+    expect(stuckRow.node_sync_status).toBe('pending_upload');
+    expect(Number(stuckRow.has_active)).toBe(0);
+
+    const liveRow = orphaned.find((r) => r.s3_key === liveOrphanKey);
+    expect(liveRow).toBeDefined();
+    expect(Number(liveRow.has_active)).toBe(1);
+
+    expect(orphaned.some((r) => r.s3_key === freshKey)).toBe(false);
+  });
+
+  it('getStalePendingObjects returns only pending rows on pending_upload nodes past the cutoff', async () => {
+    const { dbRun } = require('@server/test-utils');
+    const stuckNode = await repo.createNode(null, uniqueName('fn-stale-stuck'), 'file');
+    const staleKey = uniqueName('fn-stale-old');
+    const freshKey = uniqueName('fn-stale-fresh');
+    await repo.insertObject(stuckNode.id, staleKey, 'pending');
+    await dbRun(
+      `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
+       VALUES (?, ?, 's3', 2, 'pending')`,
+      [stuckNode.id, freshKey]
+    );
+
+    const liveNode = await repo.createNode(null, uniqueName('fn-stale-live'), 'file');
+    await repo.updateSyncStatus(liveNode.id, 'active');
+    const pendingOnLiveKey = uniqueName('fn-stale-pending-live');
+    await repo.insertObject(liveNode.id, pendingOnLiveKey, 'pending');
+
+    await dbRun('UPDATE object_map SET created_at = ? WHERE s3_key = ?', [
+      new Date(Date.now() - 5 * 86400_000).toISOString(),
+      staleKey,
+    ]);
+
+    const stale = await repo.getStalePendingObjects(1);
+    expect(stale.some((r) => r.s3_key === staleKey)).toBe(true);
+    expect(stale.some((r) => r.s3_key === freshKey)).toBe(false);
+    expect(stale.some((r) => r.s3_key === pendingOnLiveKey)).toBe(false);
+  });
+
   it('upsertObjectMap bumps version and orphans the previous active row', async () => {
     const node = await repo.createNode(null, uniqueName('fn-um'), 'file');
     const key1 = uniqueName('fn-um-k1');

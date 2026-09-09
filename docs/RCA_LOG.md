@@ -105,3 +105,24 @@
 - **Action taken**: TX2 test changed to substring-less `rejects.toThrow()` (matches V4 idiom);
   rollback-outcome assertions (node active, previous row active, pending row deleted, blob deleted)
   unchanged. Targeted suites 3/3, server `test:ci` 98 suites / 1783 pass, PG adapter leg 203 pass.
+
+### 2026-09-09 — S3 GC tests: guarded-category fixtures + object_map version_number collisions (Case B)
+
+- **Summary**: during S3 implementation (`fix/gc-retention-foundation`), the first targeted run
+  failed 6 tests: 4 pre-existing gcService Tier-1 tests (deletion now legitimately skipped) and 3
+  new conformance/gcService fixtures (INSERT failures).
+- **Diagnosis**: (1) the pre-existing Tier-1 tests built their orphaned rows on freshly
+  `createNode`'d nodes (`sync_status='pending_upload'`, no active object_map row) — exactly the
+  stuck-overwrite shape the new `guarded` category exempts (gcService.md §2), so "orphan deleted"
+  outcomes could no longer hold; the tests' intent is the historical live-node-orphan deletion
+  behavior. (2) `object_map` carries `UNIQUE (file_node_id, version_number)`
+  (ddl/001_initial_normalized_schema.sql:64) and `insertObject`/`insertObjectMapRow` hardcode
+  `version_number=1`, so multi-row-per-node fixtures collided.
+- **Classification**: **Case B (Test Error)** both times — fixtures contradicted the (docs-first
+  updated) spec / DB constraints; no source-spec violation.
+- **Action taken**: (1) the 4 Tier-1 fixtures flipped their node to `sync_status='active'` via
+  `updateSyncStatus` (live-node orphan → `version` category, historical behavior asserted);
+  (2) `insertObjectMapRow` gained an optional `versionNumber = 1` param and multi-row fixtures pass
+  distinct version numbers (conformance tests insert the second row via raw SQL with
+  `version_number=2`). No assertions weakened. Targeted suites 4/4 (150 pass), server `test:ci`
+  98 suites / 1802 pass / 5 skip.

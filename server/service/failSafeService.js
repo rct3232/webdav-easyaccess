@@ -29,7 +29,12 @@ function isNotFoundError(error) {
  *   (headBlob/deleteBlob) for remote existence checks and blob cleanup.
  * @param {'s3'|'webdav'} [opts.fileStorageMode='s3'] - backend mode.
  */
-function createFailSafeService({ fileNodeService, fileNodesStore, blobStore, fileStorageMode = 's3' }) {
+function createFailSafeService({
+  fileNodeService,
+  fileNodesStore,
+  blobStore,
+  fileStorageMode = 's3',
+}) {
   function withTx(callback) {
     const backend = storage.getBackend();
     if (backend === 'sqlite') {
@@ -277,7 +282,8 @@ function createFailSafeService({ fileNodeService, fileNodesStore, blobStore, fil
       } else {
         // D2: an unknown blob state (probe error) must never pick a
         // destructive action, so non-404 probe errors propagate.
-        const head = pendingRow && pendingRow.s3_key ? await headBlobOrNull(pendingRow.s3_key) : null;
+        const head =
+          pendingRow && pendingRow.s3_key ? await headBlobOrNull(pendingRow.s3_key) : null;
         resolvedAction = pendingRow && head ? 'complete' : 'delete';
       }
     }

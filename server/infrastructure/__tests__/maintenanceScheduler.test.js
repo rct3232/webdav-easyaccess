@@ -151,7 +151,12 @@ describe('maintenanceScheduler', () => {
         warnSpy.mockClear();
         logSpy.mockClear();
         failSafeService.runStartupRecovery.mockReturnValue(
-          Promise.resolve({ scanned: 0, resolved: 0, manualReview: [], pendingUpload: { scanned: 0, nodes: [] } })
+          Promise.resolve({
+            scanned: 0,
+            resolved: 0,
+            manualReview: [],
+            pendingUpload: { scanned: 0, nodes: [] },
+          })
         );
         await runStartupFailSafeRecovery({ failSafeService });
         expect(warnSpy).not.toHaveBeenCalled();

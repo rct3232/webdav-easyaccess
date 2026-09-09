@@ -159,7 +159,7 @@ describe('convertPostgresToSqlite', () => {
       '  ON file_nodes (parent_id, name) WHERE deleted_at IS NULL;',
       '',
       'CREATE UNIQUE INDEX IF NOT EXISTS file_nodes_root_unique',
-      '  ON file_nodes (name) WHERE parent_id IS NULL AND deleted_at IS NULL;'
+      '  ON file_nodes (name) WHERE parent_id IS NULL AND deleted_at IS NULL;',
     ].join('\n');
     const result = convertPostgresToSqlite(ddl);
     expect(result).toContain('WHERE deleted_at IS NULL');
@@ -168,10 +168,7 @@ describe('convertPostgresToSqlite', () => {
   });
 
   it('strips the 002 transaction wrapper but keeps the rebuild block intact', () => {
-    const ddlPath = path.join(
-      __dirname,
-      '../../store/postgresql/ddl/002_trash_soft_delete.sql'
-    );
+    const ddlPath = path.join(__dirname, '../../store/postgresql/ddl/002_trash_soft_delete.sql');
     const result = convertPostgresToSqlite(fs.readFileSync(ddlPath, 'utf8'));
     expect(result).not.toMatch(/^\s*BEGIN\s*;/m);
     expect(result).not.toMatch(/^\s*COMMIT\s*;/m);

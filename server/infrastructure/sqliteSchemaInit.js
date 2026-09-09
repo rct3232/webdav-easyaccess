@@ -36,7 +36,7 @@ const FILE_NODES_REBUILD_SQL = [
   '  FROM file_nodes;',
   'DROP TABLE file_nodes;',
   'ALTER TABLE file_nodes__rebuild RENAME TO file_nodes;',
-  'PRAGMA foreign_keys = ON;'
+  'PRAGMA foreign_keys = ON;',
 ].join('\n');
 
 function convertPostgresToSqlite(ddl) {

@@ -315,6 +315,29 @@ describe('FileNodeRepository conformance', () => {
     expect((await repo.reactivateObjectMapRow(99999999)).changes).toBe(0);
   });
 
+  it('getObjectMapByNode returns every row of the node newest-version first regardless of age', async () => {
+    const node = await repo.createNode(null, uniqueName('fn-objnode'), 'file');
+    const keyV1 = uniqueName('fn-objnode-v1');
+    const keyV2 = uniqueName('fn-objnode-v2');
+
+    await repo.insertObject(node.id, keyV1, 'pending');
+    await repo.activateObject(keyV1);
+    await repo.orphanObject(keyV1);
+    await repo.upsertObjectMap(node.id, keyV2, 'pending');
+
+    // A freshly inserted row is not reliably "older than now" (second-granular
+    // timestamps) — getObjectMapByNode must not apply any age filter.
+    const rows = await repo.getObjectMapByNode(node.id);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.s3_key)).toEqual([keyV2, keyV1]);
+    expect(rows.map((r) => r.status)).toEqual(['pending', 'orphaned']);
+
+    const other = await repo.createNode(null, uniqueName('fn-objnode-other'), 'file');
+    await repo.insertObject(other.id, uniqueName('fn-objnode-other-key'), 'pending');
+    const scoped = await repo.getObjectMapByNode(node.id);
+    expect(scoped).toHaveLength(2);
+  });
+
   it('filecache: upsert insert/update, get, delete', async () => {
     const node = await repo.createNode(null, uniqueName('fn-cache'), 'file');
 

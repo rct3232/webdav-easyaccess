@@ -71,7 +71,7 @@ Internal factory function (also exported). Builds the full dependency graph from
     batchOperationService, // bulk move/copy/delete operations (Phase 4)
     downloadService, // streaming download service (Phase 4)
     gcService, // two-tier orphaned-blob garbage collection (Phase 6)
-    failSafeService); // orphaned_node scan + repair (Phase 6)
+    failSafeService); // stuck-node scan + repair: orphaned_node + pending_upload (Phase 6, DEF-12/13)
 }
 ```
 
@@ -109,7 +109,8 @@ fileStorageMode ───┘                       │                        �
                                           │
                                           ├─→ gcService (depends on blobStore, fileNodesStore, fileStorageMode)
                                           │
-                                          └─→ failSafeService (depends on fileNodeService, fileNodesStore)
+                                          └─→ failSafeService (depends on fileNodeService, fileNodesStore,
+                                                                  blobStore, fileStorageMode)
 ```
 
 ---

@@ -126,5 +126,39 @@ describe('maintenanceScheduler', () => {
       expect(report.scanned).toBe(1);
       expect(report.manualReview).toHaveLength(1);
     });
+
+    it('logs the pending_upload count only when it is non-zero (threshold-gated)', async () => {
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+      try {
+        const failSafeService = {
+          runStartupRecovery: jest.fn(() =>
+            Promise.resolve({
+              scanned: 0,
+              resolved: 0,
+              manualReview: [],
+              pendingUpload: { scanned: 2, nodes: [{ nodeId: 7 }, { nodeId: 8 }] },
+            })
+          ),
+        };
+        const report = await runStartupFailSafeRecovery({ failSafeService });
+        expect(report.pendingUpload.scanned).toBe(2);
+        expect(warnSpy).toHaveBeenCalledTimes(2);
+        expect(warnSpy.mock.calls[0][0]).toContain('2 pending_upload node(s)');
+        expect(warnSpy.mock.calls[1][0]).toContain('repair-sync');
+        expect(logSpy).toHaveBeenCalledWith('Fail-safe recovery: no orphaned nodes found');
+
+        warnSpy.mockClear();
+        logSpy.mockClear();
+        failSafeService.runStartupRecovery.mockReturnValue(
+          Promise.resolve({ scanned: 0, resolved: 0, manualReview: [], pendingUpload: { scanned: 0, nodes: [] } })
+        );
+        await runStartupFailSafeRecovery({ failSafeService });
+        expect(warnSpy).not.toHaveBeenCalled();
+      } finally {
+        warnSpy.mockRestore();
+        logSpy.mockRestore();
+      }
+    });
   });
 });

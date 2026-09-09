@@ -46,6 +46,7 @@ function createFileNodesStore() {
     upsertObjectMap: (...args) => repo.upsertObjectMap(...args),
     insertObject: (...args) => repo.insertObject(...args),
     getActiveObject: (...args) => repo.getActiveObject(...args),
+    getObjectMapByNode: (...args) => repo.getObjectMapByNode(...args),
     getObjectMapByS3Key: (...args) => repo.getObjectMapByS3Key(...args),
     activateObject: (...args) => repo.activateObject(...args),
     orphanObject: (...args) => repo.orphanObject(...args),

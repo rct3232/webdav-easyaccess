@@ -23,7 +23,7 @@ uploadService.js          ← Orchestration (TX1 → S3 PUT → TX2 flow)
 
 | Service              | Owns                                                                                | Does NOT own                                                                          |
 | -------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `uploadService`      | TX boundaries, 4-step flow coordination, S3 PUT between transactions                | No direct DB queries; no raw blob operations                                          |
+| `uploadService`      | TX boundaries, 4-step flow coordination, S3 PUT between transactions, pre-state capture + best-effort overwrite rollback (direct `fileNodesStore`/`blobStore` access — `uploadService.md` §2.3/§2.4) | No dialect SQL (store access via `fileNodesStore`/`blobStore`); no tree/closure algorithms (via `fileNodeService`) |
 | `fileNodeService`    | Tree CRUD, cycle detection, path resolution, ancestor chain dispatching             | No closure table algorithms (delegates to `_ancestryHelper`)                          |
 | `_ancestryHelper`    | Closure table algorithms: build on insert, rebuild on move (BFS), cleanup on delete | No DB queries; calls only `fileNodesStore` methods                                    |
 | `blobStorageService` | Object map lifecycle (`pending→active→orphaned`), filecache metadata writes         | No direct S3 operations except `downloadBlob` pass-through and `overwriteBlob` upload |

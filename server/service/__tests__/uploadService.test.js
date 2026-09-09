@@ -315,7 +315,8 @@ describe('createUploadService', () => {
       expect(oldRow.rows[0].status).toBe('active');
 
       // No row exists for the new (failed) s3Key
-      const newS3Key = blobStore.uploadBlob.mock.calls[blobStore.uploadBlob.mock.calls.length - 1][0];
+      const newS3Key =
+        blobStore.uploadBlob.mock.calls[blobStore.uploadBlob.mock.calls.length - 1][0];
       const newRow = await dbQuery('SELECT * FROM object_map WHERE s3_key = ?', [newS3Key]);
       expect(newRow.rows.length).toBe(0);
 
@@ -374,7 +375,8 @@ describe('createUploadService', () => {
       expect(oldRow.rows[0].status).toBe('active');
 
       // Pending v_{k+1} row deleted
-      const newS3Key = blobStore.uploadBlob.mock.calls[blobStore.uploadBlob.mock.calls.length - 1][0];
+      const newS3Key =
+        blobStore.uploadBlob.mock.calls[blobStore.uploadBlob.mock.calls.length - 1][0];
       const newRow = await dbQuery('SELECT * FROM object_map WHERE s3_key = ?', [newS3Key]);
       expect(newRow.rows.length).toBe(0);
 

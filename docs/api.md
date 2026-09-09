@@ -180,9 +180,9 @@ Spec: `docs/spec/server/routes/config.md`, `docs/spec/server/routes/health.md`.
 | GET | `/api/admin/folders/list` | Token + Admin | List folders for permission management. Query: `path` (optional, default `/`). |
 | PUT | `/api/admin/users/:id/permissions` | Token + Admin | Set user folder permissions. |
 | POST | `/api/admin/permissions/ensure-home-owner-admin` | Token + Admin | Ensure home folder owner has admin; remove redundant self-grants on users' own subtrees. |
-| POST | `/api/admin/cleanup/orphaned` | Token + Admin | Clean orphaned metadata. Also runs one GC cycle and reports `orphaned_node` status. |
+| POST | `/api/admin/cleanup/orphaned` | Token + Admin | Clean orphaned metadata. Also runs one GC cycle, reports `orphaned_node` status, and reports stuck `pending_upload` nodes (`pendingUploadNodes`, S3 mode). |
 | POST | `/api/admin/maintenance/gc` | Token + Admin | Run one garbage-collection cycle (orphaned blob cleanup). |
-| POST | `/api/admin/maintenance/repair-sync` | Token + Admin | Resolve an `orphaned_node`. Body: `{ nodeId, action: 'retry-delete' \| 'force-active' }`. |
+| POST | `/api/admin/maintenance/repair-sync` | Token + Admin | Resolve a stuck node. `orphaned_node`: `{ nodeId, action: 'retry-delete' \| 'force-active' }` — WebDAV mode: remote subtree delete / remote-existence 409. `pending_upload` (S3 mode only): `{ nodeId, action: 'complete' \| 'restore-previous' \| 'delete' \| 'auto' }`; 409 refusals per `admin.md` §2.4. |
 | GET | `/api/admin/migration/info` | Token + Admin | Get migration info: `{ source: 'webdav' \| 's3', direction: 'webdav-to-s3' \| 's3-to-webdav' }`. Direction derived from `WEA_FILE_STORAGE`. |
 | POST | `/api/admin/migration/blobs` | Token + Admin | Start a bidirectional WebDAV ↔ S3 blob migration. Body: `{ mode, force?, dest }` (no `direction`; server derives it and validates `dest.type`). Returns `202 { jobId }`. |
 | GET | `/api/admin/migration/jobs/:jobId` | Token + Admin | Get blob-migration job status/progress. |

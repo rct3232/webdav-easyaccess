@@ -105,7 +105,8 @@ cp .env.example .env
 > **DB-only (runtime) keys:** a set of internal tuning keys is **not env-driven** — an env
 > value is ignored and the value comes from the DB `settings` row or the built-in default,
 > edited via the admin "Advanced settings" UI. This set includes `JWT_EXPIRES_IN`,
-> `GC_INTERVAL_MS`, `GC_ORPHAN_TTL_DAYS`, `LOGIN_RATE_LIMIT_MAX` / `LOGIN_RATE_LIMIT_WINDOW_MS`,
+> `GC_INTERVAL_MS`, `GC_ORPHAN_TTL_DAYS`, `GC_VERSION_TTL_DAYS`, `GC_PENDING_STALE_DAYS`,
+> `LOGIN_RATE_LIMIT_MAX` / `LOGIN_RATE_LIMIT_WINDOW_MS`,
 > `REFRESH_TOKEN_EXPIRES_IN_DAYS`, `USER_CACHE_TTL_MS`, `PERMISSION_CACHE_TTL_MS`,
 > `PERMISSIONS_EXISTENCE_INDEX_TTL_MS`, `PERMISSIONS_EXISTENCE_RECONCILE_BATCH_SIZE`,
 > `PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY`, `MAX_THUMBNAIL_SIZE`,

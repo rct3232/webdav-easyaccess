@@ -6,11 +6,13 @@ Summary of the test implementation for the Express.js server application. All te
 
 ## Test Statistics
 
-- **Total Test Suites**: 98 (sqlite `test:ci`, as of 2026-09-04)
-- **Total Tests**: 1780 (1775 passed, 5 skipped)
-- **Pass Rate**: 100% (1775 passed, 0 failed) ✅
-- **Real-PostgreSQL adapter leg** (`test:ci:pg:adapters`): 15 suites / 197 tests
+- **Total Test Suites**: 99 (sqlite `test:ci`, as of 2026-09-09)
+- **Total Tests**: 1854 (1849 passed, 5 skipped)
+- **Pass Rate**: 100% (1849 passed, 0 failed) ✅
+- **Real-PostgreSQL adapter leg** (`test:ci:pg:adapters`): 207 tests (latest recorded run, 2026-09-09)
 - **Execution Time**: Reported per run by `npm run test`
+
+> New/extended suites since the 2026-09-04 snapshot: `infrastructure/__tests__/trashSoftDeleteSchema.test.js` (new; registered on the PG adapter leg), extended `failSafeService` (pending_upload scan/repair, DEF-12/13) and `gcService` (retention categories: garbage/version/guarded/pending-live) suites.
 
 ## Test Breakdown by Category
 
@@ -59,9 +61,9 @@ Domain services, policies, and stores plus the shared service/store layer. Persi
 | `service/__tests__/_ancestryHelper.test.js`                               | Ancestry helper               |
 | `service/__tests__/blobStorageService.test.js`                            | Blob storage service          |
 | `service/__tests__/composition.test.js`                                   | Service composition           |
-| `service/__tests__/failSafeService.test.js`                               | Fail-safe service             |
+| `service/__tests__/failSafeService.test.js`                               | Fail-safe service (orphaned_node + pending_upload scan/repair) |
 | `service/__tests__/fileNodeService.test.js`                               | File node service             |
-| `service/__tests__/gcService.test.js`                                     | Garbage collection service    |
+| `service/__tests__/gcService.test.js`                                     | GC service (retention categories, last-good guard) |
 | `service/__tests__/uploadService.test.js`                                 | Upload service                |
 | `store/__tests__/fileNodesStore.test.js`                                  | File nodes store              |
 | `store/__tests__/settingsStore.test.js`                                   | Settings store                |
@@ -79,6 +81,7 @@ Schema, storage, locking, scheduling, executor seam, and blob store adapters.
 | `infrastructure/__tests__/maintenanceScheduler.test.js`                | Maintenance scheduler |
 | `infrastructure/__tests__/schemaManager.test.js`                       | Schema manager        |
 | `infrastructure/__tests__/sqliteSchemaInit.test.js`                    | SQLite schema init    |
+| `infrastructure/__tests__/trashSoftDeleteSchema.test.js`               | Trash soft-delete schema (`deleted_at` + partial unique indexes; backend-agnostic uniqueness describe runs on both legs, sqlite-only describes gated off the PG adapter leg) |
 | `infrastructure/db/__tests__/executor.test.js`                         | Executor seam (L2)    |
 | `infrastructure/adapters/blobstore/__tests__/blobstoreFactory.test.js` | Blob store factory    |
 | `infrastructure/adapters/blobstore/__tests__/S3BlobStore.test.js`      | S3 blob store         |
@@ -129,11 +132,17 @@ API route tests with Supertest. Full request/response cycle; backing services us
 
 ### Key Modules & Overall Project Coverage
 
-The per-module and overall coverage percentages previously published in this file were captured from pre-reorganization runs and reference modules that have since been removed or relocated (e.g. `middleware/normalizePathParam.js`, top-level `routes/*.js`, `store/permissionStore.test.js`). They are intentionally not reproduced here. Measure the current layout with `cd server && npm run test:coverage`; core modules (models, middleware, auth, errorHandler) historically maintain the highest coverage.
+Overall project coverage (sqlite `test:ci` with `--coverage`, measured 2026-09-09):
+
+| Scope     | Statements | Branches | Functions | Lines |
+| --------- | ---------- | -------- | --------- | ----- |
+| All files | 72.35%     | 63.17%   | 76.65%    | 73.46% |
+
+Per-module figures are intentionally not reproduced here (they move per run). Measure the current layout with `cd server && npm run test:coverage`; core modules (models, middleware, auth, errorHandler) historically maintain the highest coverage.
 
 ## Conclusion
 
-- 1775 tests across 98 suites, 100% pass rate (5 skipped, as of 2026-09-04, sqlite `test:ci`); real-PostgreSQL adapter leg `test:ci:pg:adapters`: 15 suites / 197 tests
+- 1849 tests across 99 suites, 100% pass rate (5 skipped, as of 2026-09-09, sqlite `test:ci`); real-PostgreSQL adapter leg `test:ci:pg:adapters`: 207 tests (latest recorded run, 2026-09-09)
 - Tests are colocated with source: domain routes/services/stores/policy under `domains/<x>/`, shared layer under `service/` and `store/`, plus `infrastructure/`, `middleware/`, `models/`, `utils/`
 - Route integration tests cover main API endpoints via Supertest
 - L2 repository conformance suites (store + permission repositories, executor) run against real sqlite and, on the adapter leg, real PostgreSQL

@@ -64,7 +64,7 @@ System maintenance operations. Service: `domains/admin/services/cleanupService.j
 
 The existing result keys (`deletedPermissionFiles`, `deletedUserFiles`, `deletedEmailIndexFiles`, `cleanedPermissionRequests`, `errors`) are unchanged. Two additive keys are present:
 
-- `gc: { tier1: { orphanedRows, deletedBlobs, deletedRows, errors }, tier2: { scannedKeys, untrackedKeys, deletedKeys, skipped, errors } }`
+- `gc: { tier1: { orphanedRows, guardedRows, deletedBlobs, deletedRows, pendingDeletedRows, errors }, tier2: { scannedKeys, untrackedKeys, deletedKeys, skipped, errors } }`
 - `orphanedNodes: Array<{ nodeId, path }>`
 - `pendingUploadNodes: Array<{ nodeId, name, type, path, createdAt, updatedAt, classification, pendingS3Key, blobPresent }>` — read-only report of file nodes stuck in `sync_status='pending_upload'` (**empty in WebDAV mode** — the stuck state is S3-mode only; see `docs/spec/server/services/uploadService.md` §2.5.1)
 
@@ -129,7 +129,7 @@ Effective-configuration management (env → DB → defaults registry). Service: 
 - **GET /folders/list:** 200: folder list (sorted by name)
 - **POST /permissions/ensure-home-owner-admin:** 200: `{ success: true, updatedUsers, upgradedPaths, grantedPaths, removedSelfGrants, errors }`
 - **POST /cleanup/orphaned:** 200: `{ messageCode, results: { deletedPermissionFiles, deletedUserFiles, deletedEmailIndexFiles, cleanedPermissionRequests, errors, gc: { tier1, tier2 }, orphanedNodes, pendingUploadNodes } }`
-- **POST /maintenance/gc:** 200: `{ messageCode, results: { tier1: { orphanedRows, deletedBlobs, deletedRows, errors }, tier2: { scannedKeys, untrackedKeys, deletedKeys, skipped, errors } } }`
+- **POST /maintenance/gc:** 200: `{ messageCode, results: { tier1: { orphanedRows, guardedRows, deletedBlobs, deletedRows, pendingDeletedRows, errors }, tier2: { scannedKeys, untrackedKeys, deletedKeys, skipped, errors } } }`
 - **POST /maintenance/repair-sync:** Body: `{ nodeId, action }`. 200: `{ messageCode, result: { nodeId, action, status, path, detail } }`; 404 when node not found; 400 on invalid action; 409 on a state mismatch (`repairUploadNotPending` — node not in `pending_upload`, a required object_map row is missing, or `pending_upload` repair requested in WebDAV mode (S3 mode only); `repairUploadBlobMissing` — `complete` with an absent blob; `repairSyncRemoteMissing` — WebDAV `force-active` with the remote file absent).
 
 #### migration

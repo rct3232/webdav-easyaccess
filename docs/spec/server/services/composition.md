@@ -97,7 +97,8 @@ fileNodesStore ─────┐
                     ├─→ fileNodeService ───┐
 blobStore ─────────┼───────────────────────┤
                    │                       ├─→ blobStorageService ──┐
-fileStorageMode ───┘                       │                        ├─→ uploadService
+fileStorageMode ───┘                       │                        ├─→ uploadService (also depends
+                                          │                        │    on blobStore, fileNodesStore)
                                           │                        │
                                           ├─────────────────────────┘
                                           │
@@ -107,7 +108,10 @@ fileStorageMode ───┘                       │                        �
                                           │
                                           ├─→ downloadService (depends on fileNodeService, blobStorageService, aclService)
                                           │
-                                          ├─→ gcService (depends on blobStore, fileNodesStore, fileStorageMode)
+                                          ├─→ gcService (depends on blobStore, fileNodesStore, fileStorageMode;
+                                          │    optional gcConfig — omitted by the composition root, so each
+                                          │    TTL defaults from GC_ORPHAN_TTL_DAYS / GC_VERSION_TTL_DAYS /
+                                          │    GC_PENDING_STALE_DAYS via the config resolver)
                                           │
                                           └─→ failSafeService (depends on fileNodeService, fileNodesStore,
                                                                   blobStore, fileStorageMode)

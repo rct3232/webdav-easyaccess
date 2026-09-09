@@ -112,14 +112,16 @@ Runs Tier 1 then Tier 2 and returns a summary. `olderThanDays` defaults to the c
 
 Tier 1 always runs; in WebDAV mode it finds no rows during normal operation, but when orphaned rows do exist (legacy/out-of-band rows, or superseded rows after a migration) it removes them from the DB without calling `blobStore.deleteBlob`. Both tiers are best-effort: per-key errors are collected in `errors` and do not abort the cycle.
 
-### 3.2 `createFailSafeService({ fileNodeService, fileNodesStore })`
+### 3.2 `createFailSafeService({ fileNodeService, fileNodesStore, blobStore, fileStorageMode })`
 
-Factory for `sync_status='orphaned_node'` detection and manual repair.
+Factory for `sync_status='orphaned_node'` detection and manual repair, plus the S3-mode-only `pending_upload` scan/repair (DEF-12/13; contract: `uploadService.md` §2.5.1).
 
 | Param             | Type   | Description                                                                    |
 | ----------------- | ------ | ------------------------------------------------------------------------------ |
 | `fileNodeService` | object | fileNodeService (tree ops: deleteNode, getNode, getNodePath, updateSyncStatus) |
 | `fileNodesStore`  | object | fileNodesStore with `getNodesBySyncStatus`                                     |
+| `blobStore`       | object | blob store adapter (`headBlob`/`deleteBlob`) for remote existence checks and blob cleanup |
+| `fileStorageMode` | string | `'s3'` (default) or `'webdav'`; the `pending_upload` scan/repair is gated to S3 mode (refused 409 in WebDAV mode) |
 
 #### `scanOrphanedNodes()`
 
@@ -147,7 +149,7 @@ Resolves a single stuck node.
 
 Startup hook (Task 6.3). Scans orphaned nodes and returns a report. It never performs destructive actions automatically — stuck nodes are surfaced for manual review via `repair-sync`. This prevents accidental data loss on boot.
 
-**Returns:** `{ scanned: number, resolved: number, manualReview: Array<{ nodeId, path }> }`
+**Returns:** `{ scanned: number, resolved: number, manualReview: Array<{ nodeId, path }>, pendingUpload: { scanned: number, nodes: Array, error?: string } }` — the `pendingUpload` section delegates to `scanPendingUploadNodes()` (S3 mode only; empty in WebDAV mode) and is strictly report-only: zero mutations, stuck nodes are surfaced for manual review via `repair-sync`.
 
 ---
 
@@ -167,6 +169,8 @@ New methods required by the services. The `fileNodesStore` facade forwards them 
 | `getAllActiveS3Keys()`                           | `SELECT s3_key FROM object_map WHERE status='active' AND s3_key IS NOT NULL` (retained on the facade for parity; no GC caller)                            | string[]         |
 | `deleteObjectMapRows(ids)`                       | `DELETE FROM object_map WHERE id IN (...)`, SQLite branch per-row via `executor.run` in the sqlite dialect twin                                            | `{ changes }`    |
 | `getNodesBySyncStatus(status)`                   | `file_nodes WHERE sync_status = ?`                                                                                                                        | rows[]           |
+| `reactivateObjectMapRow(id)`                     | flips a captured pre-state orphaned row back to `active` (overwrite rollback; DEF-12/13 R1) — see `fileNodesStore.md` §2.4                                  | `{ changes }`    |
+| `getObjectMapByNode(fileNodeId)`                 | all `object_map` rows of a node, newest-version first (repair preconditions) — see `fileNodesStore.md` §2.4                                                | rows[]           |
 
 All of the above are dual-backend (PostgreSQL / SQLite), implemented in the `FileNodeRepository` dialect twins behind the executor seam (no store-internal dialect branching in the service) and covered by the repository conformance tests.
 
@@ -179,16 +183,17 @@ All of the above are dual-backend (PostgreSQL / SQLite), implemented in the `Fil
 | Method | Path                                 | Description                                                                                                                   |
 | ------ | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
 | POST   | `/api/admin/maintenance/gc`          | Run one GC cycle (both tiers). Response: `{ messageCode, results }`.                                                          |
-| POST   | `/api/admin/maintenance/repair-sync` | Resolve one orphaned node. Body: `{ nodeId, action: 'retry-delete' \| 'force-active' }`. Response: `{ messageCode, result }`. |
+| POST   | `/api/admin/maintenance/repair-sync` | Resolve one stuck node. Body: `{ nodeId, action: 'retry-delete' \| 'force-active' }` (`orphaned_node`) or `{ nodeId, action: 'complete' \| 'restore-previous' \| 'delete' \| 'auto' }` (`pending_upload` — S3 mode only, refused 409 otherwise). Response: `{ messageCode, result }`. Repair contract: `uploadService.md` §2.5.1. |
 
 Both require `authenticateToken` + `isAdmin`.
 
 ### 5.2 cleanupService Integration
 
-`cleanupOrphanedData()` gains two additive result keys (existing keys unchanged):
+`cleanupOrphanedData()` gains three additive result keys (existing keys unchanged):
 
 - `gc: { tier1, tier2 }` — result of one GC cycle (S3 mode; WebDAV mode yields a skipped Tier 2 and a Tier 1 that removes orphaned rows without blob deletes).
 - `orphanedNodes: [...]` — fail-safe report from `failSafeService.scanOrphanedNodes()`.
+- `pendingUploadNodes: [...]` — read-only report of file nodes stuck in `sync_status='pending_upload'` (S3 mode only; empty in WebDAV mode — `uploadService.md` §2.5.1).
 
 ### 5.3 Startup Hook + Cron
 

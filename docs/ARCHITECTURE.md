@@ -111,7 +111,7 @@ Cross-cutting infrastructure modules live in `server/infrastructure/`:
 | Health Routes      | `healthRoutes.js`     | Unauthenticated `GET /api/health` endpoint for liveness probes. Mounted at `/api`.                                                                                        |
 | WebDAV Routes      | `webdavRoutes.js`     | Diagnostic endpoints: `GET /api/webdav/test` (connectivity) and `GET /api/webdav/info` (URL display). No auth required.                                                   |
 | WebDAV Test        | `webdavTest.js`       | Connection test logic extracted from webdav.js. Creates ephemeral client, probes root directory, returns structured result.                                               |
-| SQLite Schema Init | `sqliteSchemaInit.js` | Converts PostgreSQL DDL to SQLite-compatible SQL and executes against the SQLite connection. Used during bootstrap when the SQLite backend is active (no remote DB keys set).                     |
+| SQLite Schema Init | `sqliteSchemaInit.js` | PostgreSQL→SQLite DDL transpiler (`convertPostgresToSqlite`) plus explicit-target schema init (`initSqliteSchema({connection}` / `{path}`) for caller-supplied connections and temporary DBs. App boot applies the tracked `ddl/` chain via `schemaManager.applyPendingMigrations` on BOTH backends (sqlite consumes the transpiler); `initSqliteSchema` is no longer the boot path. Spec: `docs/spec/server/infrastructure/sqliteSchemaInit.md` §1. |
 
 ### 1.3 Middleware Pipeline
 
@@ -199,7 +199,8 @@ PostgreSQL backend. The store API is the same across backends.
 
 When the remote PostgreSQL backend is active, metadata is persisted in normalized tables:
 `users`, `settings`, `permissions_user_paths`, `permissions_user_files`, `permissions_shares`,
-`share_links`, `recent_files`, `permission_requests`, and `locks`.
+`share_links`, `recent_files`, `permission_requests`, `locks`, `file_nodes`, `object_map`,
+and `node_ancestors`.
 
 This document intentionally omits full constraints/indexes. Treat
 `server/store/postgresql/ddl/*.sql` (applied in filename order) as the single source of truth.

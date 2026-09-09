@@ -311,6 +311,19 @@ module.exports = function createSqliteFileNodeRepository(executor) {
       }
     },
 
+    async getObjectMapByNode(fileNodeId) {
+      try {
+        const { rows } = await executor.query(
+          `SELECT * FROM object_map WHERE file_node_id = ?
+           ORDER BY version_number DESC, id DESC`,
+          [Number(fileNodeId)]
+        );
+        return rows;
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
     async getObjectMapByS3Key(s3Key) {
       try {
         const { rows } = await executor.query(

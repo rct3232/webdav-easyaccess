@@ -4,6 +4,8 @@ const { createTestDatabase, dbQuery, dbRun } = require('../../test-utils');
 const { createFileNodesStore } = require('../../store/fileNodesStore');
 const { createFileNodeService } = require('../fileNodeService');
 const { createFailSafeService } = require('../failSafeService');
+const { createFakeBlobStore } = require('@testing/mocks/fakeBlobStore');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
 describe('createFailSafeService', () => {
   let dbCleanup;
@@ -223,5 +225,488 @@ describe('createFailSafeService', () => {
       expect(remaining.rows).toHaveLength(1);
       expect(remaining.rows[0].s3_key).toContain('del-b');
     });
+  });
+});
+
+describe('createFailSafeService — pending_upload scan + repair (DEF-12/13 S2)', () => {
+  let dbCleanup;
+  let fileNodesStore;
+  let fileNodeService;
+  let blobStore;
+  let failSafeService;
+  let seq = 0;
+
+  beforeAll(async () => {
+    const db = await createTestDatabase();
+    dbCleanup = db.cleanup;
+    fileNodesStore = createFileNodesStore();
+    fileNodeService = createFileNodeService({ fileNodesStore });
+  });
+
+  afterAll(async () => {
+    await dbCleanup();
+  });
+
+  beforeEach(() => {
+    blobStore = createFakeBlobStore();
+    failSafeService = createFailSafeService({
+      fileNodeService,
+      fileNodesStore,
+      blobStore,
+      fileStorageMode: 's3',
+    });
+    seq += 1;
+  });
+
+  const unique = (prefix) => `${prefix}-${Date.now()}-${seq}`;
+
+  /**
+   * Seed a file node holding an active version (v1) whose overwrite TX1
+   * committed but never finalized: node pending_upload, v1 orphaned,
+   * v2 pending, both blobs present.
+   */
+  async function seedOverwriteStuck() {
+    const name = unique('pu-overwrite');
+    const node = await fileNodeService.createFile(null, name);
+    const keyV1 = unique('pu-overwrite-v1');
+    const keyV2 = unique('pu-overwrite-v2');
+
+    await fileNodesStore.upsertObjectMap(node.id, keyV1, 'pending');
+    await fileNodesStore.activateObject(keyV1);
+    await fileNodesStore.upsertCache(node.id, 10, 'text/plain', null);
+    await fileNodeService.updateSyncStatus(node.id, 'active');
+    await blobStore.uploadBlob(keyV1, Buffer.from('v1-content'));
+
+    await blobStore.uploadBlob(keyV2, Buffer.from('v2-content'));
+    await fileNodesStore.upsertObjectMap(node.id, keyV2, 'pending');
+    await fileNodeService.updateSyncStatus(node.id, 'pending_upload');
+
+    return { node, name, keyV1, keyV2 };
+  }
+
+  /** Seed a crashed new-file upload: node pending_upload + pending row (+ blob). */
+  async function seedNewFileStuck({ withBlob = true, withRow = true } = {}) {
+    const name = unique('pu-newfile');
+    const node = await fileNodeService.createFile(null, name);
+    let key = null;
+    if (withRow) {
+      key = unique('pu-newfile-key');
+      await fileNodesStore.upsertObjectMap(node.id, key, 'pending');
+      if (withBlob) {
+        await blobStore.uploadBlob(key, Buffer.from('abc'));
+      }
+    }
+    return { node, name, key };
+  }
+
+  async function objectMapRows(nodeId) {
+    const { rows } = await dbQuery('SELECT * FROM object_map WHERE file_node_id = ?', [nodeId]);
+    return rows;
+  }
+
+  describe('scanPendingUploadNodes', () => {
+    it('classifies overwrite residue (orphaned last-good + pending row) as overwrite', async () => {
+      const { node, keyV2 } = await seedOverwriteStuck();
+
+      const found = (await failSafeService.scanPendingUploadNodes()).find(
+        (n) => n.nodeId === node.id
+      );
+
+      expect(found).toBeDefined();
+      expect(found.type).toBe('file');
+      expect(found.classification).toBe('overwrite');
+      expect(found.pendingS3Key).toBe(keyV2);
+      expect(found.blobPresent).toBe(true);
+      expect(found.path).toBe(`/${node.name}`);
+    });
+
+    it('classifies new-file residue with blob as new-file', async () => {
+      const { node, key } = await seedNewFileStuck({ withBlob: true });
+
+      const found = (await failSafeService.scanPendingUploadNodes()).find(
+        (n) => n.nodeId === node.id
+      );
+
+      expect(found).toBeDefined();
+      expect(found.classification).toBe('new-file');
+      expect(found.pendingS3Key).toBe(key);
+      expect(found.blobPresent).toBe(true);
+    });
+
+    it('classifies new-file residue without blob as new-file with blobPresent false', async () => {
+      const { node, key } = await seedNewFileStuck({ withBlob: false });
+
+      const found = (await failSafeService.scanPendingUploadNodes()).find(
+        (n) => n.nodeId === node.id
+      );
+
+      expect(found.classification).toBe('new-file');
+      expect(found.pendingS3Key).toBe(key);
+      expect(found.blobPresent).toBe(false);
+    });
+
+    it('reports no pending key/blob for a stuck node without object_map rows', async () => {
+      const { node } = await seedNewFileStuck({ withRow: false });
+
+      const found = (await failSafeService.scanPendingUploadNodes()).find(
+        (n) => n.nodeId === node.id
+      );
+
+      expect(found.classification).toBe('new-file');
+      expect(found.pendingS3Key).toBeNull();
+      expect(found.blobPresent).toBeNull();
+    });
+
+    it('ignores directories and active files', async () => {
+      const dir = await fileNodeService.createDirectory(null, unique('pu-dir'));
+      const activeName = unique('pu-active');
+      const activeNode = await fileNodeService.createFile(null, activeName);
+      const key = unique('pu-active-key');
+      await fileNodesStore.upsertObjectMap(activeNode.id, key, 'pending');
+      await fileNodesStore.activateObject(key);
+      await fileNodeService.updateSyncStatus(activeNode.id, 'active');
+
+      const scanned = await failSafeService.scanPendingUploadNodes();
+
+      expect(scanned.find((n) => n.nodeId === dir.id)).toBeUndefined();
+      expect(scanned.find((n) => n.nodeId === activeNode.id)).toBeUndefined();
+    });
+  });
+
+  describe('repairPendingUploadNode — complete', () => {
+    it('activates the pending row and populates filecache from blob metadata', async () => {
+      const { node, key } = await seedNewFileStuck({ withBlob: true });
+
+      const result = await failSafeService.repairPendingUploadNode(node.id, { action: 'complete' });
+
+      expect(result).toMatchObject({ nodeId: node.id, action: 'complete', status: 'resolved' });
+
+      const after = await fileNodeService.getNode(node.id);
+      expect(after.syncStatus).toBe('active');
+      const active = await fileNodesStore.getActiveObject(node.id);
+      expect(active.s3_key).toBe(key);
+      const cache = await fileNodesStore.getCache(node.id);
+      expect(Number(cache.size)).toBe(3);
+      expect(await blobStore.headBlob(key)).not.toBeNull();
+    });
+
+    it('refuses with 409 when the blob is absent and mutates nothing', async () => {
+      const { node, key } = await seedNewFileStuck({ withBlob: false });
+
+      await expect(
+        failSafeService.repairPendingUploadNode(node.id, { action: 'complete' })
+      ).rejects.toMatchObject({
+        status: 409,
+        errorCode: SERVER_ERROR_CODES.admin.repairUploadBlobMissing,
+      });
+
+      const after = await fileNodeService.getNode(node.id);
+      expect(after.syncStatus).toBe('pending_upload');
+      const rows = await objectMapRows(node.id);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].status).toBe('pending');
+      expect(rows[0].s3_key).toBe(key);
+    });
+
+    it('refuses with 409 when there is no pending row', async () => {
+      const { node } = await seedNewFileStuck({ withRow: false });
+
+      await expect(
+        failSafeService.repairPendingUploadNode(node.id, { action: 'complete' })
+      ).rejects.toMatchObject({ status: 409 });
+    });
+  });
+
+  describe('repairPendingUploadNode — restore-previous', () => {
+    it('reactivates the last-good row, deletes the pending row/blob, keeps the last-good blob', async () => {
+      const { node, keyV1, keyV2 } = await seedOverwriteStuck();
+
+      const result = await failSafeService.repairPendingUploadNode(node.id, {
+        action: 'restore-previous',
+      });
+
+      expect(result).toMatchObject({
+        nodeId: node.id,
+        action: 'restore-previous',
+        status: 'resolved',
+      });
+
+      const after = await fileNodeService.getNode(node.id);
+      expect(after.syncStatus).toBe('active');
+      const active = await fileNodesStore.getActiveObject(node.id);
+      expect(active.s3_key).toBe(keyV1);
+      const rows = await objectMapRows(node.id);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].s3_key).toBe(keyV1);
+      expect(await blobStore.headBlob(keyV1)).not.toBeNull();
+      expect(await blobStore.headBlob(keyV2)).toBeNull();
+      const cache = await fileNodesStore.getCache(node.id);
+      expect(Number(cache.size)).toBe(10);
+    });
+
+    it('refuses with 409 when no orphaned last-good row exists', async () => {
+      const { node } = await seedNewFileStuck({ withBlob: true });
+
+      await expect(
+        failSafeService.repairPendingUploadNode(node.id, { action: 'restore-previous' })
+      ).rejects.toMatchObject({ status: 409 });
+    });
+  });
+
+  describe('repairPendingUploadNode — delete', () => {
+    it('removes the node tree, its object_map rows, and the pending blob', async () => {
+      const { node, key } = await seedNewFileStuck({ withBlob: true });
+
+      const result = await failSafeService.repairPendingUploadNode(node.id, { action: 'delete' });
+
+      expect(result).toMatchObject({ nodeId: node.id, action: 'delete', status: 'resolved' });
+      expect(await fileNodeService.getNode(node.id)).toBeNull();
+      expect(await objectMapRows(node.id)).toHaveLength(0);
+      expect(await blobStore.headBlob(key)).toBeNull();
+    });
+
+    it('keeps the last-good blob for GC when deleting overwrite residue', async () => {
+      const { node, keyV1, keyV2 } = await seedOverwriteStuck();
+
+      await failSafeService.repairPendingUploadNode(node.id, { action: 'delete' });
+
+      expect(await fileNodeService.getNode(node.id)).toBeNull();
+      expect(await objectMapRows(node.id)).toHaveLength(0);
+      expect(await blobStore.headBlob(keyV2)).toBeNull();
+      expect(await blobStore.headBlob(keyV1)).not.toBeNull();
+    });
+  });
+
+  describe('repairPendingUploadNode — auto (D2 policy)', () => {
+    it('routes overwrite residue to restore-previous', async () => {
+      const { node, keyV1, keyV2 } = await seedOverwriteStuck();
+
+      await failSafeService.repairPendingUploadNode(node.id, { action: 'auto' });
+
+      const after = await fileNodeService.getNode(node.id);
+      expect(after.syncStatus).toBe('active');
+      const active = await fileNodesStore.getActiveObject(node.id);
+      expect(active.s3_key).toBe(keyV1);
+      expect(await blobStore.headBlob(keyV2)).toBeNull();
+    });
+
+    it('routes new-file residue with blob to complete', async () => {
+      const { node, key } = await seedNewFileStuck({ withBlob: true });
+
+      await failSafeService.repairPendingUploadNode(node.id, { action: 'auto' });
+
+      const after = await fileNodeService.getNode(node.id);
+      expect(after.syncStatus).toBe('active');
+      const active = await fileNodesStore.getActiveObject(node.id);
+      expect(active.s3_key).toBe(key);
+      expect(Number((await fileNodesStore.getCache(node.id)).size)).toBe(3);
+    });
+
+    it('routes new-file residue without blob to delete', async () => {
+      const { node, key } = await seedNewFileStuck({ withBlob: false });
+
+      await failSafeService.repairPendingUploadNode(node.id, { action: 'auto' });
+
+      expect(await fileNodeService.getNode(node.id)).toBeNull();
+      expect(await objectMapRows(node.id)).toHaveLength(0);
+      expect(await blobStore.headBlob(key)).toBeNull();
+    });
+
+    it('propagates blob probe errors and mutates nothing', async () => {
+      const { node, key } = await seedNewFileStuck({ withBlob: true });
+      blobStore.failOn(key);
+
+      await expect(
+        failSafeService.repairPendingUploadNode(node.id, { action: 'auto' })
+      ).rejects.toThrow(/injected failure/);
+
+      const after = await fileNodeService.getNode(node.id);
+      expect(after.syncStatus).toBe('pending_upload');
+      const rows = await objectMapRows(node.id);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].status).toBe('pending');
+      blobStore.clearFailures();
+      expect(await blobStore.headBlob(key)).not.toBeNull();
+    });
+  });
+
+  describe('repairPendingUploadNode — validation', () => {
+    it('rejects an invalid action with 400', async () => {
+      const { node } = await seedNewFileStuck({});
+      await expect(
+        failSafeService.repairPendingUploadNode(node.id, { action: 'nope' })
+      ).rejects.toMatchObject({
+        status: 400,
+        errorCode: SERVER_ERROR_CODES.admin.repairUploadInvalidAction,
+      });
+    });
+
+    it('returns 404 for a missing node', async () => {
+      await expect(
+        failSafeService.repairPendingUploadNode(999999, { action: 'complete' })
+      ).rejects.toMatchObject({
+        status: 404,
+        errorCode: SERVER_ERROR_CODES.admin.repairSyncNodeNotFound,
+      });
+    });
+
+    it('refuses with 409 when the node is not pending_upload', async () => {
+      const name = unique('pu-notstuck');
+      const node = await fileNodeService.createFile(null, name);
+      await fileNodeService.updateSyncStatus(node.id, 'active');
+
+      await expect(
+        failSafeService.repairPendingUploadNode(node.id, { action: 'complete' })
+      ).rejects.toMatchObject({
+        status: 409,
+        errorCode: SERVER_ERROR_CODES.admin.repairUploadNotPending,
+      });
+    });
+  });
+
+  describe('runStartupRecovery — pending_upload report', () => {
+    it('reports stuck nodes without mutating anything', async () => {
+      const { node, keyV1, keyV2 } = await seedOverwriteStuck();
+
+      const report = await failSafeService.runStartupRecovery();
+
+      expect(report.pendingUpload.scanned).toBeGreaterThanOrEqual(1);
+      expect(report.pendingUpload.nodes.some((n) => n.nodeId === node.id)).toBe(true);
+      expect(report.resolved).toBe(0);
+
+      const after = await fileNodeService.getNode(node.id);
+      expect(after.syncStatus).toBe('pending_upload');
+      const rows = await objectMapRows(node.id);
+      expect(rows.map((r) => r.status).sort()).toEqual(['orphaned', 'pending']);
+      expect(await blobStore.headBlob(keyV1)).not.toBeNull();
+      expect(await blobStore.headBlob(keyV2)).not.toBeNull();
+    });
+  });
+
+  describe('repairNode — unknown action (extended action set)', () => {
+    it('still rejects unknown actions with 400', async () => {
+      const { node } = await seedNewFileStuck({});
+      await expect(
+        failSafeService.repairNode(node.id, { action: 'delete-now' })
+      ).rejects.toMatchObject({
+        status: 400,
+        errorCode: SERVER_ERROR_CODES.admin.repairSyncInvalidAction,
+      });
+    });
+  });
+});
+
+describe('createFailSafeService — WebDAV remote checks (D5a/D5d)', () => {
+  let dbCleanup;
+  let fileNodesStore;
+  let fileNodeService;
+  let blobStore;
+  let webdavFailSafeService;
+  let seq = 0;
+
+  beforeAll(async () => {
+    const db = await createTestDatabase();
+    dbCleanup = db.cleanup;
+    fileNodesStore = createFileNodesStore();
+    fileNodeService = createFileNodeService({ fileNodesStore });
+  });
+
+  afterAll(async () => {
+    await dbCleanup();
+  });
+
+  beforeEach(() => {
+    blobStore = createFakeBlobStore();
+    webdavFailSafeService = createFailSafeService({
+      fileNodeService,
+      fileNodesStore,
+      blobStore,
+      fileStorageMode: 'webdav',
+    });
+    seq += 1;
+  });
+
+  const unique = (prefix) => `${prefix}-${Date.now()}-${seq}`;
+
+  async function seedOrphanedWithRemote({ withChild = false, withRemote = true } = {}) {
+    const name = unique('d5-orphan');
+    const dir = await fileNodeService.createDirectory(null, name);
+    await fileNodeService.updateSyncStatus(dir.id, 'orphaned_node');
+    const paths = [`/${name}`];
+    if (withRemote) await blobStore.uploadBlob(`/${name}`, Buffer.from('remote'));
+    if (withChild) {
+      const childName = unique('d5-orphan-child');
+      const child = await fileNodeService.createFile(dir.id, childName);
+      await fileNodeService.updateSyncStatus(child.id, 'orphaned_node');
+      if (withRemote) await blobStore.uploadBlob(`/${name}/${childName}`, Buffer.from('child'));
+      paths.push(`/${name}/${childName}`);
+    }
+    return { dir, name, paths };
+  }
+
+  it('retry-delete removes the remote blob/file in addition to the DB rows', async () => {
+    const { dir, paths } = await seedOrphanedWithRemote({ withChild: true, withRemote: true });
+
+    const result = await webdavFailSafeService.repairNode(dir.id, { action: 'retry-delete' });
+
+    expect(result.status).toBe('resolved');
+    expect(await fileNodeService.getNode(dir.id)).toBeNull();
+    for (const p of paths) {
+      expect(await blobStore.headBlob(p)).toBeNull();
+    }
+  });
+
+  it('retry-delete still deletes the DB rows when the remote is already absent', async () => {
+    const { dir } = await seedOrphanedWithRemote({ withRemote: false });
+
+    const result = await webdavFailSafeService.repairNode(dir.id, { action: 'retry-delete' });
+
+    expect(result.status).toBe('resolved');
+    expect(await fileNodeService.getNode(dir.id)).toBeNull();
+  });
+
+  it('force-active refuses with 409 when the remote file is absent', async () => {
+    const { dir } = await seedOrphanedWithRemote({ withRemote: false });
+
+    await expect(
+      webdavFailSafeService.repairNode(dir.id, { action: 'force-active' })
+    ).rejects.toMatchObject({
+      status: 409,
+      errorCode: SERVER_ERROR_CODES.admin.repairSyncRemoteMissing,
+    });
+
+    const after = await fileNodeService.getNode(dir.id);
+    expect(after.syncStatus).toBe('orphaned_node');
+  });
+
+  it('force-active activates when the remote file exists', async () => {
+    const { dir } = await seedOrphanedWithRemote({ withRemote: true });
+
+    const result = await webdavFailSafeService.repairNode(dir.id, { action: 'force-active' });
+
+    expect(result.status).toBe('resolved');
+    const after = await fileNodeService.getNode(dir.id);
+    expect(after.syncStatus).toBe('active');
+  });
+
+  it('pending_upload scan returns an empty list in WebDAV mode (healthy files stay pending_upload)', async () => {
+    const node = await fileNodeService.createFile(null, unique('d5-webdav-file'));
+
+    await expect(webdavFailSafeService.scanPendingUploadNodes()).resolves.toEqual([]);
+    expect(await fileNodeService.getNode(node.id)).not.toBeNull();
+  });
+
+  it('pending_upload repair is refused with 409 in WebDAV mode', async () => {
+    const node = await fileNodeService.createFile(null, unique('d5-webdav-repair'));
+
+    await expect(
+      webdavFailSafeService.repairNode(node.id, { action: 'auto' })
+    ).rejects.toMatchObject({
+      status: 409,
+      errorCode: SERVER_ERROR_CODES.admin.repairUploadNotPending,
+    });
+
+    const after = await fileNodeService.getNode(node.id);
+    expect(after.syncStatus).toBe('pending_upload');
   });
 });

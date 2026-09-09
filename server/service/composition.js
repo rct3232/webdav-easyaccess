@@ -86,6 +86,8 @@ function createComposition(overrides = {}) {
     createFailSafeService({
       fileNodeService,
       fileNodesStore,
+      blobStore,
+      fileStorageMode,
     });
 
   const migrationJobStore = overrides.migrationJobStore || createMigrationJobStore();

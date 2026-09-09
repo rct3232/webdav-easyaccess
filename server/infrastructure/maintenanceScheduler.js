@@ -71,6 +71,13 @@ async function runStartupFailSafeRecovery({ failSafeService }) {
     } else {
       console.log('Fail-safe recovery: no orphaned nodes found');
     }
+    const pending = report.pendingUpload || { scanned: 0 };
+    if (pending.scanned > 0) {
+      console.warn(
+        `\u26A0 Fail-safe recovery: ${pending.scanned} pending_upload node(s) require manual review`
+      );
+      console.warn('  Resolve them via POST /api/admin/maintenance/repair-sync');
+    }
     return report;
   } catch (err) {
     console.error('Fail-safe recovery on startup failed:', err.message);

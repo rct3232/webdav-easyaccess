@@ -58,7 +58,7 @@ System maintenance operations. Service: `domains/admin/services/cleanupService.j
 | POST   | `/permissions/ensure-home-owner-admin` | Token + Admin | Ensure each non-admin user has admin on their home node and remove redundant self-grants on their own subtree.                                   |
 | POST   | `/cleanup/orphaned`                    | Token + Admin | Clean orphaned metadata files and permission requests. Also runs one GC cycle and reports `orphaned_node` status (see §2.2.3.1).                 |
 | POST   | `/maintenance/gc`                      | Token + Admin | Run one garbage-collection cycle (Tier 1 DB-driven + Tier 2 S3 scan) for orphaned blobs. Service: `server/service/gcService.js`.                 |
-| POST   | `/maintenance/repair-sync`             | Token + Admin | Manually resolve an `orphaned_node`. Body: `{ nodeId, action: 'retry-delete' \| 'force-active' }`. Service: `server/service/failSafeService.js`. |
+| POST   | `/maintenance/repair-sync`             | Token + Admin | Manually resolve a stuck node. `orphaned_node`: `{ nodeId, action: 'retry-delete' \| 'force-active' }` (WebDAV mode: `retry-delete` also deletes the remote blob/file bottom-up over the subtree; `force-active` first verifies the remote file exists and refuses with 409 otherwise). `pending_upload` (DEF-12/13, **S3 mode only** — refused with 409 in WebDAV mode, where healthy file nodes intentionally stay `pending_upload`): `{ nodeId, action: 'complete' \| 'restore-previous' \| 'delete' \| 'auto' }`. Service: `server/service/failSafeService.js`. |
 
 #### 2.2.3.1 `cleanup/orphaned` response shape (additive keys)
 
@@ -66,6 +66,7 @@ The existing result keys (`deletedPermissionFiles`, `deletedUserFiles`, `deleted
 
 - `gc: { tier1: { orphanedRows, deletedBlobs, deletedRows, errors }, tier2: { scannedKeys, untrackedKeys, deletedKeys, skipped, errors } }`
 - `orphanedNodes: Array<{ nodeId, path }>`
+- `pendingUploadNodes: Array<{ nodeId, name, type, path, createdAt, updatedAt, classification, pendingS3Key, blobPresent }>` — read-only report of file nodes stuck in `sync_status='pending_upload'` (**empty in WebDAV mode** — the stuck state is S3-mode only; see `docs/spec/server/services/uploadService.md` §2.5.1)
 
 #### 2.2.4 migration (`/api/admin`)
 
@@ -127,9 +128,9 @@ Effective-configuration management (env → DB → defaults registry). Service: 
 
 - **GET /folders/list:** 200: folder list (sorted by name)
 - **POST /permissions/ensure-home-owner-admin:** 200: `{ success: true, updatedUsers, upgradedPaths, grantedPaths, removedSelfGrants, errors }`
-- **POST /cleanup/orphaned:** 200: `{ messageCode, results: { deletedPermissionFiles, deletedUserFiles, deletedEmailIndexFiles, cleanedPermissionRequests, errors, gc: { tier1, tier2 }, orphanedNodes } }`
+- **POST /cleanup/orphaned:** 200: `{ messageCode, results: { deletedPermissionFiles, deletedUserFiles, deletedEmailIndexFiles, cleanedPermissionRequests, errors, gc: { tier1, tier2 }, orphanedNodes, pendingUploadNodes } }`
 - **POST /maintenance/gc:** 200: `{ messageCode, results: { tier1: { orphanedRows, deletedBlobs, deletedRows, errors }, tier2: { scannedKeys, untrackedKeys, deletedKeys, skipped, errors } } }`
-- **POST /maintenance/repair-sync:** Body: `{ nodeId, action }`. 200: `{ messageCode, result: { nodeId, action, status, path, detail } }`; 404 when node not found; 400 on invalid action.
+- **POST /maintenance/repair-sync:** Body: `{ nodeId, action }`. 200: `{ messageCode, result: { nodeId, action, status, path, detail } }`; 404 when node not found; 400 on invalid action; 409 on a state mismatch (`repairUploadNotPending` — node not in `pending_upload`, a required object_map row is missing, or `pending_upload` repair requested in WebDAV mode (S3 mode only); `repairUploadBlobMissing` — `complete` with an absent blob; `repairSyncRemoteMissing` — WebDAV `force-active` with the remote file absent).
 
 #### migration
 

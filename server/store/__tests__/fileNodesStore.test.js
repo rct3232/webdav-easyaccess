@@ -595,6 +595,46 @@ describe('createFileNodesStore', () => {
       expect(row.rows[0].storage_backend).toBe('s3');
       expect(row.rows[0].s3_key).toBe('s3://bucket/backend-flip-orphan-key');
     });
+
+    // reactivateObjectMapRow
+    it('reactivates an orphaned row back to active', async () => {
+      const created = await store.createNode(null, `${testPrefix}reactivate-file`, 'file');
+      await store.insertObject(created.id, 's3://bucket/reactivate-key', 'active');
+      await store.orphanObject('s3://bucket/reactivate-key');
+
+      const orphanedRow = await dbQuery(
+        `SELECT id FROM object_map WHERE s3_key = ? AND status = 'orphaned'`,
+        ['s3://bucket/reactivate-key']
+      );
+      expect(orphanedRow.rows.length).toBe(1);
+
+      const result = await store.reactivateObjectMapRow(orphanedRow.rows[0].id);
+      expect(result.changes).toBe(1);
+
+      const row = await dbQuery(`SELECT status FROM object_map WHERE s3_key = ?`, [
+        's3://bucket/reactivate-key',
+      ]);
+      expect(row.rows[0].status).toBe('active');
+    });
+
+    it('leaves non-orphaned rows untouched (changes=0)', async () => {
+      const created = await store.createNode(null, `${testPrefix}reactivate-pending`, 'file');
+      await store.insertObject(created.id, 's3://bucket/reactivate-pending-key', 'pending');
+
+      const pendingRow = await store.getObjectMapByS3Key('s3://bucket/reactivate-pending-key');
+      const result = await store.reactivateObjectMapRow(pendingRow.id);
+      expect(result.changes).toBe(0);
+
+      const row = await dbQuery(`SELECT status FROM object_map WHERE s3_key = ?`, [
+        's3://bucket/reactivate-pending-key',
+      ]);
+      expect(row.rows[0].status).toBe('pending');
+    });
+
+    it('returns changes=0 for an unknown id', async () => {
+      const result = await store.reactivateObjectMapRow(99999999);
+      expect(result.changes).toBe(0);
+    });
   });
 
   /* ------------------------------------------------------------------ */

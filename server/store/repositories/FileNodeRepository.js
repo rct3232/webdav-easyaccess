@@ -33,6 +33,7 @@
  * @property {(s3Key) => Promise<Object|null>} getObjectMapByS3Key
  * @property {(s3Key) => Promise<{ changes: number }>} activateObject
  * @property {(s3Key) => Promise<{ changes: number }>} orphanObject
+ * @property {(id) => Promise<{ changes: number }>} reactivateObjectMapRow
  * @property {(s3Key) => Promise<number>} countActiveObjectsByS3Key
  * @property {(fileNodeId) => Promise<{ changes: number }>} setObjectMapBackendWebdav
  * @property {(fileNodeId, size, mimeType, contentHash) => Promise<{ changes: number }>} upsertCache

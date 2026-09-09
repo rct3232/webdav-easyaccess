@@ -22,10 +22,10 @@ const storage = require('../store/storage');
  * | uploadFile | S3 PUT fails  | Node rolled back, nothing persisted          | Nothing (or partial) | No phantom row; partial → GC Tier 2    |
  * | uploadFile | TX2 fails     | Node rolled back, nothing persisted          | Blob uploaded        | GC Tier 2 cleans untracked blob        |
  * | overwrite  | TX1 fails     | ROLLBACK, original version preserved         | Nothing              | Idempotent retry                       |
- * | overwrite  | S3 PUT/TX2 fails | pending_upload + pending object_map row  | Nothing / blob       | No automatic recovery (IMPROVEMENT_PLAN)|
+ * | overwrite  | S3 PUT/TX2 fails | Rolled back to pre-state: node active, prev active row reactivated, pending v_{k+1} row deleted (filecache re-asserted) | New blob deleted best-effort; last-good B_k kept | File remains downloadable as previous version; rollback failure -> pending_upload (scan/repair + GC, DEF-12/13) |
  * ────────────────────────────────────────────────────────────────
  */
-function createUploadService({ fileNodeService, blobStorageService, blobStore }) {
+function createUploadService({ fileNodeService, blobStorageService, blobStore, fileNodesStore }) {
   function withTx(callback) {
     const backend = storage.getBackend();
     if (backend === 'sqlite') {
@@ -92,15 +92,70 @@ function createUploadService({ fileNodeService, blobStorageService, blobStore })
   /* ------------------------------------------------------------------ */
 
   /**
+   * Best-effort rollback of a failed overwrite (S3 PUT or TX2 failure):
+   * restores the pre-state — previous active object_map row reactivated, node
+   * sync_status back to 'active', pending v_{k+1} row deleted inside one withTx;
+   * the pending blob is deleted and the captured filecache values re-asserted
+   * outside the TX. Individual steps are guarded so one failure does not skip
+   * the rest; the last-good blob B_k is never deleted. Residual state on
+   * rollback failure is handled by scan/repair + GC cleanup (DEF-12/13).
+   */
+  async function rollbackOverwrite(fileNodeId, previousActive, previousCache, newS3Key) {
+    try {
+      await withTx(async () => {
+        if (previousActive) {
+          await fileNodesStore.reactivateObjectMapRow(previousActive.id);
+        }
+        await fileNodeService.updateSyncStatus(fileNodeId, 'active');
+        const pendingRow = await fileNodesStore.getObjectMapByS3Key(newS3Key);
+        if (pendingRow) {
+          await fileNodesStore.deleteObjectMapRows([pendingRow.id]);
+        }
+      });
+    } catch (_) {
+      /* ignore rollback TX failure — original upload error takes precedence */
+    }
+
+    try {
+      await blobStore.deleteBlob(newS3Key);
+    } catch (_) {
+      /* ignore */
+    }
+
+    try {
+      if (previousCache) {
+        await fileNodesStore.upsertCache(
+          fileNodeId,
+          previousCache.size,
+          previousCache.mime_type,
+          previousCache.content_hash
+        );
+      }
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  /**
    * Overwrite the content of an existing file.
    *
    * Flow:
+   *   Pre-state capture: getActiveObject + getCache
    *   TX1: prepareUpload + updateSyncStatus('pending_upload')
    *         (outside TX) blobStore.uploadBlob(s3Key, buffer)
    *   TX2: completeUpload + updateSyncStatus('active')
+   *
+   * Steps 2–3 run inside one try: on ANY failure after TX1 committed, the
+   * pre-state is restored (rollbackOverwrite) and the original error is
+   * re-thrown. The last-good blob B_k stays downloadable as the previous
+   * version.
    */
   async function overwriteFile(fileNodeId, buffer, mimeType) {
     let s3Key;
+
+    // Step 0 — Pre-state capture (before TX1).
+    const previousActive = await fileNodesStore.getActiveObject(fileNodeId);
+    const previousCache = await fileNodesStore.getCache(fileNodeId);
 
     // Step 1 — TX1: Prepare new version (orphans old active via prepareUpload)
     await withTx(async () => {
@@ -108,14 +163,19 @@ function createUploadService({ fileNodeService, blobStorageService, blobStore })
       await fileNodeService.updateSyncStatus(fileNodeId, 'pending_upload');
     });
 
-    // Step 2 — S3 PUT: Upload new content (outside transaction)
-    await blobStore.uploadBlob(s3Key, buffer);
+    // Steps 2–3 — S3 PUT (outside TX) + TX2 finalize, with best-effort
+    // pre-state rollback on failure.
+    try {
+      await blobStore.uploadBlob(s3Key, buffer);
 
-    // Step 3 — TX2: Finalize mapping + sync status
-    await withTx(async () => {
-      await blobStorageService.completeUpload(s3Key, buffer.length, mimeType);
-      await fileNodeService.updateSyncStatus(fileNodeId, 'active');
-    });
+      await withTx(async () => {
+        await blobStorageService.completeUpload(s3Key, buffer.length, mimeType);
+        await fileNodeService.updateSyncStatus(fileNodeId, 'active');
+      });
+    } catch (error) {
+      await rollbackOverwrite(fileNodeId, previousActive, previousCache, s3Key);
+      throw error;
+    }
 
     return { nodeId: fileNodeId, s3Key, size: buffer.length, mimeType };
   }

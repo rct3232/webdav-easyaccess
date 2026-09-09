@@ -14,20 +14,22 @@
 
 ## 1. Deferred & future work (no active owner)
 
-Ordered by urgency review (2026-09-02): highest priority first.
+Ordered by urgency review (2026-09-08): highest priority first.
 
 | ID | Status | Item | Originating doc (now references here) |
 | -- | ------ | ---- | ------------------------------------- |
-| DEF-6 | DEFERRED | HTTP Range/206 support on public share download. | `docs/spec/server/routes/sharePublic.md` |
-| DEF-7 | DEFERRED | Blob migration source-delete mode (`--delete-mode`). | `docs/spec/server/tools/blob-migration.md`, `docs/SETUP.md` |
-| DEF-8 | DEFERRED | Admin/operator app split (recorded, not planned). | `docs/features/migration-mode.md` |
-| DEF-9 | DEFERRED | Redis-backed cache / operationProgress store. | `docs/spec/server/services/downloadService.md`, `docs/ARCHITECTURE.md` |
-| DEF-10 | DEFERRED | CRA v5 → Vite migration (separate project/epic). | former improvement-plan backlog (pre-2026-09-02, item #13) |
-| DEF-11 | DEFERRED | Multi-version object history (`version_number > 1`). | `docs/spec/server/services/blobStorageService.md`, `docs/spec/server/store/fileNodesStore.md`, `docs/features/core-service-layer.md` |
 | DEF-12 | DEFERRED | S3/WebDAV **overwrite** upload failure leaves `pending_upload` (S3) / `orphaned_node` (WebDAV) row with no automatic recovery; retry endpoint + GC cleanup of `pending` object_map rows and untracked S3 blobs is unimplemented. | `docs/spec/server/services/uploadService.md` §2.5, `docs/spec/server/services/fileService.md` §4, `docs/features/core-service-layer.md` |
 | DEF-13 | DEFERRED | Process death between an upload's TX1 commit and the blob write leaves orphaned `pending_upload` rows that no automatic path cleans. | `docs/spec/server/services/uploadService.md` §2.5 |
+| DEF-6 | DEFERRED | HTTP Range/206 support on public share download. | `docs/spec/server/routes/sharePublic.md` |
+| DEF-7 | DEFERRED | Blob migration source-delete mode (`--delete-mode`). | `docs/spec/server/tools/blob-migration.md`, `docs/SETUP.md` |
+| DEF-9 | DEFERRED | Redis-backed cache / operationProgress store. | `docs/spec/server/services/downloadService.md`, `docs/ARCHITECTURE.md` |
+| DEF-11 | DEFERRED | Multi-version object history (`version_number > 1`). | `docs/spec/server/services/blobStorageService.md`, `docs/spec/server/store/fileNodesStore.md`, `docs/features/core-service-layer.md` |
+| DEF-16 | DEFERRED | Trash / recycle-bin (soft delete + retention + restore). Model: `file_nodes.deleted_at` (orthogonal to `sync_status`); global trash with permission-based visibility; read-gating so a trashed node is hidden from all listings (folder, `__recent__`, `__shared__`) and returns not-found on direct access. **Requires the retention-category GC foundation built under DEF-12/13 (R3)** (trash = one retention category + a purge tier + `TRASH_RETENTION_DAYS`). See the retention-GC note (2026-09-09); full design in `PLAN.md` (2026-09-09 workstream). | `docs/IMPROVEMENT_PLAN.md` (retention-GC note), `PLAN.md` |
+| DEF-8 | DEFERRED | Admin/operator app split (recorded, not planned). | `docs/features/migration-mode.md` |
+| DEF-10 | DEFERRED | CRA v5 → Vite migration (separate project/epic). | former improvement-plan backlog (pre-2026-09-02, item #13) |
 | DEF-14 | DEFERRED (trigger-gated) | New-RDB adoption gate: generalize the metadata store beyond the current sqlite + PostgreSQL pair to MySQL, MariaDB, MSSQL and Oracle via boot-time engine auto-detection from a generic connection block. **Decision (2026-09-04): do NOT adopt an ORM today** — keep the executor seam + per-dialect repositories + per-engine conformance for sqlite/PG. **Introduce a single-source query layer (ORM/query builder) at the moment a second new engine is actually added** (evaluate Drizzle/Kysely first). Full rationale in the DEF-14 note. | `docs/spec/server/store/storage.md`, `docs/features/config-source-resolution.md`, `docs/spec/server/infrastructure/configRegistry.md`, `docs/spec/server/store/executor.md`, `docs/spec/server/store/repository-contract.md` |
-| DEF-15 | DONE | E2E assertion-context containment + hermetic overlap IMPLEMENTED on 2026-09-07 (PLAN.md W4/W4b/W5/W10 + Option A Phases 1–2; see the DEF-15 note): `core-flow.*` create/assert only inside per-case owned folders (docs/TESTING_STRATEGY.md); explicit `--workers=N` flags removed (Playwright auto-sizes to half the logical cores); the hermetic suites are independent siblings with per-suite scratch ports :5003/:5010/:5011, distinct scratch PG DBs, a dedicated migration bucket, and an up-front webdav restart. | `docs/TESTING_STRATEGY.md`, `PLAN.md` (W4/W5) |
+| DEF-17 | DEFERRED | WebDAV rename/move leaves the **old-path** remote file undeleted — a physical orphan both on success and on re-upload failure; a failed remote delete leaves an orphan with no DB row. Separate fix from DEF-12/13: capture the old path and delete it (no reconciliation sweep). | `docs/spec/server/services/fileService.md` |
+| DEF-18 | DEFERRED (retention-gated) | WebDAV remote↔DB reconciliation sweep ("Tier 2" for WebDAV; today `WebdavBlobStore.listOrphanedKeys()` returns `[]`). Must be **retention-category aware** (active/trash/version/garbage), NOT a naive "delete anything not in DB" walk — co-design with DEF-16/DEF-11. | `docs/spec/server/services/gcService.md` |
 
 ---
 
@@ -179,4 +181,36 @@ AGENTS.md §2.1. Root cause and shipped state:
 - W6 reassessment (2026-09-07): the migration/setup/admin-config "depth" is NOT trimmed — those
   deep DB/.env/blob asserts are the suite's only real-webdav / real-config-write coverage (server
   tier tests those paths with mocked/fake stores only), and hermetic test time is only ≈ 4 min.
-  Prerequisite for any future depth move: a real-webdav server leg (see W3 option B).
+   Prerequisite for any future depth move: a real-webdav server leg (see W3 option B).
+
+---
+
+### Retention-category GC note (2026-09-09) — shared foundation for DEF-11 / DEF-12 / DEF-13 / DEF-16
+
+Recorded here per AGENTS.md §2.1 (single tracking doc; the full design lives in `PLAN.md`,
+"Workstream 2026-09-09").
+
+- **Root fact**: GC today is binary — keep exactly the `active` object_map set, garbage-collect the
+  rest (`gcService.js` Tier 1/2, keep-set `getAllActiveS3Keys`). Every "keep old data" feature breaks
+  that single assumption.
+- **Decision (Option Y, user-confirmed 2026-09-09)**: DEF-12/13's R3 builds the **retention-category**
+  GC foundation — category-aware Tier 1/2/3 + a single keep-set seam `getKeptS3Keys()`
+  (= active ∪ trash ∪ version ∪ pending-live) + config keys + an extracted `purgeNodeSubtree`.
+  DEF-11 and DEF-16 are then **additive** (one category + one config each; trash adds a purge tier);
+  no GC rework. **Guardrail**: with default configs the GC is observably identical to today
+  (version TTL = 1 day = today; trash category disabled; pending-stale strictly additive) so
+  DEF-12/13 merges/verifies on its own tests.
+- **Categories** (derived by query, NOT stored as new status values): `active`, `trash`
+  (node `deleted_at` set, DEF-16), `version` (orphaned prior versions, DEF-11), `pending-live`
+  (stuck `pending_upload`, DEF-12/13), `garbage`, `untracked` (S3-only).
+- **Dependencies / sequencing**:
+  - DEF-12/13 (R3) provides the foundation → unblocks DEF-11 (S7) and DEF-16 (P5+).
+  - DEF-11 needs only the foundation (raise `GC_VERSION_TTL_DAYS` + browse/restore-version API/UI).
+  - DEF-16 P1–P4 (schema / soft-delete / restore / read-gating) are GC-independent → parallel with
+    DEF-12/13; DEF-16 P5–P6 (trash GC + purge) need the foundation.
+  - DEF-18 (WebDAV reconciliation) is deferred and must be retention-aware — do NOT build a naive sweep.
+  - DEF-17 (WebDAV rename/move old-path orphan) is a separate bug fix, out of DEF-12/13 core scope.
+- **In scope for DEF-12/13 core**: R1 (overwrite rollback) + R2 (scan/repair/startup report) + R3
+  (GC foundation), plus the small D5a (`retry-delete` also deletes the remote blob) and D5d
+  (`force-active` remote-existence check). **Not in scope**: the D5c sweep (→ DEF-18) and the
+  rename/move old-path leak (→ DEF-17).

@@ -1,200 +1,182 @@
 # PLAN.md
 
-## Objective (current workstream)
-Cut E2E wall-clock (~23 min on low-spec) without losing the suite's defect net.
+## Objective (current workstream — 2026-09-09)
+Fix the stuck-state data-integrity defect **DEF-12/13** (a failed S3 overwrite and a crash
+between TX1 and the blob write leave unrecoverable `pending_upload`/`orphaned_node` nodes, and
+s3-source migration silently drops them at cutover) and, on the **same retention-category GC
+foundation**, enable two additive retention features: **version history (DEF-11)** and a
+**trash/recycle-bin (DEF-16)**. Goal: no rework between them.
 
-Scope principle (user-decided):
-- E2E verifies UI correctness only (interaction → user-visible result). Detailed
-  behavior lives in unit/integration.
-- Environments with a different UI are all exercised (desktop vs mobile = yes;
-  s3 vs webdav = same UI, so backend wiring is a server-tier concern).
-- Any E2E test creates/asserts only inside a case-owned folder ("assertion-context
-  containment") so parallelism never breaks visibility assertions.
+> Prior workstreams (E2E wall-clock; 2026-09-08 doc-drift reconciliation + audit fixes) are
+> complete — see `git log` and the `docs/IMPROVEMENT_PLAN.md` completion notes.
 
-Agreed decisions:
-- **Option A (mode matrix):** full UI E2E runs once on `s3` (essentials +
-  mypage-admin + hermetic included). `webdav` reduces to a thin smoke (chromium
-  desktop only; content-integrity nets EXP-012/013, SHARE-011, OVERLAY-011 kept)
-  + real-webdav wiring covered at the server tier.
-- **Data containment = E2E writing policy** (docs-first): `core-flow.*` converts
-  to per-case owned folders; enables intra-project `workers>1`.
-- Concurrency is applied only where isolation analysis proves safe.
+## Scope
+- **In scope**: DEF-12/13 (R1 rollback, R2 scan/repair/startup, R3 GC foundation); DEF-16 trash
+  (P1–P9); DEF-11 (S7); small WebDAV repair hardening D5a (`retry-delete` also deletes the remote
+  blob) + D5d (`force-active` remote-existence check).
+- **Out of scope (tracked separately)**: DEF-17 (WebDAV rename/move old-path orphan) and DEF-18
+  (WebDAV remote↔DB reconciliation sweep) — see `docs/IMPROVEMENT_PLAN.md`.
+- **Guardrail**: with default configs the GC must be **observably identical to today** (version
+  TTL = 1 day; trash category disabled; pending-stale strictly additive).
+- Docs-first per AGENTS.md §2.1. Never merge to `main`; feature → `dev` only after tests pass.
 
-Prior workstream (DB-interface refactor, D1–D10) completed 2026-09-04 — see git
-log (`dev`, `9a1ed90`..`fdaa084`).
+## Guiding decision — Option Y (confirmed 2026-09-09)
+DEF-12/13's R3 builds the shared **retention-category GC foundation** (category-aware tiers +
+keep-set seam + config + `purgeNodeSubtree` + live-upload registry). DEF-11 and DEF-16 then add one
+category + one config (+ one tier for trash) each → zero rework. Rejected Option X (narrow R3 now,
+restructure GC later = two GC designs, the first disposable).
 
 ## Key Components
-- `playwright.config.ts` project matrix (mode x platform; hermetic additive).
-- `e2e/` specs + helpers (`files.ts` `buildName`, `setupScratch.ts`, `seedDb.ts`).
-- Docs: `docs/TESTING_STRATEGY.md` (E2E policy), `docs/E2E_COVERAGE_PLAN.md`
-  (inventory), `docs/TEST_GIT_GUIDE.md` (run rules), `docs/IMPROVEMENT_PLAN.md`.
+- **Foundation (build once)**: F1 category-aware `gcService` (Tier 1/2/3); F2 keep-set seam
+  `getKeptS3Keys()` = active ∪ trash ∪ version ∪ pending-live (replaces `getAllActiveS3Keys`);
+  F3 live-upload registry (in-process `Set<nodeId>`); F4 config `TRASH_RETENTION_DAYS` /
+  `GC_VERSION_TTL_DAYS` / `GC_PENDING_STALE_DAYS`; F5 `purgeNodeSubtree` (extracted WebDAV
+  bottom-up + cascade); F6 new repo methods (both dialects + PG conformance).
+- **Retention categories** (derived by query, NOT new status values): `active`, `trash`, `version`,
+  `pending-live`, `garbage`, `untracked` (S3-only).
+- **Slices**: S1/S2/S3 (DEF-12/13), P1–P9 (DEF-16), S7 (DEF-11).
 
 ## Success Criteria
-1. s3-full + webdav-smoke provide the same defect net as today's
-   webdav-full + s3-full, at roughly half the wall-clock.
-2. `core-flow.*` cases own their data; `--workers=1` vs `--workers=2` produce an
-   identical passed/skipped set (repeat 3×).
-3. Containment policy documented and every E2E edit complies.
+1. **DEF-12/13**: failed S3 overwrite → file downloadable as the PREVIOUS version, no
+   `pending_upload`; seeded stuck node → repair `auto` → active + old content + pending blob
+   deleted; crash → startup reports stale `pending_upload` with 0 auto-mutations; GC never deletes
+   a stuck node's last-good blob and cleans only stale pending.
+2. **Trash**: trashed content hidden from all listings (folder, `__recent__`, `__shared__`) and
+   not-found on direct access; restore round-trips (content hash) on both backends;
+   permanent-delete/empty-trash physically remove (WebDAV paths + untrack S3 keys); trashed survives
+   s3↔webdav migration both directions and is still trashed.
+3. **Foundation**: default GC is observably identical to today; DEF-11 (raise
+   `GC_VERSION_TTL_DAYS` + browse/restore) and DEF-16 P5+ add categories without touching the GC
+   skeleton again.
 
 ## Task dependency graph
-```
-W0  PLAN.md rewrite + env baseline readiness             ← done now
-W1  Baseline measurement (json reporter; s3 core/full)   ← first (before edits)
-W7  Docs-first policy: assertion-context containment      (TESTING_STRATEGY +
-    E2E_COVERAGE_PLAN 1-line + IMPROVEMENT_PLAN backlog)
-W2  Mode matrix: full s3 run; webdav thin smoke project + scripts + docs
-W3  (decide) content-integrity 4 nets: stay in webdav smoke (default) vs
-    new real-webdav server leg
-W4  Containment refactor core-flow.shared/desktop/mobile (workers=1 equal
-    first) → fix B2/B3 → intra-project workers=2 verification
-W5  Hermetic overlap: distinct scratch ports + webdav restart fix + migration
-    bucket ordering → run hermetic beside core
-W6  Migration/hermetic depth trim (server suites exist: migrationService,
-    metadataMigrationService, migrationJobStore, migrationGate)
-W10 Final verify + docs + PLAN close-out
-```
-W1 before W2/W4. W7 independent → parallel. W2 → W5. W6 independent.
-W4 needs W1 gate; W3 optional after W2.
+Foundation pieces F3/F5/F6 are built incrementally and shared across slices.
 
-## Blockers found (isolation analysis)
-- B1 admin root == fs root; client renders 50 items/listing; root accumulates
-  ~47 folders/project → visibility asserts depend on creation order (workers=1).
-- B2 auth (registration toggle, pending users) ↔ mypage-admin (.first() picks).
-- B3 file-scope beforeAll fixtures re-created per worker (share-public).
-- B4 hermetic share :5003; migration empties shared S3 bucket.
-- B5 login rate-limit per-IP (20/15min); PG pool max=10.
+```
+S1 (R1 overwrite rollback)      deps: F6(reactivateObjectMapRow)
+S2 (R2 scan + repair + startup) deps: F3, F5, F6          ┐
+S3 (R3 = GC foundation)         deps: F1, F2, F4, F6      ├─ parallel (S1/S2 independent of S3)
+   │
+   ├─► S7 (DEF-11 version history)    deps: S3 only
+   │
+P1 (trash schema)                GC-independent            ┐
+P2 (trash soft-delete)           deps: F5                  ├─ parallel with S3 (GC-independent)
+P3 (trash restore/purge)         deps: F5, conflictResolver│
+P4 (trash read-gating)           deps: —                   ┘
+   │
+P5 (trash GC category + Tier 3)  deps: S3 ∧ P1–P4
+P6 (trash purge scheduling)      deps: P5
+P7 (trash permissions)           deps: P3
+P8 (trash migration proof)       deps: P2/P3
+P9 (trash UI)                    deps: P3/P4/P7
+
+Critical path: S3 → { S7, P5 }.  S1 · S2 · P1–P4 start immediately in parallel.
+```
+
+## Background — the binary GC assumption being replaced
+GC today keeps exactly the `active` object_map set and deletes the rest: Tier 1 = `object_map`
+rows `status='orphaned' AND created_at < NOW()-GC_ORPHAN_TTL_DAYS` (default 1d) + their S3 blobs
+(WebDAV skipped); Tier 2 (S3 only) = `listOrphanedKeys` (ListObjectsV2, LastModified<cutoff) minus
+`getAllActiveS3Keys()`; `GC_INTERVAL_MS` default 0 (scheduler off); `WebdavBlobStore.listOrphanedKeys()`
+returns `[]`. Every "keep old data" feature breaks this single assumption → the category model.
+
+## DEF-12/13 failure-state map (verified 2026-09-08)
+| stuck state | cause | rows | blob | today's coverage |
+|---|---|---|---|---|
+| S3 overwrite PUT/TX2 fail | `overwriteFile` has **no rollback** (`uploadService.js:102-121`) | node `pending_upload`; v_k `orphaned`, v_{k+1} `pending` | B_k present | listed but not downloadable; invisible to GC/failsafe/migration; Tier 1 deletes B_k (last-good) after TTL |
+| crash between TX1 & blob write (DEF-13) | process death | node `pending_upload`, v1 `pending` | maybe | same — no scan/repair path exists |
+| WebDAV overwrite/rename/move fail | non-atomic remote PUT | node `orphaned_node` | remote present/partial | failsafe reports + `retry-delete`(DB-only) / `force-active`(blind) |
+
+Key gap: **no subsystem scans or repairs `pending_upload`**; s3-source migration enumerates
+`active` only → silently drops stuck nodes at cutover.
+
+## Retention categories (derived by query)
+| category | definition | policy | config | owner |
+|---|---|---|---|---|
+| active | `object_map=active`, node live | keep | — | base |
+| trash | `object_map=active`, node `deleted_at≠NULL` | keep → Tier 3 purge | `TRASH_RETENTION_DAYS` | DEF-16 P5 |
+| version | `orphaned`, node live (prior overwrite versions) | keep → TTL | `GC_VERSION_TTL_DAYS` | DEF-11 |
+| pending-live | `pending` on `pending_upload` node (+ last-good guard) | protect in live-set; clean when stale | `GC_PENDING_STALE_DAYS` | DEF-12/13 R3 |
+| garbage | `orphaned` whose node is trashed/gone | Tier 1 | `GC_ORPHAN_TTL_DAYS` | existing |
+| untracked (S3) | bucket key absent from keep-set union | Tier 2 | `GC_ORPHAN_TTL_DAYS` | existing (widened keep-set) |
+
+## Slices
+
+### DEF-12/13
+- **S1 (R1)** S3 overwrite rollback: capture the pre-state active row id (`getActiveObject`) before
+  TX1; on PUT/TX2 throw → `reactivateObjectMapRow(id)` + node→`active` + delete v_{k+1} pending row +
+  blob + `upsertCache`. Best-effort (its own failure → R2/R3).
+- **S2 (R2)** scan+repair: `pending_upload` scan; admin repair actions `complete`/`restore-previous`/
+  `delete`/`auto` (`auto`: overwrite→restore-previous; new-file+blob→complete; new-file no-blob→delete);
+  startup report (report-only, threshold-gated). **D5a** `retry-delete` also deletes the remote blob;
+  **D5d** `force-active` adds a remote existence check.
+- **S3 (R3)** GC foundation = F1/F2/F4/F6: status-aware Tier 1 with a **last-good guard** (an
+  `orphaned` row is exempt while its node is `pending_upload` with no `active` row), pending-live
+  cleanup, widened keep-set. **Closes DEF-12/13.**
+
+### DEF-16 trash (Option A: `deleted_at`)
+- **Model**: `file_nodes.deleted_at TIMESTAMPTZ NULL`, orthogonal to `sync_status`;
+  `UNIQUE(parent_id,name)` + root unique → **partial over `deleted_at IS NULL`** (new `ddl/002_*`;
+  never edit `001` — checksum drift hard-fail). Zero physical I/O on trash/restore-in-place in BOTH
+  backends (S3 key = stable UUID, stays `active` → in Tier-2 keep-set for free; WebDAV path stable
+  since closure kept). Rejected: B (status pollutes migration/failsafe), C (move = closure churn +
+  WebDAV copy), D (tombstone loses shares/perm via cascade, re-derives path).
+- **P1** schema · **P2** soft-delete (`fileService.js:321-350` stops physical removal; mark subtree
+  `deleted_at`) · **P3** restore (in-place default) + permanent-delete + empty-trash (collision: name
+  suffix via `conflictResolver` / deepest live ancestor; purge = F5) · **P4** read-gating
+  (`getChildren` + `__recent__` + `__shared__` + download/preview/zip/thumbnail/metadata/share-public/
+  ancestors → trashed = not-found/hidden) · **P5** trash category + Tier 3 + retention (needs S3) ·
+  **P6** purge scheduling (reuse `GC_INTERVAL_MS`) · **P7** permissions (visibility = deleters +
+  admin; restore = move perm; permanent-delete = delete perm; empty-trash = admin) · **P8** migration
+  proof (no code change under A; trashed survives both directions, still trashed; hermetic E2E) ·
+  **P9** client UI (trash view, context menu, i18n; E2E containment policy).
+- **P1–P4 are GC-independent** → parallel with S3.
+- UI note: trashed content shows **exactly like no-permission** today (folder direct-access 404 →
+  client redirects to root `useFileManager.js:158-160`; file download 404; preview 403) — no new
+  error surface; only new UI is the trash listing itself.
+
+### DEF-11 (S7)
+- Raise `GC_VERSION_TTL_DAYS`; add browse/restore-version API + UI. No schema change
+  (`version_number` already increments on every overwrite; prior versions are already orphaned+GC'd
+  after 1 day today). Needs only S3. Independent of trash P5–P9.
+
+## Locked decisions
+- **DEF-12/13**: D1 restore-previous; D2 auto policy; D3 report-only startup; D4 GC status-aware;
+  D5a+D5d in scope; D5b/D5c → DEF-17/DEF-18.
+- **Trash (DEF-16)**: ① 30d retention, 0=off; ② global + permission-based visibility; ③ shares/perm
+  survive + read-gated; ④ collision = suffix / deepest live ancestor; ⑤ restore=move perm,
+  permanent-delete=delete perm, empty-trash=admin; ⑥ WebDAV included; ⑦ in-place restore default.
+- **Gating surfaces**: `getChildren`, `__recent__` (`/api/recent-files`), `__shared__`
+  (`/api/permissions/shared`), and all direct-access read paths → trashed = not-found.
+
+## Anti-goals (do not build rework-prone)
+1. No D5c WebDAV reconciliation sweep now (→ DEF-18, retention-aware).
+2. No `sync_status='trashed'` (pollutes `migrationService.js:109-126` + the failsafe channel).
+3. No new `object_map.status` values (categories stay derived).
+4. No inline keep-set queries in `gcService` (always through F2).
+5. No new scheduler (reuse `GC_INTERVAL_MS`/`maintenanceScheduler.js`).
+6. R1 must not change `upsertObjectMap` version semantics (DEF-11 builds on them).
+
+## Docs-first (AGENTS.md §2.1) — specs to update before code
+`uploadService.md` (§2.3 rollback, §2.5/§2.6/§2.7) · `fileService.md` (§4, §2.5) · `gcService.md` ·
+`blobStorageService.md` · `core-service-layer.md` · `admin-infrastructure.md` · `routes/admin.md` ·
+`configRegistry.md` · `store/fileNodesStore.md` · `migration-mode.md` · `permissions.md` · client
+`fileService` spec. `docs/IMPROVEMENT_PLAN.md` (DEF-16/17/18 + retention note) already updated 2026-09-09.
+
+## Workflow / verification
+- Branch per slice (e.g. `fix/upload-overwrite-recovery`, `feature/trash`); docs-first; run
+  `npm run test:ci` (client + server); for any repo/executor/store change also run the PG adapter
+  leg `cd server && npm run test:ci:pg:adapters` (needs `docker compose -f docker-compose.e2e.yml
+  up -d postgresql-e2e`). Merge to `dev` only after green; never to `main`.
 
 ## Recording
-- 2026-09-07: analysis done (duration structure, isolation blockers A/B,
-  backend-mode dependence); decisions Option A + containment policy.
-- 2026-09-07: **W1 baseline (core s3, essentials)**: 122 executions, 119 pass /
-  0 fail / 3 skip (mobile-only). Pure test time ≈ 352s: core-flow.shared 138s,
-  share-internal 49s, mypage-user 46s, core-flow.desktop 44s, share-public 35s,
-  auth 25s, core-flow.mobile 13s. Full-mode extra = mypage-admin + hermetic
-  (boot-heavy) — dominant wall-clock outside essentials.
-- 2026-09-07: **W7a docs policy landed** (TESTING_STRATEGY assertion-context
-  containment; E2E_COVERAGE_PLAN 1-line; IMPROVEMENT_PLAN DEF-15).
-- 2026-09-07: **W2 mode matrix** in progress (s3 = full UI incl. hermetic;
-  webdav = smoke desktop).
-- 2026-09-07: **W2 done + validated**: config now branches by mode — s3 keeps the
-  full desktop/mobile matrix + hermetic; webdav defines `webdav-smoke-setup` +
-  `webdav-smoke-desktop` (grep: EXP-00[12458]/EXP-01[23]/SHARE-011/OVERLAY-011).
-  --list parity: s3 full 186, s3 core 122 (== W1). Webdav smoke run: 10/10 pass,
-  ~23s pure test time (real webdav store incl. content-integrity nets). Docs
-  updated docs-first (E2E_COVERAGE_PLAN mode-matrix section, TEST_GIT_GUIDE
-  scripts/assumptions).
-- 2026-09-07: **W4 (containment refactor core-flow.\*)** next.
-- 2026-09-07: **W4 done + verified**:
-  - helper `openPrivateWorkspace` (per-test base under `/`, API-created) +
-    `createFolderAt` accepts null parent; converted core-flow.shared/desktop/mobile
-    (admin-root tests now create/assert inside `/<base>`; EXP-001/012/013 untouched).
-  - Full core s3 regression: 122 exec / 119 pass / 0 fail / 3 skip (== W1), pure
-    test time 369s.
-  - Order-independence: core-flow subset workers=1 vs 2 sets identical —
-    desktop 26 (25p/1s), mobile 18 (18p). lint clean (e2e eslint-ignored);
-    prettier clean.
-  - Remaining for whole-core workers=2: B2 (auth↔mypage-admin cross-file) and
-    B3 (share-public file-scope fixtures). Option: split mypage-admin into its
-    own post-reset project serialized after each platform core; mark
-    share-public serial. Recorded as next step (W4b).
-- 2026-09-07: **W4b done** — B3 fixed (share-public describe now `serial` so its
-  project-scoped fixture tree is never re-created per worker). Core scripts
-  (`test:e2e:core`, `test:e2e:core:s3`) default to `--workers=2`; full runs stay
-  `--workers=1`. Full-core s3 at workers=2 run twice: result set identical to the
-  w1 baseline both times (122 exec / 119 pass / 0 fail / 3 skip); wall ≈ 4.5 min
-  vs ≈ 15.8 min for the w1 run (w1 figure includes cold-boot; treat as indicative).
-  B2 (admin) is excluded from core mode; full-mode admin split + hermetic
-  port/bucket isolation remain for W5.
-- 2026-09-07: **W5 done** — full-mode mypage-admin moved into dedicated
-  post-reset projects (`s3-admin-desktop[-setup]`, `s3-admin-mobile[-setup]`) so
-  it never overlaps `auth.spec` (B2). Hermetic suites are chained strictly AFTER
-  the platform+admin chain and sequentially among themselves (fixed :5003 port;
-  migration empties the shared bucket), which keeps full runs safe at workers>1.
-  Fixed E2E-ADMIN-008 to scope its success-alert locator (an extra env-setup
-  warning banner shares role=alert). Full `test:e2e`/`test:e2e:s3` default to
-  `--workers=2`.
-- 2026-09-07: **W10 final gate (s3)** — full s3 @ workers=2: 185 expected /
-  3 skipped / 0 unexpected / 0 flaky, wall ≈ 9.3 min (platform w2 + admin +
-  hermetic sequential). Webdav smoke re-run: 10/10 pass. Core-mode equivalence
-  (w1==w2) verified earlier (see W4/W4b).
-- 2026-09-07: close-out notes — measured on this machine: full s3 w2 ≈ 9.3 min,
-  core s3 w2 ≈ 4.5 min, webdav smoke ≈ 45 s test time (+boot). Full webdav UI
-  duplicate retired (Option A). Remaining optional: true hermetic overlap via
-  per-project scratch ports + dedicated migration bucket (currently hermetic is
-  a sequential tail), and W6 migration/hermetic depth trim (server suites exist).
-- 2026-09-07: **W6 reassessed — closed with no net removal**. Measured hermetic
-  test time is only ≈ 4 min (231s of 752s); slowest single case ≤ 15 s. The
-  migration/setup/admin-config deep DB/.env/blob asserts are the suite's ONLY
-  real-webdav / real-config-write coverage — the server tier tests these paths
-  exclusively with mocked/fake stores (docs/TESTING_STRATEGY.md), so deleting the
-  E2E depth would open a defect-net gap that violates success criterion 1. Poll
-  budgets (60-90 s) and 240 s describe timeouts are low-spec safety floors, not
-  normal-path costs, so trimming them only raises flake risk. Resolution: keep
-  hermetic suites as-is; a real-webdav server leg (W3 option B) would be the
-  prerequisite for any future depth move — recorded in IMPROVEMENT_PLAN.
-- 2026-09-07 (post-merge): explicit `--workers=N` flags removed from all e2e
-  scripts — Playwright now auto-sizes workers to half the logical cores (min 1).
-  Core s3 at the auto value (3 workers on this 6-core machine) matches the w1
-  baseline exactly (122 exec / 119 pass / 0 fail / 3 skip); wall ≈ 4.1 min.
-- 2026-09-07 (fix branch, E2E hardening): each case-owned workspace base folder
-  is now deleted via the API in `test.afterEach`
-  (`flushPrivateWorkspaceCleanups` in `e2e/helpers/files.ts`), so the admin root
-  never accumulates ~40 `workspace-*` folders per run (root-cap drift removed).
-  Bare `getByRole('alert')` in E2E-ADMIN-003/004 scoped to the success text
-  (same class as the E2E-ADMIN-008 fix). Docs updated docs-first (TESTING_STRATEGY
-  + E2E_COVERAGE_PLAN containment lines). Verified: full s3 185 pass / 3 skip /
-  0 fail; webdav smoke 10/10 — both equal to baseline.
+- 2026-09-09: analysis via sub-agents — DEF-12/13 failure-state map; contract/test surface; trash
+  data-model (Option A) + retention-category GC; coordination → **Option Y** chosen. All 7 trash
+  policy decisions + DEF-12/13 D1–D4 confirmed.
+- 2026-09-09: `docs/IMPROVEMENT_PLAN.md` updated (DEF-16/17/18 registered + retention-GC note).
+- 2026-09-09: PLAN.md rewritten to this workstream (prior E2E + doc-drift content removed; both closed).
 
-## Option A (hermetic overlap) — plan (2026-09-07, awaiting go)
-Goal: remove hermetic sequential tail (~7.2 min of the ~19 min run on the CI
-host) by letting hermetic suites run concurrently with the platform chain and,
-after isolation, with each other.
-
-Isolation preconditions (each must land before the scheduling change):
-1. webdav container restart once up-front: after the `data/webdav` wipe,
-   restart `webdav-e2e-test` in BOTH modes in `global-setup` (remove lazy
-   `ensureWebdavRootReady` docker restarts mid-run, setupScratch.ts:415).
-2. Scratch port parametrized per hermetic project (setupScratch.ts SCRATCH_PORT
-   constant → port map per project; spawn/health/kill + config baseURL aligned).
-3. Scratch PG database name unique per suite (createScratchPgDb default
-   `webdav_e2e_setup` — give setup-wizard/admin-config/migration distinct names;
-   audit scratch-dir caseId uniqueness).
-4. Migration S3 bucket isolated (its scratch env + minio assertions move to a
-   dedicated bucket so it never empties the bucket the s3 platform legs write).
-Phase 1: land 1–4, keep chaining; verify each hermetic suite green at workers=1.
-Phase 2: drop hermetic dependencies (independent projects) + run full at
-workers>=3 on the dev box; verify result-set identical to chained baseline and
-measure wall. Repeat 3×.
-Phase 3: same on the Jenkins host (4-core) via pipeline; keep or roll back by
-measured wall. Docs: E2E_COVERAGE_PLAN/TEST_GIT_GUIDE run rules + workers note.
-
-Option A progress (2026-09-07):
-- Phase 1 DONE: per-suite scratch ports (:5003 wizard / :5010 admin-config /
-  :5011 migration), explicit port threading through setupScratch helpers and all
-  three specs; scratch PG names explicit/distinct; webdav container restart moved
-  up-front to global-setup (both modes); migration dedicated MinIO bucket
-  (`e2e-migration-bucket`) wired through minio helpers + scratch env + global
-  setup; hermetic baseURLs aligned. Gate: setup-wizard ∥ admin-config ∥
-  migration desktop run CONCURRENTLY on 3 ports → 24/24 pass.
-- Phase 2 DONE: hermetic dependency chain lifted (independent siblings; mobile
-  variant still depends on its desktop). Full s3 @ workers=3 run three times:
-  185 expected / 3 skipped / 0 unexpected / 0 flaky every run; wall ≈ 7.0 min
-  (vs ≈ 9.3 min for the chained full @ workers=2). Webdav smoke re-run: 10/10.
-
-## Workstream 2026-09-08: doc-drift reconciliation + audit-found code fixes
-
-Audit (recent 100 commits x all code/docs) found outdated docs (A/B/C list):
-- A1 CODE-BUG: `SystemConfigEditor` renders unset secrets as `****` instead of
-  `(unset)` (`renderPlatformRow` masks before the isUnset check).
-- A2 E2E: `E2E-ADMINCFG-009` still asserts the D5 "T0 group absent" model that
-  the W-B Section A/B split superseded; assertions are vacuous.
-- A3 CODE-BUG (P2): S3 `copyFile` leaves new nodes `sync_status='pending_upload'`
-  (+ active `object_map`); s3→webdav migration snapshots only `active` nodes, so
-  copied files are dropped from the destination at cutover.
-- B: doc drift list (config/env, db/service/store, client-ui, e2e groups) —
-  see git branch messages `fix/*`, `docs/reconcile-*` (2026-09-08).
-- C: stale code comments/fixtures referencing removed app-layer encryption.
-
-Per-commit body details live in the branch commits themselves. Waves:
-fix/unset-secret-display → fix/s3-copy-sync-status → test/admincfg-009-rewrite
-→ docs/reconcile-{env-config,db-service,client-ui,e2e}.
+## Next (approved 2026-09-09)
+- [x] Item 1: `docs/IMPROVEMENT_PLAN.md` registration (DEF-16/17/18 + retention-GC note).
+- [ ] Item 2: begin **S1 (R1 rollback)** or **P1 (trash schema)** — docs-first, either order
+  (independent). Awaiting go.

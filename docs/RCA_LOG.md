@@ -194,3 +194,26 @@
   against a wired S3 mock (blob seeded via `uploadBlob` instead of a one-shot WebDAV mock), and
   `WebDAV orphaned_node remote checks + mode gate` keeps the D5d tests verbatim and adds a route
   level 409 gate assertion. No assertions weakened. failSafeService tests 38/38.
+
+### 2026-09-09 — P1 merge dropped its two new files; restored from scratch (Case B)
+
+- **Summary**: after merging `feature/trash` to dev, `sqliteSchemaInit.test.js` failed with
+  `ENOENT: .../ddl/002_trash_soft_delete.sql` — the P1 branch's two NEW files (the ddl file and
+  `trashSoftDeleteSchema.test.js`) were never committed: the slice was staged with `git add -u`
+  (tracked-only), so untracked new files were omitted, and the worktree removal then deleted them.
+  Tracked modifications merged fine, which is why the branch's own full-suite run (which ran
+  against the worktree with the files present) had been green.
+- **Diagnosis**: staging-selection error, not a code defect — the tracked-path schema
+  (`schemaManager.js`, transpiler, bootstrap) merged correctly; only the new files were missing.
+  The recreated `trashSoftDeleteSchema.test.js` then failed 6/7 on first run for three test-side
+  reasons: (1) `testing/dbUtils` returns `lastID` (and PG normalizes via RETURNING), not `lastId`
+  — so UPDATE ... WHERE id = undefined matched nothing and unique violations surfaced on the
+  following INSERT; (2) `convertPostgresToSqlite` is exported from `sqliteSchemaInit.js`, not
+  `schemaManager.js`; (3) `_schema_migrations` has no `backend` column (per-DB ledger).
+- **Classification**: **Case B (Test/process error)** — schema and boot-path behavior verified
+  correct by direct inspection (pragma_table_info/sqlite_master/_schema_migrations on a fresh
+  boot); only the staging step and my test-side accessors were wrong.
+- **Action taken**: recreated `ddl/002_trash_soft_delete.sql` (byte-identical contract) and the
+  schema test suite (7 tests: live/trashed uniqueness incl. root variant, real-boot migration of a
+  pre-002 sqlite DB with data-preservation/FK/AUTOINCREMENT/idempotency checks, schema-less
+  explicit-connection target); staging now uses explicit `git add` of new files. 7/7 pass.

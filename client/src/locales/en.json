@@ -822,7 +822,13 @@
       "configUnknownKey": "Unknown configuration key: {{key}}.",
       "configT0Protected": "The key {{key}} is a startup (.env) setting and cannot be changed here.",
       "configEnvSourcedProtected": "The key {{key}} is set in .env and cannot be changed here (env takes precedence).",
-      "configInvalidPayload": "Invalid configuration payload."
+      "configInvalidPayload": "Invalid configuration payload.",
+      "repairSyncInvalidAction": "Invalid repair action.",
+      "repairSyncNodeNotFound": "Repair target node not found.",
+      "repairSyncRemoteMissing": "Remote file is missing; cannot force-active.",
+      "repairUploadInvalidAction": "Invalid repair action.",
+      "repairUploadNotPending": "Node is not in the expected sync state.",
+      "repairUploadBlobMissing": "Pending blob is missing; cannot complete."
     },
     "migrationInProgress": "A migration is already in progress. The app is locked until it finishes.",
     "users": {

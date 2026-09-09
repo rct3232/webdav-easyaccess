@@ -6,15 +6,14 @@ const path = require('path');
 const crypto = require('crypto');
 const sqlite3 = require('sqlite3');
 
-const {
-  createTestDatabase,
-  dbQuery,
-  dbRun,
-} = require('../../test-utils');
+const { createTestDatabase, dbQuery, dbRun } = require('../../test-utils');
 const storage = require('../../store/storage');
 const { initMetadataStore } = require('../../store/bootstrap');
 const { applyPendingMigrations } = require('../schemaManager');
 const { convertPostgresToSqlite } = require('../sqliteSchemaInit');
+
+// sqlite-only describes are gated off the PG adapter leg (it exports WEA_TEST_PG_HOST)
+const describeSqliteOnly = process.env.WEA_TEST_PG_HOST ? describe.skip : describe;
 
 function runOn(db, sql, params = []) {
   return new Promise((resolve, reject) => {
@@ -108,7 +107,7 @@ describe('trash soft-delete schema (ddl/002)', () => {
     });
   });
 
-  describe('existing pre-002 sqlite database migrated via the real boot path', () => {
+  describeSqliteOnly('existing pre-002 sqlite database migrated via the real boot path', () => {
     it('rebuilds file_nodes preserving data and enforces the new uniqueness', async () => {
       const prevPath = process.env.WEA_SQLITE_PATH;
       const oldDbPath = path.join(os.tmpdir(), `wea-pre002-${crypto.randomUUID()}.db`);
@@ -146,25 +145,23 @@ describe('trash soft-delete schema (ddl/002)', () => {
       await initMetadataStore();
 
       try {
-        const ledger = await dbQuery(
-          'SELECT filename FROM _schema_migrations ORDER BY filename'
-        );
+        const ledger = await dbQuery('SELECT filename FROM _schema_migrations ORDER BY filename');
         const files = ledger.rows.map((r) => r.filename);
         expect(files.some((f) => f.startsWith('001_'))).toBe(true);
         expect(files.some((f) => f.startsWith('002_'))).toBe(true);
 
-        const rows = await dbQuery(
-          'SELECT id, name, type, deleted_at FROM file_nodes ORDER BY id'
-        );
+        const rows = await dbQuery('SELECT id, name, type, deleted_at FROM file_nodes ORDER BY id');
         expect(rows.rows.map((r) => r.id)).toEqual([rootId, childId]);
         expect(rows.rows.every((r) => r.deleted_at === null)).toBe(true);
 
         const childName = rows.rows[1].name;
         await expect(
-          dbRun(
-            'INSERT INTO file_nodes (parent_id, name, type, sync_status) VALUES (?, ?, ?, ?)',
-            [rootId, childName, 'file', 'active']
-          )
+          dbRun('INSERT INTO file_nodes (parent_id, name, type, sync_status) VALUES (?, ?, ?, ?)', [
+            rootId,
+            childName,
+            'file',
+            'active',
+          ])
         ).rejects.toThrow();
         await dbRun('UPDATE file_nodes SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?', [childId]);
         await dbRun(
@@ -199,7 +196,7 @@ describe('trash soft-delete schema (ddl/002)', () => {
     });
   });
 
-  describe('schema-less sqlite target via explicit connection', () => {
+  describeSqliteOnly('schema-less sqlite target via explicit connection', () => {
     it('applies the full DDL chain and records both migrations', async () => {
       const targetPath = path.join(os.tmpdir(), `wea-target-${crypto.randomUUID()}.db`);
       const raw = new sqlite3.Database(targetPath);

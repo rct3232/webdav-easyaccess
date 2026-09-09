@@ -58,6 +58,8 @@ describe('configRegistry', () => {
       ['registration_enabled', 'T2'],
       ['CORS_ORIGINS', 'T2'],
       ['GC_ORPHAN_TTL_DAYS', 'T2'],
+      ['GC_VERSION_TTL_DAYS', 'T2'],
+      ['GC_PENDING_STALE_DAYS', 'T2'],
       ['WEBDAV_UPSTREAM_URL', 'T2'],
       ['JWT_EXPIRES_IN', 'T2'],
       ['LOGIN_RATE_LIMIT_MAX', 'T2'],
@@ -100,6 +102,8 @@ describe('configRegistry', () => {
       'CORS_ORIGINS',
       'registration_enabled',
       'GC_ORPHAN_TTL_DAYS',
+      'GC_VERSION_TTL_DAYS',
+      'GC_PENDING_STALE_DAYS',
     ])('%s is not secret', (key) => {
       expect(isSecret(key)).toBe(false);
     });
@@ -140,6 +144,8 @@ describe('configRegistry', () => {
       expect(getDefault('EMAIL_FROM_NAME')).toBe('WebDAV EasyAccess');
       expect(getDefault('CORS_ORIGINS')).toBe('');
       expect(getDefault('GC_ORPHAN_TTL_DAYS')).toBe(1);
+      expect(getDefault('GC_VERSION_TTL_DAYS')).toBe(1);
+      expect(getDefault('GC_PENDING_STALE_DAYS')).toBe(3);
       expect(getDefault('JWT_EXPIRES_IN')).toBe('30m');
       expect(getDefault('WEBDAV_AUTH_TYPE')).toBe('auto');
       expect(getDefault('ADMIN_DEFAULT_PASSWORD')).toBe('admin');
@@ -232,6 +238,8 @@ describe('configRegistry', () => {
     const byKey = new Map(CONFIG_ENTRIES.map((entry) => [entry.key, entry]));
     for (const key of [
       'GC_ORPHAN_TTL_DAYS',
+      'GC_VERSION_TTL_DAYS',
+      'GC_PENDING_STALE_DAYS',
       'GC_INTERVAL_MS',
       'JWT_EXPIRES_IN',
       'LOGIN_RATE_LIMIT_MAX',

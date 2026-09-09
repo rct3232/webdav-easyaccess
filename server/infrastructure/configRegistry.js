@@ -85,6 +85,8 @@ const CONFIG_ENTRIES = Object.freeze([
   { key: 'registration_enabled', tier: TIER.T2, secret: false },
   { key: 'GC_INTERVAL_MS', tier: TIER.T1, secret: false, default: 0, dbOnly: true },
   { key: 'GC_ORPHAN_TTL_DAYS', tier: TIER.T2, secret: false, default: 1, dbOnly: true },
+  { key: 'GC_VERSION_TTL_DAYS', tier: TIER.T2, secret: false, default: 1, dbOnly: true },
+  { key: 'GC_PENDING_STALE_DAYS', tier: TIER.T2, secret: false, default: 3, dbOnly: true },
   { key: 'REFRESH_TOKEN_EXPIRES_IN_DAYS', tier: TIER.T1, secret: false, default: 7, dbOnly: true },
   { key: 'USER_CACHE_TTL_MS', tier: TIER.T2, secret: false, default: 3000, dbOnly: true },
   { key: 'PERMISSION_CACHE_TTL_MS', tier: TIER.T2, secret: false, default: 5000, dbOnly: true },

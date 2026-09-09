@@ -180,6 +180,14 @@ Key gap: **no subsystem scans or repairs `pending_upload`**; s3-source migration
   core-service-layer.md, fileService.md); RCA_LOG Case B entry (TX-boundary error-message
   assertion). DEF-12 row + W-1 note updated; unrelated pre-existing `lint:ci` failure on dev
   registered as DEF-19.
+- 2026-09-09: **S3 done** — retention-category GC foundation (F1/F2/F4/F6): category-aware Tier 1
+  with last-good guard + stale pending-live cleanup, `getKeptS3Keys()` seam (active ∪ orphaned ∪
+  pending-live; orphaned arm unfiltered so guarded B_k keys are Tier-2-safe), `GC_VERSION_TTL_DAYS`
+  + `GC_PENDING_STALE_DAYS` (T2/dbOnly, defaults 1 and 3, 0=off). Spec docs docs-first
+  (gcService.md, fileNodesStore.md, configRegistry.md, config-source-resolution.md,
+  admin-infrastructure.md, core-service-layer.md); 2 Case B RCA entries (guarded-shape fixtures,
+  version_number collisions). DEF-12/DEF-13 rows updated. Keep-set integration decision recorded:
+  orphaned arm must include stuck-node keys or Tier 2 defeats the guard.
 
 ## Next (updated 2026-09-09)
 - [x] Item 1: `docs/IMPROVEMENT_PLAN.md` registration (DEF-16/17/18 + retention-GC note).
@@ -188,5 +196,12 @@ Key gap: **no subsystem scans or repairs `pending_upload`**; s3-source migration
   and best-effort rollback; specs updated docs-first; RCA Case B logged; verified server 1783 /
   client 1421 / PG leg 203 / core e2e (s3) 121 pass. Pre-existing dev `lint:ci` failure registered
   as DEF-19 (unrelated).
-- [ ] Item 3: **S3 (R3 GC foundation)** on the critical path (S2 after/with it); **P1 (trash
-  schema)** may start in parallel — docs-first. Awaiting go.
+- [x] Item 3: **S3 (R3 GC foundation)** — done 2026-09-09 via `fix/gc-retention-foundation`
+  (merged to dev): F1 category-aware Tier 1 (garbage/version/guarded + pending-live cleanup),
+  F2 `getKeptS3Keys()` (active ∪ orphaned ∪ pending-live), F4 `GC_VERSION_TTL_DAYS`(=1) /
+  `GC_PENDING_STALE_DAYS`(=3, 0=off), F6 3 repo methods (both dialects + conformance). Guardrail
+  verified: defaults outcome-identical except the two intended deviations (guard keeps last-good,
+  stale-pending cleanup additive). Verified server 1802 / client 1421 / PG leg 206. No GC e2e
+  exists (none to run). **Decision to confirm**: `GC_PENDING_STALE_DAYS` default 3 (PLAN had none).
+- [ ] Item 4: **S2 (R2 scan/repair/startup + D5a/D5d)** and **P1 (trash schema)** — both now
+  unblocked and nearly disjoint (parallel). Awaiting go.

@@ -6,21 +6,26 @@ const { getSharedResolver } = require('../infrastructure/configResolver');
  * Factory: create a garbage-collection service bound to one blob store + store pair.
  *
  * Two-tier orphan cleanup:
- *   Tier 1 (DB-driven): object_map rows with status='orphaned' older than the TTL
- *                       → S3 blob deleted, row removed from object_map.
- *   Tier 2 (S3 scan):   listOrphanedKeys() diffed against the active s3_key set
+ *   Tier 1 (DB-driven): orphaned object_map rows classified per retention category
+ *                       (garbage / version / guarded) — expired rows get their S3 blob
+ *                       deleted and the row removed from object_map; stale pending rows
+ *                       on stuck nodes are cleaned after their own TTL.
+ *   Tier 2 (S3 scan):   listOrphanedKeys() diffed against the kept s3_key set
+ *                       (active ∪ orphaned ∪ pending-live)
  *                       → keys present only in S3 are deleted.
  *
  * @param {Object} opts
  * @param {Object} opts.blobStore - S3BlobStore or WebdavBlobStore adapter.
  * @param {Object} opts.fileNodesStore - fileNodesStore with GC support queries.
  * @param {'s3'|'webdav'} [opts.fileStorageMode='s3'] - backend mode.
- * @param {Object} [opts.gcConfig] - `{ orphanTtlDays }`; defaults from GC_ORPHAN_TTL_DAYS.
+ * @param {Object} [opts.gcConfig] - `{ orphanTtlDays, versionTtlDays, pendingStaleDays }`;
+ *   each key defaults from its GC_* DB setting (GC_ORPHAN_TTL_DAYS,
+ *   GC_VERSION_TTL_DAYS, GC_PENDING_STALE_DAYS).
  */
 function createGcService({ blobStore, fileNodesStore, fileStorageMode = 's3', gcConfig = {} }) {
   const isWebdavMode = fileStorageMode === 'webdav';
 
-  // GC_ORPHAN_TTL_DAYS is T2 (hot): resolved lazily per GC cycle so DB changes
+  // GC_* TTLs are T2 (hot): resolved lazily per GC cycle so DB changes
   // apply without a restart.
   async function resolveOrphanTtlDays() {
     if (Number.isFinite(gcConfig.orphanTtlDays) && Number(gcConfig.orphanTtlDays) > 0) {
@@ -34,29 +39,36 @@ function createGcService({ blobStore, fileNodesStore, fileStorageMode = 's3', gc
     return 1;
   }
 
+  async function resolveVersionTtlDays() {
+    if (Number.isFinite(gcConfig.versionTtlDays) && Number(gcConfig.versionTtlDays) > 0) {
+      return gcConfig.versionTtlDays;
+    }
+    const configured = await getSharedResolver().getConfig('GC_VERSION_TTL_DAYS');
+    const envDays = Number(configured);
+    if (Number.isFinite(envDays) && envDays > 0) {
+      return envDays;
+    }
+    return 1;
+  }
+
+  // 0 is a valid value (= pending-live cleanup disabled); only negatives fall back.
+  async function resolvePendingStaleDays() {
+    if (Number.isFinite(gcConfig.pendingStaleDays) && Number(gcConfig.pendingStaleDays) >= 0) {
+      return gcConfig.pendingStaleDays;
+    }
+    const configured = await getSharedResolver().getConfig('GC_PENDING_STALE_DAYS');
+    const envDays = Number(configured);
+    if (Number.isFinite(envDays) && envDays >= 0) {
+      return envDays;
+    }
+    return 3;
+  }
+
   function toDateCutoff(days) {
     return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   }
 
-  /**
-   * Tier 1 — DB-driven orphan cleanup.
-   * @returns {Promise<{ orphanedRows: number, deletedBlobs: number, deletedRows: number, errors: string[] }>}
-   */
-  async function runTier1(olderThanDays) {
-    const result = { orphanedRows: 0, deletedBlobs: 0, deletedRows: 0, errors: [] };
-    let rows;
-    try {
-      rows = await fileNodesStore.getOrphanedObjects(olderThanDays);
-    } catch (error) {
-      result.errors.push(`Failed to query orphaned object_map rows: ${error.message}`);
-      return result;
-    }
-
-    result.orphanedRows = rows.length;
-    if (rows.length === 0) {
-      return result;
-    }
-
+  async function deleteBlobsForRows(rows, result) {
     for (const row of rows) {
       if (!row.s3_key) continue;
       if (isWebdavMode) continue;
@@ -67,19 +79,90 @@ function createGcService({ blobStore, fileNodesStore, fileStorageMode = 's3', gc
         result.errors.push(`Failed to delete S3 blob ${row.s3_key}: ${error.message}`);
       }
     }
+  }
 
+  async function deleteObjectMapRowsAndCount(ids, result, failureLabel) {
     try {
-      const res = await fileNodesStore.deleteObjectMapRows(rows.map((r) => r.id));
-      result.deletedRows = res.changes;
+      const res = await fileNodesStore.deleteObjectMapRows(ids);
+      return res.changes;
     } catch (error) {
-      result.errors.push(`Failed to delete orphaned object_map rows: ${error.message}`);
+      result.errors.push(`${failureLabel}: ${error.message}`);
+      return 0;
+    }
+  }
+
+  /**
+   * Tier 1 — DB-driven orphan cleanup (retention categories: garbage / version /
+   * guarded) plus stale pending-live cleanup.
+   * @returns {Promise<{ orphanedRows: number, guardedRows: number, deletedBlobs: number, deletedRows: number, pendingDeletedRows: number, errors: string[] }>}
+   */
+  async function runTier1(orphanDays, explicitOlderThanDays) {
+    const result = {
+      orphanedRows: 0,
+      guardedRows: 0,
+      deletedBlobs: 0,
+      deletedRows: 0,
+      pendingDeletedRows: 0,
+      errors: [],
+    };
+    let rows;
+    try {
+      rows = await fileNodesStore.getOrphanedObjectsWithNodeState(orphanDays);
+    } catch (error) {
+      result.errors.push(`Failed to query orphaned object_map rows: ${error.message}`);
+      return result;
+    }
+
+    result.orphanedRows = rows.length;
+
+    const versionCutoffDays =
+      Number.isFinite(explicitOlderThanDays) && explicitOlderThanDays > 0
+        ? explicitOlderThanDays
+        : await resolveVersionTtlDays();
+    const versionCutoffMs = toDateCutoff(versionCutoffDays).getTime();
+
+    const deletable = [];
+    for (const row of rows) {
+      if (row.node_sync_status == null) {
+        deletable.push(row);
+      } else if (row.node_sync_status === 'pending_upload' && !Number(row.has_active)) {
+        result.guardedRows += 1;
+      } else if (new Date(row.created_at).getTime() < versionCutoffMs) {
+        deletable.push(row);
+      }
+    }
+
+    await deleteBlobsForRows(deletable, result);
+    result.deletedRows = await deleteObjectMapRowsAndCount(
+      deletable.map((r) => r.id),
+      result,
+      'Failed to delete orphaned object_map rows'
+    );
+
+    const pendingStaleDays = await resolvePendingStaleDays();
+    if (pendingStaleDays > 0) {
+      let staleRows;
+      try {
+        staleRows = await fileNodesStore.getStalePendingObjects(pendingStaleDays);
+      } catch (error) {
+        result.errors.push(`Failed to query stale pending object_map rows: ${error.message}`);
+        return result;
+      }
+
+      await deleteBlobsForRows(staleRows, result);
+      result.pendingDeletedRows = await deleteObjectMapRowsAndCount(
+        staleRows.map((r) => r.id),
+        result,
+        'Failed to delete stale pending object_map rows'
+      );
+      result.deletedRows += result.pendingDeletedRows;
     }
 
     return result;
   }
 
   /**
-   * Tier 2 — S3 bucket reconciliation against the active key set.
+   * Tier 2 — S3 bucket reconciliation against the kept key set.
    * @returns {Promise<{ scannedKeys: number, untrackedKeys: number, deletedKeys: number, skipped: boolean, errors: string[] }>}
    */
   async function runTier2(olderThanDays) {
@@ -109,16 +192,16 @@ function createGcService({ blobStore, fileNodesStore, fileStorageMode = 's3', gc
       return result;
     }
 
-    let activeKeys;
+    let keptKeys;
     try {
-      activeKeys = await fileNodesStore.getAllActiveS3Keys();
+      keptKeys = await fileNodesStore.getKeptS3Keys();
     } catch (error) {
-      result.errors.push(`Failed to load active s3_key set: ${error.message}`);
+      result.errors.push(`Failed to load kept s3_key set: ${error.message}`);
       return result;
     }
-    const activeKeySet = new Set(activeKeys);
+    const keptKeySet = new Set(keptKeys);
 
-    const untracked = candidateKeys.filter((key) => !activeKeySet.has(key));
+    const untracked = candidateKeys.filter((key) => !keptKeySet.has(key));
     result.untrackedKeys = untracked.length;
 
     for (const key of untracked) {
@@ -145,7 +228,7 @@ function createGcService({ blobStore, fileNodesStore, fileStorageMode = 's3', gc
         ? olderThanDays
         : await resolveOrphanTtlDays();
 
-    const tier1 = await runTier1(days);
+    const tier1 = await runTier1(days, olderThanDays);
     const tier2 = await runTier2(days);
 
     return { tier1, tier2 };

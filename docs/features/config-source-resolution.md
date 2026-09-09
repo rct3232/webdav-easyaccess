@@ -98,7 +98,8 @@ restart. EMAIL\_\* were formerly T2, but the transporter is built once per proce
 take effect after a restart, so they are honestly classified T1 (F3).
 
 **T2 — env → DB fallback, immediate (hot):** `registration_enabled` (already DB),
-`CORS_ORIGINS`, `GC_ORPHAN_TTL_DAYS`, `WEBDAV_UPSTREAM_URL`, `JWT_EXPIRES_IN` (D5),
+`CORS_ORIGINS`, `GC_ORPHAN_TTL_DAYS`, `GC_VERSION_TTL_DAYS`, `GC_PENDING_STALE_DAYS`,
+`WEBDAV_UPSTREAM_URL`, `JWT_EXPIRES_IN` (D5),
 `LOGIN_RATE_LIMIT_MAX`, `LOGIN_RATE_LIMIT_WINDOW_MS`, `MAX_THUMBNAIL_SIZE`,
 `THUMBNAIL_TOKEN_SECRET` (secret, D8), `THUMBNAIL_TOKEN_EXPIRY`, `FFMPEG_INIT_TIMEOUT_MS`,
 `WEA_PREVIEW_TICKET_TTL_MS`, `PERMISSION_CACHE_TTL_MS`, `USER_CACHE_TTL_MS`,

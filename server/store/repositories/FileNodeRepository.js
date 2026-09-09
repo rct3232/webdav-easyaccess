@@ -41,6 +41,9 @@
  * @property {(fileNodeId) => Promise<{ changes: number }>} deleteCache
  * @property {(olderThanDays: number) => Promise<Array<Object>>} getOrphanedObjects
  * @property {() => Promise<string[]>} getAllActiveS3Keys
+ * @property {() => Promise<string[]>} getKeptS3Keys
+ * @property {(olderThanDays: number) => Promise<Array<Object>>} getOrphanedObjectsWithNodeState
+ * @property {(staleThanDays: number) => Promise<Array<Object>>} getStalePendingObjects
  * @property {(ids: number[]) => Promise<{ changes: number }>} deleteObjectMapRows
  * @property {(status) => Promise<Array<Object>>} getNodesBySyncStatus
  * @property {(status) => Promise<Array<Object>>} getNodesBySyncStatusNot

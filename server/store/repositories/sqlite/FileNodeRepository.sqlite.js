@@ -397,6 +397,59 @@ module.exports = function createSqliteFileNodeRepository(executor) {
       }
     },
 
+    async getKeptS3Keys() {
+      try {
+        const { rows } = await executor.query(
+          `SELECT s3_key FROM object_map WHERE status = 'active' AND s3_key IS NOT NULL
+           UNION
+           SELECT om.s3_key FROM object_map om WHERE om.status = 'orphaned' AND om.s3_key IS NOT NULL
+           UNION
+           SELECT om.s3_key FROM object_map om
+            JOIN file_nodes fn ON fn.id = om.file_node_id
+            WHERE om.status = 'pending' AND om.s3_key IS NOT NULL
+              AND fn.sync_status = 'pending_upload'`
+        );
+        return rows.map((r) => String(r.s3_key));
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async getOrphanedObjectsWithNodeState(olderThanDays) {
+      const days = Math.max(0, Number(olderThanDays) || 0);
+      try {
+        const { rows } = await executor.query(
+          `SELECT om.*, fn.sync_status AS node_sync_status,
+                  EXISTS(SELECT 1 FROM object_map a WHERE a.file_node_id = om.file_node_id AND a.status = 'active') AS has_active
+           FROM object_map om
+           LEFT JOIN file_nodes fn ON fn.id = om.file_node_id
+           WHERE om.status = 'orphaned'
+             AND om.created_at < datetime('now', ?)`,
+          [`-${days} days`]
+        );
+        return rows;
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async getStalePendingObjects(staleThanDays) {
+      const days = Math.max(0, Number(staleThanDays) || 0);
+      try {
+        const { rows } = await executor.query(
+          `SELECT om.* FROM object_map om
+           JOIN file_nodes fn ON fn.id = om.file_node_id
+           WHERE om.status = 'pending'
+             AND fn.sync_status = 'pending_upload'
+             AND om.created_at < datetime('now', ?)`,
+          [`-${days} days`]
+        );
+        return rows;
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
     async deleteObjectMapRows(ids) {
       if (!ids || ids.length === 0) return { changes: 0 };
       try {

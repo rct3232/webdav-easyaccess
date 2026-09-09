@@ -132,6 +132,8 @@ Precedence invariant (D1): env wins whenever set; DB is read only when the env v
 | `registration_enabled`                        | T2   | no     | —              |
 | `GC_INTERVAL_MS`                              | T1   | no     | `0` (disabled) |
 | `GC_ORPHAN_TTL_DAYS`                          | T2   | no     | `1`            |
+| `GC_VERSION_TTL_DAYS`                         | T2   | no     | `1`            |
+| `GC_PENDING_STALE_DAYS`                       | T2   | no     | `3` (`0` = disabled) |
 | `REFRESH_TOKEN_EXPIRES_IN_DAYS`               | T1   | no     | `7`            |
 | `USER_CACHE_TTL_MS`                           | T2   | no     | `3000`         |
 | `PERMISSION_CACHE_TTL_MS`                     | T2   | no     | `5000`         |

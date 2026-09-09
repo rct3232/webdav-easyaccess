@@ -236,3 +236,12 @@ Key gap: **no subsystem scans or repairs `pending_upload`**; s3-source migration
   dropped by a tracked-only `git add -u` stage (worktree removal then deleted them) — restored
   with a rebuilt schema test suite + RCA entry (`5a60718`); new files must always be staged
   explicitly.
+- 2026-09-09: **Docs-audit remediation done** (14 items, A–F): stale/contradicting spec docs
+  synced to implemented DEF-12/13 state (fileService.md §4 recovery, core-service-layer.md
+  uploadService row, admin.md tier1 shape, gcService.md §3.2/§5); route/contract/guide/env docs
+  refreshed (api.md, ARCHITECTURE.md, composition.md, TEST_GIT_GUIDE.md pointers-over-numbers,
+  SETUP.md + .env.example dbOnly GC keys); locale keys added (4 new + 2 backfilled, en+ko);
+  prettier drift fixed on 6 in-range files; PG-leg registration of `trashSoftDeleteSchema`
+  (sqlite-only describes gated via `WEA_TEST_PG_HOST`). Verified: server test:ci 99 suites /
+  1849 pass / 5 skip (coverage All files 72.35/63.17/76.65/73.46), client test:ci 157 suites /
+  1421 pass; PG leg intentionally not run here (orchestrator runs it after the pattern change).

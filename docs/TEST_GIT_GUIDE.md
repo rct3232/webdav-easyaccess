@@ -317,9 +317,11 @@ jobs:
 
 ### Current Status
 
-- **Client**: 1397 tests across 156 suites, 100% pass rate (as of 2026-09-02). See `client/TEST_SUMMARY.md`.
-- **Server**: 1775 passed / 5 skipped across 98 suites, 100% pass rate (sqlite `test:ci`, as of 2026-09-04); real-PG adapter leg `test:ci:pg:adapters`: 15 suites / 197 tests. See `server/TEST_SUMMARY.md`.
-- Coverage figures are measured per run via `npm run test:coverage` and recorded in the respective `TEST_SUMMARY.md`.
+Raw test counts are intentionally **not duplicated here** (choice recorded 2026-09-09: they drift between runs; the summaries below are the single source of truth).
+
+- **Client**: current suite/test counts, pass rate and snapshot date — see `client/TEST_SUMMARY.md` (Test Statistics).
+- **Server**: current suite/test counts, pass rate and snapshot date, plus the real-PG adapter leg (`test:ci:pg:adapters`) latest recorded run — see `server/TEST_SUMMARY.md` (Test Statistics).
+- Coverage figures are measured per run via `npm run test:coverage` (uploaded to Codecov in CI); the `TEST_SUMMARY.md` files document how to measure rather than freezing figures.
 
 ### Recommended Targets
 

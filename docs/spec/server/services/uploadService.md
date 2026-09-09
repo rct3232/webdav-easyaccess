@@ -122,6 +122,53 @@ documented `pending_upload` stuck state remain, handled by scan/repair + GC clea
 | overwriteFile (existing file) | S3 PUT fails  | Rolled back to pre-state: node `active`, previous active object_map row reactivated, pending v_{k+1} row deleted | Pending blob deleted (best-effort); last-good blob B_k kept | File remains downloadable as the previous version; if the rollback itself fails, the `pending_upload` state remains (scan/repair + GC cleanup — DEF-12/13) |
 | overwriteFile (existing file) | TX2 fails     | Rolled back to pre-state: node `active`, previous active object_map row reactivated, pending v_{k+1} row deleted, filecache values re-asserted | New blob deleted (best-effort); last-good blob B_k kept | Same as S3 PUT failure |
 
+#### 2.5.1 Stuck-state scan and repair (failSafeService)
+
+When a rollback itself fails (or a crash lands between TX1 and the blob write), the residue is a
+**file node** with `sync_status='pending_upload'` that never reached `active`. The fail-safe service
+(`server/service/failSafeService.js`) scans and repairs these nodes. **S3 mode only**: the stuck
+`pending_upload` state is an S3-upload artifact — in WebDAV mode file nodes intentionally keep
+`pending_upload` for their whole lifetime (path-addressed backend; `fileService.md` §4), so both
+the scan and the repair actions are gated to `fileStorageMode === 's3'` (the scan returns an empty
+list and repair is refused with 409 in WebDAV mode). Directories are excluded — `createNode` starts
+every node as `pending_upload` and directory nodes intentionally never transition to `active`, so
+only file nodes are stuck-state candidates.
+
+**Stuck-state shapes:**
+
+| Shape | Rows | Blob | Detection |
+| ----- | ---- | ---- | --------- |
+| Overwrite residue | node `pending_upload`; v_k row `orphaned` (last good); v_{k+1} row `pending` | B_{k+1} maybe present; B_k present | an `orphaned` object_map row exists on the node |
+| New-file residue | node `pending_upload`; single `pending` row (or no row at all) | maybe present | no `orphaned` row on the node |
+
+**Scan** — `scanPendingUploadNodes()` enumerates file nodes via `getNodesBySyncStatus('pending_upload')`
+and reports `{ nodeId, name, type, path, createdAt, updatedAt, classification: 'overwrite' | 'new-file', pendingS3Key, blobPresent }`.
+`pendingS3Key` is the pending row's `s3_key` (null when absent); `blobPresent` is a read-only
+`blobStore.headBlob` probe (`null` = no pending key or probe failed, `false` = key exists but the
+blob is absent). The scan is strictly read-only.
+
+**Repair** — `repairPendingUploadNode(nodeId, { action })` with actions:
+
+| Action | Preconditions | Effect |
+| ------ | ------------- | ------ |
+| `complete` | pending row + blob present (else 409) | `activateObject(pending.s3_key)`, `upsertCache(nodeId, blob.contentLength, blob.contentType, null)` and node → `active` inside one TX — mirrors `blobStorageService.completeUpload` using blob HEAD metadata |
+| `restore-previous` | an `orphaned` last-good row exists (else 409) | In one TX: `reactivateObjectMapRow(lastGood.id)` (highest `version_number`), pending v_{k+1} row deleted (`deleteObjectMapRows`), node → `active`. Outside the TX the pending blob is deleted best-effort; the last-good blob B_k is never touched |
+| `delete` | — | Pending blob deleted best-effort, then `fileNodeService.deleteNode` removes the node tree (object_map/filecache rows cascade). A last-good blob, if any, becomes untracked and is left to GC Tier 2 |
+| `auto` | — | D2 policy: overwrite residue (orphaned row present) → `restore-previous`; new-file residue with blob present → `complete`; new-file residue without blob → `delete` |
+
+Errors: unknown action → 400 (`repairUploadInvalidAction`); WebDAV storage mode → 409
+(`repairUploadNotPending`; repair is S3-mode only); missing node → 404
+(`repairSyncNodeNotFound`); node not in `pending_upload` (or a required row is missing) → 409
+(`repairUploadNotPending`); `complete` with an absent blob → 409 (`repairUploadBlobMissing`).
+`auto` propagates blob-probe errors (an unknown blob state never triggers a destructive choice).
+
+**Startup report (report-only)** — `runStartupRecovery()` extends its report with a
+`pendingUpload: { scanned, nodes, error? }` section built from `scanPendingUploadNodes()`. It never
+mutates anything; resolution is manual via `POST /api/admin/maintenance/repair-sync`. The startup
+hook (`runStartupFailSafeRecovery` in `server/infrastructure/maintenanceScheduler.js`) logs the
+count only when it is non-zero (threshold-gated); `POST /api/admin/cleanup/orphaned` surfaces the
+same list as the additive `pendingUploadNodes` result key.
+
 ### 2.6 Error Cases
 
 - Duplicate file name under same parent → UNIQUE constraint error from DB (TX1 rollback)
@@ -130,6 +177,7 @@ documented `pending_upload` stuck state remain, handled by scan/repair + GC clea
 - TX2 failure after successful S3 PUT (overwrite) → same best-effort rollback as S3 PUT failure; the uploaded new blob is deleted best-effort and the last-good blob B_k is never deleted
 - TX2 failure after successful S3 PUT (new file) → node rolled back; blob orphaned in S3, removed by Tier 2 GC
 - `fileNodeService.deleteNode` cleanup failure during rollback is best-effort (swallowed) — the original upload error is always surfaced
+- Repair of a `pending_upload` stuck node (failSafeService): unknown action → 400; missing node → 404; node not stuck or required row missing → 409; `complete` with absent blob → 409. `restore-previous`/`delete` blob deletions are best-effort (swallowed) and never delete the last-good blob B_k
 
 ### 2.7 Verification Scenarios
 
@@ -143,3 +191,9 @@ documented `pending_upload` stuck state remain, handled by scan/repair + GC clea
 - [ ] overwriteFile TX2 failure → rolled back: same pre-state restoration (including filecache re-assert), new blob deleted, last-good blob B_k untouched, error propagated
 - [ ] downloadFile returns buffer matching uploaded content
 - [ ] downloadFile for non-existent node returns null
+- [ ] scan classifies overwrite residue (orphaned v_k + pending v_{k+1}) as `overwrite` and new-file residue (pending row only / no row) as `new-file`; directories are never reported
+- [ ] repair `complete`: pending row activated, node `active`, filecache populated from blob HEAD metadata
+- [ ] repair `restore-previous`: last-good orphaned row reactivated, pending row deleted, pending blob deleted, node `active`, last-good blob kept and downloadable
+- [ ] repair `delete`: node tree + object_map rows removed, pending blob deleted best-effort
+- [ ] repair `auto`: overwrite residue → `restore-previous`; new-file with blob → `complete`; new-file without blob → `delete`
+- [ ] startup report lists stuck nodes and performs zero mutations

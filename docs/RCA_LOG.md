@@ -126,3 +126,53 @@
   distinct version numbers (conformance tests insert the second row via raw SQL with
   `version_number=2`). No assertions weakened. Targeted suites 4/4 (150 pass), server `test:ci`
   98 suites / 1802 pass / 5 skip.
+
+### 2026-09-09 — S2 repair tests: ancestry-less child fixture, version-colliding insert, stale webdav mock reference (Case B)
+
+- **Summary**: during S2 implementation (`fix/upload-scan-repair`), the first targeted runs
+  failed 5 tests across three suites.
+- **Diagnosis**:
+  (1) the D5a route/service fixture created a child node via raw `fileNodesStore.createNode`
+  (no `node_ancestors` rows), so `fileNodeService.getNodePath(child)` returned `/` and the
+  bottom-up remote deletion skipped the child blob — `retry-delete` itself behaved per spec; the
+  fixture under-seeded the tree (fix: seed children via `fileNodeService.createFile`, which builds
+  ancestry).
+  (2) the `getObjectMapByNode` conformance fixture inserted a second row via `insertObject`, which
+  hardcodes `version_number=1` and hit `UNIQUE (file_node_id, version_number)`
+  (ddl/001_initial_normalized_schema.sql:64) — same constraint class as the S3 entry above; the
+  realistic overwrite path is `upsertObjectMap` (computes `MAX(version_number)+1`), which the
+  fixture now uses.
+  (3) the new admin route tests patched `getFileMetadata` on the top-level `mockWebdav` instance,
+  but the S3-mode GC describe earlier in the file had already rewired the composition via
+  `__setCompositionForTests` with a *fresh* `createWebdavMock()` in its `afterAll` — the patched
+  instance was no longer the blob store behind `failSafeService`, so D5d refusals never triggered
+  and `complete` got `contentLength: undefined` (NaN into filecache → 500). Fix: the new describe
+  wires its own webdav mock + composition in `beforeAll` and restores via `useWebdavMode()`.
+- **Classification**: **Case B (Test Error)** all three — implementation behavior matches the
+  docs-first spec (uploadService.md §2.5.1); only fixtures/mocks were wrong.
+- **Action taken**: fixtures fixed as above, no assertions weakened. Environment note: the
+  worktree's symlinked `node_modules` resolves `@webdav-easyaccess/shared` to the main checkout, so
+  the new shared error codes were invisible to tests; `server/jest.config.js` now maps
+  `^@webdav-easyaccess/shared/(.*)$` to `<rootDir>/../shared/$1` (same repo layout in the canonical
+  checkout — behavior-identical there). Targeted suites green (36 + 31 + 25), server `test:ci`
+  98 suites / 1834 pass / 5 skip.
+
+### 2026-09-09 — S2 route tests enshrined WebDAV-mode pending_upload repair; one-shot mock bleed (Case B)
+
+- **Summary**: after the orchestrator gated `pending_upload` scan/repair to S3 mode (review finding:
+  WebDAV-mode file nodes intentionally stay `pending_upload` for their lifetime — `fileService.md`
+  §4 — so an ungated scan reports every healthy file and `auto` would `delete` healthy nodes), 5
+  tests in `domains/admin/routes/__tests__/admin.test.js` failed.
+- **Diagnosis**: (1) three route tests exercised `auto`/`complete` against a WebDAV-mode
+  composition — they encoded the pre-gate design the gate supersedes; the docs-first spec
+  (uploadService.md §2.5.1, admin.md §2.2.3) now mandates S3-mode-only. (2) the fourth failure
+  (`complete` blob-missing expecting `repairUploadBlobMissing`) was the gate firing first —
+  correct per spec. (3) the two `force-active` (D5d) tests inverted because the shared WebDAV
+  mock's one-shot `getFileMetadata` queue went unconsumed once the gate short-circuited the
+  `complete` test before its probe, shifting every later queued result by one.
+- **Classification**: **Case B (Test Error)** — tests encoded the superseded design and a mock
+  coupling that only held under the ungated flow; the gated implementation matches the spec.
+- **Action taken**: the repair-sync describe was split — `pending_upload repair (S3 mode)` runs
+  against a wired S3 mock (blob seeded via `uploadBlob` instead of a one-shot WebDAV mock), and
+  `WebDAV orphaned_node remote checks + mode gate` keeps the D5d tests verbatim and adds a route
+  level 409 gate assertion. No assertions weakened. failSafeService tests 38/38.

@@ -168,14 +168,15 @@ sequenceDiagram
 | TX1 fails     | ROLLBACK, nothing persisted                                                                       | Nothing           | Idempotent retry                                                                                       |
 | S3 PUT fails  | New-file upload: node rolled back (deleteNode), nothing persisted                                 | Nothing or partial object | None needed — no visible residue; untracked partial object is a Tier 2 GC target                |
 | TX2 fails     | New-file upload: node rolled back (deleteNode), nothing persisted                                 | Blob exists in S3 | Blob is untracked; GC Tier 2: `listOrphanedKeys` finds S3 blob with no DB mapping → deletes it          |
-| S3 PUT / TX2 fails (overwrite of an existing file) | Rolled back to pre-state: node `active`, previous active row reactivated, pending v_{k+1} row deleted | Pending blob deleted best-effort; last-good blob B_k kept | File remains downloadable as the previous version; only a rollback's own failure leaves `sync_status='pending_upload'` — in that stuck state GC guards the last-good orphaned row (never deleted while the node has no active row) and cleans the pending row + blob after `GC_PENDING_STALE_DAYS` (scan/repair — DEF-12/13, `docs/IMPROVEMENT_PLAN.md`; GC contract: `docs/spec/server/services/gcService.md`) |
+| S3 PUT / TX2 fails (overwrite of an existing file) | Rolled back to pre-state: node `active`, previous active row reactivated, pending v_{k+1} row deleted | Pending blob deleted best-effort; last-good blob B_k kept | File remains downloadable as the previous version; only a rollback's own failure leaves `sync_status='pending_upload'` — in that stuck state GC guards the last-good orphaned row (never deleted while the node has no active row) and cleans the pending row + blob after `GC_PENDING_STALE_DAYS`; admin repair actions `complete` / `restore-previous` / `delete` / `auto` resolve it on demand and a report-only startup scan lists it (DEF-12/13, `docs/IMPROVEMENT_PLAN.md`; repair contract: `docs/spec/server/services/uploadService.md` §2.5.1; GC contract: `docs/spec/server/services/gcService.md`) |
 
 > Note: `uploadService.uploadFile` (new file) rolls back the created node on any failure after TX1 so
 > a failed upload never leaves a phantom 0-byte file in listings. `overwriteFile` (existing file)
 > rolls back to the captured pre-state on S3 PUT or TX2 failure — the previous active `object_map`
 > row is reactivated, the node returns to `active`, and the last-good blob is kept, so the file stays
 > downloadable as the previous version. Only if the rollback itself fails does the `pending_upload`
-> stuck state remain (handled by scan/repair + GC cleanup — DEF-12/13, `docs/IMPROVEMENT_PLAN.md`).
+> stuck state remain — repairable via the fail-safe scan/repair actions and cleaned by GC
+> (DEF-12/13, `docs/IMPROVEMENT_PLAN.md`).
 
 ---
 

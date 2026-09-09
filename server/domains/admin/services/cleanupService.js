@@ -8,6 +8,7 @@ async function cleanupOrphanedData() {
     errors: [],
     gc: null,
     orphanedNodes: [],
+    pendingUploadNodes: [],
   };
 
   // 1. Run one GC cycle for orphaned blobs (S3 mode; no-op in WebDAV mode)
@@ -29,6 +30,17 @@ async function cleanupOrphanedData() {
       results.orphanedNodes = await failSafeService.scanOrphanedNodes();
     } catch (error) {
       results.errors.push(`Failed to scan orphaned nodes: ${error.message}`);
+    }
+  }
+
+  // 3. Report file nodes stuck in sync_status='pending_upload' for manual review (DEF-12/13)
+  {
+    try {
+      const { getComposition } = require('../../../service/composition');
+      const { failSafeService } = getComposition();
+      results.pendingUploadNodes = await failSafeService.scanPendingUploadNodes();
+    } catch (error) {
+      results.errors.push(`Failed to scan pending_upload nodes: ${error.message}`);
     }
   }
 

@@ -203,5 +203,19 @@ Key gap: **no subsystem scans or repairs `pending_upload`**; s3-source migration
   verified: defaults outcome-identical except the two intended deviations (guard keeps last-good,
   stale-pending cleanup additive). Verified server 1802 / client 1421 / PG leg 206. No GC e2e
   exists (none to run). **Decision to confirm**: `GC_PENDING_STALE_DAYS` default 3 (PLAN had none).
-- [ ] Item 4: **S2 (R2 scan/repair/startup + D5a/D5d)** and **P1 (trash schema)** — both now
-  unblocked and nearly disjoint (parallel). Awaiting go.
+- [x] Item 4: **S2 (R2 scan/repair/startup + D5a/D5d)** — done 2026-09-09 via
+  `fix/upload-scan-repair` (merged to dev): failSafeService extended with
+  `scanPendingUploadNodes` (file nodes only, **S3 mode only** — WebDAV-mode file nodes
+  intentionally stay `pending_upload` for their whole lifetime (`fileService.md` §4), so an
+  ungated scan would flag every healthy WebDAV file and `auto` could delete one; repair is
+  refused 409 in WebDAV mode), `repairPendingUploadNode` (`complete`/`restore-previous`/`delete`/
+  `auto` per D1/D2), startup report `pendingUpload` section (report-only, threshold-gated
+  logging), cleanup report gains additive `pendingUploadNodes`; D5a `retry-delete` deletes the
+  remote WebDAV subtree bottom-up best-effort; D5d `force-active` refuses (409
+  `repairSyncRemoteMissing`) when the remote is absent. New store method `getObjectMapByNode`
+  (sqlite+pg+facade+typedef+conformance); new codes `repairSyncRemoteMissing`/
+  `repairUploadInvalidAction`/`repairUploadNotPending`/`repairUploadBlobMissing`;
+  `server/jest.config.js` maps `@webdav-easyaccess/shared` to the checkout's own `shared/`
+  (symlinked-node_modules worktree need). Verified server test:ci 98 suites / 1837 pass / 5 skip;
+  PG adapter leg 207 pass; 4 Case B RCA entries logged. **DEF-12 + DEF-13 → DONE.**
+- [ ] Item 4b: **P1 (trash schema)** — in flight on `feature/trash` (worktree), GC-independent.

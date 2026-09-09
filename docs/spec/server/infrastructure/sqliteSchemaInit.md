@@ -4,7 +4,7 @@
 
 | Item | Description                                                                                                                                                                                                         |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role | DDL discovery + PostgreSQL→SQLite conversion for SQLite schema initialization. Reads `ddl/*.sql` files via directory listing, converts PostgreSQL types to SQLite equivalents, and executes against node sqlite3 (sqlite3 driver). |
+| Role | PostgreSQL→SQLite DDL conversion (`convertPostgresToSqlite`) plus explicit-target SQLite schema initialization (`initSqliteSchema`). The transpiler is consumed by `schemaManager.applyPendingMigrations('sqlite', ...)` — the boot path on both backends — and `initSqliteSchema` remains for caller-supplied connections and temporary DBs (it is no longer the app boot path). |
 
 ---
 
@@ -19,7 +19,7 @@
 
 | Method                  | Signature                          | Description                                                                                                                                                                                |
 | ----------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| initSqliteSchema        | ({ connection?, path? }) => Promise\<{ connection }\> | DDL discovery via `fs.readdir`, type conversion, execute against SQLite DB. Returns `{ connection }`. Three modes: no-arg boot form applies to the active backend (`storage.getSqliteConnection()`); `{ connection }` applies to a caller-supplied `sqlite3.Database` (used by `metadataMigrationService` against the migration-target connection; the caller owns its lifecycle); `{ path }` opens a temporary DB at `path` (`PRAGMA foreign_keys = ON`), applies the DDL, then closes it. |
+| initSqliteSchema        | ({ connection?, path? }) => Promise\<{ connection }\> | DDL discovery via `fs.readdir`, type conversion, execute against SQLite DB. Returns `{ connection }`. Two modes: `{ connection }` applies to a caller-supplied `sqlite3.Database` (the caller owns its lifecycle); `{ path }` opens a temporary DB at `path` (`PRAGMA foreign_keys = ON`), applies the DDL, then closes it. The no-arg boot form still applies to `storage.getSqliteConnection()` but is unused in production — the boot path is `schemaManager.applyPendingMigrations('sqlite')`. |
 | convertPostgresToSqlite | (ddl) => string                     | Convert PostgreSQL DDL to SQLite-compatible SQL                                                                                                                                             |
 
 ### 2.3 Type Conversions (`convertPostgresToSqlite`)
@@ -36,12 +36,26 @@ Applied in order:
 8. `DEFAULT NOW()` → `DEFAULT CURRENT_TIMESTAMP`
 9. `DEFAULT FALSE` → `DEFAULT 0`
 10. `DEFAULT TRUE` → `DEFAULT 1`
+11. `ALTER TABLE <t> ADD COLUMN IF NOT EXISTS` → `ALTER TABLE <t> ADD COLUMN` (SQLite has no
+    `IF NOT EXISTS` for `ADD COLUMN`; safe because each DDL file is applied once, checksum-tracked)
+12. `ALTER TABLE file_nodes DROP CONSTRAINT [IF EXISTS] file_nodes_unique_name_per_parent;` →
+    a **table-rebuild block**: `PRAGMA foreign_keys = OFF;` + recreate the table as
+    `file_nodes__rebuild` without the table-level `UNIQUE (parent_id, name)` (carrying all
+    columns incl. `deleted_at`), `INSERT INTO file_nodes__rebuild ... SELECT ... FROM file_nodes`
+    (full data preservation), `DROP TABLE file_nodes;`,
+    `ALTER TABLE file_nodes__rebuild RENAME TO file_nodes;`, `PRAGMA foreign_keys = ON;`.
+    SQLite cannot drop a table-level UNIQUE constraint in place (no `DROP CONSTRAINT`); the
+    rebuild is unconditional because every DB this statement runs against has the constraint from
+    `001`. The rewrite runs last so its emitted statements are not re-processed by the earlier
+    rules.
 
 Pass-through (no conversion needed):
 
 - `CHECK` constraints — SQLite supports them natively
-- Partial indexes (`WHERE ...`) — SQLite 3.9.0+ supports them
+- Partial indexes (`WHERE ...`) — SQLite 3.9.0+ supports them (e.g.
+  `CREATE UNIQUE INDEX ... WHERE deleted_at IS NULL` survives verbatim)
 - Self-referencing FKs — inline syntax works on both backends
+- `DROP INDEX IF EXISTS` / `CREATE [UNIQUE] INDEX IF NOT EXISTS` — supported by SQLite
 
 ### 2.4 Dependencies
 

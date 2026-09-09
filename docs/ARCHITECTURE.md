@@ -18,7 +18,7 @@ Use this document for system concepts and flow. Use implementation/runtime contr
 Canonical contract sources:
 
 - Permission enum: `shared/constants.js` (`PERMISSIONS.ALL`)
-- PostgreSQL constraints/indexes/tables: `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
+- PostgreSQL constraints/indexes/tables: `server/store/postgresql/ddl/*.sql` (applied in filename order via `schemaManager`)
 - PostgreSQL env keys/runtime parsing: `server/store/storage.js`
 - Operator-facing env documentation: `.env.example` and `docs/SETUP.md`
 
@@ -202,13 +202,13 @@ When the remote PostgreSQL backend is active, metadata is persisted in normalize
 `share_links`, `recent_files`, `permission_requests`, and `locks`.
 
 This document intentionally omits full constraints/indexes. Treat
-`server/store/postgresql/ddl/001_initial_normalized_schema.sql` as the single source of truth.
+`server/store/postgresql/ddl/*.sql` (applied in filename order) as the single source of truth.
 
 #### Metadata Migration Path
 
 Metadata migration between the `sqlite` and `postgresql` backends is a **supported admin path**
-(schemas are structurally identical — the sqlite DDL is generated from
-`001_initial_normalized_schema.sql` via `sqliteSchemaInit.js` type-conversion). It is exposed as
+(schemas are structurally identical — the sqlite DDL is generated from the same
+`server/store/postgresql/ddl/*.sql` chain via `sqliteSchemaInit.js` type-conversion). It is exposed as
 an admin API + config dialogs (no standalone CLI; the legacy
 `server/scripts/migrateMetadataToPostgresql.js` was removed in Phase 7):
 

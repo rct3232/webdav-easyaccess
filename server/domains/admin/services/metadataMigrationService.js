@@ -30,7 +30,6 @@
 const path = require('path');
 
 const schemaManager = require('../../../infrastructure/schemaManager');
-const { initSqliteSchema } = require('../../../infrastructure/sqliteSchemaInit');
 
 // Copy order = FK dependency order (matches docs/spec §2.7).
 const COPY_ORDER = [
@@ -611,7 +610,7 @@ function createMetadataMigrationService(deps = {}) {
     if (targetBackend === 'postgresql') {
       await schemaManager.applyPendingMigrations('postgresql', { pgClient: targetConn });
     } else {
-      await initSqliteSchema({ connection: targetConn });
+      await schemaManager.applyPendingMigrations('sqlite', { sqliteConnection: targetConn });
     }
   }
 

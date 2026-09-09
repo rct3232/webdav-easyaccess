@@ -57,9 +57,9 @@ Read-only; never writes to the target.
 }
 ```
 
-- `schemaExists` detection: check for the `settings` table (always present in the app schema). On
-  PostgreSQL also check `_schema_migrations` (PG-only; the sqlite schema is created by the
-  conversion layer and does not use it).
+- `schemaExists` detection: check for the `users` / `settings` tables (always present in the app
+  schema). `_schema_migrations` is part of the applied schema on both backends (the schema-apply
+  step records each DDL file, §2.5), but detection itself keys on the app tables.
 - Per-table row counts use `COUNT(*)` on each copyable table.
 - A missing database/connection failure surfaces the same classification as
   `probePostgresql`/`classifyPgError` (unreachable / auth / missing database) so the dialog can
@@ -79,20 +79,19 @@ Read-only; never writes to the target.
 
 If `schemaExists === false`, apply the DDL **to the explicit target connection** before copying:
 
-- **PostgreSQL target:** execute `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
-  on the target `pg.Client`.
-- **SQLite target:** run `convertPostgresToSqlite(DDL)` (`server/infrastructure/sqliteSchemaInit.js`)
-  on the target sqlite connection.
-- The explicit-target schema apply is **implemented** (no schema-manager refactor pending):
-  `applyPendingMigrations(backend, options)` accepts `{ pgClient }` to apply the PG DDL to a
-  caller-supplied connection (`server/infrastructure/schemaManager.js:162-170`), and
-  `initSqliteSchema({ connection })` applies the SQLite DDL to a caller-supplied sqlite3
-  connection (`server/infrastructure/sqliteSchemaInit.js:107-118`). `applySchema` invokes them
-  against the migration-target connection (metadataMigrationService.js:631-637); the boot path is
-  unchanged (no options → the active backend, `storage.getPgPool()` /
-  `storage.getSqliteConnection()`).
-- `_schema_migrations` is **not** copied (see §2.8); for a PG target the schema-apply records the
-  applied DDL files so subsequent app boots are no-ops.
+- **PostgreSQL target:** `applyPendingMigrations('postgresql', { pgClient: targetConn })` —
+  checksum-tracked apply of `server/store/postgresql/ddl/*.sql` on the target `pg.Client`.
+- **SQLite target:** `applyPendingMigrations('sqlite', { sqliteConnection: targetConn })` —
+  symmetric with PG: the same tracked mechanism (sqlite dialect via the `convertPostgresToSqlite`
+  transpiler) runs on the caller-supplied sqlite3 connection and records each applied file in the
+  target's `_schema_migrations`, so a later app boot on that target is a no-op.
+- The explicit-target schema apply is **implemented**:
+  `applyPendingMigrations(backend, options)` accepts `{ pgClient }` for a PG target and
+  `{ sqliteConnection }` for a sqlite target (server/infrastructure/schemaManager.js);
+  `applySchema` invokes it against the migration-target connection. The boot path is unchanged
+  (no options → the active backend, `storage.getPgPool()` / `storage.getSqliteConnection()`).
+- `_schema_migrations` is **not** copied (see §2.8); the schema-apply records the applied DDL
+  files on the target so subsequent app boots are no-ops.
 
 ### 2.6 Single-transaction wipe + copy (D4, D5)
 
@@ -152,7 +151,7 @@ enforced on both backends):
     (and the same for `file_nodes`, `permission_requests`).
   - **→ sqlite:** update `sqlite_sequence` (`INSERT INTO sqlite_sequence(name, seq) ...` / update
     for the three tables) so `AUTOINCREMENT` continues after the copied max id.
-- **`_schema_migrations` is never copied.** It exists only in PG and tracks the active backend's
+- **`_schema_migrations` is never copied.** It exists on both backends and tracks each backend's
   applied DDL files; the target's schema-apply step manages it independently (§2.5).
 - **`locks`** is copied for completeness; stale lock rows are harmless (TTL-aware cleanup).
 
@@ -189,8 +188,9 @@ The service emits no human-readable label. The route worker composes
 - [ ] `scanTarget` on an empty target reports `schemaExists: false`, `totalRows: 0`; on a
       populated target reports per-table counts
 - [ ] `scanTarget` never writes (target row counts unchanged after scan)
-- [ ] Migration to a schema-less target auto-applies the DDL (`IF NOT EXISTS`, PG via
-      `_schema_migrations`, sqlite via `convertPostgresToSqlite`)
+- [ ] Migration to a schema-less target auto-applies the DDL (`IF NOT EXISTS`, tracked via
+      `_schema_migrations` on both backends — PG via `{ pgClient }`, sqlite via
+      `{ sqliteConnection }`)
 - [ ] Round-trip sqlite→PG→sqlite: row counts equal per table; `users.is_admin` boolean ↔ 0/1
       mapped correctly; `settings.value` JSON-string ↔ raw TEXT wrapped correctly
 - [ ] Explicit ids preserved (FK references intact); sequences resynced — a new insert after

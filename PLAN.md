@@ -204,4 +204,11 @@ Key gap: **no subsystem scans or repairs `pending_upload`**; s3-source migration
   stale-pending cleanup additive). Verified server 1802 / client 1421 / PG leg 206. No GC e2e
   exists (none to run). **Decision to confirm**: `GC_PENDING_STALE_DAYS` default 3 (PLAN had none).
 - [ ] Item 4: **S2 (R2 scan/repair/startup + D5a/D5d)** and **P1 (trash schema)** — both now
-  unblocked and nearly disjoint (parallel). Awaiting go.
+  unblocked and nearly disjoint (parallel). Awaiting go. **P1 done 2026-09-09** on
+  `feature/trash` (schema slice only): `ddl/002_trash_soft_delete.sql` (`deleted_at` + partial
+  unique indexes over `deleted_at IS NULL` for `(parent_id,name)` and the root variant); sqlite
+  application moved to tracked `applyPendingMigrations('sqlite')` (boot + migration target) since
+  dropping a table-level UNIQUE on sqlite requires a table rebuild (transpiler emits it);
+  `schemaManager` sqlite path applies each file in one transaction (PG parity). Docs-first spec
+  updates: fileNodesStore.md §2.1-2.2, storage.md §2.5, schemaManager.md, sqliteSchemaInit.md,
+  metadataMigrationService.md, ARCHITECTURE.md, IMPROVEMENT_PLAN.md.

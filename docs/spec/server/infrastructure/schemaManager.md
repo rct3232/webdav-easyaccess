@@ -17,9 +17,9 @@
 
 ### 2.2 Main Methods
 
-| Method                 | Signature                    | Description                                      |
-| ---------------------- | ---------------------------- | ------------------------------------------------ |
-| applyPendingMigrations | (backend) => Promise\<void\> | Detect and apply unapplied DDL files; idempotent |
+| Method                 | Signature                                                         | Description                                      |
+| ---------------------- | ----------------------------------------------------------------- | ------------------------------------------------ |
+| applyPendingMigrations | (backend, options?) => Promise\<void\>                            | Detect and apply unapplied DDL files; idempotent. `options.pgClient` targets an explicit PG connection (caller owns the transaction); `options.sqliteConnection` targets an explicit sqlite3.Database (caller owns the transaction). No options → the active backend. |
 
 ### 2.3 `_schema_migrations` Table
 
@@ -55,14 +55,25 @@ CREATE TABLE _schema_migrations (
 - **PostgreSQL, explicit `pgClient`:** the file's `BEGIN`/`COMMIT` wrapper is stripped and the
   statements run on the caller-supplied client — the caller owns the transaction
   (`metadataMigrationService` applies the DDL inside its own target transaction).
-- **SQLite:** the `BEGIN`/`COMMIT` statements are stripped and the remaining statements run
-  individually with no wrapping transaction.
+- **SQLite, boot path (no explicit connection):** the whole DDL file executes in one transaction —
+  `PRAGMA foreign_keys = OFF` → `BEGIN` → statements → `COMMIT` → `PRAGMA foreign_keys = ON`
+  (rolled back + FKs restored on error, and the `_schema_migrations` record is written inside the
+  same transaction). The FK pragmas sit outside the transaction because `PRAGMA foreign_keys` is a
+  no-op inside one; the file's own `BEGIN`/`COMMIT` wrapper is stripped for sqlite.
+- **SQLite, explicit `sqliteConnection`:** statements run individually on the caller-supplied
+  connection — the caller owns the transaction (`metadataMigrationService` applies the DDL inside
+  its own target transaction).
 
 ### 2.5 Key Properties
 
 - **Idempotent**: Running twice produces no changes (second run detects all files as already applied)
 - **Modified-DDL detection**: Each file's SHA-256 is recorded at apply time and re-verified on every run; a checksum mismatch for an already-applied file is a hard boot error (fail fast) naming the file and both checksums, consistent with the §2.8 deployment contract
-- **Called at startup**: `applyPendingMigrations('postgresql')` is invoked from `server/store/bootstrap.js` `initMetadataStore()` for the non-SQLite branch, before `ensureDefaultAdmin()`. The SQLite path is unchanged and uses `initSqliteSchema()` (converter-based) instead — `applyPendingMigrations('sqlite')` is exercised only by its unit tests.
+- **Called at startup (both backends)**: `server/store/bootstrap.js` `initMetadataSchema()` calls
+  `applyPendingMigrations('postgresql')` for PostgreSQL and `applyPendingMigrations('sqlite')` for
+  SQLite, before `ensureDefaultAdmin()`. Both backends are checksum-tracked. The converter module
+  (`initSqliteSchema`/`convertPostgresToSqlite`, `sqliteSchemaInit.js`) remains as the transpile
+  layer used by `applyPendingMigrations` and as an explicit-target/temp-DB initializer
+  (`{ connection }`/`{ path }` modes); it is no longer the boot path.
 
 ### 2.6 Dependencies
 
@@ -78,10 +89,21 @@ CREATE TABLE _schema_migrations (
 - [ ] Idempotency: second call produces zero SQL executions
 - [ ] SHA-256 checksum recorded for each applied file
 - [ ] Modified-DDL detection: a pre-existing row whose stored checksum differs from the file's current SHA-256 → `applyPendingMigrations` throws a hard error naming the file and both checksums; repeated runs keep failing deterministically with no further side effects
-- [ ] `initMetadataStore()` applies PG DDL at startup for the non-SQLite branch before `ensureDefaultAdmin()`; SQLite path behavior unchanged
+- [ ] `initMetadataSchema()` applies pending DDL at startup for BOTH branches before `ensureDefaultAdmin()`
+- [ ] SQLite boot path applies each file inside one transaction and restores `PRAGMA foreign_keys = ON` afterwards
 
-### 2.8 Deployment Contract (PostgreSQL)
+### 2.8 Deployment Contract (both backends)
 
-- **Fresh DB → one-time DDL apply**: On a fresh empty database, `initMetadataStore()` runs `applyPendingMigrations('postgresql')` at boot, applying `server/store/postgresql/ddl/*.sql` in order and recording each file in `_schema_migrations`. Subsequent boots detect all files as applied and are no-ops.
-- **Never point the app at an existing/old DB**: A misconfigured deployment aimed at a pre-existing (e.g. legacy path-based) database is **unsupported**. No "already exists" tolerance is added — any DDL failure or schema mismatch surfaces as a hard boot error rather than being silently recorded as migrated.
-- **Data migration is out of band**: the migration script applies the schema (or boots the app once on an empty DB with `WEA_DISABLE_DEFAULT_ADMIN=true`) before importing data; the new instance's DB is always fresh at cutover.
+- **Fresh DB → one-time DDL apply**: On a fresh empty database, `initMetadataSchema()` runs
+  `applyPendingMigrations(<backend>)` at boot, applying `server/store/postgresql/ddl/*.sql` in
+  filename order and recording each file in `_schema_migrations`. Subsequent boots detect all
+  files as applied and are no-ops.
+- **Never point the app at a legacy (pre-normalized) DB**: A misconfigured deployment aimed at a
+  pre-existing (e.g. legacy path-based) database is **unsupported**. No "already exists" tolerance
+  is added for untracked tables — any DDL failure or schema mismatch surfaces as a hard boot error
+  rather than being silently recorded as migrated. An already-tracked normalized database (its
+  `_schema_migrations` rows match the recorded checksums) migrates forward by applying pending
+  files at boot.
+- **Data migration is out of band**: the migration service applies the schema to a fresh target
+  (`applyPendingMigrations` with an explicit target connection) before importing data; the new
+  instance's DB is always fresh at cutover.

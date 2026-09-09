@@ -148,10 +148,37 @@ async function applyIfPending(backend, filename, options = {}) {
     }
   } else {
     const sqlite = resolveSqliteExecutor(options);
-    const statements = splitStatements(ddl);
-    for (const stmt of statements) {
-      if (!stmt || stmt.trim().length === 0) continue;
-      await sqlite.run(stmt);
+    const statements = splitStatements(ddl).filter((s) => s && s.trim().length > 0);
+
+    if (options.sqliteConnection) {
+      // Explicit target connection: the caller owns the transaction
+      // (metadataMigrationService applies DDL inside its own target
+      // transaction), so the record lands in it too.
+      for (const stmt of statements) {
+        await sqlite.run(stmt);
+      }
+    } else {
+      // Boot path: one transaction per file (PG parity). PRAGMA foreign_keys
+      // is a no-op inside a transaction, so enforcement is toggled outside
+      // BEGIN/COMMIT; DDL like the ddl/002 table rebuild needs it disabled.
+      // The record is written inside the transaction so a crash cannot leave
+      // a file applied-but-unrecorded (sqlite has no ADD COLUMN IF NOT
+      // EXISTS to make a re-run safe).
+      await sqlite.run('PRAGMA foreign_keys = OFF');
+      await sqlite.run('BEGIN');
+      try {
+        for (const stmt of statements) {
+          await sqlite.run(stmt);
+        }
+        await recordMigration(backend, filename, checksum, options);
+        await sqlite.run('COMMIT');
+      } catch (error) {
+        await sqlite.run('ROLLBACK').catch(() => {});
+        throw error;
+      } finally {
+        await sqlite.run('PRAGMA foreign_keys = ON').catch(() => {});
+      }
+      return;
     }
   }
 

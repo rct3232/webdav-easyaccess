@@ -127,6 +127,24 @@
   `version_number=2`). No assertions weakened. Targeted suites 4/4 (150 pass), server `test:ci`
   98 suites / 1802 pass / 5 skip.
 
+### 2026-09-09 — P1 trash-schema tests: placeholder arity + per-connection PRAGMA (Case B ×2)
+
+- **Summary**: during P1 implementation (`feature/trash`), two tests in the new
+  `trashSoftDeleteSchema.test.js` failed on the first run.
+- **Diagnosis**: (1) the root-uniqueness test's `countNodes(null, name)` helper used one SQL string
+  with a two-element param array for the `parent_id IS NULL` branch (one placeholder) →
+  `SQLITE_RANGE: column index out of range` (dbUtils `?`→`$n` conversion is arity-faithful). (2) the
+  migrated-DB test asserted `PRAGMA foreign_keys = 1` on a raw second connection opened directly on
+  the same file, while the boot-path migration (and its FK OFF→ON dance, schemaManager.js) runs on
+  the storage-backed connection — sqlite PRAGMA state is per-connection, so the raw handle always
+  reported the default 0.
+- **Classification**: **Case B (Test Error)** both times — assertion/fixture bugs in the new tests;
+  the schema, transpiler and schemaManager behave per spec (fileNodesStore.md §2.2,
+  schemaManager.md §2.4).
+- **Action taken**: (1) helper branches the SQL and param list together; (2) the FK assertion now
+  queries the same storage-backed connection the migration ran on. No source changes; no assertions
+  weakened. Targeted suites 46/46 + 20/20; server `test:ci` 99 suites / 1821 pass / 5 skip.
+
 ### 2026-09-09 — S2 repair tests: ancestry-less child fixture, version-colliding insert, stale webdav mock reference (Case B)
 
 - **Summary**: during S2 implementation (`fix/upload-scan-repair`), the first targeted runs

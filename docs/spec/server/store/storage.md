@@ -98,11 +98,18 @@ runtime guard.
 When backend is `postgresql`, storage connects to the normalized schema used by all store modules:
 `users`, `settings`, `file_nodes`, `object_map`, `filecache`, `node_ancestors`, `permissions_*`, `share_links`, `recent_files`, `permission_requests`, `locks`.
 
-Canonical source for table definitions, constraints, and indexes:
+Canonical source for table definitions, constraints, and indexes is the ordered DDL chain:
 
 - `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
+- `server/store/postgresql/ddl/002_trash_soft_delete.sql` (and subsequent `ddl/*.sql` files)
 
-The schema is applied at startup: `server/store/bootstrap.js` `initMetadataStore()` calls `applyPendingMigrations('postgresql')` (see `docs/spec/server/infrastructure/schemaManager.md`) for the non-SQLite branch before `ensureDefaultAdmin()`. The DDL is intended for a **fresh empty database only** — a misconfigured app pointed at an existing/old DB must fail loudly at boot; no "already exists" tolerance is added.
+The schema is applied at startup on **both backends** via `server/store/bootstrap.js`
+`initMetadataSchema()`: `applyPendingMigrations('postgresql')` for PostgreSQL and
+`applyPendingMigrations('sqlite')` for SQLite (see `docs/spec/server/infrastructure/schemaManager.md`),
+before `ensureDefaultAdmin()`. DDL files are applied once each and checksum-tracked in
+`_schema_migrations`; already-applied files are boot no-ops. Pointing the app at a legacy
+(pre-normalized) database still fails loudly at boot — that path is only entered through the
+metadata migration service (fresh target).
 
 This spec intentionally does not duplicate full DDL text. The per-dialect repository implementations
 consume this schema; store modules are facades that delegate through `storage.getExecutor()` while

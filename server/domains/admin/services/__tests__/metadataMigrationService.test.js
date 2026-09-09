@@ -21,7 +21,7 @@ const os = require('os');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
 
-const { initSqliteSchema } = require('../../../../infrastructure/sqliteSchemaInit');
+const { applyPendingMigrations } = require('../../../../infrastructure/schemaManager');
 const { createMetadataMigrationService } = require('../metadataMigrationService');
 
 // ---------------------------------------------------------------------------
@@ -134,7 +134,9 @@ function closeDb(db) {
 
 async function createSchemaDb(dbPath) {
   const db = await openDb(dbPath);
-  await initSqliteSchema({ connection: db });
+  // Same tracked apply the service uses for a schema-less sqlite target
+  // (records each DDL file in the target's _schema_migrations).
+  await applyPendingMigrations('sqlite', { sqliteConnection: db });
   await run(db, 'PRAGMA foreign_keys = ON');
   await run(db, 'PRAGMA defer_foreign_keys = ON');
   return db;

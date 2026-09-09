@@ -23,18 +23,33 @@
 
 | Table            | Purpose                                                                                                                                                                                                                                               |
 | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `file_nodes`     | Inode equivalent — self-referencing FK tree for filesystem hierarchy. Directories exist only as DB rows; S3 remains flat.                                                                                                                             |
+| `file_nodes`     | Inode equivalent — self-referencing FK tree for filesystem hierarchy. Directories exist only as DB rows; S3 remains flat. Carries `deleted_at TIMESTAMPTZ NULL` (trash marker; NULL = live).                                                            |
 | `object_map`     | Node-to-blob mapping — enables multiple storage backends and future version history.                                                                                                                                                                  |
 | `filecache`      | Metadata cache — size, mime_type, content_hash. Written on upload completion. PK is FK to file_nodes.                                                                                                                                                 |
 | `node_ancestors` | Closure table for permission inheritance and bulk descendant queries. Maintained at application level via the `_ancestryHelper` module (`server/service/_ancestryHelper.js`). No DB triggers (SQLite compatibility). Self-referential `depth=0` row included for every node. |
 
 ### 2.2 DDL Source of Truth
 
-Canonical table definitions, constraints, and indexes are in:
+Canonical table definitions, constraints, and indexes are in the ordered DDL chain:
 
-- `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
+- `server/store/postgresql/ddl/001_initial_normalized_schema.sql` (initial normalized schema)
+- `server/store/postgresql/ddl/002_trash_soft_delete.sql` (adds `file_nodes.deleted_at`; converts the
+  `(parent_id, name)` uniqueness to partial unique indexes over `deleted_at IS NULL`)
 
 This spec does not duplicate full DDL text.
+
+**Name-uniqueness contract (`file_nodes`):**
+
+- Live nodes (`deleted_at IS NULL`) enforce unique names per parent: a partial unique index over
+  `(parent_id, name) WHERE deleted_at IS NULL` (and the root variant over
+  `(name) WHERE parent_id IS NULL AND deleted_at IS NULL`). Violations surface as unique-violation
+  errors (PG `23505` / sqlite constraint failure) on `createNode`/`renameNode`/`moveNode`.
+- Trashed nodes (`deleted_at` set) are **exempt from live uniqueness**: multiple trashed siblings
+  may share a name, and a trashed row may share a name with a live sibling. The old table-level
+  `UNIQUE (parent_id, name)` constraint is dropped by `002` (sqlite requires a table rebuild,
+  emitted by the `convertPostgresToSqlite` transpiler).
+- `deleted_at` defaults to NULL; only the schema (column + constraints) is defined here — no
+  trash/restore behavior lives in this store.
 
 ### 2.3 Maintenance Strategy
 
@@ -129,6 +144,7 @@ and placeholder markers shown across the method tables in §2.4 are the same dia
 ### 2.7 Verification Scenarios
 
 - [ ] Tree operations (create/move/delete/rename) maintain closure table correctness
+- [ ] Name uniqueness: a live duplicate `(parent_id, name)` insert is rejected; two trashed siblings (both `deleted_at` set) with the same name coexist; a trashed row and a live row with the same name coexist; the root variant (`parent_id IS NULL`) behaves identically; `deleted_at` defaults to NULL on insert
 - [ ] CASCADE deletes propagate properly across all dependent tables
 - [ ] Self-referencing `file_nodes.parent_id` FK works on both PostgreSQL and SQLite with deferred foreign keys
 - [ ] object_map pending→active→orphaned lifecycle transitions work correctly

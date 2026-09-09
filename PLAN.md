@@ -218,4 +218,11 @@ Key gap: **no subsystem scans or repairs `pending_upload`**; s3-source migration
   `server/jest.config.js` maps `@webdav-easyaccess/shared` to the checkout's own `shared/`
   (symlinked-node_modules worktree need). Verified server test:ci 98 suites / 1837 pass / 5 skip;
   PG adapter leg 207 pass; 4 Case B RCA entries logged. **DEF-12 + DEF-13 → DONE.**
-- [ ] Item 4b: **P1 (trash schema)** — in flight on `feature/trash` (worktree), GC-independent.
+- [x] Item 4b: **P1 (trash schema)** — done 2026-09-09 on `feature/trash` (schema slice only):
+  `ddl/002_trash_soft_delete.sql` (`deleted_at` + partial unique indexes over `deleted_at IS NULL`
+  for `(parent_id,name)` and the root variant); sqlite application moved to tracked
+  `applyPendingMigrations('sqlite')` (boot + migration target) since dropping a table-level UNIQUE
+  on sqlite requires a table rebuild (transpiler emits it); `schemaManager` sqlite path applies
+  each file in one transaction (PG parity). Docs-first spec updates: fileNodesStore.md §2.1-2.2,
+  storage.md §2.5, schemaManager.md, sqliteSchemaInit.md, metadataMigrationService.md,
+  ARCHITECTURE.md, IMPROVEMENT_PLAN.md. Verified server test:ci 99 suites / 1821 pass; PG leg 206.

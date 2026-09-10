@@ -53,25 +53,57 @@ restructure GC later = two GC designs, the first disposable).
 Foundation pieces F3/F5/F6 are built incrementally and shared across slices.
 
 ```
-S1 (R1 overwrite rollback)      deps: F6(reactivateObjectMapRow)
-S2 (R2 scan + repair + startup) deps: F3, F5, F6          ┐
-S3 (R3 = GC foundation)         deps: F1, F2, F4, F6      ├─ parallel (S1/S2 independent of S3)
+S1 (R1 overwrite rollback)      deps: F6(reactivateObjectMapRow)   ┐
+S2 (R2 scan + repair + startup) deps: F3, F5, F6                   ├─ DONE 2026-09-09
+S3 (R3 = GC foundation)         deps: F1, F2, F4, F6               ┘
    │
-   ├─► S7 (DEF-11 version history)    deps: S3 only
-   │
-P1 (trash schema)                GC-independent            ┐
-P2 (trash soft-delete)           deps: F5                  ├─ parallel with S3 (GC-independent)
-P3 (trash restore/purge)         deps: F5, conflictResolver│
-P4 (trash read-gating)           deps: —                   ┘
-   │
-P5 (trash GC category + Tier 3)  deps: S3 ∧ P1–P4
-P6 (trash purge scheduling)      deps: P5
-P7 (trash permissions)           deps: P3
-P8 (trash migration proof)       deps: P2/P3
+P1 (trash schema, folded 001)   done 2026-09-10                    ┐
+   │                                                               │
+WAVE 2 (design locked 2026-09-10, in flight):                      │
+S7 (DEF-11 version history)     deps: S3 only — immediate          │
+S7a (001 CHECK + history demotion + evictVersionsBeyondCap)        │
+   + S7b (browse/restore svc/routes) + S7c (client properties tab) ┘
+P2 (soft-delete + WebDAV MOVE)   deps: F5(purgeNodeSubtree extract) ┐
+P4 (read-gating, SAME WAVE as P2)│                                  ├─ parallel
+P3 (restore/purge/empty)         deps: F5, P2                      │
+P5 (Tier 3 purge)                deps: S7(history landed) ∧ P2–P4  ┘
+P6 (scheduling)                  deps: P5 (rides GC_INTERVAL_MS)
+P7 (perm visibility)             deps: P3
+P8 (migration proof)             deps: P2/P3
 P9 (trash UI)                    deps: P3/P4/P7
 
-Critical path: S3 → { S7, P5 }.  S1 · S2 · P1–P4 start immediately in parallel.
+Critical path: S7 → P5.  S7 · P2+P4 start immediately in parallel (disjoint
+files); P3 after P2; P5 after S7+P2–P4; P7–P9 last. P2 and P4 MUST land in
+the same wave (R4 risk: trashed rows visible to getChildren interim).
+E2E cleanup must switch to permanent-delete when P2 lands (risk R1).
 ```
+
+### Test-impact ledger (from the test analysis, 2026-09-10)
+- **DEF-11 modify (~18)**: blobStorageService.test.js (prepareUpload/overwriteBlob/repeated pins
+  → `history`; deleteBlob's orphaned pin EXCLUDED — direct orphanObject path), uploadService V5,
+  fileNodesStore V14, conformance (getKeptS3Keys arm + explicit row statuses), failSafeService
+  (seedOverwriteStuck comment, classification history-first, restore-previous search order,
+  startup-report pin `['history','pending']`), gcService "historical parity" re-baseline.
+  New: conformance for `evictVersionsBeyondCap` (cap eviction/0=unbounded no-op/active untouchable),
+  `getVersionsByNode`, history-reactivate variant, keep-set history arm, Tier-1-blind-to-history;
+  versionsService + versions route suites (browse strips internals/404-masquerade/WebDAV 409/stuck
+  409; restore history→active·active→history·cache re-assert·NO new row·403/404/409 boundaries);
+  GC Tier-1-never-touches-history + eviction-grace semantics; overwrite cap eviction (scheduler
+  off); thumbnail eviction; configRegistry 4 spots; migration history-drop.
+- **DEF-16 modify (~16)**: fileService deleteNode ×5 (pins → trash marking; WebDAV re-pin to ONE
+  MOVE per subtree root, failure → orphaned_node), files.integration SCENARIO-5/7 + C4 (rows
+  survive + deleted_at; C4 retitled "hidden at read"), admin GC lazy-delete chain re-pointed at
+  purge, conformance keep-set trash arm. Unchanged guards: fileNodeService (hard), failSafe
+  retry-delete, recentFiles hard case, batchOperationService.
+- **Additions**: gated-read + new-method conformance (both legs), trash service/route suites,
+  Tier 3 describe, class-A exact-set invariants per surface, configRegistry ×4 ×2 keys,
+  validateFileName `.wea-` (unit+fast-check+route), `__trash__` pathUtils both sides, migration
+  trash-survival both directions.
+- **E2E**: `E2E-TRASH-001..011`, `E2E-PROPS-001/002` (properties versions tab), `E2E-SHARE-012`,
+  notes updates to E2E-EXP-006/007, E2E-BULK-004, E2E-OVERLAY-010.
+- **Mandatory companion changes**: (R1) e2e `flushPrivateWorkspaceCleanups` → permanent-delete
+  endpoint when P2 lands; (risk 2) `reactivateObjectMapRow` guard widened `IN ('history','orphaned')`;
+  (risk 3) repair restore-previous searches history FIRST; (risk 4) P2+P4 same wave.
 
 ## Background — the binary GC assumption being replaced
 GC today keeps exactly the `active` object_map set and deletes the rest: Tier 1 = `object_map`
@@ -286,7 +318,7 @@ Key gap: **no subsystem scans or repairs `pending_upload`**; s3-source migration
   `git add -u`) restored + RCA recorded. Remaining in the workstream: S7 (DEF-11), P2–P9 (DEF-16),
   DEF-19 (lint), DEF-17/18 (separate).
 
-## Next (updated 2026-09-09)
+## Next (updated 2026-09-10)
 - [x] Item 1: `docs/IMPROVEMENT_PLAN.md` registration (DEF-16/17/18 + retention-GC note).
 - [x] Item 2: **S1 (R1 rollback)** — done 2026-09-09 via `fix/upload-overwrite-recovery` (merged
   to dev): F6 `reactivateObjectMapRow` (sqlite+pg+conformance) + `overwriteFile` pre-state capture
@@ -359,3 +391,13 @@ Key gap: **no subsystem scans or repairs `pending_upload`**; s3-source migration
   deleted_by); P9 `__trash__` virtual root; `.wea-` prefix RESERVED in validateFileName (user
   approved) — SETUP.md "normal folder" wording to update docs-first. Design-decision research was
   sub-agent-verified (file:line evidence); all open decisions closed in three Q&A rounds.
+- [x] Item 4b: **P1 (trash schema)** — done 2026-09-10 (folded into 001, big-bang; see Recording).
+- [x] Item 5: **DEF-11 + DEF-16 design + test analysis locked** — designs in Locked decisions
+  (2026-09-10); test-impact ledger in the dependency-graph section; UI/UX decisions locked
+  (properties-dialog tabs "정보|버전" between title and gradient header, icon-only
+  download/restore/restore/purge buttons, fixed close button, no trash-row subtitle, bottom-pinned
+  sidebar trash entry with lid-open/red-flash animation on delete, admin-only Empty-trash icon in
+  controls bar, permanent-delete = delete perm per ACL review).
+- [ ] Item 5 (IN FLIGHT): **Wave 2 implementation** — S7 (version history) on
+  `feature/version-history` ∥ P2+P4 (soft-delete + read-gating, same wave) on `feature/trash`.
+  Docs-first each; merge gates per Workflow; e2e cleanup companion change with P2.

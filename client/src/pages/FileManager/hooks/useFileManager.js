@@ -476,5 +476,6 @@ export const useFileManager = (user, options = {}) => {
     trashParentNodeId: urlView.kind === 'trash' ? (urlView.trashNodeId ?? null) : null,
     trashTrail,
     openTrashFolder,
+    homeNodeId,
   };
 };

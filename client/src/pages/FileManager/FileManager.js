@@ -106,6 +106,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     onLoadErrorRef,
     trashTrail,
     openTrashFolder,
+    homeNodeId,
   } = useFileManager(user, {
     onLoadComplete: handleLoadCompleteCallback,
     onLoadError: null, // 나중에 설정
@@ -556,10 +557,12 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         setCurrentNodeId(null);
         return;
       }
-      if (isTrashView && typeof target === 'number') {
+      if (isTrashView && typeof target === 'number' && target !== homeNodeId) {
         // Trash breadcrumb chip: trashed folders navigate inside the trash
         // view (never via resolve-path / canNavigateToNode — trashed nodes
-        // are not-found there).
+        // are not-found there). The tree's Home item for a non-admin user
+        // also arrives as a number (rootNodeId) and must NOT be hijacked —
+        // target !== homeNodeId routes it to the main list below.
         openTrashFolder(target);
         return;
       }
@@ -575,6 +578,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       openTrashFolder,
       navigateToExplorerPath,
       navigateToExplorerNode,
+      homeNodeId,
     ]
   );
 

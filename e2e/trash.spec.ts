@@ -1,6 +1,6 @@
 import { type APIRequestContext, type Page, type TestInfo } from '@playwright/test';
 
-import { TEST_FILES } from './fixtures/test-data';
+import { TEST_FILES, TEST_USERS } from './fixtures/test-data';
 import { ADMIN_STATE, expect, test } from './fixtures/authenticated';
 import { openItemActions } from './helpers/explorer';
 import {
@@ -15,6 +15,7 @@ import {
   uploadFileViaUi,
 } from './helpers/files';
 import { clickActionSheetItem, openActionSheet } from './helpers/mobile-interactions';
+import { ensureApprovedUser, getTestSuffix, loginAsUser, loginAsUserApi } from './helpers/auth';
 import {
   getSessionToken,
   gotoFilesPath,
@@ -251,4 +252,56 @@ test('E2E-TRASH-007: Empty trash purges all visible trashed items', async ({
   await expect(page.getByText(/trash is empty|휴지통이 비어/i)).toBeVisible({
     timeout: 10_000,
   });
+});
+
+test('E2E-TRASH-012: Sidebar Home from the trash view returns to the main list', async ({
+  page,
+  request,
+}, testInfo) => {
+  // Regression (DEF-16 P9): in the trash view the tree's Home item carries the
+  // user's rootNodeId — a NUMBER for non-admins — and was hijacked by the
+  // trash-breadcrumb branch (openTrashFolder), landing on the trash view again
+  // instead of the main list. A regular (non-admin) user is required to
+  // reproduce: the admin's homeNodeId is null and navigates correctly.
+  const suffix = getTestSuffix(testInfo);
+  await ensureApprovedUser(request, 'user1', suffix);
+  const userToken = await loginAsUserApi(request, 'user1', suffix);
+  const userHomeName = `${TEST_USERS.user1.username}_${suffix}`;
+  const userHomePath = `/${userHomeName}`;
+
+  const fileName = buildName(testInfo, 'trash-home', '.txt');
+  const userFilePath = `${userHomePath}/${fileName}`;
+  await uploadFileAt(
+    request,
+    userToken,
+    await resolveNodeId(request, userToken, userHomePath),
+    fileName,
+    'text/plain',
+    textFixtureBuffer
+  );
+
+  // Enter the trash view as user1 (UI login — the session determines whose
+  // trash is shown; the trashed item belongs to user1).
+  await loginAsUser(page, 'user1', suffix);
+  await page.goto('/files');
+  await expect(fileItem(page, userFilePath)).toBeVisible({ timeout: 10_000 });
+
+  await deleteItemViaUi(page, isMobileProject(testInfo), userFilePath);
+  await page.goto('/files/__trash__');
+  await expect(fileItem(page, userFilePath)).toBeVisible({ timeout: 10_000 });
+
+  // Click the tree's Home item (the bottom-pinned trash row is separate).
+  // Mobile keeps the tree in a drawer — open it first.
+  if (isMobileProject(testInfo)) {
+    await page.getByRole('button', { name: /Open folder tree/i }).click();
+    await expect(page.getByTestId('folder-tree-item').filter({ hasText: 'Home' })).toBeVisible();
+  }
+  await page
+    .locator('[data-testid="folder-tree-item"]')
+    .filter({ hasText: 'Home' })
+    .first()
+    .click();
+
+  // Returns to the main list — NOT the trash view (topmost or folder view).
+  await expect(page).not.toHaveURL(/__trash__/);
 });

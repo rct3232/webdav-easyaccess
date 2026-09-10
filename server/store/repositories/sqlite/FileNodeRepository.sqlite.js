@@ -116,7 +116,7 @@ module.exports = function createSqliteFileNodeRepository(executor) {
       try {
         const days = Math.max(0, Number(olderThanDays) || 0);
         const cutoff = Number.isFinite(Number(olderThanDays))
-          ? ` AND fn.deleted_at < datetime('now', ?)`
+          ? ` AND julianday(fn.deleted_at) < julianday('now', ?)`
           : '';
         const params = Number.isFinite(Number(olderThanDays)) ? [`-${days} days`] : [];
         const { rows } = await executor.query(
@@ -557,7 +557,7 @@ module.exports = function createSqliteFileNodeRepository(executor) {
         const { rows } = await executor.query(
           `SELECT * FROM object_map
            WHERE status = 'orphaned'
-             AND created_at < datetime('now', ?)`,
+             AND julianday(created_at) < julianday('now', ?)`,
           [`-${days} days`]
         );
         return rows;
@@ -606,7 +606,7 @@ module.exports = function createSqliteFileNodeRepository(executor) {
            FROM object_map om
            LEFT JOIN file_nodes fn ON fn.id = om.file_node_id
            WHERE om.status = 'orphaned'
-             AND om.created_at < datetime('now', ?)`,
+             AND julianday(om.created_at) < julianday('now', ?)`,
           [`-${days} days`]
         );
         return rows;
@@ -623,7 +623,7 @@ module.exports = function createSqliteFileNodeRepository(executor) {
            JOIN file_nodes fn ON fn.id = om.file_node_id
            WHERE om.status = 'pending'
              AND fn.sync_status = 'pending_upload'
-             AND om.created_at < datetime('now', ?)`,
+             AND julianday(om.created_at) < julianday('now', ?)`,
           [`-${days} days`]
         );
         return rows;

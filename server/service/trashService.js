@@ -200,6 +200,9 @@ function createTrashService({
       claim(row.parentId, finalName);
 
       if (isWebdavMode) {
+        // The /.wea-trash/ parent must exist before any MOVE-back reads its
+        // entries (WebDAV MOVE/listing semantics — idempotent MKCOL).
+        await blobStore.ensureDirectoryExists('/.wea-trash');
         const trashPath = buildTrashPath(row.id);
         const trashEntry = await headTrashEntryOrNull(trashPath);
         if (trashEntry != null) {

@@ -339,6 +339,9 @@ function createFileService(options = {}) {
     // hidden trash path before any DB marking. Children travel with the
     // collection; S3 mode does zero physical I/O (stable UUID keys).
     if (fileStorageMode === 'webdav' && blobStore) {
+      // The /.wea-trash/ parent must exist — WebDAV MOVE does not auto-create
+      // destination parents (500 → fallback 403 when missing). Idempotent MKCOL.
+      await blobStore.ensureDirectoryExists('/.wea-trash');
       const displayPath = await fileNodeService.getNodePath(nodeId);
       const trashPath = buildTrashPath(nodeId);
       // Destination-exists guard: a pre-existing /.wea-* entry (legacy /

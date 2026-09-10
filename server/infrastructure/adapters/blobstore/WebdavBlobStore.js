@@ -50,6 +50,11 @@ class WebdavBlobStore {
     await this.webdav.moveFile(sourcePath, destinationPath);
   }
 
+  async ensureDirectoryExists(filepath) {
+    if (!filepath) throw new Error('WebDAV directory path is required');
+    await this.webdav.ensureDirectoryExists(filepath);
+  }
+
   async headBlob(filepath) {
     try {
       const meta = await this.webdav.getFileMetadata(filepath);
@@ -103,7 +108,7 @@ function withHealthReport(fn) {
   };
 }
 
-for (const method of ['uploadBlob', 'createDirectory', 'downloadBlob', 'deleteBlob', 'headBlob', 'moveBlob']) {
+for (const method of ['uploadBlob', 'createDirectory', 'downloadBlob', 'deleteBlob', 'headBlob', 'moveBlob', 'ensureDirectoryExists']) {
   WebdavBlobStore.prototype[method] = withHealthReport(WebdavBlobStore.prototype[method]);
 }
 

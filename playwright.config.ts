@@ -58,9 +58,11 @@ const projects: PlaywrightProject[] = [];
 
 if (backendMode === 'webdav') {
   const smokeSpecMatch = new RegExp(
-    '(core-flow\\.shared|share-public|share-internal)\\.spec\\.ts$'
+    '(core-flow\\.shared|share-public|share-internal|trash)\\.spec\\.ts$'
   );
-  const smokeTitleMatch = new RegExp('E2E-(EXP-00[12458]|EXP-01[23]|SHARE-011|OVERLAY-011)[:\\s]');
+  const smokeTitleMatch = new RegExp(
+    'E2E-(EXP-00[12458]|EXP-01[23]|SHARE-011|OVERLAY-011|TRASH-00[1367])[:\\s]'
+  );
   projects.push(
     {
       name: 'webdav-smoke-setup',

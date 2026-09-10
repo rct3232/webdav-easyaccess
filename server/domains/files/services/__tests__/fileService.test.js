@@ -1446,6 +1446,7 @@ describe('deleteNode', () => {
     const blobStore = {
       headBlob: jest.fn().mockResolvedValue(null), // trash destination free
       moveBlob: jest.fn().mockResolvedValue(undefined),
+      ensureDirectoryExists: jest.fn().mockResolvedValue(undefined),
     };
     const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),
@@ -1484,6 +1485,7 @@ describe('deleteNode', () => {
     const blobStore = {
       headBlob: jest.fn().mockResolvedValue(null), // destination free
       moveBlob: jest.fn().mockRejectedValue(new Error('MOVE failed')),
+      ensureDirectoryExists: jest.fn().mockResolvedValue(undefined),
     };
     const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),
@@ -1517,6 +1519,7 @@ describe('deleteNode', () => {
     const blobStore = {
       headBlob: jest.fn().mockResolvedValue({ contentLength: 5 }), // destination exists
       moveBlob: jest.fn().mockResolvedValue(undefined),
+      ensureDirectoryExists: jest.fn().mockResolvedValue(undefined),
     };
     const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),

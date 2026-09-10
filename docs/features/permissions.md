@@ -14,11 +14,11 @@ The application runs its own **ACL** independent of the WebDAV server. Permissio
 
 Defined in `shared/constants.js` as `PERMISSIONS`:
 
-| Level | Value   | Typical use                                                  |
-| ----- | ------- | ------------------------------------------------------------ |
-| read  | `read`  | List and download; see folder contents.                      |
-| write | `write` | Create, upload, rename, move, copy, delete in that folder.   |
-| admin | `admin` | Same as write plus grant/revoke permissions for that folder. |
+| Level | Value   | Typical use                                                                                                                                                                                                                                                               |
+| ----- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| read  | `read`  | List and download; see folder contents.                                                                                                                                                                                                                                   |
+| write | `write` | Create, upload, rename, move, copy, delete in that folder. Delete trashes the subtree (DEF-16 P2) — rows survive and trash visibility is again write-based (`GET /api/files/trash`); permanent delete is the admin maintenance channel until the trash purge routes (P3). |
+| admin | `admin` | Same as write plus grant/revoke permissions for that folder.                                                                                                                                                                                                              |
 
 Use `PERMISSIONS.isValid(permission)` to check a value. Ordering for "higher" is: read &lt; write &lt; admin.
 
@@ -129,6 +129,7 @@ These scenarios should be verified in both middleware/unit tests and API integra
 
 - The "shared with me" surface (`__shared__` sidebar tree and `/files/__shared__`) is backed by `GET /api/permissions/shared`, which returns only grants where the requesting user is the grantee **and the node is outside the user's own home subtree**.
 - Because folder creation no longer self-grants, and the listing additionally excludes the user's own subtree via the closure table, own folders (including existing historical self-grant rows) never appear as "shared".
+- **Trashed nodes are excluded from the shared listing** (DEF-16 P4): the underlying SQL join carries `AND fn.deleted_at IS NULL`, so a grant on a trashed node no longer surfaces as "shared with me". The grant ROW survives the trash (restore brings the entry back) — only the listing read is gated.
 - Each entry carries its real `name` and `type`; the client must not fabricate `node-<id>` / `file-<id>` placeholder names.
 
 ## Client-side permissions request dedupe

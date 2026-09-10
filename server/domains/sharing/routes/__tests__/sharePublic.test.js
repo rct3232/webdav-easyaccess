@@ -164,6 +164,35 @@ describe('GET /api/share/:token (download)', () => {
     expect([HTTP_STATUS.FORBIDDEN, HTTP_STATUS.GONE]).toContain(res.status);
     expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.share.shareLinkExpired);
   });
+
+  it('A10: returns not-found when the shared node is TRASHED (gated getNode)', async () => {
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
+      username: `share-dl-trashed-${Date.now()}`,
+    });
+    const fileNodeId = await createFileWithBlob({
+      user,
+      homeNodeId,
+      name: 'trashed.pdf',
+      content: 'trashed-bytes',
+      mimeType: 'application/pdf',
+    });
+    const linkToken = await createShareLinkForNode(token, fileNodeId);
+
+    // Trash the shared node (soft delete) — the share link row survives, but
+    // the gated getNode resolution makes every share surface not-found.
+    const { dbRun } = require('@server/test-utils');
+    await dbRun('UPDATE file_nodes SET deleted_at = datetime(\'now\') WHERE id = ?', [fileNodeId]);
+
+    const infoRes = await request(app).get(`/api/share/${linkToken}/info`);
+    expect(infoRes.status).toBe(HTTP_STATUS.NOT_FOUND);
+    expect(infoRes.body.errorCode).toBe(SERVER_ERROR_CODES.share.fileNotFound);
+
+    const dlRes = await request(app).get(`/api/share/${linkToken}`);
+    expect(dlRes.status).toBe(HTTP_STATUS.NOT_FOUND);
+
+    const previewRes = await request(app).get(`/api/share/${linkToken}/preview`);
+    expect(previewRes.status).toBe(HTTP_STATUS.NOT_FOUND);
+  });
 });
 
 describe('GET /api/share/:token/preview', () => {

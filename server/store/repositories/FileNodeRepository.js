@@ -7,13 +7,20 @@
  *
  * The method set mirrors the former `createFileNodesStore()` factory exactly
  * (facade parity). Node rows are domain-shaped (`{ id, parentId, name, type,
- * syncStatus, createdAt, updatedAt }`); children additionally carry the
- * filecache columns (`size`, `mimeType`, `contentHash`).
+ * syncStatus, createdAt, updatedAt, deletedAt }`); children additionally carry
+ * the filecache columns (`size`, `mimeType`, `contentHash`). Trash (DEF-16):
+ * `getNode`/`getChildren`/`resolvePathSegment` are live-row reads
+ * (`deleted_at IS NULL`); `getNodeIncludingTrashed`, `getTrashChildren`,
+ * `getTrashedNodes` and `markSubtreeDeleted` are the trash-aware surface.
  *
  * @typedef {Object} FileNodeRepository
  * @property {(parentId: number|null, name: string, type: 'file'|'directory') => Promise<Object>} createNode
  * @property {(id) => Promise<Object|null>} getNode
+ * @property {(id) => Promise<Object|null>} getNodeIncludingTrashed
  * @property {(parentId: number|null) => Promise<Array<Object>>} getChildren
+ * @property {(parentId: number|null) => Promise<Array<Object>>} getTrashChildren
+ * @property {() => Promise<Array<Object>>} getTrashedNodes
+ * @property {(nodeIds: number[]) => Promise<{ changes: number }>} markSubtreeDeleted
  * @property {(id, newName) => Promise<{ changes: number }>} renameNode
  * @property {(id, newParentId) => Promise<{ changes: number }>} moveNode
  * @property {(nodeIds: number[]) => Promise<{ changes: number }>} deleteNodeTree

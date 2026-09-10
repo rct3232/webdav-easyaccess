@@ -159,6 +159,28 @@ describe('PermissionRepository conformance', () => {
     expect(idsIncluded).toContain(Number(homeRoot.nodeId));
   });
 
+  it('A9: listSharedWithUser EXCLUDES trashed nodes (grant row survives, listing join is gated)', async () => {
+    const trashed = await createDir(uniqueName('shared-trashed'));
+    const live = await createDir(uniqueName('shared-live'));
+    await repo.upsertPathPermission(userA.id, trashed.nodeId, PERMISSIONS.WRITE);
+    await repo.upsertPathPermission(userA.id, live.nodeId, PERMISSIONS.WRITE);
+
+    const { dbRun } = require('@server/test-utils');
+    await dbRun('UPDATE file_nodes SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?', [
+      trashed.nodeId,
+    ]);
+
+    const res = await repo.listSharedWithUser(userA.id, null);
+    const ids = res.shared.map((r) => r.file_node_id);
+    expect(ids).not.toContain(Number(trashed.nodeId));
+    expect(ids).toContain(Number(live.nodeId));
+
+    // The grant row itself SURVIVES the trash (read-gated, not revoked).
+    await expect(repo.findPathPermissionForNode(userA.id, trashed.nodeId)).resolves.toMatchObject({
+      permission: PERMISSIONS.WRITE,
+    });
+  });
+
   it('deleteOwnSubtreePermissions removes depth>0 rows but preserves the home-root grant', async () => {
     const homeRoot = await createDir(uniqueName('own-home'));
     const inside = await createDir(uniqueName('own-inside'), homeRoot.nodeId);

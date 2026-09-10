@@ -14,6 +14,7 @@ const {
   SERVER_ERROR_CODES,
   SERVER_MESSAGE_CODES,
 } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { validateFileName } = require('@webdav-easyaccess/shared/validation');
 const { requireAuth } = require('../../../middleware/requireUser');
 
 const { getComposition } = require('../../../service/composition');
@@ -36,6 +37,13 @@ router.post(
       parentNodeId === 'undefined';
     if (!name || (isRootCreate && !user.is_admin)) {
       throw validationError(SERVER_ERROR_CODES.folders.pathRequired);
+    }
+
+    // Reserved namespace (DEF-16): .wea-* names are system-reserved. The
+    // client validates before sending; the server enforces the same contract.
+    const validationKey = validateFileName(name);
+    if (validationKey === 'validation.fileNameReserved') {
+      throw validationError(SERVER_ERROR_CODES.files.fileNameReserved);
     }
 
     let parentNodeIdParsed = null;

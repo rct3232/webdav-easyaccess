@@ -601,6 +601,19 @@ export const restoreFileVersion = async (nodeId, versionNumber) => {
 };
 
 /**
+ * List the trashed nodes visible to the current user (DEF-16).
+ * @returns {Promise<{ items: Array<{ nodeId: number, name: string, type: string, deletedAt: string, displayPath: string, hasReadPermission: boolean, hasWritePermission: boolean, hasAdminPermission: boolean }>, total: number }>}
+ */
+export const getTrashFiles = async (options = {}) => {
+  const { limit, offset } = options;
+  const params = {};
+  if (limit != null) params.limit = limit;
+  if (offset != null) params.offset = offset;
+  const response = await get(`${API_BASE}/trash`, { params });
+  return response.data;
+};
+
+/**
  * Download one version attachment-only (application/octet-stream endpoint).
  * @param {number} nodeId - File nodeId
  * @param {number} versionNumber - Version to download

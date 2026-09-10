@@ -7,6 +7,7 @@ import { normalizePath } from '../../../utils/pathUtils';
 
 const VIRTUAL_RECENT = '__recent__';
 const VIRTUAL_SHARED = '__shared__';
+const VIRTUAL_TRASH = '__trash__';
 
 export const useFileManager = (user, options = {}) => {
   const { onLoadComplete, onLoadError, shareToken, linkInfo } = options;
@@ -58,6 +59,7 @@ export const useFileManager = (user, options = {}) => {
     }
     if (first === VIRTUAL_RECENT) return { kind: 'recent', path: '/__recent__' };
     if (first === VIRTUAL_SHARED) return { kind: 'shared', path: '/__shared__' };
+    if (first === VIRTUAL_TRASH) return { kind: 'trash', path: '/__trash__' };
     return { kind: 'legacy', path: `/${normalized}`, legacyPath: `/${normalized}` };
   }, [urlPath]);
 
@@ -98,6 +100,7 @@ export const useFileManager = (user, options = {}) => {
     if (isShareMode) return shareCurrentPath;
     if (urlView.kind === 'recent') return '/__recent__';
     if (urlView.kind === 'shared') return '/__shared__';
+    if (urlView.kind === 'trash') return '/__trash__';
     if (urlView.kind === 'node' && ancestors.length > 0) {
       return normalizePath('/' + ancestors.map((a) => a.name || '').join('/'));
     }
@@ -173,6 +176,7 @@ export const useFileManager = (user, options = {}) => {
       isShareMode ||
       urlView.kind === 'recent' ||
       urlView.kind === 'shared' ||
+      urlView.kind === 'trash' ||
       urlView.kind === 'home'
     ) {
       setAncestors([]);
@@ -256,6 +260,11 @@ export const useFileManager = (user, options = {}) => {
         if (requestId === requestIdRef.current) {
           setFiles(sharedFiles);
         }
+      } else if (urlView.kind === 'trash') {
+        const trashFiles = await explorerGateway.loadTrashEntries();
+        if (requestId === requestIdRef.current) {
+          setFiles(trashFiles);
+        }
       } else {
         if (!isShareMode && urlView.kind === 'legacy') return;
         const targetNodeId = isShareMode ? shareCurrentNodeId : currentNodeId;
@@ -316,7 +325,7 @@ export const useFileManager = (user, options = {}) => {
 
     loadFiles();
 
-    if (urlView.kind === 'recent' || urlView.kind === 'shared') {
+    if (urlView.kind === 'recent' || urlView.kind === 'shared' || urlView.kind === 'trash') {
       setHasWritePermission(false);
       return undefined;
     }

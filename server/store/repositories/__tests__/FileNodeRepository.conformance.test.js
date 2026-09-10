@@ -194,6 +194,150 @@ describe('FileNodeRepository conformance', () => {
     expect(kept).not.toContain(pendingOnLiveKey);
   });
 
+  it('M15: getKeptS3Keys keeps a TRASHED node\'s active key (no trash filter on the active arm)', async () => {
+    const trashedNode = await repo.createNode(null, uniqueName('fn-kept-trash'), 'file');
+    const trashedKey = uniqueName('fn-kept-trash-key');
+    await repo.insertObject(trashedNode.id, trashedKey, 'active');
+    await repo.markSubtreeDeleted([trashedNode.id]);
+
+    const kept = await repo.getKeptS3Keys();
+    expect(kept).toContain(trashedKey);
+  });
+
+  it('A13: markSubtreeDeleted marks every row of the subtree and gates the live reads', async () => {
+    const parent = await repo.createNode(null, uniqueName('fn-trash-p'), 'directory');
+    const child = await repo.createNode(parent.id, uniqueName('fn-trash-c'), 'file');
+    const sibling = await repo.createNode(null, uniqueName('fn-trash-sib'), 'file');
+
+    await repo.insertAncestorRows([
+      { ancestorId: parent.id, descendantId: parent.id, depth: 0 },
+      { ancestorId: parent.id, descendantId: child.id, depth: 1 },
+      { ancestorId: child.id, descendantId: child.id, depth: 0 },
+    ]);
+
+    const marked = await repo.markSubtreeDeleted([parent.id, child.id]);
+    expect(marked.changes).toBe(2);
+
+    // Gated reads: trashed rows are invisible...
+    await expect(repo.getNode(parent.id)).resolves.toBeNull();
+    await expect(repo.getNode(child.id)).resolves.toBeNull();
+    await expect(repo.resolvePathSegment(null, parent.name)).resolves.toBeNull();
+    await expect(repo.resolvePathSegment(null, sibling.name)).resolves.toMatchObject({
+      id: sibling.id,
+    });
+
+    const parentLevel = await repo.getChildren(null);
+    expect(parentLevel.some((n) => n.id === parent.id)).toBe(false);
+    expect(parentLevel.some((n) => n.id === sibling.id)).toBe(true);
+
+    // ...but the trash-aware reads still see them.
+    const includingTrashed = await repo.getNodeIncludingTrashed(parent.id);
+    expect(includingTrashed).not.toBeNull();
+    expect(includingTrashed.deletedAt).not.toBeNull();
+
+    // Re-running the UPDATE is idempotent in effect (deleted_at stays set, no
+    // state corruption) — `changes` reports MATCHED rows, not net mutations.
+    expect((await repo.markSubtreeDeleted([parent.id, child.id])).changes).toBe(2);
+  });
+
+  it('A13: getTrashChildren returns exactly the trashed children of a parent (live siblings excluded)', async () => {
+    const parent = await repo.createNode(null, uniqueName('fn-tc-p'), 'directory');
+    const live = await repo.createNode(parent.id, uniqueName('fn-tc-live'), 'file');
+    const trashedName = uniqueName('fn-tc-dead');
+    const trashed = await repo.createNode(parent.id, trashedName, 'file');
+
+    const before = await repo.getChildren(parent.id);
+    expect(before.map((n) => n.id)).toContain(live.id);
+    expect(before.map((n) => n.id)).toContain(trashed.id);
+
+    await repo.markSubtreeDeleted([trashed.id]);
+
+    const after = await repo.getChildren(parent.id);
+    expect(after.map((n) => n.id)).toContain(live.id);
+    expect(after.map((n) => n.id)).not.toContain(trashed.id);
+
+    const trashChildren = await repo.getTrashChildren(parent.id);
+    expect(trashChildren.map((n) => n.id)).toEqual([trashed.id]);
+    expect(trashChildren[0].name).toBe(trashedName);
+    // The trashed child is NOT a root-level trash row (it is nested).
+    const rootTrash = await repo.getTrashChildren(null);
+    expect(rootTrash.map((n) => n.id)).not.toContain(trashed.id);
+  });
+
+  it('A13: getTrashChildren(null) returns trashed root-level rows and getTrashedNodes enumerates every trashed row', async () => {
+    const rootA = await repo.createNode(null, uniqueName('fn-tr-a'), 'directory');
+    const rootB = await repo.createNode(null, uniqueName('fn-tr-b'), 'file');
+    const nested = await repo.createNode(rootA.id, uniqueName('fn-tr-nested'), 'file');
+
+    await repo.markSubtreeDeleted([rootA.id, nested.id, rootB.id]);
+
+    const rootTrash = await repo.getTrashChildren(null);
+    const rootTrashIds = rootTrash.map((n) => n.id);
+    expect(rootTrashIds).toContain(rootA.id);
+    expect(rootTrashIds).toContain(rootB.id);
+    expect(rootTrashIds).not.toContain(nested.id); // nested ≠ root level
+
+    const all = await repo.getTrashedNodes();
+    const allIds = all.map((n) => n.id);
+    for (const id of [rootA.id, rootB.id, nested.id]) {
+      expect(allIds).toContain(id);
+    }
+    expect(all.every((n) => n.deletedAt != null)).toBe(true);
+  });
+
+  it('A13: getDescendantIds / getAncestorChain stay UNFILTERED across a trash boundary', async () => {
+    const root = await repo.createNode(null, uniqueName('fn-uf-root'), 'directory');
+    const leaf = await repo.createNode(root.id, uniqueName('fn-uf-leaf'), 'file');
+    await repo.insertAncestorRows([
+      { ancestorId: root.id, descendantId: root.id, depth: 0 },
+      { ancestorId: root.id, descendantId: leaf.id, depth: 1 },
+      { ancestorId: leaf.id, descendantId: leaf.id, depth: 0 },
+    ]);
+
+    await repo.markSubtreeDeleted([root.id, leaf.id]);
+
+    // Full trashed subtree is still enumerable (restore/purge need it).
+    const descIds = await repo.getDescendantIds(root.id);
+    expect(descIds).toContain(leaf.id);
+    const chain = await repo.getAncestorChain(leaf.id);
+    expect(chain.some((e) => e.ancestorId === root.id)).toBe(true);
+  });
+
+  it('A4: restore-cycle schema behavior — trashed rows coexist with live same-name rows; the restore UPDATE re-enrolls live uniqueness (collision rejected)', async () => {
+    const parent = await repo.createNode(null, uniqueName('fn-rc-p'), 'directory');
+    const name = uniqueName('fn-rc-name');
+    const original = await repo.createNode(parent.id, name, 'file');
+    await repo.markSubtreeDeleted([original.id]);
+
+    // While the row is trashed, a live sibling with the same name coexists.
+    const live = await repo.createNode(parent.id, name, 'file');
+    expect(live.id).toBeGreaterThan(0);
+
+    // Restore cycle: clearing deleted_at re-enrolls the row in live uniqueness.
+    // With a live same-name sibling present, the restore UPDATE violates the
+    // partial unique index — exactly the collision the trash-restore flow must
+    // resolve (name suffix / deepest live ancestor) before clearing deleted_at.
+    const { dbRun } = require('@server/test-utils');
+    await expect(
+      dbRun('UPDATE file_nodes SET deleted_at = NULL WHERE id = ?', [original.id])
+    ).rejects.toThrow();
+
+    // Once the colliding sibling is trashed too, the restore succeeds.
+    await repo.markSubtreeDeleted([live.id]);
+    await expect(
+      dbRun('UPDATE file_nodes SET deleted_at = NULL WHERE id = ?', [original.id])
+    ).resolves.toBeDefined();
+
+    // The restored row is live-unique again: a same-name insert is rejected.
+    await expect(repo.createNode(parent.id, name, 'file')).rejects.toThrow();
+
+    // Re-trashing the restored row releases uniqueness once more.
+    await repo.markSubtreeDeleted([original.id]);
+    const third = await repo.createNode(parent.id, name, 'file');
+    expect(third.id).toBeGreaterThan(0);
+    expect(third.id).not.toBe(original.id);
+  });
+
   it('getOrphanedObjectsWithNodeState annotates node sync status and has_active', async () => {
     const { dbRun } = require('@server/test-utils');
     const stuckNode = await repo.createNode(null, uniqueName('fn-state-stuck'), 'file');

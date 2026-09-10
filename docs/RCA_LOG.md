@@ -240,3 +240,64 @@
   is `active` (plus `{changes:1}`), not `getActiveObject`'s pick; the paired
   `demoteActiveToHistory` behavior is covered by the versionsService restore tests
   (`versionsService.test.js` "restore swap" assertions). PG leg re-run 3×: 25/25 pass.
+
+### 2026-09-10 — P2 conformance: markSubtreeDeleted idempotency asserted via a net-mutation reading of `changes` (Case B)
+
+- **Summary**: the new `markSubtreeDeleted` conformance test failed its "re-running marks nothing
+  new" assertion — the second call reported `changes: 2` instead of `0` on sqlite.
+- **Diagnosis**: the specification is a plain `UPDATE file_nodes SET deleted_at = NOW() WHERE id
+  IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode report MATCHED rows,
+  not net value-mutations. Re-running the marking re-matches the already-trashed rows, so a
+  non-zero `changes` on a re-run is the engine's correct behavior — the statement is idempotent in
+  EFFECT (deleted_at stays set, no state corruption) but not in its reported count.
+- **Classification**: **Case B (Test Error)** — the test misread `changes` as a net-mutation count;
+  the implementation follows the locked SQL contract (fileNodesStore.md §2.4).
+- **Action taken**: the idempotency assertion now expects the matched-row count on re-run, and the
+  spec row for `markSubtreeDeleted` documents "`changes` reports MATCHED rows".
+
+### 2026-09-10 — P2 conformance A4: the restore cycle's `deleted_at = NULL` UPDATE is REJECTED while a live same-name sibling exists (Case B)
+
+- **Summary**: the restore-cycle schema test failed with
+  `UNIQUE constraint failed: file_nodes.parent_id, file_nodes.name` — thrown by the restore UPDATE
+  itself, not by the follow-up INSERT the test expected to reject.
+- **Diagnosis**: the trash model's live uniqueness is carried by PARTIAL unique indexes over
+  `deleted_at IS NULL` (001). Clearing `deleted_at` modifies an indexed column, so the index
+  constraint is checked at UPDATE time: with a live same-name sibling present, restoring the
+  trashed row violates `file_nodes_unique_name_per_parent`. This is exactly the restore-into-
+  collision hazard the locked P3 design resolves (name suffix / deepest live ancestor) — the
+  schema correctly refuses an un-resolved restore. With no same-name live sibling, the restore
+  UPDATE succeeds; re-trashing releases uniqueness again.
+- **Classification**: **Case B (Test Error)** — the test expected the clearing to succeed in the
+  colliding state; the schema matches the locked contract (fileNodesStore.md §2.2).
+- **Action taken**: A4 now asserts the full cycle: trashed/live coexistence, collision-rejected
+  restore, restore-after-sibling-trash succeeds, live-unique again after restore, release after
+  re-trash.
+
+### 2026-09-10 — Worktree client tests resolved a stale `@webdav-easyaccess/shared` through the symlinked node_modules (Case B)
+
+- **Summary**: in the `feature/trash-p2p4` worktree, the client `validation.test.js` `.wea-`
+  reservation cases failed with `null` — the shared `validateFileName` change was invisible to
+  client tests, while server tests (which map the package to the checkout's own `shared/`)
+  passed.
+- **Diagnosis**: worktree `node_modules` (root and `client/`) are symlinks to the MAIN worktree's
+  installed tree, so `@webdav-easyaccess/shared` resolved to the main worktree's `shared/`
+  directory rather than this branch's checkout (which carries the new `.wea-` reservation). The
+  server already handles this via a `jest.config.js` moduleNameMapper (added in S2 for exactly
+  this need); the CRA client had no such mapping.
+- **Classification**: **Case B (Test-environment error)** — production code was correct; only the
+  client test resolution was stale in worktrees.
+- **Action taken**: added `^@webdav-easyaccess/shared/(.*)$ → <rootDir>/../shared/$1` to the
+  client's `package.json` `jest.moduleNameMapper` (same checkout-source resolution the server
+  uses; a no-op in the main worktree, correct in linked worktrees).
+
+### 2026-09-10 — P4 A9 conformance test used sqlite-only datetime('now') on the PG leg (Case B)
+
+- **Summary**: `PermissionRepository.conformance.test.js` "A9: listSharedWithUser EXCLUDES trashed
+  nodes" failed on the real-PG adapter leg with `function datetime(unknown) does not exist`.
+- **Diagnosis**: the trashed-node fixture set `deleted_at = datetime('now')` — a SQLite-only
+  function — unconditionally, violating the backend-agnostic conformance rule (TESTING_STRATEGY.md
+  DB test tiers: L2 suites must run on both legs). The SQL-standard `CURRENT_TIMESTAMP` works on
+  both engines.
+- **Classification**: **Case B (Test Error)** — fixture bug; the gated join under test behaves
+  per spec on both dialects (PG leg 224/224 pass after the fix).
+- **Action taken**: fixture switched to `CURRENT_TIMESTAMP`; no assertions changed.

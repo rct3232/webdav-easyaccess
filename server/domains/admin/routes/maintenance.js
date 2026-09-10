@@ -7,7 +7,13 @@ const {
 } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const User = require('../../../models/User');
 const { authenticateToken } = require('../../../utils/auth');
-const { asyncHandler, createError } = require('../../../utils/errorHandler');
+const {
+  asyncHandler,
+  createError,
+  validationError,
+  notFoundError,
+} = require('../../../utils/errorHandler');
+const { createWebdavRemoteOps, buildTrashPath } = require('../../../service/webdavRemoteOps');
 
 // Middleware to check if user is admin
 const isAdmin = asyncHandler(async (req, res, next) => {
@@ -96,6 +102,63 @@ router.post(
     res.json({
       messageCode: SERVER_MESSAGE_CODES.admin.repairSyncDone,
       result,
+    });
+  })
+);
+
+// Permanently delete one node (hard delete; bypasses the trash).
+// Interim maintenance/E2E-companion channel (DEF-16 P2): the trash
+// purge/empty-trash routes (P3) will supersede it as the user-facing
+// permanent delete. WebDAV mode cleans the remote FIRST (trashed node →
+// /.wea-trash/<nodeId>; live node → bottom-up display-path delete), then the
+// DB removal FK-cascades object_map/filecache/closure/permission/share/recent
+// rows. In S3 mode the blob is left for the lazy GC sweep (unchanged
+// historical behavior of a hard delete).
+router.delete(
+  '/maintenance/perm-delete',
+  authenticateToken,
+  isAdmin,
+  asyncHandler(async (req, res) => {
+    const { nodeId } = req.body || {};
+    const nodeIdValue = Number(nodeId);
+    if (!nodeId || !Number.isInteger(nodeIdValue) || nodeIdValue <= 0) {
+      throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
+    }
+
+    const { getComposition } = require('../../../service/composition');
+    const comp = getComposition();
+
+    // Trash-aware existence check: getDescendants includes the depth-0 self
+    // row and is UNFILTERED, so trashed rows are still enumerable here.
+    const subtreeNodes = await comp.fileNodesStore.getDescendants(nodeIdValue);
+    const selfNode = subtreeNodes.find((n) => n.id === nodeIdValue);
+    if (!selfNode) {
+      throw notFoundError(SERVER_ERROR_CODES.files.notFound);
+    }
+
+    if (comp.fileStorageMode === 'webdav' && comp.blobStore) {
+      if (selfNode.deletedAt != null) {
+        // Trashed subtree: the remote content was MOVE'd wholesale to the
+        // hidden trash path — one DELETE removes the whole moved tree.
+        try {
+          await comp.blobStore.deleteBlob(buildTrashPath(nodeIdValue));
+        } catch (_) {
+          /* best-effort — the DB delete proceeds */
+        }
+      } else {
+        const remoteOps = createWebdavRemoteOps({
+          blobStore: comp.blobStore,
+          fileStorageMode: comp.fileStorageMode,
+          fileNodeService: comp.fileNodeService,
+        });
+        await remoteOps.deleteRemoteSubtreeBestEffort(nodeIdValue);
+      }
+    }
+
+    await comp.fileNodeService.deleteNode(nodeIdValue);
+    res.json({
+      messageCode: SERVER_MESSAGE_CODES.admin.permDeleteDone,
+      result: { nodeId: nodeIdValue, deletedCount: subtreeNodes.length },
     });
   })
 );

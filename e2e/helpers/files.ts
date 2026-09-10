@@ -47,6 +47,12 @@ function trackWorkspaceCleanup(token: string, basePath: string) {
 /**
  * Delete a case-owned folder (and its subtree) via the API. Tolerant of the
  * folder having already been moved/renamed/deleted by the case itself.
+ *
+ * Uses the admin permanent-delete maintenance route, NOT `DELETE
+ * /api/files/delete`: since DEF-16 P2 the ordinary delete only TRASHES the
+ * subtree, and cleanup must physically remove the case folder so containment
+ * runs stay residue-free (see docs/TESTING_STRATEGY.md, assertion-context
+ * containment).
  */
 async function deleteFolderAt(
   request: APIRequestContext,
@@ -55,7 +61,7 @@ async function deleteFolderAt(
 ): Promise<void> {
   const nodeId = await resolvePathOrNull(request, token, folderPath);
   if (nodeId === null) return;
-  const res = await request.delete('/api/files/delete', {
+  const res = await request.delete('/api/admin/maintenance/perm-delete', {
     headers: { Authorization: `Bearer ${token}` },
     data: { nodeId },
   });

@@ -38,6 +38,19 @@ module.exports = function createPostgresFileNodeRepository(executor) {
 
     async getNode(id) {
       try {
+        // DEF-16 P4: live rows only — a trashed node is invisible to getNode.
+        const { rows } = await executor.query(
+          'SELECT * FROM file_nodes WHERE id = $1 AND deleted_at IS NULL LIMIT 1',
+          [Number(id)]
+        );
+        return mapNodeRow(rows[0]);
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async getNodeIncludingTrashed(id) {
+      try {
         const { rows } = await executor.query('SELECT * FROM file_nodes WHERE id = $1 LIMIT 1', [
           Number(id),
         ]);
@@ -51,15 +64,58 @@ module.exports = function createPostgresFileNodeRepository(executor) {
       try {
         const { rows } = await executor.query(
           `SELECT fn.id, fn.parent_id, fn.name, fn.type, fn.sync_status,
-                  fn.created_at, fn.updated_at,
+                  fn.created_at, fn.updated_at, fn.deleted_at,
                   fc.size, fc.mime_type, fc.content_hash
            FROM file_nodes fn
            LEFT JOIN filecache fc ON fc.file_node_id = fn.id
            WHERE ${parentId == null ? 'fn.parent_id IS NULL' : 'fn.parent_id = $1'}
+             AND fn.deleted_at IS NULL
            ORDER BY fn.name`,
           parentId != null ? [Number(parentId)] : []
         );
         return rows.map(mapChildRow);
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async getTrashChildren(parentId) {
+      try {
+        const { rows } = await executor.query(
+          `SELECT * FROM file_nodes
+           WHERE ${parentId == null ? 'parent_id IS NULL' : 'parent_id = $1'}
+             AND deleted_at IS NOT NULL
+           ORDER BY name`,
+          parentId != null ? [Number(parentId)] : []
+        );
+        return rows.map(mapNodeRow);
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async getTrashedNodes() {
+      try {
+        const { rows } = await executor.query(
+          `SELECT * FROM file_nodes
+           WHERE deleted_at IS NOT NULL
+           ORDER BY deleted_at DESC, name`
+        );
+        return rows.map(mapNodeRow);
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async markSubtreeDeleted(nodeIds) {
+      if (!nodeIds || nodeIds.length === 0) return { changes: 0 };
+      try {
+        const placeholders = buildInPlaceholders(nodeIds.length);
+        const res = await executor.run(
+          `UPDATE file_nodes SET deleted_at = NOW() WHERE id IN (${placeholders})`,
+          nodeIds.map(Number)
+        );
+        return { changes: res.changes };
       } catch (error) {
         throw mapDatabaseError(error);
       }
@@ -120,10 +176,12 @@ module.exports = function createPostgresFileNodeRepository(executor) {
         let query;
         let params;
         if (parentId == null) {
-          query = 'SELECT id FROM file_nodes WHERE parent_id IS NULL AND name = $1 LIMIT 1';
+          query =
+            'SELECT id FROM file_nodes WHERE parent_id IS NULL AND name = $1 AND deleted_at IS NULL LIMIT 1';
           params = [String(name)];
         } else {
-          query = 'SELECT id FROM file_nodes WHERE parent_id = $1 AND name = $2 LIMIT 1';
+          query =
+            'SELECT id FROM file_nodes WHERE parent_id = $1 AND name = $2 AND deleted_at IS NULL LIMIT 1';
           params = [Number(parentId), String(name)];
         }
         const { rows } = await executor.query(query, params);

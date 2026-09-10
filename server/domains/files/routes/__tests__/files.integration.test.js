@@ -453,52 +453,76 @@ describe('S5.0-SCENARIO-5: S3 mode delete cascade', () => {
     file2Id = f2.body.nodeId;
   });
 
-  it('deletes the directory and all children are removed from DB', async () => {
+  it('trashes the directory: subtree rows survive with deleted_at set and disappear from the listing (M6)', async () => {
     const res = await request(app)
       .delete('/api/files/delete')
       .set('Authorization', `Bearer ${user.token}`)
       .send({ nodeId: dirNodeId });
     expect(res.status).toBe(200);
+    // Count semantics unchanged: getDescendantIds includes the closure
+    // depth-0 self row, so the historical formula reports (self + descendants) + 1
+    // = dir + 2 files + 1 for this two-file directory.
+    expect(res.body.deletedCount).toBe(4);
 
-    // Verify parent dir is gone
-    const dirDb = await dbQuery('SELECT id FROM file_nodes WHERE id = ?', [dirNodeId]);
-    expect(dirDb.rows).toHaveLength(0);
+    // Soft delete: folder + children rows SURVIVE with deleted_at set.
+    const dirDb = await dbQuery(
+      'SELECT id, deleted_at FROM file_nodes WHERE id = ?',
+      [dirNodeId]
+    );
+    expect(dirDb.rows).toHaveLength(1);
+    expect(dirDb.rows[0].deleted_at).not.toBeNull();
 
-    // Verify children are also deleted
-    const filesDb = await dbQuery('SELECT id FROM file_nodes WHERE id IN (?, ?)', [
+    const filesDb = await dbQuery('SELECT id, deleted_at FROM file_nodes WHERE id IN (?, ?)', [
       file1Id,
       file2Id,
     ]);
-    expect(filesDb.rows).toHaveLength(0);
+    expect(filesDb.rows).toHaveLength(2);
+    for (const row of filesDb.rows) {
+      expect(row.deleted_at).not.toBeNull();
+    }
+
+    // Hidden at read: the trashed folder is gone from the parent listing.
+    const homeList = await request(app)
+      .get('/api/files/list')
+      .query({ nodeId: homeNodeId })
+      .set('Authorization', `Bearer ${user.token}`);
+    expect(homeList.status).toBe(200);
+    const items = Array.isArray(homeList.body) ? homeList.body : homeList.body.items;
+    expect(items.some((i) => i.nodeId === dirNodeId)).toBe(false);
   });
 
-  it('DB: closure table entries for deleted nodes are cleaned up', async () => {
+  it('DB: closure table entries for the trashed subtree SURVIVE (restore needs the full chain)', async () => {
     const result = await dbQuery(
       'SELECT * FROM node_ancestors WHERE ancestor_id = ? OR descendant_id IN (?, ?, ?)',
       [dirNodeId, dirNodeId, file1Id, file2Id]
     );
-    expect(result.rows.length).toBe(0);
+    expect(result.rows.length).toBeGreaterThan(0);
   });
 
-  it('DB: object_map entries for deleted files are cleaned up', async () => {
+  it('DB: object_map entries for the trashed files SURVIVE (rows kept, not orphaned)', async () => {
     const result = await dbQuery(
-      'SELECT file_node_id FROM object_map WHERE file_node_id IN (?, ?)',
+      'SELECT file_node_id, status FROM object_map WHERE file_node_id IN (?, ?)',
       [file1Id, file2Id]
     );
-    expect(result.rows).toHaveLength(0);
+    expect(result.rows).toHaveLength(2);
   });
 
-  it('S3: blobs are marked orphaned (not hard-deleted) in S3 mode', async () => {
-    // In S3 mode, deleteNode does not call blobStore.deleteBlob;
-    // blob cleanup is handled by a separate GC process.
-    const result = await dbQuery('SELECT status FROM object_map WHERE file_node_id IN (?, ?)', [
+  it('S3: trashed files keep their active object_map rows and physical blobs (zero physical I/O; GC keep-set arm)', async () => {
+    // In S3 mode, trashing performs no storage I/O: the active rows (and the
+    // blobs they reference) stay in place — Tier 2 keeps them via the active
+    // arm of the keep-set until the trash purge (P3) removes them.
+    const result = await dbQuery('SELECT s3_key, status FROM object_map WHERE file_node_id IN (?, ?)', [
       file1Id,
       file2Id,
     ]);
-    expect(result.rows).toHaveLength(0);
+    expect(result.rows).toHaveLength(2);
+    expect(result.rows.every((r) => r.status === 'active')).toBe(true);
+    for (const row of result.rows) {
+      expect(currentMockS3.getStore().has(row.s3_key)).toBe(true);
+    }
   });
 
-  it('S3: deleting a file leaves the physical blob in the store pending GC (lazy delete boundary)', async () => {
+  it('S3: trashing a file leaves the physical blob in the store pending the trash purge (lazy delete boundary)', async () => {
     const lazyName = `lazy-${Date.now()}.txt`;
     const upload = await uploadFile(user, homeNodeId, lazyName, 'lazy delete content');
     expect(upload.status).toBe(200);
@@ -517,15 +541,18 @@ describe('S5.0-SCENARIO-5: S3 mode delete cascade', () => {
       .send({ nodeId: lazyNodeId });
     expect(del.status).toBe(200);
 
-    const nodeRows = await dbQuery('SELECT id FROM file_nodes WHERE id = ?', [lazyNodeId]);
-    expect(nodeRows.rows).toHaveLength(0);
-    const mapRows = await dbQuery('SELECT s3_key FROM object_map WHERE file_node_id = ?', [
+    // Soft delete: the node row survives (trashed), the object_map row stays
+    // active and the physical blob is untouched (lazy delete boundary: the
+    // blob is only reclaimed by the trash purge / retention expiry, P5/P6).
+    const nodeRows = await dbQuery('SELECT deleted_at FROM file_nodes WHERE id = ?', [lazyNodeId]);
+    expect(nodeRows.rows).toHaveLength(1);
+    expect(nodeRows.rows[0].deleted_at).not.toBeNull();
+    const mapRows = await dbQuery('SELECT status FROM object_map WHERE file_node_id = ?', [
       lazyNodeId,
     ]);
-    expect(mapRows.rows).toHaveLength(0);
+    expect(mapRows.rows).toHaveLength(1);
+    expect(mapRows.rows[0].status).toBe('active');
 
-    // Lazy delete boundary: S3 delete is deferred to the GC run, so the
-    // physical blob must still exist in the store.
     expect(currentMockS3.getStore().has(s3Key)).toBe(true);
   });
 });
@@ -709,7 +736,7 @@ describe('S5.0-SCENARIO-7: Batch operations', () => {
     expect(dbResult.rows[0].parent_id).toBe(targetDirId);
   });
 
-  it('deletes files individually', async () => {
+  it('trashes files individually: rows survive with deleted_at set and disappear from listings (M10)', async () => {
     for (const nodeId of [nodeIds[1], nodeIds[2]]) {
       const res = await request(app)
         .delete('/api/files/delete')
@@ -718,28 +745,41 @@ describe('S5.0-SCENARIO-7: Batch operations', () => {
       expect(res.status).toBe(200);
     }
 
-    // Verify deleted files are gone from DB
-    const dbResult = await dbQuery('SELECT id FROM file_nodes WHERE id IN (?, ?)', [
+    // Soft delete: rows survive with deleted_at set.
+    const dbResult = await dbQuery('SELECT id, deleted_at FROM file_nodes WHERE id IN (?, ?)', [
       nodeIds[1],
       nodeIds[2],
     ]);
-    expect(dbResult.rows).toHaveLength(0);
+    expect(dbResult.rows).toHaveLength(2);
+    for (const row of dbResult.rows) {
+      expect(row.deleted_at).not.toBeNull();
+    }
+
+    // Hidden at read: the trashed files are gone from the parent listing.
+    const homeList = await request(app)
+      .get('/api/files/list')
+      .query({ nodeId: homeNodeId })
+      .set('Authorization', `Bearer ${user.token}`);
+    expect(homeList.status).toBe(200);
+    const items = Array.isArray(homeList.body) ? homeList.body : homeList.body.items;
+    expect(items.some((i) => i.nodeId === nodeIds[1])).toBe(false);
+    expect(items.some((i) => i.nodeId === nodeIds[2])).toBe(false);
   });
 
-  it('DB: object_map entries for deleted files are cleaned up', async () => {
+  it('DB: object_map entries for trashed files SURVIVE (M11)', async () => {
     const result = await dbQuery(
       'SELECT file_node_id FROM object_map WHERE file_node_id IN (?, ?)',
       [nodeIds[1], nodeIds[2]]
     );
-    expect(result.rows).toHaveLength(0);
+    expect(result.rows).toHaveLength(2);
   });
 
-  it('DB: closure table entries for deleted files are cleaned up', async () => {
+  it('DB: closure table entries for trashed files SURVIVE (M12)', async () => {
     const result = await dbQuery(
       'SELECT * FROM node_ancestors WHERE descendant_id IN (?, ?) OR ancestor_id IN (?, ?)',
       [nodeIds[1], nodeIds[2], nodeIds[1], nodeIds[2]]
     );
-    expect(result.rows.length).toBe(0);
+    expect(result.rows.length).toBeGreaterThan(0);
   });
 });
 
@@ -1473,7 +1513,7 @@ describe('C3: copy keeps original and copy independent with closure rows for bot
     expect(res.body.ancestors.map((a) => a.nodeId)).toEqual([home, destFolder, copyFileId]);
   });
 
-  it('original and copy are independent: deleting the copy leaves the original intact', async () => {
+  it('original and copy are independent: trashing the copy hides it while the original stays intact', async () => {
     const del = await request(app)
       .delete('/api/files/delete')
       .set('Authorization', `Bearer ${user.token}`)
@@ -1487,16 +1527,26 @@ describe('C3: copy keeps original and copy independent with closure rows for bot
     expect(orig.status).toBe(200);
     expect(Buffer.from(orig.body).toString()).toBe('original-content');
 
-    const gone = await dbQuery('SELECT id FROM file_nodes WHERE id = ?', [copyFileId]);
-    expect(gone.rows).toHaveLength(0);
+    // Soft delete: the copy row survives trashed (hidden at read), the
+    // original is untouched.
+    const gone = await dbQuery('SELECT deleted_at FROM file_nodes WHERE id = ?', [copyFileId]);
+    expect(gone.rows).toHaveLength(1);
+    expect(gone.rows[0].deleted_at).not.toBeNull();
+
+    const origRow = await dbQuery('SELECT deleted_at FROM file_nodes WHERE id = ?', [
+      sourceFileId,
+    ]);
+    expect(origRow.rows).toHaveLength(1);
+    expect(origRow.rows[0].deleted_at).toBeNull();
   });
 });
 
 /* ========================================================================
-   C4 - Reference stability (class C): delete a folder cascades descendant
-   permission rows and recent-file entries pointing into the subtree.
+   C4 - Reference stability (class C): trashing a folder hides the subtree
+   at read while the descendant permission rows, closure rows and recent-file
+   DB rows SURVIVE (DEF-16: trash is a read-gating marker, not a removal).
    ======================================================================== */
-describe('C4: delete folder → permission rows + recent entries cascade', () => {
+describe('C4: trash folder → hidden at read; permission/closure/recent rows survive', () => {
   let owner, grantee, folder, childFileId;
 
   beforeEach(jest.clearAllMocks);
@@ -1560,7 +1610,7 @@ describe('C4: delete folder → permission rows + recent entries cascade', () =>
     expect(granteeRecent.body.some((f) => f.fileNodeId === childFileId)).toBe(true);
   });
 
-  it('deletes the folder via the single-item endpoint', async () => {
+  it('trashes the folder via the single-item endpoint', async () => {
     const res = await request(app)
       .delete('/api/files/delete')
       .set('Authorization', `Bearer ${owner.token}`)
@@ -1568,31 +1618,50 @@ describe('C4: delete folder → permission rows + recent entries cascade', () =>
     expect(res.status).toBe(200);
   });
 
-  it('DB: folder and child nodes are gone', async () => {
-    const rows = await dbQuery('SELECT id FROM file_nodes WHERE id IN (?, ?)', [
+  it('DB: folder and child rows SURVIVE with deleted_at set (hidden at read, not removed)', async () => {
+    const rows = await dbQuery('SELECT id, deleted_at FROM file_nodes WHERE id IN (?, ?)', [
       folder,
       childFileId,
     ]);
-    expect(rows.rows).toHaveLength(0);
+    expect(rows.rows).toHaveLength(2);
+    for (const row of rows.rows) {
+      expect(row.deleted_at).not.toBeNull();
+    }
   });
 
-  it('DB: descendant permission row on the deleted folder is cascade-removed', async () => {
+  it('DB: descendant permission row on the trashed folder SURVIVES (FK cascade only fires at purge)', async () => {
     const perm = await dbQuery(
       'SELECT permission FROM permissions_user_paths WHERE user_id = ? AND file_node_id = ?',
       [grantee.user.id, folder]
     );
-    expect(perm.rows).toHaveLength(0);
+    expect(perm.rows).toHaveLength(1);
   });
 
-  it('DB: closure rows for the deleted subtree are cleaned up', async () => {
+  it('DB: closure rows for the trashed subtree SURVIVE', async () => {
     const rows = await dbQuery(
       'SELECT * FROM node_ancestors WHERE descendant_id IN (?, ?) OR ancestor_id IN (?, ?)',
       [folder, childFileId, folder, childFileId]
     );
-    expect(rows.rows).toHaveLength(0);
+    expect(rows.rows.length).toBeGreaterThan(0);
   });
 
-  it('recent entries pointing into the deleted subtree are removed for both users', async () => {
+  it('hidden at read: folder listing drops the trashed child and recent entries point into the trash are HIDDEN for both users (rows kept)', async () => {
+    // Read gate: the owner's home listing no longer contains the folder.
+    const homeList = await request(app)
+      .get('/api/files/list')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .query({ nodeId: owner.homeNodeId });
+    expect(homeList.status).toBe(200);
+    const items = Array.isArray(homeList.body) ? homeList.body : homeList.body.items;
+    expect(items.some((i) => i.nodeId === folder)).toBe(false);
+
+    // Recent files: rows kept in the DB, entries hidden at enrichment.
+    const recentRows = await dbQuery(
+      'SELECT * FROM recent_files WHERE file_node_id = ?',
+      [childFileId]
+    );
+    expect(recentRows.rows.length).toBeGreaterThanOrEqual(1);
+
     const ownerRecent = await request(app)
       .get('/api/recent-files')
       .set('Authorization', `Bearer ${owner.token}`);

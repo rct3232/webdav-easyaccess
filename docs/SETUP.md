@@ -239,7 +239,7 @@ node server/scripts/migrateBlobs.js --dest-type=webdav \
 - Dry-run is **mandatory** before every `--apply` run; `--apply` itself performs the dry-run pass first, and a failed dry-run blocks all writes (exit 1, nothing written).
 - `--apply` requires `--yes`; abort otherwise.
 - The destination `type` (`--dest-type` / `DEST_TYPE`) must match the derived destination backend; a mismatch aborts before any work (exit 1).
-- `.wea` is a normal folder — migrated like any other node.
+- `.wea` is a normal folder — migrated like any other node. The `.wea-` NAME PREFIX is reserved (`validateFileName` rejects it on create/upload/folder/rename): the trash subsystem (DEF-16) stores trashed WebDAV subtrees under the hidden root namespace `/.wea-trash/<nodeId>`.
 - Per-node failures are recorded and processing continues; the run only aborts on config/snapshot/destination-validation failure.
 - **Resume is automatic:** re-running an interrupted migration skips already-migrated nodes (no `--resume` flag); `--force` re-copies nodes even when an automatic resume marker is present.
 

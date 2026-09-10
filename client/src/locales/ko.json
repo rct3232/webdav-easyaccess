@@ -117,6 +117,7 @@
     "shared": "공유됨",
     "recent": "최근 항목",
     "recentShort": "최근항목",
+    "trashShort": "휴지통",
     "root": "루트",
     "all": "전체",
     "sharedFolder": "공유 폴더",
@@ -878,7 +879,9 @@
       "progressNotFound": "진행 정보를 찾을 수 없습니다.",
       "versionNotFound": "요청한 버전이 존재하지 않습니다.",
       "versionBlobMissing": "이 버전의 저장 데이터를 더 이상 사용할 수 없습니다.",
-      "versionRestoreUnavailable": "버전 복원을 사용할 수 없습니다."
+      "versionRestoreUnavailable": "버전 복원을 사용할 수 없습니다.",
+      "fileNameReserved": "시스템에서 예약된 파일 이름입니다",
+      "trashTargetExists": "휴지통 대상이 이미 존재합니다. 관리자에게 문의하세요."
     },
     "permissions": {
       "permissionHigherThanParent": "파일 권한은 상위 경로 권한보다 높아야 합니다.",
@@ -1010,6 +1013,7 @@
       "userDeleted": "사용자가 삭제되었습니다.",
       "permissionUpdated": "권한이 업데이트되었습니다.",
       "orphanCleanupDone": "고아 데이터 정리가 완료되었습니다.",
+      "permDeleteDone": "항목이 영구 삭제되었습니다",
       "migrationCancelled": "마이그레이션이 취소되었습니다.",
       "configSaved": "설정이 저장되었습니다.",
       "configSyncDone": "환경 변수를 데이터베이스 설정에 동기화했습니다."

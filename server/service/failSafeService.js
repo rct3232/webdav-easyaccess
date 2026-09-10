@@ -3,6 +3,7 @@
 const storage = require('../store/storage');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { createError } = require('../utils/errorHandler');
+const { createWebdavRemoteOps } = require('./webdavRemoteOps');
 
 const ORPHANED_NODE_ACTIONS = ['retry-delete', 'force-active'];
 const PENDING_UPLOAD_ACTIONS = ['complete', 'restore-previous', 'delete', 'auto'];
@@ -35,6 +36,8 @@ function createFailSafeService({
   blobStore,
   fileStorageMode = 's3',
 }) {
+  const remoteOps = createWebdavRemoteOps({ blobStore, fileStorageMode, fileNodeService });
+
   function withTx(callback) {
     const backend = storage.getBackend();
     if (backend === 'sqlite') {
@@ -174,7 +177,7 @@ function createFailSafeService({
     }
 
     if (action === 'retry-delete') {
-      await deleteRemoteSubtreeBestEffort(nodeId);
+      await remoteOps.deleteRemoteSubtreeBestEffort(nodeId);
       await fileNodeService.deleteNode(nodeId);
       return {
         nodeId: node.id,
@@ -194,27 +197,6 @@ function createFailSafeService({
       path,
       detail: 'sync_status set to active',
     };
-  }
-
-  /**
-   * WebDAV mode only: best-effort remote deletion of the node's subtree
-   * (deepest first, then the node itself) before the DB rows are removed.
-   * Individual failures are ignored — the DB delete proceeds either way.
-   */
-  async function deleteRemoteSubtreeBestEffort(nodeId) {
-    if (fileStorageMode !== 'webdav' || !blobStore) return;
-    const descendantIds = await fileNodeService.getDescendantIds(nodeId);
-    const ids = [...descendantIds].reverse().concat([nodeId]);
-    for (const id of ids) {
-      try {
-        const nodePath = await fileNodeService.getNodePath(id);
-        if (nodePath) {
-          await blobStore.deleteBlob(nodePath);
-        }
-      } catch (error) {
-        /* best-effort — the DB delete proceeds */
-      }
-    }
   }
 
   /**

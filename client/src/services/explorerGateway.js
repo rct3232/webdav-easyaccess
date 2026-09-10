@@ -1,4 +1,10 @@
-import { checkConflicts, getFilesMetadata, listFiles, uploadMultipleFiles } from './fileService';
+import {
+  checkConflicts,
+  getFilesMetadata,
+  getTrashFiles,
+  listFiles,
+  uploadMultipleFiles,
+} from './fileService';
 import { checkPermission, getSharedPermissions } from './permissionService';
 import { addRecentFile, getRecentFiles, removeRecentFile } from './recentFilesRepository';
 import { onRecentFilesChange } from './recentFilesNotifier';
@@ -75,6 +81,25 @@ export const getEntriesMetadata = async ({ entries = [], options = {} } = {}) =>
 
 export const loadRecentFiles = async (options) => {
   return getRecentFiles(options);
+};
+
+/**
+ * Load the caller-visible trashed rows for the trash view (DEF-16; the
+ * `__trash__` virtual root's data source — full UI lands in P9).
+ */
+export const loadTrashEntries = async (options = {}) => {
+  const data = await getTrashFiles(options);
+  const items = Array.isArray(data?.items) ? data.items : [];
+  return items.map((item) => ({
+    ...item,
+    path: item.displayPath ?? '',
+    display_path: item.displayPath ?? '',
+    basename: item.name ?? '',
+    hasReadPermission: item.hasReadPermission === true,
+    hasWritePermission: item.hasWritePermission === true,
+    hasAdminPermission: item.hasAdminPermission === true,
+    isTrashed: true,
+  }));
 };
 
 export const loadSharedEntries = async ({ user, options: _options = {} } = {}) => {
@@ -181,6 +206,7 @@ const explorerGateway = {
   listDirectory,
   loadRecentFiles,
   loadSharedEntries,
+  loadTrashEntries,
   removeRecentFile: removeExplorerRecentFile,
   canNavigateToNode,
   checkConflicts: checkConflictsForExplorer,

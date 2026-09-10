@@ -2,6 +2,7 @@
 
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { buildTrashPath } = require('../../../service/webdavRemoteOps');
 const { getThumbnailUrl } = require('../../thumbnails/services/thumbnailService');
 const { isImageFile, isVideoFile } = require('../../../utils/webdav');
 const { conflictError, notFoundError, forbiddenError } = require('../../../utils/errorHandler');
@@ -14,6 +15,7 @@ function createFileService(options = {}) {
   const uploadService = options.uploadService;
   const aclService = options.aclService;
   const fileStorageMode = options.fileStorageMode || 's3';
+  const blobStore = options.blobStore || null;
   const _ownerNodeResolver = options.ownerNodeResolver || ownerNodeResolver;
   const _permissionStore = options.permissionStore || permissionStore;
   const _conflictError = options.conflictError || conflictError;
@@ -333,19 +335,38 @@ function createFileService(options = {}) {
 
     const descendantIds = await fileNodeService.getDescendantIds(nodeId);
 
-    // WebDAV: bottom-up storage deletion before DB removal (deepest first, then target node)
-    if (fileStorageMode === 'webdav') {
-      const allNodesToCleanup = [...descendantIds].reverse().concat([nodeId]);
-      for (const descId of allNodesToCleanup) {
-        try {
-          await blobStorageService.deleteBlob(descId);
-        } catch (error) {
-          await fileNodeService.updateSyncStatus(descId, 'orphaned_node');
-        }
+    // WebDAV (DEF-16 P2): ONE remote MOVE of the subtree root to the reserved
+    // hidden trash path before any DB marking. Children travel with the
+    // collection; S3 mode does zero physical I/O (stable UUID keys).
+    if (fileStorageMode === 'webdav' && blobStore) {
+      const displayPath = await fileNodeService.getNodePath(nodeId);
+      const trashPath = buildTrashPath(nodeId);
+      // Destination-exists guard: a pre-existing /.wea-* entry (legacy /
+      // out-of-band node — new .wea- names are rejected by validateFileName)
+      // must never be clobbered. Abort with a clear error; no marking happens.
+      let trashTargetFree = true;
+      try {
+        trashTargetFree = (await blobStore.headBlob(trashPath)) == null;
+      } catch (_) {
+        // Probe inconclusive (non-404 error) — let the MOVE surface the failure.
+      }
+      if (!trashTargetFree) {
+        throw _conflictError(SERVER_ERROR_CODES.files.trashTargetExists);
+      }
+      try {
+        await blobStore.moveBlob(displayPath, trashPath);
+      } catch (error) {
+        // MOVE failure: existing fail-safe marker on the subtree root, the
+        // trash is aborted (deleted_at stays unset) and the error surfaces.
+        await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
+        throw error;
       }
     }
 
-    await fileNodeService.deleteNode(nodeId);
+    // Soft delete: mark every row of the subtree. No physical row removal —
+    // fileNodeService.deleteNode (hard delete) stays reserved for the repair
+    // channel, upload/copy rollback and the admin permanent-delete route.
+    await fileNodeService.markSubtreeDeleted([nodeId, ...descendantIds]);
     return { deletedCount: descendantIds.length + 1 };
   }
 

@@ -20,6 +20,7 @@ const {
   SERVER_MESSAGE_CODES,
 } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { getContentType } = require('@webdav-easyaccess/shared/fileTypes');
+const { validateFileName } = require('@webdav-easyaccess/shared/validation');
 const { sendBufferAsChunks } = require('../../../utils/responseWriter');
 
 const { getComposition } = require('../../../service/composition');
@@ -33,6 +34,18 @@ function requireTokenNotShare(req, res, next) {
       .json({ errorCode: SERVER_ERROR_CODES.files.accessDenied });
   }
   next();
+}
+
+// Shared `.wea-` reservation (DEF-16): the full validateFileName contract is
+// enforced server-side on every name-accepting route; the reserved namespace
+// surfaces its own error code, everything else maps to files.invalidName.
+function assertValidName(name) {
+  const validationKey = validateFileName(name);
+  if (!validationKey) return;
+  if (validationKey === 'validation.fileNameReserved') {
+    throw validationError(SERVER_ERROR_CODES.files.fileNameReserved);
+  }
+  throw validationError(SERVER_ERROR_CODES.files.invalidName);
 }
 
 const METADATA_PATHS_LIMIT = 100;
@@ -240,6 +253,7 @@ router.post(
     } catch {
       /* latin1→utf8 detection is best-effort */
     }
+    assertValidName(originalFilename);
 
     const parentNodeIdValue = req.body.parentNodeId;
     const uploadUser = req.user.full;
@@ -300,6 +314,7 @@ router.put(
     if (!nodeId || !newName) {
       throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
     }
+    assertValidName(newName);
 
     const fileNodeId = parseNodeId(nodeId, 'nodeId');
     const principalId = req.principalId;

@@ -11,6 +11,9 @@ const {
 const { createFileNodeService } = require('../../../../service/fileNodeService');
 const { createFileNodesStore } = require('../../../../store/fileNodesStore');
 const { createWebdavMock } = require('@testing/mocks/webdavMock');
+const {
+  SERVER_ERROR_CODES,
+} = require('@webdav-easyaccess/shared/serverMessageCodes');
 const WebdavBlobStore = require('../../../../infrastructure/adapters/blobstore/WebdavBlobStore');
 const composition = require('../../../../service/composition');
 
@@ -129,6 +132,52 @@ describe('POST /api/folders/create', () => {
 
     expect(res.status).toBe(403);
     expect(res.body.errorCode).toBeDefined();
+  });
+
+  it('A19: rejects a .wea-trash folder name with 400 files.fileNameReserved (reserved namespace)', async () => {
+    const res = await request(app)
+      .post('/api/folders/create')
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ parentNodeId: homeNodeId, name: '.wea-trash' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.files.fileNameReserved);
+
+    // Case-insensitive reservation.
+    const res2 = await request(app)
+      .post('/api/folders/create')
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ parentNodeId: homeNodeId, name: '.WEA-Trash' });
+    expect(res2.status).toBe(400);
+    expect(res2.body.errorCode).toBe(SERVER_ERROR_CODES.files.fileNameReserved);
+  });
+
+  it('A7: creating a folder with the same name as a TRASHED sibling is non-blocking', async () => {
+    const name = `ghost-${Date.now()}`;
+    const res1 = await request(app)
+      .post('/api/folders/create')
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ parentNodeId: homeNodeId, name });
+    expect(res1.status).toBe(200);
+
+    // Trash the folder. The trash MOVE probe must see a free destination.
+    webdavMock.getFileMetadata.mockRejectedValue(
+      Object.assign(new Error('404'), { status: 404 })
+    );
+    const del = await request(app)
+      .delete('/api/files/delete')
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ nodeId: res1.body.nodeId });
+    expect(del.status).toBe(200);
+
+    // Re-create with the same name: the trashed sibling does not block it.
+    webdavMock.pathExists.mockResolvedValue(false);
+    const res2 = await request(app)
+      .post('/api/folders/create')
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ parentNodeId: homeNodeId, name });
+    expect(res2.status).toBe(200);
+    expect(res2.body.nodeId).not.toBe(res1.body.nodeId);
   });
 });
 

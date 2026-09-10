@@ -18,6 +18,11 @@
 
 **Architecture note:** Business logic is extracted into `server/domains/recentFiles/service.js`, which exports: `getRecentFiles(userId)`, `addRecentFile(userId, fileNodeId)`, `removeRecentFile(userId, fileNodeId)`, `clearRecentFiles(userId)`. `applyBulkMove` and `removePaths` are **REMOVED** — node_ids are stable across rename/move, so no post-operation synchronization is needed. The service delegates to `server/store/recentFilesStore` for persistence.
 
+**Trash filter (DEF-16 P4):** enrichment resolves each entry's node through the live-row read
+(`getNode` — trashed → null). A trashed node's `recent_files` DB row is KEPT, but the entry is
+HIDDEN from every listing response (enrichment returns nothing for it). Restoring the node makes
+the entry visible again.
+
 ### 2.2 Route List
 
 | Method | Path           | Auth  | Description                        |

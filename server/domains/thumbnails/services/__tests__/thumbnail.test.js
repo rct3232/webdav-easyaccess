@@ -202,4 +202,24 @@ describe('thumbnail utilities', () => {
       expect(getThumbnailFromCache(nodeId)).not.toBeNull();
     });
   });
+
+  describe('A11: ensureThumbnail for a TRASHED node (gated getNode)', () => {
+    it('returns null without touching the blob when the live-row getNode resolves null', async () => {
+      const nodeId = 99;
+      const mockDownloadBlob = jest.fn();
+      const mockGetNode = jest.fn().mockResolvedValue(null); // trashed → gated read
+      getComposition.mockReturnValue({
+        fileNodeService: { getNode: mockGetNode },
+        blobStorageService: { downloadBlob: mockDownloadBlob },
+      });
+      isImageFile.mockReturnValue(false);
+      isVideoFile.mockReturnValue(false);
+
+      const result = await ensureThumbnail(nodeId);
+
+      expect(result).toBeNull();
+      expect(mockGetNode).toHaveBeenCalledWith(nodeId);
+      expect(mockDownloadBlob).not.toHaveBeenCalled();
+    });
+  });
 });

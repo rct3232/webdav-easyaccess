@@ -157,6 +157,7 @@ describe('useFileManager', () => {
     explorerGateway.loadRecentFiles.mockResolvedValue([]);
     explorerGateway.getEntriesMetadata.mockResolvedValue([]);
     explorerGateway.loadSharedEntries.mockResolvedValue([]);
+    explorerGateway.loadTrashEntries.mockResolvedValue([]);
     explorerGateway.subscribeToRecentFiles.mockReturnValue(jest.fn());
     resolvePath.mockResolvedValue({ nodeId: 3 });
     getAncestors.mockResolvedValue({ ancestors: [] });
@@ -372,6 +373,36 @@ describe('useFileManager', () => {
     expect(result.current.files).toEqual([
       expect.objectContaining({ path: '/other/dir', type: 'directory' }),
     ]);
+  });
+
+  it('A21: __trash__ path loads trashed entries through explorerGateway (urlView kind + gateway fn)', async () => {
+    const trashEntries = [
+      {
+        nodeId: 31,
+        name: 'gone.txt',
+        path: '/testuser/gone.txt',
+        basename: 'gone.txt',
+        type: 'file',
+        deletedAt: '2026-01-01T00:00:00Z',
+        hasReadPermission: true,
+        hasWritePermission: true,
+        hasAdminPermission: true,
+        isTrashed: true,
+      },
+    ];
+
+    explorerGateway.loadTrashEntries.mockResolvedValueOnce(trashEntries);
+    const { result } = renderWithPath('__trash__');
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(explorerGateway.loadTrashEntries).toHaveBeenCalled();
+    expect(result.current.currentPath).toBe('/__trash__');
+    // The trash view is read-only (no FAB / drag-drop), like recent/shared.
+    expect(result.current.hasWritePermission).toBe(false);
+    expect(result.current.files).toEqual(trashEntries);
   });
 
   it('calls onLoadComplete when load completes', async () => {

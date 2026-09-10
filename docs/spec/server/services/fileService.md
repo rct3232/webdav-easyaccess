@@ -18,7 +18,7 @@
 ### 2.2 Factory Function Signature
 
 ```js
-function createFileService({ fileNodeService, blobStorageService, uploadService, aclService, fileStorageMode, permissionStore, ownerNodeResolver }) {
+function createFileService({ fileNodeService, blobStorageService, uploadService, aclService, fileStorageMode, permissionStore, ownerNodeResolver, blobStore }) {
   return {
     listDirectoryWithPermissions(userId, parentNodeId, user),
     uploadFile(userId, parentNodeId, name, buffer, mimeType, user, onConflict),
@@ -40,6 +40,7 @@ function createFileService({ fileNodeService, blobStorageService, uploadService,
 | fileStorageMode    | string | yes      | `'s3'` or `'webdav'`. Determined by injected blobStorageService capability at composition time, not read from environment variables inside this service.                                |
 | permissionStore    | object | no       | Store-level permission CRUD (`revokeUserSubtreePermissions`). Defaults to the real store when omitted. Used only by `moveNode` for the ownership-transfer cleanup (D6).                 |
 | ownerNodeResolver  | object | no       | Owner detection via closure-table ancestry (`isOwnerNode`). Defaults to the real resolver when omitted. Used only by `moveNode` to decide whether a move is an ownership transfer (D6). |
+| blobStore          | object | no       | Raw blob-store adapter (`headBlob`/`moveBlob` for WebDAV trash). Required for the WebDAV trash MOVE in `deleteNode`; unused in S3 mode. Injected by the composition root.               |
 
 ### 2.3 Methods
 
@@ -219,28 +220,44 @@ Moves a node (and its subtree) to a new parent directory with closure table rebu
 
 #### `deleteNode(nodeId, userId, user)`
 
-Deletes a node and its entire subtree. For WebDAV mode, attempts best-effort storage deletion bottom-up before DB removal.
+Soft-deletes (trashes) a node and its entire subtree: every row of the subtree is marked
+`file_nodes.deleted_at` (DEF-16 P2). No DB row is removed and — in WebDAV mode — the subtree's
+remote content is moved once, as a whole, to the hidden trash path. Restore/purge are NOT part of
+this method (restore-in-place and permanent delete live in the trash channel; P3).
 
 | Param  | Type   | Required | Description                                |
 | ------ | ------ | -------- | ------------------------------------------ |
-| nodeId | number | yes      | ID of the root node to delete              |
+| nodeId | number | yes      | ID of the root node to trash               |
 | userId | number | yes      | ID of the requesting user                  |
 | user   | object | yes      | Full user object for permission resolution |
 
-**Returns:** `{ deletedCount }` — total number of nodes removed (including descendants).
+**Returns:** `{ deletedCount }` — total number of trashed nodes (subtree count: descendants + 1).
+The count semantics are unchanged from the hard-delete era; it is the size of the marked subtree.
 
 **Operations:**
 
-1. Permission gate: guard is `if (!user || !aclService.isAdminUser(user))` — when true, call `aclService.checkFilePermission(userId, nodeId, 'write')` (string literal). If check returns false, throw 403 via `forbiddenError`. Admin or null-user bypasses this gate entirely.
-2. Confirm existence via `fileNodeService.getNode(nodeId)` — throws `notFoundError` if node does not exist.
-3. Enumerate subtree: `fileNodeService.getDescendantIds(nodeId)` returns all descendant IDs from closure table.
-4. Storage deletion (mode-dependent):
-   - **S3 mode:** No direct storage call needed at this layer. blobStorageService.deleteBlob is called per-file as part of the fileNodeService.deleteNode cascade, which marks object_map rows orphaned. Actual S3 deletion deferred to Phase 6 GC.
-   - **WebDAV mode:** Build cleanup list as `[...descendantIds].reverse().concat([nodeId])` — deepest descendants first, then the target node itself. For each id: call `blobStorageService.deleteBlob(descId)` in a try/catch; on failure set `sync_status = 'orphaned_node'` via `fileNodeService.updateSyncStatus(descId, 'orphaned_node')` and continue (do not abort remaining deletions).
-5. DB deletion: `fileNodeService.deleteNode(nodeId)` — wrapped in TX, cleans up node_ancestors + triggers FK CASCADE for object_map, filecache rows.
+1. Permission gate: guard is `if (!user || !aclService.isAdminUser(user))` — when true, call `aclService.checkFilePermission(userId, nodeId, 'write')` (string literal). If check returns false, throw 403 via `forbiddenError`. Admin or null-user bypasses this gate entirely (admin delete = trash, same pipeline).
+2. Confirm existence via `fileNodeService.getNode(nodeId)` — throws `notFoundError` if node does not exist (live rows only; an already-trashed node is not-found here).
+3. Enumerate subtree: `fileNodeService.getDescendantIds(nodeId)` returns all descendant IDs from the closure table (UNFILTERED — the closure table survives trash, so a partially-marked subtree is still fully enumerable; re-running the marking is idempotent).
+4. WebDAV remote MOVE (one per subtree root, before any DB marking):
+   - Resolve the subtree root's display path via `fileNodeService.getNodePath(nodeId)`.
+   - Destination is the reserved hidden namespace `/.wea-trash/<nodeId>` (`nodeId` = the trashed ROOT's id; descendants keep their relative structure under it).
+   - **Destination-exists guard:** probe `blobStore.headBlob('/.wea-trash/<nodeId>')` first; when a pre-existing `.wea-*` entry is found (a legacy/out-of-band node — new `.wea-` names are rejected by `validateFileName`), throw a clear conflict error (`files.trashTargetExists`) and abort the trash: `deleted_at` is NOT set, no orphaned marker is written, and the live node stays untouched. Never clobber.
+   - `blobStore.moveBlob(displayPath, '/.wea-trash/<nodeId>')` — exactly ONE remote MOVE for the whole subtree (children move with the collection; no per-node remote I/O). New PUTs to the original display path can no longer clobber trashed content, and the path-based storage stays consistent with the DB-side trash.
+   - On MOVE failure: mark the subtree ROOT `sync_status = 'orphaned_node'` via `fileNodeService.updateSyncStatus(nodeId, 'orphaned_node')` (existing fail-safe channel), do NOT mark `deleted_at`, and re-throw the original error — the trash is aborted, the node remains live and listed.
+   - **S3 mode: zero physical I/O** — keys are stable UUIDs, no MOVE, no delete; the active object_map rows simply stay in place (and stay in the GC keep-set via the active arm).
+5. Subtree marking: `fileNodeService.markSubtreeDeleted([nodeId, ...descendantIds])` — a single `UPDATE file_nodes SET deleted_at = NOW() WHERE id IN (...)` executed for every row of the subtree (`changes` = rows marked). `fileNodeService.deleteNode` (hard delete: ancestor-cleanup + row removal + FK cascade) is deliberately NOT called here — it remains the hard-delete primitive for the fail-safe repair channel, the upload/copy rollback paths, and the admin permanent-delete maintenance route.
 6. Return `{ deletedCount: descendantIds.length + 1 }`.
 
-**DB operations:** getDescendantIds (SELECT), per-node updateSyncStatus (UPDATE) on WebDAV failures, deleteNode (TX: DELETE node_ancestors + DELETE file_nodes → CASCADE to object_map, filecache).
+**Batch delete inherits trash:** `batchOperationService.batchDelete` dispatches through this
+method, so bulk delete trashes too (same marking, same WebDAV MOVE semantics per root).
+
+**Permissions/shares/recent interplay:** permission rows, share links and recent-file rows are NOT
+touched by trash — they survive on the (still existing) rows and are hidden by the read gates
+instead (`fileNodesStore.md` §2.4: `getNode`/`getChildren`/`resolvePathSegment` are live-row reads;
+`listSharedWithUser` excludes trashed rows; recent files are filtered at enrichment).
+
+**DB operations:** getDescendantIds (SELECT), one `markSubtreeDeleted` (UPDATE ... WHERE id IN), and — WebDAV mode only — one path resolution + one `headBlob` probe + one `moveBlob`.
 
 ---
 
@@ -297,7 +314,7 @@ Creates a copy of a source file in the destination directory. Copy semantics dif
 - **Permission denied:** Any method where the user lacks required permission and is not an admin throws a 403 error. The caller (route handler) maps this to HTTP 403.
 - **Node not found:** If nodeId or parentNodeId does not correspond to an existing file_nodes row, throw 404 error. Applies to all methods accepting node IDs.
 - **Storage failure — S3 mode:** New-file upload failures roll back the created node — nothing persists in DB (see `uploadService.md` §2.5). Overwrite failures roll back to the pre-state — the node returns to `active` with the previous version still downloadable; only if the rollback itself fails does the node stay `pending_upload` with a pending object_map (scan/repair + GC cleanup — see `docs/IMPROVEMENT_PLAN.md`).
-- **Storage failure — WebDAV mode:** NEW nodes (new-file upload, copyFile) are rolled back when the backend write fails. Failures after a DB commit on EXISTING nodes (overwrite PUT, rename/move re-upload, deleteNode per-node, directory MKCOL) set `sync_status='orphaned_node'` as a fail-safe. The error is still propagated to the caller so the user sees a failure response; recovery of `orphaned_node` rows is manual via `repair-sync` (see `docs/IMPROVEMENT_PLAN.md`).
+- **Storage failure — WebDAV mode:** NEW nodes (new-file upload, copyFile) are rolled back when the backend write fails. Failures after a DB commit on EXISTING nodes (overwrite PUT, rename/move re-upload, trash MOVE, directory MKCOL) set `sync_status='orphaned_node'` as a fail-safe. The error is still propagated to the caller so the user sees a failure response; recovery of `orphaned_node` rows is manual via `repair-sync` (see `docs/IMPROVEMENT_PLAN.md`). A trash MOVE whose `/.wea-trash/<nodeId>` destination already exists fails BEFORE any state change with the explicit `trashTargetExists` conflict error (no orphaned marker, no marking).
 - **Name conflict:** renameNode with duplicate sibling name or copyFile where destination already has same name → throw conflict error (or apply numeric suffix for copy).
 - **Cycle detection:** moveNode rejects if newParentNodeId is a descendant of nodeId via getDescendantIds check inside fileNodeService.moveNode().
 
@@ -357,10 +374,14 @@ Creates a copy of a source file in the destination directory. Copy semantics dif
 
 #### deleteNode
 
-- [ ] Deletes leaf file node via fileNodeService.deleteNode after write-permission gate
-- [ ] Enumerates all descendants for directory nodes via getDescendantIds (closure table)
-- [ ] WebDAV mode: performs storage DELETE bottom-up (leaves first), marks orphaned_node on per-node failure, DB deletion proceeds regardless
-- [ ] S3 mode: fileNodeService.deleteNode calls blobStorageService.deleteBlob per-file to mark object_map orphaned; actual S3 delete deferred to GC
+- [ ] Trashes (soft-deletes) the subtree: every row of node + descendants is marked `deleted_at` via markSubtreeDeleted; no file_nodes/object_map row is removed and `fileNodeService.deleteNode` is never called
+- [ ] `deletedCount` keeps the subtree-count semantics (descendants + 1)
+- [ ] Enumerates all descendants for directory nodes via getDescendantIds (closure table, unfiltered)
+- [ ] WebDAV mode: exactly ONE remote MOVE per subtree root — `moveBlob(displayPath, '/.wea-trash/<nodeId>')`; S3 mode: zero blobStorageService/blobStore calls
+- [ ] WebDAV MOVE failure marks the subtree root `orphaned_node`, leaves `deleted_at` unset (trash aborted) and re-throws the original error
+- [ ] WebDAV pre-existing `/.wea-trash/<nodeId>` destination (legacy `.wea-*` node) fails with the clear `trashTargetExists` conflict error before any marking; the node stays live
+- [ ] Admin bypass: skips the permission check and trashes through the same pipeline
+- [ ] Permission rows / share links / recent-file rows survive the trash (hidden at read instead — see `fileNodesStore.md` §2.4)
 
 #### copyFile — S3 mode
 
@@ -412,9 +433,19 @@ The `sync_status` column on `file_nodes` tracks consistency between database met
 
 **Delete/restore interplay (DEF-11):** `versionsService.restoreVersion` never deletes — the
 demoted current version always becomes `history` and row removal stays the repair channel's
-(`repairPendingUploadNode`) / GC's job. `deleteNode` removes the whole subtree including every
-`object_map` row (`active`/`history`/`orphaned`) via FK CASCADE — version history has no life
-beyond its node (the WebDAV delete path is unchanged; S3 mode performs no physical I/O here).
+(`repairPendingUploadNode`) / GC's job. `deleteNode` (DEF-16 P2) now TRASHES the subtree: rows and
+their `object_map` versions (`active`/`history`/`orphaned`) all survive under `deleted_at` —
+version history outlives the trash period and dies with the node only at permanent delete
+(`fileNodeService.deleteNode` FK-cascade, used by the repair channel and the admin
+perm-delete maintenance route; the WebDAV trash path is one remote MOVE to `/.wea-trash/<nodeId>`,
+S3 mode performs no physical I/O).
+
+**Trash WebDAV semantics (DEF-16 P2):** the remote content of a trashed subtree lives under the
+reserved hidden namespace `/.wea-trash/<nodeId>` (subtree ROOT's id). The historical bottom-up
+per-node remote delete helper moved out of this service into `server/service/webdavRemoteOps.js`
+(`deleteRemoteSubtreeBestEffort`) — it remains in use by the fail-safe `retry-delete` repair and
+the admin permanent-delete route (both operate on live display paths); the trash purge (P3) will
+operate on the trash paths via the same module.
 
 ---
 

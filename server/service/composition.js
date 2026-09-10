@@ -7,6 +7,7 @@ const { createBlobStorageService } = require('./blobStorageService');
 const { createUploadService } = require('./uploadService');
 const { createGcService } = require('./gcService');
 const { createFailSafeService } = require('./failSafeService');
+const { createTrashService } = require('./trashService');
 const aclService = require('../domains/permissions/services/aclService');
 const ownerNodeResolver = require('../domains/permissions/policy/ownerNodeResolver');
 const permissionStore = require('../store/permissionStore');
@@ -85,12 +86,23 @@ function createComposition(overrides = {}) {
       aclService: effectiveAclService,
     });
 
+  const trashService =
+    overrides.trashService ||
+    createTrashService({
+      fileNodesStore,
+      fileNodeService,
+      blobStore,
+      fileStorageMode,
+      aclService: effectiveAclService,
+    });
+
   const gcService =
     overrides.gcService ||
     createGcService({
       blobStore,
       fileNodesStore,
       fileStorageMode,
+      trashService,
     });
 
   const failSafeService =
@@ -127,6 +139,7 @@ function createComposition(overrides = {}) {
     batchOperationService,
     downloadService,
     versionsService,
+    trashService,
     gcService,
     failSafeService,
     migrationJobStore,

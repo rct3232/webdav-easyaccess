@@ -7,7 +7,7 @@
 | Role       | Metadata DB migration engine: moves all metadata rows between the `sqlite` and `postgresql` backends (both directions) via direct target connections. Performs a target scan, applies the schema to an explicit target, and runs a single-transaction wipe + copy whose cancellation rolls back everything. |
 | Depends on | `server/infrastructure/backendProbe.js` (`probePostgresql` pattern for direct `pg.Client` connections), `server/infrastructure/schemaManager.js` / `sqliteSchemaInit.js` (`convertPostgresToSqlite`), the settings-value contract of `server/store/settingsStore.js`                                        |
 | Files      | `server/domains/admin/services/metadataMigrationService.js` (new)                                                                                                                                                                                                                                           |
-| Test files | `server/domains/admin/services/__tests__/metadataMigrationService.test.js` (new; sqlite↔PG roundtrip under `test:ci:pg:adapters`)                                                                                                                                                                                    |
+| Test files | `server/domains/admin/services/__tests__/metadataMigrationService.test.js` (new; sqlite↔PG roundtrip under `test:ci:pg:adapters`)                                                                                                                                                                           |
 
 Source of truth: `docs/features/migration-mode.md`, `docs/spec/server/tools/metadata-migration.md`,
 `docs/features/migration-mode.md` (decisions D4–D6, D11, D14).
@@ -30,14 +30,14 @@ worker derives them from the active backend (see §2.4).
 | Param                  | Type     | Description                                                                                                                                                                                                                            |
 | ---------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `pgConnectionProvider` | function | `(pgConfig) => pg.Client` — direct PG connection factory. Defaults to a `pg.Client` built like `probePostgresql` in `server/infrastructure/backendProbe.js` (host/port/database/user/password, ssl option, `connectionTimeoutMillis`). |
-| `sqliteFactory`        | function | `(path) => sqlite connection` — direct SQLite factory (node sqlite3, `sqlite3.Database`).                                                                                                                                                                |
+| `sqliteFactory`        | function | `(path) => sqlite connection` — direct SQLite factory (node sqlite3, `sqlite3.Database`).                                                                                                                                              |
 
 ### 2.2 Public API
 
-| Function       | Signature                                                                                       | Description                                                                                                                                                                |
-| -------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `scanTarget`   | `({ backend, pg?, sqlitePath? }) => Promise<ScanResult>`                                        | Connect to the explicit target (`backend`: `'postgresql'` \| `'sqlite'`) and report `schemaExists` + per-table row counts. Read-only.                                      |
-| `runMigration` | `({ direction, source?, target, wipeTarget?, onProgress, isCancelled? }) => Promise<Result>`    | `direction` = `'sqliteToPostgresql'` \| `'postgresqlToSqlite'`; `source` = `{ pg?, sqlitePath? }`, `target` = `{ backend, pg?, sqlitePath? }`. Apply schema if missing, wipe the target if `wipeTarget`, then copy all rows in one target transaction. `isCancelled()` aborts → ROLLBACK. |
+| Function       | Signature                                                                                    | Description                                                                                                                                                                                                                                                                               |
+| -------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scanTarget`   | `({ backend, pg?, sqlitePath? }) => Promise<ScanResult>`                                     | Connect to the explicit target (`backend`: `'postgresql'` \| `'sqlite'`) and report `schemaExists` + per-table row counts. Read-only.                                                                                                                                                     |
+| `runMigration` | `({ direction, source?, target, wipeTarget?, onProgress, isCancelled? }) => Promise<Result>` | `direction` = `'sqliteToPostgresql'` \| `'postgresqlToSqlite'`; `source` = `{ pg?, sqlitePath? }`, `target` = `{ backend, pg?, sqlitePath? }`. Apply schema if missing, wipe the target if `wipeTarget`, then copy all rows in one target transaction. `isCancelled()` aborts → ROLLBACK. |
 
 ### 2.3 Target scan (`scanTarget`)
 
@@ -154,17 +154,22 @@ enforced on both backends):
 - **`_schema_migrations` is never copied.** It exists on both backends and tracks each backend's
   applied DDL files; the target's schema-apply step manages it independently (§2.5).
 - **`locks`** is copied for completeness; stale lock rows are harmless (TTL-aware cleanup).
+- **`deleted_at` is copied verbatim (DEF-16 P8).** The copy derives the full column list from the
+  SOURCE schema (`information_schema.columns` / `PRAGMA table_info`) and copies whole rows, so the
+  trash marker (`file_nodes.deleted_at`) carries over in both directions byte-for-byte: a trashed
+  node is still trashed after the metadata migration. `file_nodes.deleted_at` needs no transform —
+  both backends store it as a timestamp value and timestamps pass through as strings.
 
 ### 2.9 Progress / stage reporting
 
 `onProgress(stage, table, done, total)` is invoked with **positional** arguments (no options
 object, no label) at each phase/batch boundary:
 
-| Field          | Description                                                                                                                                                          |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `stage`        | `'scan'` \| `'schema'` \| `'wipe'` \| `'copy'` \| `'done'` (matches the extended job payload in `docs/spec/server/tools/blob-migration.md` §job payload and PLAN §4) |
-| `table`        | The table currently being copied during `'copy'` batches, else `null`                                                                                                |
-| `done` / `total` | Running per-table `COUNT(*)` pre-aggregation, `Σ done / Σ total` → overall `%`                                                                                      |
+| Field            | Description                                                                                                                                                          |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stage`          | `'scan'` \| `'schema'` \| `'wipe'` \| `'copy'` \| `'done'` (matches the extended job payload in `docs/spec/server/tools/blob-migration.md` §job payload and PLAN §4) |
+| `table`          | The table currently being copied during `'copy'` batches, else `null`                                                                                                |
+| `done` / `total` | Running per-table `COUNT(*)` pre-aggregation, `Σ done / Σ total` → overall `%`                                                                                       |
 
 The service emits no human-readable label. The route worker composes
 `progress.currentLabel` as `"Copying <table> … <done>/<total>"` — or the stage name when

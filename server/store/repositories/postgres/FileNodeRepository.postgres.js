@@ -107,12 +107,48 @@ module.exports = function createPostgresFileNodeRepository(executor) {
       }
     },
 
+    async getTopmostTrashedNodes(olderThanDays) {
+      try {
+        const cutoff = Number.isFinite(Number(olderThanDays))
+          ? ` AND fn.deleted_at < NOW() - ($1 || ' days')::interval`
+          : '';
+        const params = Number.isFinite(Number(olderThanDays))
+          ? [String(Math.max(0, Number(olderThanDays)))]
+          : [];
+        const { rows } = await executor.query(
+          `SELECT fn.* FROM file_nodes fn
+           LEFT JOIN file_nodes p ON p.id = fn.parent_id
+           WHERE fn.deleted_at IS NOT NULL
+             AND (fn.parent_id IS NULL OR p.deleted_at IS NULL)${cutoff}
+           ORDER BY fn.deleted_at DESC, fn.name`,
+          params
+        );
+        return rows.map(mapNodeRow);
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
     async markSubtreeDeleted(nodeIds) {
       if (!nodeIds || nodeIds.length === 0) return { changes: 0 };
       try {
         const placeholders = buildInPlaceholders(nodeIds.length);
         const res = await executor.run(
           `UPDATE file_nodes SET deleted_at = NOW() WHERE id IN (${placeholders})`,
+          nodeIds.map(Number)
+        );
+        return { changes: res.changes };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async untrashSubtree(nodeIds) {
+      if (!nodeIds || nodeIds.length === 0) return { changes: 0 };
+      try {
+        const placeholders = buildInPlaceholders(nodeIds.length);
+        const res = await executor.run(
+          `UPDATE file_nodes SET deleted_at = NULL WHERE id IN (${placeholders})`,
           nodeIds.map(Number)
         );
         return { changes: res.changes };
@@ -408,6 +444,21 @@ module.exports = function createPostgresFileNodeRepository(executor) {
           `SELECT * FROM object_map WHERE file_node_id = $1
            ORDER BY version_number DESC, id DESC`,
           [Number(fileNodeId)]
+        );
+        return rows;
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async getObjectMapBySubtree(ancestorId) {
+      try {
+        const { rows } = await executor.query(
+          `SELECT om.* FROM object_map om
+           JOIN node_ancestors a ON a.descendant_id = om.file_node_id
+           WHERE a.ancestor_id = $1
+           ORDER BY om.file_node_id, om.id`,
+          [Number(ancestorId)]
         );
         return rows;
       } catch (error) {

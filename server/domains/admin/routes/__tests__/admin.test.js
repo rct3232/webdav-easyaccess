@@ -496,11 +496,14 @@ describe('POST /api/admin/maintenance/gc (S3 mode): delete -> lazy blob -> GC re
     await useWebdavMode();
   });
 
-  it('permanent delete leaves the blob in the store; GC removes it while the active control survives (M13)', async () => {
-    // Orphaned candidate: uploaded, then permanently deleted below (the hard
-    // delete is lazy in S3 mode). The ordinary `DELETE /api/files/delete`
-    // TRASHES since DEF-16 P2, so the chain is re-pointed at the admin
-    // perm-delete maintenance route (the interim hard-delete channel).
+  it('permanent delete reclaims the blob eagerly; a stray untracked blob goes to GC while the active control survives (M13)', async () => {
+    // Orphaned candidate: uploaded, then permanently deleted below. The
+    // ordinary `DELETE /api/files/delete` TRASHES since DEF-16 P2, so the
+    // chain is re-pointed at the admin perm-delete maintenance route. Since
+    // DEF-16 P3 the shared purge core deletes the subtree's S3 blobs EAGERLY
+    // (active + history + orphaned rows) instead of leaving them for the lazy
+    // GC sweep; Tier-2's untracked-blob reclaim is exercised with a directly
+    // placed stray blob while the active control must survive both.
     const orphanUpload = await request(app)
       .post('/api/files/upload')
       .set('Authorization', `Bearer ${admin.token}`)
@@ -548,13 +551,21 @@ describe('POST /api/admin/maintenance/gc (S3 mode): delete -> lazy blob -> GC re
       .send({ nodeId: orphanNodeId });
     expect(del.status).toBe(200);
 
-    // Hard delete: the DB reference is gone (FK cascade) but the physical
-    // blob remains until the GC sweep.
+    // Shared purge core: the DB reference is gone (FK cascade) AND the
+    // physical blob is deleted eagerly (no lazy-GC residue).
     const orphanMapAfter = await dbQuery('SELECT s3_key FROM object_map WHERE file_node_id = ?', [
       orphanNodeId,
     ]);
     expect(orphanMapAfter.rows).toHaveLength(0);
-    expect(currentMockS3.getStore().has(orphanKey)).toBe(true);
+    expect(currentMockS3.getStore().has(orphanKey)).toBe(false);
+
+    // Stray untracked blob (no object_map row) aged past the orphan TTL —
+    // Tier-2 must reclaim it while the active control stays protected.
+    const strayKey = `stray-untracked-${Date.now()}`;
+    currentMockS3.getStore().set(strayKey, {
+      Body: Buffer.from('stray content'),
+      LastModified: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+    });
 
     // GC run: Tier-2 must reclaim the untracked blob but keep the active one.
     const gcRes = await request(app)
@@ -565,6 +576,7 @@ describe('POST /api/admin/maintenance/gc (S3 mode): delete -> lazy blob -> GC re
     expect(gcRes.body.results.tier2.untrackedKeys).toBeGreaterThanOrEqual(1);
     expect(gcRes.body.results.tier2.deletedKeys).toBeGreaterThanOrEqual(1);
 
+    expect(currentMockS3.getStore().has(strayKey)).toBe(false);
     expect(currentMockS3.getStore().has(orphanKey)).toBe(false);
     expect(currentMockS3.getStore().has(activeKey)).toBe(true);
 

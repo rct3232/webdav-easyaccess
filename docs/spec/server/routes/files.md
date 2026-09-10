@@ -46,9 +46,12 @@ The monolithic `server/routes/files.js` was split into domain-bounded modules:
 | GET    | `/versions`          | Query: `nodeId` (required, flat nodeId style). S3 storage mode only                                                                                                                                                                                                                                                                                                                           | `{ nodeId, currentVersionNumber, versions: [{ versionNumber, status, createdAt, size, isCurrent }] }` — storage internals (`s3_key`, `storage_backend`, `id`) stripped |
 | POST   | `/versions/restore`  | Body: `{ nodeId, versionNumber }` — token-only (no share); write perm                                                                                                                                                                                                                                                                                                                         | `{ messageCode: files.versionRestored, nodeId, restoredVersionNumber }`                                                                                                |
 | GET    | `/versions/download` | Query: `nodeId`, `versionNumber` (both required). Attachment-only                                                                                                                                                                                                                                                                                                                             | Blob with `Content-Type: application/octet-stream` + `Content-Disposition: attachment`                                                                                 |
-| GET    | `/trash`             | Query: `limit` (default 50), `offset` (default 0) — pagination over the caller-visible trashed rows                                                                                                                                                                                                                                                                                           | `{ items: [{ nodeId, name, type, deletedAt, displayPath, hasReadPermission, hasWritePermission, hasAdminPermission }], total }`                                        |
+| GET    | `/trash`             | Query: `parentId?` (trashed-folder navigation), `limit` (default 50), `offset` (default 0) — pagination over the caller-visible trashed rows                                                                                                                                                                                                                                                  | `{ items: [{ nodeId, name, type, deletedAt, displayPath, hasReadPermission, hasWritePermission, hasAdminPermission }], total }`                                        |
+| POST   | `/trash/restore`     | Body: `{ nodeId }` — token-only (no share); write perm on the node + live parent                                                                                                                                                                                                                                                                                                              | `{ messageCode: files.trashRestored, nodeId, restoredNodes: number[], finalPath }`                                                                                     |
+| POST   | `/trash/purge`       | Body: `{ nodeId }` — token-only (no share); delete perm (write, admin bypasses); node must be trashed → 409 `files.notTrashed`                                                                                                                                                                                                                                                                | `{ messageCode: files.trashPurged, nodeId, purgedNodes, deletedBlobs }`                                                                                                |
+| POST   | `/trash/empty`       | No body — ADMIN-only (403 for non-admin)                                                                                                                                                                                                                                                                                                                                                      | `{ purgedNodes, purgedBlobs, errors: [] }`                                                                                                                             |
 
-#### Trash listing route (`domains/files/routes/trash.js`, DEF-16 P2/P9 companion)
+#### Trash routes (`domains/files/routes/trash.js`, DEF-16 P2/P3/P9 companion)
 
 `GET /api/files/trash` — permission-based (NOT admin-only). Returns the trashed nodes **visible to
 the caller**: a trashed row is visible iff the caller has WRITE permission on it (permission rows
@@ -56,10 +59,39 @@ survive the trash) or is an admin; per-row `hasReadPermission`/`hasWritePermissi
 flags are computed like `listDirectoryWithPermissions` (admin bypass → all true; ownership via
 `ownerNodeResolver` + explicit admin grants otherwise). Each row carries `deletedAt` and the
 `displayPath` (original path — path resolution is trash-aware, so a trashed subtree root resolves
-its full pre-trash path). `limit` (default 50, the listing window) / `offset` query params paginate;
-`total` is the caller-visible count before pagination. Restore/purge/empty-trash routes are NOT part
-of this route module (P3). Share-token access is refused (403, `requireTokenNotShare` — the trash
+its full pre-trash path). **Hierarchical navigation:** WITHOUT `parentId` the route returns only the
+TOPMOST trashed rows (deleted_at ≠ NULL AND the parent is live-or-NULL — never the full flat
+subtree list; `getTrashedNodes` stays a GC/empty internal). With `parentId` = an existing node id
+(404 `files.notFound` when unknown), the route returns that node's trashed children
+(`getTrashChildren`) — the trash view navigates into trashed folders. `limit` (default 50, capped
+at 200) / `offset` query params paginate the caller-visible set; `total` is the caller-visible
+count before pagination. Share-token access is refused (403, `requireTokenNotShare` — the trash
 view is a per-user surface, never share-scoped); unauthenticated → 401.
+
+`POST /api/files/trash/restore` — `{ nodeId }`. Share tokens refused 403; unauthenticated 401.
+Gates in order (in `trashService.restoreNode`): node exists among trashed-aware reads
+(404 `files.notFound`), node is trashed (409 `files.notTrashed`), write permission on the node
+(403 `files.permissionDenied`, admin bypasses), write permission on the first LIVE ancestor folder
+when it exists (move-dest precedent, 403). OS-recycle-bin semantics: trashed ANCESTORS are
+auto-restored deepest-chain-first (topmost trashed ancestor → target; siblings of each restored
+ancestor stay trashed), then the target's whole subtree is untrashed; name collisions against LIVE
+siblings at every restore boundary auto-suffix `name (2).ext` (`resolveRestoreName` — live siblings
+only, never `conflictResolver`); WebDAV mode MOVEs each row's own `/.wea-trash/<id>` entry back to
+its resolved display path before the single all-or-nothing DB TX (rename + untrash). Response:
+`{ messageCode: files.trashRestored, nodeId, restoredNodes, finalPath }`.
+
+`POST /api/files/trash/purge` — `{ nodeId }`. Share tokens refused 403. Gates: node must be
+trashed (409 `files.notTrashed`); delete perm = the same write check a hard-delete requires today
+(`checkFilePermission`, admin bypasses — owners and write-grantees purge their own items) → 403.
+Physical: WebDAV deletes the row's `/.wea-trash/<nodeId>` path (plus the covered-by-ancestor
+trash path when the row sits inside a still-trashed subtree) best-effort; S3 `deleteBlob`s every
+object_map row of the subtree (active + history + orphaned — version rows die with the trash);
+then the DB hard delete FK-cascades object_map/filecache/closure/permission/share/recent rows.
+Response: `{ messageCode: files.trashPurged, nodeId, purgedNodes, deletedBlobs }`.
+
+`POST /api/files/trash/empty` — ADMIN-only (403 for non-admin; share tokens refused). Purges all
+topmost trashed items through the same purge core, best-effort per node. Response:
+`{ purgedNodes, purgedBlobs, errors: [] }`.
 
 #### Version history routes (`domains/files/routes/versions.js`, DEF-11)
 
@@ -108,7 +140,7 @@ Route handlers delegate to `fileService` instead of calling WebDAV directly. No 
 | `crud.js`    | list, ancestors, download, upload, rename, move, copy, delete, check-conflicts, metadata          |
 | `batch.js`   | batch-move, batch-copy, batch-delete, bulk-operation/:jobId, cancel                               |
 | `preview.js` | preview-ticket, preview-stream, download-multiple, download-progress, thumbnail, thumbnails/batch |
-| `trash.js`   | trash (GET)                                                                                       |
+| `trash.js`   | trash (GET), trash/restore, trash/purge, trash/empty                                              |
 
 #### Middleware Removal
 
@@ -166,6 +198,11 @@ Route handlers delegate to `fileService` instead of calling WebDAV directly. No 
 - [ ] GET /versions: 404-masquerade for no-read-permission and unknown node; share token → 403
 - [ ] POST /versions/restore: history→active + active→history swap, no new row, cache re-asserted, thumbnail invalidated; 403/404/409 boundaries (no write perm, unknown version, WebDAV mode, stuck node, missing blob)
 - [ ] GET /versions/download: attachment-only octet-stream of the requested version; 404 for unknown version/no-permission
+
+- [ ] GET /trash: without parentId returns topmost trashed rows only (nested trashed children hidden); with parentId returns the trashed children of that node; unknown parentId → 404; share token → 403
+- [ ] POST /trash/restore: owner restore round-trips (content intact); auto-restores trashed ancestors; suffixed name on live-sibling collision; siblings of restored ancestors stay trashed; 409 notTrashed on a live node; 403 without write perm; share token → 403
+- [ ] POST /trash/purge: owner purge OK (rows gone + FK cascade); read-only grantee → 403; live node → 409 notTrashed; share token → 403
+- [ ] POST /trash/empty: admin purges everything trashed; non-admin → 403; share token → 403
 
 ### 2.9 folders.js nodeId Contracts
 

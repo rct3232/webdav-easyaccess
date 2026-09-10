@@ -61,6 +61,7 @@ describe('configRegistry', () => {
       ['GC_VERSION_TTL_DAYS', 'T2'],
       ['GC_PENDING_STALE_DAYS', 'T2'],
       ['GC_VERSION_MAX_PER_NODE', 'T2'],
+      ['TRASH_RETENTION_DAYS', 'T2'],
       ['WEBDAV_UPSTREAM_URL', 'T2'],
       ['JWT_EXPIRES_IN', 'T2'],
       ['LOGIN_RATE_LIMIT_MAX', 'T2'],
@@ -106,6 +107,7 @@ describe('configRegistry', () => {
       'GC_VERSION_TTL_DAYS',
       'GC_PENDING_STALE_DAYS',
       'GC_VERSION_MAX_PER_NODE',
+      'TRASH_RETENTION_DAYS',
     ])('%s is not secret', (key) => {
       expect(isSecret(key)).toBe(false);
     });
@@ -149,6 +151,7 @@ describe('configRegistry', () => {
       expect(getDefault('GC_VERSION_TTL_DAYS')).toBe(1);
       expect(getDefault('GC_PENDING_STALE_DAYS')).toBe(3);
       expect(getDefault('GC_VERSION_MAX_PER_NODE')).toBe(10);
+      expect(getDefault('TRASH_RETENTION_DAYS')).toBe(30);
       expect(getDefault('JWT_EXPIRES_IN')).toBe('30m');
       expect(getDefault('WEBDAV_AUTH_TYPE')).toBe('auto');
       expect(getDefault('ADMIN_DEFAULT_PASSWORD')).toBe('admin');
@@ -244,6 +247,7 @@ describe('configRegistry', () => {
       'GC_VERSION_TTL_DAYS',
       'GC_PENDING_STALE_DAYS',
       'GC_VERSION_MAX_PER_NODE',
+      'TRASH_RETENTION_DAYS',
       'GC_INTERVAL_MS',
       'JWT_EXPIRES_IN',
       'LOGIN_RATE_LIMIT_MAX',

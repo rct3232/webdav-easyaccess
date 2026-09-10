@@ -19,7 +19,7 @@
 
 ### 2026-09-04 — E2E guarded writes 503 `setup.incomplete` on sqlite+webdav scratch boots (Case A)
 
-- **Summary**: 6 Playwright E2E failures (setup-wizard/admin-config/migration E2E-*001,
+- **Summary**: 6 Playwright E2E failures (setup-wizard/admin-config/migration E2E-\*001,
   desktop+mobile) — login/health OK but the first guarded write (`POST /api/folders/create`,
   `PUT /api/admin/config`) returned `503 { errorCode: 'serverErrors.setup.incomplete' }`.
 - **Diagnosis**: reproduced locally (standalone scratch-server boot with the same `.env`/seed).
@@ -66,7 +66,7 @@
 
 - **Summary**: for a standard (non-admin) user whose home is the top-level directory named after
   their username, the explorer rendered the home twice: the breadcrumb showed `Home > {username >
-  …` (home chip + the username node as the first ancestor chip), and the sidebar folder-tree home
+…` (home chip + the username node as the first ancestor chip), and the sidebar folder-tree home
   row was labeled with the raw username and displayed a generic open-folder icon (not a home icon)
   whenever it was expanded. Expected display is `Home > {folder…}`.
 - **Diagnosis**: docs cross-check (docs/spec/client/components/file-manager/Breadcrumb.md,
@@ -157,12 +157,12 @@
   ancestry).
   (2) the `getObjectMapByNode` conformance fixture inserted a second row via `insertObject`, which
   hardcodes `version_number=1` and hit `UNIQUE (file_node_id, version_number)`
-  (ddl/001_initial_normalized_schema.sql:64) — same constraint class as the S3 entry above; the
+  (ddl/001*initial_normalized_schema.sql:64) — same constraint class as the S3 entry above; the
   realistic overwrite path is `upsertObjectMap` (computes `MAX(version_number)+1`), which the
   fixture now uses.
   (3) the new admin route tests patched `getFileMetadata` on the top-level `mockWebdav` instance,
   but the S3-mode GC describe earlier in the file had already rewired the composition via
-  `__setCompositionForTests` with a *fresh* `createWebdavMock()` in its `afterAll` — the patched
+  `__setCompositionForTests` with a \_fresh* `createWebdavMock()` in its `afterAll` — the patched
   instance was no longer the blob store behind `failSafeService`, so D5d refusals never triggered
   and `complete` got `contentLength: undefined` (NaN into filecache → 500). Fix: the new describe
   wires its own webdav mock + composition in `beforeAll` and restores via `useWebdavMode()`.
@@ -211,7 +211,7 @@
   following INSERT; (2) `convertPostgresToSqlite` is exported from `sqliteSchemaInit.js`, not
   `schemaManager.js`; (3) `_schema_migrations` has no `backend` column (per-DB ledger).
 - **Classification**: **Case B (Test/process error)** — schema and boot-path behavior verified
-  correct by direct inspection (pragma_table_info/sqlite_master/_schema_migrations on a fresh
+  correct by direct inspection (pragma_table_info/sqlite_master/\_schema_migrations on a fresh
   boot); only the staging step and my test-side accessors were wrong.
 - **Action taken**: recreated `ddl/002_trash_soft_delete.sql` (byte-identical contract) and the
   schema test suite (7 tests: live/trashed uniqueness incl. root variant, real-boot migration of a
@@ -246,7 +246,7 @@
 - **Summary**: the new `markSubtreeDeleted` conformance test failed its "re-running marks nothing
   new" assertion — the second call reported `changes: 2` instead of `0` on sqlite.
 - **Diagnosis**: the specification is a plain `UPDATE file_nodes SET deleted_at = NOW() WHERE id
-  IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode report MATCHED rows,
+IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode report MATCHED rows,
   not net value-mutations. Re-running the marking re-matches the already-trashed rows, so a
   non-zero `changes` on a re-run is the engine's correct behavior — the statement is idempotent in
   EFFECT (deleted_at stays set, no state corruption) but not in its reported count.
@@ -301,3 +301,27 @@
 - **Classification**: **Case B (Test Error)** — fixture bug; the gated join under test behaves
   per spec on both dialects (PG leg 224/224 pass after the fix).
 - **Action taken**: fixture switched to `CURRENT_TIMESTAMP`; no assertions changed.
+
+### 2026-09-10 — M13 admin perm-delete test asserted the pre-P3 lazy S3 blob behavior (Case B)
+
+- **Summary**: `admin.test.js` "M13" ("permanent delete leaves the blob in the store; GC removes
+  it...") failed after the P3 purge-core refactor: the shared `trashService.purgeNode` now deletes
+  the subtree's S3 blobs EAGERLY (active + history + orphaned rows) instead of leaving them for
+  the lazy GC sweep, so the test's `expect(store.has(orphanKey)).toBe(true)` after perm-delete
+  failed.
+- **Diagnosis**: the test asserted the admin route's historical S3 behavior ("blob left for the
+  lazy GC sweep — unchanged historical behavior of a hard delete"), which the locked P3 REST
+  contract supersedes: the purge core (`trashService.purgeNode`) unifies the trash purge, empty
+  trash, GC Tier 3 AND the admin maintenance route on one physical routine with eager per-row S3
+  blob deletes ("S3 — blobStore.deleteBlob for EVERY object_map row of the subtree"). The
+  test-impact ledger anticipated this ("admin GC lazy-delete chain re-pointed at purge"). The
+  test's remaining unique value — Tier-2 reclaiming an untracked blob while an active control
+  survives — is preserved by seeding a directly-placed stray untracked blob (the SCENARIO-5B
+  pattern) instead of relying on the lazy-delete residue.
+- **Classification**: **Case B (Test Error)** — the test asserted superseded behavior; the
+  implementation matches the locked contract (fileService.md §4.1, routes/files.md trash routes).
+- **Action taken**: M13 retitled + updated: perm-delete now asserts eager blob deletion (DB row
+  and store blob both gone), and the GC Tier-2 reclaim is exercised via a stray untracked blob
+  while the active control blob must survive the cycle. Pre-existing unrelated lint error
+  `admin.test.js 'store' is assigned a value but never used` (unused var in the A3 live-node test)
+  was verified present before this change via git stash (DEF-19 class) and left untouched.

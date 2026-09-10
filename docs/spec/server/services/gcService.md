@@ -15,7 +15,10 @@ Both services are pure background/ops concerns — they expose no user-facing fi
 
 ## 2. GC Strategy
 
-Two-tier cleanup organized around **retention categories**. Both tiers execute inside a single GC cycle; Tier 1 runs first (fast, DB-targeted, category-aware), Tier 2 follows (slower, S3 `ListObjectsV2`-based) against a widened keep-set.
+Three-tier cleanup organized around **retention categories**. All tiers execute inside a single GC
+cycle in order: Tier 1 (fast, DB-targeted, category-aware), Tier 2 (slower, S3 `ListObjectsV2`-based,
+against a widened keep-set), Tier 3 (trash-retention purge, DEF-16 P5 — reclaims trashed nodes whose
+retention expired; rides the same `GC_INTERVAL_MS` schedule as the other tiers, no new scheduler).
 
 ### Retention categories (Tier 1)
 
@@ -27,6 +30,7 @@ Categories are **derived by query** from the orphaned row's surrounding state (n
 | `version`      | Any other orphaned row — i.e. an **evicted version** (`orphaned`, node live/pending_upload with an active row) or an orphan on an `orphaned_node` node. `GC_VERSION_TTL_DAYS` is the **eviction grace period**: the clock stays `created_at` (upload time), so an old upload's row evicted today is deleted at the first GC cycle after eviction | Blob deleted (S3 mode), then row deleted                                                                             | `GC_VERSION_TTL_DAYS` (default 1)                 |
 | `guarded`      | The node is `pending_upload` **and** has no `active` object_map row (the stuck-overwrite state)                                                                                                                                                                                                                                                  | **Exempt** from deletion while the guard holds (last-good guard); counted in the report, never deleted while guarded | — (state-derived; no TTL)                         |
 | `pending-live` | `status='pending'` row on a `pending_upload` node older than the stale cutoff (additive cleanup; nothing cleans these rows today)                                                                                                                                                                                                                | Blob deleted (S3 mode), then row deleted — blob-first-then-rows like Tier 1                                          | `GC_PENDING_STALE_DAYS` (default 3; `0` disables) |
+| `trash`        | `object_map` rows on nodes with `deleted_at` set — NOT a Tier 1 target: a trashed node's active row stays in the keep-set and its versions stay `history`, so trash content survives the whole trash period and dies only at Tier 3 / the trash purge routes                                                                                     | keep (Tier 3 purges the whole trashed subtree when the retention expires)                                            | `TRASH_RETENTION_DAYS` (default 30; `0` disables) |
 
 - **Last-good guard** (`guarded`): an orphaned row on a stuck `pending_upload` node with no active row is the node's last remaining good blob; deleting it would make the stuck file permanently undownloadable. It is exempt from Tier 1 deletion while the guard condition holds. With the DEF-11 history model a stuck node's last-good row is `history` — which never enters the Tier-1 query, so it is inherently safe and `guardedRows` does not count it; the orphaned-branch is kept defensively for legacy residue (DEF-11 pre-migration rows).
 - **Pending-live cleanup**: strictly additive — `pending` rows on `pending_upload` nodes (the stuck-overwrite residue) are deleted together with their blobs after `GC_PENDING_STALE_DAYS`.
@@ -38,7 +42,7 @@ Tier 2 diffs S3 against `getKeptS3Keys()` — the UNION of **active ∪ history 
 
 ### WebDAV mode
 
-Tier 1 in WebDAV mode follows the same category rules but deletes **rows only** — the `deleteBlob` call is skipped because a preserved `s3_key` on a migrated row is a UUID rollback marker, not a webdav path (see §3.1). Tier 2 stays skipped: in WebDAV mode the app's own writes create no `object_map` rows (the blob storage service skips them) and the WebDAV adapter's `listOrphanedKeys()` returns `[]`, so Tier 2 is a no-op. Tier 1 still finds orphaned `object_map` rows in WebDAV mode (e.g. legacy/out-of-band rows, or superseded rows after a migration) and removes them from the DB without calling `deleteBlob`.
+Tier 1 in WebDAV mode follows the same category rules but deletes **rows only** — the `deleteBlob` call is skipped because a preserved `s3_key` on a migrated row is a UUID rollback marker, not a webdav path (see §3.1). Tier 2 stays skipped: in WebDAV mode the app's own writes create no `object_map` rows (the blob storage service skips them) and the WebDAV adapter's `listOrphanedKeys()` returns `[]`, so Tier 2 is a no-op. Tier 1 still finds orphaned `object_map` rows in WebDAV mode (e.g. legacy/out-of-band rows, or superseded rows after a migration) and removes them from the DB without calling `deleteBlob`. **Tier 3 in WebDAV mode deletes the remote trash paths** (`/.wea-trash/<nodeId>`) — that is where the trash MOVE parked the content — then removes the DB rows (see §3.1, Tier 3 algorithm).
 
 ### GC cycle lifecycle (per file mutation)
 
@@ -50,7 +54,7 @@ Tier 1 in WebDAV mode follows the same category rules but deletes **rows only** 
 
 ## 3. Implementation Spec
 
-### 3.1 `createGcService({ blobStore, fileNodesStore, fileStorageMode, gcConfig })`
+### 3.1 `createGcService({ blobStore, fileNodesStore, fileStorageMode, gcConfig, trashService })`
 
 Factory function following the DI pattern used by the other Phase 2 services.
 
@@ -60,12 +64,13 @@ Factory function following the DI pattern used by the other Phase 2 services.
 | `fileNodesStore`  | object | —                                                              | fileNodesStore with object_map queries                                                                                                                                                                                      |
 | `fileStorageMode` | string | `'s3'`                                                         | `'s3'` or `'webdav'`; Tier 2 disabled in WebDAV mode; Tier 1 skips blob deletes in WebDAV mode (rows still cleaned)                                                                                                         |
 | `gcConfig`        | object | `{ orphanTtlDays: 1, versionTtlDays: 1, pendingStaleDays: 3 }` | TTL overrides; each key defaults from its `GC_*` env key (`GC_ORPHAN_TTL_DAYS`, `GC_VERSION_TTL_DAYS`, `GC_PENDING_STALE_DAYS`) when not provided — same precedence idiom for all three (gcConfig → DB resolver → fallback) |
+| `trashService`    | object | —                                                              | trashService instance (`server/service/trashService.js`) providing the shared purge core `purgeNode(nodeId)`; Tier 3 delegates each expired trashed root's physical purge to it. Composition injects the real instance.     |
 
-> **Resolver 0-semantics note:** the gcService TTL resolvers treat `0` as "disabled" (pending-live) and otherwise floor at 1. This differs from `GC_VERSION_MAX_PER_NODE` (DEF-11), where `0` means **unbounded** — that key is resolved by `blobStorageService.prepareUpload` (per-call, shared resolver), not here; do not "normalize" the two conventions.
+> **Resolver 0-semantics note:** the gcService TTL resolvers treat `0` as "disabled" (pending-live, trash retention) and otherwise floor at 1. This differs from `GC_VERSION_MAX_PER_NODE` (DEF-11), where `0` means **unbounded** — that key is resolved by `blobStorageService.prepareUpload` (per-call, shared resolver), not here; do not "normalize" the two conventions.
 
 #### `runGcCycle({ olderThanDays })`
 
-Runs Tier 1 then Tier 2 and returns a summary. `olderThanDays` defaults to the configured TTL.
+Runs Tier 1, Tier 2, then Tier 3 and returns a summary. `olderThanDays` defaults to the configured TTL.
 
 | Param         | Type   | Required | Description                                                                |
 | ------------- | ------ | -------- | -------------------------------------------------------------------------- |
@@ -89,6 +94,13 @@ Runs Tier 1 then Tier 2 and returns a summary. `olderThanDays` defaults to the c
     deletedKeys: number,    // keys deleted from S3
     skipped: boolean,       // true when Tier 2 is unavailable (WebDAV mode)
     errors: string[],
+  },
+  tier3: {
+    purgedNodes: number,    // trashed roots physically purged (their whole subtree dies with each root)
+    deletedBlobs: number,   // physical blob deletes (S3 per-row keys; WebDAV trash-path deletes count as one per deleted path)
+    deletedRows: number,    // DB rows removed (subtree sizes)
+    skipped: boolean,       // true when TRASH_RETENTION_DAYS is 0 (retention off)
+    errors: string[],       // per-node purge failures, collected — never aborting the cycle
   }
 }
 ```
@@ -112,7 +124,14 @@ Runs Tier 1 then Tier 2 and returns a summary. `olderThanDays` defaults to the c
 3. `fileNodesStore.getKeptS3Keys()` → keep-set (active ∪ version ∪ pending-live, via UNION query).
 4. Diff → keys present only in S3 → `blobStore.deleteBlob(key)`.
 
-Tier 1 always runs; in WebDAV mode it finds no rows during normal operation, but when orphaned rows do exist (legacy/out-of-band rows, or superseded rows after a migration) it removes them from the DB without calling `blobStore.deleteBlob`. Both tiers are best-effort: per-key errors are collected in `errors` and do not abort the cycle.
+Tier 1 always runs; in WebDAV mode it finds no rows during normal operation, but when orphaned rows do exist (legacy/out-of-band rows, or superseded rows after a migration) it removes them from the DB without calling `blobStore.deleteBlob`. All tiers are best-effort: per-key/per-node errors are collected in `errors` and do not abort the cycle.
+
+**Tier 3 algorithm (trash-retention purge, DEF-16 P5; rides `GC_INTERVAL_MS` — no new scheduler):**
+
+1. Resolve the trash retention: `gcConfig.trashRetentionDays` → `TRASH_RETENTION_DAYS` (DB resolver) → default **30**. `0` = retention off → `tier3.skipped = true`, zero counts, no work (mirrors `resolvePendingStaleDays`).
+2. `fileNodesStore.getTopmostTrashedNodes(retentionDays)` → the TOPMOST trashed rows (parent live-or-NULL) whose `deleted_at` is older than the cutoff; their whole subtrees die with each root, so nested trashed rows are never enumerated separately.
+3. For each expired root: `trashService.purgeNode(nodeId)` — the shared physical purge core (WebDAV: remote delete at the trash path `/.wea-trash/<nodeId>` first; S3: `deleteBlob` for EVERY object_map row of the subtree — active + history + orphaned; then the DB hard delete + FK cascade). Per-node try/catch: a failure is pushed to `tier3.errors` and the loop continues.
+4. Additive counters: `purgedNodes` (roots purged), `deletedBlobs` (physical deletes from the purge core results), `deletedRows` (DB rows removed), `errors`. The Tier 1/Tier 2 report shapes are untouched (additive only).
 
 ### 3.2 `createFailSafeService({ fileNodeService, fileNodesStore, blobStore, fileStorageMode })`
 
@@ -162,20 +181,22 @@ New methods required by the services. The `fileNodesStore` facade forwards them 
 (`server/store/repositories/sqlite/FileNodeRepository.sqlite.js` /
 `server/store/repositories/postgres/FileNodeRepository.postgres.js`), executed through the executor seam:
 
-| Method                                           | Query                                                                                                                                                               | Returns          |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| `getOrphanedObjects(olderThanDays)`              | `object_map WHERE status='orphaned' AND created_at < NOW() - INTERVAL` / `datetime('now', '-N days')`                                                               | rows[]           |
-| `getOrphanedObjectsWithNodeState(olderThanDays)` | orphaned rows older than cutoff, LEFT JOIN `file_nodes` (node sync status) + EXISTS active-row subquery → rows annotated with `node_sync_status` and `has_active`   | annotated rows[] |
-| `getStalePendingObjects(staleThanDays)`          | `status='pending'` rows older than cutoff whose node is `pending_upload`                                                                                            | rows[]           |
-| `getKeptS3Keys()`                                | active ∪ **history** ∪ orphaned (evicted version) ∪ pending-on-pending_upload-node UNION; no trash arm, no age filters                                              | string[]         |
-| `getVersionsByNode(fileNodeId)`                  | `SELECT * FROM object_map WHERE file_node_id=? AND status IN ('active','history') ORDER BY version_number DESC` — versions browse read model (DEF-11)               | rows[]           |
-| `evictVersionsBeyondCap(fileNodeId, cap)`        | oldest-first (`version_number` ASC) demotion of `history` rows to `'orphaned'` while `active + history > cap`; `cap<=0` = unbounded no-op; active row untouched     | `{ changes }`    |
-| `demoteActiveToHistory(s3Key)`                   | `UPDATE object_map SET status='history' WHERE s3_key=? AND status='active'` — restore-TX primitive (the demoted current version becomes history, not orphaned)      | `{ changes }`    |
-| `reactivateObjectMapRow(id)`                     | flips a captured pre-state `history`/`orphaned` row back to `active` (overwrite rollback + version restore; guard widened by DEF-11) — see `fileNodesStore.md` §2.4 | `{ changes }`    |
-| `getAllActiveS3Keys()`                           | `SELECT s3_key FROM object_map WHERE status='active' AND s3_key IS NOT NULL` (retained on the facade for parity; no GC caller)                                      | string[]         |
-| `deleteObjectMapRows(ids)`                       | `DELETE FROM object_map WHERE id IN (...)`, SQLite branch per-row via `executor.run` in the sqlite dialect twin                                                     | `{ changes }`    |
-| `getNodesBySyncStatus(status)`                   | `file_nodes WHERE sync_status = ?`                                                                                                                                  | rows[]           |
-| `getObjectMapByNode(fileNodeId)`                 | all `object_map` rows of a node, newest-version first (repair preconditions) — see `fileNodesStore.md` §2.4                                                         | rows[]           |
+| Method                                           | Query                                                                                                                                                                                                 | Returns          |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| `getOrphanedObjects(olderThanDays)`              | `object_map WHERE status='orphaned' AND created_at < NOW() - INTERVAL` / `datetime('now', '-N days')`                                                                                                 | rows[]           |
+| `getOrphanedObjectsWithNodeState(olderThanDays)` | orphaned rows older than cutoff, LEFT JOIN `file_nodes` (node sync status) + EXISTS active-row subquery → rows annotated with `node_sync_status` and `has_active`                                     | annotated rows[] |
+| `getStalePendingObjects(staleThanDays)`          | `status='pending'` rows older than cutoff whose node is `pending_upload`                                                                                                                              | rows[]           |
+| `getKeptS3Keys()`                                | active ∪ **history** ∪ orphaned (evicted version) ∪ pending-on-pending_upload-node UNION; no trash arm, no age filters                                                                                | string[]         |
+| `getVersionsByNode(fileNodeId)`                  | `SELECT * FROM object_map WHERE file_node_id=? AND status IN ('active','history') ORDER BY version_number DESC` — versions browse read model (DEF-11)                                                 | rows[]           |
+| `evictVersionsBeyondCap(fileNodeId, cap)`        | oldest-first (`version_number` ASC) demotion of `history` rows to `'orphaned'` while `active + history > cap`; `cap<=0` = unbounded no-op; active row untouched                                       | `{ changes }`    |
+| `demoteActiveToHistory(s3Key)`                   | `UPDATE object_map SET status='history' WHERE s3_key=? AND status='active'` — restore-TX primitive (the demoted current version becomes history, not orphaned)                                        | `{ changes }`    |
+| `reactivateObjectMapRow(id)`                     | flips a captured pre-state `history`/`orphaned` row back to `active` (overwrite rollback + version restore; guard widened by DEF-11) — see `fileNodesStore.md` §2.4                                   | `{ changes }`    |
+| `getAllActiveS3Keys()`                           | `SELECT s3_key FROM object_map WHERE status='active' AND s3_key IS NOT NULL` (retained on the facade for parity; no GC caller)                                                                        | string[]         |
+| `deleteObjectMapRows(ids)`                       | `DELETE FROM object_map WHERE id IN (...)`, SQLite branch per-row via `executor.run` in the sqlite dialect twin                                                                                       | `{ changes }`    |
+| `getNodesBySyncStatus(status)`                   | `file_nodes WHERE sync_status = ?`                                                                                                                                                                    | rows[]           |
+| `getTopmostTrashedNodes(olderThanDays?)`         | trashed rows (`deleted_at IS NOT NULL`) whose parent is live-or-NULL (LEFT JOIN parent), optional `deleted_at < cutoff` filter — the Tier 3 enumeration (topmost only; subtrees die with their roots) | rows[]           |
+| `getObjectMapBySubtree(ancestorId)`              | all `object_map` rows of a subtree via the closure join (any status — the S3 purge deletes active + history + orphaned + pending keys)                                                                | rows[]           |
+| `getObjectMapByNode(fileNodeId)`                 | all `object_map` rows of a node, newest-version first (repair preconditions) — see `fileNodesStore.md` §2.4                                                                                           | rows[]           |
 
 All of the above are dual-backend (PostgreSQL / SQLite), implemented in the `FileNodeRepository` dialect twins behind the executor seam (no store-internal dialect branching in the service) and covered by the repository conformance tests.
 
@@ -216,6 +237,7 @@ Both require `authenticateToken` + `isAdmin`.
 | `GC_VERSION_TTL_DAYS`     | `1`              | Eviction grace period: minimum age in days before an evicted (`orphaned`) version row/blob is collected (DEF-11; clock is `created_at` = upload time, so an old upload evicted today is deleted at the first GC after eviction)                                                                                                                                          |
 | `GC_PENDING_STALE_DAYS`   | `3`              | Minimum age in days before a `pending` row on a `pending_upload` node is deleted with its blob (`pending-live` cleanup); `0` disables                                                                                                                                                                                                                                    |
 | `GC_VERSION_MAX_PER_NODE` | `10`             | Per-node version cap (DEF-11): while `active + history > N`, the oldest `history` rows are demoted to `orphaned` eagerly at overwrite time (`blobStorageService.prepareUpload` → `evictVersionsBeyondCap`, same TX) — the cap holds even with the scheduler off. **`0` = unbounded** (no eviction); note the opposite 0-semantics vs the `*_DAYS` keys above. T2/dbOnly. |
+| `TRASH_RETENTION_DAYS`    | `30`             | Trash retention (DEF-16 P5): a trashed node is physically purged (subtree rows + blobs/trash paths) by GC Tier 3 once its `deleted_at` is older than this many days. **`0` = retention off** (Tier 3 skipped — trash keeps content until the user purges/restores). T2/dbOnly.                                                                                           |
 | `WEA_SKIP_GC_SCHEDULER`   | unset            | Test seam; any truthy value disables cron scheduling                                                                                                                                                                                                                                                                                                                     |
 
 ---
@@ -234,6 +256,11 @@ Both require `authenticateToken` + `isAdmin`.
 - [ ] Tier 2: keys present in S3 with no keep-set reference are detected and deleted; active and history keys preserved
 - [ ] Freshly-created orphaned rows (younger than TTL) are left untouched
 - [ ] WebDAV mode: Tier 2 skipped; orphaned `object_map` rows follow the same category rules but are rows-only — `blobStore.deleteBlob` is NOT called (the preserved `s3_key` is a UUID rollback marker, not a webdav path); stale pending rows are deleted rows-only as well
+- [ ] Tier 3: a trashed root older than `TRASH_RETENTION_DAYS` is purged — DB rows gone (whole subtree), S3 mode deletes every object_map blob of the subtree (active + history + orphaned), WebDAV mode deletes the `/.wea-trash/<nodeId>` trash path
+- [ ] Tier 3: a freshly trashed root (younger than the cutoff) is kept untouched
+- [ ] Tier 3: `TRASH_RETENTION_DAYS = 0` → `tier3.skipped = true`, no purges, no errors (retention off)
+- [ ] Tier 3: report counts are additive (`tier1`/`tier2` shapes unchanged) and per-node purge failures are collected in `tier3.errors` without aborting the cycle
+- [ ] Tier 3: a trashed node's version (`history`) rows die WITH the trash — their S3 blobs are deleted by the Tier 3 purge (never by Tier 1)
 - [ ] `scanOrphanedNodes()` returns orphaned nodes with paths
 - [ ] `repairNode('retry-delete')` removes the node + subtree; `repairNode('force-active')` flips sync_status
 - [ ] Admin endpoints require auth + admin; non-admin receives 403

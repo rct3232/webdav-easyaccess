@@ -20,7 +20,9 @@
  * @property {(parentId: number|null) => Promise<Array<Object>>} getChildren
  * @property {(parentId: number|null) => Promise<Array<Object>>} getTrashChildren
  * @property {() => Promise<Array<Object>>} getTrashedNodes
+ * @property {(olderThanDays?: number) => Promise<Array<Object>>} getTopmostTrashedNodes
  * @property {(nodeIds: number[]) => Promise<{ changes: number }>} markSubtreeDeleted
+ * @property {(nodeIds: number[]) => Promise<{ changes: number }>} untrashSubtree
  * @property {(id, newName) => Promise<{ changes: number }>} renameNode
  * @property {(id, newParentId) => Promise<{ changes: number }>} moveNode
  * @property {(nodeIds: number[]) => Promise<{ changes: number }>} deleteNodeTree
@@ -38,6 +40,7 @@
  * @property {(fileNodeId, s3Key, status) => Promise<{ changes: number }>} insertObject
  * @property {(fileNodeId) => Promise<Object|null>} getActiveObject
  * @property {(fileNodeId) => Promise<Array<Object>>} getObjectMapByNode
+ * @property {(ancestorId) => Promise<Array<Object>>} getObjectMapBySubtree
  * @property {(fileNodeId) => Promise<Array<Object>>} getVersionsByNode
  * @property {(fileNodeId, cap) => Promise<{ changes: number }>} evictVersionsBeyondCap
  * @property {(s3Key) => Promise<Object|null>} getObjectMapByS3Key

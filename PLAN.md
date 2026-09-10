@@ -150,13 +150,103 @@ Key gap: **no subsystem scans or repairs `pending_upload`**; s3-source migration
 - **Gating surfaces**: `getChildren`, `__recent__` (`/api/recent-files`), `__shared__`
   (`/api/permissions/shared`), and all direct-access read paths → trashed = not-found.
 
+### Version history (DEF-11/S7) — design locked 2026-09-10 (user decisions)
+- **Managed-history model (user: "구버전은 미아가 아니라 관리되는 버전")**: new `object_map.status`
+  value **`history`** (X안). `upsertObjectMap` demotes the previous active row to `history` (not
+  `orphaned`). **Anti-goal 3 is formally superseded** by this decision; anti-goal 6's protection
+  ends here by design (S7 evolves the version semantics).
+- **Per-node cap**: `GC_VERSION_MAX_PER_NODE` (T2/dbOnly, default **10**, 0=unbounded). Overwrite
+  TX1 evicts immediately: while `active+history > N`, the oldest `history` rows are demoted to
+  `orphaned` (new repo method `evictVersionsBeyondCap(nodeId, cap)` inside TX1) — the cap holds even
+  with the GC scheduler off.
+- **TTL role**: `GC_VERSION_TTL_DAYS` (default 1 unchanged) = **eviction grace period**; clock stays
+  `created_at` (upload time) — documented nuance: an old upload's evicted row is deleted at the
+  first GC after eviction. Keep-set gains a `history` arm; `orphaned` now means "evicted version".
+- **Restore = A안 (reactivate in place, zero I/O)**: TX { history row → `active` (guard widened to
+  `status IN ('history','orphaned')`), current active row → `history`, node → `active`, cache
+  re-asserted from `headBlob` metadata }; 409 when the target blob is gone (HEAD probe) or the node
+  is stuck/`pending_upload`; current version is ALWAYS kept (history), deletion stays the repair
+  channel's job. Restore adds NO version row.
+- **Browse**: flat route style per `files.md` — `GET /api/files/versions?nodeId=` (+ restore
+  `POST /api/files/versions/restore {nodeId, versionNumber}`); new repo method
+  `getVersionsByNode` (active+history, `ORDER BY version_number DESC`, both dialects +
+  conformance); responses strip `s3_key`/storage internals; size via `headBlob`.
+- **Mode & permissions**: **S3 storage mode only** (WebDAV has no version rows — API 409, UI
+  hidden). Browse = read perm (404-masquerade), restore = write perm + `requireTokenNotShare`;
+  **no share-token access** to versions (past-content disclosure guard).
+- **Old-version download**: attachment-only (`application/octet-stream`) — sidesteps the
+  mime-changed-between-versions class.
+- **Consistency**: filecache re-asserted from blob HEAD on restore (repair-`complete` precedent,
+  content_hash stays null); thumbnail cache eviction added on restore (and overwrite — pre-existing
+  latent gap); recent files node-stable (no change).
+- **Migration**: version history does not survive s3↔webdav cutover (active row flips; history rows
+  are dropped) — accepted + documented (DEF-18 class).
+- **Foundation updates required**: S1 rollback guard + S2 repair `restore-previous` now read the
+  last-good row from `history` (fallback `orphaned`); GC guarded category shrinks accordingly
+  (stuck-node last-good is `history` → inherently safe; keep the orphaned-branch defensively);
+  keep-set += history; new error/message codes + locales (en+ko); client: context-menu/action-sheet
+  entry, versions dialog (pure view), controller hook, `client/src/services/fileService` functions.
+
+### Trash (DEF-16 P2–P9) — design locked 2026-09-10 (P7–P9 per earlier recommendation)
+- **P2 soft-delete**: slice point = `fileService.deleteNode` ONLY (`fileNodeService.deleteNode`
+  stays hard-delete so failsafe repair + upload rollback bypass trash). Files AND directories.
+  **Every-row `deleted_at` marking** over the subtree (single-row predicates for all gates; partial
+  writes are idempotently re-runnable). Batch delete inherits trash. Response keeps subtree count.
+  **WebDAV remote handling (MOVE design)**: trash = one remote MOVE per subtree root to the hidden
+  path `/.wea-trash/<nodeId>` (new PUTs to the original path then cannot clobber trashed content);
+  restore = MOVE back to the original (or suffixed) display path; purge = remote delete at the
+  trash path. MOVE failure → `orphaned_node` marker (existing failsafe channel). S3 mode: no
+  physical I/O (UUID keys).
+- **P3 restore/purge/empty — OS-recycle-bin semantics (user-locked)**: restore puts the item back
+  to its original location; **trashed ancestors are auto-restored** (Windows-style path
+  recreation), trashed SIBLINGS stay in trash; name collision at the target → auto-suffix
+  `name (2).ext`; trash listing shows original path + deleted_at; storage is freed only on
+  permanent-delete/empty/retention-expiry. Purge (per node or empty-trash, admin-only) = physical
+  delete in BOTH modes (WebDAV bottom-up at trash paths, S3 `deleteBlob` for every object_map row
+  of the subtree — active + history + orphaned) + `deleteNodeTree` + ancestry cleanup; permission
+  and share rows vanish via the existing FK cascade AT PURGE TIME (documented behavior change vs
+  physical-delete-today).
+- **P4 read-gating**: repo-SQL level (`WHERE deleted_at IS NULL`) for `getNode`, `getChildren`,
+  `resolvePathSegment`, and the `__shared__` join (both dialects + conformance); gating covers the
+  PLAN surfaces PLUS the five found in review: `resolvePath`, metadata, ancestors, folder stats,
+  thumbnail route, share-public download, zip, conflict checks. Trashed = 404 everywhere (incl.
+  for the deleter — visibility only via the trash listing). `getDescendantIds`/`getAncestorChain`
+  stay unfiltered (restore/purge need the full subtree). Recent-files rows are kept and filtered at
+  read.
+- **P5 GC (simplified by the history model)**: Tier 1 unchanged (only `orphaned` = evicted rows are
+  TTL-eligible; a trashed node's versions are `history` and survive the whole trash period — the
+  old "versions die at 1d inside trash" concern is dissolved). New **Tier 3** inside `runGcCycle`
+  after Tier 1: purge trashed nodes older than `TRASH_RETENTION_DAYS` (T2/dbOnly, default **30**,
+  0=off), best-effort + additive report counts (`purgedNodes` etc.).
+- **P6**: no new scheduler — Tier 3 rides `GC_INTERVAL_MS` (0=off default keeps the guardrail).
+- **P7**: permission-based visibility, NO `deleted_by` column — visibility = trashed ∧ (write perm
+  survives on the row) ∨ admin; restore checks write on the (live) parent (move-dest precedent);
+  degenerate case (perm revoked while trashed → invisible to the ex-deleter) documented.
+- **P8**: make the existing accidental inclusion of trashed nodes in both migration directions
+  EXPLICIT + hermetic E2E (trashed survives, still trashed). WebDAV-source trashed nodes must be
+  enumerated via their `/.wea-trash/` paths (blob-migration interaction).
+- **P9**: trash view = `__trash__` virtual root (client `pathUtils.VIRTUAL_ROOTS` + server
+  `sharedPathUtils` + FileManager dispatch) + new `GET /api/files/trash` listing route; main view
+  keeps the "Delete" label (→ trash); "Delete permanently"/"Restore"/"Empty trash" live only in the
+  trash view; i18n en+ko.
+- **S2 interaction**: failsafe repair `delete` hard-deletes (bypasses trash); the startup scan
+  reports trashed stuck nodes with a `trashed` flag; `cleanupAncestorsForDeletion` is skipped on
+  trash and runs at purge (shares/perm survive trash — locked ③).
+- **Reserved namespace (user-locked)**: `.wea-` name prefix is RESERVED via `validateFileName`
+  (covers create/upload/folder/rename) — `/.wea-trash/<nodeId>` becomes permanently safe; the
+  historical FsJSON `/.wea` namespace precedent makes this coherent. A pre-existing `.wea-*` node
+  makes trash MOVE fail with a clear error (never clobber). SETUP.md's "`.wea` is a normal folder"
+  wording updated docs-first.
+
 ## Anti-goals (do not build rework-prone)
 1. No D5c WebDAV reconciliation sweep now (→ DEF-18, retention-aware).
 2. No `sync_status='trashed'` (pollutes `migrationService.js:109-126` + the failsafe channel).
-3. No new `object_map.status` values (categories stay derived).
+3. ~~No new `object_map.status` values~~ — **SUPERSEDED 2026-09-10 (user decision)**: DEF-11 adds
+   the `history` status (managed prior versions); categories otherwise stay derived.
 4. No inline keep-set queries in `gcService` (always through F2).
 5. No new scheduler (reuse `GC_INTERVAL_MS`/`maintenanceScheduler.js`).
-6. R1 must not change `upsertObjectMap` version semantics (DEF-11 builds on them).
+6. ~~R1 must not change `upsertObjectMap` version semantics~~ — protection ended by design when S7
+   (DEF-11) landed its version model (history demotion + cap eviction), user-approved 2026-09-10.
 
 ## Docs-first (AGENTS.md §2.1) — specs to update before code
 `uploadService.md` (§2.3 rollback, §2.5/§2.6/§2.7) · `fileService.md` (§4, §2.5) · `gcService.md` ·
@@ -256,3 +346,16 @@ Key gap: **no subsystem scans or repairs `pending_upload`**; s3-source migration
   mechanism (`applyPendingMigrations` + `_schema_migrations` ledger + checksum drift hard-fail) is
   kept; only the file chain becomes a single file. Consequence: existing sqlite dev DBs are not
   in-place migrated — they are deleted and re-created/re-migrated at next boot.
+- 2026-09-10: **DEF-11 + DEF-16 design locked** (user decision session) — DEF-11: managed-history
+  model with new `object_map.status='history'` (X안; anti-goal 3 superseded), per-node cap
+  `GC_VERSION_MAX_PER_NODE`=10 with overwrite-TX1 immediate eviction to `orphaned`, TTL stays as
+  eviction grace, restore = A안 reactivate-in-place (zero I/O), browse API flat nodeId+versionNumber
+  (no s3_key exposure, no share-token access), old-version download attachment-only, S3 storage
+  mode only, migration drops history (accepted). DEF-16: P2 slice point fileService.deleteNode +
+  every-row marking + WebDAV remote MOVE to `/.wea-trash/<nodeId>`; P3 = OS-recycle-bin semantics
+  (auto-restore trashed ancestors, suffix collisions, purge = full physical delete + FK-cascade
+  revoke documented); P4 repo-SQL gating + 5 extra surfaces; P5 Tier 3 (TRASH_RETENTION_DAYS=30,
+  Tier 1 unchanged — history survives inside trash); P7 permission-based visibility (no
+  deleted_by); P9 `__trash__` virtual root; `.wea-` prefix RESERVED in validateFileName (user
+  approved) — SETUP.md "normal folder" wording to update docs-first. Design-decision research was
+  sub-agent-verified (file:line evidence); all open decisions closed in three Q&A rounds.

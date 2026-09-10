@@ -401,9 +401,8 @@ Key gap: **no subsystem scans or repairs `pending_upload`**; s3-source migration
   download/restore/restore/purge buttons, fixed close button, no trash-row subtitle, bottom-pinned
   sidebar trash entry with lid-open/red-flash animation on delete, admin-only Empty-trash icon in
   controls bar, permanent-delete = delete perm per ACL review).
-- [ ] Item 5 (IN FLIGHT): **Wave 2 implementation** — S7 (version history) on
-  `feature/version-history` ∥ P2+P4 (soft-delete + read-gating, same wave) on `feature/trash`.
-  Docs-first each; merge gates per Workflow; e2e cleanup companion change with P2.
+- [x] Item 7 (DONE): **Wave 2+3 implementation** — S7 merged (44a3451), P2+P4 merged (7330b8d),
+  wave-3 server + UI merged (0a4ec2d, 7916a17). All wave-2/3 slices landed; see Item 6.
 
 ### UI/UX — locked 2026-09-10 (user decisions, wave 3)
 - **Versions UI** lives in the EXISTING FilePropertiesDialog as tabs `정보 | 버전` inserted

@@ -19,7 +19,8 @@ const isQuiet = process.env.E2E_QUIET === '1';
 // W5 (2026-09-07): mypage-admin no longer runs inside the desktop/mobile core
 // projects — it has dedicated post-reset projects so its shared-state mutations
 // (users list, registration setting) never overlap auth.spec concurrently (B2).
-const sharedCoreSpec = 'auth|share-public|core-flow\\.shared|mypage-user|share-internal|trash';
+const sharedCoreSpec =
+  'auth|share-public|core-flow\\.shared|mypage-user|share-internal|trash|versions';
 
 const desktopSpecMatch = new RegExp(`(?:${sharedCoreSpec}|core-flow\\.desktop)\\.spec\\.ts$`);
 const mobileSpecMatch = new RegExp(`(?:${sharedCoreSpec}|core-flow\\.mobile)\\.spec\\.ts$`);

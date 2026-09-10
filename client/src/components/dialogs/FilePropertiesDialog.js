@@ -265,8 +265,14 @@ const FilePropertiesDialog = ({
         onChange={(_event, nextTab) => setActiveTab(nextTab)}
         sx={{ px: 2, borderBottom: 1, borderColor: 'divider' }}
       >
-        <Tab label={t('dialogs.propertiesTabInfo')} value="info" />
-        {versionsAvailable && <Tab label={t('dialogs.propertiesTabVersions')} value="versions" />}
+        <Tab data-testid="props-tab-info" label={t('dialogs.propertiesTabInfo')} value="info" />
+        {versionsAvailable && (
+          <Tab
+            data-testid="props-tab-versions"
+            label={t('dialogs.propertiesTabVersions')}
+            value="versions"
+          />
+        )}
       </Tabs>
       <DialogContent>
         {activeTab === 'versions' && versionsAvailable ? (
@@ -289,6 +295,8 @@ const FilePropertiesDialog = ({
               versions.versions.map((version) => (
                 <Box
                   key={version.versionNumber}
+                  data-testid="props-version-row"
+                  data-version={version.versionNumber}
                   sx={{
                     display: 'flex',
                     alignItems: 'center',
@@ -311,6 +319,7 @@ const FilePropertiesDialog = ({
                   </Typography>
                   {version.isCurrent && (
                     <Chip
+                      data-testid="props-version-current"
                       label={t('dialogs.versionsCurrentBadge')}
                       size="small"
                       color="primary"

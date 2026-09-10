@@ -73,12 +73,14 @@ The FileManager page shell must continue to own these overlays and policies (unt
   - Composition of product overlay controllers such as `useShareLinkOverlay`.
   - **Leave-share confirmation**: when an authenticated user attempts to leave the shared directory scope (e.g. by clicking the home / shared / recent entries of the folder tree in share-link mode), the shell must route the click through `useShareLinkOverlay.handleLeaveSharePathClick`, which opens the leave-share confirmation dialog. The actual navigation out of share mode (`/files/node/<nodeId>` for node id targets, `toFilesPath` route for path-string targets) happens only after the user confirms (`handleLeaveShareConfirm`).
 - **Virtual collections and product routing state**:
-  - Special paths/collections such as `__recent__` and `__shared__` (product-defined).
+  - Special paths/collections such as `__recent__`, `__shared__`, and `__trash__` (product-defined).
   - Rules for deciding _when_ those collections are active and which explorer flow they should invoke.
   - The shell may choose a collection-specific flow, but any listing/metadata/recent-file IO required by that flow must still go through explorer controllers plus `explorerGateway`.
+  - **Trash view (DEF-16 P9):** `/files/__trash__` and `/files/__trash__/node/<nodeId>` are shell-owned product routes. The shell wires `useFileManager`'s trash branch (listing via `explorerGateway.loadTrashEntries({ parentId })`, breadcrumb trail via `trashTrail`/`openTrashFolder`), routes trash-view clicks through trash-specific navigation (never `resolve-path`/`canNavigateToNode` — trashed nodes are not-found), and supplies the trash action controllers (`useTrashOperations`) plus the trash confirm dialogs. The trash view is read-only at the folder level (no FAB, no drag-drop, no upload/create), renders the `fileManager.trashEmpty` empty state, and shows the trash chip + trashed-folder trail in the breadcrumb.
 - **Product dialogs / feature flows** not part of generic explorer:
   - Share dialogs and permission-request flows.
   - Any “add-to-shared” / permission-denied UX that is product-defined.
+  - Trash confirm dialogs (bulk restore / purge / empty trash, DEF-16 P9) via `useTrashOperations`.
 
 ---
 

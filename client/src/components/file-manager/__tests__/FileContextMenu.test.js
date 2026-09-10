@@ -79,4 +79,57 @@ describe('FileContextMenu', () => {
     const renameItem = screen.getByText(/rename/i).closest('[role="menuitem"]');
     expect(renameItem).not.toHaveAttribute('aria-disabled');
   });
+
+  describe('trash actions (DEF-16 P9)', () => {
+    const trashedFile = { ...mockFile, isTrashed: true };
+    const trashProps = {
+      onDownload: undefined,
+      onRename: undefined,
+      onMove: undefined,
+      onCopy: undefined,
+      onShare: undefined,
+      onDelete: undefined,
+      onRestore: jest.fn(),
+      onPurge: jest.fn(),
+      onProperties: jest.fn(),
+    };
+
+    it('renders restore and purge rows for trashed items with the row write gate', () => {
+      renderWithProviders(<FileContextMenu {...defaultProps} file={trashedFile} {...trashProps} />);
+      const restoreItem = screen.getByTestId('trash-action-restore');
+      const purgeItem = screen.getByTestId('trash-action-purge');
+      expect(restoreItem).toBeInTheDocument();
+      expect(purgeItem).toBeInTheDocument();
+      expect(screen.getByTestId('file-action-properties')).toBeInTheDocument();
+      // Live-item rows are absent when the host withholds their callbacks.
+      expect(screen.queryByTestId('file-action-download')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('file-action-delete')).not.toBeInTheDocument();
+    });
+
+    it('disables trash rows without row write permission', () => {
+      const noWrite = { ...trashedFile, hasWritePermission: false };
+      renderWithProviders(<FileContextMenu {...defaultProps} file={noWrite} {...trashProps} />);
+      expect(screen.getByTestId('trash-action-restore')).toHaveAttribute('aria-disabled', 'true');
+      expect(screen.getByTestId('trash-action-purge')).toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it('calls onRestore/onPurge with the file and closes the menu', () => {
+      const onRestore = jest.fn();
+      const onPurge = jest.fn();
+      renderWithProviders(
+        <FileContextMenu
+          {...defaultProps}
+          file={trashedFile}
+          {...trashProps}
+          onRestore={onRestore}
+          onPurge={onPurge}
+        />
+      );
+      fireEvent.click(screen.getByTestId('trash-action-restore'));
+      expect(onRestore).toHaveBeenCalledWith(trashedFile);
+      fireEvent.click(screen.getByTestId('trash-action-purge'));
+      expect(onPurge).toHaveBeenCalledWith(trashedFile);
+      expect(defaultProps.onClose).toHaveBeenCalledTimes(2);
+    });
+  });
 });

@@ -133,7 +133,8 @@
     "folderTreeOpen": "폴더 트리 열기",
     "folderTreeClose": "폴더 트리 닫기",
     "shareLink": "공유 링크",
-    "breadcrumb": "경로"
+    "breadcrumb": "경로",
+    "trash": "휴지통"
   },
   "fileManager": {
     "noFiles": "파일이 없습니다",
@@ -220,7 +221,14 @@
     "statusCreatingFolder": "폴더 생성 중",
     "errorWithMessage": "오류: {{message}}",
     "workingFallback": "작업 중...",
-    "folderStatsFormat": "{{size}}, {{count}}개 파일"
+    "folderStatsFormat": "{{size}}, {{count}}개 파일",
+    "trashEmpty": "휴지통이 비어 있습니다",
+    "trashRestoreDone": "복원되었습니다",
+    "trashPurgeDone": "영구 삭제되었습니다",
+    "trashRestoreFail": "복원에 실패했습니다",
+    "trashPurgeFail": "영구 삭제에 실패했습니다",
+    "trashEmptyDone": "휴지통을 비웠습니다",
+    "trashEmptyFail": "휴지통 비우기에 실패했습니다"
   },
   "actions": {
     "move": "이동",
@@ -232,7 +240,10 @@
     "properties": "속성",
     "preview": "미리보기",
     "folder": "폴더",
-    "file": "파일"
+    "file": "파일",
+    "restore": "복원",
+    "purge": "영구삭제",
+    "emptyTrash": "휴지통 비우기"
   },
   "dialogs": {
     "shareLink": "공유 링크",
@@ -335,7 +346,11 @@
     "versionsRestoreSuccess": "버전 {{version}}이(가) 복원되었습니다.",
     "versionsRestoreFail": "버전 복원에 실패했습니다.",
     "versionsLoadFail": "버전 기록을 불러오지 못했습니다.",
-    "versionsUnknownSize": "크기 확인 불가"
+    "versionsUnknownSize": "크기 확인 불가",
+    "restoreConfirm": "휴지통에서 {{count}}개 항목을 원래 위치로 복원하시겠습니까?",
+    "purgeConfirm": "\"{{name}}\" 항목을 영구 삭제하시겠습니까? 되돌릴 수 없습니다.",
+    "purgeBulkMessage": "휴지통에서 {{count}}개 항목을 영구 삭제하시겠습니까? 되돌릴 수 없습니다.",
+    "emptyTrashConfirm": "모든 사용자의 휴지통을 비우시겠습니까? 휴지통의 모든 항목이 영구 삭제되며 복구할 수 없습니다."
   },
   "admin": {
     "title": "관리자 대시보드",

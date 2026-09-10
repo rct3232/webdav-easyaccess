@@ -281,3 +281,77 @@ describe('FileManagerControls', () => {
     expect(openBulkDeleteDialog).not.toHaveBeenCalled();
   });
 });
+
+describe('trash mode (DEF-16 P9)', () => {
+  const trashBulkProps = {
+    handleBulkRestore: jest.fn(),
+    handleBulkPurge: jest.fn(),
+  };
+
+  it('selection toolbar shows restore/purge and hides move/copy/download/delete', () => {
+    renderWithProviders(
+      <FileManagerControls
+        {...defaultProps}
+        selectionMode
+        selectedFiles={new Set([1, 2])}
+        {...bulkActionProps}
+        {...trashBulkProps}
+        trashMode
+      />
+    );
+    expect(screen.getByTestId('trash-bulk-restore')).toBeInTheDocument();
+    expect(screen.getByTestId('trash-bulk-purge')).toBeInTheDocument();
+    expect(screen.queryByTestId('bulk-action-move')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bulk-action-copy')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bulk-action-download')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bulk-action-delete')).not.toBeInTheDocument();
+  });
+
+  it('passes the selected node ids to the trash handlers', () => {
+    const handleBulkRestore = jest.fn();
+    const handleBulkPurge = jest.fn();
+    renderWithProviders(
+      <FileManagerControls
+        {...defaultProps}
+        selectionMode
+        selectedFiles={new Set([3, 4])}
+        handleBulkRestore={handleBulkRestore}
+        handleBulkPurge={handleBulkPurge}
+        trashMode
+      />
+    );
+    fireEvent.click(screen.getByTestId('trash-bulk-restore'));
+    fireEvent.click(screen.getByTestId('trash-bulk-purge'));
+    expect(handleBulkRestore).toHaveBeenCalledWith([3, 4]);
+    expect(handleBulkPurge).toHaveBeenCalledWith([3, 4]);
+  });
+
+  it('disables restore/purge without bulk write permission', () => {
+    renderWithProviders(
+      <FileManagerControls
+        {...defaultProps}
+        selectionMode
+        selectedFiles={new Set([1])}
+        {...trashBulkProps}
+        trashMode
+        bulkWritePermission={false}
+      />
+    );
+    expect(screen.getByTestId('trash-bulk-restore')).toBeDisabled();
+    expect(screen.getByTestId('trash-bulk-purge')).toBeDisabled();
+  });
+
+  it('renders the empty-trash icon when onEmptyTrash is provided and triggers it', () => {
+    const onEmptyTrash = jest.fn();
+    renderWithProviders(
+      <FileManagerControls {...defaultProps} trashMode onEmptyTrash={onEmptyTrash} />
+    );
+    fireEvent.click(screen.getByTestId('trash-empty'));
+    expect(onEmptyTrash).toHaveBeenCalledTimes(1);
+  });
+
+  it('omits the empty-trash icon when onEmptyTrash is not provided', () => {
+    renderWithProviders(<FileManagerControls {...defaultProps} trashMode />);
+    expect(screen.queryByTestId('trash-empty')).not.toBeInTheDocument();
+  });
+});

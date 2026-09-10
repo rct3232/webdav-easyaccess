@@ -307,4 +307,85 @@ describe('FilePropertiesDialog', () => {
       });
     });
   });
+  describe('trash actions (DEF-16 P9)', () => {
+    const trashedFile = { ...fileProps, isTrashed: true };
+
+    it('renders restore/purge icon buttons in the action bar for trashed items only', () => {
+      const { unmount } = renderWithProviders(
+        <FilePropertiesDialog
+          {...defaultProps}
+          onTrashRestore={jest.fn()}
+          onTrashPurge={jest.fn()}
+        />
+      );
+      expect(screen.queryByTestId('trash-props-restore')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('trash-props-purge')).not.toBeInTheDocument();
+      unmount();
+
+      renderWithProviders(
+        <FilePropertiesDialog
+          {...defaultProps}
+          file={trashedFile}
+          onTrashRestore={jest.fn()}
+          onTrashPurge={jest.fn()}
+        />
+      );
+      expect(screen.getByTestId('trash-props-restore')).toBeInTheDocument();
+      expect(screen.getByTestId('trash-props-purge')).toBeInTheDocument();
+    });
+
+    it('skips permission/stats fetches for trashed items', () => {
+      renderWithProviders(
+        <FilePropertiesDialog {...defaultProps} file={trashedFile} onTrashRestore={jest.fn()} />
+      );
+      expect(getFolderPermissions).not.toHaveBeenCalled();
+      expect(getFolderStats).not.toHaveBeenCalled();
+    });
+
+    it('restore icon calls the executor and closes the dialog on success', async () => {
+      const user = userEvent.setup();
+      const onTrashRestore = jest.fn().mockResolvedValue({});
+      const onClose = jest.fn();
+      renderWithProviders(
+        <FilePropertiesDialog
+          {...defaultProps}
+          onClose={onClose}
+          file={trashedFile}
+          onTrashRestore={onTrashRestore}
+        />
+      );
+      await user.click(screen.getByTestId('trash-props-restore'));
+      await waitFor(() => {
+        expect(onTrashRestore).toHaveBeenCalledWith(trashedFile);
+        expect(onClose).toHaveBeenCalled();
+      });
+    });
+
+    it('purge icon opens the error confirm and calls the executor on confirm', async () => {
+      const user = userEvent.setup();
+      const onTrashPurge = jest.fn().mockResolvedValue({});
+      const onClose = jest.fn();
+      renderWithProviders(
+        <FilePropertiesDialog
+          {...defaultProps}
+          onClose={onClose}
+          file={trashedFile}
+          onTrashPurge={onTrashPurge}
+        />
+      );
+      await user.click(screen.getByTestId('trash-props-purge'));
+      const confirm = await screen.findByTestId('confirm-dialog-confirm');
+      await user.click(confirm);
+      await waitFor(() => {
+        expect(onTrashPurge).toHaveBeenCalledWith(trashedFile);
+        expect(onClose).toHaveBeenCalled();
+      });
+    });
+
+    it('hides trash icons when no executors are provided', () => {
+      renderWithProviders(<FilePropertiesDialog {...defaultProps} file={trashedFile} />);
+      expect(screen.queryByTestId('trash-props-restore')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('trash-props-purge')).not.toBeInTheDocument();
+    });
+  });
 });

@@ -602,14 +602,48 @@ export const restoreFileVersion = async (nodeId, versionNumber) => {
 
 /**
  * List the trashed nodes visible to the current user (DEF-16).
+ * Hierarchical navigation: without `parentId` the route lists TOPMOST trashed
+ * items; with `parentId` it lists the trashed children of that trashed folder.
+ * @param {{ parentId?: number, limit?: number, offset?: number }} options
  * @returns {Promise<{ items: Array<{ nodeId: number, name: string, type: string, deletedAt: string, displayPath: string, hasReadPermission: boolean, hasWritePermission: boolean, hasAdminPermission: boolean }>, total: number }>}
  */
 export const getTrashFiles = async (options = {}) => {
-  const { limit, offset } = options;
+  const { parentId, limit, offset } = options;
   const params = {};
+  if (parentId != null) params.parentId = parentId;
   if (limit != null) params.limit = limit;
   if (offset != null) params.offset = offset;
   const response = await get(`${API_BASE}/trash`, { params });
+  return response.data;
+};
+
+/**
+ * Restore one trashed item to its original location (DEF-16). Trashed
+ * ancestors are auto-restored; name collisions get an auto-suffix.
+ * @param {number} nodeId - Trashed node id
+ * @returns {Promise<Object>}
+ */
+export const restoreTrashedItem = async (nodeId) => {
+  const response = await post(`${API_BASE}/trash/restore`, { nodeId });
+  return response.data;
+};
+
+/**
+ * Permanently delete one trashed item (DEF-16). Frees storage in both modes.
+ * @param {number} nodeId - Trashed node id
+ * @returns {Promise<Object>}
+ */
+export const purgeTrashedItem = async (nodeId) => {
+  const response = await post(`${API_BASE}/trash/purge`, { nodeId });
+  return response.data;
+};
+
+/**
+ * Empty the trash: purge ALL trashed items for ALL users (admin-only).
+ * @returns {Promise<Object>}
+ */
+export const emptyTrash = async () => {
+  const response = await post(`${API_BASE}/trash/empty`, {});
   return response.data;
 };
 

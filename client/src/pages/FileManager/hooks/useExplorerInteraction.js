@@ -38,6 +38,8 @@ export function useExplorerInteraction({
   actionSheetFile,
   showError,
   t,
+  trashMode = false,
+  onTrashFolderOpen,
   recentFileApi,
   handleProductPathClick,
 }) {
@@ -72,6 +74,21 @@ export function useExplorerInteraction({
           await handlePathClick(file.path, file);
         } else {
           openPreviewForFile(file, setSelectedFile, openPreviewDialog);
+        }
+        return;
+      }
+
+      // DEF-16 P9 trash view: folders navigate inside the trash hierarchy,
+      // trashed files never open (trashed content is not-found for read
+      // routes outside the trash listing). Selection still works (bulk
+      // restore/purge complete within the view).
+      if (trashMode) {
+        if (inSelectionMode) {
+          toggleFileSelection(file);
+          return;
+        }
+        if (file.type === 'directory' && file.nodeId != null && onTrashFolderOpen) {
+          onTrashFolderOpen(file);
         }
         return;
       }
@@ -192,6 +209,8 @@ export function useExplorerInteraction({
       selectionMode,
       recentFileApi,
       isShareLinkMode,
+      trashMode,
+      onTrashFolderOpen,
       toggleFileSelection,
       handlePathClick,
       setSelectedFile,

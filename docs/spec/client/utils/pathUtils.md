@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-| Item | Description                                                                                                                                                                                                                      |
-| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role | Path utilities: re-export from shared with client-specific options (VIRTUAL_ROOTS); local helpers for UI (getFolderName, getFileName, getPathParts, joinPath, toFilesPath). Supports virtual roots `/__shared__`, `/__recent__`. |
+| Item | Description                                                                                                                                                                                                                                    |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role | Path utilities: re-export from shared with client-specific options (VIRTUAL_ROOTS); local helpers for UI (getFolderName, getFileName, getPathParts, joinPath, toFilesPath). Supports virtual roots `/__shared__`, `/__recent__`, `/__trash__`. |
 
 ---
 
@@ -33,16 +33,18 @@
 
 ### 2.2.1 getFolderName i18n Keys
 
-When `t` is provided: `/` → `t('nav.root')`, `/__shared__` → `t('nav.shared')`, `/__recent__` → `t('nav.recentShort')`. Fallback when `t` is not a function: `'Root'`, `'Shared'`, `'Recent'`.
+When `t` is provided: `/` → `t('nav.root')`, `/__shared__` → `t('nav.shared')`, `/__recent__` → `t('nav.recentShort')`, `/__trash__` → `t('nav.trashShort')`. Fallback when `t` is not a function: `'Root'`, `'Shared'`, `'Recent'`, `'Trash'`.
 
 ### 2.3 Dependencies
 
 - `@webdav-easyaccess/shared/pathUtils` (normalizePath, getParentPath, isRootPath, getBasename, isPathUnder, getParentPaths)
-- VIRTUAL_ROOTS: `['/__shared__', '/__recent__']`
+- VIRTUAL_ROOTS: `['/__shared__', '/__recent__', '/__trash__']` (DEF-16 P9: the trash view root
+  is a virtual root like `__shared__`/`__recent__` — no FAB, no drag-drop, no folder-level write
+  permission; `getParentPath('/__trash__')` resolves to the filesystem root).
 
 ### 2.4 Verification Scenarios
 
-- [ ] getFolderName: without t → 'Root', 'Shared', 'Recent' for /, /**shared**, /**recent**; with t → t('nav.root'), t('nav.shared'), t('nav.recentShort')
+- [ ] getFolderName: without t → 'Root', 'Shared', 'Recent', 'Trash' for /, /**shared**, /**recent**, /**trash**; with t → t('nav.root'), t('nav.shared'), t('nav.recentShort'), t('nav.trashShort')
 - [ ] getPathParts('/a/b/c') → ['a','b','c']; empty path → []
 - [ ] joinPath('a','b','c') → '/a/b/c'
 - [ ] toFilesPath('/foo') → '/files/foo'; invalid → '/files'

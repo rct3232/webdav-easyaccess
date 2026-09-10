@@ -19,7 +19,7 @@
 
 ### 2026-09-04 — E2E guarded writes 503 `setup.incomplete` on sqlite+webdav scratch boots (Case A)
 
-- **Summary**: 6 Playwright E2E failures (setup-wizard/admin-config/migration E2E-*001,
+- **Summary**: 6 Playwright E2E failures (setup-wizard/admin-config/migration E2E-\*001,
   desktop+mobile) — login/health OK but the first guarded write (`POST /api/folders/create`,
   `PUT /api/admin/config`) returned `503 { errorCode: 'serverErrors.setup.incomplete' }`.
 - **Diagnosis**: reproduced locally (standalone scratch-server boot with the same `.env`/seed).
@@ -66,7 +66,7 @@
 
 - **Summary**: for a standard (non-admin) user whose home is the top-level directory named after
   their username, the explorer rendered the home twice: the breadcrumb showed `Home > {username >
-  …` (home chip + the username node as the first ancestor chip), and the sidebar folder-tree home
+…` (home chip + the username node as the first ancestor chip), and the sidebar folder-tree home
   row was labeled with the raw username and displayed a generic open-folder icon (not a home icon)
   whenever it was expanded. Expected display is `Home > {folder…}`.
 - **Diagnosis**: docs cross-check (docs/spec/client/components/file-manager/Breadcrumb.md,
@@ -157,12 +157,12 @@
   ancestry).
   (2) the `getObjectMapByNode` conformance fixture inserted a second row via `insertObject`, which
   hardcodes `version_number=1` and hit `UNIQUE (file_node_id, version_number)`
-  (ddl/001_initial_normalized_schema.sql:64) — same constraint class as the S3 entry above; the
+  (ddl/001*initial_normalized_schema.sql:64) — same constraint class as the S3 entry above; the
   realistic overwrite path is `upsertObjectMap` (computes `MAX(version_number)+1`), which the
   fixture now uses.
   (3) the new admin route tests patched `getFileMetadata` on the top-level `mockWebdav` instance,
   but the S3-mode GC describe earlier in the file had already rewired the composition via
-  `__setCompositionForTests` with a *fresh* `createWebdavMock()` in its `afterAll` — the patched
+  `__setCompositionForTests` with a \_fresh* `createWebdavMock()` in its `afterAll` — the patched
   instance was no longer the blob store behind `failSafeService`, so D5d refusals never triggered
   and `complete` got `contentLength: undefined` (NaN into filecache → 500). Fix: the new describe
   wires its own webdav mock + composition in `beforeAll` and restores via `useWebdavMode()`.
@@ -211,7 +211,7 @@
   following INSERT; (2) `convertPostgresToSqlite` is exported from `sqliteSchemaInit.js`, not
   `schemaManager.js`; (3) `_schema_migrations` has no `backend` column (per-DB ledger).
 - **Classification**: **Case B (Test/process error)** — schema and boot-path behavior verified
-  correct by direct inspection (pragma_table_info/sqlite_master/_schema_migrations on a fresh
+  correct by direct inspection (pragma_table_info/sqlite_master/\_schema_migrations on a fresh
   boot); only the staging step and my test-side accessors were wrong.
 - **Action taken**: recreated `ddl/002_trash_soft_delete.sql` (byte-identical contract) and the
   schema test suite (7 tests: live/trashed uniqueness incl. root variant, real-boot migration of a
@@ -246,7 +246,7 @@
 - **Summary**: the new `markSubtreeDeleted` conformance test failed its "re-running marks nothing
   new" assertion — the second call reported `changes: 2` instead of `0` on sqlite.
 - **Diagnosis**: the specification is a plain `UPDATE file_nodes SET deleted_at = NOW() WHERE id
-  IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode report MATCHED rows,
+IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode report MATCHED rows,
   not net value-mutations. Re-running the marking re-matches the already-trashed rows, so a
   non-zero `changes` on a re-run is the engine's correct behavior — the statement is idempotent in
   EFFECT (deleted_at stays set, no state corruption) but not in its reported count.
@@ -301,3 +301,52 @@
 - **Classification**: **Case B (Test Error)** — fixture bug; the gated join under test behaves
   per spec on both dialects (PG leg 224/224 pass after the fix).
 - **Action taken**: fixture switched to `CURRENT_TIMESTAMP`; no assertions changed.
+
+### 2026-09-10 — Trash UI (DEF-16 P9): FileManagerView TDZ error surfaced by FileManagerView suite (Case B)
+
+- **Summary**: while implementing the trash view, the full client run failed 30 tests across
+  `FileManagerView.test.js` + `FileManager.test.js` with
+  `ReferenceError: Cannot access 'trashMode' before initialization` (FileManagerView.js).
+- **Diagnosis**: the trash-state destructure from the new `trashState` prop group was placed
+  below the `isTrashView` computation that reads `trashMode` — a temporal-dead-zone bug in the
+  wiring, not a spec violation. The grouped-props tests rendered `FileManagerView` without
+  `trashState`, which forced the `trashState ?? {}` fallback path and exposed the ordering issue.
+- **Classification**: **Case B (Test Error, dev-time catch)** — the view spec
+  (docs/spec/client/components/file-manager/FileManagerView.md) says the view renders from props
+  only; the failure came from hook ordering inside the view, caught by the existing suite before
+  any spec change.
+- **Action taken**: moved the `trashState` destructure above `controlsState` (before first use of
+  `trashMode`); full client suite re-run green (160 suites / 1479 tests).
+
+### 2026-09-10 — Trash UI (DEF-16 P9): unit-test fixes for double-render DOM leakage and JSX `key` assertions (Case B)
+
+- **Summary**: 5 new-test failures in `TrashSidebarItem` / `FileActionSheet` / `FileManagerControls`
+  trash suites: (a) `fireEvent.click` on the `ListItem` wrapper did not reach the
+  `ListItemButton`; (b) asserting the one-shot animation via JSX `key` attribute (React strips
+  `key` from the DOM) and via `style.animation` (emotion applies animation through generated
+  classes, not inline style); (c) two tests rendered a second component instance in the same test
+  and then asserted absence — the first instance stayed attached, so `queryByTestId` matched the
+  stale node; (d) a trash action-sheet case relied on `defaultProps` carrying live-item callbacks
+  that the trash mode withholds.
+- **Diagnosis**: all four were test-implementation mistakes against the documented component
+  contracts (`TrashSidebarItem.md`, `FileActionSheet.md`, `FileManagerControls.md`); the source
+  behavior matched the specs.
+- **Classification**: **Case B (Test Error)**.
+- **Action taken**: click via the `ListItemButton` role; assert the animation pulse by the
+  re-rendered emotion class + lid path presence; split double-render tests into separate cases;
+  pass explicit `undefined` callbacks for the withheld-rows case. Suites green.
+
+### 2026-09-10 — useFileManager trash hierarchical tests vs mocked `useNavigate` (Case B)
+
+- **Summary**: the new `useFileManager` trash-trail tests timed out expecting a listing reload
+  after `openTrashFolder` navigation; `loadTrashEntries` was still called once.
+- **Diagnosis**: `useFileManager.test.js` mocks `useNavigate` at module level
+  (`mockNavigate`), so in-hook `navigate()` never changes the MemoryRouter URL — the existing
+  suite's convention is to assert `mockNavigate` payloads instead of re-listing. Also a real bug
+  was found by the derivation test: `fillTrashNameFromChildren` used `prev.map` (no-op on an empty
+  trail) so a refresh-derived trashed-parent name never appeared; fixed to append the segment when
+  absent (spec useFileManager.md §2.3.1 documents the cache/derivation contract).
+- **Classification**: **Case B (Test Error)** for the navigation assertions; the `trashTrail`
+  rebuild issue was a source bug caught by the new test and fixed per spec.
+- **Action taken**: rewrote the navigation assertions to `mockNavigate` payloads; fixed
+  `fillTrashNameFromChildren` to push the missing trail segment. Suite green (20 tests).

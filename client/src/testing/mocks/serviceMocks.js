@@ -34,6 +34,9 @@ export function createFileServiceMock(overrides = {}) {
     }),
     downloadFileVersion: jest.fn().mockResolvedValue(undefined),
     getTrashFiles: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+    restoreTrashedItem: jest.fn().mockResolvedValue({ nodeId: 0 }),
+    purgeTrashedItem: jest.fn().mockResolvedValue({ nodeId: 0 }),
+    emptyTrash: jest.fn().mockResolvedValue({}),
     ...overrides,
   };
 }

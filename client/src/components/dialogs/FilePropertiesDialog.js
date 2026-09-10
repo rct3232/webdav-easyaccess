@@ -17,7 +17,11 @@ import {
   Chip,
   Alert,
 } from '@mui/material';
-import { Download as DownloadIcon, Restore as RestoreIcon } from '@mui/icons-material';
+import {
+  Download as DownloadIcon,
+  Restore as RestoreIcon,
+  DeleteForever as DeleteForeverIcon,
+} from '@mui/icons-material';
 import ConfirmDialog from './ConfirmDialog';
 import { formatFileSize, formatDate } from '../../utils/format';
 import { getFileIcon, getThumbnail } from '../../utils/fileIconUtils';
@@ -32,7 +36,14 @@ import {
 import { getServerErrorDisplay } from '../../utils/errorUtils';
 import { getPermissionLabels, PERMISSION_ORDER } from '../../constants/permissions';
 
-const FilePropertiesDialog = ({ open, onClose, file, activeFileStorage = null }) => {
+const FilePropertiesDialog = ({
+  open,
+  onClose,
+  file,
+  activeFileStorage = null,
+  onTrashRestore,
+  onTrashPurge,
+}) => {
   const { t } = useTranslation();
   const permissionLabels = getPermissionLabels(t);
   const { isMobile } = useResponsive();
@@ -48,14 +59,28 @@ const FilePropertiesDialog = ({ open, onClose, file, activeFileStorage = null })
   const [restoreTarget, setRestoreTarget] = useState(null);
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [notice, setNotice] = useState(null);
+  const [trashPurgeConfirmOpen, setTrashPurgeConfirmOpen] = useState(false);
+  const [trashActionLoading, setTrashActionLoading] = useState(false);
 
   const isDirectory = file?.type === 'directory';
+  // DEF-16 P9: trashed items come from the trash view (row carries isTrashed).
+  const isTrashed = file?.isTrashed === true;
   // DEF-11: the versions tab is offered only for files in S3 storage mode.
-  const versionsAvailable = activeFileStorage === 's3' && file?.type === 'file';
+  // Trashed files are not-found for the versions route — the tab stays hidden.
+  const versionsAvailable = activeFileStorage === 's3' && file?.type === 'file' && !isTrashed;
 
   useEffect(() => {
     if (!open || !file) {
       setPermissions([]);
+      return;
+    }
+    // Trashed nodes are not-found for permission/stats routes (DEF-16 read
+    // gating) — skip the fetches and render from the cached trash-row fields.
+    if (file.isTrashed === true) {
+      setPermissions([]);
+      setPermissionsLoading(false);
+      setFolderStats(null);
+      setStatsLoading(false);
       return;
     }
     const isDir = file.type === 'directory';
@@ -110,6 +135,8 @@ const FilePropertiesDialog = ({ open, onClose, file, activeFileStorage = null })
       setVersionsRequested(false);
       setRestoreTarget(null);
       setNotice(null);
+      setTrashPurgeConfirmOpen(false);
+      setTrashActionLoading(false);
       return;
     }
     // Load once per dialog-open: a failed load must not re-trigger
@@ -193,6 +220,39 @@ const FilePropertiesDialog = ({ open, onClose, file, activeFileStorage = null })
         type: 'error',
         text: getServerErrorDisplay(error?.response?.data, t) || t('errors.downloadFailed'),
       });
+    }
+  };
+
+  // DEF-16 P9: trash-mode actions (properties opened from the trash view).
+  const showTrashError = (error, fallbackKey) => {
+    setNotice({
+      type: 'error',
+      text: getServerErrorDisplay(error?.response?.data, t) || t(fallbackKey),
+    });
+  };
+
+  const handleTrashRestore = async () => {
+    if (!onTrashRestore || trashActionLoading) return;
+    setTrashActionLoading(true);
+    try {
+      await onTrashRestore(file);
+      onClose();
+    } catch (error) {
+      showTrashError(error, 'fileManager.trashRestoreFail');
+      setTrashActionLoading(false);
+    }
+  };
+
+  const handleTrashPurgeConfirm = async () => {
+    if (!onTrashPurge || trashActionLoading) return;
+    setTrashActionLoading(true);
+    try {
+      await onTrashPurge(file);
+      onClose();
+    } catch (error) {
+      showTrashError(error, 'fileManager.trashPurgeFail');
+      setTrashPurgeConfirmOpen(false);
+      setTrashActionLoading(false);
     }
   };
 
@@ -289,6 +349,11 @@ const FilePropertiesDialog = ({ open, onClose, file, activeFileStorage = null })
           </Box>
         ) : (
           <>
+            {notice && (
+              <Alert severity={notice.type} sx={{ mb: 2, mt: 2 }} onClose={() => setNotice(null)}>
+                {notice.text}
+              </Alert>
+            )}
             {/* 1. 아이콘/이름 블록: 좌측 정렬, 썸네일 배경 + 그래디언트 */}
             <Box
               sx={{
@@ -426,12 +491,52 @@ const FilePropertiesDialog = ({ open, onClose, file, activeFileStorage = null })
           </>
         )}
       </DialogContent>
-      {/* Fixed bottom action bar — identical across tab switches */}
+      {/* Fixed bottom action bar — identical across tab switches.
+          DEF-16 P9: trash-mode icon actions (restore / permanent delete) sit
+          next to the fixed Close button when the opened item is trashed. */}
       <DialogActions>
+        {isTrashed && onTrashRestore && (
+          <Tooltip title={t('actions.restore')}>
+            <IconButton
+              data-testid="trash-props-restore"
+              aria-label={t('actions.restore')}
+              color="primary"
+              disabled={trashActionLoading}
+              onClick={handleTrashRestore}
+            >
+              <RestoreIcon />
+            </IconButton>
+          </Tooltip>
+        )}
+        {isTrashed && onTrashPurge && (
+          <Tooltip title={t('actions.purge')}>
+            <IconButton
+              data-testid="trash-props-purge"
+              aria-label={t('actions.purge')}
+              color="error"
+              disabled={trashActionLoading}
+              onClick={() => setTrashPurgeConfirmOpen(true)}
+            >
+              <DeleteForeverIcon />
+            </IconButton>
+          </Tooltip>
+        )}
+        <Box sx={{ flex: 1 }} />
         <Button onClick={onClose} variant="contained">
           {t('common.close')}
         </Button>
       </DialogActions>
+      <ConfirmDialog
+        open={trashPurgeConfirmOpen}
+        onClose={() => setTrashPurgeConfirmOpen(false)}
+        onConfirm={handleTrashPurgeConfirm}
+        title={t('actions.purge')}
+        message={t('dialogs.purgeConfirm', { name: file.basename || file.name })}
+        confirmText={t('actions.purge')}
+        cancelText={t('common.cancel')}
+        confirmColor="error"
+        loading={trashActionLoading}
+      />
       <ConfirmRestoreDialog
         open={restoreTarget != null}
         onClose={() => setRestoreTarget(null)}

@@ -10,6 +10,10 @@
 
 ---
 
+### 2.0 Trash-view empty state (DEF-16 P9)
+
+- `emptyText` (string, optional): overrides the default `fileManager.noFiles` empty message (`fileManager.trashEmpty` in the trash view).
+
 ## 2. Implementation Spec
 
 ### 2.1 File Path
@@ -19,18 +23,18 @@
 
 ### 2.2 Props
 
-| Name               | Type     | Required | Default | Description                                                              |
-| ------------------ | -------- | -------- | ------- | ------------------------------------------------------------------------ |
-| files              | array    | Y        | -       | File objects                                                             |
-| onFileClick        | function | Y        | -       | Row click handler; receives (file, event) for modifier detection         |
-| onMoreClick        | function | Y        | -       | More button click handler (file); opens FileActionSheet                  |
-| onLongPressSelect  | function | Y        | -       | Long-press handler for mobile: enters selection mode and selects file    |
-| onContextMenu      | function | Y        | -       | Context menu handler                                                     |
-| onFileDrop         | function | N        | -       | Drop handler                                                             |
-| selectionMode      | boolean  | Y        | -       | Selection mode active (row shows light primary background when selected) |
-| selectedFiles      | Set      | Y        | -       | Selected paths                                                           |
-| processingMap      | object   | N        | -       | Processing state                                                         |
-| loading            | boolean  | N        | false   | Loading state                                                            |
+| Name              | Type     | Required | Default | Description                                                              |
+| ----------------- | -------- | -------- | ------- | ------------------------------------------------------------------------ |
+| files             | array    | Y        | -       | File objects                                                             |
+| onFileClick       | function | Y        | -       | Row click handler; receives (file, event) for modifier detection         |
+| onMoreClick       | function | Y        | -       | More button click handler (file); opens FileActionSheet                  |
+| onLongPressSelect | function | Y        | -       | Long-press handler for mobile: enters selection mode and selects file    |
+| onContextMenu     | function | Y        | -       | Context menu handler                                                     |
+| onFileDrop        | function | N        | -       | Drop handler                                                             |
+| selectionMode     | boolean  | Y        | -       | Selection mode active (row shows light primary background when selected) |
+| selectedFiles     | Set      | Y        | -       | Selected paths                                                           |
+| processingMap     | object   | N        | -       | Processing state                                                         |
+| loading           | boolean  | N        | false   | Loading state                                                            |
 
 ### 2.3 Callback Signatures
 

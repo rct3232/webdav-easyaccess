@@ -23,6 +23,7 @@ import { getEntryKey } from '../../utils/fileViewUtils';
 
 import { useRecentFile } from './hooks/useRecentFile';
 import { useFileManagerDialogs } from './hooks/useFileManagerDialogs';
+import { useTrashOperations } from './hooks/useTrashOperations';
 import { useContentAreaDragDrop } from './hooks/useContentAreaDragDrop';
 import FileManagerView from '../../components/file-manager/FileManagerView';
 
@@ -103,6 +104,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     loadFiles,
     hasWritePermission,
     onLoadErrorRef,
+    trashTrail,
+    openTrashFolder,
   } = useFileManager(user, {
     onLoadComplete: handleLoadCompleteCallback,
     onLoadError: null, // 나중에 설정
@@ -122,6 +125,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     currentNodeIdRef.current = currentNodeId;
   }, [currentNodeId]);
 
+  // DEF-16 P9: trash view is a product overlay route of the explorer shell.
+  const isTrashView = currentPath === '/__trash__';
+
   const {
     sessionKey,
     files,
@@ -138,8 +144,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     handleThumbnailsLoaded,
   } = useExplorerSession({
     currentNodeId,
-    view:
-      currentPath === '/__recent__'
+    view: isTrashView
+      ? 'trash'
+      : currentPath === '/__recent__'
         ? 'recent'
         : currentPath === '/__shared__'
           ? 'shared'
@@ -428,6 +435,32 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     t,
   });
 
+  // DEF-16 P9: trash operations (restore / purge / empty trash). Bulk flows
+  // reuse the shared FileOperationProgress seam; confirm dialogs are rendered
+  // by the view from the trash confirm state.
+  const {
+    restoreConfirmState,
+    purgeConfirmState,
+    emptyTrashConfirmOpen,
+    openRestoreConfirm,
+    openPurgeConfirm,
+    openEmptyTrashConfirm,
+    closeRestoreConfirm,
+    closePurgeConfirm,
+    closeEmptyTrashConfirm,
+    confirmRestore,
+    confirmPurge,
+    confirmEmptyTrash,
+    handleTrashRestore,
+    handleTrashPurge,
+  } = useTrashOperations({
+    t,
+    showError,
+    refreshNow: loadFiles,
+    updateProgress,
+    setDropMessage,
+  });
+
   const { navigateToNode: navigateToExplorerNode, handleFolderOpen: openExplorerFolder } =
     useExplorerNavigation({
       currentNodeId,
@@ -452,7 +485,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         return true;
       }
 
-      if (path === '/__shared__' || path === '/__recent__') {
+      if (path === '/__shared__' || path === '/__recent__' || path === '/__trash__') {
         setCurrentPath(path);
         return true;
       }
@@ -469,7 +502,11 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     async (path) => {
       if (!path) return undefined;
       const normalizedPath = normalizePath(path);
-      if (normalizedPath === '/__recent__' || normalizedPath === '/__shared__') {
+      if (
+        normalizedPath === '/__recent__' ||
+        normalizedPath === '/__shared__' ||
+        normalizedPath === '/__trash__'
+      ) {
         return handleProductPathClick(normalizedPath);
       }
       const data = await resolvePath(normalizedPath);
@@ -496,7 +533,11 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         }
         if (typeof target === 'string' && target) {
           const normalizedPath = normalizePath(target);
-          if (normalizedPath === '/__shared__' || normalizedPath === '/__recent__') {
+          if (
+            normalizedPath === '/__shared__' ||
+            normalizedPath === '/__recent__' ||
+            normalizedPath === '/__trash__'
+          ) {
             setCurrentPath(normalizedPath);
             if (isMobile) setDrawerOpen(false);
           }
@@ -504,7 +545,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         return;
       }
       if (typeof target === 'string') {
-        if (target === '/__shared__' || target === '/__recent__') {
+        if (target === '/__shared__' || target === '/__recent__' || target === '/__trash__') {
           setCurrentPath(target);
           return;
         }
@@ -515,14 +556,23 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         setCurrentNodeId(null);
         return;
       }
+      if (isTrashView && typeof target === 'number') {
+        // Trash breadcrumb chip: trashed folders navigate inside the trash
+        // view (never via resolve-path / canNavigateToNode — trashed nodes
+        // are not-found there).
+        openTrashFolder(target);
+        return;
+      }
       navigateToExplorerNode(target);
     },
     [
       isShareLinkMode,
       isMobile,
+      isTrashView,
       setCurrentPath,
       setDrawerOpen,
       setCurrentNodeId,
+      openTrashFolder,
       navigateToExplorerPath,
       navigateToExplorerNode,
     ]
@@ -547,6 +597,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       actionSheetFile,
       showError,
       t,
+      trashMode: isTrashView,
+      onTrashFolderOpen: (file) => openTrashFolder(file.nodeId, file.basename || file.name),
       recentFileApi: {
         trackRecentFileClick,
         clearTracking,
@@ -1107,6 +1159,47 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     ]
   );
 
+  const trashStateProps = useMemo(
+    () => ({
+      trashMode: isTrashView,
+      trail: trashTrail,
+      canEmptyTrash: Boolean(user?.is_admin),
+      restoreConfirmState,
+      purgeConfirmState,
+      emptyTrashConfirmOpen,
+      openRestoreConfirm,
+      openPurgeConfirm,
+      openEmptyTrashConfirm,
+      closeRestoreConfirm,
+      closePurgeConfirm,
+      closeEmptyTrashConfirm,
+      confirmRestore,
+      confirmPurge,
+      confirmEmptyTrash,
+      handleTrashRestore,
+      handleTrashPurge,
+    }),
+    [
+      isTrashView,
+      trashTrail,
+      user,
+      restoreConfirmState,
+      purgeConfirmState,
+      emptyTrashConfirmOpen,
+      openRestoreConfirm,
+      openPurgeConfirm,
+      openEmptyTrashConfirm,
+      closeRestoreConfirm,
+      closePurgeConfirm,
+      closeEmptyTrashConfirm,
+      confirmRestore,
+      confirmPurge,
+      confirmEmptyTrash,
+      handleTrashRestore,
+      handleTrashPurge,
+    ]
+  );
+
   const explorerHandlersProps = useMemo(
     () => ({
       interaction: interactionHandlersProps,
@@ -1128,6 +1221,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       dialogState={dialogStateProps}
       messaging={messagingProps}
       explorerHandlers={explorerHandlersProps}
+      trashState={trashStateProps}
     />
   );
 };

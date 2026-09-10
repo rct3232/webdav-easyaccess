@@ -3,11 +3,12 @@ import { useParams, useNavigate } from 'react-router-dom';
 import explorerGateway from '../../../services/explorerGateway';
 import { resolvePath, getAncestors } from '../../../services/fileService';
 import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
-import { normalizePath } from '../../../utils/pathUtils';
+import { normalizePath, getParentPath, getBasename } from '../../../utils/pathUtils';
 
 const VIRTUAL_RECENT = '__recent__';
 const VIRTUAL_SHARED = '__shared__';
 const VIRTUAL_TRASH = '__trash__';
+const TRASH_TRAIL_MAX_DEPTH = 32;
 
 export const useFileManager = (user, options = {}) => {
   const { onLoadComplete, onLoadError, shareToken, linkInfo } = options;
@@ -59,7 +60,16 @@ export const useFileManager = (user, options = {}) => {
     }
     if (first === VIRTUAL_RECENT) return { kind: 'recent', path: '/__recent__' };
     if (first === VIRTUAL_SHARED) return { kind: 'shared', path: '/__shared__' };
-    if (first === VIRTUAL_TRASH) return { kind: 'trash', path: '/__trash__' };
+    if (first === VIRTUAL_TRASH) {
+      // Trash view (DEF-16 P9): /files/__trash__ lists topmost trashed items;
+      // /files/__trash__/node/<nodeId> lists the trashed children of that
+      // trashed folder (hierarchical navigation).
+      const trashNodeId =
+        segments[1] === 'node' && Number.isInteger(Number(segments[2])) && Number(segments[2]) > 0
+          ? Number(segments[2])
+          : null;
+      return { kind: 'trash', path: '/__trash__', trashNodeId };
+    }
     return { kind: 'legacy', path: `/${normalized}`, legacyPath: `/${normalized}` };
   }, [urlPath]);
 
@@ -81,6 +91,8 @@ export const useFileManager = (user, options = {}) => {
   const [loading, setLoading] = useState(true);
   const [hasWritePermission, setHasWritePermission] = useState(false);
   const [ancestors, setAncestors] = useState([]);
+  const [trashTrail, setTrashTrail] = useState([]);
+  const trashNameCacheRef = useRef(new Map());
   const requestIdRef = useRef(0);
   const permRequestIdRef = useRef(0);
   const filesRef = useRef([]);
@@ -201,6 +213,71 @@ export const useFileManager = (user, options = {}) => {
     };
   }, [isShareMode, urlView.kind, currentNodeId]);
 
+  // Trash-view breadcrumb chain (DEF-16 P9): rebuilt from the session-local
+  // trashed-name cache on every trash URL change. Names are cached on
+  // openTrashFolder clicks; on direct URL entry the current trashed parent's
+  // name is derived from the first listed child's displayPath (loadFiles).
+  useEffect(() => {
+    if (urlView.kind !== 'trash') {
+      setTrashTrail([]);
+      return undefined;
+    }
+    const parentId = urlView.trashNodeId ?? null;
+    if (parentId == null) {
+      setTrashTrail([]);
+      return undefined;
+    }
+    const cache = trashNameCacheRef.current;
+    const trail = [];
+    let cursor = parentId;
+    let guard = 0;
+    while (cursor != null && guard < TRASH_TRAIL_MAX_DEPTH) {
+      const entry = cache.get(cursor);
+      if (!entry) break;
+      trail.unshift({ nodeId: cursor, name: entry.name });
+      cursor = entry.parentNodeId ?? null;
+      guard += 1;
+    }
+    setTrashTrail(trail);
+    return undefined;
+  }, [urlView]);
+
+  const openTrashFolder = useCallback(
+    (nodeId, name) => {
+      if (nodeId == null) {
+        navigate('/files/__trash__');
+        return;
+      }
+      trashNameCacheRef.current.set(nodeId, {
+        name: name || `node-${nodeId}`,
+        parentNodeId: urlView.kind === 'trash' ? (urlView.trashNodeId ?? null) : null,
+      });
+      navigate(`/files/__trash__/node/${nodeId}`);
+    },
+    [navigate, urlView]
+  );
+
+  // Fill the trashed parent's breadcrumb name from the first listed child's
+  // displayPath when the session cache missed (direct URL entry / refresh).
+  const fillTrashNameFromChildren = useCallback((nodeId, items) => {
+    const cache = trashNameCacheRef.current;
+    if (cache.has(nodeId)) return;
+    const first = Array.isArray(items) ? items[0] : null;
+    const displayPath = first?.displayPath || first?.path || '';
+    if (!displayPath) return;
+    const parentPath = getParentPath(displayPath);
+    if (!parentPath || parentPath === '/') return;
+    const name = getBasename(parentPath);
+    if (!name) return;
+    cache.set(nodeId, { name, parentNodeId: null });
+    setTrashTrail((prev) => {
+      if (prev.some((segment) => segment.nodeId === nodeId)) {
+        return prev.map((segment) => (segment.nodeId === nodeId ? { ...segment, name } : segment));
+      }
+      return [...prev, { nodeId, name }];
+    });
+  }, []);
+
   const loadFiles = useCallback(async () => {
     const requestId = ++requestIdRef.current;
     setLoading(true);
@@ -261,9 +338,14 @@ export const useFileManager = (user, options = {}) => {
           setFiles(sharedFiles);
         }
       } else if (urlView.kind === 'trash') {
-        const trashFiles = await explorerGateway.loadTrashEntries();
+        const trashFiles = await explorerGateway.loadTrashEntries(
+          urlView.trashNodeId != null ? { parentId: urlView.trashNodeId } : {}
+        );
         if (requestId === requestIdRef.current) {
           setFiles(trashFiles);
+          if (urlView.trashNodeId != null) {
+            fillTrashNameFromChildren(urlView.trashNodeId, trashFiles);
+          }
         }
       } else {
         if (!isShareMode && urlView.kind === 'legacy') return;
@@ -307,12 +389,25 @@ export const useFileManager = (user, options = {}) => {
         onLoadCompleteRef.current?.();
       }
     }
-  }, [urlView.kind, isShareMode, shareCurrentNodeId, currentNodeId, user, shareToken]);
+  }, [
+    urlView.kind,
+    urlView.trashNodeId,
+    fillTrashNameFromChildren,
+    isShareMode,
+    shareCurrentNodeId,
+    currentNodeId,
+    user,
+    shareToken,
+  ]);
 
   // Location key drives the listing reload; the display path (ancestors) must not retrigger it.
+  // Trash view keys off the trashed-parent nodeId so navigating between trash
+  // levels reloads the listing and clears selection like any other view change.
   const locationKey = isShareMode
     ? `share:${shareCurrentNodeId}`
-    : `${urlView.kind}:${currentNodeId}`;
+    : urlView.kind === 'trash'
+      ? `trash:${urlView.trashNodeId ?? 'root'}`
+      : `${urlView.kind}:${currentNodeId}`;
 
   useEffect(() => {
     if (!locationKey) return undefined;
@@ -378,5 +473,8 @@ export const useFileManager = (user, options = {}) => {
     loadFiles,
     hasWritePermission,
     onLoadErrorRef,
+    trashParentNodeId: urlView.kind === 'trash' ? (urlView.trashNodeId ?? null) : null,
+    trashTrail,
+    openTrashFolder,
   };
 };

@@ -104,3 +104,7 @@ These scenarios should be covered by a dedicated hook unit test in `client/src/p
 
 - Empty selection/node-ID lists are no-ops.
 - Destination parent node missing for move/copy uses the same fallback behavior as today (or is treated as invalid and rejected consistently).
+
+### Delete-to-trash notification (DEF-16)
+
+- `handleOperationComplete` raises `notifyTrashChanged()` once per completed delete operation when `deletedNodeIds.length > 0`. Single delete (context menu/action sheet) and bulk delete both funnel through this completion path, making it the single raise site that drives the sidebar trash icon's one-shot animation (see `docs/spec/client/services/trashNotifier.md`).

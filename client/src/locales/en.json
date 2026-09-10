@@ -133,7 +133,8 @@
     "folderTreeOpen": "Open folder tree",
     "folderTreeClose": "Close folder tree",
     "shareLink": "Share link",
-    "breadcrumb": "Breadcrumb"
+    "breadcrumb": "Breadcrumb",
+    "trash": "Trash"
   },
   "fileManager": {
     "noFiles": "No files",
@@ -220,7 +221,14 @@
     "statusRenaming": "Renaming",
     "statusCreatingFolder": "Creating folder",
     "errorWithMessage": "Error: {{message}}",
-    "workingFallback": "Working..."
+    "workingFallback": "Working...",
+    "trashEmpty": "Trash is empty",
+    "trashRestoreDone": "Restored from trash",
+    "trashPurgeDone": "Permanently deleted",
+    "trashRestoreFail": "Restore failed",
+    "trashPurgeFail": "Permanent delete failed",
+    "trashEmptyDone": "Trash emptied",
+    "trashEmptyFail": "Failed to empty the trash"
   },
   "actions": {
     "move": "Move",
@@ -232,7 +240,10 @@
     "properties": "Properties",
     "preview": "Preview",
     "folder": "Folder",
-    "file": "File"
+    "file": "File",
+    "restore": "Restore",
+    "purge": "Delete permanently",
+    "emptyTrash": "Empty trash"
   },
   "dialogs": {
     "shareLink": "Share link",
@@ -335,7 +346,11 @@
     "versionsRestoreSuccess": "Version {{version}} restored.",
     "versionsRestoreFail": "Version restore failed.",
     "versionsLoadFail": "Failed to load version history.",
-    "versionsUnknownSize": "size unavailable"
+    "versionsUnknownSize": "size unavailable",
+    "restoreConfirm": "Restore {{count}} trashed item(s) to their original location?",
+    "purgeConfirm": "Permanently delete \"{{name}}\"? This cannot be undone.",
+    "purgeBulkMessage": "Permanently delete {{count}} trashed item(s)? This cannot be undone.",
+    "emptyTrashConfirm": "Empty the trash for ALL users? Every trashed item will be permanently deleted and cannot be recovered."
   },
   "admin": {
     "title": "Admin dashboard",
@@ -674,11 +689,8 @@
     "permission": "Permission",
     "shareManage": "Share management",
     "sharePermissionManage": "Share permission management",
-    "inboxRequests": "Received requests",
     "inboxRequestsCount": "Received requests ({{count}})",
-    "outboxRequests": "My requests",
     "outboxRequestsCount": "My requests ({{count}})",
-    "links": "Links",
     "linksCount": "Links ({{count}})",
     "noShareLinks": "No share links created.",
     "downloadCount": "Downloads: {{count}}",

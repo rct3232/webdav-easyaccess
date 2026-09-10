@@ -6,6 +6,7 @@ import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 import { validateFileName } from '@webdav-easyaccess/shared/validation';
 import { getValidationMessage } from '../../../utils/validationMessage';
 import { shouldRefreshAfterOperation } from '../../../utils/refreshPolicy';
+import { notifyTrashChanged } from '../../../services/trashNotifier';
 import { useBulkOperations } from './useBulkOperations';
 import { useFileOperations } from './useFileOperations';
 
@@ -68,6 +69,12 @@ export function useExplorerCommands({
         : payload.deletedNodeId
           ? [payload.deletedNodeId]
           : [];
+
+      // DEF-16: delete = move to trash. Notify the pinned sidebar trash icon
+      // (one-shot animation) on any completed delete that moved items to trash.
+      if (opType === 'delete' && deletedNodeIds.length > 0) {
+        notifyTrashChanged();
+      }
 
       deletedNodeIds.filter(Boolean).forEach((nodeId) => {
         setTreeUpdateTrigger({

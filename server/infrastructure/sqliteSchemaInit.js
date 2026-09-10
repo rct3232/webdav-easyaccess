@@ -7,38 +7,6 @@ const storage = require('../store/storage');
 
 const DDL_DIR = path.join(__dirname, '../store/postgresql/ddl');
 
-// SQLite cannot drop a table-level UNIQUE constraint in place (no
-// ALTER TABLE ... DROP CONSTRAINT), and ddl/002 moves the file_nodes name
-// uniqueness to partial unique indexes over deleted_at IS NULL. The rewrite
-// emits a data-preserving table rebuild (fresh table without the constraint
-// + INSERT ... SELECT + drop + rename, with FK enforcement toggled outside
-// any transaction). It must run LAST in convertPostgresToSqlite so its
-// already-sqlite-flavored statements are not re-processed by the type rules.
-const FILE_NODES_UNIQUE_CONSTRAINT_RE =
-  /ALTER\s+TABLE\s+file_nodes\s+DROP\s+CONSTRAINT\s+(?:IF\s+EXISTS\s+)?file_nodes_unique_name_per_parent\s*;/gi;
-
-const FILE_NODES_REBUILD_SQL = [
-  'PRAGMA foreign_keys = OFF;',
-  'DROP TABLE IF EXISTS file_nodes__rebuild;',
-  'CREATE TABLE file_nodes__rebuild (',
-  '  id INTEGER PRIMARY KEY AUTOINCREMENT,',
-  '  parent_id INTEGER DEFAULT NULL REFERENCES file_nodes(id) ON DELETE CASCADE,',
-  '  name TEXT NOT NULL,',
-  "  type TEXT NOT NULL CHECK (type IN ('file', 'directory')),",
-  "  sync_status TEXT NOT NULL DEFAULT 'active'",
-  "    CHECK (sync_status IN ('active', 'pending_upload', 'orphaned_node')),",
-  '  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,',
-  '  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,',
-  '  deleted_at TEXT DEFAULT NULL',
-  ');',
-  'INSERT INTO file_nodes__rebuild (id, parent_id, name, type, sync_status, created_at, updated_at, deleted_at)',
-  '  SELECT id, parent_id, name, type, sync_status, created_at, updated_at, deleted_at',
-  '  FROM file_nodes;',
-  'DROP TABLE file_nodes;',
-  'ALTER TABLE file_nodes__rebuild RENAME TO file_nodes;',
-  'PRAGMA foreign_keys = ON;',
-].join('\n');
-
 function convertPostgresToSqlite(ddl) {
   let sql = ddl;
 
@@ -55,15 +23,6 @@ function convertPostgresToSqlite(ddl) {
   sql = sql.replace(/DEFAULT\s+NOW\(\)/gi, 'DEFAULT CURRENT_TIMESTAMP');
   sql = sql.replace(/DEFAULT\s+FALSE/gi, 'DEFAULT 0');
   sql = sql.replace(/DEFAULT\s+TRUE/gi, 'DEFAULT 1');
-
-  // SQLite has no ADD COLUMN IF NOT EXISTS; each DDL file is applied at most
-  // once (checksum-tracked in _schema_migrations), so the bare form is safe.
-  sql = sql.replace(
-    /ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS/gi,
-    'ALTER TABLE $1 ADD COLUMN'
-  );
-
-  sql = sql.replace(FILE_NODES_UNIQUE_CONSTRAINT_RE, FILE_NODES_REBUILD_SQL);
 
   return sql;
 }

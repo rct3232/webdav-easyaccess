@@ -125,56 +125,15 @@ describe('convertPostgresToSqlite', () => {
     expect(result).toBe('is_admin INTEGER NOT NULL DEFAULT 0');
   });
 
-  it('rewrites ADD COLUMN IF NOT EXISTS to a bare ADD COLUMN', () => {
-    const ddl = 'ALTER TABLE file_nodes ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ NULL;';
-    const result = convertPostgresToSqlite(ddl);
-    expect(result).toContain('ALTER TABLE file_nodes ADD COLUMN deleted_at TEXT NULL');
-    expect(result).not.toContain('IF NOT EXISTS');
-  });
-
-  it('rewrites the file_nodes DROP CONSTRAINT statement into a table rebuild', () => {
-    const ddl =
-      'ALTER TABLE file_nodes DROP CONSTRAINT IF EXISTS file_nodes_unique_name_per_parent;';
-    const result = convertPostgresToSqlite(ddl);
-    expect(result).not.toContain('DROP CONSTRAINT');
-    expect(result).toContain('PRAGMA foreign_keys = OFF;');
-    expect(result).toContain('CREATE TABLE file_nodes__rebuild (');
-    expect(result).toContain('INSERT INTO file_nodes__rebuild');
-    expect(result).toContain('DROP TABLE file_nodes;');
-    expect(result).toContain('ALTER TABLE file_nodes__rebuild RENAME TO file_nodes;');
-    expect(result).toContain('PRAGMA foreign_keys = ON;');
-  });
-
-  it('rebuild block carries deleted_at and drops the table-level UNIQUE', () => {
-    const ddl = 'ALTER TABLE file_nodes DROP CONSTRAINT file_nodes_unique_name_per_parent;';
-    const result = convertPostgresToSqlite(ddl);
-    expect(result).toContain('deleted_at TEXT DEFAULT NULL');
-    expect(result).not.toContain('UNIQUE (parent_id, name)');
-    expect(result).toContain('REFERENCES file_nodes(id) ON DELETE CASCADE');
-  });
-
-  it('keeps the partial unique index WHERE clause intact through the 002 statements', () => {
-    const ddl = [
-      'CREATE UNIQUE INDEX IF NOT EXISTS file_nodes_unique_name_per_parent',
-      '  ON file_nodes (parent_id, name) WHERE deleted_at IS NULL;',
-      '',
-      'CREATE UNIQUE INDEX IF NOT EXISTS file_nodes_root_unique',
-      '  ON file_nodes (name) WHERE parent_id IS NULL AND deleted_at IS NULL;',
-    ].join('\n');
-    const result = convertPostgresToSqlite(ddl);
+  it('keeps the partial unique index WHERE clauses intact through 001', () => {
+    const ddlPath = path.join(
+      __dirname,
+      '../../store/postgresql/ddl/001_initial_normalized_schema.sql'
+    );
+    const result = convertPostgresToSqlite(fs.readFileSync(ddlPath, 'utf8'));
     expect(result).toContain('WHERE deleted_at IS NULL');
     expect(result).toContain('WHERE parent_id IS NULL AND deleted_at IS NULL');
     expect(result).toContain('CREATE UNIQUE INDEX IF NOT EXISTS');
-  });
-
-  it('strips the 002 transaction wrapper but keeps the rebuild block intact', () => {
-    const ddlPath = path.join(__dirname, '../../store/postgresql/ddl/002_trash_soft_delete.sql');
-    const result = convertPostgresToSqlite(fs.readFileSync(ddlPath, 'utf8'));
-    expect(result).not.toMatch(/^\s*BEGIN\s*;/m);
-    expect(result).not.toMatch(/^\s*COMMIT\s*;/m);
-    expect(result).toContain('ALTER TABLE file_nodes ADD COLUMN deleted_at TEXT NULL');
-    expect(result).toContain('CREATE TABLE file_nodes__rebuild (');
-    expect(result).toContain('WHERE deleted_at IS NULL');
   });
 });
 

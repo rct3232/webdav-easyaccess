@@ -7,10 +7,7 @@ const crypto = require('crypto');
 const sqlite3 = require('sqlite3');
 
 const { createTestDatabase, dbQuery, dbRun } = require('../../test-utils');
-const storage = require('../../store/storage');
-const { initMetadataStore } = require('../../store/bootstrap');
 const { applyPendingMigrations } = require('../schemaManager');
-const { convertPostgresToSqlite } = require('../sqliteSchemaInit');
 
 // sqlite-only describes are gated off the PG adapter leg (it exports WEA_TEST_PG_HOST)
 const describeSqliteOnly = process.env.WEA_TEST_PG_HOST ? describe.skip : describe;
@@ -41,7 +38,7 @@ async function insertNode(parentId, name, type = 'file') {
   return res.lastID ?? res.lastId ?? (res.rows && res.rows[0] ? res.rows[0].id : undefined);
 }
 
-describe('trash soft-delete schema (ddl/002)', () => {
+describe('trash soft-delete schema (ddl/001)', () => {
   let dbCleanup;
 
   beforeAll(async () => {
@@ -107,97 +104,8 @@ describe('trash soft-delete schema (ddl/002)', () => {
     });
   });
 
-  describeSqliteOnly('existing pre-002 sqlite database migrated via the real boot path', () => {
-    it('rebuilds file_nodes preserving data and enforces the new uniqueness', async () => {
-      const prevPath = process.env.WEA_SQLITE_PATH;
-      const oldDbPath = path.join(os.tmpdir(), `wea-pre002-${crypto.randomUUID()}.db`);
-
-      // Build the OLD (pre-002) shape from the transpiled 001 chain.
-      const raw = new sqlite3.Database(oldDbPath);
-      await runOn(raw, 'PRAGMA foreign_keys = ON');
-      const ddl001 = convertPostgresToSqlite(
-        fs.readFileSync(
-          path.join(__dirname, '../../store/postgresql/ddl/001_initial_normalized_schema.sql'),
-          'utf8'
-        )
-      );
-      await new Promise((resolve, reject) => raw.exec(ddl001, (e) => (e ? reject(e) : resolve())));
-
-      const rootId = (
-        await runOn(
-          raw,
-          'INSERT INTO file_nodes (parent_id, name, type, sync_status) VALUES (NULL, ?, ?, ?)',
-          [`pre002-root-${Date.now()}`, 'directory', 'active']
-        )
-      ).lastID;
-      const childId = (
-        await runOn(
-          raw,
-          'INSERT INTO file_nodes (parent_id, name, type, sync_status) VALUES (?, ?, ?, ?)',
-          [rootId, `pre002-child-${Date.now()}`, 'file', 'active']
-        )
-      ).lastID;
-      await new Promise((resolve, reject) => raw.close((e) => (e ? reject(e) : resolve())));
-
-      // Boot through the real tracked migration path.
-      process.env.WEA_SQLITE_PATH = oldDbPath;
-      await storage.closeSqliteDb();
-      await initMetadataStore();
-
-      try {
-        const ledger = await dbQuery('SELECT filename FROM _schema_migrations ORDER BY filename');
-        const files = ledger.rows.map((r) => r.filename);
-        expect(files.some((f) => f.startsWith('001_'))).toBe(true);
-        expect(files.some((f) => f.startsWith('002_'))).toBe(true);
-
-        const rows = await dbQuery('SELECT id, name, type, deleted_at FROM file_nodes ORDER BY id');
-        expect(rows.rows.map((r) => r.id)).toEqual([rootId, childId]);
-        expect(rows.rows.every((r) => r.deleted_at === null)).toBe(true);
-
-        const childName = rows.rows[1].name;
-        await expect(
-          dbRun('INSERT INTO file_nodes (parent_id, name, type, sync_status) VALUES (?, ?, ?, ?)', [
-            rootId,
-            childName,
-            'file',
-            'active',
-          ])
-        ).rejects.toThrow();
-        await dbRun('UPDATE file_nodes SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?', [childId]);
-        await dbRun(
-          'INSERT INTO file_nodes (parent_id, name, type, sync_status) VALUES (?, ?, ?, ?)',
-          [rootId, childName, 'file', 'active']
-        );
-
-        const residue = await dbQuery(
-          "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE '%rebuild%'"
-        );
-        expect(residue.rows).toHaveLength(0);
-
-        const fk = await dbQuery('PRAGMA foreign_keys');
-        expect(fk.rows[0].foreign_keys).toBe(1);
-        const fkIssues = await dbQuery('PRAGMA foreign_key_check');
-        expect(fkIssues.rows).toHaveLength(0);
-
-        const newNode = await dbRun(
-          'INSERT INTO file_nodes (parent_id, name, type, sync_status) VALUES (NULL, ?, ?, ?)',
-          [`post-migration-${Date.now()}`, 'file', 'active']
-        );
-        expect(newNode.lastID).toBeGreaterThan(childId);
-
-        await applyPendingMigrations('sqlite');
-        const ledgerAfter = await dbQuery('SELECT COUNT(*) AS n FROM _schema_migrations');
-        expect(ledgerAfter.rows[0].n).toBe(files.length);
-      } finally {
-        process.env.WEA_SQLITE_PATH = prevPath;
-        await storage.closeSqliteDb().catch(() => {});
-        await fs.promises.unlink(oldDbPath).catch(() => {});
-      }
-    });
-  });
-
   describeSqliteOnly('schema-less sqlite target via explicit connection', () => {
-    it('applies the full DDL chain and records both migrations', async () => {
+    it('applies the full DDL chain and records the 001 migration', async () => {
       const targetPath = path.join(os.tmpdir(), `wea-target-${crypto.randomUUID()}.db`);
       const raw = new sqlite3.Database(targetPath);
 
@@ -212,7 +120,6 @@ describe('trash soft-delete schema (ddl/002)', () => {
           'SELECT filename FROM _schema_migrations ORDER BY filename'
         );
         expect(ledger.some((r) => r.filename.startsWith('001_'))).toBe(true);
-        expect(ledger.some((r) => r.filename.startsWith('002_'))).toBe(true);
 
         const rootId = (
           await runOn(

@@ -36,19 +36,6 @@ Applied in order:
 8. `DEFAULT NOW()` → `DEFAULT CURRENT_TIMESTAMP`
 9. `DEFAULT FALSE` → `DEFAULT 0`
 10. `DEFAULT TRUE` → `DEFAULT 1`
-11. `ALTER TABLE <t> ADD COLUMN IF NOT EXISTS` → `ALTER TABLE <t> ADD COLUMN` (SQLite has no
-    `IF NOT EXISTS` for `ADD COLUMN`; safe because each DDL file is applied once, checksum-tracked)
-12. `ALTER TABLE file_nodes DROP CONSTRAINT [IF EXISTS] file_nodes_unique_name_per_parent;` →
-    a **table-rebuild block**: `PRAGMA foreign_keys = OFF;` + recreate the table as
-    `file_nodes__rebuild` without the table-level `UNIQUE (parent_id, name)` (carrying all
-    columns incl. `deleted_at`), `INSERT INTO file_nodes__rebuild ... SELECT ... FROM file_nodes`
-    (full data preservation), `DROP TABLE file_nodes;`,
-    `ALTER TABLE file_nodes__rebuild RENAME TO file_nodes;`, `PRAGMA foreign_keys = ON;`.
-    SQLite cannot drop a table-level UNIQUE constraint in place (no `DROP CONSTRAINT`); the
-    rebuild is unconditional because every DB this statement runs against has the constraint from
-    `001`. The rewrite runs last so its emitted statements are not re-processed by the earlier
-    rules.
-
 Pass-through (no conversion needed):
 
 - `CHECK` constraints — SQLite supports them natively

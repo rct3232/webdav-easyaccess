@@ -38,8 +38,8 @@ async function ensureDefaultAdmin() {
 async function initMetadataSchema() {
   // Both backends are checksum-tracked (schemaManager); sqlite DDL is
   // transpiled from the same ddl/*.sql chain. The former converter-based
-  // boot path (initSqliteSchema) cannot express dropping a table-level
-  // UNIQUE constraint (ddl/002) on existing DBs.
+  // boot path (initSqliteSchema) cannot express schema evolution (e.g.
+  // constraint changes) on existing DBs.
   await applyPendingMigrations(isSqliteBackend() ? 'sqlite' : 'postgresql');
 }
 

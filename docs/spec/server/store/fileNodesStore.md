@@ -32,9 +32,9 @@
 
 Canonical table definitions, constraints, and indexes are in the ordered DDL chain:
 
-- `server/store/postgresql/ddl/001_initial_normalized_schema.sql` (initial normalized schema)
-- `server/store/postgresql/ddl/002_trash_soft_delete.sql` (adds `file_nodes.deleted_at`; converts the
-  `(parent_id, name)` uniqueness to partial unique indexes over `deleted_at IS NULL`)
+- `server/store/postgresql/ddl/001_initial_normalized_schema.sql` (the single DDL file — carries the
+  whole normalized schema including `file_nodes.deleted_at` and the partial unique indexes over
+  `deleted_at IS NULL`)
 
 This spec does not duplicate full DDL text.
 
@@ -45,9 +45,9 @@ This spec does not duplicate full DDL text.
   `(name) WHERE parent_id IS NULL AND deleted_at IS NULL`). Violations surface as unique-violation
   errors (PG `23505` / sqlite constraint failure) on `createNode`/`renameNode`/`moveNode`.
 - Trashed nodes (`deleted_at` set) are **exempt from live uniqueness**: multiple trashed siblings
-  may share a name, and a trashed row may share a name with a live sibling. The old table-level
-  `UNIQUE (parent_id, name)` constraint is dropped by `002` (sqlite requires a table rebuild,
-  emitted by the `convertPostgresToSqlite` transpiler).
+  may share a name, and a trashed row may share a name with a live sibling. Uniqueness is carried
+  by the partial unique indexes alone — there is no table-level `UNIQUE (parent_id, name)`
+  constraint.
 - `deleted_at` defaults to NULL; only the schema (column + constraints) is defined here — no
   trash/restore behavior lives in this store.
 

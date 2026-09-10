@@ -399,3 +399,23 @@ IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode repor
 - **Classification**: **Case B (Test Error)** — fixture portability.
 - **Action taken**: JS-computed ISO timestamp bound as a param
   (`SET deleted_at = ?`). Both legs green (sqlite 34/34, PG 229 pass / 1 skip).
+
+### 2026-09-10 — WebDAV trash e2e: MOVE into a missing /.wea-trash/ parent fails (Case A)
+
+- **Summary**: webdav-smoke E2E-TRASH-001/003 failed — the UI delete reported an error and the item
+  stayed in the folder. Server logs showed `MOVE ... /.wea-trash/<id>` → 500, then the stream
+  fallback PUT → 403.
+- **Diagnosis**: WebDAV MOVE does NOT auto-create the destination parent collection. On the very
+  first trash of a deployment `/​.wea-trash/` does not exist, so the MOVE failed and the fallback
+  PUT inherited the 403 from the missing parent. Proven against the bytemark container: MKCOL the
+  root first → MOVE succeeds; without MKCOL → 500/403. (Secondary finding: a server-side path
+  containing a literal `%` breaks the webdav lib's `decodeURIComponent`-based directory listing
+  inside `/.wea-trash/` — an out-of-band probe artifact; production trash paths are numeric node
+  ids, and the per-entry `headBlob` guard (404-mapped) is the tolerant reader.)
+- **Classification**: **Case A (Source Error)** — the P2 implementation violated the trash contract
+  ("one MOVE succeeds") on a fresh deployment; the docs-first spec (fileService.md §4.1) describes
+  the MOVE as the trash mechanism without preconditioning the reserved parent.
+- **Action taken**: `WebdavBlobStore.ensureDirectoryExists` added (health-wrapped);
+  `fileService.deleteNode` and `trashService` restore now ensure `/.wea-trash/` (idempotent MKCOL)
+  before any MOVE/MOVE-back. Webdav smoke includes the trash spec (TRASH-00[1367]). All 5 trash
+  webdav-smoke tests + core-flow.shared webdav smoke 8 pass; s3 core 129 pass.

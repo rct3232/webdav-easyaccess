@@ -22,6 +22,9 @@ import {
   cancelBulkOperation,
   checkConflicts,
   requestThumbnailsBatch,
+  getFileVersions,
+  restoreFileVersion,
+  downloadFileVersion,
 } from '../fileService';
 
 jest.mock('../apiClient', () => ({
@@ -472,6 +475,66 @@ describe('fileService', () => {
         destinationParentNodeId: 2,
         reason: 'exists',
       });
+    });
+  });
+
+  describe('version history (DEF-11)', () => {
+    it('getFileVersions requests GET /files/versions with nodeId and returns the payload', async () => {
+      const payload = {
+        nodeId: 7,
+        currentVersionNumber: 2,
+        versions: [
+          { versionNumber: 1, status: 'history', createdAt: 'x', size: 5, isCurrent: false },
+        ],
+      };
+      get.mockResolvedValueOnce({ data: payload });
+
+      const result = await getFileVersions(7);
+
+      expect(get).toHaveBeenCalledWith('/files/versions', { params: { nodeId: 7 } });
+      expect(result).toBe(payload);
+    });
+
+    it('restoreFileVersion posts nodeId and versionNumber to /versions/restore', async () => {
+      post.mockResolvedValueOnce({
+        data: {
+          messageCode: 'serverMessages.files.versionRestored',
+          nodeId: 7,
+          restoredVersionNumber: 1,
+        },
+      });
+
+      const result = await restoreFileVersion(7, 1);
+
+      expect(post).toHaveBeenCalledWith('/files/versions/restore', { nodeId: 7, versionNumber: 1 });
+      expect(result).toMatchObject({ restoredVersionNumber: 1 });
+    });
+
+    it('downloadFileVersion fetches the version blob and triggers an <a download> save', async () => {
+      get.mockResolvedValueOnce({ data: new Blob(['version-bytes']) });
+      const clickSpy = jest
+        .spyOn(HTMLAnchorElement.prototype, 'click')
+        .mockImplementation(() => {});
+      const createObjectSpy = jest
+        .spyOn(window.URL, 'createObjectURL')
+        .mockReturnValue('blob:mock');
+      const revokeSpy = jest.spyOn(window.URL, 'revokeObjectURL').mockImplementation(() => {});
+
+      await downloadFileVersion(7, 3);
+
+      expect(get).toHaveBeenCalledWith(
+        '/files/versions/download',
+        expect.objectContaining({
+          params: { nodeId: 7, versionNumber: 3 },
+          responseType: 'blob',
+        })
+      );
+      expect(clickSpy).toHaveBeenCalled();
+      expect(createObjectSpy).toHaveBeenCalledWith(expect.any(Blob));
+
+      clickSpy.mockRestore();
+      createObjectSpy.mockRestore();
+      revokeSpy.mockRestore();
     });
   });
 });

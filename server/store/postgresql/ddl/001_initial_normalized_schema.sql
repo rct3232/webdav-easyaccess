@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS object_map (
   s3_key TEXT DEFAULT NULL,
   storage_backend TEXT NOT NULL DEFAULT 's3' CHECK (storage_backend IN ('s3', 'webdav')),
   version_number INTEGER NOT NULL DEFAULT 1,
-  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'orphaned')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'history', 'orphaned')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT object_map_version_unique UNIQUE (file_node_id, version_number)
 );

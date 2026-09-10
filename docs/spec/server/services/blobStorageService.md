@@ -50,7 +50,9 @@ The blob store factory is **parameterless** — it reads `process.env.WEA_FILE_S
 
 #### `prepareUpload(fileNodeId)`
 
-Prepares a new upload by creating a pending object_map entry. Orphans any existing active row for the same file node.
+Prepares a new upload by creating a pending object_map entry. Demotes any existing active row
+for the same file node to `status='history'` (managed prior version, DEF-11), then applies the
+per-node version cap.
 
 | Param      | Type   | Required | Description                           |
 | ---------- | ------ | -------- | ------------------------------------- |
@@ -58,7 +60,18 @@ Prepares a new upload by creating a pending object_map entry. Orphans any existi
 
 **Returns:** string — UUID s3Key for the pending upload (S3 mode); null (WebDAV mode)
 
-**DB operations:** `upsertObjectMap(fileNodeId, s3Key, 'pending')` — if active row exists, marks it orphaned then INSERTs new pending.
+**DB operations (S3 mode, in order):**
+
+1. `upsertObjectMap(fileNodeId, s3Key, 'pending')` — if an active row exists, demotes it to
+   `status='history'` then INSERTs the new pending row at `MAX(version_number) + 1`.
+2. `evictVersionsBeyondCap(fileNodeId, cap)` — cap eviction immediately after the upsert, in the
+   same transaction/executor context as the caller (uploadService runs `prepareUpload` inside
+   TX1 for overwrites). `cap` = `GC_VERSION_MAX_PER_NODE` (shared resolver, default **10**,
+   `0` = unbounded): while `active + history > cap`, the oldest `history` rows (lowest
+   `version_number`) are demoted to `status='orphaned'`. The active row is never touched.
+   The cap value is resolved lazily per call via the shared config resolver (same idiom as the
+   gcService TTL resolvers). Evicted rows keep their blobs; deletion is the GC's job
+   (`GC_VERSION_TTL_DAYS` is the eviction grace period — see `gcService.md` §2).
 
 #### `completeUpload(s3Key, size, mimeType)`
 
@@ -88,7 +101,7 @@ Downloads blob content for an active file node. Returns buffer or null if no act
 
 #### `overwriteBlob(fileNodeId, buffer)`
 
-Overwrites a file's content: uploads new blob, orphans previous active mapping, creates new active mapping at the next version number.
+Overwrites a file's content: uploads new blob, demotes the previous active mapping to `history`, creates a new active mapping at the next version number.
 
 | Param      | Type   | Required | Description                      |
 | ---------- | ------ | -------- | -------------------------------- |
@@ -97,7 +110,7 @@ Overwrites a file's content: uploads new blob, orphans previous active mapping, 
 
 **Returns:** string — new s3Key (S3 mode)
 
-**Operations:** `blobStore.uploadBlob(newS3Key, buffer)` → `upsertObjectMap(fileNodeId, newS3Key, 'active')` (orphans the node's previous active row and inserts the new mapping at `MAX(version_number) + 1`, avoiding the `UNIQUE(file_node_id, version_number)` collision); delegates to `uploadToWebdav(fileNodeId, buffer)` (WebDAV).
+**Operations:** `blobStore.uploadBlob(newS3Key, buffer)` → `upsertObjectMap(fileNodeId, newS3Key, 'active')` (demotes the node's previous active row to `status='history'` and inserts the new mapping at `MAX(version_number) + 1`, avoiding the `UNIQUE(file_node_id, version_number)` collision); delegates to `uploadToWebdav(fileNodeId, buffer)` (WebDAV).
 
 > **Note:** this method is not used by the production upload/overwrite flow — route-level overwrites go through `uploadService.overwriteFile` (S3) or `uploadToWebdav` directly (WebDAV). It is retained as a service-level primitive.
 
@@ -252,21 +265,21 @@ Uploads blob via WebDAV path. Guards on node existence.
 
 ## 4. Dual-Backend Dispatch Table
 
-| Operation                 | S3 Mode                                                                               | WebDAV Mode                                                                                               |
-| ------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| prepareUpload             | orphan old + INSERT pending → return s3Key                                            | returns null (no-op)                                                                                      |
-| completeUpload            | UPDATE active + filecache                                                             | throws 'completeUpload is not applicable in WebDAV mode'                                                  |
-| downloadBlob              | blobStore.downloadBlob(s3Key)                                                         | delegates to downloadBlobWebdav                                                                           |
-| overwriteBlob             | upload new blob → upsertObjectMap (orphan prev + insert next version) → return newKey | delegates to uploadToWebdav                                                                               |
-| deleteBlob                | mark orphaned in object_map                                                           | resolve path → blobStore.deleteBlob(path)                                                                 |
-| getActiveS3Key            | active s3_key or null                                                                 | always null                                                                                               |
-| countActiveObjectsByS3Key | COUNT active object_map rows by s3_key                                                | returns 0                                                                                                 |
-| duplicateBlob             | blobStore.copyBlob(source, newKey) → newKey                                           | throws 'duplicateBlob is not applicable in WebDAV mode'                                                   |
-| linkObject                | INSERT object_map (file_node_id, s3_key, 'active')                                    | throws 'linkObject is not applicable in WebDAV mode'                                                      |
-| ensureExclusiveBlob       | write barrier: if countActiveObjectsByS3Key > 1, split shared blob before mutation    | returns null                                                                                              |
-| uploadToWebdav            | n/a                                                                                   | resolve path → blobStore.uploadBlob(path, buffer) → upsertCache                                           |
-| downloadBlobWebdav        | n/a                                                                                   | resolve path (guard node) → blobStore.downloadBlob(path) or null                                          |
-| createDirectoryWebdav     | returns null (no-op)                                                                  | resolve path → blobStore.createDirectory(path) (recursive MKCOL); on failure mark orphaned_node + rethrow |
+| Operation                 | S3 Mode                                                                                                 | WebDAV Mode                                                                                               |
+| ------------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| prepareUpload             | demote old active → `history` + INSERT pending + cap eviction (`evictVersionsBeyondCap`) → return s3Key | returns null (no-op)                                                                                      |
+| completeUpload            | UPDATE active + filecache                                                                               | throws 'completeUpload is not applicable in WebDAV mode'                                                  |
+| downloadBlob              | blobStore.downloadBlob(s3Key)                                                                           | delegates to downloadBlobWebdav                                                                           |
+| overwriteBlob             | upload new blob → upsertObjectMap (demote prev → `history` + insert next version) → return newKey       | delegates to uploadToWebdav                                                                               |
+| deleteBlob                | mark orphaned in object_map                                                                             | resolve path → blobStore.deleteBlob(path)                                                                 |
+| getActiveS3Key            | active s3_key or null                                                                                   | always null                                                                                               |
+| countActiveObjectsByS3Key | COUNT active object_map rows by s3_key                                                                  | returns 0                                                                                                 |
+| duplicateBlob             | blobStore.copyBlob(source, newKey) → newKey                                                             | throws 'duplicateBlob is not applicable in WebDAV mode'                                                   |
+| linkObject                | INSERT object_map (file_node_id, s3_key, 'active')                                                      | throws 'linkObject is not applicable in WebDAV mode'                                                      |
+| ensureExclusiveBlob       | write barrier: if countActiveObjectsByS3Key > 1, split shared blob before mutation                      | returns null                                                                                              |
+| uploadToWebdav            | n/a                                                                                                     | resolve path → blobStore.uploadBlob(path, buffer) → upsertCache                                           |
+| downloadBlobWebdav        | n/a                                                                                                     | resolve path (guard node) → blobStore.downloadBlob(path) or null                                          |
+| createDirectoryWebdav     | returns null (no-op)                                                                                    | resolve path → blobStore.createDirectory(path) (recursive MKCOL); on failure mark orphaned_node + rethrow |
 
 ---
 
@@ -284,21 +297,46 @@ Uploads blob via WebDAV path. Guards on node existence.
 - duplicateBlob → throws error
 - linkObject → throws error
 
-## 6. Version Number Policy
+## 6. Version Number Policy (managed history, DEF-11)
 
-Single-version mode is enforced at the store/repository level: before each insert the node's previous active `object_map` row is orphaned (`status='orphaned'`), so **at most one active version per node** exists at any time. New rows are inserted at `version_number = MAX(version_number) + 1` for the node (`upsertObjectMap` in `server/store/repositories/FileNodeRepository.js`, dialect impls under `store/repositories/{sqlite,postgres}/`) — previous rows are orphaned (never deleted/reused), so the insert never collides with the `UNIQUE (file_node_id, version_number)` constraint (`object_map_version_unique`, 001_initial_normalized_schema.sql:64). Full version history expansion is tracked in `docs/IMPROVEMENT_PLAN.md`.
+`object_map.status` values: `pending`, `active`, `history`, `orphaned`. Before each insert the
+node's previous active `object_map` row is **demoted to `history`** (`upsertObjectMap`), so **at
+most one active version per node** exists at any time and prior versions are managed history (not
+garbage). New rows are inserted at `version_number = MAX(version_number) + 1` for the node
+(`upsertObjectMap` in `server/store/repositories/FileNodeRepository.js`, dialect impls under
+`store/repositories/{sqlite,postgres}/`), so the insert never collides with the
+`UNIQUE (file_node_id, version_number)` constraint (`object_map_version_unique`,
+001_initial_normalized_schema.sql).
+
+- **Per-node cap:** `GC_VERSION_MAX_PER_NODE` (T2/dbOnly, default `10`, `0` = unbounded). Enforced
+  eagerly in `prepareUpload` via `evictVersionsBeyondCap(nodeId, cap)` — while
+  `active + history > cap`, the oldest `history` rows (lowest `version_number`) are demoted to
+  `orphaned` inside the same TX. The cap holds even with the GC scheduler off. The `active` row is
+  never touched; `evictVersionsBeyondCap` never demotes/activates it.
+- **`orphaned` = evicted version** (plus legacy residue): orphaned rows are Tier-1 GC targets after
+  `GC_VERSION_TTL_DAYS` (the eviction grace period; clock stays `created_at` = upload time).
+  `history` rows are **never** GC targets (Tier 1 queries `orphaned` only; the Tier-2 keep-set
+  includes the history arm).
+- **Restore (S3 mode):** `versionsService.restoreVersion` reactivates a `history` row in place
+  (`reactivateObjectMapRow`, guard widened to `status IN ('history','orphaned')`) and demotes the
+  current active row to `history` via the dedicated `demoteActiveToHistory(s3_key)` primitive —
+  no new version row is created (row count unchanged); see `versionsService` in
+  `core-service-layer.md` and `routes/files.md` §2.2.
+- **Cutover:** version history does not survive s3↔webdav migration (the active row flips; history
+  rows are dropped) — accepted, DEF-18 class.
 
 ## 7. Verification Scenarios
 
 - [ ] prepareUpload creates pending entry with valid UUID s3Key (S3 mode)
 - [ ] prepareUpload returns null (WebDAV mode)
-- [ ] prepareUpload orphans previous active row before inserting new pending
+- [ ] prepareUpload demotes the previous active row to `history` before inserting new pending
+- [ ] prepareUpload evicts oldest `history` rows beyond `GC_VERSION_MAX_PER_NODE` (cap 0 = unbounded no-op; active row untouched)
 - [ ] completeUpload transitions pending→active and writes filecache metadata
 - [ ] completeUpload throws in WebDAV mode
 - [ ] downloadBlob with active object returns buffer matching uploaded content
 - [ ] downloadBlob with no active object returns null
-- [ ] overwriteBlob orphans old key and creates new active mapping at the next version (no UNIQUE collision)
-- [ ] deleteBlob marks active object orphaned (no S3 deletion)
+- [ ] overwriteBlob demotes the old key to `history` and creates new active mapping at the next version (no UNIQUE collision)
+- [ ] deleteBlob marks active object orphaned (no S3 deletion; direct `orphanObject` path — not a history demotion)
 - [ ] deleteBlob with no active object is a no-op
 - [ ] deleteBlob in WebDAV mode resolves path and calls blobStore.deleteBlob
 - [ ] countActiveObjectsByS3Key returns correct count

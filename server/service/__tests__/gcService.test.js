@@ -386,7 +386,7 @@ describe('createGcService', () => {
       expect(await getObjectMapRowByKey(activeKey)).not.toBeNull();
     });
 
-    it('deletes live-node orphaned rows as version category (historical parity)', async () => {
+    it('deletes live-node orphaned (evicted) rows as version category (eviction grace)', async () => {
       const node = await fileNodesStore.createNode(null, `guard-version-${Date.now()}`, 'file');
       await fileNodesStore.updateSyncStatus(node.id, 'active');
       const orphanedKey = `guard-version-key-${Date.now()}`;
@@ -401,6 +401,82 @@ describe('createGcService', () => {
 
       expect(await getObjectMapRowByKey(orphanedKey)).toBeNull();
       expect(blobStore.getDeleted()).toContain(orphanedKey);
+    });
+
+    it('never touches a history row regardless of age (Tier 1 is blind to history)', async () => {
+      const node = await fileNodesStore.createNode(null, `t1-history-${Date.now()}`, 'file');
+      await fileNodesStore.updateSyncStatus(node.id, 'active');
+      const historyKey = `t1-history-key-${Date.now()}`;
+      await insertObjectMapRow({
+        fileNodeId: node.id,
+        s3Key: historyKey,
+        status: 'history',
+        daysAgo: 10,
+      });
+
+      await gcService.runGcCycle({ olderThanDays: 1 });
+
+      // The history row is not in the orphaned query at all: never deleted,
+      // its blob never deleted (other tests' residue may populate the
+      // aggregate counters — assert only on this test's own keys).
+      expect(await getObjectMapRowByKey(historyKey)).not.toBeNull();
+      expect(blobStore.getDeleted()).not.toContain(historyKey);
+    });
+
+    it('stuck-node history row is inherently safe: no deletion and guardedRows does not count it', async () => {
+      const node = await fileNodesStore.createNode(
+        null,
+        `guard-stuck-history-${Date.now()}`,
+        'file'
+      );
+      const historyKey = `guard-stuck-history-key-${Date.now()}`;
+      const pendingKey = `guard-stuck-history-pending-${Date.now()}`;
+      await insertObjectMapRow({
+        fileNodeId: node.id,
+        s3Key: historyKey,
+        status: 'history',
+        daysAgo: 10,
+        versionNumber: 1,
+      });
+      await insertObjectMapRow({
+        fileNodeId: node.id,
+        s3Key: pendingKey,
+        status: 'pending',
+        daysAgo: 2,
+        versionNumber: 2,
+      });
+
+      await gcService.runGcCycle({ olderThanDays: 1 });
+
+      // The stuck node's last-good row is 'history' — it never enters the
+      // orphaned query, so it is inherently safe (aggregate guardedRows is
+      // polluted by other tests' guarded rows — assert on this test's keys).
+      expect(await getObjectMapRowByKey(historyKey)).not.toBeNull();
+      expect(await getObjectMapRowByKey(pendingKey)).not.toBeNull();
+      expect(blobStore.getDeleted()).not.toContain(historyKey);
+      expect(blobStore.getDeleted()).not.toContain(pendingKey);
+    });
+
+    it('deletes an evicted (orphaned) version row after the version TTL', async () => {
+      const node = await fileNodesStore.createNode(null, `evict-grace-${Date.now()}`, 'file');
+      await fileNodesStore.updateSyncStatus(node.id, 'active');
+      const evictedKey = `evict-grace-key-${Date.now()}`;
+      await insertObjectMapRow({
+        fileNodeId: node.id,
+        s3Key: evictedKey,
+        status: 'orphaned',
+        daysAgo: 3,
+        versionNumber: 1,
+      });
+
+      // Within the eviction grace period (olderThanDays 5 > age 3) → kept.
+      await gcService.runGcCycle({ olderThanDays: 5 });
+      expect(await getObjectMapRowByKey(evictedKey)).not.toBeNull();
+
+      // Past the grace period (olderThanDays 1 < age 3) → deleted with blob.
+      await gcService.runGcCycle({ olderThanDays: 1 });
+      expect(await getObjectMapRowByKey(evictedKey)).toBeNull();
+      expect(blobStore.getDeleted()).toContain(evictedKey);
     });
   });
 
@@ -534,6 +610,43 @@ describe('createGcService', () => {
       expect(ksBlobStore.getDeleted()).toContain(pendingKey);
       expect(ksBlobStore.getDeleted()).not.toContain(guardedKey);
       expect(ksBlobStore.getDeleted()).not.toContain(activeKey);
+    });
+
+    it('does not delete history blobs (keep-set history arm)', async () => {
+      const historyNode = await fileNodesStore.createNode(
+        null,
+        `t2-ks-history-${Date.now()}`,
+        'file'
+      );
+      const historyKey = `t2-ks-history-key-${Date.now()}`;
+      await insertObjectMapRow({
+        fileNodeId: historyNode.id,
+        s3Key: historyKey,
+        status: 'history',
+        daysAgo: 10,
+      });
+
+      const untrackedKey = `t2-ks-history-untracked-${Date.now()}`;
+      const now = Date.now();
+      const ksBlobStore = createFakeBlobStore({
+        listOrphaned: [
+          { key: historyKey, lastModified: new Date(now - 10 * 86400000) },
+          { key: untrackedKey, lastModified: new Date(now - 10 * 86400000) },
+        ],
+      });
+      const ksGc = createGcService({
+        blobStore: ksBlobStore,
+        fileNodesStore,
+        fileStorageMode: 's3',
+      });
+
+      await ksGc.runGcCycle({ olderThanDays: 1 });
+
+      // The history key is in the keep-set → not untracked, never deleted
+      // (even though the S3 object is older than the TTL).
+      expect(ksBlobStore.getDeleted()).toContain(untrackedKey);
+      expect(ksBlobStore.getDeleted()).not.toContain(historyKey);
+      expect(await getObjectMapRowByKey(historyKey)).not.toBeNull();
     });
   });
 

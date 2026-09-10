@@ -171,6 +171,7 @@ app.use(
 app.use('/api/files', setupModeGuardInstance, require('./domains/files/routes/crud'));
 app.use('/api/files', setupModeGuardInstance, require('./domains/files/routes/batch'));
 app.use('/api/files', setupModeGuardInstance, require('./domains/files/routes/preview'));
+app.use('/api/files', setupModeGuardInstance, require('./domains/files/routes/versions'));
 app.use('/api/folders', setupModeGuardInstance, require('./domains/files/routes/folders'));
 app.use('/api/permissions', setupModeGuardInstance, require('./domains/permissions/routes'));
 app.use(

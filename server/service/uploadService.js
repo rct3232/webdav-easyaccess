@@ -1,6 +1,7 @@
 'use strict';
 
 const storage = require('../store/storage');
+const thumbnailService = require('../domains/thumbnails/services/thumbnailService');
 
 /**
  * Factory: create an upload orchestration service bound to one store + backend at creation time.
@@ -175,6 +176,14 @@ function createUploadService({ fileNodeService, blobStorageService, blobStore, f
     } catch (error) {
       await rollbackOverwrite(fileNodeId, previousActive, previousCache, s3Key);
       throw error;
+    }
+
+    // Content changed → evict the cached thumbnail (pre-existing latent gap
+    // closed alongside DEF-11 restore; best-effort by contract).
+    try {
+      thumbnailService.invalidate(fileNodeId);
+    } catch {
+      /* best-effort */
     }
 
     return { nodeId: fileNodeId, s3Key, size: buffer.length, mimeType };

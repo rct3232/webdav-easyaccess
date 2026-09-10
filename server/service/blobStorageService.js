@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { getSharedResolver } = require('../infrastructure/configResolver');
 
 /**
  * Factory: create a blob-storage lifecycle service bound to one backend pair.
@@ -12,14 +13,33 @@ const crypto = require('crypto');
  * @param {'s3'|'webdav'} [opts.fileStorageMode='s3'] - backend mode.
  * @param {Object} [opts.fileNodeService] - needed in WebDAV mode; exposes getNode(nodeId)
  *   and getNodePath(nodeId).
+ * @param {Object} [opts.versionConfig] - test seam for GC_VERSION_MAX_PER_NODE:
+ *   `{ maxPerNode }`; when absent the shared resolver resolves it per call
+ *   (DB row → built-in default 10). `0` = unbounded.
  */
 function createBlobStorageService({
   blobStore,
   fileNodesStore,
   fileStorageMode = 's3',
   fileNodeService,
+  versionConfig = {},
 }) {
   const isWebdavMode = fileStorageMode === 'webdav';
+
+  // GC_VERSION_MAX_PER_NODE is T2 (hot): resolved lazily per call so DB
+  // changes apply without a restart. 0 is a valid value (= unbounded); only
+  // negatives/invalid fall back to the built-in default.
+  async function resolveVersionCapPerNode() {
+    if (Number.isFinite(versionConfig.maxPerNode) && versionConfig.maxPerNode >= 0) {
+      return versionConfig.maxPerNode;
+    }
+    const configured = await getSharedResolver().getConfig('GC_VERSION_MAX_PER_NODE');
+    const cap = Number(configured);
+    if (Number.isFinite(cap) && cap >= 0) {
+      return cap;
+    }
+    return 10;
+  }
 
   async function prepareUpload(fileNodeId) {
     if (isWebdavMode) {
@@ -27,6 +47,10 @@ function createBlobStorageService({
     }
     const s3Key = crypto.randomUUID();
     await fileNodesStore.upsertObjectMap(fileNodeId, s3Key, 'pending');
+    // DEF-11: enforce the per-node version cap in the same TX context as the
+    // upsert (uploadService wraps prepareUpload in TX1 for overwrites).
+    const cap = await resolveVersionCapPerNode();
+    await fileNodesStore.evictVersionsBeyondCap(fileNodeId, cap);
     return s3Key;
   }
 

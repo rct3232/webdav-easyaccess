@@ -262,8 +262,8 @@ describe('createFailSafeService — pending_upload scan + repair (DEF-12/13 S2)'
 
   /**
    * Seed a file node holding an active version (v1) whose overwrite TX1
-   * committed but never finalized: node pending_upload, v1 orphaned,
-   * v2 pending, both blobs present.
+   * committed but never finalized: node pending_upload, v1 history
+   * (DEF-11 history demotion), v2 pending, both blobs present.
    */
   async function seedOverwriteStuck() {
     const name = unique('pu-overwrite');
@@ -305,7 +305,7 @@ describe('createFailSafeService — pending_upload scan + repair (DEF-12/13 S2)'
   }
 
   describe('scanPendingUploadNodes', () => {
-    it('classifies overwrite residue (orphaned last-good + pending row) as overwrite', async () => {
+    it('classifies overwrite residue (history last-good + pending row) as overwrite', async () => {
       const { node, keyV2 } = await seedOverwriteStuck();
 
       const found = (await failSafeService.scanPendingUploadNodes()).find(
@@ -318,6 +318,24 @@ describe('createFailSafeService — pending_upload scan + repair (DEF-12/13 S2)'
       expect(found.pendingS3Key).toBe(keyV2);
       expect(found.blobPresent).toBe(true);
       expect(found.path).toBe(`/${node.name}`);
+    });
+
+    it('classifies legacy orphaned overwrite residue as overwrite (DEF-11 pre-migration rows)', async () => {
+      const name = unique('pu-overwrite-legacy');
+      const node = await fileNodeService.createFile(null, name);
+      const keyV1 = unique('pu-overwrite-legacy-v1');
+      const keyV2 = unique('pu-overwrite-legacy-v2');
+
+      await fileNodesStore.insertObject(node.id, keyV1, 'orphaned');
+      await blobStore.uploadBlob(keyV2, Buffer.from('v2-content'));
+      await fileNodesStore.upsertObjectMap(node.id, keyV2, 'pending');
+      await fileNodeService.updateSyncStatus(node.id, 'pending_upload');
+
+      const found = (await failSafeService.scanPendingUploadNodes()).find(
+        (n) => n.nodeId === node.id
+      );
+      expect(found).toBeDefined();
+      expect(found.classification).toBe('overwrite');
     });
 
     it('classifies new-file residue with blob as new-file', async () => {
@@ -577,7 +595,7 @@ describe('createFailSafeService — pending_upload scan + repair (DEF-12/13 S2)'
       const after = await fileNodeService.getNode(node.id);
       expect(after.syncStatus).toBe('pending_upload');
       const rows = await objectMapRows(node.id);
-      expect(rows.map((r) => r.status).sort()).toEqual(['orphaned', 'pending']);
+      expect(rows.map((r) => r.status).sort()).toEqual(['history', 'pending']);
       expect(await blobStore.headBlob(keyV1)).not.toBeNull();
       expect(await blobStore.headBlob(keyV2)).not.toBeNull();
     });

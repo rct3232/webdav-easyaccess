@@ -321,7 +321,20 @@
     "noPermissionRequestInfo": "No permission request information.",
     "permissionRequestApproved": "Permission request approved.",
     "permissionRequestApproveFail": "Failed to approve permission request.",
-    "selectFolderToShare": "Please select a folder to share."
+    "selectFolderToShare": "Please select a folder to share.",
+    "propertiesTabInfo": "Info",
+    "propertiesTabVersions": "Versions",
+    "versionsEmpty": "No previous versions.",
+    "versionsCurrentBadge": "Current",
+    "versionsExpired": "Expired",
+    "versionsDownloadTitle": "Download this version",
+    "versionsRestoreTitle": "Restore this version",
+    "versionsRestoreConfirmTitle": "Restore version",
+    "versionsRestoreConfirmBody": "Restore version {{version}} of this file? The current version is kept in the version history.",
+    "versionsRestoreSuccess": "Version {{version}} restored.",
+    "versionsRestoreFail": "Version restore failed.",
+    "versionsLoadFail": "Failed to load version history.",
+    "versionsUnknownSize": "size unavailable"
   },
   "admin": {
     "title": "Admin dashboard",
@@ -865,7 +878,10 @@
       "zipFail": "Failed to create zip archive.",
       "duplicateFile": "A file or folder with the same name already exists.",
       "jobNotFound": "Job not found or expired.",
-      "progressNotFound": "Progress not found."
+      "progressNotFound": "Progress not found.",
+      "versionNotFound": "Requested version does not exist.",
+      "versionBlobMissing": "The blob for this version is no longer available.",
+      "versionRestoreUnavailable": "Version restore is not available."
     },
     "permissions": {
       "permissionHigherThanParent": "File permission must be higher than parent path permission.",
@@ -1012,7 +1028,8 @@
       "uploadSuccess": "File uploaded successfully",
       "nameUnchanged": "File name unchanged",
       "renameSuccess": "File renamed successfully",
-      "cancelRequested": "Cancel requested"
+      "cancelRequested": "Cancel requested",
+      "versionRestored": "Version restored successfully"
     },
     "permissions": {
       "permissionGranted": "Permission granted successfully",

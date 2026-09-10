@@ -31,9 +31,12 @@
  * @property {(fileNodeId, s3Key, status) => Promise<{ changes: number }>} insertObject
  * @property {(fileNodeId) => Promise<Object|null>} getActiveObject
  * @property {(fileNodeId) => Promise<Array<Object>>} getObjectMapByNode
+ * @property {(fileNodeId) => Promise<Array<Object>>} getVersionsByNode
+ * @property {(fileNodeId, cap) => Promise<{ changes: number }>} evictVersionsBeyondCap
  * @property {(s3Key) => Promise<Object|null>} getObjectMapByS3Key
  * @property {(s3Key) => Promise<{ changes: number }>} activateObject
  * @property {(s3Key) => Promise<{ changes: number }>} orphanObject
+ * @property {(s3Key) => Promise<{ changes: number }>} demoteActiveToHistory
  * @property {(id) => Promise<{ changes: number }>} reactivateObjectMapRow
  * @property {(s3Key) => Promise<number>} countActiveObjectsByS3Key
  * @property {(fileNodeId) => Promise<{ changes: number }>} setObjectMapBackendWebdav

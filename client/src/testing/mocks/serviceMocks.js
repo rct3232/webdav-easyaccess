@@ -22,6 +22,17 @@ export function createFileServiceMock(overrides = {}) {
     batchCopyFiles: jest.fn().mockResolvedValue({ jobId: null }),
     getBulkOperationStatus: jest.fn().mockResolvedValue(null),
     cancelBulkOperation: jest.fn().mockResolvedValue(null),
+    getFileVersions: jest.fn().mockResolvedValue({
+      nodeId: 0,
+      currentVersionNumber: null,
+      versions: [],
+    }),
+    restoreFileVersion: jest.fn().mockResolvedValue({
+      messageCode: 'serverMessages.files.versionRestored',
+      nodeId: 0,
+      restoredVersionNumber: 1,
+    }),
+    downloadFileVersion: jest.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }

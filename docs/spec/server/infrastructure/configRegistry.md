@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item            | Description                                                                                                                                                                                                                                                                                |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Item            | Description                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role            | Single authoritative catalog of every `process.env` config key the server reads, classified into tiers (T0/T1/T2), flagged secret or not, with the in-code default (if any). Consumed by `configResolver` for runtime resolution, `configResolver.populateT1Env` for the boot env mirror (server/index.js:243), the admin config API (server/domains/admin/routes/config.js), and the setup routes (server/domains/setup/). |
-| Source of truth | `docs/features/config-source-resolution.md` (variable classification)                                                                                                                                  |
+| Source of truth | `docs/features/config-source-resolution.md` (variable classification)                                                                                                                                                                                                                                                                                                                                                       |
 
 ---
 
@@ -18,16 +18,16 @@
 
 ### 2.2 Public API
 
-| Export           | Signature                                       | Description                                                                 |
-| ---------------- | ----------------------------------------------- | --------------------------------------------------------------------------- |
-| `TIER`           | `Object.freeze({ T0, T1, T2 })`                 | Tier constants (string values `'T0'`/`'T1'`/`'T2'`).                        |
+| Export           | Signature                                                | Description                                                                 |
+| ---------------- | -------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `TIER`           | `Object.freeze({ T0, T1, T2 })`                          | Tier constants (string values `'T0'`/`'T1'`/`'T2'`).                        |
 | `CONFIG_ENTRIES` | frozen `Array<{ key, tier, secret, dbOnly?, default? }>` | The complete catalog, ordered for UI grouping. Each entry object is frozen. |
-| `getEntries`     | `() => Array`                                   | Returns `CONFIG_ENTRIES`.                                                   |
-| `getEntry`       | `(key) => entry \| undefined`                   | Lookup by raw env var name; `undefined` when unknown.                       |
-| `isT0`           | `(key) => boolean`                              | True when the key is registered as `TIER.T0`.                               |
-| `isTier`         | `(key, tier) => boolean`                        | True when the key is registered with the given tier.                        |
-| `isSecret`       | `(key) => boolean`                              | True when the entry has `secret: true`. Unknown keys → `false`.             |
-| `getDefault`     | `(key) => value \| undefined`                   | The registered in-code default; `undefined` when none / unknown.            |
+| `getEntries`     | `() => Array`                                            | Returns `CONFIG_ENTRIES`.                                                   |
+| `getEntry`       | `(key) => entry \| undefined`                            | Lookup by raw env var name; `undefined` when unknown.                       |
+| `isT0`           | `(key) => boolean`                                       | True when the key is registered as `TIER.T0`.                               |
+| `isTier`         | `(key, tier) => boolean`                                 | True when the key is registered with the given tier.                        |
+| `isSecret`       | `(key) => boolean`                                       | True when the entry has `secret: true`. Unknown keys → `false`.             |
+| `getDefault`     | `(key) => value \| undefined`                            | The registered in-code default; `undefined` when none / unknown.            |
 
 ### 2.3 Entry shape
 
@@ -39,11 +39,11 @@
 
 ### 2.4 Tier semantics (resolver contract)
 
-| Tier | Meaning                           | Source chain                                         |
-| ---- | --------------------------------- | ---------------------------------------------------- |
+| Tier | Meaning                                                                           | Source chain                                         |
+| ---- | --------------------------------------------------------------------------------- | ---------------------------------------------------- |
 | `T0` | `.env` only — boot-required metadata keys; `JWT_SECRET` is the optional exception | env only (no DB, no default applied by the resolver) |
-| `T1` | Boot-frozen (require-time consts) | env → DB → default; effect requires restart          |
-| `T2` | Runtime / hot                     | env → DB → default; effect immediate                 |
+| `T1` | Boot-frozen (require-time consts)                                                 | env → DB → default; effect requires restart          |
+| `T2` | Runtime / hot                                                                     | env → DB → default; effect immediate                 |
 
 A `dbOnly` entry at any tier resolves as **DB → default** (env ignored); T1/T2 then only
 affect restart-vs-immediate effect of DB edits.
@@ -61,22 +61,22 @@ Precedence invariant (D1): env wins whenever set; DB is read only when the env v
 
 ### T0 — `.env` only (metadata)
 
-| key                            | tier | secret  | default                                  |
-| ------------------------------ | ---- | ------- | ---------------------------------------- |
-| `WEA_SQLITE_PATH`              | T0   | no      | —                                        |
-| `WEA_DB_HOST`                  | T0   | no      | —                                        |
-| `WEA_DB_PORT`                  | T0   | no      | `5432`                                   |
-| `WEA_DB_DATABASE`              | T0   | no      | —                                        |
-| `WEA_DB_USER`                  | T0   | no      | —                                        |
-| `WEA_DB_PASSWORD`              | T0   | **yes** | —                                        |
-| `WEA_DB_SSL`                   | T0   | no      | `false`                                  |
-| `WEA_DB_MAX`                   | T0   | no      | `10`                                     |
-| `WEA_DB_IDLE_TIMEOUT_MS`       | T0   | no      | `30000`                                  |
-| `WEA_DB_CONNECTION_TIMEOUT_MS` | T0   | no      | `10000`                                  |
-| `WEA_DB_QUERY_TIMEOUT_MS`      | T0   | no      | `60000`                                  |
-| `NODE_ENV`                     | T0   | no      | —                                        |
-| `DOTENV_CONFIG_PATH`           | T0   | no      | —                                        |
-| `JWT_SECRET`                   | T0   | **yes** | — (none — unset → ephemeral per-boot random)         |
+| key                            | tier | secret  | default                                      |
+| ------------------------------ | ---- | ------- | -------------------------------------------- |
+| `WEA_SQLITE_PATH`              | T0   | no      | —                                            |
+| `WEA_DB_HOST`                  | T0   | no      | —                                            |
+| `WEA_DB_PORT`                  | T0   | no      | `5432`                                       |
+| `WEA_DB_DATABASE`              | T0   | no      | —                                            |
+| `WEA_DB_USER`                  | T0   | no      | —                                            |
+| `WEA_DB_PASSWORD`              | T0   | **yes** | —                                            |
+| `WEA_DB_SSL`                   | T0   | no      | `false`                                      |
+| `WEA_DB_MAX`                   | T0   | no      | `10`                                         |
+| `WEA_DB_IDLE_TIMEOUT_MS`       | T0   | no      | `30000`                                      |
+| `WEA_DB_CONNECTION_TIMEOUT_MS` | T0   | no      | `10000`                                      |
+| `WEA_DB_QUERY_TIMEOUT_MS`      | T0   | no      | `60000`                                      |
+| `NODE_ENV`                     | T0   | no      | —                                            |
+| `DOTENV_CONFIG_PATH`           | T0   | no      | —                                            |
+| `JWT_SECRET`                   | T0   | **yes** | — (none — unset → ephemeral per-boot random) |
 
 ### File storage
 
@@ -127,22 +127,23 @@ Precedence invariant (D1): env wins whenever set; DB is read only when the env v
 
 ### Runtime
 
-| key                                           | tier | secret | default        |
-| --------------------------------------------- | ---- | ------ | -------------- |
-| `registration_enabled`                        | T2   | no     | —              |
-| `GC_INTERVAL_MS`                              | T1   | no     | `0` (disabled) |
-| `GC_ORPHAN_TTL_DAYS`                          | T2   | no     | `1`            |
-| `GC_VERSION_TTL_DAYS`                         | T2   | no     | `1`            |
-| `GC_PENDING_STALE_DAYS`                       | T2   | no     | `3` (`0` = disabled) |
-| `REFRESH_TOKEN_EXPIRES_IN_DAYS`               | T1   | no     | `7`            |
-| `USER_CACHE_TTL_MS`                           | T2   | no     | `3000`         |
-| `PERMISSION_CACHE_TTL_MS`                     | T2   | no     | `5000`         |
-| `PERMISSIONS_EXISTENCE_INDEX_TTL_MS`          | T2   | no     | `30000`        |
-| `PERMISSIONS_EXISTENCE_RECONCILE_BATCH_SIZE`  | T2   | no     | `100`          |
-| `PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY` | T2   | no     | `4`            |
-| `WEA_SKIP_MIGRATION_WORKER`                   | T2   | no     | —              |
-| `WEA_SKIP_BULK_WORKER`                        | T2   | no     | —              |
-| `WEA_SKIP_GC_SCHEDULER`                       | T1   | no     | —              |
+| key                                           | tier | secret | default                                                                    |
+| --------------------------------------------- | ---- | ------ | -------------------------------------------------------------------------- |
+| `registration_enabled`                        | T2   | no     | —                                                                          |
+| `GC_INTERVAL_MS`                              | T1   | no     | `0` (disabled)                                                             |
+| `GC_ORPHAN_TTL_DAYS`                          | T2   | no     | `1`                                                                        |
+| `GC_VERSION_TTL_DAYS`                         | T2   | no     | `1`                                                                        |
+| `GC_PENDING_STALE_DAYS`                       | T2   | no     | `3` (`0` = disabled)                                                       |
+| `GC_VERSION_MAX_PER_NODE`                     | T2   | no     | `10` (`0` = unbounded; note the inverted 0-semantics vs the `*_DAYS` keys) |
+| `REFRESH_TOKEN_EXPIRES_IN_DAYS`               | T1   | no     | `7`                                                                        |
+| `USER_CACHE_TTL_MS`                           | T2   | no     | `3000`                                                                     |
+| `PERMISSION_CACHE_TTL_MS`                     | T2   | no     | `5000`                                                                     |
+| `PERMISSIONS_EXISTENCE_INDEX_TTL_MS`          | T2   | no     | `30000`                                                                    |
+| `PERMISSIONS_EXISTENCE_RECONCILE_BATCH_SIZE`  | T2   | no     | `100`                                                                      |
+| `PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY` | T2   | no     | `4`                                                                        |
+| `WEA_SKIP_MIGRATION_WORKER`                   | T2   | no     | —                                                                          |
+| `WEA_SKIP_BULK_WORKER`                        | T2   | no     | —                                                                          |
+| `WEA_SKIP_GC_SCHEDULER`                       | T1   | no     | —                                                                          |
 
 ---
 

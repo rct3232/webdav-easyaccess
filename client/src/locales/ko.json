@@ -321,7 +321,20 @@
     "noPermissionRequestInfo": "권한 신청 정보가 없습니다.",
     "permissionRequestApproved": "권한 신청을 승인했습니다.",
     "permissionRequestApproveFail": "권한 신청 승인에 실패했습니다.",
-    "selectFolderToShare": "공유할 폴더를 선택해주세요."
+    "selectFolderToShare": "공유할 폴더를 선택해주세요.",
+    "propertiesTabInfo": "정보",
+    "propertiesTabVersions": "버전",
+    "versionsEmpty": "이전 버전이 없습니다.",
+    "versionsCurrentBadge": "현재",
+    "versionsExpired": "만료됨",
+    "versionsDownloadTitle": "이 버전 다운로드",
+    "versionsRestoreTitle": "이 버전 복원",
+    "versionsRestoreConfirmTitle": "버전 복원",
+    "versionsRestoreConfirmBody": "이 파일의 버전 {{version}}을(를) 복원할까요? 현재 버전은 버전 기록에 유지됩니다.",
+    "versionsRestoreSuccess": "버전 {{version}}이(가) 복원되었습니다.",
+    "versionsRestoreFail": "버전 복원에 실패했습니다.",
+    "versionsLoadFail": "버전 기록을 불러오지 못했습니다.",
+    "versionsUnknownSize": "크기 확인 불가"
   },
   "admin": {
     "title": "관리자 대시보드",
@@ -862,7 +875,10 @@
       "zipFail": "ZIP 아카이브 생성에 실패했습니다.",
       "duplicateFile": "같은 이름의 파일 또는 폴더가 이미 존재합니다.",
       "jobNotFound": "작업을 찾을 수 없거나 만료되었습니다.",
-      "progressNotFound": "진행 정보를 찾을 수 없습니다."
+      "progressNotFound": "진행 정보를 찾을 수 없습니다.",
+      "versionNotFound": "요청한 버전이 존재하지 않습니다.",
+      "versionBlobMissing": "이 버전의 저장 데이터를 더 이상 사용할 수 없습니다.",
+      "versionRestoreUnavailable": "버전 복원을 사용할 수 없습니다."
     },
     "permissions": {
       "permissionHigherThanParent": "파일 권한은 상위 경로 권한보다 높아야 합니다.",
@@ -1009,7 +1025,8 @@
       "uploadSuccess": "파일이 성공적으로 업로드되었습니다.",
       "nameUnchanged": "파일 이름이 변경되지 않았습니다.",
       "renameSuccess": "파일 이름이 성공적으로 변경되었습니다.",
-      "cancelRequested": "취소 요청됨"
+      "cancelRequested": "취소 요청됨",
+      "versionRestored": "버전이 성공적으로 복원되었습니다"
     },
     "permissions": {
       "permissionGranted": "권한이 부여되었습니다.",

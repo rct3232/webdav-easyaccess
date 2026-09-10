@@ -161,7 +161,7 @@ describe('FileNodeRepository conformance', () => {
     expect(del.changes).toBe(1);
   });
 
-  it('getKeptS3Keys unions active, orphaned and pending-on-pending_upload keys', async () => {
+  it('getKeptS3Keys unions active, history, orphaned and pending-on-pending_upload keys', async () => {
     const { dbRun } = require('@server/test-utils');
     const stuckNode = await repo.createNode(null, uniqueName('fn-kept-stuck'), 'file');
     const orphanedKey = uniqueName('fn-kept-orphan');
@@ -182,10 +182,15 @@ describe('FileNodeRepository conformance', () => {
     const pendingOnLiveKey = uniqueName('fn-kept-pending-live');
     await repo.insertObject(liveNode.id, pendingOnLiveKey, 'pending');
 
+    const historyNode = await repo.createNode(null, uniqueName('fn-kept-history'), 'file');
+    const historyKey = uniqueName('fn-kept-history-key');
+    await repo.insertObject(historyNode.id, historyKey, 'history');
+
     const kept = await repo.getKeptS3Keys();
     expect(kept).toContain(activeKey);
     expect(kept).toContain(orphanedKey);
     expect(kept).toContain(pendingKey);
+    expect(kept).toContain(historyKey);
     expect(kept).not.toContain(pendingOnLiveKey);
   });
 
@@ -254,7 +259,7 @@ describe('FileNodeRepository conformance', () => {
     expect(stale.some((r) => r.s3_key === pendingOnLiveKey)).toBe(false);
   });
 
-  it('upsertObjectMap bumps version and orphans the previous active row', async () => {
+  it('upsertObjectMap bumps version and demotes the previous active row to history', async () => {
     const node = await repo.createNode(null, uniqueName('fn-um'), 'file');
     const key1 = uniqueName('fn-um-k1');
     const key2 = uniqueName('fn-um-k2');
@@ -264,7 +269,126 @@ describe('FileNodeRepository conformance', () => {
 
     const active = await repo.getActiveObject(node.id);
     expect(active.s3_key).toBe(key2);
+    expect(active.version_number).toBe(2);
     expect(await repo.countActiveObjectsByS3Key(key1)).toBe(0);
+
+    const { dbQuery } = require('@server/test-utils');
+    const prevRows = await dbQuery('SELECT status FROM object_map WHERE s3_key = ?', [key1]);
+    expect(prevRows.rows[0].status).toBe('history');
+  });
+
+  it('evictVersionsBeyondCap demotes the oldest history rows to orphaned while active+history > cap', async () => {
+    const node = await repo.createNode(null, uniqueName('fn-evict'), 'file');
+    const keys = [];
+    for (let v = 1; v <= 5; v += 1) {
+      const key = uniqueName(`fn-evict-k${v}`);
+      keys.push(key);
+      await repo.upsertObjectMap(node.id, key, 'active');
+    }
+    // After 5 upserts: v1..v4 are history, v5 is active.
+    const { dbQuery } = require('@server/test-utils');
+    const statusByVersion = async () => {
+      const rows = await dbQuery(
+        'SELECT s3_key, version_number, status FROM object_map WHERE file_node_id = ? ORDER BY version_number',
+        [node.id]
+      );
+      return Object.fromEntries(rows.rows.map((r) => [Number(r.version_number), r.status]));
+    };
+    expect(await statusByVersion()).toEqual({
+      1: 'history',
+      2: 'history',
+      3: 'history',
+      4: 'history',
+      5: 'active',
+    });
+
+    // cap 3 → active(1) + history(4) = 5 > 3 → evict the 2 oldest history rows.
+    const evicted = await repo.evictVersionsBeyondCap(node.id, 3);
+    expect(evicted.changes).toBe(2);
+
+    expect(await statusByVersion()).toEqual({
+      1: 'orphaned',
+      2: 'orphaned',
+      3: 'history',
+      4: 'history',
+      5: 'active',
+    });
+
+    // Cap already satisfied → second call evicts nothing.
+    expect((await repo.evictVersionsBeyondCap(node.id, 3)).changes).toBe(0);
+    expect(keys).toHaveLength(5);
+  });
+
+  it('evictVersionsBeyondCap treats cap 0 as unbounded (no-op) and never touches the active row', async () => {
+    const node = await repo.createNode(null, uniqueName('fn-evict0'), 'file');
+    for (let v = 1; v <= 4; v += 1) {
+      await repo.upsertObjectMap(node.id, uniqueName(`fn-evict0-k${v}`), 'active');
+    }
+    const before = await repo.getActiveObject(node.id);
+
+    expect((await repo.evictVersionsBeyondCap(node.id, 0)).changes).toBe(0);
+
+    const { dbQuery } = require('@server/test-utils');
+    const rows = await dbQuery(
+      'SELECT status FROM object_map WHERE file_node_id = ? ORDER BY version_number',
+      [node.id]
+    );
+    expect(rows.rows.map((r) => r.status)).toEqual(['history', 'history', 'history', 'active']);
+    const after = await repo.getActiveObject(node.id);
+    expect(Number(after.id)).toBe(Number(before.id));
+    expect(after.status).toBe('active');
+
+    // Negative/invalid caps behave like unbounded (no-op), never a full wipe.
+    expect((await repo.evictVersionsBeyondCap(node.id, -1)).changes).toBe(0);
+  });
+
+  it('getVersionsByNode returns active + history rows newest-first, excluding pending and orphaned', async () => {
+    const node = await repo.createNode(null, uniqueName('fn-vers'), 'file');
+    const keyV1 = uniqueName('fn-vers-v1');
+    const keyV2 = uniqueName('fn-vers-v2');
+    const keyV3 = uniqueName('fn-vers-v3');
+
+    await repo.upsertObjectMap(node.id, keyV1, 'active');
+    await repo.upsertObjectMap(node.id, keyV2, 'active');
+    await repo.upsertObjectMap(node.id, keyV3, 'pending');
+    // Evict v1 explicitly to prove orphaned rows are excluded.
+    await repo.evictVersionsBeyondCap(node.id, 2);
+
+    const versions = await repo.getVersionsByNode(node.id);
+    expect(versions.map((r) => r.s3_key)).toEqual([keyV2, keyV1]);
+    // keyV1 was evicted by the cap; keyV2 was demoted to history by the third
+    // upsert (status='pending' still demotes the previous active row).
+    expect(versions.map((r) => r.status)).toEqual(['history', 'history']);
+    expect(versions.some((r) => r.s3_key === keyV3)).toBe(false);
+
+    const other = await repo.createNode(null, uniqueName('fn-vers-other'), 'file');
+    await repo.insertObject(other.id, uniqueName('fn-vers-other-key'), 'pending');
+    expect(await repo.getVersionsByNode(node.id)).toHaveLength(2);
+    expect(await repo.getVersionsByNode(99999999)).toEqual([]);
+  });
+
+  it('demoteActiveToHistory flips only the active row with the given s3_key', async () => {
+    const node = await repo.createNode(null, uniqueName('fn-dmh'), 'file');
+    const key = uniqueName('fn-dmh-key');
+    await repo.insertObject(node.id, key, 'active');
+
+    const res = await repo.demoteActiveToHistory(key);
+    expect(res.changes).toBe(1);
+    const { dbQuery } = require('@server/test-utils');
+    const demoted = await dbQuery('SELECT status FROM object_map WHERE s3_key = ?', [key]);
+    expect(demoted.rows[0].status).toBe('history');
+
+    // Already-history → no-op; pending/unknown keys → no-op.
+    expect((await repo.demoteActiveToHistory(key)).changes).toBe(0);
+    await repo.upsertObjectMap(node.id, uniqueName('fn-dmh-pending'), 'pending');
+    const { dbQuery: dq2 } = require('@server/test-utils');
+    const newest = await dq2(
+      'SELECT status, s3_key FROM object_map WHERE file_node_id = ? ORDER BY version_number DESC LIMIT 1',
+      [node.id]
+    );
+    expect(newest.rows[0].status).toBe('pending');
+    expect((await repo.demoteActiveToHistory(newest.rows[0].s3_key)).changes).toBe(0);
+    expect((await repo.demoteActiveToHistory('unknown-key')).changes).toBe(0);
   });
 
   it('setObjectMapBackendWebdav flips the backend of the active row', async () => {
@@ -297,7 +421,34 @@ describe('FileNodeRepository conformance', () => {
     expect(active.status).toBe('active');
   });
 
-  it('reactivateObjectMapRow leaves non-orphaned rows untouched', async () => {
+  it('reactivateObjectMapRow flips a history row back to active (DEF-11 restore path)', async () => {
+    const node = await repo.createNode(null, uniqueName('fn-react-history'), 'file');
+    const key = uniqueName('fn-react-history-key');
+
+    // upsertObjectMap leaves the previous active row as 'history'.
+    await repo.upsertObjectMap(node.id, key, 'active');
+    await repo.upsertObjectMap(node.id, uniqueName('fn-react-history-k2'), 'active');
+
+    const { dbQuery } = require('@server/test-utils');
+    const historyRow = await dbQuery(
+      "SELECT id FROM object_map WHERE s3_key = ? AND status = 'history'",
+      [key]
+    );
+    expect(historyRow.rows.length).toBe(1);
+
+    const res = await repo.reactivateObjectMapRow(Number(historyRow.rows[0].id));
+    expect(res.changes).toBe(1);
+
+    // The row itself is active again. The service-level restore pairs this with
+    // demoteActiveToHistory on the current row; reactivate alone leaves both
+    // rows active and getActiveObject's pick is unspecified, so assert the row.
+    const rows = await dbQuery('SELECT s3_key, status FROM object_map WHERE id = ?', [
+      historyRow.rows[0].id,
+    ]);
+    expect(rows.rows[0].status).toBe('active');
+  });
+
+  it('reactivateObjectMapRow leaves non-history/orphaned rows untouched', async () => {
     const node = await repo.createNode(null, uniqueName('fn-react-nonorphan'), 'file');
     const key = uniqueName('fn-react-nonorphan-key');
 

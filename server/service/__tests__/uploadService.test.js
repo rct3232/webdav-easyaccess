@@ -175,7 +175,7 @@ describe('createUploadService', () => {
   /* ------------------------------------------------------------------ */
 
   describe('overwriteFile', () => {
-    it('orphans old key, activates new key, and updates filecache', async () => {
+    it('demotes old key to history, activates new key, and updates filecache', async () => {
       // First do a clean upload to establish an active object
       const originalContent = Buffer.from('original-content');
       const origResult = await uploadSvc.uploadFile(
@@ -200,12 +200,12 @@ describe('createUploadService', () => {
       expect(overwriteResult.size).toBe(newContent.length);
       expect(overwriteResult.mimeType).toBe(newMimeType);
 
-      // Old s3_key is orphaned
+      // Old s3_key is managed history (DEF-11)
       const oldObjMap = await dbQuery('SELECT status FROM object_map WHERE s3_key = ?', [
         origResult.s3Key,
       ]);
       expect(oldObjMap.rows.length).toBeGreaterThan(0);
-      expect(oldObjMap.rows[0].status).toBe('orphaned');
+      expect(oldObjMap.rows[0].status).toBe('history');
 
       // New s3_key is active
       const newObjMap = await dbQuery('SELECT status FROM object_map WHERE s3_key = ?', [

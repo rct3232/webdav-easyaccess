@@ -422,11 +422,7 @@ const FileManagerView = ({
             backendHealth &&
             ((activeFileStorage && backendHealth[activeFileStorage] === 'fail') ||
               (activeMetadataBackend === 'postgresql' && backendHealth.postgresql === 'fail')) && (
-              <Alert
-                severity="warning"
-                sx={{ mx: 2, mb: 1 }}
-                data-testid="backend-health-banner"
-              >
+              <Alert severity="warning" sx={{ mx: 2, mb: 1 }} data-testid="backend-health-banner">
                 {user?.is_admin
                   ? t('admin.health.banner')
                   : activeMetadataBackend === 'postgresql' && backendHealth.postgresql === 'fail'
@@ -1033,6 +1029,7 @@ const FileManagerView = ({
           open={propertiesDialogOpen}
           onClose={closePropertiesDialog}
           file={propertiesFile}
+          activeFileStorage={activeFileStorage}
         />
       )}
     </Box>

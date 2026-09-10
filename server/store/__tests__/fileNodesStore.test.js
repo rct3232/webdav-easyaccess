@@ -459,8 +459,8 @@ describe('createFileNodesStore', () => {
       expect(activeObj.rows[0].s3_key).toBe('s3://bucket/pending-key');
     });
 
-    // V14: upsertObjectMap orphans previous active entry via UPDATE before INSERT
-    it('orphans the previous active entry on upsert', async () => {
+    // V14: upsertObjectMap demotes the previous active entry to 'history' via UPDATE before INSERT
+    it('demotes the previous active entry to history on upsert', async () => {
       const created = await store.createNode(null, `${testPrefix}orphan-file`, 'file');
 
       // First upsert creates an active row (version 1)
@@ -477,7 +477,7 @@ describe('createFileNodesStore', () => {
       ]);
       expect(row.rows[0].status).toBe('active');
 
-      // upsertObjectMap will orphan the active row, then INSERT version 1 (which conflicts)
+      // upsertObjectMap will demote the active row to history, then INSERT version 1 (which conflicts)
       // We capture that the UPDATE ran by checking the status transition
       try {
         await store.upsertObjectMap(created.id, 's3://bucket/new-key', 'pending');
@@ -485,12 +485,12 @@ describe('createFileNodesStore', () => {
         /* expected: unique constraint on (file_node_id, version_number) */
       }
 
-      // The orphaning UPDATE runs before the INSERT, so old row should be orphaned
+      // The demotion UPDATE runs before the INSERT, so old row should be history
       row = await dbQuery(`SELECT * FROM object_map WHERE file_node_id = ? AND s3_key = ?`, [
         created.id,
         's3://bucket/old-key',
       ]);
-      expect(row.rows[0].status).toBe('orphaned');
+      expect(row.rows[0].status).toBe('history');
     });
 
     // V15: activateObject pending -> active

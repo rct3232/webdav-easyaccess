@@ -106,7 +106,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     onLoadErrorRef,
     trashTrail,
     openTrashFolder,
-    homeNodeId,
   } = useFileManager(user, {
     onLoadComplete: handleLoadCompleteCallback,
     onLoadError: null, // 나중에 설정
@@ -520,6 +519,24 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     [handleProductPathClick, navigateToExplorerNode, setCurrentNodeId]
   );
 
+  // Trash-view breadcrumb handler: trashed folder chips navigate INSIDE the
+  // trash view via openTrashFolder (trashed nodes are invisible to the normal
+  // resolve path — DEF-16 P4 gating), the Trash root chip re-enters the
+  // topmost listing. Kept OUT of handleFolderTreeNodeClick on purpose: the
+  // generic handler also serves the tree, where Home (non-admin homeNodeId)
+  // and shared-folder items are numbers too — a trash-view branch there
+  // hijacked every numeric tree click into the trash view (P9 regression).
+  const handleTrashBreadcrumbClick = useCallback(
+    (target) => {
+      if (typeof target === 'number') {
+        openTrashFolder(target);
+        return;
+      }
+      setCurrentPath(target);
+    },
+    [openTrashFolder, setCurrentPath]
+  );
+
   // NodeId-first navigation entry used by the folder tree and breadcrumb.
   // Accepts a nodeId (number), a virtual-root route ('/__shared__' | '/__recent__'),
   // or null (home). Share mode navigates exclusively by nodeId; legacy path
@@ -557,28 +574,16 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         setCurrentNodeId(null);
         return;
       }
-      if (isTrashView && typeof target === 'number' && target !== homeNodeId) {
-        // Trash breadcrumb chip: trashed folders navigate inside the trash
-        // view (never via resolve-path / canNavigateToNode — trashed nodes
-        // are not-found there). The tree's Home item for a non-admin user
-        // also arrives as a number (rootNodeId) and must NOT be hijacked —
-        // target !== homeNodeId routes it to the main list below.
-        openTrashFolder(target);
-        return;
-      }
       navigateToExplorerNode(target);
     },
     [
       isShareLinkMode,
       isMobile,
-      isTrashView,
       setCurrentPath,
       setDrawerOpen,
       setCurrentNodeId,
-      openTrashFolder,
       navigateToExplorerPath,
       navigateToExplorerNode,
-      homeNodeId,
     ]
   );
 
@@ -1057,6 +1062,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       handleInternalFileDrop,
       handleLeaveSharePathClick,
       handleFolderTreeNodeClick,
+      handleTrashBreadcrumbClick,
       ancestors,
       handleScrollAreaClick,
       handleFileDownloadOp,
@@ -1079,6 +1085,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       handleInternalFileDrop,
       handleLeaveSharePathClick,
       handleFolderTreeNodeClick,
+      handleTrashBreadcrumbClick,
       ancestors,
       handleScrollAreaClick,
       handleFileDownloadOp,

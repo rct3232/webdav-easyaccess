@@ -198,6 +198,7 @@ const FileManagerView = ({
     handleInternalFileDrop,
     handleLeaveSharePathClick,
     handleFolderTreeNodeClick,
+    handleTrashBreadcrumbClick,
     ancestors,
     handleScrollAreaClick,
     handleFileDownloadOp,
@@ -351,7 +352,7 @@ const FileManagerView = ({
           <Breadcrumb
             currentPath={currentPath}
             ancestors={isTrashView ? (trashTrail ?? []) : ancestors}
-            onNodeClick={handleFolderTreeNodeClick}
+            onNodeClick={isTrashView ? handleTrashBreadcrumbClick : handleFolderTreeNodeClick}
             {...(isShareLinkMode
               ? { shareRootPath, shareRootName, showFolderTreeToggle: true }
               : { user })}

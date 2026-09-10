@@ -373,3 +373,29 @@ IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode repor
   rebuild issue was a source bug caught by the new test and fixed per spec.
 - **Action taken**: rewrote the navigation assertions to `mockNavigate` payloads; fixed
   `fillTrashNameFromChildren` to push the missing trail segment. Suite green (20 tests).
+
+### 2026-09-10 — P5 A13 fixture used sqlite-only datetime('now', '-40 days') on the PG leg (Case B)
+
+- **Summary**: `FileNodeRepository.conformance.test.js` "A13: getTopmostTrashedNodes" failed on the
+  real-PG leg with `function datetime(unknown, unknown) does not exist` — the same fixture bug
+  class as the earlier A9 incident.
+- **Diagnosis**: the expired-trash fixture aged `deleted_at` with SQLite's `datetime('now', ...)`;
+  the backend-agnostic conformance rule requires dual-leg SQL. `CURRENT_TIMESTAMP - INTERVAL
+  '40 days'` is standard on both engines (the converter passthrough keeps it verbatim on sqlite).
+- **Classification**: **Case B (Test Error)**.
+- **Action taken**: fixture switched to `CURRENT_TIMESTAMP - INTERVAL '40 days'`; no assertion
+  changes. PG leg 229 pass / 1 skip.
+
+### 2026-09-10 — A13 aging fixture: dual-dialect timestamp arithmetic (Case B)
+
+- **Summary**: the A13 expired-trash fixture was first written with sqlite-only
+  `datetime('now','-40 days')` (PG leg failed), then naively converted to
+  `CURRENT_TIMESTAMP - INTERVAL '40 days'` (PG-leg green, sqlite leg failed with
+  `SQLITE_ERROR: near "'40 days'"` — the transpiler converts DDL, not ad-hoc test SQL).
+- **Diagnosis**: no single SQL expression is valid on both engines here (PG lacks
+  `datetime(...)`, sqlite lacks `INTERVAL ...` in that position); the conformance suites already
+  solve this class by computing the timestamp in JS and binding it as a parameter (the
+  `insertObjectMapRow` created_at pattern).
+- **Classification**: **Case B (Test Error)** — fixture portability.
+- **Action taken**: JS-computed ISO timestamp bound as a param
+  (`SET deleted_at = ?`). Both legs green (sqlite 34/34, PG 229 pass / 1 skip).

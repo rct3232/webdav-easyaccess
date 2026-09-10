@@ -896,7 +896,8 @@
       "versionBlobMissing": "The blob for this version is no longer available.",
       "versionRestoreUnavailable": "Version restore is not available.",
       "fileNameReserved": "This file name is reserved by the system",
-      "trashTargetExists": "The trash destination already exists. Please contact an administrator."
+      "trashTargetExists": "The trash destination already exists. Please contact an administrator.",
+      "notTrashed": "Item is not in the trash."
     },
     "permissions": {
       "permissionHigherThanParent": "File permission must be higher than parent path permission.",
@@ -1045,7 +1046,10 @@
       "nameUnchanged": "File name unchanged",
       "renameSuccess": "File renamed successfully",
       "cancelRequested": "Cancel requested",
-      "versionRestored": "Version restored successfully"
+      "versionRestored": "Version restored successfully",
+      "trashRestored": "Item restored from the trash.",
+      "trashPurged": "Item permanently deleted.",
+      "trashEmptied": "Trash emptied."
     },
     "permissions": {
       "permissionGranted": "Permission granted successfully",

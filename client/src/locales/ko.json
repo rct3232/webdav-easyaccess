@@ -896,7 +896,8 @@
       "versionBlobMissing": "이 버전의 저장 데이터를 더 이상 사용할 수 없습니다.",
       "versionRestoreUnavailable": "버전 복원을 사용할 수 없습니다.",
       "fileNameReserved": "시스템에서 예약된 파일 이름입니다",
-      "trashTargetExists": "휴지통 대상이 이미 존재합니다. 관리자에게 문의하세요."
+      "trashTargetExists": "휴지통 대상이 이미 존재합니다. 관리자에게 문의하세요.",
+      "notTrashed": "휴지통에 있는 항목이 아닙니다."
     },
     "permissions": {
       "permissionHigherThanParent": "파일 권한은 상위 경로 권한보다 높아야 합니다.",
@@ -1045,7 +1046,10 @@
       "nameUnchanged": "파일 이름이 변경되지 않았습니다.",
       "renameSuccess": "파일 이름이 성공적으로 변경되었습니다.",
       "cancelRequested": "취소 요청됨",
-      "versionRestored": "버전이 성공적으로 복원되었습니다"
+      "versionRestored": "버전이 성공적으로 복원되었습니다",
+      "trashRestored": "휴지통에서 복원되었습니다.",
+      "trashPurged": "항목이 영구 삭제되었습니다.",
+      "trashEmptied": "휴지통을 비웠습니다."
     },
     "permissions": {
       "permissionGranted": "권한이 부여되었습니다.",

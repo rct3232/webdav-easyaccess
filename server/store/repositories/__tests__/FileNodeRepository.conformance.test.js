@@ -317,9 +317,9 @@ describe('FileNodeRepository conformance', () => {
     expect(freshCutoff.map((n) => n.id)).not.toContain(childOfLive.id);
 
     // ...and expired rows pass it (Tier 3 enumeration).
-    await dbRun(`UPDATE file_nodes SET deleted_at = datetime('now', '-40 days') WHERE id = ?`, [
-      rootA.id,
-    ]);
+    // JS-computed ISO timestamp — dual-dialect portable aging (bound param).
+    const agedIso = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString();
+    await dbRun('UPDATE file_nodes SET deleted_at = ? WHERE id = ?', [agedIso, rootA.id]);
     const expired = await repo.getTopmostTrashedNodes(30);
     expect(expired.map((n) => n.id)).toContain(rootA.id);
     expect(expired.map((n) => n.id)).not.toContain(childOfLive.id);

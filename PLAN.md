@@ -233,7 +233,10 @@ Key gap: **no subsystem scans or repairs `pending_upload`**; s3-source migration
   to its original location; **trashed ancestors are auto-restored** (Windows-style path
   recreation), trashed SIBLINGS stay in trash; name collision at the target → auto-suffix
   `name (2).ext`; trash listing shows original path + deleted_at; storage is freed only on
-  permanent-delete/empty/retention-expiry. Purge (per node or empty-trash, admin-only) = physical
+  permanent-delete/empty/retention-expiry. Purge (per node) = the same delete perm a hard-delete
+  requires today — `checkFilePermission(node,'write')`, admin bypasses (owners and write-grantees
+  can purge their own items; ACL review 2026-09-10); **Empty trash (bulk, all users) = admin-only**
+  = physical
   delete in BOTH modes (WebDAV bottom-up at trash paths, S3 `deleteBlob` for every object_map row
   of the subtree — active + history + orphaned) + `deleteNodeTree` + ancestry cleanup; permission
   and share rows vanish via the existing FK cascade AT PURGE TIME (documented behavior change vs
@@ -401,3 +404,22 @@ Key gap: **no subsystem scans or repairs `pending_upload`**; s3-source migration
 - [ ] Item 5 (IN FLIGHT): **Wave 2 implementation** — S7 (version history) on
   `feature/version-history` ∥ P2+P4 (soft-delete + read-gating, same wave) on `feature/trash`.
   Docs-first each; merge gates per Workflow; e2e cleanup companion change with P2.
+
+### UI/UX — locked 2026-09-10 (user decisions, wave 3)
+- **Versions UI** lives in the EXISTING FilePropertiesDialog as tabs `정보 | 버전` inserted
+  between the title bar and the gradient thumbnail header (no standalone dialog, no new menu
+  entry — reached via Properties). Version rows: number + created_at + HEAD size + "현재" badge +
+  expired marker; download/restore are ICON-ONLY buttons (Tooltip + aria-label, no text); the
+  close button is the existing fixed bottom action bar across tabs. WebDAV mode renders no
+  Versions tab. E2E via E2E-PROPS-001/002.
+- **Trash view**: `__trash__` virtual root mechanism unchanged; row subtitle (original path +
+  deleted date) DROPPED (space + in-trash navigation makes it redundant — trash listing is
+  hierarchical: root level = topmost trashed items, trashed folders are navigable via
+  GET /api/files/trash?parentId=). Sidebar entry is NOT a FolderTree section — a **bottom-pinned
+  row** under the tree lines: `{휴지통 아이콘} 휴지통` → /files/__trash__.
+- **Delete feedback**: main-view confirm copy UNCHANGED; on trash completion the pinned trash
+  icon animates (lid open→close) and flashes default→error→default (two-part SVG + CSS keyframes).
+- **Actions**: per-item Restore/Permanent-delete icon buttons also in the properties dialog action
+  bar for trashed items (next to fixed close, error accent for purge); Empty-trash is an
+  ADMIN-only ICON button in the controls (sort/view-mode) row; restore/purge gates per the ACL
+  review (purge = delete perm, empty = admin). Main-view "Delete" label unchanged.

@@ -54,7 +54,12 @@ async function _processBulkJob(jobId) {
       status: 'completed',
       progress: result[countKey] || 0,
       total: job.total,
-      results: result.errors || [],
+      // Per-node results: succeeded entries first (client contract for the
+      // bulk completion message + trash-icon animation), then failed/skipped.
+      results: [
+        ...(result.succeeded || []).map((nodeId) => ({ nodeId, status: 'succeeded' })),
+        ...(result.errors || []),
+      ],
     });
   } catch (error) {
     opStore.updateJob(jobId, { status: 'failed', errorMessage: error.message });
@@ -99,10 +104,11 @@ function createBatchOperationService({ fileNodeService, fileService, aclService 
    */
   async function batchDelete(nodeIds, userId, user) {
     if (!nodeIds || nodeIds.length === 0) {
-      return { deletedCount: 0, errors: [] };
+      return { deletedCount: 0, succeeded: [], errors: [] };
     }
 
     const errors = [];
+    const succeeded = [];
     let deletedCount = 0;
 
     for (const nodeId of nodeIds) {
@@ -117,12 +123,16 @@ function createBatchOperationService({ fileNodeService, fileService, aclService 
 
         await fileService.deleteNode(nodeId, userId, user);
         deletedCount++;
+        // DEF-16 P9: report per-node succeeded results — the client's bulk
+        // completion contract (`useBulkOperations` results filter) drives the
+        // pinned trash-icon animation and tree refresh off these entries.
+        succeeded.push(nodeId);
       } catch (err) {
         errors.push({ nodeId, status: 'failed', reason: err.message || 'unknown_error' });
       }
     }
 
-    return { deletedCount, errors };
+    return { deletedCount, succeeded, errors };
   }
 
   /**

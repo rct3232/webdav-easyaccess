@@ -239,7 +239,17 @@ describe('FilePropertiesDialog', () => {
         expect(screen.getByText('v1')).toBeInTheDocument();
       });
       expect(screen.getByText('v2')).toBeInTheDocument();
-      expect(screen.getByText('Current')).toBeInTheDocument();
+      // The current version shows a check icon (Chip removed per UI review):
+      // the swap slot renders the icon for the current row, a restore button
+      // for the history row.
+      const currentSlots = screen.getAllByTestId('props-version-current');
+      expect(currentSlots).toHaveLength(2);
+      expect(screen.queryByLabelText('Current')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Restore this version')).toBeInTheDocument();
+      // Newest-first: the current row (v2) shows the icon, the history row
+      // (v1, second slot) shows the restore button.
+      expect(currentSlots[0].querySelector('button')).toBeNull();
+      expect(currentSlots[1].querySelector('button')).not.toBeNull();
     });
 
     it('download icon button triggers downloadFileVersion', async () => {

@@ -102,8 +102,11 @@ test('E2E-PROPS-001: Properties dialog lists prior versions newest-first in the 
   await expect(rows.nth(0)).toContainText('3');
   await expect(rows.nth(2)).toContainText('1');
 
-  // Exactly one current-version badge.
-  await expect(dialog.getByTestId('props-version-current')).toHaveCount(1);
+  // The current badge is now an icon-slot rendered per row — assert exactly
+  // one slot holds the check icon (aria-label seam).
+  await expect(
+    dialog.getByTestId('props-version-current').locator('[aria-label="Current"]')
+  ).toHaveCount(1);
 });
 
 test('E2E-PROPS-002: Restoring an older version keeps content byte-identical', async ({

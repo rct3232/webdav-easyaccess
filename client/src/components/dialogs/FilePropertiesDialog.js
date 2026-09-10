@@ -14,12 +14,12 @@ import {
   Tabs,
   Tab,
   IconButton,
-  Chip,
   Alert,
 } from '@mui/material';
 import {
   Download as DownloadIcon,
   Restore as RestoreIcon,
+  CheckCircle as CurrentIcon,
   DeleteForever as DeleteForeverIcon,
 } from '@mui/icons-material';
 import ConfirmDialog from './ConfirmDialog';
@@ -317,16 +317,7 @@ const FilePropertiesDialog = ({
                       ? formatFileSize(version.size)
                       : t('dialogs.versionsUnknownSize')}
                   </Typography>
-                  {version.isCurrent && (
-                    <Chip
-                      data-testid="props-version-current"
-                      label={t('dialogs.versionsCurrentBadge')}
-                      size="small"
-                      color="primary"
-                      sx={{ height: 20 }}
-                    />
-                  )}
-                  {!version.isCurrent && version.status === 'orphaned' && (
+                  {version.isCurrent && version.status === 'orphaned' && (
                     <Typography variant="caption" color="text.disabled">
                       {t('dialogs.versionsExpired')}
                     </Typography>
@@ -341,7 +332,20 @@ const FilePropertiesDialog = ({
                         <DownloadIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
-                    {!version.isCurrent && (
+                  </Box>
+                  <Box
+                    data-testid="props-version-current"
+                    sx={{ display: 'flex', width: 40, justifyContent: 'center' }}
+                  >
+                    {version.isCurrent ? (
+                      <Tooltip title={t('dialogs.versionsCurrentBadge')}>
+                        <CurrentIcon
+                          fontSize="small"
+                          color="primary"
+                          aria-label={t('dialogs.versionsCurrentBadge')}
+                        />
+                      </Tooltip>
+                    ) : (
                       <Tooltip title={t('dialogs.versionsRestoreTitle')}>
                         <IconButton
                           size="small"

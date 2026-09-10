@@ -135,6 +135,7 @@ Precedence invariant (D1): env wins whenever set; DB is read only when the env v
 | `GC_VERSION_TTL_DAYS`                         | T2   | no     | `1`                                                                        |
 | `GC_PENDING_STALE_DAYS`                       | T2   | no     | `3` (`0` = disabled)                                                       |
 | `GC_VERSION_MAX_PER_NODE`                     | T2   | no     | `10` (`0` = unbounded; note the inverted 0-semantics vs the `*_DAYS` keys) |
+| `TRASH_RETENTION_DAYS`                        | T2   | no     | `30` (`0` = retention off — GC Tier 3 skips trash purging)                 |
 | `REFRESH_TOKEN_EXPIRES_IN_DAYS`               | T1   | no     | `7`                                                                        |
 | `USER_CACHE_TTL_MS`                           | T2   | no     | `3000`                                                                     |
 | `PERMISSION_CACHE_TTL_MS`                     | T2   | no     | `5000`                                                                     |

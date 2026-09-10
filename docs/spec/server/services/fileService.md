@@ -223,7 +223,8 @@ Moves a node (and its subtree) to a new parent directory with closure table rebu
 Soft-deletes (trashes) a node and its entire subtree: every row of the subtree is marked
 `file_nodes.deleted_at` (DEF-16 P2). No DB row is removed and — in WebDAV mode — the subtree's
 remote content is moved once, as a whole, to the hidden trash path. Restore/purge are NOT part of
-this method (restore-in-place and permanent delete live in the trash channel; P3).
+this method — they live in the trash channel (`server/service/trashService.js` + the
+`/api/files/trash/*` routes, see §4.1).
 
 | Param  | Type   | Required | Description                                |
 | ------ | ------ | -------- | ------------------------------------------ |
@@ -440,12 +441,128 @@ version history outlives the trash period and dies with the node only at permane
 perm-delete maintenance route; the WebDAV trash path is one remote MOVE to `/.wea-trash/<nodeId>`,
 S3 mode performs no physical I/O).
 
-**Trash WebDAV semantics (DEF-16 P2):** the remote content of a trashed subtree lives under the
+**Trash WebDAV semantics (DEF-16 P2/P3):** the remote content of a trashed subtree lives under the
 reserved hidden namespace `/.wea-trash/<nodeId>` (subtree ROOT's id). The historical bottom-up
 per-node remote delete helper moved out of this service into `server/service/webdavRemoteOps.js`
-(`deleteRemoteSubtreeBestEffort`) — it remains in use by the fail-safe `retry-delete` repair and
-the admin permanent-delete route (both operate on live display paths); the trash purge (P3) will
-operate on the trash paths via the same module.
+(`deleteRemoteSubtreeBestEffort`) — it remains in use by the fail-safe `retry-delete` repair and the
+admin permanent-delete route (both operate on live display paths); the trash channel's purge and
+GC Tier 3 operate on the trash paths via the shared purge core in `server/service/trashService.js`.
+
+---
+
+## 4.1 Trash channel (DEF-16 P3) — `server/service/trashService.js`
+
+The OS-recycle-bin semantics on top of the P2 soft-delete model. The service is a pure
+composition-root service (`createTrashService({ fileNodesStore, fileNodeService, blobStore,
+fileStorageMode, aclService })`); the routes (`domains/files/routes/trash.js`) call it and stay thin.
+Permission rows, share links, closure rows and object_map rows survive the trash; they are removed
+only by the purge core's hard delete (FK cascade at purge time).
+
+### Name collision helper — `resolveRestoreName(parentId, name)`
+
+Small in-service helper (NOT an extension of `conflictResolver`): checks **live siblings only**
+(`fileNodesStore.getChildren` is a live-row read) and returns the first free name of the form
+`name`, `name (2).ext`, `name (3).ext`, … The extension is everything from the LAST dot of `name`
+(`path.extname` semantics — a leading-dot name like `.foo` has no extension and suffixes as
+`.foo (2)`). Windows recycle-bin behavior: the restored item is RENAMED to the suffixed name; the
+colliding live sibling is untouched.
+
+### `restoreNode(userId, nodeId, user)` — restore from trash
+
+OS-recycle-bin restore of one trashed item (target = any trashed row, including a nested one).
+
+Gates (in order):
+
+1. Node exists via `fileNodesStore.getNodeIncludingTrashed` → 404 `files.notFound` otherwise.
+2. Node is trashed (`deleted_at` set) → 409 `files.notTrashed` otherwise.
+3. Write permission on the target node (`aclService.checkFilePermission(userId, nodeId,
+PERMISSIONS.WRITE)`, admin bypasses) → 403 `files.permissionDenied`.
+4. Write permission on the first LIVE ancestor folder when it exists
+   (`aclService.checkFolderPermission(userId, liveParentId, PERMISSIONS.WRITE)`) — move-dest
+   precedent (the target is placed back under it) → 403. When the trashed chain reaches root level
+   there is no live parent and this gate is skipped.
+
+Semantics:
+
+1. **Trashed-ancestor chain:** walk up from the target via `getNodeIncludingTrashed` while the
+   parent row is trashed; the chain runs target-first up to (and including) the TOPMOST trashed
+   ancestor whose parent is live-or-null. Siblings of each restored ancestor stay trashed.
+2. **Restore order:** topmost trashed ancestor first (its parent is live), then each next-lower
+   chain node, then the target — Windows-style path recreation.
+3. **Name resolution at every restore boundary:** each chain node's name is resolved against the
+   LIVE siblings of its (live-or-just-restored) parent via `resolveRestoreName`; names already
+   restored in the same operation count as live for subsequent resolutions (two trashed siblings
+   with the same name restore as `name` and `name (2).ext`).
+4. **WebDAV mode — MOVE back:** per restored row, `blobStore.headBlob('/.wea-trash/<rowId>')`
+   probes the row's own trash path. The topmost chain node's trash path holds the whole MOVE'd
+   subtree (one `moveBlob` restores every covered row); rows individually trashed before their
+   ancestor's trash carry their own `/.wea-trash/<id>` entries and are MOVE'd back individually to
+   their resolved display paths. Remote I/O happens BEFORE the DB transaction; a MOVE failure
+   aborts the restore with the rows still trashed (earlier successful MOVEs leave content at the
+   still-trashed rows' display paths — the purge core's trash-path deletes handle that state).
+   S3 mode: zero physical I/O (stable UUID keys).
+5. **One DB transaction** for the whole restore: apply the collected renames, then
+   `fileNodesStore.untrashSubtree(chain ∪ target subtree)` — clears `deleted_at` on the chain nodes
+   AND every descendant of the target (restoring a folder brings its whole subtree back). One TX
+   keeps the restore rollback-safe (partial remote moves are the only residue and are handled by
+   purge; the DB state is all-or-nothing).
+6. **Thumbnail cache:** evicted defensively for the target (`thumbnailService.invalidate`,
+   best-effort — trash had no cache entry once the read gates hit, the eviction is cheap
+   insurance for pre-gating rows).
+
+**Returns:** `{ messageCode: files.trashRestored, nodeId, restoredNodes, finalPath }` —
+`restoredNodes` = every row whose `deleted_at` was cleared (chain + target subtree, chain first);
+`finalPath` = the target's post-restore display path (re-resolved from the DB, authoritative).
+
+### `purgeTrashedNode(userId, nodeId, user)` — permanent delete of ONE trashed item
+
+Gates: node exists (404 `files.notFound`), node is trashed (409 `files.notTrashed`), write
+permission on the node (`checkFilePermission(userId, nodeId, PERMISSIONS.WRITE)` — the same
+delete perm a hard-delete requires today, admin bypasses; ACL review 2026-09-10) → 403. Works on
+trashed descendants whose ancestors are still trashed.
+
+Physical removal (shared purge core, WebDAV mode):
+
+1. `blobStore.deleteBlob('/.wea-trash/<nodeId>')` — the row's own trash path (best-effort;
+   WebDAV collection DELETE is recursive, so the whole moved subtree goes at once).
+2. When the row sits INSIDE a still-trashed ancestor R, additionally
+   `blobStore.deleteBlob('/.wea-trash/<R>/<relative display path>')` — its content was covered by
+   R's trash MOVE and lives under R's trash collection. Best-effort (a 404 on either candidate is
+   ignored).
+3. Known edge (DEF-18 class): content of a row whose own trash-path MOVE-back partially failed
+   during a restore can remain at the display path — not purged here (a display-path delete could
+   hit a live sibling occupying that path); such residues await the DEF-18 remote reconciliation.
+
+S3 mode: `blobStore.deleteBlob(s3Key)` for EVERY `object_map` row of the subtree (active + history
+
+- orphaned — version rows die WITH the trash; the FK cascade would remove the rows anyway, the
+  blob deletes free the storage immediately), then the DB removal.
+
+DB removal: `fileNodeService.deleteNode(nodeId)` — one TX: ancestor-closure cleanup +
+`deleteNodeTree`; the FK cascade removes the subtree's object_map, filecache, permission,
+share-link and recent-file rows **at purge time** (documented behavior change vs the trash state,
+where those rows survive).
+
+**Returns:** `{ messageCode: files.trashPurged, nodeId, purgedNodes, deletedBlobs }`.
+
+### `emptyTrash()` — admin-only bulk purge
+
+Purges EVERY topmost trashed node (`fileNodesStore.getTopmostTrashedNodes()` — rows whose parent
+is live-or-null; children die with each root's subtree) through the same purge core, best-effort
+per node (a failing node's error is collected and the loop continues). The route enforces
+admin-only (403 for non-admin). FK-cascade revocation applies per node as above.
+
+**Returns:** `{ purgedNodes, purgedBlobs, errors: [] }`.
+
+### Shared purge core
+
+`purgeNode(nodeId)` is the physical core (no permission gates — callers gate): trashed row →
+trash-path remote cleanup; live row → display-path bottom-up remote cleanup
+(`webdavRemoteOps.deleteRemoteSubtreeBestEffort`); S3 mode → eager per-row blob deletes for the
+subtree; then `fileNodeService.deleteNode` + FK cascade. Consumers: the trash purge route, the
+empty-trash route, GC Tier 3 and the admin permanent-delete maintenance route
+(`POST /api/admin/maintenance/perm-delete` — E2E cleanup channel; in S3 mode its blob deletion is
+now eager instead of GC-deferred).
 
 ---
 

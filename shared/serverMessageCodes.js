@@ -96,6 +96,7 @@ const SERVER_ERROR_CODES = {
     invalidName: P('serverErrors.files', 'invalidName'),
     fileNameReserved: P('serverErrors.files', 'fileNameReserved'),
     trashTargetExists: P('serverErrors.files', 'trashTargetExists'),
+    notTrashed: P('serverErrors.files', 'notTrashed'),
     notFound: P('serverErrors.files', 'notFound'),
     permissionDenied: P('serverErrors.files', 'permissionDenied'),
     previewNotVideo: P('serverErrors.files', 'previewNotVideo'),
@@ -259,6 +260,9 @@ const SERVER_MESSAGE_CODES = {
     uploadSuccess: P('serverMessages.files', 'uploadSuccess'),
     cancelRequested: P('serverMessages.files', 'cancelRequested'),
     versionRestored: P('serverMessages.files', 'versionRestored'),
+    trashRestored: P('serverMessages.files', 'trashRestored'),
+    trashPurged: P('serverMessages.files', 'trashPurged'),
+    trashEmptied: P('serverMessages.files', 'trashEmptied'),
   },
   permissions: {
     permissionGranted: P('serverMessages.permissions', 'permissionGranted'),

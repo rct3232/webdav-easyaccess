@@ -738,7 +738,12 @@ const PG_BASE = {
 
 // The real PG roundtrip runs only under the WEA_TEST_PG_* jest leg (test:ci:pg);
 // under the default sqlite test:ci run the tests are skipped.
-const ROUNDTRIP_PG_KEYS = ['WEA_TEST_PG_HOST', 'WEA_TEST_PG_DATABASE', 'WEA_TEST_PG_USER', 'WEA_TEST_PG_PASSWORD'];
+const ROUNDTRIP_PG_KEYS = [
+  'WEA_TEST_PG_HOST',
+  'WEA_TEST_PG_DATABASE',
+  'WEA_TEST_PG_USER',
+  'WEA_TEST_PG_PASSWORD',
+];
 const roundtripIt = ROUNDTRIP_PG_KEYS.every((key) => !!process.env[key]) ? it : it.skip;
 
 describe('roundtrip sqlite -> postgresql (real PG)', () => {
@@ -841,5 +846,123 @@ describe('roundtrip sqlite -> postgresql (real PG)', () => {
       );
       expect(tables.rows).toEqual([]);
     });
+  });
+});
+
+describe('deleted_at survives metadata migration verbatim (DEF-16 P8 — parallel fixture)', () => {
+  const TRASH_TS = '2026-03-04T05:06:07.890Z';
+
+  // The DEF-16 trash column is carried by the whole-row copy in BOTH
+  // directions; this describe is a PARALLEL fixture (the fixed totalRows=14
+  // fixture above is untouched) seeding one extra trashed file_nodes row.
+
+  function trashFakeSource() {
+    const base = sourceDataForFake();
+    base.file_nodes.push({
+      id: 3,
+      parent_id: 1,
+      name: 'trashed.txt',
+      type: 'file',
+      sync_status: 'active',
+      created_at: ts(),
+      updated_at: ts(),
+      deleted_at: TRASH_TS,
+    });
+    base.node_ancestors.push(
+      { ancestor_id: 1, descendant_id: 3, depth: 1 },
+      { ancestor_id: 3, descendant_id: 3, depth: 0 }
+    );
+    return base;
+  }
+
+  async function seedTrashedSqliteSource() {
+    const sourcePath = makeSqlitePath('src-trashed');
+    const src = await createSchemaDb(sourcePath);
+    await seedSourceData(src);
+    await run(
+      src,
+      `INSERT INTO file_nodes (id, parent_id, name, type, sync_status, created_at, updated_at, deleted_at)
+       VALUES (?, ?, 'trashed.txt', 'file', 'active', ?, ?, ?)`,
+      [3, 1, ts(), ts(), TRASH_TS]
+    );
+    await run(
+      src,
+      `INSERT INTO node_ancestors (ancestor_id, descendant_id, depth) VALUES (3, 3, 0)`
+    );
+    await run(
+      src,
+      `INSERT INTO node_ancestors (ancestor_id, descendant_id, depth) VALUES (1, 3, 1)`
+    );
+    await closeDb(src);
+    return sourcePath;
+  }
+
+  /** Extract the quoted column list of a captured multi-row INSERT. */
+  function columnsOfInsert(sql) {
+    const match = sql.match(/INSERT INTO "[^"]+" \(([^)]+)\)/);
+    return match[1].split(',').map((c) => c.replace(/"/g, '').trim());
+  }
+
+  it('postgresqlToSqlite: the trashed row lands in the sqlite target with deleted_at verbatim', async () => {
+    const targetPath = makeSqlitePath('pg2sq-trash');
+    const fake = new FakePg({
+      schemaExists: false,
+      tables: trashFakeSource(),
+      // Real PG column order for file_nodes (deleted_at included) — the fake
+      // derives columns from the first row, which is a LIVE row.
+      columns: {
+        file_nodes: [
+          'id',
+          'parent_id',
+          'name',
+          'type',
+          'sync_status',
+          'created_at',
+          'updated_at',
+          'deleted_at',
+        ],
+      },
+    });
+    const service = createMetadataMigrationService({ pgConnectionProvider: () => fake });
+
+    const result = await service.runMigration({
+      direction: 'postgresqlToSqlite',
+      source: { pg: { host: 'h', port: 5432, database: 'd', user: 'u', password: 'p' } },
+      target: { backend: 'sqlite', sqlitePath: targetPath },
+    });
+
+    expect(result.status).toBe('completed');
+    const db = await openDb(targetPath, 'readonly');
+    const nodes = await all(db, 'SELECT id, name, deleted_at FROM file_nodes ORDER BY id');
+    await closeDb(db);
+    expect(nodes.map((n) => n.deleted_at)).toEqual([null, null, TRASH_TS]);
+  });
+
+  it('sqliteToPostgresql: the trashed row reaches the PG target with deleted_at verbatim', async () => {
+    const sourcePath = await seedTrashedSqliteSource();
+    const fake = new FakePg({ schemaExists: true });
+    const service = createMetadataMigrationService({ pgConnectionProvider: () => fake });
+
+    const result = await service.runMigration({
+      direction: 'sqliteToPostgresql',
+      source: { sqlitePath: sourcePath },
+      target: {
+        backend: 'postgresql',
+        pg: { host: 'h', port: 5432, database: 'd', user: 'u', password: 'p' },
+      },
+    });
+    expect(result.status).toBe('completed');
+
+    const insert = fake.calls.find((c) => /^INSERT INTO "file_nodes"/.test(c.sql.trim()));
+    expect(insert).toBeDefined();
+    const columns = columnsOfInsert(insert.sql);
+    const deletedAtIndex = columns.indexOf('deleted_at');
+    expect(deletedAtIndex).toBeGreaterThanOrEqual(0);
+    // 3 file_nodes rows in the batch; the trashed one is row id=3.
+    const deletedAtValues = [];
+    for (let row = 0; row < 3; row += 1) {
+      deletedAtValues.push(insert.params[row * columns.length + deletedAtIndex]);
+    }
+    expect(deletedAtValues).toEqual([null, null, TRASH_TS]);
   });
 });

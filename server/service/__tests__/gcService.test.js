@@ -3,6 +3,9 @@
 const { createTestDatabase, dbQuery, dbRun } = require('../../test-utils');
 const { createFileNodesStore } = require('../../store/fileNodesStore');
 const { createGcService } = require('../gcService');
+const { createFileNodeService } = require('../fileNodeService');
+const { createTrashService } = require('../trashService');
+const { buildTrashPath } = require('../webdavRemoteOps');
 const { getSharedResolver } = require('../../infrastructure/configResolver');
 
 function createFakeBlobStore({ listOrphaned = [] } = {}) {
@@ -853,6 +856,196 @@ describe('createGcService', () => {
         await dbRun('DELETE FROM settings WHERE key = ?', ['GC_PENDING_STALE_DAYS']);
         resolver.invalidateCache('GC_PENDING_STALE_DAYS');
       }
+    });
+  });
+
+  /* ------------------------------------------------------------------ */
+  /*  Tier 3 — trash retention purge (DEF-16 P5)                        */
+  /* ------------------------------------------------------------------ */
+
+  describe('Tier 3 — trash retention purge (DEF-16 P5)', () => {
+    let fileNodeService;
+
+    beforeAll(() => {
+      fileNodeService = createFileNodeService({ fileNodesStore });
+    });
+
+    /**
+     * Seeds a trashed root + one child (closure rows included) with optional
+     * object_map rows on the child, backdating deleted_at by `daysAgo` days.
+     */
+    async function seedTrashedRoot({ name, daysAgo = 0, objectRows = [] }) {
+      const root = await fileNodesStore.createNode(
+        null,
+        `t3-root-${name}-${Date.now()}`,
+        'directory'
+      );
+      const child = await fileNodesStore.createNode(
+        root.id,
+        `t3-child-${name}-${Date.now()}`,
+        'file'
+      );
+      await dbRun(
+        `INSERT INTO node_ancestors (ancestor_id, descendant_id, depth) VALUES
+         (?, ?, 0), (?, ?, 1), (?, ?, 0)`,
+        [root.id, root.id, root.id, child.id, child.id, child.id]
+      );
+      const keys = [];
+      let version = 1;
+      for (const status of objectRows) {
+        const key = `t3-key-${status}-${child.id}-${version}`;
+        await insertObjectMapRow({
+          fileNodeId: child.id,
+          s3Key: key,
+          status,
+          versionNumber: version,
+          daysAgo: 10,
+        });
+        keys.push(key);
+        version += 1;
+      }
+      await fileNodesStore.markSubtreeDeleted([root.id, child.id]);
+      if (daysAgo > 0) {
+        await dbRun(`UPDATE file_nodes SET deleted_at = datetime('now', ?) WHERE id IN (?, ?)`, [
+          `-${daysAgo} days`,
+          root.id,
+          child.id,
+        ]);
+      }
+      return { root, child, keys };
+    }
+
+    function makeTier3Gc({ fileStorageMode = 's3', gcConfig, trashService, gcBlobStore } = {}) {
+      const effectiveBlobStore = gcBlobStore || blobStore;
+      const effectiveTrashService =
+        trashService ||
+        createTrashService({
+          fileNodesStore,
+          fileNodeService,
+          blobStore: effectiveBlobStore,
+          fileStorageMode,
+        });
+      return createGcService({
+        blobStore: effectiveBlobStore,
+        fileNodesStore,
+        fileStorageMode,
+        gcConfig,
+        trashService: effectiveTrashService,
+      });
+    }
+
+    async function getNodeRowById(id) {
+      const res = await dbQuery('SELECT id, deleted_at FROM file_nodes WHERE id = ?', [id]);
+      return res.rows[0] || null;
+    }
+
+    it('purges an expired trashed root (subtree rows + active AND history blobs deleted)', async () => {
+      const expired = await seedTrashedRoot({
+        name: 'expired',
+        daysAgo: 40,
+        objectRows: ['active', 'history'],
+      });
+      const tier3Gc = makeTier3Gc({ gcConfig: { trashRetentionDays: 30 } });
+
+      const results = await tier3Gc.runGcCycle({ olderThanDays: 1 });
+
+      expect(results.tier3.skipped).toBe(false);
+      expect(results.tier3.errors).toEqual([]);
+      expect(results.tier3.purgedNodes).toBeGreaterThanOrEqual(1);
+      expect(results.tier3.deletedRows).toBeGreaterThanOrEqual(2);
+      expect(results.tier3.deletedBlobs).toBe(2); // active + history (version rows die WITH the trash)
+      expect(blobStore.getDeleted()).toEqual(expect.arrayContaining(expired.keys));
+      expect(await getNodeRowById(expired.root.id)).toBeNull();
+      expect(await getNodeRowById(expired.child.id)).toBeNull();
+    });
+
+    it('keeps a freshly trashed root (younger than TRASH_RETENTION_DAYS)', async () => {
+      const fresh = await seedTrashedRoot({ name: 'fresh', daysAgo: 0 });
+      const tier3Gc = makeTier3Gc({ gcConfig: { trashRetentionDays: 30 } });
+
+      const results = await tier3Gc.runGcCycle({ olderThanDays: 1 });
+
+      expect(results.tier3.skipped).toBe(false);
+      expect(results.tier3.purgedNodes).toBe(0);
+      expect(results.tier3.errors).toEqual([]);
+      expect(await getNodeRowById(fresh.root.id)).not.toBeNull();
+      expect(await getNodeRowById(fresh.child.id)).not.toBeNull();
+    });
+
+    it('skips Tier 3 entirely when TRASH_RETENTION_DAYS resolves to 0 (retention off)', async () => {
+      const expired = await seedTrashedRoot({ name: 'off', daysAgo: 40 });
+      const tier3Gc = makeTier3Gc({ gcConfig: { trashRetentionDays: 0 } });
+
+      const results = await tier3Gc.runGcCycle({ olderThanDays: 1 });
+
+      expect(results.tier3.skipped).toBe(true);
+      expect(results.tier3.purgedNodes).toBe(0);
+      expect(await getNodeRowById(expired.root.id)).not.toBeNull();
+    });
+
+    it('resolves TRASH_RETENTION_DAYS from the DB settings when no gcConfig is supplied', async () => {
+      const resolver = getSharedResolver();
+      await dbRun(
+        `INSERT INTO settings (key, value) VALUES (?, ?)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
+        ['TRASH_RETENTION_DAYS', '0']
+      );
+      resolver.invalidateCache('TRASH_RETENTION_DAYS');
+      try {
+        const expired = await seedTrashedRoot({ name: 'cfg-off', daysAgo: 40 });
+        const tier3Gc = makeTier3Gc();
+
+        const results = await tier3Gc.runGcCycle({ olderThanDays: 1 });
+
+        expect(results.tier3.skipped).toBe(true);
+        expect(await getNodeRowById(expired.root.id)).not.toBeNull();
+      } finally {
+        await dbRun('DELETE FROM settings WHERE key = ?', ['TRASH_RETENTION_DAYS']);
+        resolver.invalidateCache('TRASH_RETENTION_DAYS');
+      }
+    });
+
+    it('WebDAV mode: deletes the remote trash path /.wea-trash/<nodeId> for each expired root', async () => {
+      const webdavBlobStore = createFakeBlobStore();
+      const expired = await seedTrashedRoot({ name: 'webdav', daysAgo: 40 });
+      const tier3Gc = makeTier3Gc({
+        fileStorageMode: 'webdav',
+        gcConfig: { trashRetentionDays: 30 },
+        gcBlobStore: webdavBlobStore,
+      });
+
+      const results = await tier3Gc.runGcCycle({ olderThanDays: 1 });
+
+      expect(results.tier3.purgedNodes).toBeGreaterThanOrEqual(1);
+      expect(webdavBlobStore.getDeleted()).toContain(buildTrashPath(expired.root.id));
+      expect(await getNodeRowById(expired.root.id)).toBeNull();
+      expect(await getNodeRowById(expired.child.id)).toBeNull();
+    });
+
+    it('collects per-node purge failures without aborting the cycle', async () => {
+      const failingFirst = await seedTrashedRoot({ name: 'fail-a', daysAgo: 40 });
+      const succeedingSecond = await seedTrashedRoot({ name: 'ok-b', daysAgo: 40 });
+      const stubTrashService = {
+        purgeNode: jest
+          .fn()
+          .mockRejectedValueOnce(new Error('injected purge failure'))
+          .mockResolvedValueOnce({ purgedNodes: 2, deletedBlobs: 1, errors: [] }),
+      };
+      const tier3Gc = makeTier3Gc({
+        gcConfig: { trashRetentionDays: 30 },
+        trashService: stubTrashService,
+      });
+
+      const results = await tier3Gc.runGcCycle({ olderThanDays: 1 });
+
+      expect(stubTrashService.purgeNode).toHaveBeenCalledTimes(2);
+      expect(stubTrashService.purgeNode).toHaveBeenNthCalledWith(1, failingFirst.root.id);
+      expect(stubTrashService.purgeNode).toHaveBeenNthCalledWith(2, succeedingSecond.root.id);
+      expect(results.tier3.errors).toHaveLength(1);
+      expect(results.tier3.errors[0]).toContain(String(failingFirst.root.id));
+      expect(results.tier3.purgedNodes).toBe(1);
+      // The failed root's rows survive; the cycle was not aborted.
+      expect(await getNodeRowById(failingFirst.root.id)).not.toBeNull();
     });
   });
 });

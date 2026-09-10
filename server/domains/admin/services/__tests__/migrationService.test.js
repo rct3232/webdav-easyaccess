@@ -22,6 +22,7 @@ const { createFileNodeService } = require('@server/service/fileNodeService');
 const lockManager = require('@server/infrastructure/lockManager');
 const { sha256HexLower } = require('@server/utils/hash');
 const { createMigrationService } = require('../migrationService');
+const { buildTrashPath } = require('@server/service/webdavRemoteOps');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -797,5 +798,76 @@ describe('createMigrationService', () => {
     expect(progressCalls[0]).toMatchObject({ total: 2, done: 1, copied: 1, skipped: 0, failed: 0 });
     expect(progressCalls[0].current.nodeId).toBeDefined();
     expect(progressCalls[1]).toMatchObject({ total: 2, done: 2, copied: 2 });
+  });
+
+  describe('trash survival (DEF-16 P8)', () => {
+    async function deletedAtOf(nodeId) {
+      const res = await dbQuery('SELECT deleted_at FROM file_nodes WHERE id = ?', [nodeId]);
+      return res.rows[0] ? res.rows[0].deleted_at : null;
+    }
+
+    it('webdav→s3: a trashed node is enumerated, its blob is read FROM the trash path, and it stays trashed', async () => {
+      const { rootNodeId } = await createUserTree();
+      const src = createFakeBlobStore();
+      const file = await seedWebdavFile({
+        parentId: rootNodeId,
+        name: 'trashed.txt',
+        content: 'trashed content',
+        srcStore: src,
+      });
+      // Simulate the P2 trash MOVE: the blob is parked at /.wea-trash/<nodeId>
+      // and the row is marked deleted_at.
+      await fileNodesStore.markSubtreeDeleted([file.nodeId]);
+      await src.uploadBlob(buildTrashPath(file.nodeId), Buffer.from('trashed content'));
+      await src.deleteBlob(file.path);
+
+      const dst = createFakeBlobStore();
+      buildDestBlobStore = () => ({ blobStore: dst, summary: 's3 fake' });
+      const service = makeService(src);
+
+      const result = await service.run({ destConfig: { type: 's3' }, mode: 'apply' });
+
+      expect(result.copied).toBe(1);
+      expect(result.failed).toBe(0);
+      // The destination holds the trashed blob under a fresh UUID key; the
+      // source read came from the trash path (content hash matches).
+      const key = dst.listKeys()[0];
+      expect(dst.getBuffer(key).toString()).toBe('trashed content');
+      const row = await getActiveObjectRow(file.nodeId);
+      expect(row.s3_key).toBe(key);
+      // Still trashed: deleted_at survives the cutover untouched.
+      expect(await deletedAtOf(file.nodeId)).not.toBeNull();
+      const trashedRow = await fileNodesStore.getNodeIncludingTrashed(file.nodeId);
+      expect(trashedRow.deletedAt).not.toBeNull();
+    });
+
+    it('s3→webdav: a trashed node is copied TO the trash path (display path untouched) and stays trashed', async () => {
+      const { rootNodeId } = await createUserTree();
+      const src = createFakeBlobStore();
+      const f1 = await seedS3File({
+        parentId: rootNodeId,
+        name: 'trashed-s3.txt',
+        content: 's3 trashed',
+        srcStore: src,
+      });
+      await fileNodesStore.markSubtreeDeleted([f1.nodeId]);
+
+      const dst = createFakeBlobStore();
+      buildDestBlobStore = () => ({ blobStore: dst, summary: 'webdav fake' });
+      const service = makeService(src, 's3');
+
+      const result = await service.run({ destConfig: { type: 'webdav' }, mode: 'apply' });
+
+      expect(result.copied).toBe(1);
+      // The destination blob landed at the trash path, NOT the display path.
+      expect(dst.writtenPaths()).toContain(buildTrashPath(f1.nodeId));
+      expect(dst.writtenPaths()).not.toContain(f1.path);
+      expect(dst.getBuffer(buildTrashPath(f1.nodeId)).toString()).toBe('s3 trashed');
+      expect(dst.listKeys()).not.toContain(f1.path);
+      // Still trashed after the copy.
+      expect(await deletedAtOf(f1.nodeId)).not.toBeNull();
+      const flipped = await getActiveObjectRow(f1.nodeId);
+      expect(flipped.storage_backend).toBe('webdav');
+    });
   });
 });

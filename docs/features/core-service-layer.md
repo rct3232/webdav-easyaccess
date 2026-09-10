@@ -219,3 +219,14 @@ Restore semantics (A안 reactivate-in-place, zero I/O): `reactivateObjectMapRow`
 `status IN ('history','orphaned')`) + `demoteActiveToHistory(current.s3_key)` — the demoted
 current version becomes `history`, never `orphaned`. Version history does not survive s3↔webdav
 cutover (active row flips; history rows are dropped) — accepted (DEF-18 class).
+
+- **Trash channel** (DEF-16 P3): `trashService` (`server/service/trashService.js`) is a
+  composition-root service owning the OS-recycle-bin semantics on top of the P2 soft-delete:
+
+| Service        | Owns                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Does NOT own                                                                                                                                                                                                |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `trashService` | Trash restore (auto-restore of trashed ancestors + untrash of the target subtree in ONE TX; `resolveRestoreName` live-sibling collision suffixing `name (2).ext`; WebDAV moves each row's own `/.wea-trash/<id>` entry back before the TX), purge of one trashed item + empty trash (shared purge core `purgeNode`: WebDAV trash-path/bottom-up remote delete, S3 per-row blob deletes incl. version rows, then `fileNodeService.deleteNode` + FK cascade), name resolution helper | No permission gates of its own beyond the injected `aclService` checks the routes drive; no scheduler (GC Tier 3 calls `purgeNode` from `gcService`); no listing (the trash routes read the store directly) |
+
+Consumers: the `/api/files/trash/*` routes, GC Tier 3 (`TRASH_RETENTION_DAYS`), and the admin
+permanent-delete maintenance route (E2E cleanup channel — its S3-mode blob deletion becomes eager
+via the shared core instead of GC-deferred).

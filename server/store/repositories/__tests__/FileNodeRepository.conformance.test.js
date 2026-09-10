@@ -194,7 +194,7 @@ describe('FileNodeRepository conformance', () => {
     expect(kept).not.toContain(pendingOnLiveKey);
   });
 
-  it('M15: getKeptS3Keys keeps a TRASHED node\'s active key (no trash filter on the active arm)', async () => {
+  it("M15: getKeptS3Keys keeps a TRASHED node's active key (no trash filter on the active arm)", async () => {
     const trashedNode = await repo.createNode(null, uniqueName('fn-kept-trash'), 'file');
     const trashedKey = uniqueName('fn-kept-trash-key');
     await repo.insertObject(trashedNode.id, trashedKey, 'active');
@@ -283,6 +283,108 @@ describe('FileNodeRepository conformance', () => {
       expect(allIds).toContain(id);
     }
     expect(all.every((n) => n.deletedAt != null)).toBe(true);
+  });
+
+  it('A13: getTopmostTrashedNodes returns only topmost trashed rows (parent live-or-NULL) and honors the optional age cutoff', async () => {
+    const { dbRun } = require('@server/test-utils');
+    const rootA = await repo.createNode(null, uniqueName('fn-top-root'), 'directory');
+    const nested = await repo.createNode(rootA.id, uniqueName('fn-top-nested'), 'file');
+    const liveParent = await repo.createNode(null, uniqueName('fn-top-live-p'), 'directory');
+    const childOfLive = await repo.createNode(liveParent.id, uniqueName('fn-top-child'), 'file');
+    await repo.insertAncestorRows([
+      { ancestorId: rootA.id, descendantId: rootA.id, depth: 0 },
+      { ancestorId: rootA.id, descendantId: nested.id, depth: 1 },
+      { ancestorId: nested.id, descendantId: nested.id, depth: 0 },
+      { ancestorId: liveParent.id, descendantId: liveParent.id, depth: 0 },
+      { ancestorId: liveParent.id, descendantId: childOfLive.id, depth: 1 },
+      { ancestorId: childOfLive.id, descendantId: childOfLive.id, depth: 0 },
+    ]);
+
+    await repo.markSubtreeDeleted([rootA.id, nested.id, childOfLive.id]);
+
+    // Fresh trash: only topmost rows (parent live-or-NULL) are returned.
+    const topmost = await repo.getTopmostTrashedNodes();
+    const topmostIds = topmost.map((n) => n.id);
+    expect(topmostIds).toContain(rootA.id);
+    expect(topmostIds).toContain(childOfLive.id);
+    expect(topmostIds).not.toContain(nested.id); // nested under a trashed parent
+    expect(topmost.every((n) => n.deletedAt != null)).toBe(true);
+
+    // Fresh rows are excluded by the age cutoff (residue rows from earlier
+    // tests in this suite are also fresh — none pass a 30-day cutoff)...
+    const freshCutoff = await repo.getTopmostTrashedNodes(30);
+    expect(freshCutoff.map((n) => n.id)).not.toContain(rootA.id);
+    expect(freshCutoff.map((n) => n.id)).not.toContain(childOfLive.id);
+
+    // ...and expired rows pass it (Tier 3 enumeration).
+    await dbRun(`UPDATE file_nodes SET deleted_at = datetime('now', '-40 days') WHERE id = ?`, [
+      rootA.id,
+    ]);
+    const expired = await repo.getTopmostTrashedNodes(30);
+    expect(expired.map((n) => n.id)).toContain(rootA.id);
+    expect(expired.map((n) => n.id)).not.toContain(childOfLive.id);
+    expect(expired.map((n) => n.id)).not.toContain(nested.id);
+  });
+
+  it('A13: untrashSubtree clears deleted_at on every given row and re-enrolls the live reads', async () => {
+    const parent = await repo.createNode(null, uniqueName('fn-ut-p'), 'directory');
+    const child = await repo.createNode(parent.id, uniqueName('fn-ut-c'), 'file');
+    const stranger = await repo.createNode(null, uniqueName('fn-ut-s'), 'file');
+    await repo.insertAncestorRows([
+      { ancestorId: parent.id, descendantId: parent.id, depth: 0 },
+      { ancestorId: parent.id, descendantId: child.id, depth: 1 },
+      { ancestorId: child.id, descendantId: child.id, depth: 0 },
+      { ancestorId: stranger.id, descendantId: stranger.id, depth: 0 },
+    ]);
+    await repo.markSubtreeDeleted([parent.id, child.id]);
+    expect(await repo.getNode(parent.id)).toBeNull();
+
+    const untrashed = await repo.untrashSubtree([parent.id, child.id]);
+    expect(untrashed.changes).toBe(2);
+
+    expect((await repo.getNode(parent.id)).deletedAt).toBeNull();
+    expect((await repo.getNode(child.id)).deletedAt).toBeNull();
+    expect((await repo.getChildren(parent.id)).map((n) => n.id)).toContain(child.id);
+    expect(await repo.resolvePathSegment(parent.id, child.name)).toMatchObject({ id: child.id });
+
+    // An already-live row in the list is matched too (the UPDATE reports MATCHED
+    // rows); its deleted_at stays NULL — no state change.
+    const second = await repo.untrashSubtree([child.id, stranger.id]);
+    expect(second.changes).toBe(2);
+    expect((await repo.getNode(stranger.id)).deletedAt).toBeNull();
+  });
+
+  it('A13: getObjectMapBySubtree returns every object_map row of the subtree (any status)', async () => {
+    const root = await repo.createNode(null, uniqueName('fn-omst-root'), 'directory');
+    const child = await repo.createNode(root.id, uniqueName('fn-omst-c'), 'file');
+    const outsider = await repo.createNode(null, uniqueName('fn-omst-out'), 'file');
+    await repo.insertAncestorRows([
+      { ancestorId: root.id, descendantId: root.id, depth: 0 },
+      { ancestorId: root.id, descendantId: child.id, depth: 1 },
+      { ancestorId: child.id, descendantId: child.id, depth: 0 },
+      { ancestorId: outsider.id, descendantId: outsider.id, depth: 0 },
+    ]);
+    await repo.insertObject(root.id, uniqueName('fn-omst-k-active'), 'active');
+    // The child carries a history + orphaned + pending row — distinct
+    // version_numbers (UNIQUE(file_node_id, version_number)).
+    await repo.insertObject(child.id, uniqueName('fn-omst-k-history'), 'history');
+    const { dbRun } = require('@server/test-utils');
+    await dbRun(
+      `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
+       VALUES (?, ?, 's3', 2, 'orphaned')`,
+      [child.id, uniqueName('fn-omst-k-orphaned')]
+    );
+    await dbRun(
+      `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
+       VALUES (?, ?, 's3', 3, 'pending')`,
+      [child.id, uniqueName('fn-omst-k-pending')]
+    );
+    await repo.insertObject(outsider.id, uniqueName('fn-omst-k-out'), 'active');
+
+    const rows = await repo.getObjectMapBySubtree(root.id);
+    const statuses = rows.map((r) => r.status).sort();
+    expect(statuses).toEqual(['active', 'history', 'orphaned', 'pending']);
+    expect(rows.every((r) => [root.id, child.id].includes(r.file_node_id))).toBe(true);
   });
 
   it('A13: getDescendantIds / getAncestorChain stay UNFILTERED across a trash boundary', async () => {

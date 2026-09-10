@@ -102,6 +102,8 @@ const CONFIG_ENTRIES = Object.freeze([
   // DEF-11 per-node version cap. 0 = unbounded (inverted 0-semantics vs the
   // *_DAYS keys above, which treat 0 as "disabled").
   { key: 'GC_VERSION_MAX_PER_NODE', tier: TIER.T2, secret: false, default: 10, dbOnly: true },
+  // DEF-16 trash retention (GC Tier 3). 0 = retention off (trash purging skipped).
+  { key: 'TRASH_RETENTION_DAYS', tier: TIER.T2, secret: false, default: 30, dbOnly: true },
   { key: 'REFRESH_TOKEN_EXPIRES_IN_DAYS', tier: TIER.T1, secret: false, default: 7, dbOnly: true },
   { key: 'USER_CACHE_TTL_MS', tier: TIER.T2, secret: false, default: 3000, dbOnly: true },
   { key: 'PERMISSION_CACHE_TTL_MS', tier: TIER.T2, secret: false, default: 5000, dbOnly: true },

@@ -1373,14 +1373,14 @@ describe('moveNode', () => {
   });
 });
 
-// ── deleteNode ──────────────────────────────────────────────────────
+// ── deleteNode (DEF-16 P2: soft-delete/trash) ───────────────────────
 
 describe('deleteNode', () => {
-  it('deletes leaf node via fileNodeService.deleteNode after write-permission gate', async () => {
+  it('M1: trashes a leaf node via markSubtreeDeleted after the write-permission gate — fileNodeService.deleteNode is never called', async () => {
     const fileNodeService = createFileNodeServiceMock({
       getNode: jest.fn().mockResolvedValue({ id: 10, name: 'test.txt', type: 'file' }),
       getDescendantIds: jest.fn().mockResolvedValue([]),
-      deleteNode: jest.fn().mockResolvedValue({ deletedCount: 1 }),
+      markSubtreeDeleted: jest.fn().mockResolvedValue({ changes: 1 }),
     });
     const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),
@@ -1400,15 +1400,18 @@ describe('deleteNode', () => {
     expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'write');
     expect(fileNodeService.getNode).toHaveBeenCalledWith(10);
     expect(fileNodeService.getDescendantIds).toHaveBeenCalledWith(10);
-    expect(fileNodeService.deleteNode).toHaveBeenCalledWith(10);
+    // Soft delete: every row of the subtree is marked deleted_at...
+    expect(fileNodeService.markSubtreeDeleted).toHaveBeenCalledWith([10]);
+    // ...and the hard-delete primitive stays untouched (repair/rollback only).
+    expect(fileNodeService.deleteNode).not.toHaveBeenCalled();
     expect(result.deletedCount).toBe(1);
   });
 
-  it('enumerates descendants via getDescendantIds for directory nodes', async () => {
+  it('M2: enumerates descendants via getDescendantIds and keeps the subtree-count semantics', async () => {
     const fileNodeService = createFileNodeServiceMock({
       getNode: jest.fn().mockResolvedValue({ id: 5, name: 'dir', type: 'directory' }),
       getDescendantIds: jest.fn().mockResolvedValue([6, 7]),
-      deleteNode: jest.fn().mockResolvedValue({ deletedCount: 3 }),
+      markSubtreeDeleted: jest.fn().mockResolvedValue({ changes: 3 }),
     });
     const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),
@@ -1427,55 +1430,128 @@ describe('deleteNode', () => {
 
     expect(fileNodeService.getNode).toHaveBeenCalledWith(5);
     expect(fileNodeService.getDescendantIds).toHaveBeenCalledWith(5);
-    expect(fileNodeService.deleteNode).toHaveBeenCalledWith(5);
-    // 2 descendants + 1 target node = 3 total deleted
+    expect(fileNodeService.markSubtreeDeleted).toHaveBeenCalledWith([5, 6, 7]);
+    // 2 descendants + 1 target node = 3 total trashed (count semantics unchanged)
     expect(result.deletedCount).toBe(3);
+    expect(fileNodeService.deleteNode).not.toHaveBeenCalled();
   });
 
-  it('WebDAV mode: storage DELETE bottom-up (descendants + target), marks orphaned_node on per-node failure, DB delete proceeds', async () => {
+  it('M3: WebDAV mode performs exactly ONE remote MOVE of the subtree root to /.wea-trash/<rootId>', async () => {
     const fileNodeService = createFileNodeServiceMock({
       getNode: jest.fn().mockResolvedValue({ id: 100, name: 'root', type: 'directory' }),
       getDescendantIds: jest.fn().mockResolvedValue([101]),
-      updateSyncStatus: jest.fn().mockResolvedValue(true),
-      deleteNode: jest.fn().mockResolvedValue({ deletedCount: 2 }),
+      getNodePath: jest.fn().mockResolvedValue('/user/root'),
+      markSubtreeDeleted: jest.fn().mockResolvedValue({ changes: 2 }),
     });
-    const blobStorageService = createBlobStorageServiceMock({
-      deleteBlob: jest
-        .fn()
-        .mockRejectedValueOnce(new Error('WebDAV DELETE failed')) // child fails
-        .mockResolvedValueOnce(true), // target succeeds
-    });
+    const blobStore = {
+      headBlob: jest.fn().mockResolvedValue(null), // trash destination free
+      moveBlob: jest.fn().mockResolvedValue(undefined),
+    };
     const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),
     });
 
     const service = createFileService({
       fileNodeService,
-      blobStorageService,
+      blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
+      blobStore,
       fileStorageMode: 'webdav',
     });
 
     const result = await service.deleteNode(100, 1, { id: 1 });
 
-    // Bottom-up storage DELETE: child (101) first, then target node itself (100).
-    expect(blobStorageService.deleteBlob).toHaveBeenCalledWith(101);
-    expect(blobStorageService.deleteBlob).toHaveBeenCalledWith(100);
-    // First DELETE (101) failed → orphaned_node marker; DB deletion proceeds.
-    expect(fileNodeService.updateSyncStatus).toHaveBeenCalledWith(101, 'orphaned_node');
-    expect(fileNodeService.deleteNode).toHaveBeenCalledWith(100);
-    // 1 descendant + 1 target node = 2 total deleted
+    // The destination is probed, then ONE MOVE of the subtree root happens —
+    // no per-node remote calls.
+    expect(blobStore.headBlob).toHaveBeenCalledWith('/.wea-trash/100');
+    expect(blobStore.moveBlob).toHaveBeenCalledTimes(1);
+    expect(blobStore.moveBlob).toHaveBeenCalledWith('/user/root', '/.wea-trash/100');
+    expect(blobStore.deleteBlob).toBeUndefined();
+    expect(fileNodeService.updateSyncStatus).not.toHaveBeenCalled();
+    expect(fileNodeService.markSubtreeDeleted).toHaveBeenCalledWith([100, 101]);
     expect(result.deletedCount).toBe(2);
   });
 
-  it('S3 mode: DB-only deletion, no blobStorageService calls', async () => {
+  it('M3b: WebDAV MOVE failure marks the root orphaned_node, skips the trash marking and re-throws', async () => {
+    const fileNodeService = createFileNodeServiceMock({
+      getNode: jest.fn().mockResolvedValue({ id: 100, name: 'root', type: 'directory' }),
+      getDescendantIds: jest.fn().mockResolvedValue([101]),
+      getNodePath: jest.fn().mockResolvedValue('/user/root'),
+      updateSyncStatus: jest.fn().mockResolvedValue(true),
+      markSubtreeDeleted: jest.fn().mockResolvedValue({ changes: 2 }),
+    });
+    const blobStore = {
+      headBlob: jest.fn().mockResolvedValue(null), // destination free
+      moveBlob: jest.fn().mockRejectedValue(new Error('MOVE failed')),
+    };
+    const aclService = createAclServiceMock({
+      checkFilePermission: jest.fn().mockResolvedValue(true),
+    });
+
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createBlobStorageServiceMock(),
+      uploadService: createMockUploadService(),
+      aclService,
+      blobStore,
+      fileStorageMode: 'webdav',
+    });
+
+    await expect(service.deleteNode(100, 1, { id: 1 })).rejects.toThrow('MOVE failed');
+
+    expect(fileNodeService.updateSyncStatus).toHaveBeenCalledWith(100, 'orphaned_node');
+    // Trash aborted — no deleted_at marking, no hard delete.
+    expect(fileNodeService.markSubtreeDeleted).not.toHaveBeenCalled();
+    expect(fileNodeService.deleteNode).not.toHaveBeenCalled();
+  });
+
+  it('M3c: WebDAV pre-existing /.wea-trash/<nodeId> destination fails with a clear conflict error and no marking', async () => {
+    const fileNodeService = createFileNodeServiceMock({
+      getNode: jest.fn().mockResolvedValue({ id: 100, name: 'root', type: 'directory' }),
+      getDescendantIds: jest.fn().mockResolvedValue([101]),
+      getNodePath: jest.fn().mockResolvedValue('/user/root'),
+      updateSyncStatus: jest.fn().mockResolvedValue(true),
+      markSubtreeDeleted: jest.fn().mockResolvedValue({ changes: 2 }),
+    });
+    const blobStore = {
+      headBlob: jest.fn().mockResolvedValue({ contentLength: 5 }), // destination exists
+      moveBlob: jest.fn().mockResolvedValue(undefined),
+    };
+    const aclService = createAclServiceMock({
+      checkFilePermission: jest.fn().mockResolvedValue(true),
+    });
+
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createBlobStorageServiceMock(),
+      uploadService: createMockUploadService(),
+      aclService,
+      blobStore,
+      conflictError: jest.fn().mockImplementation(() => {
+        const err = new Error('trash target exists');
+        err.status = 409;
+        throw err;
+      }),
+      fileStorageMode: 'webdav',
+    });
+
+    await expect(service.deleteNode(100, 1, { id: 1 })).rejects.toThrow('trash target exists');
+
+    // Never clobber: no MOVE, no orphaned marker, no deleted_at marking.
+    expect(blobStore.moveBlob).not.toHaveBeenCalled();
+    expect(fileNodeService.updateSyncStatus).not.toHaveBeenCalled();
+    expect(fileNodeService.markSubtreeDeleted).not.toHaveBeenCalled();
+  });
+
+  it('M4: S3 mode does zero physical I/O — no blobStore/blobStorageService calls', async () => {
     const fileNodeService = createFileNodeServiceMock({
       getNode: jest.fn().mockResolvedValue({ id: 10, name: 'file.txt', type: 'file' }),
       getDescendantIds: jest.fn().mockResolvedValue([]),
-      deleteNode: jest.fn().mockResolvedValue({ deletedCount: 1 }),
+      markSubtreeDeleted: jest.fn().mockResolvedValue({ changes: 1 }),
     });
     const blobStorageService = createBlobStorageServiceMock();
+    const blobStore = { headBlob: jest.fn(), moveBlob: jest.fn() };
     const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),
     });
@@ -1485,25 +1561,26 @@ describe('deleteNode', () => {
       blobStorageService,
       uploadService: createMockUploadService(),
       aclService,
-      ...createListingDeps(),
+      blobStore,
       fileStorageMode: 's3',
     });
 
     const result = await service.deleteNode(10, 1, { id: 1 });
 
-    // blobStorageService.deleteBlob is invoked inside the fileNodeService.deleteNode
-    // cascade, never directly by fileService in S3 mode.
+    expect(blobStore.headBlob).not.toHaveBeenCalled();
+    expect(blobStore.moveBlob).not.toHaveBeenCalled();
     expect(blobStorageService.deleteBlob).not.toHaveBeenCalled();
     expect(blobStorageService.uploadToWebdav).not.toHaveBeenCalled();
-    expect(fileNodeService.deleteNode).toHaveBeenCalledWith(10);
+    expect(fileNodeService.markSubtreeDeleted).toHaveBeenCalledWith([10]);
+    expect(fileNodeService.deleteNode).not.toHaveBeenCalled();
     expect(result.deletedCount).toBe(1);
   });
 
-  it('admin bypass: skips permission check and proceeds with deletion', async () => {
+  it('M5: admin bypass skips the permission check and trashes through the same pipeline', async () => {
     const fileNodeService = createFileNodeServiceMock({
       getNode: jest.fn().mockResolvedValue({ id: 42, name: 'admin.txt', type: 'file' }),
       getDescendantIds: jest.fn().mockResolvedValue([]),
-      deleteNode: jest.fn().mockResolvedValue({ deletedCount: 1 }),
+      markSubtreeDeleted: jest.fn().mockResolvedValue({ changes: 1 }),
     });
     const aclService = createAclServiceMock({
       isAdminUser: jest.fn().mockReturnValue(true),
@@ -1518,10 +1595,13 @@ describe('deleteNode', () => {
       fileStorageMode: 's3',
     });
 
-    await service.deleteNode(42, 1, { id: 1 });
+    const result = await service.deleteNode(42, 1, { id: 1 });
 
     expect(aclService.isAdminUser).toHaveBeenCalled();
-    expect(fileNodeService.deleteNode).toHaveBeenCalledWith(42);
+    expect(aclService.checkFilePermission).not.toHaveBeenCalled();
+    expect(fileNodeService.markSubtreeDeleted).toHaveBeenCalledWith([42]);
+    expect(fileNodeService.deleteNode).not.toHaveBeenCalled();
+    expect(result.deletedCount).toBe(1);
   });
 });
 

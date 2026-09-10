@@ -29,7 +29,11 @@ function createFileNodesStore() {
   return {
     createNode: (...args) => repo.createNode(...args),
     getNode: (...args) => repo.getNode(...args),
+    getNodeIncludingTrashed: (...args) => repo.getNodeIncludingTrashed(...args),
     getChildren: (...args) => repo.getChildren(...args),
+    getTrashChildren: (...args) => repo.getTrashChildren(...args),
+    getTrashedNodes: (...args) => repo.getTrashedNodes(...args),
+    markSubtreeDeleted: (...args) => repo.markSubtreeDeleted(...args),
     renameNode: (...args) => repo.renameNode(...args),
     moveNode: (...args) => repo.moveNode(...args),
     deleteNodeTree: (...args) => repo.deleteNodeTree(...args),

@@ -14,7 +14,10 @@ const {
   USER_STATUS,
   PERMISSIONS,
 } = require('../../../../test-utils');
-const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const {
+  SERVER_ERROR_CODES,
+  SERVER_MESSAGE_CODES,
+} = require('@webdav-easyaccess/shared/serverMessageCodes');
 const permissionStore = require('../../../../domains/permissions/stores/permissionStore');
 
 var mockWebdav;
@@ -113,6 +116,7 @@ describe('Route matrix: non-admin denied on every /api/admin/* route', () => {
     ['post', '/api/admin/cleanup/orphaned'],
     ['post', '/api/admin/maintenance/gc'],
     ['post', '/api/admin/maintenance/repair-sync'],
+    ['delete', '/api/admin/maintenance/perm-delete'],
   ];
 
   it('returns 403 for a non-admin on every admin route', async () => {
@@ -492,8 +496,11 @@ describe('POST /api/admin/maintenance/gc (S3 mode): delete -> lazy blob -> GC re
     await useWebdavMode();
   });
 
-  it('delete leaves the blob in the store; GC removes it while the active control survives', async () => {
-    // Orphaned candidate: uploaded, then deleted below (S3 delete is lazy).
+  it('permanent delete leaves the blob in the store; GC removes it while the active control survives (M13)', async () => {
+    // Orphaned candidate: uploaded, then permanently deleted below (the hard
+    // delete is lazy in S3 mode). The ordinary `DELETE /api/files/delete`
+    // TRASHES since DEF-16 P2, so the chain is re-pointed at the admin
+    // perm-delete maintenance route (the interim hard-delete channel).
     const orphanUpload = await request(app)
       .post('/api/files/upload')
       .set('Authorization', `Bearer ${admin.token}`)
@@ -536,12 +543,13 @@ describe('POST /api/admin/maintenance/gc (S3 mode): delete -> lazy blob -> GC re
     }
 
     const del = await request(app)
-      .delete('/api/files/delete')
+      .delete('/api/admin/maintenance/perm-delete')
       .set('Authorization', `Bearer ${admin.token}`)
       .send({ nodeId: orphanNodeId });
     expect(del.status).toBe(200);
 
-    // Lazy delete: the DB reference is gone but the physical blob remains.
+    // Hard delete: the DB reference is gone (FK cascade) but the physical
+    // blob remains until the GC sweep.
     const orphanMapAfter = await dbQuery('SELECT s3_key FROM object_map WHERE file_node_id = ?', [
       orphanNodeId,
     ]);
@@ -662,6 +670,137 @@ describe('POST /api/admin/maintenance/repair-sync — pending_upload repair (S3 
 
     expect(res.status).toBe(409);
     expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.repairUploadBlobMissing);
+  });
+});
+
+describe('DELETE /api/admin/maintenance/perm-delete', () => {
+  const { createFileNodesStore: createNodesStore } = require('../../../../store/fileNodesStore');
+
+  let localWebdav;
+
+  beforeAll(async () => {
+    const { createWebdavMock } = require('@testing/mocks/webdavMock');
+    const WebdavBlobStore = require('../../../../infrastructure/adapters/blobstore/WebdavBlobStore');
+    const composition = require('../../../../service/composition');
+    localWebdav = createWebdavMock();
+    // Destination probe for the trash MOVE must see a free /.wea-trash target.
+    localWebdav.getFileMetadata.mockRejectedValue(Object.assign(new Error('404'), { status: 404 }));
+    composition.__setCompositionForTests({
+      fileStorageMode: 'webdav',
+      blobStore: new WebdavBlobStore(localWebdav),
+    });
+  });
+
+  afterAll(async () => {
+    await useWebdavMode();
+  });
+
+  it('returns 403 for a non-admin (admin-only hard delete)', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `nonadmin-permdel-${Date.now()}`,
+    });
+
+    const res = await request(app)
+      .delete('/api/admin/maintenance/perm-delete')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeId: 1 });
+
+    expect(res.status).toBe(403);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.adminRequired);
+  });
+
+  it('returns 400 when nodeId is missing and 404 for an unknown node', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `admin-permdel-bad-${Date.now()}`,
+      isAdmin: true,
+    });
+
+    const missing = await request(app)
+      .delete('/api/admin/maintenance/perm-delete')
+      .set('Authorization', `Bearer ${token}`)
+      .send({});
+    expect(missing.status).toBe(400);
+
+    const unknown = await request(app)
+      .delete('/api/admin/maintenance/perm-delete')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeId: 999999 });
+    expect(unknown.status).toBe(404);
+  });
+
+  it('A3: permanently deletes a TRASHED node — remote trash path deleted first, FK cascade removes dependent rows', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `admin-permdel-trash-${Date.now()}`,
+      isAdmin: true,
+    });
+    const store = createNodesStore();
+    const { nodeId, path } = await createTestFileNode({ name: `permdel-trash-${Date.now()}` });
+    // Dependent rows that FK-cascade at purge time.
+    await dbRun(
+      `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
+       VALUES (?, ?, 's3', 1, 'active')`,
+      [nodeId, `permdel-key-${Date.now()}`]
+    );
+    await dbRun('INSERT INTO filecache (file_node_id, size) VALUES (?, ?)', [nodeId, 42]);
+
+    // Trash the node first (user-facing delete = trash).
+    const fileService = require('../../../../service/composition').getComposition().fileService;
+    await fileService.deleteNode(nodeId, 1, { id: 1, is_admin: true });
+    const trashedRow = await dbQuery('SELECT deleted_at FROM file_nodes WHERE id = ?', [nodeId]);
+    expect(trashedRow.rows[0].deleted_at).not.toBeNull();
+    localWebdav.deleteFile.mockClear();
+
+    const res = await request(app)
+      .delete('/api/admin/maintenance/perm-delete')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeId });
+    expect(res.status).toBe(200);
+    expect(res.body.messageCode).toBe(SERVER_MESSAGE_CODES.admin.permDeleteDone);
+    expect(res.body.result).toMatchObject({ nodeId, deletedCount: 1 });
+
+    // WebDAV remote cleanup went to the TRASH path (the content was MOVE'd
+    // there by the trash flow), not the original display path.
+    expect(localWebdav.deleteFile).toHaveBeenCalledWith(
+      `/.wea-trash/${nodeId}`,
+      expect.objectContaining({ isDirectory: false })
+    );
+    expect(localWebdav.deleteFile).not.toHaveBeenCalledWith(path, expect.anything());
+
+    // Physical removal + FK cascade: file_nodes, object_map, filecache, closure gone.
+    const nodeRow = await dbQuery('SELECT id FROM file_nodes WHERE id = ?', [nodeId]);
+    expect(nodeRow.rows).toHaveLength(0);
+    const mapRow = await dbQuery('SELECT file_node_id FROM object_map WHERE file_node_id = ?', [
+      nodeId,
+    ]);
+    expect(mapRow.rows).toHaveLength(0);
+    const cacheRow = await dbQuery('SELECT file_node_id FROM filecache WHERE file_node_id = ?', [
+      nodeId,
+    ]);
+    expect(cacheRow.rows).toHaveLength(0);
+    const closureRow = await dbQuery('SELECT * FROM node_ancestors WHERE descendant_id = ?', [
+      nodeId,
+    ]);
+    expect(closureRow.rows).toHaveLength(0);
+  });
+
+  it('A3: permanently deletes a LIVE node via the display-path bottom-up remote cleanup', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `admin-permdel-live-${Date.now()}`,
+      isAdmin: true,
+    });
+    const store = createNodesStore();
+    const { nodeId, path } = await createTestFileNode({ name: `permdel-live-${Date.now()}` });
+    localWebdav.deleteFile.mockClear();
+
+    const res = await request(app)
+      .delete('/api/admin/maintenance/perm-delete')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeId });
+    expect(res.status).toBe(200);
+
+    // Live node: remote content deleted at its display path (bottom-up helper).
+    expect(localWebdav.deleteFile).toHaveBeenCalledWith(path, expect.anything());
+    expect(await store.getNode(nodeId)).toBeNull();
   });
 });
 

@@ -49,6 +49,14 @@ describe('validateFileName', () => {
       expect(validateFileName('LPT9')).toBe('validation.fileNameReserved');
     });
 
+    it('A18: returns fileNameReserved for the reserved .wea- namespace (case-insensitive)', () => {
+      expect(validateFileName('.wea-trash')).toBe('validation.fileNameReserved');
+      expect(validateFileName('.wea-x.txt')).toBe('validation.fileNameReserved');
+      expect(validateFileName('.WEA-UPPER')).toBe('validation.fileNameReserved');
+      // Mid-name occurrences are fine.
+      expect(validateFileName('my.wea-file.txt')).toBeNull();
+    });
+
     it('returns fileNameNoTrailing for trailing space or dot', () => {
       expect(validateFileName('name ')).toBe('validation.fileNameNoTrailing');
       expect(validateFileName('name.')).toBe('validation.fileNameNoTrailing');
@@ -96,6 +104,8 @@ describe('validateFileName', () => {
           expect(trimmed.length).toBeLessThanOrEqual(255);
           expect(invalidCharsRe.test(name)).toBe(false);
           expect(reserved.includes(trimmed.toLowerCase())).toBe(false);
+          // A18: reserved .wea- namespace never validates.
+          expect(trimmed.toLowerCase().startsWith('.wea-')).toBe(false);
           expect(name.endsWith(' ')).toBe(false);
           expect(name.endsWith('.')).toBe(false);
           return true;
@@ -109,7 +119,8 @@ describe('validateFileName', () => {
         .filter((c) => !invalidCharsRe.test(c) && c !== ' ' && c !== '.' && c.charCodeAt(0) >= 32);
       const validName = fc
         .stringOf(allowedChars, { minLength: 1, maxLength: 253 })
-        .filter((s) => !reserved.includes(s.toLowerCase()));
+        .filter((s) => !reserved.includes(s.toLowerCase()))
+        .filter((s) => !s.toLowerCase().startsWith('.wea-')); // A18: reserved namespace excluded
       fc.assert(
         fc.property(validName, (name) => {
           expect(validateFileName(name)).toBeNull();

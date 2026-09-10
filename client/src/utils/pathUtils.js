@@ -11,7 +11,7 @@ import {
   getParentPaths,
 } from '@webdav-easyaccess/shared/pathUtils';
 
-const VIRTUAL_ROOTS = ['/__shared__', '/__recent__'];
+const VIRTUAL_ROOTS = ['/__shared__', '/__recent__', '/__trash__'];
 
 export const normalizePath = sharedNormalizePath;
 
@@ -39,6 +39,9 @@ export const getFolderName = (path, t) => {
     }
     if (path === '/__recent__') {
       return typeof t === 'function' ? t('nav.recentShort') : 'Recent';
+    }
+    if (path === '/__trash__') {
+      return typeof t === 'function' ? t('nav.trashShort') : 'Trash';
     }
     return typeof t === 'function' ? t('nav.root') : 'Root';
   }

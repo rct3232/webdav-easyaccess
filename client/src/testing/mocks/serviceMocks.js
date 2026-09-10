@@ -33,6 +33,7 @@ export function createFileServiceMock(overrides = {}) {
       restoredVersionNumber: 1,
     }),
     downloadFileVersion: jest.fn().mockResolvedValue(undefined),
+    getTrashFiles: jest.fn().mockResolvedValue({ items: [], total: 0 }),
     ...overrides,
   };
 }
@@ -102,6 +103,7 @@ export function createExplorerGatewayMock(overrides = {}) {
     listDirectory: jest.fn().mockResolvedValue([]),
     loadRecentFiles: jest.fn().mockResolvedValue([]),
     loadSharedEntries: jest.fn().mockResolvedValue([]),
+    loadTrashEntries: jest.fn().mockResolvedValue([]),
     removeRecentFile: jest.fn().mockResolvedValue([]),
     subscribeToRecentFiles: jest.fn(() => jest.fn()),
     uploadToPath: jest.fn().mockResolvedValue({ errors: [] }),

@@ -187,6 +187,32 @@ describe('downloadService', () => {
       expect(result.zipStream._entries).toEqual([expect.objectContaining({ name: 'file_20.txt' })]);
     });
 
+    it('A12: excludes a TRASHED node with reason not_found (gated getNode resolves null)', async () => {
+      const fileNodeService = createFileNodeServiceMock({
+        getNode: jest
+          .fn()
+          .mockImplementation(async (nodeId) =>
+            nodeId === 10 ? null : { id: nodeId, name: `file_${nodeId}.txt`, type: 'file' }
+          ),
+      });
+      const blobStorageService = createBlobStorageServiceMock();
+      const aclService = createAclServiceMock({
+        checkFilePermission: jest.fn().mockResolvedValue(true),
+      });
+
+      const service = createDownloadService({ fileNodeService, blobStorageService, aclService });
+
+      const result = await service.downloadMultiple([10, 20], 'user-1', { id: 'user-1' });
+
+      expect(result.totalFiles).toBe(1);
+      expect(result.errors).toEqual(
+        expect.arrayContaining([expect.objectContaining({ nodeId: 10, reason: 'not_found' })])
+      );
+      expect(blobStorageService.downloadBlob).not.toHaveBeenCalledWith(10);
+      expect(blobStorageService.downloadBlob).toHaveBeenCalledWith(20);
+      expect(result.zipStream._entries).toEqual([expect.objectContaining({ name: 'file_20.txt' })]);
+    });
+
     it('all-directory selection produces empty ZIP without hang', async () => {
       const fileNodeService = createFileNodeServiceMock({
         getNode: jest.fn().mockImplementation(async (nodeId) => ({

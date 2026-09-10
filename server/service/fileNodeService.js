@@ -73,6 +73,14 @@ function createFileNodeService({ fileNodesStore }) {
     });
   }
 
+  /**
+   * Soft-delete primitive (DEF-16 P2): marks every given row `deleted_at`.
+   * Single UPDATE, idempotent; closure/permission/share/recent rows untouched.
+   */
+  async function markSubtreeDeleted(nodeIds) {
+    return await fileNodesStore.markSubtreeDeleted(nodeIds);
+  }
+
   /* ------------------------------------------------------------------ */
   /*  Read                                                               */
   /* ------------------------------------------------------------------ */
@@ -85,7 +93,9 @@ function createFileNodeService({ fileNodesStore }) {
     const chain = await fileNodesStore.getAncestorChain(nodeId);
     const pathParts = [];
     for (const entry of chain) {
-      const node = await fileNodesStore.getNode(entry.ancestorId);
+      // Trash-aware name lookup: the path of a trashed node must still resolve
+      // to its original display path (trash listing, permanent delete).
+      const node = await fileNodesStore.getNodeIncludingTrashed(entry.ancestorId);
       if (node) pathParts.push(node.name);
     }
     return '/' + pathParts.join('/');
@@ -135,6 +145,7 @@ function createFileNodeService({ fileNodesStore }) {
     renameNode,
     moveNode,
     deleteNode,
+    markSubtreeDeleted,
     listDirectory,
     getNode,
     getNodePath,

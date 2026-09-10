@@ -38,6 +38,18 @@ class WebdavBlobStore {
     }
   }
 
+  /**
+   * MOVE sourcePath → destinationPath (WebDAV native). Used by the trash
+   * flow (one remote MOVE per trashed subtree root) — never clobbers: the
+   * destination is probed by the caller before the move.
+   */
+  async moveBlob(sourcePath, destinationPath) {
+    if (!sourcePath || !destinationPath) {
+      throw new Error('WebDAV source and destination paths are required');
+    }
+    await this.webdav.moveFile(sourcePath, destinationPath);
+  }
+
   async headBlob(filepath) {
     try {
       const meta = await this.webdav.getFileMetadata(filepath);
@@ -91,7 +103,7 @@ function withHealthReport(fn) {
   };
 }
 
-for (const method of ['uploadBlob', 'createDirectory', 'downloadBlob', 'deleteBlob', 'headBlob']) {
+for (const method of ['uploadBlob', 'createDirectory', 'downloadBlob', 'deleteBlob', 'headBlob', 'moveBlob']) {
   WebdavBlobStore.prototype[method] = withHealthReport(WebdavBlobStore.prototype[method]);
 }
 

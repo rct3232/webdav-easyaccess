@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-| Item | Description                                                                                                                                                                                                                              |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role | Filesystem tree management via `file_nodes`, `object_map`, `filecache`, `node_ancestors`. Provides inode-equivalent filesystem hierarchy with node_id-based references, multi-backend blob mapping, and closure-table ancestry tracking. |
+| Item | Description                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role | Filesystem tree management via `file_nodes`, `object_map`, `filecache`, `node_ancestors`. Provides inode-equivalent filesystem hierarchy with node_id-based references, multi-backend blob mapping, and closure-table ancestry tracking. Node rows are domain-shaped (`{ id, parentId, name, type, syncStatus, createdAt, updatedAt, deletedAt }` — `deletedAt` mirrors `file_nodes.deleted_at`, NULL for live rows). |
 
 ---
 
@@ -48,8 +48,8 @@ This spec does not duplicate full DDL text.
   may share a name, and a trashed row may share a name with a live sibling. Uniqueness is carried
   by the partial unique indexes alone — there is no table-level `UNIQUE (parent_id, name)`
   constraint.
-- `deleted_at` defaults to NULL; only the schema (column + constraints) is defined here — no
-  trash/restore behavior lives in this store.
+- `deleted_at` defaults to NULL; soft-delete marking is `markSubtreeDeleted` (P2), the restore
+  cycle (clearing `deleted_at`) and purge (`deleteNodeTree`) belong to the orchestration layer.
 
 ### 2.3 Maintenance Strategy
 
@@ -61,17 +61,31 @@ This spec does not duplicate full DDL text.
 
 #### file_nodes Methods
 
-| Method                               | SQL Pattern                                                                                        | Returns                                    |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `createNode(parentId, name, type)`   | INSERT with sync_status='pending_upload'; RETURNING id (PG) or lastID (SQLite)                     | `{ id, parentId, name, type, syncStatus }` |
-| `getNode(id)`                        | SELECT \* FROM file_nodes WHERE id=?                                                               | row \| null                                |
-| `getChildren(parentId)`              | LEFT JOIN with filecache for size/mime_type/content_hash; ORDER BY name                            | `row[]`                                    |
-| `renameNode(id, newName)`            | UPDATE SET name=?, updated_at=NOW()                                                                | `{ changes }`                              |
-| `moveNode(id, newParentId)`          | UPDATE SET parent_id=?, updated_at=NOW()                                                           | `{ changes }`                              |
-| `deleteNodeTree(nodeIds)`            | DELETE WHERE id IN (...); CASCADE handles descendants + object_map + filecache + node_ancestors    | `{ changes }`                              |
-| `updateSyncStatus(id, status)`       | UPDATE SET sync_status=?, updated_at=NOW()                                                         | `{ changes }`                              |
-| `resolvePathSegment(parentId, name)` | SELECT id WHERE parent_id=? AND name=?                                                             | `{ id }` \| null                           |
-| `getUserRootNode(userId)`            | Look up user by id (userStore), then SELECT \* WHERE parent_id IS NULL AND name=<username> LIMIT 1 | node row \| null (the user's home node)    |
+**Trash gating (DEF-16 P4):** `getNode`, `getChildren` and `resolvePathSegment` are
+**live-row reads** — every one carries `AND deleted_at IS NULL`, so a trashed row is
+invisible to every caller of these methods (listings, metadata, ancestors, stats,
+thumbnails, share-public download, zip/download-multiple, conflict checks, upload/rename/
+create sibling checks, resolve-path). `getNodeIncludingTrashed` is the explicit
+trash-aware read for the channels that must still see trashed rows (path resolution for
+the trash listing, permanent delete, and the later restore/purge slices).
+`getDescendantIds` / `getDescendants` / `getAncestorChain` stay **UNFILTERED** — the full
+trashed subtree remains visible to trash/purge/restore logic.
+
+| Method                               | SQL Pattern                                                                                                                                                                                                                     | Returns                                    |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `createNode(parentId, name, type)`   | INSERT with sync_status='pending_upload'; RETURNING id (PG) or lastID (SQLite)                                                                                                                                                  | `{ id, parentId, name, type, syncStatus }` |
+| `getNode(id)`                        | SELECT \* FROM file_nodes WHERE id=? **AND deleted_at IS NULL** (live rows only — trashed → null)                                                                                                                               | row \| null                                |
+| `getNodeIncludingTrashed(id)`        | SELECT \* FROM file_nodes WHERE id=? (no trash filter; trash-aware read)                                                                                                                                                        | row \| null                                |
+| `getChildren(parentId)`              | LEFT JOIN with filecache for size/mime_type/content_hash; **AND fn.deleted_at IS NULL**; ORDER BY name (trashed children excluded)                                                                                              | `row[]`                                    |
+| `getTrashChildren(parentId)`         | SELECT \* FROM file_nodes WHERE parent_id=? **AND deleted_at IS NOT NULL** ORDER BY name (the trashed children of a live-or-trashed parent; hierarchical trash view)                                                            | `row[]` (mapped rows incl. `deletedAt`)    |
+| `getTrashedNodes()`                  | SELECT \* FROM file_nodes WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC, name (flat trash enumeration for the trash listing)                                                                                            | `row[]` (mapped rows incl. `deletedAt`)    |
+| `markSubtreeDeleted(nodeIds)`        | UPDATE file_nodes SET deleted_at=NOW()/datetime('now') WHERE id IN (...) (every-row soft delete over the subtree; idempotent in effect — re-running re-marks matched rows, `changes` reports MATCHED rows; no updated_at touch) | `{ changes }` (rows marked)                |
+| `renameNode(id, newName)`            | UPDATE SET name=?, updated_at=NOW()                                                                                                                                                                                             | `{ changes }`                              |
+| `moveNode(id, newParentId)`          | UPDATE SET parent_id=?, updated_at=NOW()                                                                                                                                                                                        | `{ changes }`                              |
+| `deleteNodeTree(nodeIds)`            | DELETE WHERE id IN (...); CASCADE handles descendants + object_map + filecache + node_ancestors                                                                                                                                 | `{ changes }`                              |
+| `updateSyncStatus(id, status)`       | UPDATE SET sync_status=?, updated_at=NOW()                                                                                                                                                                                      | `{ changes }`                              |
+| `resolvePathSegment(parentId, name)` | SELECT id WHERE parent_id=? AND name=? **AND deleted_at IS NULL** (trashed names do not resolve)                                                                                                                                | `{ id }` \| null                           |
+| `getUserRootNode(userId)`            | Look up user by id (userStore), then SELECT \* WHERE parent_id IS NULL AND name=<username> LIMIT 1                                                                                                                              | node row \| null (the user's home node)    |
 
 #### node_ancestors Methods
 
@@ -157,7 +171,11 @@ and placeholder markers shown across the method tables in §2.4 are the same dia
 - [ ] demoteActiveToHistory flips only the active row with the given s3_key to `history`; non-active rows are untouched
 - [ ] evictVersionsBeyondCap: demotes the oldest `history` rows (version_number ASC) to `orphaned` while `active + history > cap`; `cap=0` is a no-op (unbounded); the `active` row is never touched
 - [ ] getVersionsByNode returns only `active` + `history` rows newest-version first; `pending` and `orphaned` rows are excluded
-- [ ] getKeptS3Keys UNION membership: active keys, history keys, orphaned keys, and pending keys on `pending_upload` nodes are all returned; pending keys on other node states are excluded
+- [ ] getKeptS3Keys UNION membership: active keys, history keys, orphaned keys, and pending keys on `pending_upload` nodes are all returned; pending keys on other node states are excluded; a **trashed node's active key stays in the keep-set** (the active arm is not trash-filtered — Tier 2 must never reclaim trashed content)
+- [ ] Trash gating: `getNode(trashedId)` returns null and `getNodeIncludingTrashed(trashedId)` returns the row with `deletedAt` set; a trashed child is absent from `getChildren(parent)` and from `getChildren(null)` at root level while `getTrashChildren(parent)` returns exactly the trashed siblings; `resolvePathSegment(parent, trashedName)` returns null
+- [ ] markSubtreeDeleted marks every row of the id list (`changes` = matched rows); re-running re-marks the same matched rows without corrupting state; restore cycle: clearing `deleted_at` (restore path) re-enrolls the row in live uniqueness — the restore UPDATE is REJECTED while a live same-name sibling exists (the collision the restore flow resolves via a name suffix), succeeds with no sibling, and re-trashing releases uniqueness again
+- [ ] getTrashedNodes returns every trashed row (and only trashed rows) newest-deleted first; getTrashChildren(null) returns trashed root-level rows
+- [ ] getDescendantIds / getAncestorChain remain UNFILTERED across a trash boundary: a trashed subtree is still fully enumerable by descendant/ancestor queries
 - [ ] getOrphanedObjectsWithNodeState annotation: each row carries the correct `node_sync_status` and `has_active` (true when an active row exists for the same node); a node-less orphan (LEFT JOIN miss) is annotated accordingly
 - [ ] getStalePendingObjects filter: returns only `pending` rows on `pending_upload` nodes older than the cutoff; younger rows and pending rows on other node states are excluded
 - [ ] getObjectMapByNode returns every object_map row of the node (any status) newest-version first, independent of row age

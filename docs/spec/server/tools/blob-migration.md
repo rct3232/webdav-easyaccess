@@ -223,6 +223,7 @@ The tool does **not** take the app into a write-blocking maintenance mode. Inste
 1. Enumerate the file-node set **once** at start, source-mode aware:
    - **S3 source (unchanged):** `file_nodes WHERE type='file' AND sync_status='active'` with an active `object_map` row (via `fileNodesStore.getNodesBySyncStatus('active')`, filtered to type=file with an object_map row).
    - **WebDAV source:** every file node with `sync_status != 'orphaned_node'` (via `fileNodesStore.getNodesBySyncStatusNot('orphaned_node')`); per node the active `object_map` row is used when present (its preserved `s3_key` is the webdav→s3 resume marker from a prior run), otherwise the activeObject is synthesized as `{ s3_key: null, storage_backend: 'webdav' }`. Native webdav files — the app's own uploads, which stay `sync_status='pending_upload'` with no `object_map` (webdav is path-addressed; the blob IS the node's display path) — are therefore included without a mapping row.
+   - **`.wea-trash` interaction (DEF-16 P2):** the enumeration is sync-status based and trash-blind, so TRASHED nodes are included in a webdav-source snapshot — and their remote content lives under the reserved hidden namespace `/.wea-trash/<nodeId>` (one MOVE per trashed subtree root), NOT at the original display path. Path-addressed reads/downloads for such nodes therefore resolve to the trash path; in practice the trash namespace is carried over verbatim (it is a plain folder tree at the root), and trashed nodes stay trashed at cutover. The `/.wea-` name prefix is RESERVED via `validateFileName`, so no user-created node can ever collide with the trash namespace.
 2. Read only from the **source** store.
 3. Write only to the **destination** store plus the required DB updates.
 
@@ -282,7 +283,7 @@ Resume is **automatic and always on** — there is no `--resume` flag or UI chec
 1. **Dry-run is mandatory before any write:** `--apply` first performs the dry-run pass (config validation + snapshot enumeration + destination connectivity); any failure blocks all writes (exit code `1`). `--dry-run` / `--check-env` never write.
 2. **Source blobs are never deleted** (a `--delete-mode` follow-up is tracked in
    `docs/IMPROVEMENT_PLAN.md`).
-3. **`.wea` is a normal folder** — included in migration like any other node.
+3. **`.wea` is a normal folder** — included in migration like any other node. The `.wea-` NAME PREFIX is reserved server-side (`validateFileName` rejects it on create/upload/folder/rename): the trash namespace `/.wea-trash/<nodeId>` (DEF-16) lives at the root and migrates verbatim like any other folder.
 4. **`--force` re-copy** is included (overrides the automatic resume skip); `--delete-mode` is
    not (tracked in `docs/IMPROVEMENT_PLAN.md`).
 5. **Per-node failure isolation:** a failing node is caught, recorded in `errors`, and processing continues. The run only aborts when config/snapshot/destination validation fails.

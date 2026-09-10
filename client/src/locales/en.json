@@ -117,6 +117,7 @@
     "shared": "Shared",
     "recent": "Recent items",
     "recentShort": "Recent",
+    "trashShort": "Trash",
     "root": "Root",
     "all": "All",
     "sharedFolder": "Shared folder",
@@ -881,7 +882,9 @@
       "progressNotFound": "Progress not found.",
       "versionNotFound": "Requested version does not exist.",
       "versionBlobMissing": "The blob for this version is no longer available.",
-      "versionRestoreUnavailable": "Version restore is not available."
+      "versionRestoreUnavailable": "Version restore is not available.",
+      "fileNameReserved": "This file name is reserved by the system",
+      "trashTargetExists": "The trash destination already exists. Please contact an administrator."
     },
     "permissions": {
       "permissionHigherThanParent": "File permission must be higher than parent path permission.",
@@ -1013,6 +1016,7 @@
       "userDeleted": "User has been deleted.",
       "permissionUpdated": "Permissions have been updated.",
       "orphanCleanupDone": "Orphaned data cleanup completed",
+      "permDeleteDone": "Item permanently deleted",
       "migrationCancelled": "Migration cancelled.",
       "configSaved": "Configuration saved.",
       "configSyncDone": "Database settings synced from the environment."

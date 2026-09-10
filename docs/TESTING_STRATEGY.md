@@ -262,7 +262,7 @@ Apply uniformly to every spec in `e2e/`:
 - Create and assert items only inside a case-owned folder (named via `buildName`); never assert item visibility in the admin root or another shared listing.
 - Seed the owned base folder through the stable API (resolve-or-create) and navigate into it; exercise UI creation flows (FAB, upload) inside it.
 - A case may render-and-assert only in a listing bounded to its own data.
-- Each case deletes its owned base folder in `afterEach` (API delete, tolerant of the folder having already been moved/renamed/deleted by the case), so the shared admin root never accumulates one folder per case across a run.
+- Each case deletes its owned base folder in `afterEach` (permanent delete via the admin maintenance route `DELETE /api/admin/maintenance/perm-delete`, tolerant of the folder having already been moved/renamed/deleted by the case), so the shared admin root never accumulates one folder per case across a run. The ordinary `DELETE /api/files/delete` now TRASHES (DEF-16 P2) — cleanup must not rely on it, or trashed residue would accumulate invisibly at the root.
 - Prefer parallel-safe cases; a case/file must be serial only when it mutates shared users/settings or depends on prior cases (state the reason).
 - A standard user's own home is role-scoped (a top-level node named after the username), not the admin root. Home-root label assertions (the breadcrumb first chip and the folder-tree home row render "Home", never the acting username — `E2E-EXP-014`) run only against that user's own home folder, never a shared listing.
 

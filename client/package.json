@@ -61,7 +61,8 @@
       "^react-router-dom$": "<rootDir>/../node_modules/react-router-dom/dist/index.js",
       "^react-router$": "<rootDir>/../node_modules/react-router/dist/development/index.js",
       "^react-router/dom$": "<rootDir>/../node_modules/react-router/dist/development/dom-export.js",
-      "\\.(css|less|scss|sass)$": "identity-obj-proxy"
+      "\\.(css|less|scss|sass)$": "identity-obj-proxy",
+      "^@webdav-easyaccess/shared/(.*)$": "<rootDir>/../shared/$1"
     }
   }
 }

@@ -20,6 +20,7 @@ function createFileNodeServiceMock(overrides = {}) {
     renameNode: jest.fn().mockResolvedValue(true),
     moveNode: jest.fn().mockResolvedValue(true),
     deleteNode: jest.fn().mockResolvedValue({ deletedCount: 1 }),
+    markSubtreeDeleted: jest.fn().mockResolvedValue({ changes: 1 }),
     listDirectory: jest.fn().mockResolvedValue([]),
     getNodePath: jest.fn().mockResolvedValue('/some/path'),
     resolvePath: jest.fn().mockResolvedValue({ id: 10, name: 'test.txt', type: 'file' }),

@@ -3,7 +3,7 @@
  * @see docs/api.md, docs/spec/server/routes/recentFiles.md
  */
 const request = require('supertest');
-const { createTestDatabase, createAuthenticatedTestUser } = require('@server/test-utils');
+const { createTestDatabase, createAuthenticatedTestUser, dbQuery, dbRun } = require('@server/test-utils');
 const { createFileNodeService } = require('@server/service/fileNodeService');
 const { createFileNodesStore } = require('@server/store/fileNodesStore');
 const {
@@ -181,6 +181,36 @@ describe('recent entries and node deletion (reference stability)', () => {
     expect(before.body.some((f) => f.fileNodeId === fileNode.id)).toBe(true);
 
     await fileNodeService.deleteNode(fileNode.id);
+
+    const after = await request(app)
+      .get('/api/recent-files')
+      .set('Authorization', `Bearer ${token}`);
+    expect(after.status).toBe(200);
+    expect(after.body.some((f) => f.fileNodeId === fileNode.id)).toBe(false);
+  });
+
+  it('A8: a TRASHED node keeps its recent_files row but the entry is hidden from every listing', async () => {
+    const { token, fileNode } = await createUserWithFile();
+    await request(app)
+      .post('/api/recent-files')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ fileNodeId: fileNode.id });
+
+    const before = await request(app)
+      .get('/api/recent-files')
+      .set('Authorization', `Bearer ${token}`);
+    expect(before.status).toBe(200);
+    expect(before.body.some((f) => f.fileNodeId === fileNode.id)).toBe(true);
+
+    // Trash the node (soft delete) — the recent_files row is NOT removed.
+    await dbRun('UPDATE file_nodes SET deleted_at = datetime(\'now\') WHERE id = ?', [
+      fileNode.id,
+    ]);
+
+    const dbRows = await dbQuery('SELECT * FROM recent_files WHERE file_node_id = ?', [
+      fileNode.id,
+    ]);
+    expect(dbRows.rows.length).toBeGreaterThanOrEqual(1);
 
     const after = await request(app)
       .get('/api/recent-files')

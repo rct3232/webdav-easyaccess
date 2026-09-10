@@ -37,7 +37,8 @@ const buildSharedSql = (table, ph1, ph2, excludeOwn) => {
   return `SELECT p.file_node_id, p.permission, n.name, n.type
           FROM ${table} p
           JOIN file_nodes n ON n.id = p.file_node_id
-          WHERE p.user_id = ${ph1}${exclusion}`;
+          WHERE p.user_id = ${ph1}
+            AND n.deleted_at IS NULL${exclusion}`;
 };
 
 const buildRemovalSql = (table, ph1, ph2) =>

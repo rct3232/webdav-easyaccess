@@ -32,6 +32,10 @@ describe('getFolderName', () => {
     expect(getFolderName('/__recent__')).toBe('Recent');
   });
 
+  it('A20: returns Trash for /__trash__', () => {
+    expect(getFolderName('/__trash__')).toBe('Trash');
+  });
+
   it('returns last segment for normal path without t', () => {
     expect(getFolderName('/a/b/c')).toBe('c');
   });
@@ -41,6 +45,7 @@ describe('getFolderName', () => {
     expect(getFolderName('/', t)).toBe('t(nav.root)');
     expect(getFolderName('/__shared__', t)).toBe('t(nav.shared)');
     expect(getFolderName('/__recent__', t)).toBe('t(nav.recentShort)');
+    expect(getFolderName('/__trash__', t)).toBe('t(nav.trashShort)'); // A20
   });
 
   it('returns last segment for normal path with t', () => {
@@ -107,9 +112,10 @@ describe('getParentPath with VIRTUAL_ROOTS', () => {
     expect(getParentPath('/')).toBe('/');
   });
 
-  it('returns / for virtual roots /__shared__ and /__recent__', () => {
+  it('returns / for virtual roots /__shared__, /__recent__ and /__trash__ (A20)', () => {
     expect(getParentPath('/__shared__')).toBe('/');
     expect(getParentPath('/__recent__')).toBe('/');
+    expect(getParentPath('/__trash__')).toBe('/');
   });
 
   it('returns parent for normal paths', () => {
@@ -159,6 +165,7 @@ describe('isRootPath', () => {
     expect(isRootPath('/')).toBe(true);
     expect(isRootPath('/__shared__')).toBe(true);
     expect(isRootPath('/__recent__')).toBe(true);
+    expect(isRootPath('/__trash__')).toBe(true); // A20
   });
 
   it('returns false for normal paths', () => {

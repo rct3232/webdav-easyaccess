@@ -160,7 +160,8 @@ async function applyIfPending(backend, filename, options = {}) {
     } else {
       // Boot path: one transaction per file (PG parity). PRAGMA foreign_keys
       // is a no-op inside a transaction, so enforcement is toggled outside
-      // BEGIN/COMMIT; DDL like the ddl/002 table rebuild needs it disabled.
+      // BEGIN/COMMIT; DDL that needs FK enforcement off (e.g. table rebuilds)
+      // relies on this.
       // The record is written inside the transaction so a crash cannot leave
       // a file applied-but-unrecorded (sqlite has no ADD COLUMN IF NOT
       // EXISTS to make a re-run safe).

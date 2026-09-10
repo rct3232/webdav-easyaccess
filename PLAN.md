@@ -116,8 +116,9 @@ Key gap: **no subsystem scans or repairs `pending_upload`**; s3-source migration
 
 ### DEF-16 trash (Option A: `deleted_at`)
 - **Model**: `file_nodes.deleted_at TIMESTAMPTZ NULL`, orthogonal to `sync_status`;
-  `UNIQUE(parent_id,name)` + root unique → **partial over `deleted_at IS NULL`** (new `ddl/002_*`;
-  never edit `001` — checksum drift hard-fail). Zero physical I/O on trash/restore-in-place in BOTH
+  `UNIQUE(parent_id,name)` + root unique → **partial over `deleted_at IS NULL`** (folded into
+  `001_initial_normalized_schema.sql` — single-file tracked chain, user-approved 2026-09-10;
+  checksum drift hard-fail retained). Zero physical I/O on trash/restore-in-place in BOTH
   backends (S3 key = stable UUID, stays `active` → in Tier-2 keep-set for free; WebDAV path stable
   since closure kept). Rejected: B (status pollutes migration/failsafe), C (move = closure churn +
   WebDAV copy), D (tombstone loses shares/perm via cascade, re-derives path).
@@ -245,3 +246,13 @@ Key gap: **no subsystem scans or repairs `pending_upload`**; s3-source migration
   (sqlite-only describes gated via `WEA_TEST_PG_HOST`). Verified: server test:ci 99 suites /
   1849 pass / 5 skip (coverage All files 72.35/63.17/76.65/73.46), client test:ci 157 suites /
   1421 pass; PG leg intentionally not run here (orchestrator runs it after the pattern change).
+- 2026-09-10: **Schema big-bang (user-approved)** — `ddl/002_trash_soft_delete.sql` folded into
+  `001_initial_normalized_schema.sql` (single-file tracked chain; `deleted_at` + the partial unique
+  indexes over `deleted_at IS NULL` now live in 001; 002 deleted). The transpiler reverts to plain
+  type conversion + BEGIN/COMMIT stripping + partial-index passthrough; the "existing pre-002
+  sqlite DB migrated via real boot" test scenario removed. Rationale: single-user deployment — the
+  real PostgreSQL DB is cut over by a MANUAL one-shot SQL script (orchestrator-provided, with the
+  recomputed 001 checksum) instead of an incremental DDL file. The standard tracked-migration
+  mechanism (`applyPendingMigrations` + `_schema_migrations` ledger + checksum drift hard-fail) is
+  kept; only the file chain becomes a single file. Consequence: existing sqlite dev DBs are not
+  in-place migrated — they are deleted and re-created/re-migrated at next boot.

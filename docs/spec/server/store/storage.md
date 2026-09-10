@@ -100,8 +100,10 @@ When backend is `postgresql`, storage connects to the normalized schema used by 
 
 Canonical source for table definitions, constraints, and indexes is the ordered DDL chain:
 
-- `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
-- `server/store/postgresql/ddl/002_trash_soft_delete.sql` (and subsequent `ddl/*.sql` files)
+- `server/store/postgresql/ddl/001_initial_normalized_schema.sql` — carries the whole normalized
+  schema, including `file_nodes.deleted_at` (trash marker) and the partial unique indexes over
+  `deleted_at IS NULL` (live name-uniqueness). DDL files are applied in filename order; currently
+  a single file (subsequent files may be added incrementally in the future; none exist now).
 
 The schema is applied at startup on **both backends** via `server/store/bootstrap.js`
 `initMetadataSchema()`: `applyPendingMigrations('postgresql')` for PostgreSQL and

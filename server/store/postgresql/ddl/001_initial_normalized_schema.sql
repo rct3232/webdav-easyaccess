@@ -2,6 +2,7 @@
 -- WebDAV EasyAccess — Normalized Schema (Final State)
 -- PostgreSQL 16 target; SQLite-compatible via conversion layer.
 -- Single source of truth for all metadata tables.
+-- Includes file_nodes.deleted_at (trash soft-delete marker).
 -- ============================================================
 
 BEGIN;
@@ -47,10 +48,11 @@ CREATE TABLE IF NOT EXISTS file_nodes (
     CHECK (sync_status IN ('active', 'pending_upload', 'orphaned_node')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT file_nodes_unique_name_per_parent UNIQUE (parent_id, name)
+  deleted_at TIMESTAMPTZ DEFAULT NULL
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS file_nodes_root_unique ON file_nodes (name) WHERE parent_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS file_nodes_root_unique ON file_nodes (name) WHERE parent_id IS NULL AND deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS file_nodes_unique_name_per_parent ON file_nodes (parent_id, name) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS file_nodes_children_idx ON file_nodes (parent_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS object_map (

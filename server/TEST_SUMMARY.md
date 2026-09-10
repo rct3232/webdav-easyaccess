@@ -6,13 +6,13 @@ Summary of the test implementation for the Express.js server application. All te
 
 ## Test Statistics
 
-- **Total Test Suites**: 99 (sqlite `test:ci`, as of 2026-09-09)
-- **Total Tests**: 1854 (1849 passed, 5 skipped)
-- **Pass Rate**: 100% (1849 passed, 0 failed) ✅
+- **Total Test Suites**: 99 (sqlite `test:ci`, as of 2026-09-10)
+- **Total Tests**: 1849 (1844 passed, 5 skipped)
+- **Pass Rate**: 100% (1844 passed, 0 failed) ✅
 - **Real-PostgreSQL adapter leg** (`test:ci:pg:adapters`): 207 tests (latest recorded run, 2026-09-09)
 - **Execution Time**: Reported per run by `npm run test`
 
-> New/extended suites since the 2026-09-04 snapshot: `infrastructure/__tests__/trashSoftDeleteSchema.test.js` (new; registered on the PG adapter leg), extended `failSafeService` (pending_upload scan/repair, DEF-12/13) and `gcService` (retention categories: garbage/version/guarded/pending-live) suites.
+> New/extended suites since the 2026-09-04 snapshot: `infrastructure/__tests__/trashSoftDeleteSchema.test.js` (new; registered on the PG adapter leg), extended `failSafeService` (pending_upload scan/repair, DEF-12/13) and `gcService` (retention categories: garbage/version/guarded/pending-live) suites. 2026-09-10: trash-schema DDL folded into `001_initial_normalized_schema.sql` (single-file chain) — removed 5 tests (4 converter table-rebuild tests in `sqliteSchemaInit`, the pre-fold sqlite in-place migration scenario in `trashSoftDeleteSchema`).
 
 ## Test Breakdown by Category
 
@@ -142,7 +142,7 @@ Per-module figures are intentionally not reproduced here (they move per run). Me
 
 ## Conclusion
 
-- 1849 tests across 99 suites, 100% pass rate (5 skipped, as of 2026-09-09, sqlite `test:ci`); real-PostgreSQL adapter leg `test:ci:pg:adapters`: 207 tests (latest recorded run, 2026-09-09)
+- 1844 tests across 99 suites, 100% pass rate (5 skipped, as of 2026-09-10, sqlite `test:ci`); real-PostgreSQL adapter leg `test:ci:pg:adapters`: 207 tests (latest recorded run, 2026-09-09)
 - Tests are colocated with source: domain routes/services/stores/policy under `domains/<x>/`, shared layer under `service/` and `store/`, plus `infrastructure/`, `middleware/`, `models/`, `utils/`
 - Route integration tests cover main API endpoints via Supertest
 - L2 repository conformance suites (store + permission repositories, executor) run against real sqlite and, on the adapter leg, real PostgreSQL

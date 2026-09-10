@@ -6,6 +6,7 @@ import BaseFolderTreeItem from './BaseFolderTreeItem';
 import SharedFoldersSection from './SharedFoldersSection';
 import RecentFilesSection from './RecentFilesSection';
 import ShareLinkSection from './ShareLinkSection';
+import TrashSidebarItem from './TrashSidebarItem';
 import useFolderTreeController from './hooks/useFolderTreeController';
 
 const EMPTY_ANCESTORS = [];
@@ -139,6 +140,17 @@ const FolderTree = ({
           )}
         </List>
       </Box>
+
+      {/* DEF-16 P9: bottom-pinned trash entry — below all tree lines, outside
+          the scrollable List. Same share-mode gating as the tree sections. */}
+      {(!shareLinkSection || user) && (
+        <Box sx={{ px: '5px', pb: 1, borderTop: 1, borderColor: 'divider', flexShrink: 0 }}>
+          <TrashSidebarItem
+            currentPath={currentPath}
+            onTrashClick={() => nonShareOnNodeClick('/__trash__')}
+          />
+        </Box>
+      )}
     </Box>
   );
 };

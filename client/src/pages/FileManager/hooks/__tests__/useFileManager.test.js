@@ -443,4 +443,98 @@ describe('useFileManager', () => {
     expect(explorerGateway.getPathAccess).toHaveBeenCalled();
     expect(result.current.hasWritePermission).toBe(true);
   });
+  describe('trash hierarchical navigation (DEF-16 P9)', () => {
+    const topmostTrash = [
+      {
+        nodeId: 41,
+        name: 'trashed-folder',
+        path: '/testuser/trashed-folder',
+        basename: 'trashed-folder',
+        type: 'directory',
+        displayPath: '/testuser/trashed-folder',
+        hasWritePermission: true,
+        isTrashed: true,
+      },
+    ];
+    const childTrash = [
+      {
+        nodeId: 42,
+        name: 'child.txt',
+        path: '/testuser/trashed-folder/child.txt',
+        basename: 'child.txt',
+        type: 'file',
+        displayPath: '/testuser/trashed-folder/child.txt',
+        hasWritePermission: true,
+        isTrashed: true,
+      },
+    ];
+
+    it('passes parentId when the trash route names a trashed folder', async () => {
+      explorerGateway.loadTrashEntries.mockResolvedValueOnce(childTrash);
+      const { result } = renderWithPath('__trash__/node/31');
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      expect(explorerGateway.loadTrashEntries).toHaveBeenCalledWith({ parentId: 31 });
+      expect(result.current.currentPath).toBe('/__trash__');
+      expect(result.current.trashParentNodeId).toBe(31);
+    });
+
+    it('omits parentId at the trash root', async () => {
+      explorerGateway.loadTrashEntries.mockResolvedValueOnce(topmostTrash);
+      const { result } = renderWithPath('__trash__');
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      expect(explorerGateway.loadTrashEntries).toHaveBeenCalledWith({});
+      expect(result.current.trashParentNodeId).toBeNull();
+    });
+
+    it('openTrashFolder caches the name and navigates to the trash hierarchy URL', async () => {
+      explorerGateway.loadTrashEntries.mockResolvedValueOnce(topmostTrash);
+      const { result } = renderWithPath('__trash__');
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      act(() => {
+        result.current.openTrashFolder(41, 'trashed-folder');
+      });
+
+      expect(mockNavigate).toHaveBeenCalledWith('/files/__trash__/node/41');
+    });
+
+    it('derives the trashed parent name from the first child displayPath on refresh', async () => {
+      explorerGateway.loadTrashEntries.mockResolvedValueOnce(childTrash);
+      const { result } = renderWithPath('__trash__/node/41');
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      await waitFor(() => {
+        expect(result.current.trashTrail).toEqual([{ nodeId: 41, name: 'trashed-folder' }]);
+      });
+    });
+
+    it('openTrashFolder(null) navigates back to the trash root', async () => {
+      explorerGateway.loadTrashEntries.mockResolvedValueOnce(childTrash);
+      const { result } = renderWithPath('__trash__/node/41');
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      act(() => {
+        result.current.openTrashFolder(null);
+      });
+
+      expect(mockNavigate).toHaveBeenCalledWith('/files/__trash__');
+    });
+  });
 });

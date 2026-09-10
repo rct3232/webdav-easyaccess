@@ -20,6 +20,8 @@ import {
   Share as ShareIcon,
   Visibility as VisibilityIcon,
   Info as InfoIcon,
+  Restore as RestoreIcon,
+  DeleteForever as DeleteForeverIcon,
 } from '@mui/icons-material';
 import { getFileIcon } from '../../utils/fileIconUtils';
 
@@ -39,6 +41,8 @@ const FileActionSheet = ({
   onShare,
   onPreview,
   onProperties,
+  onRestore,
+  onPurge,
   hasWritePermission = true,
 }) => {
   const { t } = useTranslation();
@@ -129,6 +133,41 @@ const FileActionSheet = ({
               </ListItemIcon>
               <ListItemText primary={t('actions.properties')} />
             </ListItemButton>
+          )}
+
+          {fileWritePermission && onRestore && (
+            <ListItemButton
+              component="button"
+              data-testid="trash-action-restore"
+              onClick={() => handleAction(onRestore)}
+              sx={{ minHeight: 56, borderRadius: 1 }}
+            >
+              <ListItemIcon>
+                <RestoreIcon />
+              </ListItemIcon>
+              <ListItemText primary={t('actions.restore')} />
+            </ListItemButton>
+          )}
+
+          {fileWritePermission && onPurge && (
+            <>
+              <Divider sx={{ my: 1 }} />
+              <ListItemButton
+                component="button"
+                data-testid="trash-action-purge"
+                onClick={() => handleAction(onPurge)}
+                sx={{
+                  minHeight: 56,
+                  borderRadius: 1,
+                  color: 'error.main',
+                }}
+              >
+                <ListItemIcon sx={{ color: 'error.main' }}>
+                  <DeleteForeverIcon />
+                </ListItemIcon>
+                <ListItemText primary={t('actions.purge')} />
+              </ListItemButton>
+            </>
           )}
 
           {onDownload && (

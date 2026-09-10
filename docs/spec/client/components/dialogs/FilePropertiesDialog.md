@@ -19,12 +19,14 @@
 
 ### 2.2 Props
 
-| Name              | Type     | Required | Default | Description                                                                 |
-| ----------------- | -------- | -------- | ------- | --------------------------------------------------------------------------- |
-| open              | boolean  | Y        | -       | Dialog open                                                                 |
-| onClose           | function | Y        | -       | Close handler                                                               |
-| file              | object   | Y        | -       | File object                                                                 |
-| activeFileStorage | string   | N        | null    | Active file backend (`'s3' \| 'webdav'`); gates the versions tab visibility |
+| Name              | Type     | Required | Default | Description                                                                                                                                                             |
+| ----------------- | -------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| open              | boolean  | Y        | -       | Dialog open                                                                                                                                                             |
+| onClose           | function | Y        | -       | Close handler                                                                                                                                                           |
+| file              | object   | Y        | -       | File object                                                                                                                                                             |
+| activeFileStorage | string   | N        | null    | Active file backend (`'s3' \| 'webdav'`); gates the versions tab visibility                                                                                             |
+| onTrashRestore    | function | N        | -       | Trash restore executor `(file) => Promise` (DEF-16 P9). When provided and the opened item is trashed (`file.isTrashed`), the action bar renders the Restore icon button |
+| onTrashPurge      | function | N        | -       | Trash permanent-delete executor `(file) => Promise` (DEF-16 P9); error-accented icon button behind an in-dialog error confirm                                           |
 
 ### 2.3 Callback Signatures
 
@@ -40,6 +42,7 @@
 ### 2.5 i18n Keys
 
 - `dialogs.type`, `dialogs.size`, `dialogs.modifiedDate`, `dialogs.path`, `dialogs.permissions`, `actions.folder`, `actions.file`, `fileManager.folderStatsFormat` (for directory stats: count, size)
+- `actions.restore`, `actions.purge` (Tooltip/aria-label), `dialogs.purgeConfirm` (in-dialog purge confirm), `fileManager.trashRestoreDone`/`trashPurgeDone`/`trashRestoreFail`/`trashPurgeFail` (trash notices)
 - Locale requirement: `fileManager.folderStatsFormat` must exist in all supported locales (currently `en`, `ko`) to avoid rendering raw key text.
 
 ### 2.6 Conditional Rendering
@@ -66,6 +69,14 @@
     `dialogs.versionsEmpty`.
   - The versions tab is hidden entirely in WebDAV mode / for directories (server refuses or returns
     empty; the UI does not offer the dead surface).
+- **Trash actions (DEF-16 P9):** when the opened item is trashed (`file.isTrashed === true`, i.e.
+  properties was opened from the trash view) and the host provides the executors, the fixed bottom
+  action bar gains Restore and Permanent-delete **icon-only** buttons (Tooltip + `aria-label`,
+  `data-testid="trash-props-restore"` / `"trash-props-purge"`, error accent for purge) next to the
+  fixed Close button; hidden for live items. Restore executes directly (non-destructive); purge
+  opens the in-dialog `dialogs.purgeConfirm` error confirm first. Trash permission/stats fetches are
+  skipped (trashed nodes are not-found for permission/stats routes; the dialog falls back to the
+  cached row fields). Success (either action) closes the dialog; the host refreshes the listing.
 
 ### 2.7 Verification Scenarios
 

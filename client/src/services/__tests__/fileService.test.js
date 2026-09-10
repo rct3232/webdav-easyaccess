@@ -25,6 +25,10 @@ import {
   getFileVersions,
   restoreFileVersion,
   downloadFileVersion,
+  getTrashFiles,
+  restoreTrashedItem,
+  purgeTrashedItem,
+  emptyTrash,
 } from '../fileService';
 
 jest.mock('../apiClient', () => ({
@@ -535,6 +539,67 @@ describe('fileService', () => {
       clickSpy.mockRestore();
       createObjectSpy.mockRestore();
       revokeSpy.mockRestore();
+    });
+  });
+
+  describe('trash (DEF-16)', () => {
+    it('getTrashFiles requests GET /files/trash and returns the payload', async () => {
+      const payload = {
+        items: [
+          {
+            nodeId: 9,
+            name: 'a.txt',
+            type: 'file',
+            deletedAt: '2026-09-10T00:00:00Z',
+            displayPath: '/home/a.txt',
+            hasReadPermission: true,
+            hasWritePermission: true,
+            hasAdminPermission: true,
+          },
+        ],
+        total: 1,
+      };
+      get.mockResolvedValueOnce({ data: payload });
+
+      const result = await getTrashFiles();
+
+      expect(get).toHaveBeenCalledWith('/files/trash', { params: {} });
+      expect(result).toBe(payload);
+    });
+
+    it('getTrashFiles forwards parentId/limit/offset as query params when provided', async () => {
+      get.mockResolvedValueOnce({ data: { items: [], total: 0 } });
+
+      await getTrashFiles({ parentId: 12, limit: 50, offset: 25 });
+
+      expect(get).toHaveBeenCalledWith('/files/trash', {
+        params: { parentId: 12, limit: 50, offset: 25 },
+      });
+    });
+
+    it('restoreTrashedItem posts nodeId to /trash/restore', async () => {
+      post.mockResolvedValueOnce({ data: { nodeId: 9 } });
+
+      const result = await restoreTrashedItem(9);
+
+      expect(post).toHaveBeenCalledWith('/files/trash/restore', { nodeId: 9 });
+      expect(result).toEqual({ nodeId: 9 });
+    });
+
+    it('purgeTrashedItem posts nodeId to /trash/purge', async () => {
+      post.mockResolvedValueOnce({ data: { nodeId: 9 } });
+
+      await purgeTrashedItem(9);
+
+      expect(post).toHaveBeenCalledWith('/files/trash/purge', { nodeId: 9 });
+    });
+
+    it('emptyTrash posts to /trash/empty with no node params', async () => {
+      post.mockResolvedValueOnce({ data: {} });
+
+      await emptyTrash();
+
+      expect(post).toHaveBeenCalledWith('/files/trash/empty', {});
     });
   });
 });

@@ -325,3 +325,51 @@ IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode repor
   while the active control blob must survive the cycle. Pre-existing unrelated lint error
   `admin.test.js 'store' is assigned a value but never used` (unused var in the A3 live-node test)
   was verified present before this change via git stash (DEF-19 class) and left untouched.
+### 2026-09-10 — Trash UI (DEF-16 P9): FileManagerView TDZ error surfaced by FileManagerView suite (Case B)
+
+- **Summary**: while implementing the trash view, the full client run failed 30 tests across
+  `FileManagerView.test.js` + `FileManager.test.js` with
+  `ReferenceError: Cannot access 'trashMode' before initialization` (FileManagerView.js).
+- **Diagnosis**: the trash-state destructure from the new `trashState` prop group was placed
+  below the `isTrashView` computation that reads `trashMode` — a temporal-dead-zone bug in the
+  wiring, not a spec violation. The grouped-props tests rendered `FileManagerView` without
+  `trashState`, which forced the `trashState ?? {}` fallback path and exposed the ordering issue.
+- **Classification**: **Case B (Test Error, dev-time catch)** — the view spec
+  (docs/spec/client/components/file-manager/FileManagerView.md) says the view renders from props
+  only; the failure came from hook ordering inside the view, caught by the existing suite before
+  any spec change.
+- **Action taken**: moved the `trashState` destructure above `controlsState` (before first use of
+  `trashMode`); full client suite re-run green (160 suites / 1479 tests).
+
+### 2026-09-10 — Trash UI (DEF-16 P9): unit-test fixes for double-render DOM leakage and JSX `key` assertions (Case B)
+
+- **Summary**: 5 new-test failures in `TrashSidebarItem` / `FileActionSheet` / `FileManagerControls`
+  trash suites: (a) `fireEvent.click` on the `ListItem` wrapper did not reach the
+  `ListItemButton`; (b) asserting the one-shot animation via JSX `key` attribute (React strips
+  `key` from the DOM) and via `style.animation` (emotion applies animation through generated
+  classes, not inline style); (c) two tests rendered a second component instance in the same test
+  and then asserted absence — the first instance stayed attached, so `queryByTestId` matched the
+  stale node; (d) a trash action-sheet case relied on `defaultProps` carrying live-item callbacks
+  that the trash mode withholds.
+- **Diagnosis**: all four were test-implementation mistakes against the documented component
+  contracts (`TrashSidebarItem.md`, `FileActionSheet.md`, `FileManagerControls.md`); the source
+  behavior matched the specs.
+- **Classification**: **Case B (Test Error)**.
+- **Action taken**: click via the `ListItemButton` role; assert the animation pulse by the
+  re-rendered emotion class + lid path presence; split double-render tests into separate cases;
+  pass explicit `undefined` callbacks for the withheld-rows case. Suites green.
+
+### 2026-09-10 — useFileManager trash hierarchical tests vs mocked `useNavigate` (Case B)
+
+- **Summary**: the new `useFileManager` trash-trail tests timed out expecting a listing reload
+  after `openTrashFolder` navigation; `loadTrashEntries` was still called once.
+- **Diagnosis**: `useFileManager.test.js` mocks `useNavigate` at module level
+  (`mockNavigate`), so in-hook `navigate()` never changes the MemoryRouter URL — the existing
+  suite's convention is to assert `mockNavigate` payloads instead of re-listing. Also a real bug
+  was found by the derivation test: `fillTrashNameFromChildren` used `prev.map` (no-op on an empty
+  trail) so a refresh-derived trashed-parent name never appeared; fixed to append the segment when
+  absent (spec useFileManager.md §2.3.1 documents the cache/derivation contract).
+- **Classification**: **Case B (Test Error)** for the navigation assertions; the `trashTrail`
+  rebuild issue was a source bug caught by the new test and fixed per spec.
+- **Action taken**: rewrote the navigation assertions to `mockNavigate` payloads; fixed
+  `fillTrashNameFromChildren` to push the missing trail segment. Suite green (20 tests).

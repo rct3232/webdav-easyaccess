@@ -135,4 +135,23 @@ describe('Breadcrumb', () => {
     renderWithProviders(<Breadcrumb {...defaultProps} currentPath="/__recent__" />);
     expect(screen.getByText(/recent/i)).toBeInTheDocument();
   });
+  it('renders the trash chip and navigable trail in the trash view', () => {
+    const onNodeClick = jest.fn();
+    renderWithProviders(
+      <Breadcrumb
+        {...defaultProps}
+        currentPath="/__trash__"
+        ancestors={[
+          { nodeId: 11, name: 'trashed-folder' },
+          { nodeId: 12, name: 'nested' },
+        ]}
+        onNodeClick={onNodeClick}
+      />
+    );
+    expect(screen.getByText('Trash')).toBeInTheDocument();
+    expect(screen.getByText('trashed-folder')).toBeInTheDocument();
+    expect(screen.getByText('nested')).toBeInTheDocument();
+    screen.getByText('nested').click();
+    expect(onNodeClick).toHaveBeenCalledWith(12);
+  });
 });

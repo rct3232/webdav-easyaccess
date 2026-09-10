@@ -6,6 +6,7 @@ import {
   ChevronRight as ChevronRightIcon,
   Share as ShareIcon,
   AccessTime as AccessTimeIcon,
+  DeleteOutline as DeleteOutlineIcon,
   KeyboardArrowDown as KeyboardArrowDownIcon,
   KeyboardArrowUp as KeyboardArrowUpIcon,
 } from '@mui/icons-material';
@@ -33,6 +34,8 @@ const Breadcrumb = ({
   const isShareMode = Boolean(shareRootPath);
   const isRecentView = !isShareMode && currentPath === '/__recent__';
   const isSharedView = !isShareMode && currentPath === '/__shared__';
+  // DEF-16 P9: trash view (any depth) — Trash chip + trashed folder trail.
+  const isTrashView = !isShareMode && currentPath === '/__trash__';
 
   // Share mode: keep the existing path-segment rendering (do not regress; C2.5).
   const shareSegments = (() => {
@@ -89,6 +92,10 @@ const Breadcrumb = ({
     homeIcon = <ShareIcon />;
     homeLabel = t('nav.shared');
     homeClickTarget = '/__shared__';
+  } else if (isTrashView) {
+    homeIcon = <DeleteOutlineIcon />;
+    homeLabel = t('nav.trashShort');
+    homeClickTarget = '/__trash__';
   } else {
     homeIcon = <HomeIcon />;
     homeLabel = t('nav.home');

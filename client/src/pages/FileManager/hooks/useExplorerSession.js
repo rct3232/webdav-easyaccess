@@ -19,6 +19,7 @@ export const useExplorerSession = ({
   const sessionKey = useMemo(() => {
     if (view === 'recent') return 'view:recent';
     if (view === 'shared') return 'view:shared';
+    if (view === 'trash') return 'view:trash';
     return currentNodeId == null ? 'node:root' : `node:${currentNodeId}`;
   }, [view, currentNodeId]);
 

@@ -217,3 +217,26 @@
   schema test suite (7 tests: live/trashed uniqueness incl. root variant, real-boot migration of a
   pre-002 sqlite DB with data-preservation/FK/AUTOINCREMENT/idempotency checks, schema-less
   explicit-connection target); staging now uses explicit `git add` of new files. 7/7 pass.
+
+### 2026-09-10 — S7 conformance test asserted a two-active-rows state via a nondeterministic pick (Case B)
+
+- **Summary**: the PG adapter leg failed
+  `reactivateObjectMapRow flips a history row back to active (DEF-11 restore path)` — after
+  reactivating the history row, `getActiveObject(node)` returned the OTHER (v2, active) row instead
+  of the reactivated v1. SQLite leg passed 5/5 consecutive runs.
+- **Diagnosis**: the test called `reactivateObjectMapRow(id)` ALONE, which correctly flipped the v1
+  history row to `active` (`{changes:1}`, confirmed via xmin ordering) — but the current active row
+  (v2) was never demoted, leaving TWO active rows. `getActiveObject` is
+  `SELECT * ... AND status='active' LIMIT 1` with no ORDER BY, so which row it returns across two
+  active rows is unspecified: sqlite returned v1 by insertion-order luck, PG returned v2. The
+  production restore flow (`versionsService.restoreVersion`) pairs the reactivation with
+  `demoteActiveToHistory(current.s3_key)` inside one TX, so the invariant (exactly one active row)
+  holds there; only this conformance test asserted a primitive in isolation against an end-state
+  that requires the pair.
+- **Classification**: **Case B (Test Error)** — the implementation matches the locked spec
+  (fileNodesStore.md:99-101); the test asserted a nondeterministic pick over a state the primitive
+  alone cannot guarantee.
+- **Action taken**: the history-reactivate conformance test now asserts the targeted row's status
+  is `active` (plus `{changes:1}`), not `getActiveObject`'s pick; the paired
+  `demoteActiveToHistory` behavior is covered by the versionsService restore tests
+  (`versionsService.test.js` "restore swap" assertions). PG leg re-run 3×: 25/25 pass.

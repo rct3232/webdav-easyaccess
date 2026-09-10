@@ -38,6 +38,7 @@ const {
   ensureThumbnail,
   setCachedThumbnail,
   setCacheAdapter,
+  invalidate,
 } = require('@server/domains/thumbnails/services/thumbnailService');
 
 const MAX_CACHE_SIZE = 1000;
@@ -150,6 +151,19 @@ describe('thumbnail utilities', () => {
       expect(cached.buffer).toBe(buf);
       expect(cached.extension).toBe('jpg');
       expect(cached.mimeType).toBe('image/jpeg');
+    });
+
+    it('invalidate evicts the entry for the node (overwrite/restore hook)', () => {
+      setCachedThumbnail(9, Buffer.from('stale'), 'jpg');
+      expect(getThumbnailFromCache(9)).not.toBeNull();
+
+      invalidate(9);
+      expect(getThumbnailFromCache(9)).toBeNull();
+    });
+
+    it('invalidate is a safe no-op for a node without a cached entry', () => {
+      expect(() => invalidate(424242)).not.toThrow();
+      expect(getThumbnailFromCache(424242)).toBeNull();
     });
   });
 

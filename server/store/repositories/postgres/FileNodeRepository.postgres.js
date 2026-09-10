@@ -255,8 +255,9 @@ module.exports = function createPostgresFileNodeRepository(executor) {
 
     async upsertObjectMap(fileNodeId, s3Key, status) {
       try {
+        // DEF-11: the previous active row becomes managed history (not orphaned).
         await executor.run(
-          `UPDATE object_map SET status = 'orphaned' WHERE file_node_id = $1 AND status = 'active'`,
+          `UPDATE object_map SET status = 'history' WHERE file_node_id = $1 AND status = 'active'`,
           [Number(fileNodeId)]
         );
         const verRes = await executor.query(
@@ -268,6 +269,36 @@ module.exports = function createPostgresFileNodeRepository(executor) {
           `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
            VALUES ($1, $2, 's3', $3, $4)`,
           [Number(fileNodeId), String(s3Key), versionNumber, String(status)]
+        );
+        return { changes: res.changes };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async evictVersionsBeyondCap(fileNodeId, cap) {
+      const maxVersions = Number(cap);
+      // cap 0 (or invalid) = unbounded → no-op; the active row is never touched.
+      if (!Number.isFinite(maxVersions) || maxVersions <= 0) {
+        return { changes: 0 };
+      }
+      try {
+        const res = await executor.run(
+          `UPDATE object_map SET status = 'orphaned'
+           WHERE file_node_id = $1 AND status = 'history'
+             AND (
+               SELECT COUNT(*) FROM object_map older
+               WHERE older.file_node_id = $1
+                 AND older.status = 'history'
+                 AND older.version_number < object_map.version_number
+             ) < GREATEST(
+               (
+                 SELECT COUNT(*)::int FROM object_map total
+                 WHERE total.file_node_id = $1
+                   AND total.status IN ('active', 'history')
+               ) - $2, 0
+             )`,
+          [Number(fileNodeId), maxVersions]
         );
         return { changes: res.changes };
       } catch (error) {
@@ -362,13 +393,41 @@ module.exports = function createPostgresFileNodeRepository(executor) {
       }
     },
 
-    async reactivateObjectMapRow(id) {
+    async demoteActiveToHistory(s3Key) {
       try {
         const res = await executor.run(
-          `UPDATE object_map SET status = 'active' WHERE id = $1 AND status = 'orphaned'`,
+          `UPDATE object_map SET status = 'history' WHERE s3_key = $1 AND status = 'active'`,
+          [String(s3Key)]
+        );
+        return { changes: res.changes };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async reactivateObjectMapRow(id) {
+      try {
+        // Guard widened by DEF-11: a history row reactivates in place on
+        // version restore; the orphaned arm covers legacy residue.
+        const res = await executor.run(
+          `UPDATE object_map SET status = 'active' WHERE id = $1 AND status IN ('history', 'orphaned')`,
           [Number(id)]
         );
         return { changes: res.changes };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async getVersionsByNode(fileNodeId) {
+      try {
+        const { rows } = await executor.query(
+          `SELECT * FROM object_map
+           WHERE file_node_id = $1 AND status IN ('active', 'history')
+           ORDER BY version_number DESC`,
+          [Number(fileNodeId)]
+        );
+        return rows;
       } catch (error) {
         throw mapDatabaseError(error);
       }
@@ -416,6 +475,8 @@ module.exports = function createPostgresFileNodeRepository(executor) {
       try {
         const { rows } = await executor.query(
           `SELECT s3_key FROM object_map WHERE status = 'active' AND s3_key IS NOT NULL
+           UNION
+           SELECT om.s3_key FROM object_map om WHERE om.status = 'history' AND om.s3_key IS NOT NULL
            UNION
            SELECT om.s3_key FROM object_map om WHERE om.status = 'orphaned' AND om.s3_key IS NOT NULL
            UNION

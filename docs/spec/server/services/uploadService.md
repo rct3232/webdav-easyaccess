@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description                                                                                                                                                                                                                                                                                                                    |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Item | Description                                                                                                                                                                                                                                                                                                                           |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Upload orchestration service. Manages the 4-step upload flow (TX1: DB INSERT → S3 PUT → TX2: DB UPDATE) with explicit transaction boundaries and failure recovery states. Owns TX ownership — all service methods are TX-agnostic. Factory `createUploadService({ fileNodeService, blobStorageService, blobStore, fileNodesStore })`. |
 
 ---
@@ -70,16 +70,19 @@ Overwrites existing file content: pre-state capture → TX1 prepares new version
 **Flow:**
 
 0. **Pre-state capture:** `fileNodesStore.getActiveObject(fileNodeId)` — before TX1, captures the pre-state active `object_map` row (its `id` and `s3_key`, i.e. the last-good version B_k) and the current filecache values (`size`, `mime_type`, `content_hash` via `getCache`)
-1. **TX1:** `blobStorageService.prepareUpload(fileNodeId)` + `fileNodeService.updateSyncStatus(fileNodeId, 'pending_upload')` — orphans old active key, creates new pending entry
+1. **TX1:** `blobStorageService.prepareUpload(fileNodeId)` + `fileNodeService.updateSyncStatus(fileNodeId, 'pending_upload')` — demotes the old active key to `history`, creates the new pending entry (and evicts history rows beyond `GC_VERSION_MAX_PER_NODE` — `blobStorageService.md` §2.4)
 2. **S3 PUT:** `blobStore.uploadBlob(s3Key, buffer)` — outside transaction boundary
 3. **TX2:** `blobStorageService.completeUpload(s3Key, size, mimeType)` + `fileNodeService.updateSyncStatus(fileNodeId, 'active')`
 
 **Failure rollback (steps 2–3):** if the S3 PUT or TX2 fails, a best-effort rollback runs inside
 one `withTx`: `fileNodesStore.reactivateObjectMapRow(preState.id)` (guarded
-`UPDATE ... WHERE id=? AND status='orphaned'`), node `sync_status` → `'active'` via
-`updateSyncStatus`, and deletion of the v_{k+1} pending `object_map` row by the captured new
+`UPDATE ... WHERE id=? AND status IN ('history','orphaned')` — the TX1 demotion left the pre-state
+row as `history`), node `sync_status` → `'active'` via
+`updateSyncStatus`, and deletion of the v\_{k+1} pending `object_map` row by the captured new
 `s3Key`. Outside the TX, the pending blob is removed best-effort via `blobStore.deleteBlob(newS3Key)`
-and the captured filecache values are re-asserted via `upsertCache`. The original error is
+and the captured filecache values are re-asserted via `upsertCache`. After a successful overwrite
+the cached thumbnail for the node is evicted (`thumbnailService.invalidate`, best-effort) so a
+stale image is never re-served. The original error is
 re-thrown. The last-good blob B_k is never deleted, so after a failed overwrite the file remains
 downloadable as the previous version. If the pre-state row was not found (no active row existed
 before TX1), the rollback skips reactivation and still cleans the pending row/blob (best-effort;
@@ -113,14 +116,14 @@ a failed **overwrite** (`overwriteFile`) rolls back to the pre-state — the nod
 documented `pending_upload` stuck state remain, handled by scan/repair + GC cleanup (DEF-12/13,
 `docs/IMPROVEMENT_PLAN.md`).
 
-| Method                        | Failure Point | DB State after failure                                           | Storage State                      | Behavior / Recovery (implemented)                                  |
-| ----------------------------- | ------------- | ---------------------------------------------------------------- | --------------------------------- | ----------------------------------------------------------------- |
-| uploadFile (new file)         | TX1 fails     | ROLLBACK, nothing persisted                                      | Nothing written                   | Idempotent retry (duplicate check guards re-create)               |
-| uploadFile (new file)         | S3 PUT fails  | Node rolled back (deleteNode) — nothing persisted                | Nothing (or partial object)       | No DB residue; partial untracked object → GC Tier 2 target        |
-| uploadFile (new file)         | TX2 fails     | Node rolled back (deleteNode) — nothing persisted                | Blob uploaded (untracked)         | GC Tier 2 (listOrphanedKeys) removes untracked blob               |
-| overwriteFile (existing file) | TX1 fails     | ROLLBACK — original active version preserved                     | Nothing written                   | Idempotent retry                                                  |
-| overwriteFile (existing file) | S3 PUT fails  | Rolled back to pre-state: node `active`, previous active object_map row reactivated, pending v_{k+1} row deleted | Pending blob deleted (best-effort); last-good blob B_k kept | File remains downloadable as the previous version; if the rollback itself fails, the `pending_upload` state remains (scan/repair + GC cleanup — DEF-12/13) |
-| overwriteFile (existing file) | TX2 fails     | Rolled back to pre-state: node `active`, previous active object_map row reactivated, pending v_{k+1} row deleted, filecache values re-asserted | New blob deleted (best-effort); last-good blob B_k kept | Same as S3 PUT failure |
+| Method                        | Failure Point | DB State after failure                                                                                                                         | Storage State                                               | Behavior / Recovery (implemented)                                                                                                                          |
+| ----------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| uploadFile (new file)         | TX1 fails     | ROLLBACK, nothing persisted                                                                                                                    | Nothing written                                             | Idempotent retry (duplicate check guards re-create)                                                                                                        |
+| uploadFile (new file)         | S3 PUT fails  | Node rolled back (deleteNode) — nothing persisted                                                                                              | Nothing (or partial object)                                 | No DB residue; partial untracked object → GC Tier 2 target                                                                                                 |
+| uploadFile (new file)         | TX2 fails     | Node rolled back (deleteNode) — nothing persisted                                                                                              | Blob uploaded (untracked)                                   | GC Tier 2 (listOrphanedKeys) removes untracked blob                                                                                                        |
+| overwriteFile (existing file) | TX1 fails     | ROLLBACK — original active version preserved                                                                                                   | Nothing written                                             | Idempotent retry                                                                                                                                           |
+| overwriteFile (existing file) | S3 PUT fails  | Rolled back to pre-state: node `active`, previous active object*map row reactivated, pending v*{k+1} row deleted                               | Pending blob deleted (best-effort); last-good blob B_k kept | File remains downloadable as the previous version; if the rollback itself fails, the `pending_upload` state remains (scan/repair + GC cleanup — DEF-12/13) |
+| overwriteFile (existing file) | TX2 fails     | Rolled back to pre-state: node `active`, previous active object*map row reactivated, pending v*{k+1} row deleted, filecache values re-asserted | New blob deleted (best-effort); last-good blob B_k kept     | Same as S3 PUT failure                                                                                                                                     |
 
 #### 2.5.1 Stuck-state scan and repair (failSafeService)
 
@@ -136,10 +139,10 @@ only file nodes are stuck-state candidates.
 
 **Stuck-state shapes:**
 
-| Shape | Rows | Blob | Detection |
-| ----- | ---- | ---- | --------- |
-| Overwrite residue | node `pending_upload`; v_k row `orphaned` (last good); v_{k+1} row `pending` | B_{k+1} maybe present; B_k present | an `orphaned` object_map row exists on the node |
-| New-file residue | node `pending_upload`; single `pending` row (or no row at all) | maybe present | no `orphaned` row on the node |
+| Shape             | Rows                                                                                                                                                                     | Blob                                | Detection                                                            |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------- | -------------------------------------------------------------------- |
+| Overwrite residue | node `pending_upload`; v*k row `history` (last good; DEF-11 history demotion — legacy `orphaned` residue pre-DEF-11 is detected too, defensively); v*{k+1} row `pending` | B\_{k+1} maybe present; B_k present | a `history` (or legacy `orphaned`) object_map row exists on the node |
+| New-file residue  | node `pending_upload`; single `pending` row (or no row at all)                                                                                                           | maybe present                       | no `history`/`orphaned` row on the node                              |
 
 **Scan** — `scanPendingUploadNodes()` enumerates file nodes via `getNodesBySyncStatus('pending_upload')`
 and reports `{ nodeId, name, type, path, createdAt, updatedAt, classification: 'overwrite' | 'new-file', pendingS3Key, blobPresent }`.
@@ -149,12 +152,12 @@ blob is absent). The scan is strictly read-only.
 
 **Repair** — `repairPendingUploadNode(nodeId, { action })` with actions:
 
-| Action | Preconditions | Effect |
-| ------ | ------------- | ------ |
-| `complete` | pending row + blob present (else 409) | `activateObject(pending.s3_key)`, `upsertCache(nodeId, blob.contentLength, blob.contentType, null)` and node → `active` inside one TX — mirrors `blobStorageService.completeUpload` using blob HEAD metadata |
-| `restore-previous` | an `orphaned` last-good row exists (else 409) | In one TX: `reactivateObjectMapRow(lastGood.id)` (highest `version_number`), pending v_{k+1} row deleted (`deleteObjectMapRows`), node → `active`. Outside the TX the pending blob is deleted best-effort; the last-good blob B_k is never touched |
-| `delete` | — | Pending blob deleted best-effort, then `fileNodeService.deleteNode` removes the node tree (object_map/filecache rows cascade). A last-good blob, if any, becomes untracked and is left to GC Tier 2 |
-| `auto` | — | D2 policy: overwrite residue (orphaned row present) → `restore-previous`; new-file residue with blob present → `complete`; new-file residue without blob → `delete` |
+| Action             | Preconditions                                                            | Effect                                                                                                                                                                                                                                                              |
+| ------------------ | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `complete`         | pending row + blob present (else 409)                                    | `activateObject(pending.s3_key)`, `upsertCache(nodeId, blob.contentLength, blob.contentType, null)` and node → `active` inside one TX — mirrors `blobStorageService.completeUpload` using blob HEAD metadata                                                        |
+| `restore-previous` | a `history` (fallback legacy `orphaned`) last-good row exists (else 409) | In one TX: `reactivateObjectMapRow(lastGood.id)` (guard `status IN ('history','orphaned')`), pending v\_{k+1} row deleted (`deleteObjectMapRows`), node → `active`. Outside the TX the pending blob is deleted best-effort; the last-good blob B_k is never touched |
+| `delete`           | —                                                                        | Pending blob deleted best-effort, then `fileNodeService.deleteNode` removes the node tree (object_map/filecache rows cascade). A last-good blob, if any, becomes untracked and is left to GC Tier 2                                                                 |
+| `auto`             | —                                                                        | D2 policy: overwrite residue (`history`/`orphaned` row present) → `restore-previous`; new-file residue with blob present → `complete`; new-file residue without blob → `delete`                                                                                     |
 
 Errors: unknown action → 400 (`repairUploadInvalidAction`); WebDAV storage mode → 409
 (`repairUploadNotPending`; repair is S3-mode only); missing node → 404
@@ -187,13 +190,13 @@ same list as the additive `pendingUploadNodes` result key.
 - [ ] uploadFile TX2 failure: node rolled back; blob remains in S3 as untracked object; error propagated
 - [ ] overwriteFile success: old key orphaned, new key active, filecache updated
 - [ ] overwriteFile TX1 failure: ROLLBACK preserves original state entirely
-- [ ] overwriteFile S3 PUT failure → rolled back: previous active object_map row reactivated, node `sync_status='active'`, pending v_{k+1} row deleted, pending blob deleted, file downloadable as previous version, original error propagated
+- [ ] overwriteFile S3 PUT failure → rolled back: previous active object*map row reactivated, node `sync_status='active'`, pending v*{k+1} row deleted, pending blob deleted, file downloadable as previous version, original error propagated
 - [ ] overwriteFile TX2 failure → rolled back: same pre-state restoration (including filecache re-assert), new blob deleted, last-good blob B_k untouched, error propagated
 - [ ] downloadFile returns buffer matching uploaded content
 - [ ] downloadFile for non-existent node returns null
-- [ ] scan classifies overwrite residue (orphaned v_k + pending v_{k+1}) as `overwrite` and new-file residue (pending row only / no row) as `new-file`; directories are never reported
+- [ ] scan classifies overwrite residue (history/legacy-orphaned v*k + pending v*{k+1}) as `overwrite` and new-file residue (pending row only / no row) as `new-file`; directories are never reported
 - [ ] repair `complete`: pending row activated, node `active`, filecache populated from blob HEAD metadata
-- [ ] repair `restore-previous`: last-good orphaned row reactivated, pending row deleted, pending blob deleted, node `active`, last-good blob kept and downloadable
+- [ ] repair `restore-previous`: last-good history (or legacy orphaned) row reactivated, pending row deleted, pending blob deleted, node `active`, last-good blob kept and downloadable
 - [ ] repair `delete`: node tree + object_map rows removed, pending blob deleted best-effort
 - [ ] repair `auto`: overwrite residue → `restore-previous`; new-file with blob → `complete`; new-file without blob → `delete`
 - [ ] startup report lists stuck nodes and performs zero mutations

@@ -572,3 +572,52 @@ export const cancelBulkOperation = async (jobId) => {
   const response = await post(`${API_BASE}/bulk-operation/${encodeURIComponent(jobId)}/cancel`);
   return response.data;
 };
+
+/**
+ * Browse the version history of a file (S3 storage mode only).
+ * @param {number} nodeId - File nodeId
+ * @returns {Promise<{ nodeId: number, currentVersionNumber: number|null, versions: Array<{ versionNumber: number, status: string, createdAt: string, size: number|null, isCurrent: boolean }> }>}
+ */
+export const getFileVersions = async (nodeId) => {
+  const response = await get(`${API_BASE}/versions`, {
+    params: { nodeId },
+  });
+  return response.data;
+};
+
+/**
+ * Restore one version in place (S3 storage mode only). The current version is
+ * always kept (demoted to history); no new version row is created.
+ * @param {number} nodeId - File nodeId
+ * @param {number} versionNumber - Version to restore
+ * @returns {Promise<{ messageCode: string, nodeId: number, restoredVersionNumber: number }>}
+ */
+export const restoreFileVersion = async (nodeId, versionNumber) => {
+  const response = await post(`${API_BASE}/versions/restore`, {
+    nodeId,
+    versionNumber,
+  });
+  return response.data;
+};
+
+/**
+ * Download one version attachment-only (application/octet-stream endpoint).
+ * @param {number} nodeId - File nodeId
+ * @param {number} versionNumber - Version to download
+ * @returns {Promise<void>}
+ */
+export const downloadFileVersion = async (nodeId, versionNumber) => {
+  const response = await get(`${API_BASE}/versions/download`, {
+    params: { nodeId, versionNumber },
+    responseType: 'blob',
+  });
+  const blob = response.data instanceof Blob ? response.data : new Blob([response.data]);
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', `version-${versionNumber}`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};

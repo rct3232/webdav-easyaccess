@@ -146,6 +146,19 @@ function getThumbnailFromCache(nodeId) {
   return getCachedThumbnail(nodeId);
 }
 
+/**
+ * Evict the cached thumbnail for a node (LRU delete). Called after content
+ * overwrites and version restores so a stale image is never re-served.
+ * Safe to call when the node has no cached entry (no-op).
+ */
+function invalidate(nodeId) {
+  try {
+    _getCache().delete(_cacheKey(nodeId));
+  } catch {
+    /* cache adapter unavailable — nothing to evict */
+  }
+}
+
 async function ensureThumbnail(nodeId) {
   try {
     const cached = getCachedThumbnail(nodeId);
@@ -225,6 +238,7 @@ module.exports = {
   signThumbnailToken,
   verifyThumbnailToken,
   findCachedThumbnailByHash,
+  invalidate,
   get thumbnailCache() {
     return _getCache();
   },

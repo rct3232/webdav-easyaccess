@@ -111,6 +111,9 @@ function createFailSafeService({
 
       const rows = await fileNodesStore.getObjectMapByNode(node.id);
       const pendingRow = rows.find((row) => row.status === 'pending') || null;
+      // DEF-11: an overwrite demotes the previous active row to 'history';
+      // legacy 'orphaned' residue (pre-DEF-11 rows) is still detected.
+      const hasHistoryRow = rows.some((row) => row.status === 'history');
       const hasOrphanedRow = rows.some((row) => row.status === 'orphaned');
 
       let blobPresent = null;
@@ -130,7 +133,7 @@ function createFailSafeService({
         path,
         createdAt: node.createdAt,
         updatedAt: node.updatedAt,
-        classification: hasOrphanedRow ? 'overwrite' : 'new-file',
+        classification: hasHistoryRow || hasOrphanedRow ? 'overwrite' : 'new-file',
         pendingS3Key: pendingRow ? pendingRow.s3_key : null,
         blobPresent,
       });
@@ -266,7 +269,12 @@ function createFailSafeService({
 
     const rows = await fileNodesStore.getObjectMapByNode(nodeId);
     const pendingRow = rows.find((row) => row.status === 'pending') || null;
-    const lastGoodRow = rows.find((row) => row.status === 'orphaned') || null;
+    // DEF-11: the last-good row of a stuck overwrite is now 'history';
+    // legacy 'orphaned' residue (pre-DEF-11 rows) stays a fallback.
+    const lastGoodRow =
+      rows.find((row) => row.status === 'history') ||
+      rows.find((row) => row.status === 'orphaned') ||
+      null;
 
     let path = null;
     try {

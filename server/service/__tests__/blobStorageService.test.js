@@ -49,8 +49,8 @@ describe('createBlobStorageService', () => {
       await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
     });
 
-    // V2: prepareUpload orphans previous active entry
-    it('orphans any existing active object_map row for the same file node', async () => {
+    // V2: prepareUpload demotes the previous active entry to history
+    it('demotes any existing active object_map row to history for the same file node', async () => {
       const node = await fileNodesStore.createNode(null, 'prep-upload-orphan-test', 'file');
 
       await dbRun(
@@ -67,15 +67,72 @@ describe('createBlobStorageService', () => {
       try {
         await service.prepareUpload(node.id);
       } catch {
-        /* upsertObjectMap INSERT may fail on UNIQUE constraint; orphaning UPDATE still ran */
+        /* upsertObjectMap INSERT may fail on UNIQUE constraint; demotion UPDATE still ran */
       }
 
-      const orphanedRow = await dbQuery(`SELECT status FROM object_map WHERE s3_key = ?`, [
+      const demotedRow = await dbQuery(`SELECT status FROM object_map WHERE s3_key = ?`, [
         'old-active-s3-key',
       ]);
-      expect(orphanedRow.rows[0].status).toBe('orphaned');
+      expect(demotedRow.rows[0].status).toBe('history');
 
       await dbRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);
+      await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
+    });
+
+    it('evicts the oldest history rows beyond GC_VERSION_MAX_PER_NODE without touching the active row', async () => {
+      const node = await fileNodesStore.createNode(null, 'prep-upload-cap-test', 'file');
+      const capped = createBlobStorageService({
+        blobStore,
+        fileNodesStore,
+        versionConfig: { maxPerNode: 2 },
+      });
+
+      // Realistic version lifecycle: each prepareUpload's pending row is
+      // activated by completeUpload before the next prepareUpload demotes it.
+      const keys = [];
+      for (let i = 0; i < 4; i += 1) {
+        const key = await capped.prepareUpload(node.id);
+        keys.push(key);
+        if (i < 3) {
+          await capped.completeUpload(key, 1, 'text/plain');
+        }
+      }
+      // State before the 4th prepareUpload ran: v3 active, v2+v1 history.
+      // The 4th prepareUpload demotes v3 → 3 history rows (active+history=3>2)
+      // → the oldest history row (v1) is evicted to orphaned; v4 stays pending.
+      const rows = await dbQuery(
+        `SELECT version_number, status FROM object_map WHERE file_node_id = ? ORDER BY version_number`,
+        [node.id]
+      );
+      const byVersion = Object.fromEntries(
+        rows.rows.map((r) => [Number(r.version_number), r.status])
+      );
+      expect(byVersion[1]).toBe('orphaned');
+      expect(byVersion[2]).toBe('history');
+      expect(byVersion[3]).toBe('history');
+      expect(byVersion[4]).toBe('pending');
+
+      await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
+    });
+
+    it('keeps every version row when the cap is 0 (unbounded)', async () => {
+      const node = await fileNodesStore.createNode(null, 'prep-upload-cap0-test', 'file');
+      const unbounded = createBlobStorageService({
+        blobStore,
+        fileNodesStore,
+        versionConfig: { maxPerNode: 0 },
+      });
+
+      for (let i = 0; i < 4; i += 1) {
+        const key = await unbounded.prepareUpload(node.id);
+        await unbounded.completeUpload(key, 1, 'text/plain');
+      }
+      const rows = await dbQuery(
+        `SELECT status FROM object_map WHERE file_node_id = ? ORDER BY version_number`,
+        [node.id]
+      );
+      expect(rows.rows.map((r) => r.status)).toEqual(['history', 'history', 'history', 'active']);
+
       await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
     });
   });
@@ -176,9 +233,9 @@ describe('createBlobStorageService', () => {
 
   describe('overwriteBlob', () => {
     // V7 + V8: overwriteBlob uploads new blob and upserts a new active mapping
-    // (orphans the previous active row and bumps version_number to avoid the
-    // UNIQUE(file_node_id, version_number) collision).
-    it('orphans the old s3_key and creates a new active object_map entry at the next version', async () => {
+    // (demotes the previous active row to history and bumps version_number to
+    // avoid the UNIQUE(file_node_id, version_number) collision).
+    it('demotes the old s3_key to history and creates a new active object_map entry at the next version', async () => {
       const node = await fileNodesStore.createNode(null, 'overwrite-blob-test', 'file');
 
       const oldS3Key = await service.prepareUpload(node.id);
@@ -193,7 +250,7 @@ describe('createBlobStorageService', () => {
       const newS3Key = await service.overwriteBlob(node.id, newBuffer);
 
       const oldStatus = await dbQuery(`SELECT status FROM object_map WHERE s3_key = ?`, [oldS3Key]);
-      expect(oldStatus.rows[0].status).toBe('orphaned');
+      expect(oldStatus.rows[0].status).toBe('history');
 
       const activeAfter = await fileNodesStore.getActiveObject(node.id);
       expect(activeAfter.s3_key).toBe(newS3Key);
@@ -260,8 +317,8 @@ describe('createBlobStorageService', () => {
       );
       expect(rows.rows).toHaveLength(3);
       const byVersion = Object.fromEntries(rows.rows.map((r) => [r.version_number, r.status]));
-      expect(byVersion[1]).toBe('orphaned');
-      expect(byVersion[2]).toBe('orphaned');
+      expect(byVersion[1]).toBe('history');
+      expect(byVersion[2]).toBe('history');
       expect(byVersion[3]).toBe('active');
 
       await dbRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);

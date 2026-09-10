@@ -105,6 +105,9 @@ const SERVER_ERROR_CODES = {
     duplicateFile: P('serverErrors.files', 'duplicateFile'),
     jobNotFound: P('serverErrors.files', 'jobNotFound'),
     progressNotFound: P('serverErrors.files', 'progressNotFound'),
+    versionNotFound: P('serverErrors.files', 'versionNotFound'),
+    versionBlobMissing: P('serverErrors.files', 'versionBlobMissing'),
+    versionRestoreUnavailable: P('serverErrors.files', 'versionRestoreUnavailable'),
   },
   permissions: {
     permissionHigherThanParent: P('serverErrors.permissions', 'permissionHigherThanParent'),
@@ -252,6 +255,7 @@ const SERVER_MESSAGE_CODES = {
     uploadSkipped: P('serverMessages.files', 'uploadSkipped'),
     uploadSuccess: P('serverMessages.files', 'uploadSuccess'),
     cancelRequested: P('serverMessages.files', 'cancelRequested'),
+    versionRestored: P('serverMessages.files', 'versionRestored'),
   },
   permissions: {
     permissionGranted: P('serverMessages.permissions', 'permissionGranted'),

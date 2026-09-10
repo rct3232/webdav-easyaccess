@@ -15,33 +15,69 @@
 
 The monolithic `server/routes/files.js` was split into domain-bounded modules:
 
-| Route Module         | Source File                       | Mount Point  | Endpoints                                                                                                   |
-| -------------------- | --------------------------------- | ------------ | ----------------------------------------------------------------------------------------------------------- |
-| CRUD operations      | `domains/files/routes/crud.js`    | `/api/files` | check-conflicts, metadata, list, ancestors, download, upload, rename, resolve-path                          |
-| Batch operations     | `domains/files/routes/batch.js`   | `/api/files` | batch-delete, batch-move, batch-copy, bulk-operation/:jobId, :jobId/cancel                                  |
-| Preview & thumbnails | `domains/files/routes/preview.js` | `/api/files` | preview-ticket, preview-stream, download-multiple, download-progress/:id, thumbnail/:hash, thumbnails/batch |
+| Route Module         | Source File                        | Mount Point  | Endpoints                                                                                                   |
+| -------------------- | ---------------------------------- | ------------ | ----------------------------------------------------------------------------------------------------------- |
+| CRUD operations      | `domains/files/routes/crud.js`     | `/api/files` | check-conflicts, metadata, list, ancestors, download, upload, rename, resolve-path                          |
+| Batch operations     | `domains/files/routes/batch.js`    | `/api/files` | batch-delete, batch-move, batch-copy, bulk-operation/:jobId, :jobId/cancel                                  |
+| Preview & thumbnails | `domains/files/routes/preview.js`  | `/api/files` | preview-ticket, preview-stream, download-multiple, download-progress/:id, thumbnail/:hash, thumbnails/batch |
+| Version history      | `domains/files/routes/versions.js` | `/api/files` | versions (browse), versions/restore, versions/download (S3 storage mode only)                               |
 
 - **Test file:** `server/domains/files/__tests__/files.test.js` (relocated from routes)
-- **Services:** `domains/files/services/` — conflictResolver, batchOperationService, fileService
+- **Services:** `domains/files/services/` — conflictResolver, batchOperationService, fileService, versionsService
 - **Stores:** `domains/files/stores/operationProgress.js`
 
 ### 2.2 Route List
 
-| Method | Path                 | Request Payload (nodeId only)                                                                               | Response                                                                                       |
-| ------ | -------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| GET    | `/list`              | Query: `nodeId` (required); `?nodeId=5`; missing/invalid → 400                                              | Each item: `{ nodeId, display_path, ... }`                                                     |
-| GET    | `/ancestors`         | Query: `nodeId` (required); missing/invalid → 400; 404 `files.notFound` if the node does not exist          | `{ ancestors: [{ nodeId, name }] }` ordered root→current (current node last, including itself) |
-| GET    | `/download`          | Query: `nodeId` (required); `?nodeId=5`; 404 if not found                                                   | File buffer + `X-Node-ID` header                                                               |
-| POST   | `/upload`            | multipart + `parentNodeId`; file field; overwrite via `onConflict: 'overwrite'` against `(parent_id, name)` | `{ nodeId, display_path }`; `{ nodeId, skipped: true }` for skip                               |
-| PUT    | `/rename`            | Body: `{ nodeId, newName }` — `sourceNodeId` replaces prior design                                          | `{ nodeId, new_display_path }`                                                                 |
-| POST   | `/move`              | Body: `{ nodeId, destinationParentNodeId }` — single-item move (new route)                                  | `{ nodeId, new_display_path }`                                                                 |
-| POST   | `/copy`              | Body: `{ nodeId, destinationParentNodeId, newName? }` — single-item copy (new route); S3 = copy-on-write    | `{ nodeId, display_path }`                                                                     |
-| DELETE | `/delete`            | Body: `{ nodeId }` — single-item delete (new route)                                                         | `{ deletedCount }`                                                                             |
-| POST   | `/batch-move`        | Body: `{ moves[] }`; moves = `{ sourceNodeId, destinationParentNodeId }`                                    | jobId; results keyed by nodeId                                                                 |
-| POST   | `/batch-copy`        | Body: `{ copies[] }`; copies = `{ sourceNodeId, destinationParentNodeId, newName? }`                        | jobId; results keyed by nodeId                                                                 |
-| POST   | `/batch-delete`      | Body: `{ nodeIds[] }`; `nodeIds` array (no `paths`)                                                         | jobId; deleted nodeIds                                                                         |
-| POST   | `/download-multiple` | Body: `{ nodeIds[], downloadId }`; `nodeIds` array (no `paths`)                                             | Unchanged (ZIP stream)                                                                         |
-| POST   | `/resolve-path`      | Body: `{ path }` (string, required); 400 if missing/not a string                                            | `{ nodeId }`; 404 `files.notFound` if the path does not resolve                                |
+| Method | Path                 | Request Payload (nodeId only)                                                                               | Response                                                                                                                                                               |
+| ------ | -------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/list`              | Query: `nodeId` (required); `?nodeId=5`; missing/invalid → 400                                              | Each item: `{ nodeId, display_path, ... }`                                                                                                                             |
+| GET    | `/ancestors`         | Query: `nodeId` (required); missing/invalid → 400; 404 `files.notFound` if the node does not exist          | `{ ancestors: [{ nodeId, name }] }` ordered root→current (current node last, including itself)                                                                         |
+| GET    | `/download`          | Query: `nodeId` (required); `?nodeId=5`; 404 if not found                                                   | File buffer + `X-Node-ID` header                                                                                                                                       |
+| POST   | `/upload`            | multipart + `parentNodeId`; file field; overwrite via `onConflict: 'overwrite'` against `(parent_id, name)` | `{ nodeId, display_path }`; `{ nodeId, skipped: true }` for skip                                                                                                       |
+| PUT    | `/rename`            | Body: `{ nodeId, newName }` — `sourceNodeId` replaces prior design                                          | `{ nodeId, new_display_path }`                                                                                                                                         |
+| POST   | `/move`              | Body: `{ nodeId, destinationParentNodeId }` — single-item move (new route)                                  | `{ nodeId, new_display_path }`                                                                                                                                         |
+| POST   | `/copy`              | Body: `{ nodeId, destinationParentNodeId, newName? }` — single-item copy (new route); S3 = copy-on-write    | `{ nodeId, display_path }`                                                                                                                                             |
+| DELETE | `/delete`            | Body: `{ nodeId }` — single-item delete (new route)                                                         | `{ deletedCount }`                                                                                                                                                     |
+| POST   | `/batch-move`        | Body: `{ moves[] }`; moves = `{ sourceNodeId, destinationParentNodeId }`                                    | jobId; results keyed by nodeId                                                                                                                                         |
+| POST   | `/batch-copy`        | Body: `{ copies[] }`; copies = `{ sourceNodeId, destinationParentNodeId, newName? }`                        | jobId; results keyed by nodeId                                                                                                                                         |
+| POST   | `/batch-delete`      | Body: `{ nodeIds[] }`; `nodeIds` array (no `paths`)                                                         | jobId; deleted nodeIds                                                                                                                                                 |
+| POST   | `/download-multiple` | Body: `{ nodeIds[], downloadId }`; `nodeIds` array (no `paths`)                                             | Unchanged (ZIP stream)                                                                                                                                                 |
+| POST   | `/resolve-path`      | Body: `{ path }` (string, required); 400 if missing/not a string                                            | `{ nodeId }`; 404 `files.notFound` if the path does not resolve                                                                                                        |
+| GET    | `/versions`          | Query: `nodeId` (required, flat nodeId style). S3 storage mode only                                         | `{ nodeId, currentVersionNumber, versions: [{ versionNumber, status, createdAt, size, isCurrent }] }` — storage internals (`s3_key`, `storage_backend`, `id`) stripped |
+| POST   | `/versions/restore`  | Body: `{ nodeId, versionNumber }` — token-only (no share); write perm                                       | `{ messageCode: files.versionRestored, nodeId, restoredVersionNumber }`                                                                                                |
+| GET    | `/versions/download` | Query: `nodeId`, `versionNumber` (both required). Attachment-only                                           | Blob with `Content-Type: application/octet-stream` + `Content-Disposition: attachment`                                                                                 |
+
+#### Version history routes (`domains/files/routes/versions.js`, DEF-11)
+
+S3 storage mode only (WebDAV has no version rows). Share-token access is refused on all three
+endpoints (past-content disclosure guard): `authenticateTokenOrShare` + `requireTokenNotShare`
+→ share principal receives 403 `files.accessDenied`.
+
+- **`GET /api/files/versions?nodeId=`** — browse. Read permission on the node, 404-masqueraded
+  (no permission / unknown node → 404 `files.notFound`, identical to `downloadFile`). Rows come
+  from `fileNodesStore.getVersionsByNode` (`active` + `history`, `version_number` DESC);
+  per-row `size` is a `blobStore.headBlob` probe (probe failure → `size: null`); responses strip
+  `s3_key`/`storage_backend`/`id` internals. `isCurrent` marks the `active` row;
+  `currentVersionNumber` is the active row's version (null when the node has no active row).
+- **`POST /api/files/versions/restore`** — `{ nodeId, versionNumber }`. Gates in order: write
+  permission (403 `files.permissionDenied`), WebDAV storage mode (409 `files.versionRestoreUnavailable`,
+  `reason: 'version restore is available in s3 storage mode only'`), node stuck `pending_upload`
+  (409 `files.versionRestoreUnavailable`, `reason: 'node_pending_upload'`), version exists among
+  `active`+`history` rows (404 `files.versionNotFound`), target blob present via `headBlob`
+  (409 `files.versionBlobMissing`). Effect (one TX): `reactivateObjectMapRow(historyRow.id)`
+  (guard `IN ('history','orphaned')`) + `demoteActiveToHistory(current.s3_key)` + node → `active`;
+  after the TX the filecache is re-asserted from the blob HEAD (`repair-complete` precedent,
+  `content_hash` null) and the thumbnail cache entry is evicted (`thumbnailService.invalidate`).
+  NO new version row is created (row count unchanged); the previous current version is ALWAYS kept
+  (demoted to `history` — deletion stays the repair channel's job). Restoring the version that is
+  already current is an idempotent no-op (200). The response message code is
+  `files.versionRestored`.
+- **`GET /api/files/versions/download`** — serves an arbitrary version's blob **attachment-only**
+  (`Content-Type: application/octet-stream`, `Content-Disposition: attachment`) — sidesteps the
+  mime-changed-between-versions class. Read permission, 404-masquerade; version must exist among
+  `active`+`history` (404 `files.versionNotFound`); blob absence → 404 `files.notFound` (a download
+  of missing content is a plain miss, not a repairable conflict). The sent filename is the node's
+  display name.
 
 ### 2.3 Phase 4 nodeId Contracts
 
@@ -110,6 +146,11 @@ Route handlers delegate to `fileService` instead of calling WebDAV directly. No 
 - [ ] bulk-operation 404 for invalid jobId
 
 - [ ] Share token write 요청 → 403
+
+- [ ] GET /versions: strips storage internals (s3_key/storage_backend/id absent), newest version first, active row flagged isCurrent
+- [ ] GET /versions: 404-masquerade for no-read-permission and unknown node; share token → 403
+- [ ] POST /versions/restore: history→active + active→history swap, no new row, cache re-asserted, thumbnail invalidated; 403/404/409 boundaries (no write perm, unknown version, WebDAV mode, stuck node, missing blob)
+- [ ] GET /versions/download: attachment-only octet-stream of the requested version; 404 for unknown version/no-permission
 
 ### 2.9 folders.js nodeId Contracts
 

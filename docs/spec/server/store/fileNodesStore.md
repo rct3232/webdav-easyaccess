@@ -21,11 +21,11 @@
 
 ### 2.1 Tables
 
-| Table            | Purpose                                                                                                                                                                                                                                               |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `file_nodes`     | Inode equivalent — self-referencing FK tree for filesystem hierarchy. Directories exist only as DB rows; S3 remains flat. Carries `deleted_at TIMESTAMPTZ NULL` (trash marker; NULL = live).                                                            |
-| `object_map`     | Node-to-blob mapping — enables multiple storage backends and future version history.                                                                                                                                                                  |
-| `filecache`      | Metadata cache — size, mime_type, content_hash. Written on upload completion. PK is FK to file_nodes.                                                                                                                                                 |
+| Table            | Purpose                                                                                                                                                                                                                                                                      |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `file_nodes`     | Inode equivalent — self-referencing FK tree for filesystem hierarchy. Directories exist only as DB rows; S3 remains flat. Carries `deleted_at TIMESTAMPTZ NULL` (trash marker; NULL = live).                                                                                 |
+| `object_map`     | Node-to-blob mapping with managed per-node version history (`version_number` + `status IN ('pending','active','history','orphaned')`; DEF-11).                                                                                                                               |
+| `filecache`      | Metadata cache — size, mime_type, content_hash. Written on upload completion. PK is FK to file_nodes.                                                                                                                                                                        |
 | `node_ancestors` | Closure table for permission inheritance and bulk descendant queries. Maintained at application level via the `_ancestryHelper` module (`server/service/_ancestryHelper.js`). No DB triggers (SQLite compatibility). Self-referential `depth=0` row included for every node. |
 
 ### 2.2 DDL Source of Truth
@@ -61,65 +61,68 @@ This spec does not duplicate full DDL text.
 
 #### file_nodes Methods
 
-| Method                               | SQL Pattern                                                                                     | Returns                                    |
-| ------------------------------------ | ----------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `createNode(parentId, name, type)`   | INSERT with sync_status='pending_upload'; RETURNING id (PG) or lastID (SQLite)                  | `{ id, parentId, name, type, syncStatus }` |
-| `getNode(id)`                        | SELECT \* FROM file_nodes WHERE id=?                                                            | row \| null                                |
-| `getChildren(parentId)`              | LEFT JOIN with filecache for size/mime_type/content_hash; ORDER BY name                         | `row[]`                                    |
-| `renameNode(id, newName)`            | UPDATE SET name=?, updated_at=NOW()                                                             | `{ changes }`                              |
-| `moveNode(id, newParentId)`          | UPDATE SET parent_id=?, updated_at=NOW()                                                        | `{ changes }`                              |
-| `deleteNodeTree(nodeIds)`            | DELETE WHERE id IN (...); CASCADE handles descendants + object_map + filecache + node_ancestors | `{ changes }`                              |
-| `updateSyncStatus(id, status)`       | UPDATE SET sync_status=?, updated_at=NOW()                                                      | `{ changes }`                              |
-| `resolvePathSegment(parentId, name)` | SELECT id WHERE parent_id=? AND name=?                                                          | `{ id }` \| null                           |
-| `getUserRootNode(userId)`            | Look up user by id (userStore), then SELECT \* WHERE parent_id IS NULL AND name=<username> LIMIT 1 | node row \| null (the user's home node)   |
+| Method                               | SQL Pattern                                                                                        | Returns                                    |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `createNode(parentId, name, type)`   | INSERT with sync_status='pending_upload'; RETURNING id (PG) or lastID (SQLite)                     | `{ id, parentId, name, type, syncStatus }` |
+| `getNode(id)`                        | SELECT \* FROM file_nodes WHERE id=?                                                               | row \| null                                |
+| `getChildren(parentId)`              | LEFT JOIN with filecache for size/mime_type/content_hash; ORDER BY name                            | `row[]`                                    |
+| `renameNode(id, newName)`            | UPDATE SET name=?, updated_at=NOW()                                                                | `{ changes }`                              |
+| `moveNode(id, newParentId)`          | UPDATE SET parent_id=?, updated_at=NOW()                                                           | `{ changes }`                              |
+| `deleteNodeTree(nodeIds)`            | DELETE WHERE id IN (...); CASCADE handles descendants + object_map + filecache + node_ancestors    | `{ changes }`                              |
+| `updateSyncStatus(id, status)`       | UPDATE SET sync_status=?, updated_at=NOW()                                                         | `{ changes }`                              |
+| `resolvePathSegment(parentId, name)` | SELECT id WHERE parent_id=? AND name=?                                                             | `{ id }` \| null                           |
+| `getUserRootNode(userId)`            | Look up user by id (userStore), then SELECT \* WHERE parent_id IS NULL AND name=<username> LIMIT 1 | node row \| null (the user's home node)    |
 
 #### node_ancestors Methods
 
-| Method                                      | SQL Pattern                                                                    | Returns                                             |
-| ------------------------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------- |
-| `insertAncestorRows(rows)`                  | Bulk INSERT INTO node_ancestors; rows: `[{ ancestorId, descendantId, depth }]` | `{ changes }`                                       |
-| `deleteAncestorByDescendant(descendantIds)` | DELETE WHERE descendant_id IN (...)                                            | `{ changes }`                                       |
-| `deleteAncestorByAncestor(ancestorIds)`     | DELETE WHERE ancestor_id IN (...)                                              | `{ changes }`                                       |
-| `getDescendantIds(ancestorId)`            | SELECT descendant_id WHERE ancestor_id=?                                       | `[id, ...]`                                         |
-| `getDescendants(ancestorId)`              | SELECT n.\* FROM file_nodes n JOIN node_ancestors a ON a.descendant_id=n.id WHERE a.ancestor_id=? | descendant node rows `row[]` (mapped like `getNode`) |
-| `isAncestor(ancestorId, descendantId)`    | SELECT 1 FROM node_ancestors WHERE ancestor_id=? AND descendant_id=? LIMIT 1   | boolean (true if a closure row exists)              |
-| `getAncestorChain(descendantId)`          | SELECT ancestor_id, depth WHERE descendant_id=? ORDER BY depth DESC            | `[{ ancestorId, depth }, ...]` — root is last entry |
+| Method                                      | SQL Pattern                                                                                       | Returns                                              |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `insertAncestorRows(rows)`                  | Bulk INSERT INTO node_ancestors; rows: `[{ ancestorId, descendantId, depth }]`                    | `{ changes }`                                        |
+| `deleteAncestorByDescendant(descendantIds)` | DELETE WHERE descendant_id IN (...)                                                               | `{ changes }`                                        |
+| `deleteAncestorByAncestor(ancestorIds)`     | DELETE WHERE ancestor_id IN (...)                                                                 | `{ changes }`                                        |
+| `getDescendantIds(ancestorId)`              | SELECT descendant_id WHERE ancestor_id=?                                                          | `[id, ...]`                                          |
+| `getDescendants(ancestorId)`                | SELECT n.\* FROM file_nodes n JOIN node_ancestors a ON a.descendant_id=n.id WHERE a.ancestor_id=? | descendant node rows `row[]` (mapped like `getNode`) |
+| `isAncestor(ancestorId, descendantId)`      | SELECT 1 FROM node_ancestors WHERE ancestor_id=? AND descendant_id=? LIMIT 1                      | boolean (true if a closure row exists)               |
+| `getAncestorChain(descendantId)`            | SELECT ancestor_id, depth WHERE descendant_id=? ORDER BY depth DESC                               | `[{ ancestorId, depth }, ...]` — root is last entry  |
 
 #### object_map Methods
 
-| Method                                       | SQL Pattern                                                                                                                                                           | Returns       |
-| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| `upsertObjectMap(fileNodeId, s3Key, status)` | If active row exists for fileNodeId: UPDATE SET status='orphaned'. Then INSERT INTO object_map (file_node_id, s3_key, storage_backend='s3', version_number=COALESCE(MAX(version_number),0)+1, status) — version_number increments per node on every upsert (prior versions become orphaned rows) | `{ changes }` |
-| `insertObject(fileNodeId, s3Key, status)`    | INSERT INTO object_map                                                                                                                                                | `{ changes }` |
-| `getActiveObject(fileNodeId)`                | SELECT \* WHERE file_node_id=? AND status='active' LIMIT 1                                                                                                            | row \| null   |
-| `getObjectMapByNode(fileNodeId)`             | SELECT \* WHERE file_node_id=? ORDER BY version_number DESC, id DESC (all statuses; no age filter — safe for freshly seeded rows)                                     | rows[]        |
-| `getObjectMapByS3Key(s3Key)`                 | SELECT \* WHERE s3_key=? AND status IN ('pending', 'active')                                                                                                          | row \| null   |
-| `activateObject(s3Key)`                      | UPDATE SET status='active' WHERE s3_key=? AND status='pending'                                                                                                        | `{ changes }` |
-| `orphanObject(s3Key)`                        | UPDATE SET status='orphaned' WHERE s3_key=? AND status IN ('active', 'pending')                                                                                       | `{ changes }` |
-| `reactivateObjectMapRow(id)`                 | UPDATE object_map SET status='active' WHERE id=? AND status='orphaned'                                                                                                | `{ changes }` |
-| `countActiveObjectsByS3Key(s3Key)`           | SELECT COUNT(\*) WHERE s3_key=? AND status='active'                                                                                                                    | `number`      |
-| `setObjectMapBackendWebdav(fileNodeId)`      | UPDATE object_map SET storage_backend='webdav' WHERE file_node_id=? AND status='active'                                                                               | `{ changes }` |
+| Method                                       | SQL Pattern                                                                                                                                                                                                                                                                                                                    | Returns       |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------- |
+| `upsertObjectMap(fileNodeId, s3Key, status)` | If active row exists for fileNodeId: UPDATE SET status='history' (managed prior version, DEF-11). Then INSERT INTO object_map (file_node_id, s3_key, storage_backend='s3', version_number=COALESCE(MAX(version_number),0)+1, status) — version_number increments per node on every upsert (prior versions become history rows) | `{ changes }` |
+| `insertObject(fileNodeId, s3Key, status)`    | INSERT INTO object_map                                                                                                                                                                                                                                                                                                         | `{ changes }` |
+| `getActiveObject(fileNodeId)`                | SELECT \* WHERE file_node_id=? AND status='active' LIMIT 1                                                                                                                                                                                                                                                                     | row \| null   |
+| `getObjectMapByNode(fileNodeId)`             | SELECT \* WHERE file_node_id=? ORDER BY version_number DESC, id DESC (all statuses; no age filter — safe for freshly seeded rows). Note: the **browse** read model is `getVersionsByNode` (active+history only) — this method stays the repair/scan surface that also returns `pending`/`orphaned` rows                        | rows[]        |
+| `getVersionsByNode(fileNodeId)`              | SELECT \* WHERE file_node_id=? AND status IN ('active','history') ORDER BY version_number DESC (excludes `pending` + `orphaned`)                                                                                                                                                                                               | rows[]        |
+| `getObjectMapByS3Key(s3Key)`                 | SELECT \* WHERE s3_key=? AND status IN ('pending', 'active')                                                                                                                                                                                                                                                                   | row \| null   |
+| `activateObject(s3Key)`                      | UPDATE SET status='active' WHERE s3_key=? AND status='pending'                                                                                                                                                                                                                                                                 | `{ changes }` |
+| `orphanObject(s3Key)`                        | UPDATE SET status='orphaned' WHERE s3_key=? AND status IN ('active', 'pending')                                                                                                                                                                                                                                                | `{ changes }` |
+| `demoteActiveToHistory(s3Key)`               | UPDATE SET status='history' WHERE s3_key=? AND status='active' (restore TX primitive: the demoted current version becomes `history`, not `orphaned`)                                                                                                                                                                           | `{ changes }` |
+| `reactivateObjectMapRow(id)`                 | UPDATE object_map SET status='active' WHERE id=? AND status IN ('history','orphaned') (guard widened by DEF-11 — a `history` row reactivates in place on restore/rollback)                                                                                                                                                     | `{ changes }` |
+| `evictVersionsBeyondCap(fileNodeId, cap)`    | While `active + history > cap` (single UPDATE, oldest-first by `version_number` ASC): demote oldest `history` rows to `'orphaned'`. `cap <= 0` = unbounded → no-op. The `active` row is never touched                                                                                                                          | `{ changes }` |
+| `countActiveObjectsByS3Key(s3Key)`           | SELECT COUNT(\*) WHERE s3_key=? AND status='active'                                                                                                                                                                                                                                                                            | `number`      |
+| `setObjectMapBackendWebdav(fileNodeId)`      | UPDATE object_map SET storage_backend='webdav' WHERE file_node_id=? AND status='active'                                                                                                                                                                                                                                        | `{ changes }` |
 
 #### GC support methods (Phase 6)
 
-| Method                              | SQL Pattern                                                                                       | Returns       |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------- | ------------- |
-| `getOrphanedObjects(olderThanDays)` | SELECT \* WHERE status='orphaned' AND created_at < NOW() - interval / `datetime('now','-N days')` | rows[]        |
-| `getOrphanedObjectsWithNodeState(olderThanDays)` | Orphaned rows older than cutoff, LEFT JOIN file_nodes (node sync status) + EXISTS active-row subquery | rows[] annotated with `node_sync_status` and `has_active` |
-| `getStalePendingObjects(staleThanDays)` | SELECT \* WHERE status='pending' AND created_at < cutoff AND node sync_status='pending_upload' | rows[]        |
-| `getKeptS3Keys()`                   | UNION of active ∪ orphaned (version) ∪ pending-on-pending_upload-node `s3_key` values; no trash arm, no age filters | string[]      |
-| `getAllActiveS3Keys()`              | SELECT s3_key WHERE status='active' AND s3_key IS NOT NULL (retained for facade parity; no GC caller) | string[]      |
-| `deleteObjectMapRows(ids)`          | DELETE WHERE id IN (...); SQLite branch per-row via `executor.run` in `FileNodeRepository.sqlite.js` | `{ changes }` |
-| `getNodesBySyncStatus(status)`      | SELECT \* FROM file_nodes WHERE sync_status=?                                                     | mapped rows[] |
-| `getNodesBySyncStatusNot(status)`   | SELECT \* FROM file_nodes WHERE sync_status != ?                                                  | mapped rows[] |
+| Method                                           | SQL Pattern                                                                                                                           | Returns                                                   |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `getOrphanedObjects(olderThanDays)`              | SELECT \* WHERE status='orphaned' AND created_at < NOW() - interval / `datetime('now','-N days')`                                     | rows[]                                                    |
+| `getOrphanedObjectsWithNodeState(olderThanDays)` | Orphaned rows older than cutoff, LEFT JOIN file_nodes (node sync status) + EXISTS active-row subquery                                 | rows[] annotated with `node_sync_status` and `has_active` |
+| `getStalePendingObjects(staleThanDays)`          | SELECT \* WHERE status='pending' AND created_at < cutoff AND node sync_status='pending_upload'                                        | rows[]                                                    |
+| `getKeptS3Keys()`                                | UNION of active ∪ history ∪ orphaned (evicted version) ∪ pending-on-pending_upload-node `s3_key` values; no trash arm, no age filters | string[]                                                  |
+| `getAllActiveS3Keys()`                           | SELECT s3_key WHERE status='active' AND s3_key IS NOT NULL (retained for facade parity; no GC caller)                                 | string[]                                                  |
+| `deleteObjectMapRows(ids)`                       | DELETE WHERE id IN (...); SQLite branch per-row via `executor.run` in `FileNodeRepository.sqlite.js`                                  | `{ changes }`                                             |
+| `getNodesBySyncStatus(status)`                   | SELECT \* FROM file_nodes WHERE sync_status=?                                                                                         | mapped rows[]                                             |
+| `getNodesBySyncStatusNot(status)`                | SELECT \* FROM file_nodes WHERE sync_status != ?                                                                                      | mapped rows[]                                             |
 
 #### filecache Methods
 
-| Method                                                 | SQL Pattern                  | Returns       |
-| ------------------------------------------------------ | ---------------------------- | ------------- |
-| `upsertCache(fileNodeId, size, mimeType, contentHash)` | INSERT ON CONFLICT DO UPDATE | `{ changes }` |
+| Method                                                 | SQL Pattern                            | Returns       |
+| ------------------------------------------------------ | -------------------------------------- | ------------- |
+| `upsertCache(fileNodeId, size, mimeType, contentHash)` | INSERT ON CONFLICT DO UPDATE           | `{ changes }` |
 | `getCache(fileNodeId)`                                 | SELECT \* WHERE file_node_id=? LIMIT 1 | row \| null   |
-| `deleteCache(fileNodeId)`                              | DELETE WHERE file_node_id=?  | `{ changes }` |
+| `deleteCache(fileNodeId)`                              | DELETE WHERE file_node_id=?            | `{ changes }` |
 
 ### 2.5 PostgreSQL vs SQLite Branching
 
@@ -147,11 +150,14 @@ and placeholder markers shown across the method tables in §2.4 are the same dia
 - [ ] Name uniqueness: a live duplicate `(parent_id, name)` insert is rejected; two trashed siblings (both `deleted_at` set) with the same name coexist; a trashed row and a live row with the same name coexist; the root variant (`parent_id IS NULL`) behaves identically; `deleted_at` defaults to NULL on insert
 - [ ] CASCADE deletes propagate properly across all dependent tables
 - [ ] Self-referencing `file_nodes.parent_id` FK works on both PostgreSQL and SQLite with deferred foreign keys
-- [ ] object_map pending→active→orphaned lifecycle transitions work correctly
-- [ ] upsertObjectMap orphans previous active row before inserting new pending
-- [ ] version_number increments per node on every upsertObjectMap (1, 2, 3, ... on repeated overwrites; prior versions become orphaned rows)
-- [ ] reactivateObjectMapRow flips a single orphaned row back to active (guarded by `status='orphaned'`); a row that is not orphaned is left untouched and `{ changes }` is 0
-- [ ] getKeptS3Keys UNION membership: active keys, orphaned keys, and pending keys on `pending_upload` nodes are all returned; pending keys on other node states are excluded
+- [ ] object_map pending→active→history→orphaned lifecycle transitions work correctly
+- [ ] upsertObjectMap demotes the previous active row to `history` before inserting new pending
+- [ ] version_number increments per node on every upsertObjectMap (1, 2, 3, ... on repeated overwrites; prior versions become history rows)
+- [ ] reactivateObjectMapRow flips a single `history` **or** `orphaned` row back to active (guarded by `status IN ('history','orphaned')`); a `pending`/`active` row is left untouched and `{ changes }` is 0
+- [ ] demoteActiveToHistory flips only the active row with the given s3_key to `history`; non-active rows are untouched
+- [ ] evictVersionsBeyondCap: demotes the oldest `history` rows (version_number ASC) to `orphaned` while `active + history > cap`; `cap=0` is a no-op (unbounded); the `active` row is never touched
+- [ ] getVersionsByNode returns only `active` + `history` rows newest-version first; `pending` and `orphaned` rows are excluded
+- [ ] getKeptS3Keys UNION membership: active keys, history keys, orphaned keys, and pending keys on `pending_upload` nodes are all returned; pending keys on other node states are excluded
 - [ ] getOrphanedObjectsWithNodeState annotation: each row carries the correct `node_sync_status` and `has_active` (true when an active row exists for the same node); a node-less orphan (LEFT JOIN miss) is annotated accordingly
 - [ ] getStalePendingObjects filter: returns only `pending` rows on `pending_upload` nodes older than the cutoff; younger rows and pending rows on other node states are excluded
 - [ ] getObjectMapByNode returns every object_map row of the node (any status) newest-version first, independent of row age

@@ -13,6 +13,7 @@ const permissionStore = require('../store/permissionStore');
 const { createFileService } = require('../domains/files/services/fileService');
 const { createBatchOperationService } = require('../domains/files/services/batchOperationService');
 const { createDownloadService } = require('../domains/files/services/downloadService');
+const { createVersionsService } = require('../domains/files/services/versionsService');
 const { createMigrationJobStore } = require('../domains/admin/stores/migrationJobStore');
 const { createMigrationService } = require('../domains/admin/services/migrationService');
 const { buildDestBlobStore } = require('../infrastructure/adapters/blobstore/config');
@@ -73,6 +74,16 @@ function createComposition(overrides = {}) {
       aclService: effectiveAclService,
     });
 
+  const versionsService =
+    overrides.versionsService ||
+    createVersionsService({
+      fileNodesStore,
+      fileNodeService,
+      blobStore,
+      fileStorageMode,
+      aclService: effectiveAclService,
+    });
+
   const gcService =
     overrides.gcService ||
     createGcService({
@@ -114,6 +125,7 @@ function createComposition(overrides = {}) {
     fileService,
     batchOperationService,
     downloadService,
+    versionsService,
     gcService,
     failSafeService,
     migrationJobStore,

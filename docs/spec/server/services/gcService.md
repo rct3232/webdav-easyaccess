@@ -19,22 +19,22 @@ Two-tier cleanup organized around **retention categories**. Both tiers execute i
 
 ### Retention categories (Tier 1)
 
-Categories are **derived by query** from the orphaned row's surrounding state (node sync status + presence of an active row) — they are not new `object_map.status` values.
+Categories are **derived by query** from the orphaned row's surrounding state (node sync status + presence of an active row) — they are not new `object_map.status` values. With DEF-11's managed-history model, `object_map.status='history'` marks a managed prior version and `orphaned` means **"evicted version"** (a former `history` row demoted by `evictVersionsBeyondCap`, or legacy residue): history rows are **never** GC targets — `getOrphanedObjectsWithNodeState` queries `status='orphaned'` only, so a `history` row survives any `olderThanDays`, and the keep-set carries a `history` arm.
 
-| Category     | Definition (orphaned row where…)                                                                   | Policy                                                            | Config                                        |
-| ------------ | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | --------------------------------------------- |
-| `garbage`    | The node is gone (LEFT JOIN `file_nodes` misses)                                                   | Blob deleted (S3 mode), then row deleted                          | `GC_ORPHAN_TTL_DAYS` (default 1)              |
-| `version`    | Any other orphaned row — including orphans on `pending_upload` nodes that still have an active row, and orphans on `orphaned_node` nodes (identical to historical behavior) | Blob deleted (S3 mode), then row deleted                          | `GC_VERSION_TTL_DAYS` (default 1)             |
-| `guarded`    | The node is `pending_upload` **and** has no `active` object_map row (the stuck-overwrite state)    | **Exempt** from deletion while the guard holds (last-good guard); counted in the report, never deleted while guarded | — (state-derived; no TTL)                     |
-| `pending-live` | `status='pending'` row on a `pending_upload` node older than the stale cutoff (additive cleanup; nothing cleans these rows today) | Blob deleted (S3 mode), then row deleted — blob-first-then-rows like Tier 1 | `GC_PENDING_STALE_DAYS` (default 3; `0` disables) |
+| Category       | Definition (orphaned row where…)                                                                                                                                                                                                                                                                                                                 | Policy                                                                                                               | Config                                            |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `garbage`      | The node is gone (LEFT JOIN `file_nodes` misses)                                                                                                                                                                                                                                                                                                 | Blob deleted (S3 mode), then row deleted                                                                             | `GC_ORPHAN_TTL_DAYS` (default 1)                  |
+| `version`      | Any other orphaned row — i.e. an **evicted version** (`orphaned`, node live/pending_upload with an active row) or an orphan on an `orphaned_node` node. `GC_VERSION_TTL_DAYS` is the **eviction grace period**: the clock stays `created_at` (upload time), so an old upload's row evicted today is deleted at the first GC cycle after eviction | Blob deleted (S3 mode), then row deleted                                                                             | `GC_VERSION_TTL_DAYS` (default 1)                 |
+| `guarded`      | The node is `pending_upload` **and** has no `active` object_map row (the stuck-overwrite state)                                                                                                                                                                                                                                                  | **Exempt** from deletion while the guard holds (last-good guard); counted in the report, never deleted while guarded | — (state-derived; no TTL)                         |
+| `pending-live` | `status='pending'` row on a `pending_upload` node older than the stale cutoff (additive cleanup; nothing cleans these rows today)                                                                                                                                                                                                                | Blob deleted (S3 mode), then row deleted — blob-first-then-rows like Tier 1                                          | `GC_PENDING_STALE_DAYS` (default 3; `0` disables) |
 
-- **Last-good guard** (`guarded`): an orphaned row on a stuck `pending_upload` node with no active row is the node's last remaining good blob; deleting it would make the stuck file permanently undownloadable. It is exempt from Tier 1 deletion while the guard condition holds. This is the **only Tier-1 deletion deviation** from the historical binary behavior.
+- **Last-good guard** (`guarded`): an orphaned row on a stuck `pending_upload` node with no active row is the node's last remaining good blob; deleting it would make the stuck file permanently undownloadable. It is exempt from Tier 1 deletion while the guard condition holds. With the DEF-11 history model a stuck node's last-good row is `history` — which never enters the Tier-1 query, so it is inherently safe and `guardedRows` does not count it; the orphaned-branch is kept defensively for legacy residue (DEF-11 pre-migration rows).
 - **Pending-live cleanup**: strictly additive — `pending` rows on `pending_upload` nodes (the stuck-overwrite residue) are deleted together with their blobs after `GC_PENDING_STALE_DAYS`.
 - **Empty set today**: with FK cascade, `garbage`-category rows (node gone) cannot exist; the category is still part of the classification flow for defense in depth.
 
 ### Keep-set widening (Tier 2)
 
-Tier 2 diffs S3 against `getKeptS3Keys()` — the UNION of **active ∪ version ∪ pending-live** keys — instead of the active-only set. `version` here means every orphaned row not yet expired by Tier 1 (Tier-1-first ordering expires rows before Tier 2 runs, so no age filters are applied in the keep-set query). No trash arm exists in the keep-set. At the default TTLs the outcome is identical to the historical active-only behavior **except** the two intended deviations: (1) a guarded last-good row and its blob are kept, (2) a stuck node's pending blob is kept until the pending-stale cutoff.
+Tier 2 diffs S3 against `getKeptS3Keys()` — the UNION of **active ∪ history ∪ version ∪ pending-live** keys — instead of the active-only set. `history` rows (managed prior versions) are protected unconditionally; `version` means every orphaned (evicted) row not yet expired by Tier 1 (Tier-1-first ordering expires rows before Tier 2 runs, so no age filters are applied in the keep-set query). No trash arm exists in the keep-set. At the default TTLs the outcome is identical to the historical active-only behavior **except** the intended deviations: (1) a guarded last-good row and its blob are kept, (2) a stuck node's pending blob is kept until the pending-stale cutoff, (3) `history` rows and their blobs are kept until cap eviction demotes them.
 
 ### WebDAV mode
 
@@ -42,8 +42,8 @@ Tier 1 in WebDAV mode follows the same category rules but deletes **rows only** 
 
 ### GC cycle lifecycle (per file mutation)
 
-1. Upload new version → INSERT `object_map` (status=`pending`)
-2. S3 PUT succeeds → UPDATE status=`active`; old row → status=`orphaned`
+1. Upload new version → INSERT `object_map` (status=`pending`); the previous active row is demoted to `status='history'` and the per-node cap evicts the oldest history rows to `orphaned` (`blobStorageService.prepareUpload`, same TX)
+2. S3 PUT succeeds → UPDATE status=`active`
 3. GC service classifies orphaned rows (`garbage` / `guarded` / `version`), deletes expired rows + corresponding S3 blobs after TTL, and cleans stale pending rows (`pending-live`)
 
 ---
@@ -54,12 +54,14 @@ Tier 1 in WebDAV mode follows the same category rules but deletes **rows only** 
 
 Factory function following the DI pattern used by the other Phase 2 services.
 
-| Param             | Type   | Default                | Description                                                                                                         |
-| ----------------- | ------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `blobStore`       | object | —                      | S3BlobStore or WebdavBlobStore adapter                                                                              |
-| `fileNodesStore`  | object | —                      | fileNodesStore with object_map queries                                                                              |
-| `fileStorageMode` | string | `'s3'`                 | `'s3'` or `'webdav'`; Tier 2 disabled in WebDAV mode; Tier 1 skips blob deletes in WebDAV mode (rows still cleaned) |
+| Param             | Type   | Default                                                        | Description                                                                                                                                                                                                                 |
+| ----------------- | ------ | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `blobStore`       | object | —                                                              | S3BlobStore or WebdavBlobStore adapter                                                                                                                                                                                      |
+| `fileNodesStore`  | object | —                                                              | fileNodesStore with object_map queries                                                                                                                                                                                      |
+| `fileStorageMode` | string | `'s3'`                                                         | `'s3'` or `'webdav'`; Tier 2 disabled in WebDAV mode; Tier 1 skips blob deletes in WebDAV mode (rows still cleaned)                                                                                                         |
 | `gcConfig`        | object | `{ orphanTtlDays: 1, versionTtlDays: 1, pendingStaleDays: 3 }` | TTL overrides; each key defaults from its `GC_*` env key (`GC_ORPHAN_TTL_DAYS`, `GC_VERSION_TTL_DAYS`, `GC_PENDING_STALE_DAYS`) when not provided — same precedence idiom for all three (gcConfig → DB resolver → fallback) |
+
+> **Resolver 0-semantics note:** the gcService TTL resolvers treat `0` as "disabled" (pending-live) and otherwise floor at 1. This differs from `GC_VERSION_MAX_PER_NODE` (DEF-11), where `0` means **unbounded** — that key is resolved by `blobStorageService.prepareUpload` (per-call, shared resolver), not here; do not "normalize" the two conventions.
 
 #### `runGcCycle({ olderThanDays })`
 
@@ -97,7 +99,7 @@ Runs Tier 1 then Tier 2 and returns a summary. `olderThanDays` defaults to the c
 2. Classify each row:
    - **`guarded`**: node is `pending_upload` and `has_active` is false → exempt; counted in `guardedRows`, never deleted while the guard holds.
    - **`garbage`**: node gone (LEFT JOIN miss) → collect with `orphanTtlDays`.
-   - **`version`**: everything else (including orphans on `pending_upload` nodes with an active row, and on `orphaned_node` nodes) → collect with `versionTtlDays`.
+   - **`version`**: everything else — i.e. evicted versions on live nodes, orphans on `pending_upload` nodes with an active row, and orphans on `orphaned_node` nodes → collect with `versionTtlDays`.
 3. For each collected row with a non-null `s3_key`: `blobStore.deleteBlob(s3_key)` — **blob-first-then-rows**; count successes, collect errors. **WebDAV-mode guard:** skip the `deleteBlob` call entirely in WebDAV mode — a preserved `s3_key` on a migrated row is a UUID rollback marker, not a webdav path, and `WebdavBlobStore.deleteBlob` is path-addressed (it would treat the UUID as a path and issue a wasteful 404).
 4. `fileNodesStore.deleteObjectMapRows(ids)` for every collected orphaned row id (runs in WebDAV mode too).
 5. **Pending-live cleanup:** `fileNodesStore.getStalePendingObjects(pendingStaleDays)` → `pending` rows on `pending_upload` nodes older than the cutoff (`0` disables this step). Delete blobs first, then rows; `pendingDeletedRows` counts the rows removed and their blob deletions fold into `deletedBlobs`.
@@ -116,11 +118,11 @@ Tier 1 always runs; in WebDAV mode it finds no rows during normal operation, but
 
 Factory for `sync_status='orphaned_node'` detection and manual repair, plus the S3-mode-only `pending_upload` scan/repair (DEF-12/13; contract: `uploadService.md` §2.5.1).
 
-| Param             | Type   | Description                                                                    |
-| ----------------- | ------ | ------------------------------------------------------------------------------ |
-| `fileNodeService` | object | fileNodeService (tree ops: deleteNode, getNode, getNodePath, updateSyncStatus) |
-| `fileNodesStore`  | object | fileNodesStore with `getNodesBySyncStatus`                                     |
-| `blobStore`       | object | blob store adapter (`headBlob`/`deleteBlob`) for remote existence checks and blob cleanup |
+| Param             | Type   | Description                                                                                                       |
+| ----------------- | ------ | ----------------------------------------------------------------------------------------------------------------- |
+| `fileNodeService` | object | fileNodeService (tree ops: deleteNode, getNode, getNodePath, updateSyncStatus)                                    |
+| `fileNodesStore`  | object | fileNodesStore with `getNodesBySyncStatus`                                                                        |
+| `blobStore`       | object | blob store adapter (`headBlob`/`deleteBlob`) for remote existence checks and blob cleanup                         |
 | `fileStorageMode` | string | `'s3'` (default) or `'webdav'`; the `pending_upload` scan/repair is gated to S3 mode (refused 409 in WebDAV mode) |
 
 #### `scanOrphanedNodes()`
@@ -160,17 +162,20 @@ New methods required by the services. The `fileNodesStore` facade forwards them 
 (`server/store/repositories/sqlite/FileNodeRepository.sqlite.js` /
 `server/store/repositories/postgres/FileNodeRepository.postgres.js`), executed through the executor seam:
 
-| Method                                           | Query                                                                                                                                                    | Returns          |
-| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| `getOrphanedObjects(olderThanDays)`              | `object_map WHERE status='orphaned' AND created_at < NOW() - INTERVAL` / `datetime('now', '-N days')`                                                    | rows[]           |
-| `getOrphanedObjectsWithNodeState(olderThanDays)` | orphaned rows older than cutoff, LEFT JOIN `file_nodes` (node sync status) + EXISTS active-row subquery → rows annotated with `node_sync_status` and `has_active` | annotated rows[] |
-| `getStalePendingObjects(staleThanDays)`          | `status='pending'` rows older than cutoff whose node is `pending_upload`                                                                                  | rows[]           |
-| `getKeptS3Keys()`                                | `SELECT s3_key FROM object_map WHERE s3_key IS NOT NULL AND (status='active' OR status='orphaned' OR (status='pending' AND EXISTS (SELECT 1 FROM file_nodes n WHERE n.id = object_map.file_node_id AND n.sync_status='pending_upload')))` — active ∪ version ∪ pending-live UNION; no trash arm, no age filters | string[]         |
-| `getAllActiveS3Keys()`                           | `SELECT s3_key FROM object_map WHERE status='active' AND s3_key IS NOT NULL` (retained on the facade for parity; no GC caller)                            | string[]         |
-| `deleteObjectMapRows(ids)`                       | `DELETE FROM object_map WHERE id IN (...)`, SQLite branch per-row via `executor.run` in the sqlite dialect twin                                            | `{ changes }`    |
-| `getNodesBySyncStatus(status)`                   | `file_nodes WHERE sync_status = ?`                                                                                                                        | rows[]           |
-| `reactivateObjectMapRow(id)`                     | flips a captured pre-state orphaned row back to `active` (overwrite rollback; DEF-12/13 R1) — see `fileNodesStore.md` §2.4                                  | `{ changes }`    |
-| `getObjectMapByNode(fileNodeId)`                 | all `object_map` rows of a node, newest-version first (repair preconditions) — see `fileNodesStore.md` §2.4                                                | rows[]           |
+| Method                                           | Query                                                                                                                                                               | Returns          |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| `getOrphanedObjects(olderThanDays)`              | `object_map WHERE status='orphaned' AND created_at < NOW() - INTERVAL` / `datetime('now', '-N days')`                                                               | rows[]           |
+| `getOrphanedObjectsWithNodeState(olderThanDays)` | orphaned rows older than cutoff, LEFT JOIN `file_nodes` (node sync status) + EXISTS active-row subquery → rows annotated with `node_sync_status` and `has_active`   | annotated rows[] |
+| `getStalePendingObjects(staleThanDays)`          | `status='pending'` rows older than cutoff whose node is `pending_upload`                                                                                            | rows[]           |
+| `getKeptS3Keys()`                                | active ∪ **history** ∪ orphaned (evicted version) ∪ pending-on-pending_upload-node UNION; no trash arm, no age filters                                              | string[]         |
+| `getVersionsByNode(fileNodeId)`                  | `SELECT * FROM object_map WHERE file_node_id=? AND status IN ('active','history') ORDER BY version_number DESC` — versions browse read model (DEF-11)               | rows[]           |
+| `evictVersionsBeyondCap(fileNodeId, cap)`        | oldest-first (`version_number` ASC) demotion of `history` rows to `'orphaned'` while `active + history > cap`; `cap<=0` = unbounded no-op; active row untouched     | `{ changes }`    |
+| `demoteActiveToHistory(s3Key)`                   | `UPDATE object_map SET status='history' WHERE s3_key=? AND status='active'` — restore-TX primitive (the demoted current version becomes history, not orphaned)      | `{ changes }`    |
+| `reactivateObjectMapRow(id)`                     | flips a captured pre-state `history`/`orphaned` row back to `active` (overwrite rollback + version restore; guard widened by DEF-11) — see `fileNodesStore.md` §2.4 | `{ changes }`    |
+| `getAllActiveS3Keys()`                           | `SELECT s3_key FROM object_map WHERE status='active' AND s3_key IS NOT NULL` (retained on the facade for parity; no GC caller)                                      | string[]         |
+| `deleteObjectMapRows(ids)`                       | `DELETE FROM object_map WHERE id IN (...)`, SQLite branch per-row via `executor.run` in the sqlite dialect twin                                                     | `{ changes }`    |
+| `getNodesBySyncStatus(status)`                   | `file_nodes WHERE sync_status = ?`                                                                                                                                  | rows[]           |
+| `getObjectMapByNode(fileNodeId)`                 | all `object_map` rows of a node, newest-version first (repair preconditions) — see `fileNodesStore.md` §2.4                                                         | rows[]           |
 
 All of the above are dual-backend (PostgreSQL / SQLite), implemented in the `FileNodeRepository` dialect twins behind the executor seam (no store-internal dialect branching in the service) and covered by the repository conformance tests.
 
@@ -180,9 +185,9 @@ All of the above are dual-backend (PostgreSQL / SQLite), implemented in the `Fil
 
 ### 5.1 Routes (`server/domains/admin/routes/maintenance.js`)
 
-| Method | Path                                 | Description                                                                                                                   |
-| ------ | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| POST   | `/api/admin/maintenance/gc`          | Run one GC cycle (both tiers). Response: `{ messageCode, results }`.                                                          |
+| Method | Path                                 | Description                                                                                                                                                                                                                                                                                                                       |
+| ------ | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/admin/maintenance/gc`          | Run one GC cycle (both tiers). Response: `{ messageCode, results }`.                                                                                                                                                                                                                                                              |
 | POST   | `/api/admin/maintenance/repair-sync` | Resolve one stuck node. Body: `{ nodeId, action: 'retry-delete' \| 'force-active' }` (`orphaned_node`) or `{ nodeId, action: 'complete' \| 'restore-previous' \| 'delete' \| 'auto' }` (`pending_upload` — S3 mode only, refused 409 otherwise). Response: `{ messageCode, result }`. Repair contract: `uploadService.md` §2.5.1. |
 
 Both require `authenticateToken` + `isAdmin`.
@@ -204,26 +209,29 @@ Both require `authenticateToken` + `isAdmin`.
 
 ## 6. Configuration
 
-| Env                     | Default          | Description                                                  |
-| ----------------------- | ---------------- | ------------------------------------------------------------ |
-| `GC_INTERVAL_MS`        | unset (disabled) | GC cron interval in milliseconds; `0`/unset disables         |
-| `GC_ORPHAN_TTL_DAYS`    | `1`              | Minimum age in days before a `garbage`-category orphaned blob/row is collected |
-| `GC_VERSION_TTL_DAYS`   | `1`              | Minimum age in days before a `version`-category orphaned blob/row is collected (default reproduces the historical orphan TTL behavior) |
-| `GC_PENDING_STALE_DAYS` | `3`              | Minimum age in days before a `pending` row on a `pending_upload` node is deleted with its blob (`pending-live` cleanup); `0` disables |
-| `WEA_SKIP_GC_SCHEDULER` | unset            | Test seam; any truthy value disables cron scheduling         |
+| Env                       | Default          | Description                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GC_INTERVAL_MS`          | unset (disabled) | GC cron interval in milliseconds; `0`/unset disables                                                                                                                                                                                                                                                                                                                     |
+| `GC_ORPHAN_TTL_DAYS`      | `1`              | Minimum age in days before a `garbage`-category orphaned blob/row is collected                                                                                                                                                                                                                                                                                           |
+| `GC_VERSION_TTL_DAYS`     | `1`              | Eviction grace period: minimum age in days before an evicted (`orphaned`) version row/blob is collected (DEF-11; clock is `created_at` = upload time, so an old upload evicted today is deleted at the first GC after eviction)                                                                                                                                          |
+| `GC_PENDING_STALE_DAYS`   | `3`              | Minimum age in days before a `pending` row on a `pending_upload` node is deleted with its blob (`pending-live` cleanup); `0` disables                                                                                                                                                                                                                                    |
+| `GC_VERSION_MAX_PER_NODE` | `10`             | Per-node version cap (DEF-11): while `active + history > N`, the oldest `history` rows are demoted to `orphaned` eagerly at overwrite time (`blobStorageService.prepareUpload` → `evictVersionsBeyondCap`, same TX) — the cap holds even with the scheduler off. **`0` = unbounded** (no eviction); note the opposite 0-semantics vs the `*_DAYS` keys above. T2/dbOnly. |
+| `WEA_SKIP_GC_SCHEDULER`   | unset            | Test seam; any truthy value disables cron scheduling                                                                                                                                                                                                                                                                                                                     |
 
 ---
 
 ## 7. Verification Scenarios
 
 - [ ] Tier 1: orphaned rows + corresponding S3 mock entries are cleaned; active blobs untouched
-- [ ] Guarded row exempt: an orphaned row on a `pending_upload` node with no active row (`guarded`) is reported in `guardedRows` and NOT deleted (row + blob kept) while the node is unrepaired
+- [ ] History rows are never GC targets: a `history` row aged 10d survives any `olderThanDays` (Tier 1 queries `orphaned` only) and its blob is never deleted by Tier 1 or Tier 2 (keep-set history arm)
+- [ ] Eviction grace: an orphaned (evicted) version row on a live node is deleted together with its blob after `GC_VERSION_TTL_DAYS`
+- [ ] Guarded row exempt: an orphaned row on a `pending_upload` node with no active row (`guarded`) is reported in `guardedRows` and NOT deleted (row + blob kept) while the node is unrepaired; a stuck node whose last-good row is `history` produces no `guardedRows` count and loses nothing
 - [ ] Guard released: once the node leaves `pending_upload` (or gains an active row), the previously guarded row is classified `version` and deleted after `GC_VERSION_TTL_DAYS`
 - [ ] Stale pending cleaned: a `pending` row on a `pending_upload` node older than `GC_PENDING_STALE_DAYS` is deleted together with its blob (blob-first-then-rows); `pendingDeletedRows` increments
 - [ ] Fresh pending kept: a `pending` row younger than the stale cutoff is left untouched
 - [ ] Tier 2 keep-set: a stuck node's pending blob older than the untracked TTL is preserved by the keep-set while the pending row is young; after `GC_PENDING_STALE_DAYS` cleanup removes the row, Tier 2 deletes the now-untracked blob
-- [ ] Defaults reproduce the historical Tier-1 outcome for live-node orphans: with default TTLs, orphaned rows on live/orphaned nodes are deleted as `version` exactly as before (guarded exemption is the only deviation)
-- [ ] Tier 2: keys present in S3 with no keep-set reference are detected and deleted; active keys preserved
+- [ ] Defaults reproduce the historical Tier-1 outcome for evicted (`orphaned`) version rows on live nodes — orphaned = evicted version (guarded exemption + the history arm are the intended deviations)
+- [ ] Tier 2: keys present in S3 with no keep-set reference are detected and deleted; active and history keys preserved
 - [ ] Freshly-created orphaned rows (younger than TTL) are left untouched
 - [ ] WebDAV mode: Tier 2 skipped; orphaned `object_map` rows follow the same category rules but are rows-only — `blobStore.deleteBlob` is NOT called (the preserved `s3_key` is a UUID rollback marker, not a webdav path); stale pending rows are deleted rows-only as well
 - [ ] `scanOrphanedNodes()` returns orphaned nodes with paths

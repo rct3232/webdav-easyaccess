@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item               | Description                                                                                                                                                                                                                                                                                              |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role               | Dialog showing file/folder properties: thumbnail, type, size, modified date, path, and permissions. Fetches permissions via getFolderPermissions. For directories, fetches recursive statistics (fileCount, totalSize) via getFolderStats and shows a default banner/layout (gradient, icon+name block). |
-| Used in            | FileManager (Properties from context menu)                                                                                                                                                                                                                                                               |
-| Related components | getFileIcon, getThumbnail, formatFileSize, formatDate, getFolderPermissions, getFolderStats (fileService), getParentPath (shared pathUtils)                                                                                                                                                              |
+| Item               | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Dialog showing file/folder properties: thumbnail, type, size, modified date, path, and permissions. Fetches permissions via getFolderPermissions. For directories, fetches recursive statistics (fileCount, totalSize) via getFolderStats and shows a default banner/layout (gradient, icon+name block). Since DEF-11 it hosts a tab bar **between the title and the gradient thumbnail header** with tabs `정보 \| 버전` (i18n `dialogs.propertiesTabInfo` / `dialogs.propertiesTabVersions`); the versions tab lists the file's version history (S3 storage mode only) with icon-only download/restore actions (Tooltip + aria-label) and a current-version badge. The bottom action bar (Close) is fixed across tab switches. |
+| Used in            | FileManager (Properties from context menu)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Related components | getFileIcon, getThumbnail, formatFileSize, formatDate, getFolderPermissions, getFolderStats, getFileVersions, restoreFileVersion, downloadFileVersion (fileService), getParentPath (shared pathUtils)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 ---
 
@@ -19,11 +19,12 @@
 
 ### 2.2 Props
 
-| Name    | Type     | Required | Default | Description   |
-| ------- | -------- | -------- | ------- | ------------- |
-| open    | boolean  | Y        | -       | Dialog open   |
-| onClose | function | Y        | -       | Close handler |
-| file    | object   | Y        | -       | File object   |
+| Name              | Type     | Required | Default | Description                                                                 |
+| ----------------- | -------- | -------- | ------- | --------------------------------------------------------------------------- |
+| open              | boolean  | Y        | -       | Dialog open                                                                 |
+| onClose           | function | Y        | -       | Close handler                                                               |
+| file              | object   | Y        | -       | File object                                                                 |
+| activeFileStorage | string   | N        | null    | Active file backend (`'s3' \| 'webdav'`); gates the versions tab visibility |
 
 ### 2.3 Callback Signatures
 
@@ -48,6 +49,23 @@
 - **Top block:** Thumbnail/gradient banner; icon + name block (e.g. minHeight 120); gradient overlay when no thumbnail.
 - Permission groups by PERMISSION_ORDER
 - Async fallback: permission/stats API failures are non-fatal. UI falls back to empty permissions and placeholder size without crashing.
+- **Tabs (DEF-11):** the tab bar (`정보` default active) is always rendered between the title and the
+  gradient header; the `버전` tab is rendered **only when** `activeFileStorage === 's3'` AND
+  `file.type === 'file'` (never for directories). On the `정보` tab the original dialog body renders
+  (gradient header, permissions, property items). On the `버전` tab the versions list renders via
+  `getFileVersions(file.nodeId)`:
+  - Each row: `v{versionNumber}`, formatted date (`createdAt`), formatted size (`size` may be
+    `null` → `dialogs.versionsUnknownSize` placeholder), `isCurrent` → `dialogs.versionsCurrentBadge`
+    badge, `status === 'orphaned'` → `dialogs.versionsExpired` marker (evicted, blob pending GC).
+  - Icon-only action buttons per non-current row: download (`dialogs.versionsDownloadTitle`,
+    `downloadFileVersion`) and restore (`dialogs.versionsRestoreTitle` → ConfirmDialog with
+    `dialogs.versionsRestoreConfirmTitle`/`dialogs.versionsRestoreConfirmBody`; success toast
+    `dialogs.versionsRestoreSuccess`, failure `dialogs.versionsRestoreFail`), each with Tooltip +
+    `aria-label`. All styling via MUI `sx` props only.
+  - Load failure → `dialogs.versionsLoadFail` message, non-fatal. Empty history →
+    `dialogs.versionsEmpty`.
+  - The versions tab is hidden entirely in WebDAV mode / for directories (server refuses or returns
+    empty; the UI does not offer the dead surface).
 
 ### 2.7 Verification Scenarios
 
@@ -57,6 +75,11 @@
 - [ ] Directory: Skeleton or folderStats (fileCount, totalSize) displayed; folderStatsFormat i18n used
 - [ ] Permission/stats request failure still renders dialog (fallback values shown)
 - [ ] Returns null when !file
+- [ ] Tab bar renders between title and gradient header; `정보` active by default; Close button stays fixed across tab switches
+- [ ] `버전` tab hidden for directories and when `activeFileStorage !== 's3'`
+- [ ] Versions tab (s3 + file): getFileVersions called on tab activation; rows list versionNumber/date/size; current row carries the badge; orphaned rows carry the expired marker
+- [ ] Download icon button triggers downloadFileVersion; restore icon button opens the confirm dialog and calls restoreFileVersion on confirm; toasts on success/failure
+- [ ] Versions load failure renders `versionsLoadFail` without crashing; empty history renders `versionsEmpty`
 
 ### 2.8 Edge Cases
 

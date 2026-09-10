@@ -9,7 +9,12 @@ import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '../../../test-utils';
 import FilePropertiesDialog from '../FilePropertiesDialog';
 import { getFolderPermissions } from '../../../services/permissionService';
-import { getFolderStats } from '../../../services/fileService';
+import {
+  getFolderStats,
+  getFileVersions,
+  restoreFileVersion,
+  downloadFileVersion,
+} from '../../../services/fileService';
 
 jest.mock('../../../hooks/useResponsive', () => {
   const { createUseResponsiveModuleMock } = require('../../../testing/mocks/useResponsiveMock');
@@ -32,6 +37,26 @@ jest.mock('../../../services/fileService', () => {
   const { createFileServiceMock } = require('../../../testing/mocks/serviceMocks');
   return createFileServiceMock({
     getFolderStats: jest.fn().mockResolvedValue({ fileCount: 42, totalSize: 2048 }),
+    getFileVersions: jest.fn().mockResolvedValue({
+      nodeId: 5,
+      currentVersionNumber: 2,
+      versions: [
+        {
+          versionNumber: 2,
+          status: 'active',
+          createdAt: '2026-09-10T10:00:00Z',
+          size: 2048,
+          isCurrent: true,
+        },
+        {
+          versionNumber: 1,
+          status: 'history',
+          createdAt: '2026-09-09T10:00:00Z',
+          size: 1024,
+          isCurrent: false,
+        },
+      ],
+    }),
   });
 });
 
@@ -59,6 +84,7 @@ const defaultProps = {
   open: true,
   onClose: jest.fn(),
   file: fileProps,
+  activeFileStorage: 's3',
 };
 
 describe('FilePropertiesDialog', () => {
@@ -67,6 +93,34 @@ describe('FilePropertiesDialog', () => {
     sessionStorage.setItem('token', 'test-token');
     getFolderPermissions.mockResolvedValue([]);
     getFolderStats.mockResolvedValue({ fileCount: 42, totalSize: 2048 });
+    // CRA jest config sets resetMocks: true — factory-level implementations
+    // are wiped before every test, so re-seed the version mocks here.
+    getFileVersions.mockResolvedValue({
+      nodeId: 5,
+      currentVersionNumber: 2,
+      versions: [
+        {
+          versionNumber: 2,
+          status: 'active',
+          createdAt: '2026-09-10T10:00:00Z',
+          size: 2048,
+          isCurrent: true,
+        },
+        {
+          versionNumber: 1,
+          status: 'history',
+          createdAt: '2026-09-09T10:00:00Z',
+          size: 1024,
+          isCurrent: false,
+        },
+      ],
+    });
+    restoreFileVersion.mockResolvedValue({
+      messageCode: 'serverMessages.files.versionRestored',
+      nodeId: 5,
+      restoredVersionNumber: 1,
+    });
+    downloadFileVersion.mockResolvedValue(undefined);
   });
 
   it('returns null when file is not provided', () => {
@@ -143,6 +197,114 @@ describe('FilePropertiesDialog', () => {
     await waitFor(() => {
       expect(getFolderPermissions).toHaveBeenCalledWith(2);
       expect(getFolderStats).toHaveBeenCalledWith(2);
+    });
+  });
+
+  describe('version history tabs (DEF-11)', () => {
+    it('renders the tab bar between title and body with info active by default', async () => {
+      renderWithProviders(<FilePropertiesDialog {...defaultProps} />);
+      await waitFor(() => {
+        expect(screen.getByRole('tab', { name: 'Info' })).toBeInTheDocument();
+      });
+      expect(screen.getByRole('tab', { name: 'Versions' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Info' })).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('hides the versions tab for a directory', async () => {
+      renderWithProviders(<FilePropertiesDialog {...defaultProps} file={folderProps} />);
+      await waitFor(() => {
+        expect(screen.getByRole('tab', { name: 'Info' })).toBeInTheDocument();
+      });
+      expect(screen.queryByRole('tab', { name: 'Versions' })).not.toBeInTheDocument();
+    });
+
+    it('hides the versions tab when activeFileStorage is not s3', async () => {
+      renderWithProviders(<FilePropertiesDialog {...defaultProps} activeFileStorage="webdav" />);
+      await waitFor(() => {
+        expect(screen.getByRole('tab', { name: 'Info' })).toBeInTheDocument();
+      });
+      expect(screen.queryByRole('tab', { name: 'Versions' })).not.toBeInTheDocument();
+    });
+
+    it('versions tab loads and lists versions via getFileVersions on activation', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<FilePropertiesDialog {...defaultProps} />);
+
+      await user.click(screen.getByRole('tab', { name: 'Versions' }));
+
+      await waitFor(() => {
+        expect(getFileVersions).toHaveBeenCalledWith(5);
+      });
+      await waitFor(() => {
+        expect(screen.getByText('v1')).toBeInTheDocument();
+      });
+      expect(screen.getByText('v2')).toBeInTheDocument();
+      expect(screen.getByText('Current')).toBeInTheDocument();
+    });
+
+    it('download icon button triggers downloadFileVersion', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<FilePropertiesDialog {...defaultProps} />);
+      await user.click(screen.getByRole('tab', { name: 'Versions' }));
+      await waitFor(() => {
+        expect(screen.getByText('v1')).toBeInTheDocument();
+      });
+
+      // Rows render newest first (v2 current, then v1) — click the first.
+      const downloadButtons = screen.getAllByRole('button', {
+        name: /download this version/i,
+      });
+      await user.click(downloadButtons[0]);
+
+      expect(downloadFileVersion).toHaveBeenCalledWith(5, 2);
+    });
+
+    it('restore icon button opens the confirm dialog and calls restoreFileVersion on confirm', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<FilePropertiesDialog {...defaultProps} />);
+      await user.click(screen.getByRole('tab', { name: 'Versions' }));
+      await waitFor(() => {
+        expect(screen.getByText('v1')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', { name: /restore this version/i }));
+
+      expect(await screen.findByText(/restore version 1 of this file/i)).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /^confirm$/i }));
+
+      await waitFor(() => {
+        expect(restoreFileVersion).toHaveBeenCalledWith(5, 1);
+      });
+      await waitFor(() => {
+        expect(screen.getByText(/version 1 restored/i)).toBeInTheDocument();
+      });
+    });
+
+    it('shows the load-failure message without crashing', async () => {
+      getFileVersions.mockRejectedValueOnce(new Error('boom'));
+      const user = userEvent.setup();
+      renderWithProviders(<FilePropertiesDialog {...defaultProps} />);
+      await user.click(screen.getByRole('tab', { name: 'Versions' }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/failed to load version history/i)).toBeInTheDocument();
+      });
+    });
+
+    it('shows an empty-history message when no versions exist', async () => {
+      getFileVersions.mockResolvedValue({
+        nodeId: 5,
+        currentVersionNumber: null,
+        versions: [],
+      });
+      const user = userEvent.setup();
+      renderWithProviders(<FilePropertiesDialog {...defaultProps} />);
+      await user.click(screen.getByRole('tab', { name: 'Versions' }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/no previous versions/i)).toBeInTheDocument();
+      });
     });
   });
 });

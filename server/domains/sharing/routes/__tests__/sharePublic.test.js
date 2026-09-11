@@ -328,16 +328,15 @@ describe('POST /api/share/:token/add-to-my-permissions', () => {
     expect(addRes.status).toBe(200);
     expect(addRes.body.messageCode).toBe(SERVER_MESSAGE_CODES.share.addedToShared);
 
-    const checkRes = await request(app)
-      .get(`/api/permissions/file/check?fileNodeId=${fileNodeId}`)
-      .set('Authorization', `Bearer ${recipient.token}`);
-
-    expect(checkRes.status).toBe(200);
-    expect(checkRes.body).toMatchObject({
-      nodeId: fileNodeId,
-      hasRead: true,
-      hasWrite: false,
-    });
+    // The removed GET /permissions/file/check left no HTTP probe for file
+    // grants — assert the store effect directly.
+    const { dbQuery } = require('@server/test-utils');
+    const grant = await dbQuery(
+      'SELECT permission FROM permissions_user_files WHERE user_id = ? AND file_node_id = ?',
+      [recipient.user.id, fileNodeId]
+    );
+    expect(grant.rows).toHaveLength(1);
+    expect(grant.rows[0].permission).toBe('read');
   });
 });
 

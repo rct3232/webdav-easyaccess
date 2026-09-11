@@ -394,25 +394,6 @@ describe('createFileNodesStore', () => {
       expect(chain[1].depth).toBe(0);
     });
 
-    // deleteAncestorByAncestor
-    it('removes rows matching given ancestor IDs', async () => {
-      const root = await store.createNode(null, `${testPrefix}anc-by-root`, 'directory');
-      const child = await store.createNode(root.id, `${testPrefix}anc-by-child`, 'file');
-
-      await store.insertAncestorRows([
-        { ancestorId: root.id, descendantId: child.id, depth: 1 },
-        { ancestorId: child.id, descendantId: child.id, depth: 0 },
-      ]);
-
-      const delResult = await store.deleteAncestorByAncestor([root.id]);
-      expect(delResult.changes).toBe(1);
-
-      const remaining = await dbQuery(
-        `SELECT COUNT(*) as count FROM node_ancestors WHERE descendant_id IN (?, ?)`,
-        [root.id, child.id]
-      );
-      expect(remaining.rows[0].count).toBe(1);
-    });
 
     // isAncestor
     it('returns true when ancestor relationship exists', async () => {
@@ -689,20 +670,6 @@ describe('createFileNodesStore', () => {
       expect(children[0].size).toBe(4096);
       expect(children[0].mimeType).toBe('image/png');
       expect(children[0].contentHash).toBe('png-hash');
-    });
-
-    // deleteCache
-    it('deletes cache row for a file node', async () => {
-      const created = await store.createNode(null, `${testPrefix}cache-del`, 'file');
-      await store.upsertCache(created.id, 500, 'text/plain', null);
-
-      const result = await store.deleteCache(created.id);
-      expect(result.changes).toBe(1);
-
-      const row = await dbQuery(`SELECT COUNT(*) as count FROM filecache WHERE file_node_id = ?`, [
-        created.id,
-      ]);
-      expect(row.rows[0].count).toBe(0);
     });
   });
 

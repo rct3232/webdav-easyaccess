@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-| Item | Description                                                                                                 |
-| ---- | ----------------------------------------------------------------------------------------------------------- |
-| Role | Async helpers: asyncLimit, asyncLimitSettled (concurrency limit), asyncLimitSettledWithCancel (cancelable). |
+| Item | Description                                         |
+| ---- | ----------------------------------------------------- |
+| Role | Async helpers: asyncLimit (concurrency-limited map). |
 
 ---
 
@@ -13,20 +13,21 @@
 ### 2.1 File Path
 
 - **Source:** `server/utils/asyncUtils.js`
-- **Test file:** `server/utils/__tests__/asyncUtils.test.js`
+- **Test file:** none (verified via consumers)
 
 ### 2.2 Functions / Exports
 
-| Function                    | Signature                                             | Description                                             |
-| --------------------------- | ----------------------------------------------------- | ------------------------------------------------------- |
-| asyncLimit                  | (limit, items, fn) => Promise\<Array\>                | Run fn for each item with concurrency limit             |
-| asyncLimitSettled           | (limit, items, fn) => Promise\<Array\>                | Like allSettled with limit                              |
-| asyncLimitSettledWithCancel | (limit, items, fn, getCancelFlag) => Promise\<Array\> | Like asyncLimitSettled, stops when getCancelFlag() true |
+| Function   | Signature                              | Description                                   |
+| ---------- | -------------------------------------- | --------------------------------------------- |
+| asyncLimit | (limit, items, fn) => Promise\<Array\> | Run fn for each item with concurrency limit   |
+
+Note: `asyncLimitSettled` and `asyncLimitSettledWithCancel` were retired (dead-code
+cleanup 2026-09) — no production caller remained; cancellation-aware batching uses
+service-local loops.
 
 ### 2.3 Input / Output
 
 - asyncLimit: results in order
-- asyncLimitSettled: { status, value } or { status, reason }
 
 ### 2.4 Dependencies
 
@@ -39,5 +40,3 @@
 ### 2.6 Verification Scenarios
 
 - [ ] asyncLimit respects concurrency
-- [ ] asyncLimitSettled returns settled results
-- [ ] asyncLimitSettledWithCancel stops when getCancelFlag returns true

@@ -569,54 +569,6 @@ describe('S5.0-SCENARIO-5: S3 mode delete cascade', () => {
 });
 
 /* ========================================================================
-   Scenario 5B - S3 Mode: GC route (route level) reclaims an untracked blob
-   (Tier-2 reconciliation). The blob has no object_map row; the admin GC
-   endpoint must scan the store and delete it.
-   ======================================================================== */
-describe('S5.0-SCENARIO-5B: GC route reclaims an untracked S3 blob (Tier 2)', () => {
-  let admin;
-
-  beforeEach(jest.clearAllMocks);
-
-  beforeAll(async () => {
-    currentMockS3 = createS3Mock();
-    wireS3Mock(currentMockS3);
-    await useS3Mode();
-
-    admin = await createAuthenticatedTestUser({
-      isAdmin: true,
-      username: `gcuntracked-${Date.now()}`,
-    });
-  });
-
-  it('GC deletes a directly-placed blob that has no object_map row', async () => {
-    const untrackedKey = `untracked-${Date.now()}.txt`;
-    await currentMockS3.putObject({
-      Bucket: 'test-bucket',
-      Key: untrackedKey,
-      Body: Buffer.from('orphan content'),
-    });
-    // Age the blob past the orphan TTL so Tier-2 scans it as a candidate.
-    currentMockS3.getStore().set(untrackedKey, {
-      ...currentMockS3.getStore().get(untrackedKey),
-      LastModified: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-    });
-    expect(currentMockS3.getStore().has(untrackedKey)).toBe(true);
-
-    const res = await request(app)
-      .post('/api/admin/maintenance/gc')
-      .set('Authorization', `Bearer ${admin.token}`);
-    expect(res.status).toBe(200);
-    expect(res.body.results.tier2.skipped).toBe(false);
-    expect(res.body.results.tier2.scannedKeys).toBeGreaterThan(0);
-    expect(res.body.results.tier2.untrackedKeys).toBeGreaterThanOrEqual(1);
-    expect(res.body.results.tier2.deletedKeys).toBeGreaterThanOrEqual(1);
-
-    expect(currentMockS3.getStore().has(untrackedKey)).toBe(false);
-  });
-});
-
-/* ========================================================================
    Scenario 6 - Permission inheritance via closure table
    ======================================================================== */
 describe('S5.0-SCENARIO-6: Permission inheritance', () => {

@@ -151,20 +151,6 @@ async function checkPermission(
   return true;
 }
 
-// --- Write permission checks (admin bypass + async) ---
-
-async function canWriteFolder(user, dirNodeId) {
-  if (!user) return false;
-  if (isAdminUser(user)) return true;
-  return await checkFolderPermission(user.id, dirNodeId, PERMISSIONS.WRITE);
-}
-
-async function canWriteFile(user, fileNodeId) {
-  if (!user) return false;
-  if (isAdminUser(user)) return true;
-  return await checkFilePermission(user.id, fileNodeId, PERMISSIONS.WRITE);
-}
-
 // --- Cache utilities ---
 function __clearUserCacheForTests() {
   userCache.clear();
@@ -180,10 +166,6 @@ module.exports = {
   checkFilePermission,
   checkFolderPermission,
   checkPermission,
-
-  // User object-based write checks (admin bypass included)
-  canWriteFolder,
-  canWriteFile,
 
   // Cache utilities
   getCachedUser,

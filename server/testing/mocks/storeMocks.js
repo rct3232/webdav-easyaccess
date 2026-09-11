@@ -54,7 +54,6 @@ function createPermissionStoreMock(overrides = {}) {
     revokeSharePermission: jest.fn(),
     revokeAllUserPermissions: jest.fn(),
     deleteUserPermissionsFile: jest.fn(),
-    checkPermissions: jest.fn(),
     getFolderPermissions: jest.fn(),
     hasPermissionsInPath: jest.fn(),
     getEffectivePermission: jest.fn(),
@@ -68,7 +67,6 @@ function createPermissionStoreMock(overrides = {}) {
 
 function createLockManagerMock(overrides = {}) {
   return {
-    withLock: async (_name, fn) => fn(),
     acquireLock: jest.fn(),
     ...overrides,
   };

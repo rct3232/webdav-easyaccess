@@ -32,7 +32,6 @@ function createMockUploadService(overrides = {}) {
 function createOwnerNodeResolverMock(overrides = {}) {
   const defaults = {
     isOwnerNode: jest.fn().mockResolvedValue(false),
-    getUserRootNodeId: jest.fn().mockResolvedValue(null),
   };
   return { ...defaults, ...overrides };
 }
@@ -1355,7 +1354,6 @@ describe('moveNode', () => {
     expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'write');
     expect(aclService.checkFolderPermission).toHaveBeenCalledWith(1, 20, 'write');
     expect(fileNodeService.moveNode).toHaveBeenCalledWith(10, 20);
-    expect(blobStorageService.deleteBlob).not.toHaveBeenCalled();
     expect(blobStorageService.uploadToWebdav).not.toHaveBeenCalled();
     expect(result).toMatchObject({ nodeId: 10, newParentId: 20 });
   });
@@ -1805,7 +1803,6 @@ describe('deleteNode', () => {
 
     expect(blobStore.headBlob).not.toHaveBeenCalled();
     expect(blobStore.moveBlob).not.toHaveBeenCalled();
-    expect(blobStorageService.deleteBlob).not.toHaveBeenCalled();
     expect(blobStorageService.uploadToWebdav).not.toHaveBeenCalled();
     expect(fileNodeService.markSubtreeDeleted).toHaveBeenCalledWith([10]);
     expect(fileNodeService.deleteNode).not.toHaveBeenCalled();

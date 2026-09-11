@@ -132,11 +132,6 @@ async function getWebDAVClient(baseUrlOverride = null) {
   return clientCache.get(url);
 }
 
-function resetWebDAVClient() {
-  clientCache.clear();
-  console.log('WebDAV client reset');
-}
-
 async function moveFileStreamed(sourcePath, destinationPath, progressCallback) {
   const client = await getWebDAVClient(); // fallback uses default base URL
   try {
@@ -426,37 +421,6 @@ async function putFileContents(path, buffer) {
       { reason: error.message }
     );
   }
-}
-
-/**
- * PUT file contents with advanced options (headers, overwrite, etc).
- * This is required for conditional requests like If-None-Match: *.
- *
- * @param {string} path
- * @param {Buffer|string|import("stream").Readable} buffer
- * @param {object} options - Passed through to webdav client's putFileContents
- * @returns {Promise<{success: true}>}
- */
-async function putFileContentsAdvanced(path, buffer, options = {}) {
-  const client = await getWebDAVClient();
-  const normalizedPath = normalizePath(path);
-  const requestPath = getRequestPath(normalizedPath);
-  await client.putFileContents(requestPath, buffer, options);
-  return { success: true };
-}
-
-/**
- * Perform a custom WebDAV request using the configured client.
- * @param {string} path
- * @param {object} requestOptions
- * @param {string|null} baseUrlOverride
- * @returns {Promise<any>}
- */
-async function customRequest(path, requestOptions, baseUrlOverride = null) {
-  const client = await getWebDAVClient(baseUrlOverride);
-  const normalizedPath = normalizePath(path);
-  const requestPath = getRequestPath(normalizedPath, baseUrlOverride);
-  return client.customRequest(requestPath, requestOptions);
 }
 
 async function deleteFile(path, options = {}) {
@@ -756,43 +720,13 @@ async function getFileMetadata(filePath) {
   };
 }
 
-/**
- * Get recursive statistics (file count and total size) for a folder.
- * @param {string} folderPath - Normalized folder path
- * @param {typeof listDirectory} [listDir] - Optional listDirectory implementation (for tests).
- * @returns {Promise<{ fileCount: number, totalSize: number }>}
- */
-async function getRecursiveFolderStats(folderPath, listDir = listDirectory) {
-  const normalizedPath = normalizePath(folderPath);
-  let fileCount = 0;
-  let totalSize = 0;
-
-  async function walk(currentPath) {
-    const items = await listDir(currentPath);
-    for (const item of items) {
-      if (item.type === 'directory') {
-        await walk(item.filename || `${currentPath}/${item.basename}`);
-      } else {
-        fileCount++;
-        totalSize += item.size || 0;
-      }
-    }
-  }
-
-  await walk(normalizedPath);
-  return { fileCount, totalSize };
-}
-
 module.exports = {
   getWebDAVClient,
   getRequestPath,
   buildDestinationAbsoluteUrl,
-  resetWebDAVClient,
   listDirectory,
   getFileContents,
   putFileContents,
-  putFileContentsAdvanced,
-  customRequest,
   deleteFile,
   moveFile,
   copyFile,
@@ -800,7 +734,6 @@ module.exports = {
   ensureDirectoryExists,
   pathExists,
   getFileMetadata,
-  getRecursiveFolderStats,
 };
 
 // Re-export for backward compatibility

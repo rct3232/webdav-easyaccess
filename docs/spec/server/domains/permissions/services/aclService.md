@@ -67,15 +67,9 @@ Unified entry point that delegates to the appropriate checker based on the `isDi
 
 **Returns:** `Promise<boolean>`
 
-### 2.3 Write Convenience Methods
+### 2.3 Write Convenience Methods — REMOVED
 
-#### `canWriteFolder(user, dirNodeId)`
-
-Admin bypass + delegates to `checkFolderPermission(user.id, dirNodeId, PERMISSIONS.WRITE)`. Returns `false` if user is null.
-
-#### `canWriteFile(user, fileNodeId)`
-
-Admin bypass + delegates to `checkFilePermission(user.id, fileNodeId, PERMISSIONS.WRITE)`. Returns `false` if user is null.
+`canWriteFolder` / `canWriteFile` had no production callers and were retired in the 2026-09 dead-code cleanup; callers use `checkFolderPermission` / `checkFilePermission` with `PERMISSIONS.WRITE` directly (the admin bypass is applied by the callers' own gate or by `checkPermission`).
 
 ### 2.4 Identity Helpers
 
@@ -123,5 +117,4 @@ This decision was made in Wave 4 (Task W4.0) — a dedicated batch method provid
 - [ ] checkFolderPermission skips direct file-level lookup; uses only closure table
 - [ ] Share principal resolves via token extraction and store delegation
 - [ ] Non-existent user returns false (not an error)
-- [ ] canWriteFolder/canWriteFile delegate to correct checker with WRITE permission
 - [ ] User cache TTL respects NODE_ENV=test (disabled)

@@ -30,7 +30,7 @@
 ### 2.3.1 Test Mock Strategy
 
 - Route integration tests should use a shared WebDAV mock factory rather than repeating large inline `jest.mock('../../utils/webdav', ...)` objects.
-- Keep factory defaults simple (`pathExists`, `createDirectory`, `getRecursiveFolderStats`) and override only what each test scenario needs.
+- Keep factory defaults simple (`pathExists`, `createDirectory`) and override only what each test scenario needs.
 - Duplicate/parent-missing paths must be modeled using explicit per-test override sequences so scenario intent is readable.
 - Maintain black-box verification: assert status/error contracts and returned payload shape; inspect call arguments only when interaction is the behavior under test.
 

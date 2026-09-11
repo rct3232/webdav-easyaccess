@@ -128,16 +128,6 @@ async function checkPermission(userId, nodeId, requiredPermission) {
   return meetsRank(found.permission, requiredPermission);
 }
 
-async function checkPermissions(userId, nodeIds, requiredPermission) {
-  const result = new Map();
-  if (!Array.isArray(nodeIds)) return result;
-  for (const nodeId of nodeIds) {
-    if (typeof nodeId !== 'number') continue;
-    result.set(nodeId, await checkPermission(userId, nodeId, requiredPermission));
-  }
-  return result;
-}
-
 /* ------------------------------------------------------------------ */
 /*  File Permissions                                                   */
 /* ------------------------------------------------------------------ */
@@ -312,7 +302,6 @@ module.exports = {
   deleteUserPermissionsFile,
   getUserPermissions,
   checkPermission,
-  checkPermissions,
   getFolderPermissions,
   hasPermissionsInPath,
   getFilePermission,

@@ -97,12 +97,9 @@ Pages and UI components present states and trigger actions; they should not impl
 
 | Endpoint                     | Method | Auth  | Description                                                                                                                                    |
 | ---------------------------- | ------ | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/api/users`                 | GET    | Token | List users (e.g. for share dialogs).                                                                                                           |
 | `/api/users/approved`        | GET    | Token | List approved users only.                                                                                                                      |
-| `/api/users/:id`             | GET    | Token | Get user by id.                                                                                                                                |
 | `/api/users/:id/password`    | PUT    | Token | Change own password. Body: `{ password }`. Self-only — a target id other than the caller returns 403; success revokes the user's sessions via `revokeAllUserTokens` (refresh-token deletion). |
 | `/api/users/:id/email`       | PUT    | Token | Update email. Only self (or admin) allowed.                                                                                                    |
-| `/api/users/:id/permissions` | PUT    | Token | Update current user's own permissions (e.g. home folder).                                                                                      |
 
 See [api.md](../api.md) for exact body/query shapes.
 

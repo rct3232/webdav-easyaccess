@@ -56,7 +56,7 @@ server/domains/
 │   ├── services/      # fileService.js, downloadService.js, etc.
 │   └── stores/        # operationProgress.js
 ├── permissions/
-│   ├── policy/        # permissionPolicy.js, inheritancePolicy.js, ownerPathResolver.js, permissionRank.js
+│   ├── policy/        # permissionPolicy.js, ownerNodeResolver.js, permissionRank.js
 │   ├── routes/        # index.js, filePermissions.js, folderPermissions.js, queries.js, permissionRequests.js
 │   ├── services/      # aclService.js, permissionFacade.js
 │   └── stores/        # permissionStore.js, permissionRequestStore.js, permissionExistenceIndex.js
@@ -106,16 +106,15 @@ Cross-cutting infrastructure modules live in `server/infrastructure/`:
 
 | Module             | File                  | Responsibility                                                                                                                                                            |
 | ------------------ | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Lock Manager       | `lockManager.js`      | Distributed locking for metadata writes. Supports PostgreSQL and SQLite lock strategies with TTL expiry and stale-lock cleanup. Exports `acquireLock()` and `withLock()`. |
+| Lock Manager       | `lockManager.js`      | Distributed locking for metadata writes. Supports PostgreSQL and SQLite lock strategies with TTL expiry and stale-lock cleanup. Exports `acquireLock()`. |
 | DB Executor Seam   | `db/executor.js`      | Backend-neutral metadata execution seam (`query` / `run` / `transaction` / `isUniqueConflict` / `close`), implemented per dialect by `db/sqliteExecutor.js` and `db/postgresExecutor.js`. Selected by `storage.getExecutor()`; executes the per-domain repository SQL (§1.1 / §2.1). |
 | Health Routes      | `healthRoutes.js`     | Unauthenticated `GET /api/health` endpoint for liveness probes. Mounted at `/api`.                                                                                        |
-| WebDAV Routes      | `webdavRoutes.js`     | Diagnostic endpoints: `GET /api/webdav/test` (connectivity) and `GET /api/webdav/info` (URL display). No auth required.                                                   |
 | WebDAV Test        | `webdavTest.js`       | Connection test logic extracted from webdav.js. Creates ephemeral client, probes root directory, returns structured result.                                               |
 | SQLite Schema Init | `sqliteSchemaInit.js` | PostgreSQL→SQLite DDL transpiler (`convertPostgresToSqlite`) plus explicit-target schema init (`initSqliteSchema({connection}` / `{path}`) for caller-supplied connections and temporary DBs. App boot applies the tracked `ddl/` chain via `schemaManager.applyPendingMigrations` on BOTH backends (sqlite consumes the transpiler); `initSqliteSchema` is no longer the boot path. Spec: `docs/spec/server/infrastructure/sqliteSchemaInit.md` §1. |
 
 ### 1.3 Middleware Pipeline
 
-For routes that require it, a standardized middleware chain runs for security. Routes such as `/api/health`, `/api/webdav/*`, `/api/share/:token/*`, and `/api/settings/public` do not use Auth or User Loader.
+For routes that require it, a standardized middleware chain runs for security. Routes such as `/api/health`, `/api/share/:token/*`, and `/api/settings/public` do not use Auth or User Loader.
 
 ```
 Request → CORS → Body Parser → Request Logger → [Auth (JWT) → User Loader] (per route) → Route Handler → Error Handler
@@ -233,7 +232,7 @@ CLI). Command sequences and operator checks are maintained in `docs/SETUP.md`.
 
 ### 2.2 Concurrency Control (Metadata Locking)
 
-A **distributed lock** mechanism (`server/infrastructure/lockManager.js`, exported via `server/store/locks.js`) prevents metadata races across all backends.
+A **distributed lock** mechanism (`server/infrastructure/lockManager.js`) prevents metadata races across all backends.
 
 - **postgresql/sqlite**: lock rows are acquired with `INSERT ... ON CONFLICT` semantics, validated by owner token, and released with TTL-aware cleanup (`expires_at < NOW()`).
 
@@ -327,7 +326,7 @@ This document does not duplicate endpoint catalogs.
   - Password change increments `token_version`, invalidating all existing tokens.
   - Path normalization prevents Directory Traversal attacks.
 - **Performance**:
-  - `asyncLimitSettled` limits concurrent WebDAV requests (e.g. 5–10 per operation).
+  - `asyncLimit` limits concurrent WebDAV requests (e.g. 5–10 per operation).
   - Permission and user checks are cached in-memory with short TTL (e.g. 3–5s; `PERMISSION_CACHE_TTL_MS`, `USER_CACHE_TTL_MS`).
 
 ## 6. Concept Verification Boundary

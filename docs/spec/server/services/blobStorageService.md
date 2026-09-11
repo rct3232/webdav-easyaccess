@@ -25,7 +25,6 @@ function createBlobStorageService({ blobStore, fileNodesStore, fileStorageMode =
     completeUpload(s3Key, size, mimeType),
     downloadBlob(fileNodeId),
     overwriteBlob(fileNodeId, buffer),
-    deleteBlob(fileNodeId),
     getActiveS3Key(fileNodeId),
     countActiveObjectsByS3Key(s3Key),
     duplicateBlob(sourceS3Key),
@@ -113,16 +112,6 @@ Overwrites a file's content: uploads new blob, demotes the previous active mappi
 **Operations:** `blobStore.uploadBlob(newS3Key, buffer)` → `upsertObjectMap(fileNodeId, newS3Key, 'active')` (demotes the node's previous active row to `status='history'` and inserts the new mapping at `MAX(version_number) + 1`, avoiding the `UNIQUE(file_node_id, version_number)` collision); delegates to `uploadToWebdav(fileNodeId, buffer)` (WebDAV).
 
 > **Note:** this method is not used by the production upload/overwrite flow — route-level overwrites go through `uploadService.overwriteFile` (S3) or `uploadToWebdav` directly (WebDAV). It is retained as a service-level primitive.
-
-#### `deleteBlob(fileNodeId)`
-
-Marks the active object as orphaned. Actual S3 deletion is deferred to GC service (Phase 6).
-
-| Param      | Type   | Required | Description                            |
-| ---------- | ------ | -------- | -------------------------------------- |
-| fileNodeId | number | yes      | ID of the file node to delete blob for |
-
-**Operations:** `orphanObject(currentS3Key)` — no-op if no active object exists (S3); resolve path (guard node), `blobStore.deleteBlob(path)` (WebDAV).
 
 #### `getActiveS3Key(fileNodeId)`
 
@@ -274,7 +263,6 @@ Uploads blob via WebDAV path. Guards on node existence.
 | completeUpload            | UPDATE active + filecache                                                                               | throws 'completeUpload is not applicable in WebDAV mode'                                                  |
 | downloadBlob              | blobStore.downloadBlob(s3Key)                                                                           | delegates to downloadBlobWebdav                                                                           |
 | overwriteBlob             | upload new blob → upsertObjectMap (demote prev → `history` + insert next version) → return newKey       | delegates to uploadToWebdav                                                                               |
-| deleteBlob                | mark orphaned in object_map                                                                             | resolve path → blobStore.deleteBlob(path)                                                                 |
 | getActiveS3Key            | active s3_key or null                                                                                   | always null                                                                                               |
 | countActiveObjectsByS3Key | COUNT active object_map rows by s3_key                                                                  | returns 0                                                                                                 |
 | duplicateBlob             | blobStore.copyBlob(source, newKey) → newKey                                                             | throws 'duplicateBlob is not applicable in WebDAV mode'                                                   |
@@ -292,7 +280,6 @@ Uploads blob via WebDAV path. Guards on node existence.
 
 - No active object for download → returns null (no throw)
 - completeUpload with unknown s3Key → throws error
-- deleteBlob with no active object → no-op, no error
 
 ### WebDAV Mode
 
@@ -339,9 +326,6 @@ garbage). New rows are inserted at `version_number = MAX(version_number) + 1` fo
 - [ ] downloadBlob with active object returns buffer matching uploaded content
 - [ ] downloadBlob with no active object returns null
 - [ ] overwriteBlob demotes the old key to `history` and creates new active mapping at the next version (no UNIQUE collision)
-- [ ] deleteBlob marks active object orphaned (no S3 deletion; direct `orphanObject` path — not a history demotion)
-- [ ] deleteBlob with no active object is a no-op
-- [ ] deleteBlob in WebDAV mode resolves path and calls blobStore.deleteBlob
 - [ ] countActiveObjectsByS3Key returns correct count
 - [ ] duplicateBlob copies blob under new key
 - [ ] ensureExclusiveBlob duplicates when count > 1

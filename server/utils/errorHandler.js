@@ -240,19 +240,6 @@ function validationError(errorCode, params = undefined) {
 }
 
 /**
- * Unauthorized error (401)
- * @param {string} [errorCode] - i18n error code (default: utilsAuth token error)
- * @param {Object} [params] - Optional params for i18n
- * @returns {Error} Unauthorized error
- */
-function unauthorizedError(
-  errorCode = SERVER_ERROR_CODES.utilsAuth.invalidOrExpiredToken,
-  params = undefined
-) {
-  return createError(errorCode, 401, params);
-}
-
-/**
  * Forbidden error (403)
  * @param {string} [errorCode] - i18n error code
  * @param {Object} [params] - Optional params for i18n
@@ -310,7 +297,6 @@ module.exports = {
   mapDatabaseError,
   mapServiceError,
   validationError,
-  unauthorizedError,
   forbiddenError,
   notFoundError,
   conflictError,

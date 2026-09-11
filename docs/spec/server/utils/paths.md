@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-| Item | Description                                                                    |
-| ---- | ------------------------------------------------------------------------------ |
-| Role | Path resolution: getProjectRoot, getDataDir, getThumbnailDir, getDatabasePath. |
+| Item | Description                                         |
+| ---- | --------------------------------------------------- |
+| Role | Path resolution: getProjectRoot, getDataDir.       |
 
 ---
 
@@ -13,16 +13,19 @@
 ### 2.1 File Path
 
 - **Source:** `server/utils/paths.js`
-- **Test file:** `server/utils/__tests__/paths.test.js`
+- **Test file:** none (verified via consumers)
 
 ### 2.2 Functions / Exports
 
-| Function        | Signature    | Description               |
-| --------------- | ------------ | ------------------------- |
-| getProjectRoot  | () => string | Resolve \_\_dirname/../.. |
-| getDataDir      | () => string | data/ under project root  |
-| getThumbnailDir | () => string | data/thumbnails           |
-| getDatabasePath | () => string | data/database.sqlite      |
+| Function       | Signature    | Description               |
+| -------------- | ------------ | ------------------------- |
+| getProjectRoot | () => string | Resolve \_\_dirname/../.. |
+| getDataDir     | () => string | data/ under project root  |
+
+Note: `getThumbnailDir` and `getDatabasePath` were retired (dead-code cleanup
+2026-09) — thumbnails are held in the in-memory `CacheAdapter` (no on-disk dir) and
+the SQLite DB path is resolved inside `store/storage.js`, so these helpers had no
+remaining caller.
 
 ### 2.3 Input / Output
 
@@ -39,4 +42,3 @@
 ### 2.6 Verification Scenarios
 
 - [ ] Paths resolve correctly
-- [ ] Thumbnail dir under data

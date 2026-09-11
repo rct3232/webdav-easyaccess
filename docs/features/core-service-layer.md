@@ -14,7 +14,7 @@ uploadService.js          ← Orchestration (TX1 → S3 PUT → TX2 flow)
   │       └── _ancestryHelper.js ← Closure table maintenance
   │               └── fileNodesStore.js ← facade → FileNodeRepository → per-dialect impl (sqlite | postgres) via storage.getExecutor() → DbExecutor (infrastructure/db)
   └── blobStorageService.js ← Blob lifecycle (prepareUpload → completeUpload → download)
-          └── S3BlobStore / NoOpBlobStore (Phase 1 adapters)
+          └── S3BlobStore / WebdavBlobStore (adapters; the Phase-1 NoOpBlobStore was retired)
 ```
 
 ---

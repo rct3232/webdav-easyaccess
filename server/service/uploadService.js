@@ -190,22 +190,12 @@ function createUploadService({ fileNodeService, blobStorageService, blobStore, f
   }
 
   /* ------------------------------------------------------------------ */
-  /*  Download                                                          */
-  /* ------------------------------------------------------------------ */
-
-  /** Pass-through to blobStorageService. */
-  async function downloadFile(fileNodeId) {
-    return await blobStorageService.downloadBlob(fileNodeId);
-  }
-
-  /* ------------------------------------------------------------------ */
   /*  Public API                                                        */
   /* ------------------------------------------------------------------ */
 
   return {
     uploadFile,
     overwriteFile,
-    downloadFile,
   };
 }
 

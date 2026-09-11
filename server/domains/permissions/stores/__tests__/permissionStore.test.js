@@ -305,11 +305,6 @@ describe('permissionStore (nodeId)', () => {
       }),
     }));
 
-    jest.doMock('../../../../store/locks', () => {
-      const { createLockManagerMock } = require('@testing/mocks/storeMocks');
-      return createLockManagerMock();
-    });
-
     jest.doMock('../permissionExistenceIndex', () => ({
       invalidateExistenceIndexForAclMutation: jest.fn(),
     }));

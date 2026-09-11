@@ -143,8 +143,8 @@ values (e.g. `EMAIL_PASSWORD`, `WEBDAV_PASSWORD`, `AWS_SECRET_ACCESS_KEY`) are p
 **plaintext strings** exactly like any other config value. The flag drives **presentation-level
 masking only**:
 
-- Effective-config surfaces (`GET /api/admin/config`, `GET /api/setup/status`,
-  `POST /api/setup/prefill`) and the setup/admin UIs render a **set** secret as `'****'` and never
+- Effective-config surfaces (`GET /api/admin/config`, `GET /api/setup/status`)
+  and the setup/admin UIs render a **set** secret as `'****'` and never
   return the stored value to the client. An **unset** secret has no effective value (`undefined`,
   omitted from JSON) — it is never fabricated into `'****'`, so presence/completeness checks
   (metadata-backend and file-backend selection, `setup_complete`) never mistake it for a
@@ -181,13 +181,10 @@ metadata DB by default; only T0 keys are written to `.env`.
   (keep-existing).
 - **Admin password:** apply calls `User.updatePassword` directly on the booted app's `admin`
   user (`updateAdminPassword`, `setupCore.js`) — there is no `ADMIN_DEFAULT_PASSWORD` path.
-- **Setup-phase prefill is a direct read (wizard-only, Q1b):** during setup the wizard
-  prefill (`POST /api/setup/prefill`) reads the target metadata DB `settings` rows via a
-  **direct connection** using the credentials entered in wizard step 1 and returns
-  `{ current }` (secret rows masked as `'****'`, never plaintext). It does not use the
-  app's own store; runtime T2 reads and the admin config page use `Settings`/the resolver.
-  Best-effort — a prefill failure does not block advancing. Full contract:
-  `docs/spec/server/routes/setup.md` (§"POST /api/setup/prefill").
+- **Setup-phase prefill comes from `GET /status` only:** the wizard prefills from the
+  `current` block of `GET /api/setup/status` (effective env → DB → default, secret rows
+  masked as `'****'`, never plaintext). The former wizard-only direct-PG-read endpoint
+  `POST /api/setup/prefill` was retired as dead code (no client caller).
 
 ---
 
@@ -349,6 +346,6 @@ Representative observable behaviors to cover:
   goes to the DB as plaintext; existing full-`.env` installs keep working unchanged (`.env` wins).
 - Masked `'****'`/blank secret submissions keep the previously stored value on every write
   path; a new value overwrites it.
-- `GET /api/setup/status`, `GET /api/admin/config`, and `POST /api/setup/prefill` never return
-  a secret in plaintext and carry no key-loss field.
+- `GET /api/setup/status` and `GET /api/admin/config` never return a secret in
+  plaintext and carry no key-loss field.
 - No schema change; existing unit + e2e suites stay green.

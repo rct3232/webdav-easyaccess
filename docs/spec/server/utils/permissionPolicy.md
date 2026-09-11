@@ -24,6 +24,8 @@
 >
 > - `ownerPathResolver.js` — path-based owner resolution; replaced by `ownerNodeResolver.js` (nodeId-based)
 > - `inheritancePolicy.js` — path normalization for permission lookup; inheritance is now handled via closure table queries in the store
+>
+> **Removed functions (2026-09 dead-code cleanup)** — `canReadFolderNode`, `canWriteFolderNode`, `canReadFileNode`, `canWriteFileNode` had no production callers; use `aclService.checkFolderPermission` / `aclService.checkFilePermission` or `permissionStore.checkPermission` directly.
 
 ### 2.2 Post-Wave 4 State
 
@@ -32,10 +34,6 @@ All Tier 2 (path-based compat layer) and Tier 3 (sync checker builder) functions
 | Function                | Signature                                                       | Description                                                       |
 | ----------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------- |
 | isAdminUser             | `(user) => boolean`                                             | `user?.is_admin` truthiness check                                 |
-| canReadFolderNode       | `(userId, dirNodeId, requiredPermission?) => Promise<boolean>`  | Admin + owner bypass → store.checkPermission                      |
-| canWriteFolderNode      | `(userId, dirNodeId) => Promise<boolean>`                       | Admin + owner bypass → store.checkPermission(WRITE)               |
-| canReadFileNode         | `(userId, fileNodeId, requiredPermission?) => Promise<boolean>` | Admin bypass → aclService.checkFilePermission(READ)               |
-| canWriteFileNode        | `(userId, fileNodeId) => Promise<boolean>`                      | Admin bypass → aclService.checkFilePermission(WRITE)              |
 | canGrantPermissionNode  | `(userId, targetNodeId) => Promise<boolean>`                    | Admin + owner bypass → store.checkPermission(ADMIN)               |
 | canRevokePermissionNode | `(userId, targetNodeId, targetUserId) => Promise<boolean>`      | Self-revoke + admin + owner bypass → store.checkPermission(ADMIN) |
 | canViewPermissionsNode  | `(userId, targetNodeId) => Promise<boolean>`                    | Admin + owner bypass → store.checkPermission(ADMIN)               |
@@ -57,23 +55,17 @@ All Tier 2 (path-based compat layer) and Tier 3 (sync checker builder) functions
 
 - `@webdav-easyaccess/shared/constants` (PERMISSIONS)
 - User model
-- aclService (checkFilePermission) — from `../services/aclService`
 - permissionStore — direct store import for checkPermission calls
 - ownerNodeResolver.isOwnerNode — nodeId-based ownership check
 
 ### 2.6 Mock Targets
 
 - User.findById
-- aclService.checkFilePermission, aclService.checkFolderPermission
 - permStore.checkPermission
 - isOwnerNode
 
 ### 2.7 Verification Scenarios
 
-- [ ] canReadFolderNode/canWriteFolderNode: admin bypass returns true without store call
-- [ ] canReadFolderNode/canWriteFolderNode: owner node bypass returns true without store call
-- [ ] canReadFileNode delegates to aclService.checkFilePermission with READ rank
-- [ ] canWriteFileNode delegates to aclService.checkFilePermission with WRITE rank
 - [ ] canGrantPermissionNode checks ADMIN permission via store
 - [ ] canRevokePermissionNode allows self-revoke (userId === targetUserId) without admin check
 - [ ] getUserOrNull returns null for non-existent userId instead of throwing
@@ -85,10 +77,10 @@ The following functions were removed during Wave 4 and are **not available**:
 **Tier 2 — path-based compat layer:**
 | Function | Replacement |
 |----------|-------------|
-| `canReadFolder(principalId, folderPath)` | `canReadFolderNode(userId, dirNodeId)` or `aclService.checkFolderPermission` |
-| `canReadFile(principalId, filePath)` | `canReadFileNode(userId, fileNodeId)` or `aclService.checkFilePermission` |
-| `canWriteFolder(user, folderPath)` | `canWriteFolderNode(userId, dirNodeId)` |
-| `canWriteFileByParent(user, filePath)` | `canWriteFileNode(userId, fileNodeId)` |
+| `canReadFolder(principalId, folderPath)` | `aclService.checkFolderPermission` |
+| `canReadFile(principalId, filePath)` | `aclService.checkFilePermission` |
+| `canWriteFolder(user, folderPath)` | `aclService.checkFolderPermission(user, dirNodeId, WRITE)` |
+| `canWriteFileByParent(user, filePath)` | `aclService.checkFilePermission(user, fileNodeId, WRITE)` |
 | `hasDirectFolderPermission(userId, folderPath)` | N/A — direct permission checks handled by store closure table query |
 
 **Tier 3 — sync checker builders:**

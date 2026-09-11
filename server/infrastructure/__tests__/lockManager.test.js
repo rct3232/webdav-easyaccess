@@ -1,6 +1,6 @@
 /**
  * locks store tests.
- * Verifies acquireLock, withLock: acquire and release, exclusive access.
+ * Verifies acquireLock: acquire and release, exclusive access.
  */
 const locks = require('../lockManager');
 const { createTestDatabase } = require('../../test-utils');
@@ -39,21 +39,6 @@ describe('locks store', () => {
       const lock = await locks.acquireLock('test-double-release', { ttlMs: 5000, waitMs: 1000 });
       await lock.release();
       await lock.release(); // second call: no-op, must not throw
-    });
-  });
-
-  describe('withLock', () => {
-    it('runs function and releases lock', async () => {
-      let executed = false;
-      await locks.withLock('test-with-lock', async () => {
-        executed = true;
-      });
-      expect(executed).toBe(true);
-    });
-
-    it('returns function result', async () => {
-      const result = await locks.withLock('test-with-lock-result', async () => 'hello');
-      expect(result).toBe('hello');
     });
   });
 

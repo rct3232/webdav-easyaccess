@@ -40,7 +40,6 @@ Business logic is extracted into `server/domains/auth/service.js`, which exports
 - `getAuthenticatedUser(userId, tokenVersion)` — user lookup with token version check
 - `revokeAllUserTokens(userId)` — revoke all tokens for a user
 - `checkLoginRateLimit(req)`, `recordLoginFailure(key)`, `clearLoginFailures(key)` — rate limit helpers
-- `setRateLimitCacheAdapter(adapter)` — dependency injection for rate limit cache
 
 Refresh token CRUD is managed by `server/domains/auth/tokenStore.js` using CacheAdapter internally. Rate limiting (`loginAttempts`) also uses CacheAdapter via the service layer.
 

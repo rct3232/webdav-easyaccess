@@ -105,33 +105,6 @@ async function getNodeName(nodeId) {
   return node ? node.name : null;
 }
 
-async function getThumbnail(nodeId) {
-  const name = await getNodeName(nodeId);
-  if (!name) return null;
-
-  if (isImageFile(name)) {
-    const cached = getCachedThumbnail(nodeId);
-    if (cached) return cached.buffer;
-    const result = await generateImageThumbnail(nodeId);
-    if (result) {
-      setCachedThumbnail(nodeId, result.buffer, result.extension);
-      return result.buffer;
-    }
-    return null;
-  } else if (isVideoFile(name)) {
-    const cached = getCachedThumbnail(nodeId);
-    if (cached) return cached.buffer;
-    const result = await generateVideoThumbnail(nodeId);
-    if (result) {
-      setCachedThumbnail(nodeId, result.buffer, result.extension);
-      return result.buffer;
-    }
-    return null;
-  }
-
-  return null;
-}
-
 async function getThumbnailUrl(nodeId) {
   const cached = getCachedThumbnail(nodeId);
   if (cached) {
@@ -140,10 +113,6 @@ async function getThumbnailUrl(nodeId) {
     return `/api/thumbnails/${hash}.${cached.extension}?token=${encodeURIComponent(token)}`;
   }
   return null;
-}
-
-function getThumbnailFromCache(nodeId) {
-  return getCachedThumbnail(nodeId);
 }
 
 /**
@@ -227,9 +196,7 @@ async function ensureThumbnailsBatch(nodeIds) {
 
 module.exports = {
   setCacheAdapter,
-  getThumbnail,
   getThumbnailUrl,
-  getThumbnailFromCache,
   getCachedThumbnail,
   setCachedThumbnail,
   ensureThumbnail,

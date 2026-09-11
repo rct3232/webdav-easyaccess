@@ -16,7 +16,11 @@ import {
   Paper,
   Typography,
 } from '@mui/material';
-import { getBlobMigrationStatus, getMigrationStatus } from '../../services/migrationService';
+import {
+  cancelBlobMigration,
+  getBlobMigrationStatus,
+  getMigrationStatus,
+} from '../../services/migrationService';
 import { formatDate } from '../../utils/format';
 
 const POLL_INTERVAL_MS = 400;
@@ -58,6 +62,9 @@ const MigrationPage = () => {
   const [loadError, setLoadError] = useState('');
   const [popup, setPopup] = useState(null);
   const [now, setNow] = useState(() => Date.now());
+  const [cancelRequested, setCancelRequested] = useState(false);
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [cancelError, setCancelError] = useState('');
 
   const jobIdRef = useRef(null);
   const popupJobRef = useRef(null);
@@ -66,6 +73,23 @@ const MigrationPage = () => {
   const goToSettings = useCallback(() => {
     navigate('/mypage', { state: { category: 'admin-settings' } });
   }, [navigate]);
+
+  const handleCancel = useCallback(
+    async (id) => {
+      if (!id || cancelRequested || cancelBusy) return;
+      setCancelBusy(true);
+      setCancelError('');
+      try {
+        await cancelBlobMigration(id);
+        setCancelRequested(true);
+      } catch {
+        setCancelError(t('migrationPage.cancelFail'));
+      } finally {
+        setCancelBusy(false);
+      }
+    },
+    [cancelBusy, cancelRequested, t]
+  );
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -246,6 +270,25 @@ const MigrationPage = () => {
           {t('migrationPage.elapsed', { time: formatElapsed(elapsedMs) })}
         </Typography>
       </Box>
+      {job && !TERMINAL_STATUSES.includes(job.status) && (
+        <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+          <Button
+            size="small"
+            variant="outlined"
+            color="error"
+            disabled={cancelRequested || cancelBusy}
+            onClick={() => handleCancel(jobId)}
+          >
+            {t('migrationPage.cancelJob')}
+          </Button>
+          {cancelRequested && (
+            <Typography variant="body2" color="text.secondary">
+              {t('migrationPage.cancelRequested')}
+            </Typography>
+          )}
+          {cancelError && <Alert severity="error">{cancelError}</Alert>}
+        </Box>
+      )}
     </Paper>
   );
 

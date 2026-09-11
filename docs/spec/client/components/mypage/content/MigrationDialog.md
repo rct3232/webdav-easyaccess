@@ -4,7 +4,7 @@
 
 | Item               | Description                                                                                                                          |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Role               | Admin-only dialog that runs a blob-storage migration between WebDAV and S3: dest-config form, Start, 400ms progress polling, Cancel. |
+| Role               | Admin-only dialog that STARTS a blob-storage migration between WebDAV and S3 (dest-config form + Start). Progress/cancel live on `/migration` (`docs/spec/client/pages/MigrationPage.md`) — the dialog closes and navigates there on a successful start (relocation since the unified migration mode). |
 | Used in            | `SystemSettingsContent` settings tab (Storage migration action row).                                                                 |
 | Related components | migrationService, getServerErrorDisplay, MUI Dialog.                                                                                 |
 
@@ -40,23 +40,14 @@
 ### 2.4 Behavior
 
 - **Info load:** when the dialog opens, calls `getMigrationInfo()`. While loading, a small progress indicator is shown and Start is disabled. On failure an inline error (`migration.infoLoadFail`) is shown and Start stays disabled. Destination type = `source === 'webdav' ? 's3' : 'webdav'`.
-- **Start:** validates required fields client-side; on success calls `startBlobMigration` with `{ mode, force: false, dest }` (no `direction`), then polls `getBlobMigrationStatus(jobId)` immediately and every 400ms (mirrors `useBulkOperations`).
-- **Polling:** stops on terminal status (`completed`, `failed`, `cancelled`); interval cleared on unmount/close.
-- **Progress UI:** LinearProgress (`progress/total`), current path, copied/skipped/failed counts, error list (first 5) when failed, result summary on terminal. `jobId` stays visible.
-- **Terminal popups:** when a job reaches a terminal status (`completed`, `failed`, `cancelled`), a separate Dialog is shown **exactly once per job run** (a `useRef` guard records the `jobId` whose popup was already shown; `handleStart` resets the guard so the next run can popup again). The popup content depends on the terminal state:
-  - `completed` + `mode === 'apply'` → **Restart popup** (`migration.restartRequiredTitle`/`restartRequiredBody`): instructs the admin to update `WEA_FILE_STORAGE` + the target storage env block in `.env` and restart the server process.
-  - `completed` + `mode === 'dry-run'` → **Dry-run popup** (`migration.dryRunDoneTitle`/`dryRunDoneBody`): reports nothing was written and interpolates the scan result counts from `job.results` (`copied`, `skipped`, `failed`). No restart instructions.
-  - `failed` → **Failed popup** (`migration.failedTitle`/`migration.failedBody`): points at the error list in the dialog and the Apply-mode resume behavior.
-  - `cancelled` → **Cancelled popup** (`migration.cancelledTitle`/`migration.cancelledBody`): points at the Apply-mode resume behavior.
-    Dismissal is via the OK button; the inline terminal summary UI is unaffected and always rendered.
-- **Cancel:** calls `cancelBlobMigration(jobId)`; polling continues until the job reaches `cancelled`.
-- **Start disabled** while a job is running, while starting, while info is loading, or when info failed to load; **Cancel job** shown only while running.
-- **Errors:** missing required fields and `400` start failures show an inline Alert; polling/cancel failures use `onMessage`.
+- **Start:** validates required fields client-side; on success calls `startBlobMigration` with `{ mode, force: false, dest }` (no `direction`), then **closes the dialog and navigates to `/migration`**, which takes over polling, progress, the terminal modal and the Cancel control (`docs/spec/client/pages/MigrationPage.md`).
+- **Start disabled** while starting, while info is loading, or when info failed to load.
+- **Errors:** missing required fields and start failures show an inline Alert.
 
 ### 2.5 i18n Keys
 
-- `migration.*` (title, sourceLabel, destinationLabel, backendWebdav, backendS3, infoLoading, infoLoadFail, mode*, dest*, field labels, autoResume, start, cancelJob, status\*, progress, current, copied/skipped/failed, errorsTitle, jobId, requiredFields, startFail, statusLoadFail, cancelFail, cancelSuccess, ok) — added to `client/src/locales/en.json` and `ko.json`.
-- Terminal popup copy: `migration.restartRequiredTitle`, `migration.restartRequiredBody`, `migration.dryRunDoneTitle`, `migration.dryRunDoneBody` (interpolates `copied`/`skipped`/`failed`), `migration.failedTitle`, `migration.failedBody`, `migration.cancelledTitle`, `migration.cancelledBody`.
+- `migration.*` (title, sourceLabel, destinationLabel, backendWebdav, backendS3, infoLoading, infoLoadFail, mode*, dest*, field labels, autoResumeNote, start, starting, requiredFields, startFail) — added to `client/src/locales/en.json` and `ko.json`.
+- Terminal/cancel copy belongs to the `/migration` page (`migrationPage.*` — see `docs/spec/client/pages/MigrationPage.md`).
 - `admin.storageMigration`, `admin.storageMigrationDesc`, `admin.runMigration` — SystemSettingsContent settings row.
 - `serverErrors.admin.migration*` and `serverMessages.admin.migrationCancelled` for server codes.
 
@@ -65,14 +56,9 @@
 - [ ] Dialog loads `/info` and shows the read-only Source → Destination label
 - [ ] WebDAV source renders S3 destination fields; S3 source (override) renders WebDAV destination fields; apply mode shows the auto-resume note
 - [ ] Required-field validation blocks Start without a network call
-- [ ] Start → poll → running progress → completed summary
-- [ ] Apply-mode completion shows the restart popup; dry-run completion shows the dry-run popup (with interpolated counts), not the restart popup
-- [ ] Failed completion shows the failed popup; cancelled completion shows the cancelled popup
-- [ ] Each terminal popup is shown exactly once per job run
+- [ ] Start success closes the dialog and navigates to `/migration` (no polling or Cancel here)
 - [ ] Info-load failure shows an inline error and disables Start
-- [ ] Cancel calls the cancel API and stops on `cancelled`
 
 ### 2.7 Edge Cases
 
-- Poll returning terminal status immediately after start must not leave a running interval.
-- Interval is cleared on close and on unmount.
+- Start failure keeps the dialog open with the inline Alert (no navigation).

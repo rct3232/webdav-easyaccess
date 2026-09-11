@@ -168,20 +168,36 @@ function createFileService(options = {}) {
 
     // WebDAV mode
     let nodeId;
+    let tmpPath = null;
+    let displayPath = null;
     if (!isOverwrite) {
       const newFile = await fileNodeService.createFile(parentNodeId, name);
       nodeId = newFile.id;
     } else {
       nodeId = existingFile.id;
+      // Last-good snapshot BEFORE the destructive PUT: one server-side COPY
+      // of the previous bytes into the reserved /.wea-tmp namespace. A COPY
+      // failure aborts before touching the live path; a missing remote source
+      // means there is nothing to protect and the PUT proceeds.
+      if (blobStore) {
+        displayPath = await fileNodeService.getNodePath(nodeId);
+        const candidate = `/.wea-tmp/${nodeId}`;
+        try {
+          await blobStore.ensureDirectoryExists('/.wea-tmp');
+          await blobStore.copyBlob(displayPath, candidate);
+          tmpPath = candidate;
+        } catch (error) {
+          if (!error || error.errorCode !== SERVER_ERROR_CODES.webdav.sourceNotFound) {
+            throw error;
+          }
+        }
+      }
     }
 
     try {
       await blobStorageService.uploadToWebdav(nodeId, buffer);
     } catch (error) {
-      if (isOverwrite) {
-        // Existing node: remote sync failed → fail-safe marker, node kept.
-        await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
-      } else {
+      if (!isOverwrite) {
         // New node: roll it back so a failed upload never leaves a phantom
         // 0-byte file in listings or blocks a retry with a duplicate-name 409.
         try {
@@ -189,8 +205,33 @@ function createFileService(options = {}) {
         } catch (_) {
           /* best-effort — surface the original upload error */
         }
+      } else if (tmpPath && blobStore) {
+        // Restore the previous bytes (native MOVE tmp→display, Overwrite:T).
+        try {
+          await blobStore.moveBlob(tmpPath, displayPath, true);
+        } catch (restoreError) {
+          // Restoration failed — fail-safe marker on the existing node.
+          try {
+            await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
+          } catch (_) {
+            /* best-effort — the original PUT error still surfaces */
+          }
+        }
+      } else {
+        // Existing node without a restorable snapshot: fail-safe marker, kept.
+        await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
       }
       throw error;
+    }
+
+    if (tmpPath && blobStore) {
+      // Snapshot is spent — best-effort cleanup. A leftover /.wea-tmp entry
+      // (failed delete or crash) is reconciliation residue (DEF-18 class).
+      try {
+        await blobStore.deleteBlob(tmpPath);
+      } catch (_) {
+        /* best-effort */
+      }
     }
 
     return { nodeId, size: buffer.length, mimeType };
@@ -232,24 +273,35 @@ function createFileService(options = {}) {
       throw conflictError(SERVER_ERROR_CODES.files.duplicateFile);
     }
 
-    // Best-effort WebDAV storage sync: download content before DB rename so we can re-upload to new path
-    let webdavBuffer = null;
-    if (fileStorageMode === 'webdav') {
-      try {
-        webdavBuffer = await blobStorageService.downloadBlob(nodeId);
-      } catch (_) {
-        // If download fails, proceed with DB rename only; storage sync is best-effort
-      }
-    }
+    // WebDAV sync (native MOVE + DB rollback): capture the remote path BEFORE
+    // the DB rename so the MOVE — and the rollback — can address it afterwards.
+    const oldPath =
+      fileStorageMode === 'webdav' && blobStore
+        ? await fileNodeService.getNodePath(nodeId)
+        : null;
 
     await fileNodeService.renameNode(nodeId, newName);
 
-    // Re-upload to new path after rename (DB state is authoritative)
-    if (fileStorageMode === 'webdav' && webdavBuffer != null) {
+    if (oldPath !== null) {
+      const newPath = await fileNodeService.getNodePath(nodeId);
       try {
-        await blobStorageService.uploadToWebdav(nodeId, webdavBuffer);
+        await blobStore.moveBlob(oldPath, newPath);
       } catch (error) {
-        await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
+        if (error && error.errorCode === SERVER_ERROR_CODES.webdav.sourceNotFound) {
+          // No remote content existed to move → nothing to restore. The DB
+          // rename stands and the node is flagged for repair; the error
+          // propagates so the user sees the degraded sync.
+          await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
+          throw error;
+        }
+        try {
+          await fileNodeService.renameNode(nodeId, node.name);
+        } catch (rollbackError) {
+          // Rollback failed (e.g. the old name was taken meanwhile) — keep the
+          // DB change and mark it instead of silently desyncing.
+          await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
+        }
+        throw error;
       }
     }
 
@@ -288,24 +340,34 @@ function createFileService(options = {}) {
       }
     }
 
-    // Best-effort WebDAV storage sync: download content before DB move so we can re-upload to new path
-    let webdavBuffer = null;
-    if (fileStorageMode === 'webdav') {
-      try {
-        webdavBuffer = await blobStorageService.downloadBlob(nodeId);
-      } catch (_) {
-        // If download fails, proceed with DB move only; storage sync is best-effort
-      }
+    // WebDAV sync (native MOVE + DB rollback): capture the remote path and the
+    // original parent BEFORE the DB move so the MOVE — and the rollback — can
+    // address them afterwards.
+    let oldPath = null;
+    let oldParentNodeId = null;
+    if (fileStorageMode === 'webdav' && blobStore) {
+      const node = await fileNodeService.getNode(nodeId);
+      oldParentNodeId = node ? node.parent_id : null;
+      oldPath = await fileNodeService.getNodePath(nodeId);
     }
 
     await fileNodeService.moveNode(nodeId, newParentNodeId);
 
-    // Re-upload to new path after move (DB state is authoritative)
-    if (fileStorageMode === 'webdav' && webdavBuffer != null) {
+    if (oldPath !== null) {
+      const newPath = await fileNodeService.getNodePath(nodeId);
       try {
-        await blobStorageService.uploadToWebdav(nodeId, webdavBuffer);
+        await blobStore.moveBlob(oldPath, newPath);
       } catch (error) {
-        await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
+        if (error && error.errorCode === SERVER_ERROR_CODES.webdav.sourceNotFound) {
+          await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
+          throw error;
+        }
+        try {
+          await fileNodeService.moveNode(nodeId, oldParentNodeId);
+        } catch (rollbackError) {
+          await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
+        }
+        throw error;
       }
     }
 
@@ -437,13 +499,17 @@ function createFileService(options = {}) {
       return { sourceNodeId: nodeId, copiedNodeId };
     }
 
-    // WebDAV mode: download + upload
-    const buffer = await blobStorageService.downloadBlob(nodeId);
+    // WebDAV mode: one native server-side COPY (Depth: infinity — a directory
+    // source travels with its whole subtree; streamed fallback inside the
+    // adapter). Bytes never round-trip through the app.
+    const sourcePath = await fileNodeService.getNodePath(nodeId);
     const newFile = await fileNodeService.createFile(destinationParentNodeId, targetName);
     const copiedNodeId = newFile.id;
+    let copyPath = null;
 
     try {
-      await blobStorageService.uploadToWebdav(copiedNodeId, buffer);
+      copyPath = await fileNodeService.getNodePath(copiedNodeId);
+      await blobStore.copyBlob(sourcePath, copyPath);
     } catch (error) {
       // New copy node: roll it back on a failed remote write (no phantom copy).
       try {
@@ -452,6 +518,19 @@ function createFileService(options = {}) {
         /* best-effort — surface the original copy error */
       }
       throw error;
+    }
+
+    // Mirror listing metadata for files (directories carry no filecache row).
+    if (sourceNode.type === 'file' && _fileNodesStore) {
+      const head = await blobStore.headBlob(copyPath);
+      if (head) {
+        await _fileNodesStore.upsertCache(
+          copiedNodeId,
+          Number(head.contentLength) || 0,
+          head.contentType || 'application/octet-stream',
+          null
+        );
+      }
     }
 
     return { sourceNodeId: nodeId, copiedNodeId };

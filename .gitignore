@@ -13,6 +13,7 @@ server/uploads/
 
 # Test coverage and reports (테스트 커버리지 및 리포트)
 coverage/
+long_task.txt
 .nyc_output/
 *.lcov
 

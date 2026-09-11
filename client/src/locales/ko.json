@@ -897,7 +897,10 @@
       "versionRestoreUnavailable": "버전 복원을 사용할 수 없습니다.",
       "fileNameReserved": "시스템에서 예약된 파일 이름입니다",
       "trashTargetExists": "휴지통 대상이 이미 존재합니다. 관리자에게 문의하세요.",
-      "notTrashed": "휴지통에 있는 항목이 아닙니다."
+      "notTrashed": "휴지통에 있는 항목이 아닙니다.",
+      "invalidName": "유효하지 않은 파일 이름입니다.",
+      "notFound": "파일 또는 폴더를 찾을 수 없습니다.",
+      "permissionDenied": "이 작업에 대한 권한이 없습니다."
     },
     "permissions": {
       "permissionHigherThanParent": "파일 권한은 상위 경로 권한보다 높아야 합니다.",
@@ -935,7 +938,9 @@
       "defaultMessage": "오류가 발생했습니다.",
       "internalServerError": "서버 오류가 발생했습니다.",
       "databaseUnavailable": "데이터베이스를 일시적으로 사용할 수 없습니다.",
-      "databaseQueryFailed": "데이터베이스 오류가 발생했습니다."
+      "databaseQueryFailed": "데이터베이스 오류가 발생했습니다.",
+      "databaseConflict": "기존 데이터와 충돌하는 작업입니다.",
+      "databaseConstraintViolation": "데이터 제약을 위반하는 작업입니다."
     },
     "api": {
       "webdavTestFailed": "WebDAV 테스트 실패: {{reason}}"
@@ -1032,7 +1037,8 @@
       "permDeleteDone": "항목이 영구 삭제되었습니다",
       "migrationCancelled": "마이그레이션이 취소되었습니다.",
       "configSaved": "설정이 저장되었습니다.",
-      "configSyncDone": "환경 변수를 데이터베이스 설정에 동기화했습니다."
+      "configSyncDone": "환경 변수를 데이터베이스 설정에 동기화했습니다.",
+      "repairSyncDone": "복구 작업이 완료되었습니다."
     },
     "share": {
       "addedToShared": "공유 항목에 추가되었습니다."
@@ -1049,7 +1055,10 @@
       "versionRestored": "버전이 성공적으로 복원되었습니다",
       "trashRestored": "휴지통에서 복원되었습니다.",
       "trashPurged": "항목이 영구 삭제되었습니다.",
-      "trashEmptied": "휴지통을 비웠습니다."
+      "trashEmptied": "휴지통을 비웠습니다.",
+      "copySuccess": "복사되었습니다.",
+      "deleteSuccess": "휴지통으로 이동했습니다.",
+      "moveSuccess": "이동되었습니다."
     },
     "permissions": {
       "permissionGranted": "권한이 부여되었습니다.",
@@ -1063,5 +1072,6 @@
       "emailUpdated": "이메일이 변경되었습니다.",
       "permissionUpdated": "권한이 업데이트되었습니다."
     }
-  }
+  },
+  "migrationInProgress": "마이그레이션이 이미 진행 중입니다."
 }

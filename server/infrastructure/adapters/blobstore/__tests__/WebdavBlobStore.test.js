@@ -148,6 +148,65 @@ describe('WebdavBlobStore', () => {
     });
   });
 
+  describe('moveBlob', () => {
+    it('delegates to adapter.moveFile, never clobbering by default', async () => {
+      const store = new WebdavBlobStore(adapterMock);
+
+      await store.moveBlob('/src/a.txt', '/dst/b.txt');
+
+      expect(adapterMock.moveFile).toHaveBeenCalledWith('/src/a.txt', '/dst/b.txt', null, false);
+    });
+
+    it('passes overwrite through (last-good restore)', async () => {
+      const store = new WebdavBlobStore(adapterMock);
+
+      await store.moveBlob('/src/a.txt', '/dst/b.txt', true);
+
+      expect(adapterMock.moveFile).toHaveBeenCalledWith('/src/a.txt', '/dst/b.txt', null, true);
+    });
+
+    it('throws descriptive error for missing paths', async () => {
+      const store = new WebdavBlobStore(adapterMock);
+
+      await expect(store.moveBlob('', '/dst')).rejects.toThrow();
+      await expect(store.moveBlob('/src', null)).rejects.toThrow();
+    });
+  });
+
+  describe('copyBlob', () => {
+    it('delegates to adapter.copyFile (native COPY + streamed fallback), never clobbering by default', async () => {
+      const store = new WebdavBlobStore(adapterMock);
+
+      await store.copyBlob('/src/a.txt', '/dst/b.txt');
+
+      expect(adapterMock.copyFile).toHaveBeenCalledWith('/src/a.txt', '/dst/b.txt', null, false);
+    });
+
+    it('passes overwrite through', async () => {
+      const store = new WebdavBlobStore(adapterMock);
+
+      await store.copyBlob('/src/a.txt', '/dst/b.txt', true);
+
+      expect(adapterMock.copyFile).toHaveBeenCalledWith('/src/a.txt', '/dst/b.txt', null, true);
+    });
+
+    it('throws descriptive error for missing paths', async () => {
+      const store = new WebdavBlobStore(adapterMock);
+
+      await expect(store.copyBlob('', '/dst')).rejects.toThrow();
+      await expect(store.copyBlob('/src', undefined)).rejects.toThrow();
+    });
+
+    it('reports webdav ok on success (health wrapper)', async () => {
+      const report = healthReport();
+      const store = new WebdavBlobStore(adapterMock);
+
+      await store.copyBlob('/src/a.txt', '/dst/b.txt');
+
+      expect(report).toHaveBeenCalledWith('webdav', { ok: true });
+    });
+  });
+
   describe('headBlob', () => {
     it('returns { contentLength, contentType } mapping mime->contentType', async () => {
       adapterMock.getFileMetadata.mockResolvedValue({

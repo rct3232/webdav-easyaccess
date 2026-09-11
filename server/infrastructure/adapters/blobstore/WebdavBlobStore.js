@@ -39,15 +39,29 @@ class WebdavBlobStore {
   }
 
   /**
-   * MOVE sourcePath → destinationPath (WebDAV native). Used by the trash
-   * flow (one remote MOVE per trashed subtree root) — never clobbers: the
-   * destination is probed by the caller before the move.
+   * MOVE sourcePath → destinationPath (WebDAV native; the adapter utility
+   * falls back to a streamed copy+delete when the server refuses MOVE). Used
+   * by the trash flow, rename/move sync and the overwrite last-good restore.
+   * Never clobbers unless `overwrite` is set explicitly.
    */
-  async moveBlob(sourcePath, destinationPath) {
+  async moveBlob(sourcePath, destinationPath, overwrite = false) {
     if (!sourcePath || !destinationPath) {
       throw new Error('WebDAV source and destination paths are required');
     }
-    await this.webdav.moveFile(sourcePath, destinationPath);
+    await this.webdav.moveFile(sourcePath, destinationPath, null, overwrite);
+  }
+
+  /**
+   * COPY sourcePath → destinationPath (WebDAV native, Depth: infinity — a
+   * collection copies its whole subtree server-side; streamed recursive
+   * fallback included). Used by copyFile and the overwrite last-good
+   * snapshot. Never clobbers unless `overwrite` is set explicitly.
+   */
+  async copyBlob(sourcePath, destinationPath, overwrite = false) {
+    if (!sourcePath || !destinationPath) {
+      throw new Error('WebDAV source and destination paths are required');
+    }
+    await this.webdav.copyFile(sourcePath, destinationPath, null, overwrite);
   }
 
   async ensureDirectoryExists(filepath) {
@@ -108,7 +122,7 @@ function withHealthReport(fn) {
   };
 }
 
-for (const method of ['uploadBlob', 'createDirectory', 'downloadBlob', 'deleteBlob', 'headBlob', 'moveBlob', 'ensureDirectoryExists']) {
+for (const method of ['uploadBlob', 'createDirectory', 'downloadBlob', 'deleteBlob', 'headBlob', 'moveBlob', 'copyBlob', 'ensureDirectoryExists']) {
   WebdavBlobStore.prototype[method] = withHealthReport(WebdavBlobStore.prototype[method]);
 }
 

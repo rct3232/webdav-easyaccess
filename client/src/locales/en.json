@@ -897,7 +897,10 @@
       "versionRestoreUnavailable": "Version restore is not available.",
       "fileNameReserved": "This file name is reserved by the system",
       "trashTargetExists": "The trash destination already exists. Please contact an administrator.",
-      "notTrashed": "Item is not in the trash."
+      "notTrashed": "Item is not in the trash.",
+      "invalidName": "Invalid file name.",
+      "notFound": "File or folder not found.",
+      "permissionDenied": "You do not have permission for this operation."
     },
     "permissions": {
       "permissionHigherThanParent": "File permission must be higher than parent path permission.",
@@ -935,7 +938,9 @@
       "defaultMessage": "An error occurred",
       "internalServerError": "Internal server error",
       "databaseUnavailable": "The database is temporarily unavailable.",
-      "databaseQueryFailed": "A database error occurred."
+      "databaseQueryFailed": "A database error occurred.",
+      "databaseConflict": "The operation conflicts with existing data.",
+      "databaseConstraintViolation": "The operation violates a data constraint."
     },
     "api": {
       "webdavTestFailed": "WebDAV test failed: {{reason}}"
@@ -1032,7 +1037,8 @@
       "permDeleteDone": "Item permanently deleted",
       "migrationCancelled": "Migration cancelled.",
       "configSaved": "Configuration saved.",
-      "configSyncDone": "Database settings synced from the environment."
+      "configSyncDone": "Database settings synced from the environment.",
+      "repairSyncDone": "Repair action completed."
     },
     "share": {
       "addedToShared": "Added to your shared items"
@@ -1049,7 +1055,10 @@
       "versionRestored": "Version restored successfully",
       "trashRestored": "Item restored from the trash.",
       "trashPurged": "Item permanently deleted.",
-      "trashEmptied": "Trash emptied."
+      "trashEmptied": "Trash emptied.",
+      "copySuccess": "Copied.",
+      "deleteSuccess": "Moved to trash.",
+      "moveSuccess": "Moved."
     },
     "permissions": {
       "permissionGranted": "Permission granted successfully",
@@ -1063,5 +1072,6 @@
       "emailUpdated": "Email updated successfully",
       "permissionUpdated": "Permissions have been updated."
     }
-  }
+  },
+  "migrationInProgress": "A migration is already in progress."
 }

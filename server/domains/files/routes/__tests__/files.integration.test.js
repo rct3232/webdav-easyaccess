@@ -825,28 +825,58 @@ describe('S5.0-SCENARIO-8: WebDAV fail-safe recovery', () => {
     expect(result.rows[0].sync_status).not.toBe('orphaned_node');
   });
 
-  it('rename triggers orphaned_node when re-upload fails', async () => {
-    // Make putFileContents fail on the next call (the re-upload during rename)
-    webdavMock.putFileContents.mockImplementation(async () => {
-      throw new Error('webdav_upload_failed');
-    });
+  it('rename rolls the DB change back when the remote MOVE fails transiently (500, no residue)', async () => {
+    webdavMock.moveFile.mockRejectedValueOnce(new Error('webdav_move_failed'));
 
     const res = await request(app)
       .put('/api/files/rename')
       .set('Authorization', `Bearer ${user.token}`)
       .send({ nodeId: fileNodeId, newName: 'failtest-renamed.txt' });
 
+    expect(res.status).toBe(500);
+
+    const row = await dbQuery('SELECT name, sync_status FROM file_nodes WHERE id = ?', [
+      fileNodeId,
+    ]);
+    // Rollback: original name stands, node not marked — the user can retry.
+    expect(row.rows[0].name).toBe('failtest.txt');
+    expect(row.rows[0].sync_status).not.toBe('orphaned_node');
+  });
+
+  it('rename succeeds remotely later: MOVE old→new executed after the DB rename', async () => {
+    const res = await request(app)
+      .put('/api/files/rename')
+      .set('Authorization', `Bearer ${user.token}`)
+      .send({ nodeId: fileNodeId, newName: 'failtest-renamed.txt' });
+
     expect(res.status).toBe(200);
+    expect(webdavMock.moveFile).toHaveBeenCalled();
+
+    const row = await dbQuery('SELECT name, sync_status FROM file_nodes WHERE id = ?', [
+      fileNodeId,
+    ]);
+    expect(row.rows[0].name).toBe('failtest-renamed.txt');
+    expect(row.rows[0].sync_status).not.toBe('orphaned_node');
   });
 
-  it('DB: node is marked as orphaned_node after failed re-upload', async () => {
-    const result = await dbQuery('SELECT sync_status FROM file_nodes WHERE id = ?', [fileNodeId]);
-    expect(result.rows[0].sync_status).toBe('orphaned_node');
-  });
+  it('rename with an absent remote source keeps the name, marks orphaned_node and 500s', async () => {
+    const missing = new Error('source not found');
+    missing.errorCode = 'serverErrors.webdav.sourceNotFound';
+    webdavMock.moveFile.mockRejectedValueOnce(missing);
 
-  it('DB: node name was updated despite orphan status', async () => {
-    const result = await dbQuery('SELECT name FROM file_nodes WHERE id = ?', [fileNodeId]);
-    expect(result.rows[0].name).toBe('failtest-renamed.txt');
+    const res = await request(app)
+      .put('/api/files/rename')
+      .set('Authorization', `Bearer ${user.token}`)
+      .send({ nodeId: fileNodeId, newName: 'failtest-renamed-2.txt' });
+
+    expect(res.status).toBe(500);
+
+    const row = await dbQuery('SELECT name, sync_status FROM file_nodes WHERE id = ?', [
+      fileNodeId,
+    ]);
+    // Nothing remote to restore: the DB rename stands and is flagged for repair.
+    expect(row.rows[0].name).toBe('failtest-renamed-2.txt');
+    expect(row.rows[0].sync_status).toBe('orphaned_node');
   });
 
   it('DB: closure table entries still exist for orphaned node', async () => {
@@ -856,21 +886,16 @@ describe('S5.0-SCENARIO-8: WebDAV fail-safe recovery', () => {
     expect(result.rows.length).toBeGreaterThan(0);
   });
 
-  it('recovering: re-upload fixes orphaned_node status', async () => {
-    // Reset mock to succeed for recovery upload
-    webdavMock.putFileContents.mockResolvedValue(undefined);
-    await useWebdavMode();
-
+  it('uploads after failures still succeed cleanly', async () => {
     const res = await uploadFile(user, homeNodeId, 'failtest-recovered.txt', 'recovered content');
     expect(res.status).toBe(200);
 
-    // The new file should not be orphaned
     const recoveredId = res.body.nodeId;
     const result = await dbQuery('SELECT sync_status FROM file_nodes WHERE id = ?', [recoveredId]);
     expect(result.rows[0].sync_status).not.toBe('orphaned_node');
   });
 
-  it('WebDAV: putFileContents was called during recovery upload', async () => {
+  it('WebDAV: putFileContents was called during the upload', async () => {
     const calls = webdavMock.putFileContents.mock.calls;
     expect(calls.length).toBeGreaterThan(0);
   });

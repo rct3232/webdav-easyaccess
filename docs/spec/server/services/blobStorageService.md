@@ -205,6 +205,9 @@ Write barrier: if multiple file nodes share the same s3_key, duplicates the blob
 | `downloadBlob`     | `(filepath: string)`                 | `Promise<Buffer \| null>`                       | GET via `adapter.getFileContents()`; returns null if 404        |
 | `deleteBlob`       | `(filepath: string)`                 | `Promise<void>`                                 | DELETE via `adapter.deleteFile()`; idempotent for 404           |
 | `headBlob`         | `(filepath: string)`                 | `Promise<{contentLength, contentType} \| null>` | HEAD via `adapter.getFileMetadata()`; maps `mime → contentType` |
+| `moveBlob`         | `(sourcePath, destinationPath, overwrite=false)` | `Promise<void>` | Native MOVE via `adapter.moveFile()`; never clobbers unless `overwrite` (adapter falls back to streamed copy-delete when the server refuses MOVE) |
+| `copyBlob`         | `(sourcePath, destinationPath, overwrite=false)` | `Promise<void>` | Native COPY (`Depth: infinity` — subtree) via `adapter.copyFile()`; never clobbers unless `overwrite` (streamed recursive fallback included) |
+| `ensureDirectoryExists` | `(filepath: string)`            | `Promise<void>`                                 | Idempotent recursive MKCOL via `adapter.ensureDirectoryExists()` |
 | `listOrphanedKeys` | `()`                                 | `Promise<string[]>`                             | Returns `[]` (no orphan tracking in WebDAV)                     |
 
 ### 3.2 Path Resolution

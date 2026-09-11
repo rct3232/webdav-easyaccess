@@ -91,7 +91,7 @@ module.exports = [
   },
   // root-level tooling and e2e helpers (Node)
   {
-    files: ['scripts/**/*.{js,mjs}', 'e2e/**/*.{cjs,mjs}', 'eslint.config.js'],
+    files: ['scripts/**/*.{js,mjs}', 'e2e/**/*.{js,cjs,mjs}', 'eslint.config.js'],
     languageOptions: { ecmaVersion: 2022, globals: globals.node },
   },
 ];

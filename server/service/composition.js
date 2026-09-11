@@ -58,6 +58,7 @@ function createComposition(overrides = {}) {
       permissionStore,
       ownerNodeResolver,
       blobStore,
+      fileNodesStore,
     });
 
   const batchOperationService =

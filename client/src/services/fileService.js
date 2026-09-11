@@ -605,7 +605,7 @@ export const restoreFileVersion = async (nodeId, versionNumber) => {
  * Hierarchical navigation: without `parentId` the route lists TOPMOST trashed
  * items; with `parentId` it lists the trashed children of that trashed folder.
  * @param {{ parentId?: number, limit?: number, offset?: number }} options
- * @returns {Promise<{ items: Array<{ nodeId: number, name: string, type: string, deletedAt: string, displayPath: string, hasReadPermission: boolean, hasWritePermission: boolean, hasAdminPermission: boolean }>, total: number }>}
+ * @returns {Promise<{ items: Array<{ nodeId: number, name: string, type: string, size: number|null, deletedAt: string, displayPath: string, hasReadPermission: boolean, hasWritePermission: boolean, hasAdminPermission: boolean }>, total: number }>}
  */
 export const getTrashFiles = async (options = {}) => {
   const { parentId, limit, offset } = options;

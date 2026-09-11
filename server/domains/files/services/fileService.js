@@ -18,6 +18,7 @@ function createFileService(options = {}) {
   const blobStore = options.blobStore || null;
   const _ownerNodeResolver = options.ownerNodeResolver || ownerNodeResolver;
   const _permissionStore = options.permissionStore || permissionStore;
+  const _fileNodesStore = options.fileNodesStore || null;
   const _conflictError = options.conflictError || conflictError;
   const _notFoundError = options.notFoundError || notFoundError;
 
@@ -417,6 +418,21 @@ function createFileService(options = {}) {
       // pending_upload, which would drop it from s3→webdav migration snapshots
       // (they enumerate only sync_status='active' file nodes).
       await fileNodeService.updateSyncStatus(copiedNodeId, 'active');
+
+      // Mirror the source filecache row onto the copy: the COW blob is
+      // byte-identical, so the copy lists the real size/mime without a
+      // remote probe (without this the listing LEFT JOIN yields no row → 0 B).
+      if (_fileNodesStore) {
+        const sourceCache = await _fileNodesStore.getCache(nodeId);
+        if (sourceCache) {
+          await _fileNodesStore.upsertCache(
+            copiedNodeId,
+            Number(sourceCache.size),
+            sourceCache.mime_type,
+            null
+          );
+        }
+      }
 
       return { sourceNodeId: nodeId, copiedNodeId };
     }

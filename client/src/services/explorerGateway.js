@@ -87,9 +87,9 @@ export const loadRecentFiles = async (options) => {
  * Load the caller-visible trashed rows for the trash view (DEF-16).
  * Hierarchical navigation: without `parentId` the server lists TOPMOST trashed
  * items; with `options.parentId` it lists the trashed children of that trashed
- * folder. Rows carry only the trash contract fields (no size/lastmod), so the
- * trash listing renders name + type metadata without original-path/deleted-date
- * subtitles.
+ * folder. Rows carry the trash contract fields including filecache-backed
+ * `size` (no lastmod), so the trash listing renders name + type + size without
+ * original-path/deleted-date subtitles.
  * @param {{ parentId?: number, limit?: number, offset?: number }} options
  */
 export const loadTrashEntries = async (options = {}) => {

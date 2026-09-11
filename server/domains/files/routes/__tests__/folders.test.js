@@ -213,6 +213,24 @@ describe('GET /api/folders/stats', () => {
     expect(res.body).toHaveProperty('totalSize');
   });
 
+  it('sums real filecache sizes of live files into totalSize', async () => {
+    const folder = await fileNodeService.createDirectory(homeNodeId, `stats-${Date.now()}`);
+    const store = createFileNodesStore();
+    const f1 = await fileNodeService.createFile(folder.id, 'a.txt');
+    const f2 = await fileNodeService.createFile(folder.id, 'b.txt');
+    await store.upsertCache(f1.id, 1000, 'text/plain', null);
+    await store.upsertCache(f2.id, 500, 'text/plain', null);
+
+    const res = await request(app)
+      .get('/api/folders/stats')
+      .set('Authorization', `Bearer ${userToken}`)
+      .query({ nodeId: folder.id });
+
+    expect(res.status).toBe(200);
+    expect(res.body.totalFiles).toBe(2);
+    expect(res.body.totalSize).toBe(1500);
+  });
+
   it('returns 403 when non-admin lacks read permission on folder', async () => {
     const { token } = await createAuthenticatedTestUser({
       username: `folders-stats-403-${Date.now()}`,

@@ -125,6 +125,7 @@ router.get(
         nodeId: node.id,
         name: node.name,
         type: node.type,
+        size: node.size ?? null,
         deletedAt: node.deletedAt,
         displayPath,
         hasReadPermission,

@@ -642,7 +642,10 @@
     "terminalFailedTitle": "Migration failed",
     "terminalFailedBody": "The migration failed. Fix the cause and re-run the migration to try again.",
     "terminalCancelledTitle": "Migration cancelled",
-    "terminalCancelledBody": "The migration was cancelled. Partial progress is preserved and resumes when you re-run the migration."
+    "terminalCancelledBody": "The migration was cancelled. Partial progress is preserved and resumes when you re-run the migration.",
+    "cancelJob": "Cancel job",
+    "cancelRequested": "Cancellation requested — the job stops at the next checkpoint.",
+    "cancelFail": "Failed to request cancellation."
   },
   "mypage": {
     "accountInfo": "Account info",

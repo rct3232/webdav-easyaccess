@@ -22,6 +22,7 @@ import * as migrationService from '../../../services/migrationService';
 jest.mock('../../../services/migrationService', () => ({
   getMigrationStatus: jest.fn(),
   getBlobMigrationStatus: jest.fn(),
+  cancelBlobMigration: jest.fn(),
 }));
 
 const startedAt = new Date().toISOString();
@@ -234,6 +235,51 @@ describe('MigrationPage', () => {
 
     expect(await screen.findByText(/configured via environment variables/i)).toBeInTheDocument();
     expect(screen.getByText(/WEA_FILE_STORAGE/i)).toBeInTheDocument();
+  });
+
+  const runningJob = {
+    id: 'job-cancel-1',
+    type: 'blobs',
+    direction: 'webdav-to-s3',
+    status: 'running',
+    progress: { percent: 40, currentLabel: 'a/b.txt', counters: { copied: 4, failed: 0, skipped: 0 } },
+    startedAt,
+  };
+
+  it('shows the Cancel job button while the job is running', async () => {
+    mockActiveStatus(runningJob);
+    renderPage(runningJob);
+
+    expect(await screen.findByRole('button', { name: /cancel job/i })).toBeEnabled();
+  });
+
+  it('Cancel click calls cancelBlobMigration(jobId) once, disables the button and confirms', async () => {
+    const user = userEvent.setup();
+    migrationService.cancelBlobMigration.mockResolvedValue({ success: true });
+    mockActiveStatus(runningJob);
+    renderPage(runningJob);
+
+    const button = await screen.findByRole('button', { name: /cancel job/i });
+    await user.click(button);
+
+    await waitFor(() => {
+      expect(migrationService.cancelBlobMigration).toHaveBeenCalledWith('job-cancel-1');
+    });
+    expect(migrationService.cancelBlobMigration).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(/cancellation requested/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /cancel job/i })).toBeDisabled();
+  });
+
+  it('Cancel failure shows an inline error and keeps polling UI intact', async () => {
+    const user = userEvent.setup();
+    migrationService.cancelBlobMigration.mockRejectedValue(new Error('cancel failed'));
+    mockActiveStatus(runningJob);
+    renderPage(runningJob);
+
+    await user.click(await screen.findByRole('button', { name: /cancel job/i }));
+
+    expect(await screen.findByText(/failed to request cancellation/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /cancel job/i })).toBeEnabled();
   });
 
   it('navigates to settings when "Go to settings" is clicked in the terminal modal', async () => {

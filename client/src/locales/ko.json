@@ -642,7 +642,10 @@
     "terminalFailedTitle": "마이그레이션 실패",
     "terminalFailedBody": "마이그레이션이 실패했습니다. 원인을 해결한 후 다시 실행하세요.",
     "terminalCancelledTitle": "마이그레이션 취소",
-    "terminalCancelledBody": "마이그레이션이 취소되었습니다. 부분 진행 상황은 유지되며 다시 실행하면 이어집니다."
+    "terminalCancelledBody": "마이그레이션이 취소되었습니다. 부분 진행 상황은 유지되며 다시 실행하면 이어집니다.",
+    "cancelJob": "작업 취소",
+    "cancelRequested": "취소를 요청했습니다 — 다음 검사 지점에서 작업이 중단됩니다.",
+    "cancelFail": "취소 요청에 실패했습니다."
   },
   "mypage": {
     "accountInfo": "계정 정보",

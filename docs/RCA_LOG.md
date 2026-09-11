@@ -419,3 +419,26 @@ IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode repor
   `fileService.deleteNode` and `trashService` restore now ensure `/.wea-trash/` (idempotent MKCOL)
   before any MOVE/MOVE-back. Webdav smoke includes the trash spec (TRASH-00[1367]). All 5 trash
   webdav-smoke tests + core-flow.shared webdav smoke 8 pass; s3 core 129 pass.
+
+### 2026-09-11 — De-chained E2E: three coupling/capacity failures surfaced and fixed (Case B ×3)
+
+- **Summary**: after dissolving the E2E project dependency chains (hermetic-dechain
+  `refactor/e2e-hermetic-dechain`), full-matrix runs surfaced three failures the old
+  suite→suite ordering had masked.
+- **Diagnosis & classification** (all **Case B** — the tests encoded assumptions that only
+  hold under serialized projects; product behavior unchanged):
+  1. `E2E-ADMIN-005` (admin-mobile): fixed case-derived username (`au<title>`) → collides once
+     admin projects run concurrently. Fix: per-run unique suffix (`Date.now()` base36 tail).
+  2. `E2E-AUTH-010` (mobile): submitted while desktop's `E2E-AUTH-009` held the GLOBAL
+     `registration_enabled=false` window → 403. Fix: the three setting-writer cases
+     (AUTH-009/010, ADMIN-007) moved into `e2e/registration-settings.spec.ts` — serial,
+     owned by exactly one (desktop) project, disable window finally-restored;
+     `ensurePendingUser` self-heals a racing disable (403 → set-true → retry once).
+  3. `E2E-MIG-001` (migration-mobile): 60s terminal-modal polling budget exhausted under the
+     higher concurrent load of parallel sibling projects (job still correct; capacity
+     assumption, reproduced 3/3 at auto workers). Fix: polling budgets 60s→180s
+     (`observeMigration`/`waitForTerminalModal`).
+- **Action taken / verification**: `E2E-TRASH-007` (globally destructive empty-trash) likewise
+  relocated to single-project desktop ownership (`trash-admin.spec.ts`). Full matrix auto
+  workers ×2 (193 pass), `--workers=2` (193 pass), core s3 (131), webdav smoke (13) — all
+  deterministic; partial-run selection de-chained (trash: 88→8 tests).

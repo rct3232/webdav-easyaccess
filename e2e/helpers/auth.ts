@@ -181,13 +181,27 @@ export async function ensurePendingUser(
   await setRegistrationEnabled(request, true);
   const user = getUserData(userKey, suffix);
 
-  const registerResponse = await request.post('/api/auth/register', {
+  let registerResponse = await request.post('/api/auth/register', {
     data: {
       username: user.username,
       email: user.email,
       password: user.password,
     },
   });
+
+  // Self-heal a racing disable: the registration-settings spec (single
+  // desktop-project owner) may flip the GLOBAL setting between our set-true
+  // and this POST — restore and retry once.
+  if (registerResponse.status() === 403) {
+    await setRegistrationEnabled(request, true);
+    registerResponse = await request.post('/api/auth/register', {
+      data: {
+        username: user.username,
+        email: user.email,
+        password: user.password,
+      },
+    });
+  }
 
   if (registerResponse.status() === 201) {
     return;

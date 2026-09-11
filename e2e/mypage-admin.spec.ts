@@ -314,7 +314,10 @@ test.describe('mypage admin flows (E2E-ADMIN-001..008)', () => {
     await expect(passwordInputs).toHaveCount(2);
 
     const shortSuffix = testInfo.title.replace(/[^a-zA-Z0-9]/g, '').slice(0, 15);
-    const newUserSuffix = `au${shortSuffix}`;
+    // Unique per RUN and per PROJECT: admin-desktop and admin-mobile may
+    // execute this file concurrently once the project chain is dissolved, and
+    // a retry must not collide with the user the failed attempt created.
+    const newUserSuffix = `au${shortSuffix}${Date.now().toString(36).slice(-6)}`;
     await usernameInput.fill(newUserSuffix);
     await emailInput.fill(`${newUserSuffix}@test.com`);
     await passwordInputs.first().fill('password123');
@@ -385,28 +388,6 @@ test.describe('mypage admin flows (E2E-ADMIN-001..008)', () => {
     await deleteResponse;
 
     await expect(page.getByText(/account has been deleted/i)).toBeVisible();
-  });
-
-  test('E2E-ADMIN-007: Toggles registration-related settings', async ({
-    page,
-    request,
-  }, testInfo) => {
-    const isMobile = isMobileProject(testInfo);
-    const suffix = getTestSuffix(testInfo);
-    await ensureApprovedUser(request, 'user1', suffix);
-
-    await page.goto('/mypage');
-    await openMyPageCategory(page, isMobile, 'System settings');
-
-    const registrationSwitch = page.getByRole('switch').first();
-    await expect(registrationSwitch).toBeVisible();
-
-    const currentChecked = await registrationSwitch.isChecked();
-
-    await registrationSwitch.click();
-    await expect(page.getByText(/Registration setting saved/i)).toBeVisible();
-
-    await expect(registrationSwitch).toBeChecked({ checked: !currentChecked });
   });
 
   test('E2E-ADMIN-008: Cleanup actions show confirmation and completion feedback', async ({

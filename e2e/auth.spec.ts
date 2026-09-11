@@ -6,7 +6,6 @@ import {
   ensureRejectedUser,
   gotoAsAnonymous,
   loginAsUser,
-  setRegistrationEnabled,
   getTestSuffix,
 } from './helpers/auth';
 
@@ -91,47 +90,4 @@ test('E2E-AUTH-008: Rejected account login shows rejection error', async ({
   await expect(page).toHaveURL(/\/login$/);
   await expect(alert).toBeVisible();
   await expect(alert).toContainText('registration has been rejected');
-});
-
-test('E2E-AUTH-009: Register page availability follows public settings', async ({
-  page,
-  request,
-}) => {
-  // Test Enabled
-  await setRegistrationEnabled(request, true);
-  await page.goto('/register');
-  await expect(page.locator('form')).toBeVisible();
-
-  // Test Disabled
-  await setRegistrationEnabled(request, false);
-  await page.goto('/register');
-
-  // Submit form to trigger the 'registrationDisabled' error
-  await page.locator('input[name="username"]').fill('disabled-test');
-  await page.locator('input[name="email"]').fill('disabled-test@example.com');
-  await page.locator('input[name="password"]').fill('password123');
-  await page.locator('input[name="confirmPassword"]').fill('password123');
-  await page.locator('form button[type="submit"]').click();
-
-  const alert = page.getByRole('alert');
-  await expect(alert).toBeVisible();
-  await expect(alert).toContainText('Registration is currently disabled');
-});
-
-test('E2E-AUTH-010: Registration success with pending approval shows success state instead of explorer navigation', async ({
-  page,
-  request,
-}) => {
-  await setRegistrationEnabled(request, true);
-  await page.goto('/register');
-
-  await page.locator('input[name="username"]').fill('reg-test-user' + Date.now());
-  await page.locator('input[name="email"]').fill(`reg-test-${Date.now()}@example.com`);
-  await page.locator('input[name="password"]').fill('password123');
-  await page.locator('input[name="confirmPassword"]').fill('password123');
-  await page.locator('form button[type="submit"]').click();
-
-  const successTitle = page.locator('text=Registration complete!');
-  await expect(successTitle).toBeVisible();
-  await expect(page).not.toHaveURL(/\/files/);
 });

@@ -9,7 +9,6 @@ import {
   getRecentFiles,
   addRecentFile,
   removeRecentFile,
-  clearRecentFiles,
 } from '../recentFilesRepository';
 
 jest.mock('../apiClient', () => ({
@@ -110,25 +109,6 @@ describe('recentFilesRepository', () => {
       expect(del).toHaveBeenCalled();
       expect(notifyRecentFilesChange).not.toHaveBeenCalled();
       expect(result).toEqual([]);
-    });
-  });
-
-  describe('clearRecentFiles', () => {
-    it('clears all recent files and notifies once on success', async () => {
-      del.mockResolvedValueOnce({});
-
-      await clearRecentFiles();
-
-      expect(del).toHaveBeenCalledWith('/recent-files');
-      expect(notifyRecentFilesChange).toHaveBeenCalledTimes(1);
-    });
-
-    it('does not notify when clear fails', async () => {
-      del.mockRejectedValueOnce(new Error('clear failed'));
-
-      await clearRecentFiles();
-
-      expect(notifyRecentFilesChange).not.toHaveBeenCalled();
     });
   });
 });

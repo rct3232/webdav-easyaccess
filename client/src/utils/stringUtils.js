@@ -3,7 +3,7 @@
  * CJK characters are counted as approximately 2 units, others as 1 unit.
  * This is a rough estimation for character-count based truncation.
  */
-export const getVisibleLength = (str) => {
+const getVisibleLength = (str) => {
   if (!str) return 0;
   // Normalize to NFC to ensure Hangul syllables are treated as single units
   const normalized = str.normalize('NFC');
@@ -28,62 +28,11 @@ export const getVisibleLength = (str) => {
   return length;
 };
 
-/**
- * Truncates a string in the middle while preserving the beginning and the end.
- * @param {string} text - The text to truncate.
- * @param {number} maxVisibleLength - Max visible length (sum of approximate character widths).
- * @param {number} backLength - Number of characters to keep at the end (including extension).
- * @returns {string} Truncated string.
- */
-export const middleTruncate = (text, maxVisibleLength, backLength = 6) => {
-  if (!text) return '';
-  // Normalize to NFC to handle macOS NFD strings and prevent splitting syllables
-  const normalized = text.normalize('NFC');
-  const visibleLength = getVisibleLength(normalized);
-  if (visibleLength <= maxVisibleLength) return normalized;
-
-  const chars = [...normalized];
-  // Ensure backLength isn't too large
-  const safeBackLength = Math.min(backLength, Math.floor(chars.length / 2));
-
-  const backChars = chars.slice(-safeBackLength);
-  const backStr = backChars.join('');
-  const backVisibleLength = getVisibleLength(backStr);
-
-  const ellipsis = '...';
-  const ellipsisLength = 3;
-
-  const availableFrontLength = maxVisibleLength - backVisibleLength - ellipsisLength;
-
-  if (availableFrontLength < 1) {
-    // If we can't fit even one char in front, just show ellipsis and back
-    return `...${backStr}`;
-  }
-
-  let frontStr = '';
-  let currentFrontLength = 0;
-  const frontChars = chars.slice(0, chars.length - safeBackLength);
-
-  for (const char of frontChars) {
-    const charLength = getVisibleLength(char);
-    if (currentFrontLength + charLength > availableFrontLength) break;
-    frontStr += char;
-    currentFrontLength += charLength;
-  }
-
-  // If frontStr is empty but we had space, at least try to put one char
-  if (frontStr === '' && chars.length > safeBackLength) {
-    frontStr = chars[0];
-  }
-
-  return `${frontStr}${ellipsis}${backStr}`;
-};
-
 let canvas = null;
 /**
  * Measures the pixel width of a string given a font.
  */
-export const getTextWidth = (
+const getTextWidth = (
   text,
   font = '14px Inter, Roboto, "Helvetica Neue", Arial, sans-serif'
 ) => {

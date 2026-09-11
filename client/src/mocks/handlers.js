@@ -440,13 +440,6 @@ export const handlers = [
     return HttpResponse.json({ messageCode: 'serverMessages.permissions.permissionRevoked' });
   }),
 
-  http.get(`${API_BASE}/permissions/file/list`, () => {
-    return HttpResponse.json([
-      { file_node_id: 4, permission: 'read' },
-      { file_node_id: 5, permission: 'write' },
-    ]);
-  }),
-
   http.post(`${API_BASE}/permissions/file/grant`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
     const { userId, fileNodeId, permission } = body;
@@ -464,29 +457,6 @@ export const handlers = [
       return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
     }
     return HttpResponse.json({ messageCode: 'serverMessages.permissions.filePermissionRevoked' });
-  }),
-
-  http.get(`${API_BASE}/permissions/file/check`, ({ request }) => {
-    const url = new URL(request.url);
-    const fileNodeId = url.searchParams.get('fileNodeId');
-    if (!fileNodeId) {
-      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
-    }
-    return HttpResponse.json({
-      nodeId: Number(fileNodeId),
-      hasRead: true,
-      hasWrite: true,
-      source: 'path',
-    });
-  }),
-
-  http.patch(`${API_BASE}/permissions/file`, async ({ request }) => {
-    const body = await request.json().catch(() => ({}));
-    const { userId, fileNodeId, permission } = body;
-    if (!userId || !fileNodeId || !permission) {
-      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
-    }
-    return HttpResponse.json({ messageCode: 'serverMessages.permissions.filePermissionUpdated' });
   }),
 
   // --- Recent files (required for FolderTree / FileManager) ---
@@ -907,24 +877,11 @@ export const handlers = [
     return HttpResponse.json({ restart_required: true });
   }),
 
-  http.get(`${API_BASE}/webdav/info`, () => {
-    return HttpResponse.json({ url: 'https://example.com/webdav', basePath: '/' });
-  }),
-
-  http.get(`${API_BASE}/webdav/test`, () => {
-    return HttpResponse.json({ success: true, messageCode: 'serverMessages.api.webdavTestOk' });
-  }),
-
-  // --- Users (basic) ---
-  http.get(`${API_BASE}/users`, () => {
-    return HttpResponse.json([{ id: '1', username: 'testuser', email: 'user@example.com' }]);
-  }),
-
   http.get(`${API_BASE}/users/approved`, () => {
     return HttpResponse.json([{ id: '1', username: 'testuser', email: 'user@example.com' }]);
   }),
 
-  // --- Users: self-service mutations (PUT /users/:id/password|email|permissions) ---
+  // --- Users: self-service mutations (PUT /users/:id/password|email) ---
   // server/domains/admin/routes/users.js + api.md "Users".
   http.put(`${API_BASE}/users/:id/password`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
@@ -940,14 +897,6 @@ export const handlers = [
       return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
     }
     return HttpResponse.json({ messageCode: 'serverMessages.users.emailUpdated' });
-  }),
-
-  http.put(`${API_BASE}/users/:id/permissions`, async ({ request }) => {
-    const body = await request.json().catch(() => ({}));
-    if (!Array.isArray(body.permissions)) {
-      return errorResponse('serverErrors.admin.invalidPermissionList', 400);
-    }
-    return HttpResponse.json({ messageCode: 'serverMessages.users.permissionUpdated' });
   }),
 
   // --- Admin ---

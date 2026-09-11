@@ -29,7 +29,6 @@ jest.mock('../../../services/permissionService', () => {
     grantPermission: jest.fn().mockResolvedValue(),
     revokePermission: jest.fn().mockResolvedValue(),
     checkPermission: jest.fn().mockResolvedValue({}),
-    listFilePermissions: jest.fn().mockResolvedValue([]),
   });
 });
 

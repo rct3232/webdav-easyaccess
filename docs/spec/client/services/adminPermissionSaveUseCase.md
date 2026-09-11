@@ -4,7 +4,7 @@
 
 | Item | Description                                                                                                                                                                         |
 | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role | Use-case for `ShareDialog` admin mode. Builds the target user's final permission list from the dialog state and persists it through `sharePermissionGateway.updateUserPermissions`. |
+| Role | Use-case for `ShareDialog` admin mode. Diffs initial vs edited nodeId-keyed permissions and applies per-node grant/revoke through `sharePermissionGateway` (the legacy bulk `PUT /users/:id/permissions` route is not used). |
 
 ---
 
@@ -29,15 +29,15 @@
 
 ### 2.4 Dependencies
 
-- `sharePermissionGateway.updateUserPermissions`
-- `getUserBaseFolder`
+- `sharePermissionGateway.grantPermission` / `sharePermissionGateway.revokePermission`
+- `buildPermissionDiff`
 
 ### 2.5 Execution Semantics
 
-1. Walk the dialog's `folderPermissions`.
-2. Keep only assignments for the target `userId`.
-3. Force the user base folder permission to `write`.
-4. Persist the resulting permission list via `sharePermissionGateway.updateUserPermissions`.
+1. Diff `initialFolderPermissions` vs `folderPermissions` (nodeId-keyed maps) into revoke/grant sets.
+2. Apply revokes first (best-effort; the target user's home folder node is never revoked).
+3. Apply grants sequentially.
+4. Guard: ensure the target user keeps at least `write` on their home folder node (grant if not already granted).
 
 ### 2.6 Error Handling
 

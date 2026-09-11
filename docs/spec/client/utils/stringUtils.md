@@ -19,10 +19,9 @@
 
 | Function            | (input) => return                                                                                                                  |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| getVisibleLength    | (str) => number. Length in display units (CJK ≈ 2, others 1). Empty/falsy → 0.                                                     |
-| middleTruncate      | (text, maxVisibleLength, backLength = 6) => string. Middle ellipsis by character-width; keeps end (e.g. extension).                |
-| getTextWidth        | (text, font?) => number. Pixel width via canvas measureText. Non-browser env or no context → getVisibleLength(text) \* 8 fallback. |
 | pixelMiddleTruncate | (text, maxPixelWidth, font, backLength = 6) => string. Middle ellipsis by pixel width; keeps end.                                  |
+
+Module-private helpers: `getVisibleLength(str)` (display units; CJK ≈ 2, others 1) and `getTextWidth(text, font?)` (canvas measureText; non-browser/no-context → `getVisibleLength(text) * 8` fallback).
 
 ### 2.3 Dependencies
 
@@ -32,14 +31,11 @@
 
 ### 2.4 Verification Scenarios
 
-- [ ] getVisibleLength: empty/falsy → 0; ASCII length; CJK counts as 2 units.
-- [ ] middleTruncate: short text unchanged; long text has middle ellipsis and preserved end; backLength respected.
-- [ ] getTextWidth: returns number; in JSDOM without canvas-mock, uses fallback.
 - [ ] pixelMiddleTruncate: short text unchanged; long text truncated by pixel width with ellipsis and preserved end.
 - [ ] Edge: empty string, NFD input, boundary values.
 
 ### 2.5 Edge Cases
 
-- Null/undefined input: getVisibleLength returns 0; middleTruncate/pixelMiddleTruncate return ''.
+- Null/undefined input: pixelMiddleTruncate returns ''.
 - backLength larger than half length: safeBackLength = floor(chars.length/2).
 - availableFrontWidth < 5 in pixelMiddleTruncate: returns ellipsis + back only.

@@ -26,16 +26,6 @@ export const getShareLinks = async () => {
 };
 
 /**
- * 공유 링크 정보 조회
- * @param {string} token - Access token
- * @returns {Promise<Object>} 링크 데이터
- */
-export const getShareLink = async (token) => {
-  const response = await get(`${API_BASE}/${token}`);
-  return response.data;
-};
-
-/**
  * 공유 링크 수정 (유효기간 연장 등)
  * @param {string} token - Access token
  * @param {Object} updates - 수정할 데이터

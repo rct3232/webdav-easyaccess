@@ -32,7 +32,6 @@ All identifiers are nodeId-based (`nodeId` / `fileNodeId` are BIGINT `file_nodes
 | grantPermission              | `({ userId, nodeId, permission, target? })` | `Promise<void>`                                                             | `permissionService.grantPermission`                     |
 | revokePermission             | `({ userId, nodeId, scope? })`              | `Promise<void>`                                                             | `permissionService.revokePermission`                    |
 | approvePermissionRequest     | `(id)`                                      | `Promise<any>`                                                              | `permissionRequestService.approvePermissionRequest`     |
-| updateUserPermissions        | `(userId, permissions)`                     | `Promise<any>`                                                              | `userService.updateUserPermissions`                     |
 
 Notes:
 

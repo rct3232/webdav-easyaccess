@@ -90,8 +90,6 @@ All permission endpoints are nodeId-based. Directory-level grants inherit to des
 | GET    | `/api/permissions/check`        | Token | Check current user effective permission. Query: `nodeId`. Returns `{ nodeId, hasRead, hasWrite, source }`.                              |
 | POST   | `/api/permissions/file/grant`   | Token | Grant file-level permission. Body: `{ userId, fileNodeId, permission }`.                                                                |
 | DELETE | `/api/permissions/file/revoke`  | Token | Revoke file-level permission. Query: `userId`, `fileNodeId`.                                                                            |
-| PATCH  | `/api/permissions/file`         | Token | Update file-level permission. Body: `{ userId, fileNodeId, permission }`.                                                               |
-| GET    | `/api/permissions/file/check`   | Token | Check file permission. Query: `fileNodeId`. Returns `{ nodeId, hasRead, hasWrite, source }`.                                            |
 | GET    | `/api/permissions/file/list`    | Token | List file permissions. Query: `parentNodeId` (optional; filters to files under that node).                                              |
 
 ---

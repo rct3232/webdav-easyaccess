@@ -1,11 +1,9 @@
 /**
  * Permission-related constants for UI (labels, order).
- * PERMISSIONS enum is re-exported from shared for convenience.
  * Use getPermissionLabels(t) for i18n.
+ * PERMISSIONS enum: import from '@webdav-easyaccess/shared/constants'.
  */
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
-
-export { PERMISSIONS };
 
 /**
  * Returns permission labels using the given i18n t function.

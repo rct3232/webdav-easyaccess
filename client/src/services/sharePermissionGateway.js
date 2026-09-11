@@ -14,8 +14,6 @@ import {
   approvePermissionRequest as approvePermissionRequestService,
 } from './permissionRequestService';
 
-import { updateUserPermissions as updateUserPermissionsService } from './userService';
-
 export const getUserPermissions = async (userId, options) => {
   return getUserPermissionsService(userId, options);
 };
@@ -56,10 +54,6 @@ export const approvePermissionRequest = async (id) => {
   return approvePermissionRequestService(id);
 };
 
-export const updateUserPermissions = async (userId, permissions) => {
-  return updateUserPermissionsService(userId, permissions);
-};
-
 const sharePermissionGateway = {
   getUserPermissions,
   getFolderPermissions,
@@ -71,7 +65,6 @@ const sharePermissionGateway = {
   grantPermission,
   revokePermission,
   approvePermissionRequest,
-  updateUserPermissions,
 };
 
 export default sharePermissionGateway;

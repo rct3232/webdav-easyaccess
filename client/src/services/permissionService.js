@@ -6,7 +6,7 @@ const inFlightUserPermissions = new Map();
 
 const getUserCacheKey = (userId) => String(userId);
 
-export const clearUserPermissionsCache = (userId) => {
+const clearUserPermissionsCache = (userId) => {
   if (userId == null) {
     userPermissionsCache.clear();
     inFlightUserPermissions.clear();
@@ -114,16 +114,5 @@ export const revokePermission = async ({ userId, nodeId, scope, target }) => {
  */
 export const checkPermission = async (nodeId) => {
   const response = await get('/permissions/check', { params: { nodeId } });
-  return response.data;
-};
-
-/**
- * 현재 사용자의 파일 단위 권한 목록 조회. parentNodeId 지정 시 해당 nodeId로 필터.
- * @param {string|null} [parentNodeId] - 부모 폴더 nodeId (접두사 필터, null이면 전체)
- * @returns {Promise<Array>} 권한 배열
- */
-export const listFilePermissions = async (parentNodeId = null) => {
-  const params = parentNodeId != null ? { parentNodeId } : {};
-  const response = await get('/permissions/file/list', { params });
   return response.data;
 };

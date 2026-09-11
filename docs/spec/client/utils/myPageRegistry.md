@@ -21,9 +21,9 @@
 | -------------------------------------------- | --------------------------------------------------------------------------------- |
 | `resolveMyPageCategory(categoryId, isAdmin)` | `(string \| undefined, boolean) => string`                                        |
 | `getMyPageSidebarCategories(isAdmin)`        | `(boolean) => Array<{ id: string, icon: React.ComponentType, labelKey: string }>` |
-| `isMyPageMultiCategory(categoryId)`          | `(string \| undefined) => boolean`                                                |
-| `getMyPageCategoryIcon(categoryId)`          | `(string \| undefined) => React.ComponentType \| undefined`                       |
 | `getMyPageContentDescriptor(input)`          | `(object) => { categoryIcon, onBack, ContentComponent, contentProps }`            |
+
+Module-private helpers: `isMyPageMultiCategory` / `getMyPageCategoryIcon` (and the `MY_PAGE_MULTI_CATEGORIES` list) — used only by `getMyPageContentDescriptor`; their behavior is verified through the descriptor's `onBack`/`categoryIcon` outputs.
 
 ### 2.3 Dependencies
 
@@ -44,9 +44,6 @@ Unit tests should verify:
   - admin-only categories are included only when `isAdmin=true`
   - sharing is included only when `isAdmin=false`
   - always-visible categories are always included
-- `isMyPageMultiCategory` and `getMyPageCategoryIcon`:
-  - `sharing` is multi-item; other known categories are not
-  - icon lookup returns the expected icon component for known categories
 - `getMyPageContentDescriptor`:
   - returns the expected content component and props for each supported category
   - includes `onBack` only for multi-item detail state

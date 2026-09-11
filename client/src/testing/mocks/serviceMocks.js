@@ -3,19 +3,16 @@ export function createFileServiceMock(overrides = {}) {
     listFiles: jest.fn().mockResolvedValue([]),
     resolvePath: jest.fn().mockResolvedValue(null),
     getAncestors: jest.fn().mockResolvedValue({ ancestors: [] }),
-    getWebDAVInfo: jest.fn().mockResolvedValue(null),
     getFilesMetadata: jest.fn().mockResolvedValue([]),
     getFileBlob: jest.fn().mockResolvedValue(new Blob()),
     getVideoPreviewStreamUrl: jest.fn().mockResolvedValue(''),
     downloadFile: jest.fn().mockResolvedValue(undefined),
-    uploadFile: jest.fn().mockResolvedValue(null),
     uploadMultipleFiles: jest.fn().mockResolvedValue({ results: [], errors: [] }),
     renameFile: jest.fn().mockResolvedValue(null),
     createFolder: jest.fn().mockResolvedValue(null),
     getFolderStats: jest.fn().mockResolvedValue({ fileCount: 0, totalSize: 0 }),
     checkConflicts: jest.fn().mockResolvedValue([]),
     downloadMultipleFiles: jest.fn().mockResolvedValue(null),
-    getDownloadProgress: jest.fn().mockResolvedValue(null),
     requestThumbnailsBatch: jest.fn().mockResolvedValue({ thumbnails: [] }),
     batchDeleteFiles: jest.fn().mockResolvedValue({ jobId: null }),
     batchMoveFiles: jest.fn().mockResolvedValue({ jobId: null }),
@@ -43,14 +40,12 @@ export function createFileServiceMock(overrides = {}) {
 
 export function createPermissionServiceMock(overrides = {}) {
   return {
-    clearUserPermissionsCache: jest.fn(),
     getUserPermissions: jest.fn(),
     getSharedPermissions: jest.fn(),
     getFolderPermissions: jest.fn(),
     grantPermission: jest.fn(),
     revokePermission: jest.fn(),
     checkPermission: jest.fn(),
-    listFilePermissions: jest.fn(),
     ...overrides,
   };
 }
@@ -60,7 +55,6 @@ export function createUserServiceMock(overrides = {}) {
     getApprovedUsers: jest.fn(),
     updateEmail: jest.fn(),
     updatePassword: jest.fn(),
-    updateUserPermissions: jest.fn(),
     ...overrides,
   };
 }
@@ -83,7 +77,6 @@ export function createRecentFilesRepositoryMock(overrides = {}) {
     getRecentFiles: jest.fn().mockResolvedValue([]),
     addRecentFile: jest.fn().mockResolvedValue([]),
     removeRecentFile: jest.fn().mockResolvedValue([]),
-    clearRecentFiles: jest.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }

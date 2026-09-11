@@ -14,7 +14,7 @@ import PreferencesContent from '../components/mypage/content/PreferencesContent'
 
 export const DEFAULT_MY_PAGE_CATEGORY = 'account';
 
-export const MY_PAGE_MULTI_CATEGORIES = ['sharing'];
+const MY_PAGE_MULTI_CATEGORIES = ['sharing'];
 
 const MY_PAGE_CATEGORY_META = [
   {
@@ -49,11 +49,11 @@ const MY_PAGE_CATEGORY_META = [
   },
 ];
 
-export function isMyPageMultiCategory(categoryId) {
+function isMyPageMultiCategory(categoryId) {
   return MY_PAGE_MULTI_CATEGORIES.includes(categoryId);
 }
 
-export function getMyPageCategoryIcon(categoryId) {
+function getMyPageCategoryIcon(categoryId) {
   return MY_PAGE_CATEGORY_META.find((c) => c.id === categoryId)?.icon;
 }
 

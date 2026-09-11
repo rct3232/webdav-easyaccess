@@ -5,7 +5,6 @@
  */
 import * as permissionService from '../permissionService';
 import * as permissionRequestService from '../permissionRequestService';
-import * as userService from '../userService';
 
 import sharePermissionGateway, {
   getUserPermissions,
@@ -18,7 +17,6 @@ import sharePermissionGateway, {
   grantPermission,
   revokePermission,
   approvePermissionRequest,
-  updateUserPermissions,
 } from '../sharePermissionGateway';
 
 jest.mock('../permissionService', () => ({
@@ -35,10 +33,6 @@ jest.mock('../permissionRequestService', () => ({
   createPermissionRequest: jest.fn(),
   cancelPermissionRequest: jest.fn(),
   approvePermissionRequest: jest.fn(),
-}));
-
-jest.mock('../userService', () => ({
-  updateUserPermissions: jest.fn(),
 }));
 
 describe('sharePermissionGateway', () => {
@@ -80,18 +74,8 @@ describe('sharePermissionGateway', () => {
 
   it('exports a default gateway object with all functions', () => {
     expect(typeof sharePermissionGateway.getUserPermissions).toBe('function');
-    expect(typeof sharePermissionGateway.updateUserPermissions).toBe('function');
     expect(typeof sharePermissionGateway.grantPermission).toBe('function');
     expect(typeof sharePermissionGateway.revokePermission).toBe('function');
-  });
-
-  it('forwards updateUserPermissions to userService', async () => {
-    userService.updateUserPermissions.mockResolvedValueOnce({ ok: true });
-    const res = await updateUserPermissions('u1', [{ nodeId: 10, permission: 'write' }]);
-    expect(userService.updateUserPermissions).toHaveBeenCalledWith('u1', [
-      { nodeId: 10, permission: 'write' },
-    ]);
-    expect(res).toEqual({ ok: true });
   });
 
   it('forwards owner checks and outbox reads', async () => {

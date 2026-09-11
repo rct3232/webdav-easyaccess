@@ -27,8 +27,8 @@
 | grantPermission           | ({ userId, nodeId, permission, target? }) | Promise\<void\>   | POST /api/permissions/grant                     |
 | revokePermission          | ({ userId, nodeId, scope? })              | Promise\<void\>   | DELETE /api/permissions/revoke                  |
 | checkPermission           | (nodeId)                                  | Promise\<Object\> | GET /api/permissions/check?nodeId=...           |
-| listFilePermissions       | (parentNodeId?)                           | Promise\<Array\>  | GET /api/permissions/file/list?parentNodeId=... |
-| clearUserPermissionsCache | (userId?)                                 | void              | -                                               |
+
+- Module-private: `clearUserPermissionsCache(userId?)` (cache invalidation helper used internally by grant/revoke).
 
 - `target`: `'file'` for file-level grant; defaults to `'directory'`
 - `scope`: `'pathOnly'` for file-level revoke
@@ -44,7 +44,7 @@
 ### 2.4 Cache invalidation
 
 - `grantPermission` and `revokePermission` invalidate the cached user-permission entry for the target `userId` after successful mutation.
-- `clearUserPermissionsCache(userId?)` supports manual invalidation:
+- `clearUserPermissionsCache(userId?)` (module-private) performs the invalidation:
   - with `userId`: clear only that user entry
   - without `userId`: clear all user permission cache entries
 

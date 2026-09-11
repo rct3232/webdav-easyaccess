@@ -4,7 +4,7 @@
  * @see docs/TESTING_STRATEGY.md
  */
 import { renderHook, act } from '@testing-library/react';
-import useTrashOperations from '../useTrashOperations';
+import { useTrashOperations } from '../useTrashOperations';
 
 import * as fileService from '../../../../services/fileService';
 import { notifyTrashChanged } from '../../../../services/trashNotifier';

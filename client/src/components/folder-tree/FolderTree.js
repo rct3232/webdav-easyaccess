@@ -144,7 +144,7 @@ const FolderTree = ({
       {/* DEF-16 P9: bottom-pinned trash entry — below all tree lines, outside
           the scrollable List. Same share-mode gating as the tree sections. */}
       {(!shareLinkSection || user) && (
-        <Box sx={{ px: '5px', pb: 1, borderTop: 1, borderColor: 'divider', flexShrink: 0 }}>
+        <Box sx={{ px: '5px', pb: 1, flexShrink: 0 }}>
           <TrashSidebarItem
             currentPath={currentPath}
             onTrashClick={() => nonShareOnNodeClick('/__trash__')}

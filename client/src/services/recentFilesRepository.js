@@ -88,17 +88,3 @@ export const removeRecentFile = async (fileNodeId, options = {}) => {
     return [];
   }
 };
-
-/**
- * Clear all recent entries.
- * @returns {Promise<void>}
- */
-export const clearRecentFiles = async () => {
-  try {
-    await del('/recent-files');
-    notifyRecentFilesChange();
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error('Failed to clear recent files:', error);
-  }
-};

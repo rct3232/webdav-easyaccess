@@ -107,7 +107,6 @@ Single modules in isolation (utils, hooks, services, components). External depen
 | `components/dialogs/__tests__/RenameDialog.test.js`                                     | Rename dialog              |
 | `components/dialogs/__tests__/ShareDialog.test.js`                                      | Share dialog               |
 | `components/dialogs/__tests__/SharedManageBody.test.js`                                 | Shared manage body         |
-| `components/dialogs/__tests__/SharedManageDialog.test.js`                               | Shared manage dialog       |
 | `components/dialogs/__tests__/SharedPermissionList.test.js`                             | Shared permission list     |
 | `components/dialogs/__tests__/ShareFolderTree.test.js`                                  | Share folder tree          |
 | `components/dialogs/__tests__/ShareTargetDialog.test.js`                                | Share target dialog        |

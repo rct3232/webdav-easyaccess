@@ -27,7 +27,6 @@ The exported API is stable:
 | `post`    | `(url, data, config)` | same as above                                                                                | POST `/api/url`   |
 | `put`     | `(url, data, config)` | same as above                                                                                | PUT `/api/url`    |
 | `del`     | `(url, config)`       | same as above                                                                                | DELETE `/api/url` |
-| `request` | `(config)`            | same as above                                                                                | custom config     |
 
 Shared request defaults:
 

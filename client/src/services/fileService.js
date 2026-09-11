@@ -194,7 +194,7 @@ export const downloadFile = async (nodeId, options = {}) => {
   triggerDefaultDownload(response.data);
 };
 
-export const uploadFile = async (
+const uploadFile = async (
   file,
   parentNodeId,
   relativePath = '',
@@ -338,11 +338,6 @@ export const getFolderStats = async (nodeId) => {
   const response = await get('/folders/stats', {
     params: { nodeId },
   });
-  return response.data;
-};
-
-export const getWebDAVInfo = async () => {
-  const response = await get('/webdav/info');
   return response.data;
 };
 
@@ -519,7 +514,7 @@ export const downloadMultipleFiles = async (nodeIds, onProgress, options = {}) =
   }
 };
 
-export const getDownloadProgress = async (downloadId, options = {}) => {
+const getDownloadProgress = async (downloadId, options = {}) => {
   const { shareToken } = options;
   const response = await get(`/files/download-progress/${downloadId}`, {
     params: shareToken ? { shareToken } : {},

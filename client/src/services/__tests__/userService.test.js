@@ -1,17 +1,12 @@
 /**
  * userService tests.
- * Verifies getApprovedUsers, updateEmail, updatePassword, updateUserPermissions.
+ * Verifies getApprovedUsers, updateEmail, updatePassword.
  * @see docs/spec/client/services/userService.md
  * @see docs/TESTING_STRATEGY.md
  */
 import { get, put } from '../apiClient';
 
-import {
-  getApprovedUsers,
-  updateEmail,
-  updatePassword,
-  updateUserPermissions,
-} from '../userService';
+import { getApprovedUsers, updateEmail, updatePassword } from '../userService';
 
 jest.mock('../apiClient', () => ({
   get: jest.fn(),
@@ -59,17 +54,6 @@ describe('userService', () => {
       await updatePassword('user-1', 'newSecret');
 
       expect(put).toHaveBeenCalledWith('/users/user-1/password', { password: 'newSecret' });
-    });
-  });
-
-  describe('updateUserPermissions', () => {
-    it('calls PUT /users/:id/permissions with permissions array', async () => {
-      put.mockResolvedValueOnce(undefined);
-      const permissions = [{ folderPath: '/a', permission: 'read' }];
-
-      await updateUserPermissions('user-1', permissions);
-
-      expect(put).toHaveBeenCalledWith('/users/user-1/permissions', { permissions });
     });
   });
 });

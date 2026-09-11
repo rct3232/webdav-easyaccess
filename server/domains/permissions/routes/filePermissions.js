@@ -94,88 +94,10 @@ router.delete(
   })
 );
 
-// Update file permission (nodeId-based)
-router.patch(
-  '/file',
-  authenticateToken,
-  requireUser,
-  asyncHandler(async (req, res) => {
-    const { userId, fileNodeId, permission } = req.body;
-
-    if (!userId || !fileNodeId || !permission) {
-      throw validationError(SERVER_ERROR_CODES.permissionsMiddleware.pathRequired);
-    }
-
-    if (!PERMISSIONS.isValid(permission)) {
-      throw validationError(SERVER_ERROR_CODES.permissionRequests.invalidPermission);
-    }
-
-    const node = await fileNodesStore.getNode(fileNodeId);
-    if (!node) {
-      throw notFoundError(SERVER_ERROR_CODES.webdav.fileOrFolderNotFound);
-    }
-    if (node.type !== 'file') {
-      throw validationError(SERVER_ERROR_CODES.folders.pathRequired);
-    }
-
-    const requestingUserId = req.user.id;
-    // Check grant permission on parent directory of the file
-    const parentNodeId = node.parentId;
-    if (!parentNodeId) {
-      throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
-    }
-    const canGrant = await canGrantPermissionNode(requestingUserId, parentNodeId);
-    if (!canGrant) {
-      throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
-    }
-
-    await permissionStore.grantFilePermission(userId, fileNodeId, permission);
-    res.json({ messageCode: SERVER_MESSAGE_CODES.permissions.filePermissionUpdated });
-  })
-);
-
-// Check current user's effective permission for a file node (nodeId-based)
-router.get(
-  '/file/check',
-  authenticateToken,
-  requireUser,
-  asyncHandler(async (req, res) => {
-    const fileNodeId = req.query.fileNodeId;
-
-    if (!fileNodeId) {
-      throw validationError(SERVER_ERROR_CODES.permissionsMiddleware.pathRequired);
-    }
-
-    const node = await fileNodesStore.getNode(fileNodeId);
-    if (!node) {
-      throw notFoundError(SERVER_ERROR_CODES.webdav.fileOrFolderNotFound);
-    }
-
-    const userId = req.user.id;
-    // File-specific permission takes precedence
-    const filePerm = await permissionStore.getFilePermission(userId, fileNodeId);
-    const source = filePerm != null ? 'file' : 'path';
-
-    // Effective: check file-level first, then ancestor directory permissions via closure table
-    const effectivePerm = await permissionStore.getEffectivePermission(userId, fileNodeId);
-    const hasRead = effectivePerm
-      ? PERMISSIONS.isValid(effectivePerm) &&
-        (effectivePerm === PERMISSIONS.READ ||
-          effectivePerm === PERMISSIONS.WRITE ||
-          effectivePerm === PERMISSIONS.ADMIN)
-      : false;
-    const hasWrite = effectivePerm
-      ? effectivePerm === PERMISSIONS.WRITE || effectivePerm === PERMISSIONS.ADMIN
-      : false;
-
-    res.json({
-      nodeId: Number(fileNodeId),
-      hasRead,
-      hasWrite,
-      source,
-    });
-  })
-);
+// PATCH /file and GET /file/check were removed with the dead-code sweep: no
+// client consumer exists (the UI grants/revokes per node via POST /file/grant
+// and DELETE /file/revoke; effective-permission checks go through
+// GET /check). See docs/IMPROVEMENT_PLAN.md.
 
 // List current user's file-level permissions (nodeId-based, optional parent filter)
 router.get(

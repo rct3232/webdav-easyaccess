@@ -29,7 +29,8 @@
 ### 2.3 Exports
 
 - **ERROR_TYPES:** FILE_NOT_FOUND, PERMISSION_DENIED, NETWORK_ERROR, DUPLICATE_FILE, INVALID_PATH, UNKNOWN
-- **ERROR_MESSAGE_KEYS:** Maps error type to i18n key (e.g. errors.fileNotFound)
+
+Module-private: `ERROR_MESSAGE_KEYS` (error type → i18n key map, used by `getErrorMessageByType`) and `getConnectionClassFriendlyKey` (connection-class errorCode mapping, used by `getErrorMessage` / `getServerErrorDisplay`).
 
 ### 2.4 Dependencies
 

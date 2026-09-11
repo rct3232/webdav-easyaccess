@@ -5,7 +5,7 @@
 | Item               | Description                                                                                                           |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------- |
 | Role               | Presentational body for shared item management. Shows display name, loading/skeleton, SharedPermissionList. No hooks. |
-| Used in            | SharedManageDialog, ShareTargetDialog                                                                                 |
+| Used in            | ShareTargetDialog                                                                                 |
 | Related components | SharedPermissionList                                                                                                  |
 
 ---

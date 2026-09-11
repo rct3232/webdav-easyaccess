@@ -258,4 +258,3 @@ export const useTrashOperations = ({
   };
 };
 
-export default useTrashOperations;

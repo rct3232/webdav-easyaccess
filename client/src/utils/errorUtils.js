@@ -25,7 +25,7 @@ const STATUS_CODE_TO_ERROR_TYPE = {
 };
 
 // i18n keys for error messages (caller uses t(key))
-export const ERROR_MESSAGE_KEYS = {
+const ERROR_MESSAGE_KEYS = {
   [ERROR_TYPES.FILE_NOT_FOUND]: 'errors.fileNotFound',
   [ERROR_TYPES.PERMISSION_DENIED]: 'errors.permissionDenied',
   [ERROR_TYPES.NETWORK_ERROR]: 'errors.networkError',
@@ -52,7 +52,7 @@ const CONNECTION_CLASS_ERROR_CODES = {
  * @param {string} errorCode - Server error code
  * @returns {string|null} Friendly i18n key, or null when the code is not mapped
  */
-export const getConnectionClassFriendlyKey = (errorCode) =>
+const getConnectionClassFriendlyKey = (errorCode) =>
   CONNECTION_CLASS_ERROR_CODES[errorCode] ?? null;
 
 /**

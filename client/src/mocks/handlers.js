@@ -1098,7 +1098,7 @@ export const handlers = [
     return HttpResponse.json({ updatedUsers: 0, upgradedPaths: 0, grantedPaths: 0, errors: [] });
   }),
 
-  // --- Admin: blob migration (aligned with PLAN.md module E / api contract) ---
+  // --- Admin: blob migration (aligned with the blob-migration API contract) ---
   // GET /info returns { source, direction } (direction server-derived from WEA_FILE_STORAGE);
   // POST returns { jobId } (202) and takes NO direction (server derives it, validates dest.type);
   // GET returns the job shape; cancel flips to cancelled.

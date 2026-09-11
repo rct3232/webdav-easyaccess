@@ -26,7 +26,8 @@ import {
 } from './helpers/setupScratch';
 
 /**
- * Unified migration mode E2E (PLAN.md D1–D14, docs/features/migration-mode.md).
+ * Unified migration mode E2E (docs/features/migration-mode.md +
+ * docs/spec/server/services/metadataMigrationService.md).
  *
  * Hermetic by design: every case spawns its own fully-configured scratch server
  * on :5011 (own .env via DOTENV_CONFIG_PATH, own sqlite, own scratch PG target

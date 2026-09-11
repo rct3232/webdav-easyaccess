@@ -1,6 +1,7 @@
 /**
  * migrationService tests.
- * Verifies public API: correct endpoints and return shapes per PLAN.md module E.
+ * Verifies public API: correct endpoints and return shapes per the blob-migration
+ * API contract (docs/spec/server/tools/blob-migration.md).
  * @see docs/spec/client/services/migrationService.md
  * @see docs/TESTING_STRATEGY.md
  */

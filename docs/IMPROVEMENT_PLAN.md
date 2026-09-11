@@ -1,6 +1,6 @@
 # Codebase Improvement Plan — Consolidated Open-Item Tracker
 
-> **Updated**: 2026-09-08
+> **Updated**: 2026-09-10
 > **Purpose**: This is the **single tracking document** for every unresolved, undecided, or
 > unimplemented item in the repository.
 >
@@ -30,7 +30,7 @@ Ordered by urgency review (2026-09-08): highest priority first.
 | DEF-14 | DEFERRED (trigger-gated) | New-RDB adoption gate: generalize the metadata store beyond the current sqlite + PostgreSQL pair to MySQL, MariaDB, MSSQL and Oracle via boot-time engine auto-detection from a generic connection block. **Decision (2026-09-04): do NOT adopt an ORM today** — keep the executor seam + per-dialect repositories + per-engine conformance for sqlite/PG. **Introduce a single-source query layer (ORM/query builder) at the moment a second new engine is actually added** (evaluate Drizzle/Kysely first). Full rationale in the DEF-14 note. | `docs/spec/server/store/storage.md`, `docs/features/config-source-resolution.md`, `docs/spec/server/infrastructure/configRegistry.md`, `docs/spec/server/store/executor.md`, `docs/spec/server/store/repository-contract.md` |
 | DEF-17 | DEFERRED | WebDAV rename/move leaves the **old-path** remote file undeleted — a physical orphan both on success and on re-upload failure; a failed remote delete leaves an orphan with no DB row. Separate fix from DEF-12/13: capture the old path and delete it (no reconciliation sweep). | `docs/spec/server/services/fileService.md` |
 | DEF-19 | DEFERRED | `npm run lint:ci` fails on `dev` (pre-existing since `00c762c`): `e2e/reporters/test-end-logger.js` reports 4 × `no-undef` (`require`/`process`/`console`/`module`) — the file is a Node reporter but the ESLint environment for it doesn't declare Node globals. Unrelated to the S1 branch; found while running the S1 merge gate on 2026-09-09. | `e2e/reporters/test-end-logger.js` |
-| DEF-18 | DEFERRED (retention-gated) | WebDAV remote↔DB reconciliation sweep ("Tier 2" for WebDAV; today `WebdavBlobStore.listOrphanedKeys()` returns `[]`). Must be **retention-category aware** (active/trash/version/garbage), NOT a naive "delete anything not in DB" walk — co-design with DEF-16/DEF-11. | `docs/spec/server/services/gcService.md` |
+| DEF-18 | DEFERRED (retention-gated) | WebDAV remote↔DB reconciliation sweep ("Tier 2" for WebDAV; today `WebdavBlobStore.listOrphanedKeys()` returns `[]`). Must be **retention-category aware** (active/trash/history/garbage), NOT a naive "delete anything not in DB" walk — co-design with DEF-16/DEF-11. Known residue classes it must handle: individually-trashed descendants' `/.wea-trash/<id>` entries left when an ancestor is purged (`fileService.md` §4.1) and s3→webdav cutover dropping `history` rows (`blob-migration.md`). | `docs/spec/server/services/gcService.md` |
 
 ---
 
@@ -153,12 +153,14 @@ tracker instead of carrying planned statements:
   retries are not blocked by a duplicate-name conflict.
 - A failed **overwrite** no longer leaves a stuck state on S3: since S1 (2026-09-09,
   `fix/upload-overwrite-recovery`) the S3 overwrite rolls back to the pre-state on S3 PUT/TX2
-  failure (previous version stays downloadable). The WebDAV overwrite `orphaned_node` path still
-  has no automatic recovery — see DEF-12/DEF-13.
+  failure (previous version stays downloadable). The WebDAV overwrite `orphaned_node` path has no
+  automatic recovery BY DESIGN — it is repaired manually via `repair-sync` (`uploadService.md`
+  §2.5.1); the automated reconciliation sweep remains DEF-18. (DEF-12/DEF-13 themselves are DONE
+  2026-09-09.)
 
 ### DEF-15 note (2026-09-07) — E2E assertion-context containment refactor (IMPLEMENTED)
 
-Resolved on 2026-09-07 (PLAN.md W4/W4b/W5/W10 + Option A Phases 1–2). Recorded here per
+Resolved on 2026-09-07 (workstream-plan W4/W4b/W5/W10 + Option A Phases 1–2; provenance in git history). Recorded here per
 AGENTS.md §2.1. Root cause and shipped state:
 
 - Root cause (fixed): the admin home is the filesystem root and the client renders at most 50
@@ -190,8 +192,9 @@ AGENTS.md §2.1. Root cause and shipped state:
 
 ### Retention-category GC note (2026-09-09) — shared foundation for DEF-11 / DEF-12 / DEF-13 / DEF-16
 
-Recorded here per AGENTS.md §2.1 (single tracking doc; the full design lives in `PLAN.md`,
-"Workstream 2026-09-09").
+Recorded here per AGENTS.md §2.1 (single tracking doc; the as-built contracts live in the spec
+docs: `uploadService.md` §2.5/§2.5.1, `gcService.md` §2, `fileService.md` §4.1,
+`blobStorageService.md`, `fileNodesStore.md`, `routes/files.md`, `client-ui.md`).
 
 - **Root fact**: GC today is binary — keep exactly the `active` object_map set, garbage-collect the
   rest (`gcService.js` Tier 1/2, keep-set `getAllActiveS3Keys`). Every "keep old data" feature breaks
@@ -206,6 +209,13 @@ Recorded here per AGENTS.md §2.1 (single tracking doc; the full design lives in
 - **Categories** (derived by query, NOT stored as new status values): `active`, `trash`
   (node `deleted_at` set, DEF-16), `version` (orphaned prior versions, DEF-11), `pending-live`
   (stuck `pending_upload`, DEF-12/13), `garbage`, `untracked` (S3-only).
+- **As-built (2026-09-10)**: all four DEFs landed — DEF-12/13 2026-09-09, DEF-11/DEF-16
+  2026-09-10 (tracker rows DONE). The managed-history decision superseded the "no new status
+  values" guardrail: `object_map.status` now includes `history` (prior versions are managed; the
+  per-node cap `GC_VERSION_MAX_PER_NODE`=10 evicts oldest to `orphaned`, then the version TTL is
+  the eviction grace). Purge core = `trashService.purgeNode` (+ GC Tier 3). The workstream plan
+  file (`PLAN.md`) was retired and deleted 2026-09-10 — this tracker and the spec docs are the
+  single sources of truth; design provenance lives in git history.
 - **Dependencies / sequencing**:
   - DEF-12/13 (R3) provides the foundation → unblocks DEF-11 (S7) and DEF-16 (P5+).
   - DEF-11 needs only the foundation (raise `GC_VERSION_TTL_DAYS` + browse/restore-version API/UI).

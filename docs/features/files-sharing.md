@@ -54,12 +54,9 @@ This section is a reference summary of the existing endpoints that back the abov
 - **Download:** `GET /api/files/download?nodeId=` — Single file download (token or share token where supported). Optional `inline=true`.
 - **Upload:** `POST /api/files/upload` — Multipart `file`; form fields `parentNodeId`, `onConflict` (error/overwrite/skip), optional `relativePath`. Checks parent write permission.
 - **Rename:** `PUT /api/files/rename` — Body: `{ nodeId, newName }`.
-- **Move (single):** `POST /api/files/move` — Body: `{ nodeId, destinationParentNodeId }`.
-- **Copy (single):** `POST /api/files/copy` — Body: `{ nodeId, destinationParentNodeId }`, optional `newName`.
-- **Delete (single):** `DELETE /api/files/delete` — Body: `{ nodeId }`.
-- **Batch move:** `POST /api/files/batch-move` — Body: `{ moves: [{ sourceNodeId, destinationParentNodeId }], onConflict }`. Returns 202 + `jobId`. ACL updated for moved items (nodeIds stable, no path-based rewrite needed).
-- **Batch copy:** `POST /api/files/batch-copy` — Body: `{ copies: [{ sourceNodeId, destinationParentNodeId, newName }], onConflict }`. Returns 202 + `jobId`.
-- **Batch delete:** `POST /api/files/batch-delete` — Body: `{ nodeIds }`. Only items the user is allowed to delete; permission metadata cleaned up. Returns 202 + `jobId`.
+- **Batch move:** `POST /api/files/batch-move` — Body: `{ moves: [{ sourceNodeId, destinationParentNodeId }], onConflict }`. Returns 202 + `jobId`. ACL updated for moved items (nodeIds stable, no path-based rewrite needed). Single-node moves go through this channel too (a `moves` array of one).
+- **Batch copy:** `POST /api/files/batch-copy` — Body: `{ copies: [{ sourceNodeId, destinationParentNodeId, newName }], onConflict }`. Returns 202 + `jobId`. Also the single-node copy channel.
+- **Batch delete:** `POST /api/files/batch-delete` — Body: `{ nodeIds }`. Only items the user is allowed to delete; permission metadata cleaned up. Returns 202 + `jobId`. Also the single-node delete (trash) channel.
 - **Create folder:** `POST /api/folders/create` — Body: `{ parentNodeId, name }`.
 - **Folder stats:** `GET /api/folders/stats?nodeId=` — Recursive file/folder counts and total size.
 - **Check conflicts:** `POST /api/files/check-conflicts` — Body: `{ operations, limit }`. Used before paste.

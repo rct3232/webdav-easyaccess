@@ -64,13 +64,20 @@ async function createUserWithHomeNode(opts = {}) {
   return { user, token, homeId: home.id };
 }
 
+/**
+ * Trash fixture: the single-node delete endpoint was removed — the canonical
+ * mutation channel is the batch job endpoint (POST /api/files/batch-delete),
+ * whose worker delegates to fileService.deleteNode. These tests exercise the
+ * trash routes, so fixtures call that same service method directly.
+ */
+async function trashNode(owner, nodeId) {
+  const { fileService } = composition.getComposition();
+  await fileService.deleteNode(nodeId, owner.user.id, owner.user);
+}
+
 async function createTrashedFolder(owner, name) {
   const folder = await fileNodeService.createDirectory(owner.homeId, name);
-  const del = await request(app)
-    .delete('/api/files/delete')
-    .set('Authorization', `Bearer ${owner.token}`)
-    .send({ nodeId: folder.id });
-  expect(del.status).toBe(200);
+  await trashNode(owner, folder.id);
   return folder;
 }
 
@@ -110,11 +117,7 @@ describe('GET /api/files/trash', () => {
       permission: 'admin',
     });
     const folder = await fileNodeService.createDirectory(home.id, `trash-me-${Date.now()}`);
-    const del = await request(app)
-      .delete('/api/files/delete')
-      .set('Authorization', `Bearer ${owner.token}`)
-      .send({ nodeId: folder.id });
-    expect(del.status).toBe(200);
+    await trashNode(owner, folder.id);
 
     const res = await request(app)
       .get('/api/files/trash')
@@ -139,11 +142,7 @@ describe('GET /api/files/trash', () => {
     const store = createFileNodesStore();
     await store.upsertCache(file.id, 12345, 'application/octet-stream', null);
 
-    const del = await request(app)
-      .delete('/api/files/delete')
-      .set('Authorization', `Bearer ${owner.token}`)
-      .send({ nodeId: file.id });
-    expect(del.status).toBe(200);
+    await trashNode(owner, file.id);
 
     const res = await request(app)
       .get('/api/files/trash')
@@ -179,11 +178,7 @@ describe('GET /api/files/trash', () => {
       permission: 'read',
     });
 
-    const del = await request(app)
-      .delete('/api/files/delete')
-      .set('Authorization', `Bearer ${owner.token}`)
-      .send({ nodeId: folder.id });
-    expect(del.status).toBe(200);
+    await trashNode(owner, folder.id);
 
     // Write grantee: visible (perm row survives + write perm holds).
     const writerRes = await request(app)
@@ -213,11 +208,7 @@ describe('GET /api/files/trash', () => {
       permission: 'write',
     });
 
-    const del = await request(app)
-      .delete('/api/files/delete')
-      .set('Authorization', `Bearer ${owner.token}`)
-      .send({ nodeId: folder.id });
-    expect(del.status).toBe(200);
+    await trashNode(owner, folder.id);
 
     // While the write grant survives the trash, the grantee sees the row...
     const visible = await request(app)
@@ -276,11 +267,7 @@ describe('GET /api/files/trash', () => {
     for (let i = 0; i < 3; i += 1) {
       const folder = await fileNodeService.createDirectory(home.id, `page-${i}-${Date.now()}`);
       ids.push(folder.id);
-      const del = await request(app)
-        .delete('/api/files/delete')
-        .set('Authorization', `Bearer ${owner.token}`)
-        .send({ nodeId: folder.id });
-      expect(del.status).toBe(200);
+      await trashNode(owner, folder.id);
     }
 
     const page = await request(app)
@@ -308,11 +295,7 @@ describe('GET /api/files/trash', () => {
     const folder = await fileNodeService.createDirectory(owner.homeId, `nav-folder-${Date.now()}`);
     const child = await fileNodeService.createFile(folder.id, `nav-child-${Date.now()}.txt`);
 
-    const del = await request(app)
-      .delete('/api/files/delete')
-      .set('Authorization', `Bearer ${owner.token}`)
-      .send({ nodeId: folder.id });
-    expect(del.status).toBe(200);
+    await trashNode(owner, folder.id);
 
     // Root-level listing: the trashed FOLDER is topmost; its nested child is
     // NOT part of the flat root listing (hierarchical navigation).
@@ -362,15 +345,8 @@ describe('POST /api/files/trash/restore', () => {
     );
     const file = await fileNodeService.createFile(parent.id, `restore-me-${Date.now()}.txt`);
 
-    const del = await request(app)
-      .delete('/api/files/delete')
-      .set('Authorization', `Bearer ${owner.token}`)
-      .send({ nodeId: parent.id });
-    expect(del.status).toBe(200);
-    await request(app)
-      .delete('/api/files/delete')
-      .set('Authorization', `Bearer ${owner.token}`)
-      .send({ nodeId: sibling.id });
+    await trashNode(owner, parent.id);
+    await trashNode(owner, sibling.id);
 
     const res = await request(app)
       .post('/api/files/trash/restore')
@@ -402,11 +378,7 @@ describe('POST /api/files/trash/restore', () => {
   it('suffixes the restored name against a LIVE sibling (name (2).ext) and refuses a live node with 409', async () => {
     const owner = await createUserWithHomeNode({ username: `trash-suffix-${Date.now()}` });
     const file = await fileNodeService.createFile(owner.homeId, `dup-${Date.now()}.txt`);
-    const trashedDel = await request(app)
-      .delete('/api/files/delete')
-      .set('Authorization', `Bearer ${owner.token}`)
-      .send({ nodeId: file.id });
-    expect(trashedDel.status).toBe(200);
+    await trashNode(owner, file.id);
     await fileNodeService.createFile(owner.homeId, file.name);
 
     const res = await request(app)
@@ -448,11 +420,7 @@ describe('POST /api/files/trash/restore', () => {
       .send({ fileNodeId: file.id });
     expect(fileLink.status).toBe(200);
 
-    const del = await request(app)
-      .delete('/api/files/delete')
-      .set('Authorization', `Bearer ${owner.token}`)
-      .send({ nodeId: file.id });
-    expect(del.status).toBe(200);
+    await trashNode(owner, file.id);
 
     const denied = await request(app)
       .post('/api/files/trash/restore')
@@ -487,11 +455,7 @@ describe('POST /api/files/trash/purge', () => {
       permission: 'read',
     });
 
-    const del = await request(app)
-      .delete('/api/files/delete')
-      .set('Authorization', `Bearer ${owner.token}`)
-      .send({ nodeId: file.id });
-    expect(del.status).toBe(200);
+    await trashNode(owner, file.id);
 
     // Read-only grantee: the item is invisible (write-based visibility) and
     // the purge is refused.
@@ -547,11 +511,7 @@ describe('POST /api/files/trash/empty', () => {
       .set('Authorization', `Bearer ${owner.token}`)
       .send({ fileNodeId: survivor.id });
     expect(survivorLink.status).toBe(200);
-    const del = await request(app)
-      .delete('/api/files/delete')
-      .set('Authorization', `Bearer ${owner.token}`)
-      .send({ nodeId: file.id });
-    expect(del.status).toBe(200);
+    await trashNode(owner, file.id);
 
     // Non-admin: 403.
     const denied = await request(app)

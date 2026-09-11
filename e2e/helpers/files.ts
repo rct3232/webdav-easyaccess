@@ -48,11 +48,11 @@ function trackWorkspaceCleanup(token: string, basePath: string) {
  * Delete a case-owned folder (and its subtree) via the API. Tolerant of the
  * folder having already been moved/renamed/deleted by the case itself.
  *
- * Uses the admin permanent-delete maintenance route, NOT `DELETE
- * /api/files/delete`: since DEF-16 P2 the ordinary delete only TRASHES the
- * subtree, and cleanup must physically remove the case folder so containment
- * runs stay residue-free (see docs/TESTING_STRATEGY.md, assertion-context
- * containment).
+ * Uses the admin permanent-delete maintenance route, NOT the canonical
+ * `POST /api/files/batch-delete`: since DEF-16 P2 the ordinary delete only
+ * TRASHES the subtree, and cleanup must physically remove the case folder so
+ * containment runs stay residue-free (see docs/TESTING_STRATEGY.md,
+ * assertion-context containment).
  */
 async function deleteFolderAt(
   request: APIRequestContext,
@@ -235,4 +235,66 @@ export async function listNodeChildren(
   });
   expect(res.ok()).toBeTruthy();
   return res.json();
+}
+
+interface BulkJobSnapshot {
+  status: string;
+  progress: number;
+  total: number;
+  results: Array<{ status?: string; nodeId?: number }>;
+  errorMessage: string | null;
+}
+
+/**
+ * Poll GET /api/files/bulk-operation/:jobId until the job reaches a terminal
+ * state and assert it completed with zero failed/skipped items. The batch
+ * endpoints answer 202 + jobId, so every API-side mutation in these specs
+ * goes through here (canonical mutation channel).
+ */
+export async function waitForBulkJobToComplete(
+  request: APIRequestContext,
+  token: string,
+  jobId: string
+): Promise<BulkJobSnapshot> {
+  const deadline = Date.now() + 30000;
+  for (;;) {
+    const res = await request.get(`/api/files/bulk-operation/${jobId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.ok()).toBeTruthy();
+    const job = (await res.json()) as BulkJobSnapshot;
+    if (['completed', 'failed', 'cancelled'].includes(job.status)) {
+      expect(job.errorMessage).toBeNull();
+      expect(job.status).toBe('completed');
+      expect((job.results ?? []).filter((r) => r.status !== 'succeeded')).toEqual([]);
+      return job;
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`bulk job ${jobId} did not reach a terminal state: ${JSON.stringify(job)}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+}
+
+/**
+ * Move nodes via the canonical batch channel: POST /api/files/batch-move
+ * (202 + jobId) then poll the bulk job until it completes with zero failed
+ * items.
+ */
+export async function apiMoveViaBatch(
+  request: APIRequestContext,
+  token: string,
+  nodeIds: number[],
+  destinationParentNodeId: number
+): Promise<void> {
+  const res = await request.post('/api/files/batch-move', {
+    headers: { Authorization: `Bearer ${token}` },
+    data: {
+      moves: nodeIds.map((sourceNodeId) => ({ sourceNodeId, destinationParentNodeId })),
+    },
+  });
+  expect(res.ok()).toBeTruthy();
+  const { jobId } = await res.json();
+  const job = await waitForBulkJobToComplete(request, token, String(jobId));
+  expect(job.progress).toBe(nodeIds.length);
 }

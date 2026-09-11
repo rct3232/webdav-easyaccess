@@ -332,87 +332,9 @@ router.put(
   })
 );
 
-router.post(
-  '/move',
-  authenticateToken,
-  requireAuth,
-  asyncHandler(async (req, res) => {
-    const { nodeId, destinationParentNodeId } = req.body;
-    if (!nodeId || !destinationParentNodeId) {
-      throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
-    }
-
-    const fileNodeId = parseNodeId(nodeId, 'nodeId');
-    const destParentNodeId = parseNodeId(destinationParentNodeId, 'destinationParentNodeId');
-    const principalId = req.principalId;
-    const user = req.user.full;
-    const { fileService } = getComposition();
-
-    const result = await fileService.moveNode(fileNodeId, destParentNodeId, principalId, user);
-
-    res.json({
-      messageCode: SERVER_MESSAGE_CODES.files.moveSuccess,
-      nodeId: result.nodeId,
-      newParentId: result.newParentId,
-    });
-  })
-);
-
-router.post(
-  '/copy',
-  authenticateToken,
-  requireAuth,
-  asyncHandler(async (req, res) => {
-    const { nodeId, destinationParentNodeId, newName } = req.body;
-    if (!nodeId || !destinationParentNodeId) {
-      throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
-    }
-
-    const sourceNodeId = parseNodeId(nodeId, 'nodeId');
-    const destParentNodeId = parseNodeId(destinationParentNodeId, 'destinationParentNodeId');
-    const principalId = req.principalId;
-    const user = req.user.full;
-    const { fileService } = getComposition();
-
-    const result = await fileService.copyFile(
-      sourceNodeId,
-      destParentNodeId,
-      newName || null,
-      principalId,
-      user
-    );
-
-    res.json({
-      messageCode: SERVER_MESSAGE_CODES.files.copySuccess,
-      sourceNodeId: result.sourceNodeId,
-      copiedNodeId: result.copiedNodeId,
-    });
-  })
-);
-
-router.delete(
-  '/delete',
-  authenticateToken,
-  requireAuth,
-  asyncHandler(async (req, res) => {
-    const { nodeId } = req.body;
-    if (!nodeId) {
-      throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
-    }
-
-    const fileNodeId = parseNodeId(nodeId, 'nodeId');
-    const principalId = req.principalId;
-    const user = req.user.full;
-    const { fileService } = getComposition();
-
-    const result = await fileService.deleteNode(fileNodeId, principalId, user);
-
-    res.json({
-      messageCode: SERVER_MESSAGE_CODES.files.deleteSuccess,
-      nodeId: fileNodeId,
-      deletedCount: result.deletedCount,
-    });
-  })
-);
+// Single-node move/copy/delete routes removed: the batch job endpoints
+// (POST /api/files/batch-move, batch-copy, batch-delete) are the canonical
+// mutation channel and invoke the same fileService methods
+// (docs/spec/server/routes/files.md "Mutation channels").
 
 module.exports = router;

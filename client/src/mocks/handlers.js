@@ -1,8 +1,8 @@
 /**
  * MSW handlers aligned with docs/api.md and actual server routes.
- * File mutations use the batch endpoints (batch-move/batch-copy/batch-delete,
- * PUT /rename) as well as the single-node POST /files/move, POST /files/copy,
- * DELETE /files/delete routes exposed by server/domains/files/routes/crud.js.
+ * File mutations go through the batch endpoints (batch-move/batch-copy/
+ * batch-delete) plus PUT /rename — the single-node move/copy/delete routes
+ * were removed with the dead-code sweep.
  * @see docs/api.md
  * @see docs/shared-contracts.md
  */
@@ -536,49 +536,6 @@ export const handlers = [
       messageCode: 'serverMessages.files.renameSuccess',
       nodeId,
       newName,
-    });
-  }),
-
-  // --- Files: single-node move (POST /files/move, body: { nodeId, destinationParentNodeId }) ---
-  // server/domains/files/routes/crud.js + api.md "Files and Folders".
-  http.post(`${API_BASE}/files/move`, async ({ request }) => {
-    const body = await request.json().catch(() => ({}));
-    const { nodeId, destinationParentNodeId } = body;
-    if (!nodeId || !destinationParentNodeId) {
-      return errorResponse('serverErrors.files.sourceDestRequired', 400);
-    }
-    return HttpResponse.json({
-      messageCode: 'serverMessages.files.moveSuccess',
-      nodeId,
-      newParentId: destinationParentNodeId,
-    });
-  }),
-
-  // --- Files: single-node copy (POST /files/copy, body: { nodeId, destinationParentNodeId, newName? }) ---
-  http.post(`${API_BASE}/files/copy`, async ({ request }) => {
-    const body = await request.json().catch(() => ({}));
-    const { nodeId, destinationParentNodeId } = body;
-    if (!nodeId || !destinationParentNodeId) {
-      return errorResponse('serverErrors.files.sourceDestRequired', 400);
-    }
-    return HttpResponse.json({
-      messageCode: 'serverMessages.files.copySuccess',
-      sourceNodeId: nodeId,
-      copiedNodeId: `${nodeId}_copy`,
-    });
-  }),
-
-  // --- Files: single-node delete (DELETE /files/delete, body: { nodeId }) ---
-  http.delete(`${API_BASE}/files/delete`, async ({ request }) => {
-    const body = await request.json().catch(() => ({}));
-    const { nodeId } = body;
-    if (!nodeId) {
-      return errorResponse('serverErrors.files.sourceDestRequired', 400);
-    }
-    return HttpResponse.json({
-      messageCode: 'serverMessages.files.deleteSuccess',
-      nodeId,
-      deletedCount: 1,
     });
   }),
 

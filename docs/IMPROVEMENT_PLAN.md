@@ -1,6 +1,6 @@
 # Codebase Improvement Plan — Consolidated Open-Item Tracker
 
-> **Updated**: 2026-09-10
+> **Updated**: 2026-09-11
 > **Purpose**: This is the **single tracking document** for every unresolved, undecided, or
 > unimplemented item in the repository.
 >
@@ -29,6 +29,8 @@ Ordered by urgency review (2026-09-08): highest priority first.
 | DEF-10 | DEFERRED | CRA v5 → Vite migration (separate project/epic). | former improvement-plan backlog (pre-2026-09-02, item #13) |
 | DEF-14 | DEFERRED (trigger-gated) | New-RDB adoption gate: generalize the metadata store beyond the current sqlite + PostgreSQL pair to MySQL, MariaDB, MSSQL and Oracle via boot-time engine auto-detection from a generic connection block. **Decision (2026-09-04): do NOT adopt an ORM today** — keep the executor seam + per-dialect repositories + per-engine conformance for sqlite/PG. **Introduce a single-source query layer (ORM/query builder) at the moment a second new engine is actually added** (evaluate Drizzle/Kysely first). Full rationale in the DEF-14 note. | `docs/spec/server/store/storage.md`, `docs/features/config-source-resolution.md`, `docs/spec/server/infrastructure/configRegistry.md`, `docs/spec/server/store/executor.md`, `docs/spec/server/store/repository-contract.md` |
 | DEF-17 | DONE (2026-09-11) | WebDAV rename/move/overwrite/copy now run the **integrated native protocol**: rename/move = capture old path → DB write → one native `blobStore.moveBlob(old,new)` (files AND directory subtrees) → on failure roll the DB write back and propagate (the rename stands + `orphaned_node` only when the remote source is absent or the rollback itself failed — no old-path orphan on the success path by construction). Overwrite = `/.wea-tmp/<nodeId>` last-good COPY snapshot → PUT → failed PUT restores via `moveBlob(overwrite:T)` (marker only if the restore also fails). Copy = single native `copyBlob` (Depth:infinity, subtree-capable) + `headBlob`/`upsertCache` mirror. GET/PUT download chains survive only as the adapter-internal streamed fallbacks. The spec "not native WebDAV MOVE / do not abort the DB rename" sentences (a `88f3ace`-era consequence of the seam lacking MOVE/COPY) are retired. | `docs/spec/server/services/fileService.md` §2.3/§4/§5, `blobStorageService.md` §3.1 |
+| DEF-23 | DEFERRED | Recent-files **clear-all** UI: `DELETE /api/recent-files` is a live documented server contract with a working route, but no client caller or feature spec exists (single stale-entry removal is live). Decide whether a clear-all affordance belongs in `RecentFilesSection` before keeping the wrapper-less endpoint forever. | `docs/spec/server/routes/recentFiles.md` |
+| DEF-22 | DEFERRED (security) | Logout / refresh-token lifecycle: `auth-users-settings.md` defines logout as client-side session clearing only, and `refreshAccessToken` never rotates rows — a stolen refresh token stays replayable until its 7-day TTL. `tokenStore.deleteRefreshToken` exists but is unwired (HOLD per dead-code sweep). Needs a decision: server `/logout` + deletion, or rotation-on-refresh; then wire or delete the function. | `server/domains/auth/tokenStore.js` |
 | DEF-19 | DONE (2026-09-11) | `npm run lint:ci` fails on `dev` (pre-existing since `00c762c`): `e2e/reporters/test-end-logger.js` reports 4 × `no-undef` (`require`/`process`/`console`/`module`) — the file is a Node reporter but the ESLint environment for it doesn't declare Node globals. Unrelated to the S1 branch; found while running the S1 merge gate on 2026-09-09. Fixed via the Node-glob widening in `eslint.config.js` (+ companion unused-var in `admin.test.js`); lint:ci green. | `e2e/reporters/test-end-logger.js` |
 | DEF-21 | DEFERRED (audit) | The batch-operation worker executes `fileService.moveNode/copyFile/deleteNode` with a synthetic `{ is_admin: true }` user, so the batch channel bypasses per-principal ACL re-checks and the D6 ownership-transfer revoke that the direct service calls perform (route-level destination-write check only). Since the single-node endpoints were removed, batch is the canonical mutation path — audit whether per-item ACL + D6 must move into the worker (drove test conversions in `files.integration.test.js`: C2/D6 scenarios keep direct service calls). | `server/domains/files/services/batchOperationService.js` |
 | DEF-20 | DEFERRED | `E2E-TRASH-001`/`E2E-TRASH-003` fail in the `test:e2e:webdav` smoke run on clean `dev` (verified 2026-09-11 against baseline `3d1c14f`; they pass when run individually) — pre-existing flake of the thin webdav-smoke project, unrelated to DEF-17 (the same two fail without the branch). Needs RCA (parallel worker / global-setup restart interaction suspected). | `e2e/trash.spec.ts` |
@@ -144,6 +146,23 @@ The following work was completed earlier the same day (see DEF-3/DEF-5 above) an
   status; T0 keys remain excluded; `--apply` writes plaintext to the DB.
 - Residual: ciphertext rows written by older versions are not auto-migrated; operators may need
   to clean them up manually if any exist.
+
+### Completion note (2026-09-11) — DEF-17/19, dead-code & tooling sweeps
+
+- DEF-17 landed as the integrated native protocol (rename/move = DB-first + one native MOVE +
+  rollback-on-failure; overwrite = `/.wea-tmp` last-good COPY snapshot + restore; copy = native
+  Depth-infinity COPY; GET/PUT chains survive only as adapter fallbacks) — `fix/webdav-native-move-copy`.
+- The audited dead-code sweep landed in `chore/dead-code-server`, `chore/dead-code-client`,
+  `chore/tooling-deps` and `test/single-channel-removal` (single-node move/copy/delete endpoints
+  removed; batch is the canonical UI mutation channel). Explicit keeps: `configRegistry.getDefault`
+  and `blobStorageService.overwriteBlob` (documented surfaces), `deleteRefreshToken` (→ DEF-22),
+  `repair-sync`/`perm-delete`/share-public anonymous GET+preview (ops/public contracts), test-used
+  DI seams. The migration-cancel control specified by `migration-mode.md` was found unwired and
+  shipped (`feature/migration-cancel-button`).
+- Follow-ups registered: DEF-20 (webdav-smoke trash flakes), DEF-21 (batch worker synthetic-admin
+  ACL/D6 bypass), DEF-22 (logout/refresh rotation), DEF-23 (recent clear-all UI).
+  `npm run format:check` fails on ~136 files under the already-resolved prettier 3.8.3 on untouched
+  dev files — pre-existing style drift, intentionally not mass-reformatted.
 
 ### W-1 note (2026-09-03, `fix/upload-rollback-on-backend-failure`)
 

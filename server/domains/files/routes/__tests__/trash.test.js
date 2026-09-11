@@ -133,6 +133,27 @@ describe('GET /api/files/trash', () => {
     expect(row.hasAdminPermission).toBe(true);
   });
 
+  it('A22: trashed file rows carry the filecache-backed size', async () => {
+    const owner = await createUserWithHomeNode({ username: `trash-size-${Date.now()}` });
+    const file = await fileNodeService.createFile(owner.homeId, 'big.bin');
+    const store = createFileNodesStore();
+    await store.upsertCache(file.id, 12345, 'application/octet-stream', null);
+
+    const del = await request(app)
+      .delete('/api/files/delete')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ nodeId: file.id });
+    expect(del.status).toBe(200);
+
+    const res = await request(app)
+      .get('/api/files/trash')
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(res.status).toBe(200);
+    const row = res.body.items.find((i) => i.nodeId === file.id);
+    expect(row).toBeDefined();
+    expect(row.size).toBe(12345);
+  });
+
   it('A22: a WRITE grantee sees the trashed node; a read-only grantee does NOT', async () => {
     const owner = await createAuthenticatedTestUser({
       username: `trash-owner2-${Date.now()}`,

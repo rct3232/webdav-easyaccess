@@ -18,7 +18,7 @@
 ### 2.2 Factory Function Signature
 
 ```js
-function createFileService({ fileNodeService, blobStorageService, uploadService, aclService, fileStorageMode, permissionStore, ownerNodeResolver, blobStore }) {
+function createFileService({ fileNodeService, blobStorageService, uploadService, aclService, fileStorageMode, permissionStore, ownerNodeResolver, blobStore, fileNodesStore }) {
   return {
     listDirectoryWithPermissions(userId, parentNodeId, user),
     uploadFile(userId, parentNodeId, name, buffer, mimeType, user, onConflict),
@@ -41,6 +41,7 @@ function createFileService({ fileNodeService, blobStorageService, uploadService,
 | permissionStore    | object | no       | Store-level permission CRUD (`revokeUserSubtreePermissions`). Defaults to the real store when omitted. Used only by `moveNode` for the ownership-transfer cleanup (D6).                 |
 | ownerNodeResolver  | object | no       | Owner detection via closure-table ancestry (`isOwnerNode`). Defaults to the real resolver when omitted. Used only by `moveNode` to decide whether a move is an ownership transfer (D6). |
 | blobStore          | object | no       | Raw blob-store adapter (`headBlob`/`moveBlob` for WebDAV trash). Required for the WebDAV trash MOVE in `deleteNode`; unused in S3 mode. Injected by the composition root.               |
+| fileNodesStore     | object | no       | Filecache read/write (`getCache`/`upsertCache`). Used only by `copyFile` (S3 mode) to mirror the source cache row onto the copied node. Injected by the composition root.                |
 
 ### 2.3 Methods
 
@@ -287,8 +288,9 @@ Creates a copy of a source file in the destination directory. Copy semantics dif
    - If count === 1 (exclusive ownership): create new file_node + INSERT new object_map row referencing the SAME s3_key with status='active'. Zero-copy, instant.
    - If count > 1 (shared blob): call `blobStorageService.duplicateBlob(s3Key)` to download-and-upload a private copy under a new key, then link it via `blobStorageService.linkObject(newCopiedNodeId, newS3Key)`.
 4. After linking the blob, set the copied node to `fileNodeService.updateSyncStatus(copiedNodeId, 'active')`. A copy is immediately usable and migratable — it must not stay on the repository `pending_upload` default, because s3→webdav migration snapshots enumerate only `sync_status='active'` file nodes (`migrationService.md`), and a `pending_upload` copy would be dropped from the destination at cutover.
-5. New file node uses `newName` param; name conflict → numeric suffix via `createFile` behavior.
-6. Return `{ sourceNodeId, copiedNodeId }`.
+5. Mirror the source cache metadata: read the source `filecache` row via `fileNodesStore.getCache(nodeId)`; when present, write the copied node's cache via `fileNodesStore.upsertCache(copiedNodeId, cache.size, cache.mime_type, null)` — the COW blob is byte-identical to the source, so the copy's listing size/mime match without any remote probe. A source without a cache row is skipped (copy renders null size, same legacy shape).
+6. New file node uses `newName` param; name conflict → numeric suffix via `createFile` behavior.
+7. Return `{ sourceNodeId, copiedNodeId }`.
 
 **WebDAV Mode (actual blob copy):**
 
@@ -308,6 +310,7 @@ Creates a copy of a source file in the destination directory. Copy semantics dif
 | uploadService      | Orchestrates 4-step S3 upload flow (TX1 → PUT → TX2) with failure recovery states                                                                                                                 |
 | aclService         | Async permission gates: checkFolderPermission, checkFilePermission, isAdminUser                                                                                                                   |
 | permissionStore    | Ownership-transfer cleanup in moveNode: revokeUserSubtreePermissions (D6)                                                                                                                         |
+| fileNodesStore     | Copy metadata mirror in copyFile (S3 mode): `getCache` on the source + `upsertCache` for the copied node. Injected via factory options (composition)                                |
 | ownerNodeResolver  | Ownership detection in moveNode: isOwnerNode (D6)                                                                                                                                                 |
 
 ### 2.5 Error Cases
@@ -389,6 +392,7 @@ Creates a copy of a source file in the destination directory. Copy semantics dif
 - [ ] Zero-copy: new file_node + object_map referencing same s3_key when source blob exclusively owned (count=1)
 - [ ] Duplicates blob via duplicateBlob when source s3_key is shared by multiple nodes (count>1)
 - [ ] Copied node ends `sync_status='active'` (`updateSyncStatus(copiedNodeId, 'active')` after the blob link) — a copy is never left on the `pending_upload` default, so it stays enumerable by s3→webdav migration snapshots
+- [ ] Copied node gets a filecache row mirroring the source (`getCache(source)` → `upsertCache(copied, size, mime, null)`); source without a cache row → no cache write, no crash
 - [ ] Checks read permission on source and write permission on destination parent before proceeding
 
 #### copyFile — WebDAV mode
@@ -648,6 +652,7 @@ Complete checklist of testable behaviors per method, organized to drive the test
 - [ ] Zero-copy when source blob exclusively owned (countActiveObjectsByS3Key === 1): new file_node + object_map row referencing same s3_key with status='active'
 - [ ] Duplicates blob via duplicateBlob when source s3_key shared by multiple nodes: downloads, re-uploads under new key, links copy to new key
 - [ ] Ends the copied node at `sync_status='active'` via updateSyncStatus after the link (never left `pending_upload`)
+- [ ] Mirrors the source filecache row onto the copied node (`getCache` → `upsertCache(copiedNodeId, size, mimeType, null)`) so the copy lists a real size instead of 0
 - [ ] Checks read permission on source node and write permission on destination parent before proceeding
 
 ### copyFile — WebDAV mode

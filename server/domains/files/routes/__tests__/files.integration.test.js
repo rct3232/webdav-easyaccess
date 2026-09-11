@@ -362,6 +362,17 @@ describe('S5.0-SCENARIO-4: S3 mode copy-on-write', () => {
     ]);
     expect(nodeStatus.rows).toHaveLength(1);
     expect(nodeStatus.rows[0].sync_status).toBe('active');
+
+    // The copy mirrors the source filecache row, so the listing shows the
+    // real byte size instead of 0 B (CoW blob is byte-identical).
+    const caches = await dbQuery(
+      'SELECT file_node_id, size FROM filecache WHERE file_node_id IN (?, ?)',
+      [sourceNodeId, targetNodeId]
+    );
+    expect(caches.rows).toHaveLength(2);
+    const [srcCache, copyCache] = caches.rows.map((r) => Number(r.size));
+    expect(copyCache).toBe(srcCache);
+    expect(copyCache).toBeGreaterThan(0);
   });
 
   it('source file remains downloadable after copy', async () => {

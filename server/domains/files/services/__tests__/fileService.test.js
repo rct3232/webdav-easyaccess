@@ -1706,6 +1706,74 @@ describe('copyFile — S3 mode', () => {
     await expect(service.copyFile(10, 20, 'copy.txt', 1, { id: 1 })).rejects.toThrow();
     expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'read');
   });
+
+  it('mirrors the source filecache row onto the copied node (listing shows real size)', async () => {
+    const fileNodeService = createFileNodeServiceMock({
+      createFile: jest.fn().mockResolvedValue({ id: 53 }),
+    });
+    const blobStorageService = createBlobStorageServiceMock({
+      getActiveS3Key: jest.fn().mockResolvedValue('key-cow'),
+      countActiveObjectsByS3Key: jest.fn().mockResolvedValue(1),
+      linkObject: jest.fn().mockResolvedValue(true),
+    });
+    const aclService = createAclServiceMock({
+      checkFilePermission: jest.fn().mockResolvedValue(true),
+      checkFolderPermission: jest.fn().mockResolvedValue(true),
+    });
+    const fileNodesStore = {
+      getCache: jest.fn().mockResolvedValue({ size: '2048', mime_type: 'text/plain' }),
+      upsertCache: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService,
+      uploadService: createMockUploadService(),
+      aclService,
+      ...createListingDeps(),
+      fileNodesStore,
+      fileStorageMode: 's3',
+    });
+
+    await service.copyFile(10, 20, 'copy.txt', 1, { id: 1 });
+
+    expect(fileNodesStore.getCache).toHaveBeenCalledWith(10);
+    expect(fileNodesStore.upsertCache).toHaveBeenCalledWith(53, 2048, 'text/plain', null);
+  });
+
+  it('skips the cache mirror without crashing when the source has no filecache row', async () => {
+    const fileNodeService = createFileNodeServiceMock({
+      createFile: jest.fn().mockResolvedValue({ id: 54 }),
+    });
+    const blobStorageService = createBlobStorageServiceMock({
+      getActiveS3Key: jest.fn().mockResolvedValue('key-nc'),
+      countActiveObjectsByS3Key: jest.fn().mockResolvedValue(1),
+      linkObject: jest.fn().mockResolvedValue(true),
+    });
+    const aclService = createAclServiceMock({
+      checkFilePermission: jest.fn().mockResolvedValue(true),
+      checkFolderPermission: jest.fn().mockResolvedValue(true),
+    });
+    const fileNodesStore = {
+      getCache: jest.fn().mockResolvedValue(null),
+      upsertCache: jest.fn(),
+    };
+
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService,
+      uploadService: createMockUploadService(),
+      aclService,
+      ...createListingDeps(),
+      fileNodesStore,
+      fileStorageMode: 's3',
+    });
+
+    const result = await service.copyFile(10, 20, 'copy.txt', 1, { id: 1 });
+
+    expect(fileNodesStore.upsertCache).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ sourceNodeId: 10, copiedNodeId: 54 });
+  });
 });
 
 // ── copyFile — WebDAV mode ──────────────────────────────────────────

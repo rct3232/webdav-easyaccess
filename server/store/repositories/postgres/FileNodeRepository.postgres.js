@@ -40,7 +40,10 @@ module.exports = function createPostgresFileNodeRepository(executor) {
       try {
         // DEF-16 P4: live rows only — a trashed node is invisible to getNode.
         const { rows } = await executor.query(
-          'SELECT * FROM file_nodes WHERE id = $1 AND deleted_at IS NULL LIMIT 1',
+          `SELECT fn.*, fc.size, fc.mime_type
+           FROM file_nodes fn
+           LEFT JOIN filecache fc ON fc.file_node_id = fn.id
+           WHERE fn.id = $1 AND fn.deleted_at IS NULL LIMIT 1`,
           [Number(id)]
         );
         return mapNodeRow(rows[0]);
@@ -82,10 +85,12 @@ module.exports = function createPostgresFileNodeRepository(executor) {
     async getTrashChildren(parentId) {
       try {
         const { rows } = await executor.query(
-          `SELECT * FROM file_nodes
-           WHERE ${parentId == null ? 'parent_id IS NULL' : 'parent_id = $1'}
-             AND deleted_at IS NOT NULL
-           ORDER BY name`,
+          `SELECT fn.*, fc.size, fc.mime_type
+           FROM file_nodes fn
+           LEFT JOIN filecache fc ON fc.file_node_id = fn.id
+           WHERE ${parentId == null ? 'fn.parent_id IS NULL' : 'fn.parent_id = $1'}
+             AND fn.deleted_at IS NOT NULL
+           ORDER BY fn.name`,
           parentId != null ? [Number(parentId)] : []
         );
         return rows.map(mapNodeRow);
@@ -116,8 +121,10 @@ module.exports = function createPostgresFileNodeRepository(executor) {
           ? [String(Math.max(0, Number(olderThanDays)))]
           : [];
         const { rows } = await executor.query(
-          `SELECT fn.* FROM file_nodes fn
+          `SELECT fn.*, fc.size, fc.mime_type
+           FROM file_nodes fn
            LEFT JOIN file_nodes p ON p.id = fn.parent_id
+           LEFT JOIN filecache fc ON fc.file_node_id = fn.id
            WHERE fn.deleted_at IS NOT NULL
              AND (fn.parent_id IS NULL OR p.deleted_at IS NULL)${cutoff}
            ORDER BY fn.deleted_at DESC, fn.name`,

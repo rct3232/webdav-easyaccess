@@ -752,6 +752,37 @@ describe('FileNodeRepository conformance', () => {
     await expect(repo.getCache(node.id)).resolves.toBeNull();
   });
 
+  it('filecache join: getNode carries size/mimeType when a cache row exists', async () => {
+    const parent = await repo.createNode(null, uniqueName('fn-cachejoin-p'), 'directory');
+    const file = await repo.createNode(parent.id, uniqueName('fn-cachejoin-f'), 'file');
+    await repo.upsertCache(file.id, 4321, 'text/plain', null);
+
+    const fetched = await repo.getNode(file.id);
+    expect(fetched.size).toBe(4321);
+    expect(fetched.mimeType).toBe('text/plain');
+
+    const dir = await repo.getNode(parent.id);
+    expect(dir.size).toBeUndefined();
+    expect(dir.mimeType).toBeNull();
+  });
+
+  it('filecache join: trashed reads (getTrashChildren, getTopmostTrashedNodes) carry size', async () => {
+    const parent = await repo.createNode(null, uniqueName('fn-trashsize-p'), 'directory');
+    const file = await repo.createNode(parent.id, uniqueName('fn-trashsize-f'), 'file');
+    await repo.upsertCache(file.id, 9000, 'application/octet-stream', null);
+    await repo.markSubtreeDeleted([file.id]);
+
+    const trashChildren = await repo.getTrashChildren(parent.id);
+    expect(trashChildren).toHaveLength(1);
+    expect(trashChildren[0].size).toBe(9000);
+
+    const topmost = await repo.getTopmostTrashedNodes();
+    const top = topmost.find((n) => n.id === file.id);
+    expect(top).toBeDefined();
+    expect(top.size).toBe(9000);
+    expect(top.mimeType).toBe('application/octet-stream');
+  });
+
   it('getUserRootNode resolves the root node named after the username', async () => {
     const User = require('@server/models/User');
     const username = uniqueName('conf-fn-user');

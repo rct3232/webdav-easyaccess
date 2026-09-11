@@ -567,6 +567,26 @@ describe('POST /api/files/metadata', () => {
     expect(Array.isArray(res.body)).toBe(true);
   });
 
+  it('returns real filecache size/mime for files and null for cache-less rows', async () => {
+    const store = createFileNodesStore();
+    await store.upsertCache(testFileNodeId, 4321, 'text/plain', null);
+
+    const res = await request(app)
+      .post('/api/files/metadata')
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ nodeIds: [testFileNodeId, homeNodeId] });
+
+    expect(res.status).toBe(200);
+    const fileRow = res.body.find((r) => r.nodeId === testFileNodeId);
+    expect(fileRow).toBeDefined();
+    expect(fileRow.size).toBe(4321);
+    expect(fileRow.mime).toBe('text/plain');
+
+    const dirRow = res.body.find((r) => r.nodeId === homeNodeId);
+    expect(dirRow).toBeDefined();
+    expect(dirRow.size).toBeNull();
+  });
+
   it.skip('returns 200 with metadata when using X-Share-Token — requires Phase 5 shareLinkStore', async () => {
     // Share link creation requires shareLinkStore migration (Phase 5)
   });

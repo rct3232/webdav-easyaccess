@@ -116,9 +116,9 @@ router.post(
             nodeId: node.id,
             name: node.name,
             type: node.type,
-            size: null,
+            size: node.size ?? null,
             lastmod: node.updatedAt,
-            mime: null,
+            mime: node.mimeType ?? null,
           });
         }
       } catch (err) {

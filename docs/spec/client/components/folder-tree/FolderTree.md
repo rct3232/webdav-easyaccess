@@ -81,8 +81,9 @@
   sidebar column (footer block below the `flex: 1` tree area — not inside the `List`, no tree
   indent, no expansion/DnD). Covered by the same `(!shareLinkSection || user)` gating as the
   home/shared/recent sections (never rendered for anonymous share-link viewers).
-- Row content: `{휴지통 아이콘} 휴지통` (i18n `nav.trash`; two-part custom SVG trash icon with an
-  animated lid — see `TrashSidebarItem.md`).
+- Row content: `{휴지통 아이콘} 휴지통` (i18n `nav.trash`; MUI `Delete` subpath-split icon with an
+  animated lid — see `TrashSidebarItem.md`). No divider/border separates the pinned row from the
+  tree list above it.
 - Selected state: tree-row-selected styling when `currentPath === '/__trash__'` (any trash depth).
 - Click → `onNodeClick('/__trash__')` (in share-link mode the shared-scope routing sends it through
   the leave-share confirmation like the other non-share entries; after confirmation it navigates to

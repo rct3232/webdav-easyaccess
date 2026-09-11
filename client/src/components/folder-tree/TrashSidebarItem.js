@@ -28,8 +28,8 @@ const TrashSidebarIcon = ({ pulse }) => {
       aria-hidden="true"
       key={animating ? `trash-pulse-${pulse}` : 'trash-static'}
       sx={{
-        width: 22,
-        height: 22,
+        width: 20,
+        height: 20,
         display: 'block',
         ...(animating && {
           animation: 'trash-flash 1.2s ease 1',
@@ -51,13 +51,9 @@ const TrashSidebarIcon = ({ pulse }) => {
         }),
       }}
     >
-      {/* Lid: hinge bar + handle (two subpaths, independently rotatable) */}
-      <path className="trash-lid" fill="currentColor" d="M4 5h16v1.8H4zM9.5 3h5v1.4h-5z" />
-      {/* Can body */}
-      <path
-        fill="currentColor"
-        d="M6.6 8.2h10.8l-.85 11.05a2 2 0 0 1-1.99 1.85H9.44a2 2 0 0 1-1.99-1.85L6.6 8.2z"
-      />
+      {/* MUI Delete subpath split: lid (independently rotatable) + can body. */}
+      <path className="trash-lid" fill="currentColor" d="M19 4h-3.5l-1-1h-5l-1 1H5v2h14z" />
+      <path fill="currentColor" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6z" />
     </Box>
   );
 };

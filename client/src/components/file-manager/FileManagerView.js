@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Box,
@@ -121,6 +121,8 @@ const FileManagerView = ({
     setSearchQuery,
   } = controlsState;
   const isTrashView = trashMode === true || currentPath === '/__trash__';
+  // FAB가 자신의 실제 표시 여부를 보고(single source of truth) — 검색창 확장 트리거로 사용
+  const [fabPresent, setFabPresent] = useState(false);
   const { displayedFiles, loading, processingMap, handleThumbnailsLoaded, loadMoreRef, hasMore } =
     listingState;
   const { selectionModel, bulkState } = selectionState;
@@ -891,7 +893,7 @@ const FileManagerView = ({
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
           isMobile={isMobile}
-          fabVisible={!selectionMode}
+          fabVisible={fabPresent}
         />
       )}
 
@@ -904,6 +906,7 @@ const FileManagerView = ({
               onAddToSharedClick: openAddToSharedModal,
             }}
             isMobile={isMobile}
+            onVisibilityChange={setFabPresent}
           />
         ) : (
           <FAB
@@ -911,6 +914,7 @@ const FileManagerView = ({
             onCreateFolder={openCreateFolderDialog}
             hasWritePermission={hasWritePermission}
             isMobile={isMobile}
+            onVisibilityChange={setFabPresent}
           />
         ))}
 

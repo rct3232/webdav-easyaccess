@@ -27,12 +27,9 @@ This document lists all REST API endpoints. The server serves under the `/api` p
 
 | Method | Path                         | Auth          | Description                                                                                            |
 | ------ | ---------------------------- | ------------- | ------------------------------------------------------------------------------------------------------ |
-| GET    | `/api/users`                 | Token         | List users (e.g. for share dialogs).                                                                   |
 | GET    | `/api/users/approved`        | Token         | List approved users.                                                                                   |
-| GET    | `/api/users/:id`             | Token         | Get user by id.                                                                                        |
 | PUT    | `/api/users/:id/password`    | Token         | Change password (body: `password` — new password only).                                                |
 | PUT    | `/api/users/:id/email`       | Token         | Update email.                                                                                          |
-| PUT    | `/api/users/:id/permissions` | Token + Admin | Set user folder permissions (admin only). Body: `permissions` (array of `{ folderPath, permission }`). |
 
 ---
 
@@ -157,8 +154,6 @@ These routes are for accessing shared files via a public link (token in path). A
 | Method | Path               | Auth | Description                                                                                                                                                                           |
 | ------ | ------------------ | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET    | `/api/health`      | None | Health check. Response: `{ status: "ok", messageCode, activeFileStorage, backends: { postgresql, s3, webdav } }` (status strings only; `activeFileStorage` = effective file backend). |
-| GET    | `/api/webdav/test` | None | Test WebDAV connection.                                                                                                                                                               |
-| GET    | `/api/webdav/info` | None | WebDAV URL info (e.g. for UI).                                                                                                                                                        |
 
 ---
 
@@ -184,11 +179,8 @@ Spec: `docs/spec/server/routes/config.md`, `docs/spec/server/routes/health.md`.
 | POST | `/api/admin/users/:id/approve` | Token + Admin | Approve signup. |
 | POST | `/api/admin/users/:id/reject` | Token + Admin | Reject signup. |
 | DELETE | `/api/admin/users/:id` | Token + Admin | Delete user. |
-| GET | `/api/admin/folders/list` | Token + Admin | List folders for permission management. Query: `path` (optional, default `/`). |
-| PUT | `/api/admin/users/:id/permissions` | Token + Admin | Set user folder permissions. |
 | POST | `/api/admin/permissions/ensure-home-owner-admin` | Token + Admin | Ensure home folder owner has admin; remove redundant self-grants on users' own subtrees. |
 | POST | `/api/admin/cleanup/orphaned` | Token + Admin | Clean orphaned metadata. Also runs one GC cycle, reports `orphaned_node` status, and reports stuck `pending_upload` nodes (`pendingUploadNodes`, S3 mode). |
-| POST | `/api/admin/maintenance/gc` | Token + Admin | Run one garbage-collection cycle (orphaned blob cleanup). |
 | POST | `/api/admin/maintenance/repair-sync` | Token + Admin | Resolve a stuck node. `orphaned_node`: `{ nodeId, action: 'retry-delete' \| 'force-active' }` — WebDAV mode: remote subtree delete / remote-existence 409. `pending_upload` (S3 mode only): `{ nodeId, action: 'complete' \| 'restore-previous' \| 'delete' \| 'auto' }`; 409 refusals per `admin.md` §2.4. |
 | DELETE | `/api/admin/maintenance/perm-delete` | Token + Admin | Permanently delete one node (hard delete; bypasses the trash — maintenance/E2E-companion channel). Body: `{ nodeId }`. WebDAV mode cleans the remote first (display-path bottom-up for a live node, `/.wea-trash/<nodeId>` for a trashed one); DB removal cascades to object_map/filecache/closure/permissions/shares/recent rows. |
 | GET | `/api/admin/migration/info` | Token + Admin | Get migration info: `{ source: 'webdav' \| 's3', direction: 'webdav-to-s3' \| 's3-to-webdav' }`. Direction derived from `WEA_FILE_STORAGE`. |

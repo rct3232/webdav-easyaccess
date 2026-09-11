@@ -63,7 +63,7 @@ real byte count for files, null for directories and cache-less rows) plus `delet
 `displayPath` (original path — path resolution is trash-aware, so a trashed subtree root resolves
 its full pre-trash path). **Hierarchical navigation:** WITHOUT `parentId` the route returns only the
 TOPMOST trashed rows (deleted_at ≠ NULL AND the parent is live-or-NULL — never the full flat
-subtree list; `getTrashedNodes` stays a GC/empty internal). With `parentId` = an existing node id
+subtree list; the former flat `getTrashedNodes` enumeration was retired — topmost + hierarchical reads cover the GC/empty paths). With `parentId` = an existing node id
 (404 `files.notFound` when unknown), the route returns that node's trashed children
 (`getTrashChildren`) — the trash view navigates into trashed folders. `limit` (default 50, capped
 at 200) / `offset` query params paginate the caller-visible set; `total` is the caller-visible

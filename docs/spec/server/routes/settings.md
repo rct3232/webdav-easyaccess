@@ -4,7 +4,7 @@
 
 | Item       | Description                                                                                                                |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Mount path | `/api/settings` (public) and `/api/admin` (admin routes, same router)                                                      |
+| Mount path | `/api/admin` (admin settings router) and `/api/settings` (public router only)                                              |
 | Role       | Public settings (`registration_enabled`, `email_enabled`, `setup_complete`) — no auth; admin settings GET/PUT — admin auth |
 
 ---
@@ -13,16 +13,20 @@
 
 ### 2.1 File Path
 
-- **Source:** `server/domains/admin/routes/settings.js` (merged into admin domain)
+- **Source:** `server/domains/admin/routes/settings.js` (merged into admin domain; exports the
+  admin settings router plus a `publicRouter` named export). The file exports two routers so
+  each is mounted under a single prefix — mounting one router on both prefixes created bogus
+  aliases (`/api/settings/settings`, `/api/admin/public`) which were retired in the dead-code
+  cleanup.
 - **Test file:** `server/domains/admin/routes/__tests__/settings.test.js`
 
 ### 2.2 Route List
 
-| Method | Path              | Auth          | Description                                                |
-| ------ | ----------------- | ------------- | ---------------------------------------------------------- |
-| GET    | `/public`         | None          | Public settings.                                           |
-| GET    | `/admin/settings` | Token + Admin | Get all system settings.                                   |
-| PUT    | `/admin/settings` | Token + Admin | Update system settings (currently `registration_enabled`). |
+| Method | Path                        | Mount       | Auth          | Description                                                |
+| ------ | --------------------------- | ----------- | ------------- | ---------------------------------------------------------- |
+| GET    | `/api/settings/public`      | publicRouter | None          | Public settings.                                           |
+| GET    | `/api/admin/settings`       | router      | Token + Admin | Get all system settings.                                   |
+| PUT    | `/api/admin/settings`       | router      | Token + Admin | Update system settings (currently `registration_enabled`). |
 
 ### 2.3 Middleware Used
 

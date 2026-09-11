@@ -119,10 +119,6 @@ async function runReconciliationLoop() {
   }
 }
 
-function getQueuedReconciliationCount() {
-  return queuedReconciliationPaths.size;
-}
-
 function __resetForTests() {
   existenceIndex.clear();
   queuedReconciliationPaths.clear();
@@ -135,6 +131,5 @@ module.exports = {
   makeUserPermissionsEtag,
   queueReconciliation,
   invalidateExistenceIndexForAclMutation,
-  getQueuedReconciliationCount,
   __resetForTests,
 };

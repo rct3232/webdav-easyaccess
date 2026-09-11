@@ -960,7 +960,6 @@ describe('gating middleware (503 migrationInProgress)', () => {
     ['get', '/api/settings/public'],
     ['get', '/api/files/anything'],
     ['get', '/api/folders/1'],
-    ['get', '/api/webdav/anything'],
   ];
 
   it('gate inactive -> all routes proceed (no 503)', async () => {

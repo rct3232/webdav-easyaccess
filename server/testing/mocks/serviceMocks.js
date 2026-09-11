@@ -38,8 +38,6 @@ function createAclServiceMock(overrides = {}) {
     checkFilePermission: jest.fn().mockResolvedValue(true),
     checkFolderPermission: jest.fn().mockResolvedValue(true),
     checkPermission: jest.fn().mockResolvedValue(true),
-    canWriteFolder: jest.fn().mockReturnValue(true),
-    canWriteFile: jest.fn().mockReturnValue(true),
     isSharePrincipal: jest.fn().mockReturnValue(false),
     isAdminUser: jest.fn().mockReturnValue(false),
   };
@@ -54,7 +52,6 @@ function createBlobStorageServiceMock(overrides = {}) {
     uploadToWebdav: jest.fn().mockResolvedValue(true),
     prepareUpload: jest.fn().mockResolvedValue({ s3Key: 'key-1' }),
     completeUpload: jest.fn().mockResolvedValue(true),
-    deleteBlob: jest.fn().mockResolvedValue(true),
     getActiveS3Key: jest.fn().mockResolvedValue('key-1'),
     duplicateBlob: jest.fn().mockResolvedValue('key-copy'),
     linkObject: jest.fn().mockResolvedValue(true),

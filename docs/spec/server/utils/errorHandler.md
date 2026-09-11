@@ -26,7 +26,6 @@
 | createError         | (errorCode, status?, params?) => Error | Create error with errorCode                                  |
 | mapDatabaseError    | (error, options?) => Error             | Maps PostgreSQL/DB errors to standardized status + errorCode |
 | validationError     | (errorCode, params?) => Error          | Validation error (400)                                       |
-| unauthorizedError   | (errorCode?, params?) => Error         | Unauthorized (401)                                           |
 | forbiddenError      | (errorCode?, params?) => Error         | Forbidden (403)                                              |
 | notFoundError       | (errorCode?, params?) => Error         | Not found (404)                                              |
 | conflictError       | (errorCode?, params?) => Error         | Conflict (409)                                               |
@@ -63,4 +62,4 @@
 - [ ] formatErrorResponse: errorCode, params, details (dev only)
 - [ ] mapDatabaseError maps SQLSTATE codes to expected status/errorCode
 - [ ] mapDatabaseError preserves existing app errors with predefined `status` + `errorCode`
-- [ ] createError, validationError, unauthorizedError, forbiddenError, notFoundError, conflictError
+- [ ] createError, validationError, forbiddenError, notFoundError, conflictError

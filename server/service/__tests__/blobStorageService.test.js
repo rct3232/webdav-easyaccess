@@ -327,39 +327,6 @@ describe('createBlobStorageService', () => {
   });
 
   /* ------------------------------------------------------------------ */
-  /*  deleteBlob                                                         */
-  /* ------------------------------------------------------------------ */
-
-  describe('deleteBlob', () => {
-    // V9: deleteBlob marks active object as orphaned (no S3 deletion)
-    it('marks the active s3_key as orphaned without deleting from blobStore', async () => {
-      const node = await fileNodesStore.createNode(null, 'del-blob-orphan-test', 'file');
-
-      const s3Key = await service.prepareUpload(node.id);
-      await blobStore.uploadBlob(s3Key, Buffer.from('should not be deleted'));
-      await service.completeUpload(s3Key, 20, 'text/plain');
-
-      await service.deleteBlob(node.id);
-
-      const orphanedRow = await dbQuery(`SELECT status FROM object_map WHERE s3_key = ?`, [s3Key]);
-      expect(orphanedRow.rows[0].status).toBe('orphaned');
-
-      expect(await fileNodesStore.getActiveObject(node.id)).toBeNull();
-
-      await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
-    });
-
-    // V10: deleteBlob with no active object is a no-op (no error)
-    it('is a no-op when there is no active object for the file node', async () => {
-      const node = await fileNodesStore.createNode(null, 'del-blob-no-active-test', 'file');
-
-      await expect(service.deleteBlob(node.id)).resolves.not.toThrow();
-
-      await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
-    });
-  });
-
-  /* ------------------------------------------------------------------ */
   /*  getActiveS3Key                                                     */
   /* ------------------------------------------------------------------ */
 
@@ -460,25 +427,6 @@ describe('createBlobStorageService', () => {
       await svc.overwriteBlob(1, buf);
 
       expect(mockBlobStore.uploadBlob).toHaveBeenCalledWith('/path/file.txt', buf);
-    });
-
-    it('deleteBlob resolves path and calls blobStore.deleteBlob(path)', async () => {
-      const mockBlobStore = {
-        uploadBlob: jest.fn(),
-        downloadBlob: jest.fn(),
-        deleteBlob: jest.fn(),
-      };
-      const mockFns = {
-        getNode: jest.fn().mockResolvedValue({ id: 1, name: 'test.txt' }),
-        getNodePath: jest.fn().mockResolvedValue('/path/file.txt'),
-      };
-      const svc = createWebdavService(mockFns, mockBlobStore);
-
-      await svc.deleteBlob(1);
-
-      expect(mockFns.getNode).toHaveBeenCalledWith(1);
-      expect(mockFns.getNodePath).toHaveBeenCalledWith(1);
-      expect(mockBlobStore.deleteBlob).toHaveBeenCalledWith('/path/file.txt');
     });
 
     it('getActiveS3Key returns null in WebDAV mode', async () => {

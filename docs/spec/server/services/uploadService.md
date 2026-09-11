@@ -21,8 +21,7 @@
 function createUploadService({ fileNodeService, blobStorageService, blobStore, fileNodesStore }) {
   return {
     uploadFile(parentNodeId, name, buffer, mimeType),
-    overwriteFile(fileNodeId, buffer, mimeType),
-    downloadFile(fileNodeId)
+    overwriteFile(fileNodeId, buffer, mimeType)
   };
 }
 ```
@@ -87,16 +86,6 @@ re-thrown. The last-good blob B_k is never deleted, so after a failed overwrite 
 downloadable as the previous version. If the pre-state row was not found (no active row existed
 before TX1), the rollback skips reactivation and still cleans the pending row/blob (best-effort;
 any residual state is handled by scan/repair and GC cleanup — see §2.5).
-
-#### `downloadFile(fileNodeId)`
-
-Downloads file content through blobStorageService (pass-through).
-
-| Param      | Type   | Required | Description                     |
-| ---------- | ------ | -------- | ------------------------------- |
-| fileNodeId | number | yes      | ID of the file node to download |
-
-**Returns:** Buffer \| null
 
 ### 2.4 Dependencies
 
@@ -192,8 +181,6 @@ same list as the additive `pendingUploadNodes` result key.
 - [ ] overwriteFile TX1 failure: ROLLBACK preserves original state entirely
 - [ ] overwriteFile S3 PUT failure → rolled back: previous active object*map row reactivated, node `sync_status='active'`, pending v*{k+1} row deleted, pending blob deleted, file downloadable as previous version, original error propagated
 - [ ] overwriteFile TX2 failure → rolled back: same pre-state restoration (including filecache re-assert), new blob deleted, last-good blob B_k untouched, error propagated
-- [ ] downloadFile returns buffer matching uploaded content
-- [ ] downloadFile for non-existent node returns null
 - [ ] scan classifies overwrite residue (history/legacy-orphaned v*k + pending v*{k+1}) as `overwrite` and new-file residue (pending row only / no row) as `new-file`; directories are never reported
 - [ ] repair `complete`: pending row activated, node `active`, filecache populated from blob HEAD metadata
 - [ ] repair `restore-previous`: last-good history (or legacy orphaned) row reactivated, pending row deleted, pending blob deleted, node `active`, last-good blob kept and downloadable

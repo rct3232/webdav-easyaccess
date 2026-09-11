@@ -34,7 +34,7 @@ const {
   getThumbnailHash,
   signThumbnailToken,
   verifyThumbnailToken,
-  getThumbnailFromCache,
+  getCachedThumbnail,
   ensureThumbnail,
   setCachedThumbnail,
   setCacheAdapter,
@@ -113,14 +113,14 @@ describe('thumbnail utilities', () => {
   });
 
   describe('thumbnail cache set/get/eviction via public API', () => {
-    it('getThumbnailFromCache returns null for missing key', () => {
-      expect(getThumbnailFromCache(999)).toBeNull();
+    it('getCachedThumbnail returns null for missing key', () => {
+      expect(getCachedThumbnail(999)).toBeNull();
     });
 
     it('stores and retrieves a cache entry with correct structure', () => {
       const buf = Buffer.from('data');
       setCachedThumbnail(5, buf, 'jpg');
-      const cached = getThumbnailFromCache(5);
+      const cached = getCachedThumbnail(5);
       expect(cached).not.toBeNull();
       expect(cached.buffer).toBe(buf);
       expect(cached.extension).toBe('jpg');
@@ -130,7 +130,7 @@ describe('thumbnail utilities', () => {
     it('stores png entries with correct mime type', () => {
       const buf = Buffer.from('data');
       setCachedThumbnail(6, buf, 'png');
-      const cached = getThumbnailFromCache(6);
+      const cached = getCachedThumbnail(6);
       expect(cached.mimeType).toBe('image/png');
       expect(cached.extension).toBe('png');
     });
@@ -139,14 +139,14 @@ describe('thumbnail utilities', () => {
       for (let i = 0; i < MAX_CACHE_SIZE + 1; i++) {
         setCachedThumbnail(i, Buffer.from(String(i)), 'jpg');
       }
-      expect(getThumbnailFromCache(0)).toBeNull();
-      expect(getThumbnailFromCache(MAX_CACHE_SIZE)).not.toBeNull();
+      expect(getCachedThumbnail(0)).toBeNull();
+      expect(getCachedThumbnail(MAX_CACHE_SIZE)).not.toBeNull();
     });
 
     it('setCachedThumbnail stores {buffer, mimeType, extension}', () => {
       const buf = Buffer.from('data');
       setCachedThumbnail(8, buf, 'jpg');
-      const cached = getThumbnailFromCache(8);
+      const cached = getCachedThumbnail(8);
       expect(cached).not.toBeNull();
       expect(cached.buffer).toBe(buf);
       expect(cached.extension).toBe('jpg');
@@ -155,15 +155,15 @@ describe('thumbnail utilities', () => {
 
     it('invalidate evicts the entry for the node (overwrite/restore hook)', () => {
       setCachedThumbnail(9, Buffer.from('stale'), 'jpg');
-      expect(getThumbnailFromCache(9)).not.toBeNull();
+      expect(getCachedThumbnail(9)).not.toBeNull();
 
       invalidate(9);
-      expect(getThumbnailFromCache(9)).toBeNull();
+      expect(getCachedThumbnail(9)).toBeNull();
     });
 
     it('invalidate is a safe no-op for a node without a cached entry', () => {
       expect(() => invalidate(424242)).not.toThrow();
-      expect(getThumbnailFromCache(424242)).toBeNull();
+      expect(getCachedThumbnail(424242)).toBeNull();
     });
   });
 
@@ -199,7 +199,7 @@ describe('thumbnail utilities', () => {
       expect(mockDownloadBlob).toHaveBeenCalledWith(nodeId);
       expect(isImageFile).toHaveBeenCalledWith('photo.png');
       expect(result).toContain(`/${getThumbnailHash(nodeId)}.`);
-      expect(getThumbnailFromCache(nodeId)).not.toBeNull();
+      expect(getCachedThumbnail(nodeId)).not.toBeNull();
     });
   });
 

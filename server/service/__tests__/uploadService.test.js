@@ -396,48 +396,4 @@ describe('createUploadService', () => {
     });
   });
 
-  /* ------------------------------------------------------------------ */
-  /*  V7: downloadFile success                                          */
-  /* ------------------------------------------------------------------ */
-
-  describe('downloadFile', () => {
-    it('returns buffer matching uploaded content', async () => {
-      const content = Buffer.from('downloadable-content-for-verification');
-      const mimeType = 'text/plain';
-
-      const uploadResult = await uploadSvc.uploadFile(null, 'download-test.txt', content, mimeType);
-
-      const downloaded = await uploadSvc.downloadFile(uploadResult.nodeId);
-
-      expect(downloaded).not.toBeNull();
-      expect(Buffer.compare(downloaded, content)).toBe(0);
-
-      await dbRun('DELETE FROM file_nodes WHERE id = ?', [uploadResult.nodeId]);
-    });
-  });
-
-  /* ------------------------------------------------------------------ */
-  /*  V8: downloadFile non-existent node                                */
-  /* ------------------------------------------------------------------ */
-
-  describe('downloadFile non-existent', () => {
-    it('returns null for a node with no active object', async () => {
-      const content = Buffer.from('temp-content');
-      const uploadResult = await uploadSvc.uploadFile(
-        null,
-        'null-download.txt',
-        content,
-        'text/plain'
-      );
-
-      // Delete the active object to simulate non-existent blob
-      await dbRun('DELETE FROM object_map WHERE file_node_id = ?', [uploadResult.nodeId]);
-      await dbRun('DELETE FROM filecache WHERE file_node_id = ?', [uploadResult.nodeId]);
-
-      const downloaded = await uploadSvc.downloadFile(uploadResult.nodeId);
-      expect(downloaded).toBeNull();
-
-      await dbRun('DELETE FROM file_nodes WHERE id = ?', [uploadResult.nodeId]);
-    });
-  });
 });

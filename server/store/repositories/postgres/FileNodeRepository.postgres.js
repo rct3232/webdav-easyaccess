@@ -99,19 +99,6 @@ module.exports = function createPostgresFileNodeRepository(executor) {
       }
     },
 
-    async getTrashedNodes() {
-      try {
-        const { rows } = await executor.query(
-          `SELECT * FROM file_nodes
-           WHERE deleted_at IS NOT NULL
-           ORDER BY deleted_at DESC, name`
-        );
-        return rows.map(mapNodeRow);
-      } catch (error) {
-        throw mapDatabaseError(error);
-      }
-    },
-
     async getTopmostTrashedNodes(olderThanDays) {
       try {
         const cutoff = Number.isFinite(Number(olderThanDays))
@@ -265,20 +252,6 @@ module.exports = function createPostgresFileNodeRepository(executor) {
         const res = await executor.run(
           `DELETE FROM node_ancestors WHERE descendant_id IN (${placeholders})`,
           descendantIds.map(Number)
-        );
-        return { changes: res.changes };
-      } catch (error) {
-        throw mapDatabaseError(error);
-      }
-    },
-
-    async deleteAncestorByAncestor(ancestorIds) {
-      if (!ancestorIds || ancestorIds.length === 0) return { changes: 0 };
-      try {
-        const placeholders = buildInPlaceholders(ancestorIds.length);
-        const res = await executor.run(
-          `DELETE FROM node_ancestors WHERE ancestor_id IN (${placeholders})`,
-          ancestorIds.map(Number)
         );
         return { changes: res.changes };
       } catch (error) {
@@ -561,32 +534,6 @@ module.exports = function createPostgresFileNodeRepository(executor) {
       }
     },
 
-    async getOrphanedObjects(olderThanDays) {
-      const days = Math.max(0, Number(olderThanDays) || 0);
-      try {
-        const { rows } = await executor.query(
-          `SELECT * FROM object_map
-           WHERE status = 'orphaned'
-             AND created_at < NOW() - ($1 || ' days')::interval`,
-          [String(days)]
-        );
-        return rows;
-      } catch (error) {
-        throw mapDatabaseError(error);
-      }
-    },
-
-    async getAllActiveS3Keys() {
-      try {
-        const { rows } = await executor.query(
-          `SELECT s3_key FROM object_map WHERE status = 'active' AND s3_key IS NOT NULL`
-        );
-        return rows.map((r) => String(r.s3_key));
-      } catch (error) {
-        throw mapDatabaseError(error);
-      }
-    },
-
     async getKeptS3Keys() {
       try {
         const { rows } = await executor.query(
@@ -708,15 +655,5 @@ module.exports = function createPostgresFileNodeRepository(executor) {
       }
     },
 
-    async deleteCache(fileNodeId) {
-      try {
-        const res = await executor.run('DELETE FROM filecache WHERE file_node_id = $1', [
-          Number(fileNodeId),
-        ]);
-        return { changes: res.changes };
-      } catch (error) {
-        throw mapDatabaseError(error);
-      }
-    },
   };
 };

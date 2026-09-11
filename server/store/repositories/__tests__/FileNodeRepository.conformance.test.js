@@ -144,20 +144,12 @@ describe('FileNodeRepository conformance', () => {
     await repo.orphanObject(s3Key);
     expect(await repo.countActiveObjectsByS3Key(s3Key)).toBe(0);
 
-    // Age the row explicitly (sqlite timestamps are second-granular; a freshly
-    // inserted row is not reliably "older than now").
-    const { dbRun } = require('@server/test-utils');
-    await dbRun('UPDATE object_map SET created_at = ? WHERE s3_key = ?', [
-      new Date(Date.now() - 5 * 86400_000).toISOString(),
+    const { dbQuery } = require('@server/test-utils');
+    const orphanRows = await dbQuery('SELECT id, status FROM object_map WHERE s3_key = ?', [
       s3Key,
     ]);
-
-    const orphaned = await repo.getOrphanedObjects(0);
-    expect(orphaned.some((r) => r.s3_key === s3Key)).toBe(true);
-    expect(await repo.getAllActiveS3Keys()).not.toContain(s3Key);
-
-    const row = orphaned.find((r) => r.s3_key === s3Key);
-    const del = await repo.deleteObjectMapRows([row.id]);
+    expect(orphanRows.rows[0].status).toBe('orphaned');
+    const del = await repo.deleteObjectMapRows([orphanRows.rows[0].id]);
     expect(del.changes).toBe(1);
   });
 
@@ -264,7 +256,7 @@ describe('FileNodeRepository conformance', () => {
     expect(rootTrash.map((n) => n.id)).not.toContain(trashed.id);
   });
 
-  it('A13: getTrashChildren(null) returns trashed root-level rows and getTrashedNodes enumerates every trashed row', async () => {
+  it('A13: getTrashChildren(null) returns trashed root-level rows only', async () => {
     const rootA = await repo.createNode(null, uniqueName('fn-tr-a'), 'directory');
     const rootB = await repo.createNode(null, uniqueName('fn-tr-b'), 'file');
     const nested = await repo.createNode(rootA.id, uniqueName('fn-tr-nested'), 'file');
@@ -276,13 +268,7 @@ describe('FileNodeRepository conformance', () => {
     expect(rootTrashIds).toContain(rootA.id);
     expect(rootTrashIds).toContain(rootB.id);
     expect(rootTrashIds).not.toContain(nested.id); // nested ≠ root level
-
-    const all = await repo.getTrashedNodes();
-    const allIds = all.map((n) => n.id);
-    for (const id of [rootA.id, rootB.id, nested.id]) {
-      expect(allIds).toContain(id);
-    }
-    expect(all.every((n) => n.deletedAt != null)).toBe(true);
+    expect(rootTrash.every((n) => n.deletedAt != null)).toBe(true);
   });
 
   it('A13: getTopmostTrashedNodes returns only topmost trashed rows (parent live-or-NULL) and honors the optional age cutoff', async () => {
@@ -735,7 +721,7 @@ describe('FileNodeRepository conformance', () => {
     expect(scoped).toHaveLength(2);
   });
 
-  it('filecache: upsert insert/update, get, delete', async () => {
+  it('filecache: upsert insert/update, get', async () => {
     const node = await repo.createNode(null, uniqueName('fn-cache'), 'file');
 
     await repo.upsertCache(node.id, 100, 'text/plain', 'hash-1');
@@ -746,10 +732,6 @@ describe('FileNodeRepository conformance', () => {
     await repo.upsertCache(node.id, 200, 'text/html', 'hash-2');
     cache = await repo.getCache(node.id);
     expect(Number(cache.size)).toBe(200);
-
-    const del = await repo.deleteCache(node.id);
-    expect(del.changes).toBe(1);
-    await expect(repo.getCache(node.id)).resolves.toBeNull();
   });
 
   it('filecache join: getNode carries size/mimeType when a cache row exists', async () => {

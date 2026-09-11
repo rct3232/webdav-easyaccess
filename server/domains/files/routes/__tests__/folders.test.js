@@ -63,7 +63,6 @@ beforeEach(() => {
   webdavMock.createDirectory.mockResolvedValue(undefined);
   webdavMock.createDirectory.mockClear();
   webdavMock.ensureDirectoryExists.mockClear();
-  webdavMock.getRecursiveFolderStats.mockResolvedValue({ fileCount: 5, totalSize: 1200 });
 });
 
 afterEach(() => {

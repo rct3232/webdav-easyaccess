@@ -153,7 +153,6 @@ describe('createGcService', () => {
       });
 
       const failingStore = {
-        getOrphanedObjects: fileNodesStore.getOrphanedObjects.bind(fileNodesStore),
         deleteObjectMapRows: jest.fn(() => Promise.reject(new Error('boom'))),
       };
       const failingGc = createGcService({

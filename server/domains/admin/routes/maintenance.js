@@ -18,28 +18,6 @@ const isAdmin = asyncHandler(async (req, res, next) => {
   next();
 });
 
-// Get folder list for admin (single level)
-router.get(
-  '/folders/list',
-  authenticateToken,
-  isAdmin,
-  asyncHandler(async (req, res) => {
-    const { listDirectory } = require('../../../utils/webdav');
-    const path = req.query.path || '/';
-
-    const items = await listDirectory(path);
-    const folders = items
-      .filter((item) => item.type === 'directory')
-      .map((item) => ({
-        path: item.filename || item.basename,
-        name: item.basename || item.name,
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-
-    res.json(folders);
-  })
-);
-
 // Ensure home-owner admin for all users
 router.post(
   '/permissions/ensure-home-owner-admin',
@@ -62,22 +40,6 @@ router.post(
     const results = await cleanupOrphanedData();
     res.json({
       messageCode: SERVER_MESSAGE_CODES.admin.orphanCleanupDone,
-      results,
-    });
-  })
-);
-
-// Run one garbage-collection cycle (Tier 1 DB-driven + Tier 2 S3 reconciliation)
-router.post(
-  '/maintenance/gc',
-  authenticateToken,
-  isAdmin,
-  asyncHandler(async (req, res) => {
-    const { getComposition } = require('../../../service/composition');
-    const { gcService } = getComposition();
-    const results = await gcService.runGcCycle();
-    res.json({
-      messageCode: SERVER_MESSAGE_CODES.admin.gcDone,
       results,
     });
   })

@@ -12,7 +12,7 @@
 
 ### 2.1 File Path
 
-- **Source:** `server/store/locks.js` is a **1-line re-export** of `server/infrastructure/lockManager.js` — that module holds the implementation (`acquireLock`/`withLock`, exports at lockManager.js:175-178)
+- **Source:** `server/infrastructure/lockManager.js` (the `server/store/locks.js` re-export shim and the `withLock()` helper were retired in the 2026-09 dead-code cleanup; consumers require `infrastructure/lockManager` directly)
 - **Test file:** `server/infrastructure/__tests__/lockManager.test.js`
 
 ### 2.2 Main Methods
@@ -20,7 +20,6 @@
 | Method      | Signature                                                       | Description                                                                                                                 |
 | ----------- | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | acquireLock | (lockName, options?) => Promise\<{ token, release }\>           | Acquire a lock row on the active DB backend. `postgresql`: stale-row cleanup then `INSERT ... ON CONFLICT (lock_name_hash) DO NOTHING`; `sqlite`: stale-row cleanup then INSERT-or-fail inside a transaction. Retries until the `waitMs` deadline, then throws `LOCK_TIMEOUT`. |
-| withLock    | (lockName, fn, options?) => Promise\<T\>                        | Acquire, run fn, release in `finally` for both success and error paths.                                                     |
 
 ### 2.3 Options
 
@@ -54,7 +53,6 @@ Locks are **DB rows in a `locks` table** — there is no lock-file (`lockPath`) 
 - [ ] acquireLock returns release function
 - [ ] Stale lock (expired) → delete and retry
 - [ ] waitMs exceeded → LOCK_TIMEOUT error
-- [ ] withLock runs fn and releases on success and on throw
 - [ ] release checks token ownership before delete
 - [ ] release 재호출 시 안전 동작(no-op)
 - [ ] postgresql: stale row cleanup (`expires_at < now`) runs before insert retry
@@ -64,4 +62,3 @@ Locks are **DB rows in a `locks` table** — there is no lock-file (`lockPath`) 
 ### 2.7 Edge Cases
 
 - release() 호출 후 재호출: no-op (`released` 가드, lockManager.js:24-28); 소유자 토큰 불일치 시 해당 행은 삭제되지 않음
-- withLock 내부에서 동일 lockName으로 withLock 재호출: deadlock 가능; 지원 안 함. 문서화만.

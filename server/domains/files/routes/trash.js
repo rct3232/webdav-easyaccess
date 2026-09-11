@@ -44,7 +44,7 @@ function requireTokenNotShare(req, res, next) {
  *
  * Hierarchical navigation: WITHOUT `parentId` only the TOPMOST trashed rows
  * are returned (deleted_at ≠ NULL AND parent live-or-NULL — never the flat
- * full list; getTrashedNodes stays a GC/empty internal). With `parentId` the
+ * full list; the former flat getTrashedNodes enumeration was retired). With `parentId` the
  * route returns that node's trashed children (getTrashChildren), so the trash
  * view can navigate into trashed folders. limit/offset paginate the
  * caller-visible set (default window 50, capped at 200).

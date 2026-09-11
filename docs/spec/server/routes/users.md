@@ -5,7 +5,7 @@
 | Item       | Description                                                                           |
 | ---------- | ------------------------------------------------------------------------------------- |
 | Mount path | `/api/users`                                                                          |
-| Role       | User management: list, approved list, get by id, update password, email, permissions. |
+| Role       | User self-service: approved list, update own password/email.                          |
 
 ---
 
@@ -22,12 +22,9 @@
 
 | Method | Path               | Auth  | Description                                                                   |
 | ------ | ------------------ | ----- | ----------------------------------------------------------------------------- |
-| GET    | `/`                | Token | List users (for share dialogs).                                               |
 | GET    | `/approved`        | Token | List approved users.                                                          |
-| GET    | `/:id`             | Token | Get user by id.                                                               |
 | PUT    | `/:id/password`    | Token | Reset password. Body: `{ password }`. Self-only — changing another user's password returns 403. |
 | PUT    | `/:id/email`       | Token | Update email. Body: email.                                                    |
-| PUT    | `/:id/permissions` | Token | Update user's own permissions. Body: permissions.                             |
 
 ### 2.3 Middleware Used
 
@@ -35,12 +32,9 @@
 
 ### 2.4 Request/Response Spec
 
-- **GET /:** 200: user array
 - **GET /approved:** 200: approved user array
-- **GET /:id:** 200: user object. 404 if not found.
 - **PUT /:id/password:** Body: `{ password }` (single field; no `currentPassword`/`newPassword` pair). 200: `{ messageCode }`. **Self-only** (`parseInt(id) !== req.user.id` → 403 `permissionsMiddleware.accessDenied`, admin routes/users.js:55-57). A password change revokes all of the user's tokens via `revokeAllUserTokens` (userService.updatePassword, userService.js:257-262) — sessions are invalidated by token disposal.
 - **PUT /:id/email:** Body: `{ email }`. 200 or 204.
-- **PUT /:id/permissions:** Body: `{ permissions }`. 200 or 204.
 
 ### 2.5 Related Documents
 
@@ -48,7 +42,5 @@
 
 ### 2.6 Integration Test Scenarios
 
-- [ ] List users requires auth
 - [ ] Get approved users returns array
-- [ ] Get user by id returns user or 404
 - [ ] Update password, email require own user or admin

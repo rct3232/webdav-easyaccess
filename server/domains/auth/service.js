@@ -33,10 +33,6 @@ function _getRateLimitCache() {
   return _rateLimitCache;
 }
 
-function setRateLimitCacheAdapter(adapter) {
-  _rateLimitCache = adapter;
-}
-
 function getClientIp(req) {
   const xff = req.headers['x-forwarded-for'];
   if (typeof xff === 'string' && xff.trim()) {
@@ -277,7 +273,6 @@ function revokeAllUserTokens(userId) {
 }
 
 module.exports = {
-  setRateLimitCacheAdapter,
   registerUser,
   loginUser,
   refreshAccessToken,

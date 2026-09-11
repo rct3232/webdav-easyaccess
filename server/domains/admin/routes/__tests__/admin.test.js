@@ -110,11 +110,8 @@ describe('Route matrix: non-admin denied on every /api/admin/* route', () => {
     ['post', '/api/admin/users/1/approve'],
     ['post', '/api/admin/users/1/reject'],
     ['delete', '/api/admin/users/1'],
-    ['put', '/api/admin/users/1/permissions'],
-    ['get', '/api/admin/folders/list'],
     ['post', '/api/admin/permissions/ensure-home-owner-admin'],
     ['post', '/api/admin/cleanup/orphaned'],
-    ['post', '/api/admin/maintenance/gc'],
     ['post', '/api/admin/maintenance/repair-sync'],
     ['delete', '/api/admin/maintenance/perm-delete'],
   ];
@@ -339,50 +336,6 @@ describe('POST /api/admin/permissions/ensure-home-owner-admin', () => {
   });
 });
 
-describe('POST /api/admin/maintenance/gc', () => {
-  it('returns 403 when non-admin', async () => {
-    const { token } = await createAuthenticatedTestUser({
-      username: `nonadmin-gc-${Date.now()}`,
-      isAdmin: false,
-    });
-
-    const res = await request(app)
-      .post('/api/admin/maintenance/gc')
-      .set('Authorization', `Bearer ${token}`);
-
-    expect(res.status).toBe(403);
-    expect(res.body.errorCode).toBeDefined();
-  });
-
-  it('returns 200 with messageCode and two-tier results shape when admin', async () => {
-    const { token } = await createAuthenticatedTestUser({
-      username: `admin-gc-${Date.now()}`,
-      isAdmin: true,
-    });
-
-    const res = await request(app)
-      .post('/api/admin/maintenance/gc')
-      .set('Authorization', `Bearer ${token}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.messageCode).toBeDefined();
-    expect(res.body.results).toBeDefined();
-    expect(res.body.results.tier1).toMatchObject({
-      orphanedRows: expect.any(Number),
-      deletedBlobs: expect.any(Number),
-      deletedRows: expect.any(Number),
-      errors: expect.any(Array),
-    });
-    expect(res.body.results.tier2).toMatchObject({
-      scannedKeys: expect.any(Number),
-      untrackedKeys: expect.any(Number),
-      deletedKeys: expect.any(Number),
-      skipped: expect.any(Boolean),
-      errors: expect.any(Array),
-    });
-  });
-});
-
 describe('POST /api/admin/maintenance/repair-sync', () => {
   const { createFileNodesStore } = require('../../../../store/fileNodesStore');
 
@@ -469,130 +422,6 @@ describe('POST /api/admin/maintenance/repair-sync', () => {
     expect(res.status).toBe(200);
     expect(res.body.result).toMatchObject({ nodeId, action: 'retry-delete', status: 'resolved' });
     expect(await store.getNode(nodeId)).toBeNull();
-  });
-});
-
-describe('POST /api/admin/maintenance/gc (S3 mode): delete -> lazy blob -> GC reclaims it', () => {
-  let admin, homeNodeId;
-
-  beforeEach(jest.clearAllMocks);
-
-  beforeAll(async () => {
-    process.env.WEA_FILE_STORAGE = 's3';
-    wireS3Mock();
-    await useS3Mode();
-
-    admin = await createAuthenticatedTestUser({
-      username: `admin-gc-s3-${Date.now()}`,
-      isAdmin: true,
-    });
-    const fns = require('../../../../service/composition').getComposition().fileNodeService;
-    const homeDir = await fns.createDirectory(null, `admin-gc-s3-home-${Date.now()}`);
-    homeNodeId = homeDir.id;
-  });
-
-  afterAll(async () => {
-    process.env.WEA_FILE_STORAGE = 'webdav';
-    await useWebdavMode();
-  });
-
-  it('permanent delete reclaims the blob eagerly; a stray untracked blob goes to GC while the active control survives (M13)', async () => {
-    // Orphaned candidate: uploaded, then permanently deleted below. The
-    // ordinary `DELETE /api/files/delete` TRASHES since DEF-16 P2, so the
-    // chain is re-pointed at the admin perm-delete maintenance route. Since
-    // DEF-16 P3 the shared purge core deletes the subtree's S3 blobs EAGERLY
-    // (active + history + orphaned rows) instead of leaving them for the lazy
-    // GC sweep; Tier-2's untracked-blob reclaim is exercised with a directly
-    // placed stray blob while the active control must survive both.
-    const orphanUpload = await request(app)
-      .post('/api/files/upload')
-      .set('Authorization', `Bearer ${admin.token}`)
-      .field('parentNodeId', String(homeNodeId))
-      .attach('file', Buffer.from('gc-orphan content'), `gc-orphan-${Date.now()}.txt`);
-    expect(orphanUpload.status).toBe(200);
-    const orphanNodeId = orphanUpload.body.nodeId;
-
-    const orphanKeyRow = await dbQuery('SELECT s3_key FROM object_map WHERE file_node_id = ?', [
-      orphanNodeId,
-    ]);
-    expect(orphanKeyRow.rows).toHaveLength(1);
-    const orphanKey = orphanKeyRow.rows[0].s3_key;
-    expect(currentMockS3.getStore().has(orphanKey)).toBe(true);
-
-    // Active control: uploaded before the GC run; its blob must survive.
-    const activeContent = Buffer.from('gc-active-control-content');
-    const activeUpload = await request(app)
-      .post('/api/files/upload')
-      .set('Authorization', `Bearer ${admin.token}`)
-      .field('parentNodeId', String(homeNodeId))
-      .attach('file', activeContent, `gc-active-${Date.now()}.txt`);
-    expect(activeUpload.status).toBe(200);
-    const activeNodeId = activeUpload.body.nodeId;
-
-    const activeKeyRow = await dbQuery('SELECT s3_key FROM object_map WHERE file_node_id = ?', [
-      activeNodeId,
-    ]);
-    expect(activeKeyRow.rows).toHaveLength(1);
-    const activeKey = activeKeyRow.rows[0].s3_key;
-    expect(currentMockS3.getStore().has(activeKey)).toBe(true);
-
-    // Age both blobs past the orphan TTL so Tier-2 scans them as candidates.
-    const oldDate = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
-    for (const key of [orphanKey, activeKey]) {
-      currentMockS3.getStore().set(key, {
-        ...currentMockS3.getStore().get(key),
-        LastModified: oldDate,
-      });
-    }
-
-    const del = await request(app)
-      .delete('/api/admin/maintenance/perm-delete')
-      .set('Authorization', `Bearer ${admin.token}`)
-      .send({ nodeId: orphanNodeId });
-    expect(del.status).toBe(200);
-
-    // Shared purge core: the DB reference is gone (FK cascade) AND the
-    // physical blob is deleted eagerly (no lazy-GC residue).
-    const orphanMapAfter = await dbQuery('SELECT s3_key FROM object_map WHERE file_node_id = ?', [
-      orphanNodeId,
-    ]);
-    expect(orphanMapAfter.rows).toHaveLength(0);
-    expect(currentMockS3.getStore().has(orphanKey)).toBe(false);
-
-    // Stray untracked blob (no object_map row) aged past the orphan TTL —
-    // Tier-2 must reclaim it while the active control stays protected.
-    const strayKey = `stray-untracked-${Date.now()}`;
-    currentMockS3.getStore().set(strayKey, {
-      Body: Buffer.from('stray content'),
-      LastModified: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-    });
-
-    // GC run: Tier-2 must reclaim the untracked blob but keep the active one.
-    const gcRes = await request(app)
-      .post('/api/admin/maintenance/gc')
-      .set('Authorization', `Bearer ${admin.token}`);
-    expect(gcRes.status).toBe(200);
-    expect(gcRes.body.results.tier2.skipped).toBe(false);
-    expect(gcRes.body.results.tier2.untrackedKeys).toBeGreaterThanOrEqual(1);
-    expect(gcRes.body.results.tier2.deletedKeys).toBeGreaterThanOrEqual(1);
-
-    expect(currentMockS3.getStore().has(strayKey)).toBe(false);
-    expect(currentMockS3.getStore().has(orphanKey)).toBe(false);
-    expect(currentMockS3.getStore().has(activeKey)).toBe(true);
-
-    // The active control is still downloadable byte-for-byte with an intact row.
-    const activeDownload = await request(app)
-      .get('/api/files/download')
-      .set('Authorization', `Bearer ${admin.token}`)
-      .query({ nodeId: activeNodeId });
-    expect(activeDownload.status).toBe(200);
-    expect(Buffer.from(activeDownload.body).toString()).toBe('gc-active-control-content');
-
-    const activeRowAfter = await dbQuery('SELECT s3_key FROM object_map WHERE file_node_id = ?', [
-      activeNodeId,
-    ]);
-    expect(activeRowAfter.rows).toHaveLength(1);
-    expect(activeRowAfter.rows[0].s3_key).toBe(activeKey);
   });
 });
 

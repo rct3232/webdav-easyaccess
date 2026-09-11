@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const publicRouter = express.Router();
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const {
   SERVER_ERROR_CODES,
@@ -12,8 +13,9 @@ const { asyncHandler, createError } = require('../../../utils/errorHandler');
 const { isEmailEnabled } = require('../../../utils/email');
 const { computeSetupStatus } = require('../../../infrastructure/setupStatus');
 
-// Public settings endpoint (no authentication required)
-router.get(
+// Public settings endpoint (no authentication required); served under
+// /api/settings via the dedicated publicRouter mount only.
+publicRouter.get(
   '/public',
   asyncHandler(async (req, res) => {
     const registrationEnabled = await Settings.isRegistrationEnabled();
@@ -67,3 +69,4 @@ router.put(
 );
 
 module.exports = router;
+module.exports.publicRouter = publicRouter;

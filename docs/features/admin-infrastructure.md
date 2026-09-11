@@ -34,21 +34,18 @@ Administrators are users with `is_admin` set. Admin routes require a valid JWT a
 | Users            | `GET /api/admin/users/pending`, `GET /api/admin/users`, `POST /api/admin/users`                                                                            | Pending signups, list all users, add user.                                                                                                                      |
 | Approval         | `POST /api/admin/users/:id/approve`, `POST /api/admin/users/:id/reject`                                                                                    | Approve or reject signup; optional email (sendApprovalEmail, sendRejectionEmail).                                                                               |
 | User management  | `DELETE /api/admin/users/:id`                                                                                                                              | Delete user (cannot delete self or other admins).                                                                                                               |
-| Permissions      | `GET /api/admin/folders/list`, `PUT /api/admin/users/:id/permissions`                                                                                      | List folders for permission UI; set user folder permissions.                                                                                                    |
-| Cleanup          | `POST /api/admin/permissions/ensure-home-owner-admin`, `POST /api/admin/cleanup/orphaned`                                                                  | Ensure home owner has admin on home folder; remove redundant self-grants on users' own subtrees; clean orphaned metadata.                                       |
-| Maintenance (GC) | `POST /api/admin/maintenance/gc`, `POST /api/admin/maintenance/repair-sync`                                                                                | Run one orphaned-blob GC cycle; manually resolve `orphaned_node` rows.                                                                                          |
+| Cleanup          | `POST /api/admin/permissions/ensure-home-owner-admin`, `POST /api/admin/cleanup/orphaned`                                                                  | Ensure home owner has admin on home folder; remove redundant self-grants on users' own subtrees; clean orphaned metadata (also runs one GC cycle).             |
+| Maintenance      | `POST /api/admin/maintenance/repair-sync`                                                                                                                  | Manually resolve `orphaned_node`/`pending_upload` rows. GC runs via the `GC_INTERVAL_MS` scheduler and the orphan-cleanup route (manual `POST /api/admin/maintenance/gc` retired). |
 | Config           | `GET /api/admin/config`, `PUT /api/admin/config`, `POST /api/admin/config/test`, `GET /api/admin/config/sync-report`, `POST /api/admin/config/sync-from-env`, `GET /api/admin/health` | View/update the effective-config registry (env → DB → defaults, secrets masked); connection-test pending values; env↔DB config-sync report + reconcile; admin backend-health snapshot. Spec: `docs/spec/server/tools/config-sync.md`. |
 | Blob migration   | `GET /api/admin/migration/info`, `POST /api/admin/migration/blobs`, `GET /api/admin/migration/jobs/:jobId`, `POST /api/admin/migration/jobs/:jobId/cancel` | Fetch derived direction/source, start a bidirectional WebDAV ↔ S3 blob migration, poll its status, cancel it. Spec: `docs/spec/server/tools/blob-migration.md`. |
 
 See [api.md](../api.md) for exact methods, paths, and bodies.
 
-### Health and WebDAV diagnostics
+### Health diagnostics
 
 - **GET /api/health** — No auth. Returns e.g. `{ status: "ok", messageCode }`. Used for liveness/monitoring.
-- **GET /api/webdav/test** — No auth. Tests WebDAV connectivity.
-- **GET /api/webdav/info** — No auth. Returns WebDAV URL info (e.g. for UI display).
 
-These routes bypass the authenticated middleware chain (see `docs/ARCHITECTURE.md`).
+This route bypasses the authenticated middleware chain (see `docs/ARCHITECTURE.md`).
 
 ### Per-route middleware pipeline
 
@@ -59,7 +56,7 @@ Canonical middleware flow, middleware responsibilities, and route exclusions are
 - **Storage backend selection:** SQLite by default; the remote PostgreSQL backend is used when the remote DB credentials (`WEA_DB_HOST`, `WEA_DB_DATABASE`, `WEA_DB_USER`, `WEA_DB_PASSWORD`) are set (all four required together), with stable store interfaces across backends. `fs` and `webdav` metadata backends are removed (Phase 7).
 - **Canonical schema/constraints:** `server/store/postgresql/ddl/001_initial_normalized_schema.sql`.
 - **Canonical env/runtime parser:** `server/store/storage.js`.
-- **Locking contract:** `server/infrastructure/lockManager.js` (backend-specific lock implementation; feature-level guarantee is race-safe metadata writes). Supports PostgreSQL and SQLite lock strategies with TTL expiry and stale-lock cleanup. Exports `acquireLock()` and `withLock()`.
+- **Locking contract:** `server/infrastructure/lockManager.js` (backend-specific lock implementation; feature-level guarantee is race-safe metadata writes). Supports PostgreSQL and SQLite lock strategies with TTL expiry and stale-lock cleanup. Exports `acquireLock()`.
 - **Blob migration workflow:** bidirectional WebDAV ↔ S3 blob migration is available in-app (admin API `POST/GET/cancel /api/admin/migration/*` with a settings-tab "Storage migration" UI) and as a standalone CLI (`server/scripts/migrateBlobs.js`). Full spec: `docs/spec/server/tools/blob-migration.md`; service contract: `docs/spec/server/services/migrationService.md`.
 
 ### Infrastructure layer
@@ -67,7 +64,7 @@ Canonical middleware flow, middleware responsibilities, and route exclusions are
 Cross-cutting infrastructure modules reside in `server/infrastructure/`:
 
 - **Health routes** (`healthRoutes.js`): Unauthenticated `GET /api/health` endpoint for liveness probes. Mounted at `/api`.
-- **WebDAV diagnostic routes** (`webdavRoutes.js`): No-auth endpoints `GET /api/webdav/test` and `GET /api/webdav/info` for connectivity checks and URL display. Connection test logic is extracted to `webdavTest.js`.
+- **WebDAV connection test logic** (`webdavTest.js`): creates an ephemeral client and probes the root directory for boot/health/setup checks. The former no-auth diagnostic routes `webdavRoutes.js` (`GET /api/webdav/test`, `GET /api/webdav/info`) were retired as dead-code cleanup.
 - **Lock manager** (`lockManager.js`): Distributed lock abstraction supporting PostgreSQL and SQLite backends with retry, TTL expiry, and stale-lock cleanup.
 - **SQLite schema init** (`sqliteSchemaInit.js`): Converts PostgreSQL DDL to SQLite-compatible SQL for bootstrap when the SQLite backend is active (no remote DB keys set).
 
@@ -97,10 +94,9 @@ Reject flow: `POST /api/admin/users/:id/reject`; optional `sendRejectionEmail`.
 
 ### Admin: user permissions and cleanup
 
-- **Set permissions:** Admin calls `PUT /api/admin/users/:id/permissions` with body containing permission list; server revokes existing grants and applies the new permission set in the DB (`permissions_user_paths` / `permissions_user_files`).
 - **Ensure home owner admin:** `POST /api/admin/permissions/ensure-home-owner-admin` ensures each user’s home folder has that user as admin (e.g. after recovery), and removes redundant self-grants the user holds on their own subtree (a one-time reconciliation for data created before self-grants were removed).
 - **Orphan cleanup:** `POST /api/admin/cleanup/orphaned` removes orphaned metadata (e.g. permissions/shares pointing to missing paths); response includes result summary.
-- **Garbage collection:** `POST /api/admin/maintenance/gc` runs a two-tier GC cycle (DB-driven retention categories over orphaned `object_map` rows — `garbage`/`version` deleted after TTL, stuck-node last-good rows guarded, stale pending rows cleaned — then S3 blob delete; S3 `ListObjectsV2` reconciliation against the widened keep-set). Optionally scheduled via `GC_INTERVAL_MS`; thresholds via `GC_ORPHAN_TTL_DAYS`, `GC_VERSION_TTL_DAYS`, `GC_PENDING_STALE_DAYS`. Service contract: `docs/spec/server/services/gcService.md`.
+- **Garbage collection:** a two-tier GC cycle (DB-driven retention categories over orphaned `object_map` rows — `garbage`/`version` deleted after TTL, stuck-node last-good rows guarded, stale pending rows cleaned — then S3 blob delete; S3 `ListObjectsV2` reconciliation against the widened keep-set) runs on the `GC_INTERVAL_MS` scheduler and once per `POST /api/admin/cleanup/orphaned` call (the standalone `POST /api/admin/maintenance/gc` route was retired as dead code). Thresholds via `GC_ORPHAN_TTL_DAYS`, `GC_VERSION_TTL_DAYS`, `GC_PENDING_STALE_DAYS`. Service contract: `docs/spec/server/services/gcService.md`.
 - **Fail-safe recovery:** `POST /api/admin/maintenance/repair-sync` resolves stuck nodes. `orphaned_node` actions (`retry-delete`, `force-active`): in WebDAV mode `retry-delete` deletes the remote blob/file bottom-up over the node's subtree in addition to the DB rows, and `force-active` first verifies the remote file exists (409 refusal when absent). `pending_upload` actions (DEF-12/13, **S3 mode only** — WebDAV-mode file nodes intentionally stay `pending_upload`, so the scan returns an empty list and repair is refused there): `complete` (activate the pending blob row + filecache from blob HEAD metadata), `restore-previous` (reactivate the orphaned last-good row, delete the pending row/blob), `delete` (remove the node tree + pending blob), and `auto` (overwrite residue → restore-previous; new-file with blob → complete; new-file without blob → delete). A startup hook scans and reports stuck nodes of both kinds without auto-mutating (threshold-gated log; `pendingUploadNodes` in the orphan-cleanup report). Service contract: `docs/spec/server/services/uploadService.md` §2.5.1.
 
 ### API pipeline
@@ -122,7 +118,7 @@ For the complete browser-flow inventory and rollout plan for admin-facing UI cov
 - **Non-admin 403:** Authenticated non-admin calling any admin route (e.g. `GET /api/admin/settings`, `POST /api/admin/users/:id/approve`) receives 403 with `errorCode` for admin required.
 - **Approve/reject and email:** Approve sets user to approved and prepares expected initial access; reject sets status to rejected. If email is configured, notification side effects are validated.
 - **Cleanup:** Orphan cleanup returns expected shape (e.g. removed count or list); no side effects on valid metadata.
-- **Health and WebDAV:** `GET /api/health` returns 200 and `status: "ok"`; `GET /api/webdav/test` and `GET /api/webdav/info` return expected response format without auth.
+- **Health:** `GET /api/health` returns 200 and `status: "ok"` without auth.
 - **Meta path guard:** Requests touching reserved metadata paths are blocked for non-admin callers.
 
 Detailed store-level and route-level verification matrices belong in `docs/spec/server/store/*.md`

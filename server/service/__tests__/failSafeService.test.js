@@ -185,24 +185,6 @@ describe('createFailSafeService', () => {
       expect(activeRows.some((r) => r.id === active.id)).toBe(true);
     });
 
-    it('getAllActiveS3Keys returns only active s3_keys', async () => {
-      const node = await fileNodesStore.createNode(null, `keys-node-${Date.now()}`, 'file');
-      await dbRun(
-        `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
-         VALUES (?, ?, 's3', 1, 'active')`,
-        [node.id, `keys-active-${Date.now()}`]
-      );
-      await dbRun(
-        `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
-         VALUES (?, ?, 's3', 2, 'orphaned')`,
-        [node.id, `keys-orphan-${Date.now()}`]
-      );
-
-      const keys = await fileNodesStore.getAllActiveS3Keys();
-      expect(keys.some((k) => k.includes('keys-active'))).toBe(true);
-      expect(keys.some((k) => k.includes('keys-orphan'))).toBe(false);
-    });
-
     it('deleteObjectMapRows removes only the given rows', async () => {
       const node = await fileNodesStore.createNode(null, `del-node-${Date.now()}`, 'file');
       const rowA = await dbRun(

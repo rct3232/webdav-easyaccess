@@ -18,26 +18,6 @@ afterAll(async () => {
   await dbCleanup?.();
 });
 
-describe('GET /api/users', () => {
-  it('returns 401 when not authenticated', async () => {
-    const res = await request(app).get('/api/users');
-    expect(res.status).toBe(401);
-    expect(res.body.errorCode).toBeDefined();
-  });
-
-  it('returns user array when authenticated', async () => {
-    const { token } = await createAuthenticatedTestUser({
-      username: `users-list-${Date.now()}`,
-    });
-
-    const res = await request(app).get('/api/users').set('Authorization', `Bearer ${token}`);
-
-    expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.some((u) => u.username && u.id)).toBe(true);
-  });
-});
-
 describe('GET /api/users/approved', () => {
   it('returns 401 when not authenticated', async () => {
     const res = await request(app).get('/api/users/approved');
@@ -57,41 +37,6 @@ describe('GET /api/users/approved', () => {
     expect(Array.isArray(res.body)).toBe(true);
     // Current user excluded per route logic
     expect(res.body.some((u) => u.id === user.id)).toBe(false);
-  });
-});
-
-describe('GET /api/users/:id', () => {
-  it('returns 401 when not authenticated', async () => {
-    const res = await request(app).get('/api/users/1');
-    expect(res.status).toBe(401);
-  });
-
-  it('returns user when found', async () => {
-    const { user, token } = await createAuthenticatedTestUser({
-      username: `users-get-${Date.now()}`,
-    });
-
-    const res = await request(app)
-      .get(`/api/users/${user.id}`)
-      .set('Authorization', `Bearer ${token}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({
-      id: user.id,
-      username: user.username,
-      email: user.email,
-    });
-  });
-
-  it('returns 404 when user not found', async () => {
-    const { token } = await createAuthenticatedTestUser({
-      username: `users-get2-${Date.now()}`,
-    });
-
-    const res = await request(app).get('/api/users/999999').set('Authorization', `Bearer ${token}`);
-
-    expect(res.status).toBe(404);
-    expect(res.body.errorCode).toBeDefined();
   });
 });
 

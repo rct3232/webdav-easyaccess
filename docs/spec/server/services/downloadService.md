@@ -46,7 +46,7 @@ Assembles a ZIP archive from multiple file node IDs with per-file async permissi
 | userId  | string   | yes      | ID of the requesting user for permission checks       |
 | user    | object   | yes      | User context passed through for downstream resolution |
 
-**Returns:** `{ zipStream, totalFiles, downloadId, errors }` — `zipStream` is a readable stream from archiver; `totalFiles` is the count of files actually appended to the ZIP (files that passed permission checks and were not skipped as directories or errors); `downloadId` is a UUID keying progress entries in the operationProgress store; `errors` is an array of skip/error entries used by the route for `X-WEA-Skipped` response metadata.
+**Returns:** `{ zipStream, totalFiles, downloadId, errors }` — `zipStream` is a readable stream from archiver; `totalFiles` is the count of files actually appended to the ZIP (files that passed permission checks and were not skipped as directories or errors); `downloadId` is a UUID keying the service-local progress Map (live progress); the operationProgress store records terminal state only; `errors` is an array of skip/error entries used by the route for `X-WEA-Skipped` response metadata.
 
 **Flow:**
 

@@ -6,29 +6,8 @@ const {
   SERVER_MESSAGE_CODES,
 } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { authenticateToken } = require('../../../utils/auth');
-const {
-  asyncHandler,
-  notFoundError,
-  forbiddenError,
-  validationError,
-} = require('../../../utils/errorHandler');
-const User = require('../../../models/User');
-const {
-  listUsers,
-  listApprovedUsers,
-  getUserById,
-  updatePassword,
-  updateEmail,
-} = require('../services/userService');
-
-router.get(
-  '/',
-  authenticateToken,
-  asyncHandler(async (req, res) => {
-    const users = await listUsers();
-    res.json(users);
-  })
-);
+const { asyncHandler, forbiddenError, validationError } = require('../../../utils/errorHandler');
+const { listApprovedUsers, updatePassword, updateEmail } = require('../services/userService');
 
 router.get(
   '/approved',
@@ -36,15 +15,6 @@ router.get(
   asyncHandler(async (req, res) => {
     const approved = await listApprovedUsers(req.user.id);
     res.json(approved);
-  })
-);
-
-router.get(
-  '/:id',
-  authenticateToken,
-  asyncHandler(async (req, res) => {
-    const user = await getUserById(req.params.id);
-    res.json(user);
   })
 );
 
@@ -81,39 +51,6 @@ router.put(
 
     await updateEmail(req.params.id, email);
     res.json({ messageCode: SERVER_MESSAGE_CODES.users.emailUpdated });
-  })
-);
-
-router.put(
-  '/:id/permissions',
-  authenticateToken,
-  asyncHandler(async (req, res) => {
-    const userId = parseInt(req.params.id);
-    const { permissions } = req.body;
-
-    if (!Array.isArray(permissions)) {
-      throw validationError(SERVER_ERROR_CODES.admin.invalidPermissionList);
-    }
-
-    const requestingUser = await User.findById(req.user.id);
-    if (!requestingUser) {
-      throw notFoundError(SERVER_ERROR_CODES.auth.userNotFound);
-    }
-
-    if (!requestingUser.is_admin) {
-      throw forbiddenError(SERVER_ERROR_CODES.admin.adminRequired);
-    }
-
-    const permissionStore = require('../../../store/permissionStore');
-    await permissionStore.revokeAllUserPermissions(userId);
-
-    for (const perm of permissions) {
-      if (perm.folderPath && perm.permission) {
-        await permissionStore.grant(userId, perm.folderPath, perm.permission);
-      }
-    }
-
-    res.json({ messageCode: SERVER_MESSAGE_CODES.users.permissionUpdated });
   })
 );
 

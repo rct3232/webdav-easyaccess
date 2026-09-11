@@ -21,9 +21,7 @@
 
 | Function                  | Signature                             | Location            | Description                                                                                        |
 | ------------------------- | ------------------------------------- | ------------------- | -------------------------------------------------------------------------------------------------- |
-| getThumbnail              | (nodeId) => Promise\<Buffer\|null\>   | thumbnailService.js | Dispatch to image/video processor                                                                  |
 | getThumbnailUrl           | (nodeId) => string\|null              | thumbnailService.js | URL string for cached thumbnail (`/api/thumbnails/<hash>.<ext>?token=`)                            |
-| getThumbnailFromCache     | (nodeId) => Object\|null              | thumbnailService.js | Cached thumbnail data                                                                              |
 | ensureThumbnail           | (nodeId) => Promise\<string\|null\>   | thumbnailService.js | Generate if not cached, return URL                                                                 |
 | ensureThumbnailsBatch     | (nodeIds) => Promise\<Array\>         | thumbnailService.js | Batch generation with concurrency limit; reads bytes via `blobStorageService.downloadBlob(nodeId)` |
 | getCachedThumbnail        | (nodeId) => Object\|null              | thumbnailService.js | Cache read keyed `thumb:<nodeId>`                                                                  |

@@ -244,27 +244,4 @@ describe('aclService (nodeId)', () => {
     expect(aclService.extractShareToken(42)).toBeNull();
   });
 
-  /* ------------------------------------------------------------------ */
-  /* canWrite helpers                                                    */
-  /* ------------------------------------------------------------------ */
-  it('canWriteFile returns true for admin user', async () => {
-    mockUserFindById.mockResolvedValue({ id: 1, username: 'admin', is_admin: true });
-    const result = await aclService.canWriteFile({ id: 1 }, 100);
-    expect(result).toBe(true);
-  });
-
-  it('canWriteFolder returns true for admin user', async () => {
-    mockUserFindById.mockResolvedValue({ id: 1, username: 'admin', is_admin: true });
-    const result = await aclService.canWriteFolder({ id: 1 }, 50);
-    expect(result).toBe(true);
-  });
-
-  it('canWriteFile delegates to checkFilePermission for non-admin', async () => {
-    mockUserFindById.mockResolvedValue({ id: 42, username: 'alice', is_admin: false });
-    mockPermissionGetFilePermission.mockResolvedValue(null);
-    mockPermissionCheckPermission.mockResolvedValue(true);
-
-    const result = await aclService.canWriteFile({ id: 42 }, 100);
-    expect(result).toBe(true);
-  });
 });

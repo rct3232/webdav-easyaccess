@@ -2,7 +2,7 @@
 
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
-const { buildTrashPath } = require('../../../service/webdavRemoteOps');
+const { createWebdavRemoteOps, buildTrashPath } = require('../../../service/webdavRemoteOps');
 const { getThumbnailUrl } = require('../../thumbnails/services/thumbnailService');
 const { isImageFile, isVideoFile } = require('../../../utils/webdav');
 const { conflictError, notFoundError, forbiddenError } = require('../../../utils/errorHandler');
@@ -21,6 +21,9 @@ function createFileService(options = {}) {
   const _fileNodesStore = options.fileNodesStore || null;
   const _conflictError = options.conflictError || conflictError;
   const _notFoundError = options.notFoundError || notFoundError;
+  const remoteOps = blobStore
+    ? createWebdavRemoteOps({ blobStore, fileStorageMode, fileNodeService })
+    : null;
 
   async function listDirectoryWithPermissions(userId, parentNodeId, user) {
     const children = await fileNodeService.listDirectory(parentNodeId);
@@ -404,7 +407,7 @@ function createFileService(options = {}) {
     if (fileStorageMode === 'webdav' && blobStore) {
       // The /.wea-trash/ parent must exist — WebDAV MOVE does not auto-create
       // destination parents (500 → fallback 403 when missing). Idempotent MKCOL.
-      await blobStore.ensureDirectoryExists('/.wea-trash');
+      await remoteOps.ensureTrashRoot();
       const displayPath = await fileNodeService.getNodePath(nodeId);
       const trashPath = buildTrashPath(nodeId);
       // Destination-exists guard: a pre-existing /.wea-* entry (legacy /

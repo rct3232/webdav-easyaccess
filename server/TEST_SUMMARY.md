@@ -27,7 +27,6 @@ Single modules in isolation (models, middleware, utils, domain-internal stores).
 | `models/__tests__/ShareLink.test.js`                     | ShareLink CRUD                                   |
 | `models/__tests__/PermissionRequest.test.js`             | Permission request model                         |
 | `middleware/__tests__/requireUser.test.js`               | JWT auth, 401 handling                           |
-| `middleware/__tests__/permissions.test.js`               | Permission checks, read/write validation         |
 | `middleware/__tests__/requestLogger.test.js`             | Request logging middleware                       |
 | `utils/__tests__/auth.test.js`                           | Token generation, verification, password hashing |
 | `utils/__tests__/email.test.js`                          | Email utilities                                  |
@@ -36,7 +35,6 @@ Single modules in isolation (models, middleware, utils, domain-internal stores).
 | `utils/__tests__/sharedFileTypes.test.js`                | Shared file type helpers                         |
 | `utils/__tests__/sharedPathUtils.test.js`                | Shared path utilities                            |
 | `utils/__tests__/sharedValidation.test.js`               | Shared validation helpers                        |
-| `utils/__tests__/webdav.test.js`                         | Recursive folder stats aggregation               |
 | `domains/auth/__tests__/tokenStore.test.js`              | Auth token store                                 |
 | `domains/recentFiles/__tests__/recentFilesStore.test.js` | Recent files store/service (nodeId)              |
 | `domains/sharing/__tests__/shareLinkStore.test.js`       | Share link store                                 |
@@ -50,7 +48,6 @@ Domain services, policies, and stores plus the shared service/store layer. Persi
 | `domains/files/services/__tests__/batchOperationService.test.js`          | Batch operations service      |
 | `domains/files/services/__tests__/downloadService.test.js`                | Download service              |
 | `domains/files/services/__tests__/fileService.test.js`                    | File service operations       |
-| `domains/permissions/policy/__tests__/inheritancePolicy.test.js`          | Permission inheritance policy |
 | `domains/permissions/policy/__tests__/ownerNodeResolver.test.js`          | Owner node resolution         |
 | `domains/permissions/policy/__tests__/permissionPolicy.test.js`           | Permission policy             |
 | `domains/permissions/services/__tests__/aclService.test.js`               | ACL service                   |

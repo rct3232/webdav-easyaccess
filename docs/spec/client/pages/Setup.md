@@ -25,7 +25,7 @@ Feature Source-of-Truth: [setup-wizard.md](../../../features/setup-wizard.md).
 - `useSetupWizard` (controller hook)
   - `useNavigate` (redirect to `/login` on post-setup lockout)
   - `useTranslation` (i18n `setup.*` keys)
-  - `setupService` (`getSetupStatus`, `testSetup`, `applySetup`, `prefillSetup`)
+  - `setupService` (`getSetupStatus`, `testSetup`, `applySetup`)
   - On mount: fetch `getSetupStatus()`; if `setup_complete === true` → redirect to `/login` (covers "user revisits /setup after restart").
 - (View) `SetupWizardView` does not call hooks and does not import router modules
 
@@ -44,7 +44,7 @@ Feature Source-of-Truth: [setup-wizard.md](../../../features/setup-wizard.md).
 
 Wizard steps:
 
-1. **Metadata** — choose sqlite (default) or postgresql (host/port/database/user/password/ssl + "Test connection" via `testSetup('postgresql', …)`). When `postgresql` is selected and the operator clicks **Next**, the wizard issues an **async prefill fetch** (`prefillSetup`) against the **target PG directly** using the entered credentials and merges the returned values into the form (file storage, jwt/server, email, admin). Best-effort: a prefill failure does **not** block advancing to the next step — the connection-test button is the explicit validator, and the form keeps whatever was already prefilled from `status.current` on mount.
+1. **Metadata** — choose sqlite (default) or postgresql (host/port/database/user/password/ssl + "Test connection" via `testSetup('postgresql', …)`). The wizard prefills the form from `status.current` fetched on mount (`GET /api/setup/status`) only — there is no separate prefill fetch (the former `POST /api/setup/prefill` direct-PG-read endpoint was retired as dead code); values already stored on the target DB surface through the server-side effective-config read.
 2. **File storage** — choose s3 (bucket/region/access key/secret/endpoint + "Test connection" via `testSetup('s3', …)`) or webdav (url/username/password + "Test connection" via `testSetup('webdav', …)`).
 3. **Admin password + JWT** — admin password (username fixed to `admin`, D6); the JWT secret is **optional** — leaving it blank is allowed, and the server then uses a per-boot ephemeral secret (restart invalidates all sessions; set one value for multi-instance deployments). A random value can be filled via `crypto.getRandomValues` with a regenerate button; optional expires-in.
 4. **Optional** — port, CORS origins, SMTP (host/port/user/password/secure/from).
@@ -88,7 +88,6 @@ Errors surface via `t(errorCode, params)` (existing error-display utility patter
 | getSetupStatus | `()`                                                          | `Promise<{ setup_complete, missing, current }>` | `GET /api/setup/status`   |
 | testSetup      | `(target: 'postgresql' \| 's3' \| 'webdav', payload: Object)` | `Promise<{ ok }>`                               | `POST /api/setup/test`    |
 | applySetup     | `(payload: Object)`                                           | `Promise<{ restart_required }>`                 | `POST /api/setup/apply`   |
-| prefillSetup   | `(metadata: Object)`                                          | `Promise<{ current }>`                          | `POST /api/setup/prefill` |
 
 Transport: the existing `apiClient` (`client/src/services/apiClient.js`), which delegates to
 `httpClient` (`client/src/services/httpClient.js`, `BASE_URL = '/api'` at
@@ -97,7 +96,6 @@ Transport: the existing `apiClient` (`client/src/services/apiClient.js`), which 
 - `getSetupStatus()` → `GET /setup/status`
 - `testSetup(target, payload)` → `POST /setup/test` with body `{ target, ...payload }`
 - `applySetup(payload)` → `POST /setup/apply` with body `payload`
-- `prefillSetup(metadata)` → `POST /setup/prefill` with body `{ metadata }`
 
 ### 3.3 Error Handling
 
@@ -116,7 +114,6 @@ Transport: the existing `apiClient` (`client/src/services/apiClient.js`), which 
 - [ ] getSetupStatus returns `{ setup_complete, missing, current }`
 - [ ] testSetup sends `{ target, ...payload }` and resolves `{ ok }`
 - [ ] applySetup sends the apply body and resolves `{ restart_required }`
-- [ ] prefillSetup sends `{ metadata }` and resolves `{ current }`; failure normalizes `{ errorCode, message, reason }`
 - [ ] No auth token is attached (public endpoints)
 
 ---

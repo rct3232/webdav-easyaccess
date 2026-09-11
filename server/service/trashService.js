@@ -61,6 +61,7 @@ function createTrashService({
 }) {
   const aclService = injectedAclService || require('../domains/permissions/services/aclService');
   const isWebdavMode = fileStorageMode === 'webdav' && Boolean(blobStore);
+  const remoteOps = createWebdavRemoteOps({ blobStore, fileStorageMode, fileNodeService });
 
   function withTx(callback) {
     const backend = storage.getBackend();
@@ -202,7 +203,7 @@ function createTrashService({
       if (isWebdavMode) {
         // The /.wea-trash/ parent must exist before any MOVE-back reads its
         // entries (WebDAV MOVE/listing semantics — idempotent MKCOL).
-        await blobStore.ensureDirectoryExists('/.wea-trash');
+        await remoteOps.ensureTrashRoot();
         const trashPath = buildTrashPath(row.id);
         const trashEntry = await headTrashEntryOrNull(trashPath);
         if (trashEntry != null) {
@@ -308,11 +309,6 @@ function createTrashService({
           }
         }
       } else {
-        const remoteOps = createWebdavRemoteOps({
-          blobStore,
-          fileStorageMode,
-          fileNodeService,
-        });
         await remoteOps.deleteRemoteSubtreeBestEffort(id);
       }
     } else {

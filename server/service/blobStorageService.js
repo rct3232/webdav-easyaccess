@@ -87,20 +87,6 @@ function createBlobStorageService({
     return newS3Key;
   }
 
-  async function deleteBlob(fileNodeId) {
-    if (isWebdavMode) {
-      const nodePath = await resolveWebdavPathOrNull(fileNodeId);
-      if (nodePath !== null) {
-        await blobStore.deleteBlob(nodePath);
-      }
-      return;
-    }
-    const current = await fileNodesStore.getActiveObject(fileNodeId);
-    if (current && current.s3_key) {
-      await fileNodesStore.orphanObject(current.s3_key);
-    }
-  }
-
   async function getActiveS3Key(fileNodeId) {
     if (isWebdavMode) {
       return null;
@@ -222,7 +208,6 @@ function createBlobStorageService({
     completeUpload,
     downloadBlob,
     overwriteBlob,
-    deleteBlob,
     getActiveS3Key,
     countActiveObjectsByS3Key,
     duplicateBlob,

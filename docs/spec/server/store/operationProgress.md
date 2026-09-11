@@ -28,7 +28,6 @@
 | Method                  | Signature                                    | Description                                                               |
 | ----------------------- | -------------------------------------------- | ------------------------------------------------------------------------- |
 | setDownloadProgress     | (id, state) => void                          | Store download progress state                                             |
-| getDownloadProgress     | (id) => object \| undefined                  | Retrieve download progress state                                          |
 | cleanupDownloadProgress | (id, ttlMs?) => void                         | Schedule download progress deletion via setTimeout; default TTL 5 min     |
 | issuePreviewTicket      | (principalId, fileNodeId, ttlMs?) => string | Generate hex ticket; stores {principalId, fileNodeId} with default 120s TTL |
 | readPreviewTicket       | (ticket) => {principalId, fileNodeId} \| null | Validate and return ticket data; returns null for invalid/expired tickets |
@@ -67,6 +66,6 @@
 - [ ] setJobCancelled marks job; returns false if not found
 - [ ] updateJob merges fields via Object.assign
 - [ ] Expired terminal job → getJob returns null, entry deleted
-- [ ] setDownloadProgress / getDownloadProgress round-trips state
+- [ ] setDownloadProgress stores terminal state readable via the cache adapter (the former `getDownloadProgress` accessor was retired — live progress lives in the downloadService Map)
 - [ ] issuePreviewTicket / readPreviewTicket validates ticket
 - [ ] cleanupDownloadProgress schedules deletion after TTL

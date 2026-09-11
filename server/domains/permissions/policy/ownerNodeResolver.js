@@ -13,13 +13,6 @@ function getFileNodesStore() {
 /* Primary API: nodeId-based owner detection                          */
 /* ------------------------------------------------------------------ */
 
-async function getUserRootNodeId(userId) {
-  const store = getFileNodesStore();
-  const rootNode = await store.getUserRootNode(userId);
-  if (!rootNode) return null;
-  return rootNode.id;
-}
-
 async function isOwnerNode(userId, targetNodeId) {
   const store = getFileNodesStore();
   const rootNode = await store.getUserRootNode(userId);
@@ -29,12 +22,6 @@ async function isOwnerNode(userId, targetNodeId) {
   return !!result;
 }
 
-async function canAccessNode(userId, targetNodeId) {
-  return isOwnerNode(userId, targetNodeId);
-}
-
 module.exports = {
-  getUserRootNodeId,
   isOwnerNode,
-  canAccessNode,
 };

@@ -163,11 +163,11 @@ describe('POST /api/folders/create', () => {
     webdavMock.getFileMetadata.mockRejectedValue(
       Object.assign(new Error('404'), { status: 404 })
     );
-    const del = await request(app)
-      .delete('/api/files/delete')
-      .set('Authorization', `Bearer ${userToken}`)
-      .send({ nodeId: res1.body.nodeId });
-    expect(del.status).toBe(200);
+    // Trash the fixture via the same fileService.deleteNode the canonical
+    // batch-delete worker delegates to (single-node delete route removed).
+    await composition
+      .getComposition()
+      .fileService.deleteNode(res1.body.nodeId, userId, { id: userId, is_admin: false });
 
     // Re-create with the same name: the trashed sibling does not block it.
     webdavMock.pathExists.mockResolvedValue(false);

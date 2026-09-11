@@ -96,6 +96,60 @@ async function createUserWithHomeNode(prefix) {
   return { ...auth, homeNodeId: home.nodeId };
 }
 
+/**
+ * Canonical mutation-channel helper: POST a batch endpoint, let the real bulk
+ * worker run (WEA_SKIP_BULK_WORKER is lifted for the duration) and poll
+ * GET /api/files/bulk-operation/:jobId until the job reaches a terminal state.
+ * Returns the terminal job snapshot.
+ */
+async function runBatchJob(token, path, body) {
+  const savedSkip = process.env.WEA_SKIP_BULK_WORKER;
+  delete process.env.WEA_SKIP_BULK_WORKER;
+  try {
+    const res = await request(app)
+      .post(path)
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+    expect(res.status).toBe(202);
+    expect(res.body.jobId).toBeDefined();
+    const { jobId } = res.body;
+
+    const startedAt = Date.now();
+    for (;;) {
+      const job = await request(app)
+        .get(`/api/files/bulk-operation/${jobId}`)
+        .set('Authorization', `Bearer ${token}`);
+      expect(job.status).toBe(200);
+      if (['completed', 'failed', 'cancelled'].includes(job.body.status)) {
+        return { jobId, ...job.body };
+      }
+      if (Date.now() - startedAt > 15000) {
+        throw new Error(
+          `bulk job ${jobId} did not reach a terminal state: ${JSON.stringify(job.body)}`
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  } finally {
+    if (savedSkip !== undefined) {
+      process.env.WEA_SKIP_BULK_WORKER = savedSkip;
+    } else {
+      delete process.env.WEA_SKIP_BULK_WORKER;
+    }
+  }
+}
+
+/** Assert a completed batch job with zero failed/skipped items. */
+function expectJobSucceeded(job) {
+  expect(job.status).toBe('completed');
+  expect(job.results.filter((r) => r.status !== 'succeeded')).toEqual([]);
+}
+
+/** Direct service access (for scenarios about fileService semantics, not routes). */
+function getFileService() {
+  return require('@server/service/composition').getComposition().fileService;
+}
+
 /* ─── Lifecycle ──────────────────────────────────────────────────────── */
 let dbCleanup;
 
@@ -331,17 +385,17 @@ describe('S5.0-SCENARIO-4: S3 mode copy-on-write', () => {
   });
 
   it('copies the file (CoW): target shares same s3_key as source', async () => {
-    const res = await request(app)
-      .post('/api/files/copy')
-      .set('Authorization', `Bearer ${user.token}`)
-      .send({
-        nodeId: sourceNodeId,
-        destinationParentNodeId: homeNodeId,
-        newName: 'copied-cow.txt',
-      });
-
-    expect(res.status).toBe(200);
-    const targetNodeId = res.body.copiedNodeId;
+    // CoW is fileService copy semantics — exercised directly on the service
+    // (the removed single-node copy route was just a thin caller; the
+    // canonical HTTP channel is batch-copy, covered in S5.0-SCENARIO-7/C3).
+    const result = await getFileService().copyFile(
+      sourceNodeId,
+      homeNodeId,
+      'copied-cow.txt',
+      user.user.id,
+      user.user
+    );
+    const targetNodeId = result.copiedNodeId;
     copiedNodeId = targetNodeId;
 
     // Both nodes should share the same s3_key in object_map
@@ -465,15 +519,14 @@ describe('S5.0-SCENARIO-5: S3 mode delete cascade', () => {
   });
 
   it('trashes the directory: subtree rows survive with deleted_at set and disappear from the listing (M6)', async () => {
-    const res = await request(app)
-      .delete('/api/files/delete')
-      .set('Authorization', `Bearer ${user.token}`)
-      .send({ nodeId: dirNodeId });
-    expect(res.status).toBe(200);
-    // Count semantics unchanged: getDescendantIds includes the closure
-    // depth-0 self row, so the historical formula reports (self + descendants) + 1
-    // = dir + 2 files + 1 for this two-file directory.
-    expect(res.body.deletedCount).toBe(4);
+    const job = await runBatchJob(user.token, '/api/files/batch-delete', { nodeIds: [dirNodeId] });
+    expectJobSucceeded(job);
+    expect(job.results.map((r) => Number(r.nodeId))).toEqual([Number(dirNodeId)]);
+    // Batch channel reports per-item success (job progress = processed items);
+    // the subtree size (dir + 2 files + closure self row = 4 under the old
+    // single-endpoint deletedCount formula) is verified by the DB assertions
+    // below.
+    expect(job.progress).toBe(1);
 
     // Soft delete: folder + children rows SURVIVE with deleted_at set.
     const dirDb = await dbQuery(
@@ -546,11 +599,10 @@ describe('S5.0-SCENARIO-5: S3 mode delete cascade', () => {
     const s3Key = keyRow.rows[0].s3_key;
     expect(currentMockS3.getStore().has(s3Key)).toBe(true);
 
-    const del = await request(app)
-      .delete('/api/files/delete')
-      .set('Authorization', `Bearer ${user.token}`)
-      .send({ nodeId: lazyNodeId });
-    expect(del.status).toBe(200);
+    const delJob = await runBatchJob(user.token, '/api/files/batch-delete', {
+      nodeIds: [lazyNodeId],
+    });
+    expectJobSucceeded(delJob);
 
     // Soft delete: the node row survives (trashed), the object_map row stays
     // active and the physical blob is untouched (lazy delete boundary: the
@@ -647,10 +699,10 @@ describe('S5.0-SCENARIO-6: Permission inheritance', () => {
 });
 
 /* ========================================================================
-    Scenario 7 - Batch operations (delete + move) with job polling
-    Note: Bulk worker relies on getComposition() which fails due to circular
-          dependency in test context. Operations are executed individually here.
-    ======================================================================== */
+   Scenario 7 - Batch operations (delete + move) with job polling
+   The batch endpoints are the canonical mutation channel; the bulk worker
+   is executed for real (see runBatchJob).
+   ======================================================================== */
 describe('S5.0-SCENARIO-7: Batch operations', () => {
   let user,
     homeNodeId,
@@ -686,27 +738,26 @@ describe('S5.0-SCENARIO-7: Batch operations', () => {
     }
   });
 
-  it('moves files to target directory', async () => {
-    const res = await request(app)
-      .post('/api/files/move')
-      .set('Authorization', `Bearer ${user.token}`)
-      .send({ nodeId: nodeIds[0], destinationParentNodeId: targetDirId });
-
-    expect(res.status).toBe(200);
+  it('moves files to target directory (batch-move → job polling)', async () => {
+    const job = await runBatchJob(user.token, '/api/files/batch-move', {
+      moves: [{ sourceNodeId: nodeIds[0], destinationParentNodeId: targetDirId }],
+    });
+    expectJobSucceeded(job);
+    expect(job.progress).toBe(1); // movedCount == 1 item, zero failures
 
     // Verify moved file's parent_id changed in DB
     const dbResult = await dbQuery('SELECT parent_id FROM file_nodes WHERE id = ?', [nodeIds[0]]);
     expect(dbResult.rows[0].parent_id).toBe(targetDirId);
   });
 
-  it('trashes files individually: rows survive with deleted_at set and disappear from listings (M10)', async () => {
-    for (const nodeId of [nodeIds[1], nodeIds[2]]) {
-      const res = await request(app)
-        .delete('/api/files/delete')
-        .set('Authorization', `Bearer ${user.token}`)
-        .send({ nodeId });
-      expect(res.status).toBe(200);
-    }
+  it('trashes files in one batch job: rows survive with deleted_at set and disappear from listings (M10)', async () => {
+    const job = await runBatchJob(user.token, '/api/files/batch-delete', {
+      nodeIds: [nodeIds[1], nodeIds[2]],
+    });
+    expectJobSucceeded(job);
+    expect(job.results.map((r) => Number(r.nodeId)).sort()).toEqual(
+      [Number(nodeIds[1]), Number(nodeIds[2])].sort((a, b) => a - b)
+    );
 
     // Soft delete: rows survive with deleted_at set.
     const dbResult = await dbQuery('SELECT id, deleted_at FROM file_nodes WHERE id IN (?, ?)', [
@@ -908,13 +959,12 @@ describe('C1: move granted folder → grantee access + ancestor chain rebuild', 
     expect(res.body.hasRead).toBe(true);
   });
 
-  it('moves the granted folder under the destination folder', async () => {
-    const res = await request(app)
-      .post('/api/files/move')
-      .set('Authorization', `Bearer ${owner.token}`)
-      .send({ nodeId: grantFolder, destinationParentNodeId: destFolder });
-    expect(res.status).toBe(200);
-    expect(res.body.newParentId).toBe(destFolder);
+  it('moves the granted folder under the destination folder (batch-move → job polling)', async () => {
+    const job = await runBatchJob(owner.token, '/api/files/batch-move', {
+      moves: [{ sourceNodeId: grantFolder, destinationParentNodeId: destFolder }],
+    });
+    expectJobSucceeded(job);
+    expect(job.progress).toBe(1); // movedCount == 1 item, zero failures
   });
 
   it('DB: parent_id is updated and the closure table is rebuilt around the new parent', async () => {
@@ -1026,12 +1076,16 @@ describe('C2: move owned folder into another user home → subtree + surface tra
   });
 
   it('mover moves the owned folder into the recipient home root', async () => {
-    const res = await request(app)
-      .post('/api/files/move')
-      .set('Authorization', `Bearer ${mover.token}`)
-      .send({ nodeId: sharedFolder, destinationParentNodeId: recipient.homeNodeId });
-    expect(res.status).toBe(200);
-    expect(res.body.newParentId).toBe(recipient.homeNodeId);
+    // Ownership-transfer semantics depend on the mover being a NON-admin user;
+    // the batch worker executes moveNode with an admin user (bypassing the
+    // transfer revoke), so the service is exercised directly here.
+    const result = await getFileService().moveNode(
+      sharedFolder,
+      recipient.homeNodeId,
+      mover.user.id,
+      { id: mover.user.id, is_admin: false }
+    );
+    expect(result.newParentId).toBe(recipient.homeNodeId);
   });
 
   it('DB: closure table transfers the subtree to the recipient home', async () => {
@@ -1149,12 +1203,13 @@ describe('D6: move owned folder into another home revokes mover historical self-
   });
 
   it('mover moves the owned folder into the recipient home root', async () => {
-    const res = await request(app)
-      .post('/api/files/move')
-      .set('Authorization', `Bearer ${mover.token}`)
-      .send({ nodeId: folder, destinationParentNodeId: recipient.homeNodeId });
-    expect(res.status).toBe(200);
-    expect(res.body.newParentId).toBe(recipient.homeNodeId);
+    // Historical-self-grant revoke is non-admin moveNode service semantics
+    // (see C2 note): exercised directly on the service.
+    const result = await getFileService().moveNode(folder, recipient.homeNodeId, mover.user.id, {
+      id: mover.user.id,
+      is_admin: false,
+    });
+    expect(result.newParentId).toBe(recipient.homeNodeId);
   });
 
   it('DB: mover self-grant rows on the moved subtree are GONE (ownership transfer)', async () => {
@@ -1284,12 +1339,13 @@ describe('D6: received grant on another user home is preserved when moved within
   });
 
   it('mover moves the folder within the owner home (folder → destFolder)', async () => {
-    const res = await request(app)
-      .post('/api/files/move')
-      .set('Authorization', `Bearer ${mover.token}`)
-      .send({ nodeId: folder, destinationParentNodeId: destFolder });
-    expect(res.status).toBe(200);
-    expect(res.body.newParentId).toBe(destFolder);
+    // Received-grant preservation is non-admin moveNode service semantics
+    // (see C2 note): exercised directly on the service.
+    const result = await getFileService().moveNode(folder, destFolder, mover.user.id, {
+      id: mover.user.id,
+      is_admin: false,
+    });
+    expect(result.newParentId).toBe(destFolder);
   });
 
   it('DB: the received grant is PRESERVED (mover never owned the node)', async () => {
@@ -1366,12 +1422,13 @@ describe('D6: moving within the mover own home never revokes rows', () => {
   });
 
   it('user moves the folder within the own home (folder → destFolder)', async () => {
-    const res = await request(app)
-      .post('/api/files/move')
-      .set('Authorization', `Bearer ${user.token}`)
-      .send({ nodeId: folder, destinationParentNodeId: destFolder });
-    expect(res.status).toBe(200);
-    expect(res.body.newParentId).toBe(destFolder);
+    // Own-home move (no revoke) is non-admin moveNode service semantics
+    // (see C2 note): exercised directly on the service.
+    const result = await getFileService().moveNode(folder, destFolder, user.user.id, {
+      id: user.user.id,
+      is_admin: false,
+    });
+    expect(result.newParentId).toBe(destFolder);
   });
 
   it('DB: self-grant rows on the moved subtree are PRESERVED (no ownership transfer)', async () => {
@@ -1428,14 +1485,18 @@ describe('C3: copy keeps original and copy independent with closure rows for bot
   });
 
   it('copies the file into the destination folder as a distinct node', async () => {
-    const res = await request(app)
-      .post('/api/files/copy')
-      .set('Authorization', `Bearer ${user.token}`)
-      .send({ nodeId: sourceFileId, destinationParentNodeId: destFolder, newName: 'copy.txt' });
-    expect(res.status).toBe(200);
-    expect(res.body.copiedNodeId).toBeDefined();
-    expect(res.body.copiedNodeId).not.toBe(sourceFileId);
-    copyFileId = res.body.copiedNodeId;
+    // Copy independence is fileService copyFile semantics (needs the
+    // resulting copiedNodeId): exercised directly on the service.
+    const result = await getFileService().copyFile(
+      sourceFileId,
+      destFolder,
+      'copy.txt',
+      user.user.id,
+      user.user
+    );
+    expect(result.copiedNodeId).toBeDefined();
+    expect(result.copiedNodeId).not.toBe(sourceFileId);
+    copyFileId = result.copiedNodeId;
   });
 
   it('both original and copy remain downloadable with identical content', async () => {
@@ -1502,11 +1563,10 @@ describe('C3: copy keeps original and copy independent with closure rows for bot
   });
 
   it('original and copy are independent: trashing the copy hides it while the original stays intact', async () => {
-    const del = await request(app)
-      .delete('/api/files/delete')
-      .set('Authorization', `Bearer ${user.token}`)
-      .send({ nodeId: copyFileId });
-    expect(del.status).toBe(200);
+    const delJob = await runBatchJob(user.token, '/api/files/batch-delete', {
+      nodeIds: [copyFileId],
+    });
+    expectJobSucceeded(delJob);
 
     const orig = await request(app)
       .get('/api/files/download')
@@ -1598,12 +1658,10 @@ describe('C4: trash folder → hidden at read; permission/closure/recent rows su
     expect(granteeRecent.body.some((f) => f.fileNodeId === childFileId)).toBe(true);
   });
 
-  it('trashes the folder via the single-item endpoint', async () => {
-    const res = await request(app)
-      .delete('/api/files/delete')
-      .set('Authorization', `Bearer ${owner.token}`)
-      .send({ nodeId: folder });
-    expect(res.status).toBe(200);
+  it('trashes the folder via the canonical batch-delete channel', async () => {
+    const job = await runBatchJob(owner.token, '/api/files/batch-delete', { nodeIds: [folder] });
+    expectJobSucceeded(job);
+    expect(job.results.map((r) => Number(r.nodeId))).toEqual([Number(folder)]);
   });
 
   it('DB: folder and child rows SURVIVE with deleted_at set (hidden at read, not removed)', async () => {

@@ -253,7 +253,9 @@ The count semantics are unchanged from the hard-delete era; it is the size of th
 6. Return `{ deletedCount: descendantIds.length + 1 }`.
 
 **Batch delete inherits trash:** `batchOperationService.batchDelete` dispatches through this
-method, so bulk delete trashes too (same marking, same WebDAV MOVE semantics per root).
+method, so bulk delete trashes too (same marking, same WebDAV MOVE semantics per root). The
+single-node `DELETE /api/files/delete` route was removed — UI deletes (single or multi) go through
+`POST /api/files/batch-delete`, the canonical delete channel calling this method.
 
 **Permissions/shares/recent interplay:** permission rows, share links and recent-file rows are NOT
 touched by trash — they survive on the (still existing) rows and are hidden by the read gates

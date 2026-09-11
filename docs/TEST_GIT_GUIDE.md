@@ -298,7 +298,7 @@ jobs:
       - name: Run server tests (sqlite)
         run: cd server && npm run test:ci
 
-      # Tiered real-PostgreSQL coverage (PLAN.md: functional suites run on
+      # Tiered real-PostgreSQL coverage (TESTING_STRATEGY.md: functional suites run on
       # sqlite once; per-RDB adapter conformance runs against real PG).
       # The disposable `webdav_test` DB is self-provisioned by the test
       # harness when missing (see server/test-utils.js).

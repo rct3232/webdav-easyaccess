@@ -24,7 +24,7 @@
  * Cancellation (isCancelled) checked between tables and between batches of a
  * large table -> ROLLBACK, both sides unharmed (D4).
  *
- * See docs/spec/server/services/metadataMigrationService.md and PLAN.md (D4-D6).
+ * See docs/spec/server/services/metadataMigrationService.md and docs/features/migration-mode.md.
  */
 
 const path = require('path');

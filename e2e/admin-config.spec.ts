@@ -19,7 +19,8 @@ import {
 import { loginWithCredentials } from './helpers/auth';
 
 /**
- * Admin "Advanced settings" config editor UI/UX (PLAN.md §9, Q3).
+ * Admin "Advanced settings" config editor UI/UX
+ * (docs/features/admin-infrastructure.md + docs/spec/client/components/mypage/SystemConfigEditor.md).
  *
  * Hermetic by design: each case spawns its own fully-configured scratch server
  * on :5010 (own `.env`, own sqlite) so the config editor's field-state matrix

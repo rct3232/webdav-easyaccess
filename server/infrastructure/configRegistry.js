@@ -2,7 +2,7 @@
 
 /**
  * Authoritative catalog of every process.env config key the server reads,
- * classified per PLAN.md §3/§4 and docs/features/config-source-resolution.md.
+ * classified per docs/features/config-source-resolution.md.
  *
  * Ordering is significant: T0 metadata first, then file storage, then
  * server/security, then email, then runtime — the UI groups by this order.

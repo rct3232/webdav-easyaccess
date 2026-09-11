@@ -66,7 +66,8 @@ router.post(
 );
 
 // Legacy-URL bootstrap resolver (nodeId-first navigation): resolves a path string to a nodeId.
-// Sole path-accepting endpoint; documented exception to the nodeId-only rule (PLAN.md Rule 13).
+// Sole path-accepting endpoint; documented exception to the nodeId-only rule
+// (docs/spec/server/routes/files.md).
 router.post(
   '/resolve-path',
   authenticateToken,

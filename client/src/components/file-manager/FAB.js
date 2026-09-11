@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Fab, SpeedDial, SpeedDialAction, SpeedDialIcon } from '@mui/material';
 import {
@@ -31,6 +31,7 @@ const fabGradientSx = {
  * Floating Action Button with speed dial
  * Provides quick access to common actions.
  * shareLinkMode: { user, onLoginClick, onAddToSharedClick } — 공유 링크 모드일 때 단일 Fab (로그인/공유됨 추가)
+ * onVisibilityChange: reports actual visibility (true while rendering, false on hide/unmount)
  */
 const FAB = ({
   onUpload,
@@ -39,6 +40,7 @@ const FAB = ({
   disabled = false,
   shareLinkMode,
   isMobile = false,
+  onVisibilityChange,
 }) => {
   const [open, setOpen] = useState(false);
   const { t } = useTranslation();
@@ -62,6 +64,15 @@ const FAB = ({
   };
 
   const offset = isMobile ? 16 : 48; // PC: 3x more inward (16 * 3)
+
+  // 실제 렌더링 여부(self-hide/unmount 포함)를 부모에게 보고 — FloatingSearchBar 확장 트리거의 단일 출처
+  const isVisible = Boolean(shareLinkMode) || hasWritePermission;
+  useEffect(() => {
+    if (!isVisible || !onVisibilityChange) return undefined;
+    onVisibilityChange(true);
+    return () => onVisibilityChange(false);
+  }, [isVisible, onVisibilityChange]);
+
   if (shareLinkMode) {
     const { user, onLoginClick, onAddToSharedClick } = shareLinkMode;
     const isLoggedIn = !!user;

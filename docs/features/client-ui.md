@@ -157,7 +157,7 @@ its tests.
 ### Responsive and mobile
 
 - **Breakpoints:** MUI theme breakpoints (xs/sm/md/lg/xl). `useResponsive` (or similar) exposes `isMobile` for conditional layout.
-- **FAB and search:** Search bar (FloatingSearchBar) is positioned to the left of the FAB at bottom-right. FAB: shown on all viewports (mobile and desktop). Speed dial: Upload, Create folder. Share link mode: Login or Add to my permissions. FAB hidden when selection mode. When FAB is hidden, the search bar expands to occupy the FAB’s space.
+- **FAB and search:** Search bar (FloatingSearchBar) is positioned to the left of the FAB at bottom-right. FAB: shown on all viewports (mobile and desktop). Speed dial: Upload, Create folder. Share link mode: Login or Add to my permissions. FAB hidden when selection mode, when the user lacks write permission, and in read-only views (recent/shared/trash). The search bar is tied to actual FAB presence (the FAB self-reports visibility via `onVisibilityChange`): whenever the FAB disappears for any reason, the search bar expands to occupy the FAB’s space with a `right` transition.
 - **Breadcrumb:** Path breadcrumb (chips) for current folder, shown on all viewports above the selection/sort/view-mode row.
 - **Action sheet:** On mobile, More button on each item opens bottom sheet. Long-press enters selection mode only (does not open action sheet); the browser `contextmenu` event fired by long-press is ignored on mobile.
 - **Pull-to-refresh:** Optional pull-to-refresh on mobile to reload current folder.

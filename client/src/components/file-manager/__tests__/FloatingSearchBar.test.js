@@ -46,4 +46,32 @@ describe('FloatingSearchBar', () => {
     renderWithProviders(<FloatingSearchBar {...defaultProps} searchQuery="" />);
     expect(screen.queryByRole('button', { name: /close|search close/i })).not.toBeInTheDocument();
   });
+
+  it('reserves FAB space on desktop when fabVisible', () => {
+    const { container } = renderWithProviders(<FloatingSearchBar {...defaultProps} fabVisible />);
+    const bar = container.querySelector('[data-testid="floating-search-bar"]');
+    expect(getComputedStyle(bar).right).toBe('116px');
+  });
+
+  it('expands to the screen offset on desktop when fab is not visible', () => {
+    const { container } = renderWithProviders(
+      <FloatingSearchBar {...defaultProps} fabVisible={false} />
+    );
+    const bar = container.querySelector('[data-testid="floating-search-bar"]');
+    expect(getComputedStyle(bar).right).toBe('48px');
+  });
+
+  it('expands to the mobile offset when fab is not visible on mobile', () => {
+    const { container } = renderWithProviders(
+      <FloatingSearchBar {...defaultProps} isMobile fabVisible={false} />
+    );
+    const bar = container.querySelector('[data-testid="floating-search-bar"]');
+    expect(getComputedStyle(bar).right).toBe('16px');
+  });
+
+  it('animates right position changes', () => {
+    const { container } = renderWithProviders(<FloatingSearchBar {...defaultProps} />);
+    const bar = container.querySelector('[data-testid="floating-search-bar"]');
+    expect(getComputedStyle(bar).transition).toContain('right');
+  });
 });

@@ -365,6 +365,62 @@ describe('FileManagerView', () => {
     expect(screen.queryByTestId('file-actions-speed-dial')).not.toBeInTheDocument();
   });
 
+  it('expands search bar to FAB space when the FAB is hidden for read-granted targets', async () => {
+    const props = createProps({
+      explorerSession: {
+        ...createProps().explorerSession,
+        controlsState: {
+          ...createProps().explorerSession.controlsState,
+          currentPath: '/shared/docs',
+        },
+      },
+      explorerActionState: {
+        ...createProps().explorerActionState,
+        capabilityState: { hasWritePermission: false },
+      },
+    });
+    const { container } = renderWithProviders(<FileManagerView {...props} />);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('file-actions-speed-dial')).not.toBeInTheDocument();
+    });
+
+    const bar = container.querySelector('[data-testid="floating-search-bar"]');
+    expect(getComputedStyle(bar).right).toBe('16px');
+  });
+
+  it('keeps search bar beside the FAB when the FAB is visible', async () => {
+    const props = createProps();
+    const { container } = renderWithProviders(<FileManagerView {...props} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('file-actions-speed-dial')).toBeInTheDocument();
+    });
+
+    const bar = container.querySelector('[data-testid="floating-search-bar"]');
+    expect(getComputedStyle(bar).right).toBe('84px');
+  });
+
+  it('expands search bar to FAB space when selection mode hides the FAB', async () => {
+    const props = createProps({
+      selectionState: {
+        ...createProps().selectionState,
+        selectionModel: {
+          ...createProps().selectionState.selectionModel,
+          selectionMode: true,
+        },
+      },
+    });
+    const { container } = renderWithProviders(<FileManagerView {...props} />);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('file-actions-speed-dial')).not.toBeInTheDocument();
+    });
+
+    const bar = container.querySelector('[data-testid="floating-search-bar"]');
+    expect(getComputedStyle(bar).right).toBe('16px');
+  });
+
   it('renders real folder names in the shared tree (no placeholder names)', async () => {
     folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([
       { nodeId: 21, name: 'Reports', permission: 'write', type: 'directory' },

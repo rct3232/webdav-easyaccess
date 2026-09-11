@@ -26,15 +26,19 @@
 | hasWritePermission | boolean  | N        | true    | Write permission                           |
 | disabled           | boolean  | N        | false   | Disable Fab                                |
 | shareLinkMode      | object   | N        | -       | { user, onLoginClick, onAddToSharedClick } |
+| onVisibilityChange | function | N        | -       | Self-report of actual FAB visibility       |
 
 ### 2.3 Callback Signatures
 
-| Callback                         | When invoked                   | Arguments |
-| -------------------------------- | ------------------------------ | --------- |
-| onUpload                         | Upload action                  | -         |
-| onCreateFolder                   | Create folder action           | -         |
-| shareLinkMode.onLoginClick       | Login (when not logged in)     | -         |
-| shareLinkMode.onAddToSharedClick | Add to shared (when logged in) | -         |
+| Callback                         | When invoked                                                                   | Arguments                                                                                  |
+| -------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| onUpload                         | Upload action                                                                  | -                                                                                          |
+| onCreateFolder                   | Create folder action                                                           | -                                                                                          |
+| shareLinkMode.onLoginClick       | Login (when not logged in)                                                     | -                                                                                          |
+| shareLinkMode.onAddToSharedClick | Add to shared (when logged in)                                                 | -                                                                                          |
+| onVisibilityChange               | After mount/update when FAB renders; just before hide/unmount (effect cleanup) | (boolean) true when the FAB actually renders UI, false when it stops rendering or unmounts |
+
+Visibility self-report contract: the FAB is the single source of truth for its own visibility. It reports `true` only when it actually renders a Fab/SpeedDial, and reports `false` via effect cleanup when it transitions to `null` or unmounts. It never reports `false` while it was never visible; consumers default to hidden. This lets FloatingSearchBar expand whenever the FAB disappears, regardless of the hiding cause (selection mode unmount, permission-based self-hide, read-only views).
 
 ### 2.4 Dependencies
 
@@ -61,6 +65,7 @@
 - [ ] shareLinkMode: login vs add-to-shared
 - [ ] Returns null when no write permission
 - [ ] disabled disables Fab
+- [ ] onVisibilityChange: reports true when rendered, false on unmount; silent when never visible
 
 ### 2.8 Edge Cases
 

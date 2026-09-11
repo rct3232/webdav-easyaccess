@@ -7,17 +7,35 @@ This document defines the mandatory workflows and standards for all agents worki
 - **Language**: All documentation, commit messages, and technical communications must be written in English.
 - **Source of Truth**: Always refer to `/docs` (spec, features, contracts) before making assumptions about behavior.
 
+### 1.1 Core Reference Documents
+
+**Read the applicable document(s) BEFORE reading code or making changes:**
+
+| Document | Read when... |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Designing any change (new modules/endpoints, layer boundaries, code placement, client/server integration) |
+| [docs/CODING_STYLE.md](docs/CODING_STYLE.md) | Writing or refactoring ANY source file (naming, imports, React/Express patterns) |
+| [docs/shared-contracts.md](docs/shared-contracts.md) | Changing data formats, error shapes, or constants shared between client/server/tests |
+| [docs/api.md](docs/api.md) | Adding or modifying REST API endpoints |
+| [docs/TESTING_STRATEGY.md](docs/TESTING_STRATEGY.md) | Writing tests or deciding test scope |
+| [docs/TEST_GIT_GUIDE.md](docs/TEST_GIT_GUIDE.md) | Running test suites, committing tests, or touching CI/E2E environment |
+
+Rules:
+
+- If your change contradicts a core document, STOP and ask the user.
+- If your change makes a core document stale, update that document in the same PR.
+
 ## 2. Development Workflow
 
-### 2.1 Docs-First Workflow
+### 2.1 Implementation Order (Docs-First)
 
-**Mandatory before any source code edit.**
+**Mandatory for any feature or bug fix. Never skip or reorder a step.**
 
-1. **Identify**: Explicitly list the spec/feature docs affected.
-2. **Read**: Review the identified documents.
-3. **Update**: Modify or add spec/feature docs (`docs/spec/`, `docs/features/`) before implementation.
-4. **Implement**: Proceed to code changes only after docs are updated.
-5. **Track unresolved work in one place**: Unresolved, undecided, or unimplemented items must be recorded only in `docs/IMPROVEMENT_PLAN.md`. Spec/feature docs describe the current implemented/decided state and must not carry planned/future or "pending implementation"/"target contract" statements.
+1. **Docs**: Identify the affected spec/feature docs and core reference docs (§1.1), review them, and update them (`docs/spec/`, `docs/features/`) before any code change.
+2. **Tests**: Write tests from the updated docs before implementation (TDD); they are expected to fail initially.
+3. **Code**: Implement following `docs/ARCHITECTURE.md` and `docs/CODING_STYLE.md` until the tests pass.
+4. **Verify**: Run the relevant suites (`npm run test:ci`, plus E2E/PG legs per §2.2 when applicable) and confirm all pass before committing.
+5. **Track unresolved work** only in `docs/IMPROVEMENT_PLAN.md`; spec/feature docs describe the current implemented/decided state only.
 
 ### 2.2 Branching Convention
 
@@ -48,7 +66,7 @@ This document defines the mandatory workflows and standards for all agents worki
    - **Non-Trivial Changes**: MUST include a body with these sections:
      - `Why:` Reason for the change.
      - `What:` Summary of changes (grouped by area).
-     - `Impact / verification:` Behavior changes, risks, or test scope.
+      - `Impact / verification:` Behavior changes, risks, or test scope.
 
 ## 3. Testing & Quality
 

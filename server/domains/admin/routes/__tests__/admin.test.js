@@ -745,7 +745,6 @@ describe('DELETE /api/admin/maintenance/perm-delete', () => {
       username: `admin-permdel-trash-${Date.now()}`,
       isAdmin: true,
     });
-    const store = createNodesStore();
     const { nodeId, path } = await createTestFileNode({ name: `permdel-trash-${Date.now()}` });
     // Dependent rows that FK-cascade at purge time.
     await dbRun(

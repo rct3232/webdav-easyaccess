@@ -42,7 +42,7 @@ import { loginWithCredentials } from './helpers/auth';
  */
 
 // This suite's dedicated scratch port (Option A Phase 1): one distinct port per
-// hermetic suite — setup-wizard :5003, admin-config :5010, migration :5011 —
+// hermetic suite — setup-wizard :5003, admin-config :5010, migration :5011, trash-admin :5012 —
 // so the suites can run concurrently. Must match playwright.config.ts.
 const SCRATCH_PORT = 5010;
 const SCRATCH_BASE = `http://127.0.0.1:${SCRATCH_PORT}`;

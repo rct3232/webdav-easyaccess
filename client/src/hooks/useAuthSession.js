@@ -5,6 +5,7 @@ import {
   getAccessToken,
   getRefreshToken,
   removeTokens,
+  revokeRefreshToken,
   setAccessToken,
   setRefreshToken,
 } from '../services/authTokenStore';
@@ -31,6 +32,9 @@ export function useAuthSession() {
   });
 
   const logout = useCallback(() => {
+    // DEF-22: revoke the refresh token server-side (best-effort, must not
+    // block the local session clear) before dropping local state.
+    revokeRefreshToken();
     removeTokens();
 
     try {

@@ -228,6 +228,65 @@ describe('POST /api/auth/refresh', () => {
     expect(typeof res.body.token).toBe('string');
   });
 
+  it('rotates: response carries a NEW refreshToken and the used token 401s on reuse', async () => {
+    const { user } = await createAuthenticatedTestUser({
+      username: `rotate-${Date.now()}`,
+    });
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ username: user.username, password: 'password123' });
+    const refreshToken = loginRes.body.refreshToken;
+
+    const first = await request(app).post('/api/auth/refresh').send({ refreshToken });
+    expect(first.status).toBe(200);
+    expect(first.body.refreshToken).toBeDefined();
+    expect(first.body.refreshToken).not.toBe(refreshToken);
+
+    // Single-use: the consumed id is dead.
+    const reuse = await request(app).post('/api/auth/refresh').send({ refreshToken });
+    expect(reuse.status).toBe(401);
+
+    // The rotated id works and yields yet another one.
+    const second = await request(app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: first.body.refreshToken });
+    expect(second.status).toBe(200);
+    expect(second.body.refreshToken).not.toBe(first.body.refreshToken);
+  });
+});
+
+describe('POST /api/auth/logout', () => {
+  it('revokes the presented refresh token and returns the loggedOut message code', async () => {
+    const { user } = await createAuthenticatedTestUser({
+      username: `logout-${Date.now()}`,
+    });
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ username: user.username, password: 'password123' });
+    const refreshToken = loginRes.body.refreshToken;
+
+    const res = await request(app).post('/api/auth/logout').send({ refreshToken });
+    expect(res.status).toBe(200);
+    expect(res.body.messageCode).toBe('serverMessages.auth.loggedOut');
+
+    const after = await request(app).post('/api/auth/refresh').send({ refreshToken });
+    expect(after.status).toBe(401);
+  });
+
+  it('is idempotent: unknown or absent refresh tokens still return 200', async () => {
+    const unknown = await request(app).post('/api/auth/logout').send({ refreshToken: 'nope' });
+    expect(unknown.status).toBe(200);
+
+    const empty = await request(app).post('/api/auth/logout').send({});
+    expect(empty.status).toBe(200);
+
+    const double = await request(app).post('/api/auth/logout').send({});
+    expect(double.status).toBe(200);
+  });
+});
+
+describe('POST /api/auth/refresh (invalid inputs)', () => {
+
   it('returns 401 when refresh token invalid', async () => {
     const res = await request(app)
       .post('/api/auth/refresh')

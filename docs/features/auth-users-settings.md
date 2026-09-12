@@ -61,8 +61,9 @@ The client treats a "session" as valid only while an access token exists and is 
     - For failures that happen immediately after a deliberate route transition to a protected page (e.g. admin-only pages, user list), the client may navigate back (`history.back()`) or route to a safe default (e.g. `/`).
     - For failures in-place (e.g. a forbidden action within an already-open page), the client should not automatically redirect; the error is surfaced to the caller/UI.
 - **Logout**:
-  - Clearing the session is the single source of truth for "logged out".
-  - Closing the browser should effectively log the user out because tokens are stored in session-scoped storage.
+  - Logout is two-sided: the client clears its session storage AND sends `POST /api/auth/logout` with the current refresh token (best-effort — an offline clear still drops the local session; the server call revokes when reachable).
+  - Refresh tokens are single-use: every `/api/auth/refresh` rotates the id, so a leaked token is usable only until the legitimate client's next refresh, which 401s the attacker and forces re-login.
+  - Closing the browser should effectively log the user out because tokens are stored in session-scoped storage (server-side rows still expire by TTL; rotation bounds their blast radius).
 
 ### Transport (HTTP request mechanics)
 

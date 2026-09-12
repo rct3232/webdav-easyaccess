@@ -218,6 +218,7 @@ const SERVER_MESSAGE_CODES = {
   auth: {
     registerSuccess: P('serverMessages.auth', 'registerSuccess'),
     loginSuccess: P('serverMessages.auth', 'loginSuccess'),
+    loggedOut: P('serverMessages.auth', 'loggedOut'),
   },
   admin: {
     settingsSaved: P('serverMessages.admin', 'settingsSaved'),

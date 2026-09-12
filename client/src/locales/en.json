@@ -975,15 +975,15 @@
     "folders": {
       "createSuccess": "Folder created successfully"
     },
-    "recentFiles": {
-    },
+    "recentFiles": {},
     "api": {
       "healthOk": "WebDAV EasyAccess API is running",
       "webdavTestOk": "WebDAV connection successful"
     },
     "auth": {
       "registerSuccess": "Registration complete. Please wait for administrator approval.",
-      "loginSuccess": "Login successful"
+      "loginSuccess": "Login successful",
+      "loggedOut": "Logged out"
     },
     "admin": {
       "settingsSaved": "Settings saved.",

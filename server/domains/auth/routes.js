@@ -66,6 +66,14 @@ router.post(
   })
 );
 
+router.post(
+  '/logout',
+  asyncHandler(async (req, res) => {
+    authService.logout(req.body?.refreshToken);
+    res.json({ messageCode: SERVER_MESSAGE_CODES.auth.loggedOut });
+  })
+);
+
 router.get(
   '/me',
   authenticateToken,

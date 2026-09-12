@@ -11,14 +11,14 @@ This document defines the mandatory workflows and standards for all agents worki
 
 **Read the applicable document(s) BEFORE reading code or making changes:**
 
-| Document | Read when... |
-|---|---|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Designing any change (new modules/endpoints, layer boundaries, code placement, client/server integration) |
-| [docs/CODING_STYLE.md](docs/CODING_STYLE.md) | Writing or refactoring ANY source file (naming, imports, React/Express patterns) |
-| [docs/shared-contracts.md](docs/shared-contracts.md) | Changing data formats, error shapes, or constants shared between client/server/tests |
-| [docs/api.md](docs/api.md) | Adding or modifying REST API endpoints |
-| [docs/TESTING_STRATEGY.md](docs/TESTING_STRATEGY.md) | Writing tests or deciding test scope |
-| [docs/TEST_GIT_GUIDE.md](docs/TEST_GIT_GUIDE.md) | Running test suites, committing tests, or touching CI/E2E environment |
+| Document                                             | Read when...                                                                                              |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)         | Designing any change (new modules/endpoints, layer boundaries, code placement, client/server integration) |
+| [docs/CODING_STYLE.md](docs/CODING_STYLE.md)         | Writing or refactoring ANY source file (naming, imports, React/Express patterns)                          |
+| [docs/shared-contracts.md](docs/shared-contracts.md) | Changing data formats, error shapes, or constants shared between client/server/tests                      |
+| [docs/api.md](docs/api.md)                           | Adding or modifying REST API endpoints                                                                    |
+| [docs/TESTING_STRATEGY.md](docs/TESTING_STRATEGY.md) | Writing tests or deciding test scope                                                                      |
+| [docs/TEST_GIT_GUIDE.md](docs/TEST_GIT_GUIDE.md)     | Running test suites, committing tests, or touching CI/E2E environment                                     |
 
 Rules:
 
@@ -66,7 +66,7 @@ Rules:
    - **Non-Trivial Changes**: MUST include a body with these sections:
      - `Why:` Reason for the change.
      - `What:` Summary of changes (grouped by area).
-      - `Impact / verification:` Behavior changes, risks, or test scope.
+     - `Impact / verification:` Behavior changes, risks, or test scope.
 
 ## 3. Testing & Quality
 

@@ -14,23 +14,35 @@ async function _processBulkJob(jobId) {
   if (!job) return;
 
   const { getComposition } = require('../../../service/composition');
-  const { batchOperationService: batchOp } = getComposition();
+  const { batchOperationService: batchOp, aclService } = getComposition();
 
   try {
+    // DEF-21: the worker executes as the REQUESTING principal, never a
+    // synthesized identity — per-item ACL gates and the D6 ownership-transfer
+    // cleanup must observe the same user the job was created for.
+    const user = await aclService.getCachedUser(job.userId);
+    if (!user) {
+      opStore.updateJob(jobId, {
+        status: 'failed',
+        errorMessage: 'serverErrors.auth.userNotFound',
+      });
+      return;
+    }
+
     opStore.updateJob(jobId, { status: 'running', progress: 0 });
 
     let result;
     switch (job.operation) {
       case 'delete': {
-        result = await batchOp.batchDelete(job.payload.nodeIds, job.userId);
+        result = await batchOp.batchDelete(job.payload.nodeIds, job.userId, user);
         break;
       }
       case 'move': {
-        result = await batchOp.batchMove(job.payload.moves, job.userId, { is_admin: true });
+        result = await batchOp.batchMove(job.payload.moves, job.userId, user);
         break;
       }
       case 'copy': {
-        result = await batchOp.batchCopy(job.payload.copies, job.userId, { is_admin: true });
+        result = await batchOp.batchCopy(job.payload.copies, job.userId, user);
         break;
       }
       default:

@@ -238,8 +238,7 @@ const SERVER_MESSAGE_CODES = {
   folders: {
     createSuccess: P('serverMessages.folders', 'createSuccess'),
   },
-  recentFiles: {
-  },
+  recentFiles: {},
   api: {
     healthOk: P('serverMessages.api', 'healthOk'),
     webdavTestOk: P('serverMessages.api', 'webdavTestOk'),

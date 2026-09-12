@@ -1,7 +1,10 @@
 'use strict';
 
 const { mapDatabaseError } = require('../../../../../utils/errorHandler');
-const { mapPermissionRequestRow, PERMISSION_REQUEST_STATUS } = require('../permissionRequestShared');
+const {
+  mapPermissionRequestRow,
+  PERMISSION_REQUEST_STATUS,
+} = require('../permissionRequestShared');
 
 /**
  * sqlite implementation of PermissionRequestRepository (`?` placeholders).
@@ -142,9 +145,10 @@ module.exports = function createSqlitePermissionRequestRepository(executor) {
     async updateStatusRow(id, nextStatus, resolvedBy) {
       try {
         return await executor.transaction(async (tx) => {
-          const existing = await tx.query('SELECT id FROM permission_requests WHERE id = ? LIMIT 1', [
-            Number(id),
-          ]);
+          const existing = await tx.query(
+            'SELECT id FROM permission_requests WHERE id = ? LIMIT 1',
+            [Number(id)]
+          );
           if (existing.rows.length === 0) {
             const { createError } = require('../../../../../utils/errorHandler');
             const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');

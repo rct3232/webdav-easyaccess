@@ -28,10 +28,10 @@
 
 ### 2.3 Callback Signatures
 
-| Callback      | When invoked        | Arguments                                   |
-| ------------- | ------------------- | ------------------------------------------- |
-| onClose       | Dialog close        | -                                           |
-| onUploadStart | Upload button click | (fileList: File[], parentNodeId: number)    |
+| Callback      | When invoked        | Arguments                                |
+| ------------- | ------------------- | ---------------------------------------- |
+| onClose       | Dialog close        | -                                        |
+| onUploadStart | Upload button click | (fileList: File[], parentNodeId: number) |
 
 ### 2.4 Dependencies
 

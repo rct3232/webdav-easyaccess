@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-| Item       | Description                                                                                                                                                                                                                                                                                                        |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Route path | `/setup`                                                                                                                                                                                                                                                                                                           |
+| Item       | Description                                                                                                                                                                                                                                                                                                                          |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Route path | `/setup`                                                                                                                                                                                                                                                                                                                             |
 | Role       | First-run setup wizard. Public page (outside `MainLayout`), shown when the server reports `setup_complete: false`. Walks the operator through metadata, file storage, admin password, an optional JWT secret, optional settings, apply, and a "Restart required" screen. Unreachable once setup is complete (redirects to `/login`). |
 
 Feature Source-of-Truth: [setup-wizard.md](../../../features/setup-wizard.md).
@@ -83,11 +83,11 @@ Errors surface via `t(errorCode, params)` (existing error-display utility patter
 
 ### 3.2 Main Functions
 
-| Function       | Input                                                         | Return                                          | API called                |
-| -------------- | ------------------------------------------------------------- | ----------------------------------------------- | ------------------------- |
-| getSetupStatus | `()`                                                          | `Promise<{ setup_complete, missing, current }>` | `GET /api/setup/status`   |
-| testSetup      | `(target: 'postgresql' \| 's3' \| 'webdav', payload: Object)` | `Promise<{ ok }>`                               | `POST /api/setup/test`    |
-| applySetup     | `(payload: Object)`                                           | `Promise<{ restart_required }>`                 | `POST /api/setup/apply`   |
+| Function       | Input                                                         | Return                                          | API called              |
+| -------------- | ------------------------------------------------------------- | ----------------------------------------------- | ----------------------- |
+| getSetupStatus | `()`                                                          | `Promise<{ setup_complete, missing, current }>` | `GET /api/setup/status` |
+| testSetup      | `(target: 'postgresql' \| 's3' \| 'webdav', payload: Object)` | `Promise<{ ok }>`                               | `POST /api/setup/test`  |
+| applySetup     | `(payload: Object)`                                           | `Promise<{ restart_required }>`                 | `POST /api/setup/apply` |
 
 Transport: the existing `apiClient` (`client/src/services/apiClient.js`), which delegates to
 `httpClient` (`client/src/services/httpClient.js`, `BASE_URL = '/api'` at

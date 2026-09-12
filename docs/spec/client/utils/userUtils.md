@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-| Item | Description                                                                                                              |
-| ---- | ------------------------------------------------------------------------------------------------------------------------ |
-| Role | User-related utilities: base folder path, filter out own folders from permissions list.                                  |
+| Item | Description                                                                             |
+| ---- | --------------------------------------------------------------------------------------- |
+| Role | User-related utilities: base folder path, filter out own folders from permissions list. |
 
 ---
 

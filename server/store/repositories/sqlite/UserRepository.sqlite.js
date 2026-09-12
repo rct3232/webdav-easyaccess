@@ -114,7 +114,9 @@ module.exports = function createSqliteUserRepository(executor) {
             ]
           );
 
-          const inserted = await tx.query('SELECT * FROM users WHERE id = last_insert_rowid() LIMIT 1');
+          const inserted = await tx.query(
+            'SELECT * FROM users WHERE id = last_insert_rowid() LIMIT 1'
+          );
           return mapUserRow(inserted.rows[0]);
         });
       } catch (error) {
@@ -155,10 +157,9 @@ module.exports = function createSqliteUserRepository(executor) {
           ]);
           if (currentUserRes.rows.length === 0) throwUserNotFound();
 
-          const dupEmailRes = await tx.query(
-            'SELECT id FROM users WHERE email_hash = ? LIMIT 1',
-            [newHash]
-          );
+          const dupEmailRes = await tx.query('SELECT id FROM users WHERE email_hash = ? LIMIT 1', [
+            newHash,
+          ]);
           if (dupEmailRes.rows.length > 0 && Number(dupEmailRes.rows[0].id) !== userIdNum) {
             throwEmailTaken();
           }

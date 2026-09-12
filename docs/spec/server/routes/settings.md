@@ -22,11 +22,11 @@
 
 ### 2.2 Route List
 
-| Method | Path                        | Mount       | Auth          | Description                                                |
-| ------ | --------------------------- | ----------- | ------------- | ---------------------------------------------------------- |
-| GET    | `/api/settings/public`      | publicRouter | None          | Public settings.                                           |
-| GET    | `/api/admin/settings`       | router      | Token + Admin | Get all system settings.                                   |
-| PUT    | `/api/admin/settings`       | router      | Token + Admin | Update system settings (currently `registration_enabled`). |
+| Method | Path                   | Mount        | Auth          | Description                                                |
+| ------ | ---------------------- | ------------ | ------------- | ---------------------------------------------------------- |
+| GET    | `/api/settings/public` | publicRouter | None          | Public settings.                                           |
+| GET    | `/api/admin/settings`  | router       | Token + Admin | Get all system settings.                                   |
+| PUT    | `/api/admin/settings`  | router       | Token + Admin | Update system settings (currently `registration_enabled`). |
 
 ### 2.3 Middleware Used
 

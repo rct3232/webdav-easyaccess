@@ -17,9 +17,9 @@
 
 ### 2.2 Main Methods
 
-| Method                 | Signature                                                         | Description                                      |
-| ---------------------- | ----------------------------------------------------------------- | ------------------------------------------------ |
-| applyPendingMigrations | (backend, options?) => Promise\<void\>                            | Detect and apply unapplied DDL files; idempotent. `options.pgClient` targets an explicit PG connection (caller owns the transaction); `options.sqliteConnection` targets an explicit sqlite3.Database (caller owns the transaction). No options → the active backend. |
+| Method                 | Signature                              | Description                                                                                                                                                                                                                                                           |
+| ---------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| applyPendingMigrations | (backend, options?) => Promise\<void\> | Detect and apply unapplied DDL files; idempotent. `options.pgClient` targets an explicit PG connection (caller owns the transaction); `options.sqliteConnection` targets an explicit sqlite3.Database (caller owns the transaction). No options → the active backend. |
 
 ### 2.3 `_schema_migrations` Table
 
@@ -40,13 +40,13 @@ CREATE TABLE _schema_migrations (
 3. For each file:
    a. Read DDL content and compute its SHA-256 checksum
    b. Look up the file in `_schema_migrations`:
-      - **Row exists, checksum matches** → skip (idempotent no-op)
-      - **Row exists, checksum differs** → throw a hard error naming the file and
-        both checksums (stored vs current) — modified-DDL detection, fail fast
-      - **No row** → apply:
-        i. If sqlite backend: apply `convertPostgresToSqlite()`
-        ii. Execute the file's statements — transaction mode is backend-dependent (see below)
-        iii. INSERT into `_schema_migrations` { filename, applied_at, checksum }
+   - **Row exists, checksum matches** → skip (idempotent no-op)
+   - **Row exists, checksum differs** → throw a hard error naming the file and
+     both checksums (stored vs current) — modified-DDL detection, fail fast
+   - **No row** → apply:
+     i. If sqlite backend: apply `convertPostgresToSqlite()`
+     ii. Execute the file's statements — transaction mode is backend-dependent (see below)
+     iii. INSERT into `_schema_migrations` { filename, applied_at, checksum }
 
 **Execution mode per backend:**
 

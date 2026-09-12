@@ -659,6 +659,5 @@ module.exports = function createSqliteFileNodeRepository(executor) {
         throw mapDatabaseError(error);
       }
     },
-
   };
 };

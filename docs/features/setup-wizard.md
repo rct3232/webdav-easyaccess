@@ -142,10 +142,10 @@ settings routes never write `.env`.
 
 `setup_complete = metadata AND file` (`JWT_SECRET` is never a completeness condition):
 
-| Block      | Env keys                                 | Rule                                                                                                                                                                                                      |
-| ---------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Block      | Env keys                           | Rule                                                                                                                                                                                                                                                                     |
+| ---------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `metadata` | remote DB block / SQLite (default) | SQLite is always resolvable when no remote DB keys are set; setting any of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` selects the PostgreSQL backend and all four are required (reuse `resolvePgConfig` semantics, `server/store/storage.js:32-47`) |
-| `file`     | `WEA_FILE_STORAGE` (default `s3`)        | `s3` requires the 4 `S3_*`/`AWS_*` keys (reuse `resolveS3Config` semantics, `server/infrastructure/adapters/blobstore/index.js:7-13`); `webdav` requires `WEBDAV_URL`/`WEBDAV_USERNAME`/`WEBDAV_PASSWORD` |
+| `file`     | `WEA_FILE_STORAGE` (default `s3`)  | `s3` requires the 4 `S3_*`/`AWS_*` keys (reuse `resolveS3Config` semantics, `server/infrastructure/adapters/blobstore/index.js:7-13`); `webdav` requires `WEBDAV_URL`/`WEBDAV_USERNAME`/`WEBDAV_PASSWORD`                                                                |
 
 `JWT_SECRET` is never a completeness condition: a boot whose secret is the legacy placeholder
 or unset is never incomplete on its account — an unset/empty secret triggers the boot-time

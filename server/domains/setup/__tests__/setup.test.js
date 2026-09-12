@@ -50,7 +50,12 @@ const { Client: MockPgClient } = require('pg');
 // suite-level DB bootstrap is bypassed.
 // The real-PG leg is signalled by the dedicated WEA_TEST_PG_* test namespace
 // (production WEA_DB_* is never present in a jest process).
-const TEST_PG_KEYS = ['WEA_TEST_PG_HOST', 'WEA_TEST_PG_DATABASE', 'WEA_TEST_PG_USER', 'WEA_TEST_PG_PASSWORD'];
+const TEST_PG_KEYS = [
+  'WEA_TEST_PG_HOST',
+  'WEA_TEST_PG_DATABASE',
+  'WEA_TEST_PG_USER',
+  'WEA_TEST_PG_PASSWORD',
+];
 const RUN_UNDER_PG = TEST_PG_KEYS.every((key) => !!process.env[key]);
 
 // Bind describe to skip when the storage backend is postgresql (SQLite-only suite).

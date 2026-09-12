@@ -17,9 +17,9 @@
 
 ### 2.2 Main Methods
 
-| Method      | Signature                                                       | Description                                                                                                                 |
-| ----------- | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| acquireLock | (lockName, options?) => Promise\<{ token, release }\>           | Acquire a lock row on the active DB backend. `postgresql`: stale-row cleanup then `INSERT ... ON CONFLICT (lock_name_hash) DO NOTHING`; `sqlite`: stale-row cleanup then INSERT-or-fail inside a transaction. Retries until the `waitMs` deadline, then throws `LOCK_TIMEOUT`. |
+| Method      | Signature                                             | Description                                                                                                                                                                                                                                                                    |
+| ----------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| acquireLock | (lockName, options?) => Promise\<{ token, release }\> | Acquire a lock row on the active DB backend. `postgresql`: stale-row cleanup then `INSERT ... ON CONFLICT (lock_name_hash) DO NOTHING`; `sqlite`: stale-row cleanup then INSERT-or-fail inside a transaction. Retries until the `waitMs` deadline, then throws `LOCK_TIMEOUT`. |
 
 ### 2.3 Options
 

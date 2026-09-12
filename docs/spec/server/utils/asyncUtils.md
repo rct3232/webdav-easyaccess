@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description                                         |
-| ---- | ----------------------------------------------------- |
+| Item | Description                                          |
+| ---- | ---------------------------------------------------- |
 | Role | Async helpers: asyncLimit (concurrency-limited map). |
 
 ---
@@ -17,9 +17,9 @@
 
 ### 2.2 Functions / Exports
 
-| Function   | Signature                              | Description                                   |
-| ---------- | -------------------------------------- | --------------------------------------------- |
-| asyncLimit | (limit, items, fn) => Promise\<Array\> | Run fn for each item with concurrency limit   |
+| Function   | Signature                              | Description                                 |
+| ---------- | -------------------------------------- | ------------------------------------------- |
+| asyncLimit | (limit, items, fn) => Promise\<Array\> | Run fn for each item with concurrency limit |
 
 Note: `asyncLimitSettled` and `asyncLimitSettledWithCancel` were retired (dead-code
 cleanup 2026-09) — no production caller remained; cancellation-aware batching uses

@@ -145,9 +145,7 @@ describe('FileNodeRepository conformance', () => {
     expect(await repo.countActiveObjectsByS3Key(s3Key)).toBe(0);
 
     const { dbQuery } = require('@server/test-utils');
-    const orphanRows = await dbQuery('SELECT id, status FROM object_map WHERE s3_key = ?', [
-      s3Key,
-    ]);
+    const orphanRows = await dbQuery('SELECT id, status FROM object_map WHERE s3_key = ?', [s3Key]);
     expect(orphanRows.rows[0].status).toBe('orphaned');
     const del = await repo.deleteObjectMapRows([orphanRows.rows[0].id]);
     expect(del.changes).toBe(1);

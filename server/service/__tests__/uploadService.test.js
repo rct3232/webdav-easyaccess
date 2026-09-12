@@ -395,5 +395,4 @@ describe('createUploadService', () => {
       await dbRun('DELETE FROM file_nodes WHERE id = ?', [origResult.nodeId]);
     });
   });
-
 });

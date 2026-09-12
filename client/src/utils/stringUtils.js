@@ -32,10 +32,7 @@ let canvas = null;
 /**
  * Measures the pixel width of a string given a font.
  */
-const getTextWidth = (
-  text,
-  font = '14px Inter, Roboto, "Helvetica Neue", Arial, sans-serif'
-) => {
+const getTextWidth = (text, font = '14px Inter, Roboto, "Helvetica Neue", Arial, sans-serif') => {
   if (typeof document === 'undefined') return 0; // Guard for non-browser env
   if (!canvas) {
     canvas = document.createElement('canvas');

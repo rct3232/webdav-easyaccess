@@ -481,9 +481,7 @@ describe('SystemSettingsContent', () => {
     });
     expect(screen.getByText(/synced from the environment/i)).toBeInTheDocument();
     await waitFor(() => {
-      expect(
-        screen.queryByRole('dialog', { name: /database sync/i })
-      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('dialog', { name: /database sync/i })).not.toBeInTheDocument();
     });
   });
 

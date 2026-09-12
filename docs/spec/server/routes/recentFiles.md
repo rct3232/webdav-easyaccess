@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-| Item       | Description                                                                                                          |
-| ---------- | -------------------------------------------------------------------------------------------------------------------- |
-| Mount path | `/api/recent-files`                                                                                                  |
+| Item       | Description                                                                                                   |
+| ---------- | ------------------------------------------------------------------------------------------------------------- |
+| Mount path | `/api/recent-files`                                                                                           |
 | Role       | Recent files for current user: list, add, remove. Entries are nodeId-based; displayPath resolved server-side. |
 
 ---

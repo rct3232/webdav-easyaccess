@@ -36,10 +36,10 @@ against (see "Surfaces and env source" below).
 
 ## Surfaces and env source
 
-| Surface             | Where                                                                  | Env source reconciled against                                                            |
-| ------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| CLI                 | `server/scripts/configSync.js` (`--check` / `--apply --yes`)           | the `.env` file on disk, re-read at run time (`loadDotenv`, `override: false` — real injected env still wins) |
-| Admin web action    | System settings → "Sync environment → DB" (`server/domains/admin/routes/config.js`) | the **running process environment** (`process.env`). The `.env` file on disk is never read; a key counts as env-set when the config resolver reports `source: 'env'` for it. |
+| Surface          | Where                                                                               | Env source reconciled against                                                                                                                                                |
+| ---------------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CLI              | `server/scripts/configSync.js` (`--check` / `--apply --yes`)                        | the `.env` file on disk, re-read at run time (`loadDotenv`, `override: false` — real injected env still wins)                                                                |
+| Admin web action | System settings → "Sync environment → DB" (`server/domains/admin/routes/config.js`) | the **running process environment** (`process.env`). The `.env` file on disk is never read; a key counts as env-set when the config resolver reports `source: 'env'` for it. |
 
 Implication for the web surface: because `populateT1Env` copies DB-only T1 values into
 `process.env` at boot, presence in `process.env` alone does **not** mean "operator-set env".
@@ -69,12 +69,12 @@ reported).
 
 For every non-T0 registry key:
 
-| Status       | Condition                                                         | Severity                              |
-| ------------ | ----------------------------------------------------------------- | ------------------------------------- |
-| `differs`    | key set in env, DB row exists, stored values differ               | **DRIFT**                             |
-| `shadowed`   | key set in env, DB row exists, stored values equal                | informational (env wins; the DB copy is current) |
-| `env-only`   | key set in env, no DB row                                          | informational                         |
-| `db-only`    | key not set in env, DB row exists                                  | informational (normal per D1)         |
+| Status     | Condition                                           | Severity                                         |
+| ---------- | --------------------------------------------------- | ------------------------------------------------ |
+| `differs`  | key set in env, DB row exists, stored values differ | **DRIFT**                                        |
+| `shadowed` | key set in env, DB row exists, stored values equal  | informational (env wins; the DB copy is current) |
+| `env-only` | key set in env, no DB row                           | informational                                    |
+| `db-only`  | key not set in env, DB row exists                   | informational (normal per D1)                    |
 
 There is no `key-lost` status: DB rows are plaintext and need no key to read, so nothing can
 become unrecoverable. The severity column drives the CLI's exit code (see below); the web
@@ -103,7 +103,7 @@ Output:
   `exit code:` line.
 - **`--json` (CLI):** a single JSON document:
   `{ findings: [{ key, status, secret, dbUpdatedAt }], summary: { drift, shadowed,
-  envOnly, dbOnly, total }, exitCode }`.
+envOnly, dbOnly, total }, exitCode }`.
 - **Web report (`GET /api/admin/config/sync-report`):** the same `findings` / `summary` /
   `exitCode` JSON as the CLI `--json`, returned by the API.
 
@@ -146,9 +146,9 @@ source"). Both routes sit behind `authenticateToken` + admin and share the algor
 
 ## Exit codes (CLI only)
 
-| Code | Meaning                                                                                  |
-| ---- | ---------------------------------------------------------------------------------------- |
-| `0`  | no drift (`--check`), or `--apply` completed with a clean post-apply check               |
+| Code | Meaning                                                                                   |
+| ---- | ----------------------------------------------------------------------------------------- |
+| `0`  | no drift (`--check`), or `--apply` completed with a clean post-apply check                |
 | `1`  | drift (`differs`) found; or a write failed; or the post-apply recheck still reports drift |
 | `2`  | usage error: unknown flag, or `--apply` without `--yes`                                   |
 

@@ -74,7 +74,12 @@ describe('ShareLinkRepository conformance', () => {
   it('expiresInDays produces a future expiresAt', async () => {
     const token = uniqueToken();
     const nodeId = await uniqueNode(3);
-    const link = await repo.createShareLink({ token, fileNodeId: nodeId, createdBy: userId, expiresInDays: 7 });
+    const link = await repo.createShareLink({
+      token,
+      fileNodeId: nodeId,
+      createdBy: userId,
+      expiresInDays: 7,
+    });
     expect(link.expiresAt).not.toBeNull();
     expect(new Date(link.expiresAt).getTime()).toBeGreaterThan(Date.now());
   });
@@ -104,9 +109,9 @@ describe('ShareLinkRepository conformance', () => {
     expect(updated.expiresAt).toBe(future);
     expect(updated.downloadCount).toBe(3);
 
-    await expect(repo.updateShareLink(`missing-${Date.now()}`, { downloadCount: 1 })).rejects.toMatchObject(
-      { status: 404 }
-    );
+    await expect(
+      repo.updateShareLink(`missing-${Date.now()}`, { downloadCount: 1 })
+    ).rejects.toMatchObject({ status: 404 });
   });
 
   it('incrementDownloadCount is atomic and 404s unknown tokens', async () => {

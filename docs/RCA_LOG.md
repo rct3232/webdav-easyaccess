@@ -325,6 +325,7 @@ IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode repor
   while the active control blob must survive the cycle. Pre-existing unrelated lint error
   `admin.test.js 'store' is assigned a value but never used` (unused var in the A3 live-node test)
   was verified present before this change via git stash (DEF-19 class) and left untouched.
+
 ### 2026-09-10 — Trash UI (DEF-16 P9): FileManagerView TDZ error surfaced by FileManagerView suite (Case B)
 
 - **Summary**: while implementing the trash view, the full client run failed 30 tests across
@@ -381,7 +382,7 @@ IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode repor
   class as the earlier A9 incident.
 - **Diagnosis**: the expired-trash fixture aged `deleted_at` with SQLite's `datetime('now', ...)`;
   the backend-agnostic conformance rule requires dual-leg SQL. `CURRENT_TIMESTAMP - INTERVAL
-  '40 days'` is standard on both engines (the converter passthrough keeps it verbatim on sqlite).
+'40 days'` is standard on both engines (the converter passthrough keeps it verbatim on sqlite).
 - **Classification**: **Case B (Test Error)**.
 - **Action taken**: fixture switched to `CURRENT_TIMESTAMP - INTERVAL '40 days'`; no assertion
   changes. PG leg 229 pass / 1 skip.

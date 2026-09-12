@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item       | Description                                                                           |
-| ---------- | ------------------------------------------------------------------------------------- |
-| Mount path | `/api/users`                                                                          |
-| Role       | User self-service: approved list, update own password/email.                          |
+| Item       | Description                                                  |
+| ---------- | ------------------------------------------------------------ |
+| Mount path | `/api/users`                                                 |
+| Role       | User self-service: approved list, update own password/email. |
 
 ---
 
@@ -20,11 +20,11 @@
 
 ### 2.2 Route List
 
-| Method | Path               | Auth  | Description                                                                   |
-| ------ | ------------------ | ----- | ----------------------------------------------------------------------------- |
-| GET    | `/approved`        | Token | List approved users.                                                          |
-| PUT    | `/:id/password`    | Token | Reset password. Body: `{ password }`. Self-only — changing another user's password returns 403. |
-| PUT    | `/:id/email`       | Token | Update email. Body: email.                                                    |
+| Method | Path            | Auth  | Description                                                                                     |
+| ------ | --------------- | ----- | ----------------------------------------------------------------------------------------------- |
+| GET    | `/approved`     | Token | List approved users.                                                                            |
+| PUT    | `/:id/password` | Token | Reset password. Body: `{ password }`. Self-only — changing another user's password returns 403. |
+| PUT    | `/:id/email`    | Token | Update email. Body: email.                                                                      |
 
 ### 2.3 Middleware Used
 

@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-| Item       | Description                                                                                                                                                                                                                                                                                                                                             |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Mount path | `/api/admin` (mounted by `server/index.js` behind `setupModeGuard`, alongside the other admin routes)                                                                                                                                                                                                                                                   |
+| Item       | Description                                                                                                                                                                                                                                                                                                                                              |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mount path | `/api/admin` (mounted by `server/index.js` behind `setupModeGuard`, alongside the other admin routes)                                                                                                                                                                                                                                                    |
 | Role       | Operator-facing config management (admin "Advanced settings" accordion): `GET` returns the **effective config** (env → DB → default, per `configResolver`) with secrets masked, `source`/`tier`/`secret` per registry key; `PUT` writes allowlisted non-T0 keys to the DB `settings` table as plaintext strings, then invalidates the T2 resolver cache. |
 
 Feature Source-of-Truth: [config-source-resolution.md](../../../features/config-source-resolution.md).
@@ -24,13 +24,13 @@ Registry / resolver contracts: `docs/spec/server/infrastructure/configRegistry.m
 
 ### 2.2 Route List
 
-| Method | Path                   | Auth          | Description                                                                                                                                    |
-| ------ | ---------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/config`              | Token + Admin | Effective config: masked secrets, `value`/`source`/`tier`/`secret` per registry key.                                                           |
-| PUT    | `/config`              | Token + Admin | Allowlisted non-T0 keys → DB `settings` as plaintext strings, T2 cache invalidated.                                                            |
-| POST   | `/config/test`         | Token + Admin | Connection test **with pending values** for a file-storage backend (s3/webdav); reuses the wizard probe/classification. Serves D1 save gating. |
-| GET    | `/config/sync-report`  | Token + Admin | Read-only env↔DB drift report (config-sync classification) over the **running process environment**.                                            |
-| POST   | `/config/sync-from-env`| Token + Admin | Reconcile: mirror env-sourced non-T0 registry values into DB `settings` (plaintext), then invalidate the T2 cache.                             |
+| Method | Path                    | Auth          | Description                                                                                                                                    |
+| ------ | ----------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/config`               | Token + Admin | Effective config: masked secrets, `value`/`source`/`tier`/`secret` per registry key.                                                           |
+| PUT    | `/config`               | Token + Admin | Allowlisted non-T0 keys → DB `settings` as plaintext strings, T2 cache invalidated.                                                            |
+| POST   | `/config/test`          | Token + Admin | Connection test **with pending values** for a file-storage backend (s3/webdav); reuses the wizard probe/classification. Serves D1 save gating. |
+| GET    | `/config/sync-report`   | Token + Admin | Read-only env↔DB drift report (config-sync classification) over the **running process environment**.                                           |
+| POST   | `/config/sync-from-env` | Token + Admin | Reconcile: mirror env-sourced non-T0 registry values into DB `settings` (plaintext), then invalidate the T2 cache.                             |
 
 ### 2.3 Middleware Used
 
@@ -52,7 +52,7 @@ Registry / resolver contracts: `docs/spec/server/infrastructure/configRegistry.m
     "PORT": { "value": "5001", "source": "default", "tier": "T1", "secret": false },
     "CORS_ORIGINS": { "value": "", "source": "default", "tier": "T2", "secret": false },
     "WEA_DB_HOST": { "value": "db.internal", "source": "env", "tier": "T0", "secret": false },
-  }
+  },
 }
 ```
 
@@ -171,23 +171,28 @@ never read.
 (`buildConfigSyncReport({ settings, envValueOf })`) — the same classification the
 CLI `--check` uses, over the non-T0 registry universe (T0 excluded):
 
-| Status     | Meaning                                                            |
-| ---------- | ------------------------------------------------------------------ |
-| `differs`  | env-set + DB row + values differ (secrets compared as plaintext)   |
-| `shadowed` | env-set + DB row + values equal                                    |
-| `env-only` | env-set + no DB row                                                |
-| `db-only`  | not env-set + DB row                                               |
+| Status     | Meaning                                                          |
+| ---------- | ---------------------------------------------------------------- |
+| `differs`  | env-set + DB row + values differ (secrets compared as plaintext) |
+| `shadowed` | env-set + DB row + values equal                                  |
+| `env-only` | env-set + no DB row                                              |
+| `db-only`  | not env-set + DB row                                             |
 
 **200:**
 
 ```jsonc
 {
   "findings": [
-    { "key": "PORT", "status": "differs", "secret": false, "dbUpdatedAt": "2026-09-03T00:00:00.000Z" },
-    { "key": "CORS_ORIGINS", "status": "env-only", "secret": false, "dbUpdatedAt": null }
+    {
+      "key": "PORT",
+      "status": "differs",
+      "secret": false,
+      "dbUpdatedAt": "2026-09-03T00:00:00.000Z",
+    },
+    { "key": "CORS_ORIGINS", "status": "env-only", "secret": false, "dbUpdatedAt": null },
   ],
   "summary": { "drift": 1, "shadowed": 0, "envOnly": 1, "dbOnly": 0, "total": 2 },
-  "exitCode": 1
+  "exitCode": 1,
 }
 ```
 
@@ -226,23 +231,23 @@ CLI `--apply --yes` over the resolver-classified env source. Feature SoT:
 {
   "writes": [
     { "key": "PORT", "secret": false, "status": "updated" },
-    { "key": "CORS_ORIGINS", "secret": false, "status": "updated" }
+    { "key": "CORS_ORIGINS", "secret": false, "status": "updated" },
   ],
   "report": {
     "findings": [],
     "summary": { "drift": 0, "shadowed": 0, "envOnly": 0, "dbOnly": 0, "total": 0 },
-    "exitCode": 0
+    "exitCode": 0,
   },
-  "messageCode": "serverMessages.admin.configSyncDone"
+  "messageCode": "serverMessages.admin.configSyncDone",
 }
 ```
 
 **Errors:**
 
-| Condition                                                                                            | Result                                                                                       |
-| ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| write failure (DB)                                                                                    | 500 through the central error handler                                                        |
-| unauthenticated / non-admin / setup-mode guard                                                         | 401 / 403 / 503 (as for the other config routes)                                             |
+| Condition                                      | Result                                           |
+| ---------------------------------------------- | ------------------------------------------------ |
+| write failure (DB)                             | 500 through the central error handler            |
+| unauthenticated / non-admin / setup-mode guard | 401 / 403 / 503 (as for the other config routes) |
 
 ### 2.5 Related Documents
 

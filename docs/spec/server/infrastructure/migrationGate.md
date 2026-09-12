@@ -83,12 +83,12 @@ Behavior:
 
 While the gate is active, only the following routes proceed:
 
-| Method + path               | Reason                                                                                                                                                                                                                                |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/health`           | Liveness probes stay open.                                                                                                                                                                                                            |
+| Method + path               | Reason                                                                                                                                                                                                                                    |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/health`           | Liveness probes stay open.                                                                                                                                                                                                                |
 | `POST /api/auth/login`      | Authentication stays open so the operator can reach `/migration` after a session expiry. _Decision D3 lists this as the admin login; the real route is `POST /api/auth/login` (`server/domains/auth/routes.js`, mounted at `/api/auth`)._ |
-| `/api/admin/migration/*`    | The admin migration API (start/cancel/poll, target-scan) must remain reachable while a migration runs so the operator can observe and cancel it.                                                                                      |
-| `GET /api/migration/status` | The migration-gate status endpoint: unauthenticated callers get `{ active }` only (polled by the app-guard); an authenticated admin gets the full gate state (polled by the `/migration` page).                                       |
+| `/api/admin/migration/*`    | The admin migration API (start/cancel/poll, target-scan) must remain reachable while a migration runs so the operator can observe and cancel it.                                                                                          |
+| `GET /api/migration/status` | The migration-gate status endpoint: unauthenticated callers get `{ active }` only (polled by the app-guard); an authenticated admin gets the full gate state (polled by the `/migration` page).                                           |
 
 Implementation note: `OPTIONS`/CORS preflight is handled by the `cors` middleware which runs
 before the gate; the gate must not block preflight. The allow-list is matched on `(method, path)`

@@ -28,7 +28,12 @@ describe('RecentFilesRepository conformance', () => {
   const uniqueUser = async () => {
     seq += 1;
     const User = require('@server/models/User');
-    const user = await User.create(`conf-rf-${Date.now()}-${seq}`, `${`conf-rf-${Date.now()}-${seq}`}@conf.test`, 'pw', false);
+    const user = await User.create(
+      `conf-rf-${Date.now()}-${seq}`,
+      `${`conf-rf-${Date.now()}-${seq}`}@conf.test`,
+      'pw',
+      false
+    );
     await createUserRootNode({ userId: user.id });
     return user;
   };
@@ -97,5 +102,4 @@ describe('RecentFilesRepository conformance', () => {
     const list = await repo.removeRecentFile(user.id, n1.nodeId);
     expect(list.some((e) => e.fileNodeId === Number(n1.nodeId))).toBe(false);
   });
-
 });

@@ -243,5 +243,4 @@ describe('aclService (nodeId)', () => {
     expect(aclService.extractShareToken('share:mytoken')).toBe('mytoken');
     expect(aclService.extractShareToken(42)).toBeNull();
   });
-
 });

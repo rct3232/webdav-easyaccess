@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-| Item | Description                                         |
-| ---- | --------------------------------------------------- |
-| Role | Path resolution: getProjectRoot, getDataDir.       |
+| Item | Description                                  |
+| ---- | -------------------------------------------- |
+| Role | Path resolution: getProjectRoot, getDataDir. |
 
 ---
 

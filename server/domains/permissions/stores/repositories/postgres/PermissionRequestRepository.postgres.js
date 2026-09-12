@@ -2,7 +2,10 @@
 
 const { mapDatabaseError, createError } = require('../../../../../utils/errorHandler');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
-const { mapPermissionRequestRow, PERMISSION_REQUEST_STATUS } = require('../permissionRequestShared');
+const {
+  mapPermissionRequestRow,
+  PERMISSION_REQUEST_STATUS,
+} = require('../permissionRequestShared');
 
 function throwRequestNotFound() {
   throw createError(SERVER_ERROR_CODES.permissionRequests.requestNotFound, 404);
@@ -141,9 +144,10 @@ module.exports = function createPostgresPermissionRequestRepository(executor) {
     async updateStatusRow(id, nextStatus, resolvedBy) {
       try {
         return await executor.transaction(async (tx) => {
-          const existing = await tx.query('SELECT id FROM permission_requests WHERE id = $1 LIMIT 1', [
-            Number(id),
-          ]);
+          const existing = await tx.query(
+            'SELECT id FROM permission_requests WHERE id = $1 LIMIT 1',
+            [Number(id)]
+          );
           if (existing.rows.length === 0) throwRequestNotFound();
 
           const updated = await tx.run(

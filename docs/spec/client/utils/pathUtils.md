@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description                                                                                                                                                                                                                                    |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Item | Description                                                                                                                                                                               |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Path utilities: re-export from shared with client-specific options (VIRTUAL_ROOTS); local helper for UI (toFilesPath). Supports virtual roots `/__shared__`, `/__recent__`, `/__trash__`. |
 
 ---
@@ -17,12 +17,12 @@
 
 ### 2.2 Function Signatures
 
-| Function      | (input) => return                                          |
-| ------------- | ---------------------------------------------------------- |
-| normalizePath | (path) => string (re-export from shared)                   |
-| getParentPath | (path) => string (with treatAsRoot: VIRTUAL_ROOTS)         |
-| getBasename   | (path) => string (re-export)                               |
-| toFilesPath   | (filePath) => string (e.g. `/files/a/b`)                   |
+| Function      | (input) => return                                  |
+| ------------- | -------------------------------------------------- |
+| normalizePath | (path) => string (re-export from shared)           |
+| getParentPath | (path) => string (with treatAsRoot: VIRTUAL_ROOTS) |
+| getBasename   | (path) => string (re-export)                       |
+| toFilesPath   | (filePath) => string (e.g. `/files/a/b`)           |
 
 ### 2.3 Dependencies
 

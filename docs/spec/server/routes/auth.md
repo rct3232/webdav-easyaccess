@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-| Item       | Description                                                        |
-| ---------- | ------------------------------------------------------------------ |
-| Mount path | `/api/auth`                                                        |
+| Item       | Description                                                                                                   |
+| ---------- | ------------------------------------------------------------------------------------------------------------- |
+| Mount path | `/api/auth`                                                                                                   |
 | Role       | Authentication: register, login, refresh token (single-use rotation), logout (revocation), current user (me). |
 
 ---
@@ -18,13 +18,13 @@
 
 ### 2.2 Route List (sync with api.md)
 
-| Method | Path        | Auth  | Description                               |
-| ------ | ----------- | ----- | ----------------------------------------- |
-| POST   | `/register` | None  | Sign up. Body: username, email, password. |
-| POST   | `/login`    | None  | Login. Returns user, token, refreshToken. |
+| Method | Path        | Auth  | Description                                                                                                         |
+| ------ | ----------- | ----- | ------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/register` | None  | Sign up. Body: username, email, password.                                                                           |
+| POST   | `/login`    | None  | Login. Returns user, token, refreshToken.                                                                           |
 | POST   | `/refresh`  | None  | Rotate: body `{ refreshToken }`, returns `{ token, refreshToken }`; the submitted token is consumed (401 on reuse). |
 | POST   | `/logout`   | None  | Revoke one refresh token. Body: `{ refreshToken }`. Idempotent 200 (unknown/absent tokens are a no-op — no oracle). |
-| GET    | `/me`       | Token | Current user info.                        |
+| GET    | `/me`       | Token | Current user info.                                                                                                  |
 
 ### 2.3 Middleware Used
 

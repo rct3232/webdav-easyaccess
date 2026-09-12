@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item                      | Description                                                                                                                                                               |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role                      | Centralized API client (fetch-based) that unifies request/response parsing, auth token injection, auth error handling (401 refresh + 403 navigation), and retry behavior. |
-| Used by                   | `services/*` modules (e.g. `authService`) and any client code that needs consistent `/api/*` request behavior.                                                            |
+| Item                   | Description                                                                                                                                                               |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                   | Centralized API client (fetch-based) that unifies request/response parsing, auth token injection, auth error handling (401 refresh + 403 navigation), and retry behavior. |
+| Used by                | `services/*` modules (e.g. `authService`) and any client code that needs consistent `/api/*` request behavior.                                                            |
 | Depends on (delegated) | `httpClient` (transport + retry + parsing), `authTokenStore` (token persistence + refresh + x-new-token application), `authNavigationPolicy` (redirect/back rules).       |
 
 ---
@@ -21,12 +21,12 @@
 
 The exported API is stable:
 
-| Function  | Input                 | Return                                                                                       | API called        |
-| --------- | --------------------- | -------------------------------------------------------------------------------------------- | ----------------- |
-| `get`     | `(url, config)`       | `Promise<{ data: any, status: number, statusText: string, headers: Record<string,string> }>` | GET `/api/url`    |
-| `post`    | `(url, data, config)` | same as above                                                                                | POST `/api/url`   |
-| `put`     | `(url, data, config)` | same as above                                                                                | PUT `/api/url`    |
-| `del`     | `(url, config)`       | same as above                                                                                | DELETE `/api/url` |
+| Function | Input                 | Return                                                                                       | API called        |
+| -------- | --------------------- | -------------------------------------------------------------------------------------------- | ----------------- |
+| `get`    | `(url, config)`       | `Promise<{ data: any, status: number, statusText: string, headers: Record<string,string> }>` | GET `/api/url`    |
+| `post`   | `(url, data, config)` | same as above                                                                                | POST `/api/url`   |
+| `put`    | `(url, data, config)` | same as above                                                                                | PUT `/api/url`    |
+| `del`    | `(url, config)`       | same as above                                                                                | DELETE `/api/url` |
 
 Shared request defaults:
 

@@ -654,6 +654,5 @@ module.exports = function createPostgresFileNodeRepository(executor) {
         throw mapDatabaseError(error);
       }
     },
-
   };
 };

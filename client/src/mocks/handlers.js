@@ -478,7 +478,6 @@ export const handlers = [
     ]);
   }),
 
-
   http.delete(`${API_BASE}/recent-files/:fileNodeId`, () => HttpResponse.json([])),
 
   http.get(`${API_BASE}/files/download`, ({ request }) => {

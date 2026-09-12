@@ -17,9 +17,9 @@
 
 ### 2.2 Function Signatures
 
-| Function            | (input) => return                                                                                                                  |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| pixelMiddleTruncate | (text, maxPixelWidth, font, backLength = 6) => string. Middle ellipsis by pixel width; keeps end.                                  |
+| Function            | (input) => return                                                                                 |
+| ------------------- | ------------------------------------------------------------------------------------------------- |
+| pixelMiddleTruncate | (text, maxPixelWidth, font, backLength = 6) => string. Middle ellipsis by pixel width; keeps end. |
 
 Module-private helpers: `getVisibleLength(str)` (display units; CJK ≈ 2, others 1) and `getTextWidth(text, font?)` (canvas measureText; non-browser/no-context → `getVisibleLength(text) * 8` fallback).
 

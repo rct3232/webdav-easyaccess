@@ -3,7 +3,12 @@
  * @see docs/api.md, docs/spec/server/routes/recentFiles.md
  */
 const request = require('supertest');
-const { createTestDatabase, createAuthenticatedTestUser, dbQuery, dbRun } = require('@server/test-utils');
+const {
+  createTestDatabase,
+  createAuthenticatedTestUser,
+  dbQuery,
+  dbRun,
+} = require('@server/test-utils');
 const { createFileNodeService } = require('@server/service/fileNodeService');
 const { createFileNodesStore } = require('@server/store/fileNodesStore');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
@@ -119,7 +124,6 @@ describe('POST /api/recent-files', () => {
 });
 
 describe('DELETE /api/recent-files', () => {
-
   it('removes single entry by fileNodeId', async () => {
     const { token, homeNode, fileNode } = await createUserWithFile();
     const other = await fileNodeService.createFile(homeNode.id, 'other.pdf');
@@ -180,9 +184,7 @@ describe('recent entries and node deletion (reference stability)', () => {
     expect(before.body.some((f) => f.fileNodeId === fileNode.id)).toBe(true);
 
     // Trash the node (soft delete) — the recent_files row is NOT removed.
-    await dbRun('UPDATE file_nodes SET deleted_at = datetime(\'now\') WHERE id = ?', [
-      fileNode.id,
-    ]);
+    await dbRun("UPDATE file_nodes SET deleted_at = datetime('now') WHERE id = ?", [fileNode.id]);
 
     const dbRows = await dbQuery('SELECT * FROM recent_files WHERE file_node_id = ?', [
       fileNode.id,

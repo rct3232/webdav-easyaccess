@@ -771,9 +771,9 @@ describe('uploadFile — WebDAV mode', () => {
 function createOverwriteWebdavMocks({ blobStore, uploadToWebdav } = {}) {
   const existingNodeId = 42;
   const fileNodeService = createFileNodeServiceMock({
-    listDirectory: jest.fn().mockResolvedValue([
-      { id: existingNodeId, name: 'hello.txt', type: 'file' },
-    ]),
+    listDirectory: jest
+      .fn()
+      .mockResolvedValue([{ id: existingNodeId, name: 'hello.txt', type: 'file' }]),
     createFile: jest.fn(),
     getNodePath: jest.fn().mockResolvedValue('/user/hello.txt'),
     updateSyncStatus: jest.fn().mockResolvedValue(true),
@@ -1362,10 +1362,7 @@ describe('moveNode', () => {
     const fileNodeService = createFileNodeServiceMock({
       getNode: jest.fn().mockResolvedValue({ id: 10, name: 'x', type: 'file', parent_id: 5 }),
       moveNode: jest.fn().mockResolvedValue(true),
-      getNodePath: jest
-        .fn()
-        .mockResolvedValueOnce('/home/5/x')
-        .mockResolvedValueOnce('/home20/x'),
+      getNodePath: jest.fn().mockResolvedValueOnce('/home/5/x').mockResolvedValueOnce('/home20/x'),
       updateSyncStatus: jest.fn().mockResolvedValue(true),
     });
     const blobStore = {
@@ -1399,10 +1396,7 @@ describe('moveNode', () => {
     const fileNodeService = createFileNodeServiceMock({
       getNode: jest.fn().mockResolvedValue({ id: 10, name: 'x', type: 'file', parent_id: 5 }),
       moveNode: jest.fn().mockResolvedValue(true),
-      getNodePath: jest
-        .fn()
-        .mockResolvedValueOnce('/home/5/x')
-        .mockResolvedValueOnce('/home20/x'),
+      getNodePath: jest.fn().mockResolvedValueOnce('/home/5/x').mockResolvedValueOnce('/home20/x'),
       updateSyncStatus: jest.fn().mockResolvedValue(true),
     });
     const blobStore = {
@@ -2071,9 +2065,7 @@ describe('copyFile — WebDAV mode', () => {
       copyBlob: jest.fn().mockRejectedValue(new Error('COPY failed')),
     });
 
-    await expect(service.copyFile(10, 20, 'copy.txt', 1, { id: 1 })).rejects.toThrow(
-      'COPY failed'
-    );
+    await expect(service.copyFile(10, 20, 'copy.txt', 1, { id: 1 })).rejects.toThrow('COPY failed');
 
     expect(fileNodeService.deleteNode).toHaveBeenCalledWith(60);
     expect(fileNodeService.updateSyncStatus).not.toHaveBeenCalled();

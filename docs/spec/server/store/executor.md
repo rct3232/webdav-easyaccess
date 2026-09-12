@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-| ---- | ----------- |
-| Role | Single backend-neutral execution seam above `storage`. Every SQL statement in the metadata layer is executed through a `DbExecutor`; callers never touch `pg` pools or sqlite connections directly and never implement dialect branching. |
-| Source of truth | `docs/features/config-source-resolution.md` (DB-only key model is independent of this seam); this spec is authoritative for the execution contract. |
+| Item            | Description                                                                                                                                                                                                                               |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role            | Single backend-neutral execution seam above `storage`. Every SQL statement in the metadata layer is executed through a `DbExecutor`; callers never touch `pg` pools or sqlite connections directly and never implement dialect branching. |
+| Source of truth | `docs/features/config-source-resolution.md` (DB-only key model is independent of this seam); this spec is authoritative for the execution contract.                                                                                       |
 
 ## 2. Implementation Spec
 

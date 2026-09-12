@@ -31,13 +31,13 @@
 
 All Tier 2 (path-based compat layer) and Tier 3 (sync checker builder) functions have been removed. The module exports only nodeId-based helpers:
 
-| Function                | Signature                                                       | Description                                                       |
-| ----------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------- |
-| isAdminUser             | `(user) => boolean`                                             | `user?.is_admin` truthiness check                                 |
-| canGrantPermissionNode  | `(userId, targetNodeId) => Promise<boolean>`                    | Admin + owner bypass → store.checkPermission(ADMIN)               |
-| canRevokePermissionNode | `(userId, targetNodeId, targetUserId) => Promise<boolean>`      | Self-revoke + admin + owner bypass → store.checkPermission(ADMIN) |
-| canViewPermissionsNode  | `(userId, targetNodeId) => Promise<boolean>`                    | Admin + owner bypass → store.checkPermission(ADMIN)               |
-| getUserOrNull           | `(userId) => Promise<User \| null>`                             | Fetch user by ID or return null                                   |
+| Function                | Signature                                                  | Description                                                       |
+| ----------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------- |
+| isAdminUser             | `(user) => boolean`                                        | `user?.is_admin` truthiness check                                 |
+| canGrantPermissionNode  | `(userId, targetNodeId) => Promise<boolean>`               | Admin + owner bypass → store.checkPermission(ADMIN)               |
+| canRevokePermissionNode | `(userId, targetNodeId, targetUserId) => Promise<boolean>` | Self-revoke + admin + owner bypass → store.checkPermission(ADMIN) |
+| canViewPermissionsNode  | `(userId, targetNodeId) => Promise<boolean>`               | Admin + owner bypass → store.checkPermission(ADMIN)               |
+| getUserOrNull           | `(userId) => Promise<User \| null>`                        | Fetch user by ID or return null                                   |
 
 ### 2.3 Functions / Exports — permissionRank.js
 

@@ -107,8 +107,12 @@ describe('PermissionRepository conformance', () => {
     await repo.upsertFilePermission(userA.id, file.nodeId, PERMISSIONS.READ);
 
     const rows = await repo.listPathAndFilePermissions(userA.id);
-    expect(rows.some((r) => r.kind === 'directory' && r.file_node_id === Number(dir.nodeId))).toBe(true);
-    expect(rows.some((r) => r.kind === 'file' && r.file_node_id === Number(file.nodeId))).toBe(true);
+    expect(rows.some((r) => r.kind === 'directory' && r.file_node_id === Number(dir.nodeId))).toBe(
+      true
+    );
+    expect(rows.some((r) => r.kind === 'file' && r.file_node_id === Number(file.nodeId))).toBe(
+      true
+    );
   });
 
   it('deleteAllUserPermissions clears path and file grants', async () => {
@@ -128,7 +132,10 @@ describe('PermissionRepository conformance', () => {
     // queried descendant id.
     const root = await createDir(uniqueName('grants-root'));
     const child = await createDir(uniqueName('grants-child'), root.nodeId);
-    const leaf = await createTestFileNode({ name: uniqueName('grants-leaf'), parentId: child.nodeId });
+    const leaf = await createTestFileNode({
+      name: uniqueName('grants-leaf'),
+      parentId: child.nodeId,
+    });
 
     await repo.upsertPathPermission(userA.id, root.nodeId, PERMISSIONS.READ);
 

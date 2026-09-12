@@ -279,9 +279,7 @@ function createFileService(options = {}) {
     // WebDAV sync (native MOVE + DB rollback): capture the remote path BEFORE
     // the DB rename so the MOVE — and the rollback — can address it afterwards.
     const oldPath =
-      fileStorageMode === 'webdav' && blobStore
-        ? await fileNodeService.getNodePath(nodeId)
-        : null;
+      fileStorageMode === 'webdav' && blobStore ? await fileNodeService.getNodePath(nodeId) : null;
 
     await fileNodeService.renameNode(nodeId, newName);
 

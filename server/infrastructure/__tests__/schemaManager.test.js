@@ -573,17 +573,17 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
 
     async function corruptStoredChecksum(filename) {
       const bogus = '0'.repeat(64);
-      await run('UPDATE _schema_migrations SET checksum = ? WHERE filename = ?', [
-        bogus,
-        filename,
-      ]);
+      await run('UPDATE _schema_migrations SET checksum = ? WHERE filename = ?', [bogus, filename]);
       return bogus;
     }
 
     it('throws a hard error naming the file and both checksums when a stored checksum mismatches', async () => {
       await SchemaManager.applyPendingMigrations('sqlite');
 
-      const ddlFiles = fs.readdirSync(DDL_DIR).filter((f) => f.endsWith('.sql')).sort();
+      const ddlFiles = fs
+        .readdirSync(DDL_DIR)
+        .filter((f) => f.endsWith('.sql'))
+        .sort();
       expect(ddlFiles.length).toBeGreaterThan(0);
       const filename = ddlFiles[0];
       const actualChecksum = crypto
@@ -623,15 +623,13 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
       );
       const tablesBefore = await getUserTables();
 
-      await expect(SchemaManager.applyPendingMigrations('sqlite')).rejects.toThrow(
-        /Schema drift/
-      );
-      await expect(SchemaManager.applyPendingMigrations('sqlite')).rejects.toThrow(
-        /Schema drift/
-      );
+      await expect(SchemaManager.applyPendingMigrations('sqlite')).rejects.toThrow(/Schema drift/);
+      await expect(SchemaManager.applyPendingMigrations('sqlite')).rejects.toThrow(/Schema drift/);
 
       expect(
-        await query('SELECT filename, checksum, applied_at FROM _schema_migrations ORDER BY filename')
+        await query(
+          'SELECT filename, checksum, applied_at FROM _schema_migrations ORDER BY filename'
+        )
       ).toEqual(rowsBefore);
       expect(await getUserTables()).toEqual(tablesBefore);
     });

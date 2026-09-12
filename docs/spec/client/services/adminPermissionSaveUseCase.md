@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description                                                                                                                                                                         |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Item | Description                                                                                                                                                                                                                  |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Use-case for `ShareDialog` admin mode. Diffs initial vs edited nodeId-keyed permissions and applies per-node grant/revoke through `sharePermissionGateway` (the legacy bulk `PUT /users/:id/permissions` route is not used). |
 
 ---

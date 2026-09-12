@@ -181,7 +181,7 @@ describe('GET /api/share/:token (download)', () => {
     // Trash the shared node (soft delete) — the share link row survives, but
     // the gated getNode resolution makes every share surface not-found.
     const { dbRun } = require('@server/test-utils');
-    await dbRun('UPDATE file_nodes SET deleted_at = datetime(\'now\') WHERE id = ?', [fileNodeId]);
+    await dbRun("UPDATE file_nodes SET deleted_at = datetime('now') WHERE id = ?", [fileNodeId]);
 
     const infoRes = await request(app).get(`/api/share/${linkToken}/info`);
     expect(infoRes.status).toBe(HTTP_STATUS.NOT_FOUND);

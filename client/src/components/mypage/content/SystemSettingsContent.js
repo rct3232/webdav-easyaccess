@@ -26,10 +26,7 @@ import SyncAlt from '@mui/icons-material/SyncAlt';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
 import * as adminService from '../../../services/adminService';
 import { getMigrationPresence } from '../../../services/migrationService';
-import {
-  getServerErrorDisplay,
-  getServerMessageDisplay,
-} from '../../../utils/errorUtils';
+import { getServerErrorDisplay, getServerMessageDisplay } from '../../../utils/errorUtils';
 import {
   getShowHiddenFiles,
   setShowHiddenFiles as saveShowHiddenFiles,
@@ -80,12 +77,7 @@ const SystemSettingsContent = () => {
       // file backend = WEA_FILE_STORAGE.
       const cfg = data?.config || {};
       const active = new Set();
-      const dbCredentialSet = [
-        'WEA_DB_HOST',
-        'WEA_DB_DATABASE',
-        'WEA_DB_USER',
-        'WEA_DB_PASSWORD',
-      ];
+      const dbCredentialSet = ['WEA_DB_HOST', 'WEA_DB_DATABASE', 'WEA_DB_USER', 'WEA_DB_PASSWORD'];
       if (dbCredentialSet.some((key) => cfg[key]?.value)) active.add('postgresql');
       if (cfg.WEA_FILE_STORAGE?.value === 's3') active.add('s3');
       if (cfg.WEA_FILE_STORAGE?.value === 'webdav') active.add('webdav');
@@ -242,8 +234,7 @@ const SystemSettingsContent = () => {
   );
 
   const syncSummary = configSyncReport?.summary;
-  const configSyncActionable =
-    (syncSummary?.drift || 0) > 0 || (syncSummary?.envOnly || 0) > 0;
+  const configSyncActionable = (syncSummary?.drift || 0) > 0 || (syncSummary?.envOnly || 0) > 0;
   const syncFindings = configSyncReport?.findings || [];
   const toUpdateKeys = syncFindings.filter((f) => f.status === 'differs').map((f) => f.key);
   const toAddKeys = syncFindings.filter((f) => f.status === 'env-only').map((f) => f.key);

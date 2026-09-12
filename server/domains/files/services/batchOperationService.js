@@ -103,8 +103,11 @@ function scheduleBulkWorker(jobId) {
  * @param {Object} deps.fileService — individual file operations (deleteNode, moveNode, copyFile)
  * @param {Object} deps.aclService — async permission checks + isAdminUser gate
  */
-function createBatchOperationService({ fileNodeService: _fileNodeService, fileService, aclService }) {
-
+function createBatchOperationService({
+  fileNodeService: _fileNodeService,
+  fileService,
+  aclService,
+}) {
   /**
    * Batch delete: remove nodes and all descendants.
    * @param {number[]} nodeIds — array of nodeId values to delete

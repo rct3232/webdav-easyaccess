@@ -394,7 +394,6 @@ describe('createFileNodesStore', () => {
       expect(chain[1].depth).toBe(0);
     });
 
-
     // isAncestor
     it('returns true when ancestor relationship exists', async () => {
       const a = await store.createNode(null, `${testPrefix}isa-a`, 'directory');

@@ -380,7 +380,11 @@ describe('POST /api/files/upload', () => {
   });
 
   it('A19: rejects a .wea- prefixed file name with 400 files.fileNameReserved', async () => {
-    const { user, token, homeNodeId: uploadHomeId } = await createUserWithHomeNode({
+    const {
+      user,
+      token,
+      homeNodeId: uploadHomeId,
+    } = await createUserWithHomeNode({
       username: `files-upload-reserved-${Date.now()}`,
     });
     await grantHomePermission({ userId: user.id, homeNodeId: uploadHomeId, permission: 'write' });
@@ -509,9 +513,7 @@ describe('PUT /api/files/rename', () => {
   it('A7: renaming to a TRASHED sibling name is non-blocking (gated sibling check)', async () => {
     // A live sibling with a trashed ghost of the same name.
     const trashedSibling = await fileNodeService.createFile(homeNodeId, 'ghosted-name.txt');
-    webdavMock.getFileMetadata.mockRejectedValue(
-      Object.assign(new Error('404'), { status: 404 })
-    );
+    webdavMock.getFileMetadata.mockRejectedValue(Object.assign(new Error('404'), { status: 404 }));
     // Trash the fixture via the same fileService.deleteNode the canonical
     // batch-delete worker delegates to (single-node delete route removed).
     await composition

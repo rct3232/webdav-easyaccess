@@ -237,7 +237,10 @@ describe('postgres backend health reporting', () => {
 });
 
 describe('test-only backend override seam (docs/spec/server/store/storage.md §2.8)', () => {
-  const fakePool = () => ({ query: jest.fn().mockResolvedValue({ rows: [] }), end: jest.fn().mockResolvedValue() });
+  const fakePool = () => ({
+    query: jest.fn().mockResolvedValue({ rows: [] }),
+    end: jest.fn().mockResolvedValue(),
+  });
 
   afterEach(() => {
     jest.dontMock('pg');
@@ -268,7 +271,9 @@ describe('test-only backend override seam (docs/spec/server/store/storage.md §2
 
   it('throws for a non-postgresql type', () => {
     const storage = require('@server/store/storage');
-    expect(() => storage.setTestBackend('sqlite', fakePool())).toThrow(/only supports the postgresql/);
+    expect(() => storage.setTestBackend('sqlite', fakePool())).toThrow(
+      /only supports the postgresql/
+    );
   });
 
   it('throws when NODE_ENV is not test', () => {
@@ -276,7 +281,9 @@ describe('test-only backend override seam (docs/spec/server/store/storage.md §2
     try {
       process.env.NODE_ENV = 'production';
       const storage = require('@server/store/storage');
-      expect(() => storage.setTestBackend('postgresql', fakePool())).toThrow(/only available under NODE_ENV=test/);
+      expect(() => storage.setTestBackend('postgresql', fakePool())).toThrow(
+        /only available under NODE_ENV=test/
+      );
     } finally {
       process.env.NODE_ENV = originalNodeEnv;
     }

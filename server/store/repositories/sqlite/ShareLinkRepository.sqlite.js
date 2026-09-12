@@ -12,7 +12,10 @@ function throwLinkNotFound() {
  * @param {import('../../../infrastructure/db/executor').DbExecutor} executor
  * @param {{ mapShareLinkRow: Function, buildExpiresAt: Function }} shared
  */
-module.exports = function createSqliteShareLinkRepository(executor, { mapShareLinkRow, buildExpiresAt }) {
+module.exports = function createSqliteShareLinkRepository(
+  executor,
+  { mapShareLinkRow, buildExpiresAt }
+) {
   return {
     dialect: 'sqlite',
 
@@ -85,10 +88,10 @@ module.exports = function createSqliteShareLinkRepository(executor, { mapShareLi
           if (existing.rows.length === 0) throwLinkNotFound();
           if (setClauses.length === 0) return mapShareLinkRow(existing.rows[0]);
 
-          await tx.run(
-            `UPDATE share_links SET ${setClauses.join(', ')} WHERE token = ?`,
-            [...params, String(token)]
-          );
+          await tx.run(`UPDATE share_links SET ${setClauses.join(', ')} WHERE token = ?`, [
+            ...params,
+            String(token),
+          ]);
           const updated = await tx.query('SELECT * FROM share_links WHERE token = ? LIMIT 1', [
             String(token),
           ]);

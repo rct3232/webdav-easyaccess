@@ -5,11 +5,7 @@ import { normalizePath } from '../../utils/pathUtils';
 
 import { get, post, del } from '../apiClient';
 import { notifyRecentFilesChange } from '../recentFilesNotifier';
-import {
-  getRecentFiles,
-  addRecentFile,
-  removeRecentFile,
-} from '../recentFilesRepository';
+import { getRecentFiles, addRecentFile, removeRecentFile } from '../recentFilesRepository';
 
 jest.mock('../apiClient', () => ({
   get: jest.fn(),

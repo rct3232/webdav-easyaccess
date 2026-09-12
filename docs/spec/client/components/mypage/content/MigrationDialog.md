@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item               | Description                                                                                                                          |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Item               | Description                                                                                                                                                                                                                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Role               | Admin-only dialog that STARTS a blob-storage migration between WebDAV and S3 (dest-config form + Start). Progress/cancel live on `/migration` (`docs/spec/client/pages/MigrationPage.md`) — the dialog closes and navigates there on a successful start (relocation since the unified migration mode). |
-| Used in            | `SystemSettingsContent` settings tab (Storage migration action row).                                                                 |
-| Related components | migrationService, getServerErrorDisplay, MUI Dialog.                                                                                 |
+| Used in            | `SystemSettingsContent` settings tab (Storage migration action row).                                                                                                                                                                                                                                   |
+| Related components | migrationService, getServerErrorDisplay, MUI Dialog.                                                                                                                                                                                                                                                   |
 
 ---
 

@@ -11,9 +11,7 @@ const {
 const { createFileNodeService } = require('../../../../service/fileNodeService');
 const { createFileNodesStore } = require('../../../../store/fileNodesStore');
 const { createWebdavMock } = require('@testing/mocks/webdavMock');
-const {
-  SERVER_ERROR_CODES,
-} = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const WebdavBlobStore = require('../../../../infrastructure/adapters/blobstore/WebdavBlobStore');
 const composition = require('../../../../service/composition');
 
@@ -160,9 +158,7 @@ describe('POST /api/folders/create', () => {
     expect(res1.status).toBe(200);
 
     // Trash the folder. The trash MOVE probe must see a free destination.
-    webdavMock.getFileMetadata.mockRejectedValue(
-      Object.assign(new Error('404'), { status: 404 })
-    );
+    webdavMock.getFileMetadata.mockRejectedValue(Object.assign(new Error('404'), { status: 404 }));
     // Trash the fixture via the same fileService.deleteNode the canonical
     // batch-delete worker delegates to (single-node delete route removed).
     await composition

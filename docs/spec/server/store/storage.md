@@ -19,11 +19,11 @@
 
 #### Backend Selection
 
-| Method          | Signature                      | Description                                                                                                                                                                                                                                                                                                                                                       |
-| --------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Method          | Signature                      | Description                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| --------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | getBackend      | () => 'postgresql' \| 'sqlite' | Resolved from the generic remote-DB credential block: if at least one of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` is set, the backend is `'postgresql'`; a partial set (some but not all four) is a terminal boot-time configuration error listing the missing keys — the boot path (`runBoot().catch`) exits with `process.exit(1)`. None of the four set → `'sqlite'` (default). No silent fallback for a remote intent (F6). |
-| isSqliteBackend | () => boolean                  | Returns `true` if `getBackend() === 'sqlite'`                                                                                                                                                                                                                                                                                                                     |
-| getExecutor     | () => DbExecutor               | Returns the backend executor for the active backend: `sqliteExecutor` or `postgresExecutor` (see `docs/spec/server/store/executor.md` §2.4)                                                                                                                                                                                                                        |
+| isSqliteBackend | () => boolean                  | Returns `true` if `getBackend() === 'sqlite'`                                                                                                                                                                                                                                                                                                                                                                                                          |
+| getExecutor     | () => DbExecutor               | Returns the backend executor for the active backend: `sqliteExecutor` or `postgresExecutor` (see `docs/spec/server/store/executor.md` §2.4)                                                                                                                                                                                                                                                                                                            |
 
 #### PostgreSQL Helpers
 
@@ -35,11 +35,11 @@
 
 #### SQLite Helpers
 
-| Method                | Signature                  | Description                              |
-| --------------------- | -------------------------- | ---------------------------------------- |
-| getSqliteConnection   | () => Database             | Returns node-sqlite3 Database instance    |
-| withSqliteTransaction | (callback) => Promise\<T\> | Executes callback in SQLite transaction  |
-| closeSqliteDb         | () => void                 | Close SQLite database                    |
+| Method                | Signature                  | Description                             |
+| --------------------- | -------------------------- | --------------------------------------- |
+| getSqliteConnection   | () => Database             | Returns node-sqlite3 Database instance  |
+| withSqliteTransaction | (callback) => Promise\<T\> | Executes callback in SQLite transaction |
+| closeSqliteDb         | () => void                 | Close SQLite database                   |
 
 #### Legacy Filesystem Helpers
 
@@ -55,10 +55,10 @@
 
 The metadata backend and file-content storage are **completely independent**:
 
-| Concern            | Purpose                   | Selection / values                                                                                                        | Handled By                |
-| ------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| Concern            | Purpose                   | Selection / values                                                                                                                   | Handled By                |
+| ------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
 | Metadata backend   | Metadata persistence      | `postgresql` when any of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` is set; `sqlite` (default) when none is set | `storage.js:getBackend()` |
-| `WEA_FILE_STORAGE` | File content blob storage | `s3` (default), `webdav`                                                                                                  | Phase 1 S3 adapter        |
+| `WEA_FILE_STORAGE` | File content blob storage | `s3` (default), `webdav`                                                                                                             | Phase 1 S3 adapter        |
 
 The metadata backend is chosen by the **presence** of the generic remote-DB credential block,
 not by a free-form storage-backend variable. Setting at least one of `WEA_DB_HOST`,

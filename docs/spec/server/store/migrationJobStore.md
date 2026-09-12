@@ -2,12 +2,12 @@
 
 ## 1. Overview
 
-| Item       | Description                                                                                                                                                                                                                                                                            |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Item       | Description                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role       | In-memory, process-local job store for in-app blob-migration runs (admin API `POST /api/admin/migration/blobs`) and metadata DB-migration runs (`POST /api/admin/migration/metadata`); both job types are driven through the same store by the admin migration routes. Follows the pattern of `server/domains/files/stores/operationProgress.js`. Jobs expire ~60 minutes after reaching a terminal status. |
-| Depends on | `crypto` (randomUUID for `jobId`)                                                                                                                                                                                                                     |
-| Files      | `server/domains/admin/stores/migrationJobStore.js`                                                                                                                                                                                                    |
-| Test files | `server/domains/admin/stores/__tests__/migrationJobStore.test.js`                                                                                                                                                                                     |
+| Depends on | `crypto` (randomUUID for `jobId`)                                                                                                                                                                                                                                                                                                                                                                           |
+| Files      | `server/domains/admin/stores/migrationJobStore.js`                                                                                                                                                                                                                                                                                                                                                          |
+| Test files | `server/domains/admin/stores/__tests__/migrationJobStore.test.js`                                                                                                                                                                                                                                                                                                                                           |
 
 ---
 
@@ -19,17 +19,17 @@
 
 ### 2.2 Factory
 
-| Export                    | Signature      | Description                                                                                                              |
-| ------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `createMigrationJobStore` | () => instance | Memoized process-wide singleton (backed by a `Map`); repeated calls return the same instance, not a fresh one.           |
-| `setInstance`             | (instance)     | Test seam that replaces the memoized singleton instance.                                                                 |
-| `MigrationJobStore`       | class          | The store class (constructor initializes the `Map`); also exported for direct instantiation in tests.                    |
+| Export                    | Signature      | Description                                                                                                    |
+| ------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------- |
+| `createMigrationJobStore` | () => instance | Memoized process-wide singleton (backed by a `Map`); repeated calls return the same instance, not a fresh one. |
+| `setInstance`             | (instance)     | Test seam that replaces the memoized singleton instance.                                                       |
+| `MigrationJobStore`       | class          | The store class (constructor initializes the `Map`); also exported for direct instantiation in tests.          |
 
 ### 2.3 Main Methods
 
 | Method       | Signature                       | Description                                                                           |
-| ------------ | ------------------------------- | ------------------------------------------------------------------------------------- |
-| `create`     | (input) => job                  | Create a migration job in `pending` state; `type` defaults to `'blobs'` (`input.type || 'blobs'`), so a metadata job is created with `type: 'metadata'`; returns the job shape including `jobId` |
+| ------------ | ------------------------------- | ------------------------------------------------------------------------------------- | --- | -------------------------------------------------------------------------------------------------------- |
+| `create`     | (input) => job                  | Create a migration job in `pending` state; `type` defaults to `'blobs'` (`input.type  |     | 'blobs'`), so a metadata job is created with `type: 'metadata'`; returns the job shape including `jobId` |
 | `update`     | (jobId, updates) => job \| null | Merge updates into the existing job; returns `null` if not found                      |
 | `get`        | (jobId) => job \| null          | Get a job by ID; terminal jobs past TTL are treated as unknown (returns `null`)       |
 | `cancel`     | (jobId) => boolean              | Mark a non-terminal job `cancelled`; returns `false` if not found or already terminal |

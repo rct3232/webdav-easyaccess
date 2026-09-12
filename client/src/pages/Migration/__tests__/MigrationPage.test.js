@@ -242,7 +242,11 @@ describe('MigrationPage', () => {
     type: 'blobs',
     direction: 'webdav-to-s3',
     status: 'running',
-    progress: { percent: 40, currentLabel: 'a/b.txt', counters: { copied: 4, failed: 0, skipped: 0 } },
+    progress: {
+      percent: 40,
+      currentLabel: 'a/b.txt',
+      counters: { copied: 4, failed: 0, skipped: 0 },
+    },
     startedAt,
   };
 

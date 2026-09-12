@@ -286,7 +286,6 @@ describe('POST /api/auth/logout', () => {
 });
 
 describe('POST /api/auth/refresh (invalid inputs)', () => {
-
   it('returns 401 when refresh token invalid', async () => {
     const res = await request(app)
       .post('/api/auth/refresh')

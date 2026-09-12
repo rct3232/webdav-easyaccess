@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| Role | Operator progress page for a running/finished blob or metadata migration (`/migration`, guarded by `MigrationGuard`). Renders the job badge, direction, progress, counters, alerts, and the terminal modal. Owns the **Cancel job** control (moved here from `MigrationDialog` when job execution relocated to `/migration`). |
-| Component | `client/src/pages/Migration/MigrationPage.js` |
-| Dependencies | `migrationService` (`getMigrationStatus`, `getBlobMigrationStatus`, `cancelBlobMigration`), MUI, `react-i18next`, `formatDate` |
+| Item         | Description                                                                                                                                                                                                                                                                                                                   |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role         | Operator progress page for a running/finished blob or metadata migration (`/migration`, guarded by `MigrationGuard`). Renders the job badge, direction, progress, counters, alerts, and the terminal modal. Owns the **Cancel job** control (moved here from `MigrationDialog` when job execution relocated to `/migration`). |
+| Component    | `client/src/pages/Migration/MigrationPage.js`                                                                                                                                                                                                                                                                                 |
+| Dependencies | `migrationService` (`getMigrationStatus`, `getBlobMigrationStatus`, `cancelBlobMigration`), MUI, `react-i18next`, `formatDate`                                                                                                                                                                                                |
 
 ## 2. Behavior
 

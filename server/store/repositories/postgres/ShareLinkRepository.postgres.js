@@ -12,7 +12,10 @@ function throwLinkNotFound() {
  * @param {import('../../../infrastructure/db/executor').DbExecutor} executor
  * @param {{ mapShareLinkRow: Function, buildExpiresAt: Function }} shared
  */
-module.exports = function createPostgresShareLinkRepository(executor, { mapShareLinkRow, buildExpiresAt }) {
+module.exports = function createPostgresShareLinkRepository(
+  executor,
+  { mapShareLinkRow, buildExpiresAt }
+) {
   return {
     dialect: 'postgres',
 
@@ -39,9 +42,10 @@ module.exports = function createPostgresShareLinkRepository(executor, { mapShare
 
     async getShareLink(token) {
       try {
-        const { rows } = await executor.query('SELECT * FROM share_links WHERE token = $1 LIMIT 1', [
-          String(token),
-        ]);
+        const { rows } = await executor.query(
+          'SELECT * FROM share_links WHERE token = $1 LIMIT 1',
+          [String(token)]
+        );
         return mapShareLinkRow(rows[0]);
       } catch (error) {
         throw mapDatabaseError(error);
@@ -70,7 +74,8 @@ module.exports = function createPostgresShareLinkRepository(executor, { mapShare
         return `$${params.length}`;
       };
       if (hasExpiresAt) setClauses.push(`expires_at = ${param(updates.expiresAt)}`);
-      if (hasDownloadCount) setClauses.push(`download_count = ${param(Number(updates.downloadCount))}`);
+      if (hasDownloadCount)
+        setClauses.push(`download_count = ${param(Number(updates.downloadCount))}`);
 
       try {
         return await executor.transaction(async (tx) => {

@@ -7,7 +7,10 @@ const { mapDatabaseError } = require('../../../utils/errorHandler');
  * @param {import('../../../infrastructure/db/executor').DbExecutor} executor
  * @param {{ MAX_RECENT_FILES: number, mapRecentFileRow: Function }} shared
  */
-module.exports = function createPostgresRecentFilesRepository(executor, { MAX_RECENT_FILES, mapRecentFileRow }) {
+module.exports = function createPostgresRecentFilesRepository(
+  executor,
+  { MAX_RECENT_FILES, mapRecentFileRow }
+) {
   return {
     dialect: 'postgres',
 
@@ -90,6 +93,5 @@ module.exports = function createPostgresRecentFilesRepository(executor, { MAX_RE
         throw mapDatabaseError(error);
       }
     },
-
   };
 };

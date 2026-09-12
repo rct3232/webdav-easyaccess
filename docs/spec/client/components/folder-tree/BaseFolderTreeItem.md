@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item               | Description                                                                                                                                                                                                                                     |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role               | Folder tree item view: renders a folder row with expand/collapse affordance, highlights current path, and wires drop/drag callbacks provided by the host. Supports `path`/`name` or `node`.                                                     |
-| Used in            | FolderTree, SharedFoldersSection                                                                                                                                                                                                                |
-| Related components | `FolderTree`, `SharedFoldersSection`, `FileTreeSkeleton`                                                                                                                                                                                        |
+| Item               | Description                                                                                                                                                                                   |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Folder tree item view: renders a folder row with expand/collapse affordance, highlights current path, and wires drop/drag callbacks provided by the host. Supports `path`/`name` or `node`.   |
+| Used in            | FolderTree, SharedFoldersSection                                                                                                                                                              |
+| Related components | `FolderTree`, `SharedFoldersSection`, `FileTreeSkeleton`                                                                                                                                      |
 | Ownership note     | This component is primarily a **view** + interaction wiring. Child loading, permission derivation, tree-update reconciliation, and DnD policy are delegated to `useFolderTreeItemController`. |
 
 ---

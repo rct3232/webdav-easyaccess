@@ -11,7 +11,15 @@
  * `identityColumn` selects the grant key: `user_id` for user tables, `token`
  * for permissions_shares.
  */
-const buildAncestorPermSelect = (table, columns, phIdentity, phNode, limitOne = true, identityColumn = 'user_id') => `
+const buildAncestorPermSelect = (
+  table,
+  columns,
+  phIdentity,
+  phNode,
+  limitOne = true,
+  identityColumn = 'user_id'
+) =>
+  `
 SELECT p.permission, a.depth FROM ${table} p
  JOIN node_ancestors a ON a.ancestor_id = p.file_node_id
  WHERE a.descendant_id = ${phNode} AND p.${identityColumn} = ${phIdentity}
@@ -23,7 +31,8 @@ SELECT p.permission, a.depth FROM ${table} p
  * anchor node — which can differ from the queried descendant), no ORDER BY and
  * no LIMIT, matching the pre-rewrite store query exactly.
  */
-const buildPathGrantsSql = (table, phIdentity, phNode, identityColumn = 'user_id') => `
+const buildPathGrantsSql = (table, phIdentity, phNode, identityColumn = 'user_id') =>
+  `
 SELECT p.file_node_id, p.permission, a.depth FROM ${table} p
  JOIN node_ancestors a ON a.ancestor_id = p.file_node_id
  WHERE a.descendant_id = ${phNode} AND p.${identityColumn} = ${phIdentity}`.trim();

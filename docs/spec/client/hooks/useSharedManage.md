@@ -5,7 +5,7 @@
 | Item                     | Description                                                                                                                                                                               |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role                     | Controller hook for shared-item management dialogs. Loads raw permission/request state, derives UI-ready access fields, and exposes public actions for request, cancel, and revoke flows. |
-| Used by components/pages | Non-admin branch inside `ShareTargetDialog`                                                                                                                         |
+| Used by components/pages | Non-admin branch inside `ShareTargetDialog`                                                                                                                                               |
 | Does not own             | JSX rendering, pure access derivation rules, low-level permission/request transport, or reusable transient-message timing/composition policy                                              |
 
 ---

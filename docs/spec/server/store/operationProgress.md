@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description                                                                                                                                                                                                                                                           |
-| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Item | Description                                                                                                                                                                                                                                                                                                                                                                       |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | CacheAdapter-backed store for tracking download progress, preview tickets, and bulk operation jobs (delete, move, copy). Successor of the original `server/store/bulkJobStore.js`; the implementation now lives in the files domain at `server/domains/files/stores/operationProgress.js`. Jobs expire after BULK_JOB_TTL_MS (1 hour) when terminal (completed/cancelled/failed). |
 
 ---
@@ -25,16 +25,16 @@
 
 ### 2.3 Main Methods
 
-| Method                  | Signature                                    | Description                                                               |
-| ----------------------- | -------------------------------------------- | ------------------------------------------------------------------------- |
-| setDownloadProgress     | (id, state) => void                          | Store download progress state                                             |
-| cleanupDownloadProgress | (id, ttlMs?) => void                         | Schedule download progress deletion via setTimeout; default TTL 5 min     |
-| issuePreviewTicket      | (principalId, fileNodeId, ttlMs?) => string | Generate hex ticket; stores {principalId, fileNodeId} with default 120s TTL |
-| readPreviewTicket       | (ticket) => {principalId, fileNodeId} \| null | Validate and return ticket data; returns null for invalid/expired tickets |
-| createJob               | (userId, operation, payload) => {jobId, job} | Create bulk job; total computed from payload paths/moves/copies           |
-| getJob                  | (jobId) => object \| null                    | Get job by ID; returns null if expired (and deletes entry)                |
-| setJobCancelled         | (jobId) => boolean                           | Mark job cancelled; returns false if not found                            |
-| updateJob               | (jobId, updates) => void                     | Merge updates into existing job via Object.assign                         |
+| Method                  | Signature                                     | Description                                                                 |
+| ----------------------- | --------------------------------------------- | --------------------------------------------------------------------------- |
+| setDownloadProgress     | (id, state) => void                           | Store download progress state                                               |
+| cleanupDownloadProgress | (id, ttlMs?) => void                          | Schedule download progress deletion via setTimeout; default TTL 5 min       |
+| issuePreviewTicket      | (principalId, fileNodeId, ttlMs?) => string   | Generate hex ticket; stores {principalId, fileNodeId} with default 120s TTL |
+| readPreviewTicket       | (ticket) => {principalId, fileNodeId} \| null | Validate and return ticket data; returns null for invalid/expired tickets   |
+| createJob               | (userId, operation, payload) => {jobId, job}  | Create bulk job; total computed from payload paths/moves/copies             |
+| getJob                  | (jobId) => object \| null                     | Get job by ID; returns null if expired (and deletes entry)                  |
+| setJobCancelled         | (jobId) => boolean                            | Mark job cancelled; returns false if not found                              |
+| updateJob               | (jobId, updates) => void                      | Merge updates into existing job via Object.assign                           |
 
 ### 2.4 Job Shape
 

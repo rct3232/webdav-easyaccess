@@ -111,5 +111,4 @@ describe('recentFilesService (nodeId)', () => {
       expect(after.some((f) => f.fileNodeId === b.nodeId)).toBe(true);
     });
   });
-
 });

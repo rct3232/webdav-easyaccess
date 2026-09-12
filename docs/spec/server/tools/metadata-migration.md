@@ -7,7 +7,7 @@
 | Role       | The supported metadata DB migration path (`sqlite` ↔ `postgresql`), exposed as an **admin API + config dialogs** (D14). Replaces the removed standalone CLI `server/scripts/migrateMetadataToPostgresql.js` (Phase 7; `server/scripts/migrate/` is empty). Drives `server/domains/admin/services/metadataMigrationService.js`. |
 | Depends on | `metadataMigrationService` (`server/domains/admin/services/metadataMigrationService.js`), the migration gate (`server/infrastructure/migrationGate.js`), the migration router (`server/domains/admin/routes/migration.js`)                                                                                                     |
 | Files      | routes added to `server/domains/admin/routes/migration.js` (mounted at `/api/admin`, behind `authenticateToken` + `isAdmin`)                                                                                                                                                                                                   |
-| Test files | `server/domains/admin/routes/__tests__/migration.test.js` (extended); `test:ci:pg:adapters` for the sqlite↔PG roundtrip                                                                                                                                                                                                                 |
+| Test files | `server/domains/admin/routes/__tests__/migration.test.js` (extended); `test:ci:pg:adapters` for the sqlite↔PG roundtrip                                                                                                                                                                                                        |
 
 Source of truth: `docs/features/migration-mode.md` (decisions D4–D6, D11, D14),
 `docs/spec/server/services/metadataMigrationService.md`.
@@ -132,7 +132,7 @@ type-specific. The metadata job carries the **extended** shape:
   (e.g. "Copying users … 3,420/5,100"). On completion the worker records
   `progress: { percent: 100, currentLabel: null }`.
 - `results` is the metadata-migration service result (`{ status: 'completed', tablesCopied,
-  totalRows, schemaApplied, wiped }`, or `{ status: 'cancelled' }`).
+totalRows, schemaApplied, wiped }`, or `{ status: 'cancelled' }`).
 - **Blob jobs differ:** they keep the legacy scalar `progress` (number) with the current file
   path at the top-level `current` field — see `docs/spec/server/tools/blob-migration.md`
   §4.4. The `/migration` page renders either shape.

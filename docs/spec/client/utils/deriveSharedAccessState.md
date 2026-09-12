@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description                                                                                                                                                                                                                                                                                                          |
-| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Item | Description                                                                                                                                                                                                                                                                                                         |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Pure helper that derives UI-ready sharing permission state for `ShareTargetDialog` / `SharedPermissionList`. Transforms raw permission check results and optional override flags into the `hasReadPermission`, `hasWritePermission`, `pathPermission`, and `filePermissionLevel` fields expected by the view layer. |
 
 ---

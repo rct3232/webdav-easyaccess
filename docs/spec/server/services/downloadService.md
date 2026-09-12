@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Item | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Role | nodeId-based multi-file ZIP download with async permission checks per file. Replaces path-based `downloadService.js` where paths are resolved to nodeIds before entering service. No direct WebDAV or S3 calls; all blob retrieval goes through `blobStorageService`. Assembles streaming ZIP archive via archiver library, tracks live progress in a service-local in-memory Map (the route records the terminal state on the operationProgress store), and returns structured error entries for files that fail permission checks or blob retrieval. |
 
 ---
@@ -17,10 +17,10 @@
 
 ### 2.2 Implementation Status
 
-| Component                         | Status                                                                                | Wave               |
-| --------------------------------- | ------------------------------------------------------------------------------------- | ------------------ |
-| Factory (`createDownloadService`) | Implemented — accepts `{ fileNodeService, blobStorageService, aclService }`           | Task W4.1 (Wave 4) |
-| `downloadMultiple`                | Implemented — uses `aclService.checkFilePermission` per file via `Promise.allSettled` | Wave 4             |
+| Component                         | Status                                                                                                                      | Wave               |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| Factory (`createDownloadService`) | Implemented — accepts `{ fileNodeService, blobStorageService, aclService }`                                                 | Task W4.1 (Wave 4) |
+| `downloadMultiple`                | Implemented — uses `aclService.checkFilePermission` per file via `Promise.allSettled`                                       | Wave 4             |
 | `getDownloadProgress`             | Implemented — service-local in-memory Map (no TTL); exposed via `GET /api/files/download-progress/:id` (preview.js:226-242) | Wave 4             |
 
 ### 2.3 Factory Function Signature
@@ -103,6 +103,7 @@ The streaming approach ensures memory usage remains bounded regardless of total 
 ## 5. Progress Tracking
 
 Live progress lives in the **service's local in-memory Map** (`progressStore`, downloadService.js:14) keyed by `downloadId`, holding `{ completed, total, percentage }`:
+
 - **Initialize:** `progressStore.set(downloadId, { completed: 0, total, percentage: 0 })` before ZIP assembly begins.
 - **Update per file:** after each file, `{ completed: n+1, total, percentage: ((n+1)/total)*100 }`.
 - **Finalize:** `{ completed: successCount, total: totalFiles, percentage: 100 }` (guarded against `total: 0`).
@@ -122,7 +123,7 @@ The progress is pollable via `GET /api/files/download-progress/:id`, which reads
 | blob download fails for a nodeId (blobStorageService returns null or throws) | Recorded as `{ nodeId, reason: 'blob_error', detail: <error message> }` — assembly continues with remaining files                                                                                                                                                                                                                                                                                                                                      |
 | Permission denied for all nodeIds                                            | Returns 403 response immediately; no ZIP archive initialized                                                                                                                                                                                                                                                                                                                                                                                           |
 | Permission denied for subset of nodeIds                                      | Denied files excluded with error entries; ZIP assembled from permitted files only                                                                                                                                                                                                                                                                                                                                                                      |
-| Unknown downloadId in `getDownloadProgress`                                  | Returns null (no throw). The service-local Map does not TTL-expire; the operationProgress terminal record is removed by the route's `cleanupDownloadProgress` timer (5-minute TTL, preview.js:219)                                                                                                                                                             |
+| Unknown downloadId in `getDownloadProgress`                                  | Returns null (no throw). The service-local Map does not TTL-expire; the operationProgress terminal record is removed by the route's `cleanupDownloadProgress` timer (5-minute TTL, preview.js:219)                                                                                                                                                                                                                                                     |
 
 ---
 

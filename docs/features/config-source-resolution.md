@@ -223,13 +223,13 @@ Consequently, when `.env` has the PG connection info, boot still branches on wha
 page as an "Advanced settings" accordion (`MUI Accordion`) within
 `SystemSettingsContent.js`.
 
-| Item         | Location                                                                                        |
-| ------------ | ----------------------------------------------------------------------------------------------- |
-| Component    | `client/src/components/mypage/content/SystemConfigEditor.js` — inside the accordion          |
-| Registry     | none — no new mypage category (`myPageRegistry.js` unchanged)                                   |
-| Service      | `client/src/services/adminService.js`: `getConfig()` / `updateConfig(values)`                   |
-| Server route | `server/domains/admin/routes/config.js` (new): `GET /config` + `PUT /config` under `/api/admin` |
-| MSW          | `client/src/mocks/handlers.js`: `GET/PUT /api/admin/config` + reset state                       |
+| Item         | Location                                                                                                                       |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| Component    | `client/src/components/mypage/content/SystemConfigEditor.js` — inside the accordion                                            |
+| Registry     | none — no new mypage category (`myPageRegistry.js` unchanged)                                                                  |
+| Service      | `client/src/services/adminService.js`: `getConfig()` / `updateConfig(values)`                                                  |
+| Server route | `server/domains/admin/routes/config.js` (new): `GET /config` + `PUT /config` under `/api/admin`                                |
+| MSW          | `client/src/mocks/handlers.js`: `GET/PUT /api/admin/config` + reset state                                                      |
 | i18n         | en/ko `admin.advancedSettings` (accordion title) + `admin.config.*` (section titles, section note, subgroups, generic strings) |
 
 **GET `/api/admin/config`** →
@@ -297,10 +297,10 @@ map; the server registry is authoritative for tier/secret/source.
 
 ## API surface summary
 
-| Endpoint                | Guard                       | Behavior                                                    |
-| ----------------------- | --------------------------- | ----------------------------------------------------------- |
-| `GET /api/admin/config` | authenticateToken + isAdmin | effective config, masked secrets, source/tier               |
-| `PUT /api/admin/config` | authenticateToken + isAdmin | allowlisted keys → DB (plaintext), invalidate T2 cache      |
+| Endpoint                | Guard                       | Behavior                                               |
+| ----------------------- | --------------------------- | ------------------------------------------------------ |
+| `GET /api/admin/config` | authenticateToken + isAdmin | effective config, masked secrets, source/tier          |
+| `PUT /api/admin/config` | authenticateToken + isAdmin | allowlisted keys → DB (plaintext), invalidate T2 cache |
 
 The setup-mode guard (503 `setup.incomplete`) continues to block admin-write routes while
 `setup_complete=false`, so the admin config surface is reachable only when setup is complete.

@@ -106,10 +106,7 @@ async function runBatchJob(token, path, body) {
   const savedSkip = process.env.WEA_SKIP_BULK_WORKER;
   delete process.env.WEA_SKIP_BULK_WORKER;
   try {
-    const res = await request(app)
-      .post(path)
-      .set('Authorization', `Bearer ${token}`)
-      .send(body);
+    const res = await request(app).post(path).set('Authorization', `Bearer ${token}`).send(body);
     expect(res.status).toBe(202);
     expect(res.body.jobId).toBeDefined();
     const { jobId } = res.body;
@@ -529,10 +526,7 @@ describe('S5.0-SCENARIO-5: S3 mode delete cascade', () => {
     expect(job.progress).toBe(1);
 
     // Soft delete: folder + children rows SURVIVE with deleted_at set.
-    const dirDb = await dbQuery(
-      'SELECT id, deleted_at FROM file_nodes WHERE id = ?',
-      [dirNodeId]
-    );
+    const dirDb = await dbQuery('SELECT id, deleted_at FROM file_nodes WHERE id = ?', [dirNodeId]);
     expect(dirDb.rows).toHaveLength(1);
     expect(dirDb.rows[0].deleted_at).not.toBeNull();
 
@@ -575,10 +569,10 @@ describe('S5.0-SCENARIO-5: S3 mode delete cascade', () => {
     // In S3 mode, trashing performs no storage I/O: the active rows (and the
     // blobs they reference) stay in place — Tier 2 keeps them via the active
     // arm of the keep-set until the trash purge (P3) removes them.
-    const result = await dbQuery('SELECT s3_key, status FROM object_map WHERE file_node_id IN (?, ?)', [
-      file1Id,
-      file2Id,
-    ]);
+    const result = await dbQuery(
+      'SELECT s3_key, status FROM object_map WHERE file_node_id IN (?, ?)',
+      [file1Id, file2Id]
+    );
     expect(result.rows).toHaveLength(2);
     expect(result.rows.every((r) => r.status === 'active')).toBe(true);
     for (const row of result.rows) {
@@ -1577,9 +1571,7 @@ describe('C3: copy keeps original and copy independent with closure rows for bot
     expect(gone.rows).toHaveLength(1);
     expect(gone.rows[0].deleted_at).not.toBeNull();
 
-    const origRow = await dbQuery('SELECT deleted_at FROM file_nodes WHERE id = ?', [
-      sourceFileId,
-    ]);
+    const origRow = await dbQuery('SELECT deleted_at FROM file_nodes WHERE id = ?', [sourceFileId]);
     expect(origRow.rows).toHaveLength(1);
     expect(origRow.rows[0].deleted_at).toBeNull();
   });
@@ -1698,10 +1690,9 @@ describe('C4: trash folder → hidden at read; permission/closure/recent rows su
     expect(items.some((i) => i.nodeId === folder)).toBe(false);
 
     // Recent files: rows kept in the DB, entries hidden at enrichment.
-    const recentRows = await dbQuery(
-      'SELECT * FROM recent_files WHERE file_node_id = ?',
-      [childFileId]
-    );
+    const recentRows = await dbQuery('SELECT * FROM recent_files WHERE file_node_id = ?', [
+      childFileId,
+    ]);
     expect(recentRows.rows.length).toBeGreaterThanOrEqual(1);
 
     const ownerRecent = await request(app)
@@ -1750,10 +1741,9 @@ describe('DEF-21: batch worker honors per-principal ACL (no synthetic admin)', (
     const moveResult = job.results.find((r) => r.sourceNodeId === victimFolder);
     expect(moveResult).toMatchObject({ status: 'skipped', reason: 'permission_denied' });
 
-    const chain = await dbQuery(
-      'SELECT ancestor_id FROM node_ancestors WHERE descendant_id = ?',
-      [victimFolder]
-    );
+    const chain = await dbQuery('SELECT ancestor_id FROM node_ancestors WHERE descendant_id = ?', [
+      victimFolder,
+    ]);
     const ids = chain.rows.map((r) => Number(r.ancestor_id));
     expect(ids).toContain(victim.homeNodeId);
     expect(ids).not.toContain(outsider.homeNodeId);

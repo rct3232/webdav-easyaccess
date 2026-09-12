@@ -24,7 +24,7 @@ All hooks live under `client/src/components/dialogs/FilePreviewDialog/hooks/`:
 
 | Hook                   | Responsibility                                                                                                                                                                          |
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `usePreviewLoader`     | `loading`, `error`, `previewUrl`, `previewBlob`, `textContent`, `retry` callback, hook-internal fetch/abort effect keyed off `open`, blob cleanup effect                                        |
+| `usePreviewLoader`     | `loading`, `error`, `previewUrl`, `previewBlob`, `textContent`, `retry` callback, hook-internal fetch/abort effect keyed off `open`, blob cleanup effect                                |
 | `useGalleryNavigation` | `currentMediaIndex`, `goPrev`, `goNext`, `handleTouchStart/End`, derived opened index + navigation offset, reset on close                                                               |
 | `useUIVisibility`      | `headerVisible`, `controlsVisible`, `startHideTimer`, `clearHideTimer`, `resetHideTimer`, hide timer effects                                                                            |
 | `usePlyrPlayer`        | Plyr audio/video DOM effects, `videoNotPlayable` state, controls sync effect, touchend preventDefault effect, `audioContainerRef`, `videoContainerRef`, `mediaTouchRef`                 |

@@ -61,7 +61,7 @@ function createWebdavRemoteOps({ blobStore, fileStorageMode = 's3', fileNodeServ
     }
   }
 
-/**
+  /**
    * WebDAV mode only: ensure the /.wea-trash/ root collection exists before a
    * MOVE into it — WebDAV MOVE fails (500 → fallback 403) when the destination
    * parent is missing (Apache DAV does not auto-create destination parents).

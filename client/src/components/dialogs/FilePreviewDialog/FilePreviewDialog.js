@@ -11,7 +11,11 @@ import {
   Tooltip,
   Popover,
 } from '@mui/material';
-import { Close as CloseIcon, Download as DownloadIcon, Refresh as RefreshIcon } from '@mui/icons-material';
+import {
+  Close as CloseIcon,
+  Download as DownloadIcon,
+  Refresh as RefreshIcon,
+} from '@mui/icons-material';
 import { downloadFile } from '../../../services/fileService';
 import { pdfjs } from 'react-pdf';
 import { useResponsive } from '../../../hooks/useResponsive';

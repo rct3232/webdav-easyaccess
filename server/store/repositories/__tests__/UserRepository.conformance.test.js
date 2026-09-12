@@ -68,9 +68,9 @@ describe('UserRepository conformance', () => {
   });
 
   it('createUser rejects missing fields with 400', async () => {
-    await expect(repo.createUser({ username: 'x', email: '', passwordHash: 'h' })).rejects.toMatchObject(
-      { status: 400 }
-    );
+    await expect(
+      repo.createUser({ username: 'x', email: '', passwordHash: 'h' })
+    ).rejects.toMatchObject({ status: 400 });
   });
 
   it('createUser raises 409 usernameTaken on duplicate username', async () => {
@@ -108,7 +108,11 @@ describe('UserRepository conformance', () => {
   it('updateEmail rejects duplicate email of another user with 409', async () => {
     const a = uniqueName('conf-ue-a');
     const b = uniqueName('conf-ue-b');
-    const userA = await repo.createUser({ username: a, email: `${a}@conf.test`, passwordHash: 'h' });
+    const userA = await repo.createUser({
+      username: a,
+      email: `${a}@conf.test`,
+      passwordHash: 'h',
+    });
     await repo.createUser({ username: b, email: `${b}@conf.test`, passwordHash: 'h' });
 
     await expect(repo.updateEmail(userA.id, `${b}@conf.test`)).rejects.toMatchObject({
@@ -149,8 +153,16 @@ describe('UserRepository conformance', () => {
   it('findAll/findByStatus return domain rows ordered by created_at desc', async () => {
     const a = uniqueName('conf-list-a');
     const b = uniqueName('conf-list-b');
-    const first = await repo.createUser({ username: a, email: `${a}@conf.test`, passwordHash: 'h' });
-    const second = await repo.createUser({ username: b, email: `${b}@conf.test`, passwordHash: 'h' });
+    const first = await repo.createUser({
+      username: a,
+      email: `${a}@conf.test`,
+      passwordHash: 'h',
+    });
+    const second = await repo.createUser({
+      username: b,
+      email: `${b}@conf.test`,
+      passwordHash: 'h',
+    });
 
     const all = await repo.findAll();
     const allIds = all.map((u) => u.id);

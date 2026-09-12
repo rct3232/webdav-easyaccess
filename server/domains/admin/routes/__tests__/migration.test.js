@@ -48,7 +48,12 @@ const VALID_PAYLOAD = {
 // Backend-agnostic metadata target: the active backend depends on the jest leg
 // (sqlite under test:ci, postgresql under the real-PG test:ci:pg leg signalled
 // by the dedicated WEA_TEST_PG_* namespace), so the target is the OTHER backend.
-const TEST_PG_KEYS = ['WEA_TEST_PG_HOST', 'WEA_TEST_PG_DATABASE', 'WEA_TEST_PG_USER', 'WEA_TEST_PG_PASSWORD'];
+const TEST_PG_KEYS = [
+  'WEA_TEST_PG_HOST',
+  'WEA_TEST_PG_DATABASE',
+  'WEA_TEST_PG_USER',
+  'WEA_TEST_PG_PASSWORD',
+];
 const RUN_UNDER_PG_LEG = TEST_PG_KEYS.every((key) => !!process.env[key]);
 const ACTIVE_METADATA_BACKEND = RUN_UNDER_PG_LEG ? 'postgresql' : 'sqlite';
 const OTHER_METADATA_BACKEND = RUN_UNDER_PG_LEG ? 'sqlite' : 'postgresql';

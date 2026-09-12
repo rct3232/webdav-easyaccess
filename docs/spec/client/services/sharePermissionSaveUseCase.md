@@ -17,10 +17,10 @@
 
 ### 2.2 Inputs
 
-| Name                     | Type                               | Required | Description                               |
-| ------------------------ | ---------------------------------- | -------- | ----------------------------------------- |
-| initialNodePermissions   | `Map<number, Map<string, string>>` | Y        | NodeId-keyed permission assignments at dialog open |
-| nodePermissions          | `Map<number, Map<string, string>>` | Y        | NodeId-keyed edited permission assignments |
+| Name                   | Type                               | Required | Description                                        |
+| ---------------------- | ---------------------------------- | -------- | -------------------------------------------------- |
+| initialNodePermissions | `Map<number, Map<string, string>>` | Y        | NodeId-keyed permission assignments at dialog open |
+| nodePermissions        | `Map<number, Map<string, string>>` | Y        | NodeId-keyed edited permission assignments         |
 
 ### 2.3 Output
 

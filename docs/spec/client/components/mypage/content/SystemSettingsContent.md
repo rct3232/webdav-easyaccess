@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item               | Description                                                                                                                                                                                                                                 |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Item               | Description                                                                                                                                                                                                                                                                                                  |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Role               | System settings for admins: backend-health status card, registration toggle, show hidden files toggle, orphan data cleanup, permission cleanup, storage & metadata migration rows, ".env setup needed" banner, env→DB config sync, and the "Advanced settings" config accordion. Direct content. Admin only. |
-| Used in            | MyPageContentArea (when selectedCategory is 'admin-settings')                                                                                                                                                                               |
-| Related components | adminService, getShowHiddenFiles, setShowHiddenFiles (localStorage), SystemConfigEditor                                                                                                                                                     |
+| Used in            | MyPageContentArea (when selectedCategory is 'admin-settings')                                                                                                                                                                                                                                                |
+| Related components | adminService, getShowHiddenFiles, setShowHiddenFiles (localStorage), SystemConfigEditor                                                                                                                                                                                                                      |
 
 ---
 

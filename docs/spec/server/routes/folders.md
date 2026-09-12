@@ -18,9 +18,9 @@
 
 ### 2.2 Route List
 
-| Method | Path      | Auth  | Description                                                               |
-| ------ | --------- | ----- | ------------------------------------------------------------------------- |
-| POST   | `/create` | Token | Create folder. Body: parentNodeId, name.                                  |
+| Method | Path      | Auth  | Description                                                                                                  |
+| ------ | --------- | ----- | ------------------------------------------------------------------------------------------------------------ |
+| POST   | `/create` | Token | Create folder. Body: parentNodeId, name.                                                                     |
 | GET    | `/stats`  | Token | Recursive folder statistics. Query: nodeId. Returns `{ nodeId, name, totalFiles, totalFolders, totalSize }`. |
 
 ### 2.3 Middleware Used

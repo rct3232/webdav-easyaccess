@@ -17,23 +17,23 @@
 
 ### 2.2 Input Parameters
 
-| Name        | Type     | Required | Description                                                                          |
-| ----------- | -------- | -------- | ------------------------------------------------------------------------------------ |
+| Name        | Type     | Required | Description                                                                                                                  |
+| ----------- | -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | open        | boolean  | Y        | Dialog open flag; drives the hook's internal load/reset effect (`true` + target file → fetch; `false` → reset preview state) |
-| displayFile | object   | N        | Currently displayed file (gallery-resolved); falls back to `file`                    |
-| file        | object   | Y        | Original file prop passed to dialog                                                  |
-| shareToken  | string   | N        | Share token for authenticated requests                                               |
-| t           | function | Y        | i18n translation function                                                            |
+| displayFile | object   | N        | Currently displayed file (gallery-resolved); falls back to `file`                                                            |
+| file        | object   | Y        | Original file prop passed to dialog                                                                                          |
+| shareToken  | string   | N        | Share token for authenticated requests                                                                                       |
+| t           | function | Y        | i18n translation function                                                                                                    |
 
 ### 2.3 Return Value / State
 
-| Key         | Type         | Meaning                                                                              |
-| ----------- | ------------ | ------------------------------------------------------------------------------------ |
-| loading     | boolean      | True while preview is being fetched                                                  |
-| error       | string\|null | Error message, or null on success                                                    |
-| previewUrl  | string\|null | Blob URL or stream URL for the preview                                               |
-| previewBlob | Blob\|null   | Raw Blob (PDF only, for react-pdf `file` prop)                                       |
-| textContent | string\|null | Decoded text (text files only)                                                       |
+| Key         | Type         | Meaning                                                                                                                                                         |
+| ----------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| loading     | boolean      | True while preview is being fetched                                                                                                                             |
+| error       | string\|null | Error message, or null on success                                                                                                                               |
+| previewUrl  | string\|null | Blob URL or stream URL for the preview                                                                                                                          |
+| previewBlob | Blob\|null   | Raw Blob (PDF only, for react-pdf `file` prop)                                                                                                                  |
+| textContent | string\|null | Decoded text (text files only)                                                                                                                                  |
 | retry       | function     | Re-triggers a fresh preview load for the current file (increments an internal nonce the load effect depends on). Used by the dialog's error-state retry button. |
 
 ### 2.4 Dependencies

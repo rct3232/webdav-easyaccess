@@ -39,10 +39,10 @@ describe('sqliteExecutor (own isolated temp sqlite DB, both legs)', () => {
 
   it('run returns changes and lastId for an autoincrement INSERT', async () => {
     const executor = require('@server/infrastructure/db/sqliteExecutor');
-    const res = await executor.run(
-      'INSERT INTO settings (key, value) VALUES (?, ?)',
-      ['executor.spec.key', 'v1']
-    );
+    const res = await executor.run('INSERT INTO settings (key, value) VALUES (?, ?)', [
+      'executor.spec.key',
+      'v1',
+    ]);
     expect(res.changes).toBe(1);
     expect(res.lastId).toBeGreaterThan(0);
   });
@@ -61,7 +61,9 @@ describe('sqliteExecutor (own isolated temp sqlite DB, both legs)', () => {
     await executor.transaction(async (tx) => {
       await tx.run('INSERT INTO settings (key, value) VALUES (?, ?)', ['tx.key.ok', 'committed']);
     });
-    const { rows } = await executor.query('SELECT value FROM settings WHERE key = ?', ['tx.key.ok']);
+    const { rows } = await executor.query('SELECT value FROM settings WHERE key = ?', [
+      'tx.key.ok',
+    ]);
     expect(rows[0].value).toBe('committed');
   });
 
@@ -85,10 +87,12 @@ describe('sqliteExecutor (own isolated temp sqlite DB, both legs)', () => {
     // Raw driver shapes: node-sqlite3 reports code SQLITE_CONSTRAINT (+ suffix)
     // and a message naming the constraint. mapDatabaseError does NOT preserve
     // these, so callers must classify before mapping (see executor spec §2.2).
-    expect(executor.isUniqueConflict({ code: 'SQLITE_CONSTRAINT_UNIQUE', message: 'x' })).toBe(true);
-    expect(
-      executor.isUniqueConflict({ message: 'UNIQUE constraint failed: settings.key' })
-    ).toBe(true);
+    expect(executor.isUniqueConflict({ code: 'SQLITE_CONSTRAINT_UNIQUE', message: 'x' })).toBe(
+      true
+    );
+    expect(executor.isUniqueConflict({ message: 'UNIQUE constraint failed: settings.key' })).toBe(
+      true
+    );
     expect(executor.isUniqueConflict(new Error('something else'))).toBe(false);
     expect(executor.isUniqueConflict(null)).toBe(false);
   });
@@ -97,10 +101,10 @@ describe('sqliteExecutor (own isolated temp sqlite DB, both legs)', () => {
     // A plain write whose inline value happens to contain "RETURNING" must take
     // the db.run path (changes/lastId), not the db.all path.
     const executor = require('@server/infrastructure/db/sqliteExecutor');
-    const res = await executor.run(
-      "INSERT INTO settings (key, value) VALUES (?, ?)",
-      ['literal-returning-key', 'text says RETURNING inside']
-    );
+    const res = await executor.run('INSERT INTO settings (key, value) VALUES (?, ?)', [
+      'literal-returning-key',
+      'text says RETURNING inside',
+    ]);
     expect(res.changes).toBe(1);
     expect(res.lastId).toBeGreaterThan(0);
     const { rows } = await executor.query('SELECT value FROM settings WHERE key = ?', [
@@ -181,9 +185,7 @@ describe('postgresExecutor (storage/pool mocked)', () => {
     const { executor, poolQuery } = isolateWithMockPool();
     poolQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 7 }] });
 
-    const res = await executor.run('INSERT INTO users (username) VALUES ($1) RETURNING id', [
-      'u',
-    ]);
+    const res = await executor.run('INSERT INTO users (username) VALUES ($1) RETURNING id', ['u']);
     expect(res.lastId).toBe(7);
     expect(poolQuery.mock.calls[0][0]).toMatch(/RETURNING id$/);
   });

@@ -11,7 +11,7 @@ async function cleanupOrphanedData() {
     pendingUploadNodes: [],
   };
 
-  // 1. Run one GC cycle for orphaned blobs (S3 mode; no-op in WebDAV mode)
+  // 1. Run one GC cycle (both backends; Tier 2 also reconciles the WebDAV tree — DEF-18)
   {
     try {
       const { getComposition } = require('../../../service/composition');

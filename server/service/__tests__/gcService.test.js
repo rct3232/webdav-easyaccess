@@ -28,12 +28,19 @@ function createFakeBlobStore({ listOrphaned = [] } = {}) {
   };
 }
 
-async function insertObjectMapRow({ fileNodeId, s3Key, status, daysAgo = 0, versionNumber = 1 }) {
+async function insertObjectMapRow({
+  fileNodeId,
+  s3Key,
+  status,
+  daysAgo = 0,
+  versionNumber = 1,
+  storageBackend = 's3',
+}) {
   const created = new Date(Date.now() - daysAgo * 86400000).toISOString();
   const res = await dbRun(
     `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status, created_at)
-     VALUES (?, ?, 's3', ?, ?, ?)`,
-    [fileNodeId, s3Key, versionNumber, status, created]
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [fileNodeId, s3Key, storageBackend, versionNumber, status, created]
   );
   return res.lastID;
 }
@@ -193,13 +200,85 @@ describe('createGcService', () => {
       expect(wdBlobStore.deleteBlob).not.toHaveBeenCalled();
       expect(await getObjectMapRowByKey(orphanedKey)).toBeNull();
     });
+
+    it('per-row guard: WebDAV mode deletes blobs only on webdav-backend rows; s3 rows are rows-only', async () => {
+      const webdavNode = await fileNodesStore.createNode(null, `t1-bg-wd-${Date.now()}`, 'file');
+      await fileNodesStore.updateSyncStatus(webdavNode.id, 'active');
+      const webdavKey = `t1-bg-wd-key-${Date.now()}`;
+      await insertObjectMapRow({
+        fileNodeId: webdavNode.id,
+        s3Key: webdavKey,
+        status: 'orphaned',
+        daysAgo: 10,
+        storageBackend: 'webdav',
+      });
+
+      const s3Node = await fileNodesStore.createNode(null, `t1-bg-s3-${Date.now()}`, 'file');
+      await fileNodesStore.updateSyncStatus(s3Node.id, 'active');
+      const s3Key = `t1-bg-s3-key-${Date.now()}`;
+      await insertObjectMapRow({
+        fileNodeId: s3Node.id,
+        s3Key,
+        status: 'orphaned',
+        daysAgo: 10,
+        storageBackend: 's3',
+      });
+
+      const bgBlobStore = createFakeBlobStore();
+      const webdavGc = createGcService({
+        blobStore: bgBlobStore,
+        fileNodesStore,
+        fileStorageMode: 'webdav',
+      });
+
+      const results = await webdavGc.runGcCycle({ olderThanDays: 1 });
+
+      expect(results.tier1.errors).toEqual([]);
+      expect(bgBlobStore.deleteBlob).toHaveBeenCalledWith(webdavKey);
+      expect(bgBlobStore.deleteBlob).not.toHaveBeenCalledWith(s3Key);
+      // Both rows are still cleaned from the DB (rows in both directions).
+      expect(await getObjectMapRowByKey(webdavKey)).toBeNull();
+      expect(await getObjectMapRowByKey(s3Key)).toBeNull();
+    });
+
+    it('per-row guard (symmetric): S3 mode never path-addresses a webdav-backend row, but deletes its blob on s3 rows', async () => {
+      const webdavNode = await fileNodesStore.createNode(null, `t1-bg2-wd-${Date.now()}`, 'file');
+      await fileNodesStore.updateSyncStatus(webdavNode.id, 'active');
+      const webdavKey = `t1-bg2-wd-key-${Date.now()}`;
+      await insertObjectMapRow({
+        fileNodeId: webdavNode.id,
+        s3Key: webdavKey,
+        status: 'orphaned',
+        daysAgo: 10,
+        storageBackend: 'webdav',
+      });
+
+      const s3Node = await fileNodesStore.createNode(null, `t1-bg2-s3-${Date.now()}`, 'file');
+      await fileNodesStore.updateSyncStatus(s3Node.id, 'active');
+      const s3Key = `t1-bg2-s3-key-${Date.now()}`;
+      await insertObjectMapRow({
+        fileNodeId: s3Node.id,
+        s3Key,
+        status: 'orphaned',
+        daysAgo: 10,
+        storageBackend: 's3',
+      });
+
+      const results = await gcService.runGcCycle({ olderThanDays: 1 });
+
+      expect(results.tier1.errors).toEqual([]);
+      expect(blobStore.deleteBlob).toHaveBeenCalledWith(s3Key);
+      expect(blobStore.deleteBlob).not.toHaveBeenCalledWith(webdavKey);
+      expect(await getObjectMapRowByKey(webdavKey)).toBeNull();
+      expect(await getObjectMapRowByKey(s3Key)).toBeNull();
+    });
   });
 
   /* ------------------------------------------------------------------ */
-  /*  Tier 2 — S3 bucket reconciliation                                  */
+  /*  Tier 2 — active-backend storage reconciliation                     */
   /* ------------------------------------------------------------------ */
 
-  describe('Tier 2 (S3 scan)', () => {
+  describe('Tier 2 (storage-scan reconciliation)', () => {
     it('deletes S3 keys with no active object_map reference', async () => {
       const untrackedKey = `t2-untracked-${Date.now()}`;
       const activeKey = `t2-active-${Date.now()}`;
@@ -256,18 +335,64 @@ describe('createGcService', () => {
       expect(tier2BlobStore.getDeleted()).not.toContain(activeKey);
     });
 
-    it('is skipped in WebDAV mode', async () => {
+    it('WebDAV mode: reconciles candidates against the path keep-set (S1 bias, structural dirs inert, bottom-up deletes)', async () => {
+      const candidates = [
+        '/user/keep.txt',
+        '/dead/dir/',
+        '/dead/dir/x.txt',
+        '/.wea-trash/999/',
+        '/user/sub/orphan.txt',
+      ];
+      // Canned webdav keep-set: a kept FILE key, a kept live DIRECTORY
+      // (trailing slash, gives S1 protection), and the bare structural dirs
+      // (must never trigger the ancestor bias).
+      const kept = new Set(['/user/keep.txt', '/user/', '/', '/.wea-trash/', '/.wea-tmp/']);
+      const stubStore = {
+        ...fileNodesStore,
+        getKeptKeys: jest.fn(() => Promise.resolve(kept)),
+      };
+      const wdBlobStore = createFakeBlobStore({ listOrphaned: candidates });
       const webdavGc = createGcService({
-        blobStore: createFakeBlobStore(),
-        fileNodesStore,
+        blobStore: wdBlobStore,
+        fileNodesStore: stubStore,
         fileStorageMode: 'webdav',
       });
 
       const results = await webdavGc.runGcCycle({ olderThanDays: 1 });
 
+      expect(stubStore.getKeptKeys).toHaveBeenCalledWith('webdav');
+      expect(results.tier2.skipped).toBe(false);
+      expect(results.tier2.scannedKeys).toBe(5);
+      // keep.txt is in the keep-set; the other four are untracked — the
+      // orphan under the KEPT '/user/' dir counts as reported-only (S1).
+      expect(results.tier2.untrackedKeys).toBe(4);
+      // Deletions: '/dead/dir/x.txt' (child) before '/dead/dir/' (its
+      // collection, S3 bottom-up), plus the unkept orphan trash entry — the
+      // structural '/.wea-trash/' ancestor is inert for the bias. The
+      // in-live-tree orphan and the kept file are NEVER deleted.
+      expect(results.tier2.deletedKeys).toBe(3);
+      expect(results.tier2.errors).toEqual([]);
+      expect(wdBlobStore.getDeleted()).toEqual([
+        '/dead/dir/x.txt',
+        '/dead/dir/',
+        '/.wea-trash/999/',
+      ]);
+      expect(wdBlobStore.getDeleted()).not.toContain('/user/keep.txt');
+      expect(wdBlobStore.getDeleted()).not.toContain('/user/sub/orphan.txt');
+    });
+
+    it('WebDAV mode is skipped only when the blob store exposes no listOrphanedKeys', async () => {
+      const minimalStore = { deleteBlob: jest.fn(() => Promise.resolve()) };
+      const noListGc = createGcService({
+        blobStore: minimalStore,
+        fileNodesStore,
+        fileStorageMode: 'webdav',
+      });
+
+      const results = await noListGc.runGcCycle({ olderThanDays: 1 });
+
       expect(results.tier2.skipped).toBe(true);
       expect(results.tier2.scannedKeys).toBe(0);
-      expect(blobStore.listOrphanedKeys).not.toHaveBeenCalled();
     });
 
     it('is skipped when the blob store exposes no listOrphanedKeys', async () => {

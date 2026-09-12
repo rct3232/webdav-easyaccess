@@ -151,7 +151,7 @@ describe('FileNodeRepository conformance', () => {
     expect(del.changes).toBe(1);
   });
 
-  it('getKeptS3Keys unions active, history, orphaned and pending-on-pending_upload keys', async () => {
+  it('getKeptObjectMapKeys unions active, history, orphaned and pending-on-pending_upload keys', async () => {
     const { dbRun } = require('@server/test-utils');
     const stuckNode = await repo.createNode(null, uniqueName('fn-kept-stuck'), 'file');
     const orphanedKey = uniqueName('fn-kept-orphan');
@@ -176,7 +176,7 @@ describe('FileNodeRepository conformance', () => {
     const historyKey = uniqueName('fn-kept-history-key');
     await repo.insertObject(historyNode.id, historyKey, 'history');
 
-    const kept = await repo.getKeptS3Keys();
+    const kept = await repo.getKeptObjectMapKeys();
     expect(kept).toContain(activeKey);
     expect(kept).toContain(orphanedKey);
     expect(kept).toContain(pendingKey);
@@ -184,14 +184,58 @@ describe('FileNodeRepository conformance', () => {
     expect(kept).not.toContain(pendingOnLiveKey);
   });
 
-  it("M15: getKeptS3Keys keeps a TRASHED node's active key (no trash filter on the active arm)", async () => {
+  it("M15: getKeptObjectMapKeys keeps a TRASHED node's active key (no trash filter on the active arm)", async () => {
     const trashedNode = await repo.createNode(null, uniqueName('fn-kept-trash'), 'file');
     const trashedKey = uniqueName('fn-kept-trash-key');
     await repo.insertObject(trashedNode.id, trashedKey, 'active');
     await repo.markSubtreeDeleted([trashedNode.id]);
 
-    const kept = await repo.getKeptS3Keys();
+    const kept = await repo.getKeptObjectMapKeys();
     expect(kept).toContain(trashedKey);
+  });
+
+  it('getFileNodesPathRows returns the full unfiltered projection incl trashed rows', async () => {
+    const dir = await repo.createNode(null, uniqueName('fn-proj-dir'), 'directory');
+    const nested = await repo.createNode(dir.id, uniqueName('fn-proj-nested'), 'file');
+    const trashed = await repo.createNode(null, uniqueName('fn-proj-trashed'), 'file');
+    await repo.markSubtreeDeleted([trashed.id]);
+    const orphaned = await repo.createNode(null, uniqueName('fn-proj-orphaned'), 'file');
+    await repo.updateSyncStatus(orphaned.id, 'orphaned_node');
+
+    const rows = await repo.getFileNodesPathRows();
+    const byId = new Map(rows.map((r) => [Number(r.id), r]));
+
+    // Exact projection shape — no filecache join, no mapped camelCase.
+    expect(Object.keys(rows[0]).sort()).toEqual([
+      'deleted_at',
+      'id',
+      'name',
+      'parent_id',
+      'sync_status',
+      'type',
+    ]);
+
+    const dirRow = byId.get(dir.id);
+    expect(dirRow).toMatchObject({
+      name: dir.name,
+      parent_id: null,
+      type: 'directory',
+      sync_status: 'pending_upload',
+    });
+    expect(dirRow.deleted_at).toBeNull();
+
+    const nestedRow = byId.get(nested.id);
+    expect(nestedRow).toMatchObject({ parent_id: dir.id, type: 'file' });
+
+    // Trashed rows are PRESENT with deleted_at set (the facade assembles the
+    // /.wea-trash/<id> arms from them — no trash filter here).
+    const trashedRow = byId.get(trashed.id);
+    expect(trashedRow).toBeDefined();
+    expect(trashedRow.deleted_at).not.toBeNull();
+
+    const orphanedRow = byId.get(orphaned.id);
+    expect(orphanedRow).toMatchObject({ sync_status: 'orphaned_node' });
+    expect(orphanedRow.deleted_at).toBeNull();
   });
 
   it('A13: markSubtreeDeleted marks every row of the subtree and gates the live reads', async () => {

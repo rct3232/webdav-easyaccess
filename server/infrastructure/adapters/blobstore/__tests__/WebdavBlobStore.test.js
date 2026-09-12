@@ -33,10 +33,79 @@ describe('WebdavBlobStore', () => {
   });
 
   describe('listOrphanedKeys', () => {
-    it('returns empty array', async () => {
+    const iso = (daysAgo) => new Date(Date.now() - daysAgo * 86400000).toISOString();
+
+    it('lists every entry when no cutoff is given, passing paths through verbatim', async () => {
+      adapterMock.listAllEntriesRecursive.mockResolvedValue([
+        { path: '/user/a.txt', type: 'file', lastmod: iso(10) },
+        { path: '/user/', type: 'directory', lastmod: iso(10) },
+        { path: '/fresh.txt', type: 'file', lastmod: iso(0) },
+      ]);
+
       const store = new WebdavBlobStore(adapterMock);
-      const result = await store.listOrphanedKeys();
-      expect(result).toEqual([]);
+      const keys = await store.listOrphanedKeys();
+
+      expect(adapterMock.listAllEntriesRecursive).toHaveBeenCalledWith('/');
+      expect(keys).toEqual(['/user/a.txt', '/user/', '/fresh.txt']);
+    });
+
+    it('age-filters by lastmod: only entries older than the cutoff survive', async () => {
+      adapterMock.listAllEntriesRecursive.mockResolvedValue([
+        { path: '/old.txt', type: 'file', lastmod: iso(10) },
+        { path: '/new.txt', type: 'file', lastmod: iso(0) },
+        { path: '/old-dir/', type: 'directory', lastmod: iso(10) },
+      ]);
+
+      const store = new WebdavBlobStore(adapterMock);
+      const cutoff = new Date(Date.now() - 1 * 86400000);
+      const keys = await store.listOrphanedKeys(cutoff);
+
+      expect(keys).toEqual(['/old.txt', '/old-dir/']);
+      expect(keys).not.toContain('/new.txt');
+    });
+
+    it('never treats unparseable or absent lastmod as a candidate', async () => {
+      adapterMock.listAllEntriesRecursive.mockResolvedValue([
+        { path: '/garbage.txt', type: 'file', lastmod: 'not-a-date' },
+        { path: '/nodate.txt', type: 'file' },
+        { path: '/nulldate/', type: 'directory', lastmod: null },
+        { path: '/old-ok.txt', type: 'file', lastmod: iso(10) },
+      ]);
+
+      const store = new WebdavBlobStore(adapterMock);
+      const keys = await store.listOrphanedKeys(new Date(Date.now() - 86400000));
+
+      expect(keys).toEqual(['/old-ok.txt']);
+    });
+
+    it('directories keep their trailing slash in the emitted keys', async () => {
+      adapterMock.listAllEntriesRecursive.mockResolvedValue([
+        { path: '/dead/', type: 'directory', lastmod: iso(10) },
+      ]);
+
+      const store = new WebdavBlobStore(adapterMock);
+      const keys = await store.listOrphanedKeys(new Date(Date.now() - 86400000));
+
+      expect(keys).toEqual(['/dead/']);
+    });
+
+    it('reports webdav health ok on success', async () => {
+      adapterMock.listAllEntriesRecursive.mockResolvedValue([]);
+
+      const store = new WebdavBlobStore(adapterMock);
+      await store.listOrphanedKeys(new Date());
+
+      expect(healthReport()).toHaveBeenCalledWith('webdav', { ok: true });
+    });
+
+    it('propagates listing failures', async () => {
+      adapterMock.listAllEntriesRecursive.mockRejectedValue(
+        Object.assign(new Error('PROPFIND boom'), { status: 500 })
+      );
+
+      const store = new WebdavBlobStore(adapterMock);
+
+      await expect(store.listOrphanedKeys(new Date())).rejects.toThrow('PROPFIND boom');
     });
   });
 

@@ -30,6 +30,7 @@ None at the page level. Feedback callbacks exist only on child components: `Migr
 - **imports:** useTranslation, usePageHeader (PageHeaderContext), adminService, getShowHiddenFiles, setShowHiddenFiles (localStorage)
 - **Header:** Uses `usePageHeader()` to set title `admin.systemSettings` and no header actions (`setActions(null)`). Resets on unmount.
 - **Auto-save:** Registration toggle calls `adminService.updateSettings` on change; show hidden files persists to localStorage on change; cleanup actions run on confirm.
+- **Data cleanup summary (DEF-18):** The orphan-cleanup button calls `adminService.cleanupOrphaned()` (`POST /api/admin/cleanup/orphaned`) and reads the real `cleanupOrphanedData()` shape: `deletedBlobs = gc.tier1.deletedBlobs`, `deletedRows = gc.tier1.deletedRows`, `deletedKeys = gc.tier2.deletedKeys` (missing → 0) and `reports = orphanedNodes.length + pendingUploadNodes.length`. All-zero → `admin.noDataToClean`; otherwise `admin.cleanupDoneGc` (`{blobs}/{rows}/{keys}`), with `admin.cleanupReports` (`{orphaned}/{pending}`) appended when reports > 0. Any error entry (top-level `errors` or any GC tier `errors`) raises the Snackbar severity to `warning` (else `success`).
 - **Env→DB config sync row:** Below the metadata migration row, an action row ("Sync environment → DB", icon button `admin.runConfigSync`) opens a **preview-then-apply** dialog:
   1. on open it calls `adminService.getConfigSyncReport()` (`GET /api/admin/config/sync-report`) and shows the drift summary (keys to update / to add, or "nothing to sync");
   2. the "Apply" button (`admin.runConfigSync`) is disabled while the report loads, on a report error, when there is nothing actionable (`drift === 0 && envOnly === 0`), and while applying;
@@ -52,7 +53,7 @@ None at the page level. Feedback callbacks exist only on child components: `Migr
 - `admin.runCleanup`, `admin.run`
 - `common.cancel`
 - `admin.settingsLoadFail`, `admin.registrationSaveSuccess`, `admin.showHiddenFilesSaveSuccess`, `admin.settingsSaveFail`
-- `admin.noDataToClean`, `admin.cleanupDone`, `admin.cleanupDonePartial`, `admin.orphanCleanupFail`
+- `admin.noDataToClean`, `admin.cleanupDoneGc`, `admin.cleanupReports`, `admin.orphanCleanupFail`
 - `admin.noPermissionToFix`, `admin.permissionCleanupDone`, `admin.permissionCleanupDonePartial`, `admin.permissionCleanupFail`
 - `admin.health.title`, `admin.health.fail`, `admin.health.hintPrefix`, `admin.health.lastChecked` (`lastChecked` interpolates `{ time }`) — backend-health card
 - `admin.storageMigration`, `admin.storageMigrationDesc`, `admin.runMigration` — storage migration row
@@ -80,6 +81,7 @@ None at the page level. Feedback callbacks exist only on child components: `Migr
 - [x] Registration toggle auto-saves on change (calls updateSettings API)
 - [x] Toggle show hidden files persists to localStorage
 - [x] Data cleanup shows confirm dialog and runs on confirm
+- [x] Data cleanup summarizes the GC result (blob/row/key counts + manual-review reports), shows "no data to clean" on an all-zero cycle, and warns when the cycle reports errors
 - [x] Permission cleanup shows confirm dialog and runs on confirm
 - [x] Env→DB sync row opens a preview dialog that fetches `GET /admin/config/sync-report`, renders the summary (changes / nothing-to-sync), disables Apply while loading / on error / when nothing is actionable, and applies via `POST /admin/config/sync-from-env` on confirm
 - [x] Env→DB sync success shows the success Snackbar and closes the dialog; a failed apply keeps the dialog open, shows the error Snackbar and an in-dialog error Alert, and does NOT re-fetch the report (retry requires closing and reopening the dialog)

@@ -57,10 +57,10 @@ if (backendMode === 'webdav') {
   // trash-admin.spec.ts is EXCLUDED from the smoke: E2E-TRASH-007 is
   // scratch-hermetic (:5012, DEF-20) and runs only in the s3 full matrix.
   const smokeSpecMatch = new RegExp(
-    '(core-flow\\.shared|share-public|share-internal|trash)\\.spec\\.ts$'
+    '(core-flow\\.shared|share-public|share-internal|trash|webdav-reconcile)\\.spec\\.ts$'
   );
   const smokeTitleMatch = new RegExp(
-    'E2E-(EXP-00[12458]|EXP-01[23]|SHARE-011|OVERLAY-011|TRASH-00[136])[:\\s]'
+    'E2E-(EXP-00[12458]|EXP-01[23]|SHARE-011|OVERLAY-011|TRASH-00[136]|RECON-001)[:\\s]'
   );
   projects.push({
     name: 'webdav-smoke-desktop',

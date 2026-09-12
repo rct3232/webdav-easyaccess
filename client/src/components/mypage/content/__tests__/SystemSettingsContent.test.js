@@ -94,7 +94,19 @@ describe('SystemSettingsContent', () => {
     expect(screen.getByText(/show hidden files setting saved/i)).toBeInTheDocument();
   });
 
-  it('data cleanup shows confirm dialog and runs on confirm', async () => {
+  async function openCleanupDialogAndRun(user) {
+    const dataCleanupButton = screen.getByRole('button', { name: /clean up/i });
+    await user.click(dataCleanupButton);
+
+    const dialog = screen.getByRole('dialog', { name: /confirm orphaned data cleanup/i });
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByText(/delete permission files for non-existent users/i)).toBeInTheDocument();
+
+    const confirmButton = within(dialog).getByRole('button', { name: /clean up/i });
+    return user.click(confirmButton);
+  }
+
+  it('data cleanup runs and reports "no data to clean" on an all-zero GC result', async () => {
     const user = userEvent.setup();
     let cleanupCalled = false;
     server.use(
@@ -102,11 +114,33 @@ describe('SystemSettingsContent', () => {
         cleanupCalled = true;
         return HttpResponse.json({
           results: {
-            deletedPermissionFiles: 0,
-            deletedUserFiles: 0,
-            deletedEmailIndexFiles: 0,
-            cleanedPermissionRequests: 0,
             errors: [],
+            gc: {
+              tier1: {
+                orphanedRows: 0,
+                deletedBlobs: 0,
+                deletedRows: 0,
+                guardedRows: 0,
+                pendingDeletedRows: 0,
+                errors: [],
+              },
+              tier2: {
+                scannedKeys: 0,
+                untrackedKeys: 0,
+                deletedKeys: 0,
+                skipped: false,
+                errors: [],
+              },
+              tier3: {
+                purgedNodes: 0,
+                deletedBlobs: 0,
+                deletedRows: 0,
+                skipped: false,
+                errors: [],
+              },
+            },
+            orphanedNodes: [],
+            pendingUploadNodes: [],
           },
         });
       })
@@ -118,20 +152,81 @@ describe('SystemSettingsContent', () => {
       expect(screen.getByText(/data cleanup/i)).toBeInTheDocument();
     });
 
-    const dataCleanupButton = screen.getByRole('button', { name: /clean up/i });
-    await user.click(dataCleanupButton);
-
-    const dialog = screen.getByRole('dialog', { name: /confirm orphaned data cleanup/i });
-    expect(dialog).toBeInTheDocument();
-    expect(screen.getByText(/delete permission files for non-existent users/i)).toBeInTheDocument();
-
-    const confirmButton = within(dialog).getByRole('button', { name: /clean up/i });
-    await user.click(confirmButton);
+    await openCleanupDialogAndRun(user);
 
     await waitFor(() => {
       expect(cleanupCalled).toBe(true);
     });
     expect(screen.getByText(/no data to clean up/i)).toBeInTheDocument();
+  });
+
+  it('data cleanup summarizes GC deletions and manual-review reports', async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.post('/api/admin/cleanup/orphaned', () =>
+        HttpResponse.json({
+          results: {
+            errors: [],
+            gc: {
+              tier1: { deletedBlobs: 2, deletedRows: 3, errors: [] },
+              tier2: { deletedKeys: 1, skipped: false, errors: [] },
+              tier3: { purgedNodes: 0, errors: [] },
+            },
+            orphanedNodes: [{ nodeId: 7 }, { nodeId: 8 }, { nodeId: 9 }],
+            pendingUploadNodes: [],
+          },
+        })
+      )
+    );
+
+    renderSystemSettingsContent();
+
+    await waitFor(() => {
+      expect(screen.getByText(/data cleanup/i)).toBeInTheDocument();
+    });
+
+    await openCleanupDialogAndRun(user);
+
+    const summary = await screen.findByText(
+      /GC complete: 2 blob\(s\), 3 row\(s\), 1 storage key\(s\) removed\./i
+    );
+    expect(summary).toBeInTheDocument();
+    expect(summary).toHaveTextContent(
+      /Reports: 3 orphaned and 0 pending-upload node\(s\) need manual review\./i
+    );
+    expect(summary.closest('.MuiAlert-root')).toHaveClass('MuiAlert-standardSuccess');
+  });
+
+  it('data cleanup escalates to warning severity when the cycle reports errors', async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.post('/api/admin/cleanup/orphaned', () =>
+        HttpResponse.json({
+          results: {
+            errors: ['Failed to scan orphaned nodes: boom'],
+            gc: {
+              tier1: { deletedBlobs: 1, deletedRows: 1, errors: [] },
+              tier2: { deletedKeys: 0, skipped: false, errors: [] },
+              tier3: { purgedNodes: 0, skipped: true, errors: [] },
+            },
+            orphanedNodes: [],
+            pendingUploadNodes: [],
+          },
+        })
+      )
+    );
+
+    renderSystemSettingsContent();
+
+    await waitFor(() => {
+      expect(screen.getByText(/data cleanup/i)).toBeInTheDocument();
+    });
+
+    await openCleanupDialogAndRun(user);
+
+    const summary = await screen.findByText(/GC complete: 1 blob\(s\), 1 row\(s\)/i);
+    expect(summary).toBeInTheDocument();
+    expect(summary.closest('.MuiAlert-root')).toHaveClass('MuiAlert-standardWarning');
   });
 
   it('permission cleanup shows confirm dialog and runs on confirm', async () => {

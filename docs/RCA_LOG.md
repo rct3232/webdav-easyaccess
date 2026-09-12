@@ -443,3 +443,19 @@ IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode repor
   relocated to single-project desktop ownership (`trash-admin.spec.ts`). Full matrix auto
   workers ×2 (193 pass), `--workers=2` (193 pass), core s3 (131), webdav smoke (13) — all
   deterministic; partial-run selection de-chained (trash: 88→8 tests).
+
+### 2026-09-12 — E2E-RECON-001 (new, webdav smoke) flaked once on `tier2.errors` (Case B)
+
+- **Summary**: first full webdav-smoke run of the DEF-18 reconcile case failed the
+  `expect(tier2.errors).toEqual([])` guard; 6 subsequent full runs passed (21 cases each).
+- **Diagnosis**: all smoke projects share the one bytemark DAV container; Tier 2's BFS
+  (`listAllEntriesRecursive`) aborts the WHOLE scan on a single transient PROPFIND failure
+  (a concurrently purged directory vanishing mid-list), surfacing one collected error and
+  zero candidates. Per-item best-effort error collection is the specified behavior
+  (gcService.md §2 S3 notes); the strict empty-errors expectation was the test's assumption.
+- **Classification**: **Case B (Test Error)** — over-tight assertion on a shared-resource
+  side channel; source behavior per spec, unchanged.
+- **Action taken**: E2E-RECON-001 dropped the `errors` assertion and retries the cleanup
+  cycle once (settle 2 s) when the first cycle reports skipped/zero-untracked — a failed
+  list deletes nothing, so the aged orphan is still reconciled on the retry. Assertions
+  (skipped=false, untrackedKeys>=1, foreign-in-live survival, aged-orphan reclaim) unchanged.

@@ -63,7 +63,58 @@ function createFileNodesStore() {
     setObjectMapBackendWebdav: (...args) => repo.setObjectMapBackendWebdav(...args),
     upsertCache: (...args) => repo.upsertCache(...args),
     getCache: (...args) => repo.getCache(...args),
-    getKeptS3Keys: (...args) => repo.getKeptS3Keys(...args),
+    getKeptObjectMapKeys: (...args) => repo.getKeptObjectMapKeys(...args),
+    getFileNodesPathRows: (...args) => repo.getFileNodesPathRows(...args),
+
+    /**
+     * Single keep-set seam for GC Tier 2, in the ACTIVE backend's key space.
+     * s3: object_map keys. webdav: display-path materialization from the
+     * file_nodes projection (see gcService.md §2 for the exact arms).
+     */
+    async getKeptKeys(storageMode) {
+      if (storageMode !== 'webdav') {
+        return new Set(await repo.getKeptObjectMapKeys());
+      }
+      const rows = await repo.getFileNodesPathRows();
+      const byId = new Map(rows.map((r) => [Number(r.id), r]));
+      const displayPath = (row) => {
+        const segments = [];
+        let cur = row;
+        const seen = new Set();
+        while (cur && !seen.has(Number(cur.id))) {
+          seen.add(Number(cur.id));
+          segments.unshift(String(cur.name));
+          cur = cur.parent_id == null ? null : byId.get(Number(cur.parent_id));
+        }
+        return '/' + segments.join('/');
+      };
+      // Canonical forms: directories WITH trailing slash, files bare. Trash/
+      // tmp entries can be either (a trashed file travels as a bare object,
+      // a trashed collection as a directory) — store both forms so the diff
+      // matches either adapter emission.
+      const kept = new Set(['/', '/.wea-trash/', '/.wea-tmp/']);
+      for (const row of rows) {
+        const trashed = row.deleted_at != null;
+        if (!trashed) {
+          const path = displayPath(row);
+          kept.add(row.type === 'directory' ? `${path}/` : path);
+          // every ancestor directory of a live node is live by definition
+          let idx = path.indexOf('/', 1);
+          while (idx !== -1) {
+            kept.add(path.slice(0, idx + 1));
+            idx = path.indexOf('/', idx + 1);
+          }
+        } else {
+          kept.add(`/.wea-trash/${Number(row.id)}`);
+          kept.add(`/.wea-trash/${Number(row.id)}/`);
+        }
+        if (trashed || row.sync_status === 'orphaned_node') {
+          kept.add(`/.wea-tmp/${Number(row.id)}`);
+          kept.add(`/.wea-tmp/${Number(row.id)}/`);
+        }
+      }
+      return kept;
+    },
     getOrphanedObjectsWithNodeState: (...args) => repo.getOrphanedObjectsWithNodeState(...args),
     getStalePendingObjects: (...args) => repo.getStalePendingObjects(...args),
     deleteObjectMapRows: (...args) => repo.deleteObjectMapRows(...args),

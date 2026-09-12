@@ -358,6 +358,46 @@ async function listDirectory(path = '/') {
   }
 }
 
+/**
+ * Recursively enumerate every entry under a directory (BFS over the Depth-1
+ * listing; no Depth-infinity — universally server-compatible). Used by the
+ * GC Tier 2 WebDAV reconciliation (DEF-18). Bounded by depth/entry caps so a
+ * pathological tree can never hang a GC cycle.
+ *
+ * @returns {Promise<Array<{ path: string, type: 'file'|'directory', lastmod: string|number|Date|null }>>}
+ *   directory paths carry a trailing slash; file paths are bare.
+ */
+async function listAllEntriesRecursive(path = '/', options = {}) {
+  const maxDepth =
+    Number.isFinite(options.maxDepth) && options.maxDepth > 0 ? options.maxDepth : 64;
+  const maxEntries =
+    Number.isFinite(options.maxEntries) && options.maxEntries > 0 ? options.maxEntries : 50000;
+
+  const root = normalizePath(path);
+  const rootDir = root === '/' ? '' : root.replace(/\/+$/, '');
+  const entries = [];
+  const queue = [{ dir: rootDir, depth: 0 }];
+
+  while (queue.length > 0 && entries.length < maxEntries) {
+    const { dir, depth } = queue.shift();
+    const items = await listDirectory(dir || '/');
+    for (const item of items) {
+      if (entries.length >= maxEntries) break;
+      const childPath = `${dir}/${item.basename}`;
+      if (item.type === 'directory') {
+        entries.push({ path: `${childPath}/`, type: 'directory', lastmod: item.lastmod });
+        if (depth + 1 <= maxDepth) {
+          queue.push({ dir: childPath, depth: depth + 1 });
+        }
+      } else {
+        entries.push({ path: childPath, type: 'file', lastmod: item.lastmod });
+      }
+    }
+  }
+
+  return entries;
+}
+
 async function getFileContents(filePath) {
   const client = await getWebDAVClient();
   try {
@@ -721,6 +761,7 @@ async function getFileMetadata(filePath) {
 }
 
 module.exports = {
+  listAllEntriesRecursive,
   getWebDAVClient,
   getRequestPath,
   buildDestinationAbsoluteUrl,

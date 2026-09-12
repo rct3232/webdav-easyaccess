@@ -249,7 +249,7 @@ docs: `uploadService.md` §2.5/§2.5.1, `gcService.md` §2, `fileService.md` §4
   - DEF-11 needs only the foundation (raise `GC_VERSION_TTL_DAYS` + browse/restore-version API/UI).
   - DEF-16 P1–P4 (schema / soft-delete / restore / read-gating) are GC-independent → parallel with
     DEF-12/13; DEF-16 P5–P6 (trash GC + purge) need the foundation.
-  - DEF-18 (WebDAV reconciliation) is deferred and must be retention-aware — do NOT build a naive sweep. *(closed 2026-09-12: shipped as the shared-path, bias-guarded Tier 2 — see the DEF-18 row.)*
+  - DEF-18 (WebDAV reconciliation) is deferred and must be retention-aware — do NOT build a naive sweep. _(closed 2026-09-12: shipped as the shared-path, bias-guarded Tier 2 — see the DEF-18 row.)_
   - DEF-17 (WebDAV rename/move old-path orphan) is a separate bug fix, out of DEF-12/13 core scope.
 - **In scope for DEF-12/13 core**: R1 (overwrite rollback) + R2 (scan/repair/startup report) + R3
   (GC foundation), plus the small D5a (`retry-delete` also deletes the remote blob) and D5d

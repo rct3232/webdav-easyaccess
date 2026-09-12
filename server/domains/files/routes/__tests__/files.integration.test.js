@@ -1076,16 +1076,14 @@ describe('C2: move owned folder into another user home → subtree + surface tra
   });
 
   it('mover moves the owned folder into the recipient home root', async () => {
-    // Ownership-transfer semantics depend on the mover being a NON-admin user;
-    // the batch worker executes moveNode with an admin user (bypassing the
-    // transfer revoke), so the service is exercised directly here.
-    const result = await getFileService().moveNode(
-      sharedFolder,
-      recipient.homeNodeId,
-      mover.user.id,
-      { id: mover.user.id, is_admin: false }
+    // Batch is the canonical mutation channel; the worker now executes as the
+    // requesting non-admin principal (DEF-21), so ownership-transfer semantics
+    // are observable through the job itself.
+    expectJobSucceeded(
+      await runBatchJob(mover.token, '/api/files/batch-move', {
+        moves: [{ sourceNodeId: sharedFolder, destinationParentNodeId: recipient.homeNodeId }],
+      })
     );
-    expect(result.newParentId).toBe(recipient.homeNodeId);
   });
 
   it('DB: closure table transfers the subtree to the recipient home', async () => {
@@ -1203,13 +1201,13 @@ describe('D6: move owned folder into another home revokes mover historical self-
   });
 
   it('mover moves the owned folder into the recipient home root', async () => {
-    // Historical-self-grant revoke is non-admin moveNode service semantics
-    // (see C2 note): exercised directly on the service.
-    const result = await getFileService().moveNode(folder, recipient.homeNodeId, mover.user.id, {
-      id: mover.user.id,
-      is_admin: false,
-    });
-    expect(result.newParentId).toBe(recipient.homeNodeId);
+    // Historical-self-grant revoke runs through the batch channel as the
+    // requesting non-admin principal (DEF-21).
+    expectJobSucceeded(
+      await runBatchJob(mover.token, '/api/files/batch-move', {
+        moves: [{ sourceNodeId: folder, destinationParentNodeId: recipient.homeNodeId }],
+      })
+    );
   });
 
   it('DB: mover self-grant rows on the moved subtree are GONE (ownership transfer)', async () => {
@@ -1339,13 +1337,12 @@ describe('D6: received grant on another user home is preserved when moved within
   });
 
   it('mover moves the folder within the owner home (folder → destFolder)', async () => {
-    // Received-grant preservation is non-admin moveNode service semantics
-    // (see C2 note): exercised directly on the service.
-    const result = await getFileService().moveNode(folder, destFolder, mover.user.id, {
-      id: mover.user.id,
-      is_admin: false,
-    });
-    expect(result.newParentId).toBe(destFolder);
+    // Received-grant preservation runs through the batch channel (DEF-21).
+    expectJobSucceeded(
+      await runBatchJob(mover.token, '/api/files/batch-move', {
+        moves: [{ sourceNodeId: folder, destinationParentNodeId: destFolder }],
+      })
+    );
   });
 
   it('DB: the received grant is PRESERVED (mover never owned the node)', async () => {
@@ -1422,13 +1419,12 @@ describe('D6: moving within the mover own home never revokes rows', () => {
   });
 
   it('user moves the folder within the own home (folder → destFolder)', async () => {
-    // Own-home move (no revoke) is non-admin moveNode service semantics
-    // (see C2 note): exercised directly on the service.
-    const result = await getFileService().moveNode(folder, destFolder, user.user.id, {
-      id: user.user.id,
-      is_admin: false,
-    });
-    expect(result.newParentId).toBe(destFolder);
+    // Own-home move (no revoke) runs through the batch channel (DEF-21).
+    expectJobSucceeded(
+      await runBatchJob(user.token, '/api/files/batch-move', {
+        moves: [{ sourceNodeId: folder, destinationParentNodeId: destFolder }],
+      })
+    );
   });
 
   it('DB: self-grant rows on the moved subtree are PRESERVED (no ownership transfer)', async () => {
@@ -1719,5 +1715,66 @@ describe('C4: trash folder → hidden at read; permission/closure/recent rows su
       .set('Authorization', `Bearer ${grantee.token}`);
     expect(granteeRecent.status).toBe(200);
     expect(granteeRecent.body.some((f) => f.fileNodeId === childFileId)).toBe(false);
+  });
+});
+
+/* ========================================================================
+   DEF-21 — the batch worker executes as the REQUESTING principal: no
+   cross-user mutation through the canonical batch channel.
+   ======================================================================== */
+describe('DEF-21: batch worker honors per-principal ACL (no synthetic admin)', () => {
+  let victim, outsider, victimFolder;
+
+  beforeAll(async () => {
+    currentMockS3 = createS3Mock();
+    wireS3Mock(currentMockS3);
+    await useS3Mode();
+
+    victim = await createUserWithHomeNode('def21-victim');
+    outsider = await createUserWithHomeNode('def21-outsider');
+
+    const createRes = await request(app)
+      .post('/api/folders/create')
+      .set('Authorization', `Bearer ${victim.token}`)
+      .send({ parentNodeId: victim.homeNodeId, name: `def21-folder-${Date.now()}` });
+    expect(createRes.status).toBe(200);
+    victimFolder = createRes.body.nodeId;
+  });
+
+  it('outsider batch-move of a foreign folder is skipped (permission_denied), node stays put', async () => {
+    const job = await runBatchJob(outsider.token, '/api/files/batch-move', {
+      moves: [{ sourceNodeId: victimFolder, destinationParentNodeId: outsider.homeNodeId }],
+    });
+
+    expect(job.status).toBe('completed');
+    const moveResult = job.results.find((r) => r.sourceNodeId === victimFolder);
+    expect(moveResult).toMatchObject({ status: 'skipped', reason: 'permission_denied' });
+
+    const chain = await dbQuery(
+      'SELECT ancestor_id FROM node_ancestors WHERE descendant_id = ?',
+      [victimFolder]
+    );
+    const ids = chain.rows.map((r) => Number(r.ancestor_id));
+    expect(ids).toContain(victim.homeNodeId);
+    expect(ids).not.toContain(outsider.homeNodeId);
+  });
+
+  it('outsider batch-copy of a foreign folder is skipped (permission_denied), no copy created', async () => {
+    const before = await dbQuery(
+      "SELECT COUNT(*) AS cnt FROM file_nodes WHERE name LIKE 'def21-folder%'"
+    );
+
+    const job = await runBatchJob(outsider.token, '/api/files/batch-copy', {
+      copies: [{ sourceNodeId: victimFolder, destinationParentNodeId: outsider.homeNodeId }],
+    });
+
+    expect(job.status).toBe('completed');
+    const copyResult = job.results.find((r) => r.sourceNodeId === victimFolder);
+    expect(copyResult).toMatchObject({ status: 'skipped', reason: 'permission_denied' });
+
+    const after = await dbQuery(
+      "SELECT COUNT(*) AS cnt FROM file_nodes WHERE name LIKE 'def21-folder%'"
+    );
+    expect(Number(after.rows[0].cnt)).toBe(Number(before.rows[0].cnt));
   });
 });

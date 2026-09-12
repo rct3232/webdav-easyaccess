@@ -5,7 +5,7 @@
 | Item       | Description                                                                                                          |
 | ---------- | -------------------------------------------------------------------------------------------------------------------- |
 | Mount path | `/api/recent-files`                                                                                                  |
-| Role       | Recent files for current user: list, add, remove, clear. Entries are nodeId-based; displayPath resolved server-side. |
+| Role       | Recent files for current user: list, add, remove. Entries are nodeId-based; displayPath resolved server-side. |
 
 ---
 
@@ -16,7 +16,7 @@
 - **Source:** `server/domains/recentFiles/routes.js`
 - **Test file:** `server/domains/recentFiles/__tests__/recentFiles.test.js`
 
-**Architecture note:** Business logic is extracted into `server/domains/recentFiles/service.js`, which exports: `getRecentFiles(userId)`, `addRecentFile(userId, fileNodeId)`, `removeRecentFile(userId, fileNodeId)`, `clearRecentFiles(userId)`. `applyBulkMove` and `removePaths` are **REMOVED** — node_ids are stable across rename/move, so no post-operation synchronization is needed. The service delegates to `server/store/recentFilesStore` for persistence.
+**Architecture note:** Business logic is extracted into `server/domains/recentFiles/service.js`, which exports: `getRecentFiles(userId)`, `addRecentFile(userId, fileNodeId)`, `removeRecentFile(userId, fileNodeId)`. `applyBulkMove` and `removePaths` are **REMOVED** — node_ids are stable across rename/move, so no post-operation synchronization is needed. `clearRecentFiles` / the clear-all route are **REMOVED (DEF-23)** — no UI ever specified a clear-all affordance. The service delegates to `server/store/recentFilesStore` for persistence.
 
 **Trash filter (DEF-16 P4):** enrichment resolves each entry's node through the live-row read
 (`getNode` — trashed → null). A trashed node's `recent_files` DB row is KEPT, but the entry is
@@ -30,9 +30,6 @@ the entry visible again.
 | GET    | `/`            | Token | List recent files.                 |
 | POST   | `/`            | Token | Add file. Body: fileNodeId.        |
 | DELETE | `/:fileNodeId` | Token | Remove one entry (numeric nodeId). |
-| DELETE | `/`            | Token | Clear all.                         |
-
-**Route order:** `DELETE /` must be defined before `DELETE /:fileNodeId` so that clear-all matches before single-entry remove.
 
 ### 2.3 Middleware Used
 
@@ -43,7 +40,6 @@ the entry visible again.
 - **GET /:** 200: array of `{ fileNodeId, name, type, lastAccessed, displayPath }` — `displayPath` resolved server-side via `fileNodeService.getNodePath(fileNodeId)` at render time.
 - **POST /:** Body: `{ fileNodeId }` (numeric). 200 or 201. 400 when fileNodeId missing/invalid.
 - **DELETE /:fileNodeId:** numeric nodeId param. 200 or 204.
-- **DELETE /:** 200 or 204.
 
 ### 2.5 Related Documents
 
@@ -52,7 +48,6 @@ the entry visible again.
 ### 2.6 Integration Test Scenarios
 
 - [ ] List returns user's recent files with fileNodeId and resolved displayPath
-- [ ] Add, remove, clear require auth
+- [ ] Add, remove require auth
 - [ ] Add with missing/invalid fileNodeId → 400
 - [ ] Remove by numeric fileNodeId removes the correct entry
-- [ ] Clear all empties the user's recent list

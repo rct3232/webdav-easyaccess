@@ -91,14 +91,5 @@ module.exports = function createPostgresRecentFilesRepository(executor, { MAX_RE
       }
     },
 
-    async clearRecentFiles(userId) {
-      try {
-        await executor.transaction(async (tx) => {
-          await tx.run('DELETE FROM recent_files WHERE user_id = $1', [Number(userId)]);
-        });
-      } catch (error) {
-        throw mapDatabaseError(error);
-      }
-    },
   };
 };

@@ -1,6 +1,6 @@
 /**
  * recentFilesService tests (nodeId contract).
- * Verifies addRecentFile dedupe/reorder, cap at 20, removeRecentFile, clearRecentFiles.
+ * Verifies addRecentFile dedupe/reorder, cap at 20, removeRecentFile.
  */
 const recentFilesService = require('../service');
 const composition = require('../../../service/composition');
@@ -9,6 +9,7 @@ const {
   createTestDatabase,
   createAuthenticatedTestUser,
   createTestFileNode,
+  dbRun,
 } = require('../../../test-utils');
 
 describe('recentFilesService (nodeId)', () => {
@@ -37,7 +38,7 @@ describe('recentFilesService (nodeId)', () => {
   });
 
   beforeEach(async () => {
-    await recentFilesService.clearRecentFiles(userId);
+    await dbRun('DELETE FROM recent_files WHERE user_id = ?', [userId]);
   });
 
   describe('addRecentFile', () => {
@@ -111,17 +112,4 @@ describe('recentFilesService (nodeId)', () => {
     });
   });
 
-  describe('clearRecentFiles', () => {
-    it('clears all entries', async () => {
-      const a = await createTestFileNode({ name: 'clear-a.txt' });
-      const b = await createTestFileNode({ name: 'clear-b.txt' });
-      await recentFilesService.addRecentFile(userId, a.nodeId);
-      await recentFilesService.addRecentFile(userId, b.nodeId);
-
-      await recentFilesService.clearRecentFiles(userId);
-
-      const list = await recentFilesService.getRecentFiles(userId);
-      expect(list).toHaveLength(0);
-    });
-  });
 });

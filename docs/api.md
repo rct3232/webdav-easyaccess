@@ -138,7 +138,6 @@ These routes are for accessing shared files via a public link (token in path). A
 | GET    | `/api/recent-files`             | Token | List recent files for current user.                                                   |
 | POST   | `/api/recent-files`             | Token | Add file to recent list. Body: `{ fileNodeId }`. Name/type derived from `file_nodes`. |
 | DELETE | `/api/recent-files/:fileNodeId` | Token | Remove one recent entry by numeric file node id.                                      |
-| DELETE | `/api/recent-files`             | Token | Clear all recent files.                                                               |
 
 > The `apply-moves` and `remove-paths` endpoints are removed. Node ids are stable across rename/move/delete, so recent entries remain valid without post-operation synchronization.
 

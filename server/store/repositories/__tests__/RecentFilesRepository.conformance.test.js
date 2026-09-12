@@ -98,11 +98,4 @@ describe('RecentFilesRepository conformance', () => {
     expect(list.some((e) => e.fileNodeId === Number(n1.nodeId))).toBe(false);
   });
 
-  it('clearRecentFiles empties the list', async () => {
-    const user = await uniqueUser();
-    const n1 = await uniqueNode(`rf-${Date.now()}-6.txt`);
-    await repo.addRecentFile(user.id, n1.nodeId);
-    await repo.clearRecentFiles(user.id);
-    await expect(repo.getUserRecentFiles(user.id)).resolves.toEqual([]);
-  });
 });

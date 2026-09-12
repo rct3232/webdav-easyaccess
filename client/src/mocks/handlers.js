@@ -478,9 +478,6 @@ export const handlers = [
     ]);
   }),
 
-  http.delete(`${API_BASE}/recent-files`, () =>
-    HttpResponse.json({ messageCode: 'serverMessages.recentFiles.clearedSuccess' })
-  ),
 
   http.delete(`${API_BASE}/recent-files/:fileNodeId`, () => HttpResponse.json([])),
 

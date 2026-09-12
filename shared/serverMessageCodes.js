@@ -238,7 +238,6 @@ const SERVER_MESSAGE_CODES = {
     createSuccess: P('serverMessages.folders', 'createSuccess'),
   },
   recentFiles: {
-    clearedSuccess: P('serverMessages.recentFiles', 'clearedSuccess'),
   },
   api: {
     healthOk: P('serverMessages.api', 'healthOk'),

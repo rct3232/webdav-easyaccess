@@ -137,17 +137,35 @@ const SystemSettingsContent = () => {
     try {
       const res = await adminService.cleanupOrphaned();
       const { results } = res;
-      const totalCleaned =
-        results.deletedPermissionFiles +
-        results.deletedUserFiles +
-        results.deletedEmailIndexFiles +
-        results.cleanedPermissionRequests;
+      // Real cleanupOrphanedData() shape: { errors, gc: { tier1, tier2, tier3 },
+      // orphanedNodes[], pendingUploadNodes[] } — report-only arrays are not
+      // deletions, they feed the manual-review count.
+      const gc = results?.gc;
+      const deletedBlobs = gc?.tier1?.deletedBlobs ?? 0;
+      const deletedRows = gc?.tier1?.deletedRows ?? 0;
+      const deletedKeys = gc?.tier2?.deletedKeys ?? 0;
+      const orphaned = results?.orphanedNodes?.length ?? 0;
+      const pending = results?.pendingUploadNodes?.length ?? 0;
+      const reports = orphaned + pending;
+      const hasErrors =
+        (results?.errors?.length ?? 0) > 0 ||
+        (gc?.tier1?.errors?.length ?? 0) > 0 ||
+        (gc?.tier2?.errors?.length ?? 0) > 0 ||
+        (gc?.tier3?.errors?.length ?? 0) > 0;
       let messageText;
-      if (totalCleaned === 0) messageText = t('admin.noDataToClean');
-      else if (results.errors?.length)
-        messageText = t('admin.cleanupDonePartial', { count: totalCleaned });
-      else messageText = t('admin.cleanupDone', { count: totalCleaned });
-      setMessage({ type: results.errors?.length ? 'warning' : 'success', text: messageText });
+      if (deletedBlobs === 0 && deletedRows === 0 && deletedKeys === 0 && reports === 0) {
+        messageText = t('admin.noDataToClean');
+      } else {
+        messageText = t('admin.cleanupDoneGc', {
+          blobs: deletedBlobs,
+          rows: deletedRows,
+          keys: deletedKeys,
+        });
+        if (reports > 0) {
+          messageText += ` ${t('admin.cleanupReports', { orphaned, pending })}`;
+        }
+      }
+      setMessage({ type: hasErrors ? 'warning' : 'success', text: messageText });
     } catch (error) {
       setMessage({
         type: 'error',

@@ -24,6 +24,7 @@ function WebdavFileStoreAdapter(webdav) {
     ensureDirectoryExists: (path) => webdav.ensureDirectoryExists(path),
     pathExists: (path) => webdav.pathExists(path),
     getFileMetadata: (filePath) => webdav.getFileMetadata(filePath),
+    listAllEntriesRecursive: (dir, options) => webdav.listAllEntriesRecursive(dir, options),
   };
 }
 

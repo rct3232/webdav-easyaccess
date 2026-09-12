@@ -692,4 +692,94 @@ describe('createFileNodesStore', () => {
       expect(result.changes).toBe(0);
     });
   });
+
+  /* ------------------------------------------------------------------ */
+  /*  getKeptKeys (GC Tier 2 keep-set seam, DEF-18)                      */
+  /* ------------------------------------------------------------------ */
+
+  describe('getKeptKeys', () => {
+    const p = `ks-${Date.now()}`;
+
+    it("s3 mode: returns a Set wrapping the repository's union keys", async () => {
+      const node = await store.createNode(null, `${p}-s3-active`, 'file');
+      const activeKey = `${p}-s3-active-key`;
+      await store.insertObject(node.id, activeKey, 'active');
+
+      const orphanNode = await store.createNode(null, `${p}-s3-orphan`, 'file');
+      const orphanKey = `${p}-s3-orphan-key`;
+      await store.insertObject(orphanNode.id, orphanKey, 'orphaned');
+
+      const kept = await store.getKeptKeys('s3');
+      expect(kept).toBeInstanceOf(Set);
+      expect(kept.has(activeKey)).toBe(true);
+      expect(kept.has(orphanKey)).toBe(true);
+      expect(kept).toEqual(new Set(await store.getKeptObjectMapKeys()));
+    });
+
+    it('defaults to the s3 keep-set when no mode is given', async () => {
+      const node = await store.createNode(null, `${p}-s3-default`, 'file');
+      const key = `${p}-s3-default-key`;
+      await store.insertObject(node.id, key, 'active');
+
+      const kept = await store.getKeptKeys();
+      expect(kept).toBeInstanceOf(Set);
+      expect(kept.has(key)).toBe(true);
+    });
+
+    it('webdav mode: assembles the path keep-set from the file_nodes projection', async () => {
+      // Live nested pair: dir `/wdks-...-dir/` + file under it.
+      const dir = await store.createNode(null, `${p}-wd-dir`, 'directory');
+      await store.createNode(dir.id, `${p}-wd-file.txt`, 'file');
+
+      // Trashed subtree: root + nested child — BOTH rows get trash arms.
+      const trashedRoot = await store.createNode(null, `${p}-wd-trashed`, 'directory');
+      const trashedChild = await store.createNode(trashedRoot.id, `${p}-wd-tchild`, 'file');
+      await store.markSubtreeDeleted([trashedRoot.id, trashedChild.id]);
+
+      // Live row stuck in orphaned_node: tmp arm (plus its live display path),
+      // no trash arm.
+      const orphaned = await store.createNode(null, `${p}-wd-orphan`, 'file');
+      await store.updateSyncStatus(orphaned.id, 'orphaned_node');
+
+      // Foreign row (live pending_upload — none of the above): display path
+      // only, no trash/tmp arms.
+      const foreign = await store.createNode(null, `${p}-wd-foreign`, 'file');
+
+      const kept = await store.getKeptKeys('webdav');
+      expect(kept).toBeInstanceOf(Set);
+
+      // Structural roots.
+      expect(kept.has('/')).toBe(true);
+      expect(kept.has('/.wea-trash/')).toBe(true);
+      expect(kept.has('/.wea-tmp/')).toBe(true);
+
+      // Live nodes: file bare, directory trailing-slashed, ancestors included.
+      expect(kept.has(`/${p}-wd-dir/${p}-wd-file.txt`)).toBe(true);
+      expect(kept.has(`/${p}-wd-dir/`)).toBe(true);
+      expect(kept.has(`/${p}-wd-dir`)).toBe(false);
+      expect(kept.has(`/${p}-wd-foreign`)).toBe(true);
+
+      // Trashed rows: `/.wea-trash/<id>` (both forms, nested too); the
+      // display path of a trashed row is NOT kept.
+      for (const id of [trashedRoot.id, trashedChild.id]) {
+        expect(kept.has(`/.wea-trash/${id}`)).toBe(true);
+        expect(kept.has(`/.wea-trash/${id}/`)).toBe(true);
+        expect(kept.has(`/.wea-tmp/${id}`)).toBe(true);
+        expect(kept.has(`/.wea-tmp/${id}/`)).toBe(true);
+      }
+      expect(kept.has(`/${p}-wd-trashed`)).toBe(false);
+      expect(kept.has(`/${p}-wd-trashed/`)).toBe(false);
+
+      // orphaned_node row: tmp arm while the node exists, no trash arm.
+      expect(kept.has(`/.wea-tmp/${orphaned.id}`)).toBe(true);
+      expect(kept.has(`/.wea-tmp/${orphaned.id}/`)).toBe(true);
+      expect(kept.has(`/.wea-trash/${orphaned.id}`)).toBe(false);
+
+      // Foreign live row: no trash, no tmp.
+      expect(kept.has(`/.wea-trash/${foreign.id}`)).toBe(false);
+      expect(kept.has(`/.wea-trash/${foreign.id}/`)).toBe(false);
+      expect(kept.has(`/.wea-tmp/${foreign.id}`)).toBe(false);
+      expect(kept.has(`/.wea-tmp/${foreign.id}/`)).toBe(false);
+    });
+  });
 });

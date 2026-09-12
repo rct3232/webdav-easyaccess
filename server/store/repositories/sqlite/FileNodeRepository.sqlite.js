@@ -531,7 +531,7 @@ module.exports = function createSqliteFileNodeRepository(executor) {
       }
     },
 
-    async getKeptS3Keys() {
+    async getKeptObjectMapKeys() {
       try {
         const { rows } = await executor.query(
           `SELECT s3_key FROM object_map WHERE status = 'active' AND s3_key IS NOT NULL
@@ -546,6 +546,17 @@ module.exports = function createSqliteFileNodeRepository(executor) {
               AND fn.sync_status = 'pending_upload'`
         );
         return rows.map((r) => String(r.s3_key));
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async getFileNodesPathRows() {
+      try {
+        const { rows } = await executor.query(
+          `SELECT id, parent_id, name, type, deleted_at, sync_status FROM file_nodes`
+        );
+        return rows;
       } catch (error) {
         throw mapDatabaseError(error);
       }

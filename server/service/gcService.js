@@ -35,8 +35,6 @@ function createGcService({
   gcConfig = {},
   trashService,
 }) {
-  const isWebdavMode = fileStorageMode === 'webdav';
-
   // GC_* TTLs are T2 (hot): resolved lazily per GC cycle so DB changes
   // apply without a restart.
   async function resolveOrphanTtlDays() {
@@ -96,12 +94,15 @@ function createGcService({
   async function deleteBlobsForRows(rows, result) {
     for (const row of rows) {
       if (!row.s3_key) continue;
-      if (isWebdavMode) continue;
+      // Per-row guard, not per-mode: a foreign-backend row's key is not an
+      // addressable object on the active store (DEF-18). Symmetric in both
+      // directions (webdav row under s3 mode and vice versa).
+      if ((row.storage_backend || 's3') !== fileStorageMode) continue;
       try {
         await blobStore.deleteBlob(row.s3_key);
         result.deletedBlobs += 1;
       } catch (error) {
-        result.errors.push(`Failed to delete S3 blob ${row.s3_key}: ${error.message}`);
+        result.errors.push(`Failed to delete blob ${row.s3_key}: ${error.message}`);
       }
     }
   }
@@ -199,7 +200,7 @@ function createGcService({
       errors: [],
     };
 
-    if (isWebdavMode || typeof blobStore.listOrphanedKeys !== 'function') {
+    if (typeof blobStore.listOrphanedKeys !== 'function') {
       result.skipped = true;
       return result;
     }
@@ -208,7 +209,7 @@ function createGcService({
     try {
       candidateKeys = await blobStore.listOrphanedKeys(toDateCutoff(olderThanDays));
     } catch (error) {
-      result.errors.push(`Failed to list orphaned S3 keys: ${error.message}`);
+      result.errors.push(`Failed to list orphaned storage keys: ${error.message}`);
       return result;
     }
 
@@ -217,24 +218,54 @@ function createGcService({
       return result;
     }
 
-    let keptKeys;
+    let keptKeySet;
     try {
-      keptKeys = await fileNodesStore.getKeptS3Keys();
+      keptKeySet = await fileNodesStore.getKeptKeys(fileStorageMode);
     } catch (error) {
-      result.errors.push(`Failed to load kept s3_key set: ${error.message}`);
+      result.errors.push(`Failed to load kept-key set: ${error.message}`);
       return result;
     }
-    const keptKeySet = new Set(keptKeys);
 
-    const untracked = candidateKeys.filter((key) => !keptKeySet.has(key));
+    // S1 ancestor-keep bias (webdav reconciliation; inert for s3 keys, which
+    // contain no '/' tree structure): a candidate living under a KEPT
+    // directory is only reported, never deleted — protecting in-flight
+    // subtree materialization and foreign content inside live trees.
+    const STRUCTURAL_DIRS = new Set(['/', '/.wea-trash/', '/.wea-tmp/']);
+    const isUnderKeptDirectory = (key) => {
+      let idx = key.indexOf('/', 1);
+      while (idx !== -1) {
+        const dir = `${key.slice(0, idx)}/`;
+        if (keptKeySet.has(dir) && !STRUCTURAL_DIRS.has(dir)) return true;
+        idx = key.indexOf('/', idx + 1);
+      }
+      return false;
+    };
+
+    const untracked = [];
+    for (const key of candidateKeys) {
+      if (keptKeySet.has(key)) continue;
+      untracked.push(key);
+    }
     result.untrackedKeys = untracked.length;
 
-    for (const key of untracked) {
+    const deletable =
+      fileStorageMode === 'webdav'
+        ? untracked.filter((key) => !isUnderKeptDirectory(key))
+        : untracked;
+
+    // S3 mode has no directory candidates; webdav deletes bottom-up so a
+    // collection's children precede the collection itself. Depth ignores the
+    // trailing slash a directory carries, so `/dir/` and `/dir/x.txt` are not
+    // ranked equal (the child must sort first).
+    const depthOf = (key) => key.replace(/\/+$/, '').split('/').length;
+    const ordered = [...deletable].sort((a, b) => depthOf(b) - depthOf(a));
+
+    for (const key of ordered) {
       try {
         await blobStore.deleteBlob(key);
         result.deletedKeys += 1;
       } catch (error) {
-        result.errors.push(`Failed to delete untracked S3 blob ${key}: ${error.message}`);
+        result.errors.push(`Failed to delete untracked blob ${key}: ${error.message}`);
       }
     }
 

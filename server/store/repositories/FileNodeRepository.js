@@ -50,7 +50,8 @@
  * @property {(fileNodeId) => Promise<{ changes: number }>} setObjectMapBackendWebdav
  * @property {(fileNodeId, size, mimeType, contentHash) => Promise<{ changes: number }>} upsertCache
  * @property {(fileNodeId) => Promise<Object|null>} getCache
- * @property {() => Promise<string[]>} getKeptS3Keys
+ * @property {() => Promise<string[]>} getKeptObjectMapKeys
+ * @property {() => Promise<Array<Object>>} getFileNodesPathRows
  * @property {(olderThanDays: number) => Promise<Array<Object>>} getOrphanedObjectsWithNodeState
  * @property {(staleThanDays: number) => Promise<Array<Object>>} getStalePendingObjects
  * @property {(ids: number[]) => Promise<{ changes: number }>} deleteObjectMapRows

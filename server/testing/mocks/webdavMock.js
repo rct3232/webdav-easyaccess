@@ -14,6 +14,7 @@ function createWebdavMock(overrides = {}) {
     createDirectory: jest.fn().mockResolvedValue(undefined),
     ensureDirectoryExists: jest.fn().mockResolvedValue(undefined),
     getFileMetadata: jest.fn().mockResolvedValue({}),
+    listAllEntriesRecursive: jest.fn().mockResolvedValue([]),
     isImageFile: jest.fn(() => false),
     isVideoFile: jest.fn(() => false),
     ...overrides,

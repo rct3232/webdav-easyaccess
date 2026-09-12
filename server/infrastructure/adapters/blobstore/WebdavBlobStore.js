@@ -82,8 +82,26 @@ class WebdavBlobStore {
     }
   }
 
-  async listOrphanedKeys() {
-    return [];
+  /**
+   * Candidate keys for GC Tier 2 reconciliation (DEF-18): every file and
+   * directory under the DAV root, age-filtered by `olderThan` against the
+   * listing's `lastmod` (entries with an unparseable/absent date are NEVER
+   * candidates). Directory paths carry a trailing slash; file paths bare.
+   * Keep/remove decisions belong to the GC keep-set, not here.
+   */
+  async listOrphanedKeys(olderThan) {
+    const entries = await this.webdav.listAllEntriesRecursive('/');
+    const cutoff =
+      olderThan instanceof Date && !Number.isNaN(olderThan.getTime()) ? olderThan.getTime() : null;
+    const keys = [];
+    for (const entry of entries) {
+      if (cutoff != null) {
+        const seen = Date.parse(entry.lastmod);
+        if (Number.isNaN(seen) || seen >= cutoff) continue;
+      }
+      keys.push(entry.path);
+    }
+    return keys;
   }
 
   _isNotFound(err) {
@@ -131,6 +149,7 @@ for (const method of [
   'moveBlob',
   'copyBlob',
   'ensureDirectoryExists',
+  'listOrphanedKeys',
 ]) {
   WebdavBlobStore.prototype[method] = withHealthReport(WebdavBlobStore.prototype[method]);
 }

@@ -6,10 +6,7 @@ const request = require('supertest');
 const { createTestDatabase, createAuthenticatedTestUser, dbQuery, dbRun } = require('@server/test-utils');
 const { createFileNodeService } = require('@server/service/fileNodeService');
 const { createFileNodesStore } = require('@server/store/fileNodesStore');
-const {
-  SERVER_ERROR_CODES,
-  SERVER_MESSAGE_CODES,
-} = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { createWebdavMock } = require('@testing/mocks/webdavMock');
 const WebdavBlobStore = require('@server/infrastructure/adapters/blobstore/WebdavBlobStore');
 const composition = require('@server/service/composition');
@@ -122,26 +119,6 @@ describe('POST /api/recent-files', () => {
 });
 
 describe('DELETE /api/recent-files', () => {
-  it('clears all recent files', async () => {
-    const { token, fileNode } = await createUserWithFile();
-    await request(app)
-      .post('/api/recent-files')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ fileNodeId: fileNode.id });
-
-    const res = await request(app)
-      .delete('/api/recent-files')
-      .set('Authorization', `Bearer ${token}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.messageCode).toBe(SERVER_MESSAGE_CODES.recentFiles.clearedSuccess);
-
-    const listRes = await request(app)
-      .get('/api/recent-files')
-      .set('Authorization', `Bearer ${token}`);
-    expect(listRes.status).toBe(200);
-    expect(listRes.body).toHaveLength(0);
-  });
 
   it('removes single entry by fileNodeId', async () => {
     const { token, homeNode, fileNode } = await createUserWithFile();

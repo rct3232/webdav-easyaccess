@@ -976,7 +976,6 @@
       "createSuccess": "폴더가 생성되었습니다."
     },
     "recentFiles": {
-      "clearedSuccess": "최근 파일 목록이 초기화되었습니다."
     },
     "api": {
       "healthOk": "WebDAV EasyAccess API가 실행 중입니다.",

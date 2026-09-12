@@ -67,13 +67,8 @@ async function removeRecentFile(userId, fileNodeId) {
   return results;
 }
 
-async function clearRecentFiles(userId) {
-  await recentFilesStore.clearRecentFiles(userId);
-}
-
 module.exports = {
   getRecentFiles,
   addRecentFile,
   removeRecentFile,
-  clearRecentFiles,
 };

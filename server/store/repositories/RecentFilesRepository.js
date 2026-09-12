@@ -15,7 +15,6 @@
  *   Upsert + trim to MAX_RECENT_FILES; returns the updated list.
  * @property {(userId, fileNodeId) => Promise<Array>} removeRecentFile
  *   Removes one entry; returns the updated list.
- * @property {(userId) => Promise<void>} clearRecentFiles
  *
  * @param {import('../../infrastructure/db/executor').DbExecutor} executor
  * @returns {RecentFilesRepository}

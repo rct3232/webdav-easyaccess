@@ -976,7 +976,6 @@
       "createSuccess": "Folder created successfully"
     },
     "recentFiles": {
-      "clearedSuccess": "Recent files cleared successfully"
     },
     "api": {
       "healthOk": "WebDAV EasyAccess API is running",

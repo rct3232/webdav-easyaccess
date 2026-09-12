@@ -91,14 +91,5 @@ module.exports = function createSqliteRecentFilesRepository(executor, { MAX_RECE
       }
     },
 
-    async clearRecentFiles(userId) {
-      try {
-        await executor.transaction(async (tx) => {
-          await tx.run('DELETE FROM recent_files WHERE user_id = ?', [Number(userId)]);
-        });
-      } catch (error) {
-        throw mapDatabaseError(error);
-      }
-    },
   };
 };

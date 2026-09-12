@@ -34,13 +34,9 @@ async function removeRecentFile(userId, fileNodeId) {
   return getRepository().removeRecentFile(userId, fileNodeId);
 }
 
-async function clearRecentFiles(userId) {
-  return getRepository().clearRecentFiles(userId);
-}
-
 module.exports = {
   getUserRecentFiles,
   addRecentFile,
   removeRecentFile,
-  clearRecentFiles,
+
 };

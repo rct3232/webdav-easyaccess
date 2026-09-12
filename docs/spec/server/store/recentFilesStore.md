@@ -22,9 +22,8 @@
 | getUserRecentFiles | (userId) => Promise\<Array\>             | List recent files                                                                                |
 | addRecentFile      | (userId, fileNodeId) => Promise<Array>   | Add; dedupe by node_id; prepend; cap at MAX_RECENT_FILES. Name/type derivable from `file_nodes`. |
 | removeRecentFile   | (userId, fileNodeId) => Promise\<Array\> | Remove by node_id                                                                                |
-| clearRecentFiles   | (userId) => Promise\<void\>              | Delete all entries                                                                               |
 
-**REMOVED methods:** `applyBulkMove`, `removePaths` — node_ids are stable; rename/move does not change nodeId.
+**REMOVED methods:** `applyBulkMove`, `removePaths` — node_ids are stable; rename/move does not change nodeId. `clearRecentFiles` — removed with DEF-23 (no consumer).
 
 ### 2.3 PostgreSQL v2 Table Mapping
 
@@ -35,7 +34,7 @@
 ### 2.4 Transaction Boundaries
 
 - `addRecentFile`: single transaction that upserts by `(user_id, file_node_id)` and preserves recency ordering.
-- `removeRecentFile`, `clearRecentFiles`: single transaction per call.
+- `removeRecentFile`: single transaction per call.
 
 ### 2.5 Dependencies
 

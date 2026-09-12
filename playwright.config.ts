@@ -23,7 +23,7 @@ const sharedCoreSpec =
   'auth|share-public|core-flow\\.shared|mypage-user|share-internal|trash|versions';
 
 const desktopSpecMatch = new RegExp(
-  `(?:${sharedCoreSpec}|trash-admin|registration-settings|core-flow\\.desktop)\\.spec\\.ts$`
+  `(?:${sharedCoreSpec}|registration-settings|core-flow\\.desktop)\\.spec\\.ts$`
 );
 const mobileSpecMatch = new RegExp(`(?:${sharedCoreSpec}|core-flow\\.mobile)\\.spec\\.ts$`);
 const adminSpecMatch = /mypage-admin\.spec\.ts$/;
@@ -54,11 +54,13 @@ type PlaywrightProject = NonNullable<Parameters<typeof defineConfig>[0]['project
 const projects: PlaywrightProject[] = [];
 
 if (backendMode === 'webdav') {
+  // trash-admin.spec.ts is EXCLUDED from the smoke: E2E-TRASH-007 is
+  // scratch-hermetic (:5012, DEF-20) and runs only in the s3 full matrix.
   const smokeSpecMatch = new RegExp(
-    '(core-flow\\.shared|share-public|share-internal|trash|trash-admin)\\.spec\\.ts$'
+    '(core-flow\\.shared|share-public|share-internal|trash)\\.spec\\.ts$'
   );
   const smokeTitleMatch = new RegExp(
-    'E2E-(EXP-00[12458]|EXP-01[23]|SHARE-011|OVERLAY-011|TRASH-00[1367])[:\\s]'
+    'E2E-(EXP-00[12458]|EXP-01[23]|SHARE-011|OVERLAY-011|TRASH-00[136])[:\\s]'
   );
   projects.push({
     name: 'webdav-smoke-desktop',
@@ -100,7 +102,8 @@ if (backendMode === 'webdav') {
     // Additive, hermetic projects (setup-wizard / admin-config / migration).
     // They spawn their own scratch servers and are isolated per suite (Option A
     // Phase 1): each suite owns ONE distinct scratch port (:5003 wizard, :5010
-    // admin-config, :5011 migration) mirrored by its baseURL below, and the
+    // admin-config, :5011 migration, :5012 trash-admin) mirrored by its
+    // baseURL below, and the
     // migration suite targets its own dedicated MinIO bucket. Phase 2 lifted the
     // strict chain: the suites are now INDEPENDENT siblings, so they can overlap
     // the platform/admin projects and each other on idle workers. A suite's
@@ -148,6 +151,15 @@ if (backendMode === 'webdav') {
         spec: /migration\.spec\.ts$/,
         use: mobileUse,
         baseURL: 'http://localhost:5011',
+      },
+      {
+        // DEF-20: globally destructive trash case — scratch-hermetic on its
+        // own server (:5012) so the "empty ALL trash" purge can never touch
+        // the shared pool's in-flight trash cases.
+        name: 'trash-admin-desktop',
+        spec: /trash-admin\.spec\.ts$/,
+        use: desktopUse,
+        baseURL: 'http://localhost:5012',
       },
     ];
     for (const h of hermeticSpecs) {

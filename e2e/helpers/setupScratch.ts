@@ -20,7 +20,7 @@ import { expect, type Page } from '@playwright/test';
  *
  * Port contract (Option A Phase 1): each hermetic suite owns ONE distinct
  * scratch port so the suites can run concurrently — setup-wizard :5003
- * (the exported `scratchPort`), admin-config :5010, migration :5011. The port
+ * (the exported `scratchPort`), admin-config :5010, migration :5011, trash-admin :5012. The port
  * is passed explicitly to `spawnScratchServer`/`waitForScratchHealth` and must
  * match the suite's playwright.config.ts baseURL. `pg` is required via
  * `createRequire` (ships no types; the local structural type keeps the surface

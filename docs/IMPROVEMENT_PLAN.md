@@ -36,7 +36,7 @@ Ordered by urgency review (2026-09-08): highest priority first.
 
 | DEF-20 | DONE (2026-09-11) | `E2E-TRASH-001`/`E2E-TRASH-003` failed deterministically in the full `test:e2e:webdav` smoke run (passed in isolation). RCA: TRASH-007 (admin "Empty trash" purges ALL users' trash) ran in the same shared-pool project via the smoke grep; `fullyParallel` interleaved it with TRASH-001/003 (same admin user, shared :5002 server) whose just-trashed items were purged mid-assertion. The prior mitigation (single-project file ownership, `trash-admin.spec.ts` header) was unsound — ownership cannot serialize a shared worker pool; s3 was exposed too, masked by `retries: 2`. Fix: E2E-TRASH-007 became a SCRATCH-HERMETIC project (`trash-admin-desktop`, :5012, own sqlite boot per run, `/.wea-trash/` reset before the suite) like admin-config/migration, excluded from the webdav smoke and the desktop core. Verification: webdav smoke 12/12, s3 full matrix 193 pass/3 skip/0 fail. `docs/TESTING_STRATEGY.md` destructive-case policy rewritten. |
 
-| DEF-18 | DEFERRED (retention-gated) | WebDAV remote↔DB reconciliation sweep ("Tier 2" for WebDAV; today `WebdavBlobStore.listOrphanedKeys()` returns `[]`). Must be **retention-category aware** (active/trash/history/garbage), NOT a naive "delete anything not in DB" walk — co-design with DEF-16/DEF-11. Known residue classes it must handle: individually-trashed descendants' `/.wea-trash/<id>` entries left when an ancestor is purged (`fileService.md` §4.1), s3→webdav cutover dropping `history` rows (`blob-migration.md`), crashed/uncleaned `/.wea-tmp/<id>` overwrite snapshots (`fileService.md` §2.3), and rename/move DB-commit↔MOVE crash windows (a redoable MOVE asymmetry — detectable by display-path↔remote-location diff, idempotent `moveBlob` re-run). | `docs/spec/server/services/gcService.md` |
+| DEF-18 | DONE (2026-09-12) | WebDAV remote↔DB reconciliation landed as retention-aware **Tier 2 on one shared code path for both backends**. No new config: rides `GC_INTERVAL_MS` (default 0 = manual-only, both backends) and the admin "고아 제거" button (`/api/admin/cleanup/orphaned` → `runGcCycle`); age shared via `GC_ORPHAN_TTL_DAYS`. Backend specifics live in two seams: `blobStore.listOrphanedKeys(olderThan)` (WebDAV: BFS recursive listing, `lastmod` filter — unparseable dates never candidates) and `fileNodesStore.getKeptKeys(mode)` (S3: renamed `getKeptObjectMapKeys` UNION; WebDAV: `file_nodes` path materialization — live display paths + ancestors, `/.wea-trash/<id>` for EVERY trashed row, `/.wea-tmp/<id>` while trashed/`orphaned_node`, bare structural roots). Safety biases: S1 candidate under a KEPT directory = report-only (live-tree foreign content & in-flight materialization protected), S2 age cutoff, S3 bottom-up deletes. Tier 1 blob guard became per-row `storage_backend` match (symmetric latent fix). Client cleanup button repaired (NaN legacy math → real GC counts + report badge). Residue classes now handled: orphan trash/tmp entries, unkept-tree files; rename/move orphans were already closed by DEF-17. Cutover `history`-row reap remains a DB-side migration-tool question (DEF-7 family), not a reconciliation gap. Specs: `gcService.md` §2/§3/§5/§7, `fileNodesStore.md`; e2e `E2E-RECON-001` in the webdav smoke. | `docs/spec/server/services/gcService.md` |
 
 ---
 
@@ -166,6 +166,7 @@ The following work was completed earlier the same day (see DEF-3/DEF-5 above) an
   Style drift follow-up (same day): the ~136-file `format:check` failure (prettier 3.8.3 reflow on
   pre-existing files) was resolved by `chore/prettier-drift` — repo-wide `npm run format`,
   `format:check` green, both suites + lint verified after.
+- DEF-18 follow-through (2026-09-12): retention-aware WebDAV reconciliation shipped on the agreed no-new-keys basis (shared `GC_INTERVAL_MS`, default-off/manual button) behind the adapter keep-set seams; admin cleanup result wiring fixed in the same change.
 
 ### W-1 note (2026-09-03, `fix/upload-rollback-on-backend-failure`)
 
@@ -248,7 +249,7 @@ docs: `uploadService.md` §2.5/§2.5.1, `gcService.md` §2, `fileService.md` §4
   - DEF-11 needs only the foundation (raise `GC_VERSION_TTL_DAYS` + browse/restore-version API/UI).
   - DEF-16 P1–P4 (schema / soft-delete / restore / read-gating) are GC-independent → parallel with
     DEF-12/13; DEF-16 P5–P6 (trash GC + purge) need the foundation.
-  - DEF-18 (WebDAV reconciliation) is deferred and must be retention-aware — do NOT build a naive sweep.
+  - DEF-18 (WebDAV reconciliation) is deferred and must be retention-aware — do NOT build a naive sweep. *(closed 2026-09-12: shipped as the shared-path, bias-guarded Tier 2 — see the DEF-18 row.)*
   - DEF-17 (WebDAV rename/move old-path orphan) is a separate bug fix, out of DEF-12/13 core scope.
 - **In scope for DEF-12/13 core**: R1 (overwrite rollback) + R2 (scan/repair/startup report) + R3
   (GC foundation), plus the small D5a (`retry-delete` also deletes the remote blob) and D5d

@@ -488,3 +488,31 @@ IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode repor
   `migration-*`/`*-admin-*` projects are excluded from `E2E_CORE=1` by design
   (playwright.config.ts) — "related E2E specs" for cleanup-feedback changes must include
   mypage-admin/migration projects, and CI should run the full leg between merge waves.
+
+### 2026-09-13 — CI build #47: E2E-MYPAGE-005 attempt-1 render blip made fatal by non-retriable identity (Case B)
+
+- **Summary**: first CI full-matrix run after the hermetic de-chain (`8cfb470`).
+  `E2E-MYPAGE-005` (s3-mobile) attempt #1 timed out (5 s) waiting for the login
+  form at `/login` — the form is absent from the DOM while `settingsLoading`
+  (`LoginFormView.js:68`) and the de-chained WebKit-mobile concurrency windowed
+  it past the budget; the main server was clean (all 200, no health events).
+  Retries #1/#2 failed EARLIER and deterministically: the test permanently
+  changes its derived user's password, but `getTestSuffix` is
+  title-deterministic across retries → retry hit `400 usernameTaken`, then
+  `ensureUserCanLogin` logged in with the pre-mutation password → `401`×3
+  (`helpers/auth.ts:108`). `--max-failures=1` turned this into a 55-case stop.
+- **Classification**: **Case B (Test Error)** — retry-identity design gap
+  (pre-existing; surfaced by de-chain load, unrelated to the migration fixes
+  from build #46, which both passed in #47).
+- **Action taken**: `getTestSuffix` now appends `_r<retry>` when
+  `testInfo.retry > 0` (single chokepoint, 24 call sites / 6 specs + shareLinks
+  helper; first-attempt identities unchanged). Policy written into
+  `docs/TESTING_STRATEGY.md` (retries must be self-healing; no exact-count
+  asserts over lists other attempts can write to). A/B evidence: with a forced
+  failure injected after the password mutation, old code → `1 failed`
+  (retry poisoned), new code → `1 flaky` (retry self-heals); clean run:
+  s3-mobile mypage-user 11/11 pass.
+- **Follow-ups (not in this change)**: unify the local `Date.now()` username
+  hack from the 2026-09-11 ADMIN-005 fix with `getTestSuffix`; server gap —
+  `POST /api/admin/users` accepts usernames violating registration's
+  50-char/charset validation (observed: 63-char colon usernames).

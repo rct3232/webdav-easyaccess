@@ -6,7 +6,13 @@ type TestUserKey = 'admin' | 'user1' | 'user2' | 'user3';
 type StandardTestUserKey = Exclude<TestUserKey, 'admin'>;
 
 export function getTestSuffix(testInfo: any) {
-  return `${testInfo.project.name}_${testInfo.title.replace(/\s+/g, '_').toLowerCase()}`;
+  const base = `${testInfo.project.name}_${testInfo.title.replace(/\s+/g, '_').toLowerCase()}`;
+  // Attempt-unique identity (docs/TESTING_STRATEGY.md): a case that permanently
+  // mutates the derived user (e.g. a password change) otherwise cannot be retried —
+  // the retry finds the user already exists and logs in with the stale password.
+  // `testInfo.retry` is constant within an attempt, so all helper calls in one
+  // attempt resolve to the same user. First-attempt names stay unchanged.
+  return testInfo.retry > 0 ? `${base}_r${testInfo.retry}` : base;
 }
 
 function getUserData(userKey: TestUserKey, suffix?: string) {

@@ -49,3 +49,10 @@ navigate state.
 
 - H1 (confirmed by CI trace 46): skip-only rerun job terminates in ~ms; mount round-trip
   loses the race → empty view. Recovery channel removes the timing dependency entirely.
+
+## Status
+
+T1-T6 complete 2026-09-13: server 100 suites/1939 + pg leg 16/232, client 159/1435
+(in-band), lint+format clean; local e2e: s3-admin-desktop E2E-ADMIN-008 pass, migration-desktop
+9/9 pass. Recovery path proven by unit/integration (idle-machine e2e wins the race by design);
+final arbiter: full CI e2e leg.

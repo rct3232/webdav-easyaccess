@@ -459,3 +459,32 @@ IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode repor
   cycle once (settle 2 s) when the first cycle reports skipped/zero-untracked — a failed
   list deletes nothing, so the aged orphan is still reconciled on the retry. Assertions
   (skipped=false, untrackedKeys>=1, foreign-in-live survival, aged-orphan reclaim) unchanged.
+
+### 2026-09-13 — CI build #46: E2E-MIG-008 terminal-modal race (Case B/C) + E2E-ADMIN-008 stale text contract (Case B)
+
+- **Summary**: first full-matrix CI E2E after the 9/8→9/13 merge wave (CI had no full run in
+  between; build #45 died earlier at the client build — see the `@emotion/styled` entry) failed
+  `E2E-MIG-008` rerun leg (180 s no dialog) and `E2E-ADMIN-008` (no `Cleanup complete` alert,
+  3/3 attempts). The trailing "terminating connection due to administrator command" PG noise was
+  teardown after-effect of the `--max-failures=1` stop (compose down while the server was still
+  live), not a cause: MIG-008 failed first (07:23:47), ADMIN-008 at 07:24:59.
+- **Diagnosis (MIG-008)**: scratch :5011 access log proves the rerun (all-skip, ~ms) job
+  terminalled before `/migration` mounted — subsequent `GET /api/migration/status` all `304`
+  (`{active:false}`, no jobId channel once `migrationGate.clear()` ran) so the page's one-shot
+  mount fetch could never learn the jobId and the D9 modal never rendered. Latent race (exposed
+  by CI parallel load; individual runs win the timing pass). No other suite shares the shape:
+  bulk ops keep the jobId client-side and job stores stay queryable; `migrationStatus` was the
+  only endpoint whose payload _shrinks_ at terminal.
+- **Classification (MIG-008)**: **Case B/C** — test asserted a delivery the code only guarantees
+  when it wins a race; the spec left "job completed before mount" undefined. Fixed canonically:
+  gate retains a one-shot completion notice on terminal clear, admin `GET /api/migration/status`
+  exposes it as `lastJob`, `POST /api/admin/migration/last-job/ack` consumes it after delivery
+  (docs-first: migration-mode D9, migrationGate §2.2–2.4/§2.8–2.9, MigrationPage spec).
+- **Classification (ADMIN-008)**: **Case B** — DEF-18 (7b10c84) intentionally replaced the alert
+  contract (`admin.cleanupDone`/`cleanupDonePartial` removed; now `admin.noDataToClean` or
+  `admin.cleanupDoneGc`), the e2e kept asserting the removed text (it had only ever passed on a
+  "Cleanup complete. NaN …" artifact). Test aligned to the documented contract.
+- **Process gap**: merge-wave verification ran `webdav smoke` + `core:s3` only;
+  `migration-*`/`*-admin-*` projects are excluded from `E2E_CORE=1` by design
+  (playwright.config.ts) — "related E2E specs" for cleanup-feedback changes must include
+  mypage-admin/migration projects, and CI should run the full leg between merge waves.

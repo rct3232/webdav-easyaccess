@@ -17,6 +17,7 @@ import {
   Typography,
 } from '@mui/material';
 import {
+  ackLastMigrationJob,
   cancelBlobMigration,
   getBlobMigrationStatus,
   getMigrationStatus,
@@ -122,8 +123,32 @@ const MigrationPage = () => {
         if (cancelled) return;
         setStatus(data);
         const active = Boolean(data && data.active);
-        if (!active || !data.jobId) return;
-        jobIdRef.current = data.jobId;
+        if (active && !data.jobId) return;
+        const jobId = active ? data.jobId : data && data.lastJob && data.lastJob.jobId;
+        if (!jobId) return;
+        if (!active) {
+          // Recovery path (E2E-MIG-008): the job finished before this page
+          // mounted, so the gate already cleared. Load the notified job — it is
+          // terminal — render the terminal view, then consume the notice so it
+          // is delivered exactly once.
+          const noticeId = jobId;
+          jobIdRef.current = noticeId;
+          setJobLoading(true);
+          try {
+            const recovered = await getBlobMigrationStatus(noticeId);
+            if (cancelled) return;
+            setJob(recovered);
+          } catch {
+            if (!cancelled) setJob(null);
+          } finally {
+            if (!cancelled) {
+              setJobLoading(false);
+              ackLastMigrationJob().catch(() => {});
+            }
+          }
+          return;
+        }
+        jobIdRef.current = jobId;
         setJobLoading(true);
         try {
           const initial = await getBlobMigrationStatus(data.jobId);
@@ -413,7 +438,9 @@ const MigrationPage = () => {
     );
   }
 
-  if (!active) {
+  if (!active && !job) {
+    // Empty view; a recovered terminal job (notice path) must still render the
+    // job view + modal below even though the gate is already inactive.
     return (
       <Container maxWidth="md">
         <Paper elevation={0} sx={{ p: 4, mt: 4, textAlign: 'center' }}>

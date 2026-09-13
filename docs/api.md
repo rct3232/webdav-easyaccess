@@ -182,6 +182,7 @@ Spec: `docs/spec/server/routes/config.md`, `docs/spec/server/routes/health.md`.
 | POST | `/api/admin/migration/blobs` | Token + Admin | Start a bidirectional WebDAV ↔ S3 blob migration. Body: `{ mode, force?, dest }` (no `direction`; server derives it and validates `dest.type`). Returns `202 { jobId }`. |
 | GET | `/api/admin/migration/jobs/:jobId` | Token + Admin | Get blob-migration job status/progress. |
 | POST | `/api/admin/migration/jobs/:jobId/cancel` | Token + Admin | Cancel a running blob-migration job. |
+| POST | `/api/admin/migration/last-job/ack` | Token + Admin | Acknowledge (consume) the migration gate's one-shot completion notice exposed as `lastJob` on `GET /api/migration/status`. `204`, idempotent. |
 
 Spec: `docs/spec/server/tools/blob-migration.md`.
 

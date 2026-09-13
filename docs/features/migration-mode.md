@@ -72,6 +72,11 @@ the job; all other application routes are blocked.
   state, and **reset at boot** (a restart during a migration leaves the gate inactive; the
   in-memory blob `migrationJobStore` also resets, so an interrupted run is resumed by re-running
   the copy).
+- On terminal clear the gate retains a one-shot **completion notice** (`{ jobId, type }`): a job
+  that finishes before the `/migration` page mounts stays discoverable through the admin view of
+  `GET /api/migration/status` (`lastJob`) until the page consumes it via `POST
+/api/admin/migration/last-job/ack`, so the terminal modal is delivered exactly once per finished
+  migration regardless of mount timing.
 - Gate state is exposed to the client via `GET /api/migration/status` so the app-guard can
   force-redirect and the `/migration` page can restore a running job after a refresh. The public
   (unauthenticated) response is intentionally minimal — `{ active: boolean }` only; an
@@ -98,7 +103,8 @@ A gating middleware installed in `server/index.js` (see
     open so a running migration can be observed and cancelled.
   - `GET /api/migration/status` — the migration-gate status endpoint: unauthenticated callers
     receive only `{ active: boolean }`; an authenticated admin receives the full gate state
-    (`{ active, type, jobId, startedAt }`).
+    (`{ active, type, jobId, startedAt }` while active; `{ active: false, lastJob }` while
+    inactive, where `lastJob` is the unacknowledged completion notice or `null`).
 - **WebDAV protocol coverage:** the gate is mounted at the app level, so it covers the
   file-domain routes (`/api/files/*`, `/api/folders/*`, `/api/thumbnails/*`, ...) that read/write
   the WebDAV blob backend during normal operation. Any future raw-WebDAV protocol mount must also
@@ -179,6 +185,12 @@ optional/out of scope.
 - `cancelled` → warning + partial summary.
 
 Each popup has a **"Go to settings"** button that immediately navigates back to System Settings.
+
+The terminal modal is **delivery-guaranteed**: if the job reaches a terminal state before the
+`/migration` page mounts (fast skip/dry-run jobs), the page recovers it from the admin view's
+`lastJob` completion notice (§ [Migration mode concept](#migration-mode-concept)), renders the
+same modal, and acknowledges delivery via `POST /api/admin/migration/last-job/ack` — so the
+notice fires exactly once per finished migration.
 
 **Polling:** reuse the 400ms job-poll pattern; stop on terminal; the client computes elapsed time
 locally.
@@ -293,7 +305,7 @@ backend-health card reflects it.
 | D6  | Target schema        | Auto-apply the DDL to the explicit target backend/connection (schema-manager refactor).                                                                                                                                                                                                |
 | D7  | `/migration` content | Progress only: determinate %, current-operation label, counters. No per-step/table list.                                                                                                                                                                                               |
 | D8  | Blob progress        | Node-count based: `% = progress/total` over the snapshot; current file label shown.                                                                                                                                                                                                    |
-| D9  | Terminal UX          | No header back button; auto modal popup on terminal state with summary + "Go to settings".                                                                                                                                                                                             |
+| D9  | Terminal UX          | No header back button; auto modal popup on terminal state with summary + "Go to settings". Delivery guaranteed via the gate's one-shot completion notice (`lastJob` + ack) even when the job finishes before the page mounts.                                                          |
 | D10 | F2 persist           | After blob `apply`: DB-sourced storage keys persist to DB (`Settings.set`, secrets stored as plaintext, `invalidateCache`), job carries `configPersist { persisted, skippedEnvSourced }`; env-sourced keys → manual `.env` guidance.                                                   |
 | D11 | Final DB cutover     | T0 keys env-owned; final step is manual env edit + restart; UI guides it and the server shows a persistent banner.                                                                                                                                                                     |
 | D12 | Boot verification    | Add an S3 boot probe symmetric to the WebDAV one (warn-only).                                                                                                                                                                                                                          |
@@ -304,15 +316,16 @@ backend-health card reflects it.
 
 ## API surface summary
 
-| Endpoint                                       | Guard                    | Behavior                                                                                                                                                                                              |
-| ---------------------------------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/migration/status`                    | public (gate allow-list) | **Unauthenticated:** `{ active: boolean }` only. **Authenticated admin:** full gate state `{ active, type?, jobId?, startedAt? }`. Polled by the app-guard (public) and the `/migration` page (admin) |
-| `GET /api/admin/migration/target-scan`         | Token + Admin            | Metadata target scan: `schemaExists` + per-table row counts                                                                                                                                           |
-| `POST /api/admin/migration/metadata`           | Token + Admin            | Start a metadata DB migration. Body `{ targetBackend, pg?, sqlitePath?, wipeTarget? }`; gate set; cancel = rollback                                                                                   |
-| `GET /api/admin/migration/info`                | Token + Admin            | Derived blob direction `{ source, direction }` (existing)                                                                                                                                             |
-| `POST /api/admin/migration/blobs`              | Token + Admin            | Start a blob migration job; both `dry-run` and `apply` set the gate (existing; blob jobs keep scalar `progress` + top-level `current`/`results`)                                                      |
-| `GET /api/admin/migration/jobs/:jobId`         | Token + Admin            | Job status/progress (existing; type-specific payload: blob scalar `progress` + top-level `current`/`results`, metadata extended `{ percent, currentLabel }`)                                          |
-| `POST /api/admin/migration/jobs/:jobId/cancel` | Token + Admin            | Cancel a running job (existing)                                                                                                                                                                       |
+| Endpoint                                       | Guard                    | Behavior                                                                                                                                                                                                                                                                                                              |
+| ---------------------------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/migration/status`                    | public (gate allow-list) | **Unauthenticated:** `{ active: boolean }` only. **Authenticated admin:** full gate state `{ active, type?, jobId?, startedAt? }` while active; `{ active: false, lastJob: { jobId, type } \| null }` (one-shot completion notice) while inactive. Polled by the app-guard (public) and the `/migration` page (admin) |
+| `POST /api/admin/migration/last-job/ack`       | Token + Admin            | Consumes the gate's completion notice (terminal modal delivered); `204`, idempotent. Stay open while the gate is active (`/api/admin/migration/*` allow-list)                                                                                                                                                         |
+| `GET /api/admin/migration/target-scan`         | Token + Admin            | Metadata target scan: `schemaExists` + per-table row counts                                                                                                                                                                                                                                                           |
+| `POST /api/admin/migration/metadata`           | Token + Admin            | Start a metadata DB migration. Body `{ targetBackend, pg?, sqlitePath?, wipeTarget? }`; gate set; cancel = rollback                                                                                                                                                                                                   |
+| `GET /api/admin/migration/info`                | Token + Admin            | Derived blob direction `{ source, direction }` (existing)                                                                                                                                                                                                                                                             |
+| `POST /api/admin/migration/blobs`              | Token + Admin            | Start a blob migration job; both `dry-run` and `apply` set the gate (existing; blob jobs keep scalar `progress` + top-level `current`/`results`)                                                                                                                                                                      |
+| `GET /api/admin/migration/jobs/:jobId`         | Token + Admin            | Job status/progress (existing; type-specific payload: blob scalar `progress` + top-level `current`/`results`, metadata extended `{ percent, currentLabel }`)                                                                                                                                                          |
+| `POST /api/admin/migration/jobs/:jobId/cancel` | Token + Admin            | Cancel a running job (existing)                                                                                                                                                                                                                                                                                       |
 
 While the gate is active all non-allow-listed routes return `503 migrationInProgress`
 (`GET /api/health`, `POST /api/auth/login`, `/api/admin/migration/*`, `GET
@@ -336,7 +349,8 @@ Representative observable behaviors to cover:
   cancellable mid-copy (resume on rerun); DB-sourced storage config auto-persisted (+restart
   guidance); env-sourced falls back to manual `.env` guidance; restart → S3/WebDAV boot probe
   verifies the new backend on the health card.
-- Terminal always surfaces an auto modal with summary + "Go to settings".
+- Terminal always surfaces an auto modal with summary + "Go to settings" — including a job that
+  completed before `/migration` mounted (recovered via the `lastJob` completion notice + ack).
 - No schema change beyond the existing DDL; `client`/`server` `test:ci` + E2E stay green.
 
 ---

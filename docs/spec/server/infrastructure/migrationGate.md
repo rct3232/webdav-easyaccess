@@ -35,32 +35,41 @@ Source of truth: `docs/features/migration-mode.md` (decisions D2–D4, D9).
 - One gate at a time: attempting to start a second migration while active is rejected (the
   migration router returns `409` when a blob job is already running; the metadata endpoint
   returns the same while the gate is active).
+- **Completion notice:** besides the active state, the gate keeps one process-local slot
+  `lastNotice = { jobId, type } | null` describing the most recent job the gate cleared. The
+  notice exists so a job that reaches terminal **before the `/migration` page mounts** (fast
+  skip/dry-run jobs) remains discoverable: `GET /api/migration/status` exposes it to admins
+  (§2.8) until the client consumes it via the ack endpoint (§2.9). `reset()` (boot) drops it.
 
 ### 2.3 Public API
 
-| Export                | Signature                    | Description                                                                                                                   |
-| --------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `createMigrationGate` | `() => instance`             | Factory (tests get an isolated instance; production uses the shared singleton).                                               |
-| `set`                 | `({ type, jobId }) => state` | Set the gate to `{ active: true, type, jobId, startedAt: now }`. Rejects (throws) if already active.                          |
-| `clear`               | `() => state`                | Clear the gate to the inactive boot state. Called when a job reaches a terminal state (`completed` / `failed` / `cancelled`). |
-| `reset`               | `() => state`                | Reset to inactive (boot + test hook).                                                                                         |
-| `getStatus`           | `() => state`                | Snapshot for `GET /api/migration/status` and the gating middleware.                                                           |
-| `isActive`            | `() => boolean`              | Convenience predicate for route handlers (e.g. `POST /api/admin/migration/metadata` conflict check).                          |
+| Export                | Signature                       | Description                                                                                                                                                                                       |
+| --------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createMigrationGate` | `() => instance`                | Factory (tests get an isolated instance; production uses the shared singleton).                                                                                                                   |
+| `set`                 | `({ type, jobId }) => state`    | Set the gate to `{ active: true, type, jobId, startedAt: now }`. Rejects (throws) if already active.                                                                                              |
+| `clear`               | `(notice?) => state`            | Clear the gate to the inactive boot state. Called when a job reaches a terminal state (`completed` / `failed` / `cancelled`). `notice = { jobId, type }` is stored as `lastNotice` when provided. |
+| `getNotice`           | `() => { jobId, type } \| null` | Current unacknowledged completion notice (admins only — surfaced via the status route, never publicly).                                                                                           |
+| `ackNotice`           | `() => null \| { jobId, type }` | Consume (clear) the completion notice; returns what was cleared. Idempotent.                                                                                                                      |
+| `reset`               | `() => state`                   | Reset to inactive and **drop the notice** (boot + test hook).                                                                                                                                     |
+| `getStatus`           | `() => state`                   | Snapshot for `GET /api/migration/status` and the gating middleware.                                                                                                                               |
+| `isActive`            | `() => boolean`                 | Convenience predicate for route handlers (e.g. `POST /api/admin/migration/metadata` conflict check).                                                                                              |
 
 ### 2.4 Transitions
 
-| Transition                   | Trigger                                                                                                                     | Result                                     |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `inactive → active`          | Migration start — blob `apply` (`POST /api/admin/migration/blobs`) or metadata start (`POST /api/admin/migration/metadata`) | `{ active: true, type, jobId, startedAt }` |
-| `active → inactive`          | Job reaches a terminal state (`completed` / `failed` / `cancelled`); the worker clears the gate when it finishes            | `{ active: false }`                        |
-| `active → inactive` (forced) | `reset()` at boot                                                                                                           | `{ active: false }`                        |
+| Transition                   | Trigger                                                                                                                                                              | Result                                     |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `inactive → active`          | Migration start — blob `apply` (`POST /api/admin/migration/blobs`) or metadata start (`POST /api/admin/migration/metadata`)                                          | `{ active: true, type, jobId, startedAt }` |
+| `active → inactive`          | Job reaches a terminal state (`completed` / `failed` / `cancelled`); the worker clears the gate when it finishes, passing `{ jobId, type }` as the completion notice | `{ active: false }` + `lastNotice` set     |
+| `active → inactive` (forced) | `reset()` at boot                                                                                                                                                    | `{ active: false }` + `lastNotice` dropped |
 
 - **Boot reset:** `getBackendHealth().reset()`-style — the gate is reset to inactive at boot
   (`server/index.js` `runBoot`). A restart during a migration leaves the gate inactive; blob jobs
   are process-local and lost (resume by re-running), metadata jobs are transactional (rollback).
 - **Terminal clear:** the migration worker (`runMigrationWorker` / the metadata worker) clears the
   gate in the same terminal-update path that writes `status: 'completed' | 'failed' |
-'cancelled'`. The client observes the terminal state via polling and stops waiting.
+'cancelled'`, passing `{ jobId, type }` so the completion notice survives the clear. The client
+  observes the terminal state via polling and stops waiting; if it missed the run entirely (page
+  mounted after the clear), it recovers through the notice (§2.8/§2.9).
 
 ### 2.5 Gating middleware
 
@@ -131,13 +140,23 @@ running job after a refresh:
 { "active": true, "type": "blobs", "jobId": "<uuid>", "startedAt": "2026-09-01T00:00:00.000Z" }
 ```
 
-- When `active: false`, `type` / `jobId` / `startedAt` are omitted in the admin view.
+- When `active: false`, `type` / `jobId` / `startedAt` are omitted and the admin view carries the
+  unacknowledged completion notice instead: `{ "active": false, "lastJob": { "jobId", "type" } }`,
+  or `{ "active": false, "lastJob": null }` when no migration finished since the last ack/boot.
 - When active and the backing job is `blobs`, `jobId` matches the `migrationJobStore` job so the
   `/migration` page can restore the job after a refresh by polling
   `GET /api/admin/migration/jobs/:jobId`.
 - The app-guard needs only `{ active }` and polls unauthenticated (it must redirect anonymous
   and regular sessions to `/maintenance` and admins to `/migration`; the admin-vs-maintenance
   decision comes from the session user's `is_admin` flag, not from this endpoint's payload).
+
+### 2.9 `POST /api/admin/migration/last-job/ack`
+
+Admin-only (token + admin), allow-listed while the gate is active. Consumes the completion
+notice: `getMigrationGate().ackNotice()` and returns `204`. Idempotent — a second ack with no
+notice pending is also `204`. Called by the `/migration` page after it has rendered (or
+dismissed) the terminal modal for a recovered `lastJob`, so the notice is delivered exactly
+once per finished migration.
 
 ---
 
@@ -150,5 +169,7 @@ running job after a refresh:
 - [ ] Allow-list: `GET /api/health`, `POST /api/auth/login`, `/api/admin/migration/*`, `GET /api/migration/status` pass while active
 - [ ] WebDAV file-domain route (e.g. `GET /api/files/...`) returns `503` while the gate is active
 - [ ] `GET /api/migration/status`: unauthenticated → `{ active }`; authenticated admin → full gate state (`{ active, type, jobId, startedAt }`)
+- [ ] `GET /api/migration/status` (admin, inactive): `{ active: false, lastJob: { jobId, type } }` after a cleared gate with notice; `lastJob: null` after boot/ack
+- [ ] `POST /api/admin/migration/last-job/ack`: 204, consumes the notice (subsequent status shows `lastJob: null`); non-admin → 403
 - [ ] `OPTIONS` preflight passes while the gate is active
 - [ ] Worker clears the gate when a job reaches `completed` / `failed` / `cancelled`

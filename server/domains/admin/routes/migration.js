@@ -233,9 +233,11 @@ function runMigrationWorker(jobId, { destConfig, mode, force }) {
     .finally(() => {
       // A terminal migration changes which backend holds metadata, so the
       // ".env setup needed" presence cache (60s TTL) must not serve a stale
-      // pre-migration snapshot to System Settings.
+      // pre-migration snapshot to System Settings. The gate clear also records
+      // the completion notice so a /migration page that mounts after a fast
+      // job can still discover its jobId (migrationGate.md §2.8/§2.9).
       clearPresenceCache();
-      getMigrationGate().clear();
+      getMigrationGate().clear({ jobId, type: 'blobs' });
     });
 }
 
@@ -309,9 +311,10 @@ function runMetadataMigrationWorker(jobId, { direction, target, wipeTarget }) {
     })
     .finally(() => {
       // See runMigrationWorker: a terminal migration changes the metadata
-      // presence, so drop the TTL cache to keep the banner accurate.
+      // presence, so drop the TTL cache to keep the banner accurate, and record
+      // the completion notice for late /migration mounts.
       clearPresenceCache();
-      getMigrationGate().clear();
+      getMigrationGate().clear({ jobId, type: 'metadata' });
     });
 }
 

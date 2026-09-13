@@ -428,8 +428,13 @@ test.describe('mypage admin flows (E2E-ADMIN-001..008)', () => {
     // Scope to the cleanup-completion alert: the System settings page can also
     // show a persistent env-setup warning banner (role=alert), which would trip
     // strict mode on a bare getByRole('alert').
+    // DEF-18 contract (SystemSettingsContent.md §2): the alert reports honest GC
+    // numbers — "No data to clean up." when the cycle deletes nothing, otherwise
+    // "GC complete: …" (+ optional "Reports: …" for manual-review leftovers).
     await expect(
-      page.getByRole('alert').filter({ hasText: /Cleanup complete|정리 완료/i })
+      page
+        .getByRole('alert')
+        .filter({ hasText: /No data to clean up|GC complete|정리할 데이터가 없습니다|정리 완료/i })
     ).toBeVisible();
 
     // Absence regression (class H): after cleanup, the non-admin user's shared view

@@ -194,7 +194,10 @@ export const handlers = [
     if (!body.refreshToken) {
       return errorResponse('serverErrors.auth.refreshTokenInvalid', 401);
     }
-    return HttpResponse.json({ token: 'mock-jwt-token-refreshed' });
+    return HttpResponse.json({
+      token: 'mock-jwt-token-refreshed',
+      refreshToken: 'mock-refresh-token-rotated',
+    });
   }),
 
   http.get(`${API_BASE}/auth/me`, () => {

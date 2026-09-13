@@ -14,12 +14,13 @@ This document lists all REST API endpoints. The server serves under the `/api` p
 
 ## Auth
 
-| Method | Path                 | Auth  | Description                                                                                    |
-| ------ | -------------------- | ----- | ---------------------------------------------------------------------------------------------- |
-| POST   | `/api/auth/register` | None  | Sign up. Body: e.g. username, email, password.                                                 |
-| POST   | `/api/auth/login`    | None  | Login. Returns `user`, `token` (and optionally refresh token). May return 429 if rate limited. |
-| POST   | `/api/auth/refresh`  | None  | Refresh access token using refresh token in body.                                              |
-| GET    | `/api/auth/me`       | Token | Current user info.                                                                             |
+| Method | Path                 | Auth  | Description                                                                                                                                                                                                  |
+| ------ | -------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| POST   | `/api/auth/register` | None  | Sign up. Body: e.g. username, email, password.                                                                                                                                                               |
+| POST   | `/api/auth/login`    | None  | Login. Returns `user`, `token` (and optionally refresh token). May return 429 if rate limited.                                                                                                               |
+| POST   | `/api/auth/refresh`  | None  | Refresh access token. Body: `{ refreshToken }`. Returns `{ token, refreshToken }` — single-use rotation: the submitted token is consumed (reuse → 401) and the client MUST replace its stored refresh token. |
+| POST   | `/api/auth/logout`   | None  | Revoke one refresh token. Body: `{ refreshToken }` (optional). Idempotent 200 `{ messageCode: 'serverMessages.auth.loggedOut' }` (unknown/absent tokens are a no-op).                                        |
+| GET    | `/api/auth/me`       | Token | Current user info.                                                                                                                                                                                           |
 
 ---
 

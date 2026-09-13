@@ -27,7 +27,8 @@ The `/api/auth/me` endpoint provides the current user. User APIs support listing
 | -------------------- | ------ | ----- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `/api/auth/register` | POST   | None  | `username`, `email`, `password` | On success: `{ messageCode, status: 'pending' }` or `{ token, refreshToken?, user }` if auto-approved. Duplicate username/email → 400 with `errorCode`. Registration disabled → 403. |
 | `/api/auth/login`    | POST   | None  | `username`, `password`          | Returns `{ user, token, refreshToken? }`. Rate limited (429); pending/rejected status → 403 with `errorCode`.                                                                        |
-| `/api/auth/refresh`  | POST   | None  | `refreshToken` (body)           | Returns `{ token }`. Invalid/expired refresh → 401.                                                                                                                                  |
+| `/api/auth/refresh`  | POST   | None  | `refreshToken` (body)           | Returns `{ token, refreshToken }` (single-use rotation: the submitted token is consumed; reuse → 401). Invalid/expired refresh → 401.                                                |
+| `/api/auth/logout`   | POST   | None  | `refreshToken` (body, optional) | Revokes the given refresh token. Idempotent 200 `{ messageCode: 'serverMessages.auth.loggedOut' }` (unknown/absent tokens are a no-op).                                              |
 | `/api/auth/me`       | GET    | Token | —                               | Returns current user object. 401 if invalid/expired.                                                                                                                                 |
 
 **Input rules (validation):**
@@ -160,8 +161,14 @@ flowchart TD
 ### Token refresh
 
 - Client sends `POST /api/auth/refresh` with `{ refreshToken }`.
-- Server validates refresh token; if valid, returns new `{ token }`. Client stores new token and may dispatch a `token-refreshed` event for axios header update.
+- Server validates the refresh token; if valid, it rotates: the submitted token is consumed and a new one is registered, returning `{ token, refreshToken }`. The client stores both (replacing its saved refresh token) and may dispatch a `token-refreshed` event for axios header update.
+- Reuse of a consumed (old) refresh token → 401 — the single-use signal that bounds a leaked token's lifetime to the legitimate client's next refresh.
 - Invalid or expired refresh → 401; client should redirect to login or clear session.
+
+### Logout
+
+- Client sends `POST /api/auth/logout` with `{ refreshToken }` (best-effort) and always clears its local session regardless of the server call's outcome.
+- Server revokes the token id if present; unknown/absent tokens are a silent no-op (idempotent 200, no enumeration oracle).
 
 ### 401/403 and logout
 

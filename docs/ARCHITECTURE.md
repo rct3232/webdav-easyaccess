@@ -48,7 +48,7 @@ server/domains/
 │   └── services/      # cleanupService.js, userService.js
 ├── auth/
 │   ├── routes/        # (nested test files)
-│   ├── routes.js      # login, register, refresh, me
+│   ├── routes.js      # login, register, refresh, logout, me
 │   ├── service.js     # auth business logic
 │   └── tokenStore.js  # token persistence
 ├── files/

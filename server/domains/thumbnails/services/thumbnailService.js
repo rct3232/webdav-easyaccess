@@ -105,33 +105,6 @@ async function getNodeName(nodeId) {
   return node ? node.name : null;
 }
 
-async function getThumbnail(nodeId) {
-  const name = await getNodeName(nodeId);
-  if (!name) return null;
-
-  if (isImageFile(name)) {
-    const cached = getCachedThumbnail(nodeId);
-    if (cached) return cached.buffer;
-    const result = await generateImageThumbnail(nodeId);
-    if (result) {
-      setCachedThumbnail(nodeId, result.buffer, result.extension);
-      return result.buffer;
-    }
-    return null;
-  } else if (isVideoFile(name)) {
-    const cached = getCachedThumbnail(nodeId);
-    if (cached) return cached.buffer;
-    const result = await generateVideoThumbnail(nodeId);
-    if (result) {
-      setCachedThumbnail(nodeId, result.buffer, result.extension);
-      return result.buffer;
-    }
-    return null;
-  }
-
-  return null;
-}
-
 async function getThumbnailUrl(nodeId) {
   const cached = getCachedThumbnail(nodeId);
   if (cached) {
@@ -142,8 +115,17 @@ async function getThumbnailUrl(nodeId) {
   return null;
 }
 
-function getThumbnailFromCache(nodeId) {
-  return getCachedThumbnail(nodeId);
+/**
+ * Evict the cached thumbnail for a node (LRU delete). Called after content
+ * overwrites and version restores so a stale image is never re-served.
+ * Safe to call when the node has no cached entry (no-op).
+ */
+function invalidate(nodeId) {
+  try {
+    _getCache().delete(_cacheKey(nodeId));
+  } catch {
+    /* cache adapter unavailable — nothing to evict */
+  }
 }
 
 async function ensureThumbnail(nodeId) {
@@ -214,9 +196,7 @@ async function ensureThumbnailsBatch(nodeIds) {
 
 module.exports = {
   setCacheAdapter,
-  getThumbnail,
   getThumbnailUrl,
-  getThumbnailFromCache,
   getCachedThumbnail,
   setCachedThumbnail,
   ensureThumbnail,
@@ -225,6 +205,7 @@ module.exports = {
   signThumbnailToken,
   verifyThumbnailToken,
   findCachedThumbnailByHash,
+  invalidate,
   get thumbnailCache() {
     return _getCache();
   },

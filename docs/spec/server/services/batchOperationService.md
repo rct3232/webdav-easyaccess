@@ -187,13 +187,23 @@ dispatcher:
 
 1. Reads the job from `opStore.getJob(jobId)` and extracts `job.operation`
    (`'delete'` | `'move'` | `'copy'`) plus `job.payload`.
-2. Dispatches on `job.operation` to the corresponding batchOperationService method:
-   `batchDelete(job.payload.nodeIds, job.userId)`, `batchMove(job.payload.moves, job.userId, …)`,
-   or `batchCopy(job.payload.copies, job.userId, …)`.
-3. Sets the job `running` at start; an unknown operation marks the job `failed`.
-4. On success, writes the aggregate result back to the job record: `completed` with
+2. Resolves the requesting principal: `user = await aclService.getCachedUser(job.userId)`
+   (composition-injected aclService). If the user no longer exists, the job is marked `failed`
+   with `errorMessage` = `serverErrors.auth.userNotFound` — a queued job must never execute
+   under a synthesized identity.
+3. Dispatches on `job.operation` to the corresponding batchOperationService method **with the
+   real user object**: `batchDelete(job.payload.nodeIds, job.userId, user)`,
+   `batchMove(job.payload.moves, job.userId, user)`, `batchCopy(job.payload.copies, job.userId, user)`.
+   The per-item ACL gates and `fileService`'s own gates (including the D6 ownership-transfer
+   cleanup) therefore behave exactly as they do for a direct, non-admin call. Admin creators keep
+   their bypass because the real user row carries `is_admin` (DEF-21 fix — the worker previously
+   passed a synthesized `{ is_admin: true }` for move/copy, silently granting every user admin
+   semantics inside the batch channel).
+4. Sets the job `running` at start; an unknown operation marks the job `failed`.
+5. On success, writes the aggregate result back to the job record: `completed` with
    `progress` = the result's count (`deletedCount`/`movedCount`/`copiedCount`),
-   `total` = `job.total`, and `results` = `result.errors`. Failures set `failed` with
+   `total` = `job.total`, and `results` = `succeeded` entries first, then the
+   `failed`/`skipped` entries (client contract). Failures set `failed` with
    `errorMessage`.
 
 ### 5.2 Payload Format

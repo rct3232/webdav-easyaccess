@@ -43,9 +43,12 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "@eslint/js": "^8.57.1",
     "@playwright/test": "^1.58.2",
     "concurrently": "^8.2.2",
+    "eslint": "^8.57.1",
     "eslint-config-prettier": "^10.1.8",
+    "globals": "^13.24.0",
     "prettier": "^3.8.3"
   }
 }

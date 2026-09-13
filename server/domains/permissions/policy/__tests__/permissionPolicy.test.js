@@ -1,7 +1,7 @@
 /**
  * permissionPolicy tests — nodeId-based permission checks.
  *
- * Verifies that canReadFolderNode, canWriteFolderNode, canGrantPermissionNode,
+ * Verifies that canGrantPermissionNode, canRevokePermissionNode,
  * and canViewPermissionsNode operate on nodeIds with closure table inheritance.
  */
 
@@ -25,7 +25,6 @@ describe('permissionPolicy (nodeId)', () => {
 
     mockOwnerNodeResolver = {
       isOwnerNode: jest.fn(),
-      canAccessNode: jest.fn(),
     };
 
     mockAclService = {
@@ -47,55 +46,6 @@ describe('permissionPolicy (nodeId)', () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
-  });
-
-  // V8: canReadFolder — TRUE if user has read permission on node or ancestor
-  it('V8: returns true when user has READ permission via closure table', async () => {
-    const userId = 1;
-    const dirNodeId = 20;
-
-    mockUserModel.findById.mockResolvedValue({ id: userId, username: 'alice', is_admin: false });
-    mockOwnerNodeResolver.isOwnerNode.mockResolvedValue(false);
-    mockPermStore.checkPermission.mockResolvedValue(true);
-
-    const result = await permissionPolicy.canReadFolderNode(userId, dirNodeId);
-    expect(result).toBe(true);
-    expect(mockPermStore.checkPermission).toHaveBeenCalledWith(userId, dirNodeId, PERMISSIONS.READ);
-  });
-
-  it('V8b: returns false when user has no READ permission', async () => {
-    const userId = 1;
-    const dirNodeId = 20;
-
-    mockUserModel.findById.mockResolvedValue({ id: userId, username: 'alice', is_admin: false });
-    mockOwnerNodeResolver.isOwnerNode.mockResolvedValue(false);
-    mockPermStore.checkPermission.mockResolvedValue(false);
-
-    const result = await permissionPolicy.canReadFolderNode(userId, dirNodeId);
-    expect(result).toBe(false);
-  });
-
-  it('V8c: returns true when user is owner of the node', async () => {
-    const userId = 1;
-    const dirNodeId = 20;
-
-    mockUserModel.findById.mockResolvedValue({ id: userId, username: 'alice', is_admin: false });
-    mockOwnerNodeResolver.isOwnerNode.mockResolvedValue(true);
-
-    const result = await permissionPolicy.canReadFolderNode(userId, dirNodeId);
-    expect(result).toBe(true);
-    expect(mockPermStore.checkPermission).not.toHaveBeenCalled();
-  });
-
-  it('V8d: returns true for admin user', async () => {
-    const userId = 1;
-    const dirNodeId = 20;
-
-    mockUserModel.findById.mockResolvedValue({ id: userId, username: 'admin', is_admin: true });
-
-    const result = await permissionPolicy.canReadFolderNode(userId, dirNodeId);
-    expect(result).toBe(true);
-    expect(mockOwnerNodeResolver.isOwnerNode).not.toHaveBeenCalled();
   });
 
   // V9: canGrantPermission — TRUE if user has admin permission on node or ancestor
@@ -149,34 +99,6 @@ describe('permissionPolicy (nodeId)', () => {
     expect(result).toBe(false);
   });
 
-  // canWriteFolder
-  it('canWriteFolderNode returns true for owner', async () => {
-    mockUserModel.findById.mockResolvedValue({ id: 1, username: 'alice', is_admin: false });
-    mockOwnerNodeResolver.isOwnerNode.mockResolvedValue(true);
-
-    const result = await permissionPolicy.canWriteFolderNode(1, 20);
-    expect(result).toBe(true);
-  });
-
-  it('canWriteFolderNode returns true when user has WRITE permission', async () => {
-    mockUserModel.findById.mockResolvedValue({ id: 1, username: 'alice', is_admin: false });
-    mockOwnerNodeResolver.isOwnerNode.mockResolvedValue(false);
-    mockPermStore.checkPermission.mockResolvedValue(true);
-
-    const result = await permissionPolicy.canWriteFolderNode(1, 20);
-    expect(result).toBe(true);
-    expect(mockPermStore.checkPermission).toHaveBeenCalledWith(1, 20, PERMISSIONS.WRITE);
-  });
-
-  it('canWriteFolderNode returns false when no write access', async () => {
-    mockUserModel.findById.mockResolvedValue({ id: 1, username: 'alice', is_admin: false });
-    mockOwnerNodeResolver.isOwnerNode.mockResolvedValue(false);
-    mockPermStore.checkPermission.mockResolvedValue(false);
-
-    const result = await permissionPolicy.canWriteFolderNode(1, 20);
-    expect(result).toBe(false);
-  });
-
   // canViewPermissions
   it('canViewPermissionsNode returns true for owner', async () => {
     mockUserModel.findById.mockResolvedValue({ id: 1, username: 'alice', is_admin: false });
@@ -216,39 +138,6 @@ describe('permissionPolicy (nodeId)', () => {
 
     const result = await permissionPolicy.canRevokePermissionNode(1, 20, 2);
     expect(result).toBe(false);
-  });
-
-  // canReadFileNode / canWriteFileNode (file-level checks via aclService)
-  it('canReadFileNode returns true for admin user', async () => {
-    mockUserModel.findById.mockResolvedValue({ id: 1, username: 'admin', is_admin: true });
-
-    const result = await permissionPolicy.canReadFileNode(1, 100);
-    expect(result).toBe(true);
-  });
-
-  it('canReadFileNode delegates to aclService.checkFilePermission for non-admin', async () => {
-    mockUserModel.findById.mockResolvedValue({ id: 2, username: 'alice', is_admin: false });
-    mockAclService.checkFilePermission.mockResolvedValue(true);
-
-    const result = await permissionPolicy.canReadFileNode(2, 100);
-    expect(result).toBe(true);
-    expect(mockAclService.checkFilePermission).toHaveBeenCalledWith(2, 100, PERMISSIONS.READ);
-  });
-
-  it('canWriteFileNode returns true for admin user', async () => {
-    mockUserModel.findById.mockResolvedValue({ id: 1, username: 'admin', is_admin: true });
-
-    const result = await permissionPolicy.canWriteFileNode(1, 100);
-    expect(result).toBe(true);
-  });
-
-  it('canWriteFileNode delegates to aclService.checkFilePermission for non-admin', async () => {
-    mockUserModel.findById.mockResolvedValue({ id: 2, username: 'alice', is_admin: false });
-    mockAclService.checkFilePermission.mockResolvedValue(true);
-
-    const result = await permissionPolicy.canWriteFileNode(2, 100);
-    expect(result).toBe(true);
-    expect(mockAclService.checkFilePermission).toHaveBeenCalledWith(2, 100, PERMISSIONS.WRITE);
   });
 
   // getUserOrNull helper

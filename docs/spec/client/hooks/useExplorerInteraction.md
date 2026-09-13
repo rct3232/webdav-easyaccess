@@ -100,3 +100,11 @@ These scenarios should be covered by a dedicated hook unit test in `client/src/p
 - Empty file/path input is a no-op.
 - Recent-file entries lacking a nodeId use the path-based fallback branch and preserve current error behavior (nodeId entries never hit the path branch).
 - Double-click detection resets after a confirmed open so later clicks do not re-trigger stale state.
+
+### Trash-view click policy (DEF-16 P9)
+
+- Optional `trashMode` (boolean) + `onTrashFolderOpen(file)` inputs from the shell.
+- In trash mode: selection-mode clicks toggle selection (bulk restore/purge complete within the
+  view); non-selection directory clicks route through `onTrashFolderOpen` (trash-hierarchy URL
+  navigation), and trashed-file clicks are no-ops (trashed content is not-found for read routes
+  outside the trash listing — no preview, no recent-file recording).

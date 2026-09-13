@@ -102,3 +102,7 @@ Verify observable outcomes (“what”), not internal implementation:
 
 - `files` is empty → `displayedFiles` is empty.
 - `files` contains entries with missing/empty name → they do not crash filtering/sorting.
+
+### Trash session boundary (DEF-16 P9)
+
+- `view === 'trash'` maps to the `view:trash` session key so navigation between the explorer home and the trash view (and between trash levels) clears selection and re-derives the listing, matching the `__recent__`/`__shared__` virtual-root behavior.

@@ -22,6 +22,9 @@ import {
   ContentCopy as CopyIcon,
   Download as DownloadIcon,
   Delete as DeleteIcon,
+  Restore as RestoreIcon,
+  DeleteForever as DeleteForeverIcon,
+  DeleteSweep as DeleteSweepIcon,
 } from '@mui/icons-material';
 import { VIEW_MODES, SORT_MODES } from '../../constants/fileManager';
 
@@ -44,6 +47,10 @@ const FileManagerControls = ({
   hasReadOnlyInSelection = false,
   bulkActionsDisabled = false,
   downloadOnly = false,
+  trashMode = false,
+  handleBulkRestore,
+  handleBulkPurge,
+  onEmptyTrash,
 }) => {
   const { t } = useTranslation();
   const [sortMenuAnchor, setSortMenuAnchor] = useState(null);
@@ -114,7 +121,32 @@ const FileManagerControls = ({
 
             <Box sx={{ flexGrow: 1 }} />
 
-            {!downloadOnly && handleBulkMove && (
+            {trashMode && handleBulkRestore && (
+              <IconButton
+                size="small"
+                color="primary"
+                onClick={() => handleBulkRestore(Array.from(selectedFiles))}
+                disabled={moveDeleteDisabled}
+                title={t('actions.restore')}
+                data-testid="trash-bulk-restore"
+              >
+                <RestoreIcon fontSize="small" />
+              </IconButton>
+            )}
+            {trashMode && handleBulkPurge && (
+              <IconButton
+                size="small"
+                color="error"
+                onClick={() => handleBulkPurge(Array.from(selectedFiles))}
+                disabled={moveDeleteDisabled}
+                title={t('actions.purge')}
+                data-testid="trash-bulk-purge"
+              >
+                <DeleteForeverIcon fontSize="small" />
+              </IconButton>
+            )}
+
+            {!trashMode && !downloadOnly && handleBulkMove && (
               <IconButton
                 size="small"
                 color="primary"
@@ -126,7 +158,7 @@ const FileManagerControls = ({
                 <MoveIcon fontSize="small" />
               </IconButton>
             )}
-            {!downloadOnly && handleBulkCopy && (
+            {!trashMode && !downloadOnly && handleBulkCopy && (
               <IconButton
                 size="small"
                 color="primary"
@@ -138,7 +170,7 @@ const FileManagerControls = ({
                 <CopyIcon fontSize="small" />
               </IconButton>
             )}
-            {handleBulkDownload && (
+            {!trashMode && handleBulkDownload && (
               <IconButton
                 size="small"
                 color="primary"
@@ -150,7 +182,7 @@ const FileManagerControls = ({
                 <DownloadIcon fontSize="small" />
               </IconButton>
             )}
-            {!downloadOnly && openBulkDeleteDialog && (
+            {!trashMode && !downloadOnly && openBulkDeleteDialog && (
               <IconButton
                 size="small"
                 color="error"
@@ -211,6 +243,18 @@ const FileManagerControls = ({
                   data-testid="view-mode-detail"
                 >
                   <ViewListIcon />
+                </IconButton>
+              )}
+              {onEmptyTrash && (
+                <IconButton
+                  color="error"
+                  onClick={onEmptyTrash}
+                  title={t('actions.emptyTrash')}
+                  aria-label={t('actions.emptyTrash')}
+                  data-testid="trash-empty"
+                  sx={{ minWidth: 44, minHeight: 44 }}
+                >
+                  <DeleteSweepIcon />
                 </IconButton>
               )}
             </Box>

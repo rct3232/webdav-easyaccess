@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description                                                                               |
-| ---- | ----------------------------------------------------------------------------------------- |
+| Item | Description                                                                                         |
+| ---- | --------------------------------------------------------------------------------------------------- |
 | Role | Settings model: get, set, getAll, listRows, isRegistrationEnabled. Thin wrapper over settingsStore. |
 
 ---
@@ -17,13 +17,13 @@
 
 ### 2.2 Static Methods
 
-| Method                | Signature                         | Description                                         |
-| --------------------- | --------------------------------- | --------------------------------------------------- |
-| get                   | (key) => Promise\<\*\>            | settingsStore.get                                   |
-| set                   | (key, value) => Promise\<object\> | settingsStore.set                                   |
-| getAll                | () => Promise\<object\>           | settingsStore.getAll                                |
+| Method                | Signature                         | Description                                                                    |
+| --------------------- | --------------------------------- | ------------------------------------------------------------------------------ |
+| get                   | (key) => Promise\<\*\>            | settingsStore.get                                                              |
+| set                   | (key, value) => Promise\<object\> | settingsStore.set                                                              |
+| getAll                | () => Promise\<object\>           | settingsStore.getAll                                                           |
 | listRows              | () => Promise\<Array\>            | settingsStore.listRows — all `settings` rows as `[{ key, value, updated_at }]` |
-| isRegistrationEnabled | () => Promise\<boolean\>          | settingsStore.isRegistrationEnabled                 |
+| isRegistrationEnabled | () => Promise\<boolean\>          | settingsStore.isRegistrationEnabled                                            |
 
 ### 2.3 Dependencies
 

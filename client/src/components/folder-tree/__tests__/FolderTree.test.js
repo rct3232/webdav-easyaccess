@@ -133,4 +133,37 @@ describe('FolderTree', () => {
       expect(screen.getByText('new.txt')).toBeInTheDocument();
     });
   });
+  describe('bottom-pinned trash row (DEF-16 P9)', () => {
+    it('renders the pinned trash row below the tree and navigates to /__trash__', () => {
+      renderWithProviders(<FolderTree {...defaultProps} />);
+      expect(screen.getByTestId('sidebar-trash')).toBeInTheDocument();
+      expect(screen.getByTestId('sidebar-trash-icon')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Trash' })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Trash' }));
+      expect(defaultProps.onNodeClick).toHaveBeenCalledWith('/__trash__');
+    });
+
+    it('highlights the trash row when the trash view is active', () => {
+      renderWithProviders(<FolderTree {...defaultProps} currentPath="/__trash__" />);
+      expect(screen.getByRole('button', { name: 'Trash' }).className).toContain('Mui-selected');
+    });
+
+    it('is not rendered for anonymous share-link viewers', () => {
+      renderWithProviders(
+        <FolderTree
+          {...defaultProps}
+          user={null}
+          shareLinkSection={{
+            shareRootNodeId: 5,
+            shareRootPath: '/shared',
+            shareRootName: 'Shared',
+            shareToken: 'tok',
+            onNodeClick: jest.fn(),
+          }}
+        />
+      );
+      expect(screen.queryByTestId('sidebar-trash')).not.toBeInTheDocument();
+    });
+  });
 });

@@ -27,7 +27,8 @@ The `/api/auth/me` endpoint provides the current user. User APIs support listing
 | -------------------- | ------ | ----- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `/api/auth/register` | POST   | None  | `username`, `email`, `password` | On success: `{ messageCode, status: 'pending' }` or `{ token, refreshToken?, user }` if auto-approved. Duplicate username/email → 400 with `errorCode`. Registration disabled → 403. |
 | `/api/auth/login`    | POST   | None  | `username`, `password`          | Returns `{ user, token, refreshToken? }`. Rate limited (429); pending/rejected status → 403 with `errorCode`.                                                                        |
-| `/api/auth/refresh`  | POST   | None  | `refreshToken` (body)           | Returns `{ token }`. Invalid/expired refresh → 401.                                                                                                                                  |
+| `/api/auth/refresh`  | POST   | None  | `refreshToken` (body)           | Returns `{ token, refreshToken }` (single-use rotation: the submitted token is consumed; reuse → 401). Invalid/expired refresh → 401.                                                |
+| `/api/auth/logout`   | POST   | None  | `refreshToken` (body, optional) | Revokes the given refresh token. Idempotent 200 `{ messageCode: 'serverMessages.auth.loggedOut' }` (unknown/absent tokens are a no-op).                                              |
 | `/api/auth/me`       | GET    | Token | —                               | Returns current user object. 401 if invalid/expired.                                                                                                                                 |
 
 **Input rules (validation):**
@@ -61,8 +62,9 @@ The client treats a "session" as valid only while an access token exists and is 
     - For failures that happen immediately after a deliberate route transition to a protected page (e.g. admin-only pages, user list), the client may navigate back (`history.back()`) or route to a safe default (e.g. `/`).
     - For failures in-place (e.g. a forbidden action within an already-open page), the client should not automatically redirect; the error is surfaced to the caller/UI.
 - **Logout**:
-  - Clearing the session is the single source of truth for "logged out".
-  - Closing the browser should effectively log the user out because tokens are stored in session-scoped storage.
+  - Logout is two-sided: the client clears its session storage AND sends `POST /api/auth/logout` with the current refresh token (best-effort — an offline clear still drops the local session; the server call revokes when reachable).
+  - Refresh tokens are single-use: every `/api/auth/refresh` rotates the id, so a leaked token is usable only until the legitimate client's next refresh, which 401s the attacker and forces re-login.
+  - Closing the browser should effectively log the user out because tokens are stored in session-scoped storage (server-side rows still expire by TTL; rotation bounds their blast radius).
 
 ### Transport (HTTP request mechanics)
 
@@ -95,14 +97,11 @@ Pages and UI components present states and trigger actions; they should not impl
 
 ### User APIs
 
-| Endpoint                     | Method | Auth  | Description                                                                                                                                    |
-| ---------------------------- | ------ | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/api/users`                 | GET    | Token | List users (e.g. for share dialogs).                                                                                                           |
-| `/api/users/approved`        | GET    | Token | List approved users only.                                                                                                                      |
-| `/api/users/:id`             | GET    | Token | Get user by id.                                                                                                                                |
-| `/api/users/:id/password`    | PUT    | Token | Change own password. Body: `{ password }`. Self-only — a target id other than the caller returns 403; success revokes the user's sessions via `revokeAllUserTokens` (refresh-token deletion). |
-| `/api/users/:id/email`       | PUT    | Token | Update email. Only self (or admin) allowed.                                                                                                    |
-| `/api/users/:id/permissions` | PUT    | Token | Update current user's own permissions (e.g. home folder).                                                                                      |
+| Endpoint                  | Method | Auth  | Description                                                                                                                                                                                   |
+| ------------------------- | ------ | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/users/approved`     | GET    | Token | List approved users only.                                                                                                                                                                     |
+| `/api/users/:id/password` | PUT    | Token | Change own password. Body: `{ password }`. Self-only — a target id other than the caller returns 403; success revokes the user's sessions via `revokeAllUserTokens` (refresh-token deletion). |
+| `/api/users/:id/email`    | PUT    | Token | Update email. Only self (or admin) allowed.                                                                                                                                                   |
 
 See [api.md](../api.md) for exact body/query shapes.
 
@@ -162,8 +161,14 @@ flowchart TD
 ### Token refresh
 
 - Client sends `POST /api/auth/refresh` with `{ refreshToken }`.
-- Server validates refresh token; if valid, returns new `{ token }`. Client stores new token and may dispatch a `token-refreshed` event for axios header update.
+- Server validates the refresh token; if valid, it rotates: the submitted token is consumed and a new one is registered, returning `{ token, refreshToken }`. The client stores both (replacing its saved refresh token) and may dispatch a `token-refreshed` event for axios header update.
+- Reuse of a consumed (old) refresh token → 401 — the single-use signal that bounds a leaked token's lifetime to the legitimate client's next refresh.
 - Invalid or expired refresh → 401; client should redirect to login or clear session.
+
+### Logout
+
+- Client sends `POST /api/auth/logout` with `{ refreshToken }` (best-effort) and always clears its local session regardless of the server call's outcome.
+- Server revokes the token id if present; unknown/absent tokens are a silent no-op (idempotent 200, no enumeration oracle).
 
 ### 401/403 and logout
 

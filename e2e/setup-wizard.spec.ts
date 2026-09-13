@@ -24,7 +24,7 @@ import {
 } from './helpers/setupScratch';
 
 /**
- * First-run setup wizard E2E (E2E-SETUP-001..004) — PLAN.md §7.
+ * First-run setup wizard E2E (E2E-SETUP-001..004).
  *
  * Hermetic by design: this spec NEVER touches the shared E2E state. Each case
  * spawns its own scratch server on :5003 (own env file via DOTENV_CONFIG_PATH,
@@ -71,7 +71,7 @@ const SCRATCH_PG_DB = 'webdav_e2e_setup';
 
 const textFixture = readTestFileFixture(TEST_FILES.smallText);
 
-// Per-test scratch state, cleaned up in afterEach (PLAN.md §7.2 step 8).
+// Per-test scratch state, cleaned up in afterEach.
 let spawnedChild: ReturnType<typeof spawnScratchServer> | null = null;
 let currentScratch: string | null = null;
 let usedScratchPgDb = false;
@@ -395,7 +395,7 @@ type AfterRestartContext = {
 };
 
 /**
- * Full per-case lifecycle (PLAN.md §7.2): scratch dir → build check → boot 1 →
+ * Full per-case lifecycle: scratch dir → build check → boot 1 →
  * wizard → exact .env assert → restart → boot 2 → case assertions.
  */
 async function runSetupScenario(
@@ -594,7 +594,7 @@ test.describe('first-run setup wizard (E2E-SETUP-001..004)', () => {
   }) => {
     // Self-contained: repeat the sqlite+webdav flow (the Case 1 shape) to reach
     // a completed setup, then assert the security gate. Per-case lifecycle is
-    // preserved (PLAN.md §7.2 step 8 cleans up after every case).
+    // preserved (afterEach cleans up after every case).
     const webdavUrl = buildWebdavUrl('case-4-security-webdav');
     const config: CaseConfig = {
       caseId: 'case-4-security-webdav',

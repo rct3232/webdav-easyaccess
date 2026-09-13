@@ -57,6 +57,10 @@ const SERVER_ERROR_CODES = {
     gcFailed: P('serverErrors.admin', 'gcFailed'),
     repairSyncInvalidAction: P('serverErrors.admin', 'repairSyncInvalidAction'),
     repairSyncNodeNotFound: P('serverErrors.admin', 'repairSyncNodeNotFound'),
+    repairSyncRemoteMissing: P('serverErrors.admin', 'repairSyncRemoteMissing'),
+    repairUploadInvalidAction: P('serverErrors.admin', 'repairUploadInvalidAction'),
+    repairUploadNotPending: P('serverErrors.admin', 'repairUploadNotPending'),
+    repairUploadBlobMissing: P('serverErrors.admin', 'repairUploadBlobMissing'),
     migrationInvalidPayload: P('serverErrors.admin', 'migrationInvalidPayload'),
     migrationMissingRequired: P('serverErrors.admin', 'migrationMissingRequired'),
     migrationAlreadyRunning: P('serverErrors.admin', 'migrationAlreadyRunning'),
@@ -90,6 +94,9 @@ const SERVER_ERROR_CODES = {
     accessDenied: P('serverErrors.files', 'accessDenied'),
     invalidPath: P('serverErrors.files', 'invalidPath'),
     invalidName: P('serverErrors.files', 'invalidName'),
+    fileNameReserved: P('serverErrors.files', 'fileNameReserved'),
+    trashTargetExists: P('serverErrors.files', 'trashTargetExists'),
+    notTrashed: P('serverErrors.files', 'notTrashed'),
     notFound: P('serverErrors.files', 'notFound'),
     permissionDenied: P('serverErrors.files', 'permissionDenied'),
     previewNotVideo: P('serverErrors.files', 'previewNotVideo'),
@@ -101,6 +108,9 @@ const SERVER_ERROR_CODES = {
     duplicateFile: P('serverErrors.files', 'duplicateFile'),
     jobNotFound: P('serverErrors.files', 'jobNotFound'),
     progressNotFound: P('serverErrors.files', 'progressNotFound'),
+    versionNotFound: P('serverErrors.files', 'versionNotFound'),
+    versionBlobMissing: P('serverErrors.files', 'versionBlobMissing'),
+    versionRestoreUnavailable: P('serverErrors.files', 'versionRestoreUnavailable'),
   },
   permissions: {
     permissionHigherThanParent: P('serverErrors.permissions', 'permissionHigherThanParent'),
@@ -208,6 +218,7 @@ const SERVER_MESSAGE_CODES = {
   auth: {
     registerSuccess: P('serverMessages.auth', 'registerSuccess'),
     loginSuccess: P('serverMessages.auth', 'loginSuccess'),
+    loggedOut: P('serverMessages.auth', 'loggedOut'),
   },
   admin: {
     settingsSaved: P('serverMessages.admin', 'settingsSaved'),
@@ -219,6 +230,7 @@ const SERVER_MESSAGE_CODES = {
     orphanCleanupDone: P('serverMessages.admin', 'orphanCleanupDone'),
     gcDone: P('serverMessages.admin', 'gcDone'),
     repairSyncDone: P('serverMessages.admin', 'repairSyncDone'),
+    permDeleteDone: P('serverMessages.admin', 'permDeleteDone'),
     migrationCancelled: P('serverMessages.admin', 'migrationCancelled'),
     configSaved: P('serverMessages.admin', 'configSaved'),
     configSyncDone: P('serverMessages.admin', 'configSyncDone'),
@@ -226,9 +238,7 @@ const SERVER_MESSAGE_CODES = {
   folders: {
     createSuccess: P('serverMessages.folders', 'createSuccess'),
   },
-  recentFiles: {
-    clearedSuccess: P('serverMessages.recentFiles', 'clearedSuccess'),
-  },
+  recentFiles: {},
   api: {
     healthOk: P('serverMessages.api', 'healthOk'),
     webdavTestOk: P('serverMessages.api', 'webdavTestOk'),
@@ -248,6 +258,10 @@ const SERVER_MESSAGE_CODES = {
     uploadSkipped: P('serverMessages.files', 'uploadSkipped'),
     uploadSuccess: P('serverMessages.files', 'uploadSuccess'),
     cancelRequested: P('serverMessages.files', 'cancelRequested'),
+    versionRestored: P('serverMessages.files', 'versionRestored'),
+    trashRestored: P('serverMessages.files', 'trashRestored'),
+    trashPurged: P('serverMessages.files', 'trashPurged'),
+    trashEmptied: P('serverMessages.files', 'trashEmptied'),
   },
   permissions: {
     permissionGranted: P('serverMessages.permissions', 'permissionGranted'),

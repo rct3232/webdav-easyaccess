@@ -10,10 +10,14 @@ const {
   createTestFileNode,
   createUserRootNode,
   dbQuery,
+  dbRun,
   USER_STATUS,
   PERMISSIONS,
 } = require('../../../../test-utils');
-const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const {
+  SERVER_ERROR_CODES,
+  SERVER_MESSAGE_CODES,
+} = require('@webdav-easyaccess/shared/serverMessageCodes');
 const permissionStore = require('../../../../domains/permissions/stores/permissionStore');
 
 var mockWebdav;
@@ -106,12 +110,10 @@ describe('Route matrix: non-admin denied on every /api/admin/* route', () => {
     ['post', '/api/admin/users/1/approve'],
     ['post', '/api/admin/users/1/reject'],
     ['delete', '/api/admin/users/1'],
-    ['put', '/api/admin/users/1/permissions'],
-    ['get', '/api/admin/folders/list'],
     ['post', '/api/admin/permissions/ensure-home-owner-admin'],
     ['post', '/api/admin/cleanup/orphaned'],
-    ['post', '/api/admin/maintenance/gc'],
     ['post', '/api/admin/maintenance/repair-sync'],
+    ['delete', '/api/admin/maintenance/perm-delete'],
   ];
 
   it('returns 403 for a non-admin on every admin route', async () => {
@@ -334,50 +336,6 @@ describe('POST /api/admin/permissions/ensure-home-owner-admin', () => {
   });
 });
 
-describe('POST /api/admin/maintenance/gc', () => {
-  it('returns 403 when non-admin', async () => {
-    const { token } = await createAuthenticatedTestUser({
-      username: `nonadmin-gc-${Date.now()}`,
-      isAdmin: false,
-    });
-
-    const res = await request(app)
-      .post('/api/admin/maintenance/gc')
-      .set('Authorization', `Bearer ${token}`);
-
-    expect(res.status).toBe(403);
-    expect(res.body.errorCode).toBeDefined();
-  });
-
-  it('returns 200 with messageCode and two-tier results shape when admin', async () => {
-    const { token } = await createAuthenticatedTestUser({
-      username: `admin-gc-${Date.now()}`,
-      isAdmin: true,
-    });
-
-    const res = await request(app)
-      .post('/api/admin/maintenance/gc')
-      .set('Authorization', `Bearer ${token}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.messageCode).toBeDefined();
-    expect(res.body.results).toBeDefined();
-    expect(res.body.results.tier1).toMatchObject({
-      orphanedRows: expect.any(Number),
-      deletedBlobs: expect.any(Number),
-      deletedRows: expect.any(Number),
-      errors: expect.any(Array),
-    });
-    expect(res.body.results.tier2).toMatchObject({
-      scannedKeys: expect.any(Number),
-      untrackedKeys: expect.any(Number),
-      deletedKeys: expect.any(Number),
-      skipped: expect.any(Boolean),
-      errors: expect.any(Array),
-    });
-  });
-});
-
 describe('POST /api/admin/maintenance/repair-sync', () => {
   const { createFileNodesStore } = require('../../../../store/fileNodesStore');
 
@@ -467,110 +425,302 @@ describe('POST /api/admin/maintenance/repair-sync', () => {
   });
 });
 
-describe('POST /api/admin/maintenance/gc (S3 mode): delete -> lazy blob -> GC reclaims it', () => {
-  let admin, homeNodeId;
-
-  beforeEach(jest.clearAllMocks);
+describe('POST /api/admin/maintenance/repair-sync — pending_upload repair (S3 mode)', () => {
+  const { createFileNodesStore } = require('../../../../store/fileNodesStore');
 
   beforeAll(async () => {
-    process.env.WEA_FILE_STORAGE = 's3';
     wireS3Mock();
     await useS3Mode();
-
-    admin = await createAuthenticatedTestUser({
-      username: `admin-gc-s3-${Date.now()}`,
-      isAdmin: true,
-    });
-    const fns = require('../../../../service/composition').getComposition().fileNodeService;
-    const homeDir = await fns.createDirectory(null, `admin-gc-s3-home-${Date.now()}`);
-    homeNodeId = homeDir.id;
   });
 
   afterAll(async () => {
-    process.env.WEA_FILE_STORAGE = 'webdav';
     await useWebdavMode();
   });
 
-  it('delete leaves the blob in the store; GC removes it while the active control survives', async () => {
-    // Orphaned candidate: uploaded, then deleted below (S3 delete is lazy).
-    const orphanUpload = await request(app)
-      .post('/api/files/upload')
-      .set('Authorization', `Bearer ${admin.token}`)
-      .field('parentNodeId', String(homeNodeId))
-      .attach('file', Buffer.from('gc-orphan content'), `gc-orphan-${Date.now()}.txt`);
-    expect(orphanUpload.status).toBe(200);
-    const orphanNodeId = orphanUpload.body.nodeId;
+  async function seedPendingNode(name) {
+    const { nodeId } = await createTestFileNode({ name });
+    return nodeId;
+  }
 
-    const orphanKeyRow = await dbQuery('SELECT s3_key FROM object_map WHERE file_node_id = ?', [
-      orphanNodeId,
+  async function seedPendingObjectMapRow(nodeId, s3Key) {
+    await dbRun(
+      `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
+       VALUES (?, ?, 's3', 1, 'pending')`,
+      [nodeId, s3Key]
+    );
+  }
+
+  it('auto deletes a new-file pending node with no object_map rows and no blob', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `admin-pu-auto-${Date.now()}`,
+      isAdmin: true,
+    });
+    const nodeId = await seedPendingNode(`pu-auto-${Date.now()}`);
+
+    const res = await request(app)
+      .post('/api/admin/maintenance/repair-sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeId, action: 'auto' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.result).toMatchObject({ nodeId, action: 'auto', status: 'resolved' });
+    expect(await createFileNodesStore().getNode(nodeId)).toBeNull();
+  });
+
+  it('complete activates a pending row and returns 200', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `admin-pu-complete-${Date.now()}`,
+      isAdmin: true,
+    });
+    const nodeId = await seedPendingNode(`pu-complete-${Date.now()}`);
+    const s3Key = `pu-complete-key-${Date.now()}`;
+    await seedPendingObjectMapRow(nodeId, s3Key);
+    const S3BlobStore = require('../../../../infrastructure/adapters/blobstore/S3BlobStore');
+    await new S3BlobStore({ fileStorageMode: 's3' }).uploadBlob(
+      s3Key,
+      Buffer.from('complete-content')
+    );
+
+    const res = await request(app)
+      .post('/api/admin/maintenance/repair-sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeId, action: 'complete' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.result).toMatchObject({ nodeId, action: 'complete', status: 'resolved' });
+
+    const store = createFileNodesStore();
+    const after = await store.getNode(nodeId);
+    expect(after.syncStatus).toBe('active');
+    const active = await store.getActiveObject(nodeId);
+    expect(active.s3_key).toBe(s3Key);
+  });
+
+  it('complete returns 409 when the blob is absent', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `admin-pu-blobmissing-${Date.now()}`,
+      isAdmin: true,
+    });
+    const nodeId = await seedPendingNode(`pu-blobmissing-${Date.now()}`);
+    await seedPendingObjectMapRow(nodeId, `pu-blobmissing-key-${Date.now()}`);
+
+    const res = await request(app)
+      .post('/api/admin/maintenance/repair-sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeId, action: 'complete' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.repairUploadBlobMissing);
+  });
+});
+
+describe('DELETE /api/admin/maintenance/perm-delete', () => {
+  const { createFileNodesStore: createNodesStore } = require('../../../../store/fileNodesStore');
+
+  let localWebdav;
+
+  beforeAll(async () => {
+    const { createWebdavMock } = require('@testing/mocks/webdavMock');
+    const WebdavBlobStore = require('../../../../infrastructure/adapters/blobstore/WebdavBlobStore');
+    const composition = require('../../../../service/composition');
+    localWebdav = createWebdavMock();
+    // Destination probe for the trash MOVE must see a free /.wea-trash target.
+    localWebdav.getFileMetadata.mockRejectedValue(Object.assign(new Error('404'), { status: 404 }));
+    composition.__setCompositionForTests({
+      fileStorageMode: 'webdav',
+      blobStore: new WebdavBlobStore(localWebdav),
+    });
+  });
+
+  afterAll(async () => {
+    await useWebdavMode();
+  });
+
+  it('returns 403 for a non-admin (admin-only hard delete)', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `nonadmin-permdel-${Date.now()}`,
+    });
+
+    const res = await request(app)
+      .delete('/api/admin/maintenance/perm-delete')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeId: 1 });
+
+    expect(res.status).toBe(403);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.adminRequired);
+  });
+
+  it('returns 400 when nodeId is missing and 404 for an unknown node', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `admin-permdel-bad-${Date.now()}`,
+      isAdmin: true,
+    });
+
+    const missing = await request(app)
+      .delete('/api/admin/maintenance/perm-delete')
+      .set('Authorization', `Bearer ${token}`)
+      .send({});
+    expect(missing.status).toBe(400);
+
+    const unknown = await request(app)
+      .delete('/api/admin/maintenance/perm-delete')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeId: 999999 });
+    expect(unknown.status).toBe(404);
+  });
+
+  it('A3: permanently deletes a TRASHED node — remote trash path deleted first, FK cascade removes dependent rows', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `admin-permdel-trash-${Date.now()}`,
+      isAdmin: true,
+    });
+    const { nodeId, path } = await createTestFileNode({ name: `permdel-trash-${Date.now()}` });
+    // Dependent rows that FK-cascade at purge time.
+    await dbRun(
+      `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
+       VALUES (?, ?, 's3', 1, 'active')`,
+      [nodeId, `permdel-key-${Date.now()}`]
+    );
+    await dbRun('INSERT INTO filecache (file_node_id, size) VALUES (?, ?)', [nodeId, 42]);
+
+    // Trash the node first (user-facing delete = trash).
+    const fileService = require('../../../../service/composition').getComposition().fileService;
+    await fileService.deleteNode(nodeId, 1, { id: 1, is_admin: true });
+    const trashedRow = await dbQuery('SELECT deleted_at FROM file_nodes WHERE id = ?', [nodeId]);
+    expect(trashedRow.rows[0].deleted_at).not.toBeNull();
+    localWebdav.deleteFile.mockClear();
+
+    const res = await request(app)
+      .delete('/api/admin/maintenance/perm-delete')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeId });
+    expect(res.status).toBe(200);
+    expect(res.body.messageCode).toBe(SERVER_MESSAGE_CODES.admin.permDeleteDone);
+    expect(res.body.result).toMatchObject({ nodeId, deletedCount: 1 });
+
+    // WebDAV remote cleanup went to the TRASH path (the content was MOVE'd
+    // there by the trash flow), not the original display path.
+    expect(localWebdav.deleteFile).toHaveBeenCalledWith(
+      `/.wea-trash/${nodeId}`,
+      expect.objectContaining({ isDirectory: false })
+    );
+    expect(localWebdav.deleteFile).not.toHaveBeenCalledWith(path, expect.anything());
+
+    // Physical removal + FK cascade: file_nodes, object_map, filecache, closure gone.
+    const nodeRow = await dbQuery('SELECT id FROM file_nodes WHERE id = ?', [nodeId]);
+    expect(nodeRow.rows).toHaveLength(0);
+    const mapRow = await dbQuery('SELECT file_node_id FROM object_map WHERE file_node_id = ?', [
+      nodeId,
     ]);
-    expect(orphanKeyRow.rows).toHaveLength(1);
-    const orphanKey = orphanKeyRow.rows[0].s3_key;
-    expect(currentMockS3.getStore().has(orphanKey)).toBe(true);
-
-    // Active control: uploaded before the GC run; its blob must survive.
-    const activeContent = Buffer.from('gc-active-control-content');
-    const activeUpload = await request(app)
-      .post('/api/files/upload')
-      .set('Authorization', `Bearer ${admin.token}`)
-      .field('parentNodeId', String(homeNodeId))
-      .attach('file', activeContent, `gc-active-${Date.now()}.txt`);
-    expect(activeUpload.status).toBe(200);
-    const activeNodeId = activeUpload.body.nodeId;
-
-    const activeKeyRow = await dbQuery('SELECT s3_key FROM object_map WHERE file_node_id = ?', [
-      activeNodeId,
+    expect(mapRow.rows).toHaveLength(0);
+    const cacheRow = await dbQuery('SELECT file_node_id FROM filecache WHERE file_node_id = ?', [
+      nodeId,
     ]);
-    expect(activeKeyRow.rows).toHaveLength(1);
-    const activeKey = activeKeyRow.rows[0].s3_key;
-    expect(currentMockS3.getStore().has(activeKey)).toBe(true);
-
-    // Age both blobs past the orphan TTL so Tier-2 scans them as candidates.
-    const oldDate = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
-    for (const key of [orphanKey, activeKey]) {
-      currentMockS3.getStore().set(key, {
-        ...currentMockS3.getStore().get(key),
-        LastModified: oldDate,
-      });
-    }
-
-    const del = await request(app)
-      .delete('/api/files/delete')
-      .set('Authorization', `Bearer ${admin.token}`)
-      .send({ nodeId: orphanNodeId });
-    expect(del.status).toBe(200);
-
-    // Lazy delete: the DB reference is gone but the physical blob remains.
-    const orphanMapAfter = await dbQuery('SELECT s3_key FROM object_map WHERE file_node_id = ?', [
-      orphanNodeId,
+    expect(cacheRow.rows).toHaveLength(0);
+    const closureRow = await dbQuery('SELECT * FROM node_ancestors WHERE descendant_id = ?', [
+      nodeId,
     ]);
-    expect(orphanMapAfter.rows).toHaveLength(0);
-    expect(currentMockS3.getStore().has(orphanKey)).toBe(true);
+    expect(closureRow.rows).toHaveLength(0);
+  });
 
-    // GC run: Tier-2 must reclaim the untracked blob but keep the active one.
-    const gcRes = await request(app)
-      .post('/api/admin/maintenance/gc')
-      .set('Authorization', `Bearer ${admin.token}`);
-    expect(gcRes.status).toBe(200);
-    expect(gcRes.body.results.tier2.skipped).toBe(false);
-    expect(gcRes.body.results.tier2.untrackedKeys).toBeGreaterThanOrEqual(1);
-    expect(gcRes.body.results.tier2.deletedKeys).toBeGreaterThanOrEqual(1);
+  it('A3: permanently deletes a LIVE node via the display-path bottom-up remote cleanup', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `admin-permdel-live-${Date.now()}`,
+      isAdmin: true,
+    });
+    const store = createNodesStore();
+    const { nodeId, path } = await createTestFileNode({ name: `permdel-live-${Date.now()}` });
+    localWebdav.deleteFile.mockClear();
 
-    expect(currentMockS3.getStore().has(orphanKey)).toBe(false);
-    expect(currentMockS3.getStore().has(activeKey)).toBe(true);
+    const res = await request(app)
+      .delete('/api/admin/maintenance/perm-delete')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeId });
+    expect(res.status).toBe(200);
 
-    // The active control is still downloadable byte-for-byte with an intact row.
-    const activeDownload = await request(app)
-      .get('/api/files/download')
-      .set('Authorization', `Bearer ${admin.token}`)
-      .query({ nodeId: activeNodeId });
-    expect(activeDownload.status).toBe(200);
-    expect(Buffer.from(activeDownload.body).toString()).toBe('gc-active-control-content');
+    // Live node: remote content deleted at its display path (bottom-up helper).
+    expect(localWebdav.deleteFile).toHaveBeenCalledWith(path, expect.anything());
+    expect(await store.getNode(nodeId)).toBeNull();
+  });
+});
 
-    const activeRowAfter = await dbQuery('SELECT s3_key FROM object_map WHERE file_node_id = ?', [
-      activeNodeId,
-    ]);
-    expect(activeRowAfter.rows).toHaveLength(1);
-    expect(activeRowAfter.rows[0].s3_key).toBe(activeKey);
+describe('POST /api/admin/maintenance/repair-sync — WebDAV orphaned_node remote checks + mode gate', () => {
+  const { createFileNodesStore } = require('../../../../store/fileNodesStore');
+  let localWebdav;
+
+  beforeAll(async () => {
+    const { createWebdavMock } = require('@testing/mocks/webdavMock');
+    const WebdavBlobStore = require('../../../../infrastructure/adapters/blobstore/WebdavBlobStore');
+    const composition = require('../../../../service/composition');
+    localWebdav = createWebdavMock();
+    composition.__setCompositionForTests({
+      fileStorageMode: 'webdav',
+      blobStore: new WebdavBlobStore(localWebdav),
+    });
+  });
+
+  afterAll(async () => {
+    await useWebdavMode();
+  });
+
+  it('force-active returns 409 when the remote file is absent (D5d)', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `admin-d5d-missing-${Date.now()}`,
+      isAdmin: true,
+    });
+    const { nodeId } = await createTestFileNode({ name: `d5d-missing-${Date.now()}` });
+    const store = createFileNodesStore();
+    await store.updateSyncStatus(nodeId, 'orphaned_node');
+    localWebdav.getFileMetadata.mockRejectedValueOnce(
+      Object.assign(new Error('404'), { status: 404 })
+    );
+
+    const res = await request(app)
+      .post('/api/admin/maintenance/repair-sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeId, action: 'force-active' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.repairSyncRemoteMissing);
+    expect((await store.getNode(nodeId)).syncStatus).toBe('orphaned_node');
+  });
+
+  it('force-active resolves an orphaned node whose remote file exists', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `admin-d5d-present-${Date.now()}`,
+      isAdmin: true,
+    });
+    const name = `d5d-present-${Date.now()}`;
+    const { nodeId, path } = await createTestFileNode({ name });
+    const store = createFileNodesStore();
+    await store.updateSyncStatus(nodeId, 'orphaned_node');
+    localWebdav.getFileMetadata.mockResolvedValueOnce({ size: 7, mime: 'text/plain' });
+
+    const res = await request(app)
+      .post('/api/admin/maintenance/repair-sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeId, action: 'force-active' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.result).toMatchObject({ nodeId, action: 'force-active', status: 'resolved' });
+    expect((await store.getNode(nodeId)).syncStatus).toBe('active');
+    expect(path).toBe(`/${name}`);
+  });
+
+  it('pending_upload repair is refused with 409 in WebDAV mode (S3-only gate)', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `admin-pu-webdav-${Date.now()}`,
+      isAdmin: true,
+    });
+    const { nodeId } = await createTestFileNode({ name: `pu-webdav-${Date.now()}` });
+
+    const res = await request(app)
+      .post('/api/admin/maintenance/repair-sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeId, action: 'auto' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.repairUploadNotPending);
+    expect((await createFileNodesStore().getNode(nodeId)).syncStatus).toBe('pending_upload');
   });
 });

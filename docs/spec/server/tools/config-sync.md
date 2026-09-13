@@ -2,12 +2,12 @@
 
 ## 1. Overview
 
-| Item       | Description                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Role       | Operator CLI that detects drift between `.env` values and the metadata DB `settings` rows for every non-T0 config-registry key, reports it (alert mode, exit 1 on drift), and optionally reconciles the DB rows to mirror `.env` (`--apply --yes`). Feature spec: `docs/features/config-sync.md`. |
+| Item       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role       | Operator CLI that detects drift between `.env` values and the metadata DB `settings` rows for every non-T0 config-registry key, reports it (alert mode, exit 1 on drift), and optionally reconciles the DB rows to mirror `.env` (`--apply --yes`). Feature spec: `docs/features/config-sync.md`.                                                                                                                                                            |
 | Depends on | config registry (`server/infrastructure/configRegistry.js`), `settingsStore.listRows()` (`server/store/settingsStore.js`), `Settings` model, env path resolution (`server/infrastructure/envPath.js`), store bootstrap (`server/store/bootstrap.js` — `initMetadataSchema` only; backend selection/validation inside the store boot via `storage.getBackend()`, whose required-key set matches `DB_REQUIRED_KEYS` in `server/infrastructure/setupStatus.js`) |
-| Files      | `server/scripts/configSync.js` (CLI entry; exported `main(argv, deps)` with injected `output = { log, error, warn }` — the `setup.js` convention); algorithm core shared with the admin web action: `server/domains/admin/services/configSyncService.js` (`buildConfigSyncReport`, `syncConfigSyncEnv`)                                                                                                                                                                          |
-| Test files | `server/scripts/__tests__/configSync.test.js` (hermetic temp-dir `.env` + sqlite, in-process `main()`, `setupCli.test.js` pattern); `server/store/__tests__/settingsStore.test.js` (`listRows` coverage)                                                                                                                          |
+| Files      | `server/scripts/configSync.js` (CLI entry; exported `main(argv, deps)` with injected `output = { log, error, warn }` — the `setup.js` convention); algorithm core shared with the admin web action: `server/domains/admin/services/configSyncService.js` (`buildConfigSyncReport`, `syncConfigSyncEnv`)                                                                                                                                                      |
+| Test files | `server/scripts/__tests__/configSync.test.js` (hermetic temp-dir `.env` + sqlite, in-process `main()`, `setupCli.test.js` pattern); `server/store/__tests__/settingsStore.test.js` (`listRows` coverage)                                                                                                                                                                                                                                                     |
 
 ---
 
@@ -25,11 +25,11 @@ The tool never writes `.env`, never touches T0 keys, and never deletes rows.
 
 ## 3. Store addition: `settingsStore.listRows()`
 
-| Item       | Description                                                                                                                                                                                                                     |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Location   | `server/store/settingsStore.js`, exported `listRows`; model passthrough `Settings.listRows()` in `server/models/Settings.js`                                                            |
-| Signature  | `listRows() => Promise<{ key: string, value: <raw>, updated_at: <Date|string> }[]>`                                                                                                                                    |
-| Semantics  | Settings reads/writes go through the `settingsStore` facade → `SettingsRepository` dialect implementations (`store/repositories/{sqlite,postgres}/SettingsRepository.*.js`); semantics unchanged, mirroring `readSettings` (same `mapDatabaseError` wrapping, `No database backend configured` fallback). Selects `key, value, updated_at` — **value left raw** (pg jsonb driver parsing applies; rows are plaintext values, callers handle JSON). Row order is backend-native (unsorted); callers index by key. |
+| Item      | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| Location  | `server/store/settingsStore.js`, exported `listRows`; model passthrough `Settings.listRows()` in `server/models/Settings.js`                                                                                                                                                                                                                                                                                                                                                                                     |
+| Signature | `listRows() => Promise<{ key: string, value: <raw>, updated_at: <Date                                                                                                                                                                                                                                                                                                                                                                                                                                            | string> }[]>` |
+| Semantics | Settings reads/writes go through the `settingsStore` facade → `SettingsRepository` dialect implementations (`store/repositories/{sqlite,postgres}/SettingsRepository.*.js`); semantics unchanged, mirroring `readSettings` (same `mapDatabaseError` wrapping, `No database backend configured` fallback). Selects `key, value, updated_at` — **value left raw** (pg jsonb driver parsing applies; rows are plaintext values, callers handle JSON). Row order is backend-native (unsorted); callers index by key. |
 
 `get` / `set` / `getAll` are unchanged. `set` remains the single write path (transactional upsert, `updated_at = NOW()`/`CURRENT_TIMESTAMP`).
 
@@ -45,12 +45,12 @@ node server/scripts/configSync.js --apply --yes [--json]   reconcile DB rows to 
 node server/scripts/configSync.js --help                   print the reference and exit 0
 ```
 
-| Flag      | Description                                                                                                                                     |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--check` | Report mode. Read-only. This is the **default** when no mode flag is given.                                                                       |
-| `--json`  | Emit one machine-readable JSON document instead of human-readable lines.                                                                          |
-| `--apply` | Write mode. Requires `--yes` (otherwise usage error, exit 2).                                                                                      |
-| `--yes`   | Confirms `--apply` writes.                                                                                                                        |
+| Flag      | Description                                                                 |
+| --------- | --------------------------------------------------------------------------- |
+| `--check` | Report mode. Read-only. This is the **default** when no mode flag is given. |
+| `--json`  | Emit one machine-readable JSON document instead of human-readable lines.    |
+| `--apply` | Write mode. Requires `--yes` (otherwise usage error, exit 2).               |
+| `--yes`   | Confirms `--apply` writes.                                                  |
 
 Flags are parsed by the hand-rolled `--flag` / `--flag=value` parser (`BOOLEAN_FLAGS` set,
 `UsageError` → exit 2), matching `server/scripts/setup.js`. Any unknown flag or non-flag
@@ -77,13 +77,13 @@ argument is a usage error (exit 2) and boots nothing.
   design, including `JWT_SECRET`).
 - Classification (exact contract in `docs/features/config-sync.md`):
 
-| Status       | Condition                                                                                       | Exit effect            |
-| ------------ | ------------------------------------------------------------------------------------------------- | ---------------------- |
-| `differs`    | env-set + DB row + canonical values differ (secrets compared as plaintext strings)               | drift → exit 1         |
-| `shadowed`   | env-set + DB row + values equal                                                                  | informational          |
-| `env-only`   | env-set + no DB row                                                                              | informational          |
-| `db-only`    | not env-set + DB row                                                                             | informational          |
-| (silent)     | set in neither env nor DB                                                                        | no finding             |
+| Status     | Condition                                                                          | Exit effect    |
+| ---------- | ---------------------------------------------------------------------------------- | -------------- |
+| `differs`  | env-set + DB row + canonical values differ (secrets compared as plaintext strings) | drift → exit 1 |
+| `shadowed` | env-set + DB row + values equal                                                    | informational  |
+| `env-only` | env-set + no DB row                                                                | informational  |
+| `db-only`  | not env-set + DB row                                                               | informational  |
+| (silent)   | set in neither env nor DB                                                          | no finding     |
 
 - Finding shape: `{ key, status, secret, dbUpdatedAt }` — `dbUpdatedAt` is the row's
   `updated_at` normalized to ISO 8601 (pg `Date` → `toISOString()`; sqlite
@@ -105,9 +105,9 @@ argument is a usage error (exit 2) and boots nothing.
    (both plaintext strings). Equal → report `unchanged`, skip the write. Otherwise upsert
    through the same path as `PUT /api/admin/config` (`server/domains/admin/routes/config.js`):
    - `Settings.set(key, String(envValue))` — plaintext for every key, secrets included.
-   and report `updated`. A write failure aborts the run (exit 1); rows written before the
-   failure keep their new values (no transaction across the whole loop — the check is
-   idempotent, so re-running `--apply --yes` finishes the reconcile).
+     and report `updated`. A write failure aborts the run (exit 1); rows written before the
+     failure keep their new values (no transaction across the whole loop — the check is
+     idempotent, so re-running `--apply --yes` finishes the reconcile).
 2. **Post-apply recheck:** `buildReport()` runs in-process and is rendered under a
    `post-apply check:` header (human mode; the JSON document is emitted after the
    `{ writes }` document). The returned exit code is the recheck's: 0 on clean, 1 if drift
@@ -117,11 +117,11 @@ argument is a usage error (exit 2) and boots nothing.
 
 ## 5. Exit codes
 
-| Code | Meaning                                                                                                                                                                                                 |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `0`  | `--check` clean (no `differs`), or `--apply --yes` completed with a clean post-apply recheck.                                                                                          |
-| `1`  | drift found; a write failed; post-apply recheck not clean; store boot failure.                                               |
-| `2`  | usage error: unknown flag, non-flag argument, `--apply` without `--yes`.                                                                                                                                 |
+| Code | Meaning                                                                                       |
+| ---- | --------------------------------------------------------------------------------------------- |
+| `0`  | `--check` clean (no `differs`), or `--apply --yes` completed with a clean post-apply recheck. |
+| `1`  | drift found; a write failed; post-apply recheck not clean; store boot failure.                |
+| `2`  | usage error: unknown flag, non-flag argument, `--apply` without `--yes`.                      |
 
 ---
 

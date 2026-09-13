@@ -14,7 +14,6 @@ const {
   approvePendingUser,
   rejectPendingUser,
   deleteUserCascade,
-  bulkUpdateUserPermissions,
 } = require('../services/userService');
 
 const isAdmin = asyncHandler(async (req, res, next) => {
@@ -98,18 +97,6 @@ router.delete(
       messageCode: SERVER_MESSAGE_CODES.admin.userDeleted,
       user,
     });
-  })
-);
-
-router.put(
-  '/users/:id/permissions',
-  authenticateToken,
-  isAdmin,
-  asyncHandler(async (req, res) => {
-    const userId = parseInt(req.params.id);
-    const { permissions } = req.body;
-    await bulkUpdateUserPermissions(userId, permissions);
-    res.json({ messageCode: SERVER_MESSAGE_CODES.admin.permissionUpdated });
   })
 );
 

@@ -18,10 +18,10 @@
 
 ### 2.2 Route List
 
-| Method | Path      | Auth  | Description                                                               |
-| ------ | --------- | ----- | ------------------------------------------------------------------------- |
-| POST   | `/create` | Token | Create folder. Body: parentNodeId, name.                                  |
-| GET    | `/stats`  | Token | Recursive folder statistics. Query: nodeId. Returns fileCount, totalSize. |
+| Method | Path      | Auth  | Description                                                                                                  |
+| ------ | --------- | ----- | ------------------------------------------------------------------------------------------------------------ |
+| POST   | `/create` | Token | Create folder. Body: parentNodeId, name.                                                                     |
+| GET    | `/stats`  | Token | Recursive folder statistics. Query: nodeId. Returns `{ nodeId, name, totalFiles, totalFolders, totalSize }`. |
 
 ### 2.3 Middleware Used
 
@@ -30,7 +30,7 @@
 ### 2.3.1 Test Mock Strategy
 
 - Route integration tests should use a shared WebDAV mock factory rather than repeating large inline `jest.mock('../../utils/webdav', ...)` objects.
-- Keep factory defaults simple (`pathExists`, `createDirectory`, `getRecursiveFolderStats`) and override only what each test scenario needs.
+- Keep factory defaults simple (`pathExists`, `createDirectory`) and override only what each test scenario needs.
 - Duplicate/parent-missing paths must be modeled using explicit per-test override sequences so scenario intent is readable.
 - Maintain black-box verification: assert status/error contracts and returned payload shape; inspect call arguments only when interaction is the behavior under test.
 
@@ -39,7 +39,7 @@
 - **POST /create:** Body: `{ parentNodeId, name }`. 200 or 201. Errors: 400, 404.
 - 동일 경로에 폴더 이미 존재: 409 (duplicate)
 - 부모 경로 없음: 404
-- **GET /stats:** Query `nodeId` required. 200: `{ fileCount, totalSize }`. 403 when non-admin and canReadFolder fails. Uses requireUser.
+- **GET /stats:** Query `nodeId` required. 200: `{ nodeId, name, totalFiles, totalFolders, totalSize }`. `totalSize` sums the filecache-backed `size` exposed by `fileNodeService.getNode` (live descendants only — trashed rows read as null). 403 when non-admin and canReadFolder fails. Uses requireUser.
 
 ### 2.4.1 POST /create — WebDAV Mode (MKCOL-on-create)
 
@@ -71,6 +71,6 @@ so S3 folder creation remains DB-only and unchanged.
 - [ ] Create folder requires auth and write permission
 - [ ] 동일 폴더명 create → 409
 - [ ] 부모 경로 없음 → 404
-- [ ] GET /stats: requires auth; nodeId required; returns fileCount, totalSize; 403 for non-admin when no read permission
+- [ ] GET /stats: requires auth; nodeId required; returns `{ nodeId, name, totalFiles, totalFolders, totalSize }` with totalSize summing real filecache sizes (not 0); 403 for non-admin when no read permission
 - [ ] WebDAV mode: successful create triggers `webdavMock.createDirectory` at the resolved node path (`/username/folder`)
 - [ ] WebDAV mode: MKCOL failure → node marked `orphaned_node`, non-2xx error returned to caller

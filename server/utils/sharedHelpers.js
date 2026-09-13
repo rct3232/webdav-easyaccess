@@ -1,13 +1,5 @@
 'use strict';
 
-function safeJsonParse(text) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
-
 function nowIso() {
   return new Date().toISOString();
 }
@@ -19,4 +11,4 @@ function toIsoString(value) {
   return String(value);
 }
 
-module.exports = { safeJsonParse, nowIso, toIsoString };
+module.exports = { nowIso, toIsoString };

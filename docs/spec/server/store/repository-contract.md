@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-| ---- | ----------- |
-| Role | Standard shape for the metadata-layer repositories that replace the hand-written dialect branches inside `server/store/*Store.js` and domain stores. Full pattern: one interface per domain, two dialect implementations (sqlite / postgres), executor-injected. |
-| Source of truth | `docs/spec/server/store/executor.md` (execution seam); this spec is authoritative for repository structure and test tiers. |
+| Item            | Description                                                                                                                                                                                                                                                      |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role            | Standard shape for the metadata-layer repositories that replace the hand-written dialect branches inside `server/store/*Store.js` and domain stores. Full pattern: one interface per domain, two dialect implementations (sqlite / postgres), executor-injected. |
+| Source of truth | `docs/spec/server/store/executor.md` (execution seam); this spec is authoritative for repository structure and test tiers.                                                                                                                                       |
 
 ## 2. Implementation Spec
 

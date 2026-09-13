@@ -20,7 +20,6 @@ import { renderWithProviders, ThemeAndAuthProviders } from '../../test-utils';
 import { server } from '../../setupTests';
 import FileManager from '../FileManager';
 import { notifyRecentFilesChange } from '../../services/recentFilesNotifier';
-import { clearUserPermissionsCache } from '../../services/permissionService';
 
 jest.mock('../../components/dialogs/FilePreviewDialog', () => ({
   __esModule: true,
@@ -1405,7 +1404,6 @@ describe('FileManager', () => {
     );
 
     const user = userEvent.setup();
-    clearUserPermissionsCache();
     await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
 
     await waitFor(

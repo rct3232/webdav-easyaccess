@@ -38,7 +38,13 @@ function isSqliteBackend() {
  * Use in beforeAll; call cleanup() in afterAll.
  * @returns {Promise<{ dir: string|null, cleanup: () => Promise<void> }>}
  */
-const TEST_PG_KEYS = ['WEA_TEST_PG_HOST', 'WEA_TEST_PG_PORT', 'WEA_TEST_PG_USER', 'WEA_TEST_PG_PASSWORD', 'WEA_TEST_PG_DATABASE'];
+const TEST_PG_KEYS = [
+  'WEA_TEST_PG_HOST',
+  'WEA_TEST_PG_PORT',
+  'WEA_TEST_PG_USER',
+  'WEA_TEST_PG_PASSWORD',
+  'WEA_TEST_PG_DATABASE',
+];
 
 function wantsRemoteTestPg() {
   return TEST_PG_KEYS.some((key) => !!process.env[key]) || storage.isTestBackendOverridden();

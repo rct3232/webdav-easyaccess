@@ -5,8 +5,8 @@ const path = require('node:path');
 /**
  * Per-test completion logger. Prints one line per finished case with a
  * timestamp, project, worker, status and duration so suite/group timing can be
- * read straight from CI logs (see PLAN.md hermetic-option-A analysis — the
- * shared E2E server logs also carry `{"ts":...}` request lines).
+ * read straight from CI logs (the shared E2E server logs also carry
+ * `{"ts":...}` request lines).
  *
  * Registered from playwright.config.ts `reporter`; keeps the default `list`
  * reporter intact.

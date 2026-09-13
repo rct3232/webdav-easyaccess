@@ -53,7 +53,6 @@ A new request is considered a duplicate if there already exists a row with match
 ### 2.7 Dependencies
 
 - storage.getExecutor() + repositories/PermissionRequestRepository.js (sqlite/ + postgres/ impls)
-- locks.withLock
 - shared constants (PERMISSIONS, PERMISSION_REQUEST_STATUS)
 - errorHandler, SERVER_ERROR_CODES
 

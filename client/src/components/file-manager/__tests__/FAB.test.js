@@ -105,4 +105,65 @@ describe('FAB', () => {
     expect(screen.getByRole('menuitem', { name: /create folder/i })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: /upload file/i })).toBeInTheDocument();
   });
+
+  it('reports visibility true when rendered and false when unmounted', () => {
+    const onVisibilityChange = jest.fn();
+    const { unmount } = renderWithProviders(
+      <FAB
+        onCreateFolder={jest.fn()}
+        onUpload={jest.fn()}
+        hasWritePermission={true}
+        onVisibilityChange={onVisibilityChange}
+      />
+    );
+    expect(onVisibilityChange).toHaveBeenCalledWith(true);
+    unmount();
+    expect(onVisibilityChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('reports visibility false when it self-hides on permission loss', () => {
+    const onVisibilityChange = jest.fn();
+    const { rerender } = renderWithProviders(
+      <FAB
+        onCreateFolder={jest.fn()}
+        onUpload={jest.fn()}
+        hasWritePermission={true}
+        onVisibilityChange={onVisibilityChange}
+      />
+    );
+    expect(onVisibilityChange).toHaveBeenCalledWith(true);
+    rerender(
+      <FAB
+        onCreateFolder={jest.fn()}
+        onUpload={jest.fn()}
+        hasWritePermission={false}
+        onVisibilityChange={onVisibilityChange}
+      />
+    );
+    expect(onVisibilityChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('stays silent when it never becomes visible', () => {
+    const onVisibilityChange = jest.fn();
+    renderWithProviders(
+      <FAB
+        onCreateFolder={jest.fn()}
+        onUpload={jest.fn()}
+        hasWritePermission={false}
+        onVisibilityChange={onVisibilityChange}
+      />
+    );
+    expect(onVisibilityChange).not.toHaveBeenCalled();
+  });
+
+  it('reports visibility true in shareLinkMode', () => {
+    const onVisibilityChange = jest.fn();
+    renderWithProviders(
+      <FAB
+        shareLinkMode={{ user: null, onLoginClick: jest.fn(), onAddToSharedClick: jest.fn() }}
+        onVisibilityChange={onVisibilityChange}
+      />
+    );
+    expect(onVisibilityChange).toHaveBeenCalledWith(true);
+  });
 });

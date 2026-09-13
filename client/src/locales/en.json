@@ -15,8 +15,7 @@
     "unknown": "Unknown",
     "unknownError": "Unknown error",
     "noItems": "(No items)",
-    "cancelledByUser": "Cancelled by user",
-    "errorOccurred": "An error occurred."
+    "cancelledByUser": "Cancelled by user"
   },
   "login": {
     "title": "Login",
@@ -53,7 +52,6 @@
     "loading": "Checking server setup...",
     "loadError": "Unable to check server setup status.",
     "steps": {
-      "metadata": "Metadata database",
       "fileStorage": "File storage",
       "adminJwt": "Admin & JWT",
       "optional": "Optional settings",
@@ -62,18 +60,10 @@
     "stepOf": "Step {{current}} of {{total}}",
     "back": "Back",
     "next": "Next",
-    "metadataBackend": "Metadata database type",
-    "metadataSqlite": "SQLite",
-    "metadataPostgresql": "PostgreSQL",
     "fileBackend": "File storage type",
     "fileS3": "S3 (or S3-compatible)",
     "fileWebdav": "WebDAV",
-    "host": "Host",
-    "port": "Port",
-    "database": "Database",
-    "user": "User",
     "password": "Password",
-    "ssl": "Use SSL",
     "bucket": "Bucket",
     "region": "Region",
     "accessKeyId": "Access key ID",
@@ -115,15 +105,12 @@
   "nav": {
     "home": "Home",
     "shared": "Shared",
-    "recent": "Recent items",
     "recentShort": "Recent",
+    "trashShort": "Trash",
     "root": "Root",
-    "all": "All",
     "sharedFolder": "Shared folder",
-    "search": "Search",
     "searchClose": "Close search",
     "searchPlaceholder": "Search files...",
-    "adminDashboard": "Admin dashboard",
     "mypage": "My page",
     "logout": "Log out",
     "logoAlt": "WebDAV EasyAccess",
@@ -132,7 +119,8 @@
     "folderTreeOpen": "Open folder tree",
     "folderTreeClose": "Close folder tree",
     "shareLink": "Share link",
-    "breadcrumb": "Breadcrumb"
+    "breadcrumb": "Breadcrumb",
+    "trash": "Trash"
   },
   "fileManager": {
     "noFiles": "No files",
@@ -143,25 +131,17 @@
     "sortByDate": "Modified date",
     "asc": "Ascending",
     "desc": "Descending",
-    "viewMode": "View mode",
-    "listView": "List view",
-    "gridView": "Grid view",
-    "detailView": "Detail view",
     "selectAll": "Select all",
     "deselectAll": "Deselect all",
-    "selectionMode": "Selection mode",
-    "select": "Select",
     "recentItems": "Recent items",
     "recentItemsEmpty": "No recent items",
     "folderStatsFormat": "{{count}} files ({{size}})",
-    "selectedCount": "{{count}}",
     "selectedCountFull": "{{count}} selected",
     "listViewTitle": "List view",
     "gridViewTitle": "Grid view",
     "detailViewTitle": "Detail view",
     "fileActions": "File actions",
     "readOnlyInSelection": "Selection includes read-only files",
-    "selected": "{{count}} selected",
     "pullRefreshDone": "Done",
     "pullRefreshLoading": "Loading...",
     "pullRefreshRelease": "Release to refresh",
@@ -177,7 +157,6 @@
     "uploadFailed": "Upload failed",
     "uploadServerError": "Server error: {{message}}",
     "permissionCheckError": "An error occurred while checking permission.",
-    "conflictChecking": "Checking for conflicts...",
     "uploadCancelled": "Upload was cancelled.",
     "uploadFileCount": "{{count}} file(s) upload",
     "downloadPreparing": "Preparing…",
@@ -219,7 +198,14 @@
     "statusRenaming": "Renaming",
     "statusCreatingFolder": "Creating folder",
     "errorWithMessage": "Error: {{message}}",
-    "workingFallback": "Working..."
+    "workingFallback": "Working...",
+    "trashEmpty": "Trash is empty",
+    "trashRestoreDone": "Restored from trash",
+    "trashPurgeDone": "Permanently deleted",
+    "trashRestoreFail": "Restore failed",
+    "trashPurgeFail": "Permanent delete failed",
+    "trashEmptyDone": "Trash emptied",
+    "trashEmptyFail": "Failed to empty the trash"
   },
   "actions": {
     "move": "Move",
@@ -231,7 +217,10 @@
     "properties": "Properties",
     "preview": "Preview",
     "folder": "Folder",
-    "file": "File"
+    "file": "File",
+    "restore": "Restore",
+    "purge": "Delete permanently",
+    "emptyTrash": "Empty trash"
   },
   "dialogs": {
     "shareLink": "Share link",
@@ -321,25 +310,32 @@
     "noPermissionRequestInfo": "No permission request information.",
     "permissionRequestApproved": "Permission request approved.",
     "permissionRequestApproveFail": "Failed to approve permission request.",
-    "selectFolderToShare": "Please select a folder to share."
+    "selectFolderToShare": "Please select a folder to share.",
+    "propertiesTabInfo": "Info",
+    "propertiesTabVersions": "Versions",
+    "versionsEmpty": "No previous versions.",
+    "versionsCurrentBadge": "Current",
+    "versionsExpired": "Expired",
+    "versionsDownloadTitle": "Download this version",
+    "versionsRestoreTitle": "Restore this version",
+    "versionsRestoreConfirmTitle": "Restore version",
+    "versionsRestoreConfirmBody": "Restore version {{version}} of this file? The current version is kept in the version history.",
+    "versionsRestoreSuccess": "Version {{version}} restored.",
+    "versionsRestoreFail": "Version restore failed.",
+    "versionsLoadFail": "Failed to load version history.",
+    "versionsUnknownSize": "size unavailable",
+    "restoreConfirm": "Restore {{count}} trashed item(s) to their original location?",
+    "purgeConfirm": "Permanently delete \"{{name}}\"? This cannot be undone.",
+    "purgeBulkMessage": "Permanently delete {{count}} trashed item(s)? This cannot be undone.",
+    "emptyTrashConfirm": "Empty the trash for ALL users? Every trashed item will be permanently deleted and cannot be recovered."
   },
   "admin": {
-    "title": "Admin dashboard",
     "users": "Users",
-    "usersTab": "Users ({{count}})",
-    "settingsTab": "Settings",
-    "save": "Save",
-    "saving": "Saving...",
-    "addUser": "Add user",
     "add": "Add",
     "noUsers": "No users registered.",
-    "joinedAt": "Joined",
     "joinedAtLabel": "Joined: {{date}}",
     "username": "Username",
     "email": "Email",
-    "status": "Status",
-    "permission": "Permission",
-    "actions": "Actions",
     "adminRole": "Admin",
     "normalRole": "User",
     "approve": "Approve",
@@ -352,13 +348,12 @@
     "deleteUserConfirmItem2": "Folder access permissions",
     "deleteUserConfirmWebdavNote": "Note: User folders on the WebDAV server are not deleted automatically.",
     "settingsLoadFail": "Failed to load settings.",
-    "settingsSaveSuccess": "Settings saved.",
     "registrationSaveSuccess": "Registration setting saved.",
     "showHiddenFilesSaveSuccess": "Show hidden files setting saved.",
     "settingsSaveFail": "Failed to save settings.",
     "noDataToClean": "No data to clean up.",
-    "cleanupDone": "Cleanup complete. {{count}} item(s) removed.",
-    "cleanupDonePartial": "Cleanup complete. {{count}} item(s) removed. Some failed.",
+    "cleanupDoneGc": "GC complete: {{blobs}} blob(s), {{rows}} row(s), {{keys}} storage key(s) removed.",
+    "cleanupReports": "Reports: {{orphaned}} orphaned and {{pending}} pending-upload node(s) need manual review.",
     "orphanCleanupFail": "Orphaned data cleanup failed",
     "noPermissionToFix": "No permissions to fix.",
     "permissionCleanupDone": "Permission cleanup complete. {{users}} user(s), {{paths}} path(s) updated.",
@@ -420,9 +415,7 @@
     "advancedSettings": "Advanced settings",
     "health": {
       "title": "Backend health",
-      "ok": "OK",
       "fail": "FAIL",
-      "unknown": "Unknown",
       "lastChecked": "Last checked: {{time}}",
       "banner": "A backend is experiencing connection problems.",
       "hintPrefix": "Detail:"
@@ -603,7 +596,6 @@
     "noJob": "A migration is active but no job could be found.",
     "statusLoadFail": "Failed to load migration status.",
     "goToSettings": "Go to settings",
-    "loading": "Loading migration...",
     "errorReason": "Reason: {{reason}}",
     "terminalCompletedTitle": "Migration completed",
     "terminalCompletedMetadataBody": "Metadata migration to {{backend}} completed. To finish the cutover, edit the WEA_DB_* / WEA_SQLITE_PATH values in .env, then restart the server. The metadata backend is selected by presence of the WEA_DB_* settings.",
@@ -613,7 +605,10 @@
     "terminalFailedTitle": "Migration failed",
     "terminalFailedBody": "The migration failed. Fix the cause and re-run the migration to try again.",
     "terminalCancelledTitle": "Migration cancelled",
-    "terminalCancelledBody": "The migration was cancelled. Partial progress is preserved and resumes when you re-run the migration."
+    "terminalCancelledBody": "The migration was cancelled. Partial progress is preserved and resumes when you re-run the migration.",
+    "cancelJob": "Cancel job",
+    "cancelRequested": "Cancellation requested — the job stops at the next checkpoint.",
+    "cancelFail": "Failed to request cancellation."
   },
   "mypage": {
     "accountInfo": "Account info",
@@ -648,7 +643,6 @@
     "emailChangedSuccess": "Email changed successfully.",
     "emailChangedPasswordFail": "Email was updated but password change failed.",
     "saveFail": "Failed to save.",
-    "fileOrFolder": "File/Folder",
     "permissionApproved": "File permission request approved.",
     "requestRejected": "Request rejected.",
     "requestCancelled": "Request cancelled.",
@@ -660,12 +654,6 @@
     "permission": "Permission",
     "shareManage": "Share management",
     "sharePermissionManage": "Share permission management",
-    "inboxRequests": "Received requests",
-    "inboxRequestsCount": "Received requests ({{count}})",
-    "outboxRequests": "My requests",
-    "outboxRequestsCount": "My requests ({{count}})",
-    "links": "Links",
-    "linksCount": "Links ({{count}})",
     "noShareLinks": "No share links created.",
     "downloadCount": "Downloads: {{count}}",
     "extend7Days": "+7 days",
@@ -678,7 +666,6 @@
   "shareLink": {
     "invalidLink": "Invalid link.",
     "loadFail": "Unable to load file.",
-    "expired": "Share link has expired.",
     "loading": "Loading share link...",
     "expiredOrNotFound": "Link has expired or file could not be found."
   },
@@ -688,7 +675,6 @@
     "zoomReset": "Reset zoom",
     "loadFail": "Unable to load file.",
     "pdfLoadFail": "Unable to load PDF file.",
-    "pdfLoadFailWithReason": "Unable to load PDF file: {{reason}}",
     "retry": "Retry",
     "notSupported": "This file type does not support preview.",
     "videoNotPlayable": "This format cannot be played.",
@@ -822,7 +808,13 @@
       "configUnknownKey": "Unknown configuration key: {{key}}.",
       "configT0Protected": "The key {{key}} is a startup (.env) setting and cannot be changed here.",
       "configEnvSourcedProtected": "The key {{key}} is set in .env and cannot be changed here (env takes precedence).",
-      "configInvalidPayload": "Invalid configuration payload."
+      "configInvalidPayload": "Invalid configuration payload.",
+      "repairSyncInvalidAction": "Invalid repair action.",
+      "repairSyncNodeNotFound": "Repair target node not found.",
+      "repairSyncRemoteMissing": "Remote file is missing; cannot force-active.",
+      "repairUploadInvalidAction": "Invalid repair action.",
+      "repairUploadNotPending": "Node is not in the expected sync state.",
+      "repairUploadBlobMissing": "Pending blob is missing; cannot complete."
     },
     "migrationInProgress": "A migration is already in progress. The app is locked until it finishes.",
     "users": {
@@ -859,7 +851,16 @@
       "zipFail": "Failed to create zip archive.",
       "duplicateFile": "A file or folder with the same name already exists.",
       "jobNotFound": "Job not found or expired.",
-      "progressNotFound": "Progress not found."
+      "progressNotFound": "Progress not found.",
+      "versionNotFound": "Requested version does not exist.",
+      "versionBlobMissing": "The blob for this version is no longer available.",
+      "versionRestoreUnavailable": "Version restore is not available.",
+      "fileNameReserved": "This file name is reserved by the system",
+      "trashTargetExists": "The trash destination already exists. Please contact an administrator.",
+      "notTrashed": "Item is not in the trash.",
+      "invalidName": "Invalid file name.",
+      "notFound": "File or folder not found.",
+      "permissionDenied": "You do not have permission for this operation."
     },
     "permissions": {
       "permissionHigherThanParent": "File permission must be higher than parent path permission.",
@@ -897,7 +898,9 @@
       "defaultMessage": "An error occurred",
       "internalServerError": "Internal server error",
       "databaseUnavailable": "The database is temporarily unavailable.",
-      "databaseQueryFailed": "A database error occurred."
+      "databaseQueryFailed": "A database error occurred.",
+      "databaseConflict": "The operation conflicts with existing data.",
+      "databaseConstraintViolation": "The operation violates a data constraint."
     },
     "api": {
       "webdavTestFailed": "WebDAV test failed: {{reason}}"
@@ -972,16 +975,15 @@
     "folders": {
       "createSuccess": "Folder created successfully"
     },
-    "recentFiles": {
-      "clearedSuccess": "Recent files cleared successfully"
-    },
+    "recentFiles": {},
     "api": {
       "healthOk": "WebDAV EasyAccess API is running",
       "webdavTestOk": "WebDAV connection successful"
     },
     "auth": {
       "registerSuccess": "Registration complete. Please wait for administrator approval.",
-      "loginSuccess": "Login successful"
+      "loginSuccess": "Login successful",
+      "loggedOut": "Logged out"
     },
     "admin": {
       "settingsSaved": "Settings saved.",
@@ -991,9 +993,11 @@
       "userDeleted": "User has been deleted.",
       "permissionUpdated": "Permissions have been updated.",
       "orphanCleanupDone": "Orphaned data cleanup completed",
+      "permDeleteDone": "Item permanently deleted",
       "migrationCancelled": "Migration cancelled.",
       "configSaved": "Configuration saved.",
-      "configSyncDone": "Database settings synced from the environment."
+      "configSyncDone": "Database settings synced from the environment.",
+      "repairSyncDone": "Repair action completed."
     },
     "share": {
       "addedToShared": "Added to your shared items"
@@ -1006,7 +1010,14 @@
       "uploadSuccess": "File uploaded successfully",
       "nameUnchanged": "File name unchanged",
       "renameSuccess": "File renamed successfully",
-      "cancelRequested": "Cancel requested"
+      "cancelRequested": "Cancel requested",
+      "versionRestored": "Version restored successfully",
+      "trashRestored": "Item restored from the trash.",
+      "trashPurged": "Item permanently deleted.",
+      "trashEmptied": "Trash emptied.",
+      "copySuccess": "Copied.",
+      "deleteSuccess": "Moved to trash.",
+      "moveSuccess": "Moved."
     },
     "permissions": {
       "permissionGranted": "Permission granted successfully",
@@ -1020,5 +1031,6 @@
       "emailUpdated": "Email updated successfully",
       "permissionUpdated": "Permissions have been updated."
     }
-  }
+  },
+  "migrationInProgress": "A migration is already in progress."
 }

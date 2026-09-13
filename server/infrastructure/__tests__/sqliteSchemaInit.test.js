@@ -124,6 +124,17 @@ describe('convertPostgresToSqlite', () => {
     const result = convertPostgresToSqlite(ddl);
     expect(result).toBe('is_admin INTEGER NOT NULL DEFAULT 0');
   });
+
+  it('keeps the partial unique index WHERE clauses intact through 001', () => {
+    const ddlPath = path.join(
+      __dirname,
+      '../../store/postgresql/ddl/001_initial_normalized_schema.sql'
+    );
+    const result = convertPostgresToSqlite(fs.readFileSync(ddlPath, 'utf8'));
+    expect(result).toContain('WHERE deleted_at IS NULL');
+    expect(result).toContain('WHERE parent_id IS NULL AND deleted_at IS NULL');
+    expect(result).toContain('CREATE UNIQUE INDEX IF NOT EXISTS');
+  });
 });
 
 // ---------------------------------------------------------------------------

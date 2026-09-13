@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item        | Description                                                                                                                                                                                                                                                                                                                        |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Item        | Description                                                                                                                                                                                                                                                                                                                                                                             |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role        | Resolves the effective configuration value for any registered key using the D1 chain `.env → DB settings row → built-in default`, with per-tier source rules, a small TTL cache for T2 reads, and a masked effective-config report for the admin GET and setup status. DB `settings` rows hold plaintext values — there is no field-level encryption at rest and no decryption on read. |
-| Consumed by | the boot path (`populateT1Env` env mirror at server/index.js:243), the admin config API (server/domains/admin/routes/config.js), and setup routes / setup status (`computeSetupStatus` consumes the `getEffectiveConfig` map). |
+| Consumed by | the boot path (`populateT1Env` env mirror at server/index.js:243), the admin config API (server/domains/admin/routes/config.js), and setup routes / setup status (`computeSetupStatus` consumes the `getEffectiveConfig` map).                                                                                                                                                          |
 
 ---
 
@@ -18,17 +18,17 @@
 
 ### 2.2 Factory / Public API
 
-| Method                 | Signature                                                          | Description                                                                                                                                                                                                                                       |
-| ---------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `createConfigResolver` | `({ settingsStore, env = process.env, ttlMs = 5000 }) => resolver` | Factory. `settingsStore` must expose `get(key)` and `getAll()` (see §2.4). Throws `TypeError` when the store contract is not met.                                                                                                                 |
-| `getConfig`            | `async (key) => value \| undefined`                                | Resolved value for one key. String for config keys; for `registration_enabled` the raw DB boolean (or string) is passed through; `undefined` when unresolvable. Never returns a default for `registration_enabled`.                               |
-| `getConfigSync`        | `(key) => value \| undefined`                                      | Synchronous read for require-time consumers: env → cached DB row → default. DB values are visible only after `loadAll()` or an async read seeded the cache.                                                                           |
+| Method                 | Signature                                                          | Description                                                                                                                                                                                                                                                  |
+| ---------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `createConfigResolver` | `({ settingsStore, env = process.env, ttlMs = 5000 }) => resolver` | Factory. `settingsStore` must expose `get(key)` and `getAll()` (see §2.4). Throws `TypeError` when the store contract is not met.                                                                                                                            |
+| `getConfig`            | `async (key) => value \| undefined`                                | Resolved value for one key. String for config keys; for `registration_enabled` the raw DB boolean (or string) is passed through; `undefined` when unresolvable. Never returns a default for `registration_enabled`.                                          |
+| `getConfigSync`        | `(key) => value \| undefined`                                      | Synchronous read for require-time consumers: env → cached DB row → default. DB values are visible only after `loadAll()` or an async read seeded the cache.                                                                                                  |
 | `getEffectiveConfig`   | `async () => { key: { value, source, tier, secret } }`             | Every registry entry. A secret that **has an effective value** is masked `'****'` (never surfaced in plaintext); an **unset** secret resolves to `value: undefined` so it is never mistaken for a configured value. `source` ∈ `'env' \| 'db' \| 'default'`. |
-| `invalidateCache`      | `(keys?) => void`                                                  | Drop the cached rows for the given key(s); all cached rows when called with no arguments.                                                                                                                                                         |
-| `loadAll`              | `async () => void`                                                 | Prime the DB row cache from `settingsStore.getAll()` (bulk read) — called at boot before serving.                                                                                                                                                 |
-| `getSharedResolver`    | `() => resolver`                                                   | The process-wide resolver instance. Lazily created with `settingsStore = Settings` model on first call (no DB connection at require time). Used by the boot path, the admin config route, and T2 consumers so writes invalidate one shared cache. |
-| `setSharedResolver`    | `(resolver) => void`                                               | Install a boot-primed instance (after `loadAll`); also the test hook.                                                                                                                                                                             |
-| `markDbSourced`        | `(keys: string[]) => void`                                         | Record keys whose `env` value is a **boot mirror** copied from the DB by `populateT1Env`. For these keys the resolver treats the DB row as the source (env-first is skipped) so the admin config UI reports `source:'db'` and stays editable.     |
+| `invalidateCache`      | `(keys?) => void`                                                  | Drop the cached rows for the given key(s); all cached rows when called with no arguments.                                                                                                                                                                    |
+| `loadAll`              | `async () => void`                                                 | Prime the DB row cache from `settingsStore.getAll()` (bulk read) — called at boot before serving.                                                                                                                                                            |
+| `getSharedResolver`    | `() => resolver`                                                   | The process-wide resolver instance. Lazily created with `settingsStore = Settings` model on first call (no DB connection at require time). Used by the boot path, the admin config route, and T2 consumers so writes invalidate one shared cache.            |
+| `setSharedResolver`    | `(resolver) => void`                                               | Install a boot-primed instance (after `loadAll`); also the test hook.                                                                                                                                                                                        |
+| `markDbSourced`        | `(keys: string[]) => void`                                         | Record keys whose `env` value is a **boot mirror** copied from the DB by `populateT1Env`. For these keys the resolver treats the DB row as the source (env-first is skipped) so the admin config UI reports `source:'db'` and stays editable.                |
 
 ### 2.3 Resolution Rule
 
@@ -55,10 +55,10 @@ getConfig(key):
 
 The resolver reads **only** through the injected store. Public API it relies on:
 
-| Method   | Signature                      | Behavior                                                                                                                                                                      |
-| -------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Method   | Signature                      | Behavior                                                                                                                                                               |
+| -------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `get`    | `async (key) => value \| null` | Returns the `settings` row value or `null`. PG: the parsed JSONB value (a string for plaintext rows). SQLite: the raw TEXT. Errors are wrapped via `mapDatabaseError`. |
-| `getAll` | `async () => { key: value }`   | Bulk read of all settings rows; `updated_at` excluded.                                                                                                                        |
+| `getAll` | `async () => { key: value }`   | Bulk read of all settings rows; `updated_at` excluded.                                                                                                                 |
 
 (The store also exposes `set` and `isRegistrationEnabled`; the resolver does **not** use them.)
 
@@ -75,11 +75,11 @@ The resolver reads **only** through the injected store. Public API it relies on:
 
 For each registry entry, resolved with the same rule as `getConfig` against a single `getAll()` snapshot:
 
-| condition           | value                                                                | source      |
-| ------------------- | -------------------------------------------------------------------- | ----------- |
-| env set (non-empty) | env value; masked `'****'` if secret                                 | `'env'`     |
-| tier T0, env unset  | `undefined` (secret or not)                                          | `'env'`     |
-| DB row resolves     | stored row value; masked `'****'` if secret                           | `'db'`      |
+| condition           | value                                                                                   | source      |
+| ------------------- | --------------------------------------------------------------------------------------- | ----------- |
+| env set (non-empty) | env value; masked `'****'` if secret                                                    | `'env'`     |
+| tier T0, env unset  | `undefined` (secret or not)                                                             | `'env'`     |
+| DB row resolves     | stored row value; masked `'****'` if secret                                             | `'db'`      |
 | otherwise           | `entry.default`; masked `'****'` if secret; `undefined` when no default (secret or not) | `'default'` |
 
 Masking applies **only when a value actually exists** — an unset secret's `value` is `undefined`

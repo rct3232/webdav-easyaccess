@@ -24,13 +24,12 @@
  * Cancellation (isCancelled) checked between tables and between batches of a
  * large table -> ROLLBACK, both sides unharmed (D4).
  *
- * See docs/spec/server/services/metadataMigrationService.md and PLAN.md (D4-D6).
+ * See docs/spec/server/services/metadataMigrationService.md and docs/features/migration-mode.md.
  */
 
 const path = require('path');
 
 const schemaManager = require('../../../infrastructure/schemaManager');
-const { initSqliteSchema } = require('../../../infrastructure/sqliteSchemaInit');
 
 // Copy order = FK dependency order (matches docs/spec §2.7).
 const COPY_ORDER = [
@@ -611,7 +610,7 @@ function createMetadataMigrationService(deps = {}) {
     if (targetBackend === 'postgresql') {
       await schemaManager.applyPendingMigrations('postgresql', { pgClient: targetConn });
     } else {
-      await initSqliteSchema({ connection: targetConn });
+      await schemaManager.applyPendingMigrations('sqlite', { sqliteConnection: targetConn });
     }
   }
 

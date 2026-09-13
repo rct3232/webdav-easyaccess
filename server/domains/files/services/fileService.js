@@ -2,6 +2,7 @@
 
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { createWebdavRemoteOps, buildTrashPath } = require('../../../service/webdavRemoteOps');
 const { getThumbnailUrl } = require('../../thumbnails/services/thumbnailService');
 const { isImageFile, isVideoFile } = require('../../../utils/webdav');
 const { conflictError, notFoundError, forbiddenError } = require('../../../utils/errorHandler');
@@ -14,10 +15,15 @@ function createFileService(options = {}) {
   const uploadService = options.uploadService;
   const aclService = options.aclService;
   const fileStorageMode = options.fileStorageMode || 's3';
+  const blobStore = options.blobStore || null;
   const _ownerNodeResolver = options.ownerNodeResolver || ownerNodeResolver;
   const _permissionStore = options.permissionStore || permissionStore;
+  const _fileNodesStore = options.fileNodesStore || null;
   const _conflictError = options.conflictError || conflictError;
   const _notFoundError = options.notFoundError || notFoundError;
+  const remoteOps = blobStore
+    ? createWebdavRemoteOps({ blobStore, fileStorageMode, fileNodeService })
+    : null;
 
   async function listDirectoryWithPermissions(userId, parentNodeId, user) {
     const children = await fileNodeService.listDirectory(parentNodeId);
@@ -165,20 +171,36 @@ function createFileService(options = {}) {
 
     // WebDAV mode
     let nodeId;
+    let tmpPath = null;
+    let displayPath = null;
     if (!isOverwrite) {
       const newFile = await fileNodeService.createFile(parentNodeId, name);
       nodeId = newFile.id;
     } else {
       nodeId = existingFile.id;
+      // Last-good snapshot BEFORE the destructive PUT: one server-side COPY
+      // of the previous bytes into the reserved /.wea-tmp namespace. A COPY
+      // failure aborts before touching the live path; a missing remote source
+      // means there is nothing to protect and the PUT proceeds.
+      if (blobStore) {
+        displayPath = await fileNodeService.getNodePath(nodeId);
+        const candidate = `/.wea-tmp/${nodeId}`;
+        try {
+          await blobStore.ensureDirectoryExists('/.wea-tmp');
+          await blobStore.copyBlob(displayPath, candidate);
+          tmpPath = candidate;
+        } catch (error) {
+          if (!error || error.errorCode !== SERVER_ERROR_CODES.webdav.sourceNotFound) {
+            throw error;
+          }
+        }
+      }
     }
 
     try {
       await blobStorageService.uploadToWebdav(nodeId, buffer);
     } catch (error) {
-      if (isOverwrite) {
-        // Existing node: remote sync failed → fail-safe marker, node kept.
-        await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
-      } else {
+      if (!isOverwrite) {
         // New node: roll it back so a failed upload never leaves a phantom
         // 0-byte file in listings or blocks a retry with a duplicate-name 409.
         try {
@@ -186,8 +208,33 @@ function createFileService(options = {}) {
         } catch (_) {
           /* best-effort — surface the original upload error */
         }
+      } else if (tmpPath && blobStore) {
+        // Restore the previous bytes (native MOVE tmp→display, Overwrite:T).
+        try {
+          await blobStore.moveBlob(tmpPath, displayPath, true);
+        } catch (restoreError) {
+          // Restoration failed — fail-safe marker on the existing node.
+          try {
+            await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
+          } catch (_) {
+            /* best-effort — the original PUT error still surfaces */
+          }
+        }
+      } else {
+        // Existing node without a restorable snapshot: fail-safe marker, kept.
+        await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
       }
       throw error;
+    }
+
+    if (tmpPath && blobStore) {
+      // Snapshot is spent — best-effort cleanup. A leftover /.wea-tmp entry
+      // (failed delete or crash) is reconciliation residue (DEF-18 class).
+      try {
+        await blobStore.deleteBlob(tmpPath);
+      } catch (_) {
+        /* best-effort */
+      }
     }
 
     return { nodeId, size: buffer.length, mimeType };
@@ -229,24 +276,33 @@ function createFileService(options = {}) {
       throw conflictError(SERVER_ERROR_CODES.files.duplicateFile);
     }
 
-    // Best-effort WebDAV storage sync: download content before DB rename so we can re-upload to new path
-    let webdavBuffer = null;
-    if (fileStorageMode === 'webdav') {
-      try {
-        webdavBuffer = await blobStorageService.downloadBlob(nodeId);
-      } catch (_) {
-        // If download fails, proceed with DB rename only; storage sync is best-effort
-      }
-    }
+    // WebDAV sync (native MOVE + DB rollback): capture the remote path BEFORE
+    // the DB rename so the MOVE — and the rollback — can address it afterwards.
+    const oldPath =
+      fileStorageMode === 'webdav' && blobStore ? await fileNodeService.getNodePath(nodeId) : null;
 
     await fileNodeService.renameNode(nodeId, newName);
 
-    // Re-upload to new path after rename (DB state is authoritative)
-    if (fileStorageMode === 'webdav' && webdavBuffer != null) {
+    if (oldPath !== null) {
+      const newPath = await fileNodeService.getNodePath(nodeId);
       try {
-        await blobStorageService.uploadToWebdav(nodeId, webdavBuffer);
+        await blobStore.moveBlob(oldPath, newPath);
       } catch (error) {
-        await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
+        if (error && error.errorCode === SERVER_ERROR_CODES.webdav.sourceNotFound) {
+          // No remote content existed to move → nothing to restore. The DB
+          // rename stands and the node is flagged for repair; the error
+          // propagates so the user sees the degraded sync.
+          await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
+          throw error;
+        }
+        try {
+          await fileNodeService.renameNode(nodeId, node.name);
+        } catch (rollbackError) {
+          // Rollback failed (e.g. the old name was taken meanwhile) — keep the
+          // DB change and mark it instead of silently desyncing.
+          await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
+        }
+        throw error;
       }
     }
 
@@ -285,24 +341,34 @@ function createFileService(options = {}) {
       }
     }
 
-    // Best-effort WebDAV storage sync: download content before DB move so we can re-upload to new path
-    let webdavBuffer = null;
-    if (fileStorageMode === 'webdav') {
-      try {
-        webdavBuffer = await blobStorageService.downloadBlob(nodeId);
-      } catch (_) {
-        // If download fails, proceed with DB move only; storage sync is best-effort
-      }
+    // WebDAV sync (native MOVE + DB rollback): capture the remote path and the
+    // original parent BEFORE the DB move so the MOVE — and the rollback — can
+    // address them afterwards.
+    let oldPath = null;
+    let oldParentNodeId = null;
+    if (fileStorageMode === 'webdav' && blobStore) {
+      const node = await fileNodeService.getNode(nodeId);
+      oldParentNodeId = node ? node.parent_id : null;
+      oldPath = await fileNodeService.getNodePath(nodeId);
     }
 
     await fileNodeService.moveNode(nodeId, newParentNodeId);
 
-    // Re-upload to new path after move (DB state is authoritative)
-    if (fileStorageMode === 'webdav' && webdavBuffer != null) {
+    if (oldPath !== null) {
+      const newPath = await fileNodeService.getNodePath(nodeId);
       try {
-        await blobStorageService.uploadToWebdav(nodeId, webdavBuffer);
+        await blobStore.moveBlob(oldPath, newPath);
       } catch (error) {
-        await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
+        if (error && error.errorCode === SERVER_ERROR_CODES.webdav.sourceNotFound) {
+          await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
+          throw error;
+        }
+        try {
+          await fileNodeService.moveNode(nodeId, oldParentNodeId);
+        } catch (rollbackError) {
+          await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
+        }
+        throw error;
       }
     }
 
@@ -333,19 +399,41 @@ function createFileService(options = {}) {
 
     const descendantIds = await fileNodeService.getDescendantIds(nodeId);
 
-    // WebDAV: bottom-up storage deletion before DB removal (deepest first, then target node)
-    if (fileStorageMode === 'webdav') {
-      const allNodesToCleanup = [...descendantIds].reverse().concat([nodeId]);
-      for (const descId of allNodesToCleanup) {
-        try {
-          await blobStorageService.deleteBlob(descId);
-        } catch (error) {
-          await fileNodeService.updateSyncStatus(descId, 'orphaned_node');
-        }
+    // WebDAV (DEF-16 P2): ONE remote MOVE of the subtree root to the reserved
+    // hidden trash path before any DB marking. Children travel with the
+    // collection; S3 mode does zero physical I/O (stable UUID keys).
+    if (fileStorageMode === 'webdav' && blobStore) {
+      // The /.wea-trash/ parent must exist — WebDAV MOVE does not auto-create
+      // destination parents (500 → fallback 403 when missing). Idempotent MKCOL.
+      await remoteOps.ensureTrashRoot();
+      const displayPath = await fileNodeService.getNodePath(nodeId);
+      const trashPath = buildTrashPath(nodeId);
+      // Destination-exists guard: a pre-existing /.wea-* entry (legacy /
+      // out-of-band node — new .wea- names are rejected by validateFileName)
+      // must never be clobbered. Abort with a clear error; no marking happens.
+      let trashTargetFree = true;
+      try {
+        trashTargetFree = (await blobStore.headBlob(trashPath)) == null;
+      } catch (_) {
+        // Probe inconclusive (non-404 error) — let the MOVE surface the failure.
+      }
+      if (!trashTargetFree) {
+        throw _conflictError(SERVER_ERROR_CODES.files.trashTargetExists);
+      }
+      try {
+        await blobStore.moveBlob(displayPath, trashPath);
+      } catch (error) {
+        // MOVE failure: existing fail-safe marker on the subtree root, the
+        // trash is aborted (deleted_at stays unset) and the error surfaces.
+        await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
+        throw error;
       }
     }
 
-    await fileNodeService.deleteNode(nodeId);
+    // Soft delete: mark every row of the subtree. No physical row removal —
+    // fileNodeService.deleteNode (hard delete) stays reserved for the repair
+    // channel, upload/copy rollback and the admin permanent-delete route.
+    await fileNodeService.markSubtreeDeleted([nodeId, ...descendantIds]);
     return { deletedCount: descendantIds.length + 1 };
   }
 
@@ -394,16 +482,35 @@ function createFileService(options = {}) {
       // (they enumerate only sync_status='active' file nodes).
       await fileNodeService.updateSyncStatus(copiedNodeId, 'active');
 
+      // Mirror the source filecache row onto the copy: the COW blob is
+      // byte-identical, so the copy lists the real size/mime without a
+      // remote probe (without this the listing LEFT JOIN yields no row → 0 B).
+      if (_fileNodesStore) {
+        const sourceCache = await _fileNodesStore.getCache(nodeId);
+        if (sourceCache) {
+          await _fileNodesStore.upsertCache(
+            copiedNodeId,
+            Number(sourceCache.size),
+            sourceCache.mime_type,
+            null
+          );
+        }
+      }
+
       return { sourceNodeId: nodeId, copiedNodeId };
     }
 
-    // WebDAV mode: download + upload
-    const buffer = await blobStorageService.downloadBlob(nodeId);
+    // WebDAV mode: one native server-side COPY (Depth: infinity — a directory
+    // source travels with its whole subtree; streamed fallback inside the
+    // adapter). Bytes never round-trip through the app.
+    const sourcePath = await fileNodeService.getNodePath(nodeId);
     const newFile = await fileNodeService.createFile(destinationParentNodeId, targetName);
     const copiedNodeId = newFile.id;
+    let copyPath = null;
 
     try {
-      await blobStorageService.uploadToWebdav(copiedNodeId, buffer);
+      copyPath = await fileNodeService.getNodePath(copiedNodeId);
+      await blobStore.copyBlob(sourcePath, copyPath);
     } catch (error) {
       // New copy node: roll it back on a failed remote write (no phantom copy).
       try {
@@ -412,6 +519,19 @@ function createFileService(options = {}) {
         /* best-effort — surface the original copy error */
       }
       throw error;
+    }
+
+    // Mirror listing metadata for files (directories carry no filecache row).
+    if (sourceNode.type === 'file' && _fileNodesStore) {
+      const head = await blobStore.headBlob(copyPath);
+      if (head) {
+        await _fileNodesStore.upsertCache(
+          copiedNodeId,
+          Number(head.contentLength) || 0,
+          head.contentType || 'application/octet-stream',
+          null
+        );
+      }
     }
 
     return { sourceNodeId: nodeId, copiedNodeId };

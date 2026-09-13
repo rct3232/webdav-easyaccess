@@ -115,7 +115,13 @@ async function bootStore() {
 
 function renderCheck(output, report, json) {
   if (json) {
-    output.log(JSON.stringify({ findings: report.findings, summary: report.summary, exitCode: report.exitCode }, null, 2));
+    output.log(
+      JSON.stringify(
+        { findings: report.findings, summary: report.summary, exitCode: report.exitCode },
+        null,
+        2
+      )
+    );
     return;
   }
   output.log('configSync: .env vs DB settings (non-T0 registry keys)');
@@ -135,9 +141,7 @@ function renderCheck(output, report, json) {
     }
   }
   const s = report.summary;
-  output.log(
-    `summary: drift: ${s.drift}, informational: ${s.shadowed + s.envOnly + s.dbOnly}`
-  );
+  output.log(`summary: drift: ${s.drift}, informational: ${s.shadowed + s.envOnly + s.dbOnly}`);
   output.log(`exit code: ${report.exitCode}`);
 }
 

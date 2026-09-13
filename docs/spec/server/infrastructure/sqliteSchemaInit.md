@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-| Item | Description                                                                                                                                                                                                         |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role | DDL discovery + PostgreSQL→SQLite conversion for SQLite schema initialization. Reads `ddl/*.sql` files via directory listing, converts PostgreSQL types to SQLite equivalents, and executes against node sqlite3 (sqlite3 driver). |
+| Item | Description                                                                                                                                                                                                                                                                                                                                                                       |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role | PostgreSQL→SQLite DDL conversion (`convertPostgresToSqlite`) plus explicit-target SQLite schema initialization (`initSqliteSchema`). The transpiler is consumed by `schemaManager.applyPendingMigrations('sqlite', ...)` — the boot path on both backends — and `initSqliteSchema` remains for caller-supplied connections and temporary DBs (it is no longer the app boot path). |
 
 ---
 
@@ -17,10 +17,10 @@
 
 ### 2.2 Main Methods
 
-| Method                  | Signature                          | Description                                                                                                                                                                                |
-| ----------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| initSqliteSchema        | ({ connection?, path? }) => Promise\<{ connection }\> | DDL discovery via `fs.readdir`, type conversion, execute against SQLite DB. Returns `{ connection }`. Three modes: no-arg boot form applies to the active backend (`storage.getSqliteConnection()`); `{ connection }` applies to a caller-supplied `sqlite3.Database` (used by `metadataMigrationService` against the migration-target connection; the caller owns its lifecycle); `{ path }` opens a temporary DB at `path` (`PRAGMA foreign_keys = ON`), applies the DDL, then closes it. |
-| convertPostgresToSqlite | (ddl) => string                     | Convert PostgreSQL DDL to SQLite-compatible SQL                                                                                                                                             |
+| Method                  | Signature                                             | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ----------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| initSqliteSchema        | ({ connection?, path? }) => Promise\<{ connection }\> | DDL discovery via `fs.readdir`, type conversion, execute against SQLite DB. Returns `{ connection }`. Two modes: `{ connection }` applies to a caller-supplied `sqlite3.Database` (the caller owns its lifecycle); `{ path }` opens a temporary DB at `path` (`PRAGMA foreign_keys = ON`), applies the DDL, then closes it. The no-arg boot form still applies to `storage.getSqliteConnection()` but is unused in production — the boot path is `schemaManager.applyPendingMigrations('sqlite')`. |
+| convertPostgresToSqlite | (ddl) => string                                       | Convert PostgreSQL DDL to SQLite-compatible SQL                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 ### 2.3 Type Conversions (`convertPostgresToSqlite`)
 
@@ -36,12 +36,13 @@ Applied in order:
 8. `DEFAULT NOW()` → `DEFAULT CURRENT_TIMESTAMP`
 9. `DEFAULT FALSE` → `DEFAULT 0`
 10. `DEFAULT TRUE` → `DEFAULT 1`
-
-Pass-through (no conversion needed):
+    Pass-through (no conversion needed):
 
 - `CHECK` constraints — SQLite supports them natively
-- Partial indexes (`WHERE ...`) — SQLite 3.9.0+ supports them
+- Partial indexes (`WHERE ...`) — SQLite 3.9.0+ supports them (e.g.
+  `CREATE UNIQUE INDEX ... WHERE deleted_at IS NULL` survives verbatim)
 - Self-referencing FKs — inline syntax works on both backends
+- `DROP INDEX IF EXISTS` / `CREATE [UNIQUE] INDEX IF NOT EXISTS` — supported by SQLite
 
 ### 2.4 Dependencies
 

@@ -7,7 +7,7 @@ const {
 } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const User = require('../../../models/User');
 const { authenticateToken } = require('../../../utils/auth');
-const { asyncHandler, createError } = require('../../../utils/errorHandler');
+const { asyncHandler, createError, validationError } = require('../../../utils/errorHandler');
 
 // Middleware to check if user is admin
 const isAdmin = asyncHandler(async (req, res, next) => {
@@ -17,28 +17,6 @@ const isAdmin = asyncHandler(async (req, res, next) => {
   }
   next();
 });
-
-// Get folder list for admin (single level)
-router.get(
-  '/folders/list',
-  authenticateToken,
-  isAdmin,
-  asyncHandler(async (req, res) => {
-    const { listDirectory } = require('../../../utils/webdav');
-    const path = req.query.path || '/';
-
-    const items = await listDirectory(path);
-    const folders = items
-      .filter((item) => item.type === 'directory')
-      .map((item) => ({
-        path: item.filename || item.basename,
-        name: item.basename || item.name,
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-
-    res.json(folders);
-  })
-);
 
 // Ensure home-owner admin for all users
 router.post(
@@ -67,22 +45,6 @@ router.post(
   })
 );
 
-// Run one garbage-collection cycle (Tier 1 DB-driven + Tier 2 S3 reconciliation)
-router.post(
-  '/maintenance/gc',
-  authenticateToken,
-  isAdmin,
-  asyncHandler(async (req, res) => {
-    const { getComposition } = require('../../../service/composition');
-    const { gcService } = getComposition();
-    const results = await gcService.runGcCycle();
-    res.json({
-      messageCode: SERVER_MESSAGE_CODES.admin.gcDone,
-      results,
-    });
-  })
-);
-
 // Manually resolve an orphaned node (retry delete or force-mark active)
 router.post(
   '/maintenance/repair-sync',
@@ -96,6 +58,37 @@ router.post(
     res.json({
       messageCode: SERVER_MESSAGE_CODES.admin.repairSyncDone,
       result,
+    });
+  })
+);
+
+// Permanently delete one node (hard delete; bypasses the trash).
+// Maintenance/E2E-companion channel: the user-facing permanent delete is the
+// trash purge route (DEF-16 P3) — this admin route delegates to the SAME
+// shared purge core (`trashService.purgeNode`): WebDAV mode cleans the remote
+// FIRST (trashed node → /.wea-trash/<nodeId> (+ the covered-by-ancestor trash
+// path); live node → bottom-up display-path delete), then the DB removal
+// FK-cascades object_map/filecache/closure/permission/share/recent rows. In
+// S3 mode the subtree's object_map blobs are now deleted eagerly (active +
+// history + orphaned) instead of being left for the lazy GC sweep.
+router.delete(
+  '/maintenance/perm-delete',
+  authenticateToken,
+  isAdmin,
+  asyncHandler(async (req, res) => {
+    const { nodeId } = req.body || {};
+    const nodeIdValue = Number(nodeId);
+    if (!nodeId || !Number.isInteger(nodeIdValue) || nodeIdValue <= 0) {
+      throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
+    }
+
+    const { getComposition } = require('../../../service/composition');
+    const comp = getComposition();
+
+    const result = await comp.trashService.purgeNode(nodeIdValue);
+    res.json({
+      messageCode: SERVER_MESSAGE_CODES.admin.permDeleteDone,
+      result: { nodeId: nodeIdValue, deletedCount: result.purgedNodes },
     });
   })
 );

@@ -94,6 +94,7 @@ describe('shared pathUtils', () => {
     it.each([
       ['/__shared__', '/', { treatAsRoot: ['/__shared__', '/__recent__'] }],
       ['/__recent__', '/', { treatAsRoot: ['/__shared__', '/__recent__'] }],
+      ['/__trash__', '/', { treatAsRoot: ['/__shared__', '/__recent__', '/__trash__'] }],
     ])('respects treatAsRoot for %p → %s', (input, expected, options) => {
       expect(getParentPath(input, options)).toBe(expected);
     });
@@ -116,6 +117,7 @@ describe('shared pathUtils', () => {
     it.each([
       ['/__shared__', ['/__shared__', '/__recent__']],
       ['/__recent__', ['/__shared__', '/__recent__']],
+      ['/__trash__', ['/__shared__', '/__recent__', '/__trash__']],
     ])('returns true when path is in treatAsRoot (%p)', (input, treatAsRoot) => {
       expect(isRootPath(input, treatAsRoot)).toBe(true);
     });

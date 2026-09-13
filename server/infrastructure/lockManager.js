@@ -163,16 +163,6 @@ async function acquireLock(lockName, options = {}) {
   throw new Error(`No lock strategy for backend: ${backend}`);
 }
 
-async function withLock(lockName, fn, options = {}) {
-  const lock = await acquireLock(lockName, options);
-  try {
-    return await fn();
-  } finally {
-    await lock.release();
-  }
-}
-
 module.exports = {
   acquireLock,
-  withLock,
 };

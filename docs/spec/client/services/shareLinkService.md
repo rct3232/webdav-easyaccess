@@ -21,7 +21,6 @@
 | --------------------------- | ---------------------------- | ---------------------------------------------- | -------------------------------------------- |
 | createShareLink             | (fileNodeId, expiresInDays?) | Promise\<Object\>                              | POST /api/share-links                        |
 | getShareLinks               | ()                           | Promise\<Array\>                               | GET /api/share-links                         |
-| getShareLink                | (token)                      | Promise\<Object\>                              | GET /api/share-links/:token                  |
 | updateShareLink             | (token, updates)             | Promise\<Object\>                              | PUT /api/share-links/:token                  |
 | deleteShareLink             | (token)                      | Promise\<void\>                                | DELETE /api/share-links/:token               |
 | getShareLinkUrl             | (token)                      | string                                         | Client-side URL: origin + /share/:token      |

@@ -33,10 +33,6 @@ function _getRateLimitCache() {
   return _rateLimitCache;
 }
 
-function setRateLimitCacheAdapter(adapter) {
-  _rateLimitCache = adapter;
-}
-
 function getClientIp(req) {
   const xff = req.headers['x-forwarded-for'];
   if (typeof xff === 'string' && xff.trim()) {
@@ -251,7 +247,21 @@ async function refreshAccessToken(refreshToken) {
     err.status = 401;
     throw err;
   }
-  return { token: generateToken(user) };
+  // Single-use rotation (DEF-22): the presented token is consumed, a fresh
+  // id is registered. Reuse of the old id 401s — bounding a stolen refresh
+  // token's lifetime to the legitimate client's next refresh.
+  tokenStore.deleteRefreshToken(refreshToken);
+  const nextRefreshTokenId = tokenStore.generateRefreshTokenId();
+  tokenStore.addRefreshToken(nextRefreshTokenId, user.id);
+  return { token: generateToken(user), refreshToken: nextRefreshTokenId };
+}
+
+// Revocation is idempotent and never observable-by-probing: unknown, malformed
+// or absent tokens are silent no-ops (DEF-22).
+function logout(refreshToken) {
+  if (typeof refreshToken === 'string' && refreshToken) {
+    tokenStore.deleteRefreshToken(refreshToken);
+  }
 }
 
 async function getAuthenticatedUser(userId, tokenVersion) {
@@ -277,10 +287,10 @@ function revokeAllUserTokens(userId) {
 }
 
 module.exports = {
-  setRateLimitCacheAdapter,
   registerUser,
   loginUser,
   refreshAccessToken,
+  logout,
   getAuthenticatedUser,
   revokeAllUserTokens,
   checkLoginRateLimit,

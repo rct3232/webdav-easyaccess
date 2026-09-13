@@ -25,6 +25,7 @@ function createFileNodeService({ fileNodesStore, storage }) {
     renameNode(nodeId, newName),
     moveNode(nodeId, newParentId),
     deleteNode(nodeId),
+    markSubtreeDeleted(nodeIds),
     listDirectory(parentNodeId),
     getNodePath(nodeId),
     resolvePath(pathString),
@@ -71,13 +72,27 @@ Moves a node (and its subtree) to a new parent. Includes cycle detection and clo
 
 #### `deleteNode(nodeId)`
 
-Deletes a node and all its descendants. Explicit ancestor cleanup + CASCADE delete. Wrapped in TX.
+Hard-deletes a node and all its descendants (rows are physically removed). Explicit ancestor cleanup + CASCADE delete. Wrapped in TX.
+
+This is the ONLY hard-delete tree primitive. Trash (DEF-16 P2) does NOT route through it: the
+user-facing delete in `fileService` marks the subtree via `markSubtreeDeleted` instead. Consumers
+of the hard delete: the fail-safe repair channel (`retry-delete`, `pending_upload` `delete`/`auto`),
+the WebDAV upload/copy rollback of freshly created nodes, and the admin permanent-delete
+maintenance route.
 
 | Param  | Type   | Required | Description                   |
 | ------ | ------ | -------- | ----------------------------- |
 | nodeId | number | yes      | ID of the root node to delete |
 
 **TX scope:** `cleanupAncestorsForDeletion` + `deleteNodeTree(descendantIds)` in single transaction. CASCADE handles object_map, filecache, node_ancestors FK rows.
+
+#### `markSubtreeDeleted(nodeIds)`
+
+Soft-delete primitive (DEF-16 P2): marks every row in the id list `deleted_at` via
+`fileNodesStore.markSubtreeDeleted` (`UPDATE file_nodes SET deleted_at = NOW() WHERE id IN (...)`).
+No TX wrap (single UPDATE), no `updated_at` touch, idempotent (re-running marks nothing new).
+The caller (fileService.deleteNode) passes `[rootId, ...descendantIds]`. Closure rows, permission
+rows, shares and recent-file rows are untouched — trash is a read-gating marker, not a removal.
 
 #### `listDirectory(parentNodeId)`
 
@@ -92,6 +107,9 @@ Returns children of a directory with filecache metadata (LEFT JOIN). Read-only, 
 #### `getNodePath(nodeId)`
 
 Resolves a node's full display path by traversing its ancestor chain. Read-only, no TX.
+The per-ancestor name lookups use the **trash-aware** read (`getNodeIncludingTrashed`), so the
+path of a TRASHED node still resolves to its original display path (the trash listing and the
+permanent-delete route depend on this). Ordinary node reads elsewhere stay live-row gated.
 
 | Param  | Type   | Required | Description           |
 | ------ | ------ | -------- | --------------------- |
@@ -141,6 +159,8 @@ Updates sync_status of a node. No TX needed (single UPDATE).
 - [ ] moveNode to root (newParentId=null) leaves only self-row in ancestor chain
 - [ ] deleteNode on leaf removes node + ancestor rows
 - [ ] deleteNode on directory triggers CASCADE for entire subtree
+- [ ] markSubtreeDeleted marks exactly the given ids `deleted_at` and leaves closure/permission rows intact
+- [ ] getNodePath resolves the full display path for a trashed node (trash-aware ancestor names)
 - [ ] listDirectory returns children ordered by name with filecache data
 - [ ] getNodePath for root node returns `"/"`
 - [ ] getNodePath at depth N returns correct full path like `"/a/b/c/file.txt"`

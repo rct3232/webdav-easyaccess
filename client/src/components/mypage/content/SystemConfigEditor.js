@@ -357,9 +357,7 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
   // dirty-tracked and save-submitted values.
   const sectionAKeys = useMemo(() => {
     if (!config) return [];
-    return Object.keys(config).filter(
-      (key) => CONFIG_DISPLAY_META[key] && isEditable(config[key])
-    );
+    return Object.keys(config).filter((key) => CONFIG_DISPLAY_META[key] && isEditable(config[key]));
   }, [config]);
 
   const sectionBKeys = useMemo(() => {
@@ -637,11 +635,12 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
     const meta = CONFIG_DISPLAY_META[key];
     const entry = config[key];
     const isUnset = entry.value === null || entry.value === undefined || entry.value === '';
-    const value = entry.secret && !isUnset
-      ? SECRET_MASK
-      : isUnset
-        ? t('admin.config.unset')
-        : String(entry.value);
+    const value =
+      entry.secret && !isUnset
+        ? SECRET_MASK
+        : isUnset
+          ? t('admin.config.unset')
+          : String(entry.value);
 
     return (
       <Box key={key} sx={{ mb: 2 }} data-testid={`platform-config-row-${key}`}>
@@ -692,9 +691,7 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
       </Typography>
       <Box sx={{ mt: 1 }}>
         {GROUP_ORDER.map((group) => {
-          const keys = sectionAKeys.filter(
-            (key) => CONFIG_DISPLAY_META[key].group === group
-          );
+          const keys = sectionAKeys.filter((key) => CONFIG_DISPLAY_META[key].group === group);
           if (keys.length === 0) return null;
           return (
             <Box key={group} sx={{ mb: 3 }}>

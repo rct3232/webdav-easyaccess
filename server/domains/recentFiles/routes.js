@@ -3,10 +3,7 @@ const router = express.Router();
 const { authenticateToken } = require('../../utils/auth');
 const requireUser = require('../../middleware/requireUser');
 const { asyncHandler, mapServiceError } = require('../../utils/errorHandler');
-const {
-  SERVER_ERROR_CODES,
-  SERVER_MESSAGE_CODES,
-} = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const recentFilesService = require('./service');
 
 const ERROR_MAP = {
@@ -50,16 +47,6 @@ router.delete(
     } catch (e) {
       throw handleServiceError(e);
     }
-  })
-);
-
-router.delete(
-  '/',
-  authenticateToken,
-  requireUser,
-  asyncHandler(async (req, res) => {
-    await recentFilesService.clearRecentFiles(req.user.full.id);
-    res.json({ messageCode: SERVER_MESSAGE_CODES.recentFiles.clearedSuccess });
   })
 );
 

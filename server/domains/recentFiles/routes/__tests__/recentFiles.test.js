@@ -3,13 +3,15 @@
  * @see docs/api.md, docs/spec/server/routes/recentFiles.md
  */
 const request = require('supertest');
-const { createTestDatabase, createAuthenticatedTestUser } = require('@server/test-utils');
+const {
+  createTestDatabase,
+  createAuthenticatedTestUser,
+  dbQuery,
+  dbRun,
+} = require('@server/test-utils');
 const { createFileNodeService } = require('@server/service/fileNodeService');
 const { createFileNodesStore } = require('@server/store/fileNodesStore');
-const {
-  SERVER_ERROR_CODES,
-  SERVER_MESSAGE_CODES,
-} = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { createWebdavMock } = require('@testing/mocks/webdavMock');
 const WebdavBlobStore = require('@server/infrastructure/adapters/blobstore/WebdavBlobStore');
 const composition = require('@server/service/composition');
@@ -122,27 +124,6 @@ describe('POST /api/recent-files', () => {
 });
 
 describe('DELETE /api/recent-files', () => {
-  it('clears all recent files', async () => {
-    const { token, fileNode } = await createUserWithFile();
-    await request(app)
-      .post('/api/recent-files')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ fileNodeId: fileNode.id });
-
-    const res = await request(app)
-      .delete('/api/recent-files')
-      .set('Authorization', `Bearer ${token}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.messageCode).toBe(SERVER_MESSAGE_CODES.recentFiles.clearedSuccess);
-
-    const listRes = await request(app)
-      .get('/api/recent-files')
-      .set('Authorization', `Bearer ${token}`);
-    expect(listRes.status).toBe(200);
-    expect(listRes.body).toHaveLength(0);
-  });
-
   it('removes single entry by fileNodeId', async () => {
     const { token, homeNode, fileNode } = await createUserWithFile();
     const other = await fileNodeService.createFile(homeNode.id, 'other.pdf');
@@ -181,6 +162,34 @@ describe('recent entries and node deletion (reference stability)', () => {
     expect(before.body.some((f) => f.fileNodeId === fileNode.id)).toBe(true);
 
     await fileNodeService.deleteNode(fileNode.id);
+
+    const after = await request(app)
+      .get('/api/recent-files')
+      .set('Authorization', `Bearer ${token}`);
+    expect(after.status).toBe(200);
+    expect(after.body.some((f) => f.fileNodeId === fileNode.id)).toBe(false);
+  });
+
+  it('A8: a TRASHED node keeps its recent_files row but the entry is hidden from every listing', async () => {
+    const { token, fileNode } = await createUserWithFile();
+    await request(app)
+      .post('/api/recent-files')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ fileNodeId: fileNode.id });
+
+    const before = await request(app)
+      .get('/api/recent-files')
+      .set('Authorization', `Bearer ${token}`);
+    expect(before.status).toBe(200);
+    expect(before.body.some((f) => f.fileNodeId === fileNode.id)).toBe(true);
+
+    // Trash the node (soft delete) — the recent_files row is NOT removed.
+    await dbRun("UPDATE file_nodes SET deleted_at = datetime('now') WHERE id = ?", [fileNode.id]);
+
+    const dbRows = await dbQuery('SELECT * FROM recent_files WHERE file_node_id = ?', [
+      fileNode.id,
+    ]);
+    expect(dbRows.rows.length).toBeGreaterThanOrEqual(1);
 
     const after = await request(app)
       .get('/api/recent-files')

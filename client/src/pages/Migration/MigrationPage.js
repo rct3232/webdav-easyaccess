@@ -16,7 +16,12 @@ import {
   Paper,
   Typography,
 } from '@mui/material';
-import { getBlobMigrationStatus, getMigrationStatus } from '../../services/migrationService';
+import {
+  ackLastMigrationJob,
+  cancelBlobMigration,
+  getBlobMigrationStatus,
+  getMigrationStatus,
+} from '../../services/migrationService';
 import { formatDate } from '../../utils/format';
 
 const POLL_INTERVAL_MS = 400;
@@ -58,6 +63,9 @@ const MigrationPage = () => {
   const [loadError, setLoadError] = useState('');
   const [popup, setPopup] = useState(null);
   const [now, setNow] = useState(() => Date.now());
+  const [cancelRequested, setCancelRequested] = useState(false);
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [cancelError, setCancelError] = useState('');
 
   const jobIdRef = useRef(null);
   const popupJobRef = useRef(null);
@@ -66,6 +74,23 @@ const MigrationPage = () => {
   const goToSettings = useCallback(() => {
     navigate('/mypage', { state: { category: 'admin-settings' } });
   }, [navigate]);
+
+  const handleCancel = useCallback(
+    async (id) => {
+      if (!id || cancelRequested || cancelBusy) return;
+      setCancelBusy(true);
+      setCancelError('');
+      try {
+        await cancelBlobMigration(id);
+        setCancelRequested(true);
+      } catch {
+        setCancelError(t('migrationPage.cancelFail'));
+      } finally {
+        setCancelBusy(false);
+      }
+    },
+    [cancelBusy, cancelRequested, t]
+  );
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -98,8 +123,32 @@ const MigrationPage = () => {
         if (cancelled) return;
         setStatus(data);
         const active = Boolean(data && data.active);
-        if (!active || !data.jobId) return;
-        jobIdRef.current = data.jobId;
+        if (active && !data.jobId) return;
+        const jobId = active ? data.jobId : data && data.lastJob && data.lastJob.jobId;
+        if (!jobId) return;
+        if (!active) {
+          // Recovery path (E2E-MIG-008): the job finished before this page
+          // mounted, so the gate already cleared. Load the notified job — it is
+          // terminal — render the terminal view, then consume the notice so it
+          // is delivered exactly once.
+          const noticeId = jobId;
+          jobIdRef.current = noticeId;
+          setJobLoading(true);
+          try {
+            const recovered = await getBlobMigrationStatus(noticeId);
+            if (cancelled) return;
+            setJob(recovered);
+          } catch {
+            if (!cancelled) setJob(null);
+          } finally {
+            if (!cancelled) {
+              setJobLoading(false);
+              ackLastMigrationJob().catch(() => {});
+            }
+          }
+          return;
+        }
+        jobIdRef.current = jobId;
         setJobLoading(true);
         try {
           const initial = await getBlobMigrationStatus(data.jobId);
@@ -246,6 +295,25 @@ const MigrationPage = () => {
           {t('migrationPage.elapsed', { time: formatElapsed(elapsedMs) })}
         </Typography>
       </Box>
+      {job && !TERMINAL_STATUSES.includes(job.status) && (
+        <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+          <Button
+            size="small"
+            variant="outlined"
+            color="error"
+            disabled={cancelRequested || cancelBusy}
+            onClick={() => handleCancel(jobId)}
+          >
+            {t('migrationPage.cancelJob')}
+          </Button>
+          {cancelRequested && (
+            <Typography variant="body2" color="text.secondary">
+              {t('migrationPage.cancelRequested')}
+            </Typography>
+          )}
+          {cancelError && <Alert severity="error">{cancelError}</Alert>}
+        </Box>
+      )}
     </Paper>
   );
 
@@ -370,7 +438,9 @@ const MigrationPage = () => {
     );
   }
 
-  if (!active) {
+  if (!active && !job) {
+    // Empty view; a recovered terminal job (notice path) must still render the
+    // job view + modal below even though the gate is already inactive.
     return (
       <Container maxWidth="md">
         <Paper elevation={0} sx={{ p: 4, mt: 4, textAlign: 'center' }}>

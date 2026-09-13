@@ -7,12 +7,14 @@ const { createBlobStorageService } = require('./blobStorageService');
 const { createUploadService } = require('./uploadService');
 const { createGcService } = require('./gcService');
 const { createFailSafeService } = require('./failSafeService');
+const { createTrashService } = require('./trashService');
 const aclService = require('../domains/permissions/services/aclService');
 const ownerNodeResolver = require('../domains/permissions/policy/ownerNodeResolver');
 const permissionStore = require('../store/permissionStore');
 const { createFileService } = require('../domains/files/services/fileService');
 const { createBatchOperationService } = require('../domains/files/services/batchOperationService');
 const { createDownloadService } = require('../domains/files/services/downloadService');
+const { createVersionsService } = require('../domains/files/services/versionsService');
 const { createMigrationJobStore } = require('../domains/admin/stores/migrationJobStore');
 const { createMigrationService } = require('../domains/admin/services/migrationService');
 const { buildDestBlobStore } = require('../infrastructure/adapters/blobstore/config');
@@ -40,6 +42,7 @@ function createComposition(overrides = {}) {
       fileNodeService,
       blobStorageService,
       blobStore,
+      fileNodesStore,
     });
 
   const effectiveAclService = overrides.aclService || aclService;
@@ -54,6 +57,8 @@ function createComposition(overrides = {}) {
       fileStorageMode,
       permissionStore,
       ownerNodeResolver,
+      blobStore,
+      fileNodesStore,
     });
 
   const batchOperationService =
@@ -72,12 +77,33 @@ function createComposition(overrides = {}) {
       aclService: effectiveAclService,
     });
 
+  const versionsService =
+    overrides.versionsService ||
+    createVersionsService({
+      fileNodesStore,
+      fileNodeService,
+      blobStore,
+      fileStorageMode,
+      aclService: effectiveAclService,
+    });
+
+  const trashService =
+    overrides.trashService ||
+    createTrashService({
+      fileNodesStore,
+      fileNodeService,
+      blobStore,
+      fileStorageMode,
+      aclService: effectiveAclService,
+    });
+
   const gcService =
     overrides.gcService ||
     createGcService({
       blobStore,
       fileNodesStore,
       fileStorageMode,
+      trashService,
     });
 
   const failSafeService =
@@ -85,6 +111,8 @@ function createComposition(overrides = {}) {
     createFailSafeService({
       fileNodeService,
       fileNodesStore,
+      blobStore,
+      fileStorageMode,
     });
 
   const migrationJobStore = overrides.migrationJobStore || createMigrationJobStore();
@@ -111,6 +139,8 @@ function createComposition(overrides = {}) {
     fileService,
     batchOperationService,
     downloadService,
+    versionsService,
+    trashService,
     gcService,
     failSafeService,
     migrationJobStore,

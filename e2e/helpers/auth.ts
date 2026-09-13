@@ -6,7 +6,13 @@ type TestUserKey = 'admin' | 'user1' | 'user2' | 'user3';
 type StandardTestUserKey = Exclude<TestUserKey, 'admin'>;
 
 export function getTestSuffix(testInfo: any) {
-  return `${testInfo.project.name}_${testInfo.title.replace(/\s+/g, '_').toLowerCase()}`;
+  const base = `${testInfo.project.name}_${testInfo.title.replace(/\s+/g, '_').toLowerCase()}`;
+  // Attempt-unique identity (docs/TESTING_STRATEGY.md): a case that permanently
+  // mutates the derived user (e.g. a password change) otherwise cannot be retried —
+  // the retry finds the user already exists and logs in with the stale password.
+  // `testInfo.retry` is constant within an attempt, so all helper calls in one
+  // attempt resolve to the same user. First-attempt names stay unchanged.
+  return testInfo.retry > 0 ? `${base}_r${testInfo.retry}` : base;
 }
 
 function getUserData(userKey: TestUserKey, suffix?: string) {
@@ -181,13 +187,27 @@ export async function ensurePendingUser(
   await setRegistrationEnabled(request, true);
   const user = getUserData(userKey, suffix);
 
-  const registerResponse = await request.post('/api/auth/register', {
+  let registerResponse = await request.post('/api/auth/register', {
     data: {
       username: user.username,
       email: user.email,
       password: user.password,
     },
   });
+
+  // Self-heal a racing disable: the registration-settings spec (single
+  // desktop-project owner) may flip the GLOBAL setting between our set-true
+  // and this POST — restore and retry once.
+  if (registerResponse.status() === 403) {
+    await setRegistrationEnabled(request, true);
+    registerResponse = await request.post('/api/auth/register', {
+      data: {
+        username: user.username,
+        email: user.email,
+        password: user.password,
+      },
+    });
+  }
 
   if (registerResponse.status() === 201) {
     return;

@@ -31,6 +31,10 @@ function inactiveState() {
  */
 function createMigrationGate() {
   let state = inactiveState();
+  // One-shot completion notice (migrationGate.md §2.2): { jobId, type } of the
+  // most recent job this gate cleared, kept until acked or dropped by reset.
+  // Lets the /migration page recover a job that reached terminal before mount.
+  let notice = null;
 
   /**
    * Set the gate to active. Rejects (throws) when a migration is already
@@ -51,16 +55,34 @@ function createMigrationGate() {
 
   /**
    * Clear the gate to the inactive boot state. Called when a job reaches a
-   * terminal state (completed / failed / cancelled).
+   * terminal state (completed / failed / cancelled). Passing { jobId, type }
+   * records the completion notice for late /migration mounts; omitting it
+   * leaves any previous notice untouched.
    */
-  function clear() {
+  function clear(completion = {}) {
     state = inactiveState();
+    if (completion.jobId) {
+      notice = { jobId: completion.jobId, type: completion.type };
+    }
     return state;
   }
 
-  /** Reset to inactive (boot + test hook). */
+  /** Current unacknowledged completion notice (admin view of the status route). */
+  function getNotice() {
+    return notice;
+  }
+
+  /** Consume the completion notice; returns what was cleared. Idempotent. */
+  function ackNotice() {
+    const cleared = notice;
+    notice = null;
+    return cleared;
+  }
+
+  /** Reset to inactive (boot + test hook) and drop the completion notice. */
   function reset() {
     state = inactiveState();
+    notice = null;
     return state;
   }
 
@@ -74,7 +96,7 @@ function createMigrationGate() {
     return state.active;
   }
 
-  return { set, clear, reset, getStatus, isActive };
+  return { set, clear, getNotice, ackNotice, reset, getStatus, isActive };
 }
 
 let sharedMigrationGate = null;

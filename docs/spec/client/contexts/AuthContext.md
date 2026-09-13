@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item                      | Description                                                                                                                                                                          |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Role                      | `AuthProvider`: exposes authentication/session state and public auth actions (`login`, `register`, `logout`) through React context. Session-only auth is backed by `sessionStorage`. |
-| Used by                   | App root and any component needing `useAuth()` (e.g. `PrivateRoute`, login/register pages, `FileManager`).                                                                           |
-| Depends on | `useAuthSession` (session state + actions, fully delegated). Auth error handling (`401`/`403`) remains the responsibility of `apiClient`. |
+| Item       | Description                                                                                                                                                                          |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role       | `AuthProvider`: exposes authentication/session state and public auth actions (`login`, `register`, `logout`) through React context. Session-only auth is backed by `sessionStorage`. |
+| Used by    | App root and any component needing `useAuth()` (e.g. `PrivateRoute`, login/register pages, `FileManager`).                                                                           |
+| Depends on | `useAuthSession` (session state + actions, fully delegated). Auth error handling (`401`/`403`) remains the responsibility of `apiClient`.                                            |
 
 ---
 

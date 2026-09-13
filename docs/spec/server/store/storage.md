@@ -19,11 +19,11 @@
 
 #### Backend Selection
 
-| Method          | Signature                      | Description                                                                                                                                                                                                                                                                                                                                                       |
-| --------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Method          | Signature                      | Description                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| --------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | getBackend      | () => 'postgresql' \| 'sqlite' | Resolved from the generic remote-DB credential block: if at least one of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` is set, the backend is `'postgresql'`; a partial set (some but not all four) is a terminal boot-time configuration error listing the missing keys — the boot path (`runBoot().catch`) exits with `process.exit(1)`. None of the four set → `'sqlite'` (default). No silent fallback for a remote intent (F6). |
-| isSqliteBackend | () => boolean                  | Returns `true` if `getBackend() === 'sqlite'`                                                                                                                                                                                                                                                                                                                     |
-| getExecutor     | () => DbExecutor               | Returns the backend executor for the active backend: `sqliteExecutor` or `postgresExecutor` (see `docs/spec/server/store/executor.md` §2.4)                                                                                                                                                                                                                        |
+| isSqliteBackend | () => boolean                  | Returns `true` if `getBackend() === 'sqlite'`                                                                                                                                                                                                                                                                                                                                                                                                          |
+| getExecutor     | () => DbExecutor               | Returns the backend executor for the active backend: `sqliteExecutor` or `postgresExecutor` (see `docs/spec/server/store/executor.md` §2.4)                                                                                                                                                                                                                                                                                                            |
 
 #### PostgreSQL Helpers
 
@@ -35,11 +35,11 @@
 
 #### SQLite Helpers
 
-| Method                | Signature                  | Description                              |
-| --------------------- | -------------------------- | ---------------------------------------- |
-| getSqliteConnection   | () => Database             | Returns node-sqlite3 Database instance    |
-| withSqliteTransaction | (callback) => Promise\<T\> | Executes callback in SQLite transaction  |
-| closeSqliteDb         | () => void                 | Close SQLite database                    |
+| Method                | Signature                  | Description                             |
+| --------------------- | -------------------------- | --------------------------------------- |
+| getSqliteConnection   | () => Database             | Returns node-sqlite3 Database instance  |
+| withSqliteTransaction | (callback) => Promise\<T\> | Executes callback in SQLite transaction |
+| closeSqliteDb         | () => void                 | Close SQLite database                   |
 
 #### Legacy Filesystem Helpers
 
@@ -55,10 +55,10 @@
 
 The metadata backend and file-content storage are **completely independent**:
 
-| Concern            | Purpose                   | Selection / values                                                                                                        | Handled By                |
-| ------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| Concern            | Purpose                   | Selection / values                                                                                                                   | Handled By                |
+| ------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
 | Metadata backend   | Metadata persistence      | `postgresql` when any of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` is set; `sqlite` (default) when none is set | `storage.js:getBackend()` |
-| `WEA_FILE_STORAGE` | File content blob storage | `s3` (default), `webdav`                                                                                                  | Phase 1 S3 adapter        |
+| `WEA_FILE_STORAGE` | File content blob storage | `s3` (default), `webdav`                                                                                                             | Phase 1 S3 adapter        |
 
 The metadata backend is chosen by the **presence** of the generic remote-DB credential block,
 not by a free-form storage-backend variable. Setting at least one of `WEA_DB_HOST`,
@@ -98,11 +98,20 @@ runtime guard.
 When backend is `postgresql`, storage connects to the normalized schema used by all store modules:
 `users`, `settings`, `file_nodes`, `object_map`, `filecache`, `node_ancestors`, `permissions_*`, `share_links`, `recent_files`, `permission_requests`, `locks`.
 
-Canonical source for table definitions, constraints, and indexes:
+Canonical source for table definitions, constraints, and indexes is the ordered DDL chain:
 
-- `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
+- `server/store/postgresql/ddl/001_initial_normalized_schema.sql` — carries the whole normalized
+  schema, including `file_nodes.deleted_at` (trash marker) and the partial unique indexes over
+  `deleted_at IS NULL` (live name-uniqueness). DDL files are applied in filename order; currently
+  a single file (subsequent files may be added incrementally in the future; none exist now).
 
-The schema is applied at startup: `server/store/bootstrap.js` `initMetadataStore()` calls `applyPendingMigrations('postgresql')` (see `docs/spec/server/infrastructure/schemaManager.md`) for the non-SQLite branch before `ensureDefaultAdmin()`. The DDL is intended for a **fresh empty database only** — a misconfigured app pointed at an existing/old DB must fail loudly at boot; no "already exists" tolerance is added.
+The schema is applied at startup on **both backends** via `server/store/bootstrap.js`
+`initMetadataSchema()`: `applyPendingMigrations('postgresql')` for PostgreSQL and
+`applyPendingMigrations('sqlite')` for SQLite (see `docs/spec/server/infrastructure/schemaManager.md`),
+before `ensureDefaultAdmin()`. DDL files are applied once each and checksum-tracked in
+`_schema_migrations`; already-applied files are boot no-ops. Pointing the app at a legacy
+(pre-normalized) database still fails loudly at boot — that path is only entered through the
+metadata migration service (fresh target).
 
 This spec intentionally does not duplicate full DDL text. The per-dialect repository implementations
 consume this schema; store modules are facades that delegate through `storage.getExecutor()` while

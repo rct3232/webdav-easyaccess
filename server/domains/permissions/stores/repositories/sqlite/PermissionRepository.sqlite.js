@@ -52,7 +52,9 @@ module.exports = function createSqlitePermissionRepository(executor) {
           buildAncestorPermSelect('permissions_shares', 'p.permission', '?', '?', true, 'token'),
           [Number(targetNodeId), String(token)]
         );
-        return rows.length === 0 ? null : { permission: rows[0].permission, depth: Number(rows[0].depth) };
+        return rows.length === 0
+          ? null
+          : { permission: rows[0].permission, depth: Number(rows[0].depth) };
       } catch (error) {
         throw mapDatabaseError(error);
       }
@@ -92,10 +94,10 @@ module.exports = function createSqlitePermissionRepository(executor) {
     async deletePathPermission(userId, nodeId) {
       try {
         await executor.transaction(async (tx) => {
-          await tx.run('DELETE FROM permissions_user_paths WHERE user_id = ? AND file_node_id = ?', [
-            Number(userId),
-            Number(nodeId),
-          ]);
+          await tx.run(
+            'DELETE FROM permissions_user_paths WHERE user_id = ? AND file_node_id = ?',
+            [Number(userId), Number(nodeId)]
+          );
         });
       } catch (error) {
         throw mapDatabaseError(error);
@@ -148,7 +150,9 @@ module.exports = function createSqlitePermissionRepository(executor) {
           buildAncestorPermSelect('permissions_user_paths', 'p.permission', '?', '?'),
           [Number(nodeId), Number(userId)]
         );
-        return rows.length === 0 ? null : { permission: rows[0].permission, depth: Number(rows[0].depth) };
+        return rows.length === 0
+          ? null
+          : { permission: rows[0].permission, depth: Number(rows[0].depth) };
       } catch (error) {
         throw mapDatabaseError(error);
       }
@@ -189,10 +193,10 @@ module.exports = function createSqlitePermissionRepository(executor) {
     async deleteFilePermission(userId, fileNodeId) {
       try {
         await executor.transaction(async (tx) => {
-          await tx.run('DELETE FROM permissions_user_files WHERE user_id = ? AND file_node_id = ?', [
-            Number(userId),
-            Number(fileNodeId),
-          ]);
+          await tx.run(
+            'DELETE FROM permissions_user_files WHERE user_id = ? AND file_node_id = ?',
+            [Number(userId), Number(fileNodeId)]
+          );
         });
       } catch (error) {
         throw mapDatabaseError(error);
@@ -217,7 +221,10 @@ module.exports = function createSqlitePermissionRepository(executor) {
           'SELECT file_node_id, permission FROM permissions_user_files WHERE user_id = ?',
           [Number(userId)]
         );
-        return rows.map((r) => ({ file_node_id: Number(r.file_node_id), permission: r.permission }));
+        return rows.map((r) => ({
+          file_node_id: Number(r.file_node_id),
+          permission: r.permission,
+        }));
       } catch (error) {
         throw mapDatabaseError(error);
       }
@@ -262,14 +269,14 @@ module.exports = function createSqlitePermissionRepository(executor) {
       const root = Number(homeRootNodeId);
       if (!Number.isFinite(root)) return { removedPaths: 0, removedFiles: 0 };
       try {
-        const pathRes = await executor.run(
-          buildRemovalSql('permissions_user_paths', '?', '?'),
-          [uid, root]
-        );
-        const fileRes = await executor.run(
-          buildRemovalSql('permissions_user_files', '?', '?'),
-          [uid, root]
-        );
+        const pathRes = await executor.run(buildRemovalSql('permissions_user_paths', '?', '?'), [
+          uid,
+          root,
+        ]);
+        const fileRes = await executor.run(buildRemovalSql('permissions_user_files', '?', '?'), [
+          uid,
+          root,
+        ]);
         return { removedPaths: pathRes.changes || 0, removedFiles: fileRes.changes || 0 };
       } catch (error) {
         throw mapDatabaseError(error);

@@ -12,6 +12,8 @@ import {
 import { useFileOperationProgress } from './useFileOperationProgress';
 import { notifyRecentFilesChange } from '../../../services/recentFilesNotifier';
 
+import { notifyTrashChanged } from '../../../services/trashNotifier';
+
 const POLL_INTERVAL_MS = 400;
 
 export const useBulkOperations = (
@@ -266,6 +268,12 @@ export const useBulkOperations = (
                 notifyRecentFilesChange();
               } catch (err) {
                 console.error('Failed to refresh recent files after bulk delete:', err);
+              }
+              // DEF-16 P9: notify the pinned trash icon for every succeeded
+              // delete-to-trash (files AND directories) — the tree refresh
+              // above stays directory-scoped as before.
+              if (succeededNodeIds.length > 0) {
+                notifyTrashChanged();
               }
               deletedNodeIds.forEach((nodeId) => {
                 setTreeUpdateTrigger({ type: 'deleted', nodeId, timestamp: Date.now() });

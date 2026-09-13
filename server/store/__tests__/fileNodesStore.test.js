@@ -394,26 +394,6 @@ describe('createFileNodesStore', () => {
       expect(chain[1].depth).toBe(0);
     });
 
-    // deleteAncestorByAncestor
-    it('removes rows matching given ancestor IDs', async () => {
-      const root = await store.createNode(null, `${testPrefix}anc-by-root`, 'directory');
-      const child = await store.createNode(root.id, `${testPrefix}anc-by-child`, 'file');
-
-      await store.insertAncestorRows([
-        { ancestorId: root.id, descendantId: child.id, depth: 1 },
-        { ancestorId: child.id, descendantId: child.id, depth: 0 },
-      ]);
-
-      const delResult = await store.deleteAncestorByAncestor([root.id]);
-      expect(delResult.changes).toBe(1);
-
-      const remaining = await dbQuery(
-        `SELECT COUNT(*) as count FROM node_ancestors WHERE descendant_id IN (?, ?)`,
-        [root.id, child.id]
-      );
-      expect(remaining.rows[0].count).toBe(1);
-    });
-
     // isAncestor
     it('returns true when ancestor relationship exists', async () => {
       const a = await store.createNode(null, `${testPrefix}isa-a`, 'directory');
@@ -459,8 +439,8 @@ describe('createFileNodesStore', () => {
       expect(activeObj.rows[0].s3_key).toBe('s3://bucket/pending-key');
     });
 
-    // V14: upsertObjectMap orphans previous active entry via UPDATE before INSERT
-    it('orphans the previous active entry on upsert', async () => {
+    // V14: upsertObjectMap demotes the previous active entry to 'history' via UPDATE before INSERT
+    it('demotes the previous active entry to history on upsert', async () => {
       const created = await store.createNode(null, `${testPrefix}orphan-file`, 'file');
 
       // First upsert creates an active row (version 1)
@@ -477,7 +457,7 @@ describe('createFileNodesStore', () => {
       ]);
       expect(row.rows[0].status).toBe('active');
 
-      // upsertObjectMap will orphan the active row, then INSERT version 1 (which conflicts)
+      // upsertObjectMap will demote the active row to history, then INSERT version 1 (which conflicts)
       // We capture that the UPDATE ran by checking the status transition
       try {
         await store.upsertObjectMap(created.id, 's3://bucket/new-key', 'pending');
@@ -485,12 +465,12 @@ describe('createFileNodesStore', () => {
         /* expected: unique constraint on (file_node_id, version_number) */
       }
 
-      // The orphaning UPDATE runs before the INSERT, so old row should be orphaned
+      // The demotion UPDATE runs before the INSERT, so old row should be history
       row = await dbQuery(`SELECT * FROM object_map WHERE file_node_id = ? AND s3_key = ?`, [
         created.id,
         's3://bucket/old-key',
       ]);
-      expect(row.rows[0].status).toBe('orphaned');
+      expect(row.rows[0].status).toBe('history');
     });
 
     // V15: activateObject pending -> active
@@ -595,6 +575,46 @@ describe('createFileNodesStore', () => {
       expect(row.rows[0].storage_backend).toBe('s3');
       expect(row.rows[0].s3_key).toBe('s3://bucket/backend-flip-orphan-key');
     });
+
+    // reactivateObjectMapRow
+    it('reactivates an orphaned row back to active', async () => {
+      const created = await store.createNode(null, `${testPrefix}reactivate-file`, 'file');
+      await store.insertObject(created.id, 's3://bucket/reactivate-key', 'active');
+      await store.orphanObject('s3://bucket/reactivate-key');
+
+      const orphanedRow = await dbQuery(
+        `SELECT id FROM object_map WHERE s3_key = ? AND status = 'orphaned'`,
+        ['s3://bucket/reactivate-key']
+      );
+      expect(orphanedRow.rows.length).toBe(1);
+
+      const result = await store.reactivateObjectMapRow(orphanedRow.rows[0].id);
+      expect(result.changes).toBe(1);
+
+      const row = await dbQuery(`SELECT status FROM object_map WHERE s3_key = ?`, [
+        's3://bucket/reactivate-key',
+      ]);
+      expect(row.rows[0].status).toBe('active');
+    });
+
+    it('leaves non-orphaned rows untouched (changes=0)', async () => {
+      const created = await store.createNode(null, `${testPrefix}reactivate-pending`, 'file');
+      await store.insertObject(created.id, 's3://bucket/reactivate-pending-key', 'pending');
+
+      const pendingRow = await store.getObjectMapByS3Key('s3://bucket/reactivate-pending-key');
+      const result = await store.reactivateObjectMapRow(pendingRow.id);
+      expect(result.changes).toBe(0);
+
+      const row = await dbQuery(`SELECT status FROM object_map WHERE s3_key = ?`, [
+        's3://bucket/reactivate-pending-key',
+      ]);
+      expect(row.rows[0].status).toBe('pending');
+    });
+
+    it('returns changes=0 for an unknown id', async () => {
+      const result = await store.reactivateObjectMapRow(99999999);
+      expect(result.changes).toBe(0);
+    });
   });
 
   /* ------------------------------------------------------------------ */
@@ -650,20 +670,6 @@ describe('createFileNodesStore', () => {
       expect(children[0].mimeType).toBe('image/png');
       expect(children[0].contentHash).toBe('png-hash');
     });
-
-    // deleteCache
-    it('deletes cache row for a file node', async () => {
-      const created = await store.createNode(null, `${testPrefix}cache-del`, 'file');
-      await store.upsertCache(created.id, 500, 'text/plain', null);
-
-      const result = await store.deleteCache(created.id);
-      expect(result.changes).toBe(1);
-
-      const row = await dbQuery(`SELECT COUNT(*) as count FROM filecache WHERE file_node_id = ?`, [
-        created.id,
-      ]);
-      expect(row.rows[0].count).toBe(0);
-    });
   });
 
   /* ------------------------------------------------------------------ */
@@ -684,6 +690,96 @@ describe('createFileNodesStore', () => {
     it('deleteAncestorByDescendant with empty array returns changes=0', async () => {
       const result = await store.deleteAncestorByDescendant([]);
       expect(result.changes).toBe(0);
+    });
+  });
+
+  /* ------------------------------------------------------------------ */
+  /*  getKeptKeys (GC Tier 2 keep-set seam, DEF-18)                      */
+  /* ------------------------------------------------------------------ */
+
+  describe('getKeptKeys', () => {
+    const p = `ks-${Date.now()}`;
+
+    it("s3 mode: returns a Set wrapping the repository's union keys", async () => {
+      const node = await store.createNode(null, `${p}-s3-active`, 'file');
+      const activeKey = `${p}-s3-active-key`;
+      await store.insertObject(node.id, activeKey, 'active');
+
+      const orphanNode = await store.createNode(null, `${p}-s3-orphan`, 'file');
+      const orphanKey = `${p}-s3-orphan-key`;
+      await store.insertObject(orphanNode.id, orphanKey, 'orphaned');
+
+      const kept = await store.getKeptKeys('s3');
+      expect(kept).toBeInstanceOf(Set);
+      expect(kept.has(activeKey)).toBe(true);
+      expect(kept.has(orphanKey)).toBe(true);
+      expect(kept).toEqual(new Set(await store.getKeptObjectMapKeys()));
+    });
+
+    it('defaults to the s3 keep-set when no mode is given', async () => {
+      const node = await store.createNode(null, `${p}-s3-default`, 'file');
+      const key = `${p}-s3-default-key`;
+      await store.insertObject(node.id, key, 'active');
+
+      const kept = await store.getKeptKeys();
+      expect(kept).toBeInstanceOf(Set);
+      expect(kept.has(key)).toBe(true);
+    });
+
+    it('webdav mode: assembles the path keep-set from the file_nodes projection', async () => {
+      // Live nested pair: dir `/wdks-...-dir/` + file under it.
+      const dir = await store.createNode(null, `${p}-wd-dir`, 'directory');
+      await store.createNode(dir.id, `${p}-wd-file.txt`, 'file');
+
+      // Trashed subtree: root + nested child — BOTH rows get trash arms.
+      const trashedRoot = await store.createNode(null, `${p}-wd-trashed`, 'directory');
+      const trashedChild = await store.createNode(trashedRoot.id, `${p}-wd-tchild`, 'file');
+      await store.markSubtreeDeleted([trashedRoot.id, trashedChild.id]);
+
+      // Live row stuck in orphaned_node: tmp arm (plus its live display path),
+      // no trash arm.
+      const orphaned = await store.createNode(null, `${p}-wd-orphan`, 'file');
+      await store.updateSyncStatus(orphaned.id, 'orphaned_node');
+
+      // Foreign row (live pending_upload — none of the above): display path
+      // only, no trash/tmp arms.
+      const foreign = await store.createNode(null, `${p}-wd-foreign`, 'file');
+
+      const kept = await store.getKeptKeys('webdav');
+      expect(kept).toBeInstanceOf(Set);
+
+      // Structural roots.
+      expect(kept.has('/')).toBe(true);
+      expect(kept.has('/.wea-trash/')).toBe(true);
+      expect(kept.has('/.wea-tmp/')).toBe(true);
+
+      // Live nodes: file bare, directory trailing-slashed, ancestors included.
+      expect(kept.has(`/${p}-wd-dir/${p}-wd-file.txt`)).toBe(true);
+      expect(kept.has(`/${p}-wd-dir/`)).toBe(true);
+      expect(kept.has(`/${p}-wd-dir`)).toBe(false);
+      expect(kept.has(`/${p}-wd-foreign`)).toBe(true);
+
+      // Trashed rows: `/.wea-trash/<id>` (both forms, nested too); the
+      // display path of a trashed row is NOT kept.
+      for (const id of [trashedRoot.id, trashedChild.id]) {
+        expect(kept.has(`/.wea-trash/${id}`)).toBe(true);
+        expect(kept.has(`/.wea-trash/${id}/`)).toBe(true);
+        expect(kept.has(`/.wea-tmp/${id}`)).toBe(true);
+        expect(kept.has(`/.wea-tmp/${id}/`)).toBe(true);
+      }
+      expect(kept.has(`/${p}-wd-trashed`)).toBe(false);
+      expect(kept.has(`/${p}-wd-trashed/`)).toBe(false);
+
+      // orphaned_node row: tmp arm while the node exists, no trash arm.
+      expect(kept.has(`/.wea-tmp/${orphaned.id}`)).toBe(true);
+      expect(kept.has(`/.wea-tmp/${orphaned.id}/`)).toBe(true);
+      expect(kept.has(`/.wea-trash/${orphaned.id}`)).toBe(false);
+
+      // Foreign live row: no trash, no tmp.
+      expect(kept.has(`/.wea-trash/${foreign.id}`)).toBe(false);
+      expect(kept.has(`/.wea-trash/${foreign.id}/`)).toBe(false);
+      expect(kept.has(`/.wea-tmp/${foreign.id}`)).toBe(false);
+      expect(kept.has(`/.wea-tmp/${foreign.id}/`)).toBe(false);
     });
   });
 });

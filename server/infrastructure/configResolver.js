@@ -157,8 +157,7 @@ function createConfigResolver({ settingsStore, env = process.env, ttlMs = 5000 }
     if (isSet(envValue)) return envValue;
     if (entry.tier === TIER.T0) return undefined;
     const hit = cache.get(key);
-    const resolved =
-      hit && hit.value !== undefined ? resolveDbValue(hit.value) : undefined;
+    const resolved = hit && hit.value !== undefined ? resolveDbValue(hit.value) : undefined;
     if (resolved !== undefined) return resolved;
     return entry.default;
   }

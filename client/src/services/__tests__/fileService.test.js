@@ -22,6 +22,13 @@ import {
   cancelBulkOperation,
   checkConflicts,
   requestThumbnailsBatch,
+  getFileVersions,
+  restoreFileVersion,
+  downloadFileVersion,
+  getTrashFiles,
+  restoreTrashedItem,
+  purgeTrashedItem,
+  emptyTrash,
 } from '../fileService';
 
 jest.mock('../apiClient', () => ({
@@ -472,6 +479,127 @@ describe('fileService', () => {
         destinationParentNodeId: 2,
         reason: 'exists',
       });
+    });
+  });
+
+  describe('version history (DEF-11)', () => {
+    it('getFileVersions requests GET /files/versions with nodeId and returns the payload', async () => {
+      const payload = {
+        nodeId: 7,
+        currentVersionNumber: 2,
+        versions: [
+          { versionNumber: 1, status: 'history', createdAt: 'x', size: 5, isCurrent: false },
+        ],
+      };
+      get.mockResolvedValueOnce({ data: payload });
+
+      const result = await getFileVersions(7);
+
+      expect(get).toHaveBeenCalledWith('/files/versions', { params: { nodeId: 7 } });
+      expect(result).toBe(payload);
+    });
+
+    it('restoreFileVersion posts nodeId and versionNumber to /versions/restore', async () => {
+      post.mockResolvedValueOnce({
+        data: {
+          messageCode: 'serverMessages.files.versionRestored',
+          nodeId: 7,
+          restoredVersionNumber: 1,
+        },
+      });
+
+      const result = await restoreFileVersion(7, 1);
+
+      expect(post).toHaveBeenCalledWith('/files/versions/restore', { nodeId: 7, versionNumber: 1 });
+      expect(result).toMatchObject({ restoredVersionNumber: 1 });
+    });
+
+    it('downloadFileVersion fetches the version blob and triggers an <a download> save', async () => {
+      get.mockResolvedValueOnce({ data: new Blob(['version-bytes']) });
+      const clickSpy = jest
+        .spyOn(HTMLAnchorElement.prototype, 'click')
+        .mockImplementation(() => {});
+      const createObjectSpy = jest
+        .spyOn(window.URL, 'createObjectURL')
+        .mockReturnValue('blob:mock');
+      const revokeSpy = jest.spyOn(window.URL, 'revokeObjectURL').mockImplementation(() => {});
+
+      await downloadFileVersion(7, 3);
+
+      expect(get).toHaveBeenCalledWith(
+        '/files/versions/download',
+        expect.objectContaining({
+          params: { nodeId: 7, versionNumber: 3 },
+          responseType: 'blob',
+        })
+      );
+      expect(clickSpy).toHaveBeenCalled();
+      expect(createObjectSpy).toHaveBeenCalledWith(expect.any(Blob));
+
+      clickSpy.mockRestore();
+      createObjectSpy.mockRestore();
+      revokeSpy.mockRestore();
+    });
+  });
+
+  describe('trash (DEF-16)', () => {
+    it('getTrashFiles requests GET /files/trash and returns the payload', async () => {
+      const payload = {
+        items: [
+          {
+            nodeId: 9,
+            name: 'a.txt',
+            type: 'file',
+            deletedAt: '2026-09-10T00:00:00Z',
+            displayPath: '/home/a.txt',
+            hasReadPermission: true,
+            hasWritePermission: true,
+            hasAdminPermission: true,
+          },
+        ],
+        total: 1,
+      };
+      get.mockResolvedValueOnce({ data: payload });
+
+      const result = await getTrashFiles();
+
+      expect(get).toHaveBeenCalledWith('/files/trash', { params: {} });
+      expect(result).toBe(payload);
+    });
+
+    it('getTrashFiles forwards parentId/limit/offset as query params when provided', async () => {
+      get.mockResolvedValueOnce({ data: { items: [], total: 0 } });
+
+      await getTrashFiles({ parentId: 12, limit: 50, offset: 25 });
+
+      expect(get).toHaveBeenCalledWith('/files/trash', {
+        params: { parentId: 12, limit: 50, offset: 25 },
+      });
+    });
+
+    it('restoreTrashedItem posts nodeId to /trash/restore', async () => {
+      post.mockResolvedValueOnce({ data: { nodeId: 9 } });
+
+      const result = await restoreTrashedItem(9);
+
+      expect(post).toHaveBeenCalledWith('/files/trash/restore', { nodeId: 9 });
+      expect(result).toEqual({ nodeId: 9 });
+    });
+
+    it('purgeTrashedItem posts nodeId to /trash/purge', async () => {
+      post.mockResolvedValueOnce({ data: { nodeId: 9 } });
+
+      await purgeTrashedItem(9);
+
+      expect(post).toHaveBeenCalledWith('/files/trash/purge', { nodeId: 9 });
+    });
+
+    it('emptyTrash posts to /trash/empty with no node params', async () => {
+      post.mockResolvedValueOnce({ data: {} });
+
+      await emptyTrash();
+
+      expect(post).toHaveBeenCalledWith('/files/trash/empty', {});
     });
   });
 });

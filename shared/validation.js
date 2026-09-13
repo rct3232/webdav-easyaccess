@@ -15,6 +15,13 @@ function validateFileName(name) {
     return 'validation.fileNameInvalidChars';
   }
 
+  // Reserved server namespace (DEF-16): the trash subsystem stores trashed
+  // WebDAV subtrees under /.wea-trash/<nodeId>, so no user-created name may
+  // start with the .wea- prefix (case-insensitive).
+  if (name.trim().toLowerCase().startsWith('.wea-')) {
+    return 'validation.fileNameReserved';
+  }
+
   const reservedNames = [
     'CON',
     'PRN',

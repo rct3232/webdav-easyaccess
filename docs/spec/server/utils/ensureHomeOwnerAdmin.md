@@ -11,8 +11,8 @@
 
 ## 1. Overview
 
-| Item | Description                                                                                                                                                                                                                                                            |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Item | Description                                                                                                                                                                                                                                                                                      |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Role | Ensure home owner admin: grant admin on each user's home node (nodeId-based), and remove redundant self-grants the user holds on their own subtree (home root + descendants). Co-located with other admin maintenance logic in cleanupService. Used on startup and the admin maintenance button. |
 
 ---
@@ -32,10 +32,10 @@
 
 ### 2.2 Functions / Exports
 
-| Function                        | Signature               | Description                                                                          |
-| ------------------------------- | ----------------------- | ------------------------------------------------------------------------------------ |
+| Function                        | Signature               | Description                                                                                                                         |
+| ------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | ensureHomeOwnerAdminForAllUsers | () => Promise\<object\> | Process all non-admin users; ensure an `admin` grant on each user's home node (grant when missing) and remove redundant self-grants |
-| cleanupOrphanedData             | () => Promise\<object\> | Run one GC cycle for orphaned blobs and report nodes stuck in `sync_status='orphaned_node'` |
+| cleanupOrphanedData             | () => Promise\<object\> | Run one GC cycle for orphaned blobs and report nodes stuck in `sync_status='orphaned_node'`                                         |
 
 > **WebDAV mode (MKCOL-on-create):** for every resolved/created home `file_nodes` row the
 > function also calls `blobStorageService.createDirectoryWebdav(homeNode.id)` so the physical

@@ -36,7 +36,6 @@ Recent entry shape:
 | getRecentFiles   | `() => Promise<RecentEntry[]>`                     |
 | addRecentFile    | `(file, options?) => Promise<RecentEntry[]>`       |
 | removeRecentFile | `(fileNodeId, options?) => Promise<RecentEntry[]>` |
-| clearRecentFiles | `() => Promise<void>`                              |
 
 `options`:
 
@@ -77,7 +76,7 @@ Recent entry shape:
 - Repository methods are the compatibility boundary for recent-files IO. For expected transport/storage failures, callers should receive contract-safe fallback values instead of rejected promises.
 - Default fallback:
   - `getRecentFiles` => `[]`
-  - mutations => `[]` (or `void` for `clearRecentFiles`)
+  - mutations => `[]`
 - Errors should be logged for diagnostics.
 - Failed mutations may perform a best-effort fallback read, but that fallback read alone must not be treated as a successful change event.
 

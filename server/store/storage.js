@@ -246,17 +246,17 @@ function sqliteRun(sql, params = []) {
 let sqliteTransactionQueue = Promise.resolve();
 
 async function withSqliteTransaction(callback) {
-    const run = async () => {
-      await sqliteRun('BEGIN');
-      try {
-        const client = {
-          query: (sql, params = []) => sqliteQuery(sql, params),
-          // Writes inside a transaction go through the same serialized
-          // single-connection helpers (executor transaction contract, §2.3).
-          run: (sql, params = []) => sqliteRun(sql, params),
-          release: () => {},
-        };
-        const result = await callback(client);
+  const run = async () => {
+    await sqliteRun('BEGIN');
+    try {
+      const client = {
+        query: (sql, params = []) => sqliteQuery(sql, params),
+        // Writes inside a transaction go through the same serialized
+        // single-connection helpers (executor transaction contract, §2.3).
+        run: (sql, params = []) => sqliteRun(sql, params),
+        release: () => {},
+      };
+      const result = await callback(client);
       await sqliteRun('COMMIT');
       return result;
     } catch (error) {

@@ -62,6 +62,11 @@ lets DB-sourced configuration take effect before require-time consts are capture
     - CORS origin list resolved per request from the resolver (T2, hot).
     - the setImmediate composition (getComposition / fail-safe / GC scheduler) runs as before;
       its fallback still uses computeSetupStatus(process.env).setup_complete (consistent post-populate).
+    - the fail-safe startup scan is report-only and threshold-gated: it reports `orphaned_node`
+      nodes and (DEF-12/13, S3 mode only) file nodes stuck in `pending_upload` only when either
+      count is non-zero, and performs zero mutations (manual resolution via
+      `POST /api/admin/maintenance/repair-sync`; the `pending_upload` scan returns an empty list
+      in WebDAV mode, where healthy file nodes intentionally stay `pending_upload`).
 ```
 
 ## 3. Why admin seeding is deferred

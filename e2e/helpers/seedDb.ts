@@ -18,7 +18,8 @@ export const SEED_USERS = [
 // the seed runs from spawned Node processes that do not load those dotenv
 // files themselves, so we read process.env overrides but fall back to the same
 // values. Shared by `e2e/global-setup.ts` (once per run) and
-// `e2e/00-project-setup.spec.ts` (once per project, for data isolation).
+// (The historical per-project reset spec was retired by the hermetic-dechain
+// work — seeding runs once per invocation only.)
 //
 // Backend selection is presence-based: the full `WEA_DB_*` identity block below
 // (host/port/database/user/password) selects the remote PostgreSQL backend.

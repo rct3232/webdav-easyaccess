@@ -26,10 +26,7 @@ import SyncAlt from '@mui/icons-material/SyncAlt';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
 import * as adminService from '../../../services/adminService';
 import { getMigrationPresence } from '../../../services/migrationService';
-import {
-  getServerErrorDisplay,
-  getServerMessageDisplay,
-} from '../../../utils/errorUtils';
+import { getServerErrorDisplay, getServerMessageDisplay } from '../../../utils/errorUtils';
 import {
   getShowHiddenFiles,
   setShowHiddenFiles as saveShowHiddenFiles,
@@ -80,12 +77,7 @@ const SystemSettingsContent = () => {
       // file backend = WEA_FILE_STORAGE.
       const cfg = data?.config || {};
       const active = new Set();
-      const dbCredentialSet = [
-        'WEA_DB_HOST',
-        'WEA_DB_DATABASE',
-        'WEA_DB_USER',
-        'WEA_DB_PASSWORD',
-      ];
+      const dbCredentialSet = ['WEA_DB_HOST', 'WEA_DB_DATABASE', 'WEA_DB_USER', 'WEA_DB_PASSWORD'];
       if (dbCredentialSet.some((key) => cfg[key]?.value)) active.add('postgresql');
       if (cfg.WEA_FILE_STORAGE?.value === 's3') active.add('s3');
       if (cfg.WEA_FILE_STORAGE?.value === 'webdav') active.add('webdav');
@@ -145,17 +137,35 @@ const SystemSettingsContent = () => {
     try {
       const res = await adminService.cleanupOrphaned();
       const { results } = res;
-      const totalCleaned =
-        results.deletedPermissionFiles +
-        results.deletedUserFiles +
-        results.deletedEmailIndexFiles +
-        results.cleanedPermissionRequests;
+      // Real cleanupOrphanedData() shape: { errors, gc: { tier1, tier2, tier3 },
+      // orphanedNodes[], pendingUploadNodes[] } — report-only arrays are not
+      // deletions, they feed the manual-review count.
+      const gc = results?.gc;
+      const deletedBlobs = gc?.tier1?.deletedBlobs ?? 0;
+      const deletedRows = gc?.tier1?.deletedRows ?? 0;
+      const deletedKeys = gc?.tier2?.deletedKeys ?? 0;
+      const orphaned = results?.orphanedNodes?.length ?? 0;
+      const pending = results?.pendingUploadNodes?.length ?? 0;
+      const reports = orphaned + pending;
+      const hasErrors =
+        (results?.errors?.length ?? 0) > 0 ||
+        (gc?.tier1?.errors?.length ?? 0) > 0 ||
+        (gc?.tier2?.errors?.length ?? 0) > 0 ||
+        (gc?.tier3?.errors?.length ?? 0) > 0;
       let messageText;
-      if (totalCleaned === 0) messageText = t('admin.noDataToClean');
-      else if (results.errors?.length)
-        messageText = t('admin.cleanupDonePartial', { count: totalCleaned });
-      else messageText = t('admin.cleanupDone', { count: totalCleaned });
-      setMessage({ type: results.errors?.length ? 'warning' : 'success', text: messageText });
+      if (deletedBlobs === 0 && deletedRows === 0 && deletedKeys === 0 && reports === 0) {
+        messageText = t('admin.noDataToClean');
+      } else {
+        messageText = t('admin.cleanupDoneGc', {
+          blobs: deletedBlobs,
+          rows: deletedRows,
+          keys: deletedKeys,
+        });
+        if (reports > 0) {
+          messageText += ` ${t('admin.cleanupReports', { orphaned, pending })}`;
+        }
+      }
+      setMessage({ type: hasErrors ? 'warning' : 'success', text: messageText });
     } catch (error) {
       setMessage({
         type: 'error',
@@ -242,8 +252,7 @@ const SystemSettingsContent = () => {
   );
 
   const syncSummary = configSyncReport?.summary;
-  const configSyncActionable =
-    (syncSummary?.drift || 0) > 0 || (syncSummary?.envOnly || 0) > 0;
+  const configSyncActionable = (syncSummary?.drift || 0) > 0 || (syncSummary?.envOnly || 0) > 0;
   const syncFindings = configSyncReport?.findings || [];
   const toUpdateKeys = syncFindings.filter((f) => f.status === 'differs').map((f) => f.key);
   const toAddKeys = syncFindings.filter((f) => f.status === 'env-only').map((f) => f.key);

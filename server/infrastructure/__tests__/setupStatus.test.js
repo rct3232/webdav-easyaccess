@@ -76,7 +76,11 @@ describe('computeSetupStatus', () => {
     });
 
     it('is complete in production with a non-default JWT_SECRET', () => {
-      const status = computeSetupStatus({ NODE_ENV: 'production', JWT_SECRET: 'a-real-secret', ...fullS3Env });
+      const status = computeSetupStatus({
+        NODE_ENV: 'production',
+        JWT_SECRET: 'a-real-secret',
+        ...fullS3Env,
+      });
       expect(status.setup_complete).toBe(true);
       expect(status.missing).toEqual([]);
     });

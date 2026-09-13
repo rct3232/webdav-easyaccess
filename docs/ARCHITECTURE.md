@@ -18,7 +18,7 @@ Use this document for system concepts and flow. Use implementation/runtime contr
 Canonical contract sources:
 
 - Permission enum: `shared/constants.js` (`PERMISSIONS.ALL`)
-- PostgreSQL constraints/indexes/tables: `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
+- PostgreSQL constraints/indexes/tables: `server/store/postgresql/ddl/*.sql` (applied in filename order via `schemaManager`)
 - PostgreSQL env keys/runtime parsing: `server/store/storage.js`
 - Operator-facing env documentation: `.env.example` and `docs/SETUP.md`
 
@@ -48,7 +48,7 @@ server/domains/
 │   └── services/      # cleanupService.js, userService.js
 ├── auth/
 │   ├── routes/        # (nested test files)
-│   ├── routes.js      # login, register, refresh, me
+│   ├── routes.js      # login, register, refresh, logout, me
 │   ├── service.js     # auth business logic
 │   └── tokenStore.js  # token persistence
 ├── files/
@@ -56,7 +56,7 @@ server/domains/
 │   ├── services/      # fileService.js, downloadService.js, etc.
 │   └── stores/        # operationProgress.js
 ├── permissions/
-│   ├── policy/        # permissionPolicy.js, inheritancePolicy.js, ownerPathResolver.js, permissionRank.js
+│   ├── policy/        # permissionPolicy.js, ownerNodeResolver.js, permissionRank.js
 │   ├── routes/        # index.js, filePermissions.js, folderPermissions.js, queries.js, permissionRequests.js
 │   ├── services/      # aclService.js, permissionFacade.js
 │   └── stores/        # permissionStore.js, permissionRequestStore.js, permissionExistenceIndex.js
@@ -80,10 +80,10 @@ Domains are mounted in `server/index.js` under their respective API prefixes. Cr
 
 The adapter layer sits between domains and physical storage, providing interchangeable blob, file, and cache backends. Metadata persistence is not an adapter — it runs through per-domain repositories on the backend-neutral `DbExecutor` seam (see the metadata-persistence note below and §2.1):
 
-| Adapter            | Location                             | Purpose                                                                                                                                                                                                                                                                                                                   |
-| ------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| File store adapter | `infrastructure/adapters/filestore/` | Wraps file operations behind the `FileStoreAdapter` interface. In **webdav blob mode** (`WEA_FILE_STORAGE=webdav`), `WebdavFileStoreAdapter` delegates to `utils/webdav.js`; in **s3 mode** (`WEA_FILE_STORAGE=s3`, the default) blob content is served by `S3BlobStore` instead. Factory: `createFileStoreAdapter()`.    |
-| Cache adapter      | `infrastructure/adapters/cache/`     | In-memory LRU cache used for client caching, thumbnail storage, etc. Factory: `createCacheAdapter()`. Extensible for Redis in future.                                                                                                                                                                                     |
+| Adapter            | Location                             | Purpose                                                                                                                                                                                                                                                                                                                |
+| ------------------ | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| File store adapter | `infrastructure/adapters/filestore/` | Wraps file operations behind the `FileStoreAdapter` interface. In **webdav blob mode** (`WEA_FILE_STORAGE=webdav`), `WebdavFileStoreAdapter` delegates to `utils/webdav.js`; in **s3 mode** (`WEA_FILE_STORAGE=s3`, the default) blob content is served by `S3BlobStore` instead. Factory: `createFileStoreAdapter()`. |
+| Cache adapter      | `infrastructure/adapters/cache/`     | In-memory LRU cache used for client caching, thumbnail storage, etc. Factory: `createCacheAdapter()`. Extensible for Redis in future.                                                                                                                                                                                  |
 
 **Metadata persistence (not an adapter):**
 
@@ -104,18 +104,17 @@ Blob store adapters (S3 / WebDAV) and their contract are covered by `docs/spec/s
 
 Cross-cutting infrastructure modules live in `server/infrastructure/`:
 
-| Module             | File                  | Responsibility                                                                                                                                                            |
-| ------------------ | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Lock Manager       | `lockManager.js`      | Distributed locking for metadata writes. Supports PostgreSQL and SQLite lock strategies with TTL expiry and stale-lock cleanup. Exports `acquireLock()` and `withLock()`. |
-| DB Executor Seam   | `db/executor.js`      | Backend-neutral metadata execution seam (`query` / `run` / `transaction` / `isUniqueConflict` / `close`), implemented per dialect by `db/sqliteExecutor.js` and `db/postgresExecutor.js`. Selected by `storage.getExecutor()`; executes the per-domain repository SQL (§1.1 / §2.1). |
-| Health Routes      | `healthRoutes.js`     | Unauthenticated `GET /api/health` endpoint for liveness probes. Mounted at `/api`.                                                                                        |
-| WebDAV Routes      | `webdavRoutes.js`     | Diagnostic endpoints: `GET /api/webdav/test` (connectivity) and `GET /api/webdav/info` (URL display). No auth required.                                                   |
-| WebDAV Test        | `webdavTest.js`       | Connection test logic extracted from webdav.js. Creates ephemeral client, probes root directory, returns structured result.                                               |
-| SQLite Schema Init | `sqliteSchemaInit.js` | Converts PostgreSQL DDL to SQLite-compatible SQL and executes against the SQLite connection. Used during bootstrap when the SQLite backend is active (no remote DB keys set).                     |
+| Module             | File                  | Responsibility                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------ | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lock Manager       | `lockManager.js`      | Distributed locking for metadata writes. Supports PostgreSQL and SQLite lock strategies with TTL expiry and stale-lock cleanup. Exports `acquireLock()`.                                                                                                                                                                                                                                                                                             |
+| DB Executor Seam   | `db/executor.js`      | Backend-neutral metadata execution seam (`query` / `run` / `transaction` / `isUniqueConflict` / `close`), implemented per dialect by `db/sqliteExecutor.js` and `db/postgresExecutor.js`. Selected by `storage.getExecutor()`; executes the per-domain repository SQL (§1.1 / §2.1).                                                                                                                                                                 |
+| Health Routes      | `healthRoutes.js`     | Unauthenticated `GET /api/health` endpoint for liveness probes. Mounted at `/api`.                                                                                                                                                                                                                                                                                                                                                                   |
+| WebDAV Test        | `webdavTest.js`       | Connection test logic extracted from webdav.js. Creates ephemeral client, probes root directory, returns structured result.                                                                                                                                                                                                                                                                                                                          |
+| SQLite Schema Init | `sqliteSchemaInit.js` | PostgreSQL→SQLite DDL transpiler (`convertPostgresToSqlite`) plus explicit-target schema init (`initSqliteSchema({connection}` / `{path}`) for caller-supplied connections and temporary DBs. App boot applies the tracked `ddl/` chain via `schemaManager.applyPendingMigrations` on BOTH backends (sqlite consumes the transpiler); `initSqliteSchema` is no longer the boot path. Spec: `docs/spec/server/infrastructure/sqliteSchemaInit.md` §1. |
 
 ### 1.3 Middleware Pipeline
 
-For routes that require it, a standardized middleware chain runs for security. Routes such as `/api/health`, `/api/webdav/*`, `/api/share/:token/*`, and `/api/settings/public` do not use Auth or User Loader.
+For routes that require it, a standardized middleware chain runs for security. Routes such as `/api/health`, `/api/share/:token/*`, and `/api/settings/public` do not use Auth or User Loader.
 
 ```
 Request → CORS → Body Parser → Request Logger → [Auth (JWT) → User Loader] (per route) → Route Handler → Error Handler
@@ -199,16 +198,17 @@ PostgreSQL backend. The store API is the same across backends.
 
 When the remote PostgreSQL backend is active, metadata is persisted in normalized tables:
 `users`, `settings`, `permissions_user_paths`, `permissions_user_files`, `permissions_shares`,
-`share_links`, `recent_files`, `permission_requests`, and `locks`.
+`share_links`, `recent_files`, `permission_requests`, `locks`, `file_nodes`, `object_map`,
+and `node_ancestors`.
 
 This document intentionally omits full constraints/indexes. Treat
-`server/store/postgresql/ddl/001_initial_normalized_schema.sql` as the single source of truth.
+`server/store/postgresql/ddl/*.sql` (applied in filename order) as the single source of truth.
 
 #### Metadata Migration Path
 
 Metadata migration between the `sqlite` and `postgresql` backends is a **supported admin path**
-(schemas are structurally identical — the sqlite DDL is generated from
-`001_initial_normalized_schema.sql` via `sqliteSchemaInit.js` type-conversion). It is exposed as
+(schemas are structurally identical — the sqlite DDL is generated from the same
+`server/store/postgresql/ddl/*.sql` chain via `sqliteSchemaInit.js` type-conversion). It is exposed as
 an admin API + config dialogs (no standalone CLI; the legacy
 `server/scripts/migrateMetadataToPostgresql.js` was removed in Phase 7):
 
@@ -232,7 +232,7 @@ CLI). Command sequences and operator checks are maintained in `docs/SETUP.md`.
 
 ### 2.2 Concurrency Control (Metadata Locking)
 
-A **distributed lock** mechanism (`server/infrastructure/lockManager.js`, exported via `server/store/locks.js`) prevents metadata races across all backends.
+A **distributed lock** mechanism (`server/infrastructure/lockManager.js`) prevents metadata races across all backends.
 
 - **postgresql/sqlite**: lock rows are acquired with `INSERT ... ON CONFLICT` semantics, validated by owner token, and released with TTL-aware cleanup (`expires_at < NOW()`).
 
@@ -326,7 +326,7 @@ This document does not duplicate endpoint catalogs.
   - Password change increments `token_version`, invalidating all existing tokens.
   - Path normalization prevents Directory Traversal attacks.
 - **Performance**:
-  - `asyncLimitSettled` limits concurrent WebDAV requests (e.g. 5–10 per operation).
+  - `asyncLimit` limits concurrent WebDAV requests (e.g. 5–10 per operation).
   - Permission and user checks are cached in-memory with short TTL (e.g. 3–5s; `PERMISSION_CACHE_TTL_MS`, `USER_CACHE_TTL_MS`).
 
 ## 6. Concept Verification Boundary

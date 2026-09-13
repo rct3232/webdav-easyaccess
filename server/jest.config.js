@@ -6,6 +6,10 @@ module.exports = {
   moduleNameMapper: {
     '^@server/(.*)$': '<rootDir>/$1',
     '^@testing/(.*)$': '<rootDir>/testing/$1',
+    // Resolve the workspace package from this checkout's source: with symlinked
+    // node_modules the package would otherwise resolve to another worktree's
+    // shared/ directory (stale while a branch adds shared message codes).
+    '^@webdav-easyaccess/shared/(.*)$': '<rootDir>/../shared/$1',
   },
   collectCoverageFrom: [
     '**/*.js',

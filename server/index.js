@@ -154,23 +154,18 @@ app.use('/api', require('./domains/admin/routes/migrationStatus'));
 app.use('/api/users', require('./domains/admin/routes/users'));
 app.use('/api/admin', setupModeGuardInstance, require('./domains/admin/routes/userManagement'));
 app.use('/api/admin', setupModeGuardInstance, require('./domains/admin/routes/settings'));
+// Public settings (GET /api/settings/public) only — mounting the admin
+// settings router here would create bogus aliases (e.g. /api/settings/settings).
+app.use('/api/settings', require('./domains/admin/routes/settings').publicRouter);
 app.use('/api/admin', setupModeGuardInstance, require('./domains/admin/routes/maintenance'));
 app.use('/api/admin', setupModeGuardInstance, require('./domains/admin/routes/migration'));
 app.use('/api/admin', setupModeGuardInstance, require('./domains/admin/routes/config'));
-// Public settings (GET /api/settings/public) stays open in setup mode; the
-// admin-write settings routes under /api/settings are gated like /api/admin.
-app.use(
-  '/api/settings',
-  (req, res, next) => {
-    if (req.path === '/public') return next();
-    return setupModeGuardInstance(req, res, next);
-  },
-  require('./domains/admin/routes/settings')
-);
 // Files domain routes (Phase 6 split) — blocked while setup is incomplete
 app.use('/api/files', setupModeGuardInstance, require('./domains/files/routes/crud'));
 app.use('/api/files', setupModeGuardInstance, require('./domains/files/routes/batch'));
 app.use('/api/files', setupModeGuardInstance, require('./domains/files/routes/preview'));
+app.use('/api/files', setupModeGuardInstance, require('./domains/files/routes/versions'));
+app.use('/api/files', setupModeGuardInstance, require('./domains/files/routes/trash'));
 app.use('/api/folders', setupModeGuardInstance, require('./domains/files/routes/folders'));
 app.use('/api/permissions', setupModeGuardInstance, require('./domains/permissions/routes'));
 app.use(
@@ -183,18 +178,6 @@ app.use('/api/share', setupModeGuardInstance, require('./domains/sharing/routes/
 app.use('/api/recent-files', setupModeGuardInstance, require('./domains/recentFiles/routes'));
 
 app.use('/api', require('./infrastructure/healthRoutes'));
-
-// Debug endpoint — development only
-if (process.env.NODE_ENV !== 'production') {
-  app.post('/api/debug-log', (req, res) => {
-    const entry = JSON.stringify(req.body);
-    const logPath = path.join(__dirname, '../.cursor/debug-c5ae3e.log');
-    fs.appendFileSync(logPath, entry + '\n');
-    res.json({ ok: true });
-  });
-}
-
-app.use('/api/webdav', require('./infrastructure/webdavRoutes'));
 
 // Error handler middleware (must be after all routes)
 const { errorHandler } = require('./utils/errorHandler');

@@ -75,4 +75,63 @@ describe('FileActionSheet', () => {
     renderWithProviders(<FileActionSheet {...defaultProps} file={fileWithName} />);
     expect(screen.getByText('display-name')).toBeInTheDocument();
   });
+
+  describe('trash actions (DEF-16 P9)', () => {
+    const trashedFile = { ...mockFile, isTrashed: true };
+
+    it('renders restore and purge rows gated by write permission', () => {
+      const onRestore = jest.fn();
+      const onPurge = jest.fn();
+      renderWithProviders(
+        <FileActionSheet
+          {...defaultProps}
+          file={trashedFile}
+          onRestore={onRestore}
+          onPurge={onPurge}
+        />
+      );
+      fireEvent.click(screen.getByTestId('trash-action-restore'));
+      expect(onRestore).toHaveBeenCalledTimes(1);
+      expect(defaultProps.onClose).toHaveBeenCalled();
+
+      fireEvent.click(screen.getByTestId('trash-action-purge'));
+      expect(onPurge).toHaveBeenCalledTimes(1);
+    });
+
+    it('withholds live-item rows when their callbacks are not provided', () => {
+      renderWithProviders(
+        <FileActionSheet
+          {...defaultProps}
+          file={trashedFile}
+          onDownload={undefined}
+          onRename={undefined}
+          onMove={undefined}
+          onCopy={undefined}
+          onDelete={undefined}
+          onShare={undefined}
+          onPreview={undefined}
+          onPurge={jest.fn()}
+        />
+      );
+      expect(screen.queryByTestId('file-action-download')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('file-action-delete')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('trash-action-restore')).not.toBeInTheDocument();
+      expect(screen.getByTestId('trash-action-purge')).toBeInTheDocument();
+      expect(screen.getByTestId('file-action-properties')).toBeInTheDocument();
+    });
+
+    it('hides trash rows without write permission', () => {
+      renderWithProviders(
+        <FileActionSheet
+          {...defaultProps}
+          file={trashedFile}
+          onRestore={jest.fn()}
+          onPurge={jest.fn()}
+          hasWritePermission={false}
+        />
+      );
+      expect(screen.queryByTestId('trash-action-restore')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('trash-action-purge')).not.toBeInTheDocument();
+    });
+  });
 });

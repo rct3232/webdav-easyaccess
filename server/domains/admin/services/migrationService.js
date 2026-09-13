@@ -6,6 +6,7 @@ const {
   deriveDirection,
   destinationTypeForDirection,
 } = require('../../../infrastructure/adapters/blobstore/config');
+const { buildTrashPath } = require('../../../service/webdavRemoteOps');
 const Settings = require('../../../models/Settings');
 const { getSharedResolver } = require('../../../infrastructure/configResolver');
 
@@ -108,6 +109,13 @@ function createMigrationService({
 
   async function enumerateSnapshot() {
     const isWebdavSource = fileStorageMode === 'webdav';
+    // DEF-16 P8: trashed nodes (deleted_at set) are EXPLICITLY part of the
+    // snapshot — a trashed item must survive the cutover still trashed. The
+    // enumerations below include them naturally (S3 source: trash performs no
+    // physical I/O and leaves sync_status='active' + the active object row;
+    // WebDAV source: a trashed node is never 'orphaned_node' — a trash MOVE
+    // failure aborts the trash instead). The copy never rewrites file_nodes,
+    // so deleted_at survives untouched in both directions.
     const nodes = isWebdavSource
       ? await fileNodesStore.getNodesBySyncStatusNot('orphaned_node')
       : await fileNodesStore.getNodesBySyncStatus('active');
@@ -123,6 +131,18 @@ function createMigrationService({
     }
     snapshot.sort((a, b) => a.node.id - b.node.id);
     return snapshot;
+  }
+
+  /**
+   * Trash-aware blob I/O path (DEF-16 P8): a trashed node's content lives at
+   * /.wea-trash/<nodeId> in WebDAV storage — the webdav→s3 copy reads FROM
+   * the trash path and the s3→webdav copy uploads TO the trash path (a
+   * trashed row's display path must stay free, and the trash purge expects
+   * the content under the trash path). The progress display keeps the
+   * original display path.
+   */
+  function blobIoPathForNode(node, displayPath) {
+    return node.deletedAt != null ? buildTrashPath(node.id) : displayPath;
   }
 
   async function probeDestination(dst) {
@@ -156,7 +176,9 @@ function createMigrationService({
     if (!resume || force) return false;
     const cache = await fileNodesStore.getCache(node.id);
     if (cache == null) return false;
-    const head = await dst.headBlob(nodePath);
+    // DEF-16 P8: the resume probe uses the trash path for a trashed node.
+    const ioPath = blobIoPathForNode(node, nodePath);
+    const head = await dst.headBlob(ioPath);
     return Boolean(head && head.contentLength === Number(cache.size));
   }
 
@@ -165,8 +187,11 @@ function createMigrationService({
       return { action: 'skipped', path: nodePath };
     }
 
+    // DEF-16 P8: the physical I/O path is trash-aware for trashed nodes.
+    const ioPath = blobIoPathForNode(node, nodePath);
+
     if (direction === 'webdav-to-s3') {
-      const buf = await srcBlobStore.downloadBlob(nodePath);
+      const buf = await srcBlobStore.downloadBlob(ioPath);
       if (buf == null) throw new Error('Source blob not found');
       const key = crypto.randomUUID();
       await dst.uploadBlob(key, buf);
@@ -184,8 +209,8 @@ function createMigrationService({
 
     const buf = await srcBlobStore.downloadBlob(activeObject.s3_key);
     if (buf == null) throw new Error('Source blob not found');
-    await ensureAncestorDirectories(dst, nodePath);
-    await dst.uploadBlob(nodePath, buf);
+    await ensureAncestorDirectories(dst, ioPath);
+    await dst.uploadBlob(ioPath, buf);
     const cache = await fileNodesStore.getCache(node.id);
     await fileNodesStore.upsertCache(
       node.id,

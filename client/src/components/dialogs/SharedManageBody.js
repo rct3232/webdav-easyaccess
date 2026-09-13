@@ -15,7 +15,7 @@ import SharedPermissionList from './SharedPermissionList';
 
 /**
  * 공유 관리 본문 (presentational). 훅 없이 호출부에서 넘긴 값만으로 UI 렌더.
- * ShareManageContent(ShareTargetDialog)와 SharedManageDialog에서 재사용.
+ * ShareManageContent(ShareTargetDialog)에서 재사용.
  */
 export default function SharedManageBody({
   displayName,

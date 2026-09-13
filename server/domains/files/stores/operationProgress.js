@@ -17,10 +17,6 @@ OperationProgressStore.prototype.setDownloadProgress = function (id, state) {
   this.downloadCache.set(`dp:${id}`, state);
 };
 
-OperationProgressStore.prototype.getDownloadProgress = function (id) {
-  return this.downloadCache.get(`dp:${id}`);
-};
-
 OperationProgressStore.prototype.cleanupDownloadProgress = function (id, ttlMs) {
   const timer = setTimeout(() => {
     this.downloadCache.delete(`dp:${id}`);

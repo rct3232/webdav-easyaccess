@@ -462,9 +462,7 @@ describe('POST /api/admin/config/sync-from-env', () => {
     expect(Settings.set).toHaveBeenCalledTimes(1);
     expect(Settings.set).toHaveBeenCalledWith('PORT', '5001');
     expect(fakeResolver.invalidateCache).toHaveBeenCalledWith(['PORT']);
-    expect(res.body.writes).toEqual([
-      { key: 'PORT', secret: false, status: 'updated' },
-    ]);
+    expect(res.body.writes).toEqual([{ key: 'PORT', secret: false, status: 'updated' }]);
     expect(res.body.report.exitCode).toBe(0);
     expect(res.body.messageCode).toBe(SERVER_MESSAGE_CODES.admin.configSyncDone);
   });
@@ -486,9 +484,7 @@ describe('POST /api/admin/config/sync-from-env', () => {
     expect(res.status).toBe(200);
     expect(Settings.set).not.toHaveBeenCalled();
     expect(fakeResolver.invalidateCache).not.toHaveBeenCalled();
-    expect(res.body.writes).toEqual([
-      { key: 'PORT', secret: false, status: 'unchanged' },
-    ]);
+    expect(res.body.writes).toEqual([{ key: 'PORT', secret: false, status: 'unchanged' }]);
     expect(res.body.report.exitCode).toBe(0);
   });
 
@@ -508,9 +504,7 @@ describe('POST /api/admin/config/sync-from-env', () => {
     expect(Settings.set).toHaveBeenCalledTimes(1);
     expect(Settings.set).toHaveBeenCalledWith('WEBDAV_PASSWORD', 'dav-pass');
     expect(fakeResolver.invalidateCache).toHaveBeenCalledWith(['WEBDAV_PASSWORD']);
-    expect(res.body.writes).toEqual([
-      { key: 'WEBDAV_PASSWORD', secret: true, status: 'updated' },
-    ]);
+    expect(res.body.writes).toEqual([{ key: 'WEBDAV_PASSWORD', secret: true, status: 'updated' }]);
     expect(res.body.messageCode).toBe(SERVER_MESSAGE_CODES.admin.configSyncDone);
   });
 

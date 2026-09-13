@@ -1,6 +1,7 @@
 /**
  * migrationService tests.
- * Verifies public API: correct endpoints and return shapes per PLAN.md module E.
+ * Verifies public API: correct endpoints and return shapes per the blob-migration
+ * API contract (docs/spec/server/tools/blob-migration.md).
  * @see docs/spec/client/services/migrationService.md
  * @see docs/TESTING_STRATEGY.md
  */
@@ -11,6 +12,8 @@ import {
   startBlobMigration,
   getBlobMigrationStatus,
   cancelBlobMigration,
+  getMigrationStatus,
+  ackLastMigrationJob,
 } from '../migrationService';
 
 jest.mock('../apiClient', () => ({
@@ -111,6 +114,30 @@ describe('migrationService', () => {
         messageCode: 'serverMessages.admin.migrationCancelled',
         jobId: 'mig-1',
       });
+    });
+  });
+
+  describe('getMigrationStatus', () => {
+    it('GETs /migration/status and returns the gate state', async () => {
+      get.mockResolvedValueOnce({
+        data: { active: false, lastJob: { jobId: 'j1', type: 'blobs' } },
+      });
+
+      const result = await getMigrationStatus();
+
+      expect(get).toHaveBeenCalledWith('/migration/status');
+      expect(result).toEqual({ active: false, lastJob: { jobId: 'j1', type: 'blobs' } });
+    });
+  });
+
+  describe('ackLastMigrationJob', () => {
+    it('POSTs /admin/migration/last-job/ack and resolves to undefined', async () => {
+      post.mockResolvedValueOnce({ status: 204 });
+
+      const result = await ackLastMigrationJob();
+
+      expect(post).toHaveBeenCalledWith('/admin/migration/last-job/ack');
+      expect(result).toBeUndefined();
     });
   });
 });

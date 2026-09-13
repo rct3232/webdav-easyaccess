@@ -23,7 +23,7 @@
  * @returns {SettingsRepository}
  */
 module.exports = function createSettingsRepository(executor) {
-  if (!executor || executor.dialect !== 'sqlite' && executor.dialect !== 'postgres') {
+  if (!executor || (executor.dialect !== 'sqlite' && executor.dialect !== 'postgres')) {
     throw new TypeError('createSettingsRepository requires a DbExecutor');
   }
   const impl =

@@ -28,7 +28,12 @@ describe('RecentFilesRepository conformance', () => {
   const uniqueUser = async () => {
     seq += 1;
     const User = require('@server/models/User');
-    const user = await User.create(`conf-rf-${Date.now()}-${seq}`, `${`conf-rf-${Date.now()}-${seq}`}@conf.test`, 'pw', false);
+    const user = await User.create(
+      `conf-rf-${Date.now()}-${seq}`,
+      `${`conf-rf-${Date.now()}-${seq}`}@conf.test`,
+      'pw',
+      false
+    );
     await createUserRootNode({ userId: user.id });
     return user;
   };
@@ -96,13 +101,5 @@ describe('RecentFilesRepository conformance', () => {
     await repo.addRecentFile(user.id, n1.nodeId);
     const list = await repo.removeRecentFile(user.id, n1.nodeId);
     expect(list.some((e) => e.fileNodeId === Number(n1.nodeId))).toBe(false);
-  });
-
-  it('clearRecentFiles empties the list', async () => {
-    const user = await uniqueUser();
-    const n1 = await uniqueNode(`rf-${Date.now()}-6.txt`);
-    await repo.addRecentFile(user.id, n1.nodeId);
-    await repo.clearRecentFiles(user.id);
-    await expect(repo.getUserRecentFiles(user.id)).resolves.toEqual([]);
   });
 });

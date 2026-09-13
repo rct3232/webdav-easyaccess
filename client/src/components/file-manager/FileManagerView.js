@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Box,
@@ -55,6 +55,7 @@ const FileManagerView = ({
   dialogState,
   messaging,
   explorerHandlers,
+  trashState,
 }) => {
   const { t } = useTranslation();
   const { shareToken, isShareLinkMode, shareRootPath, shareRootName, shareRootNodeId } =
@@ -89,6 +90,26 @@ const FileManagerView = ({
     handleLeaveShareConfirm,
   } = overlayState;
   const { controlsState, listingState } = explorerSession;
+  // DEF-16 P9: trash view overlay state (must destructure before any use).
+  const {
+    trashMode,
+    trail: trashTrail,
+    canEmptyTrash,
+    restoreConfirmState,
+    purgeConfirmState,
+    emptyTrashConfirmOpen,
+    openRestoreConfirm,
+    openPurgeConfirm,
+    openEmptyTrashConfirm,
+    closeRestoreConfirm,
+    closePurgeConfirm,
+    closeEmptyTrashConfirm,
+    confirmRestore,
+    confirmPurge,
+    confirmEmptyTrash,
+    handleTrashRestore,
+    handleTrashPurge,
+  } = trashState ?? {};
   const {
     currentPath,
     currentNodeId,
@@ -99,6 +120,9 @@ const FileManagerView = ({
     searchQuery,
     setSearchQuery,
   } = controlsState;
+  const isTrashView = trashMode === true || currentPath === '/__trash__';
+  // FAB가 자신의 실제 표시 여부를 보고(single source of truth) — 검색창 확장 트리거로 사용
+  const [fabPresent, setFabPresent] = useState(false);
   const { displayedFiles, loading, processingMap, handleThumbnailsLoaded, loadMoreRef, hasMore } =
     listingState;
   const { selectionModel, bulkState } = selectionState;
@@ -176,6 +200,7 @@ const FileManagerView = ({
     handleInternalFileDrop,
     handleLeaveSharePathClick,
     handleFolderTreeNodeClick,
+    handleTrashBreadcrumbClick,
     ancestors,
     handleScrollAreaClick,
     handleFileDownloadOp,
@@ -328,8 +353,8 @@ const FileManagerView = ({
         >
           <Breadcrumb
             currentPath={currentPath}
-            ancestors={ancestors}
-            onNodeClick={handleFolderTreeNodeClick}
+            ancestors={isTrashView ? (trashTrail ?? []) : ancestors}
+            onNodeClick={isTrashView ? handleTrashBreadcrumbClick : handleFolderTreeNodeClick}
             {...(isShareLinkMode
               ? { shareRootPath, shareRootName, showFolderTreeToggle: true }
               : { user })}
@@ -415,6 +440,10 @@ const FileManagerView = ({
             hasReadOnlyInSelection={hasReadOnlyInSelection}
             bulkActionsDisabled={bulkMoveCopyInProgress}
             downloadOnly={isShareLinkMode}
+            trashMode={isTrashView}
+            handleBulkRestore={isTrashView ? openRestoreConfirm : undefined}
+            handleBulkPurge={isTrashView ? openPurgeConfirm : undefined}
+            onEmptyTrash={isTrashView && canEmptyTrash ? openEmptyTrashConfirm : undefined}
           />
 
           {user &&
@@ -422,11 +451,7 @@ const FileManagerView = ({
             backendHealth &&
             ((activeFileStorage && backendHealth[activeFileStorage] === 'fail') ||
               (activeMetadataBackend === 'postgresql' && backendHealth.postgresql === 'fail')) && (
-              <Alert
-                severity="warning"
-                sx={{ mx: 2, mb: 1 }}
-                data-testid="backend-health-banner"
-              >
+              <Alert severity="warning" sx={{ mx: 2, mb: 1 }} data-testid="backend-health-banner">
                 {user?.is_admin
                   ? t('admin.health.banner')
                   : activeMetadataBackend === 'postgresql' && backendHealth.postgresql === 'fail'
@@ -572,6 +597,7 @@ const FileManagerView = ({
                   loadMoreRef={loadMoreRef}
                   hasMore={hasMore}
                   shareToken={isShareLinkMode ? shareToken : undefined}
+                  emptyText={isTrashView ? t('fileManager.trashEmpty') : undefined}
                 />
               ) : viewMode === VIEW_MODES.GRID ? (
                 <FileGrid
@@ -595,6 +621,7 @@ const FileManagerView = ({
                   loadMoreRef={loadMoreRef}
                   hasMore={hasMore}
                   shareToken={isShareLinkMode ? shareToken : undefined}
+                  emptyText={isTrashView ? t('fileManager.trashEmpty') : undefined}
                 />
               ) : (
                 <FileDetail
@@ -615,6 +642,7 @@ const FileManagerView = ({
                   onFileCheck={handleFileCheck}
                   loading={loading}
                   shareToken={isShareLinkMode ? shareToken : undefined}
+                  emptyText={isTrashView ? t('fileManager.trashEmpty') : undefined}
                 />
               )}
             </Box>
@@ -690,12 +718,16 @@ const FileManagerView = ({
         file={selectedFile}
         user={user}
         hasWritePermission={isShareLinkMode ? false : hasWritePermission}
-        onDownload={(file) => {
-          setContextMenu(null);
-          handleFileDownloadOp(file);
-        }}
+        onDownload={
+          isTrashView
+            ? undefined
+            : (file) => {
+                setContextMenu(null);
+                handleFileDownloadOp(file);
+              }
+        }
         onRename={
-          isShareLinkMode
+          isShareLinkMode || isTrashView
             ? undefined
             : (file) => {
                 setContextMenu(null);
@@ -703,7 +735,7 @@ const FileManagerView = ({
               }
         }
         onMove={
-          isShareLinkMode
+          isShareLinkMode || isTrashView
             ? undefined
             : (file) => {
                 setContextMenu(null);
@@ -714,7 +746,7 @@ const FileManagerView = ({
               }
         }
         onCopy={
-          isShareLinkMode
+          isShareLinkMode || isTrashView
             ? undefined
             : (file) => {
                 setContextMenu(null);
@@ -725,7 +757,7 @@ const FileManagerView = ({
               }
         }
         onShare={
-          isShareLinkMode
+          isShareLinkMode || isTrashView
             ? undefined
             : (file) => {
                 setContextMenu(null);
@@ -741,12 +773,28 @@ const FileManagerView = ({
               }
         }
         onDelete={
-          isShareLinkMode
+          isShareLinkMode || isTrashView
             ? undefined
             : (file) => {
                 setContextMenu(null);
                 openBulkDeleteDialog([file.nodeId]);
               }
+        }
+        onRestore={
+          isTrashView
+            ? (file) => {
+                setContextMenu(null);
+                handleTrashRestore(file);
+              }
+            : undefined
+        }
+        onPurge={
+          isTrashView
+            ? (file) => {
+                setContextMenu(null);
+                openPurgeConfirm([file.nodeId]);
+              }
+            : undefined
         }
       />
 
@@ -845,7 +893,7 @@ const FileManagerView = ({
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
           isMobile={isMobile}
-          fabVisible={!selectionMode}
+          fabVisible={fabPresent}
         />
       )}
 
@@ -858,6 +906,7 @@ const FileManagerView = ({
               onAddToSharedClick: openAddToSharedModal,
             }}
             isMobile={isMobile}
+            onVisibilityChange={setFabPresent}
           />
         ) : (
           <FAB
@@ -865,6 +914,7 @@ const FileManagerView = ({
             onCreateFolder={openCreateFolderDialog}
             hasWritePermission={hasWritePermission}
             isMobile={isMobile}
+            onVisibilityChange={setFabPresent}
           />
         ))}
 
@@ -875,9 +925,9 @@ const FileManagerView = ({
           file={actionSheetFile}
           hasWritePermission={isShareLinkMode ? false : hasWritePermission}
           user={user}
-          onDownload={handleActionSheetDownload}
+          onDownload={isTrashView ? undefined : handleActionSheetDownload}
           onRename={
-            isShareLinkMode
+            isShareLinkMode || isTrashView
               ? undefined
               : () => {
                   if (actionSheetFile) {
@@ -886,7 +936,7 @@ const FileManagerView = ({
                 }
           }
           onMove={
-            isShareLinkMode
+            isShareLinkMode || isTrashView
               ? undefined
               : () => {
                   if (actionSheetFile) {
@@ -898,7 +948,7 @@ const FileManagerView = ({
                 }
           }
           onCopy={
-            isShareLinkMode
+            isShareLinkMode || isTrashView
               ? undefined
               : () => {
                   if (actionSheetFile) {
@@ -910,7 +960,7 @@ const FileManagerView = ({
                 }
           }
           onDelete={
-            isShareLinkMode
+            isShareLinkMode || isTrashView
               ? undefined
               : () => {
                   if (actionSheetFile) {
@@ -919,7 +969,7 @@ const FileManagerView = ({
                 }
           }
           onShare={
-            isShareLinkMode
+            isShareLinkMode || isTrashView
               ? undefined
               : () => {
                   if (actionSheetFile) {
@@ -927,7 +977,9 @@ const FileManagerView = ({
                   }
                 }
           }
-          onPreview={isShareLinkMode ? undefined : handleActionSheetPreview}
+          onPreview={
+            isTrashView ? undefined : isShareLinkMode ? undefined : handleActionSheetPreview
+          }
           onProperties={
             isShareLinkMode
               ? undefined
@@ -936,6 +988,24 @@ const FileManagerView = ({
                     openPropertiesDialog(actionSheetFile);
                   }
                 }
+          }
+          onRestore={
+            isTrashView
+              ? () => {
+                  closeActionSheet();
+                  handleTrashRestore(actionSheetFile);
+                }
+              : undefined
+          }
+          onPurge={
+            isTrashView
+              ? () => {
+                  closeActionSheet();
+                  if (actionSheetFile) {
+                    openPurgeConfirm([actionSheetFile.nodeId]);
+                  }
+                }
+              : undefined
           }
         />
       )}
@@ -1033,8 +1103,47 @@ const FileManagerView = ({
           open={propertiesDialogOpen}
           onClose={closePropertiesDialog}
           file={propertiesFile}
+          activeFileStorage={activeFileStorage}
+          onTrashRestore={isTrashView ? handleTrashRestore : undefined}
+          onTrashPurge={isTrashView ? handleTrashPurge : undefined}
         />
       )}
+
+      {/* DEF-16 P9: trash confirm dialogs (restore / permanent delete / empty). */}
+      <ConfirmDialog
+        open={restoreConfirmState != null}
+        onClose={closeRestoreConfirm}
+        onConfirm={confirmRestore}
+        title={t('actions.restore')}
+        message={t('dialogs.restoreConfirm', {
+          count: restoreConfirmState?.nodeIds?.length ?? 0,
+        })}
+        confirmText={t('actions.restore')}
+        cancelText={t('common.cancel')}
+        confirmColor="error"
+      />
+      <ConfirmDialog
+        open={purgeConfirmState != null}
+        onClose={closePurgeConfirm}
+        onConfirm={confirmPurge}
+        title={t('actions.purge')}
+        message={t('dialogs.purgeBulkMessage', {
+          count: purgeConfirmState?.nodeIds?.length ?? 0,
+        })}
+        confirmText={t('actions.purge')}
+        cancelText={t('common.cancel')}
+        confirmColor="error"
+      />
+      <ConfirmDialog
+        open={emptyTrashConfirmOpen}
+        onClose={closeEmptyTrashConfirm}
+        onConfirm={confirmEmptyTrash}
+        title={t('actions.emptyTrash')}
+        message={t('dialogs.emptyTrashConfirm')}
+        confirmText={t('actions.emptyTrash')}
+        cancelText={t('common.cancel')}
+        confirmColor="error"
+      />
     </Box>
   );
 };

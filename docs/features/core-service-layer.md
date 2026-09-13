@@ -14,20 +14,21 @@ uploadService.js          ← Orchestration (TX1 → S3 PUT → TX2 flow)
   │       └── _ancestryHelper.js ← Closure table maintenance
   │               └── fileNodesStore.js ← facade → FileNodeRepository → per-dialect impl (sqlite | postgres) via storage.getExecutor() → DbExecutor (infrastructure/db)
   └── blobStorageService.js ← Blob lifecycle (prepareUpload → completeUpload → download)
-          └── S3BlobStore / NoOpBlobStore (Phase 1 adapters)
+          └── S3BlobStore / WebdavBlobStore (adapters; the Phase-1 NoOpBlobStore was retired)
 ```
 
 ---
 
 ## Responsibility boundaries
 
-| Service              | Owns                                                                                | Does NOT own                                                                          |
-| -------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `uploadService`      | TX boundaries, 4-step flow coordination, S3 PUT between transactions                | No direct DB queries; no raw blob operations                                          |
-| `fileNodeService`    | Tree CRUD, cycle detection, path resolution, ancestor chain dispatching             | No closure table algorithms (delegates to `_ancestryHelper`)                          |
-| `_ancestryHelper`    | Closure table algorithms: build on insert, rebuild on move (BFS), cleanup on delete | No DB queries; calls only `fileNodesStore` methods                                    |
-| `blobStorageService` | Object map lifecycle (`pending→active→orphaned`), filecache metadata writes         | No direct S3 operations except `downloadBlob` pass-through and `overwriteBlob` upload |
-| `fileNodesStore`     | Facade over `FileNodeRepository`; SQL/dialect code lives in the repository impls, executed through the `DbExecutor` | No transaction wrapping; no business logic beyond delegation to `FileNodeRepository` |
+| Service              | Owns                                                                                                                                                                                                 | Does NOT own                                                                                                       |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `uploadService`      | TX boundaries, 4-step flow coordination, S3 PUT between transactions, pre-state capture + best-effort overwrite rollback (direct `fileNodesStore`/`blobStore` access — `uploadService.md` §2.3/§2.4) | No dialect SQL (store access via `fileNodesStore`/`blobStore`); no tree/closure algorithms (via `fileNodeService`) |
+| `fileNodeService`    | Tree CRUD, cycle detection, path resolution, ancestor chain dispatching, trash marking dispatch (`markSubtreeDeleted`)                                                                               | No closure table algorithms (delegates to `_ancestryHelper`)                                                       |
+| `_ancestryHelper`    | Closure table algorithms: build on insert, rebuild on move (BFS), cleanup on delete                                                                                                                  | No DB queries; calls only `fileNodesStore` methods                                                                 |
+| `blobStorageService` | Object map lifecycle (`pending→active→orphaned`), filecache metadata writes                                                                                                                          | No direct S3 operations except `downloadBlob` pass-through and `overwriteBlob` upload                              |
+| `fileNodesStore`     | Facade over `FileNodeRepository`; SQL/dialect code lives in the repository impls, executed through the `DbExecutor`                                                                                  | No transaction wrapping; no business logic beyond delegation to `FileNodeRepository`                               |
+| `webdavRemoteOps`    | WebDAV-mode remote subtree primitives shared by services: bottom-up best-effort delete (`deleteRemoteSubtreeBestEffort`) and the trash MOVE target builder (`/.wea-trash/<nodeId>`)                  | No DB access; no S3-mode operations (callers stay no-op in S3 mode)                                                |
 
 These boundaries are about **who owns data mutations and orchestration concerns**; they define the service contract surface that tests verify against.
 
@@ -85,11 +86,15 @@ sequenceDiagram
 
     C->>US: overwrite({ nodeId, file })
 
+    Note over US,FStore: Pre-state capture
+    US->>FStore: getActiveObject(nodeId)
+    FStore-->>US: preState (active row id, s3Key) + current filecache values
+
     Note over US,S3: TX1
     US->>BS: prepareUpload(nodeId)
     BS->>FStore: orphan old active row
     BS->>FStore: insert new pending row
-    FStore-->>US: s3Key
+    FStore-->>US: newS3Key
     US->>FStore: updateSyncStatus('pending_upload')
 
     Note over US,S3: S3 PUT (outside transaction)
@@ -104,6 +109,11 @@ sequenceDiagram
 
     US-->>C: { nodeId, s3Key, size, mimeType }
 ```
+
+If the S3 PUT or TX2 fails, a best-effort rollback (one TX) reactivates the pre-state active row
+(`reactivateObjectMapRow(preState.id)`), restores `sync_status='active'`, deletes the pending
+v\_{k+1} row, deletes the new blob (`deleteBlob(newS3Key)`) and re-asserts the captured filecache
+values. The last-good blob B_k is never deleted; the original error is re-thrown.
 
 ### Download flow
 
@@ -154,17 +164,20 @@ sequenceDiagram
 
 ## Failure recovery
 
-| Failure Point | DB State                                                                                          | S3 State          | Recovery Path                                                                                          |
-| ------------- | ------------------------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------ |
-| TX1 fails     | ROLLBACK, nothing persisted                                                                       | Nothing           | Idempotent retry                                                                                       |
-| S3 PUT fails  | New-file upload: node rolled back (deleteNode), nothing persisted                                 | Nothing or partial object | None needed — no visible residue; untracked partial object is a Tier 2 GC target                |
-| TX2 fails     | New-file upload: node rolled back (deleteNode), nothing persisted                                 | Blob exists in S3 | Blob is untracked; GC Tier 2: `listOrphanedKeys` finds S3 blob with no DB mapping → deletes it          |
-| S3 PUT / TX2 fails (overwrite of an existing file) | Node remains `sync_status='pending_upload'` with a pending `object_map` row       | Nothing or new blob | No automatic recovery implemented (manual/GC gap — see `docs/IMPROVEMENT_PLAN.md`)                  |
+| Failure Point                                      | DB State                                                                                               | S3 State                                                  | Recovery Path                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TX1 fails                                          | ROLLBACK, nothing persisted                                                                            | Nothing                                                   | Idempotent retry                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| S3 PUT fails                                       | New-file upload: node rolled back (deleteNode), nothing persisted                                      | Nothing or partial object                                 | None needed — no visible residue; untracked partial object is a Tier 2 GC target                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| TX2 fails                                          | New-file upload: node rolled back (deleteNode), nothing persisted                                      | Blob exists in S3                                         | Blob is untracked; GC Tier 2: `listOrphanedKeys` finds S3 blob with no DB mapping → deletes it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| S3 PUT / TX2 fails (overwrite of an existing file) | Rolled back to pre-state: node `active`, previous active row reactivated, pending v\_{k+1} row deleted | Pending blob deleted best-effort; last-good blob B_k kept | File remains downloadable as the previous version; only a rollback's own failure leaves `sync_status='pending_upload'` — in that stuck state GC guards the last-good orphaned row (never deleted while the node has no active row) and cleans the pending row + blob after `GC_PENDING_STALE_DAYS`; admin repair actions `complete` / `restore-previous` / `delete` / `auto` resolve it on demand and a report-only startup scan lists it (DEF-12/13, `docs/IMPROVEMENT_PLAN.md`; repair contract: `docs/spec/server/services/uploadService.md` §2.5.1; GC contract: `docs/spec/server/services/gcService.md`) |
 
 > Note: `uploadService.uploadFile` (new file) rolls back the created node on any failure after TX1 so
-> a failed upload never leaves a phantom 0-byte file in listings. `overwriteFile` (existing file) is
-> protected at TX1 only — a post-TX1 failure leaves the pending state; automatic recovery for that
-> path is not implemented (tracked in `docs/IMPROVEMENT_PLAN.md`).
+> a failed upload never leaves a phantom 0-byte file in listings. `overwriteFile` (existing file)
+> rolls back to the captured pre-state on S3 PUT or TX2 failure — the previous active `object_map`
+> row is reactivated, the node returns to `active`, and the last-good blob is kept, so the file stays
+> downloadable as the previous version. Only if the rollback itself fails does the `pending_upload`
+> stuck state remain — repairable via the fail-safe scan/repair actions and cleaned by GC
+> (DEF-12/13, `docs/IMPROVEMENT_PLAN.md`).
 
 ---
 
@@ -192,4 +205,28 @@ Use [TESTING_STRATEGY.md](../TESTING_STRATEGY.md) for contract and mocking guida
 
 - **Phase 2 delivered S3 mode only.** WebDAV blob storage support was deferred from Phase 2 to Phase 4 (not Phase 3), where `blobStorageService` was extended with a `WebdavBlobStore` adapter (Phase 4 Task 4.0). Blob mode is selected via `WEA_FILE_STORAGE=s3|webdav`.
 - **Phase 4 added a composition root** (`server/service/composition.js`): it builds `fileNodeService`, `blobStorageService`, `uploadService`, `aclService`, and `fileService` once at startup. The blob store (S3BlobStore vs WebdavBlobStore) and file storage mode (`fileStorageMode` from `WEA_FILE_STORAGE`, default `'s3'`) are resolved there and injected into the services, so no service reads backend-specific config directly.
-- **Version history** infrastructure is in place (`version_number` column in `object_map`) but single-version mode is enforced (always `version_number=1`). Multi-version support is a future expansion.
+- **Version history** (DEF-11): `object_map` carries managed per-node history — `upsertObjectMap`
+  demotes the previous active row to `history` and `blobStorageService.prepareUpload` evicts the
+  oldest history rows beyond `GC_VERSION_MAX_PER_NODE` (default 10, 0 = unbounded) in the same TX.
+  `versionsService` (`server/domains/files/services/versionsService.js`) exposes the user-facing
+  browse/restore/download surface (S3 storage mode only):
+
+| Service           | Owns                                                                                                                                                                                                                                                                                                  | Does NOT own                                                                                                                                        |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `versionsService` | Version browse (`getVersionsByNode` + `headBlob` size probes, storage internals stripped), restore (one TX: history row reactivated + current active demoted to history + node → active + filecache re-assert from HEAD + thumbnail cache eviction; NO new row), old-version attachment-only download | No direct S3 calls (blob access via `blobStore.headBlob`/`downloadBlob`); no tree/closure algorithms; permission decisions delegate to `aclService` |
+
+Restore semantics (A안 reactivate-in-place, zero I/O): `reactivateObjectMapRow` (guard widened to
+`status IN ('history','orphaned')`) + `demoteActiveToHistory(current.s3_key)` — the demoted
+current version becomes `history`, never `orphaned`. Version history does not survive s3↔webdav
+cutover (active row flips; history rows are dropped) — accepted (DEF-18 class).
+
+- **Trash channel** (DEF-16 P3): `trashService` (`server/service/trashService.js`) is a
+  composition-root service owning the OS-recycle-bin semantics on top of the P2 soft-delete:
+
+| Service        | Owns                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Does NOT own                                                                                                                                                                                                |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `trashService` | Trash restore (auto-restore of trashed ancestors + untrash of the target subtree in ONE TX; `resolveRestoreName` live-sibling collision suffixing `name (2).ext`; WebDAV moves each row's own `/.wea-trash/<id>` entry back before the TX), purge of one trashed item + empty trash (shared purge core `purgeNode`: WebDAV trash-path/bottom-up remote delete, S3 per-row blob deletes incl. version rows, then `fileNodeService.deleteNode` + FK cascade), name resolution helper | No permission gates of its own beyond the injected `aclService` checks the routes drive; no scheduler (GC Tier 3 calls `purgeNode` from `gcService`); no listing (the trash routes read the store directly) |
+
+Consumers: the `/api/files/trash/*` routes, GC Tier 3 (`TRASH_RETENTION_DAYS`), and the admin
+permanent-delete maintenance route (E2E cleanup channel — its S3-mode blob deletion becomes eager
+via the shared core instead of GC-deferred).

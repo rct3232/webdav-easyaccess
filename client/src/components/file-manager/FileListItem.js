@@ -137,9 +137,13 @@ const FileListItem = React.memo(
             <Typography variant="caption" color="text.secondary">
               {file.type === 'directory' ? t('actions.folder') : formatFileSize(file.size)}
             </Typography>
-            <Typography variant="caption" color="text.secondary">
-              {formatDate(file.lastmod)}
-            </Typography>
+            {/* Trash rows (DEF-16) carry no lastmod — the '-' placeholder would
+                read like a deleted-date subtitle, so it is suppressed. */}
+            {file.lastmod && (
+              <Typography variant="caption" color="text.secondary">
+                {formatDate(file.lastmod)}
+              </Typography>
+            )}
           </Box>
         </Box>
         {showMoreButton && (

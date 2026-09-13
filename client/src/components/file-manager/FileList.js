@@ -29,6 +29,7 @@ const FileList = ({
   loadMoreRef,
   hasMore,
   shareToken,
+  emptyText,
 }) => {
   const { t } = useTranslation();
   const { isMobile } = useResponsive();
@@ -58,7 +59,7 @@ const FileList = ({
   if (files.length === 0) {
     return (
       <Box sx={{ textAlign: 'center', py: 4 }}>
-        <Typography color="text.secondary">{t('fileManager.noFiles')}</Typography>
+        <Typography color="text.secondary">{emptyText ?? t('fileManager.noFiles')}</Typography>
       </Box>
     );
   }

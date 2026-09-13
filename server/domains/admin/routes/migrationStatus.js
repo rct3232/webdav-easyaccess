@@ -40,14 +40,34 @@ const router = express.Router();
 // client app-guard can poll it before login. Auth-optional: unauthenticated
 // and non-admin callers get the minimal { active } shape only; a valid admin
 // token gets the full gate status (type/jobId/startedAt while active) that the
-// /migration page needs to restore a running job after a refresh.
+// /migration page needs to restore a running job after a refresh. When the
+// gate is inactive the admin view additionally carries the one-shot completion
+// notice (lastJob) so a job that finished before the page mounted stays
+// discoverable (migrationGate.md §2.8/§2.9).
 router.get(
   '/migration/status',
   asyncHandler(async (req, res) => {
     const status = getMigrationGate().getStatus();
-    if (!status.active) return res.json({ active: false });
+    if (!status.active) {
+      if (await isAdminRequest(req)) {
+        return res.json({ active: false, lastJob: getMigrationGate().getNotice() });
+      }
+      return res.json({ active: false });
+    }
     if (await isAdminRequest(req)) return res.json(status);
     return res.json({ active: true });
+  })
+);
+
+// Consume the completion notice after the /migration page has delivered the
+// terminal view for it (204, idempotent). Admin-only.
+router.post(
+  '/admin/migration/last-job/ack',
+  authenticateToken,
+  isAdmin,
+  asyncHandler(async (req, res) => {
+    getMigrationGate().ackNotice();
+    res.status(204).end();
   })
 );
 

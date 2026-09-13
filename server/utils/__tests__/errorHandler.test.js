@@ -13,7 +13,6 @@ const {
   createError,
   mapDatabaseError,
   validationError,
-  unauthorizedError,
   forbiddenError,
   notFoundError,
   conflictError,
@@ -291,21 +290,6 @@ describe('errorHandler', () => {
       const err = validationError(SERVER_ERROR_CODES.folders.pathRequired);
       expect(err.status).toBe(400);
       expect(err.errorCode).toBe(SERVER_ERROR_CODES.folders.pathRequired);
-    });
-  });
-
-  describe('unauthorizedError', () => {
-    it('returns 401 with default errorCode', () => {
-      const err = unauthorizedError();
-      expect(err.status).toBe(401);
-      expect(err.errorCode).toBe(SERVER_ERROR_CODES.utilsAuth.invalidOrExpiredToken);
-    });
-
-    it('accepts custom errorCode and params', () => {
-      const err = unauthorizedError('custom.code', { reason: 'expired' });
-      expect(err.status).toBe(401);
-      expect(err.errorCode).toBe('custom.code');
-      expect(err.params).toEqual({ reason: 'expired' });
     });
   });
 

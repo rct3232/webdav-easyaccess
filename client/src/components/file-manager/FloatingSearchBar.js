@@ -35,6 +35,7 @@ const FloatingSearchBar = ({
 
   return (
     <Box
+      data-testid="floating-search-bar"
       sx={{
         position: 'fixed',
         bottom: offset,

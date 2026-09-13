@@ -128,14 +128,3 @@ export function put(url, data = {}, config = {}) {
 export function del(url, config = {}) {
   return requestWithAuth({ ...config, method: 'DELETE', url });
 }
-
-/**
- * Make a request with custom config.
- */
-export function request(config) {
-  return requestWithAuth(config);
-}
-
-// Default export for advanced usage (get/post/put/del/request)
-const apiClient = { get, post, put, del, request };
-export default apiClient;

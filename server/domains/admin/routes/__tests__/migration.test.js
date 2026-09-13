@@ -48,7 +48,12 @@ const VALID_PAYLOAD = {
 // Backend-agnostic metadata target: the active backend depends on the jest leg
 // (sqlite under test:ci, postgresql under the real-PG test:ci:pg leg signalled
 // by the dedicated WEA_TEST_PG_* namespace), so the target is the OTHER backend.
-const TEST_PG_KEYS = ['WEA_TEST_PG_HOST', 'WEA_TEST_PG_DATABASE', 'WEA_TEST_PG_USER', 'WEA_TEST_PG_PASSWORD'];
+const TEST_PG_KEYS = [
+  'WEA_TEST_PG_HOST',
+  'WEA_TEST_PG_DATABASE',
+  'WEA_TEST_PG_USER',
+  'WEA_TEST_PG_PASSWORD',
+];
 const RUN_UNDER_PG_LEG = TEST_PG_KEYS.every((key) => !!process.env[key]);
 const ACTIVE_METADATA_BACKEND = RUN_UNDER_PG_LEG ? 'postgresql' : 'sqlite';
 const OTHER_METADATA_BACKEND = RUN_UNDER_PG_LEG ? 'sqlite' : 'postgresql';
@@ -517,13 +522,83 @@ describe('GET /api/migration/status (auth-optional)', () => {
     }
   });
 
-  it('returns { active: false } for an admin token when the gate is inactive', async () => {
+  it('returns { active: false, lastJob: null } for an admin token when the gate is inactive with no notice', async () => {
     const token = await createAdminToken();
     const res = await request(app)
       .get('/api/migration/status')
       .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ active: false });
+    expect(res.body).toEqual({ active: false, lastJob: null });
+  });
+
+  it('exposes the unacknowledged completion notice as lastJob to admins only', async () => {
+    const adminToken = await createAdminToken();
+    const { token: nonAdminToken } = await createAuthenticatedTestUser({
+      username: `migration-notice-nonadmin-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      isAdmin: false,
+    });
+    getMigrationGate().set({ type: 'blobs', jobId: 'notice-job' });
+    getMigrationGate().clear({ jobId: 'notice-job', type: 'blobs' });
+    try {
+      const adminRes = await request(app)
+        .get('/api/migration/status')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(adminRes.status).toBe(200);
+      expect(adminRes.body).toEqual({
+        active: false,
+        lastJob: { jobId: 'notice-job', type: 'blobs' },
+      });
+
+      const anonRes = await request(app).get('/api/migration/status');
+      expect(anonRes.body).toEqual({ active: false });
+
+      const nonAdminRes = await request(app)
+        .get('/api/migration/status')
+        .set('Authorization', `Bearer ${nonAdminToken}`);
+      expect(nonAdminRes.body).toEqual({ active: false });
+    } finally {
+      getMigrationGate().ackNotice();
+    }
+  });
+});
+
+describe('POST /api/admin/migration/last-job/ack', () => {
+  it('consumes the notice: 204, then the admin status shows lastJob null', async () => {
+    const token = await createAdminToken();
+    getMigrationGate().set({ type: 'metadata', jobId: 'ack-job' });
+    getMigrationGate().clear({ jobId: 'ack-job', type: 'metadata' });
+    try {
+      const ackRes = await request(app)
+        .post('/api/admin/migration/last-job/ack')
+        .set('Authorization', `Bearer ${token}`);
+      expect(ackRes.status).toBe(204);
+
+      const statusRes = await request(app)
+        .get('/api/migration/status')
+        .set('Authorization', `Bearer ${token}`);
+      expect(statusRes.body).toEqual({ active: false, lastJob: null });
+
+      // Idempotent: a second ack is still 204.
+      const again = await request(app)
+        .post('/api/admin/migration/last-job/ack')
+        .set('Authorization', `Bearer ${token}`);
+      expect(again.status).toBe(204);
+    } finally {
+      getMigrationGate().ackNotice();
+    }
+  });
+
+  it('rejects non-admin callers (403) and anonymous callers (401)', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `migration-ack-nonadmin-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      isAdmin: false,
+    });
+    const nonAdminRes = await request(app)
+      .post('/api/admin/migration/last-job/ack')
+      .set('Authorization', `Bearer ${token}`);
+    expect(nonAdminRes.status).toBe(403);
+    const anonRes = await request(app).post('/api/admin/migration/last-job/ack');
+    expect(anonRes.status).toBe(401);
   });
 });
 
@@ -868,6 +943,59 @@ describe('migration gate lifecycle', () => {
     await waitForJobStatus(token, postRes.body.jobId, 'failed');
     expect(getMigrationGate().isActive()).toBe(false);
   });
+
+  // E2E-MIG-008 race fix: the terminal clear must leave a completion notice so
+  // a /migration page that mounts AFTER the job finished still discovers the
+  // jobId (docs/features/migration-mode.md D9, migrationGate.md §2.8/§2.9).
+  it('blobs: a completed worker records the completion notice (lastJob) for late mounts', async () => {
+    fakeMigrationService.run.mockImplementationOnce(async () => ({
+      copied: 0,
+      skipped: 2,
+      failed: 0,
+      errors: [],
+    }));
+    const token = await createAdminToken();
+
+    const postRes = await request(app)
+      .post('/api/admin/migration/blobs')
+      .set('Authorization', `Bearer ${token}`)
+      .send(VALID_PAYLOAD);
+    expect(postRes.status).toBe(202);
+    await waitForJobStatus(token, postRes.body.jobId, 'completed');
+
+    const statusRes = await request(app)
+      .get('/api/migration/status')
+      .set('Authorization', `Bearer ${token}`);
+    expect(statusRes.body).toEqual({
+      active: false,
+      lastJob: { jobId: postRes.body.jobId, type: 'blobs' },
+    });
+
+    // The recovered job is fetchable by jobId (the store keeps terminal jobs).
+    const jobRes = await request(app)
+      .get(`/api/admin/migration/jobs/${postRes.body.jobId}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(jobRes.status).toBe(200);
+    expect(jobRes.body.status).toBe('completed');
+  });
+
+  it('blobs: a failed worker records the completion notice too (terminal modal covers failed)', async () => {
+    fakeMigrationService.run.mockImplementationOnce(async () => {
+      throw new Error('destination unavailable');
+    });
+    const token = await createAdminToken();
+
+    const postRes = await request(app)
+      .post('/api/admin/migration/blobs')
+      .set('Authorization', `Bearer ${token}`)
+      .send(VALID_PAYLOAD);
+    await waitForJobStatus(token, postRes.body.jobId, 'failed');
+
+    expect(getMigrationGate().getNotice()).toEqual({
+      jobId: postRes.body.jobId,
+      type: 'blobs',
+    });
+  });
 });
 
 describe('cancel for metadata jobs', () => {
@@ -960,7 +1088,6 @@ describe('gating middleware (503 migrationInProgress)', () => {
     ['get', '/api/settings/public'],
     ['get', '/api/files/anything'],
     ['get', '/api/folders/1'],
-    ['get', '/api/webdav/anything'],
   ];
 
   it('gate inactive -> all routes proceed (no 503)', async () => {

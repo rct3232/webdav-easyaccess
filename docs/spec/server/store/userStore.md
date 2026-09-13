@@ -18,18 +18,18 @@
 
 ### 2.2 Main Methods
 
-| Method         | Signature                                                         | Description                                     |
-| -------------- | ----------------------------------------------------------------- | ----------------------------------------------- |
-| findByUsername | (username) => Promise\<object \| undefined\>                      | Lookup via `WHERE username = ?` on the users table            |
+| Method         | Signature                                                         | Description                                                                    |
+| -------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| findByUsername | (username) => Promise\<object \| undefined\>                      | Lookup via `WHERE username = ?` on the users table                             |
 | findByEmail    | (email) => Promise\<object \| undefined\>                         | Normalize email, then `WHERE email_hash = ?` (SHA-256 of the normalized email) |
-| findById       | (id) => Promise\<object \| undefined\>                            | Lookup via `WHERE id = ?` on the users table                  |
-| findAll        | () => Promise\<Array\>                                            | All users, sorted by created_at desc            |
-| findByStatus   | (status) => Promise\<Array\>                                      | Filter by status                                |
-| createUser     | ({ username, email, passwordHash, isAdmin }) => Promise\<object\> | Create user; throws on duplicate username/email |
-| updateStatus   | (userId, status) => Promise\<{ success }\>                        | Update user status                              |
-| updateEmail    | (userId, newEmail) => Promise\<{ success }\>                      | Update canonical email + `email_hash` in one transaction |
-| updatePassword | (userId, passwordHash) => Promise\<{ success }\>                  | Update password, bump token_version             |
-| deleteUser     | (userId) => Promise\<{ success }\>                                | Remove the users row                            |
+| findById       | (id) => Promise\<object \| undefined\>                            | Lookup via `WHERE id = ?` on the users table                                   |
+| findAll        | () => Promise\<Array\>                                            | All users, sorted by created_at desc                                           |
+| findByStatus   | (status) => Promise\<Array\>                                      | Filter by status                                                               |
+| createUser     | ({ username, email, passwordHash, isAdmin }) => Promise\<object\> | Create user; throws on duplicate username/email                                |
+| updateStatus   | (userId, status) => Promise\<{ success }\>                        | Update user status                                                             |
+| updateEmail    | (userId, newEmail) => Promise\<{ success }\>                      | Update canonical email + `email_hash` in one transaction                       |
+| updatePassword | (userId, passwordHash) => Promise\<{ success }\>                  | Update password, bump token_version                                            |
+| deleteUser     | (userId) => Promise\<{ success }\>                                | Remove the users row                                                           |
 
 ### 2.3 Storage Paths
 

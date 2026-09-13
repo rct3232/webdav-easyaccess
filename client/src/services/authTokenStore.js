@@ -78,39 +78,75 @@ export function applyNewTokenFromHeaders(headers) {
   return newToken;
 }
 
+// Single-flight guard: refresh rotates the refresh token (single-use), so two
+// concurrent 401 recoveries must not both spend the same id — the loser would
+// 401 and force a logout. Concurrent callers share the one in-flight attempt.
+let refreshInFlight = null;
+
 /**
- * Refresh access token using the current refresh token.
+ * Refresh access token using the current refresh token. The server ROTATES:
+ * the response carries a fresh refresh token which replaces the stored one.
  * On failure: removes tokens and throws.
  */
 export async function refreshAccessToken() {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) {
-    removeTokens();
-    throw new Error('No refresh token available');
-  }
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    const refreshToken = getRefreshToken();
+    if (!refreshToken) {
+      removeTokens();
+      throw new Error('No refresh token available');
+    }
 
+    try {
+      const refreshUrl = `${getOrigin()}/api/auth/refresh`;
+      const res = await fetch(refreshUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+
+      const json = await res.json();
+      const newToken = json?.token;
+      if (!newToken) {
+        removeTokens();
+        throw new Error('No token in refresh response');
+      }
+
+      if (json.refreshToken) {
+        setRefreshToken(json.refreshToken);
+      }
+      setAccessToken(newToken);
+      if (typeof window !== 'undefined' && window.dispatchEvent) {
+        window.dispatchEvent(new CustomEvent('token-refreshed', { detail: { token: newToken } }));
+      }
+      return newToken;
+    } catch (err) {
+      removeTokens();
+      throw err;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+}
+
+/**
+ * Best-effort server-side revocation of the current refresh token (DEF-22
+ * logout). Fire-and-forget by contract: failures (offline, expired token)
+ * must not block or fail the local session clear.
+ */
+export function revokeRefreshToken() {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken || typeof fetch !== 'function') return;
   try {
-    const refreshUrl = `${getOrigin()}/api/auth/refresh`;
-    const res = await fetch(refreshUrl, {
+    fetch(`${getOrigin()}/api/auth/logout`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken }),
+    }).catch(() => {
+      /* best-effort — local session is cleared regardless */
     });
-
-    const json = await res.json();
-    const newToken = json?.token;
-    if (!newToken) {
-      removeTokens();
-      throw new Error('No token in refresh response');
-    }
-
-    setAccessToken(newToken);
-    if (typeof window !== 'undefined' && window.dispatchEvent) {
-      window.dispatchEvent(new CustomEvent('token-refreshed', { detail: { token: newToken } }));
-    }
-    return newToken;
-  } catch (err) {
-    removeTokens();
-    throw err;
+  } catch {
+    /* defensive (jsdom transport gaps) */
   }
 }

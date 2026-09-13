@@ -96,6 +96,57 @@ async function createUserWithHomeNode(prefix) {
   return { ...auth, homeNodeId: home.nodeId };
 }
 
+/**
+ * Canonical mutation-channel helper: POST a batch endpoint, let the real bulk
+ * worker run (WEA_SKIP_BULK_WORKER is lifted for the duration) and poll
+ * GET /api/files/bulk-operation/:jobId until the job reaches a terminal state.
+ * Returns the terminal job snapshot.
+ */
+async function runBatchJob(token, path, body) {
+  const savedSkip = process.env.WEA_SKIP_BULK_WORKER;
+  delete process.env.WEA_SKIP_BULK_WORKER;
+  try {
+    const res = await request(app).post(path).set('Authorization', `Bearer ${token}`).send(body);
+    expect(res.status).toBe(202);
+    expect(res.body.jobId).toBeDefined();
+    const { jobId } = res.body;
+
+    const startedAt = Date.now();
+    for (;;) {
+      const job = await request(app)
+        .get(`/api/files/bulk-operation/${jobId}`)
+        .set('Authorization', `Bearer ${token}`);
+      expect(job.status).toBe(200);
+      if (['completed', 'failed', 'cancelled'].includes(job.body.status)) {
+        return { jobId, ...job.body };
+      }
+      if (Date.now() - startedAt > 15000) {
+        throw new Error(
+          `bulk job ${jobId} did not reach a terminal state: ${JSON.stringify(job.body)}`
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  } finally {
+    if (savedSkip !== undefined) {
+      process.env.WEA_SKIP_BULK_WORKER = savedSkip;
+    } else {
+      delete process.env.WEA_SKIP_BULK_WORKER;
+    }
+  }
+}
+
+/** Assert a completed batch job with zero failed/skipped items. */
+function expectJobSucceeded(job) {
+  expect(job.status).toBe('completed');
+  expect(job.results.filter((r) => r.status !== 'succeeded')).toEqual([]);
+}
+
+/** Direct service access (for scenarios about fileService semantics, not routes). */
+function getFileService() {
+  return require('@server/service/composition').getComposition().fileService;
+}
+
 /* ─── Lifecycle ──────────────────────────────────────────────────────── */
 let dbCleanup;
 
@@ -331,17 +382,17 @@ describe('S5.0-SCENARIO-4: S3 mode copy-on-write', () => {
   });
 
   it('copies the file (CoW): target shares same s3_key as source', async () => {
-    const res = await request(app)
-      .post('/api/files/copy')
-      .set('Authorization', `Bearer ${user.token}`)
-      .send({
-        nodeId: sourceNodeId,
-        destinationParentNodeId: homeNodeId,
-        newName: 'copied-cow.txt',
-      });
-
-    expect(res.status).toBe(200);
-    const targetNodeId = res.body.copiedNodeId;
+    // CoW is fileService copy semantics — exercised directly on the service
+    // (the removed single-node copy route was just a thin caller; the
+    // canonical HTTP channel is batch-copy, covered in S5.0-SCENARIO-7/C3).
+    const result = await getFileService().copyFile(
+      sourceNodeId,
+      homeNodeId,
+      'copied-cow.txt',
+      user.user.id,
+      user.user
+    );
+    const targetNodeId = result.copiedNodeId;
     copiedNodeId = targetNodeId;
 
     // Both nodes should share the same s3_key in object_map
@@ -362,6 +413,17 @@ describe('S5.0-SCENARIO-4: S3 mode copy-on-write', () => {
     ]);
     expect(nodeStatus.rows).toHaveLength(1);
     expect(nodeStatus.rows[0].sync_status).toBe('active');
+
+    // The copy mirrors the source filecache row, so the listing shows the
+    // real byte size instead of 0 B (CoW blob is byte-identical).
+    const caches = await dbQuery(
+      'SELECT file_node_id, size FROM filecache WHERE file_node_id IN (?, ?)',
+      [sourceNodeId, targetNodeId]
+    );
+    expect(caches.rows).toHaveLength(2);
+    const [srcCache, copyCache] = caches.rows.map((r) => Number(r.size));
+    expect(copyCache).toBe(srcCache);
+    expect(copyCache).toBeGreaterThan(0);
   });
 
   it('source file remains downloadable after copy', async () => {
@@ -453,52 +515,72 @@ describe('S5.0-SCENARIO-5: S3 mode delete cascade', () => {
     file2Id = f2.body.nodeId;
   });
 
-  it('deletes the directory and all children are removed from DB', async () => {
-    const res = await request(app)
-      .delete('/api/files/delete')
-      .set('Authorization', `Bearer ${user.token}`)
-      .send({ nodeId: dirNodeId });
-    expect(res.status).toBe(200);
+  it('trashes the directory: subtree rows survive with deleted_at set and disappear from the listing (M6)', async () => {
+    const job = await runBatchJob(user.token, '/api/files/batch-delete', { nodeIds: [dirNodeId] });
+    expectJobSucceeded(job);
+    expect(job.results.map((r) => Number(r.nodeId))).toEqual([Number(dirNodeId)]);
+    // Batch channel reports per-item success (job progress = processed items);
+    // the subtree size (dir + 2 files + closure self row = 4 under the old
+    // single-endpoint deletedCount formula) is verified by the DB assertions
+    // below.
+    expect(job.progress).toBe(1);
 
-    // Verify parent dir is gone
-    const dirDb = await dbQuery('SELECT id FROM file_nodes WHERE id = ?', [dirNodeId]);
-    expect(dirDb.rows).toHaveLength(0);
+    // Soft delete: folder + children rows SURVIVE with deleted_at set.
+    const dirDb = await dbQuery('SELECT id, deleted_at FROM file_nodes WHERE id = ?', [dirNodeId]);
+    expect(dirDb.rows).toHaveLength(1);
+    expect(dirDb.rows[0].deleted_at).not.toBeNull();
 
-    // Verify children are also deleted
-    const filesDb = await dbQuery('SELECT id FROM file_nodes WHERE id IN (?, ?)', [
+    const filesDb = await dbQuery('SELECT id, deleted_at FROM file_nodes WHERE id IN (?, ?)', [
       file1Id,
       file2Id,
     ]);
-    expect(filesDb.rows).toHaveLength(0);
+    expect(filesDb.rows).toHaveLength(2);
+    for (const row of filesDb.rows) {
+      expect(row.deleted_at).not.toBeNull();
+    }
+
+    // Hidden at read: the trashed folder is gone from the parent listing.
+    const homeList = await request(app)
+      .get('/api/files/list')
+      .query({ nodeId: homeNodeId })
+      .set('Authorization', `Bearer ${user.token}`);
+    expect(homeList.status).toBe(200);
+    const items = Array.isArray(homeList.body) ? homeList.body : homeList.body.items;
+    expect(items.some((i) => i.nodeId === dirNodeId)).toBe(false);
   });
 
-  it('DB: closure table entries for deleted nodes are cleaned up', async () => {
+  it('DB: closure table entries for the trashed subtree SURVIVE (restore needs the full chain)', async () => {
     const result = await dbQuery(
       'SELECT * FROM node_ancestors WHERE ancestor_id = ? OR descendant_id IN (?, ?, ?)',
       [dirNodeId, dirNodeId, file1Id, file2Id]
     );
-    expect(result.rows.length).toBe(0);
+    expect(result.rows.length).toBeGreaterThan(0);
   });
 
-  it('DB: object_map entries for deleted files are cleaned up', async () => {
+  it('DB: object_map entries for the trashed files SURVIVE (rows kept, not orphaned)', async () => {
     const result = await dbQuery(
-      'SELECT file_node_id FROM object_map WHERE file_node_id IN (?, ?)',
+      'SELECT file_node_id, status FROM object_map WHERE file_node_id IN (?, ?)',
       [file1Id, file2Id]
     );
-    expect(result.rows).toHaveLength(0);
+    expect(result.rows).toHaveLength(2);
   });
 
-  it('S3: blobs are marked orphaned (not hard-deleted) in S3 mode', async () => {
-    // In S3 mode, deleteNode does not call blobStore.deleteBlob;
-    // blob cleanup is handled by a separate GC process.
-    const result = await dbQuery('SELECT status FROM object_map WHERE file_node_id IN (?, ?)', [
-      file1Id,
-      file2Id,
-    ]);
-    expect(result.rows).toHaveLength(0);
+  it('S3: trashed files keep their active object_map rows and physical blobs (zero physical I/O; GC keep-set arm)', async () => {
+    // In S3 mode, trashing performs no storage I/O: the active rows (and the
+    // blobs they reference) stay in place — Tier 2 keeps them via the active
+    // arm of the keep-set until the trash purge (P3) removes them.
+    const result = await dbQuery(
+      'SELECT s3_key, status FROM object_map WHERE file_node_id IN (?, ?)',
+      [file1Id, file2Id]
+    );
+    expect(result.rows).toHaveLength(2);
+    expect(result.rows.every((r) => r.status === 'active')).toBe(true);
+    for (const row of result.rows) {
+      expect(currentMockS3.getStore().has(row.s3_key)).toBe(true);
+    }
   });
 
-  it('S3: deleting a file leaves the physical blob in the store pending GC (lazy delete boundary)', async () => {
+  it('S3: trashing a file leaves the physical blob in the store pending the trash purge (lazy delete boundary)', async () => {
     const lazyName = `lazy-${Date.now()}.txt`;
     const upload = await uploadFile(user, homeNodeId, lazyName, 'lazy delete content');
     expect(upload.status).toBe(200);
@@ -511,70 +593,24 @@ describe('S5.0-SCENARIO-5: S3 mode delete cascade', () => {
     const s3Key = keyRow.rows[0].s3_key;
     expect(currentMockS3.getStore().has(s3Key)).toBe(true);
 
-    const del = await request(app)
-      .delete('/api/files/delete')
-      .set('Authorization', `Bearer ${user.token}`)
-      .send({ nodeId: lazyNodeId });
-    expect(del.status).toBe(200);
+    const delJob = await runBatchJob(user.token, '/api/files/batch-delete', {
+      nodeIds: [lazyNodeId],
+    });
+    expectJobSucceeded(delJob);
 
-    const nodeRows = await dbQuery('SELECT id FROM file_nodes WHERE id = ?', [lazyNodeId]);
-    expect(nodeRows.rows).toHaveLength(0);
-    const mapRows = await dbQuery('SELECT s3_key FROM object_map WHERE file_node_id = ?', [
+    // Soft delete: the node row survives (trashed), the object_map row stays
+    // active and the physical blob is untouched (lazy delete boundary: the
+    // blob is only reclaimed by the trash purge / retention expiry, P5/P6).
+    const nodeRows = await dbQuery('SELECT deleted_at FROM file_nodes WHERE id = ?', [lazyNodeId]);
+    expect(nodeRows.rows).toHaveLength(1);
+    expect(nodeRows.rows[0].deleted_at).not.toBeNull();
+    const mapRows = await dbQuery('SELECT status FROM object_map WHERE file_node_id = ?', [
       lazyNodeId,
     ]);
-    expect(mapRows.rows).toHaveLength(0);
+    expect(mapRows.rows).toHaveLength(1);
+    expect(mapRows.rows[0].status).toBe('active');
 
-    // Lazy delete boundary: S3 delete is deferred to the GC run, so the
-    // physical blob must still exist in the store.
     expect(currentMockS3.getStore().has(s3Key)).toBe(true);
-  });
-});
-
-/* ========================================================================
-   Scenario 5B - S3 Mode: GC route (route level) reclaims an untracked blob
-   (Tier-2 reconciliation). The blob has no object_map row; the admin GC
-   endpoint must scan the store and delete it.
-   ======================================================================== */
-describe('S5.0-SCENARIO-5B: GC route reclaims an untracked S3 blob (Tier 2)', () => {
-  let admin;
-
-  beforeEach(jest.clearAllMocks);
-
-  beforeAll(async () => {
-    currentMockS3 = createS3Mock();
-    wireS3Mock(currentMockS3);
-    await useS3Mode();
-
-    admin = await createAuthenticatedTestUser({
-      isAdmin: true,
-      username: `gcuntracked-${Date.now()}`,
-    });
-  });
-
-  it('GC deletes a directly-placed blob that has no object_map row', async () => {
-    const untrackedKey = `untracked-${Date.now()}.txt`;
-    await currentMockS3.putObject({
-      Bucket: 'test-bucket',
-      Key: untrackedKey,
-      Body: Buffer.from('orphan content'),
-    });
-    // Age the blob past the orphan TTL so Tier-2 scans it as a candidate.
-    currentMockS3.getStore().set(untrackedKey, {
-      ...currentMockS3.getStore().get(untrackedKey),
-      LastModified: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-    });
-    expect(currentMockS3.getStore().has(untrackedKey)).toBe(true);
-
-    const res = await request(app)
-      .post('/api/admin/maintenance/gc')
-      .set('Authorization', `Bearer ${admin.token}`);
-    expect(res.status).toBe(200);
-    expect(res.body.results.tier2.skipped).toBe(false);
-    expect(res.body.results.tier2.scannedKeys).toBeGreaterThan(0);
-    expect(res.body.results.tier2.untrackedKeys).toBeGreaterThanOrEqual(1);
-    expect(res.body.results.tier2.deletedKeys).toBeGreaterThanOrEqual(1);
-
-    expect(currentMockS3.getStore().has(untrackedKey)).toBe(false);
   });
 });
 
@@ -657,10 +693,10 @@ describe('S5.0-SCENARIO-6: Permission inheritance', () => {
 });
 
 /* ========================================================================
-    Scenario 7 - Batch operations (delete + move) with job polling
-    Note: Bulk worker relies on getComposition() which fails due to circular
-          dependency in test context. Operations are executed individually here.
-    ======================================================================== */
+   Scenario 7 - Batch operations (delete + move) with job polling
+   The batch endpoints are the canonical mutation channel; the bulk worker
+   is executed for real (see runBatchJob).
+   ======================================================================== */
 describe('S5.0-SCENARIO-7: Batch operations', () => {
   let user,
     homeNodeId,
@@ -696,50 +732,62 @@ describe('S5.0-SCENARIO-7: Batch operations', () => {
     }
   });
 
-  it('moves files to target directory', async () => {
-    const res = await request(app)
-      .post('/api/files/move')
-      .set('Authorization', `Bearer ${user.token}`)
-      .send({ nodeId: nodeIds[0], destinationParentNodeId: targetDirId });
-
-    expect(res.status).toBe(200);
+  it('moves files to target directory (batch-move → job polling)', async () => {
+    const job = await runBatchJob(user.token, '/api/files/batch-move', {
+      moves: [{ sourceNodeId: nodeIds[0], destinationParentNodeId: targetDirId }],
+    });
+    expectJobSucceeded(job);
+    expect(job.progress).toBe(1); // movedCount == 1 item, zero failures
 
     // Verify moved file's parent_id changed in DB
     const dbResult = await dbQuery('SELECT parent_id FROM file_nodes WHERE id = ?', [nodeIds[0]]);
     expect(dbResult.rows[0].parent_id).toBe(targetDirId);
   });
 
-  it('deletes files individually', async () => {
-    for (const nodeId of [nodeIds[1], nodeIds[2]]) {
-      const res = await request(app)
-        .delete('/api/files/delete')
-        .set('Authorization', `Bearer ${user.token}`)
-        .send({ nodeId });
-      expect(res.status).toBe(200);
-    }
+  it('trashes files in one batch job: rows survive with deleted_at set and disappear from listings (M10)', async () => {
+    const job = await runBatchJob(user.token, '/api/files/batch-delete', {
+      nodeIds: [nodeIds[1], nodeIds[2]],
+    });
+    expectJobSucceeded(job);
+    expect(job.results.map((r) => Number(r.nodeId)).sort()).toEqual(
+      [Number(nodeIds[1]), Number(nodeIds[2])].sort((a, b) => a - b)
+    );
 
-    // Verify deleted files are gone from DB
-    const dbResult = await dbQuery('SELECT id FROM file_nodes WHERE id IN (?, ?)', [
+    // Soft delete: rows survive with deleted_at set.
+    const dbResult = await dbQuery('SELECT id, deleted_at FROM file_nodes WHERE id IN (?, ?)', [
       nodeIds[1],
       nodeIds[2],
     ]);
-    expect(dbResult.rows).toHaveLength(0);
+    expect(dbResult.rows).toHaveLength(2);
+    for (const row of dbResult.rows) {
+      expect(row.deleted_at).not.toBeNull();
+    }
+
+    // Hidden at read: the trashed files are gone from the parent listing.
+    const homeList = await request(app)
+      .get('/api/files/list')
+      .query({ nodeId: homeNodeId })
+      .set('Authorization', `Bearer ${user.token}`);
+    expect(homeList.status).toBe(200);
+    const items = Array.isArray(homeList.body) ? homeList.body : homeList.body.items;
+    expect(items.some((i) => i.nodeId === nodeIds[1])).toBe(false);
+    expect(items.some((i) => i.nodeId === nodeIds[2])).toBe(false);
   });
 
-  it('DB: object_map entries for deleted files are cleaned up', async () => {
+  it('DB: object_map entries for trashed files SURVIVE (M11)', async () => {
     const result = await dbQuery(
       'SELECT file_node_id FROM object_map WHERE file_node_id IN (?, ?)',
       [nodeIds[1], nodeIds[2]]
     );
-    expect(result.rows).toHaveLength(0);
+    expect(result.rows).toHaveLength(2);
   });
 
-  it('DB: closure table entries for deleted files are cleaned up', async () => {
+  it('DB: closure table entries for trashed files SURVIVE (M12)', async () => {
     const result = await dbQuery(
       'SELECT * FROM node_ancestors WHERE descendant_id IN (?, ?) OR ancestor_id IN (?, ?)',
       [nodeIds[1], nodeIds[2], nodeIds[1], nodeIds[2]]
     );
-    expect(result.rows.length).toBe(0);
+    expect(result.rows.length).toBeGreaterThan(0);
   });
 });
 
@@ -774,28 +822,58 @@ describe('S5.0-SCENARIO-8: WebDAV fail-safe recovery', () => {
     expect(result.rows[0].sync_status).not.toBe('orphaned_node');
   });
 
-  it('rename triggers orphaned_node when re-upload fails', async () => {
-    // Make putFileContents fail on the next call (the re-upload during rename)
-    webdavMock.putFileContents.mockImplementation(async () => {
-      throw new Error('webdav_upload_failed');
-    });
+  it('rename rolls the DB change back when the remote MOVE fails transiently (500, no residue)', async () => {
+    webdavMock.moveFile.mockRejectedValueOnce(new Error('webdav_move_failed'));
 
     const res = await request(app)
       .put('/api/files/rename')
       .set('Authorization', `Bearer ${user.token}`)
       .send({ nodeId: fileNodeId, newName: 'failtest-renamed.txt' });
 
+    expect(res.status).toBe(500);
+
+    const row = await dbQuery('SELECT name, sync_status FROM file_nodes WHERE id = ?', [
+      fileNodeId,
+    ]);
+    // Rollback: original name stands, node not marked — the user can retry.
+    expect(row.rows[0].name).toBe('failtest.txt');
+    expect(row.rows[0].sync_status).not.toBe('orphaned_node');
+  });
+
+  it('rename succeeds remotely later: MOVE old→new executed after the DB rename', async () => {
+    const res = await request(app)
+      .put('/api/files/rename')
+      .set('Authorization', `Bearer ${user.token}`)
+      .send({ nodeId: fileNodeId, newName: 'failtest-renamed.txt' });
+
     expect(res.status).toBe(200);
+    expect(webdavMock.moveFile).toHaveBeenCalled();
+
+    const row = await dbQuery('SELECT name, sync_status FROM file_nodes WHERE id = ?', [
+      fileNodeId,
+    ]);
+    expect(row.rows[0].name).toBe('failtest-renamed.txt');
+    expect(row.rows[0].sync_status).not.toBe('orphaned_node');
   });
 
-  it('DB: node is marked as orphaned_node after failed re-upload', async () => {
-    const result = await dbQuery('SELECT sync_status FROM file_nodes WHERE id = ?', [fileNodeId]);
-    expect(result.rows[0].sync_status).toBe('orphaned_node');
-  });
+  it('rename with an absent remote source keeps the name, marks orphaned_node and 500s', async () => {
+    const missing = new Error('source not found');
+    missing.errorCode = 'serverErrors.webdav.sourceNotFound';
+    webdavMock.moveFile.mockRejectedValueOnce(missing);
 
-  it('DB: node name was updated despite orphan status', async () => {
-    const result = await dbQuery('SELECT name FROM file_nodes WHERE id = ?', [fileNodeId]);
-    expect(result.rows[0].name).toBe('failtest-renamed.txt');
+    const res = await request(app)
+      .put('/api/files/rename')
+      .set('Authorization', `Bearer ${user.token}`)
+      .send({ nodeId: fileNodeId, newName: 'failtest-renamed-2.txt' });
+
+    expect(res.status).toBe(500);
+
+    const row = await dbQuery('SELECT name, sync_status FROM file_nodes WHERE id = ?', [
+      fileNodeId,
+    ]);
+    // Nothing remote to restore: the DB rename stands and is flagged for repair.
+    expect(row.rows[0].name).toBe('failtest-renamed-2.txt');
+    expect(row.rows[0].sync_status).toBe('orphaned_node');
   });
 
   it('DB: closure table entries still exist for orphaned node', async () => {
@@ -805,21 +883,16 @@ describe('S5.0-SCENARIO-8: WebDAV fail-safe recovery', () => {
     expect(result.rows.length).toBeGreaterThan(0);
   });
 
-  it('recovering: re-upload fixes orphaned_node status', async () => {
-    // Reset mock to succeed for recovery upload
-    webdavMock.putFileContents.mockResolvedValue(undefined);
-    await useWebdavMode();
-
+  it('uploads after failures still succeed cleanly', async () => {
     const res = await uploadFile(user, homeNodeId, 'failtest-recovered.txt', 'recovered content');
     expect(res.status).toBe(200);
 
-    // The new file should not be orphaned
     const recoveredId = res.body.nodeId;
     const result = await dbQuery('SELECT sync_status FROM file_nodes WHERE id = ?', [recoveredId]);
     expect(result.rows[0].sync_status).not.toBe('orphaned_node');
   });
 
-  it('WebDAV: putFileContents was called during recovery upload', async () => {
+  it('WebDAV: putFileContents was called during the upload', async () => {
     const calls = webdavMock.putFileContents.mock.calls;
     expect(calls.length).toBeGreaterThan(0);
   });
@@ -880,13 +953,12 @@ describe('C1: move granted folder → grantee access + ancestor chain rebuild', 
     expect(res.body.hasRead).toBe(true);
   });
 
-  it('moves the granted folder under the destination folder', async () => {
-    const res = await request(app)
-      .post('/api/files/move')
-      .set('Authorization', `Bearer ${owner.token}`)
-      .send({ nodeId: grantFolder, destinationParentNodeId: destFolder });
-    expect(res.status).toBe(200);
-    expect(res.body.newParentId).toBe(destFolder);
+  it('moves the granted folder under the destination folder (batch-move → job polling)', async () => {
+    const job = await runBatchJob(owner.token, '/api/files/batch-move', {
+      moves: [{ sourceNodeId: grantFolder, destinationParentNodeId: destFolder }],
+    });
+    expectJobSucceeded(job);
+    expect(job.progress).toBe(1); // movedCount == 1 item, zero failures
   });
 
   it('DB: parent_id is updated and the closure table is rebuilt around the new parent', async () => {
@@ -998,12 +1070,14 @@ describe('C2: move owned folder into another user home → subtree + surface tra
   });
 
   it('mover moves the owned folder into the recipient home root', async () => {
-    const res = await request(app)
-      .post('/api/files/move')
-      .set('Authorization', `Bearer ${mover.token}`)
-      .send({ nodeId: sharedFolder, destinationParentNodeId: recipient.homeNodeId });
-    expect(res.status).toBe(200);
-    expect(res.body.newParentId).toBe(recipient.homeNodeId);
+    // Batch is the canonical mutation channel; the worker now executes as the
+    // requesting non-admin principal (DEF-21), so ownership-transfer semantics
+    // are observable through the job itself.
+    expectJobSucceeded(
+      await runBatchJob(mover.token, '/api/files/batch-move', {
+        moves: [{ sourceNodeId: sharedFolder, destinationParentNodeId: recipient.homeNodeId }],
+      })
+    );
   });
 
   it('DB: closure table transfers the subtree to the recipient home', async () => {
@@ -1121,12 +1195,13 @@ describe('D6: move owned folder into another home revokes mover historical self-
   });
 
   it('mover moves the owned folder into the recipient home root', async () => {
-    const res = await request(app)
-      .post('/api/files/move')
-      .set('Authorization', `Bearer ${mover.token}`)
-      .send({ nodeId: folder, destinationParentNodeId: recipient.homeNodeId });
-    expect(res.status).toBe(200);
-    expect(res.body.newParentId).toBe(recipient.homeNodeId);
+    // Historical-self-grant revoke runs through the batch channel as the
+    // requesting non-admin principal (DEF-21).
+    expectJobSucceeded(
+      await runBatchJob(mover.token, '/api/files/batch-move', {
+        moves: [{ sourceNodeId: folder, destinationParentNodeId: recipient.homeNodeId }],
+      })
+    );
   });
 
   it('DB: mover self-grant rows on the moved subtree are GONE (ownership transfer)', async () => {
@@ -1256,12 +1331,12 @@ describe('D6: received grant on another user home is preserved when moved within
   });
 
   it('mover moves the folder within the owner home (folder → destFolder)', async () => {
-    const res = await request(app)
-      .post('/api/files/move')
-      .set('Authorization', `Bearer ${mover.token}`)
-      .send({ nodeId: folder, destinationParentNodeId: destFolder });
-    expect(res.status).toBe(200);
-    expect(res.body.newParentId).toBe(destFolder);
+    // Received-grant preservation runs through the batch channel (DEF-21).
+    expectJobSucceeded(
+      await runBatchJob(mover.token, '/api/files/batch-move', {
+        moves: [{ sourceNodeId: folder, destinationParentNodeId: destFolder }],
+      })
+    );
   });
 
   it('DB: the received grant is PRESERVED (mover never owned the node)', async () => {
@@ -1338,12 +1413,12 @@ describe('D6: moving within the mover own home never revokes rows', () => {
   });
 
   it('user moves the folder within the own home (folder → destFolder)', async () => {
-    const res = await request(app)
-      .post('/api/files/move')
-      .set('Authorization', `Bearer ${user.token}`)
-      .send({ nodeId: folder, destinationParentNodeId: destFolder });
-    expect(res.status).toBe(200);
-    expect(res.body.newParentId).toBe(destFolder);
+    // Own-home move (no revoke) runs through the batch channel (DEF-21).
+    expectJobSucceeded(
+      await runBatchJob(user.token, '/api/files/batch-move', {
+        moves: [{ sourceNodeId: folder, destinationParentNodeId: destFolder }],
+      })
+    );
   });
 
   it('DB: self-grant rows on the moved subtree are PRESERVED (no ownership transfer)', async () => {
@@ -1400,14 +1475,18 @@ describe('C3: copy keeps original and copy independent with closure rows for bot
   });
 
   it('copies the file into the destination folder as a distinct node', async () => {
-    const res = await request(app)
-      .post('/api/files/copy')
-      .set('Authorization', `Bearer ${user.token}`)
-      .send({ nodeId: sourceFileId, destinationParentNodeId: destFolder, newName: 'copy.txt' });
-    expect(res.status).toBe(200);
-    expect(res.body.copiedNodeId).toBeDefined();
-    expect(res.body.copiedNodeId).not.toBe(sourceFileId);
-    copyFileId = res.body.copiedNodeId;
+    // Copy independence is fileService copyFile semantics (needs the
+    // resulting copiedNodeId): exercised directly on the service.
+    const result = await getFileService().copyFile(
+      sourceFileId,
+      destFolder,
+      'copy.txt',
+      user.user.id,
+      user.user
+    );
+    expect(result.copiedNodeId).toBeDefined();
+    expect(result.copiedNodeId).not.toBe(sourceFileId);
+    copyFileId = result.copiedNodeId;
   });
 
   it('both original and copy remain downloadable with identical content', async () => {
@@ -1473,12 +1552,11 @@ describe('C3: copy keeps original and copy independent with closure rows for bot
     expect(res.body.ancestors.map((a) => a.nodeId)).toEqual([home, destFolder, copyFileId]);
   });
 
-  it('original and copy are independent: deleting the copy leaves the original intact', async () => {
-    const del = await request(app)
-      .delete('/api/files/delete')
-      .set('Authorization', `Bearer ${user.token}`)
-      .send({ nodeId: copyFileId });
-    expect(del.status).toBe(200);
+  it('original and copy are independent: trashing the copy hides it while the original stays intact', async () => {
+    const delJob = await runBatchJob(user.token, '/api/files/batch-delete', {
+      nodeIds: [copyFileId],
+    });
+    expectJobSucceeded(delJob);
 
     const orig = await request(app)
       .get('/api/files/download')
@@ -1487,16 +1565,24 @@ describe('C3: copy keeps original and copy independent with closure rows for bot
     expect(orig.status).toBe(200);
     expect(Buffer.from(orig.body).toString()).toBe('original-content');
 
-    const gone = await dbQuery('SELECT id FROM file_nodes WHERE id = ?', [copyFileId]);
-    expect(gone.rows).toHaveLength(0);
+    // Soft delete: the copy row survives trashed (hidden at read), the
+    // original is untouched.
+    const gone = await dbQuery('SELECT deleted_at FROM file_nodes WHERE id = ?', [copyFileId]);
+    expect(gone.rows).toHaveLength(1);
+    expect(gone.rows[0].deleted_at).not.toBeNull();
+
+    const origRow = await dbQuery('SELECT deleted_at FROM file_nodes WHERE id = ?', [sourceFileId]);
+    expect(origRow.rows).toHaveLength(1);
+    expect(origRow.rows[0].deleted_at).toBeNull();
   });
 });
 
 /* ========================================================================
-   C4 - Reference stability (class C): delete a folder cascades descendant
-   permission rows and recent-file entries pointing into the subtree.
+   C4 - Reference stability (class C): trashing a folder hides the subtree
+   at read while the descendant permission rows, closure rows and recent-file
+   DB rows SURVIVE (DEF-16: trash is a read-gating marker, not a removal).
    ======================================================================== */
-describe('C4: delete folder → permission rows + recent entries cascade', () => {
+describe('C4: trash folder → hidden at read; permission/closure/recent rows survive', () => {
   let owner, grantee, folder, childFileId;
 
   beforeEach(jest.clearAllMocks);
@@ -1560,39 +1646,55 @@ describe('C4: delete folder → permission rows + recent entries cascade', () =>
     expect(granteeRecent.body.some((f) => f.fileNodeId === childFileId)).toBe(true);
   });
 
-  it('deletes the folder via the single-item endpoint', async () => {
-    const res = await request(app)
-      .delete('/api/files/delete')
-      .set('Authorization', `Bearer ${owner.token}`)
-      .send({ nodeId: folder });
-    expect(res.status).toBe(200);
+  it('trashes the folder via the canonical batch-delete channel', async () => {
+    const job = await runBatchJob(owner.token, '/api/files/batch-delete', { nodeIds: [folder] });
+    expectJobSucceeded(job);
+    expect(job.results.map((r) => Number(r.nodeId))).toEqual([Number(folder)]);
   });
 
-  it('DB: folder and child nodes are gone', async () => {
-    const rows = await dbQuery('SELECT id FROM file_nodes WHERE id IN (?, ?)', [
+  it('DB: folder and child rows SURVIVE with deleted_at set (hidden at read, not removed)', async () => {
+    const rows = await dbQuery('SELECT id, deleted_at FROM file_nodes WHERE id IN (?, ?)', [
       folder,
       childFileId,
     ]);
-    expect(rows.rows).toHaveLength(0);
+    expect(rows.rows).toHaveLength(2);
+    for (const row of rows.rows) {
+      expect(row.deleted_at).not.toBeNull();
+    }
   });
 
-  it('DB: descendant permission row on the deleted folder is cascade-removed', async () => {
+  it('DB: descendant permission row on the trashed folder SURVIVES (FK cascade only fires at purge)', async () => {
     const perm = await dbQuery(
       'SELECT permission FROM permissions_user_paths WHERE user_id = ? AND file_node_id = ?',
       [grantee.user.id, folder]
     );
-    expect(perm.rows).toHaveLength(0);
+    expect(perm.rows).toHaveLength(1);
   });
 
-  it('DB: closure rows for the deleted subtree are cleaned up', async () => {
+  it('DB: closure rows for the trashed subtree SURVIVE', async () => {
     const rows = await dbQuery(
       'SELECT * FROM node_ancestors WHERE descendant_id IN (?, ?) OR ancestor_id IN (?, ?)',
       [folder, childFileId, folder, childFileId]
     );
-    expect(rows.rows).toHaveLength(0);
+    expect(rows.rows.length).toBeGreaterThan(0);
   });
 
-  it('recent entries pointing into the deleted subtree are removed for both users', async () => {
+  it('hidden at read: folder listing drops the trashed child and recent entries point into the trash are HIDDEN for both users (rows kept)', async () => {
+    // Read gate: the owner's home listing no longer contains the folder.
+    const homeList = await request(app)
+      .get('/api/files/list')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .query({ nodeId: owner.homeNodeId });
+    expect(homeList.status).toBe(200);
+    const items = Array.isArray(homeList.body) ? homeList.body : homeList.body.items;
+    expect(items.some((i) => i.nodeId === folder)).toBe(false);
+
+    // Recent files: rows kept in the DB, entries hidden at enrichment.
+    const recentRows = await dbQuery('SELECT * FROM recent_files WHERE file_node_id = ?', [
+      childFileId,
+    ]);
+    expect(recentRows.rows.length).toBeGreaterThanOrEqual(1);
+
     const ownerRecent = await request(app)
       .get('/api/recent-files')
       .set('Authorization', `Bearer ${owner.token}`);
@@ -1604,5 +1706,65 @@ describe('C4: delete folder → permission rows + recent entries cascade', () =>
       .set('Authorization', `Bearer ${grantee.token}`);
     expect(granteeRecent.status).toBe(200);
     expect(granteeRecent.body.some((f) => f.fileNodeId === childFileId)).toBe(false);
+  });
+});
+
+/* ========================================================================
+   DEF-21 — the batch worker executes as the REQUESTING principal: no
+   cross-user mutation through the canonical batch channel.
+   ======================================================================== */
+describe('DEF-21: batch worker honors per-principal ACL (no synthetic admin)', () => {
+  let victim, outsider, victimFolder;
+
+  beforeAll(async () => {
+    currentMockS3 = createS3Mock();
+    wireS3Mock(currentMockS3);
+    await useS3Mode();
+
+    victim = await createUserWithHomeNode('def21-victim');
+    outsider = await createUserWithHomeNode('def21-outsider');
+
+    const createRes = await request(app)
+      .post('/api/folders/create')
+      .set('Authorization', `Bearer ${victim.token}`)
+      .send({ parentNodeId: victim.homeNodeId, name: `def21-folder-${Date.now()}` });
+    expect(createRes.status).toBe(200);
+    victimFolder = createRes.body.nodeId;
+  });
+
+  it('outsider batch-move of a foreign folder is skipped (permission_denied), node stays put', async () => {
+    const job = await runBatchJob(outsider.token, '/api/files/batch-move', {
+      moves: [{ sourceNodeId: victimFolder, destinationParentNodeId: outsider.homeNodeId }],
+    });
+
+    expect(job.status).toBe('completed');
+    const moveResult = job.results.find((r) => r.sourceNodeId === victimFolder);
+    expect(moveResult).toMatchObject({ status: 'skipped', reason: 'permission_denied' });
+
+    const chain = await dbQuery('SELECT ancestor_id FROM node_ancestors WHERE descendant_id = ?', [
+      victimFolder,
+    ]);
+    const ids = chain.rows.map((r) => Number(r.ancestor_id));
+    expect(ids).toContain(victim.homeNodeId);
+    expect(ids).not.toContain(outsider.homeNodeId);
+  });
+
+  it('outsider batch-copy of a foreign folder is skipped (permission_denied), no copy created', async () => {
+    const before = await dbQuery(
+      "SELECT COUNT(*) AS cnt FROM file_nodes WHERE name LIKE 'def21-folder%'"
+    );
+
+    const job = await runBatchJob(outsider.token, '/api/files/batch-copy', {
+      copies: [{ sourceNodeId: victimFolder, destinationParentNodeId: outsider.homeNodeId }],
+    });
+
+    expect(job.status).toBe('completed');
+    const copyResult = job.results.find((r) => r.sourceNodeId === victimFolder);
+    expect(copyResult).toMatchObject({ status: 'skipped', reason: 'permission_denied' });
+
+    const after = await dbQuery(
+      "SELECT COUNT(*) AS cnt FROM file_nodes WHERE name LIKE 'def21-folder%'"
+    );
+    expect(Number(after.rows[0].cnt)).toBe(Number(before.rows[0].cnt));
   });
 });

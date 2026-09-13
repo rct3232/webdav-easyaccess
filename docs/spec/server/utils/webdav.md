@@ -22,12 +22,9 @@
 | Function                    | Signature                                                          | Description                                                                                            |
 | --------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
 | getWebDAVClient             | (baseUrlOverride?) => Promise                                      | Get/create WebDAV client with caching via InMemoryCacheAdapter                                         |
-| resetWebDAVClient           | () => void                                                         | Reset client cache                                                                                     |
 | listDirectory               | (path) => Promise\<Array\>                                         | List folder contents, normalizing item shape                                                           |
 | getFileContents             | (path, options?) => Promise\<Buffer\>                              | Get file content as Buffer                                                                             |
 | putFileContents             | (path, buffer) => Promise                                          | Write file via PUT                                                                                     |
-| putFileContentsAdvanced     | (path, buffer, options?) => Promise                                | Put file with advanced headers (e.g. If-None-Match: \*)                                                |
-| customRequest               | (options) => Promise                                               | Custom WebDAV request (MOVE, COPY, PROPFIND, etc.)                                                     |
 | deleteFile                  | (path, options?) => Promise                                        | Delete file/folder                                                                                     |
 | moveFile                    | (source, dest, progressCallback?, overwrite?, options?) => Promise | Move with fallback to streamed copy+delete                                                             |
 | copyFile                    | (source, dest, progressCallback?, overwrite?, options?) => Promise | Copy with fallback to streamed download+upload                                                         |
@@ -37,7 +34,6 @@
 | getFileMetadata             | (path) => Promise\<object\>                                        | Get file metadata via parent directory listing                                                         |
 | getRequestPath              | (path, baseUrl?, options?) => string                               | Build request path from normalized path                                                                |
 | buildDestinationAbsoluteUrl | (base, dest, options?) => string                                   | Destination URL for MOVE/COPY headers                                                                  |
-| getRecursiveFolderStats     | (path) => Promise\<object\>                                        | Recursive folder statistics (fileCount, totalSize). Used by GET /api/folders/stats.                    |
 
 #### Re-exported functions (defined elsewhere, re-exported from webdav.js for backward compatibility)
 

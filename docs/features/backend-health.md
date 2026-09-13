@@ -61,11 +61,11 @@ backends (only a per-user 500 toast). This feature adds:
 
 ## Detection model (D2)
 
-| Backend      | Failure hook                                                                                        | Success hook                                   |
-| ------------ | --------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Backend      | Failure hook                                                                                                                                                                                                                                                                                  | Success hook                                   |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
 | `postgresql` | `mapDatabaseError` connection-class mapping (shutdown `57P01`, exhaustion `53300`, reachability `ECONNREFUSED`/`ENOTFOUND`/`EAI_AGAIN`/`ETIMEDOUT`/`ECONNRESET`, client `query_timeout` expiry, auth `28P01`/`28000`), pg pool idle-client `error` handler, `withTransaction` connect failure | `withTransaction` connect/commit, pool connect |
-| `s3`         | `S3BlobStore` operation catch                                                                       | `S3BlobStore` operation resolve                |
-| `webdav`     | `webdavTest.testConnection` throw, `WebdavBlobStore` catch, `utils/webdav.js` `listDirectory` catch | corresponding success                          |
+| `s3`         | `S3BlobStore` operation catch                                                                                                                                                                                                                                                                 | `S3BlobStore` operation resolve                |
+| `webdav`     | `webdavTest.testConnection` throw, `WebdavBlobStore` catch, `utils/webdav.js` `listDirectory` catch                                                                                                                                                                                           | corresponding success                          |
 
 Classification is reused from the wizard probe machinery (`classifyPgError` /
 `classifyS3Error` / webdav `webdav.*` codes), normalized to a stable `code`

@@ -114,6 +114,58 @@ describe('createMigrationGate', () => {
       expect(gate.getStatus().jobId).toBe('job-1');
     });
   });
+
+  describe('completion notice (docs/spec/server/infrastructure/migrationGate.md §2.2-§2.4)', () => {
+    it('has no notice at boot / after reset()', () => {
+      const gate = createMigrationGate();
+      expect(gate.getNotice()).toBeNull();
+      gate.set({ type: 'blobs', jobId: 'job-1' });
+      gate.reset();
+      expect(gate.getNotice()).toBeNull();
+    });
+
+    it('clear({ jobId, type }) retains the notice', () => {
+      const gate = createMigrationGate();
+      gate.set({ type: 'blobs', jobId: 'job-1' });
+      const state = gate.clear({ jobId: 'job-1', type: 'blobs' });
+      expect(state.active).toBe(false);
+      expect(gate.getNotice()).toEqual({ jobId: 'job-1', type: 'blobs' });
+    });
+
+    it('clear() without a notice does not invent one and keeps the previous notice', () => {
+      const gate = createMigrationGate();
+      expect(gate.clear()).toEqual(expect.objectContaining({ active: false }));
+      expect(gate.getNotice()).toBeNull();
+      gate.set({ type: 'blobs', jobId: 'job-1' });
+      gate.clear({ jobId: 'job-1', type: 'blobs' });
+      gate.clear();
+      expect(gate.getNotice()).toEqual({ jobId: 'job-1', type: 'blobs' });
+    });
+
+    it('a newer terminal clear replaces the unconsumed notice (latest-wins)', () => {
+      const gate = createMigrationGate();
+      gate.set({ type: 'blobs', jobId: 'job-1' });
+      gate.clear({ jobId: 'job-1', type: 'blobs' });
+      gate.set({ type: 'metadata', jobId: 'job-2' });
+      gate.clear({ jobId: 'job-2', type: 'metadata' });
+      expect(gate.getNotice()).toEqual({ jobId: 'job-2', type: 'metadata' });
+    });
+
+    it('ackNotice() consumes the notice and returns what was cleared', () => {
+      const gate = createMigrationGate();
+      gate.set({ type: 'metadata', jobId: 'job-9' });
+      gate.clear({ jobId: 'job-9', type: 'metadata' });
+      expect(gate.ackNotice()).toEqual({ jobId: 'job-9', type: 'metadata' });
+      expect(gate.getNotice()).toBeNull();
+    });
+
+    it('ackNotice() with no pending notice returns null (idempotent)', () => {
+      const gate = createMigrationGate();
+      expect(gate.ackNotice()).toBeNull();
+      expect(gate.ackNotice()).toBeNull();
+      expect(gate.getNotice()).toBeNull();
+    });
+  });
 });
 
 describe('getMigrationGate (shared singleton)', () => {

@@ -19,20 +19,22 @@
 
 ### 2.2 Props
 
-| Name               | Type                       | Required | Default | Description                  |
-| ------------------ | -------------------------- | -------- | ------- | ---------------------------- |
-| contextMenu        | { mouseX, mouseY } \| null | Y        | -       | Position or null when closed |
-| onClose            | function                   | Y        | -       | Close handler                |
-| file               | object                     | Y        | -       | File object                  |
-| user               | object                     | N        | -       | User                         |
-| hasWritePermission | boolean                    | Y        | -       | Default write permission     |
-| onDownload         | function                   | N        | -       | Download handler             |
-| onRename           | function                   | N        | -       | Rename handler               |
-| onMove             | function                   | N        | -       | Move handler                 |
-| onCopy             | function                   | N        | -       | Copy handler                 |
-| onShare            | function                   | N        | -       | Share handler                |
-| onProperties       | function                   | N        | -       | Properties handler           |
-| onDelete           | function                   | N        | -       | Delete handler               |
+| Name               | Type                       | Required | Default | Description                                                   |
+| ------------------ | -------------------------- | -------- | ------- | ------------------------------------------------------------- |
+| contextMenu        | { mouseX, mouseY } \| null | Y        | -       | Position or null when closed                                  |
+| onClose            | function                   | Y        | -       | Close handler                                                 |
+| file               | object                     | Y        | -       | File object                                                   |
+| user               | object                     | N        | -       | User                                                          |
+| hasWritePermission | boolean                    | Y        | -       | Default write permission                                      |
+| onDownload         | function                   | N        | -       | Download handler                                              |
+| onRename           | function                   | N        | -       | Rename handler                                                |
+| onMove             | function                   | N        | -       | Move handler                                                  |
+| onCopy             | function                   | N        | -       | Copy handler                                                  |
+| onShare            | function                   | N        | -       | Share handler                                                 |
+| onProperties       | function                   | N        | -       | Properties handler                                            |
+| onDelete           | function                   | N        | -       | Delete handler                                                |
+| onRestore          | function                   | N        | -       | Trash restore handler (DEF-16 P9; rendered for trashed items) |
+| onPurge            | function                   | N        | -       | Trash permanent-delete handler (DEF-16 P9)                    |
 
 ### 2.3 Callback Signatures
 
@@ -49,12 +51,14 @@
 ### 2.5 i18n Keys
 
 - `actions.download`, `actions.rename`, `actions.move`, `actions.copy`, `actions.share`, `actions.properties`, `actions.delete`
+- `actions.restore`, `actions.purge` – trash-view menu rows (DEF-16 P9)
 
 ### 2.6 Conditional Rendering
 
 - Menu items only when corresponding callback provided
 - Rename, move, delete disabled when !fileWritePermission (file.hasWritePermission ?? hasWritePermission)
 - Returns null when !file
+- **Trash rows (DEF-16 P9):** when the host passes `onRestore`/`onPurge` (trash view only), the menu shows Restore (`data-testid="trash-action-restore"`, gate `fileWritePermission` = row `hasWritePermission`) and Permanent delete (`data-testid="trash-action-purge"`, error accent, same gate) above Properties; the host withholds the live-item callbacks (download/rename/move/copy/share/delete) in the trash view, so only Restore / Permanent delete / Properties render.
 - E2E selector contract:
   - action entries used by flow tests expose the same stable `data-testid` values as the mobile `FileActionSheet` counterparts (for example rename/delete)
   - this allows the same Playwright helper to trigger rename/delete on both desktop and mobile without text matching
@@ -67,6 +71,7 @@ Checklist for unit test writing:
 - [ ] Each action calls callback with file, then onClose
 - [ ] Rename/move/delete disabled when no write permission
 - [ ] file.hasWritePermission overrides hasWritePermission
+- [ ] Trash mode: restore/purge rows render with the row write-permission gate and trigger their callbacks; live-item rows are absent when their callbacks are withheld
 - [ ] onClose on menu close
 
 ### 2.8 Edge Cases

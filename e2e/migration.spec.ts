@@ -26,7 +26,8 @@ import {
 } from './helpers/setupScratch';
 
 /**
- * Unified migration mode E2E (PLAN.md D1–D14, docs/features/migration-mode.md).
+ * Unified migration mode E2E (docs/features/migration-mode.md +
+ * docs/spec/server/services/metadataMigrationService.md).
  *
  * Hermetic by design: every case spawns its own fully-configured scratch server
  * on :5011 (own .env via DOTENV_CONFIG_PATH, own sqlite, own scratch PG target
@@ -278,7 +279,7 @@ async function fillPgTarget(page: Page, database: string): Promise<void> {
  * and return its full text. Used instead of asserting a transient running state
  * so fast migrations cannot flake.
  */
-async function waitForTerminalModal(page: Page, timeout = 60_000): Promise<string> {
+async function waitForTerminalModal(page: Page, timeout = 180_000): Promise<string> {
   const modal = page.getByRole('dialog');
   await expect(modal).toBeVisible({ timeout });
   await expect(modal.getByRole('button', { name: 'Go to settings' })).toBeVisible({ timeout });
@@ -289,10 +290,10 @@ async function waitForTerminalModal(page: Page, timeout = 60_000): Promise<strin
  * Poll the /migration page until the terminal modal appears, recording whether
  * a "Running" state was observed along the way (robust to fast completion).
  */
-async function observeMigration(page: Page): Promise<{ sawRunning: boolean }> {
+async function observeMigration(page: Page, timeout = 180_000): Promise<{ sawRunning: boolean }> {
   let sawRunning = false;
   const modal = page.getByRole('dialog');
-  const deadline = Date.now() + 60_000;
+  const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     if (await modal.isVisible().catch(() => false)) return { sawRunning };
     if (

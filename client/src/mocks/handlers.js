@@ -1,8 +1,8 @@
 /**
  * MSW handlers aligned with docs/api.md and actual server routes.
- * File mutations use the batch endpoints (batch-move/batch-copy/batch-delete,
- * PUT /rename) as well as the single-node POST /files/move, POST /files/copy,
- * DELETE /files/delete routes exposed by server/domains/files/routes/crud.js.
+ * File mutations go through the batch endpoints (batch-move/batch-copy/
+ * batch-delete) plus PUT /rename — the single-node move/copy/delete routes
+ * were removed with the dead-code sweep.
  * @see docs/api.md
  * @see docs/shared-contracts.md
  */
@@ -194,7 +194,10 @@ export const handlers = [
     if (!body.refreshToken) {
       return errorResponse('serverErrors.auth.refreshTokenInvalid', 401);
     }
-    return HttpResponse.json({ token: 'mock-jwt-token-refreshed' });
+    return HttpResponse.json({
+      token: 'mock-jwt-token-refreshed',
+      refreshToken: 'mock-refresh-token-rotated',
+    });
   }),
 
   http.get(`${API_BASE}/auth/me`, () => {
@@ -440,13 +443,6 @@ export const handlers = [
     return HttpResponse.json({ messageCode: 'serverMessages.permissions.permissionRevoked' });
   }),
 
-  http.get(`${API_BASE}/permissions/file/list`, () => {
-    return HttpResponse.json([
-      { file_node_id: 4, permission: 'read' },
-      { file_node_id: 5, permission: 'write' },
-    ]);
-  }),
-
   http.post(`${API_BASE}/permissions/file/grant`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
     const { userId, fileNodeId, permission } = body;
@@ -464,29 +460,6 @@ export const handlers = [
       return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
     }
     return HttpResponse.json({ messageCode: 'serverMessages.permissions.filePermissionRevoked' });
-  }),
-
-  http.get(`${API_BASE}/permissions/file/check`, ({ request }) => {
-    const url = new URL(request.url);
-    const fileNodeId = url.searchParams.get('fileNodeId');
-    if (!fileNodeId) {
-      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
-    }
-    return HttpResponse.json({
-      nodeId: Number(fileNodeId),
-      hasRead: true,
-      hasWrite: true,
-      source: 'path',
-    });
-  }),
-
-  http.patch(`${API_BASE}/permissions/file`, async ({ request }) => {
-    const body = await request.json().catch(() => ({}));
-    const { userId, fileNodeId, permission } = body;
-    if (!userId || !fileNodeId || !permission) {
-      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
-    }
-    return HttpResponse.json({ messageCode: 'serverMessages.permissions.filePermissionUpdated' });
   }),
 
   // --- Recent files (required for FolderTree / FileManager) ---
@@ -507,10 +480,6 @@ export const handlers = [
       },
     ]);
   }),
-
-  http.delete(`${API_BASE}/recent-files`, () =>
-    HttpResponse.json({ messageCode: 'serverMessages.recentFiles.clearedSuccess' })
-  ),
 
   http.delete(`${API_BASE}/recent-files/:fileNodeId`, () => HttpResponse.json([])),
 
@@ -566,49 +535,6 @@ export const handlers = [
       messageCode: 'serverMessages.files.renameSuccess',
       nodeId,
       newName,
-    });
-  }),
-
-  // --- Files: single-node move (POST /files/move, body: { nodeId, destinationParentNodeId }) ---
-  // server/domains/files/routes/crud.js + api.md "Files and Folders".
-  http.post(`${API_BASE}/files/move`, async ({ request }) => {
-    const body = await request.json().catch(() => ({}));
-    const { nodeId, destinationParentNodeId } = body;
-    if (!nodeId || !destinationParentNodeId) {
-      return errorResponse('serverErrors.files.sourceDestRequired', 400);
-    }
-    return HttpResponse.json({
-      messageCode: 'serverMessages.files.moveSuccess',
-      nodeId,
-      newParentId: destinationParentNodeId,
-    });
-  }),
-
-  // --- Files: single-node copy (POST /files/copy, body: { nodeId, destinationParentNodeId, newName? }) ---
-  http.post(`${API_BASE}/files/copy`, async ({ request }) => {
-    const body = await request.json().catch(() => ({}));
-    const { nodeId, destinationParentNodeId } = body;
-    if (!nodeId || !destinationParentNodeId) {
-      return errorResponse('serverErrors.files.sourceDestRequired', 400);
-    }
-    return HttpResponse.json({
-      messageCode: 'serverMessages.files.copySuccess',
-      sourceNodeId: nodeId,
-      copiedNodeId: `${nodeId}_copy`,
-    });
-  }),
-
-  // --- Files: single-node delete (DELETE /files/delete, body: { nodeId }) ---
-  http.delete(`${API_BASE}/files/delete`, async ({ request }) => {
-    const body = await request.json().catch(() => ({}));
-    const { nodeId } = body;
-    if (!nodeId) {
-      return errorResponse('serverErrors.files.sourceDestRequired', 400);
-    }
-    return HttpResponse.json({
-      messageCode: 'serverMessages.files.deleteSuccess',
-      nodeId,
-      deletedCount: 1,
     });
   }),
 
@@ -907,24 +833,11 @@ export const handlers = [
     return HttpResponse.json({ restart_required: true });
   }),
 
-  http.get(`${API_BASE}/webdav/info`, () => {
-    return HttpResponse.json({ url: 'https://example.com/webdav', basePath: '/' });
-  }),
-
-  http.get(`${API_BASE}/webdav/test`, () => {
-    return HttpResponse.json({ success: true, messageCode: 'serverMessages.api.webdavTestOk' });
-  }),
-
-  // --- Users (basic) ---
-  http.get(`${API_BASE}/users`, () => {
-    return HttpResponse.json([{ id: '1', username: 'testuser', email: 'user@example.com' }]);
-  }),
-
   http.get(`${API_BASE}/users/approved`, () => {
     return HttpResponse.json([{ id: '1', username: 'testuser', email: 'user@example.com' }]);
   }),
 
-  // --- Users: self-service mutations (PUT /users/:id/password|email|permissions) ---
+  // --- Users: self-service mutations (PUT /users/:id/password|email) ---
   // server/domains/admin/routes/users.js + api.md "Users".
   http.put(`${API_BASE}/users/:id/password`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
@@ -940,14 +853,6 @@ export const handlers = [
       return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
     }
     return HttpResponse.json({ messageCode: 'serverMessages.users.emailUpdated' });
-  }),
-
-  http.put(`${API_BASE}/users/:id/permissions`, async ({ request }) => {
-    const body = await request.json().catch(() => ({}));
-    if (!Array.isArray(body.permissions)) {
-      return errorResponse('serverErrors.admin.invalidPermissionList', 400);
-    }
-    return HttpResponse.json({ messageCode: 'serverMessages.users.permissionUpdated' });
   }),
 
   // --- Admin ---
@@ -1098,7 +1003,7 @@ export const handlers = [
     return HttpResponse.json({ updatedUsers: 0, upgradedPaths: 0, grantedPaths: 0, errors: [] });
   }),
 
-  // --- Admin: blob migration (aligned with PLAN.md module E / api contract) ---
+  // --- Admin: blob migration (aligned with the blob-migration API contract) ---
   // GET /info returns { source, direction } (direction server-derived from WEA_FILE_STORAGE);
   // POST returns { jobId } (202) and takes NO direction (server derives it, validates dest.type);
   // GET returns the job shape; cancel flips to cancelled.

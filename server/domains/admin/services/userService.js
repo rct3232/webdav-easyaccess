@@ -211,22 +211,6 @@ async function deleteUserCascade(userId, adminId) {
   return { id: user.id, username: user.username, email: user.email };
 }
 
-async function bulkUpdateUserPermissions(userId, permissionEntries) {
-  if (!Array.isArray(permissionEntries)) {
-    throw validationError(SERVER_ERROR_CODES.admin.invalidPermissionList);
-  }
-
-  await permissionStore.revokeAllUserPermissions(userId);
-
-  for (const perm of permissionEntries) {
-    if (perm.folderPath && perm.permission && PERMISSIONS.isValid(perm.permission)) {
-      await permissionStore.grant(userId, perm.folderPath, perm.permission);
-    }
-  }
-
-  return true;
-}
-
 async function listUsers() {
   const users = await User.findAll();
   return users.map((u) => ({
@@ -272,7 +256,6 @@ module.exports = {
   approvePendingUser,
   rejectPendingUser,
   deleteUserCascade,
-  bulkUpdateUserPermissions,
   listUsers,
   listApprovedUsers,
   getUserById,

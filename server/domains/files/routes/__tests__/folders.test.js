@@ -11,6 +11,7 @@ const {
 const { createFileNodeService } = require('../../../../service/fileNodeService');
 const { createFileNodesStore } = require('../../../../store/fileNodesStore');
 const { createWebdavMock } = require('@testing/mocks/webdavMock');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const WebdavBlobStore = require('../../../../infrastructure/adapters/blobstore/WebdavBlobStore');
 const composition = require('../../../../service/composition');
 
@@ -60,7 +61,6 @@ beforeEach(() => {
   webdavMock.createDirectory.mockResolvedValue(undefined);
   webdavMock.createDirectory.mockClear();
   webdavMock.ensureDirectoryExists.mockClear();
-  webdavMock.getRecursiveFolderStats.mockResolvedValue({ fileCount: 5, totalSize: 1200 });
 });
 
 afterEach(() => {
@@ -130,6 +130,50 @@ describe('POST /api/folders/create', () => {
     expect(res.status).toBe(403);
     expect(res.body.errorCode).toBeDefined();
   });
+
+  it('A19: rejects a .wea-trash folder name with 400 files.fileNameReserved (reserved namespace)', async () => {
+    const res = await request(app)
+      .post('/api/folders/create')
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ parentNodeId: homeNodeId, name: '.wea-trash' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.files.fileNameReserved);
+
+    // Case-insensitive reservation.
+    const res2 = await request(app)
+      .post('/api/folders/create')
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ parentNodeId: homeNodeId, name: '.WEA-Trash' });
+    expect(res2.status).toBe(400);
+    expect(res2.body.errorCode).toBe(SERVER_ERROR_CODES.files.fileNameReserved);
+  });
+
+  it('A7: creating a folder with the same name as a TRASHED sibling is non-blocking', async () => {
+    const name = `ghost-${Date.now()}`;
+    const res1 = await request(app)
+      .post('/api/folders/create')
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ parentNodeId: homeNodeId, name });
+    expect(res1.status).toBe(200);
+
+    // Trash the folder. The trash MOVE probe must see a free destination.
+    webdavMock.getFileMetadata.mockRejectedValue(Object.assign(new Error('404'), { status: 404 }));
+    // Trash the fixture via the same fileService.deleteNode the canonical
+    // batch-delete worker delegates to (single-node delete route removed).
+    await composition
+      .getComposition()
+      .fileService.deleteNode(res1.body.nodeId, userId, { id: userId, is_admin: false });
+
+    // Re-create with the same name: the trashed sibling does not block it.
+    webdavMock.pathExists.mockResolvedValue(false);
+    const res2 = await request(app)
+      .post('/api/folders/create')
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ parentNodeId: homeNodeId, name });
+    expect(res2.status).toBe(200);
+    expect(res2.body.nodeId).not.toBe(res1.body.nodeId);
+  });
 });
 
 describe('GET /api/folders/stats', () => {
@@ -162,6 +206,24 @@ describe('GET /api/folders/stats', () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('totalFiles');
     expect(res.body).toHaveProperty('totalSize');
+  });
+
+  it('sums real filecache sizes of live files into totalSize', async () => {
+    const folder = await fileNodeService.createDirectory(homeNodeId, `stats-${Date.now()}`);
+    const store = createFileNodesStore();
+    const f1 = await fileNodeService.createFile(folder.id, 'a.txt');
+    const f2 = await fileNodeService.createFile(folder.id, 'b.txt');
+    await store.upsertCache(f1.id, 1000, 'text/plain', null);
+    await store.upsertCache(f2.id, 500, 'text/plain', null);
+
+    const res = await request(app)
+      .get('/api/folders/stats')
+      .set('Authorization', `Bearer ${userToken}`)
+      .query({ nodeId: folder.id });
+
+    expect(res.status).toBe(200);
+    expect(res.body.totalFiles).toBe(2);
+    expect(res.body.totalSize).toBe(1500);
   });
 
   it('returns 403 when non-admin lacks read permission on folder', async () => {

@@ -95,9 +95,7 @@ describe('SystemConfigEditor', () => {
     // T0 keys render as Section B rows.
     expect(screen.getByTestId('platform-config-row-WEA_DB_HOST')).toBeInTheDocument();
     expect(screen.getByTestId('platform-config-row-JWT_SECRET')).toBeInTheDocument();
-    expect(
-      screen.getByTestId('platform-config-row-WEA_DB_QUERY_TIMEOUT_MS')
-    ).toBeInTheDocument();
+    expect(screen.getByTestId('platform-config-row-WEA_DB_QUERY_TIMEOUT_MS')).toBeInTheDocument();
 
     // env-sourced T1/T2 keys live in Section B: no disabled Section A input.
     expect(screen.getByTestId('platform-config-row-S3_BUCKET')).toBeInTheDocument();
@@ -112,7 +110,9 @@ describe('SystemConfigEditor', () => {
     // Masked secret row: value '****', no reveal/set-new-value control.
     const secretRow = screen.getByTestId('platform-config-row-WEA_DB_PASSWORD');
     expect(within(secretRow).getByText('****')).toBeInTheDocument();
-    expect(within(secretRow).getByText(/T0 · Set in .env \(env takes precedence\)/i)).toBeInTheDocument();
+    expect(
+      within(secretRow).getByText(/T0 · Set in .env \(env takes precedence\)/i)
+    ).toBeInTheDocument();
     expect(within(secretRow).queryByRole('button')).not.toBeInTheDocument();
 
     // Undefined/empty value row shows the "(unset)" placeholder.
@@ -128,7 +128,9 @@ describe('SystemConfigEditor', () => {
     // env-sourced T1 key shows its real (masked-on-server) value read-only.
     const envRow = screen.getByTestId('platform-config-row-S3_BUCKET');
     expect(within(envRow).getByText('my-bucket')).toBeInTheDocument();
-    expect(within(envRow).getByText(/T1 · Set in .env \(env takes precedence\)/i)).toBeInTheDocument();
+    expect(
+      within(envRow).getByText(/T1 · Set in .env \(env takes precedence\)/i)
+    ).toBeInTheDocument();
   });
 
   it('renders a Section A select and editable switch for db/default keys', async () => {

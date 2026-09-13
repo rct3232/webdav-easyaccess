@@ -17,12 +17,11 @@
 
 ### 2.2 Main Functions
 
-| Function              | Input                 | Return           | API called                     |
-| --------------------- | --------------------- | ---------------- | ------------------------------ |
-| getApprovedUsers      | ()                    | Promise\<Array\> | GET /api/users/approved        |
-| updateEmail           | (userId, email)       | Promise\<void\>  | PUT /api/users/:id/email       |
-| updatePassword        | (userId, password)    | Promise\<void\>  | PUT /api/users/:id/password    |
-| updateUserPermissions | (userId, permissions) | Promise\<void\>  | PUT /api/users/:id/permissions |
+| Function         | Input              | Return           | API called                  |
+| ---------------- | ------------------ | ---------------- | --------------------------- |
+| getApprovedUsers | ()                 | Promise\<Array\> | GET /api/users/approved     |
+| updateEmail      | (userId, email)    | Promise\<void\>  | PUT /api/users/:id/email    |
+| updatePassword   | (userId, password) | Promise\<void\>  | PUT /api/users/:id/password |
 
 ### 2.3 Error Handling
 
@@ -33,4 +32,3 @@
 
 - [ ] getApprovedUsers returns user array
 - [ ] updateEmail, updatePassword call correct endpoints
-- [ ] updateUserPermissions sends permissions array

@@ -20,6 +20,7 @@ const {
   SERVER_MESSAGE_CODES,
 } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { getContentType } = require('@webdav-easyaccess/shared/fileTypes');
+const { validateFileName } = require('@webdav-easyaccess/shared/validation');
 const { sendBufferAsChunks } = require('../../../utils/responseWriter');
 
 const { getComposition } = require('../../../service/composition');
@@ -33,6 +34,18 @@ function requireTokenNotShare(req, res, next) {
       .json({ errorCode: SERVER_ERROR_CODES.files.accessDenied });
   }
   next();
+}
+
+// Shared `.wea-` reservation (DEF-16): the full validateFileName contract is
+// enforced server-side on every name-accepting route; the reserved namespace
+// surfaces its own error code, everything else maps to files.invalidName.
+function assertValidName(name) {
+  const validationKey = validateFileName(name);
+  if (!validationKey) return;
+  if (validationKey === 'validation.fileNameReserved') {
+    throw validationError(SERVER_ERROR_CODES.files.fileNameReserved);
+  }
+  throw validationError(SERVER_ERROR_CODES.files.invalidName);
 }
 
 const METADATA_PATHS_LIMIT = 100;
@@ -53,7 +66,8 @@ router.post(
 );
 
 // Legacy-URL bootstrap resolver (nodeId-first navigation): resolves a path string to a nodeId.
-// Sole path-accepting endpoint; documented exception to the nodeId-only rule (PLAN.md Rule 13).
+// Sole path-accepting endpoint; documented exception to the nodeId-only rule
+// (docs/spec/server/routes/files.md).
 router.post(
   '/resolve-path',
   authenticateToken,
@@ -103,9 +117,9 @@ router.post(
             nodeId: node.id,
             name: node.name,
             type: node.type,
-            size: null,
+            size: node.size ?? null,
             lastmod: node.updatedAt,
-            mime: null,
+            mime: node.mimeType ?? null,
           });
         }
       } catch (err) {
@@ -240,6 +254,7 @@ router.post(
     } catch {
       /* latin1→utf8 detection is best-effort */
     }
+    assertValidName(originalFilename);
 
     const parentNodeIdValue = req.body.parentNodeId;
     const uploadUser = req.user.full;
@@ -300,6 +315,7 @@ router.put(
     if (!nodeId || !newName) {
       throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
     }
+    assertValidName(newName);
 
     const fileNodeId = parseNodeId(nodeId, 'nodeId');
     const principalId = req.principalId;
@@ -316,87 +332,9 @@ router.put(
   })
 );
 
-router.post(
-  '/move',
-  authenticateToken,
-  requireAuth,
-  asyncHandler(async (req, res) => {
-    const { nodeId, destinationParentNodeId } = req.body;
-    if (!nodeId || !destinationParentNodeId) {
-      throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
-    }
-
-    const fileNodeId = parseNodeId(nodeId, 'nodeId');
-    const destParentNodeId = parseNodeId(destinationParentNodeId, 'destinationParentNodeId');
-    const principalId = req.principalId;
-    const user = req.user.full;
-    const { fileService } = getComposition();
-
-    const result = await fileService.moveNode(fileNodeId, destParentNodeId, principalId, user);
-
-    res.json({
-      messageCode: SERVER_MESSAGE_CODES.files.moveSuccess,
-      nodeId: result.nodeId,
-      newParentId: result.newParentId,
-    });
-  })
-);
-
-router.post(
-  '/copy',
-  authenticateToken,
-  requireAuth,
-  asyncHandler(async (req, res) => {
-    const { nodeId, destinationParentNodeId, newName } = req.body;
-    if (!nodeId || !destinationParentNodeId) {
-      throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
-    }
-
-    const sourceNodeId = parseNodeId(nodeId, 'nodeId');
-    const destParentNodeId = parseNodeId(destinationParentNodeId, 'destinationParentNodeId');
-    const principalId = req.principalId;
-    const user = req.user.full;
-    const { fileService } = getComposition();
-
-    const result = await fileService.copyFile(
-      sourceNodeId,
-      destParentNodeId,
-      newName || null,
-      principalId,
-      user
-    );
-
-    res.json({
-      messageCode: SERVER_MESSAGE_CODES.files.copySuccess,
-      sourceNodeId: result.sourceNodeId,
-      copiedNodeId: result.copiedNodeId,
-    });
-  })
-);
-
-router.delete(
-  '/delete',
-  authenticateToken,
-  requireAuth,
-  asyncHandler(async (req, res) => {
-    const { nodeId } = req.body;
-    if (!nodeId) {
-      throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
-    }
-
-    const fileNodeId = parseNodeId(nodeId, 'nodeId');
-    const principalId = req.principalId;
-    const user = req.user.full;
-    const { fileService } = getComposition();
-
-    const result = await fileService.deleteNode(fileNodeId, principalId, user);
-
-    res.json({
-      messageCode: SERVER_MESSAGE_CODES.files.deleteSuccess,
-      nodeId: fileNodeId,
-      deletedCount: result.deletedCount,
-    });
-  })
-);
+// Single-node move/copy/delete routes removed: the batch job endpoints
+// (POST /api/files/batch-move, batch-copy, batch-delete) are the canonical
+// mutation channel and invoke the same fileService methods
+// (docs/spec/server/routes/files.md "Mutation channels").
 
 module.exports = router;

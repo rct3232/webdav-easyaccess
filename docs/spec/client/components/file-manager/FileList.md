@@ -10,6 +10,10 @@
 
 ---
 
+### 2.0 Trash-view empty state (DEF-16 P9)
+
+- `emptyText` (string, optional): overrides the default `fileManager.noFiles` empty message. The trash view passes `fileManager.trashEmpty` (rows render name + size/type metadata only; entries without `lastmod` suppress the date caption).
+
 ## 2. Implementation Spec
 
 ### 2.1 File Path

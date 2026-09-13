@@ -57,6 +57,21 @@ describe('shared validation', () => {
     });
 
     it.each([
+      ['.wea-x.txt', 'validation.fileNameReserved'],
+      ['.wea-trash', 'validation.fileNameReserved'],
+      ['.WEA-UPPER', 'validation.fileNameReserved'],
+      ['.Wea-mixed.ext', 'validation.fileNameReserved'],
+      [' .wea-padded', 'validation.fileNameReserved'],
+    ])('A18: rejects the reserved .wea- namespace %p → %s', (input, expected) => {
+      expect(validateFileName(input)).toBe(expected);
+    });
+
+    it('A18: accepts names that merely contain .wea- mid-name', () => {
+      expect(validateFileName('my.wea-file.txt')).toBeNull();
+      expect(validateFileName('wea-normal.txt')).toBeNull();
+    });
+
+    it.each([
       ['file ', 'validation.fileNameNoTrailing'],
       ['file.', 'validation.fileNameNoTrailing'],
     ])('rejects trailing space/dot in %p → %s', (input, expected) => {

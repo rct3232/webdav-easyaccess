@@ -33,6 +33,7 @@ const FileDetail = ({
   onFileCheck,
   processingMap,
   loading = false,
+  emptyText,
 }) => {
   const { t } = useTranslation();
   const { isMobile } = useResponsive();
@@ -139,7 +140,9 @@ const FileDetail = ({
             <TableRow>
               <TableCell colSpan={5} sx={{ border: 'none' }}>
                 <Box sx={{ textAlign: 'center', py: 4 }}>
-                  <Typography color="text.secondary">{t('fileManager.noFiles')}</Typography>
+                  <Typography color="text.secondary">
+                    {emptyText ?? t('fileManager.noFiles')}
+                  </Typography>
                 </Box>
               </TableCell>
             </TableRow>

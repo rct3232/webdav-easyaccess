@@ -5,7 +5,7 @@
 | Item         | Description                                                                                                                                                                       |
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role         | Admin blob-migration API: get the derived migration direction, start a migration job, poll its status, cancel it. Thin wrapper around `apiClient` (same style as `adminService`). |
-| Related docs | Admin migration routes (`docs/spec/server/routes/admin.md`); `docs/spec/client/components/mypage/content/MigrationDialog.md` |
+| Related docs | Admin migration routes (`docs/spec/server/routes/admin.md`); `docs/spec/client/components/mypage/content/MigrationDialog.md`                                                      |
 
 ---
 
@@ -24,6 +24,7 @@
 | startBlobMigration     | (payload) | Promise\<{ jobId }\>             | POST /api/admin/migration/blobs              |
 | getBlobMigrationStatus | (jobId)   | Promise\<Job\>                   | GET /api/admin/migration/jobs/:jobId         |
 | cancelBlobMigration    | (jobId)   | Promise\<Object\>                | POST /api/admin/migration/jobs/:jobId/cancel |
+| ackLastMigrationJob    | ()        | Promise\<void\>                  | POST /api/admin/migration/last-job/ack       |
 
 - All require admin JWT.
 
@@ -100,6 +101,8 @@ Response: `202 { jobId }`; `400` invalid payload / missing required destination 
 `404` unknown/expired job.
 
 **POST /api/admin/migration/jobs/:jobId/cancel** → `200 { messageCode, jobId }`; `404` unknown job.
+
+**POST /api/admin/migration/last-job/ack** → `204` (no body; idempotent). Consumes the gate's one-shot completion notice that `GET /api/migration/status` exposes to admins as `lastJob`.
 
 ### 2.4 Error Handling
 

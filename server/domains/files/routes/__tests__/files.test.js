@@ -378,6 +378,36 @@ describe('POST /api/files/upload', () => {
     expect(res.status).toBe(200);
     expect(res.body.messageCode).toBeDefined();
   });
+
+  it('A19: rejects a .wea- prefixed file name with 400 files.fileNameReserved', async () => {
+    const {
+      user,
+      token,
+      homeNodeId: uploadHomeId,
+    } = await createUserWithHomeNode({
+      username: `files-upload-reserved-${Date.now()}`,
+    });
+    await grantHomePermission({ userId: user.id, homeNodeId: uploadHomeId, permission: 'write' });
+
+    const res = await request(app)
+      .post('/api/files/upload')
+      .set('Authorization', `Bearer ${token}`)
+      .field('parentNodeId', String(uploadHomeId))
+      .attach('file', Buffer.from('x'), '.wea-x.txt');
+
+    expect(res.status).toBe(400);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.files.fileNameReserved);
+  });
+
+  it('A19: rejects renaming to a .wea- prefixed name with 400 files.fileNameReserved', async () => {
+    const res = await request(app)
+      .put('/api/files/rename')
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ nodeId: testFileNodeId, newName: '.wea-hidden.txt' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.files.fileNameReserved);
+  });
 });
 
 describe('POST /api/files/batch-delete', () => {
@@ -479,6 +509,26 @@ describe('PUT /api/files/rename', () => {
     expect(res.body.messageCode).toBe(SERVER_MESSAGE_CODES.files.renameSuccess);
     expect(res.body.newName).toBe('renamed.txt');
   });
+
+  it('A7: renaming to a TRASHED sibling name is non-blocking (gated sibling check)', async () => {
+    // A live sibling with a trashed ghost of the same name.
+    const trashedSibling = await fileNodeService.createFile(homeNodeId, 'ghosted-name.txt');
+    webdavMock.getFileMetadata.mockRejectedValue(Object.assign(new Error('404'), { status: 404 }));
+    // Trash the fixture via the same fileService.deleteNode the canonical
+    // batch-delete worker delegates to (single-node delete route removed).
+    await composition
+      .getComposition()
+      .fileService.deleteNode(trashedSibling.id, userId, { id: userId, is_admin: false });
+
+    webdavMock.pathExists.mockResolvedValue(false);
+    const res = await request(app)
+      .put('/api/files/rename')
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ nodeId: testFileNodeId, newName: 'ghosted-name.txt' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.newName).toBe('ghosted-name.txt');
+  });
 });
 
 describe('POST /api/files/check-conflicts', () => {
@@ -517,6 +567,26 @@ describe('POST /api/files/metadata', () => {
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  it('returns real filecache size/mime for files and null for cache-less rows', async () => {
+    const store = createFileNodesStore();
+    await store.upsertCache(testFileNodeId, 4321, 'text/plain', null);
+
+    const res = await request(app)
+      .post('/api/files/metadata')
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ nodeIds: [testFileNodeId, homeNodeId] });
+
+    expect(res.status).toBe(200);
+    const fileRow = res.body.find((r) => r.nodeId === testFileNodeId);
+    expect(fileRow).toBeDefined();
+    expect(fileRow.size).toBe(4321);
+    expect(fileRow.mime).toBe('text/plain');
+
+    const dirRow = res.body.find((r) => r.nodeId === homeNodeId);
+    expect(dirRow).toBeDefined();
+    expect(dirRow.size).toBeNull();
   });
 
   it.skip('returns 200 with metadata when using X-Share-Token — requires Phase 5 shareLinkStore', async () => {

@@ -7,7 +7,7 @@
 | Role       | Metadata DB migration engine: moves all metadata rows between the `sqlite` and `postgresql` backends (both directions) via direct target connections. Performs a target scan, applies the schema to an explicit target, and runs a single-transaction wipe + copy whose cancellation rolls back everything. |
 | Depends on | `server/infrastructure/backendProbe.js` (`probePostgresql` pattern for direct `pg.Client` connections), `server/infrastructure/schemaManager.js` / `sqliteSchemaInit.js` (`convertPostgresToSqlite`), the settings-value contract of `server/store/settingsStore.js`                                        |
 | Files      | `server/domains/admin/services/metadataMigrationService.js` (new)                                                                                                                                                                                                                                           |
-| Test files | `server/domains/admin/services/__tests__/metadataMigrationService.test.js` (new; sqlite↔PG roundtrip under `test:ci:pg:adapters`)                                                                                                                                                                                    |
+| Test files | `server/domains/admin/services/__tests__/metadataMigrationService.test.js` (new; sqlite↔PG roundtrip under `test:ci:pg:adapters`)                                                                                                                                                                           |
 
 Source of truth: `docs/features/migration-mode.md`, `docs/spec/server/tools/metadata-migration.md`,
 `docs/features/migration-mode.md` (decisions D4–D6, D11, D14).
@@ -30,14 +30,14 @@ worker derives them from the active backend (see §2.4).
 | Param                  | Type     | Description                                                                                                                                                                                                                            |
 | ---------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `pgConnectionProvider` | function | `(pgConfig) => pg.Client` — direct PG connection factory. Defaults to a `pg.Client` built like `probePostgresql` in `server/infrastructure/backendProbe.js` (host/port/database/user/password, ssl option, `connectionTimeoutMillis`). |
-| `sqliteFactory`        | function | `(path) => sqlite connection` — direct SQLite factory (node sqlite3, `sqlite3.Database`).                                                                                                                                                                |
+| `sqliteFactory`        | function | `(path) => sqlite connection` — direct SQLite factory (node sqlite3, `sqlite3.Database`).                                                                                                                                              |
 
 ### 2.2 Public API
 
-| Function       | Signature                                                                                       | Description                                                                                                                                                                |
-| -------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `scanTarget`   | `({ backend, pg?, sqlitePath? }) => Promise<ScanResult>`                                        | Connect to the explicit target (`backend`: `'postgresql'` \| `'sqlite'`) and report `schemaExists` + per-table row counts. Read-only.                                      |
-| `runMigration` | `({ direction, source?, target, wipeTarget?, onProgress, isCancelled? }) => Promise<Result>`    | `direction` = `'sqliteToPostgresql'` \| `'postgresqlToSqlite'`; `source` = `{ pg?, sqlitePath? }`, `target` = `{ backend, pg?, sqlitePath? }`. Apply schema if missing, wipe the target if `wipeTarget`, then copy all rows in one target transaction. `isCancelled()` aborts → ROLLBACK. |
+| Function       | Signature                                                                                    | Description                                                                                                                                                                                                                                                                               |
+| -------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scanTarget`   | `({ backend, pg?, sqlitePath? }) => Promise<ScanResult>`                                     | Connect to the explicit target (`backend`: `'postgresql'` \| `'sqlite'`) and report `schemaExists` + per-table row counts. Read-only.                                                                                                                                                     |
+| `runMigration` | `({ direction, source?, target, wipeTarget?, onProgress, isCancelled? }) => Promise<Result>` | `direction` = `'sqliteToPostgresql'` \| `'postgresqlToSqlite'`; `source` = `{ pg?, sqlitePath? }`, `target` = `{ backend, pg?, sqlitePath? }`. Apply schema if missing, wipe the target if `wipeTarget`, then copy all rows in one target transaction. `isCancelled()` aborts → ROLLBACK. |
 
 ### 2.3 Target scan (`scanTarget`)
 
@@ -57,9 +57,9 @@ Read-only; never writes to the target.
 }
 ```
 
-- `schemaExists` detection: check for the `settings` table (always present in the app schema). On
-  PostgreSQL also check `_schema_migrations` (PG-only; the sqlite schema is created by the
-  conversion layer and does not use it).
+- `schemaExists` detection: check for the `users` / `settings` tables (always present in the app
+  schema). `_schema_migrations` is part of the applied schema on both backends (the schema-apply
+  step records each DDL file, §2.5), but detection itself keys on the app tables.
 - Per-table row counts use `COUNT(*)` on each copyable table.
 - A missing database/connection failure surfaces the same classification as
   `probePostgresql`/`classifyPgError` (unreachable / auth / missing database) so the dialog can
@@ -79,20 +79,19 @@ Read-only; never writes to the target.
 
 If `schemaExists === false`, apply the DDL **to the explicit target connection** before copying:
 
-- **PostgreSQL target:** execute `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
-  on the target `pg.Client`.
-- **SQLite target:** run `convertPostgresToSqlite(DDL)` (`server/infrastructure/sqliteSchemaInit.js`)
-  on the target sqlite connection.
-- The explicit-target schema apply is **implemented** (no schema-manager refactor pending):
-  `applyPendingMigrations(backend, options)` accepts `{ pgClient }` to apply the PG DDL to a
-  caller-supplied connection (`server/infrastructure/schemaManager.js:162-170`), and
-  `initSqliteSchema({ connection })` applies the SQLite DDL to a caller-supplied sqlite3
-  connection (`server/infrastructure/sqliteSchemaInit.js:107-118`). `applySchema` invokes them
-  against the migration-target connection (metadataMigrationService.js:631-637); the boot path is
-  unchanged (no options → the active backend, `storage.getPgPool()` /
-  `storage.getSqliteConnection()`).
-- `_schema_migrations` is **not** copied (see §2.8); for a PG target the schema-apply records the
-  applied DDL files so subsequent app boots are no-ops.
+- **PostgreSQL target:** `applyPendingMigrations('postgresql', { pgClient: targetConn })` —
+  checksum-tracked apply of `server/store/postgresql/ddl/*.sql` on the target `pg.Client`.
+- **SQLite target:** `applyPendingMigrations('sqlite', { sqliteConnection: targetConn })` —
+  symmetric with PG: the same tracked mechanism (sqlite dialect via the `convertPostgresToSqlite`
+  transpiler) runs on the caller-supplied sqlite3 connection and records each applied file in the
+  target's `_schema_migrations`, so a later app boot on that target is a no-op.
+- The explicit-target schema apply is **implemented**:
+  `applyPendingMigrations(backend, options)` accepts `{ pgClient }` for a PG target and
+  `{ sqliteConnection }` for a sqlite target (server/infrastructure/schemaManager.js);
+  `applySchema` invokes it against the migration-target connection. The boot path is unchanged
+  (no options → the active backend, `storage.getPgPool()` / `storage.getSqliteConnection()`).
+- `_schema_migrations` is **not** copied (see §2.8); the schema-apply records the applied DDL
+  files on the target so subsequent app boots are no-ops.
 
 ### 2.6 Single-transaction wipe + copy (D4, D5)
 
@@ -152,20 +151,25 @@ enforced on both backends):
     (and the same for `file_nodes`, `permission_requests`).
   - **→ sqlite:** update `sqlite_sequence` (`INSERT INTO sqlite_sequence(name, seq) ...` / update
     for the three tables) so `AUTOINCREMENT` continues after the copied max id.
-- **`_schema_migrations` is never copied.** It exists only in PG and tracks the active backend's
+- **`_schema_migrations` is never copied.** It exists on both backends and tracks each backend's
   applied DDL files; the target's schema-apply step manages it independently (§2.5).
 - **`locks`** is copied for completeness; stale lock rows are harmless (TTL-aware cleanup).
+- **`deleted_at` is copied verbatim (DEF-16 P8).** The copy derives the full column list from the
+  SOURCE schema (`information_schema.columns` / `PRAGMA table_info`) and copies whole rows, so the
+  trash marker (`file_nodes.deleted_at`) carries over in both directions byte-for-byte: a trashed
+  node is still trashed after the metadata migration. `file_nodes.deleted_at` needs no transform —
+  both backends store it as a timestamp value and timestamps pass through as strings.
 
 ### 2.9 Progress / stage reporting
 
 `onProgress(stage, table, done, total)` is invoked with **positional** arguments (no options
 object, no label) at each phase/batch boundary:
 
-| Field          | Description                                                                                                                                                          |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `stage`        | `'scan'` \| `'schema'` \| `'wipe'` \| `'copy'` \| `'done'` (matches the extended job payload in `docs/spec/server/tools/blob-migration.md` §job payload and PLAN §4) |
-| `table`        | The table currently being copied during `'copy'` batches, else `null`                                                                                                |
-| `done` / `total` | Running per-table `COUNT(*)` pre-aggregation, `Σ done / Σ total` → overall `%`                                                                                      |
+| Field            | Description                                                                                                                                                          |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stage`          | `'scan'` \| `'schema'` \| `'wipe'` \| `'copy'` \| `'done'` (matches the extended job payload in `docs/spec/server/tools/blob-migration.md` §job payload and PLAN §4) |
+| `table`          | The table currently being copied during `'copy'` batches, else `null`                                                                                                |
+| `done` / `total` | Running per-table `COUNT(*)` pre-aggregation, `Σ done / Σ total` → overall `%`                                                                                       |
 
 The service emits no human-readable label. The route worker composes
 `progress.currentLabel` as `"Copying <table> … <done>/<total>"` — or the stage name when
@@ -189,8 +193,9 @@ The service emits no human-readable label. The route worker composes
 - [ ] `scanTarget` on an empty target reports `schemaExists: false`, `totalRows: 0`; on a
       populated target reports per-table counts
 - [ ] `scanTarget` never writes (target row counts unchanged after scan)
-- [ ] Migration to a schema-less target auto-applies the DDL (`IF NOT EXISTS`, PG via
-      `_schema_migrations`, sqlite via `convertPostgresToSqlite`)
+- [ ] Migration to a schema-less target auto-applies the DDL (`IF NOT EXISTS`, tracked via
+      `_schema_migrations` on both backends — PG via `{ pgClient }`, sqlite via
+      `{ sqliteConnection }`)
 - [ ] Round-trip sqlite→PG→sqlite: row counts equal per table; `users.is_admin` boolean ↔ 0/1
       mapped correctly; `settings.value` JSON-string ↔ raw TEXT wrapped correctly
 - [ ] Explicit ids preserved (FK references intact); sequences resynced — a new insert after

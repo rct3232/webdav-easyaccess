@@ -1,18 +1,10 @@
 import {
   DEFAULT_MY_PAGE_CATEGORY,
-  getMyPageCategoryIcon,
   getMyPageContentDescriptor,
   getMyPageSidebarCategories,
-  isMyPageMultiCategory,
   resolveMyPageCategory,
 } from '../myPageRegistry';
-import {
-  Person as PersonIcon,
-  Share as ShareIcon,
-  People as PeopleIcon,
-  Settings as SettingsIcon,
-  Palette as PaletteIcon,
-} from '@mui/icons-material';
+import { Person as PersonIcon } from '@mui/icons-material';
 import AccountContent from '../../components/mypage/content/AccountContent';
 import SharingContent from '../../components/mypage/content/SharingContent';
 
@@ -55,22 +47,6 @@ describe('myPageRegistry', () => {
       const idsNonAdmin = getMyPageSidebarCategories(false).map((c) => c.id);
       expect(idsNonAdmin).toEqual(expect.arrayContaining(['account', 'sharing', 'preferences']));
       expect(idsNonAdmin).not.toEqual(expect.arrayContaining(['admin-users', 'admin-settings']));
-    });
-  });
-
-  describe('isMyPageMultiCategory and getMyPageCategoryIcon', () => {
-    it('sharing is multi-item; other known categories are not', () => {
-      expect(isMyPageMultiCategory('sharing')).toBe(true);
-      expect(isMyPageMultiCategory('account')).toBe(false);
-      expect(isMyPageMultiCategory('preferences')).toBe(false);
-    });
-
-    it('returns expected icon component for known categories', () => {
-      expect(getMyPageCategoryIcon('account')).toBe(PersonIcon);
-      expect(getMyPageCategoryIcon('sharing')).toBe(ShareIcon);
-      expect(getMyPageCategoryIcon('admin-users')).toBe(PeopleIcon);
-      expect(getMyPageCategoryIcon('admin-settings')).toBe(SettingsIcon);
-      expect(getMyPageCategoryIcon('preferences')).toBe(PaletteIcon);
     });
   });
 

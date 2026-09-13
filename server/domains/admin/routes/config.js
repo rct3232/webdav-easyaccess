@@ -17,10 +17,7 @@ const {
   isTier,
   isSecret,
 } = require('../../../infrastructure/configRegistry');
-const {
-  buildConfigSyncReport,
-  syncConfigSyncEnv,
-} = require('../services/configSyncService');
+const { buildConfigSyncReport, syncConfigSyncEnv } = require('../services/configSyncService');
 const {
   runProbe,
   classifyToHealthCode,
@@ -256,8 +253,7 @@ router.get(
   isAdmin,
   asyncHandler(async (req, res) => {
     const effective = await getSharedResolver().getEffectiveConfig();
-    const envValueOf = (key) =>
-      effective[key]?.source === 'env' ? process.env[key] : undefined;
+    const envValueOf = (key) => (effective[key]?.source === 'env' ? process.env[key] : undefined);
     const report = await buildConfigSyncReport({
       settings: Settings,
       envValueOf,
@@ -277,8 +273,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const resolver = getSharedResolver();
     const effective = await resolver.getEffectiveConfig();
-    const envValueOf = (key) =>
-      effective[key]?.source === 'env' ? process.env[key] : undefined;
+    const envValueOf = (key) => (effective[key]?.source === 'env' ? process.env[key] : undefined);
 
     const result = await syncConfigSyncEnv({
       settings: Settings,

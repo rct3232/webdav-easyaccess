@@ -260,9 +260,7 @@ describe('FilePreviewDialog', () => {
     await waitFor(() => {
       const source = document.querySelector('video source');
       expect(source).not.toBeNull();
-      expect(source.getAttribute('src')).toBe(
-        '/api/files/preview-stream?path=%2Fv.mp4&ticket=t'
-      );
+      expect(source.getAttribute('src')).toBe('/api/files/preview-stream?path=%2Fv.mp4&ticket=t');
     });
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();

@@ -98,7 +98,8 @@ restart. EMAIL\_\* were formerly T2, but the transporter is built once per proce
 take effect after a restart, so they are honestly classified T1 (F3).
 
 **T2 — env → DB fallback, immediate (hot):** `registration_enabled` (already DB),
-`CORS_ORIGINS`, `GC_ORPHAN_TTL_DAYS`, `WEBDAV_UPSTREAM_URL`, `JWT_EXPIRES_IN` (D5),
+`CORS_ORIGINS`, `GC_ORPHAN_TTL_DAYS`, `GC_VERSION_TTL_DAYS`, `GC_PENDING_STALE_DAYS`,
+`WEBDAV_UPSTREAM_URL`, `JWT_EXPIRES_IN` (D5),
 `LOGIN_RATE_LIMIT_MAX`, `LOGIN_RATE_LIMIT_WINDOW_MS`, `MAX_THUMBNAIL_SIZE`,
 `THUMBNAIL_TOKEN_SECRET` (secret, D8), `THUMBNAIL_TOKEN_EXPIRY`, `FFMPEG_INIT_TIMEOUT_MS`,
 `WEA_PREVIEW_TICKET_TTL_MS`, `PERMISSION_CACHE_TTL_MS`, `USER_CACHE_TTL_MS`,
@@ -142,8 +143,8 @@ values (e.g. `EMAIL_PASSWORD`, `WEBDAV_PASSWORD`, `AWS_SECRET_ACCESS_KEY`) are p
 **plaintext strings** exactly like any other config value. The flag drives **presentation-level
 masking only**:
 
-- Effective-config surfaces (`GET /api/admin/config`, `GET /api/setup/status`,
-  `POST /api/setup/prefill`) and the setup/admin UIs render a **set** secret as `'****'` and never
+- Effective-config surfaces (`GET /api/admin/config`, `GET /api/setup/status`)
+  and the setup/admin UIs render a **set** secret as `'****'` and never
   return the stored value to the client. An **unset** secret has no effective value (`undefined`,
   omitted from JSON) — it is never fabricated into `'****'`, so presence/completeness checks
   (metadata-backend and file-backend selection, `setup_complete`) never mistake it for a
@@ -180,13 +181,10 @@ metadata DB by default; only T0 keys are written to `.env`.
   (keep-existing).
 - **Admin password:** apply calls `User.updatePassword` directly on the booted app's `admin`
   user (`updateAdminPassword`, `setupCore.js`) — there is no `ADMIN_DEFAULT_PASSWORD` path.
-- **Setup-phase prefill is a direct read (wizard-only, Q1b):** during setup the wizard
-  prefill (`POST /api/setup/prefill`) reads the target metadata DB `settings` rows via a
-  **direct connection** using the credentials entered in wizard step 1 and returns
-  `{ current }` (secret rows masked as `'****'`, never plaintext). It does not use the
-  app's own store; runtime T2 reads and the admin config page use `Settings`/the resolver.
-  Best-effort — a prefill failure does not block advancing. Full contract:
-  `docs/spec/server/routes/setup.md` (§"POST /api/setup/prefill").
+- **Setup-phase prefill comes from `GET /status` only:** the wizard prefills from the
+  `current` block of `GET /api/setup/status` (effective env → DB → default, secret rows
+  masked as `'****'`, never plaintext). The former wizard-only direct-PG-read endpoint
+  `POST /api/setup/prefill` was retired as dead code (no client caller).
 
 ---
 
@@ -225,13 +223,13 @@ Consequently, when `.env` has the PG connection info, boot still branches on wha
 page as an "Advanced settings" accordion (`MUI Accordion`) within
 `SystemSettingsContent.js`.
 
-| Item         | Location                                                                                        |
-| ------------ | ----------------------------------------------------------------------------------------------- |
-| Component    | `client/src/components/mypage/content/SystemConfigEditor.js` — inside the accordion          |
-| Registry     | none — no new mypage category (`myPageRegistry.js` unchanged)                                   |
-| Service      | `client/src/services/adminService.js`: `getConfig()` / `updateConfig(values)`                   |
-| Server route | `server/domains/admin/routes/config.js` (new): `GET /config` + `PUT /config` under `/api/admin` |
-| MSW          | `client/src/mocks/handlers.js`: `GET/PUT /api/admin/config` + reset state                       |
+| Item         | Location                                                                                                                       |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| Component    | `client/src/components/mypage/content/SystemConfigEditor.js` — inside the accordion                                            |
+| Registry     | none — no new mypage category (`myPageRegistry.js` unchanged)                                                                  |
+| Service      | `client/src/services/adminService.js`: `getConfig()` / `updateConfig(values)`                                                  |
+| Server route | `server/domains/admin/routes/config.js` (new): `GET /config` + `PUT /config` under `/api/admin`                                |
+| MSW          | `client/src/mocks/handlers.js`: `GET/PUT /api/admin/config` + reset state                                                      |
 | i18n         | en/ko `admin.advancedSettings` (accordion title) + `admin.config.*` (section titles, section note, subgroups, generic strings) |
 
 **GET `/api/admin/config`** →
@@ -299,10 +297,10 @@ map; the server registry is authoritative for tier/secret/source.
 
 ## API surface summary
 
-| Endpoint                | Guard                       | Behavior                                                    |
-| ----------------------- | --------------------------- | ----------------------------------------------------------- |
-| `GET /api/admin/config` | authenticateToken + isAdmin | effective config, masked secrets, source/tier               |
-| `PUT /api/admin/config` | authenticateToken + isAdmin | allowlisted keys → DB (plaintext), invalidate T2 cache      |
+| Endpoint                | Guard                       | Behavior                                               |
+| ----------------------- | --------------------------- | ------------------------------------------------------ |
+| `GET /api/admin/config` | authenticateToken + isAdmin | effective config, masked secrets, source/tier          |
+| `PUT /api/admin/config` | authenticateToken + isAdmin | allowlisted keys → DB (plaintext), invalidate T2 cache |
 
 The setup-mode guard (503 `setup.incomplete`) continues to block admin-write routes while
 `setup_complete=false`, so the admin config surface is reachable only when setup is complete.
@@ -348,6 +346,6 @@ Representative observable behaviors to cover:
   goes to the DB as plaintext; existing full-`.env` installs keep working unchanged (`.env` wins).
 - Masked `'****'`/blank secret submissions keep the previously stored value on every write
   path; a new value overwrites it.
-- `GET /api/setup/status`, `GET /api/admin/config`, and `POST /api/setup/prefill` never return
-  a secret in plaintext and carry no key-loss field.
+- `GET /api/setup/status` and `GET /api/admin/config` never return a secret in
+  plaintext and carry no key-loss field.
 - No schema change; existing unit + e2e suites stay green.

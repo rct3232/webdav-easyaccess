@@ -61,9 +61,7 @@ describe('configSyncService.buildConfigSyncReport', () => {
   });
 
   it('classifies a secret row by plaintext comparison (differs / shadowed)', async () => {
-    const settings = fakeSettings([
-      { key: 'WEBDAV_PASSWORD', value: 'old-pass', updated_at: TS },
-    ]);
+    const settings = fakeSettings([{ key: 'WEBDAV_PASSWORD', value: 'old-pass', updated_at: TS }]);
     const env = new Map([['WEBDAV_PASSWORD', 'new-pass']]);
 
     const report = await buildConfigSyncReport({
@@ -144,9 +142,7 @@ describe('configSyncService.syncConfigSyncEnv', () => {
   });
 
   it('writes an env-set secret into the DB as plaintext', async () => {
-    const settings = fakeSettings([
-      { key: 'WEBDAV_PASSWORD', value: 'old-pass', updated_at: TS },
-    ]);
+    const settings = fakeSettings([{ key: 'WEBDAV_PASSWORD', value: 'old-pass', updated_at: TS }]);
     const env = new Map([['WEBDAV_PASSWORD', 'new-pass']]);
 
     const result = await syncConfigSyncEnv({ settings, envValueOf: fromMap(env) });

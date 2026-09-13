@@ -6,9 +6,9 @@ Summary of the test implementation for the React client application. All tests f
 
 ## Test Statistics
 
-- **Total Test Suites**: 156 (as of 2026-09-02)
-- **Total Tests**: 1397
-- **Pass Rate**: 100% (1397 passed, 0 failed) ✅
+- **Total Test Suites**: 157 (as of 2026-09-09)
+- **Total Tests**: 1421
+- **Pass Rate**: 100% (1421 passed, 0 failed) ✅
 - **Execution Time**: Reported per run by `npm run test`
 
 ## Test Breakdown by Category
@@ -107,7 +107,6 @@ Single modules in isolation (utils, hooks, services, components). External depen
 | `components/dialogs/__tests__/RenameDialog.test.js`                                     | Rename dialog              |
 | `components/dialogs/__tests__/ShareDialog.test.js`                                      | Share dialog               |
 | `components/dialogs/__tests__/SharedManageBody.test.js`                                 | Shared manage body         |
-| `components/dialogs/__tests__/SharedManageDialog.test.js`                               | Shared manage dialog       |
 | `components/dialogs/__tests__/SharedPermissionList.test.js`                             | Shared permission list     |
 | `components/dialogs/__tests__/ShareFolderTree.test.js`                                  | Share folder tree          |
 | `components/dialogs/__tests__/ShareTargetDialog.test.js`                                | Share target dialog        |
@@ -175,7 +174,7 @@ The per-module and overall coverage percentages previously published in this fil
 
 ## Conclusion
 
-- 1397 tests across 156 suites, 100% pass rate (as of 2026-09-02)
+- 1421 tests across 157 suites, 100% pass rate (as of 2026-09-09)
 - Tests are colocated with source under `components/`, `hooks/`, `pages/`, `services/`, `utils/`, `contexts/`
 - Coverage and integration goals documented
 - Test infrastructure and MSW setup in place (server created in `src/setupTests.js`)

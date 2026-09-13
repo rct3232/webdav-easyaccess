@@ -38,6 +38,22 @@ module.exports = function createPostgresFileNodeRepository(executor) {
 
     async getNode(id) {
       try {
+        // DEF-16 P4: live rows only — a trashed node is invisible to getNode.
+        const { rows } = await executor.query(
+          `SELECT fn.*, fc.size, fc.mime_type
+           FROM file_nodes fn
+           LEFT JOIN filecache fc ON fc.file_node_id = fn.id
+           WHERE fn.id = $1 AND fn.deleted_at IS NULL LIMIT 1`,
+          [Number(id)]
+        );
+        return mapNodeRow(rows[0]);
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async getNodeIncludingTrashed(id) {
+      try {
         const { rows } = await executor.query('SELECT * FROM file_nodes WHERE id = $1 LIMIT 1', [
           Number(id),
         ]);
@@ -51,15 +67,85 @@ module.exports = function createPostgresFileNodeRepository(executor) {
       try {
         const { rows } = await executor.query(
           `SELECT fn.id, fn.parent_id, fn.name, fn.type, fn.sync_status,
-                  fn.created_at, fn.updated_at,
+                  fn.created_at, fn.updated_at, fn.deleted_at,
                   fc.size, fc.mime_type, fc.content_hash
            FROM file_nodes fn
            LEFT JOIN filecache fc ON fc.file_node_id = fn.id
            WHERE ${parentId == null ? 'fn.parent_id IS NULL' : 'fn.parent_id = $1'}
+             AND fn.deleted_at IS NULL
            ORDER BY fn.name`,
           parentId != null ? [Number(parentId)] : []
         );
         return rows.map(mapChildRow);
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async getTrashChildren(parentId) {
+      try {
+        const { rows } = await executor.query(
+          `SELECT fn.*, fc.size, fc.mime_type
+           FROM file_nodes fn
+           LEFT JOIN filecache fc ON fc.file_node_id = fn.id
+           WHERE ${parentId == null ? 'fn.parent_id IS NULL' : 'fn.parent_id = $1'}
+             AND fn.deleted_at IS NOT NULL
+           ORDER BY fn.name`,
+          parentId != null ? [Number(parentId)] : []
+        );
+        return rows.map(mapNodeRow);
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async getTopmostTrashedNodes(olderThanDays) {
+      try {
+        const cutoff = Number.isFinite(Number(olderThanDays))
+          ? ` AND fn.deleted_at < NOW() - ($1 || ' days')::interval`
+          : '';
+        const params = Number.isFinite(Number(olderThanDays))
+          ? [String(Math.max(0, Number(olderThanDays)))]
+          : [];
+        const { rows } = await executor.query(
+          `SELECT fn.*, fc.size, fc.mime_type
+           FROM file_nodes fn
+           LEFT JOIN file_nodes p ON p.id = fn.parent_id
+           LEFT JOIN filecache fc ON fc.file_node_id = fn.id
+           WHERE fn.deleted_at IS NOT NULL
+             AND (fn.parent_id IS NULL OR p.deleted_at IS NULL)${cutoff}
+           ORDER BY fn.deleted_at DESC, fn.name`,
+          params
+        );
+        return rows.map(mapNodeRow);
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async markSubtreeDeleted(nodeIds) {
+      if (!nodeIds || nodeIds.length === 0) return { changes: 0 };
+      try {
+        const placeholders = buildInPlaceholders(nodeIds.length);
+        const res = await executor.run(
+          `UPDATE file_nodes SET deleted_at = NOW() WHERE id IN (${placeholders})`,
+          nodeIds.map(Number)
+        );
+        return { changes: res.changes };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async untrashSubtree(nodeIds) {
+      if (!nodeIds || nodeIds.length === 0) return { changes: 0 };
+      try {
+        const placeholders = buildInPlaceholders(nodeIds.length);
+        const res = await executor.run(
+          `UPDATE file_nodes SET deleted_at = NULL WHERE id IN (${placeholders})`,
+          nodeIds.map(Number)
+        );
+        return { changes: res.changes };
       } catch (error) {
         throw mapDatabaseError(error);
       }
@@ -120,10 +206,12 @@ module.exports = function createPostgresFileNodeRepository(executor) {
         let query;
         let params;
         if (parentId == null) {
-          query = 'SELECT id FROM file_nodes WHERE parent_id IS NULL AND name = $1 LIMIT 1';
+          query =
+            'SELECT id FROM file_nodes WHERE parent_id IS NULL AND name = $1 AND deleted_at IS NULL LIMIT 1';
           params = [String(name)];
         } else {
-          query = 'SELECT id FROM file_nodes WHERE parent_id = $1 AND name = $2 LIMIT 1';
+          query =
+            'SELECT id FROM file_nodes WHERE parent_id = $1 AND name = $2 AND deleted_at IS NULL LIMIT 1';
           params = [Number(parentId), String(name)];
         }
         const { rows } = await executor.query(query, params);
@@ -164,20 +252,6 @@ module.exports = function createPostgresFileNodeRepository(executor) {
         const res = await executor.run(
           `DELETE FROM node_ancestors WHERE descendant_id IN (${placeholders})`,
           descendantIds.map(Number)
-        );
-        return { changes: res.changes };
-      } catch (error) {
-        throw mapDatabaseError(error);
-      }
-    },
-
-    async deleteAncestorByAncestor(ancestorIds) {
-      if (!ancestorIds || ancestorIds.length === 0) return { changes: 0 };
-      try {
-        const placeholders = buildInPlaceholders(ancestorIds.length);
-        const res = await executor.run(
-          `DELETE FROM node_ancestors WHERE ancestor_id IN (${placeholders})`,
-          ancestorIds.map(Number)
         );
         return { changes: res.changes };
       } catch (error) {
@@ -255,8 +329,9 @@ module.exports = function createPostgresFileNodeRepository(executor) {
 
     async upsertObjectMap(fileNodeId, s3Key, status) {
       try {
+        // DEF-11: the previous active row becomes managed history (not orphaned).
         await executor.run(
-          `UPDATE object_map SET status = 'orphaned' WHERE file_node_id = $1 AND status = 'active'`,
+          `UPDATE object_map SET status = 'history' WHERE file_node_id = $1 AND status = 'active'`,
           [Number(fileNodeId)]
         );
         const verRes = await executor.query(
@@ -268,6 +343,36 @@ module.exports = function createPostgresFileNodeRepository(executor) {
           `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
            VALUES ($1, $2, 's3', $3, $4)`,
           [Number(fileNodeId), String(s3Key), versionNumber, String(status)]
+        );
+        return { changes: res.changes };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async evictVersionsBeyondCap(fileNodeId, cap) {
+      const maxVersions = Number(cap);
+      // cap 0 (or invalid) = unbounded → no-op; the active row is never touched.
+      if (!Number.isFinite(maxVersions) || maxVersions <= 0) {
+        return { changes: 0 };
+      }
+      try {
+        const res = await executor.run(
+          `UPDATE object_map SET status = 'orphaned'
+           WHERE file_node_id = $1 AND status = 'history'
+             AND (
+               SELECT COUNT(*) FROM object_map older
+               WHERE older.file_node_id = $1
+                 AND older.status = 'history'
+                 AND older.version_number < object_map.version_number
+             ) < GREATEST(
+               (
+                 SELECT COUNT(*)::int FROM object_map total
+                 WHERE total.file_node_id = $1
+                   AND total.status IN ('active', 'history')
+               ) - $2, 0
+             )`,
+          [Number(fileNodeId), maxVersions]
         );
         return { changes: res.changes };
       } catch (error) {
@@ -313,6 +418,34 @@ module.exports = function createPostgresFileNodeRepository(executor) {
       }
     },
 
+    async getObjectMapByNode(fileNodeId) {
+      try {
+        const { rows } = await executor.query(
+          `SELECT * FROM object_map WHERE file_node_id = $1
+           ORDER BY version_number DESC, id DESC`,
+          [Number(fileNodeId)]
+        );
+        return rows;
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async getObjectMapBySubtree(ancestorId) {
+      try {
+        const { rows } = await executor.query(
+          `SELECT om.* FROM object_map om
+           JOIN node_ancestors a ON a.descendant_id = om.file_node_id
+           WHERE a.ancestor_id = $1
+           ORDER BY om.file_node_id, om.id`,
+          [Number(ancestorId)]
+        );
+        return rows;
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
     async getObjectMapByS3Key(s3Key) {
       try {
         const { rows } = await executor.query(
@@ -349,6 +482,46 @@ module.exports = function createPostgresFileNodeRepository(executor) {
       }
     },
 
+    async demoteActiveToHistory(s3Key) {
+      try {
+        const res = await executor.run(
+          `UPDATE object_map SET status = 'history' WHERE s3_key = $1 AND status = 'active'`,
+          [String(s3Key)]
+        );
+        return { changes: res.changes };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async reactivateObjectMapRow(id) {
+      try {
+        // Guard widened by DEF-11: a history row reactivates in place on
+        // version restore; the orphaned arm covers legacy residue.
+        const res = await executor.run(
+          `UPDATE object_map SET status = 'active' WHERE id = $1 AND status IN ('history', 'orphaned')`,
+          [Number(id)]
+        );
+        return { changes: res.changes };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async getVersionsByNode(fileNodeId) {
+      try {
+        const { rows } = await executor.query(
+          `SELECT * FROM object_map
+           WHERE file_node_id = $1 AND status IN ('active', 'history')
+           ORDER BY version_number DESC`,
+          [Number(fileNodeId)]
+        );
+        return rows;
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
     async countActiveObjectsByS3Key(s3Key) {
       try {
         const { rows } = await executor.query(
@@ -361,13 +534,47 @@ module.exports = function createPostgresFileNodeRepository(executor) {
       }
     },
 
-    async getOrphanedObjects(olderThanDays) {
+    async getKeptObjectMapKeys() {
+      try {
+        const { rows } = await executor.query(
+          `SELECT s3_key FROM object_map WHERE status = 'active' AND s3_key IS NOT NULL
+           UNION
+           SELECT om.s3_key FROM object_map om WHERE om.status = 'history' AND om.s3_key IS NOT NULL
+           UNION
+           SELECT om.s3_key FROM object_map om WHERE om.status = 'orphaned' AND om.s3_key IS NOT NULL
+           UNION
+           SELECT om.s3_key FROM object_map om
+            JOIN file_nodes fn ON fn.id = om.file_node_id
+            WHERE om.status = 'pending' AND om.s3_key IS NOT NULL
+              AND fn.sync_status = 'pending_upload'`
+        );
+        return rows.map((r) => String(r.s3_key));
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async getFileNodesPathRows() {
+      try {
+        const { rows } = await executor.query(
+          `SELECT id, parent_id, name, type, deleted_at, sync_status FROM file_nodes`
+        );
+        return rows;
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async getOrphanedObjectsWithNodeState(olderThanDays) {
       const days = Math.max(0, Number(olderThanDays) || 0);
       try {
         const { rows } = await executor.query(
-          `SELECT * FROM object_map
-           WHERE status = 'orphaned'
-             AND created_at < NOW() - ($1 || ' days')::interval`,
+          `SELECT om.*, fn.sync_status AS node_sync_status,
+                  CASE WHEN EXISTS(SELECT 1 FROM object_map a WHERE a.file_node_id = om.file_node_id AND a.status = 'active') THEN 1 ELSE 0 END AS has_active
+           FROM object_map om
+           LEFT JOIN file_nodes fn ON fn.id = om.file_node_id
+           WHERE om.status = 'orphaned'
+             AND om.created_at < NOW() - ($1 || ' days')::interval`,
           [String(days)]
         );
         return rows;
@@ -376,12 +583,18 @@ module.exports = function createPostgresFileNodeRepository(executor) {
       }
     },
 
-    async getAllActiveS3Keys() {
+    async getStalePendingObjects(staleThanDays) {
+      const days = Math.max(0, Number(staleThanDays) || 0);
       try {
         const { rows } = await executor.query(
-          `SELECT s3_key FROM object_map WHERE status = 'active' AND s3_key IS NOT NULL`
+          `SELECT om.* FROM object_map om
+           JOIN file_nodes fn ON fn.id = om.file_node_id
+           WHERE om.status = 'pending'
+             AND fn.sync_status = 'pending_upload'
+             AND om.created_at < NOW() - ($1 || ' days')::interval`,
+          [String(days)]
         );
-        return rows.map((r) => String(r.s3_key));
+        return rows;
       } catch (error) {
         throw mapDatabaseError(error);
       }
@@ -448,17 +661,6 @@ module.exports = function createPostgresFileNodeRepository(executor) {
           [Number(fileNodeId)]
         );
         return rows[0] || null;
-      } catch (error) {
-        throw mapDatabaseError(error);
-      }
-    },
-
-    async deleteCache(fileNodeId) {
-      try {
-        const res = await executor.run('DELETE FROM filecache WHERE file_node_id = $1', [
-          Number(fileNodeId),
-        ]);
-        return { changes: res.changes };
       } catch (error) {
         throw mapDatabaseError(error);
       }

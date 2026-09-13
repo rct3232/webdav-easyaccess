@@ -14,23 +14,35 @@ async function _processBulkJob(jobId) {
   if (!job) return;
 
   const { getComposition } = require('../../../service/composition');
-  const { batchOperationService: batchOp } = getComposition();
+  const { batchOperationService: batchOp, aclService } = getComposition();
 
   try {
+    // DEF-21: the worker executes as the REQUESTING principal, never a
+    // synthesized identity — per-item ACL gates and the D6 ownership-transfer
+    // cleanup must observe the same user the job was created for.
+    const user = await aclService.getCachedUser(job.userId);
+    if (!user) {
+      opStore.updateJob(jobId, {
+        status: 'failed',
+        errorMessage: 'serverErrors.auth.userNotFound',
+      });
+      return;
+    }
+
     opStore.updateJob(jobId, { status: 'running', progress: 0 });
 
     let result;
     switch (job.operation) {
       case 'delete': {
-        result = await batchOp.batchDelete(job.payload.nodeIds, job.userId);
+        result = await batchOp.batchDelete(job.payload.nodeIds, job.userId, user);
         break;
       }
       case 'move': {
-        result = await batchOp.batchMove(job.payload.moves, job.userId, { is_admin: true });
+        result = await batchOp.batchMove(job.payload.moves, job.userId, user);
         break;
       }
       case 'copy': {
-        result = await batchOp.batchCopy(job.payload.copies, job.userId, { is_admin: true });
+        result = await batchOp.batchCopy(job.payload.copies, job.userId, user);
         break;
       }
       default:
@@ -54,7 +66,12 @@ async function _processBulkJob(jobId) {
       status: 'completed',
       progress: result[countKey] || 0,
       total: job.total,
-      results: result.errors || [],
+      // Per-node results: succeeded entries first (client contract for the
+      // bulk completion message + trash-icon animation), then failed/skipped.
+      results: [
+        ...(result.succeeded || []).map((nodeId) => ({ nodeId, status: 'succeeded' })),
+        ...(result.errors || []),
+      ],
     });
   } catch (error) {
     opStore.updateJob(jobId, { status: 'failed', errorMessage: error.message });
@@ -86,10 +103,11 @@ function scheduleBulkWorker(jobId) {
  * @param {Object} deps.fileService — individual file operations (deleteNode, moveNode, copyFile)
  * @param {Object} deps.aclService — async permission checks + isAdminUser gate
  */
-function createBatchOperationService({ fileNodeService, fileService, aclService }) {
-  // eslint-disable-next-line no-unused-vars
-  const _fn = fileNodeService;
-
+function createBatchOperationService({
+  fileNodeService: _fileNodeService,
+  fileService,
+  aclService,
+}) {
   /**
    * Batch delete: remove nodes and all descendants.
    * @param {number[]} nodeIds — array of nodeId values to delete
@@ -99,10 +117,11 @@ function createBatchOperationService({ fileNodeService, fileService, aclService 
    */
   async function batchDelete(nodeIds, userId, user) {
     if (!nodeIds || nodeIds.length === 0) {
-      return { deletedCount: 0, errors: [] };
+      return { deletedCount: 0, succeeded: [], errors: [] };
     }
 
     const errors = [];
+    const succeeded = [];
     let deletedCount = 0;
 
     for (const nodeId of nodeIds) {
@@ -117,12 +136,16 @@ function createBatchOperationService({ fileNodeService, fileService, aclService 
 
         await fileService.deleteNode(nodeId, userId, user);
         deletedCount++;
+        // DEF-16 P9: report per-node succeeded results — the client's bulk
+        // completion contract (`useBulkOperations` results filter) drives the
+        // pinned trash-icon animation and tree refresh off these entries.
+        succeeded.push(nodeId);
       } catch (err) {
         errors.push({ nodeId, status: 'failed', reason: err.message || 'unknown_error' });
       }
     }
 
-    return { deletedCount, errors };
+    return { deletedCount, succeeded, errors };
   }
 
   /**

@@ -22,6 +22,8 @@ import * as migrationService from '../../../services/migrationService';
 jest.mock('../../../services/migrationService', () => ({
   getMigrationStatus: jest.fn(),
   getBlobMigrationStatus: jest.fn(),
+  cancelBlobMigration: jest.fn(),
+  ackLastMigrationJob: jest.fn(),
 }));
 
 const startedAt = new Date().toISOString();
@@ -56,6 +58,7 @@ function mockActiveStatus(job) {
 describe('MigrationPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    migrationService.ackLastMigrationJob.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -65,9 +68,7 @@ describe('MigrationPage', () => {
   it('shows the empty state when no migration is active', async () => {
     migrationService.getMigrationStatus.mockResolvedValue({
       active: false,
-      type: null,
-      jobId: null,
-      startedAt: null,
+      lastJob: null,
     });
 
     renderWithProviders(<MigrationPage />);
@@ -75,6 +76,70 @@ describe('MigrationPage', () => {
     expect(await screen.findByText(/no active migration/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /go to settings/i })).toBeInTheDocument();
     expect(migrationService.getBlobMigrationStatus).not.toHaveBeenCalled();
+    expect(migrationService.ackLastMigrationJob).not.toHaveBeenCalled();
+  });
+
+  describe('completion-notice recovery (E2E-MIG-008 race)', () => {
+    it('recovers a job that finished before mount, renders the terminal modal, and acks the notice', async () => {
+      migrationService.getMigrationStatus.mockResolvedValue({
+        active: false,
+        lastJob: { jobId: 'late-job-1', type: 'blobs' },
+      });
+      migrationService.getBlobMigrationStatus.mockResolvedValue({
+        jobId: 'late-job-1',
+        type: 'blobs',
+        direction: 'webdav-to-s3',
+        status: 'completed',
+        progress: { percent: 100, currentLabel: null },
+        results: { copied: 2, skipped: 0, failed: 0, errors: [] },
+        startedAt,
+        completedAt,
+      });
+
+      renderWithProviders(<MigrationPage />);
+
+      expect(
+        await screen.findByRole('heading', { name: 'Migration completed' })
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /go to settings/i })).toBeInTheDocument();
+      expect(migrationService.getBlobMigrationStatus).toHaveBeenCalledWith('late-job-1');
+      await waitFor(() => expect(migrationService.ackLastMigrationJob).toHaveBeenCalledTimes(1));
+    });
+
+    it('acks and shows the empty state when the notified job already expired', async () => {
+      migrationService.getMigrationStatus.mockResolvedValue({
+        active: false,
+        lastJob: { jobId: 'gone-job', type: 'blobs' },
+      });
+      migrationService.getBlobMigrationStatus.mockRejectedValue(
+        new Error('Request failed with status code 404')
+      );
+
+      renderWithProviders(<MigrationPage />);
+
+      expect(await screen.findByText(/no active migration/i)).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: /migration (completed|failed)/i })).toBeNull();
+      await waitFor(() => expect(migrationService.ackLastMigrationJob).toHaveBeenCalledTimes(1));
+    });
+
+    it('does not ack the notice during a normal active run', async () => {
+      const job = {
+        id: 'job-active',
+        type: 'blobs',
+        direction: 'webdav-to-s3',
+        status: 'completed',
+        progress: { percent: 100, currentLabel: null },
+        startedAt,
+        completedAt,
+      };
+      mockActiveStatus(job);
+      renderPage(job);
+
+      expect(
+        await screen.findByRole('heading', { name: 'Migration completed' })
+      ).toBeInTheDocument();
+      expect(migrationService.ackLastMigrationJob).not.toHaveBeenCalled();
+    });
   });
 
   it('renders a running migration job with progress and counters', async () => {
@@ -234,6 +299,55 @@ describe('MigrationPage', () => {
 
     expect(await screen.findByText(/configured via environment variables/i)).toBeInTheDocument();
     expect(screen.getByText(/WEA_FILE_STORAGE/i)).toBeInTheDocument();
+  });
+
+  const runningJob = {
+    id: 'job-cancel-1',
+    type: 'blobs',
+    direction: 'webdav-to-s3',
+    status: 'running',
+    progress: {
+      percent: 40,
+      currentLabel: 'a/b.txt',
+      counters: { copied: 4, failed: 0, skipped: 0 },
+    },
+    startedAt,
+  };
+
+  it('shows the Cancel job button while the job is running', async () => {
+    mockActiveStatus(runningJob);
+    renderPage(runningJob);
+
+    expect(await screen.findByRole('button', { name: /cancel job/i })).toBeEnabled();
+  });
+
+  it('Cancel click calls cancelBlobMigration(jobId) once, disables the button and confirms', async () => {
+    const user = userEvent.setup();
+    migrationService.cancelBlobMigration.mockResolvedValue({ success: true });
+    mockActiveStatus(runningJob);
+    renderPage(runningJob);
+
+    const button = await screen.findByRole('button', { name: /cancel job/i });
+    await user.click(button);
+
+    await waitFor(() => {
+      expect(migrationService.cancelBlobMigration).toHaveBeenCalledWith('job-cancel-1');
+    });
+    expect(migrationService.cancelBlobMigration).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(/cancellation requested/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /cancel job/i })).toBeDisabled();
+  });
+
+  it('Cancel failure shows an inline error and keeps polling UI intact', async () => {
+    const user = userEvent.setup();
+    migrationService.cancelBlobMigration.mockRejectedValue(new Error('cancel failed'));
+    mockActiveStatus(runningJob);
+    renderPage(runningJob);
+
+    await user.click(await screen.findByRole('button', { name: /cancel job/i }));
+
+    expect(await screen.findByText(/failed to request cancellation/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /cancel job/i })).toBeEnabled();
   });
 
   it('navigates to settings when "Go to settings" is clicked in the terminal modal', async () => {

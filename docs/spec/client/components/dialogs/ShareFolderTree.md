@@ -21,35 +21,35 @@
 
 > The share dialog tree is keyed by **nodeId**: `rootNodeId`, `folderTree` Map keyed by nodeId, `expandedNodeIds`, `loadingNodeIds`, `toggleExpand(nodeId)`, permissions keyed by nodeId, and `setFolderMenuNodeId(nodeId)`.
 
-| Name                 | Type     | Required | Default | Description                                                      |
-| -------------------- | -------- | -------- | ------- | ---------------------------------------------------------------- |
-| rootNodeId           | number   | Y        | -       | Root node id                                                     |
+| Name                 | Type     | Required | Default | Description                                                                                                                              |
+| -------------------- | -------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| rootNodeId           | number   | Y        | -       | Root node id                                                                                                                             |
 | baseFolderNodeId     | number   | N        | null    | Base folder nodeId of the share subtree; scopes the derived folder-access view and the admin permission-save target (`homeFolderNodeId`) |
-| folderTree           | Map      | Y        | -       | NodeId -> node map                                               |
-| expandedNodeIds      | Set      | Y        | -       | Expanded node ids                                                |
-| loadingNodeIds       | Set      | Y        | -       | Loading node ids                                                 |
-| toggleExpand         | function | Y        | -       | Toggle expand: `(nodeId) => void`                                |
-| folderPermissions    | object   | Y        | -       | Folder permissions map keyed by nodeId                           |
-| isAdminMode          | boolean  | Y        | -       | Admin mode                                                       |
-| userId               | string   | N        | -       | Target user ID                                                   |
-| user                 | object   | N        | -       | User                                                             |
-| userInfoMap          | object   | Y        | -       | User info map                                                    |
-| users                | array    | N        | -       | Users list                                                       |
-| getUserName          | function | Y        | -       | Get username                                                     |
-| hasPermissionChanged | boolean  | Y        | -       | Has changes                                                      |
-| setFolderMenuAnchor  | function | Y        | -       | Called on menu open with the anchor element (`e.currentTarget` of the clicked menu button) |
-| setFolderMenuNodeId  | function | Y        | -       | Menu node id                                                     |
-| loadingPermissions   | boolean  | Y        | -       | Loading                                                          |
-| isMobile             | boolean  | Y        | -       | Mobile                                                           |
-| level                | number   | N        | 0       | Indent level                                                     |
+| folderTree           | Map      | Y        | -       | NodeId -> node map                                                                                                                       |
+| expandedNodeIds      | Set      | Y        | -       | Expanded node ids                                                                                                                        |
+| loadingNodeIds       | Set      | Y        | -       | Loading node ids                                                                                                                         |
+| toggleExpand         | function | Y        | -       | Toggle expand: `(nodeId) => void`                                                                                                        |
+| folderPermissions    | object   | Y        | -       | Folder permissions map keyed by nodeId                                                                                                   |
+| isAdminMode          | boolean  | Y        | -       | Admin mode                                                                                                                               |
+| userId               | string   | N        | -       | Target user ID                                                                                                                           |
+| user                 | object   | N        | -       | User                                                                                                                                     |
+| userInfoMap          | object   | Y        | -       | User info map                                                                                                                            |
+| users                | array    | N        | -       | Users list                                                                                                                               |
+| getUserName          | function | Y        | -       | Get username                                                                                                                             |
+| hasPermissionChanged | boolean  | Y        | -       | Has changes                                                                                                                              |
+| setFolderMenuAnchor  | function | Y        | -       | Called on menu open with the anchor element (`e.currentTarget` of the clicked menu button)                                               |
+| setFolderMenuNodeId  | function | Y        | -       | Menu node id                                                                                                                             |
+| loadingPermissions   | boolean  | Y        | -       | Loading                                                                                                                                  |
+| isMobile             | boolean  | Y        | -       | Mobile                                                                                                                                   |
+| level                | number   | N        | 0       | Indent level                                                                                                                             |
 
 ### 2.3 Callback Signatures
 
-| Callback            | When invoked    | Arguments |
-| ------------------- | --------------- | --------- |
-| toggleExpand        | Expand/collapse | (nodeId)  |
+| Callback            | When invoked    | Arguments                                                  |
+| ------------------- | --------------- | ---------------------------------------------------------- |
+| toggleExpand        | Expand/collapse | (nodeId)                                                   |
 | setFolderMenuAnchor | Menu open       | (element) – clicked menu-button anchor (`e.currentTarget`) |
-| setFolderMenuNodeId | Menu node id    | (nodeId)  |
+| setFolderMenuNodeId | Menu node id    | (nodeId)                                                   |
 
 ### 2.4 Dependencies
 

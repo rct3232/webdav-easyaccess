@@ -194,7 +194,7 @@ export const downloadFile = async (nodeId, options = {}) => {
   triggerDefaultDownload(response.data);
 };
 
-export const uploadFile = async (
+const uploadFile = async (
   file,
   parentNodeId,
   relativePath = '',
@@ -338,11 +338,6 @@ export const getFolderStats = async (nodeId) => {
   const response = await get('/folders/stats', {
     params: { nodeId },
   });
-  return response.data;
-};
-
-export const getWebDAVInfo = async () => {
-  const response = await get('/webdav/info');
   return response.data;
 };
 
@@ -519,7 +514,7 @@ export const downloadMultipleFiles = async (nodeIds, onProgress, options = {}) =
   }
 };
 
-export const getDownloadProgress = async (downloadId, options = {}) => {
+const getDownloadProgress = async (downloadId, options = {}) => {
   const { shareToken } = options;
   const response = await get(`/files/download-progress/${downloadId}`, {
     params: shareToken ? { shareToken } : {},
@@ -571,4 +566,100 @@ export const getBulkOperationStatus = async (jobId) => {
 export const cancelBulkOperation = async (jobId) => {
   const response = await post(`${API_BASE}/bulk-operation/${encodeURIComponent(jobId)}/cancel`);
   return response.data;
+};
+
+/**
+ * Browse the version history of a file (S3 storage mode only).
+ * @param {number} nodeId - File nodeId
+ * @returns {Promise<{ nodeId: number, currentVersionNumber: number|null, versions: Array<{ versionNumber: number, status: string, createdAt: string, size: number|null, isCurrent: boolean }> }>}
+ */
+export const getFileVersions = async (nodeId) => {
+  const response = await get(`${API_BASE}/versions`, {
+    params: { nodeId },
+  });
+  return response.data;
+};
+
+/**
+ * Restore one version in place (S3 storage mode only). The current version is
+ * always kept (demoted to history); no new version row is created.
+ * @param {number} nodeId - File nodeId
+ * @param {number} versionNumber - Version to restore
+ * @returns {Promise<{ messageCode: string, nodeId: number, restoredVersionNumber: number }>}
+ */
+export const restoreFileVersion = async (nodeId, versionNumber) => {
+  const response = await post(`${API_BASE}/versions/restore`, {
+    nodeId,
+    versionNumber,
+  });
+  return response.data;
+};
+
+/**
+ * List the trashed nodes visible to the current user (DEF-16).
+ * Hierarchical navigation: without `parentId` the route lists TOPMOST trashed
+ * items; with `parentId` it lists the trashed children of that trashed folder.
+ * @param {{ parentId?: number, limit?: number, offset?: number }} options
+ * @returns {Promise<{ items: Array<{ nodeId: number, name: string, type: string, size: number|null, deletedAt: string, displayPath: string, hasReadPermission: boolean, hasWritePermission: boolean, hasAdminPermission: boolean }>, total: number }>}
+ */
+export const getTrashFiles = async (options = {}) => {
+  const { parentId, limit, offset } = options;
+  const params = {};
+  if (parentId != null) params.parentId = parentId;
+  if (limit != null) params.limit = limit;
+  if (offset != null) params.offset = offset;
+  const response = await get(`${API_BASE}/trash`, { params });
+  return response.data;
+};
+
+/**
+ * Restore one trashed item to its original location (DEF-16). Trashed
+ * ancestors are auto-restored; name collisions get an auto-suffix.
+ * @param {number} nodeId - Trashed node id
+ * @returns {Promise<Object>}
+ */
+export const restoreTrashedItem = async (nodeId) => {
+  const response = await post(`${API_BASE}/trash/restore`, { nodeId });
+  return response.data;
+};
+
+/**
+ * Permanently delete one trashed item (DEF-16). Frees storage in both modes.
+ * @param {number} nodeId - Trashed node id
+ * @returns {Promise<Object>}
+ */
+export const purgeTrashedItem = async (nodeId) => {
+  const response = await post(`${API_BASE}/trash/purge`, { nodeId });
+  return response.data;
+};
+
+/**
+ * Empty the trash: purge ALL trashed items for ALL users (admin-only).
+ * @returns {Promise<Object>}
+ */
+export const emptyTrash = async () => {
+  const response = await post(`${API_BASE}/trash/empty`, {});
+  return response.data;
+};
+
+/**
+ * Download one version attachment-only (application/octet-stream endpoint).
+ * @param {number} nodeId - File nodeId
+ * @param {number} versionNumber - Version to download
+ * @returns {Promise<void>}
+ */
+export const downloadFileVersion = async (nodeId, versionNumber) => {
+  const response = await get(`${API_BASE}/versions/download`, {
+    params: { nodeId, versionNumber },
+    responseType: 'blob',
+  });
+  const blob = response.data instanceof Blob ? response.data : new Blob([response.data]);
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', `version-${versionNumber}`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
 };

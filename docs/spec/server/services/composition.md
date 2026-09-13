@@ -71,7 +71,7 @@ Internal factory function (also exported). Builds the full dependency graph from
     batchOperationService, // bulk move/copy/delete operations (Phase 4)
     downloadService, // streaming download service (Phase 4)
     gcService, // two-tier orphaned-blob garbage collection (Phase 6)
-    failSafeService); // orphaned_node scan + repair (Phase 6)
+    failSafeService); // stuck-node scan + repair: orphaned_node + pending_upload (Phase 6, DEF-12/13)
 }
 ```
 
@@ -97,7 +97,8 @@ fileNodesStore ─────┐
                     ├─→ fileNodeService ───┐
 blobStore ─────────┼───────────────────────┤
                    │                       ├─→ blobStorageService ──┐
-fileStorageMode ───┘                       │                        ├─→ uploadService
+fileStorageMode ───┘                       │                        ├─→ uploadService (also depends
+                                          │                        │    on blobStore, fileNodesStore)
                                           │                        │
                                           ├─────────────────────────┘
                                           │
@@ -107,9 +108,13 @@ fileStorageMode ───┘                       │                        �
                                           │
                                           ├─→ downloadService (depends on fileNodeService, blobStorageService, aclService)
                                           │
-                                          ├─→ gcService (depends on blobStore, fileNodesStore, fileStorageMode)
+                                          ├─→ gcService (depends on blobStore, fileNodesStore, fileStorageMode;
+                                          │    optional gcConfig — omitted by the composition root, so each
+                                          │    TTL defaults from GC_ORPHAN_TTL_DAYS / GC_VERSION_TTL_DAYS /
+                                          │    GC_PENDING_STALE_DAYS via the config resolver)
                                           │
-                                          └─→ failSafeService (depends on fileNodeService, fileNodesStore)
+                                          └─→ failSafeService (depends on fileNodeService, fileNodesStore,
+                                                                  blobStore, fileStorageMode)
 ```
 
 ---

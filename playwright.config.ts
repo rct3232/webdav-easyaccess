@@ -19,17 +19,14 @@ const isQuiet = process.env.E2E_QUIET === '1';
 // W5 (2026-09-07): mypage-admin no longer runs inside the desktop/mobile core
 // projects — it has dedicated post-reset projects so its shared-state mutations
 // (users list, registration setting) never overlap auth.spec concurrently (B2).
-const sharedCoreSpec = 'auth|share-public|core-flow\\.shared|mypage-user|share-internal';
+const sharedCoreSpec =
+  'auth|share-public|core-flow\\.shared|mypage-user|share-internal|trash|versions';
 
-const desktopSpecMatch = new RegExp(`(?:${sharedCoreSpec}|core-flow\\.desktop)\\.spec\\.ts$`);
+const desktopSpecMatch = new RegExp(
+  `(?:${sharedCoreSpec}|registration-settings|core-flow\\.desktop)\\.spec\\.ts$`
+);
 const mobileSpecMatch = new RegExp(`(?:${sharedCoreSpec}|core-flow\\.mobile)\\.spec\\.ts$`);
 const adminSpecMatch = /mypage-admin\.spec\.ts$/;
-
-// Per-project data isolation (TESTING_STRATEGY.md "Per-project data isolation via
-// setup projects"): the shared E2E DB must be reset once per dependent project.
-// Each test project gets its OWN setup sibling that runs `00-project-setup.spec.ts`
-// before it — never one shared setup (a dependencies setup runs once per run).
-const setupSpecMatch = /00-project-setup\.spec\.ts$/;
 
 const desktopUse = {
   browserName: 'chromium' as const,
@@ -57,102 +54,56 @@ type PlaywrightProject = NonNullable<Parameters<typeof defineConfig>[0]['project
 const projects: PlaywrightProject[] = [];
 
 if (backendMode === 'webdav') {
+  // trash-admin.spec.ts is EXCLUDED from the smoke: E2E-TRASH-007 is
+  // scratch-hermetic (:5012, DEF-20) and runs only in the s3 full matrix.
   const smokeSpecMatch = new RegExp(
-    '(core-flow\\.shared|share-public|share-internal)\\.spec\\.ts$'
+    '(core-flow\\.shared|share-public|share-internal|trash|webdav-reconcile)\\.spec\\.ts$'
   );
-  const smokeTitleMatch = new RegExp('E2E-(EXP-00[12458]|EXP-01[23]|SHARE-011|OVERLAY-011)[:\\s]');
-  projects.push(
-    {
-      name: 'webdav-smoke-setup',
-      testMatch: setupSpecMatch,
-    },
-    {
-      name: 'webdav-smoke-desktop',
-      testMatch: smokeSpecMatch,
-      grep: smokeTitleMatch,
-      dependencies: ['webdav-smoke-setup'],
-      use: desktopUse,
-    }
+  const smokeTitleMatch = new RegExp(
+    'E2E-(EXP-00[12458]|EXP-01[23]|SHARE-011|OVERLAY-011|TRASH-00[136]|RECON-001)[:\\s]'
   );
+  projects.push({
+    name: 'webdav-smoke-desktop',
+    testMatch: smokeSpecMatch,
+    grep: smokeTitleMatch,
+    use: desktopUse,
+  });
 } else {
   // Platform core matrix: desktop → (full only: admin-desktop) → mobile →
   // (full only: admin-mobile). Each project boundary with mutable state gets
   // its own reset sibling. In core mode the mobile leg resets right after the
   // desktop core (as before).
-  projects.push(
-    {
-      name: `${backendMode}-desktop-setup`,
-      testMatch: setupSpecMatch,
-    },
-    {
-      name: `${backendMode}-desktop`,
-      testMatch: desktopSpecMatch,
-      dependencies: [`${backendMode}-desktop-setup`],
-      use: desktopUse,
-    }
-  );
+  projects.push({
+    name: `${backendMode}-desktop`,
+    testMatch: desktopSpecMatch,
+    use: desktopUse,
+  });
 
   if (coreOnlyEnabled) {
-    projects.push(
-      {
-        name: `${backendMode}-mobile-setup`,
-        testMatch: setupSpecMatch,
-        // Reset must happen AFTER the desktop core finished.
-        dependencies: [`${backendMode}-desktop`],
-      },
-      {
-        name: `${backendMode}-mobile`,
-        testMatch: mobileSpecMatch,
-        dependencies: [`${backendMode}-mobile-setup`],
-        use: mobileUse,
-      }
-    );
+    projects.push({
+      name: `${backendMode}-mobile`,
+      testMatch: mobileSpecMatch,
+      use: mobileUse,
+    });
   } else {
-    const adminDesktopSetup = `${backendMode}-admin-desktop-setup`;
-    const adminDesktop = `${backendMode}-admin-desktop`;
-    const adminMobileSetup = `${backendMode}-admin-mobile-setup`;
-    const adminMobile = `${backendMode}-admin-mobile`;
-
+    // Suite projects are INDEPENDENT siblings (hermetic-dechain, 2026-09-11):
+    // no per-project TRUNCATE resets and no ordering dependencies — ordering
+    // via `dependencies` would cascade whole suites into partial runs and the
+    // per-case containment + restore rules (docs/TESTING_STRATEGY.md) make the
+    // resets unnecessary. mypage-admin still runs in its own dedicated
+    // projects (B2) so its user/settings mutations never overlap the platform
+    // cores' listings within one project.
     projects.push(
-      {
-        name: adminDesktopSetup,
-        testMatch: setupSpecMatch,
-        dependencies: [`${backendMode}-desktop`],
-      },
-      {
-        name: adminDesktop,
-        testMatch: adminSpecMatch,
-        dependencies: [adminDesktopSetup],
-        use: desktopUse,
-      },
-      {
-        name: `${backendMode}-mobile-setup`,
-        testMatch: setupSpecMatch,
-        dependencies: [adminDesktop],
-      },
-      {
-        name: `${backendMode}-mobile`,
-        testMatch: mobileSpecMatch,
-        dependencies: [`${backendMode}-mobile-setup`],
-        use: mobileUse,
-      },
-      {
-        name: adminMobileSetup,
-        testMatch: setupSpecMatch,
-        dependencies: [`${backendMode}-mobile`],
-      },
-      {
-        name: adminMobile,
-        testMatch: adminSpecMatch,
-        dependencies: [adminMobileSetup],
-        use: mobileUse,
-      }
+      { name: `${backendMode}-admin-desktop`, testMatch: adminSpecMatch, use: desktopUse },
+      { name: `${backendMode}-mobile`, testMatch: mobileSpecMatch, use: mobileUse },
+      { name: `${backendMode}-admin-mobile`, testMatch: adminSpecMatch, use: mobileUse }
     );
 
     // Additive, hermetic projects (setup-wizard / admin-config / migration).
     // They spawn their own scratch servers and are isolated per suite (Option A
     // Phase 1): each suite owns ONE distinct scratch port (:5003 wizard, :5010
-    // admin-config, :5011 migration) mirrored by its baseURL below, and the
+    // admin-config, :5011 migration, :5012 trash-admin) mirrored by its
+    // baseURL below, and the
     // migration suite targets its own dedicated MinIO bucket. Phase 2 lifted the
     // strict chain: the suites are now INDEPENDENT siblings, so they can overlap
     // the platform/admin projects and each other on idle workers. A suite's
@@ -200,6 +151,15 @@ if (backendMode === 'webdav') {
         spec: /migration\.spec\.ts$/,
         use: mobileUse,
         baseURL: 'http://localhost:5011',
+      },
+      {
+        // DEF-20: globally destructive trash case — scratch-hermetic on its
+        // own server (:5012) so the "empty ALL trash" purge can never touch
+        // the shared pool's in-flight trash cases.
+        name: 'trash-admin-desktop',
+        spec: /trash-admin\.spec\.ts$/,
+        use: desktopUse,
+        baseURL: 'http://localhost:5012',
       },
     ];
     for (const h of hermeticSpecs) {

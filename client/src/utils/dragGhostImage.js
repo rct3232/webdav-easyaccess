@@ -23,7 +23,7 @@ const hexToRgba = (hex, alpha) => {
  * @param {number} count - Number of selected items (for multi-selection badge)
  * @returns {HTMLElement} The drag ghost element
  */
-export const createDragGhostElement = (file, theme, count = 1) => {
+const createDragGhostElement = (file, theme, count = 1) => {
   // Convert primary color to rgba with opacity
   const primaryColor = theme.palette.primary.main;
   const borderColor = hexToRgba(primaryColor, 0.3);

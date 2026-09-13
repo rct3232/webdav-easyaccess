@@ -9,6 +9,8 @@ import {
   DriveFileMove as MoveIcon,
   Share as ShareIcon,
   Info as InfoIcon,
+  Restore as RestoreIcon,
+  DeleteForever as DeleteForeverIcon,
 } from '@mui/icons-material';
 
 const FileContextMenu = ({
@@ -23,6 +25,8 @@ const FileContextMenu = ({
   onShare,
   onProperties,
   onDelete,
+  onRestore,
+  onPurge,
 }) => {
   const { t } = useTranslation();
   const fileWritePermission =
@@ -106,6 +110,30 @@ const FileContextMenu = ({
             <ShareIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText>{t('actions.share')}</ListItemText>
+        </MenuItem>
+      )}
+      {onRestore && (
+        <MenuItem
+          data-testid="trash-action-restore"
+          onClick={() => handleAction(onRestore)}
+          disabled={!fileWritePermission}
+        >
+          <ListItemIcon>
+            <RestoreIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>{t('actions.restore')}</ListItemText>
+        </MenuItem>
+      )}
+      {onPurge && (
+        <MenuItem
+          data-testid="trash-action-purge"
+          onClick={() => handleAction(onPurge)}
+          disabled={!fileWritePermission}
+        >
+          <ListItemIcon>
+            <DeleteForeverIcon fontSize="small" color="error" />
+          </ListItemIcon>
+          <ListItemText>{t('actions.purge')}</ListItemText>
         </MenuItem>
       )}
       {onProperties && (

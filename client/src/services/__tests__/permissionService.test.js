@@ -1,7 +1,7 @@
 /**
  * permissionService tests.
  * Verifies getUserPermissions, getFolderPermissions, grantPermission, revokePermission,
- * checkPermission, listFilePermissions. Return shapes and endpoint usage per spec.
+ * checkPermission. Return shapes and endpoint usage per spec.
  * @see docs/spec/client/services/permissionService.md
  * @see docs/TESTING_STRATEGY.md
  */
@@ -9,12 +9,10 @@ import { get, post, del } from '../apiClient';
 
 import {
   getUserPermissions,
-  clearUserPermissionsCache,
   getFolderPermissions,
   grantPermission,
   revokePermission,
   checkPermission,
-  listFilePermissions,
   getSharedPermissions,
 } from '../permissionService';
 
@@ -26,7 +24,6 @@ jest.mock('../apiClient', () => ({
 
 describe('permissionService', () => {
   beforeEach(() => {
-    clearUserPermissionsCache();
     jest.clearAllMocks();
   });
 
@@ -35,9 +32,9 @@ describe('permissionService', () => {
       const perms = [{ nodeId: 10, permission: 'read' }];
       get.mockResolvedValueOnce({ data: perms });
 
-      const result = await getUserPermissions('user-1');
+      const result = await getUserPermissions('user-fetch');
 
-      expect(get).toHaveBeenCalledWith('/permissions/user/user-1');
+      expect(get).toHaveBeenCalledWith('/permissions/user/user-fetch');
       expect(result).toEqual(perms);
       expect(Array.isArray(result)).toBe(true);
     });
@@ -50,11 +47,11 @@ describe('permissionService', () => {
       });
       get.mockReturnValueOnce(pendingRequest);
 
-      const promiseA = getUserPermissions('user-1');
-      const promiseB = getUserPermissions('user-1');
+      const promiseA = getUserPermissions('user-dedupe');
+      const promiseB = getUserPermissions('user-dedupe');
 
       expect(get).toHaveBeenCalledTimes(1);
-      expect(get).toHaveBeenCalledWith('/permissions/user/user-1');
+      expect(get).toHaveBeenCalledWith('/permissions/user/user-dedupe');
 
       resolveRequest({ data: perms });
       const [resultA, resultB] = await Promise.all([promiseA, promiseB]);
@@ -66,8 +63,8 @@ describe('permissionService', () => {
       const perms = [{ nodeId: 30, permission: 'write' }];
       get.mockResolvedValueOnce({ data: perms });
 
-      const first = await getUserPermissions('user-1');
-      const second = await getUserPermissions('user-1');
+      const first = await getUserPermissions('user-memo');
+      const second = await getUserPermissions('user-memo');
 
       expect(first).toEqual(perms);
       expect(second).toEqual(perms);
@@ -80,8 +77,8 @@ describe('permissionService', () => {
       get.mockResolvedValueOnce({ data: first });
       get.mockResolvedValueOnce({ data: refreshed });
 
-      const firstResult = await getUserPermissions('user-1');
-      const refreshResult = await getUserPermissions('user-1', { forceRefresh: true });
+      const firstResult = await getUserPermissions('user-force');
+      const refreshResult = await getUserPermissions('user-force', { forceRefresh: true });
 
       expect(firstResult).toEqual(first);
       expect(refreshResult).toEqual(refreshed);
@@ -152,13 +149,13 @@ describe('permissionService', () => {
       post.mockResolvedValueOnce(undefined);
       get.mockResolvedValueOnce({ data: [{ nodeId: 10, permission: 'admin' }] });
 
-      const beforeGrant = await getUserPermissions('u1');
+      const beforeGrant = await getUserPermissions('grant-target');
       await grantPermission({
-        userId: 'u1',
+        userId: 'grant-target',
         nodeId: 10,
         permission: 'admin',
       });
-      const afterGrant = await getUserPermissions('u1');
+      const afterGrant = await getUserPermissions('grant-target');
 
       expect(beforeGrant).toEqual([{ nodeId: 10, permission: 'read' }]);
       expect(afterGrant).toEqual([{ nodeId: 10, permission: 'admin' }]);
@@ -170,14 +167,14 @@ describe('permissionService', () => {
       get.mockResolvedValueOnce({ data: [{ nodeId: 10, permission: 'write' }] });
       post.mockResolvedValueOnce(undefined);
 
-      await getUserPermissions('me');
+      await getUserPermissions('actor-grant');
       await grantPermission({
-        userId: 'target',
+        userId: 'target-grant',
         nodeId: 10,
         permission: 'write',
       });
-      const actorCached = await getUserPermissions('me');
-      const targetRefreshed = await getUserPermissions('target');
+      const actorCached = await getUserPermissions('actor-grant');
+      const targetRefreshed = await getUserPermissions('target-grant');
 
       expect(actorCached).toEqual([{ nodeId: 1, permission: 'read' }]);
       expect(targetRefreshed).toEqual([{ nodeId: 10, permission: 'write' }]);
@@ -239,12 +236,12 @@ describe('permissionService', () => {
       del.mockResolvedValueOnce(undefined);
       get.mockResolvedValueOnce({ data: [] });
 
-      const beforeRevoke = await getUserPermissions('u1');
+      const beforeRevoke = await getUserPermissions('revoke-target');
       await revokePermission({
-        userId: 'u1',
+        userId: 'revoke-target',
         nodeId: 10,
       });
-      const afterRevoke = await getUserPermissions('u1');
+      const afterRevoke = await getUserPermissions('revoke-target');
 
       expect(beforeRevoke).toEqual([{ nodeId: 10, permission: 'admin' }]);
       expect(afterRevoke).toEqual([]);
@@ -256,13 +253,13 @@ describe('permissionService', () => {
       get.mockResolvedValueOnce({ data: [] });
       del.mockResolvedValueOnce(undefined);
 
-      await getUserPermissions('me');
+      await getUserPermissions('actor-revoke');
       await revokePermission({
-        userId: 'target',
+        userId: 'target-revoke',
         nodeId: 10,
       });
-      const actorCached = await getUserPermissions('me');
-      const targetRefreshed = await getUserPermissions('target');
+      const actorCached = await getUserPermissions('actor-revoke');
+      const targetRefreshed = await getUserPermissions('target-revoke');
 
       expect(actorCached).toEqual([{ nodeId: 1, permission: 'read' }]);
       expect(targetRefreshed).toEqual([]);
@@ -294,28 +291,6 @@ describe('permissionService', () => {
 
       expect(get).toHaveBeenCalledWith('/permissions/shared');
       expect(result).toEqual(shared);
-    });
-  });
-
-  describe('listFilePermissions', () => {
-    it('returns array from GET /permissions/file/list', async () => {
-      const list = [];
-      get.mockResolvedValueOnce({ data: list });
-
-      const result = await listFilePermissions();
-
-      expect(get).toHaveBeenCalledWith('/permissions/file/list', { params: {} });
-      expect(Array.isArray(result)).toBe(true);
-    });
-
-    it('sends parentNodeId when provided', async () => {
-      get.mockResolvedValueOnce({ data: [] });
-
-      await listFilePermissions(42);
-
-      expect(get).toHaveBeenCalledWith('/permissions/file/list', {
-        params: { parentNodeId: 42 },
-      });
     });
   });
 });

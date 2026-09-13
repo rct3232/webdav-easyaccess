@@ -103,5 +103,3 @@ export const useInfiniteScroll = (files, options = {}) => {
     reset,
   };
 };
-
-export default useInfiniteScroll;

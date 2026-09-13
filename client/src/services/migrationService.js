@@ -25,6 +25,10 @@ export const getMigrationStatus = async () => {
   return response.data;
 };
 
+export const ackLastMigrationJob = async () => {
+  await post('/admin/migration/last-job/ack');
+};
+
 export const getTargetScan = async ({ targetBackend, pg, sqlitePath }) => {
   const response = await get('/admin/migration/target-scan', {
     params: { targetBackend, ...pg, sqlitePath },

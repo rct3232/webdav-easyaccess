@@ -5,6 +5,7 @@ import { ADMIN_STATE, expect, test } from './fixtures/authenticated';
 import { loginAsAdmin, loginAsUser, loginAsUserApi } from './helpers/auth';
 import { breadcrumbChip, openItemActions } from './helpers/explorer';
 import {
+  apiMoveViaBatch,
   buildName,
   bulkDeleteSelected,
   createFolderAt,
@@ -365,13 +366,7 @@ test('E2E-EXP-013: Moves a file across folders and keeps its content byte-identi
     textFixtureBuffer
   );
 
-  const moveRes = await request.post('/api/files/move', {
-    headers: { Authorization: `Bearer ${token}` },
-    data: { nodeId: fileNodeId, destinationParentNodeId: folderBNodeId },
-  });
-  expect(moveRes.ok()).toBeTruthy();
-  const moveBody = await moveRes.json();
-  expect(moveBody.newParentId).toBe(folderBNodeId);
+  await apiMoveViaBatch(request, token, [fileNodeId], folderBNodeId);
 
   expect(await resolvePathOrNull(request, token, oldFilePath)).toBeNull();
   const movedNodeId = await resolveNodeId(request, token, newFilePath);

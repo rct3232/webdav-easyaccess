@@ -9,7 +9,7 @@ import { expect, type Page } from '@playwright/test';
 /**
  * Hermetic scratch-instance helpers for the first-run setup-wizard
  * (`setup-wizard.spec.ts`), admin-config (`admin-config.spec.ts`) and migration
- * (`migration.spec.ts`) E2E specs (PLAN.md §7/§9). The shared E2E
+ * (`migration.spec.ts`) E2E specs. The shared E2E
  * infrastructure (`:5002` server, `:3000` client, `webdav_e2e` PG database) is
  * unusable for these specs because they spawn and supervise their own scratch
  * instance — in the wizard case restart is the behavior under test.
@@ -20,7 +20,7 @@ import { expect, type Page } from '@playwright/test';
  *
  * Port contract (Option A Phase 1): each hermetic suite owns ONE distinct
  * scratch port so the suites can run concurrently — setup-wizard :5003
- * (the exported `scratchPort`), admin-config :5010, migration :5011. The port
+ * (the exported `scratchPort`), admin-config :5010, migration :5011, trash-admin :5012. The port
  * is passed explicitly to `spawnScratchServer`/`waitForScratchHealth` and must
  * match the suite's playwright.config.ts baseURL. `pg` is required via
  * `createRequire` (ships no types; the local structural type keeps the surface
@@ -112,7 +112,7 @@ export function scratchDirFor(caseId: string): string {
 }
 
 /**
- * Ensure `client/build` exists (PLAN.md D4: the scratch server serves the SPA
+ * Ensure `client/build` exists (the scratch server serves the SPA
  * statically, same-origin `/api`). No-op when the build is already present.
  */
 export function ensureClientBuild(): void {

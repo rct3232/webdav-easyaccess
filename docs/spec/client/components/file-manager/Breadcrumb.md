@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item               | Description                                                                                                                                                                                                                                                                    |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Item               | Description                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role               | NodeId breadcrumb: renders the current folder's ancestor chain (`ancestors: [{ nodeId, name }]` fetched via `fileService.getAncestors`, hitting the dedicated `GET /files/ancestors` endpoint) as chips. Shown on all viewports (mobile and desktop). The first chip is the **home chip**, which represents the acting user's own home scope (see 2.6). shareRootPath: share mode (path within share). Optional folder tree toggle. |
-| Used in            | FileManager                                                                                                                                                                                                                                                                    |
-| Related components | `GET /files/ancestors` ancestor chain (`fileService.getAncestors`), consumed in `useFileManager`                                                                                                                                                                               |
+| Used in            | FileManager                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Related components | `GET /files/ancestors` ancestor chain (`fileService.getAncestors`), consumed in `useFileManager`                                                                                                                                                                                                                                                                                                                                    |
 
 ### 1.1 Home chip semantics (root cause of the home-duplication defect)
 
@@ -38,16 +38,16 @@
 
 ### 2.2 Props
 
-| Name                 | Type     | Required | Default | Description                                                                              |
-| -------------------- | -------- | -------- | ------- | ---------------------------------------------------------------------------------------- |
+| Name                 | Type     | Required | Default | Description                                                                                                                               |
+| -------------------- | -------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | ancestors            | array    | Y        | -       | Current folder's ancestor chain `[{ nodeId, name }]`, fetched via `fileService.getAncestors` (`GET /files/ancestors`) in `useFileManager` |
-| onNodeClick          | function | Y        | -       | Ancestor chip click (by nodeId)                                                          |
-| user                 | object   | N        | -       | User                                                                                     |
-| onToggleFolderTree   | function | N        | -       | Toggle folder tree                                                                       |
-| isFolderTreeOpen     | boolean  | N        | -       | Tree open                                                                                |
-| shareRootPath        | string   | N        | -       | Share root (share mode)                                                                  |
-| shareRootName        | string   | N        | -       | Share root name                                                                          |
-| showFolderTreeToggle | boolean  | N        | -       | Show toggle                                                                              |
+| onNodeClick          | function | Y        | -       | Ancestor chip click (by nodeId)                                                                                                           |
+| user                 | object   | N        | -       | User                                                                                                                                      |
+| onToggleFolderTree   | function | N        | -       | Toggle folder tree                                                                                                                        |
+| isFolderTreeOpen     | boolean  | N        | -       | Tree open                                                                                                                                 |
+| shareRootPath        | string   | N        | -       | Share root (share mode)                                                                                                                   |
+| shareRootName        | string   | N        | -       | Share root name                                                                                                                           |
+| showFolderTreeToggle | boolean  | N        | -       | Show toggle                                                                                                                               |
 
 ### 2.3 Callback Signatures
 

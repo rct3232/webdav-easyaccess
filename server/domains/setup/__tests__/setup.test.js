@@ -50,7 +50,12 @@ const { Client: MockPgClient } = require('pg');
 // suite-level DB bootstrap is bypassed.
 // The real-PG leg is signalled by the dedicated WEA_TEST_PG_* test namespace
 // (production WEA_DB_* is never present in a jest process).
-const TEST_PG_KEYS = ['WEA_TEST_PG_HOST', 'WEA_TEST_PG_DATABASE', 'WEA_TEST_PG_USER', 'WEA_TEST_PG_PASSWORD'];
+const TEST_PG_KEYS = [
+  'WEA_TEST_PG_HOST',
+  'WEA_TEST_PG_DATABASE',
+  'WEA_TEST_PG_USER',
+  'WEA_TEST_PG_PASSWORD',
+];
 const RUN_UNDER_PG = TEST_PG_KEYS.every((key) => !!process.env[key]);
 
 // Bind describe to skip when the storage backend is postgresql (SQLite-only suite).
@@ -1047,131 +1052,6 @@ describeIfSqlite('POST /api/setup/test', () => {
       message: 'Unsupported target: ftp',
     });
     expect(res.body.reason).toBeUndefined();
-  });
-});
-
-describeIfSqlite('POST /api/setup/prefill', () => {
-  function setupPgRows(rows) {
-    MockPgClient.mockImplementation(() => {
-      const client = makePgClient();
-      client.query.mockResolvedValue({ rows });
-      return client;
-    });
-  }
-
-  const pgMetadata = {
-    backend: 'postgresql',
-    host: 'db.local',
-    port: '5432',
-    database: 'webdav',
-    user: 'u',
-    password: 'p',
-    ssl: false,
-  };
-
-  it('postgresql: prefills plaintext config and masks secret rows', async () => {
-    setupPgRows([
-      { key: 'EMAIL_HOST', value: 'smtp.example.com' },
-      { key: 'EMAIL_PASSWORD', value: 'smtp-pw' },
-    ]);
-
-    const res = await request(app).post('/api/setup/prefill').send({ metadata: pgMetadata });
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({
-      current: { EMAIL_HOST: 'smtp.example.com', EMAIL_PASSWORD: '****' },
-    });
-    expect(MockPgClient).toHaveBeenCalledTimes(1);
-    expect(MockPgClient.mock.calls[0][0]).toMatchObject({
-      host: 'db.local',
-      port: 5432,
-      database: 'webdav',
-      user: 'u',
-      password: 'p',
-      ssl: false,
-    });
-  });
-
-  it('postgresql: a plaintext secret row is masked and never surfaced', async () => {
-    setupPgRows([{ key: 'EMAIL_PASSWORD', value: 'smtp-pw' }]);
-
-    const res = await request(app).post('/api/setup/prefill').send({ metadata: pgMetadata });
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ current: { EMAIL_PASSWORD: '****' } });
-  });
-
-  it('postgresql: a missing settings table (42P01) yields empty rows', async () => {
-    const err = new Error('relation "settings" does not exist');
-    err.code = '42P01';
-    MockPgClient.mockImplementation(() => {
-      const client = makePgClient();
-      client.query.mockRejectedValue(err);
-      return client;
-    });
-
-    const res = await request(app).post('/api/setup/prefill').send({ metadata: pgMetadata });
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ current: {} });
-  });
-
-  it('sqlite metadata returns empty current (sqlite is prefilled via /status)', async () => {
-    const res = await request(app)
-      .post('/api/setup/prefill')
-      .send({
-        metadata: { backend: 'sqlite' },
-      });
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ current: {} });
-    expect(MockPgClient).not.toHaveBeenCalled();
-  });
-
-  it('postgresql: connect rejection is classified with the connection-test error codes', async () => {
-    const err = new Error('connect ECONNREFUSED 127.0.0.1:5432');
-    err.code = 'ECONNREFUSED';
-    err.errno = -111;
-    err.address = '127.0.0.1';
-    err.port = 5432;
-    MockPgClient.mockImplementation(() => {
-      const client = makePgClient();
-      client.connect.mockRejectedValue(err);
-      return client;
-    });
-
-    const res = await request(app).post('/api/setup/prefill').send({ metadata: pgMetadata });
-
-    expect(res.status).toBe(400);
-    expect(res.body).toMatchObject({
-      ok: false,
-      errorCode: 'serverErrors.setup.test.pg.unreachable',
-      message: 'Connection test failed',
-      reason: 'ECONNREFUSED 127.0.0.1:5432',
-    });
-  });
-
-  it('missing required fields keeps serverErrors.setup.testFailed with the short message', async () => {
-    const res = await request(app)
-      .post('/api/setup/prefill')
-      .send({
-        metadata: { backend: 'postgresql', host: 'localhost' },
-      });
-
-    expect(res.status).toBe(400);
-    expect(res.body).toEqual({
-      ok: false,
-      errorCode: 'serverErrors.setup.testFailed',
-      message: 'Missing required fields: port, database, user, password',
-    });
-  });
-
-  it('returns 403 setup.complete when setup is already complete', async () => {
-    setCompleteWebdavEnv();
-    const res = await request(app).post('/api/setup/prefill').send({ metadata: pgMetadata });
-
-    expect(res.status).toBe(403);
-    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.setup.complete);
   });
 });
 

@@ -19,13 +19,13 @@
 
 ### 2.2 Props
 
-| Name           | Type     | Required | Default                    | Description                                                              |
-| -------------- | -------- | -------- | -------------------------- | ------------------------------------------------------------------------ |
-| searchQuery    | string   | Y        | -                          | Search input value                                                       |
-| setSearchQuery | function | Y        | -                          | Set search query                                                         |
-| isMobile       | boolean  | Y        | -                          | Mobile layout (affects width)                                            |
-| placeholder    | string   | N        | t('nav.searchPlaceholder') | Placeholder text (i18n)                                                  |
-| fabVisible     | boolean  | N        | true                       | When false (e.g. selection mode), search bar expands to occupy FAB space |
+| Name           | Type     | Required | Default                    | Description                                                                                                                                                                  |
+| -------------- | -------- | -------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| searchQuery    | string   | Y        | -                          | Search input value                                                                                                                                                           |
+| setSearchQuery | function | Y        | -                          | Set search query                                                                                                                                                             |
+| isMobile       | boolean  | Y        | -                          | Mobile layout (affects width)                                                                                                                                                |
+| placeholder    | string   | N        | t('nav.searchPlaceholder') | Placeholder text (i18n)                                                                                                                                                      |
+| fabVisible     | boolean  | N        | true                       | When false, search bar expands to occupy FAB space. In FileManager this mirrors actual FAB presence (FAB self-reports via `onVisibilityChange`), not an enumerated condition |
 
 ### 2.3 Callback Signatures
 
@@ -38,6 +38,7 @@
 - **Position:** `position: fixed`, bottom-aligned with FAB
 - **When fabVisible:** Desktop: `width: 300px`, `right: offset + FAB_SIZE + GAP` (116px); Mobile: `left: offset`, `right: offset + FAB_SIZE + GAP` (84px)
 - **When !fabVisible:** Search bar expands to occupy FAB space: `right: offset` (16px mobile, 48px desktop)
+- **Test seam:** outer container exposes `data-testid="floating-search-bar"` for visibility/expansion assertions.
 - **Bottom offset:** Same as FAB (16px mobile, 48px desktop)
 - **Z-index:** 1045 (below FAB 1050)
 - **Safe area:** `paddingBottom: env(safe-area-inset-bottom)` for iOS
@@ -72,5 +73,6 @@
 
 ### 2.10 Edge Cases
 
-- FAB hidden (selection mode): search bar expands to occupy FAB space (right: offset)
+- FAB hidden for any reason (selection mode, no write permission, read-only views such as recent/shared/trash, parent unmount): search bar expands to occupy FAB space (right: offset). The expansion is driven by the FAB's self-reported visibility, so it can never drift out of sync with the FAB.
+- Initial state in FileManager: `fabVisible` starts false (FAB not yet mounted); the bar animates back to the FAB-adjacent position when the FAB mounts.
 - Share link mode: shown whenever FileManager file list is visible

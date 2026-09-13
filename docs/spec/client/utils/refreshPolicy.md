@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description                                                                                                                                                                                                                                                                                                                                                                                           |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Item | Description                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Decide whether to refresh the current directory listing after an async operation completes, preventing stale-closure refreshes when the user navigates elsewhere. Used by command orchestration (see `docs/spec/client/hooks/useExplorerCommands.md`). Move/copy can refresh when the user is on either the started nodeId or the target parent nodeId; other ops refresh only when still on the started nodeId. |
 
 ---
@@ -17,8 +17,8 @@
 
 ### 2.2 Function Signatures
 
-| Function                    | (input) => return                                                      |
-| --------------------------- | ---------------------------------------------------------------------- |
+| Function                    | (input) => return                                                            |
+| --------------------------- | ---------------------------------------------------------------------------- |
 | shouldRefreshAfterOperation | ({ opType, startedNodeId, currentNodeIdNow, targetParentNodeId }) => boolean |
 
 ### 2.3 Dependencies

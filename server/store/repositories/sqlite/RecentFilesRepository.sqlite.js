@@ -7,7 +7,10 @@ const { mapDatabaseError } = require('../../../utils/errorHandler');
  * @param {import('../../../infrastructure/db/executor').DbExecutor} executor
  * @param {{ MAX_RECENT_FILES: number, mapRecentFileRow: Function }} shared
  */
-module.exports = function createSqliteRecentFilesRepository(executor, { MAX_RECENT_FILES, mapRecentFileRow }) {
+module.exports = function createSqliteRecentFilesRepository(
+  executor,
+  { MAX_RECENT_FILES, mapRecentFileRow }
+) {
   return {
     dialect: 'sqlite',
 
@@ -85,16 +88,6 @@ module.exports = function createSqliteRecentFilesRepository(executor, { MAX_RECE
             [userIdNum]
           );
           return rows.map(mapRecentFileRow);
-        });
-      } catch (error) {
-        throw mapDatabaseError(error);
-      }
-    },
-
-    async clearRecentFiles(userId) {
-      try {
-        await executor.transaction(async (tx) => {
-          await tx.run('DELETE FROM recent_files WHERE user_id = ?', [Number(userId)]);
         });
       } catch (error) {
         throw mapDatabaseError(error);

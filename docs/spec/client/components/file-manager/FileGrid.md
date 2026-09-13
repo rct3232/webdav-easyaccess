@@ -10,6 +10,10 @@
 
 ---
 
+### 2.0 Trash-view empty state (DEF-16 P9)
+
+- `emptyText` (string, optional): overrides the default `fileManager.noFiles` empty message (`fileManager.trashEmpty` in the trash view).
+
 ## 2. Implementation Spec
 
 ### 2.1 File Path

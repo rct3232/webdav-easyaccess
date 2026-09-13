@@ -10,7 +10,6 @@ import { get, post, put, del } from '../apiClient';
 import {
   createShareLink,
   getShareLinks,
-  getShareLink,
   updateShareLink,
   deleteShareLink,
   getShareLinkUrl,
@@ -69,18 +68,6 @@ describe('shareLinkService', () => {
 
       expect(get).toHaveBeenCalledWith('/share-links');
       expect(Array.isArray(result)).toBe(true);
-    });
-  });
-
-  describe('getShareLink', () => {
-    it('returns link object from GET /share-links/:token', async () => {
-      const link = { token: 't1', filePath: '/a' };
-      get.mockResolvedValueOnce({ data: link });
-
-      const result = await getShareLink('t1');
-
-      expect(get).toHaveBeenCalledWith('/share-links/t1');
-      expect(result).toEqual(link);
     });
   });
 

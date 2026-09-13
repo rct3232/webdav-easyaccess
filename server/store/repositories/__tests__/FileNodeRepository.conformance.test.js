@@ -144,24 +144,396 @@ describe('FileNodeRepository conformance', () => {
     await repo.orphanObject(s3Key);
     expect(await repo.countActiveObjectsByS3Key(s3Key)).toBe(0);
 
-    // Age the row explicitly (sqlite timestamps are second-granular; a freshly
-    // inserted row is not reliably "older than now").
-    const { dbRun } = require('@server/test-utils');
-    await dbRun('UPDATE object_map SET created_at = ? WHERE s3_key = ?', [
-      new Date(Date.now() - 5 * 86400_000).toISOString(),
-      s3Key,
-    ]);
-
-    const orphaned = await repo.getOrphanedObjects(0);
-    expect(orphaned.some((r) => r.s3_key === s3Key)).toBe(true);
-    expect(await repo.getAllActiveS3Keys()).not.toContain(s3Key);
-
-    const row = orphaned.find((r) => r.s3_key === s3Key);
-    const del = await repo.deleteObjectMapRows([row.id]);
+    const { dbQuery } = require('@server/test-utils');
+    const orphanRows = await dbQuery('SELECT id, status FROM object_map WHERE s3_key = ?', [s3Key]);
+    expect(orphanRows.rows[0].status).toBe('orphaned');
+    const del = await repo.deleteObjectMapRows([orphanRows.rows[0].id]);
     expect(del.changes).toBe(1);
   });
 
-  it('upsertObjectMap bumps version and orphans the previous active row', async () => {
+  it('getKeptObjectMapKeys unions active, history, orphaned and pending-on-pending_upload keys', async () => {
+    const { dbRun } = require('@server/test-utils');
+    const stuckNode = await repo.createNode(null, uniqueName('fn-kept-stuck'), 'file');
+    const orphanedKey = uniqueName('fn-kept-orphan');
+    const pendingKey = uniqueName('fn-kept-pending');
+    await repo.insertObject(stuckNode.id, orphanedKey, 'orphaned');
+    await dbRun(
+      `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
+       VALUES (?, ?, 's3', 2, 'pending')`,
+      [stuckNode.id, pendingKey]
+    );
+
+    const activeNode = await repo.createNode(null, uniqueName('fn-kept-active'), 'file');
+    const activeKey = uniqueName('fn-kept-active-key');
+    await repo.insertObject(activeNode.id, activeKey, 'active');
+
+    const liveNode = await repo.createNode(null, uniqueName('fn-kept-live'), 'file');
+    await repo.updateSyncStatus(liveNode.id, 'active');
+    const pendingOnLiveKey = uniqueName('fn-kept-pending-live');
+    await repo.insertObject(liveNode.id, pendingOnLiveKey, 'pending');
+
+    const historyNode = await repo.createNode(null, uniqueName('fn-kept-history'), 'file');
+    const historyKey = uniqueName('fn-kept-history-key');
+    await repo.insertObject(historyNode.id, historyKey, 'history');
+
+    const kept = await repo.getKeptObjectMapKeys();
+    expect(kept).toContain(activeKey);
+    expect(kept).toContain(orphanedKey);
+    expect(kept).toContain(pendingKey);
+    expect(kept).toContain(historyKey);
+    expect(kept).not.toContain(pendingOnLiveKey);
+  });
+
+  it("M15: getKeptObjectMapKeys keeps a TRASHED node's active key (no trash filter on the active arm)", async () => {
+    const trashedNode = await repo.createNode(null, uniqueName('fn-kept-trash'), 'file');
+    const trashedKey = uniqueName('fn-kept-trash-key');
+    await repo.insertObject(trashedNode.id, trashedKey, 'active');
+    await repo.markSubtreeDeleted([trashedNode.id]);
+
+    const kept = await repo.getKeptObjectMapKeys();
+    expect(kept).toContain(trashedKey);
+  });
+
+  it('getFileNodesPathRows returns the full unfiltered projection incl trashed rows', async () => {
+    const dir = await repo.createNode(null, uniqueName('fn-proj-dir'), 'directory');
+    const nested = await repo.createNode(dir.id, uniqueName('fn-proj-nested'), 'file');
+    const trashed = await repo.createNode(null, uniqueName('fn-proj-trashed'), 'file');
+    await repo.markSubtreeDeleted([trashed.id]);
+    const orphaned = await repo.createNode(null, uniqueName('fn-proj-orphaned'), 'file');
+    await repo.updateSyncStatus(orphaned.id, 'orphaned_node');
+
+    const rows = await repo.getFileNodesPathRows();
+    const byId = new Map(rows.map((r) => [Number(r.id), r]));
+
+    // Exact projection shape — no filecache join, no mapped camelCase.
+    expect(Object.keys(rows[0]).sort()).toEqual([
+      'deleted_at',
+      'id',
+      'name',
+      'parent_id',
+      'sync_status',
+      'type',
+    ]);
+
+    const dirRow = byId.get(dir.id);
+    expect(dirRow).toMatchObject({
+      name: dir.name,
+      parent_id: null,
+      type: 'directory',
+      sync_status: 'pending_upload',
+    });
+    expect(dirRow.deleted_at).toBeNull();
+
+    const nestedRow = byId.get(nested.id);
+    expect(nestedRow).toMatchObject({ parent_id: dir.id, type: 'file' });
+
+    // Trashed rows are PRESENT with deleted_at set (the facade assembles the
+    // /.wea-trash/<id> arms from them — no trash filter here).
+    const trashedRow = byId.get(trashed.id);
+    expect(trashedRow).toBeDefined();
+    expect(trashedRow.deleted_at).not.toBeNull();
+
+    const orphanedRow = byId.get(orphaned.id);
+    expect(orphanedRow).toMatchObject({ sync_status: 'orphaned_node' });
+    expect(orphanedRow.deleted_at).toBeNull();
+  });
+
+  it('A13: markSubtreeDeleted marks every row of the subtree and gates the live reads', async () => {
+    const parent = await repo.createNode(null, uniqueName('fn-trash-p'), 'directory');
+    const child = await repo.createNode(parent.id, uniqueName('fn-trash-c'), 'file');
+    const sibling = await repo.createNode(null, uniqueName('fn-trash-sib'), 'file');
+
+    await repo.insertAncestorRows([
+      { ancestorId: parent.id, descendantId: parent.id, depth: 0 },
+      { ancestorId: parent.id, descendantId: child.id, depth: 1 },
+      { ancestorId: child.id, descendantId: child.id, depth: 0 },
+    ]);
+
+    const marked = await repo.markSubtreeDeleted([parent.id, child.id]);
+    expect(marked.changes).toBe(2);
+
+    // Gated reads: trashed rows are invisible...
+    await expect(repo.getNode(parent.id)).resolves.toBeNull();
+    await expect(repo.getNode(child.id)).resolves.toBeNull();
+    await expect(repo.resolvePathSegment(null, parent.name)).resolves.toBeNull();
+    await expect(repo.resolvePathSegment(null, sibling.name)).resolves.toMatchObject({
+      id: sibling.id,
+    });
+
+    const parentLevel = await repo.getChildren(null);
+    expect(parentLevel.some((n) => n.id === parent.id)).toBe(false);
+    expect(parentLevel.some((n) => n.id === sibling.id)).toBe(true);
+
+    // ...but the trash-aware reads still see them.
+    const includingTrashed = await repo.getNodeIncludingTrashed(parent.id);
+    expect(includingTrashed).not.toBeNull();
+    expect(includingTrashed.deletedAt).not.toBeNull();
+
+    // Re-running the UPDATE is idempotent in effect (deleted_at stays set, no
+    // state corruption) — `changes` reports MATCHED rows, not net mutations.
+    expect((await repo.markSubtreeDeleted([parent.id, child.id])).changes).toBe(2);
+  });
+
+  it('A13: getTrashChildren returns exactly the trashed children of a parent (live siblings excluded)', async () => {
+    const parent = await repo.createNode(null, uniqueName('fn-tc-p'), 'directory');
+    const live = await repo.createNode(parent.id, uniqueName('fn-tc-live'), 'file');
+    const trashedName = uniqueName('fn-tc-dead');
+    const trashed = await repo.createNode(parent.id, trashedName, 'file');
+
+    const before = await repo.getChildren(parent.id);
+    expect(before.map((n) => n.id)).toContain(live.id);
+    expect(before.map((n) => n.id)).toContain(trashed.id);
+
+    await repo.markSubtreeDeleted([trashed.id]);
+
+    const after = await repo.getChildren(parent.id);
+    expect(after.map((n) => n.id)).toContain(live.id);
+    expect(after.map((n) => n.id)).not.toContain(trashed.id);
+
+    const trashChildren = await repo.getTrashChildren(parent.id);
+    expect(trashChildren.map((n) => n.id)).toEqual([trashed.id]);
+    expect(trashChildren[0].name).toBe(trashedName);
+    // The trashed child is NOT a root-level trash row (it is nested).
+    const rootTrash = await repo.getTrashChildren(null);
+    expect(rootTrash.map((n) => n.id)).not.toContain(trashed.id);
+  });
+
+  it('A13: getTrashChildren(null) returns trashed root-level rows only', async () => {
+    const rootA = await repo.createNode(null, uniqueName('fn-tr-a'), 'directory');
+    const rootB = await repo.createNode(null, uniqueName('fn-tr-b'), 'file');
+    const nested = await repo.createNode(rootA.id, uniqueName('fn-tr-nested'), 'file');
+
+    await repo.markSubtreeDeleted([rootA.id, nested.id, rootB.id]);
+
+    const rootTrash = await repo.getTrashChildren(null);
+    const rootTrashIds = rootTrash.map((n) => n.id);
+    expect(rootTrashIds).toContain(rootA.id);
+    expect(rootTrashIds).toContain(rootB.id);
+    expect(rootTrashIds).not.toContain(nested.id); // nested ≠ root level
+    expect(rootTrash.every((n) => n.deletedAt != null)).toBe(true);
+  });
+
+  it('A13: getTopmostTrashedNodes returns only topmost trashed rows (parent live-or-NULL) and honors the optional age cutoff', async () => {
+    const { dbRun } = require('@server/test-utils');
+    const rootA = await repo.createNode(null, uniqueName('fn-top-root'), 'directory');
+    const nested = await repo.createNode(rootA.id, uniqueName('fn-top-nested'), 'file');
+    const liveParent = await repo.createNode(null, uniqueName('fn-top-live-p'), 'directory');
+    const childOfLive = await repo.createNode(liveParent.id, uniqueName('fn-top-child'), 'file');
+    await repo.insertAncestorRows([
+      { ancestorId: rootA.id, descendantId: rootA.id, depth: 0 },
+      { ancestorId: rootA.id, descendantId: nested.id, depth: 1 },
+      { ancestorId: nested.id, descendantId: nested.id, depth: 0 },
+      { ancestorId: liveParent.id, descendantId: liveParent.id, depth: 0 },
+      { ancestorId: liveParent.id, descendantId: childOfLive.id, depth: 1 },
+      { ancestorId: childOfLive.id, descendantId: childOfLive.id, depth: 0 },
+    ]);
+
+    await repo.markSubtreeDeleted([rootA.id, nested.id, childOfLive.id]);
+
+    // Fresh trash: only topmost rows (parent live-or-NULL) are returned.
+    const topmost = await repo.getTopmostTrashedNodes();
+    const topmostIds = topmost.map((n) => n.id);
+    expect(topmostIds).toContain(rootA.id);
+    expect(topmostIds).toContain(childOfLive.id);
+    expect(topmostIds).not.toContain(nested.id); // nested under a trashed parent
+    expect(topmost.every((n) => n.deletedAt != null)).toBe(true);
+
+    // Fresh rows are excluded by the age cutoff (residue rows from earlier
+    // tests in this suite are also fresh — none pass a 30-day cutoff)...
+    const freshCutoff = await repo.getTopmostTrashedNodes(30);
+    expect(freshCutoff.map((n) => n.id)).not.toContain(rootA.id);
+    expect(freshCutoff.map((n) => n.id)).not.toContain(childOfLive.id);
+
+    // ...and expired rows pass it (Tier 3 enumeration).
+    // JS-computed ISO timestamp — dual-dialect portable aging (bound param).
+    const agedIso = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString();
+    await dbRun('UPDATE file_nodes SET deleted_at = ? WHERE id = ?', [agedIso, rootA.id]);
+    const expired = await repo.getTopmostTrashedNodes(30);
+    expect(expired.map((n) => n.id)).toContain(rootA.id);
+    expect(expired.map((n) => n.id)).not.toContain(childOfLive.id);
+    expect(expired.map((n) => n.id)).not.toContain(nested.id);
+  });
+
+  it('A13: untrashSubtree clears deleted_at on every given row and re-enrolls the live reads', async () => {
+    const parent = await repo.createNode(null, uniqueName('fn-ut-p'), 'directory');
+    const child = await repo.createNode(parent.id, uniqueName('fn-ut-c'), 'file');
+    const stranger = await repo.createNode(null, uniqueName('fn-ut-s'), 'file');
+    await repo.insertAncestorRows([
+      { ancestorId: parent.id, descendantId: parent.id, depth: 0 },
+      { ancestorId: parent.id, descendantId: child.id, depth: 1 },
+      { ancestorId: child.id, descendantId: child.id, depth: 0 },
+      { ancestorId: stranger.id, descendantId: stranger.id, depth: 0 },
+    ]);
+    await repo.markSubtreeDeleted([parent.id, child.id]);
+    expect(await repo.getNode(parent.id)).toBeNull();
+
+    const untrashed = await repo.untrashSubtree([parent.id, child.id]);
+    expect(untrashed.changes).toBe(2);
+
+    expect((await repo.getNode(parent.id)).deletedAt).toBeNull();
+    expect((await repo.getNode(child.id)).deletedAt).toBeNull();
+    expect((await repo.getChildren(parent.id)).map((n) => n.id)).toContain(child.id);
+    expect(await repo.resolvePathSegment(parent.id, child.name)).toMatchObject({ id: child.id });
+
+    // An already-live row in the list is matched too (the UPDATE reports MATCHED
+    // rows); its deleted_at stays NULL — no state change.
+    const second = await repo.untrashSubtree([child.id, stranger.id]);
+    expect(second.changes).toBe(2);
+    expect((await repo.getNode(stranger.id)).deletedAt).toBeNull();
+  });
+
+  it('A13: getObjectMapBySubtree returns every object_map row of the subtree (any status)', async () => {
+    const root = await repo.createNode(null, uniqueName('fn-omst-root'), 'directory');
+    const child = await repo.createNode(root.id, uniqueName('fn-omst-c'), 'file');
+    const outsider = await repo.createNode(null, uniqueName('fn-omst-out'), 'file');
+    await repo.insertAncestorRows([
+      { ancestorId: root.id, descendantId: root.id, depth: 0 },
+      { ancestorId: root.id, descendantId: child.id, depth: 1 },
+      { ancestorId: child.id, descendantId: child.id, depth: 0 },
+      { ancestorId: outsider.id, descendantId: outsider.id, depth: 0 },
+    ]);
+    await repo.insertObject(root.id, uniqueName('fn-omst-k-active'), 'active');
+    // The child carries a history + orphaned + pending row — distinct
+    // version_numbers (UNIQUE(file_node_id, version_number)).
+    await repo.insertObject(child.id, uniqueName('fn-omst-k-history'), 'history');
+    const { dbRun } = require('@server/test-utils');
+    await dbRun(
+      `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
+       VALUES (?, ?, 's3', 2, 'orphaned')`,
+      [child.id, uniqueName('fn-omst-k-orphaned')]
+    );
+    await dbRun(
+      `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
+       VALUES (?, ?, 's3', 3, 'pending')`,
+      [child.id, uniqueName('fn-omst-k-pending')]
+    );
+    await repo.insertObject(outsider.id, uniqueName('fn-omst-k-out'), 'active');
+
+    const rows = await repo.getObjectMapBySubtree(root.id);
+    const statuses = rows.map((r) => r.status).sort();
+    expect(statuses).toEqual(['active', 'history', 'orphaned', 'pending']);
+    expect(rows.every((r) => [root.id, child.id].includes(r.file_node_id))).toBe(true);
+  });
+
+  it('A13: getDescendantIds / getAncestorChain stay UNFILTERED across a trash boundary', async () => {
+    const root = await repo.createNode(null, uniqueName('fn-uf-root'), 'directory');
+    const leaf = await repo.createNode(root.id, uniqueName('fn-uf-leaf'), 'file');
+    await repo.insertAncestorRows([
+      { ancestorId: root.id, descendantId: root.id, depth: 0 },
+      { ancestorId: root.id, descendantId: leaf.id, depth: 1 },
+      { ancestorId: leaf.id, descendantId: leaf.id, depth: 0 },
+    ]);
+
+    await repo.markSubtreeDeleted([root.id, leaf.id]);
+
+    // Full trashed subtree is still enumerable (restore/purge need it).
+    const descIds = await repo.getDescendantIds(root.id);
+    expect(descIds).toContain(leaf.id);
+    const chain = await repo.getAncestorChain(leaf.id);
+    expect(chain.some((e) => e.ancestorId === root.id)).toBe(true);
+  });
+
+  it('A4: restore-cycle schema behavior — trashed rows coexist with live same-name rows; the restore UPDATE re-enrolls live uniqueness (collision rejected)', async () => {
+    const parent = await repo.createNode(null, uniqueName('fn-rc-p'), 'directory');
+    const name = uniqueName('fn-rc-name');
+    const original = await repo.createNode(parent.id, name, 'file');
+    await repo.markSubtreeDeleted([original.id]);
+
+    // While the row is trashed, a live sibling with the same name coexists.
+    const live = await repo.createNode(parent.id, name, 'file');
+    expect(live.id).toBeGreaterThan(0);
+
+    // Restore cycle: clearing deleted_at re-enrolls the row in live uniqueness.
+    // With a live same-name sibling present, the restore UPDATE violates the
+    // partial unique index — exactly the collision the trash-restore flow must
+    // resolve (name suffix / deepest live ancestor) before clearing deleted_at.
+    const { dbRun } = require('@server/test-utils');
+    await expect(
+      dbRun('UPDATE file_nodes SET deleted_at = NULL WHERE id = ?', [original.id])
+    ).rejects.toThrow();
+
+    // Once the colliding sibling is trashed too, the restore succeeds.
+    await repo.markSubtreeDeleted([live.id]);
+    await expect(
+      dbRun('UPDATE file_nodes SET deleted_at = NULL WHERE id = ?', [original.id])
+    ).resolves.toBeDefined();
+
+    // The restored row is live-unique again: a same-name insert is rejected.
+    await expect(repo.createNode(parent.id, name, 'file')).rejects.toThrow();
+
+    // Re-trashing the restored row releases uniqueness once more.
+    await repo.markSubtreeDeleted([original.id]);
+    const third = await repo.createNode(parent.id, name, 'file');
+    expect(third.id).toBeGreaterThan(0);
+    expect(third.id).not.toBe(original.id);
+  });
+
+  it('getOrphanedObjectsWithNodeState annotates node sync status and has_active', async () => {
+    const { dbRun } = require('@server/test-utils');
+    const stuckNode = await repo.createNode(null, uniqueName('fn-state-stuck'), 'file');
+    const stuckKey = uniqueName('fn-state-stuck-key');
+    await repo.insertObject(stuckNode.id, stuckKey, 'orphaned');
+
+    const liveNode = await repo.createNode(null, uniqueName('fn-state-live'), 'file');
+    const liveActiveKey = uniqueName('fn-state-live-active');
+    const liveOrphanKey = uniqueName('fn-state-live-orphan');
+    await repo.insertObject(liveNode.id, liveActiveKey, 'active');
+    await dbRun(
+      `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
+       VALUES (?, ?, 's3', 2, 'orphaned')`,
+      [liveNode.id, liveOrphanKey]
+    );
+
+    const freshNode = await repo.createNode(null, uniqueName('fn-state-fresh'), 'file');
+    const freshKey = uniqueName('fn-state-fresh-key');
+    await repo.insertObject(freshNode.id, freshKey, 'orphaned');
+
+    const aged = new Date(Date.now() - 5 * 86400_000).toISOString();
+    await dbRun('UPDATE object_map SET created_at = ? WHERE s3_key = ?', [aged, stuckKey]);
+    await dbRun('UPDATE object_map SET created_at = ? WHERE s3_key = ?', [aged, liveOrphanKey]);
+
+    const orphaned = await repo.getOrphanedObjectsWithNodeState(1);
+    const stuckRow = orphaned.find((r) => r.s3_key === stuckKey);
+    expect(stuckRow).toBeDefined();
+    expect(stuckRow.node_sync_status).toBe('pending_upload');
+    expect(Number(stuckRow.has_active)).toBe(0);
+
+    const liveRow = orphaned.find((r) => r.s3_key === liveOrphanKey);
+    expect(liveRow).toBeDefined();
+    expect(Number(liveRow.has_active)).toBe(1);
+
+    expect(orphaned.some((r) => r.s3_key === freshKey)).toBe(false);
+  });
+
+  it('getStalePendingObjects returns only pending rows on pending_upload nodes past the cutoff', async () => {
+    const { dbRun } = require('@server/test-utils');
+    const stuckNode = await repo.createNode(null, uniqueName('fn-stale-stuck'), 'file');
+    const staleKey = uniqueName('fn-stale-old');
+    const freshKey = uniqueName('fn-stale-fresh');
+    await repo.insertObject(stuckNode.id, staleKey, 'pending');
+    await dbRun(
+      `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
+       VALUES (?, ?, 's3', 2, 'pending')`,
+      [stuckNode.id, freshKey]
+    );
+
+    const liveNode = await repo.createNode(null, uniqueName('fn-stale-live'), 'file');
+    await repo.updateSyncStatus(liveNode.id, 'active');
+    const pendingOnLiveKey = uniqueName('fn-stale-pending-live');
+    await repo.insertObject(liveNode.id, pendingOnLiveKey, 'pending');
+
+    await dbRun('UPDATE object_map SET created_at = ? WHERE s3_key = ?', [
+      new Date(Date.now() - 5 * 86400_000).toISOString(),
+      staleKey,
+    ]);
+
+    const stale = await repo.getStalePendingObjects(1);
+    expect(stale.some((r) => r.s3_key === staleKey)).toBe(true);
+    expect(stale.some((r) => r.s3_key === freshKey)).toBe(false);
+    expect(stale.some((r) => r.s3_key === pendingOnLiveKey)).toBe(false);
+  });
+
+  it('upsertObjectMap bumps version and demotes the previous active row to history', async () => {
     const node = await repo.createNode(null, uniqueName('fn-um'), 'file');
     const key1 = uniqueName('fn-um-k1');
     const key2 = uniqueName('fn-um-k2');
@@ -171,7 +543,126 @@ describe('FileNodeRepository conformance', () => {
 
     const active = await repo.getActiveObject(node.id);
     expect(active.s3_key).toBe(key2);
+    expect(active.version_number).toBe(2);
     expect(await repo.countActiveObjectsByS3Key(key1)).toBe(0);
+
+    const { dbQuery } = require('@server/test-utils');
+    const prevRows = await dbQuery('SELECT status FROM object_map WHERE s3_key = ?', [key1]);
+    expect(prevRows.rows[0].status).toBe('history');
+  });
+
+  it('evictVersionsBeyondCap demotes the oldest history rows to orphaned while active+history > cap', async () => {
+    const node = await repo.createNode(null, uniqueName('fn-evict'), 'file');
+    const keys = [];
+    for (let v = 1; v <= 5; v += 1) {
+      const key = uniqueName(`fn-evict-k${v}`);
+      keys.push(key);
+      await repo.upsertObjectMap(node.id, key, 'active');
+    }
+    // After 5 upserts: v1..v4 are history, v5 is active.
+    const { dbQuery } = require('@server/test-utils');
+    const statusByVersion = async () => {
+      const rows = await dbQuery(
+        'SELECT s3_key, version_number, status FROM object_map WHERE file_node_id = ? ORDER BY version_number',
+        [node.id]
+      );
+      return Object.fromEntries(rows.rows.map((r) => [Number(r.version_number), r.status]));
+    };
+    expect(await statusByVersion()).toEqual({
+      1: 'history',
+      2: 'history',
+      3: 'history',
+      4: 'history',
+      5: 'active',
+    });
+
+    // cap 3 → active(1) + history(4) = 5 > 3 → evict the 2 oldest history rows.
+    const evicted = await repo.evictVersionsBeyondCap(node.id, 3);
+    expect(evicted.changes).toBe(2);
+
+    expect(await statusByVersion()).toEqual({
+      1: 'orphaned',
+      2: 'orphaned',
+      3: 'history',
+      4: 'history',
+      5: 'active',
+    });
+
+    // Cap already satisfied → second call evicts nothing.
+    expect((await repo.evictVersionsBeyondCap(node.id, 3)).changes).toBe(0);
+    expect(keys).toHaveLength(5);
+  });
+
+  it('evictVersionsBeyondCap treats cap 0 as unbounded (no-op) and never touches the active row', async () => {
+    const node = await repo.createNode(null, uniqueName('fn-evict0'), 'file');
+    for (let v = 1; v <= 4; v += 1) {
+      await repo.upsertObjectMap(node.id, uniqueName(`fn-evict0-k${v}`), 'active');
+    }
+    const before = await repo.getActiveObject(node.id);
+
+    expect((await repo.evictVersionsBeyondCap(node.id, 0)).changes).toBe(0);
+
+    const { dbQuery } = require('@server/test-utils');
+    const rows = await dbQuery(
+      'SELECT status FROM object_map WHERE file_node_id = ? ORDER BY version_number',
+      [node.id]
+    );
+    expect(rows.rows.map((r) => r.status)).toEqual(['history', 'history', 'history', 'active']);
+    const after = await repo.getActiveObject(node.id);
+    expect(Number(after.id)).toBe(Number(before.id));
+    expect(after.status).toBe('active');
+
+    // Negative/invalid caps behave like unbounded (no-op), never a full wipe.
+    expect((await repo.evictVersionsBeyondCap(node.id, -1)).changes).toBe(0);
+  });
+
+  it('getVersionsByNode returns active + history rows newest-first, excluding pending and orphaned', async () => {
+    const node = await repo.createNode(null, uniqueName('fn-vers'), 'file');
+    const keyV1 = uniqueName('fn-vers-v1');
+    const keyV2 = uniqueName('fn-vers-v2');
+    const keyV3 = uniqueName('fn-vers-v3');
+
+    await repo.upsertObjectMap(node.id, keyV1, 'active');
+    await repo.upsertObjectMap(node.id, keyV2, 'active');
+    await repo.upsertObjectMap(node.id, keyV3, 'pending');
+    // Evict v1 explicitly to prove orphaned rows are excluded.
+    await repo.evictVersionsBeyondCap(node.id, 2);
+
+    const versions = await repo.getVersionsByNode(node.id);
+    expect(versions.map((r) => r.s3_key)).toEqual([keyV2, keyV1]);
+    // keyV1 was evicted by the cap; keyV2 was demoted to history by the third
+    // upsert (status='pending' still demotes the previous active row).
+    expect(versions.map((r) => r.status)).toEqual(['history', 'history']);
+    expect(versions.some((r) => r.s3_key === keyV3)).toBe(false);
+
+    const other = await repo.createNode(null, uniqueName('fn-vers-other'), 'file');
+    await repo.insertObject(other.id, uniqueName('fn-vers-other-key'), 'pending');
+    expect(await repo.getVersionsByNode(node.id)).toHaveLength(2);
+    expect(await repo.getVersionsByNode(99999999)).toEqual([]);
+  });
+
+  it('demoteActiveToHistory flips only the active row with the given s3_key', async () => {
+    const node = await repo.createNode(null, uniqueName('fn-dmh'), 'file');
+    const key = uniqueName('fn-dmh-key');
+    await repo.insertObject(node.id, key, 'active');
+
+    const res = await repo.demoteActiveToHistory(key);
+    expect(res.changes).toBe(1);
+    const { dbQuery } = require('@server/test-utils');
+    const demoted = await dbQuery('SELECT status FROM object_map WHERE s3_key = ?', [key]);
+    expect(demoted.rows[0].status).toBe('history');
+
+    // Already-history → no-op; pending/unknown keys → no-op.
+    expect((await repo.demoteActiveToHistory(key)).changes).toBe(0);
+    await repo.upsertObjectMap(node.id, uniqueName('fn-dmh-pending'), 'pending');
+    const { dbQuery: dq2 } = require('@server/test-utils');
+    const newest = await dq2(
+      'SELECT status, s3_key FROM object_map WHERE file_node_id = ? ORDER BY version_number DESC LIMIT 1',
+      [node.id]
+    );
+    expect(newest.rows[0].status).toBe('pending');
+    expect((await repo.demoteActiveToHistory(newest.rows[0].s3_key)).changes).toBe(0);
+    expect((await repo.demoteActiveToHistory('unknown-key')).changes).toBe(0);
   });
 
   it('setObjectMapBackendWebdav flips the backend of the active row', async () => {
@@ -184,7 +675,95 @@ describe('FileNodeRepository conformance', () => {
     expect(row.storage_backend).toBe('webdav');
   });
 
-  it('filecache: upsert insert/update, get, delete', async () => {
+  it('reactivateObjectMapRow flips an orphaned row back to active', async () => {
+    const node = await repo.createNode(null, uniqueName('fn-react'), 'file');
+    const key = uniqueName('fn-react-key');
+
+    await repo.upsertObjectMap(node.id, key, 'pending');
+    await repo.activateObject(key);
+    await repo.orphanObject(key);
+
+    const { dbQuery } = require('@server/test-utils');
+    const orphaned = await dbQuery('SELECT id FROM object_map WHERE s3_key = ?', [key]);
+    expect(orphaned.rows.length).toBe(1);
+
+    const res = await repo.reactivateObjectMapRow(Number(orphaned.rows[0].id));
+    expect(res.changes).toBe(1);
+
+    const active = await repo.getActiveObject(node.id);
+    expect(active.s3_key).toBe(key);
+    expect(active.status).toBe('active');
+  });
+
+  it('reactivateObjectMapRow flips a history row back to active (DEF-11 restore path)', async () => {
+    const node = await repo.createNode(null, uniqueName('fn-react-history'), 'file');
+    const key = uniqueName('fn-react-history-key');
+
+    // upsertObjectMap leaves the previous active row as 'history'.
+    await repo.upsertObjectMap(node.id, key, 'active');
+    await repo.upsertObjectMap(node.id, uniqueName('fn-react-history-k2'), 'active');
+
+    const { dbQuery } = require('@server/test-utils');
+    const historyRow = await dbQuery(
+      "SELECT id FROM object_map WHERE s3_key = ? AND status = 'history'",
+      [key]
+    );
+    expect(historyRow.rows.length).toBe(1);
+
+    const res = await repo.reactivateObjectMapRow(Number(historyRow.rows[0].id));
+    expect(res.changes).toBe(1);
+
+    // The row itself is active again. The service-level restore pairs this with
+    // demoteActiveToHistory on the current row; reactivate alone leaves both
+    // rows active and getActiveObject's pick is unspecified, so assert the row.
+    const rows = await dbQuery('SELECT s3_key, status FROM object_map WHERE id = ?', [
+      historyRow.rows[0].id,
+    ]);
+    expect(rows.rows[0].status).toBe('active');
+  });
+
+  it('reactivateObjectMapRow leaves non-history/orphaned rows untouched', async () => {
+    const node = await repo.createNode(null, uniqueName('fn-react-nonorphan'), 'file');
+    const key = uniqueName('fn-react-nonorphan-key');
+
+    await repo.insertObject(node.id, key, 'pending');
+    const pendingRow = await repo.getObjectMapByS3Key(key);
+    expect((await repo.reactivateObjectMapRow(pendingRow.id)).changes).toBe(0);
+    expect((await repo.getObjectMapByS3Key(key)).status).toBe('pending');
+
+    await repo.activateObject(key);
+    const activeRow = await repo.getActiveObject(node.id);
+    expect((await repo.reactivateObjectMapRow(activeRow.id)).changes).toBe(0);
+  });
+
+  it('reactivateObjectMapRow with an unknown id changes nothing', async () => {
+    expect((await repo.reactivateObjectMapRow(99999999)).changes).toBe(0);
+  });
+
+  it('getObjectMapByNode returns every row of the node newest-version first regardless of age', async () => {
+    const node = await repo.createNode(null, uniqueName('fn-objnode'), 'file');
+    const keyV1 = uniqueName('fn-objnode-v1');
+    const keyV2 = uniqueName('fn-objnode-v2');
+
+    await repo.insertObject(node.id, keyV1, 'pending');
+    await repo.activateObject(keyV1);
+    await repo.orphanObject(keyV1);
+    await repo.upsertObjectMap(node.id, keyV2, 'pending');
+
+    // A freshly inserted row is not reliably "older than now" (second-granular
+    // timestamps) — getObjectMapByNode must not apply any age filter.
+    const rows = await repo.getObjectMapByNode(node.id);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.s3_key)).toEqual([keyV2, keyV1]);
+    expect(rows.map((r) => r.status)).toEqual(['pending', 'orphaned']);
+
+    const other = await repo.createNode(null, uniqueName('fn-objnode-other'), 'file');
+    await repo.insertObject(other.id, uniqueName('fn-objnode-other-key'), 'pending');
+    const scoped = await repo.getObjectMapByNode(node.id);
+    expect(scoped).toHaveLength(2);
+  });
+
+  it('filecache: upsert insert/update, get', async () => {
     const node = await repo.createNode(null, uniqueName('fn-cache'), 'file');
 
     await repo.upsertCache(node.id, 100, 'text/plain', 'hash-1');
@@ -195,10 +774,37 @@ describe('FileNodeRepository conformance', () => {
     await repo.upsertCache(node.id, 200, 'text/html', 'hash-2');
     cache = await repo.getCache(node.id);
     expect(Number(cache.size)).toBe(200);
+  });
 
-    const del = await repo.deleteCache(node.id);
-    expect(del.changes).toBe(1);
-    await expect(repo.getCache(node.id)).resolves.toBeNull();
+  it('filecache join: getNode carries size/mimeType when a cache row exists', async () => {
+    const parent = await repo.createNode(null, uniqueName('fn-cachejoin-p'), 'directory');
+    const file = await repo.createNode(parent.id, uniqueName('fn-cachejoin-f'), 'file');
+    await repo.upsertCache(file.id, 4321, 'text/plain', null);
+
+    const fetched = await repo.getNode(file.id);
+    expect(fetched.size).toBe(4321);
+    expect(fetched.mimeType).toBe('text/plain');
+
+    const dir = await repo.getNode(parent.id);
+    expect(dir.size).toBeUndefined();
+    expect(dir.mimeType).toBeNull();
+  });
+
+  it('filecache join: trashed reads (getTrashChildren, getTopmostTrashedNodes) carry size', async () => {
+    const parent = await repo.createNode(null, uniqueName('fn-trashsize-p'), 'directory');
+    const file = await repo.createNode(parent.id, uniqueName('fn-trashsize-f'), 'file');
+    await repo.upsertCache(file.id, 9000, 'application/octet-stream', null);
+    await repo.markSubtreeDeleted([file.id]);
+
+    const trashChildren = await repo.getTrashChildren(parent.id);
+    expect(trashChildren).toHaveLength(1);
+    expect(trashChildren[0].size).toBe(9000);
+
+    const topmost = await repo.getTopmostTrashedNodes();
+    const top = topmost.find((n) => n.id === file.id);
+    expect(top).toBeDefined();
+    expect(top.size).toBe(9000);
+    expect(top.mimeType).toBe('application/octet-stream');
   });
 
   it('getUserRootNode resolves the root node named after the username', async () => {

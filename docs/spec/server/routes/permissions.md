@@ -15,7 +15,7 @@
 
 - **Route index:** `server/domains/permissions/routes/index.js` (re-exports from modules below)
 - **Folder permissions:** `server/domains/permissions/routes/folderPermissions.js` (`POST /grant`, `DELETE /revoke`, `GET /user/:userId`, `GET /shared`, `GET /folder`)
-- **File permissions:** `server/domains/permissions/routes/filePermissions.js` (`POST /file/grant`, `DELETE /file/revoke`, `PATCH /file`, `GET /file/check`, `GET /file/list`)
+- **File permissions:** `server/domains/permissions/routes/filePermissions.js` (`POST /file/grant`, `DELETE /file/revoke`, `GET /file/list`)
 - **Queries:** `server/domains/permissions/routes/queries.js` (`GET /check`)
 - **Existence index helper:** `server/domains/permissions/stores/permissionExistenceIndex.js`
 - **Test file:** `server/domains/permissions/routes/__tests__/permissions.test.js`
@@ -32,8 +32,6 @@
 | GET    | `/check`        | Token | Check current user permission. Query: nodeId.                                                         |
 | POST   | `/file/grant`   | Token | Grant file-level permission. Body: userId, fileNodeId, permission.                                    |
 | DELETE | `/file/revoke`  | Token | Revoke file-level permission. Query: userId, fileNodeId.                                              |
-| PATCH  | `/file`         | Token | Update file-level permission. Body: userId, fileNodeId, permission.                                   |
-| GET    | `/file/check`   | Token | Check file permission. Query: fileNodeId.                                                             |
 | GET    | `/file/list`    | Token | List file permissions. Query: nodeId? (parent directory)                                              |
 
 ### 2.3 Middleware Used
@@ -81,7 +79,7 @@
 
 ### 2.4.2 Node ID Validation
 
-All `nodeId` and `fileNodeId` parameters must correspond to an existing row in `file_nodes`. If the referenced node does not exist, the route returns `404 Not Found` before proceeding with permission logic. This validation applies to all routes accepting nodeId parameters: `/grant`, `/revoke`, `/check`, `/folder`, `/file/grant`, `/file/revoke`, `/file/check`, `/file/list`.
+All `nodeId` and `fileNodeId` parameters must correspond to an existing row in `file_nodes`. If the referenced node does not exist, the route returns `404 Not Found` before proceeding with permission logic. This validation applies to all routes accepting nodeId parameters: `/grant`, `/revoke`, `/check`, `/folder`, `/file/grant`, `/file/revoke`, `/file/list`.
 
 ### 2.4.3 `GET /user/:userId` Fast-Path Semantics
 
@@ -118,7 +116,6 @@ All `nodeId` and `fileNodeId` parameters must correspond to an existing row in `
   - `DELETE /revoke`
   - `POST /file/grant`
   - `DELETE /file/revoke`
-  - `PATCH /file`
 - Invalidation is also wired at ACL-store mutation points so non-route callers keep index consistency.
 - File-system mutation integrations (move/copy/delete flows) can also invalidate affected node IDs via CASCADE or explicit invalidation.
 - Env knobs:

@@ -1,7 +1,6 @@
 const bcrypt = require('bcryptjs');
 
 const { isSqliteBackend } = require('./storage');
-const { initSqliteSchema } = require('../scripts/initSqliteSchema');
 const { applyPendingMigrations } = require('../infrastructure/schemaManager');
 const userStore = require('./userStore');
 
@@ -37,11 +36,11 @@ async function ensureDefaultAdmin() {
  * ADMIN_DEFAULT_PASSWORD (which may now be a DB-sourced, plaintext value).
  */
 async function initMetadataSchema() {
-  if (isSqliteBackend()) {
-    await initSqliteSchema();
-  } else {
-    await applyPendingMigrations('postgresql');
-  }
+  // Both backends are checksum-tracked (schemaManager); sqlite DDL is
+  // transpiled from the same ddl/*.sql chain. The former converter-based
+  // boot path (initSqliteSchema) cannot express schema evolution (e.g.
+  // constraint changes) on existing DBs.
+  await applyPendingMigrations(isSqliteBackend() ? 'sqlite' : 'postgresql');
 }
 
 /**

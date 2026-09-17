@@ -1,0 +1,380 @@
+# Proof of Concept — AI-Driven Storage
+
+> **Status: closed, 2026-09-16.** This document records every experiment run before writing any
+> product code. Each experiment states **Where** (the real environment used), **What** (the
+> question it had to answer), **How** (the method), **Why** (which plan assumption it tests),
+> and then **Result → Meaning → What it makes possible / impossible**.
+>
+> The plan being tested lives in `PLAN.md` (task graph) and `AI_FEATURE_PLAN.md` (design).
+> No prior knowledge of those documents (or of AI jargon) is needed to read this.
+
+---
+
+The product idea in one line: teach a self-hosted file vault to understand what its files are
+about — AI describes each file in words, turns those descriptions into numerical
+"fingerprints", and then finds and organizes files by meaning rather than by exact file name.
+
+A plan is just neatly written guesses. This document flew each risky guess to the ground and
+let reality grade it — before a single line of product code was written. Some guesses survived,
+some died, and three times the bug was in our own measuring tools. Those are written here too,
+because knowing _how_ a measurement went wrong matters as much as trusting one that went right.
+
+---
+
+## 1. Where — the environment, honestly described
+
+| Piece                          | What it is                                                                             | Notes                                                                                                               |
+| ------------------------------ | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| **bge-m3** @ `10.0.0.106:8082` | llama.cpp serving the BAAI bge-m3 text-embedding model, GGUF q8_0, 1024-dim            | configured `n_ctx=8192, batch(-b)=2048, unit-batch(-ub)=512`                                                        |
+| **Hana** @ `10.0.0.106:8081`   | llama.cpp serving gemma-4-12b-it (Q4_K_M) with vision+audio adapter; chat model        | `n_ctx=32768`, single slot (`-np 1`)                                                                                |
+| PostgreSQL @ `10.0.0.103`      | The running app's metadata DB (native PG16 cluster, Ubuntu 24.04)                      | pgvector **not installed**; apt only offers 0.6.0; benchmarking done in docker `pgvector/pgvector:pg16` = **0.8.6** |
+| MinIO @ `10.0.0.104`           | S3 object storage holding the real files (bucket `webdav-temp`, 31 GB, 10,841 objects) | read via S3 API for copies; originals untouched                                                                     |
+| Dev box                        | Node v24 (built-in `node:sqlite`), Python 3.12, ffmpeg, single-core benches            | all PoC scripts live in `poc/` (git-ignored data)                                                                   |
+
+**The test data.** Nothing was invented from scratch; every experiment used one of three pools:
+
+1. **Real operational mirror** — the running instance's own corpus (≈5.4k documents after
+   augmentation, 300 wedding photos copied via S3, 6 audio clips provided by the owner), plus
+   directory names used as free labels (e.g. every photo under `결혼식/` is a wedding photo —
+   no human labeling needed for those).
+2. **Public data** — Korean Wikipedia articles, the NSMC movie-review corpus, a
+   topic-labeled Korean news dataset, random photos from picsum — chosen so each item carries a
+   known "truth" label for scoring.
+3. **Deliberate constructions** — a 11k-char contract with a distinctive clause inserted at a
+   chosen position; image "near-duplicates" made by re-encoding/cropping/resizing 60 anchors;
+   perturbed text variants at controlled damage levels (1% / 5% / 15%). These exist because
+   you cannot grade a duplicate detector without _known_ duplicates.
+
+One honest caveat up front: the "topic" corpora (news, movies) are templates and short reviews,
+which the experiments later caught inflating similarity — several findings below exist precisely
+because we fell into that trap and fixed it.
+
+---
+
+## 2. The experiments
+
+### 2.1 The models probe — "is the manual lying?"
+
+- **What**: before trusting any measurement, verify what the two AI servers can actually do.
+- **How**: send a 64×64 solid-red image and audio clips to the endpoints; compare answer
+  tokens and behavior against a text-only control.
+- **Why**: the plan's provider model (`AI_FEATURE_PLAN §4.23`) says capability must be decided
+  by probing, never by declared metadata — this principle needed its first real test case.
+- **Result**:
+  - bge-m3 is **text-only, and silently wrong on images**: sending a base64 PNG did not error —
+    it embedded the _letters of the base64 string_ and returned a confident vector.
+  - Hana sees images correctly ("dark red", from the reasoning trace) — vision is real.
+  - Hana's advertised audio: first test said "no audio heard" — **that was a bug in our test**
+    (we fed sine-wave beeps, which are outside the speech domain). Re-tested with real speech:
+    full, accurate Korean transcription (30 s news clip, +727 tokens for the audio = genuinely
+    encoded). Audio support is real.
+- **Meaning**: declared capability and actual capability diverged in both directions — the
+  product may trust neither without probing, and a probe must use _in-domain_ samples.
+- **Consequence**: the whole "provider preset = expectation, boot probe = truth" rule in the
+  plan is kept and hardened. The "silent wrong vector" failure mode (a text embedder fed an
+  image returns _success_) is why multimodal inputs must never be sent to the wrong endpoint.
+
+### 2.2 Auditing the live system
+
+- **What**: check the plan's assumptions against the actual production database and object
+  store.
+- **How**: read-only SQL over SSH (`information_schema`, counts, distributions).
+- **Why**: the plan had two explicit premises about the data layer (T0.1 content-hash, schema
+  state).
+- **Result**: `filecache.content_hash` is already populated on 100% of the 10,841 live objects;
+  the live DB schema is _older_ than the repo DDL (no `file_nodes.size`); 9 stuck
+  `pending_upload` nodes exist; 4.3 MB median / 362 MB max object sizes; one user's real photo
+  tree (`결혼식/본식스냅`, ~9k jpgs) doubles as free ground-truth labels.
+- **Meaning**: plan task T0.1 ("populate content_hash") is actually "use the hash that's
+  already there"; and a migration-status check must precede implementation.
+- **Consequence**: exact-duplicate finding (planned as AI-adjacent) becomes a _trivially
+  available_ non-AI feature — moved into P0.
+
+### 2.3 Corpus building
+
+- **What**: a test set large and labeled enough to grade everything below.
+- **How**: scripts in `poc/`: NSMC news-style pulls via Wikipedia/HF APIs, 160
+  topic-labeled news docs, 60 random photos ("anchors"), 300×5 near-duplicate image variants,
+  60 long/synthetic docs with known inserted facts, plus 300 wedding-photo copies via S3.
+- **Why**: §2.1 of the plan — every experiment here is unpayable without ground truth; also
+  the first tag experiments (2.9) died of a too-small sample, so the corpus was deliberately
+  scaled up mid-PoC.
+- **Result**: 6,177 items / 1.5 GB; every row tracked in `poc/manifest.jsonl`; 5,477 embeddable
+  docs.
+- **Consequence**: all later numbers are reproducible via the scripts in §5.
+
+### 2.4 E1 — embedding every document, under the worst server settings
+
+- **What**: can we embed an entire corpus reliably when the server can only process ≤512-token
+  chunks (`-ub 512`, observed empirically as HTTP 500s)?
+- **How**: chunk each document to ≤550-char pieces at 90% paragraph-aware boundaries, embed ≤4
+  pieces spread evenly, average the vectors, renormalize (this is the planned
+  "chunk-pool" §4.3 ladder), embed all 5,477 docs.
+- **Why**: the design's over-length ladder was paper math; also a fairness test — the product
+  must work on the _worst_ realistic llama.cpp config, not one we tuned.
+- **Result**: **5,477/5,477 embedded, 0 failures, 36 seconds (~15,200 docs/min)**; corpus
+  coverage p10 = 1.0 (90% of docs fit inside 4 chunks); measured ≈**1.7 chars/token** (mixed).
+- **Meaning**: enrichment is embarrassingly cheap on this hardware; per-file AI cost is a
+  non-issue for embeddings; and chunking (not server reconfiguration) is the only sane answer
+  to length limits.
+- **Consequence**: E1/E10 constants feed the plan's budget section; the "raise `-ub`" idea was
+  dropped as cosmetic (a bigger ub just moves the wall — context windows still exist).
+
+### 2.5 E2 — can one number separate "duplicates", "same topic", "unrelated"?
+
+- **What**: the plan sprinkles cosine thresholds everywhere (near-dup θ≈0.98, cluster edges,
+  gray bands). Are those separable at all?
+- **How**: compute cosine for three populations: injected near-duplicate text variants,
+  different documents of the same topic, random unrelated pairs; compare distributions.
+  **Act 1 failed loudly** (see below). **Act 2 (E2v2)** fixed both experiment bugs and measured
+  220 realistic-perturbation pairs vs 3,000 same-topic vs 4,000 unrelated pairs.
+- **Why**: the single most load-bearing assumption — "similarity thresholds mean something".
+- **Result**:
+  - Act 1: apparent failure (gap −0.09). Root cause was _ours_: the "duplicates" were
+    word-shuffled gibberish (semantically destroyed), and the "same-topic" docs shared a
+    template skeleton, inflating their scores. Both artifacts, not the model.
+  - E2v2, realistic edit strengths (typos, sentence-level edits): near-dup P10 = **0.977**,
+    same-topic median = 0.655, unrelated P99 = **0.471**. Clean separation for _near-dup_
+    (gap +0.5), but **topic-vs-unrelated remains heavily overlapped** (topic P90 0.78 inside
+    the near-dup zone, unrelated climbs to 0.6).
+  - Cross-check with a different embedder would change these numbers — a measured constant is
+    valid per (model × corpus), see §3/§4 verdict.
+- **Meaning**: θ≈0.97 for duplicate detection is _real and safe_ on bge-m3+Korean; "is this the
+  same topic as that" is **not decidable by one cosine** — that decision must be relative
+  (nearest neighbors, margins), statistical, or made by a human-in-the-loop suggestion —
+  exactly how the plan already routes merges (§4.4) but the thresholds themselves needed this
+  rewrite. The absolute "floor" of unrelatedness is corpus-dependent → replaced by a
+  _per-query dynamic baseline_ (measure the same query against a random corpus sample and judge
+  relative; no stored magic number).
+- **Consequence**: plan changes at §4.3/§4.9/§4.17 (θ_dup=0.97 kept; θ for topics/clusters
+  deleted; dynamic baseline added; exact duplicates go through the hash path, not cosine).
+
+### 2.6 E3 — does semantic search actually work on this corpus?
+
+- **What**: PLAN §4.6 promised recall@20 ≥ 0.6 for hybrid search.
+- **How**: two scorers, both automatic: (a) 117 image queries generated from _independently
+  verified_ captions (20/20 sample accepted by the owner — the "neighbor grandma" check); (b)
+  249 "sentence probes" (take a sentence, find its document). Plus a blind A/B/C harness
+  comparing name-search / semantic / hybrid lists.
+- **Why**: search is the headline feature; if meaning-search fails here, nothing else matters.
+- **Result**: images **recall@20 = 0.829** (chance = 0.004), MRR 0.566; sentence probes 0.996.
+  The A/B harness exposed two more things: our _name-search code_ had a bug (OR-matching on
+  tokens dragged an unrelated GDP file into "폭설 피해 우려 지역" results because "지역" is a
+  substring of "지역별") — fixed to AND-with-segments, **and that bug revealed a spec hole**:
+  the plan's literal "names containing the query" would match almost nothing on multi-word
+  queries. Negative-control junk queries returned "20 plausible-looking wrong answers" — which
+  led to the floor/flatness gate (2.5's dynamic baseline) making "no results" an honest answer.
+- **Meaning**: meaning-search is _proven_ on Korean media+text on our hardware. Name-search and
+  vector-search failures are _disjoint_, confirming the two-section design.
+- **Consequence**: §4.6 amended (AND-token segment matching; confidence gate); the E3-AB
+  human-pref session was cancelled by the owner as uninformative (name lists win trivially on
+  content queries, ties elsewhere) — recorded, not silently dropped.
+
+### 2.7 E4 — can the machine invent collections from real photos?
+
+- **What**: PLAN §4.9's silent generator: cluster embeddings → propose collections.
+- **How**: three acts.
+  1. Naive connected-components clustering on the text corpus: "purity 1.0"… but the clusters
+     were trivial (news domain = news cluster), and identical template files formed fake
+     clusters. Owner's verdict: **worthless as evidence**, and revealed the generator needs a
+     dedup pre-pass (hash first).
+  2. Switch to mutual-kNN (k=6, ≥0.82) on real data: caption 300 real wedding photos + 60
+     unrelated stock photos through Hana (60/60 valid JSON, ~35 min), embed, cluster.
+  3. Multi-tier (tight 0.86 / mid 0.80 / loose 0.72) on the merged 360-image library.
+- **Why**: a generator that makes junk clusters or misses the obvious ones is worse than none.
+- **Result**: act 2 produced **two flawless sub-clusters of a single event** — 16 photos of
+  "groom/groomsmen getting ready" and 9 of "bride getting ready (veil, earrings)" — with
+  **zero** stock-photo contamination; 60 unrelated stock photos alone formed **no cluster ≥8**
+  (max 4). Act 3 additionally found event-scale clusters (170/212/273 of 300) with still zero
+  contamination, and one 11-photo stock-only cluster at loose tier. Chaining (one giant blob)
+  appeared exactly once and is size-gated out.
+- **Meaning**: the mechanism works at _both_ granularities — "narrow and clever" (preparation
+  shots, a collection nobody named) and "broad and obvious" (the whole wedding). Specificity is
+  excellent at every tier (0 cross-contamination in ~250 clustered members).
+- **Consequence**: plan generator rewritten — multi-tier with per-tier gates, dedup pre-pass,
+  and (per owner's decision) **no special protection for big tiers**: system-origin collections
+  archive/expire by the same uniform activity rules, user pins only manually. The earlier
+  "fear-driven" exemption proposals were struck.
+
+### 2.8 E5 — cheap, stable feature extraction, and the reasoning question
+
+- **What**: can a small local model produce structured `ai_features` (tags/summary/category)
+  reliably and affordably; and does enabling "thinking mode" help?
+- **How**: fixed JSON-forced prompt, 1,117 documents (stratified across domains), temperature
+  0, reasoning **off** (`chat_template_kwargs.enable_thinking=false`, works on this server).
+  A separate 5-doc × {think, no-think} probe compared quality and latency directly.
+- **Why**: every "LLM at write time" cost estimate rests on this; also the plan's per-role
+  reasoning policy needed data.
+- **Result**: nothink validity **1,115/1,117 = 99.8%**, ~5 s/doc, quality spot-good
+  (가나슈→[가나슈,디저트,초콜릿,베이킹]). Think mode: equal-or-worse tags, 5–10× slower, and
+  it _crashed on a short review_ (burned 4,000 reasoning tokens, produced nothing) — reasoning
+  hurt the one task it was "needed" for.
+- **Meaning**: extraction-class roles = always off. (The later arbiter test, 2.10, reversed the
+  remaining hope that _judgment_ roles need thinking — they don't either, on this model.)
+- **Consequence**: `llm_models.reasoning` per-role default off; effort knobs only if a provider
+  actually exposes them (this one does not — `supports_reasoning_effort:false`).
+
+### 2.9 E6 — tagging "synonyms": the feature that dissolved
+
+- **What**: PLAN §4.18 proposed merging similar tags via cosine ≥0.86 + co-occurrence ≥3 docs.
+- **How**: act 1 (77-doc sample): the "dual condition" looked sane but co-occurrence was dead
+  data (almost nothing co-occurs). Act 2 (E6b, graded rules): merge-by-cosine alone mislabeled
+  _sibling_ terms (conifer↔flowering-plant family words) as duplicates; containment rules
+  mislabeled hypernyms. Act 3 (E6c, full 1,115-doc vocabulary = 1,271 distinct tags):
+  the high-cosine pairs are mostly (a) **spelling variants** (`시간 낭비↔시간낭비`, cos
+  0.98+, NFKC+whitespace-normalization merges them _deterministically_) and (b) **containment
+  pairs** which are _hierarchies, not duplicates_; the old rule would have merged 102 pairs
+  with zero evidence; doc-set statistics remain uninformative at corpus scale.
+- **Why**: tags feed collections/predicates; a bad merge silently destroys user-meaningful
+  distinctions; a good one is invisible — high stakes, low tolerance.
+- **Result / meaning**: the problem §4.18 was invented to solve barely exists once you
+  normalize orthography; what's left is hierarchy display and fuzzy tag _matching_, which the
+  vector search (2.6) already does without any merging.
+- **Consequence**: §4.18 rewritten as a 3-step pipeline — `NFKC normalize → containment =
+parent-suggestion (non-destructive, display-only, per owner's scope decision no labeling
+audit needed) → gray band left alone`. The old θ.86-merge and the k≥3 co-occurrence clause
+  are both dead.
+
+### 2.10 E7 — merge detection between _collections_ (sets), and the "arbiter"
+
+- **What**: PLAN §4.9c's rule (sizeRatio≥0.7 ∧ Jaccard≥0.7, reject containment) — does it
+  actually distinguish "same thing twice" from "subset" from "siblings"? And can an LLM
+  adjudicate the gray band?
+- **How**: geometrically _constructed_ pairs with known truth: strict subset, near-identical
+  (swap 4/10, jac≈.82), mid-band (jac .54), low (jac .33), real siblings (groom-prep vs
+  bride-prep clusters; economy vs IT news) — then a 5-pair × {think, nothink} arbiter battery.
+  (First attempt had a harness bug: both lists were identical by mistake — caught and fixed;
+  the earlier "thinking wins 2/2" reading was n=2 noise.)
+- **Why**: merges destroy named objects; a wrong merge is the worst UX failure of the platform.
+- **Result**: set-rule classified **every constructed case as intended** (subset rejected —
+  naive overlap coefficient would have wrongly merged it; .82 pair → merge candidate;
+  .54/.33 → band/reject; siblings → reject). Arbiter, given _symmetric-difference_ input
+  (unique-member ratio + samples of each side): merge-vs-don't decision **5/5 for both modes**
+  (thinking on/off identical at action level); finer 3-way labels slightly favor no-think.
+- **Meaning**: the rule ladder is sound; the arbiter's value is in its _input format_, not its
+  thinking. Two failure modes were found and fixed in harnesses before trusting either number.
+- **Consequence**: §4.19 merge-arbiter keeps "must include symmetric difference", drops the
+  reasoning-on requirement. §4.9c survives unchanged with evidence.
+
+### 2.11 E8/E9/E11 — the vector-computation layer, all three backends
+
+- **What**: is "compute it in JS" fast enough (fallback path), and do the native paths
+  (pgvector; sqlite-vec) meet the accuracy contract on _real_ vectors?
+- **How**: 5,417–60,000×1024-float benches: pure JS cosine+topK; pgvector HNSW (docker 0.8.6)
+  exact-vs-ANN comparison over 216 real queries + 60 external-caption queries, ef_search
+  sweep 100/400/1000; `node:sqlite` + sqlite-vec v0.1.9 (loadable extension; PK-BigInt gotcha
+  and a JOIN-planner bug found and documented) at full corpus scale.
+- **Why**: the architecture's "A-plan" choice depends on which backend does the math, and the
+  accuracy contract (recall floor) has to be _measured_, not assumed.
+- **Result**:
+  - JS brute force: **67 ms** full scan at 60k vectors — plenty for fallback, but pays TEXT
+    decoding per query (resident-state banned by design → fine at personal scale).
+  - pgvector: build HNSW 5,417 in **2.1 s**; external-query recall@50 = **0.74 at default
+    ef_search=100** → **1.00 at ef=400**. The default is _wrong for real (out-of-graph)
+    queries_; 400 costs ~2 ms.
+  - vec0 (sqlite): loads 5,417 in 163 ms, exact KNN **5.3 ms**, recall trivially 1.0 (it is
+    exact); ACL joins unsupported by its KNN planner → oversample-then-filter helper needed.
+- **Meaning**: three viable, code-simple layers; the one dangerous assumption (ANN recall at
+  default settings) was caught by measuring _external_ queries, not self-queries.
+- **Consequence**: `ef_search=400` fixed into plan §4.13; the "no pgvector ⇒ AI off" policy is
+  superseded by "⇒ JS fallback + admin _performance_ warning" (owner decision), and
+  sqlite-vec via `node:sqlite` (T0.12) is confirmed feasible — product Node floor ≥ 24.
+
+### 2.12 E12 — do we lose facts inside long documents?
+
+- **What**: single pooled vector per doc (§4.3's chunk-pool) vs storing chunk vectors: does the
+  pooling _destroy_ retrievability of a fact in the middle of a long contract?
+- **How**: synthetic 11.4k-char contract with a distinctive termination clause; query it;
+  compare pooled vs max-over-chunks similarity.
+- **Result**: pooled **0.510–0.563** (≈ the unrelated-document floor — effectively invisible)
+  vs chunk-max **0.662–0.674**; worse, the stride-4 sampling _missed the section entirely_ in
+  one placement.
+- **Meaning**: pooling-for-storage is a real, measured retrieval hazard for long docs, and the
+  "defer it, it interacts with calibration" excuse we made was invalid — the quality question
+  was answerable today and was answered.
+- **Consequence**: chunk-vector retention + max-pool scoring enters the plan; paragraph-aware
+  chunking; chunk size derived at runtime from the server's real token budget (not a constant —
+  `-ub 256` environments must keep working).
+
+### 2.13 E13 — audio understanding beyond transcription: closed, and by evidence
+
+- **What**: can we offer "find my rock tracks" via audio features (genre/mood/description)?
+- **How**: Hana audio QA three ways — forced-JSON schema, open-ended "describe only what you
+  actually hear", and a plain transcription battery — across: real speech, vocal music,
+  instrumental music, a subway recording, a crowd, white noise; owner then supplied ground
+  truth for each clip.
+- **Result**: schema-forced generation **invented instruments for non-music audio**; the open
+  prompt removed _some_ of it (white noise now "distorted electronic noise" — plausible) but
+  the subway clip was called "fast cheerful electronic music with kick and snare" (the train
+  motor, apparently) and the _transcription_ battery's earlier "no speech" on that same clip
+  turned out to be a miss (it contains announcements). The instrumental track got
+  **contradictory genres across two runs** (orchestral/classical vs hip-hop/trap).
+- **Meaning**: non-ASR audio intelligence on this model is a coin flip; the _only_ failure mode
+  we can tolerate is the conservative one (missed transcription = no data, vs invented genre =
+  poisoned data).
+- **Consequence (owner decision)**: audio scope freezes at **ffprobe metadata + conditional
+  transcription** with the "no speech ⇒ '음성없음'" escape prompt; no audio descriptions,
+  genres, kinds, or mood fields. Media ladder V3 = ASR only.
+
+---
+
+## 3. Scorecard — each plan assumption vs evidence
+
+| Assumption (plan)                          | Verdict              | Evidence                                                                                    | Plan action                                                   |
+| ------------------------------------------ | -------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| LLM is enrichment-only (never render path) | ✅ held              | E5/E7 all batchable; query-embed only sync call                                             | keep                                                          |
+| Near-dup detection via cosine 0.98-class θ | ✅ with rewrite      | E2v2 P10=0.977 vs floor P99=0.471                                                           | θ_dup=0.97, exact-dups via hash first                         |
+| One θ separates topics/clusters            | ❌ killed            | E2v2 overlap; E6 family confusion                                                           | relative-kNN + dynamic baseline + human loop (as designed)    |
+| Tag "merge" pipeline                       | ❌ dissolved         | E6c: ortho variants + hierarchies dominate                                                  | §4.18 3-step rewrite; no destructive merges                   |
+| Silent generator usefulness                | ✅                   | E4 two clean event sub-clusters, 0 contamination, no junk clusters from 60 unrelated photos | multi-tier, per-tier gates, dedup pre-pass, uniform lifecycle |
+| Set-merge rule ladder                      | ✅                   | E7 all constructions classified as intended                                                 | §4.9c unchanged                                               |
+| Arbiter needs reasoning mode               | ❌ (n=2 noise first) | E7 v2: 5/5 both modes; input format is what matters                                         | off everywhere; symmetric-difference input mandated           |
+| pgvector absence ⇒ AI off                  | ❌ (owner)           | JS 67 ms; vec0 5.3 ms exact                                                                 | JS fallback + performance-only warning                        |
+| ANN defaults are safe                      | ❌ caught            | external-query recall 0.74 @ ef=100                                                         | ef_search=400 constant                                        |
+| Chunk-pool without stored chunks is fine   | ❌ for long docs     | E12 0.51 vs 0.67; section missed entirely                                                   | keep chunk vectors; paragraph-aware; runtime-sized chunks     |
+| ASR usable (integrated multimodal)         | ✅                   | 6/6 battery + ground-truth regrade                                                          | transcription only, conservative gate                         |
+| Audio genre/desc extraction                | ❌                   | E13 contradictions/hallucinations vs owner truth                                            | cut from v1                                                   |
+| content_hash must be backfilled            | ❌ premise           | already 100% in live DB                                                                     | T0.1 becomes "use, not fill" + migration-state check          |
+| Declared provider capability = real        | ❌ twice             | bge-m3 fake image vector; Hana audio flag                                                   | probe-is-truth rule hardened (already policy)                 |
+| Experiment harnesses are correct           | ❌ twice (ours)      | E3 token-OR bug; arbiter A==B bug                                                           | both fixed in-place; findings restated — kept here as caution |
+
+## 4. What the PoC opens, and what it closes
+
+**Opens (go).** Semantic search on Korean text+captions at personal scale. Write-time tagging
+/summary at 99.8% validity ≈ 5 s/file on one GPU. Collection generation from real photos
+(narrow _and_ broad tiers, zero contamination). Set-level merge proposals with a working rule
+ladder. Near-dup + exact-dup finding (hash-first, cosine-0.97). Embedding cost is a rounding
+error (~15k docs/min). sqlite-vec/pgvector layer with known, cheap constants (ef 400;
+oversample helper). Transcription-only audio.
+
+**Closes (stop).** Anything gated on a _single absolute cosine_ for topics/clusters; stored
+magic floors; tag-merge tables; audio genre/description; the arbiter's reasoning budget;
+"AI-off when pgvector missing"; fixed-800-char chunking.
+
+**Still unproven here, flagged for the build.** V1 image embeddings (abandoned by owner —
+everything goes through text space); the θ numbers on _other_ models (they are per-model
+constants now, measure at release like a browser-support table — no runtime calibration, no
+shipped dataset: owner's standing decision); long-doc multi-vector cost at 100k docs; the 4-6
+month drift question (does a real user's library shift the 0.471-style baselines? the
+per-query dynamic baseline exists precisely because we refuse to guess).
+
+---
+
+## 5. Reproduction map
+
+| Artifact                  | Where                                                                                                                                                   |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Corpus builder scripts    | `poc/gen_poc_data.py`, `build_nsmc.py`, `build_news.py`, `wiki_slow.py`, S3 copy `dl.py` (keys via `.env.bak`)                                          |
+| Manifests & labels        | `poc/manifest.jsonl` (6,177 rows), `poc/captions.jsonl`, `poc/verify_sample20.md` (accepted 20/20), `poc/e5b_results.jsonl` (1,115 tags)                |
+| E1                        | `poc/e1_flush.py`, `e1c_chunks.py` → `vectors_pool.jsonl`                                                                                               |
+| E2                        | `poc/e2_dists.py`, `e2b_dists.py` → `e2v2_result.json`                                                                                                  |
+| E3 (+AB harness & bugfix) | `poc/e3_search.py`, `e3ab.py`, `queries.txt`, `e3ab_sheet.md`, `e3ab_key.json`                                                                          |
+| E4                        | `poc/e4_clusters.py`, `e4b_seed.py`, `e4r_real.py`, `e4c_multi.py` → `e4b_/e4r_/e4c_*.md` review sheets, `wedding_captions.jsonl`                       |
+| E5 / reasoning probe      | `poc/e5_extract.py`, `e5b_run.py`, `/tmp/opencode/poc/reason_probe.py`(transcribed results above)                                                       |
+| E6                        | `poc/e6_tagcal.py`, `e6b_score.py`, `e6c_hierarchy.py` → `e6c_pairs.json`                                                                               |
+| E7 / arbiter battery      | `poc/e7_sets.py`; `/tmp/opencode/poc/arbiter_battery.py` (v1 & v2 logs)                                                                                 |
+| E8/E9/E11/E12/E13         | `e8_cosine.js`, `e9_pgvector.sh`, `vec_spike.js`/`vec0_bench2.js`, `e11_recall.py`, `multivec_test.py`, `asr_battery.py`, `audio_qa.py`, `audio_qa2.py` |
+| Bench DB                  | docker `poc-pgvec` (pgvector 0.8.6, port 55432, table `emb2`) — left running for re-runs; stop with `docker rm -f poc-pgvec`                            |
+
+_Numbers in §2 are as measured on 2026-09-15/16 on the hardware of §1. Treat them as
+per-model, per-corpus constants — that is literally the lesson the document repeats._

@@ -22,10 +22,12 @@
 ## 6. Conventions (binding; verified against repo house style)
 
 - **Wire casing**: request bodies camelCase nodeId-based (`{ nodeIds }`, `{ seedNodeId }`);
-  responses follow `CODING_STYLE.md` Express Patterns (snake_case) — but the repo is mixed in
-  practice (file listing returns `nodeId`), so each new endpoint's response casing is decided
-  in the docs step against the adjacent domain's actual payloads and recorded in `api.md`.
-  SQL snake_case maps to camel domain objects at the repository boundary.
+  **responses are snake_case — the CODING_STYLE.md Express-Patterns rule is binding for all
+  NEW endpoints** (`collection_id`, `publish_mode`, `created_at`, `result_ref`). The file
+  domain's existing camel responses (`nodeId` in listings) are legacy violations, not
+  precedent — repo-wide compliance rewrite is tracked as DEF-24 in
+  `docs/IMPROVEMENT_PLAN.md`; new AI surfaces must not propagate the legacy style. SQL
+  snake_case maps to camel domain objects at the repository boundary (internal, unchanged).
 - **Domain layout** (recentFiles precedent): `server/domains/<camelCaseDomain>/{routes.js,
 service.js, __tests__/}`; route handlers via `asyncHandler`; service throws bare string
   codes translated by route-level `ERROR_MAP`/`mapServiceError`; per-router
@@ -55,9 +57,11 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 - **E2E**: IDs `E2E-COLLECTION-001`/`E2E-AI-001` with third-person declarative titles;
   files `<name>.<platform>.spec.ts`; hermetic suites get dedicated scratch ports
   (next free `:5013+`) per TESTING_STRATEGY destructive-case policy.
-- **Config keys**: connection secrets T0 presence-block (`WEA_DB_*` precedent); runtime
-  knobs T2 (+dbOnly where DB-editable). No new secret encryption anywhere (settings are
-  plaintext by decision; `secret:true` = UI masking only).
+- **Config keys**: metadata DB connection = T0 presence-block (`WEA_DB_*`, boot-frozen).
+  **`LLM_*` = T2 `dbOnly`, fully hot** (per-call resolver, re-probe on change, no restart —
+  §4.2); DB connection presence selects the vector engine (boot), LLM presence never does.
+  Runtime knobs T2 (+dbOnly where DB-editable). No new secret encryption anywhere
+  (settings are plaintext by decision; `secret:true` = UI masking only).
 - **Numeric constants (PoC, 2026-09-16)**: every AI threshold (θ_dup, edge cos tiers,
   ef_search, char/token safety factor, reasoning on/off) is a **release artifact measured
   by the project on its own reference set** — shipped in per-model profiles, displayed in
@@ -106,9 +110,10 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 
 ### P1 — Embeddings + semantic search
 
-- T1.1 LLM adapter + budgets/breaker + probes + boot wiring (§4.2/§4.3) + \*\*preset manifest
-  (§4.23) and preset×capability probe-matrix verification (declared≠probed ⇒ capability off
-  - admin warning)\*\*.
+- T1.1 LLM adapter (T2-hot: per-call config resolution, re-probe on change, restart-free
+  §4.2) + budgets/breaker + startup probe + preset manifest & preset×capability probe-matrix
+  verification (declared≠probed ⇒ capability off + admin warning, §4.23) + wizard optional
+  skippable AI step storing DB rows (§4.23.5).
 - T1.2 `003_ai.sql` (`llm_models`,`embeddings`,`embeddings_chunk`,`ai_features`,`ai_jobs`,
   `ai_usage_daily`) - repos + restart-survival test.
 - T1.3 jobs worker (claim per dialect, backoff, lockManager, seam, hooks §4.1).
@@ -172,14 +177,19 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 
 New: `docs/features/collections-platform.md`; routes `docs/spec/server/routes/{collections,
 search,actions}.md`; stores `.../store/{collectionsStore,fileLikesStore,actionJournalStore,
-aiJobsStore,embeddingsStore}.md`; services `.../services/{collectionsService,aiJobService,
-evolutionService,collectionShareService,searchService}.md`;
-infrastructure `.../infrastructure/llmAdapter.md` (+ `llmPresets.md` §4.23) +
-`maintenanceScheduler.md` update; client
+aiJobsStore, embeddingsStore, embeddingsChunkStore, aiTagStore}.md`; services
+`.../services/{collectionsService,aiJobService,evolutionService,collectionShareService,
+searchService}.md`; infrastructure
+`.../infrastructure/{llmAdapter,llmPresets,vectorStore}.md` (+ budget-chain section in
+llmAdapter.md) + `maintenanceScheduler.md` update; client
 per-component/service specs (`docs/spec/client/services/collectionsRepository.md`, hooks,
 components). Updates: `api.md`, `ARCHITECTURE.md` (§1.0 domain tree, §1.2 infra table),
-`shared-contracts.md` (code blocks), `TESTING_STRATEGY.md` (hermetic suites, E2E ID ranges),
-`SETUP.md` (LLM env block + preset table §4.23 + Node ≥24 floor & sqlite driver note
-T0.12), `docs/features/client-ui.md` (virtual
-collections), `docs/features/config-source-resolution.md` (preset/wizard surface),
-`docs/spec/server/store/storage.md` if T0 presence semantics extend.
+`shared-contracts.md` (code blocks + enums + response-casing note per §6),
+`TESTING_STRATEGY.md` (hermetic suites, E2E ID ranges), `SETUP.md` (LLM as T2/DB-row config
+
+- preset table §4.23 + Node ≥24 floor & sqlite driver note T0.12),
+  `docs/features/client-ui.md` (virtual collections),
+  `docs/features/config-source-resolution.md` (preset/wizard surface),
+  `docs/spec/server/routes/setup.md` + `docs/spec/client/pages/Setup.md` (optional AI step,
+  DB-row storage), `docs/spec/server/store/{storage,executor}.md` (node:sqlite driver),
+  `docs/spec/server/store/repository-contract.md` if vec0 shadow / chunk rows change repo rules

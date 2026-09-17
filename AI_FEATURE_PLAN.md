@@ -159,11 +159,26 @@ crash-retries, copies, restores). Content re-read via `blobStorageService.downlo
 
 ### 4.2 LLM adapter (new `server/infrastructure/adapters/llm/`)
 
-- Factory by presence (blobstore precedent `adapters/blobstore/index.js:30-40`): role-based
-  clients — `embed`, `chat`, optional `vision`, `asr` — each with own base-url/key/model.
-  Presets declare EXPECTED capabilities, probes decide actual ones (§4.23).
-  Unconfigured role ⇒ that capability degrades (never fatal). Boot probe symmetric to
-  s3/webdav probes (`index.js:272-327`), reports into `backendHealth`, `probeLlm` added to
+- Factory by **runtime presence**: role-based clients — `embed`, `chat`, optional `vision`,
+  `asr` — each `{BASE_URL, API_KEY, MODEL}`. **All `LLM_*` keys are T2 `dbOnly`** (admin
+  config, masked secrets, DB-stored plaintext per W-A) — NOT boot-owned: unlike the metadata
+  backend (T0) and blob store (T1), the LLM is an enrichment dependency (invariant 5), so
+  its config is fully hot. No `LLM_ENABLED` flag — role presence (non-empty resolved
+  config) decides candidacy; probes decide truth (§4.23).
+- **Hot reconfiguration (operating-time apply, immediate adoption)**: the adapter layer is
+  a thin factory resolving connection per call via `configResolver` (5s TTL +
+  `invalidateCache` on settings PUT); an internal client cache keyed by the resolved-config
+  signature rebuilds on change. On signature change: re-probe the role (debounced ~60s) +
+  admin "test" button as manual trigger → `backendHealth` rows and `settings/public`
+  `ai` flags update live; running enrichment workers pick new config at the next job; E2
+  query-embed uses it at the next request (mid-switch failure degrades per §4.12, never
+  surfaces as error); budget breakers/daily counters reset. `.env`-provided `LLM_*` remains
+  legal (resolver env>db precedence) but locks the editor (`setInEnv`), so DB is the
+  recommended surface. Contrast recorded: **native vector capability (§4.13) is
+  boot-frozen (DB tier) — restart required; LLM config never is.**
+- Presets declare EXPECTED capabilities, probes decide actual ones (§4.23).
+  Unconfigured role ⇒ that capability degrades (never fatal). Startup probe (symmetric to
+  s3/webdav probes, `index.js:272-327`) is the INITIAL probe — not the only one; reports into `backendHealth`, `probeLlm` added to
   `backendProbe.js:263` + `POST /api/admin/config/test` target `llm`.
 - Budget/circuit: `llm_models.max_input_chars` is set by the §4.3 budget chain (admin >
   published metadata > preset default > passive down-only limiter — never by probing);
@@ -447,7 +462,9 @@ extract/parser; none =):
 - **embed**: + semantic search, seed, vector merges, near-dup, auto-create (clusters by
   vector), naming templates (system). **absent: chat-only (summaries/tags-from-content,
   NL parse, llmNamer).**
-- UI: `GET /api/settings/public` gains `ai:{embed:bool,chat:bool}` (precedent email_enabled
+- UI: `GET /api/settings/public` gains `ai:{embed:bool,chat:bool}` — derived live from the
+  current probe state, flips without restart whenever LLM config changes (§4.2 hot
+  reconfiguration) (precedent email_enabled
   `settings.js:18-29`). **Regular users: absent, not disabled** (no gray AI affordances).
   **Admin: visible-disabled** — nav item + health-card row (`SystemSettingsContent.js:262-
 285` backend health card is the state's home) showing 4 states
@@ -850,8 +867,14 @@ visible but half-works under the active provider is a defect, not a degradation.
    every advertised path is end-to-end functional under its own preset.
 4. **chat-only (no embed) is a legal deployment**: entire vector core = §4.12 None-column
    behavior (manual collections, rules, dups-by-hash, name search) — no half-AI state exists.
-5. **Surfaces**: setup wizard + admin config offer presets with capability matrix display
-   (per-role probe chips); SETUP.md documents preset table.
+5. **Surfaces**: (b)-decision 2026-09-17 — setup wizard gains one OPTIONAL, skippable "AI"
+   step: preset picker → role checkboxes → base-url/key/model inputs → per-role test
+   (`/api/setup/test` new target `llm`); values are stored as **DB settings rows** (NOT
+   `.env`/envFileWriter — the hot-apply rule §4.2), so a skipped step costs nothing and a
+   mid-install config is restart-free. Full config surface stays in admin
+   (`/api/admin/config` + test + capability matrix); wizard is a shortcut to the same rows.
+   SETUP.md documents preset table; capability matrix display (per-role probe chips) shared
+   by both surfaces.
 
 ## 5. Schema (PG-canonical, `002_collections.sql`, `003_ai.sql`; sqlite via transpiler)
 

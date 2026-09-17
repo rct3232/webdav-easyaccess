@@ -183,3 +183,28 @@ Effective-configuration management (env → DB → defaults registry). Service: 
 - [ ] Cleanup endpoints return results
 - [ ] Migration: start returns 202 `{ jobId }`; poll job status; cancel a running job
 - [ ] Migration: non-admin gets 403; invalid payload gets 400; running job conflict gets 409; unknown job gets 404
+
+---
+
+## 3. AI-platform target contracts (AI platform — target, lands with P0/P1/P4 as noted; PLAN §7 T0.7b/T0.8, T1.1/T1.4, T4.1; AI_FEATURE_PLAN §4.12/§4.13/§4.14/§4.15)
+
+**Rows below are TARGET contracts, not current behavior** — when a task lands, its rows merge into §2.2/§2.4 and the marker is removed. Wire casing per PLAN §6 (snake_case responses, camelCase request bodies).
+
+### 3.1 Routes (target)
+
+| Method | Path       | Auth          | Lands with | Description                                                                                                                                                                                                                                                            |
+| ------ | ---------- | ------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/reports` | Token + Admin | P0 (T0.8)  | Admin report list: `200 { reports: [{ id, kind, status, payload, created_at }] }` — persisted `admin_reports` runs (GC, startup fail-safe orphan/pending scan, cleanup, future maintenance acts). Read-only; row-level repair actions reuse existing §2.2.3 endpoints. |
+
+### 3.2 Field/behavior additions (target)
+
+- **(P0, T0.7b)** `POST /cleanup/orphaned` **persists its §2.2.3.1 response to `admin_reports`** (`kind='cleanup'`, `status` = ok/partial with `errors` count, full result `payload`) before returning 200 — same for the scheduled GC run in `maintenanceScheduler`; later reads via `GET /reports` (no console-only reports anymore, §4.14 Tier A).
+- **(P1, T1.1)** `POST /config/test` accepts `target: 'llm'` with per-role pending values; outcome recorded to the backend-health tracker via the `probeLlm` slot (registered P0/T0.7b) and rendered as **per-role probe chips** by the admin config UI. Probe failure ≠ save failure (test-only endpoint semantics unchanged).
+- **(P1, T1.1/T1.4)** `GET /health` (`backends` snapshot) gains tracker rows: **`vectorOps: 'native' | 'fallback_js'`** — a **performance warning only, never an AI-feature gate** (§4.13: fallback keeps every feature on) — and **`ai.<role>` probe states** (`embed`/`chat`: `not_configured | probe_failed(reason) | partial | ok`, §4.12; hot re-probe on config change). Consumed by the health card and the AI governance panel (T4.1, P4); never exposed on the public health/`settings/public` surface beyond the existing `ai:{embed,chat}` booleans.
+
+### 3.3 Verification (appends §2.7)
+
+- [ ] (target) Non-admin `GET /reports` → 403; list is newest-first and `payload` is the persisted JSON doc.
+- [ ] (target) A `cleanup/orphaned` run produces exactly one new `admin_reports` row with the same result body the response returned.
+- [ ] (target) `config/test` with `target:'llm'` updates the matching `ai.<role>` tracker row only (per-role isolation).
+- [ ] (target) `vectorOps=fallback_js` appears in `/health` yet no AI feature endpoint refuses service because of it.

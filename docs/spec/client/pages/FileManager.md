@@ -245,3 +245,21 @@ These scenarios should stay true throughout extraction steps (verify “what”,
   - [ ] Unauthenticated vs authenticated behaviors match current UX
   - [ ] Restricted operations remain restricted
   - [ ] Leaving the shared directory scope (e.g. folder-tree home click) opens the leave-share confirmation; confirming navigates to the authenticated files route (`/files/node/<nodeId>`), canceling keeps the user in share mode
+
+---
+
+## 7. AI-platform shell wiring (AI platform — target, lands with P0; T2/T3 consumers as noted)
+
+Addendum to §2.3/§3.2. The shell composes the new controllers; all contracts live in the referenced specs.
+
+- **Controller mounting:** the shell mounts `useSearchResults` and `useUndoToast` alongside the explorer core, and `useCollections` for the overlay. Wiring: `useExplorerSession.onSubmitQuery` → `useSearchResults.submitSearch` (D1); results view-model and `collectionsModel` pass into `FileManagerView` per its §3 addendum; every mutation seam in the shell forwards `undo.action_id` payloads to `useUndoToast` (one toast per command, §4.11 — dialogs/controllers never toast undo themselves).
+- **`uploadComplete` hint emission:** on upload-queue drain (last queued item terminal — success, failure, or abandon), the shell fires the one-shot hint exactly once; detection and emission belong to the operations seam, so the shell only delegates to `useFileOperations` (see its §3 addendum; AI_FEATURE_PLAN §4.9 — server-side debounce is authoritative, the hint is latency sugar).
+- **Virtual-node routing table (extends §2.3):**
+
+| Route                                          | Virtual node        | Shell flow                                                                                                                                                       |
+| ---------------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/files/__collections__` (+ `/collection/:id`) | collections overlay | `useCollections` + `CollectionsListView` replaces the FileList region (list / members mode per its §2.2); member listing through the explorer listing seam. (P0) |
+| `/files/__collections__/__archive__`           | archive child       | Same overlay, `include=mine,archived`; restore + archived-only permanent delete (trash-parity, report-only toasts — no undo). (P0)                               |
+
+- Share-link embedding (`ShareLinkLoader`) does **not** mount the search-results/collections overlays (authenticated-explorer-only surfaces).
+- Verification (appends §6): [ ] (target) entering `/files/__collections__` swaps regions without touching route-param ownership (§1.1); [ ] (target) a drained upload queue emits exactly one hint, an in-flight upload none.

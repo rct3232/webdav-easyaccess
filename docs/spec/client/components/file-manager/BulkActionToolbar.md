@@ -77,3 +77,19 @@ Checklist for unit test writing:
 
 - selectedFiles.size === 0 – toolbar may still render; delete checks length before calling
 - hasReadOnlyInSelection – message displayed; move/delete still disabled by hasWritePermission
+
+---
+
+## 3. AI-platform bulk entries (AI platform — target, lands with P0; batch publish with T3.2/P3)
+
+Addendum per AI_FEATURE_PLAN §3.2 (member-row control set) and §4.11 (one undo toast per command). Note: this surface is merged into `FileManagerControls` (header deprecation) — the entries below land on the merged bulk-action bar; this section is the behavioral anchor.
+
+- **Main listing (multi-select):** adds `컬렉션에 추가` — new optional callback `onBulkAddToCollection(nodes)` launching the `AddToCollectionMenu` submenu for the selected set (checkmark rows from for-nodes data, T3.6; success feedback = one undo toast from `undo.action_id`, not per-item messages).
+- **Collection-member context (`memberMode: true` prop):** the toolbar **swaps the file actions** for the §3.2 member batch set only: batch `제외` | batch publish/unpublish (shared collections, owner/editor — T3.2/P3) | `다른 컬렉션에 추가` (membership copy, reuses the AddToCollectionMenu submenu). File actions (move/copy/download/delete) are not rendered; **no batch delete — by rule** (§3.2; `MemberRowControls.md` §2.3). Revoked/foreign rows are filtered from eligible ids host-side, same as the row menus.
+- i18n (appends §2.5): `fileManager.addToCollection`, `fileManager.memberBatchExclude`, `fileManager.memberBatchPublish`, `fileManager.memberAddToOther`.
+- E2E selector contract: `data-testid="bulk-collection-add"` on the submenu launcher.
+
+Verification (appends §2.7):
+
+- [ ] (target) `memberMode=true` renders no move/copy/delete buttons (snapshot; grep-able invariant).
+- [ ] (target) `downloadOnly` (share-link) and `disabled` gating keep working alongside the new entries; new entries hidden in share-link mode (no collections overlay there).

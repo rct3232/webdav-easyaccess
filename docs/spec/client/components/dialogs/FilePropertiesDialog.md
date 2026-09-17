@@ -95,3 +95,35 @@
 ### 2.8 Edge Cases
 
 - !file – return null
+
+---
+
+## 3. AI-platform extensions (AI platform — target, lands with P0/P1; membership chips with P3 — T3.6, as noted)
+
+Addendum per AI_FEATURE_PLAN §3.3 (like entry points), §4.12 (absent-not-disabled), §4.21 (media probe); the collection-side twin of these rows was pre-announced in `CollectionPropertiesDialog.md` §2.6. Pure-dialog rule unchanged: host prepares data, dialog renders and fires callbacks.
+
+### 3.1 Header like toggle (P0)
+
+- Right-edge of the gradient-header title block: like icon button (sole §3.3 properties-dialog entry point). State = `file.liked` from row data; click → optional `onToggleLike(file)` (viewer-scoped like, invariant 9 — no counts, no other-user state).
+- Hidden when the callback is absent (share-link, trash view, read-only grantee without like route access).
+
+### 3.2 `소속 컬렉션` chip row — 정보 tab, read-only (P3 / T3.6)
+
+- Host-prepared for-nodes membership data (`POST /collections/for-nodes`; dialog performs no IO): chip row of containing collection names under the property items; chip click routes to that collection's member view via `onOpenCollection(collectionId)` (host navigates, dialog closes). Empty/absent data ⇒ no row. Read-only: no add/remove controls in the dialog (membership mutates in menus/toolbars).
+
+### 3.3 `AI 정보` tab — DISPLAY-ONLY (P1; media probe rows P4 / T4.2)
+
+- Tab present **only when the node's `ai_features` data exists** for the viewer's capability state — absent-not-disabled (§4.12 regular-user rule); never a gray tab, never an empty tab.
+- Renders read-only: derived tags, summary, category, media probe facts (V0 ffprobe container/duration etc. when present), and `truncated`/degraded badges verbatim from the payload (display honesty; no client recomputation).
+- **Editing is out of scope** (future extension — §9.1 extension points); the tab ships zero input affordances.
+- Grantee variant: opened from a collection member row by a non-owner ⇒ read-only tab subset per §3.2 member-properties rule (no permissions/versions mutation paths).
+
+### 3.4 i18n (appends §2.5)
+
+- `dialogs.propertiesTabAi`, `dialogs.fileAiTags`, `dialogs.fileAiSummary`, `dialogs.fileAiCategory`, `dialogs.fileAiMedia`, `dialogs.fileAiTruncated`, `fileManager.memberLike`/`memberUnlike` (shared with menu addenda), `dialogs.fileCollections` (`소속 컬렉션`).
+
+### 3.5 Verification (appends §2.7)
+
+- [ ] (target) AI tab absent when no ai data (both empty-object and missing-field cases); present when any ai field arrives.
+- [ ] (target) Like icon reflects `file.liked`; click calls `onToggleLike(file)` once without closing the dialog.
+- [ ] (target) Membership chips render from props with zero network calls from the dialog.

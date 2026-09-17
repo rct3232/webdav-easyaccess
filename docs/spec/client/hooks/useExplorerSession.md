@@ -106,3 +106,19 @@ Verify observable outcomes (“what”), not internal implementation:
 ### Trash session boundary (DEF-16 P9)
 
 - `view === 'trash'` maps to the `view:trash` session key so navigation between the explorer home and the trash view (and between trash levels) clears selection and re-derives the listing, matching the `__recent__`/`__shared__` virtual-root behavior.
+
+---
+
+## 3. AI-platform boundary — server-search state handoff (D1) (AI platform — target, lands with P0)
+
+Addendum to §1/§2.4 per `docs/spec/client/hooks/useSearchResults.md` and AI_FEATURE_PLAN §4.6; the sections above stay authoritative for the typing filter.
+
+- **Server-results state is NOT owned here:** submitted query, two-section results, query chips and results-mode entry/exit belong to `useSearchResults` (page-local; D1). This hook keeps `searchQuery` for the **typing filter only** — the inline name-match derivation in §2.3–§2.4 is unchanged.
+- **New stable callback:** `onSubmitQuery(query)` joins §2.3 — invoked by `FloatingSearchBar` on Enter / search-icon press and delegated to the shell wiring (`useSearchResults.submitSearch`). Stable identity across renders; the hook itself performs no fetch (§2.5 no-IO rule stays absolute).
+- **Results-mode filter contract (state handoff):** while `useSearchResults.mode === 'results'`, inline filter semantics apply to the **loaded result set** (re-filter inside `useSearchResults.filterText`), not to `displayedFiles`; the session's filter derivation is bypassed for the results surface and re-applies on exit. Entering/leaving results mode does not reset `searchQuery` (input text is shared; result state is not).
+- **§2.4 `Does not own` gains:** server-search submission and results-mode state (belongs to `useSearchResults` / shell wiring).
+
+Verification (appends to §2.8):
+
+- [ ] (target) `onSubmitQuery` only delegates — no listing state change beyond the shared query text, no network path from this hook.
+- [ ] (target) After results-mode exit, the same `searchQuery` re-applies to the listing filter without a re-fetch.

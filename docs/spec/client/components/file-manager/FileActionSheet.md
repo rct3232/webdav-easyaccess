@@ -81,3 +81,19 @@ Checklist for unit test writing:
 
 - Safe area inset padding
 - file.basename \|\| file.name for display
+
+---
+
+## 3. AI-platform entries (AI platform — target, lands with P0)
+
+Mobile mirror of `FileContextMenu.md` §3 — same entry set, same phase, long-press/More-sheet surface (AI_FEATURE_PLAN §3.2/§3.3; `AddToCollectionMenu.md`, `MemberRowControls.md`).
+
+- **New rows:** `컬렉션에 추가 ▸` (optional callback `onAddToCollection(file)` → in-sheet `AddToCollectionMenu` submenu) and `좋아요` toggle (optional callback `onToggleLike(file)`, state from row data `file.liked` — viewer-scoped only, invariant 9). Rows follow the existing "callback provided ⇒ row renders" gating (§2.6); like does not sit above the delete divider.
+- **Member-list variant:** opened on a collection MEMBER row, the sheet renders exactly the `MemberRowControls.md` §2.3 set (exclude / publish / download / `원본에서 보기` / properties / like); **move/copy/rename/delete rows are absent by rule** (§3.2), enforced by the host withholding the callbacks — same snapshot invariant as desktop.
+- i18n (appends §2.5): `fileManager.addToCollection`, `fileManager.memberLike`/`fileManager.memberUnlike`.
+- E2E selector contract: `data-testid="collection-add"` / `data-testid="like-toggle"` identical to the desktop context menu.
+
+Verification (appends §2.7):
+
+- [ ] (target) Each new row invokes its callback then closes (handleAction idiom).
+- [ ] (target) Member-context snapshot offers no file-mutating rows.

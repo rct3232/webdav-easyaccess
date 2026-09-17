@@ -110,3 +110,20 @@ These scenarios should be covered by a dedicated component test in `client/src/c
 
 - `displayedFiles` empty: renders empty state message consistent with current UI.
 - Loading state: renders the current loading UX (spinner/skeleton) driven purely by `isLoading`.
+
+---
+
+## 3. AI-platform composition (AI platform — target, lands with P0)
+
+Addendum to §2.2 grouping rules (AI_FEATURE_PLAN §4.6 results mode, T0.4 virtual collections). Pure-view rule unchanged: the shell passes view-ready models; the view only swaps regions.
+
+- **Search results mode:** when the shell passes a `searchResults` model with `mode === 'results'` (prepared by `useSearchResults`), the view mounts the `SearchBarResultsMode` header **above the list region** (its own spec owns the header chrome; desktop replaces the breadcrumb row per `SearchBarResultsMode.md` §2.3) and the list renders the prepared two-section rows. Exiting results mode returns to the normal breadcrumb+list composition.
+- **Virtual collection nodes:** when the active node is `__collections__` (or its `__archive__` child / an opened collection route), `CollectionsListView` **replaces the FileList region** (list mode = cards + merge-card slot; members mode = explorer rows with `MemberRowControls` wiring). All other regions (controls, FAB policy per read-only virtual-view precedent, dialogs) follow the existing `__recent__`/`__shared__`/`__trash__` treatment.
+- **Otherwise unchanged:** any composition flag absent ⇒ pixel-identical rendering to today; both addenda are additive region swaps.
+- Prop placement: `searchResults` and `collectionsModel` arrive as additional grouped sub-objects (same §2.2 grouping discipline — the view never receives gateways or raw API payloads).
+
+### 3.1 Verification (appends §2.6)
+
+- [ ] (target) `results` mode renders the results header above the list and hides the normal breadcrumb row; exit restores it.
+- [ ] (target) Active node `__collections__`/`__archive__` renders `CollectionsListView` in place of FileList, no file-grid fallback.
+- [ ] (target) With both models absent, the view output is unchanged (regression assertion).

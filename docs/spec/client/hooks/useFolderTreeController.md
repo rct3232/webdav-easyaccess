@@ -102,3 +102,19 @@ The following should be covered by `useFolderTreeController` unit tests (renderH
 
 - `currentNodeId` is empty/falsy: `expandedNodeIds` contains only `homeNodeId`.
 - Shared permission entries are keyed by nodeId; the shared-tree builder no longer normalizes synthetic paths. Shared folders with the same nodeId must not duplicate.
+
+---
+
+## 3. AI-platform virtual-node registration (AI platform — target, lands with P0)
+
+Addendum per AI_FEATURE_PLAN §3.1/§4.9 (archive lifecycle) and `CollectionsListView.md` §2.2; extends the D1 virtual-root pattern (`__shared__`/`__recent__` semantics unchanged).
+
+- **`__collections__` section:** new controller-owned section state mirroring §2.3 (`collectionsExpanded`, `handleCollectionsToggle`, `handleCollectionsClick` → navigate `/files/__collections__`). Expansion renders a **flat collection list** (rows host-prepared via `useCollections`/gateway; no IO added here beyond the existing seams); **members are never tree-walked — depth = 1** (collection ≠ folder in the tree).
+- **`__archive__` child row:** nested under `__collections__`, routes `/files/__collections__/__archive__`; selecting it lists the `status=archived` set (`include=mine,archived`) — restore/permanent-delete affordances live in `CollectionsListView`, not the tree.
+- **Selection → route/view mapping:** these virtual roots keep `currentNodeId` falsy (route-based selection per D1); the mapping "active node `__collections__`/`__archive__` ⇒ `CollectionsListView` replaces the FileList region" is owned by `FileManagerView.md` §3 / the shell — this controller only marks section expansion/selection state. Auto-expansion follows the §2.5 location rule (current location within a collections route ⇒ `collectionsExpanded = true`, same as `sharedExpanded`).
+- Subscribes to collection changes independently (per `useCollections.md` ownership note): notifier events refresh the flat list rows only; no card mutations from the tree.
+
+Verification (appends §2.7):
+
+- [ ] (target) `handleCollectionsToggle` expands and navigates the route; archive child click selects `/files/__collections__/__archive__`.
+- [ ] (target) Location `/files/__collections__/…` auto-expands the section; collection members never appear as tree rows (depth-1 assertion).

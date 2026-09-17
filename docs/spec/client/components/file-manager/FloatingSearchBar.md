@@ -76,3 +76,29 @@
 - FAB hidden for any reason (selection mode, no write permission, read-only views such as recent/shared/trash, parent unmount): search bar expands to occupy FAB space (right: offset). The expansion is driven by the FAB's self-reported visibility, so it can never drift out of sync with the FAB.
 - Initial state in FileManager: `fabVisible` starts false (FAB not yet mounted); the bar animates back to the FAB-adjacent position when the FAB mounts.
 - Share link mode: shown whenever FileManager file list is visible
+
+---
+
+## 3. AI-platform submit + results-mode props (AI platform — target, lands with P0)
+
+Addendum to §2.2/§2.3 per AI_FEATURE_PLAN §4.6 (two-stage search) and `docs/spec/client/hooks/useSearchResults.md` (D1 boundary: this bar only emits intents; results state lives in the hook).
+
+### 3.1 New optional props (join §2.2 table)
+
+| Name              | Type     | Required | Default | Description                                                                                                                                             |
+| ----------------- | -------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| onSubmitQuery     | function | N        | -       | Enter key and search-icon press call `(query: string) => void` — submits the server query (results mode). Absent ⇒ today's typing-filter-only behavior. |
+| resultsModeActive | boolean  | N        | false   | Pure visual state: submitted-query styling (search icon highlighted / results-mode tint). The bar renders; it never decides the mode.                   |
+
+### 3.2 Behavior contract
+
+- **Typing unchanged:** every keystroke still routes through `setSearchQuery` only — no server call (two-stage rule).
+- **Submit:** with `onSubmitQuery` provided, Enter and the end-adornment search icon invoke it with the current text; without it, Enter/icon are inert as today.
+- **Clear resets both modes:** ✕ keeps calling `setSearchQuery('')`; the empty query is the host's exit-results trigger (per `useSearchResults` mode rule), so one button clears the inline filter and (via the shell) the results surface. No extra prop.
+- Share-link mode: `onSubmitQuery` is not passed (server-wide search is an authenticated-explorer feature).
+
+### 3.3 Verification (appends §2.8)
+
+- [ ] (target) Enter calls `onSubmitQuery` once with the current value; typing alone never calls it.
+- [ ] (target) `resultsModeActive` changes styling only — no behavior branch reads it.
+- [ ] (target) Without `onSubmitQuery`, existing scenarios in §2.8 all still pass unchanged (backward compatibility).

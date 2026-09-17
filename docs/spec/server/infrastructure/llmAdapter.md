@@ -80,7 +80,7 @@ claims (both error modes observed this PoC):
 Result matrix = probe-verified ∩ configured roles ⇒ runtime capability flags.
 Declared-but-failing ⇒ capability OFF + admin warning card (declared vs probed). User-
 visible states are only ever `complete-working | absent`, never partial.
-`not_configured | probe-failed(reason) | partial | ok` per-role is the ADMIN 4-state
+`not_configured | probe_failed(reason) | partial | ok` per-role is the ADMIN 4-state
 surface (§4.12); regular users see absent affordances, not disabled ones.
 
 ### 2.5 Budget chain (4 steps — never by probing calls; owner correction 2026-09-16)
@@ -132,7 +132,7 @@ break strict servers).
 | `transport` | timeout, ECONNRESET, 5xx, DNS                       | retry-within-job, consecutive-failure breaker (§2.5), surfaced to caller as degrade signal (services choose their fallback; request paths never 5xx on this) |
 | `rate`      | 429                                                 | `ai_usage_daily.failed_429` counter, short backoff, breaker-relevant                                                                                         |
 | `schema`    | malformed JSON from chat roles                      | surfaced as pipeline failure → job `markFailed` (retry)                                                                                                      |
-| `config`    | 401/404 model-not-found                             | role marked probe-failed(reason), admin card CTA; jobs park (role treated as not-candidate)                                                                  |
+| `config`    | 401/404 model-not-found                             | role marked probe_failed(reason), admin card CTA; jobs park (role treated as not-candidate)                                                                  |
 
 ### 2.9 Usage counting
 

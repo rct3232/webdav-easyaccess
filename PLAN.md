@@ -173,6 +173,36 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 - T4.3 e2e hermetic AI suite (in-process fake LLM server via adapter injection; scratch
   project port; smoke-list update) + degradation-matrix suite.
 
+### 7.1 Contract-spec references (mandatory)
+
+**Every task below MUST be implemented against its contract specs — read them first; a
+mismatch with §7.1 files is a bug in whichever side is newer (docs-first: fix the spec in
+the same PR).** AI_FEATURE_PLAN.md sections carry their own "Contract specs" lines; this
+map is the task-row view. Specs marked "(lands with Tx docs step)" do not exist yet —
+write them at that task's docs-first step before tests/code.
+
+- T0.2 `docs/spec/`store/collectionsStore.md, store/fileLikesStore.md, store/actionJournalStore.md
+- T0.3 `docs/spec/`routes/collections.md, services/collectionsService.md, hooks/useCollections.md
+- T0.4 `docs/spec/`components/folder-tree/CollectionsSection.md, components/file-manager/CollectionsListView.md, hooks/useFolderTreeController.md, pages/FileManager.md, components/file-manager/FileManagerView.md
+- T0.5 `docs/spec/`components/file-manager/{FileContextMenu,FileActionSheet,BulkActionToolbar→FileManagerControls,AddToCollectionMenu,MemberRowControls}.md, components/dialogs/FilePropertiesDialog.md
+- T0.6 `docs/spec/`infrastructure/maintenanceScheduler.md
+- T0.7 `docs/spec/`store/actionJournalStore.md, routes/actions.md, hooks/useMessage.md, components/feedback/UndoToast.md, hooks/useUndoToast.md
+- T0.7b/T0.8 `docs/spec/`routes/admin.md, routes/config.md (unchanged surface), infrastructure/backendHealth.md, components/SystemConfigEditor.md
+- T0.9 `docs/spec/`store/aiTagStore.md, services/collectionsService.md (rule evaluation)
+- T0.10 `docs/spec/`components/mypage/content/CollectionDashboard.md, hooks/useMyPageController.md, pages/MyPage.md
+- T0.11/T1.5 `docs/spec/`routes/search.md, services/searchService.md, components/file-manager/SearchBarResultsMode.md, hooks/{useSearchResults,useExplorerSession}.md, components/file-manager/FloatingSearchBar.md
+- T0.12 `docs/spec/`store/{storage,executor}.md (target sections)
+- T1.1/T1.4 `docs/spec/`infrastructure/{llmAdapter,llmPresets,vectorStore}.md
+- T1.2 `docs/spec/`store/{embeddingsStore,embeddingsChunkStore,aiJobsStore}.md
+- T1.3 `docs/spec/`services/aiJobService.md
+- T1.6/T1.7/T1.8/T2.1-T2.5 `docs/spec/`services/{collectionsService,evolutionService,aiJobService}.md, store/aiTagStore.md, components/file-manager/MergeProposalCard.md
+- T3.1/T3.1b/T3.2 `docs/spec/`routes/collections.md, services/{collectionsService,collectionShareService}.md, store/collectionsStore.md, components/dialogs/CollectionPropertiesDialog.md, components/mypage/content/SuggestionsChecklist.md (publish/leave + suggestion routes are flagged sync items there — write at T3.2/T3.3 docs step)
+- T3.3 `docs/spec/`components/mypage/content/SuggestionsChecklist.md (+ file_suggestions store/route specs at its docs step)
+- T3.4 `docs/spec/`services/searchService.md, routes/search.md, hooks/useSearchResults.md
+- T3.5 `docs/spec/`store/actionJournalStore.md, hooks/{useFileOperations,useUndoToast}.md
+- T3.6 `docs/spec/`routes/collections.md, services/collectionsService.md
+- T4.1/T4.2/T4.3 `docs/spec/`infrastructure/{llmPresets,llmAdapter}.md, services/aiJobService.md, routes/admin.md, server/SETUP.md + testing: docs/TESTING_STRATEGY.md (AI tiers)
+
 ## 8. Docs gate (per phase, before code — AGENTS §2.1)
 
 New: `docs/features/collections-platform.md`; routes `docs/spec/server/routes/{collections,

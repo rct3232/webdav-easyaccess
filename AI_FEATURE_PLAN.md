@@ -82,6 +82,8 @@ similar` (similar = centroid cluster grouping with group headers, not one path o
 - Name uniqueness: partial-unique per owner over active; collision → suffix counter
   (reuse trash-restore suffix precedent, DEF-16).
 
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/routes/collections.md`, `docs/spec/server/store/collectionsStore.md`, `docs/spec/client/hooks/useCollections.md`, `docs/spec/client/components/file-manager/CollectionsListView.md`
+
 ### 3.2 Members
 
 - Stored rows: `collection_items (collection_id, node_id, added_by, published bool)`.
@@ -127,6 +129,8 @@ similar` (similar = centroid cluster grouping with group headers, not one path o
   archive, share settings, delete(archived only). viewer(received): open, `나가기` (hide,
   local), no mutations.
 
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/routes/collections.md`, `docs/spec/server/store/collectionsStore.md`, `docs/spec/client/components/file-manager/MemberRowControls.md`, `docs/spec/client/components/file-manager/FileContextMenu.md`
+
 ### 3.3 Like
 
 `file_likes(user_id,node_id,created_at)`. Entry points: context menu (main list AND
@@ -134,6 +138,8 @@ collection member rows — one component state) + properties-dialog title-header
 icon toggle. NO inline heart on list rows (density; rejected). Consumers: activity score
 (top weight), split-trigger hot set, quality-gate fast path (liked clusters skip the 2-week
 persistence requirement). v1: no other-user like display.
+
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/store/fileLikesStore.md`, `docs/spec/client/components/dialogs/FilePropertiesDialog.md`, `docs/spec/client/components/file-manager/FileContextMenu.md`
 
 ### 3.4 Usage signals
 
@@ -143,6 +149,8 @@ like/list-entry-click); NOT on directory listings (write-amplification guard). N
 rollup → `node_activity(user_id,node_id,opens,downloads,last_seen_at,...)`; raw events
 rolled off at 90d by GC. Activity score = decayed mix of node_activity + likes + exclusion
 negatives + definition age.
+
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/infrastructure/maintenanceScheduler.md`, `docs/spec/server/store/collectionsStore.md (activity sort)`
 
 ## 4. Behavior specifications
 
@@ -156,6 +164,8 @@ thumbnail invalidation `uploadService.js:181-187`. Idempotency by
 crash-retries, copies, restores). Content re-read via `blobStorageService.downloadBlob`
 (works both backends; upload buffer is not retained). Also populate `file_nodes.content_hash`
 (null today, `blobStorageService.js:66`) at the same commit points.
+
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/services/aiJobService.md`, `docs/spec/server/store/aiJobsStore.md`
 
 ### 4.2 LLM adapter (new `server/infrastructure/adapters/llm/`)
 
@@ -195,6 +205,8 @@ crash-retries, copies, restores). Content re-read via `blobStorageService.downlo
   data after un-configuring an LLM; only NEW enrichment stops (queue backlog visible in
   admin). This is deliberate: enrichment dependency, not runtime dependency.
 
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/infrastructure/llmAdapter.md`, `docs/spec/server/infrastructure/llmPresets.md`
+
 ### 4.3 Text/media preprocessing (local, free)
 
 Document text extracted locally before LLM (PDF/docx utilities). **Chunk/token budget is
@@ -219,6 +231,8 @@ E12 measured pooled-only hides a mid-document section (0.51 ≈ below the unrela
 (chat) never hierarchical-summarizes; head+stride excerpt only. char→token safety factor
 ≈1.7 (mixed text, E10) ships as release constant.
 
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/infrastructure/llmAdapter.md`, `docs/spec/server/services/aiJobService.md`, `docs/spec/server/store/embeddingsStore.md`, `docs/spec/server/store/embeddingsChunkStore.md`
+
 ### 4.4 Merge proposals (the ONLY proposal UI; in-context card)
 
 Nightly (or pair-signal) detection: derived pairs by centroid cosine; stored pairs by
@@ -236,6 +250,8 @@ once after 2 weeks then sleeps 30d; `따로 둡니다` = permanent pair suppress
 merges (rejected).
 Merge survivor: keep chosen name unless `name_locked`.
 
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/routes/collections.md`, `docs/spec/client/components/file-manager/MergeProposalCard.md`
+
 ### 4.5 Seed collection
 
 File context menu `이런 파일로 컬렉션 만들기` → confirm dialog (~640×560): seed preview,
@@ -246,6 +262,8 @@ if larger) → create as `origin='seed'`, definition = `{seed_ref, θ}` vector r
 membership math only, no LLM. Confirm-dialog copy obligation (Q2/§4.7): the dialog states
 that the ENTIRE initial set (preview + `이 외 N개`) is publish-approved as a batch if/when
 the collection is shared — approval must not silently cover unseen members.
+
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/routes/collections.md`, `docs/spec/client/components/file-manager/AddToCollectionMenu.md`, `docs/spec/server/services/collectionsService.md`
 
 ### 4.6 Search (two-stage: typing filter → server query with name+semantic sections)
 
@@ -286,6 +304,8 @@ the collection is shared — approval must not silently cover unseen members.
   accept `result_ref` (ignored when absent → same behavior as today). MVP emits only;
   interpretation is the future conversational layer's job.
 
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/routes/search.md`, `docs/spec/server/services/searchService.md`, `docs/spec/client/components/file-manager/SearchBarResultsMode.md`, `docs/spec/client/hooks/useSearchResults.md`, `docs/spec/client/hooks/useExplorerSession.md`, `docs/spec/client/components/file-manager/FloatingSearchBar.md`
+
 ### 4.7 Collection sharing (live)
 
 - Roles `viewer|editor` (+owner). Viewer: list/preview/download of members, cannot rename/
@@ -306,6 +326,8 @@ the collection is shared — approval must not silently cover unseen members.
 - Grants revocation is instant; already-visible metadata cannot be re-taken (documented
   limitation, same stance as journal boundaries).
 
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/services/collectionShareService.md`, `docs/spec/client/components/dialogs/CollectionPropertiesDialog.md`
+
 ### 4.8 Digest (top-of-list banner, not notifications)
 
 Per `(user,collection)` visit cursor `collection_digest_cursors(last_visited_at)`; counts
@@ -313,6 +335,8 @@ derived at read from `collection_items.created_at` (stored) and definition-evalu
 (derived: last_member_change_at on collection row). One line `+N / -M / 병합 1 · 펼치기`;
 expanded = per-entry reason (`왜 여기에` answers for auto-members come from per-row reason
 computed at query time — matched predicate name — NOT a history table).
+
+Contract specs (binding, MUST read before implementing this section): `docs/spec/client/components/file-manager/CollectionsListView.md`
 
 ### 4.9 Silent evolution (`origin='system'` only) — triggers, passes, rules
 
@@ -392,6 +416,8 @@ overlap-asymmetry. Rule on materialized membership sets (capped, e.g. 500 rows/c
   jac.54, jac.33, two sibling families — classified exactly as intended; the naive
   overlap-coefficient misfires on the subset case, which is why it is banned.)
 
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/services/evolutionService.md`, `docs/spec/server/infrastructure/maintenanceScheduler.md`, `docs/spec/server/services/collectionsService.md`
+
 ### 4.10 Naming templates
 
 Locale-style template strings (server-side module; ko/en both) keyed by creation type:
@@ -399,6 +425,8 @@ search → query text verbatim; seed → `{seedFileName}과 유사한 파일`; s
 top-2 local derived tags `{tag1} · {tag2} 사진`; split → `{parentName} · {diffTag}`;
 fallback → `자동 컬렉션 N` (system-origin only). `llmNamer` (chat configured) produces the
 name for new system creations instead. Template output is final; no post-hoc rename jobs.
+
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/services/collectionsService.md`, `docs/spec/server/services/aiJobService.md`
 
 ### 4.11 Undo journal (`action_journal`, common infrastructure — NOT ai-prefixed)
 
@@ -452,6 +480,8 @@ Schema §5. Generic `(domain, subject)` opaque key, NO FKs (rows outlive subject
   sidebar `new` dot (system-create cue only). No toasts for silent system acts — digest/
   feed carry them.
 
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/store/actionJournalStore.md`, `docs/spec/server/routes/actions.md`, `docs/spec/client/hooks/useMessage.md`, `docs/spec/client/components/feedback/UndoToast.md`, `docs/spec/client/hooks/useUndoToast.md`
+
 ### 4.12 Feature-degradation matrix + UI states (LLM role-based)
 
 Capability by config state (embed only = mostly full vector features; chat adds naming/NL
@@ -473,11 +503,13 @@ extract/parser; none =):
   `settings.js:18-29`). **Regular users: absent, not disabled** (no gray AI affordances).
   **Admin: visible-disabled** — nav item + health-card row (`SystemSettingsContent.js:262-
 285` backend health card is the state's home) showing 4 states
-  `not_configured|probe-failed(reason)|partial|ok` per role with CTA into
+  `not_configured|probe_failed(reason)|partial|ok` per role with CTA into
   `/api/admin/config` + `probeLlm` test. Unconfigured errors return
   `serverErrors.ai.notConfigured` (not 404). Partial config: no "unconfigured" filler —
   template names read as normal names (they are final), excerpted summary fields simply
   absent; insufficiency reported only in admin §4.15/§4.16.
+
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/infrastructure/llmAdapter.md`, `docs/spec/client/services/collectionsRepository.md`, `docs/spec/server/services/collectionsService.md`
 
 ### 4.13 Vector backend selection (engine-native where supported, JS fallback, never AI-off)
 
@@ -519,6 +551,8 @@ REJECTED (§9) — vec0 covers sqlite at all expected product scales as an exact
 (5.3 ms @5.4k measured); ANN headroom lives on the PG tier by design (docs already
 recommend PG for large deployments).
 
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/infrastructure/vectorStore.md`, `docs/spec/server/store/embeddingsStore.md`, `docs/spec/server/store/embeddingsChunkStore.md`, `docs/spec/server/routes/admin.md`
+
 ### 4.14 Admin operations dashboard (NON-AI first; extension of existing surfaces)
 
 Existing admin surface audit (evidence): config CRUD+test+sync web actions exist
@@ -536,6 +570,8 @@ CONFIG_DISPLAY_META silent-skip (`SystemConfigEditor.js:360`, whitelist hides ne
 switch to registry-driven with optional labels). Tier C: no ad-hoc metrics framework —
 everything persisted is DB-aggregatable (instances short-lived, logs not a contract).
 Locks table + `_schema_migrations` read-only staleness card (diagnose only, no action).
+
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/routes/admin.md`
 
 ### 4.15 Admin AI governance panel (tab within mypage admin area)
 
@@ -555,6 +591,8 @@ reference set and shipped as per-model profile values; there is NO runtime calib
 feature and NO dataset shipped to end users. Panel displays profile values +
 `calibrated:false`-style provenance; §9.1 keeps the re-open trigger (corpus drift).**
 
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/infrastructure/llmPresets.md`, `docs/spec/server/routes/admin.md (panel surface lands with T4.1 docs step)`
+
 ### 4.16 User dashboard `저장공간`
 
 Nav: `myPageRegistry` entry shape `{id,icon,labelKey,visibility:'all'}` + content
@@ -569,6 +607,8 @@ descriptor branch. Blocks: hygiene cards (exact/near dups count + reclaimable GB
   Capacity sparkline only — no personal-insight prose
   (rejected scope).
 
+Contract specs (binding, MUST read before implementing this section): `docs/spec/client/components/mypage/content/CollectionDashboard.md`, `docs/spec/client/hooks/useMyPageController.md`, `docs/spec/client/pages/MyPage.md`
+
 ### 4.17 Cleanup/duplicate suggestions (`file_suggestions`)
 
 Rule variant (LLM-free): filename/temp patterns, stale screenshots, old installers, exact
@@ -582,6 +622,8 @@ path only.** Always PROPOSALS (file-mutating, rule 2/5), rendered inline (row ch
 `선택 수락(N)` (checked rows → trash). Dismiss stays inline per-row; unaccepted suggestions
 expire with the retention job.** Undo = command journal row (checked count = inverse
 count); no extra confirm dialog — the checkbox IS the selection confirmation.
+
+Contract specs (binding, MUST read before implementing this section): `docs/spec/client/components/mypage/content/SuggestionsChecklist.md (file_suggestions store/route specs land with the T3.3 docs step)`
 
 ### 4.18 Tag vocabulary: normalization, hierarchy hints, no merging
 
@@ -605,6 +647,8 @@ created_at)`: rule `containment ∧ cos ≥ profile θ_lo(0.75)` maps e.g.
 Search never depended on any of it: tag predicates match by `tag_embeddings` vector
 similarity (§3.2) — fuzzy matching is the retrieval layer's job, which is why consolidating
 the vocabulary was always display-scoped.
+
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/store/aiTagStore.md`, `docs/spec/server/services/evolutionService.md`
 
 ### 4.19 Chat-model roles
 
@@ -691,6 +735,8 @@ where the provider supports it (llama.cpp: chat_template_kwargs — verified); p
 override `llm_models.reasoning` exists for experiments only, not a plan assumption;
 reasoning-effort tiers are exposed only where probing finds support (Gemma4/Hana: none).
 
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/services/aiJobService.md`, `docs/spec/server/infrastructure/llmAdapter.md`, `docs/spec/server/services/searchService.md`
+
 ### 4.20 Embed-model roles
 
 The embed model is the substrate, not an analyst: it answers only "where" (a fixed-dim
@@ -720,6 +766,8 @@ space key** (one embedding model active; cross-`model_id` cosine forbidden — m
 only ever happens across a model migration, handled by backfill §4.2); `dim` fixed per
 model; TEXT canonical (§4.13); budgets/kill-switches per role like chat.
 
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/infrastructure/llmAdapter.md`, `docs/spec/server/infrastructure/vectorStore.md`, `docs/spec/server/services/aiJobService.md`
+
 ### 4.21 Media pipeline (text space only; V1 retired)
 
 Owner decision 2026-09-16: **every modality enters the SAME text embedding space** — no
@@ -746,6 +794,8 @@ rules. The pipeline:
 
 `LLM_MEDIA_PATH` and its tier options are deleted; media selection is now purely
 capability-driven: vision_chat present → captions, else V0.
+
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/services/aiJobService.md`, `docs/spec/server/infrastructure/llmPresets.md`
 
 ### 4.22 Search architecture layers — reference model & conversational extension path
 
@@ -843,6 +893,8 @@ durable). Saved semantics = semantic-section portion only (name-match exclusion 
 - Reserved now: `ai_features.schema_version`+model provenance, E-space discipline, chunking
   would reuse §4.3 extraction pipeline. NOT in any phase task (§9.1).
 
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/routes/search.md`, `docs/spec/server/services/searchService.md`
+
 ### 4.23 Provider presets and capability-completeness contract (Q3 decision)
 
 Target reality: open-source distribution means the app cannot know which endpoint model any
@@ -880,6 +932,8 @@ visible but half-works under the active provider is a defect, not a degradation.
    (`/api/admin/config` + test + capability matrix); wizard is a shortcut to the same rows.
    SETUP.md documents preset table; capability matrix display (per-role probe chips) shared
    by both surfaces.
+
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/infrastructure/llmPresets.md`, `docs/spec/server/routes/setup.md`, `docs/spec/client/pages/Setup.md`
 
 ## 5. Schema (PG-canonical, `002_collections.sql`, `003_ai.sql`; sqlite via transpiler)
 
@@ -953,6 +1007,8 @@ PK(day,role))`
 created_at)` — NL cache + E2 query-embed cache; the normalized signature doubles as
   §4.22's `result_ref` key (no separate table)
 - `file_nodes.content_hash` populated in place (column exists, no DDL change).
+
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/store/ (collections/fileLikes/actionJournal/aiJobs/embeddings/embeddingsChunk/aiTag)`, `docs/spec/server/routes/ (collections/search/actions/admin)`
 
 ## 9. Rejected during design (do not re-introduce without new evidence)
 

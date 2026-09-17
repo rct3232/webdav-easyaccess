@@ -81,3 +81,19 @@
 - Directory download: zip (unchanged; no iOS/image share path).
 - Skipped paths: warning status.
 - Single-file download: when file metadata is passed, fileService may use iOS + image policy (Web Share or inline fallback); hook does not branch on platform—it delegates to fileService.
+
+---
+
+## 3. AI-platform upload-queue-drain hint (AI platform — target, lands with P2 — T2.2 trigger; inert before)
+
+Addendum per AI_FEATURE_PLAN §4.9 (silent-evolution `upload` trigger = BATCH-END; the server debounce is authoritative — the hint is **latency sugar only**).
+
+- **Emission point:** on **last-queue-drain** — the moment the final queued upload reaches a terminal state — the completion path fires the one-shot hint `uploadComplete: true` through the injected seam (gateway param / dedicated lightweight call; server contract in the evolution-trigger task). No other component emits it; the shell only delegates (see `FileManager.md` §7).
+- **Every drain counts:** the success path, the failed-path completion, and the abandon/cancel path all end in "queue empty" and each emits exactly one hint; re-populating the queue re-arms the seam; an empty mount never fires.
+- **Guarantees:** fire-and-forget — absorbed failure, no retry, no user-visible surface, no impact on §2.7 completion behavior. Correctness never depends on the hint: server-side per-user trailing-edge debounce (`AI_EVOLUTION_DEBOUNCE_S`, re-armed at each commit) alone is crash-safe; a lost hint only delays an evolution pass to the next debounce window.
+- **Non-goals:** no client-side timers/batching logic here; per-file events belong to the server `ai_jobs` commit hook (§4.1), not this seam.
+
+Verification (appends §2.8):
+
+- [ ] (target) Exactly one `uploadComplete` emission per drain cycle, including all-failed and cancelled drains; zero while any item is still in flight.
+- [ ] (target) Hint emission/failure never changes existing progress/message/onClose outcomes (§2.7 scenarios unaffected).

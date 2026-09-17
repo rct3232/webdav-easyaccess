@@ -1,16 +1,15 @@
 # vectorStore Spec
 
-Target-contract spec (docs-first; AI_FEATURE_PLAN §4.13/§4.13c, §4.3, §4.20, §9;
-PLAN §6/§7 T0.12, T1.4).
+Target-contract spec.
 
 ## 1. Overview
 
-| Item                          | Description                                                                                                                                                                                                                                                                                                                                                                |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role                          | The vector-engine SEAM: exactly two implementation families (Native adapters, JsFallback) behind one interface, hiding pgvector / sqlite-vec / brute-force differences from every caller.                                                                                                                                                                                  |
-| Canonical                     | `embeddings.vector TEXT` (+ `embeddings_chunk.vector TEXT`) is the SYSTEM OF RECORD for every vector. Every index below is a DERIVED ARTIFACT created/managed by this adapter and NEVER part of the tracked DDL chain (symmetric rule for the pg shadow table and the sqlite vec0 virtual table; PLAN §6; `REAL/NUMERIC` stay out of tracked DDL — transpiler vocabulary). |
-| Policy (corrected 2026-09-15) | **No AI feature is ever disabled for missing vector capability.** Absence degrades to JsFallback, boot unblocked, all features ON; the admin health card shows `vectorOps=native \| fallback_js(degraded)` with the install hint — a PERFORMANCE warning, not a state gate (§4.13/§4.14 Tier B, §9 rejection of AI-off-on-missing-vector).                                 |
-| Boot stance                   | Engine choice is BOOT-FROZEN (DB connection presence selects dialect; extension availability probed at boot) — contrast recorded against fully-hot LLM config (§4.2). Model change ⇒ derived index rebuild; TEXT canonical untouched (§4.13c tail).                                                                                                                        |
+| Item                          | Description                                                                                                                                                                                                                                                                                                                                                                                         |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                          | The vector-engine SEAM: exactly two implementation families (Native adapters, JsFallback) behind one interface, hiding pgvector / sqlite-vec / brute-force differences from every caller.                                                                                                                                                                                                           |
+| Canonical                     | `embeddings.vector TEXT` (+ `embeddings_chunk.vector TEXT`) is the SYSTEM OF RECORD for every vector. Every index below is a DERIVED ARTIFACT created/managed by this adapter and NEVER part of the tracked DDL chain (symmetric rule for the pg shadow table and the sqlite vec0 virtual table; CODING_STYLE.md Express Patterns; `REAL/NUMERIC` stay out of tracked DDL — transpiler vocabulary). |
+| Policy (corrected 2026-09-15) | **No AI feature is ever disabled for missing vector capability.** Absence degrades to JsFallback, boot unblocked, all features ON; the admin health card shows `vectorOps=native \| fallback_js(degraded)` with the install hint — a PERFORMANCE warning, not a state gate (§4.13/§4.14 Tier B, §9 rejection of AI-off-on-missing-vector).                                                          |
+| Boot stance                   | Engine choice is BOOT-FROZEN (DB connection presence selects dialect; extension availability probed at boot) — contrast recorded against fully-hot LLM config (§4.2). Model change ⇒ derived index rebuild; TEXT canonical untouched (§4.13c tail).                                                                                                                                                 |
 
 ---
 
@@ -30,19 +29,19 @@ PLAN §6/§7 T0.12, T1.4).
 
 ```
 upsert(node, vecs[], dim)
-  // pooled half → embeddingsStore.upsert(nodeId,{modelId,dim,vector,source,contentHash})
-  // chunk half  → embeddingsChunkStore.replace(nodeId, modelId, chunkVectors)
-  // + shadow-artifact sync — ALL in ONE TX (embeddingsStore §2.6 division of labor)
+ // pooled half → embeddingsStore.upsert(nodeId,{modelId,dim,vector,source,contentHash})
+ // chunk half → embeddingsChunkStore.replace(nodeId, modelId, chunkVectors)
+ // + shadow-artifact sync — ALL in ONE TX (embeddingsStore §2.6 division of labor)
 neighbors(vec, k, candidates)
-  // → [{nodeId, score}] — score = per-node MAX over that node's chunk vectors when
-  //   chunks exist, pooled row otherwise (E12: pooled-only hides mid-document sections —
-  //   0.51 < unrelated floor vs 0.67 chunk-max); node ids DEDUPED before k is cut;
-  //   `candidates` = ACL-scoped visibility predicate/set enforced ENGINE-side or via the
-  //   §2.5 helper — never post-hoc filtering below k without oversampling
+ // → [{nodeId, score}] — score = per-node MAX over that node's chunk vectors when
+ // chunks exist, pooled row otherwise (E12: pooled-only hides mid-document sections —
+ // 0.51 < unrelated floor vs 0.67 chunk-max); node ids DEDUPED before k is cut;
+ // `candidates` = ACL-scoped visibility predicate/set enforced ENGINE-side or via the
+ // §2.5 helper — never post-hoc filtering below k without oversampling
 allVectors(userScope)
-  // canonical TEXT rows (pooled + chunks) for the scope, parsed via vectorMath;
-  // JsFallback's per-query load path AND evolution clustering input;
-  // NO resident state across queries (§6 gate — brute-force re-loads per call)
+ // canonical TEXT rows (pooled + chunks) for the scope, parsed via vectorMath;
+ // JsFallback's per-query load path AND evolution clustering input;
+ // NO resident state across queries (§6 gate — brute-force re-loads per call)
 ```
 
 `userScope`: requester id → ACL resolution rides `fileNodesStore` joins (the same
@@ -51,7 +50,7 @@ tag_embeddings lookups, clustering over a user's own corpus stays scoped).
 
 ### 2.3 Implementation matrix (exactly two families)
 
-| Impl                            | When                                                                                         | Behavior                                                                                                                                                                                                                  | Evidence (PoC)                           |
+| Impl                            | When                                                                                         | Behavior                                                                                                                                                                                                                  | Evidence (the pre-implementation study)  |
 | ------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
 | **Native — PgVector**           | PostgreSQL ∧ pgvector **≥0.7** installed                                                     | KNN pushed into SQL (HNSW on the shadow table, chunks included); `SET LOCAL hnsw.ef_search = 400` per query — FIXED default, never the library default 100 (§4.13c; E11: external recall 0.74@100 → 1.00@400, ~2 ms cost) | 0.7 ms@60k; filtered 6.2 ms recall 50/50 |
 | **Native — SqliteVec**          | sqlite ∧ `node:sqlite` + `sqlite-vec` vec0 loadable                                          | vec0 virtual table, FLAT exact (no ANN upstream yet); BigInt PK binding (§2.5)                                                                                                                                            | 17 ms exact @20k; 5.3 ms @5.4k           |
@@ -86,7 +85,7 @@ chunk_idx, model_id, embedding)`. Chunk rows carry into BOTH shadows (§4.13: "p
 ### 2.5 vec0 constraints & the ACL filter helper (spike facts, recorded)
 
 - Requires the **node:sqlite driver** (current `sqlite3` npm exposes no extension
-  loading); migration confined to `db/sqliteExecutor.js` (T0.12 seam by design);
+  loading); migration confined to `db/sqliteExecutor.js` (DEF-25 seam by design);
   **product Node floor ≥24** (node:sqlite experimental flag on v24 — tolerated, works).
 - vec0 integer PKs bind via **BigInt** (node:sqlite binds JS numbers as doubles —
   silently corrupts vec0 keys otherwise).
@@ -99,13 +98,13 @@ chunk_idx, model_id, embedding)`. Chunk rows carry into BOTH shadows (§4.13: "p
 ### 2.6 Accuracy contract (§4.13c)
 
 - Conformance suite, per active engine:
-  - EXACT engines (JsFallback, vec0-flat): results IDENTICAL to the JS oracle
-    (`vectorMath` cosine over `allVectors`) — bit-parity of scores within fp tolerance.
-  - ANN engine (pgvector HNSW ef_search=400): **recall@50 ≥ 0.99** graded with
-    **HELD-OUT (external) queries only** — self-queries flatter the index and are banned
-    as grading input (external-query consequence of E11; §4.13c sentence adopted).
-  - Cross-engine result-identity is NOT promised (ANN is approximate); the promise is
-    the recall floor.
+- EXACT engines (JsFallback, vec0-flat): results IDENTICAL to the JS oracle
+  (`vectorMath` cosine over `allVectors`) — bit-parity of scores within fp tolerance.
+- ANN engine (pgvector HNSW ef_search=400): **recall@50 ≥ 0.99** graded with
+  **HELD-OUT (external) queries only** — self-queries flatter the index and are banned
+  as grading input (external-query consequence of E11; §4.13c sentence adopted).
+- Cross-engine result-identity is NOT promised (ANN is approximate); the promise is
+  the recall floor.
 - Reference corpus + query set are the dev-owned release artifact (§4.15: measured by the
   project, shipped as profile values, `calibrated:false` provenance in admin; NOT shipped
   to end users).

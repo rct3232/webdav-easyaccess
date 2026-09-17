@@ -72,7 +72,7 @@ Verify observable IO behavior from the caller perspective:
 
 ### 2.6 Collections-platform re-exports (target contract)
 
-Per PLAN §6 "Client layering", collections-platform IO is re-exported here so controller hooks (`useCollections`, `useSearchResults`, `useUndoToast`, MyPage dashboard wiring) never import `collectionsRepository`/`collectionsNotifier` directly. Names pass through unchanged; payloads stay snake_case (see `collectionsRepository.md` §2.2):
+Per CODING_STYLE.md Express Patterns "Client layering", collections-platform IO is re-exported here so controller hooks (`useCollections`, `useSearchResults`, `useUndoToast`, MyPage dashboard wiring) never import `collectionsRepository`/`collectionsNotifier` directly. Names pass through unchanged; payloads stay snake_case (see `collectionsRepository.md` §2.2):
 
 | Group                           | Re-exported names                                                                                                                 |
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
@@ -83,7 +83,7 @@ Per PLAN §6 "Client layering", collections-platform IO is re-exported here so c
 | Grants (sharing)                | `getGrants`, `grantCollection`, `revokeGrant`                                                                                     |
 | Search results mode             | `runSearch` (§4.6; `semantic_available`/`result_ref` consumed by `useSearchResults`)                                              |
 | Undo journal / toast payload    | `getActions`, `undoAction` (structured result incl. `params.laterChanges` for cascade confirm — `collectionsRepository.md` §2.5)  |
-| File suggestions (§4.16/§4.17)  | `getFileSuggestions`, `acceptFileSuggestions`, `dismissFileSuggestion` (T3.3 seam)                                                |
+| File suggestions (§4.16/§4.17)  | `getFileSuggestions`, `acceptFileSuggestions`, `dismissFileSuggestion` (DEF-25 seam)                                              |
 | Change fan-out                  | `subscribeToCollections` (wraps `collectionsNotifier.onCollectionsChange`, same unsubscribe contract as `subscribeToRecentFiles`) |
 
 Rules:

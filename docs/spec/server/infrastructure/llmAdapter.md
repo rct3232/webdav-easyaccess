@@ -1,7 +1,6 @@
 # llmAdapter Spec
 
-Target-contract spec (docs-first; AI_FEATURE_PLAN §4.2, §4.3, §4.12, §4.19, §4.20, §4.23;
-PLAN §6/§7 T1.1).
+Target-contract spec.
 
 ## 1. Overview
 
@@ -22,7 +21,7 @@ PLAN §6/§7 T1.1).
   `probe.js` (suite), `budget.js` (chain + limiter + breaker),
   `presets.js` ([llmPresets spec](llmPresets.md))
 - **Test file:** `server/infrastructure/adapters/llm/__tests__/llmAdapter.test.js`
-  (+ fake-server E2E leg, T4.3 in-process adapter injection)
+  (+ fake-server E2E leg, DEF-25 in-process adapter injection)
 
 ### 2.2 Per-call config resolution + signature-keyed client cache
 
@@ -61,7 +60,7 @@ PLAN §6/§7 T1.1).
 Startup probe (symmetric to s3/webdav probes, `index.js:272-327`) is the INITIAL probe,
 not the only one (hot re-probes per §2.2). Every probe sample is real in-domain material;
 out-of-domain probes produce false negatives indistinguishable from false capability
-claims (both error modes observed this PoC):
+claims (both error modes observed this the pre-implementation study):
 
 - `embed`: real mixed-ko/en sentence set → verify non-empty, `dim` == profile, and
   NON-DEGENERACY (two distinct samples must not cosine ≥0.999 — catches constant-output

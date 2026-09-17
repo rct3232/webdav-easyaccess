@@ -1,15 +1,14 @@
 # searchService Spec
 
-Target-contract spec (docs-first; AI_FEATURE_PLAN §4.6, §4.20 E2, §4.22; PLAN §6/§7
-T0.11, T1.5). Wire contract authority: [routes/search.md](../routes/search.md) — this
+Target-contract spec. Wire contract authority: [routes/search.md](../routes/search.md) — this
 spec owns the engine behind it.
 
 ## 1. Overview
 
-| Item       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role       | The Search Engine layer (§4.22): two-stage hybrid query — `name_matches` (LLM-free containment SQL, ships P0) + `semantic` (segment-AND vector scoring, P1) — assembly, dedup, per-query dynamic baseline gate, `result_ref` signature emission, `search_hit` usage logging.                                                                                                                                                                                                                                                                    |
-| Boundaries | SQL executes against `fileNodesStore` ACL joins (closure/owner logic identical to `fileService` listing) — a node the requester cannot read never enters either section. The conversational layer is a RESERVED boundary: this MVP emits and structurally accepts `result_ref` only; no session state, no predicate parsing (`parse.nl` extends this service later, T3.4, same two-section response). No LLM call blocks the request EXCEPT the query embed (invariant 11's exception family: cache + kill-switch + no-LLM fallback mandatory). |
+| Item       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role       | The Search Engine layer (§4.22): two-stage hybrid query — `name_matches` (LLM-free containment SQL, ships P0) + `semantic` (segment-AND vector scoring, P1) — assembly, dedup, per-query dynamic baseline gate, `result_ref` signature emission, `search_hit` usage logging.                                                                                                                                                                                                                                                                      |
+| Boundaries | SQL executes against `fileNodesStore` ACL joins (closure/owner logic identical to `fileService` listing) — a node the requester cannot read never enters either section. The conversational layer is a RESERVED boundary: this MVP emits and structurally accepts `result_ref` only; no session state, no predicate parsing (`parse.nl` extends this service later, DEF-25, same two-section response). No LLM call blocks the request EXCEPT the query embed (invariant 11's exception family: cache + kill-switch + no-LLM fallback mandatory). |
 
 ---
 
@@ -33,7 +32,7 @@ future layer's job) — sending it never changes the response.
 
 1. **Validate + normalize:** trim; 1–200 chars. Normalized form (NFKC, ASCII-case fold,
    whitespace collapse) is the signature/cache key material.
-2. **`name_matches`** (T0.11, zero-LLM): repository addition
+2. **`name_matches`** (DEF-25, zero-LLM): repository addition
    `FileNodeRepository.searchNodesByName(userId, query, limit)` —
    `lower(name) LIKE lower('%'||:query||'%')` over ALL user-visible file_nodes; the
    `lower()` on BOTH sides is mandatory (sqlite LIKE is ASCII-case-folded only).
@@ -46,15 +45,17 @@ future layer's job) — sending it never changes the response.
    switch) — false ⇒ response omits `semantic`, `semantic_available:false`,
    `semantic_unavailable_reason:"serverErrors.ai.notConfigured"`; done (name section
    intact, 200).
-4. **Query embed (E2):** `llmAdapter.embedQuery(normalizedQuery)` — the ONLY request-path
+4. **Query embed :** `llmAdapter.embedQuery(normalizedQuery)` — the ONLY request-path
    AI call in the system; <100 ms-class model expectation; results cached. **Decision:**
    the cache IS the `query_parses` row — signature = its PK (§4.22/§5) — via an ADDITIVE
    nullable column `vector TEXT` (serialized query embedding, model-keyed inside the
-   signature's space component); the `predicates` column keeps its T3.4 NL-parse meaning
-   untouched. DDL lands with T1.5's `003_ai.sql` block — schema-doc sync item. On ANY
+   signature's space component); the `predicates` column keeps its the corresponding docs step NL-parse meaning
+   untouched. DDL ships in `003_ai.sql` (DEF-25). On ANY
    provider failure/timeout/mid-switch error ⇒ degrade honestly: empty semantic section
-   - `semantic_available:true` retained (config IS present) but `counts.semantic:0` —
-     never a 5xx (§4.2 "mid-switch failure degrades per §4.12, never surfaces as error").
+
+- `semantic_available:true` retained (config IS present) but `counts.semantic:0` —
+  never a 5xx (§4.2 "mid-switch failure degrades per §4.12, never surfaces as error").
+
 5. **Segment-AND:** split the ORIGINAL query on whitespace; ≤3 segments (more ⇒ first 3
    used + `counts.semantic_capped_segments:true`). Each segment is embedded through the
    same cached path. Per segment: `vectorStore.neighbors(segVec, k=50, visibleIds)` →
@@ -68,7 +69,7 @@ future layer's job) — sending it never changes the response.
    score. Keep results only if top candidate score ≥ `spread + δ_base`; otherwise return
    the section HONESTLY EMPTY (kills the anisotropy majority-class fallback on nonsense
    queries — E2v2/E11). `δ_base` ships in the model profile — release-measured value;
-   there are NO absolute stored floors anywhere (PoC §2.5/2.6; §9 bans absolute-θ gates).
+   there are NO absolute stored floors anywhere (the pre-implementation study §2.5/2.6; §9 bans absolute-θ gates).
 7. **Assembly + dedup:** `semantic` ordered score desc then `node_id` asc, cap 50;
    entries already present in `name_matches` are REMOVED from `semantic` display;
    `counts.total` = post-dedup displayed rows. Section order in the response is fixed
@@ -84,7 +85,7 @@ future layer's job) — sending it never changes the response.
 
 - MVP material: `normalized-predicates` = the normalized query string (§4.6 name-only
   fallback signature covers query string + space + sort; structured predicate slots
-  serialize `""` and are reserved-additive for T3.4/§4.22 deltas); `vector-query` = the
+  serialize `""` and are reserved-additive for DEF-25/§4.22 deltas); `vector-query` = the
   embedded query text (normalized) or `""` when the semantic leg did not run; `space` =
   `v1|model:{embedModelId}` (the E-space key — a model change MUST change the signature,
   replay in a new space is meaningless); `sort` = the stable section-order+caps version.
@@ -106,7 +107,7 @@ future layer's job) — sending it never changes the response.
 | `FileNodeRepository.searchNodesByName(userId, query, {limit})` | FileNodeRepository twins (+conformance)              | ACL-scoped `lower LIKE` name section |
 | `FileNodeRepository.sampleVisibleNodeIds(userId, n)`           | same                                                 | baseline corpus sample               |
 | `vectorStore.neighbors(vec, k, candidates)`                    | [vectorStore](../infrastructure/vectorStore.md) §2.3 | max-over-chunks per-segment scoring  |
-| `query_parses` repository                                      | T3.4 (table §5)                                      | signature-keyed embed/parse cache    |
+| `query_parses` repository                                      | DEF-25 (table §5)                                    | signature-keyed embed/parse cache    |
 
 ### 2.6 Save-to-collection boundary (§4.6)
 
@@ -146,8 +147,8 @@ provenance), never runtime-calibrated.
 
 - `llmAdapter` (`embedQuery`, presence/kill-switch state), `vectorStore` seam,
   `fileNodesStore`/FileNodeRepository (ACL joins, name SQL, sampling),
-  `query_parses` repository, usage-event writer (T0.6 domain), `configResolver`
-- NOT used: any chat role on this path (T3.4 `parse.nl` chains onto this SAME response
+  `query_parses` repository, usage-event writer (DEF-25 domain), `configResolver`
+- NOT used: any chat role on this path (DEF-25 `parse.nl` chains onto this SAME response
   shape later — additive header tab, no contract break, §4.6 alignment note)
 
 ## 5. Verification Scenarios

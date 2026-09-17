@@ -25,34 +25,34 @@
  * @typedef {Object} DbExecutor
  * @property {DbDialect} dialect
  * @property {(sql: string, params?: Array) => Promise<{ rows: Array }>} query
- *   Read path. Returns rows as plain objects (snake_case columns as defined in
- *   the schema). No row mapping beyond what the driver returns.
+ * Read path. Returns rows as plain objects (snake_case columns as defined in
+ * the schema). No row mapping beyond what the driver returns.
  * @property {(sql: string, params?: Array) => Promise<{ changes: number, lastId?: number, rows?: Array }>} run
- *   Write path (INSERT/UPDATE/DELETE/DDL). `lastId` is the generated id of an
- *   INSERT into a single-column-PK table (`undefined` otherwise). Implementors
- *   normalise the driver difference: sqlite uses `lastID` from `db.run`; the
- *   postgres implementation appends `RETURNING <pk>` to the statement
- *   (introspecting `pg_index`, cached per table) and reads the first returned
- *   column. SQL that already contains RETURNING is left untouched.
- *   When the statement itself carries RETURNING, rows are surfaced as
- *   `rows` (with `changes` = row count) on sqlite (which routes such
- *   statements through `db.all`, because `db.run` discards RETURNING rows)
- *   and on the postgres **transactional** `tx.run`. The postgres **top-level**
- *   `run` consumes the first RETURNING column for `lastId` and does not
- *   surface the full rows — use `query`/`tx.run` when the returned rows are
- *   needed.
+ * Write path (INSERT/UPDATE/DELETE/DDL). `lastId` is the generated id of an
+ * INSERT into a single-column-PK table (`undefined` otherwise). Implementors
+ * normalise the driver difference: sqlite uses `lastID` from `db.run`; the
+ * postgres implementation appends `RETURNING <pk>` to the statement
+ * (introspecting `pg_index`, cached per table) and reads the first returned
+ * column. SQL that already contains RETURNING is left untouched.
+ * When the statement itself carries RETURNING, rows are surfaced as
+ * `rows` (with `changes` = row count) on sqlite (which routes such
+ * statements through `db.all`, because `db.run` discards RETURNING rows)
+ * and on the postgres **transactional** `tx.run`. The postgres **top-level**
+ * `run` consumes the first RETURNING column for `lastId` and does not
+ * surface the full rows — use `query`/`tx.run` when the returned rows are
+ * needed.
  * @property {<T>(fn: (tx) => Promise<T>) => Promise<T>} transaction
- *   Runs `fn` inside one transaction; commits on resolve, rolls back on throw.
- *   `tx` exposes the same `query`/`run` shape bound to the open transaction.
+ * Runs `fn` inside one transaction; commits on resolve, rolls back on throw.
+ * `tx` exposes the same `query`/`run` shape bound to the open transaction.
  * @property {(err: unknown) => boolean} isUniqueConflict
- *   True when the **raw driver error** is a unique-constraint violation (PG
- *   SQLSTATE `23505`; sqlite `SQLITE_CONSTRAINT` / "UNIQUE constraint failed").
- *   MUST be called on the raw driver error inside the implementation's catch
- *   block, BEFORE `mapDatabaseError` discards driver codes — mapped errors only
- *   carry the standardised errorCode. Callers use the result to produce domain
- *   errors (e.g. 409) with no dialect knowledge.
+ * True when the **raw driver error** is a unique-constraint violation (PG
+ * SQLSTATE `23505`; sqlite `SQLITE_CONSTRAINT` / "UNIQUE constraint failed").
+ * MUST be called on the raw driver error inside the implementation's catch
+ * block, BEFORE `mapDatabaseError` discards driver codes — mapped errors only
+ * carry the standardised errorCode. Callers use the result to produce domain
+ * errors (e.g. 409) with no dialect knowledge.
  * @property {() => Promise<void>} close
- *   Releases the underlying connection/pool (delegates to `storage`).
+ * Releases the underlying connection/pool (delegates to `storage`).
  */
 ```
 
@@ -92,11 +92,11 @@
 - [ ] `storage.getExecutor()` returns the postgres executor while the jest override is active and the sqlite executor after it is cleared
 - [ ] driver errors surface as mapped errors (standardised codes), not raw driver objects
 
-### 2.6 sqlite driver: `node:sqlite` migration — **(T0.12 target — lands with P0)**
+### 2.6 sqlite driver: `node:sqlite` migration — **(implementation tracked as DEF-25)**
 
-Decided contract (AI_FEATURE_PLAN §4.13, PLAN §6/§7 T0.12). The sections above describe the
+Decided contract (docs/features/collections-platform.md §4.13, CODING_STYLE.md Express Patterns/§7 DEF-25). The sections above describe the
 **current** `sqlite3` npm behavior and remain authoritative until the migration lands; from
-T0.12 the sqlite implementation is built on the built-in `node:sqlite` module:
+DEF-25 the sqlite implementation is built on the built-in `node:sqlite` module:
 
 - **Scope:** the driver swap is confined to `server/infrastructure/db/sqliteExecutor.js`
   (+ `storage`'s sqlite connection helpers) — this is the seam by design; no repository,

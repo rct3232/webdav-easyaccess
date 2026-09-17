@@ -63,9 +63,9 @@
 - Delete with divider above, error color
 - **Trash rows (DEF-16 P9):** when the host passes `onRestore`/`onPurge`, Restore (`data-testid="trash-action-restore"`) and Permanent delete (`data-testid="trash-action-purge"`, error accent, divider) render gated by `fileWritePermission`; the host withholds the live-item callbacks in the trash view so only Restore / Permanent delete / Properties remain.
 - E2E selector contract:
-  - action rows that must be shared with the desktop context-menu flow expose stable `data-testid` values (for example rename/delete)
-  - this keeps mobile and desktop action selection aligned even though the rendered component differs
-  - mobile CRUD flow tests may rely on these stable action rows to verify rename/delete through the action sheet without depending on localized list text
+- action rows that must be shared with the desktop context-menu flow expose stable `data-testid` values (for example rename/delete)
+- this keeps mobile and desktop action selection aligned even though the rendered component differs
+- mobile CRUD flow tests may rely on these stable action rows to verify rename/delete through the action sheet without depending on localized list text
 
 ### 2.7 Verification Scenarios
 
@@ -84,9 +84,9 @@ Checklist for unit test writing:
 
 ---
 
-## 3. AI-platform entries (AI platform — target, lands with P0)
+## 3. AI-platform entries (AI platform — implementation tracked as DEF-25)
 
-Mobile mirror of `FileContextMenu.md` §3 — same entry set, same phase, long-press/More-sheet surface (AI_FEATURE_PLAN §3.2/§3.3; `AddToCollectionMenu.md`, `MemberRowControls.md`).
+Mobile mirror of `FileContextMenu.md` §3 — same entry set, same phase, long-press/More-sheet surface (docs/features/collections-platform.md §3.2/§3.3; `AddToCollectionMenu.md`, `MemberRowControls.md`).
 
 - **New rows:** `컬렉션에 추가 ▸` (optional callback `onAddToCollection(file)` → in-sheet `AddToCollectionMenu` submenu) and `좋아요` toggle (optional callback `onToggleLike(file)`, state from row data `file.liked` — viewer-scoped only, invariant 9). Rows follow the existing "callback provided ⇒ row renders" gating (§2.6); like does not sit above the delete divider.
 - **Member-list variant:** opened on a collection MEMBER row, the sheet renders exactly the `MemberRowControls.md` §2.3 set (exclude / publish / download / `원본에서 보기` / properties / like); **move/copy/rename/delete rows are absent by rule** (§3.2), enforced by the host withholding the callbacks — same snapshot invariant as desktop.

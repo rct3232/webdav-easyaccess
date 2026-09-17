@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item      | Description                                                                                                                                                                                                                                                            |
-| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role      | Startup maintenance hooks + periodic schedules: the GC cron and the fail-safe startup scan (current); AI-adjacent nightly one-shots (target, §3 — lands with P0/P1). All schedules are functions in THIS module — new schedulers are never new module files (PLAN §6). |
-| Source    | `server/infrastructure/maintenanceScheduler.js`                                                                                                                                                                                                                        |
-| Test file | `server/infrastructure/__tests__/maintenanceScheduler.test.js`                                                                                                                                                                                                         |
+| Item      | Description                                                                                                                                                                                                                                                                  |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role      | Startup maintenance hooks + periodic schedules: the GC cron and the fail-safe startup scan (current); AI-adjacent nightly one-shots (§3, DEF-25). All schedules are functions in THIS module — new schedulers are never new module files (CODING_STYLE.md Express Patterns). |
+| Source    | `server/infrastructure/maintenanceScheduler.js`                                                                                                                                                                                                                              |
+| Test file | `server/infrastructure/__tests__/maintenanceScheduler.test.js`                                                                                                                                                                                                               |
 
 ---
 
@@ -30,14 +30,14 @@ NOT this module — this module only schedules PERIODIC work.
 
 ---
 
-## 3. Target additions (target — lands with P0/P1)
+## 3. Target additions (implementation tracked as DEF-25)
 
-Three planned scheduler functions per PLAN §6 (`shouldSkip`/`resolveIntervalMs` seams,
+Three planned scheduler functions per CODING*STYLE.md Express Patterns (`shouldSkip`/`resolveIntervalMs` seams,
 no new module files) plus the evolution/nightly integration points. Existing §2 content
-is unchanged; new functions mirror its idioms (per-function `WEA_SKIP_*` seam, DB-only
+is unchanged; new functions mirror its idioms (per-function `WEA_SKIP*\*` seam, DB-only
 interval resolution, log-never-throw).
 
-### 3.1 `startUsageRollupScheduler({ usageService })` — T0.6 nightly rollup
+### 3.1 `startUsageRollupScheduler({ usageService })` — DEF-25 nightly rollup
 
 - Fires once per nightly anchor (§3.4). Chain: `usageService.rollupNodeActivity()`
   (`usage_events` → `node_activity` upserts) then the retention tail: raw
@@ -65,7 +65,7 @@ interval resolution, log-never-throw).
   `migrationService.js:330-348`).
 - Seam: `WEA_SKIP_EVOLUTION_SCHEDULER`.
 
-### 3.3 `startNightlyTagScheduler({ tagService })` — §4.18 3-step slot (P1, T1.8)
+### 3.3 `startNightlyTagScheduler({ tagService })` — §4.18 3-step slot (P1, DEF-25)
 
 - Runs after the evolution slot in the same anchor (ordering matters: create-pass tag
   predicates want fresh parent hints; arbiter wants normalized groups): orthographic
@@ -97,19 +97,19 @@ next to the existing ones, after migrationGate/init like the GC scheduler.
 
 - [ ] Existing: GC interval 0/unset ⇒ no timer; `WEA_SKIP_GC_SCHEDULER` ⇒ no timer;
       startup fail-safe scan report-only, errors swallowed to `{error}`
-- [ ] (target) Each new scheduler returns null under its `WEA_SKIP_*` seam and with the
+- [ ] Each new scheduler returns null under its `WEA_SKIP_*` seam and with the
       injected service absent — same shape as GC
-- [ ] (target) Rollup order: events rolled BEFORE the 90d roll-off deletes; a forced
+- [ ] Rollup order: events rolled BEFORE the 90d roll-off deletes; a forced
       rollup failure aborts the roll-off (journal-expire/tombstone-purge legs skipped too,
       retried next anchor)
-- [ ] (target) `expireJournalRows` run: applied-past-expiry rows NULL payloads, counts
+- [ ] `expireJournalRows` run: applied-past-expiry rows NULL payloads, counts
       logged into the nightly report; `undone` rows untouched
-- [ ] (target) Evolution slot with `AI_EVOLUTION_ENABLED=false` fires the timer but
+- [ ] Evolution slot with `AI_EVOLUTION_ENABLED=false` fires the timer but
       performs zero acts (spy on `runEvolutionPass` not called / called-and-skipped);
       upload-mode DB still gets exactly one FULL pass per day
-- [ ] (target) Debounce vs nightly: a pass already running when the anchor fires
+- [ ] Debounce vs nightly: a pass already running when the anchor fires
       no-ops on the lock (no interleaved double-journal of the same act)
-- [ ] (target) Tag slot without embed role: normalization + `ai_tag_raw` update,
+- [ ] Tag slot without embed role: normalization + `ai_tag_raw` update,
       parent-hint/vector legs skipped with log, no throw into the scheduler
-- [ ] (target) Anchor math: tick lands within the configured hour; a server restart
+- [ ] Anchor math: tick lands within the configured hour; a server restart
       across the anchor executes the pass at the NEXT anchor, never twice in one day

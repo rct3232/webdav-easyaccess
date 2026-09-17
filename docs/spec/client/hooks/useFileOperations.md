@@ -39,12 +39,12 @@
 ### 2.4 Boundaries
 
 - **Currently owns**
-  - Download and rename execution details for the current FileManager wiring
-  - Progress and processing-map integration for those operations
+- Download and rename execution details for the current FileManager wiring
+- Progress and processing-map integration for those operations
 - **Does not own in target architecture**
-  - Top-level explorer command orchestration for FileManager
-  - Navigation, selection, or progress-drawer ownership
-  - Product overlay policy or dialog ownership
+- Top-level explorer command orchestration for FileManager
+- Navigation, selection, or progress-drawer ownership
+- Product overlay policy or dialog ownership
 
 ### 2.5 Dependencies
 
@@ -84,9 +84,9 @@
 
 ---
 
-## 3. AI-platform upload-queue-drain hint (AI platform — target, lands with P2 — T2.2 trigger; inert before)
+## 3. AI-platform upload-queue-drain hint (AI platform — implementation tracked as DEF-25)
 
-Addendum per AI_FEATURE_PLAN §4.9 (silent-evolution `upload` trigger = BATCH-END; the server debounce is authoritative — the hint is **latency sugar only**).
+Addendum per docs/features/collections-platform.md §4.9 (silent-evolution `upload` trigger = BATCH-END; the server debounce is authoritative — the hint is **latency sugar only**).
 
 - **Emission point:** on **last-queue-drain** — the moment the final queued upload reaches a terminal state — the completion path fires the one-shot hint `uploadComplete: true` through the injected seam (gateway param / dedicated lightweight call; server contract in the evolution-trigger task). No other component emits it; the shell only delegates (see `FileManager.md` §7).
 - **Every drain counts:** the success path, the failed-path completion, and the abandon/cancel path all end in "queue empty" and each emits exactly one hint; re-populating the queue re-arms the seam; an empty mount never fires.

@@ -1,6 +1,6 @@
 # useCollections Spec
 
-Target-contract spec (docs-first; AI_FEATURE_PLAN §3.1/§3.2/§4.4/§4.9b/§4.11; PLAN §6 "Client layering", §7 T0.3/T0.4 consumers).
+Target-contract spec.
 
 ## 1. Overview
 

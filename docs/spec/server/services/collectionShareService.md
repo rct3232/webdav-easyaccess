@@ -1,7 +1,6 @@
 # collectionShareService Spec
 
-Target-contract spec (docs-first; AI_FEATURE_PLAN §2 invariants 1/2/9, §3.2, §4.7;
-PLAN §6/§7 T3.2).
+Target-contract spec.
 
 ## 1. Overview
 

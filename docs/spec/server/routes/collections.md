@@ -1,7 +1,6 @@
 # collections routes Spec
 
-Target-contract spec (docs-first, AI_FEATURE_PLAN §3.1/§3.2/§4.4/§4.5/§4.7/§4.8;
-PLAN §6/§7 T0.3, T2.5, T3.1, T3.2, T3.6).
+Target-contract spec.
 
 ## 1. Overview
 
@@ -60,7 +59,7 @@ with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 MUST be registered before the `/:id` parameterized routes.
 
 **Not in this router:** `leave` (`나가기`, per-user `collection_visibility` hidden flag,
-§4.7) lands with the sharing surface (T3.2 follow-up). No digest-reset endpoint exists —
+§4.7) tracked as DEF-25. No digest-reset endpoint exists —
 the visit cursor advances implicitly on `GET /:id/items` (see decision below).
 
 ### 2.3 Middleware Used
@@ -72,7 +71,7 @@ the visit cursor advances implicitly on `GET /:id/items` (see decision below).
 
 ### 2.4 Request/Response Spec
 
-**Wire casing (PLAN §6, binding):** request bodies camelCase nodeId-style (`nodeIds`,
+**Wire casing (CODING_STYLE.md Express Patterns, binding):** request bodies camelCase nodeId-style (`nodeIds`,
 `seedNodeId`, `userId`, `otherId`, `publishMode`); **all response fields snake_case**
 (`collection_id`, `publish_mode`, `created_at`, `node_id`, `action_id`). Timestamps are
 ISO-8601 UTC strings. Route param `:id` is the numeric `collection_id`.
@@ -150,38 +149,38 @@ Field rules:
   only ever see `published:true` rows (§4.7).
   200:
 
-  ```json
-  {
-    "items": [
-      {
-        "node_id": 90210,
-        "name": "poster.pdf",
-        "type": "file",
-        "membership": "derived",
-        "published": false,
-        "added_by": null,
-        "created_at": "2026-09-13T10:00:00Z",
-        "state": "normal",
-        "liked": false,
-        "reason": "tag:포스터",
-        "shared_excluded": false
-      }
-    ],
-    "next_cursor": null,
-    "publish_pending_count": 5,
-    "digest": { "added_since": 3, "removed_since": 1 }
-  }
-  ```
+```json
+{
+  "items": [
+    {
+      "node_id": 90210,
+      "name": "poster.pdf",
+      "type": "file",
+      "membership": "derived",
+      "published": false,
+      "added_by": null,
+      "created_at": "2026-09-13T10:00:00Z",
+      "state": "normal",
+      "liked": false,
+      "reason": "tag:포스터",
+      "shared_excluded": false
+    }
+  ],
+  "next_cursor": null,
+  "publish_pending_count": 5,
+  "digest": { "added_since": 3, "removed_since": 1 }
+}
+```
 
-  `membership`: `stored | derived`; `state`: `normal | revoked`; `reason` = matched
-  predicate name for derived members (computed at query time, §4.8 — not a history table),
-  `null` for stored. `publish_pending_count` is owner-visible only (keyed on collection
-  `publish_mode != auto` rows with `published=false`); grantees get the key omitted.
-  `digest` appears only when `since` was supplied.
-  **Decision:** serving `GET /:id/items` stamps `collection_digest_cursors.last_visited_at`
-  to now for the requester (the read IS the visit; no separate reset endpoint).
-  `similar`-style ordering: items sort by activity score desc, then `node_id` asc — stable
-  under cursor.
+`membership`: `stored | derived`; `state`: `normal | revoked`; `reason` = matched
+predicate name for derived members (computed at query time, §4.8 — not a history table),
+`null` for stored. `publish_pending_count` is owner-visible only (keyed on collection
+`publish_mode != auto` rows with `published=false`); grantees get the key omitted.
+`digest` appears only when `since` was supplied.
+**Decision:** serving `GET /:id/items` stamps `collection_digest_cursors.last_visited_at`
+to now for the requester (the read IS the visit; no separate reset endpoint).
+`similar`-style ordering: items sort by activity score desc, then `node_id` asc — stable
+under cursor.
 
 - **POST /:id/items:** Owner or editor. Body `{ nodeIds: [ … ] }` (1–200, else 400
   `collections.emptyNodeIds` / 400 over cap). Rule §3.2: you may only add what you can
@@ -189,14 +188,14 @@ Field rules:
   New stored rows start `published=false` unless `publish_mode='auto'` (§4.7). Adding to a
   `system` collection triggers auto-pin (§4.9b). 200:
 
-  ```json
-  {
-    "added": [90210, 90211],
-    "already_members": [],
-    "rejected_not_readable": [90299],
-    "undo": { "action_id": 993 }
-  }
-  ```
+```json
+{
+  "added": [90210, 90211],
+  "already_members": [],
+  "rejected_not_readable": [90299],
+  "undo": { "action_id": 993 }
+}
+```
 
 - **DELETE /:id/items:** Owner, or editor for what they added (§4.7) — 403
   `collections.forbidden` otherwise. Body `{ nodeIds }`. Semantics per §3.2 batch exclude:
@@ -205,34 +204,34 @@ Field rules:
   (`excluded`). An exclusion on a `user`-origin collection is meaningless → the node lands
   in `ignored`. Auto-pin touch on system collections. 200:
 
-  ```json
-  {
-    "removed": [90210],
-    "excluded": [90211],
-    "ignored": [],
-    "undo": { "action_id": 994 }
-  }
-  ```
+```json
+{
+  "removed": [90210],
+  "excluded": [90211],
+  "ignored": [],
+  "undo": { "action_id": 994 }
+}
+```
 
 - **POST /preview:** Body exactly one of `{ seedNodeId }` (seed-vector rule: seed vector vs
   requester-visible candidates, cosine, §4.5 — requires the `embed` LLM role) or
   `{ definition }` (rule dry-count: path/tag/like/date/size predicates, §3.2 — works with
   zero LLM). 400 `collections.previewTargetRequired` when neither/both given. 200:
 
-  ```json
-  {
-    "count": 143,
-    "sample": [
-      { "node_id": 90210, "name": "poster.pdf" },
-      { "node_id": 90212, "name": "map.png" }
-    ],
-    "sample_truncated": true
-  }
-  ```
+```json
+{
+  "count": 143,
+  "sample": [
+    { "node_id": 90210, "name": "poster.pdf" },
+    { "node_id": 90212, "name": "map.png" }
+  ],
+  "sample_truncated": true
+}
+```
 
-  `sample` is capped at 12 (the confirm dialog renders sample + `이 외 N개` from
-  `count - sample.length`). Seed preview without `embed` configured → 409
-  `serverErrors.ai.notConfigured` (§4.12); definition previews never touch AI.
+`sample` is capped at 12 (the confirm dialog renders sample + `이 외 N개` from
+`count - sample.length`). Seed preview without `embed` configured → 409
+`serverErrors.ai.notConfigured` (§4.12); definition previews never touch AI.
 
 - **POST /:id/preview:** Empty body; dry-runs the collection's stored `definition` for the
   requester. Owner-only (403 otherwise). Response identical to POST /preview.
@@ -240,26 +239,26 @@ Field rules:
   (§4.4; one card at a time is a client concern — the full pending set is returned).
   200:
 
-  ```json
-  {
-    "suggestions": [
-      {
-        "suggestion_id": 88,
-        "a_id": 17,
-        "a_name": "유럽",
-        "b_id": 23,
-        "b_name": "2026-여행",
-        "overlap_count": 41,
-        "merged_count": 58,
-        "score": 812,
-        "created_at": "2026-09-16T03:00:00Z"
-      }
-    ]
-  }
-  ```
+```json
+{
+  "suggestions": [
+    {
+      "suggestion_id": 88,
+      "a_id": 17,
+      "a_name": "유럽",
+      "b_id": 23,
+      "b_name": "2026-여행",
+      "overlap_count": 41,
+      "merged_count": 58,
+      "score": 812,
+      "created_at": "2026-09-16T03:00:00Z"
+    }
+  ]
+}
+```
 
-  `score` is the schema's scaled integer (×1000, `score BIGINT` in §5) — the client does
-  not re-float it. **Decision:** row order = `score` desc.
+`score` is the schema's scaled integer (×1000, `score BIGINT` in §5) — the client does
+not re-float it. **Decision:** row order = `score` desc.
 
 - **POST /:id/merge/:other:** Owner of both, both `active`, `:id` != `:other` (400
   `collections.mergeSameCollection`). The card IS the confirmation — no extra dialog
@@ -268,16 +267,16 @@ Field rules:
   membership of `:other` are moved to the survivor, `:other` is deleted (FK cascade),
   matching suggestion row (if any) → `state='merged'`. 200:
 
-  ```json
-  {
-    "survivor": { "collection_id": 17, "name": "유럽", "item_count": 58 },
-    "absorbed_id": 23,
-    "undo": { "action_id": 995 }
-  }
-  ```
+```json
+{
+  "survivor": { "collection_id": 17, "name": "유럽", "item_count": 58 },
+  "absorbed_id": 23,
+  "undo": { "action_id": 995 }
+}
+```
 
-  **Decision:** merge is allowed for any owned active pair even without a pending
-  suggestion row (a suggestion state transition is opportunistic).
+**Decision:** merge is allowed for any owned active pair even without a pending
+suggestion row (a suggestion state transition is opportunistic).
 
 - **POST /:id/merge-dismiss:** Body `{ otherId }`. `나중에` semantics: suggestion →
   `state='dismissed'`, `dismissed_at=now`; the nightly pass re-raises once after 2 weeks
@@ -298,7 +297,7 @@ Field rules:
   `{ "grantee_id": 9, "revoked": true, "undo": { "action_id": 997 } }`.
   404 `collections.grantNotFound` when no such row.
 - **POST /for-nodes:** Body `{ nodeIds }` (1–200). Batch membership chips for the file
-  listing (T3.6 — listing contracts frozen). Resolves membership in every collection
+  listing (DEF-25 — listing contracts frozen). Resolves membership in every collection
   visible to the requester (own + granted, active only). 200: `{ "memberships": [
 { "node_id": 90210, "collection_ids": [17, 23] } ] }` — one entry per requested node,
   `collection_ids` possibly empty.
@@ -350,7 +349,7 @@ All errors follow the shared error envelope (`errorCode` + optional `params`,
 
 - [api.md](../../../api.md), [shared-contracts.md](../../../shared-contracts.md),
   [ARCHITECTURE.md](../../../ARCHITECTURE.md), [actions.md](actions.md) (undo),
-  `AI_FEATURE_PLAN.md` §2/§3.1/§3.2/§4.4/§4.5/§4.7/§4.8/§4.9/§5, PLAN §6/§7.
+  `docs/features/collections-platform.md` §2/§3.1/§3.2/§4.4/§4.5/§4.7/§4.8/§4.9/§5, CODING_STYLE.md Express Patterns/§7.
 
 ### 2.6 Integration Test Scenarios
 

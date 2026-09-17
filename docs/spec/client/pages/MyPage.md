@@ -94,11 +94,11 @@ Boundary notes:
 ### 3.6 Mobile drawer contract
 
 - Mobile-only:
-  - The Menu button opens the category drawer.
-  - Closing the drawer without choosing a category leaves the current category/content unchanged.
-  - Selecting a category closes the drawer and switches the visible content to that category.
+- The Menu button opens the category drawer.
+- Closing the drawer without choosing a category leaves the current category/content unchanged.
+- Selecting a category closes the drawer and switches the visible content to that category.
 - Desktop:
-  - The category list stays persistently visible and does not use drawer state.
+- The category list stays persistently visible and does not use drawer state.
 
 ### 3.7 Route Protection
 
@@ -142,14 +142,14 @@ Boundary notes:
 
 ---
 
-## 4. AI-platform registry additions (AI platform — target, lands with P0 (T0.10) / P4 (T4.1) as noted)
+## 4. AI-platform registry additions (AI platform — implementation tracked as DEF-25) / P4 (DEF-25) as noted)
 
 Addendum to the §3.5 category table (same format; registry contract in `useMyPageController.md` §3 / `CollectionDashboard.md` §2.5; content resolved through the registry/helper layer per the §3.5 boundary note — no new inline dispatch in this page):
 
-| Category           | Type   | Content                                                                                                                                                                                                                                                             |
-| ------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 저장공간 (Storage) | Direct | `CollectionDashboard` — hygiene cards, system-changes journal feed, my-collections status, SuggestionsChecklist, capacity sparkline. All users (visibility `all`). (P0)                                                                                             |
-| Admin AI Ops       | Direct | Admin AI governance panel (T4.1). Admin only; sidebar row carries the 4-state health chip `not_configured \| probe_failed(reason) \| partial \| ok` from `settings/public.ai` + backend health — admin visible-STATE, regular users never see the row (§4.12). (P4) |
+| Category           | Type   | Content                                                                                                                                                                                                                                                          |
+| ------------------ | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 저장공간 (Storage) | Direct | `CollectionDashboard` — hygiene cards, system-changes journal feed, my-collections status, SuggestionsChecklist, capacity sparkline. All users (visibility `all`).                                                                                               |
+| Admin AI Ops       | Direct | Admin AI governance panel (DEF-25). Admin only; sidebar row carries the 4-state health chip `not_configured \| probe_failed(reason) \| partial \| ok` from `settings/public.ai` + backend health — admin visible-STATE, regular users never see the row (§4.12). |
 
 - Both are single-panel categories (no list→detail pattern); `selectedContentItem` stays `null` for them (§3.4 semantics unchanged).
 - Deep links: FileManager/dashboard cross-links enter via `location.state.category` (`storage` / `admin-ai` ids), same normalization as today (§3.4).

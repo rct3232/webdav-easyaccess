@@ -1,7 +1,6 @@
 # evolutionService Spec
 
-Target-contract spec (docs-first; AI_FEATURE_PLAN §4.9/§4.9b/§4.9c, §4.10, §4.18, §4.19
-(`merge-arbiter`), §2 invariants 3/4/6/10; PLAN §6/§7 T2.2, T2.3, T3.1, T3.1b).
+Target-contract spec , §2 invariants 3/4/6/10; CODING_STYLE.md Express Patterns/§7 DEF-25, DEF-25, DEF-25, DEF-25).
 
 ## 1. Overview
 
@@ -28,15 +27,15 @@ Target-contract spec (docs-first; AI_FEATURE_PLAN §4.9/§4.9b/§4.9c, §4.10, �
   timer armed at each upload commit — `armUploadTrigger(userId)` is the ONLY new call
   added to the §4.1 hook (the `ai_jobs` per-file enqueue itself stays at commit;
   idempotent, cheap, needed for dedupe — passes are what debounce).
-  - Constant: `AI_EVOLUTION_DEBOUNCE_S` (default 90, T2/dbOnly). The timer RE-ARMS on
-    each commit; a commit only happens after full receipt (multer buffers whole file), so
-    a long upload cannot fire it mid-transfer. N-in-a-batch is unknowable server-side
-    (client may abandon) ⇒ "last commit + quiet period" is the only crash-safe batch-end
-    test; the pass is an idempotent re-scan of DB state, so a mistimed fire wastes
-    compute but can never be WRONG — correctness never depends on the trigger instant.
-  - Client hint `uploadComplete: true` (sent by `useFileOperations` when its queue
-    drains) fires the pass immediately — latency sugar, crash-safe by design; the
-    debounce alone is sufficient.
+- Constant: `AI_EVOLUTION_DEBOUNCE_S` (default 90, T2/dbOnly). The timer RE-ARMS on
+  each commit; a commit only happens after full receipt (multer buffers whole file), so
+  a long upload cannot fire it mid-transfer. N-in-a-batch is unknowable server-side
+  (client may abandon) ⇒ "last commit + quiet period" is the only crash-safe batch-end
+  test; the pass is an idempotent re-scan of DB state, so a mistimed fire wastes
+  compute but can never be WRONG — correctness never depends on the trigger instant.
+- Client hint `uploadComplete: true` (sent by `useFileOperations` when its queue
+  drains) fires the pass immediately — latency sugar, crash-safe by design; the
+  debounce alone is sufficient.
 - `upload` mode runs the CHEAP passes only: create / split / merge-candidates. `nightly`
   runs ALL passes including archive/purge (time-based by nature — nightly is the
   backbone; `upload`-only mode must still run nightly ≥ once/day via the scheduler slot
@@ -61,12 +60,12 @@ mutators with `ctx.actor='system'` (digest/feed carry system acts — NO toasts,
 
 ### 2.4 Pass 1 — create (multi-tier mutual-kNN, LLM-free)
 
-PoC E4 evidence: narrow AND broad groups are both real; naive connected-components
+the pre-implementation study E4 evidence: narrow AND broad groups are both real; naive connected-components
 REJECTED (chaining); absolute-θ topic gating REJECTED (§9).
 
 1. **content_hash dedup pre-pass:** identical-content twins are routed to the dup path
    (§4.17 exact-dup finder) and NEVER form clusters (hash-first; cosine-1.0 detection is
-   redundant, E2/T0.9a).
+   redundant, E2/DEF-25).
 2. **Mutual-kNN seed expansion** over pooled embeddings of the user's corpus (active
    model space only — cross-`model_id` cosine forbidden, §4.20): k ≈ 6 (profile
    constant); tier edge-cos thresholds from the model profile —
@@ -79,13 +78,15 @@ REJECTED (chaining); absolute-θ topic gating REJECTED (§9).
 4. **Per-tier gates** (all T2 hot-tunable, admin impact-count preview §4.15; shipped
    defaults shown — thresholds are release-measured profile values where θ-shaped,
    product rules where count-shaped):
-   - min members ≥ 8; persistence ≥ 2 weeks (WAIVED by likes-density fast path, §3.3);
-   - rate ≤ 1 create/week/user; active-system ≤ 12 (tight+mid counted) / broad tier
-     ≤ 1 event-class per user; size caps tight/mid ≤ 120, broad ≤ 500;
-   - Jaccard ≥ 0.8 vs an existing collection OR vs a TOMBSTONE fingerprint set ⇒
-     merge-PROPOSAL (pass 5) instead of create — never silent re-creation of
-     tombstoned definitions (invariant 10 / `isTombstoned` pre-check with
-     `collectionsService.fingerprintDefinition`).
+
+- min members ≥ 8; persistence ≥ 2 weeks (WAIVED by likes-density fast path, §3.3);
+- rate ≤ 1 create/week/user; active-system ≤ 12 (tight+mid counted) / broad tier
+  ≤ 1 event-class per user; size caps tight/mid ≤ 120, broad ≤ 500;
+- Jaccard ≥ 0.8 vs an existing collection OR vs a TOMBSTONE fingerprint set ⇒
+  merge-PROPOSAL (pass 5) instead of create — never silent re-creation of
+  tombstoned definitions (invariant 10 / `isTombstoned` pre-check with
+  `collectionsService.fingerprintDefinition`).
+
 5. Create as `origin='system'`, definition = centroid/cluster rule, name via
    templateNamer (llmNamer swap only if chat configured, §4.10), centroid upserted
    (model-keyed), initial members published per §4.7 (system origin lives in the owner's
@@ -129,9 +130,9 @@ tuned, via §4.15 counters: `tombstone-suppressed` vs `regenerated-anyway`.
 - Metric on MATERIALIZED membership sets (capped 500 rows/collection):
   `sizeRatio = min/max ≥ 0.7` AND `jaccard ≥ 0.7`. Centroid cosine is a PREFILTER ONLY —
   never grounds for a suggestion. Overlap-coefficient / containment (|A∩B|/min) metrics
-  are BANNED (they fire on subset pairs 스페인 ⊂ 유럽 which must NOT merge; PoC E7).
+  are BANNED (they fire on subset pairs 스페인 ⊂ 유럽 which must NOT merge; the pre-implementation study E7).
 - Pair sources: derived pairs by centroid-cosine prefilter→set check; stored pairs by set
-  Jaccard directly (LLM-free variant, same pipeline, T3.1b). Scope: `system`↔anything
+  Jaccard directly (LLM-free variant, same pipeline, DEF-25). Scope: `system`↔anything
   the SAME user owns; both must be `active`.
 - `upsertMergeSuggestion(aId,bId,score)` (pair normalized, UNIQUE(a,b) conflict keeps the
   existing row + its state); `score` = jaccard×1000 (scaled int, §5).
@@ -141,16 +142,16 @@ tuned, via §4.15 counters: `tombstone-suppressed` vs `regenerated-anyway`.
   `pending`.
 - **Review band 0.55–0.7** (§4.19): below 0.55 no card; ≥0.7 card WITHOUT adjudication;
   band pairs, when chat configured, get the **`merge-arbiter`** pass: input = both names
-  - top tags + sizes + ≤5 sampled member summaries each AND — load-bearing (E7) — the
-    SYMMETRIC DIFFERENCE (unique-member counts/ratios + samples from each side; feeding
-    only shared-sample + overlap ratio produced all-merge bias in measurement). Output
-    `{verdict ∈ merge|keep_separate|sibling, reason}` written as prefilled recommendation
-    on the suggestion row (additive columns; read by
-    [collectionsService](collectionsService.md) §2.9). `sibling` ⇒ no card in v1 (§9).
-    **It advises, never acts** — no arbiter call is self-executing; chat off ⇒ band pairs
-    get no recommendation (card still appears, no preselection). Budget: the nightly
-    aggregate ≈ ≤1 chat call/user/day (§4.2) — arbiter calls are batched into one
-    structured multi-output per user, reasoning OFF.
+- top tags + sizes + ≤5 sampled member summaries each AND — load-bearing — the
+  SYMMETRIC DIFFERENCE (unique-member counts/ratios + samples from each side; feeding
+  only shared-sample + overlap ratio produced all-merge bias in measurement). Output
+  `{verdict ∈ merge|keep_separate|sibling, reason}` written as prefilled recommendation
+  on the suggestion row (additive columns; read by
+  [collectionsService](collectionsService.md) §2.9). `sibling` ⇒ no card in v1 (§9).
+  **It advises, never acts** — no arbiter call is self-executing; chat off ⇒ band pairs
+  get no recommendation (card still appears, no preselection). Budget: the nightly
+  aggregate ≈ ≤1 chat call/user/day (§4.2) — arbiter calls are batched into one
+  structured multi-output per user, reasoning OFF.
 
 ### 2.9 Pass 6 — auto-pin touch taxonomy (§4.9b) reconcile
 

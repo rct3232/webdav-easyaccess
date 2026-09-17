@@ -6,8 +6,8 @@
 | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role         | Tag vocabulary substrate — facade over `tag_embeddings` (provider-global, model-keyed tag→vector cache) and `tag_parents` (display/grouping hint table).                                                                                                                                        |
 | Hard scope   | **No alias or merge tables exist.** §4.18 retired the merge design (E6c: high-cosine pairs are spelling variants or hypernym containments, not synonyms); the orthographic fold is a read-time PURE FUNCTION and `tag_parents` is display-only, non-destructive. This store ships nothing else. |
-| Out of scope | `ai_tag_raw` (materialized normalized grouping aid) is written by the tag pipeline service (T1.8), not this facade; raw tags stay in `ai_features.tags`. Search-side fuzzy matching rides `tag_embeddings` vector similarity via vectorStore lookups (§3.2), never string equality here.        |
-| Design owner | `AI_FEATURE_PLAN.md` §4.18, §4.20 E3, §3.2 (tag predicates), §5 (schema rows).                                                                                                                                                                                                                  |
+| Out of scope | `ai_tag_raw` (materialized normalized grouping aid) is written by the tag pipeline service (DEF-25), not this facade; raw tags stay in `ai_features.tags`. Search-side fuzzy matching rides `tag_embeddings` vector similarity via vectorStore lookups (§3.2), never string equality here.      |
+| Design owner | `docs/features/collections-platform.md` §4.18, §4.20 E3, §3.2 (tag predicates), §5 (schema rows).                                                                                                                                                                                               |
 
 ---
 
@@ -84,7 +84,7 @@ re-running the auto rule after a model/profile change simply refreshes auto rows
 ### 2.6 Dependencies
 
 - `storage.getExecutor()` + `AiTagRepository` (+ twins)
-- Callers: E3 tag-embed batch job (T1.8), tag predicate evaluation (collections service
+- Callers: E3 tag-embed batch job (DEF-25), tag predicate evaluation (collections service
   reads `getTagVectors` for §3.2 similarity predicates), admin AI tab (view/edit hints).
 
 ### 2.7 Verification Scenarios

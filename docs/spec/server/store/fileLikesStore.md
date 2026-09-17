@@ -44,7 +44,7 @@ the store exposes no query that could leak them.
   no recency ordering; ordering, when needed, is by `created_at DESC` client-side).
 - Trashed nodes: rows SURVIVE trash (FK targets the node row, not blob state); likes on a
   trashed file stay hidden with the file and re-appear on restore. Purge cascades.
-- Activity rollup: `node_activity.likes` is refreshed by the nightly usage rollup (T0.6,
+- Activity rollup: `node_activity.likes` is refreshed by the nightly usage rollup (DEF-25,
   usage-service scope) — this store is not involved.
 
 ### 2.4 Transaction Boundaries

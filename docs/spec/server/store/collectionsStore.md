@@ -6,8 +6,8 @@
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role         | Facade over the collection platform tables (`collections`, `collection_items`, `collection_exclusions`, `collection_grants`, `collection_visibility`, `collection_centroids`, `collection_tombstones`, `collection_digest_cursors`, `collection_merge_suggestions`). |
 | Write rule   | Every journaled mutation executes through `actionJournalStore.commitChange()` — the change and its `action_journal` row land in ONE transaction under `lockManager`; the facade exposes no other public mutators (§4.11).                                            |
-| Read rule    | The member view is `items ∪ stored ∪ derived − exclusions` (§2 invariant 6). Derived evaluation lives in the collections service (definition engine, T2.1); this store exposes lookups only.                                                                         |
-| Design owner | `AI_FEATURE_PLAN.md` §3.1/§3.2 (lifecycle, members), §4.4 (merge suggestions), §4.7 (sharing), §4.8 (digest), §4.9 (evolution writes), §5 (schema).                                                                                                                  |
+| Read rule    | The member view is `items ∪ stored ∪ derived − exclusions` (§2 invariant 6). Derived evaluation lives in the collections service (definition engine, DEF-25); this store exposes lookups only.                                                                       |
+| Design owner | `docs/features/collections-platform.md` §3.1/§3.2 (lifecycle, members), §4.4 (merge suggestions), §4.7 (sharing), §4.8 (digest), §4.9 (evolution writes), §5 (schema).                                                                                               |
 
 ---
 
@@ -87,7 +87,7 @@ pinnedBy, archivedAt, lastMemberChangeAt, createdAt, updatedAt }`.
 | `isExcluded`      | (collectionId, nodeId) => Promise\<boolean\>                                   | Single probe.                                                                                                                                                                          |
 | `addExclusion`    | (collectionId, nodeId, ctx) => Promise\<{ changes }\>                          | JOURNALED. Applies to derived members only ("block for this definition", §3.2); triggers `setAutoPin` inside the same TX when the collection is `origin='system'` (exclusion = touch). |
 | `removeExclusion` | (collectionId, nodeId, ctx) => Promise\<{ changes }\>                          | JOURNALED.                                                                                                                                                                             |
-| `listForNodes`    | (userId, nodeIds) => Promise\<{ nodeId, collectionId }[]\>                     | Membership-chip read (`POST /api/collections/for-nodes`, T3.6): stored items of the user's visible collections.                                                                        |
+| `listForNodes`    | (userId, nodeIds) => Promise\<{ nodeId, collectionId }[]\>                     | Membership-chip read (`POST /api/collections/for-nodes`, DEF-25): stored items of the user's visible collections.                                                                      |
 
 **Derived membership is NOT resolved here.** The definition engine (collections service)
 reads `getCollection().definition` + exclusions and evaluates predicates/vector rules; this
@@ -145,7 +145,7 @@ created_at) DESC`. **Decision:** the stored column is the ordering key; the rich
   (`existsActiveName` + pre-check pattern, repository-contract rule 4).
 - No `getBackend()` branching outside the repository twins (CI grep-gate; stores and
   `domains/(collections|ai)/**` carry zero `CacheAdapter`/`operationProgress` imports —
-  PLAN §6).
+  CODING_STYLE.md Express Patterns).
 
 ### 2.8 Dependencies
 

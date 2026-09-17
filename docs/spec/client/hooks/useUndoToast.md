@@ -1,14 +1,14 @@
 # useUndoToast Spec
 
-Target-contract spec (docs-first; AI_FEATURE_PLAN §4.11 toast system + undo matrix; PLAN §6 "Client layering", §7 T0.7 consumer).
+Target-contract spec.
 
 ## 1. Overview
 
-| Item                     | Description                                                                                                                                                                                                                                                                                     |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role                     | Undo-toast controller: turns a mutation's `undo: { action_id }` pointer into ONE bottom toast per COMMAND (`[icon] {label}  [되돌리기]`), executes undo through the gateway, and drives the tip/cascade/fingerprint/mixed-result outcomes. Owns the ≤24h undo-window rule of the toast surface. |
-| Used by components/pages | `FileManager` shell (collection CRUD, merge, add/remove members, save-to-collection), MyPage `SuggestionsChecklist` accept, `MergeProposalCard` host, dialog flows                                                                                                                              |
-| Does not own             | Snackbar rendering details (`UndoToast` view), message queue mechanics (extended `useMessage`), journal feed presentation (dashboard), server-side inverse execution (`actions.md`)                                                                                                             |
+| Item                     | Description                                                                                                                                                                                                                                                                                    |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Undo-toast controller: turns a mutation's `undo: { action_id }` pointer into ONE bottom toast per COMMAND (`[icon] {label} [되돌리기]`), executes undo through the gateway, and drives the tip/cascade/fingerprint/mixed-result outcomes. Owns the ≤24h undo-window rule of the toast surface. |
+| Used by components/pages | `FileManager` shell (collection CRUD, merge, add/remove members, save-to-collection), MyPage `SuggestionsChecklist` accept, `MergeProposalCard` host, dialog flows                                                                                                                             |
+| Does not own             | Snackbar rendering details (`UndoToast` view), message queue mechanics (extended `useMessage`), journal feed presentation (dashboard), server-side inverse execution (`actions.md`)                                                                                                            |
 
 ---
 

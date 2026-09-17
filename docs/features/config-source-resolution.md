@@ -109,7 +109,7 @@ Rationale: read per-request/per-operation via the lazy resolver (F3 fix — thes
 mislabeled T1 but never boot-frozen in practice); changing them has no boot-time singleton
 impact.
 
-**LLM\_\* — T2 hot-apply family (AI platform, AI_FEATURE_PLAN §4.2):** every `LLM_*` key is
+**LLM\_\* — T2 hot-apply family (AI platform, docs/features/collections-platform.md §4.2):** every `LLM_*` key is
 T2 and **fully hot** — the LLM adapter resolves its role configs per call through this
 resolver (5 s TTL + `invalidateCache` on settings PUT), and an internal provider-client
 cache **keyed by the resolved-config signature** rebuilds clients on change. A signature
@@ -134,9 +134,9 @@ Reuse the existing `settings` table (already present in both backends):
 
 ```sql
 CREATE TABLE IF NOT EXISTS settings (
-  key        TEXT PRIMARY KEY,
-  value      JSONB NOT NULL,          -- sqlite conversion: TEXT
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+ key TEXT PRIMARY KEY,
+ value JSONB NOT NULL, -- sqlite conversion: TEXT
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
 
@@ -221,9 +221,11 @@ metadata DB by default; only T0 keys are written to `.env`.
    the local store; for the remote backend the `WEA_DB_*` connection.
 3. Compute the **effective config** = env-first over the plaintext DB `settings` rows and
    derive `setup_complete` from it.
-   - `setup_complete=false` → run in **setup mode** (wizard serves; reads/applies against the
-     target DB directly).
-   - `setup_complete=true` → load the T1 snapshot and boot normally.
+
+- `setup_complete=false` → run in **setup mode** (wizard serves; reads/applies against the
+  target DB directly).
+- `setup_complete=true` → load the T1 snapshot and boot normally.
+
 4. Mount app; T1 consumers read from the snapshot; T2 consumers use the lazy resolver
    (env → DB → default, TTL + invalidate-on-write).
 
@@ -270,30 +272,30 @@ map; the server registry is authoritative for tier/secret/source.
 - The "Advanced settings" accordion sits below the main settings rows; config is fetched
   lazily on first expand.
 - **Two top-level sections (config UI section split, 2026-09):**
-  - **Section A — "Runtime settings" (editable).** The four existing subgroups (File storage,
-    Server & security, Email, Runtime) render only keys whose effective state is editable:
-    registry tier T1/T2 AND `source !== 'env'` (db/default). All type-aware inputs, the
-    masked-secret "set new value" flow, the per-field tier badges and the connection-test
-    gating live here, unchanged.
-  - **Section B — "Deploy-time / platform configuration" (read-only).** Rendered below
-    Section A as a flat read-only list in registry order (the order keys arrive in the GET
-    payload). A key is platform-managed — listed here, never editable — when `tier === 'T0'`
-    **or** `source === 'env'`. Section B therefore shows **all T0 keys** (the metadata DB/boot
-    set — `WEA_SQLITE_PATH`, the `WEA_DB_*` remote-DB block incl. `WEA_DB_PASSWORD`, `NODE_ENV`,
-    `DOTENV_CONFIG_PATH`, `JWT_SECRET` — previously hidden from the editor) **plus any T1/T2 key
-    whose effective `source === 'env'`**. Each row shows the translated label, the value
-    (masked `'****'` for secrets; "(unset)"-style text when undefined) and a caption with the
-    tier + a "set in env" note. An intro note explains that these values are provided at deploy
-    time (env / `.env`), cannot be edited here, and require a deployment change + restart.
-  - This **supersedes the earlier "Metadata (T0) group removed (D5)" behavior**: T0 keys are no
-    longer hidden — they are shown read-only — and the per-row env/T0 "locked field" styling
-    inside the editable list is gone: an env-sourced or T0 key is never rendered as a disabled
-    editable field, it is relocated to Section B. The metadata DB connection / boot secrets stay
-    non-editable (health-card verification for the DB is unchanged).
-  - **Classification is state-driven** from the GET payload (`source` / `tier`); there is no
-    static key list and **no server change** — `PUT` still rejects (400) T0 keys
-    (`configT0Protected`) and keys whose current source is `env` (`configEnvSourcedProtected`),
-    so Section A membership cannot be bypassed via the API (F4).
+- **Section A — "Runtime settings" (editable).** The four existing subgroups (File storage,
+  Server & security, Email, Runtime) render only keys whose effective state is editable:
+  registry tier T1/T2 AND `source !== 'env'` (db/default). All type-aware inputs, the
+  masked-secret "set new value" flow, the per-field tier badges and the connection-test
+  gating live here, unchanged.
+- **Section B — "Deploy-time / platform configuration" (read-only).** Rendered below
+  Section A as a flat read-only list in registry order (the order keys arrive in the GET
+  payload). A key is platform-managed — listed here, never editable — when `tier === 'T0'`
+  **or** `source === 'env'`. Section B therefore shows **all T0 keys** (the metadata DB/boot
+  set — `WEA_SQLITE_PATH`, the `WEA_DB_*` remote-DB block incl. `WEA_DB_PASSWORD`, `NODE_ENV`,
+  `DOTENV_CONFIG_PATH`, `JWT_SECRET` — previously hidden from the editor) **plus any T1/T2 key
+  whose effective `source === 'env'`**. Each row shows the translated label, the value
+  (masked `'****'` for secrets; "(unset)"-style text when undefined) and a caption with the
+  tier + a "set in env" note. An intro note explains that these values are provided at deploy
+  time (env / `.env`), cannot be edited here, and require a deployment change + restart.
+- This **supersedes the earlier "Metadata (T0) group removed (D5)" behavior**: T0 keys are no
+  longer hidden — they are shown read-only — and the per-row env/T0 "locked field" styling
+  inside the editable list is gone: an env-sourced or T0 key is never rendered as a disabled
+  editable field, it is relocated to Section B. The metadata DB connection / boot secrets stay
+  non-editable (health-card verification for the DB is unchanged).
+- **Classification is state-driven** from the GET payload (`source` / `tier`); there is no
+  static key list and **no server change** — `PUT` still rejects (400) T0 keys
+  (`configT0Protected`) and keys whose current source is `env` (`configEnvSourcedProtected`),
+  so Section A membership cannot be bypassed via the API (F4).
 - **Connection-key save gating (D1):** editing an S3/WebDAV connection key (see
   `docs/features/backend-health.md`) blocks Save until `POST /api/admin/config/test` with the
   pending values passes; changing a connection key invalidates the result; non-connection keys

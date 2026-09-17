@@ -1,6 +1,6 @@
 # useSearchResults Spec
 
-Target-contract spec (docs-first; AI_FEATURE_PLAN §4.6/§4.12/§4.22; PLAN §6 "Client layering", §7 T0.11/T1.5 consumers).
+Target-contract spec.
 
 ## 1. Overview
 

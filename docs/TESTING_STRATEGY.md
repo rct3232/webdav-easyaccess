@@ -50,7 +50,7 @@ Rules:
 
 ## AI-platform test tiers
 
-Additive policy for the collections/AI platform (AI_FEATURE_PLAN §4.x, PLAN §6–§8). The
+Additive policy for the collections/AI platform (docs/features/collections-platform.md §4.x, CODING_STYLE.md Express Patterns–§8). The
 L0–L3 definitions above are **unchanged**; this section only adds rules and IDs.
 
 - **Fake-LLM hermeticism:** every server-side suite that exercises AI enrichment or query
@@ -67,7 +67,7 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
   against the shared E2E server/database.**
 - **E2E ID ranges:** collection-lifecycle cases use `E2E-COLLECTION-NNN`, AI-behavior cases
   use `E2E-AI-NNN`, third-person declarative titles per the naming convention above.
-  Minimum lifecycle chain: create→digest→archive→undo→restore→purge (PLAN §6 gate).
+  Minimum lifecycle chain: create→digest→archive→undo→restore→purge (CODING_STYLE.md Express Patterns gate).
 - **Degradation-matrix suite:** one suite per §4.12 capability column — `None` (no adapter
   configured at all), `embed` (fake embed only), `embed+chat` (fake embed+chat) — and the
   **None and embed columns must pass green with no real adapter present** (the
@@ -128,9 +128,9 @@ generation)`, backoff/retry parity), embeddings/chunks upsert + FK-cascade parit
 - **Avoid unrelated async noise in page tests:** If a page scenario is not verifying sidebar/tree/FAB chrome, replace those shell-only async seams with lighter doubles so page tests do not inherit extra `act(...)` warnings from unrelated subscriptions or background loads.
 - **Auth-gated page guardrail:** For pages that return `null` until auth context resolves (for example `MyPage`), do not perform immediate `getBy*` queries after `render`. First wait for a stable post-auth UI anchor (`findByRole` or `waitFor`), then interact/assert.
 - **Decision rule:**
-  - Component/page user flow tests -> prefer MSW
-  - Service/hook/util unit tests -> prefer module mocks
-  - Mixed tests -> use hybrid approach (UI/router/i18n module mocks + API via MSW only where stable)
+- Component/page user flow tests -> prefer MSW
+- Service/hook/util unit tests -> prefer module mocks
+- Mixed tests -> use hybrid approach (UI/router/i18n module mocks + API via MSW only where stable)
 
 ### Server
 
@@ -267,11 +267,11 @@ Anchors for the pattern — not an exhaustive matrix.
 
 - Keep platform-owned interaction coverage split when the UI surface differs, but allow a shared spec file for platform-agnostic core flows that exercise the same user-visible path on both desktop and mobile projects.
 - Shared E2E helpers and shared flow specs may contain only platform-agnostic preparation, selectors, and assertions:
-  - authentication/login setup
-  - deterministic test naming
-  - fixture loading
-  - stable file-item locators such as `data-file-path`
-- Playwright hook signatures that use fixtures must use object destructuring for the first argument (even when unused), e.g. `test.beforeEach(async ({}, testInfo) => ...)`.
+- authentication/login setup
+- deterministic test naming
+- fixture loading
+- stable file-item locators such as `data-file-path`
+- Playwright hook signatures that use fixtures must use object destructuring for the first argument (even when unused), e.g. `test.beforeEach(async ({}, testInfo) =>...)`.
 - Do not force desktop and mobile flows to share interaction helpers when the UI surface differs. Shared FAB-based create/upload helpers are fine when the user path is the same, but desktop item-action/context-menu interactions and mobile action-sheet interactions should live in their own platform spec or helper.
 - Express platform ownership in Playwright project/spec assignment, naming, `testMatch`, or `grep` configuration rather than inline `test.skip()` branches keyed off the current project. Exception: mobile-only cases that live inside a both-platform spec (e.g. `E2E-MYPAGE-011/012`) may keep a reason-carrying `test.skip(isMobile ? false : true, 'reason')`.
 - Follow the selector policy from [features/files-sharing.md](features/files-sharing.md): semantic selectors first, `data-file-path` for explorer items, and `data-testid` only for documented unstable or icon-only seams. For SpeedDial-style action menus, prefer the visible `menuitem` names after opening the trigger when that accessibility surface is stable.
@@ -281,10 +281,10 @@ Anchors for the pattern — not an exhaustive matrix.
 Apply uniformly to every spec in `e2e/`:
 
 - **Case title format**: `E2E-<DOMAIN>-NNN: <third-person present declarative description>`.
-  - Sentence case; declarative statement form (no imperative commands like `Approve pending signup`, no `[Px]` priority prefixes, no literal backticks, no emojis, no `snake_case` identifiers in the title).
-  - Scenario labels for hermetic suites stay as a parenthetical between the ID and the colon, normalized: setup wizard `(Case N, both modes|s3 mode only)`, migration `(Flow <label>)`.
-  - IDs should be declared in numeric order within each file. Exception: a serial suite whose execution order is load-bearing (e.g. migration job-state sequences) keeps its execution order.
-  - Every `test()` carries an ID. Setup-only infrastructure tests use a documented `E2E-SETUP-NNN` slot.
+- Sentence case; declarative statement form (no imperative commands like `Approve pending signup`, no `[Px]` priority prefixes, no literal backticks, no emojis, no `snake_case` identifiers in the title).
+- Scenario labels for hermetic suites stay as a parenthetical between the ID and the colon, normalized: setup wizard `(Case N, both modes|s3 mode only)`, migration `(Flow <label>)`.
+- IDs should be declared in numeric order within each file. Exception: a serial suite whose execution order is load-bearing (e.g. migration job-state sequences) keeps its execution order.
+- Every `test()` carries an ID. Setup-only infrastructure tests use a documented `E2E-SETUP-NNN` slot.
 - **Suite title format**: lowercase sentence case. Platform-owned suites append `(desktop)` or `(mobile)`. Hermetic families append their ID range, e.g. `first-run setup wizard (E2E-SETUP-001..004)`.
 - **Serialization**: use `test.describe.configure({ mode: 'serial' })` (never the anonymous `test.describe.serial`). Suites that mutate shared per-project DB state are serial. Prefer parallel-safe cases (assertion-context containment); serial is required only when a suite mutates shared per-project DB state or depends on prior cases.
 - **Skips**: every `test.skip`/`test.fixme` carries a reason string. Platform ownership goes in `testMatch`/project assignment, not inline project skips (exception above).
@@ -293,12 +293,12 @@ Apply uniformly to every spec in `e2e/`:
 - When using Playwright `APIRequestContext` for setup or cleanup, pass URL query strings with `params`, not `query`, so contract-required request parameters actually reach the server.
 - **Hermetic scratch projects (setup wizard):** the first-run setup spec runs in dedicated `setup-wizard-desktop` / `setup-wizard-mobile` Playwright projects that never reuse the shared `.env.e2e` boot state. Each test spawns its own scratch server instance on `:5003` (own env file via `DOTENV_CONFIG_PATH`, own sqlite path, own scratch PG DB) and supervises its own process lifecycle, because restart is the behavior under test. The spec is serial within the describe and cleans up per case in `afterEach` (kill the scratch child, remove the scratch dir, drop the scratch PG database). Keep these projects additive — do not fold them into the mode-prefixed project matrix.
 - **Per-run seed + hermetic cases (no inter-project chains):** the shared E2E database is seeded ONCE per invocation by `global-setup.ts`. Projects (`desktop`, `mobile`, `admin-*`, hermetic) are INDEPENDENT siblings and may run concurrently — Playwright `dependencies` must NOT be used to order suite projects, because dependency projects run in full regardless of the test filter, so any partial run cascades the whole chain (measured 2026-09-11: selecting one spec pulled 88 tests/10 files vs 10/1 de-chained).
-  - Isolation therefore comes from CASE HERMETICITY, not from ordering: every case creates/asserts only its own data (assertion-context containment) and cleans up in `afterEach`; nothing may leave root-level or global residue.
-  - **Global-state mutations are restored in-test**: a case that flips a shared setting (e.g. `registration_enabled`) must restore the prior value at the end (save → mutate → assert → restore) so concurrent suites never observe the flipped window.
-  - **Globally destructive cases run SCRATCH-HERMETIC, not merely project-owned**: file-level `testMatch` ownership is NOT sufficient because the worker pool is shared and `fullyParallel` interleaves tests across spec files — a global purge on the shared server races any other project's in-flight cases (this was the DEF-20 webdav-smoke flake, TRASH-007 vs TRASH-001/003). Such cases get their own scratch server project (e.g. `trash-admin-desktop` on :5012); they are excluded from the shared-mode smokes.
-  - Case-scoped names must be unique per RUN and per PROJECT (include the project slug and a timestamp — `buildName`/`getTestSuffix`/explicit `Date.now()`), because the same spec now executes in sibling projects concurrently.
-  - **Retries must be self-healing: derived user identity is unique per ATTEMPT.** A deterministic `getTestSuffix` makes retries structurally incapable of passing for any case that permanently mutates the derived user's state (e.g. `E2E-MYPAGE-005` changes the password): the retry's `ensureApprovedUser` finds the user already exists (`400 usernameTaken`) and then logs in with the pre-mutation password (`401`) — measured 2026-09-13, CI build #47, where one transient render blip + `--max-failures=1` hard-stopped 55 cases because retries could not recover. `getTestSuffix` therefore appends `_r<retry>` when `testInfo.retry > 0` (first-attempt identities are unchanged; `testInfo.retry` is constant within an attempt, so every helper call in one attempt resolves to the same user). Consequence rule: failed attempts leave residue (their users/requests persist), so no case may assert an exact count on a listing that other attempts can also write to — filter by the case's own identifiers instead.
-  - The 50-item root-render cap cannot bite: root-level accumulation was eliminated by containment (the historical `00-project-setup` re-truncate between projects is retired — do NOT reintroduce suite→suite dependencies to mask a hermeticity bug; fix the case).
+- Isolation therefore comes from CASE HERMETICITY, not from ordering: every case creates/asserts only its own data (assertion-context containment) and cleans up in `afterEach`; nothing may leave root-level or global residue.
+- **Global-state mutations are restored in-test**: a case that flips a shared setting (e.g. `registration_enabled`) must restore the prior value at the end (save → mutate → assert → restore) so concurrent suites never observe the flipped window.
+- **Globally destructive cases run SCRATCH-HERMETIC, not merely project-owned**: file-level `testMatch` ownership is NOT sufficient because the worker pool is shared and `fullyParallel` interleaves tests across spec files — a global purge on the shared server races any other project's in-flight cases (this was the DEF-20 webdav-smoke flake, TRASH-007 vs TRASH-001/003). Such cases get their own scratch server project (e.g. `trash-admin-desktop` on :5012); they are excluded from the shared-mode smokes.
+- Case-scoped names must be unique per RUN and per PROJECT (include the project slug and a timestamp — `buildName`/`getTestSuffix`/explicit `Date.now()`), because the same spec now executes in sibling projects concurrently.
+- **Retries must be self-healing: derived user identity is unique per ATTEMPT.** A deterministic `getTestSuffix` makes retries structurally incapable of passing for any case that permanently mutates the derived user's state (e.g. `E2E-MYPAGE-005` changes the password): the retry's `ensureApprovedUser` finds the user already exists (`400 usernameTaken`) and then logs in with the pre-mutation password (`401`) — measured 2026-09-13, CI build #47, where one transient render blip + `--max-failures=1` hard-stopped 55 cases because retries could not recover. `getTestSuffix` therefore appends `_r<retry>` when `testInfo.retry > 0` (first-attempt identities are unchanged; `testInfo.retry` is constant within an attempt, so every helper call in one attempt resolves to the same user). Consequence rule: failed attempts leave residue (their users/requests persist), so no case may assert an exact count on a listing that other attempts can also write to — filter by the case's own identifiers instead.
+- The 50-item root-render cap cannot bite: root-level accumulation was eliminated by containment (the historical `00-project-setup` re-truncate between projects is retired — do NOT reintroduce suite→suite dependencies to mask a hermeticity bug; fix the case).
 
 ### Assertion-context containment
 
@@ -327,9 +327,9 @@ Detailed browser-flow inventory, rollout order, and planned Playwright ownership
 - Put exhaustive scenario inventory, priority, ownership, and status in [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md).
 - Keep `docs/features/*.md` focused on product behavior and **feature-specific testing anchors** only.
 - Add E2E guidance to a feature doc only when that feature has rules that are easier to understand at the feature boundary than in the global plan, for example:
-  - selector rules unique to that feature
-  - platform-specific interaction ownership (desktop vs mobile)
-  - feature-only flow-structure constraints
+- selector rules unique to that feature
+- platform-specific interaction ownership (desktop vs mobile)
+- feature-only flow-structure constraints
 - Do not copy full scenario matrices, rollout order, or per-spec ownership into feature docs when the canonical E2E plan already tracks them.
 
 ---
@@ -433,9 +433,11 @@ When a test fails (during development, CI, or when fixing regressions):
 
 1. **Diagnose:** Run the failing test, read the error message, and identify the root cause.
 2. **Classify:** Determine whether it is:
-   - **A** — Bug in production code
-   - **B** — Bug in the test itself
-   - **C** — Spec/contract mismatch
+
+- **A** — Bug in production code
+- **B** — Bug in the test itself
+- **C** — Spec/contract mismatch
+
 3. **Act:** Apply the fix (or update spec) according to the classification. Do not modify code before classifying.
 4. **Record:** Add an entry to [docs/RCA_LOG.md](RCA_LOG.md) with date, summary, classification, and action taken.
 

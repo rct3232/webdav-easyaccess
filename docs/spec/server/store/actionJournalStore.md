@@ -5,8 +5,8 @@
 | Item         | Description                                                                                                                                                                                                                                          |
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role         | The generic undo journal (`action_journal`) — common infrastructure, NOT ai-prefixed. Owns `commitChange` (the ONLY journaled write path: change + journal row in one TX under `lockManager`), the undo executor, the 30-day feed, and retention GC. |
-| Design owner | `AI_FEATURE_PLAN.md` §4.11 (rules, subjects, retention, toast boundaries), §5 (schema row), invariant 4.                                                                                                                                             |
-| Consumers v1 | collections domain (all silent/user acts, T0.7); later: batch worker (P3.5), admin settings (P4), file rename / sharing. `permissions` and `tags` are reserved enum values with NO writer.                                                           |
+| Design owner | `docs/features/collections-platform.md` §4.11 (rules, subjects, retention, toast boundaries), §5 (schema row), invariant 4.                                                                                                                          |
+| Consumers v1 | collections domain (all silent/user acts, DEF-25); later: batch worker (P3.5), admin settings , file rename / sharing. `permissions` and `tags` are reserved enum values with NO writer.                                                             |
 
 ---
 
@@ -42,7 +42,7 @@ chain_seq, status, created_at, undone_at, expires_at)`; `UNIQUE(domain,subject,c
 - `status` TEXT + CHECK: `applied | undone | expired`.
 - `payload` JSONB: `{ inverse, items?, fingerprint?, note? }` — `inverse` is the
   domain-defined operation descriptor the registered undo executor applies; `items` is the
-  per-item `[{ ..., fingerprint }]` list for command rows; `fingerprint` guards staleness.
+  per-item `[{..., fingerprint }]` list for command rows; `fingerprint` guards staleness.
   Audit survives expiry because `domain/subject/subject_label/action/actor/chain_seq` stay.
 - `chain_seq`: monotonic per `(domain, subject)` integer, assigned `COALESCE(MAX,0)+1`
   inside the commit TX. `actor` TEXT (user id; the literal `'system'` for silent evolution).

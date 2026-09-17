@@ -1,6 +1,6 @@
 # collectionsNotifier Spec
 
-Target-contract spec (docs-first; AI_FEATURE_PLAN §3.1/§4.8/§4.9; PLAN §6 "Client layering").
+Target-contract spec.
 
 ## 1. Overview
 

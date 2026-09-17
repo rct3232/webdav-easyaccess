@@ -1,6 +1,6 @@
 # MergeProposalCard Spec
 
-Target-contract spec (docs-first; AI_FEATURE_PLAN §4.4/§4.9c/§4.11/§4.19 merge-arbiter; PLAN §7 T3.1/T3.1b).
+Target-contract spec.
 
 ## 1. Overview
 
@@ -40,7 +40,7 @@ Target-contract spec (docs-first; AI_FEATURE_PLAN §4.4/§4.9c/§4.11/§4.19 mer
 ### 2.4 Expanded Compare Overlay
 
 - Strip click → two-column compare overlay (`A` | `B`, unique + shared member lists), **≤300px**, rendered OVER the list (the list is not shifted/collapsed).
-- **Decision:** overlay data needs `overlap_sample: [{ a_node_id, b_node_id }]` + side-unique samples on the suggestion row (T3.1 server payload extension; the route spec currently ships counts only). Until shipped, the strip and overlay render skeleton rows — count grammar stays authoritative (zero fabrication).
+- **Decision:** overlay data needs `overlap_sample: [{ a_node_id, b_node_id }]` + side-unique samples on the suggestion row (the corresponding docs step server payload extension; the route spec currently ships counts only). Until shipped, the strip and overlay render skeleton rows — count grammar stays authoritative (zero fabrication).
 - Esc/outside-click collapses back to the 68px card.
 
 ### 2.5 Zero-Footprint Rule

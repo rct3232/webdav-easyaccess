@@ -1,6 +1,6 @@
 # CollectionPropertiesDialog Spec
 
-Target-contract spec (docs-first; AI_FEATURE_PLAN §3.1/§3.2/§4.7/§4.9/§4.10/§4.12; PLAN §7 T0.4/T3.2 consumers).
+Target-contract spec.
 
 ## 1. Overview
 
@@ -51,7 +51,7 @@ Target-contract spec (docs-first; AI_FEATURE_PLAN §3.1/§3.2/§4.7/§4.9/§4.10
 
 ### 2.6 FilePropertiesDialog extensions (collection context — cross-reference)
 
-- **Decision:** `소속 컬렉션` chips and a per-FILE `AI 정보` tab belong to FilePropertiesDialog, not this dialog: 정보 tab gains membership chips (`POST /collections/for-nodes` → collection names, click routes to that collection's member view, T3.6); `AI 정보` tab (file `tags/summary/caption` from `ai_features`) renders only when features exist for the viewer's capability state — absent-not-disabled (§4.12), and read-only tab subset when opened by a collection grantee who is not the file owner (§3.2 member-row properties rule). FilePropertiesDialog.md gets the corresponding row at implementation time.
+- **Decision:** `소속 컬렉션` chips and a per-FILE `AI 정보` tab belong to FilePropertiesDialog, not this dialog: 정보 tab gains membership chips (`POST /collections/for-nodes` → collection names, click routes to that collection's member view, DEF-25); `AI 정보` tab (file `tags/summary/caption` from `ai_features`) renders only when features exist for the viewer's capability state — absent-not-disabled (§4.12), and read-only tab subset when opened by a collection grantee who is not the file owner (§3.2 member-row properties rule). FilePropertiesDialog.md gets the corresponding row at implementation time.
 
 ### 2.7 i18n Keys
 

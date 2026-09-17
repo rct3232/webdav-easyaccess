@@ -40,17 +40,17 @@
 ### 2.4 Dependencies
 
 - Hooks:
-  - `useAuth()` for `user`
-  - `useLocation()` for `location.state?.category` bootstrapping
-  - `useNavigate()` for `onCloseMyPage`
+- `useAuth()` for `user`
+- `useLocation()` for `location.state?.category` bootstrapping
+- `useNavigate()` for `onCloseMyPage`
 - Pure helpers/constants:
-  - `resolveMyPageCategory()`, `getMyPageSidebarCategories()`, and `DEFAULT_MY_PAGE_CATEGORY` from `client/src/utils/myPageRegistry.js`
+- `resolveMyPageCategory()`, `getMyPageSidebarCategories()`, and `DEFAULT_MY_PAGE_CATEGORY` from `client/src/utils/myPageRegistry.js`
 
 ### 2.5 Side Effects
 
 - When `location.state?.category` changes, controller normalizes it based on `user?.is_admin`, then updates:
-  - `selectedCategory`
-  - resets `selectedContentItem` to `null`
+- `selectedCategory`
+- resets `selectedContentItem` to `null`
 - Prepares `sidebarItems` for the current role so the sidebar view does not need role logic
 - When `user?.is_admin` changes (e.g. auth refresh), controller re-normalizes the category derived from route state.
 
@@ -58,24 +58,24 @@
 
 - No network calls are made by this hook.
 - Invalid/unknown route category values fall back to `DEFAULT_MY_PAGE_CATEGORY` only for:
-  - missing category id
-  - legacy `admin` mapping
-  - admin-only categories for non-admin users
+- missing category id
+- legacy `admin` mapping
+- admin-only categories for non-admin users
 - Unknown category ids are preserved (no category highlighting) to match existing UI edge-case behavior.
 
 ### 2.7 Verification Scenarios
 
 - Initial state:
-  - `location.state?.category` initializes `selectedCategory`
-  - legacy `admin` maps to `admin-users` for admins and to default for non-admins
+- `location.state?.category` initializes `selectedCategory`
+- legacy `admin` maps to `admin-users` for admins and to default for non-admins
 - Category selection:
-  - calling `onSelectCategory('sharing')` resets `selectedContentItem` to `null`
-  - when `isMobile` is true, selecting a category closes the drawer
+- calling `onSelectCategory('sharing')` resets `selectedContentItem` to `null`
+- when `isMobile` is true, selecting a category closes the drawer
 - Content item selection:
-  - calling `onSelectContentItem(null)` returns to list view (for multi-item categories)
-  - calling `onSelectContentItem('inbox')` switches to detail view
+- calling `onSelectContentItem(null)` returns to list view (for multi-item categories)
+- calling `onSelectContentItem('inbox')` switches to detail view
 - Navigation:
-  - calling `onCloseMyPage()` navigates to `/`
+- calling `onCloseMyPage()` navigates to `/`
 
 ### 2.8 Edge Cases
 
@@ -85,14 +85,14 @@
 
 ---
 
-## 3. AI-platform registry additions (AI platform — target, lands with P0 (T0.10) / P4 (T4.1) as noted)
+## 3. AI-platform registry additions (AI platform — implementation tracked as DEF-25) / P4 (DEF-25) as noted)
 
-Addendum to §2.3/§2.4: two new `myPageRegistry` categories flow through the existing pipeline unchanged (`resolveMyPageCategory`, `getMyPageSidebarCategories`, admin normalization; no new controller state). Entry shape per PLAN §6 / `CollectionDashboard.md` §2.5:
+Addendum to §2.3/§2.4: two new `myPageRegistry` categories flow through the existing pipeline unchanged (`resolveMyPageCategory`, `getMyPageSidebarCategories`, admin normalization; no new controller state). Entry shape per CODING_STYLE.md Express Patterns / `CollectionDashboard.md` §2.5:
 
-| Category             | Entry                                                                                           | Visibility | Content                                                                              |
-| -------------------- | ----------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------ |
-| `storage` (저장공간) | `{ id: 'storage', icon, labelKey: 'mypage.storage', visibility: 'all' }`                        | All users  | Direct → `CollectionDashboard` (P0).                                                 |
-| AI-ops (admin)       | `{ id: 'admin-ai', icon, labelKey: 'mypage.adminAiOps', visibility: 'admin', statusChip }` (P4) | Admin only | Direct → admin AI governance panel; regular users: row ABSENT (not disabled, §4.12). |
+| Category             | Entry                                                                                      | Visibility | Content                                                                              |
+| -------------------- | ------------------------------------------------------------------------------------------ | ---------- | ------------------------------------------------------------------------------------ |
+| `storage` (저장공간) | `{ id: 'storage', icon, labelKey: 'mypage.storage', visibility: 'all' }`                   | All users  | Direct → `CollectionDashboard`.                                                      |
+| AI-ops (admin)       | `{ id: 'admin-ai', icon, labelKey: 'mypage.adminAiOps', visibility: 'admin', statusChip }` | Admin only | Direct → admin AI governance panel; regular users: row ABSENT (not disabled, §4.12). |
 
 - **`statusChip`:** plain serializable `{ labelKey, tone }` produced by a registry helper from `settings/public.ai` flags + admin `GET /api/admin/health` — 4 states `not_configured | probe_failed(reason) | partial | ok` (per-role); no JSX in registry data, sidebar renders it. Data re-read via the existing MyPage settings seam; no fetch inside this controller (§2.4 "no network calls" preserved — inputs are props/service results).
 - Deep-link bootstrapping (`location.state.category`) accepts the two new ids; legacy/unknown handling (§2.6) unchanged.

@@ -1,6 +1,6 @@
 # SearchBarResultsMode Spec
 
-Target-contract spec (docs-first; AI_FEATURE_PLAN §4.6/§4.12/§4.22; PLAN §7 T0.11/T1.5).
+Target-contract spec.
 
 ## 1. Overview
 
@@ -36,7 +36,7 @@ Target-contract spec (docs-first; AI_FEATURE_PLAN §4.6/§4.12/§4.22; PLAN §7 
 
 ### 2.3 Header Grammar
 
-- `🔍 "query" · N개 결과 [컬렉션으로 저장][✕]` — exactly ONE action button, no dropdown (§4.6). NL chat-parser (T3.4, future) extends this same header with a structured-predicate tab — additive slot reserved, nothing renders now (§4.22).
+- `🔍 "query" · N개 결과 [컬렉션으로 저장][✕]` — exactly ONE action button, no dropdown (§4.6). NL chat-parser (DEF-25, future) extends this same header with a structured-predicate tab — additive slot reserved, nothing renders now (§4.22).
 - Desktop: replaces the breadcrumb row; mobile: renders above the list (no breadcrumb exists there). **Decision.**
 - Section display rules: empty section renders nothing (no header, no "0 results" block); both empty ⇒ single `fileManager.searchNoResults` line + chips remain.
 

@@ -41,27 +41,27 @@ Notes:
 - These grouped props are organizational only; they do not grant the view ownership of side effects.
 - The view should consume only the grouped values it actually renders. If the shell/controller has extra internal state, keep that state upstream instead of destructuring unused values in the view.
 - Handler grouping should reflect responsibility boundaries. For example:
-  - `interaction`: click/open/context/drag handlers for explorer content.
-  - `commands`: dialog completion and command entry points.
-  - `progress`: retry/cancel callbacks and progress items.
-  - `refreshIndicator`: pull-to-refresh indicator styles and state.
+- `interaction`: click/open/context/drag handlers for explorer content.
+- `commands`: dialog completion and command entry points.
+- `progress`: retry/cancel callbacks and progress items.
+- `refreshIndicator`: pull-to-refresh indicator styles and state.
 - Dialog grouping should also reflect responsibility boundaries. For example:
-  - `actionContext`: action sheet, desktop context menu, current file target.
-  - `pickerState`: folder picker and mobile move/copy picker state.
-  - `modalDialogs`: upload/create/preview/rename/share/properties/confirm/conflict dialog state.
-  - `fileTargets`: selected file/media/conflict payloads consumed by dialogs.
+- `actionContext`: action sheet, desktop context menu, current file target.
+- `pickerState`: folder picker and mobile move/copy picker state.
+- `modalDialogs`: upload/create/preview/rename/share/properties/confirm/conflict dialog state.
+- `fileTargets`: selected file/media/conflict payloads consumed by dialogs.
 - Explorer-session grouping should reflect responsibility boundaries. For example:
-  - `controlsState`: `currentPath`, `viewMode`, `sortMode`, `searchQuery`, and other true explorer-session inputs owned by the session controller.
-  - `listingState`: `displayedFiles`, `loading`, `processingMap`, thumbnail callbacks, and infinite-scroll refs/flags.
+- `controlsState`: `currentPath`, `viewMode`, `sortMode`, `searchQuery`, and other true explorer-session inputs owned by the session controller.
+- `listingState`: `displayedFiles`, `loading`, `processingMap`, thumbnail callbacks, and infinite-scroll refs/flags.
 - Preference persistence for sort/view mode stays upstream in the explorer session controller; this pure view should not require dedicated `saveSortMode` / `saveViewMode` props.
 - Pure control-chrome state that is only needed inside a child control component (for example a local sort-menu anchor) should stay local to that child instead of being hoisted through `FileManager` and this view.
 - Selection grouping should reflect responsibility boundaries. For example:
-  - `selectionModel`: `selectionMode`, `selectedFiles`, and per-item toggle callbacks.
-  - `bulkState`: select-all/reset callbacks plus bulk capability flags derived from the current selection.
+- `selectionModel`: `selectionMode`, `selectedFiles`, and per-item toggle callbacks.
+- `bulkState`: select-all/reset callbacks plus bulk capability flags derived from the current selection.
 - Explorer-action grouping should reflect responsibility boundaries. For example:
-  - `capabilityState`: write-permission style capability flags.
-  - `treeState`: tree refresh/update tokens consumed by the folder tree.
-  - `transferState`: internal drag path and bulk move/copy progress state.
+- `capabilityState`: write-permission style capability flags.
+- `treeState`: tree refresh/update tokens consumed by the folder tree.
+- `transferState`: internal drag path and bulk move/copy progress state.
 
 ### 2.3 Callback Signatures
 
@@ -113,9 +113,9 @@ These scenarios should be covered by a dedicated component test in `client/src/c
 
 ---
 
-## 3. AI-platform composition (AI platform — target, lands with P0)
+## 3. AI-platform composition (AI platform — implementation tracked as DEF-25)
 
-Addendum to §2.2 grouping rules (AI_FEATURE_PLAN §4.6 results mode, T0.4 virtual collections). Pure-view rule unchanged: the shell passes view-ready models; the view only swaps regions.
+Addendum to §2.2 grouping rules (docs/features/collections-platform.md §4.6 results mode, DEF-25 virtual collections). Pure-view rule unchanged: the shell passes view-ready models; the view only swaps regions.
 
 - **Search results mode:** when the shell passes a `searchResults` model with `mode === 'results'` (prepared by `useSearchResults`), the view mounts the `SearchBarResultsMode` header **above the list region** (its own spec owns the header chrome; desktop replaces the breadcrumb row per `SearchBarResultsMode.md` §2.3) and the list renders the prepared two-section rows. Exiting results mode returns to the normal breadcrumb+list composition.
 - **Virtual collection nodes:** when the active node is `__collections__` (or its `__archive__` child / an opened collection route), `CollectionsListView` **replaces the FileList region** (list mode = cards + merge-card slot; members mode = explorer rows with `MemberRowControls` wiring). All other regions (controls, FAB policy per read-only virtual-view precedent, dialogs) follow the existing `__recent__`/`__shared__`/`__trash__` treatment.

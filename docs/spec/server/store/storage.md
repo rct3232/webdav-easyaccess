@@ -41,8 +41,8 @@
 | withSqliteTransaction | (callback) => Promise\<T\> | Executes callback in SQLite transaction |
 | closeSqliteDb         | () => void                 | Close SQLite database                   |
 
-> **(T0.12 target — lands with P0) Driver change: `sqlite3` npm → built-in `node:sqlite`.**
-> Decided contract (AI_FEATURE_PLAN §4.13, PLAN §6/§7 T0.12): the driver swap is confined
+> **(implementation tracked as DEF-25) Driver change: `sqlite3` npm → built-in `node:sqlite`.**
+> Decided contract (docs/features/collections-platform.md §4.13, CODING_STYLE.md Express Patterns/§7 DEF-25): the driver swap is confined
 > to the `db/sqliteExecutor.js` seam (+ these connection helpers), so the storage surface
 > above keeps its exported semantics; `getSqliteConnection` will return a
 > `node:sqlite` `DatabaseSync` instance instead of a sqlite3 `Database`. Binding
@@ -94,17 +94,17 @@ runtime guard.
 
 - Backend selector returns `'postgresql'` when the remote-DB credential block is present.
 - Pool configuration uses environment values:
-  - `WEA_DB_HOST`, `WEA_DB_PORT`, `WEA_DB_DATABASE`, `WEA_DB_USER`, `WEA_DB_PASSWORD`
-  - optional `WEA_DB_SSL` (`true`/`false`)
-  - optional `WEA_DB_MAX`, `WEA_DB_IDLE_TIMEOUT_MS`, `WEA_DB_CONNECTION_TIMEOUT_MS`
-  - optional `WEA_DB_QUERY_TIMEOUT_MS` (client-side pg `query_timeout`, default 60_000; `0` disables). Bounds every statement client-side so a mid-session DB drop (silent network partition) errors out instead of hanging the request indefinitely. Set `0` only for unusually long maintenance queries.
+- `WEA_DB_HOST`, `WEA_DB_PORT`, `WEA_DB_DATABASE`, `WEA_DB_USER`, `WEA_DB_PASSWORD`
+- optional `WEA_DB_SSL` (`true`/`false`)
+- optional `WEA_DB_MAX`, `WEA_DB_IDLE_TIMEOUT_MS`, `WEA_DB_CONNECTION_TIMEOUT_MS`
+- optional `WEA_DB_QUERY_TIMEOUT_MS` (client-side pg `query_timeout`, default 60_000; `0` disables). Bounds every statement client-side so a mid-session DB drop (silent network partition) errors out instead of hanging the request indefinitely. Set `0` only for unusually long maintenance queries.
 - `getPgPool()`:
-  - throws standardized `storage.postgresqlNotConfigured` when required connection env is missing
-  - returns singleton `pg.Pool` instance
+- throws standardized `storage.postgresqlNotConfigured` when required connection env is missing
+- returns singleton `pg.Pool` instance
 - `withTransaction(callback)`:
-  - runs `BEGIN`/`COMMIT`/`ROLLBACK` around callback
-  - callback receives a query-capable client
-  - SQL errors are converted by shared DB error mapping
+- runs `BEGIN`/`COMMIT`/`ROLLBACK` around callback
+- callback receives a query-capable client
+- SQL errors are converted by shared DB error mapping
 - `closePgPool()` is provided for tests and process shutdown hooks.
 
 ### 2.5 PostgreSQL v2 Schema Contract

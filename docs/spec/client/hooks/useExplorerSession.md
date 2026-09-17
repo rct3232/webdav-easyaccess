@@ -57,20 +57,20 @@ Notes:
 ### 2.4 Responsibilities (must be non-overlapping)
 
 - **Owns**
-  - Search query state and client-side filtering behavior (must match current “filter by name” behavior).
-  - Sort state and ordering rules (must match current ordering rules).
-  - View mode state and any page-local restrictions needed to preserve current UX.
-  - Preference-backed persistence for sort/view mode through a storage adapter/helper boundary.
-  - Session-local file shaping needed for view updates that do not re-fetch data (for example thumbnail URL merges).
-  - Derived display list that the view consumes, including infinite-scroll shaping.
-  - Exposes a node-change boundary token (`sessionKey`) used by the shell/selection seam for selection reset.
+- Search query state and client-side filtering behavior (must match current “filter by name” behavior).
+- Sort state and ordering rules (must match current ordering rules).
+- View mode state and any page-local restrictions needed to preserve current UX.
+- Preference-backed persistence for sort/view mode through a storage adapter/helper boundary.
+- Session-local file shaping needed for view updates that do not re-fetch data (for example thumbnail URL merges).
+- Derived display list that the view consumes, including infinite-scroll shaping.
+- Exposes a node-change boundary token (`sessionKey`) used by the shell/selection seam for selection reset.
 - **Does not own**
-  - Fetching/listing files (belongs to listing logic / gateway usage outside this hook).
-  - Recent-file subscriptions or repository access when `__recent__` is active.
-  - Clearing or mutating selection state directly when the path changes.
-  - Navigation transitions/optimistic updates (belongs to `useExplorerNavigation`).
-  - Operations orchestration and conflict prompts (belongs to `useExplorerCommands`).
-  - Progress coordination, retry/cancel routing, completion messaging (belongs to `useExplorerProgress`).
+- Fetching/listing files (belongs to listing logic / gateway usage outside this hook).
+- Recent-file subscriptions or repository access when `__recent__` is active.
+- Clearing or mutating selection state directly when the path changes.
+- Navigation transitions/optimistic updates (belongs to `useExplorerNavigation`).
+- Operations orchestration and conflict prompts (belongs to `useExplorerCommands`).
+- Progress coordination, retry/cancel routing, completion messaging (belongs to `useExplorerProgress`).
 
 ### 2.5 Dependencies
 
@@ -109,9 +109,9 @@ Verify observable outcomes (“what”), not internal implementation:
 
 ---
 
-## 3. AI-platform boundary — server-search state handoff (D1) (AI platform — target, lands with P0)
+## 3. AI-platform boundary — server-search state handoff (D1) (AI platform — implementation tracked as DEF-25)
 
-Addendum to §1/§2.4 per `docs/spec/client/hooks/useSearchResults.md` and AI_FEATURE_PLAN §4.6; the sections above stay authoritative for the typing filter.
+Addendum to §1/§2.4 per `docs/spec/client/hooks/useSearchResults.md` and docs/features/collections-platform.md §4.6; the sections above stay authoritative for the typing filter.
 
 - **Server-results state is NOT owned here:** submitted query, two-section results, query chips and results-mode entry/exit belong to `useSearchResults` (page-local; D1). This hook keeps `searchQuery` for the **typing filter only** — the inline name-match derivation in §2.3–§2.4 is unchanged.
 - **New stable callback:** `onSubmitQuery(query)` joins §2.3 — invoked by `FloatingSearchBar` on Enter / search-icon press and delegated to the shell wiring (`useSearchResults.submitSearch`). Stable identity across renders; the hook itself performs no fetch (§2.5 no-IO rule stays absolute).

@@ -60,8 +60,8 @@
 - Returns null when !file
 - **Trash rows (DEF-16 P9):** when the host passes `onRestore`/`onPurge` (trash view only), the menu shows Restore (`data-testid="trash-action-restore"`, gate `fileWritePermission` = row `hasWritePermission`) and Permanent delete (`data-testid="trash-action-purge"`, error accent, same gate) above Properties; the host withholds the live-item callbacks (download/rename/move/copy/share/delete) in the trash view, so only Restore / Permanent delete / Properties render.
 - E2E selector contract:
-  - action entries used by flow tests expose the same stable `data-testid` values as the mobile `FileActionSheet` counterparts (for example rename/delete)
-  - this allows the same Playwright helper to trigger rename/delete on both desktop and mobile without text matching
+- action entries used by flow tests expose the same stable `data-testid` values as the mobile `FileActionSheet` counterparts (for example rename/delete)
+- this allows the same Playwright helper to trigger rename/delete on both desktop and mobile without text matching
 
 ### 2.7 Verification Scenarios
 
@@ -81,13 +81,13 @@ Checklist for unit test writing:
 
 ---
 
-## 3. AI-platform entries (AI platform — target, lands with P0)
+## 3. AI-platform entries (AI platform — implementation tracked as DEF-25)
 
-Addendum to §2.2/§2.5/§2.6 per AI_FEATURE_PLAN §3.2/§3.3 (`AddToCollectionMenu.md`, `MemberRowControls.md`; PLAN §7 T0.5).
+Addendum to §2.2/§2.5/§2.6 per docs/features/collections-platform.md §3.2/§3.3 (`AddToCollectionMenu.md`, `MemberRowControls.md`; the collections-platform feature doc §7 DEF-25).
 
 - **New entries (main listing), rendered via the existing "callback provided ⇒ item renders" idiom (§2.6):**
-  - `컬렉션에 추가 ▸` — new optional callback `onAddToCollection(file)`; the submenu itself is the host-mounted `AddToCollectionMenu` component (this menu only anchors/launches it).
-  - `좋아요` toggle — new optional callback `onToggleLike(file)`; pressed/label state comes from the **row data `file.liked`** verbatim (current viewer's own like only — invariant 9; no counts, no other-user state).
+- `컬렉션에 추가 ▸` — new optional callback `onAddToCollection(file)`; the submenu itself is the host-mounted `AddToCollectionMenu` component (this menu only anchors/launches it).
+- `좋아요` toggle — new optional callback `onToggleLike(file)`; pressed/label state comes from the **row data `file.liked`** verbatim (current viewer's own like only — invariant 9; no counts, no other-user state).
 - **Member-list context variant:** when the host opens this menu on a collection MEMBER row, the rendered set is exactly the `MemberRowControls.md` §2.3 set (exclude / publish / download / `원본에서 보기` / properties / like) — the host passes only those callbacks. **No move/copy/rename/delete of the file node in member context, ever** (§3.2 "collection is a view, not a workspace"; grep-able invariant in that spec).
 - i18n (appends §2.5): `fileManager.addToCollection`, `fileManager.memberLike`/`fileManager.memberUnlike`.
 - E2E selector contract: `data-testid="collection-add"` / `data-testid="like-toggle"`, shared with the mobile sheet (§2.6 cross-surface rule).

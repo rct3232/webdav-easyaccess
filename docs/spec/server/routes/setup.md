@@ -18,7 +18,7 @@ Feature Source-of-Truth: [config-source-resolution.md](../../../features/config-
 - **Source:** `server/domains/setup/routes.js` (new), mounted at `/api/setup` in `server/index.js`
 - **Validator:** `server/infrastructure/setupStatus.js` — `computeSetupStatus(env, { effectiveConfig })` → `{ setup_complete, missing: string[], current: {…masked} }`
 - **Effective config:** `server/infrastructure/configResolver.js` (`getSharedResolver().getEffectiveConfig()`) — env-first over DB `settings` rows; secrets always masked
-- **Classification:** `server/infrastructure/configRegistry.js` (`isT0`, `isSecret`) — tiers per PLAN §4
+- **Classification:** `server/infrastructure/configRegistry.js` (`isT0`, `isSecret`) — tiers per the collections-platform feature doc §4
 - **DB store:** `server/models/Settings.js` (sqlite path) — plaintext config passed as-is, secret values as plaintext strings too (no encryption at rest)
 - **PG direct write:** same idempotent `settings` DDL as `server/store/postgresql/ddl/001_initial_normalized_schema.sql` + upsert against the target PG
 - **Env writer:** `server/infrastructure/envFileWriter.js` — merge-write **only the T0 subset** to the resolved env path, atomic, `0600`
@@ -26,14 +26,14 @@ Feature Source-of-Truth: [config-source-resolution.md](../../../features/config-
 
 ### 2.2 Route List
 
-| Method | Path       | Auth                                              | Description                                                                                                                                                                                                                                               |
-| ------ | ---------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/status`  | None                                              | Derived setup completeness from the effective config + missing keys + safe current values (non-T0 only).                                                                                                                                                  |
-| POST   | `/test`    | None (403 `setup.complete` when already complete) | Connection test for `s3` or `webdav` targets (postgresql is `.env`-owned under D7; probed via the admin `/api/admin/config/test` instead). **`llm` target added with the AI platform (T1.1, optional wizard AI step — §2.4a below).**                     |
-| POST   | `/apply`   | None (403 `setup.complete` when already complete) | Validate (metadata block optional; `postgresql` rejected); write **non-T0** keys to the connected metadata DB as plaintext; apply admin-password effect. Returns `restart_required: true`. **Optional `llm` block writes DB settings rows only (§2.4a).** |
-| POST   | `/prefill` | —                                                 | **REMOVED** (dead-code cleanup 2026-09). The wizard prefills from `GET /status` `current` only; the endpoint had no caller.                                                                                                                               |
+| Method | Path       | Auth                                              | Description                                                                                                                                                                                                                                                  |
+| ------ | ---------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/status`  | None                                              | Derived setup completeness from the effective config + missing keys + safe current values (non-T0 only).                                                                                                                                                     |
+| POST   | `/test`    | None (403 `setup.complete` when already complete) | Connection test for `s3` or `webdav` targets (postgresql is `.env`-owned under D7; probed via the admin `/api/admin/config/test` instead). **`llm` target added with the AI platform (the corresponding docs step, optional wizard AI step — §2.4a below).** |
+| POST   | `/apply`   | None (403 `setup.complete` when already complete) | Validate (metadata block optional; `postgresql` rejected); write **non-T0** keys to the connected metadata DB as plaintext; apply admin-password effect. Returns `restart_required: true`. **Optional `llm` block writes DB settings rows only (§2.4a).**    |
+| POST   | `/prefill` | —                                                 | **REMOVED** (dead-code cleanup 2026-09). The wizard prefills from `GET /status` `current` only; the endpoint had no caller.                                                                                                                                  |
 
-**AI step contract (decided — AI_FEATURE_PLAN §4.23.5, lands with P1/T1.1):** the wizard has
+**AI step contract (decided — docs/features/collections-platform.md §4.23.5, implementation DEF-25):** the wizard has
 one **optional, skippable** AI step. Skipping it is a legal terminal state (the None-state
 product — no `setup_complete` factor is added or changed by AI presence). Values are stored
 as **DB `settings` rows (`LLM_*`, T2 hot), never `.env`** — a mid-install or post-install
@@ -130,12 +130,12 @@ Public; **403 when already complete** (gate uses the same effective view as `/st
 
 ```jsonc
 {
-  "file": { "backend": "s3", "bucket": "…", "region": "…", "accessKeyId": "…", "secretAccessKey": "…", "endpoint": "" }
-       |  { "backend": "webdav", "url": "…", "username": "…", "password": "…", "authType": "auto" },
-  "admin": { "password": "…" },            // username fixed: admin (D6)
-  "jwt": { "secret": "…", "expiresIn": "30m" },
-  "server": { "port": "5001", "corsOrigins": "" },
-  "email": { "host": "", "port": "587", "user": "", "password": "", "secure": false, "fromName": "" } // all optional
+ "file": { "backend": "s3", "bucket": "…", "region": "…", "accessKeyId": "…", "secretAccessKey": "…", "endpoint": "" }
+ | { "backend": "webdav", "url": "…", "username": "…", "password": "…", "authType": "auto" },
+ "admin": { "password": "…" }, // username fixed: admin (D6)
+ "jwt": { "secret": "…", "expiresIn": "30m" },
+ "server": { "port": "5001", "corsOrigins": "" },
+ "email": { "host": "", "port": "587", "user": "", "password": "", "secure": false, "fromName": "" } // all optional
 }
 ```
 
@@ -149,13 +149,15 @@ Public; **403 when already complete** (gate uses the same effective view as `/st
 2. Build the full entries map (`buildEnvEntries`) from the payload (`file`/`jwt`/`server`/`email`).
 3. **Masked (unchanged) secrets keep their existing stored value:** the client sends the prefill mask `'****'` for a secret it did not edit; validation accepts it (non-empty) but apply **drops** any `'****'` secret entry before the DB write, so the stored value is never overwritten by the mask.
 4. Partition the entries by registry tier (`partitionEntries`):
-   - **T0 → `.env`** (via `envFileWriter`, atomic `0600`, backup, merge-preserves unknown
-     lines): `JWT_SECRET` (written only when the payload supplies a non-empty value — D4
-     env-only; the jwt block is optional, and an apply without one writes nothing to `.env`).
-     The metadata-backend T0 keys (the `WEA_DB_*` block and `WEA_SQLITE_PATH`) are explicitly
-     **excluded** — they are `.env`-owned (D6), presence-selected at boot, and never written by apply.
-   - **Non-T0 → DB `settings`** (row key = raw env var name):
-     `WEA_FILE_STORAGE`, `S3_BUCKET` / `AWS_REGION` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `S3_ENDPOINT` (s3), `WEBDAV_URL` / `WEBDAV_USERNAME` / `WEBDAV_PASSWORD` / `WEBDAV_AUTH_TYPE` (webdav), `PORT`, `CORS_ORIGINS`, `JWT_EXPIRES_IN`, `EMAIL_HOST` / `EMAIL_PORT` / `EMAIL_USER` / `EMAIL_PASSWORD` / `EMAIL_SECURE` / `EMAIL_FROM_NAME`.
+
+- **T0 → `.env`** (via `envFileWriter`, atomic `0600`, backup, merge-preserves unknown
+  lines): `JWT_SECRET` (written only when the payload supplies a non-empty value — D4
+  env-only; the jwt block is optional, and an apply without one writes nothing to `.env`).
+  The metadata-backend T0 keys (the `WEA_DB_*` block and `WEA_SQLITE_PATH`) are explicitly
+  **excluded** — they are `.env`-owned (D6), presence-selected at boot, and never written by apply.
+- **Non-T0 → DB `settings`** (row key = raw env var name):
+  `WEA_FILE_STORAGE`, `S3_BUCKET` / `AWS_REGION` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `S3_ENDPOINT` (s3), `WEBDAV_URL` / `WEBDAV_USERNAME` / `WEBDAV_PASSWORD` / `WEBDAV_AUTH_TYPE` (webdav), `PORT`, `CORS_ORIGINS`, `JWT_EXPIRES_IN`, `EMAIL_HOST` / `EMAIL_PORT` / `EMAIL_USER` / `EMAIL_PASSWORD` / `EMAIL_SECURE` / `EMAIL_FROM_NAME`.
+
 5. **Write the `.env` subset FIRST** (atomic temp-file + rename). Ordering guarantee: if the `.env` write fails, the DB has not been touched, so boot still shows setup mode — a failed apply can never leave a committed-but-error "complete" state.
 6. **Update the admin password** (`updateAdminPassword`): the `admin` account already exists in the connected metadata store (seeded at boot, including setup-mode boots); apply updates its password via the app's user store after the `.env` write. If the `admin` row is unexpectedly absent it logs a warning and continues (the default credential then applies on the next boot). There is no restart dependency for the credential and no `ADMIN_DEFAULT_PASSWORD` is written.
 7. **Write non-T0 to the metadata DB through the app's `Settings` model** (`writeSettings`) on the connected store (sqlite or postgresql, as booted): every value — plaintext config **and** secret — is stored as plaintext via `Settings.set(key, String(value))` (the store JSON-stringifies on PG / stores raw TEXT on sqlite).
@@ -164,20 +166,20 @@ Public; **403 when already complete** (gate uses the same effective view as `/st
 
 **Idempotency/safety:** apply refuses (`403`) once `setup_complete` is true; concurrent applies are last-writer-wins (documented, single-operator assumption). The `.env` write happens before the DB write, so a failed apply leaves **no committed partial state** — the worst case is a written `.env` with an unchanged DB, which still boots into setup mode (never a false "complete").
 
-#### POST test/apply — AI step additions (T1.1 target; contract decided now)
+#### POST test/apply — AI step additions (DEF-25 target; contract decided now)
 
 - **`POST /api/setup/test` — fourth target shape:**
 
-  ```jsonc
-  { "target": "llm", "role": "embed" | "chat" | "vision" | "asr", "baseUrl": "…", "apiKey": "…", "model": "…" }
-  ```
+```jsonc
+{ "target": "llm", "role": "embed" | "chat" | "vision" | "asr", "baseUrl": "…", "apiKey": "…", "model": "…" }
+```
 
-  Runs the per-role capability probe (`probeLlm` core, shared with
-  `POST /api/admin/config/test` target `llm`) against the **submitted** values — an
-  in-domain probe, never a declared-capability shortcut. Success `200 { ok: true }`;
-  failures use the same `{ ok:false, errorCode, message, reason? }` envelope —
-  generic `serverErrors.setup.test.failed` with the probe detail in `reason` until T1.1
-  ships a finer llm taxonomy.
+Runs the per-role capability probe (`probeLlm` core, shared with
+`POST /api/admin/config/test` target `llm`) against the **submitted** values — an
+in-domain probe, never a declared-capability shortcut. Success `200 { ok: true }`;
+failures use the same `{ ok:false, errorCode, message, reason? }` envelope —
+generic `serverErrors.setup.test.failed` with the probe detail in `reason` until DEF-25
+ships a finer llm taxonomy.
 
 - **`POST /api/setup/apply` — optional `llm` block:** the payload may carry
   `"llm": { "embed": { "baseUrl": "…", "apiKey": "…", "model": "…" }, "chat": { … }, … }`
@@ -228,5 +230,5 @@ Connection-test taxonomy codes are module-local i18n keys (same `ns.key` format;
 - [ ] POST /apply with unknown keys / invalid payload → 400 with per-field errors
 - [ ] Setup-mode guard: file-domain and admin-write routes → 503 `setup.incomplete` while incomplete; open again after completion
 - [ ] Request logger does not leak apply body (bodies are never logged)
-- [ ] (T1.1) POST /test with `target: "llm"` probes the submitted per-role values and returns the pass/fail envelope; unknown role → 400
-- [ ] (T1.1) POST /apply with an `llm` block writes `LLM_*` rows to the DB `settings` table only (never `.env`); masked apiKey keeps the stored value; omitted block is a no-op and `setup_complete` never depends on AI presence
+- [ ] (DEF-25) POST /test with `target: "llm"` probes the submitted per-role values and returns the pass/fail envelope; unknown role → 400
+- [ ] (DEF-25) POST /apply with an `llm` block writes `LLM_*` rows to the DB `settings` table only (never `.env`); masked apiKey keeps the stored value; omitted block is a no-op and `setup_complete` never depends on AI presence

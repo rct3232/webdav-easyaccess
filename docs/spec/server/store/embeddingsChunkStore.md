@@ -7,7 +7,7 @@
 | Role           | Per-document chunk vectors — table `embeddings_chunk(node_id, chunk_idx, vector, model_id, updated_at)`, PK `(node_id, chunk_idx)`. Written by the §4.3 `chunk-pool` ladder; RETAINED (not discarded after pooling) because retrieval scores against chunks. |
 | Derived status | A rebuildable derived artifact: dropping rows loses only long-document recall depth (§5) and is healed by re-running the embed job. The canonical source of truth remains `embeddings.vector` + the extractor pipeline (§4.13).                              |
 | Scoring        | Max-over-chunks per-node neighbor scoring is **vectorStore's job** (`domains/ai/vectorStore/`, §4.13 seam) — this facade stores and returns rows; it never computes similarity.                                                                              |
-| Design owner   | `AI_FEATURE_PLAN.md` §4.3 (chunking ladder), §4.20 (E1 "store every chunk vector"), §5 (schema row).                                                                                                                                                         |
+| Design owner   | `docs/features/collections-platform.md` §4.3 (chunking ladder), §4.20 (E1 "store every chunk vector"), §5 (schema row).                                                                                                                                      |
 
 ---
 

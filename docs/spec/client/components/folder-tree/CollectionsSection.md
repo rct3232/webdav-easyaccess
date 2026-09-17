@@ -1,6 +1,6 @@
 # CollectionsSection Spec
 
-Target-contract spec (docs-first; AI_FEATURE_PLAN §3.1/§4.9b/§4.11 surface 5; PLAN §7 T0.4).
+Target-contract spec.
 
 ## 1. Overview
 

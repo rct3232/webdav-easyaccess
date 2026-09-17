@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item         | Description                                                                                                                                                                                                                                               |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role         | Persistent queue for AI enrichment work — table `ai_jobs(node_id, generation, kind, status, attempt, next_retry_at, last_error, content_hash, ...)`. DB-backed only: jobs survive restarts, the worker is stateless (invariant 8: no CacheAdapter state). |
-| Design owner | `AI_FEATURE_PLAN.md` §5 (schema row), §4.20 (E1 file-embed call site, content_hash skip), §4.1 (upload hooks enqueue), PLAN T1.2/T1.3.                                                                                                                    |
-| Idempotency  | `UNIQUE(node_id, kind, generation)` — per-file enqueue at commit is cheap and repeatable; a new `generation` (model change / backfill, §4.2) forces fresh work without colliding with old rows.                                                           |
+| Item         | Description                                                                                                                                                                                                                                              |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role         | Persistent queue for AI enrichment work — table `ai_jobs(node_id, generation, kind, status, attempt, next_retry_at, last_error, content_hash,...)`. DB-backed only: jobs survive restarts, the worker is stateless (invariant 8: no CacheAdapter state). |
+| Design owner | `docs/features/collections-platform.md` §5 (schema row), §4.20 (E1 file-embed call site, content_hash skip), §4.1 (upload hooks enqueue), PLAN DEF-25/DEF-25.                                                                                            |
+| Idempotency  | `UNIQUE(node_id, kind, generation)` — per-file enqueue at commit is cheap and repeatable; a new `generation` (model change / backfill, §4.2) forces fresh work without colliding with old rows.                                                          |
 
 ---
 
@@ -55,13 +55,13 @@ The dialect difference is sealed inside the repository twins (facade/services se
 
 - **PostgreSQL:** inside one TX:
   `SELECT id FROM ai_jobs WHERE <claimable> ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED`
-  → `UPDATE ... SET status='running', started_at=NOW() WHERE id=? RETURNING *`.
+  → `UPDATE... SET status='running', started_at=NOW() WHERE id=? RETURNING *`.
   Concurrent workers skip past locked rows — no lost or double claims.
 - **SQLite:** the driver is a single-writer serialized queue (`node:sqlite` executor,
-  PLAN §6) — a claim-lock-free statement suffices:
+  CODING_STYLE.md Express Patterns) — a claim-lock-free statement suffices:
   `UPDATE ai_jobs SET status='running', started_at=datetime('now') WHERE id =
 (SELECT id FROM ai_jobs WHERE <claimable> ORDER BY id LIMIT 1) RETURNING *`
-  inside one transaction. `RETURNING` requires the node:sqlite driver (T0.12).
+  inside one transaction. `RETURNING` requires the node:sqlite driver (DEF-25).
 
 `claimNext` returns the full claimed job or `null` when the queue is empty — it never
 throws on "nothing to do".
@@ -94,7 +94,7 @@ throws on "nothing to do".
 
 - `storage.getExecutor()` + `AiJobsRepository` (+ twins)
 - Callers: upload hooks (`kind=embed|features` enqueue at commit, §4.1), backfill service
-  (T1.2), jobs worker (T1.3), admin reports (§4.14/§4.15). No lockManager (claim atomicity
+  (DEF-25), jobs worker (DEF-25), admin reports (§4.14/§4.15). No lockManager (claim atomicity
   is the DB's job).
 
 ### 2.9 Verification Scenarios
@@ -103,7 +103,7 @@ throws on "nothing to do".
 - [ ] same `(node,kind)` with `generation+1` → new row accepted (UNIQUE is per-generation)
 - [ ] `claimNext` on empty queue → `null`; claim moves `pending → running` with `started_at` set
 - [ ] `claimNext` does not pick `failed` rows with `next_retry_at` in the future, and does pick them once past it
-- [ ] `markFailed` increments `attempt` and pushes `next_retry_at` per the doubling table (30 s, 60 s, 120 s, ... capped 30 min)
+- [ ] `markFailed` increments `attempt` and pushes `next_retry_at` per the doubling table (30 s, 60 s, 120 s,... capped 30 min)
 - [ ] `markDone`/`markFailed`/`markSkipped` on a non-`running` row → `{ changes: 0 }`
 - [ ] `markSkipped` records the reason in `last_error` and terminates (`finished_at` set, never re-claimable)
 - [ ] Restart survival: claim a job, kill the process (simulate by leaving it `running`), run `recoverStaleRunning(staleMs)` → row re-claimable as `failed`; end-to-end the file still gets embedded exactly once per generation (worker + idempotent upserts downstream)
@@ -111,4 +111,4 @@ throws on "nothing to do".
 - [ ] Node purge cascades its job rows (any status)
 - [ ] `countByStatus` totals match seeded fixtures of every status incl. `skipped`
 - [ ] L2 conformance on both backends: row-shape parity (number ids, ISO timestamps, `nextRetryAt` null-vs-value), claim ordering (`id ASC`), `enqueueMany` partial-duplicate counts only new inserts
-- [ ] Grep: zero `CacheAdapter`/`operationProgress` imports in the store and `domains/ai/**` (PLAN §6 gate)
+- [ ] Grep: zero `CacheAdapter`/`operationProgress` imports in the store and `domains/ai/**` (CODING_STYLE.md Express Patterns gate)

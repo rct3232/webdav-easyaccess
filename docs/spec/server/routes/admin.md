@@ -78,7 +78,7 @@ both with a 202 + poll job contract. Services: `domains/admin/services/migration
 | ------ | ------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET    | `/migration/info`               | Token + Admin | Get the derived migration context. Returns `200 { source: 'webdav' \| 's3', direction: 'webdav-to-s3' \| 's3-to-webdav' }` (direction derived from the app config).                                                                                                                   |
 | GET    | `/migration/target-scan`        | Token + Admin | Read-only scan of an explicit (non-active) metadata target backend. Params/body: `{ targetBackend, pg?, sqlitePath? }` (PG also accepted as flat `?host=&port=...` query params). Returns `200 { backend, connected, schemaExists, tables: [{ name, rows }], totalRows, checkedAt }`. |
-| POST   | `/migration/blobs`              | Token + Admin | Start a blob migration job. Body: `{ mode: 'dry-run' \| 'apply', force?, dest: { type:'s3', ... } \| { type:'webdav', ... } }` — no `direction`; the server derives it from the app config and validates `dest.type` matches the expected destination. Returns `202 { jobId }`.       |
+| POST   | `/migration/blobs`              | Token + Admin | Start a blob migration job. Body: `{ mode: 'dry-run' \| 'apply', force?, dest: { type:'s3',... } \| { type:'webdav',... } }` — no `direction`; the server derives it from the app config and validates `dest.type` matches the expected destination. Returns `202 { jobId }`.         |
 | POST   | `/migration/metadata`           | Token + Admin | Start a metadata DB migration job. Body: `{ targetBackend, pg?, sqlitePath?, wipeTarget? }` — target backend must be the non-active one. Returns `202 { jobId }`; cancel = ROLLBACK of the target transaction. Full contract: `docs/spec/server/tools/metadata-migration.md`.         |
 | GET    | `/migration/jobs/:jobId`        | Token + Admin | Get migration job status/progress. Returns `200 { jobShape }` — the in-memory store row (`type`, `stage`, `configPersist` etc.; `progress` is type-specific). See `docs/spec/server/store/migrationJobStore.md`.                                                                      |
 | POST   | `/migration/jobs/:jobId/cancel` | Token + Admin | Cancel a running migration job. Returns `200 { messageCode, jobId }`.                                                                                                                                                                                                                 |
@@ -96,7 +96,7 @@ Effective-configuration management (env → DB → defaults registry). Service: 
 | ------ | ----------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET    | `/config`               | Token + Admin | Get effective config: `200 { config }` — every registry key with source/tier + masked secrets.                                                                         |
 | PUT    | `/config`               | Token + Admin | Update allowlisted config keys. Body: `{ values }` — plaintext writes to DB; rejects unknown/T0/env-sourced keys. Returns `{ applied, restartRequired, messageCode }`. |
-| POST   | `/config/test`          | Token + Admin | Connection test with pending values. Body: `{ target, ...pending }`. Records outcome to the backend-health tracker.                                                    |
+| POST   | `/config/test`          | Token + Admin | Connection test with pending values. Body: `{ target,...pending }`. Records outcome to the backend-health tracker.                                                     |
 | GET    | `/config/sync-report`   | Token + Admin | Env↔DB config-sync report (read-only), mirroring the CLI `--check` findings/summary/exitCode JSON.                                                                     |
 | POST   | `/config/sync-from-env` | Token + Admin | Env→DB config-sync reconcile (web equivalent of CLI `--apply --yes`): writes env-sourced non-T0 registry values as plaintext, then invalidates the T2 cache.           |
 | GET    | `/health`               | Token + Admin | Admin health snapshot: `200 { backends }` — full per-backend tracker state (code/hint/lastChecked); stateless token-claim admin check (no DB read).                    |
@@ -141,7 +141,7 @@ Effective-configuration management (env → DB → defaults registry). Service: 
 
 - **GET /config:** 200: `{ config }` (per-key source/tier, secrets masked).
 - **PUT /config:** Body: `{ values: { key: value } }`. 200: `{ applied, restartRequired, messageCode }`; 400 on unknown key (`configUnknownKey`), T0-protected key, env-sourced key, or non-object `values`.
-- **POST /config/test:** Body: `{ target: 'webdav' | 's3', ...pending }`. 200: probe result; probe failure also reports to the backend-health tracker.
+- **POST /config/test:** Body: `{ target: 'webdav' | 's3',...pending }`. 200: probe result; probe failure also reports to the backend-health tracker.
 - **GET /config/sync-report:** 200: config-sync findings/summary/exitCode JSON.
 - **POST /config/sync-from-env:** 200: sync result (writes env-sourced non-T0 values as plaintext, invalidates T2 cache).
 - **GET /health:** 200: `{ backends }` per-backend tracker state.
@@ -186,21 +186,21 @@ Effective-configuration management (env → DB → defaults registry). Service: 
 
 ---
 
-## 3. AI-platform target contracts (AI platform — target, lands with P0/P1/P4 as noted; PLAN §7 T0.7b/T0.8, T1.1/T1.4, T4.1; AI_FEATURE_PLAN §4.12/§4.13/§4.14/§4.15)
+## 3. AI-platform target contracts (AI platform — implementation tracked as DEF-25)
 
-**Rows below are TARGET contracts, not current behavior** — when a task lands, its rows merge into §2.2/§2.4 and the marker is removed. Wire casing per PLAN §6 (snake_case responses, camelCase request bodies).
+**Rows below are TARGET contracts, not current behavior** — when a task lands, its rows merge into §2.2/§2.4 and the marker is removed. Wire casing per CODING_STYLE.md Express Patterns (snake_case responses, camelCase request bodies).
 
 ### 3.1 Routes (target)
 
-| Method | Path       | Auth          | Lands with | Description                                                                                                                                                                                                                                                            |
-| ------ | ---------- | ------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/reports` | Token + Admin | P0 (T0.8)  | Admin report list: `200 { reports: [{ id, kind, status, payload, created_at }] }` — persisted `admin_reports` runs (GC, startup fail-safe orphan/pending scan, cleanup, future maintenance acts). Read-only; row-level repair actions reuse existing §2.2.3 endpoints. |
+| Method | Path       | Auth          | Lands with  | Description                                                                                                                                                                                                                                                            |
+| ------ | ---------- | ------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/reports` | Token + Admin | P0 (DEF-25) | Admin report list: `200 { reports: [{ id, kind, status, payload, created_at }] }` — persisted `admin_reports` runs (GC, startup fail-safe orphan/pending scan, cleanup, future maintenance acts). Read-only; row-level repair actions reuse existing §2.2.3 endpoints. |
 
 ### 3.2 Field/behavior additions (target)
 
-- **(P0, T0.7b)** `POST /cleanup/orphaned` **persists its §2.2.3.1 response to `admin_reports`** (`kind='cleanup'`, `status` = ok/partial with `errors` count, full result `payload`) before returning 200 — same for the scheduled GC run in `maintenanceScheduler`; later reads via `GET /reports` (no console-only reports anymore, §4.14 Tier A).
-- **(P1, T1.1)** `POST /config/test` accepts `target: 'llm'` with per-role pending values; outcome recorded to the backend-health tracker via the `probeLlm` slot (registered P0/T0.7b) and rendered as **per-role probe chips** by the admin config UI. Probe failure ≠ save failure (test-only endpoint semantics unchanged).
-- **(P1, T1.1/T1.4)** `GET /health` (`backends` snapshot) gains tracker rows: **`vectorOps: 'native' | 'fallback_js'`** — a **performance warning only, never an AI-feature gate** (§4.13: fallback keeps every feature on) — and **`ai.<role>` probe states** (`embed`/`chat`: `not_configured | probe_failed(reason) | partial | ok`, §4.12; hot re-probe on config change). Consumed by the health card and the AI governance panel (T4.1, P4); never exposed on the public health/`settings/public` surface beyond the existing `ai:{embed,chat}` booleans.
+- **(P0, DEF-25)** `POST /cleanup/orphaned` **persists its §2.2.3.1 response to `admin_reports`** (`kind='cleanup'`, `status` = ok/partial with `errors` count, full result `payload`) before returning 200 — same for the scheduled GC run in `maintenanceScheduler`; later reads via `GET /reports` (no console-only reports anymore, §4.14 Tier A).
+- **(P1, DEF-25)** `POST /config/test` accepts `target: 'llm'` with per-role pending values; outcome recorded to the backend-health tracker via the `probeLlm` slot (registered P0/DEF-25) and rendered as **per-role probe chips** by the admin config UI. Probe failure ≠ save failure (test-only endpoint semantics unchanged).
+- **(P1, DEF-25/DEF-25)** `GET /health` (`backends` snapshot) gains tracker rows: **`vectorOps: 'native' | 'fallback_js'`** — a **performance warning only, never an AI-feature gate** (§4.13: fallback keeps every feature on) — and **`ai.<role>` probe states** (`embed`/`chat`: `not_configured | probe_failed(reason) | partial | ok`, §4.12; hot re-probe on config change). Consumed by the health card and the AI governance panel (DEF-25, P4); never exposed on the public health/`settings/public` surface beyond the existing `ai:{embed,chat}` booleans.
 
 ### 3.3 Verification (appends §2.7)
 

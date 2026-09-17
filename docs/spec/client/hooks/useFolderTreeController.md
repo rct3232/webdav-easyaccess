@@ -48,36 +48,36 @@
 ### 2.4 Dependencies
 
 - Services called / IO boundaries:
-  - `getRecentFiles` from `client/src/services/recentFilesRepository`
-  - `onRecentFilesChange` from `client/src/services/recentFilesNotifier`
-  - `folderTreeGateway.getUserSharedFolderPermissions` from `client/src/services/folderTreeGateway` (returns nodeId-keyed permission entries)
+- `getRecentFiles` from `client/src/services/recentFilesRepository`
+- `onRecentFilesChange` from `client/src/services/recentFilesNotifier`
+- `folderTreeGateway.getUserSharedFolderPermissions` from `client/src/services/folderTreeGateway` (returns nodeId-keyed permission entries)
 - Pure utilities:
-  - `normalizePath` only where path normalization still applies (virtual-root checks; no longer used to build synthetic shared-folder paths)
-  - `user.rootNodeId` to compute the user home node id (admin -> null root listing)
+- `normalizePath` only where path normalization still applies (virtual-root checks; no longer used to build synthetic shared-folder paths)
+- `user.rootNodeId` to compute the user home node id (admin -> null root listing)
 
 ### 2.5 Side Effects
 
 - On mount / whenever `user` changes:
-  - Loads recent files when `user` is present
-  - Subscribes to recent-file updates via `onRecentFilesChange`, reloading on updates
-  - Clears recent files when `user` becomes falsy
+- Loads recent files when `user` is present
+- Subscribes to recent-file updates via `onRecentFilesChange`, reloading on updates
+- Clears recent files when `user` becomes falsy
 - On mount / whenever `user` changes:
-  - Loads shared-folder permissions for non-admin users (nodeId-keyed entries)
-  - Clears shared-folder permissions for admin users
+- Loads shared-folder permissions for non-admin users (nodeId-keyed entries)
+- Clears shared-folder permissions for admin users
 - Whenever `currentNodeId`, `user homeNodeId`, or `sharedFolders` changes:
-  - Recomputes `expandedNodeIds` to include the current node's ancestor node ids and `homeNodeId`
-  - Sets `sharedExpanded` to `true` when the current location is the `/__shared__` virtual root or within a shared folder node subtree
-  - Sets `recentExpanded` to `true` when the current location is `/__recent__`
+- Recomputes `expandedNodeIds` to include the current node's ancestor node ids and `homeNodeId`
+- Sets `sharedExpanded` to `true` when the current location is the `/__shared__` virtual root or within a shared folder node subtree
+- Sets `recentExpanded` to `true` when the current location is `/__recent__`
 - Manual toggles:
-  - `handleSharedToggle` and `handleRecentToggle` allow the user to collapse/expand sections after auto-expansion has been derived from location state
+- `handleSharedToggle` and `handleRecentToggle` allow the user to collapse/expand sections after auto-expansion has been derived from location state
 
 ### 2.6 Error Handling
 
 - Recent-files loading errors:
-  - The controller expects `recentFilesRepository.getRecentFiles()` to resolve to a contract-safe array (`[]` on ordinary IO failure).
-  - The local `try/catch` remains a defensive guard for unexpected exceptions and still falls back to `[]`.
+- The controller expects `recentFilesRepository.getRecentFiles()` to resolve to a contract-safe array (`[]` on ordinary IO failure).
+- The local `try/catch` remains a defensive guard for unexpected exceptions and still falls back to `[]`.
 - Shared-folder loading errors:
-  - Log and set `sharedFolders` to `[]`
+- Log and set `sharedFolders` to `[]`
 
 ### 2.7 Verification Scenarios
 
@@ -105,9 +105,9 @@ The following should be covered by `useFolderTreeController` unit tests (renderH
 
 ---
 
-## 3. AI-platform virtual-node registration (AI platform — target, lands with P0)
+## 3. AI-platform virtual-node registration (AI platform — implementation tracked as DEF-25)
 
-Addendum per AI_FEATURE_PLAN §3.1/§4.9 (archive lifecycle) and `CollectionsListView.md` §2.2; extends the D1 virtual-root pattern (`__shared__`/`__recent__` semantics unchanged).
+Addendum per docs/features/collections-platform.md §3.1/§4.9 (archive lifecycle) and `CollectionsListView.md` §2.2; extends the D1 virtual-root pattern (`__shared__`/`__recent__` semantics unchanged).
 
 - **`__collections__` section:** new controller-owned section state mirroring §2.3 (`collectionsExpanded`, `handleCollectionsToggle`, `handleCollectionsClick` → navigate `/files/__collections__`). Expansion renders a **flat collection list** (rows host-prepared via `useCollections`/gateway; no IO added here beyond the existing seams); **members are never tree-walked — depth = 1** (collection ≠ folder in the tree).
 - **`__archive__` child row:** nested under `__collections__`, routes `/files/__collections__/__archive__`; selecting it lists the `status=archived` set (`include=mine,archived`) — restore/permanent-delete affordances live in `CollectionsListView`, not the tree.

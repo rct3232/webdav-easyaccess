@@ -144,15 +144,11 @@ These routes are for accessing shared files via a public link (token in path). A
 
 ---
 
-## Collections / AI search / Actions
+## Collections
 
-Target contracts (docs-first, `ai-feature` workstream). Request bodies camelCase,
-responses snake_case (PLAN §6 wire casing). Mutation responses carry
-`undo: { action_id }` where journaled; undo semantics: `actions.md` spec.
-Full contracts: `docs/spec/server/routes/collections.md`,
-`docs/spec/server/routes/search.md`, `docs/spec/server/routes/actions.md`.
+Journaled mutations return `undo: { action_id }` (see Actions). Spec: `docs/spec/server/routes/collections.md`.
 
-### Collections
+| Method | Path
 
 | Method | Path                                 | Auth  | Description                                                                                                                                                  |
 | ------ | ------------------------------------ | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -176,18 +172,30 @@ Full contracts: `docs/spec/server/routes/collections.md`,
 | DELETE | `/api/collections/:id/grants`        | Token | Revoke. Query `userId`. Returns `{ grantee_id, revoked, undo }`.                                                                                             |
 | POST   | `/api/collections/for-nodes`         | Token | Membership chips batch. Body `{ nodeIds }`. Returns `{ memberships: [{ node_id, collection_ids }] }`.                                                        |
 
-### Search
+---
+
+## Search
+
+Spec: `docs/spec/server/routes/search.md`.
+
+| Method | Path
 
 | Method | Path          | Auth  | Description                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | ------ | ------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | POST   | `/api/search` | Token | Hybrid search. Body `{ query, result_ref? }` (`result_ref` accepted, ignored in MVP). Returns `{ name_matches: [{node_id, name}], semantic: [{node_id, name, score}], result_ref, counts }`; `semantic` omitted + `semantic_unavailable_reason: serverErrors.ai.notConfigured` when embed role absent. Name section = full-query containment (LLM LIKE both sides), semantic = segment-AND scoring with per-query dynamic baseline (honest empty). |
 
-### Actions (undo journal)
+---
 
-| Method | Path                    | Auth  | Description                                                                                                                                                                                                                                                                                                                    |
-| ------ | ----------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| GET    | `/api/actions`          | Token | 30-day feed, newest first (cap 200). Query `domain?` (`collection\|batch\|settings\|permissions\|tags\|file\|sharing`). Rows: `action_id`, `domain`, `subject`, `subject_label`, `actor`, `action`, `status`, `chain_seq`, `is_tip`, `undo_available`, `created_at`, `undone_at`, `expires_at`. v1 writers: `collection` only. |
-| POST   | `/api/actions/:id/undo` | Token | Tip undo free; non-tip → 409 `actions.cascadeConfirmRequired` (`params.laterChanges`) unless body `{ confirmCascade: true }`. Refusals: `fingerprintMismatch`, `expired`, `alreadyUndone` (all 409). Mixed item results reported as counts.                                                                                    |
+## Actions (undo journal)
+
+Spec: `docs/spec/server/routes/actions.md`.
+
+| Method | Path
+
+| Method | Path                    | Auth  | Description                                                                                                                                                                                                                                                                                                                                |
+| ------ | ----------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/api/actions`          | Token | 30-day feed, newest first (cap 200). Query `domain?` (`collection\|batch\|settings\|permissions\|tags\|file\|sharing`). Rows: `action_id`, `domain`, `subject`, `subject_label`, `actor`, `action`, `status`, `chain_seq`, `is_tip`, `undo_available`, `created_at`, `undone_at`, `expires_at`. Currently journaled domains: `collection`. |
+| POST   | `/api/actions/:id/undo` | Token | Tip undo free; non-tip → 409 `actions.cascadeConfirmRequired` (`params.laterChanges`) unless body `{ confirmCascade: true }`. Refusals: `fingerprintMismatch`, `expired`, `alreadyUndone` (all 409). Mixed item results reported as counts.                                                                                                |
 
 ---
 
@@ -209,7 +217,7 @@ All admin routes require a valid JWT and admin role (`isAdmin`).
 | PUT    | `/api/admin/settings`             | Token + Admin | Update system settings.                                                                                                                                                                                                                                               |
 | GET    | `/api/admin/config`               | Token + Admin | Effective config: `value`/`source`/`tier`/`secret` per registry key. Set secrets are masked `"****"`; unset secrets have no `value` (field omitted).                                                                                                                  |
 | PUT    | `/api/admin/config`               | Token + Admin | Write allowlisted non-T0 config keys to DB as plaintext (masked `'****'`/blank secrets keep the stored value; T2 cache invalidated); rejects `source=env` and T0 keys (400). Body: `{ values: { KEY: value } }`. Returns `{ applied, restartRequired, messageCode }`. |
-| POST   | `/api/admin/config/test`          | Token + Admin | Connection test with pending values for a file-storage backend. Body: `{ target: "s3"\|"webdav", ...pendingKeys }`. Returns `{ ok: true }` or `{ ok: false, errorCode, message, reason? }`.                                                                           |
+| POST   | `/api/admin/config/test`          | Token + Admin | Connection test with pending values for a file-storage backend. Body: `{ target: "s3"\|"webdav",...pendingKeys }`. Returns `{ ok: true }` or `{ ok: false, errorCode, message, reason? }`.                                                                            |
 | GET    | `/api/admin/config/sync-report`   | Token + Admin | Env↔DB drift report for the running process env; same `findings`/`summary`/`exitCode` JSON as the config-sync CLI `--check`.                                                                                                                                          |
 | POST   | `/api/admin/config/sync-from-env` | Token + Admin | Mirror env-set non-T0 config values into DB `settings` (web equivalent of the config-sync CLI `--apply --yes`). Returns `{ writes, report, messageCode }`.                                                                                                            |
 | GET    | `/api/admin/health`               | Token + Admin | Backend-health snapshot (per-backend status/code/hint/last-checked).                                                                                                                                                                                                  |

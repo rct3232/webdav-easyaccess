@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item       | Description                                                                                                                                                                                                                                                                                                                                                                    |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Route path | `/setup`                                                                                                                                                                                                                                                                                                                                                                       |
-| Role       | First-run setup wizard. Public page (outside `MainLayout`), shown when the server reports `setup_complete: false`. Walks the operator through metadata, file storage, admin password, an optional JWT secret, optional settings, an **optional skippable AI step (T1.1)**, apply, and a "Restart required" screen. Unreachable once setup is complete (redirects to `/login`). |
+| Item       | Description                                                                                                                                                                                                                                                                                                                                                                      |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Route path | `/setup`                                                                                                                                                                                                                                                                                                                                                                         |
+| Role       | First-run setup wizard. Public page (outside `MainLayout`), shown when the server reports `setup_complete: false`. Walks the operator through metadata, file storage, admin password, an optional JWT secret, optional settings, an **optional skippable AI step (DEF-25)**, apply, and a "Restart required" screen. Unreachable once setup is complete (redirects to `/login`). |
 
 Feature Source-of-Truth: [setup-wizard.md](../../../features/setup-wizard.md).
 
@@ -23,16 +23,16 @@ Feature Source-of-Truth: [setup-wizard.md](../../../features/setup-wizard.md).
 ### 2.2 Hooks Used
 
 - `useSetupWizard` (controller hook)
-  - `useNavigate` (redirect to `/login` on post-setup lockout)
-  - `useTranslation` (i18n `setup.*` keys)
-  - `setupService` (`getSetupStatus`, `testSetup`, `applySetup`)
-  - On mount: fetch `getSetupStatus()`; if `setup_complete === true` → redirect to `/login` (covers "user revisits /setup after restart").
+- `useNavigate` (redirect to `/login` on post-setup lockout)
+- `useTranslation` (i18n `setup.*` keys)
+- `setupService` (`getSetupStatus`, `testSetup`, `applySetup`)
+- On mount: fetch `getSetupStatus()`; if `setup_complete === true` → redirect to `/login` (covers "user revisits /setup after restart").
 - (View) `SetupWizardView` does not call hooks and does not import router modules
 
 ### 2.3 Main Child Components
 
 - `SetupWizardView` (pure MUI view) — step container rendered from prepared state + callbacks provided by `useSetupWizard`
-- Per-step fields/components: Metadata step, File storage step, Admin + JWT (optional secret) step, Optional step, AI step (optional, skippable: preset picker + role checkboxes + per-role inputs/test — T1.1), Apply step, "Restart required" screen
+- Per-step fields/components: Metadata step, File storage step, Admin + JWT (optional secret) step, Optional step, AI step (optional, skippable: preset picker + role checkboxes + per-role inputs/test — DEF-25), Apply step, "Restart required" screen
 
 ### 2.4 Route Protection
 
@@ -48,7 +48,7 @@ Wizard steps:
 2. **File storage** — choose s3 (bucket/region/access key/secret/endpoint + "Test connection" via `testSetup('s3', …)`) or webdav (url/username/password + "Test connection" via `testSetup('webdav', …)`).
 3. **Admin password + JWT** — admin password (username fixed to `admin`, D6); the JWT secret is **optional** — leaving it blank is allowed, and the server then uses a per-boot ephemeral secret (restart invalidates all sessions; set one value for multi-instance deployments). A random value can be filled via `crypto.getRandomValues` with a regenerate button; optional expires-in.
 4. **Optional** — port, CORS origins, SMTP (host/port/user/password/secure/from).
-5. **AI (optional, skippable — T1.1 addition, contract decided)** — configure the LLM enrichment backend or skip. Sub-flow: **preset picker** (provider family from the shipped preset manifest, each preset declaring its expected capabilities) → **role checkboxes** (`embed` / `chat` / `vision` / `asr`) → per-role **base-url / key / model inputs** → **per-role test** button (`testSetup('llm', { role, baseUrl, apiKey, model })`). Every sub-section is skippable individually; a fully skipped step sends no `llm` block and yields the None-state product (no warning, AI is never a completeness factor). Entered values are applied as **DB `settings` rows** (restart-free hot config) — the wizard never writes `LLM_*` to `.env`, and the full config surface remains the admin editor. The probe is the authority: a passing test reflects the probed result, not the preset's claim.
+5. **AI (optional, skippable — DEF-25 addition, contract decided)** — configure the LLM enrichment backend or skip. Sub-flow: **preset picker** (provider family from the shipped preset manifest, each preset declaring its expected capabilities) → **role checkboxes** (`embed` / `chat` / `vision` / `asr`) → per-role **base-url / key / model inputs** → **per-role test** button (`testSetup('llm', { role, baseUrl, apiKey, model })`). Every sub-section is skippable individually; a fully skipped step sends no `llm` block and yields the None-state product (no warning, AI is never a completeness factor). Entered values are applied as **DB `settings` rows** (restart-free hot config) — the wizard never writes `LLM_*` to `.env`, and the full config surface remains the admin editor. The probe is the authority: a passing test reflects the probed result, not the preset's claim.
 6. **Apply** — `applySetup(payload)` with the collected `{ metadata, file, admin, server, email }` blocks plus the optional `jwt` block (sent only when a JWT secret was supplied) and the optional `llm` block (sent only when the AI step was not fully skipped).
 7. **"Restart required" screen** — shown on `200 { restart_required: true }`; instructs the operator to restart the server. No self re-exec. (The restart is for the boot-frozen blocks; the `llm` rows themselves are live immediately.)
 
@@ -60,7 +60,7 @@ Errors surface via `t(errorCode, params)` (existing error-display utility patter
 - [ ] Step navigation ① → ② → ③ → ④ → ⑤ → ⑥ → ⑦ in order
 - [ ] Connection-test states: pending spinner, success, failure message
 - [ ] JWT secret field is optional: leaving it blank is allowed (no `jwt` block sent → server ephemeral fallback); fill and regenerate produce a value
-- [ ] (T1.1) AI step is skippable: skipping sends no `llm` block and apply succeeds unchanged; per-role test hits `testSetup('llm', …)` and renders pass/fail per role; preset selection pre-fills role candidacy but a failing probe visibly overrides the preset claim
+- [ ] (DEF-25) AI step is skippable: skipping sends no `llm` block and apply succeeds unchanged; per-role test hits `testSetup('llm', …)` and renders pass/fail per role; preset selection pre-fills role candidacy but a failing probe visibly overrides the preset claim
 - [ ] Apply success → "Restart required" screen rendered
 - [ ] `setup_complete: true` on mount → redirect to `/login`
 - [ ] Masked prefill values from `status.current` are rendered (secrets shown as masked/blank)
@@ -96,7 +96,7 @@ Transport: the existing `apiClient` (`client/src/services/apiClient.js`), which 
 `client/src/services/httpClient.js:7`). All three endpoints are public (no auth token).
 
 - `getSetupStatus()` → `GET /setup/status`
-- `testSetup(target, payload)` → `POST /setup/test` with body `{ target, ...payload }`
+- `testSetup(target, payload)` → `POST /setup/test` with body `{ target,...payload }`
 - `applySetup(payload)` → `POST /setup/apply` with body `payload`
 
 ### 3.3 Error Handling
@@ -114,7 +114,7 @@ Transport: the existing `apiClient` (`client/src/services/apiClient.js`), which 
 ### 3.4 Verification Scenarios
 
 - [ ] getSetupStatus returns `{ setup_complete, missing, current }`
-- [ ] testSetup sends `{ target, ...payload }` and resolves `{ ok }`
+- [ ] testSetup sends `{ target,...payload }` and resolves `{ ok }`
 - [ ] applySetup sends the apply body and resolves `{ restart_required }`
 - [ ] No auth token is attached (public endpoints)
 

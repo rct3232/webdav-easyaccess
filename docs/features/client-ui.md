@@ -32,27 +32,27 @@ The app is a single-page React application using React Router.
 These boundaries are intentionally written at the **feature level** (not as a file-level spec).
 
 - **Explorer core owns**
-  - Browsing and navigation within a folder tree (current path, breadcrumb navigation).
-  - List/grid/detail presentation modes and basic state like view mode, sort mode, and search query.
-  - Selection rules and bulk action affordances.
-  - File commands and progress UI (upload, rename, move/copy, delete, download; progress and cancellation).
-  - Explorer-specific IO through explorer gateways/adapters rather than page-shell direct service/storage/repository imports.
-  - Presentation-neutral rules that should remain consistent across product contexts.
+- Browsing and navigation within a folder tree (current path, breadcrumb navigation).
+- List/grid/detail presentation modes and basic state like view mode, sort mode, and search query.
+- Selection rules and bulk action affordances.
+- File commands and progress UI (upload, rename, move/copy, delete, download; progress and cancellation).
+- Explorer-specific IO through explorer gateways/adapters rather than page-shell direct service/storage/repository imports.
+- Presentation-neutral rules that should remain consistent across product contexts.
 
 - **Product overlays own**
-  - Share-link mode: what is visible and which actions are enabled/disabled when browsing a shared scope.
-  - Share-link-specific login, leave-share, and add-to-my-permissions flows for directory shares reached from `/share/:token`.
-  - Virtual collections and product-specific sections (e.g. `__recent__`, `__shared__`).
-  - The distinction between public share-link flows and authenticated internal-sharing flows such as request outcomes and granted-content access under `__shared__`.
-  - Admin-only UI visibility and product policies that are not reusable across contexts.
+- Share-link mode: what is visible and which actions are enabled/disabled when browsing a shared scope.
+- Share-link-specific login, leave-share, and add-to-my-permissions flows for directory shares reached from `/share/:token`.
+- Virtual collections and product-specific sections (e.g. `__recent__`, `__shared__`).
+- The distinction between public share-link flows and authenticated internal-sharing flows such as request outcomes and granted-content access under `__shared__`.
+- Admin-only UI visibility and product policies that are not reusable across contexts.
 
 - **Page shells own**
-  - Route composition and route-state parsing (including redirects and share-link bootstrapping).
-  - Choosing which overlay is active (normal browsing vs share-link browsing, etc.).
-  - Wiring controller outputs into pure views (prepared state + callbacks), without embedding domain rules into views.
-  - Selection-reset seams that react to explorer session-boundary changes without pushing that side effect into pure session derivation hooks.
-  - When explorer interactions or share-link overlays become flow-heavy, page-local controller hooks should own those flows while the shell remains a composition layer.
-  - Page shells should not keep explorer-specific storage helpers, direct permission-service calls, recent-file repository/notifier wiring, metadata enrichment calls, or refresh-policy orchestration inline; those belong to explorer hooks/gateways.
+- Route composition and route-state parsing (including redirects and share-link bootstrapping).
+- Choosing which overlay is active (normal browsing vs share-link browsing, etc.).
+- Wiring controller outputs into pure views (prepared state + callbacks), without embedding domain rules into views.
+- Selection-reset seams that react to explorer session-boundary changes without pushing that side effect into pure session derivation hooks.
+- When explorer interactions or share-link overlays become flow-heavy, page-local controller hooks should own those flows while the shell remains a composition layer.
+- Page shells should not keep explorer-specific storage helpers, direct permission-service calls, recent-file repository/notifier wiring, metadata enrichment calls, or refresh-policy orchestration inline; those belong to explorer hooks/gateways.
 
 ### Routing
 
@@ -62,8 +62,8 @@ These boundaries are intentionally written at the **feature level** (not as a fi
   admin → `/migration` and regular/anonymous sessions → `/maintenance` — see
   [migration-mode.md](migration-mode.md) "Role-aware lock UX".
 - **Setup wizard:** `/setup` — first-run setup wizard, rendered outside `MainLayout` (standalone, like Login). Full flow, gating, and security contract in [setup-wizard.md](setup-wizard.md). Redirect rules:
-  - The login page redirects to `/setup` when `setup_complete` is `false` (fetched from `GET /api/settings/public`; see `docs/spec/server/routes/settings.md`).
-  - `/setup` redirects to `/login` when setup is already complete (covers revisits after restart).
+- The login page redirects to `/setup` when `setup_complete` is `false` (fetched from `GET /api/settings/public`; see `docs/spec/server/routes/settings.md`).
+- `/setup` redirects to `/login` when setup is already complete (covers revisits after restart).
 - **Default:** `/` redirects to `/files`.
 - **Authenticated (under MainLayout):** `/files/*` (FileManager), `/mypage` (MyPage). `/admin` redirects to `/mypage` with `state: { category: 'admin' }` for admin users. Wrapped in `PrivateRoute`: if not authenticated, redirect to `/login`; while loading auth state, show loading spinner.
 - **Share link:** `/share/:token` — Renders `ShareLinkLoader`, which fetches `GET /api/share/:token/info` then either `FileManager` (folder) or `ShareLinkSingleFileView` (single file). No auth required for viewing; login/add-to-my-permissions available in share UI.
@@ -78,9 +78,9 @@ runtime routing uses the data router (`createBrowserRouter` + `RouterProvider` i
 - **Explorer route remains the splat owner:** `/files/*` is the only route that owns the explorer “current folder” path derived from a splat param. The explorer path is represented as an absolute path string starting with `/` (e.g. `/`, `/Documents`, `/a/b`).
 - **Splat path is owned by FileManager listing/navigation seams:** the FileManager shell wires route params into `useFileManager` (and/or the navigation seam). It must not duplicate splat parsing in multiple places.
 - **Redirect behavior is stable:**
-  - `/` redirects to `/files` (authenticated users see FileManager; unauthenticated users end up at `/login` via PrivateRoute).
-  - Unauthenticated access to `/files/*` and `/mypage` redirects to `/login`.
-  - `/admin` redirects to `/mypage` with `location.state.category` set so MyPage opens the Admin category (see MyPage spec for normalization rules).
+- `/` redirects to `/files` (authenticated users see FileManager; unauthenticated users end up at `/login` via PrivateRoute).
+- Unauthenticated access to `/files/*` and `/mypage` redirects to `/login`.
+- `/admin` redirects to `/mypage` with `location.state.category` set so MyPage opens the Admin category (see MyPage spec for normalization rules).
 
 #### Runtime/test router parity (React Router v7)
 
@@ -118,12 +118,12 @@ its tests.
 - **Virtual collections as overlays:** `__shared__`, `__recent__`, `__trash__`, `__collections__`, and `__archive__` reuse the explorer shell but are product overlays with their own browser-visible entry and recovery rules. They should be tracked separately from ordinary folder CRUD even when they share list and preview components.
 - **Collections family (`__collections__` / `__archive__`):** `__collections__` is a virtual node in the sidebar — a **depth-1 list node**: expanding it shows the collection list (activity-sorted; shared-with-me collections appear in the same list marked by an icon chip), and it never tree-walks into collection members. `__archive__` is a virtual child that **auto-contains every archived collection** — there is no separate archive screen and no per-collection archive node; permanent delete lives only on cards inside it. The sidebar entry follows the trash's bottom-pinned-row precedent (`__trash__` sits below the folder-tree lines; the collections row uses the same pinned chrome, not a tree section).
 - **Trash (DEF-16 P9):** The trash is available in both storage modes (WebDAV and S3) and owns the following browser-visible behavior:
-  - **Sidebar entry:** a bottom-pinned row below the folder-tree lines (desktop sidebar drawer and the mobile tree collapse): `{휴지통 아이콘} 휴지통` (i18n `nav.trash`), tree-row selected styling while the trash view is active; click navigates to `/files/__trash__`. In share-link mode it goes through the leave-share confirmation like the other non-share entries. It is not a tree section (no expansion/DnD), and the tree itself gains no trash node.
-  - **Delete feedback animation:** on any successful delete-to-trash (single delete via context menu/action sheet, or a completed bulk delete) the pinned trash icon plays a one-shot animation — lid opens then closes while the color flashes default → `error.main` → default (~1.2s). MUI `Delete` subpath-split icon + CSS keyframes via MUI `sx`; raised through the `trashNotifier` signal (`notifyTrashChanged`), raised by `useExplorerCommands.handleOperationComplete` for deletes and `useTrashOperations` for restore/purge/empty.
-  - **Trash view (`/files/__trash__`):** lists the user-visible trashed items (name + size/type metadata only — no original-path or deleted-date subtitle). Hierarchical: the root level lists topmost trashed items; opening a trashed folder navigates to `/files/__trash__/node/<nodeId>` and lists its trashed children; the breadcrumb shows the Trash chip plus the trashed folder-name chain (navigable). Empty state `fileManager.trashEmpty`. FAB stays hidden (virtual-root policy); file rows do not open previews (trashed content is not-found outside the trash listing).
-  - **Trash actions:** per-item context menu (desktop) / action sheet (mobile) rows — 복원 Restore, 영구삭제 Permanent delete (error accent), 속성 Properties. Bulk: multi-select shows Restore + Permanent delete in the toolbar (error-colored confirms with `{{count}}` copy; selection completes within the view). **Empty trash** is an admin-only (`user.is_admin`) icon button in the controls row (next to sort/view-mode toggles) with an error confirm whose copy states it purges ALL trashed items for ALL users. Gates follow the ACL review: restore = write permission on the row, purge = write permission (delete perm today), empty trash = admin. The main-view "Delete" label/flow is unchanged (delete still means move to trash).
-  - **Properties trash actions:** when the properties dialog is opened for a trashed item, its fixed action bar gains Restore + Permanent-delete icon-only buttons (Tooltip + aria-label, error accent for purge) next to Close; hidden for live items.
-  - **E2E anchors:** `docs/E2E_COVERAGE_PLAN.md` rows `E2E-TRASH-001`..`E2E-TRASH-011` (`e2e/trash.spec.ts`). Selectors: sidebar row `data-testid="sidebar-trash"`, trash menu/sheet rows `trash-action-restore` / `trash-action-purge`, toolbar buttons `trash-bulk-restore` / `trash-bulk-purge`, empty-trash `data-testid="trash-empty"`, properties icons `trash-props-restore` / `trash-props-purge`.
+- **Sidebar entry:** a bottom-pinned row below the folder-tree lines (desktop sidebar drawer and the mobile tree collapse): `{휴지통 아이콘} 휴지통` (i18n `nav.trash`), tree-row selected styling while the trash view is active; click navigates to `/files/__trash__`. In share-link mode it goes through the leave-share confirmation like the other non-share entries. It is not a tree section (no expansion/DnD), and the tree itself gains no trash node.
+- **Delete feedback animation:** on any successful delete-to-trash (single delete via context menu/action sheet, or a completed bulk delete) the pinned trash icon plays a one-shot animation — lid opens then closes while the color flashes default → `error.main` → default (~1.2s). MUI `Delete` subpath-split icon + CSS keyframes via MUI `sx`; raised through the `trashNotifier` signal (`notifyTrashChanged`), raised by `useExplorerCommands.handleOperationComplete` for deletes and `useTrashOperations` for restore/purge/empty.
+- **Trash view (`/files/__trash__`):** lists the user-visible trashed items (name + size/type metadata only — no original-path or deleted-date subtitle). Hierarchical: the root level lists topmost trashed items; opening a trashed folder navigates to `/files/__trash__/node/<nodeId>` and lists its trashed children; the breadcrumb shows the Trash chip plus the trashed folder-name chain (navigable). Empty state `fileManager.trashEmpty`. FAB stays hidden (virtual-root policy); file rows do not open previews (trashed content is not-found outside the trash listing).
+- **Trash actions:** per-item context menu (desktop) / action sheet (mobile) rows — 복원 Restore, 영구삭제 Permanent delete (error accent), 속성 Properties. Bulk: multi-select shows Restore + Permanent delete in the toolbar (error-colored confirms with `{{count}}` copy; selection completes within the view). **Empty trash** is an admin-only (`user.is_admin`) icon button in the controls row (next to sort/view-mode toggles) with an error confirm whose copy states it purges ALL trashed items for ALL users. Gates follow the ACL review: restore = write permission on the row, purge = write permission (delete perm today), empty trash = admin. The main-view "Delete" label/flow is unchanged (delete still means move to trash).
+- **Properties trash actions:** when the properties dialog is opened for a trashed item, its fixed action bar gains Restore + Permanent-delete icon-only buttons (Tooltip + aria-label, error accent for purge) next to Close; hidden for live items.
+- **E2E anchors:** `docs/E2E_COVERAGE_PLAN.md` rows `E2E-TRASH-001`..`E2E-TRASH-011` (`e2e/trash.spec.ts`). Selectors: sidebar row `data-testid="sidebar-trash"`, trash menu/sheet rows `trash-action-restore` / `trash-action-purge`, toolbar buttons `trash-bulk-restore` / `trash-bulk-purge`, empty-trash `data-testid="trash-empty"`, properties icons `trash-props-restore` / `trash-props-purge`.
 - **Recent-file recovery boundary:** When a recent target must be verified, reopened for preview, or removed as stale, the recent-file controller uses explorer gateway seams for parent-folder checks and recent-entry cleanup instead of importing repository or file-service modules directly. Rollback and toast behavior stay unchanged from the user perspective.
 - **Search:** Floating search bar (FloatingSearchBar) to the left of the FAB. Unified behavior on mobile and desktop: always visible, no toggle. Desktop: fixed 300px width; mobile: full remaining width minus margins and FAB. Styled with gradient outline (same palette as AppBar/FAB), pill shape, matte light interior. Search query filters or highlights items by name. Scroll container uses bottom padding equal to the floating area height so the last list item can scroll above the search bar.
 - **Selection:** Multi-select driven by file interactions (no manual selection mode toggle). Desktop: single click enters selection mode and selects that file; double click opens folder/preview; Ctrl+click adds/removes; Shift+click range-selects; click on empty space exits selection mode. Mobile: touch opens folder/preview; long-press enters selection mode and selects that file; in selection mode, tap toggles selection. When `selectedFiles.size === 0`, selection mode auto-exits. The selection controller owns the selected set; route/path changes clear selection through the page-shell/session-boundary seam. File rows/cards do not require checkbox widgets for this flow.
@@ -188,8 +188,8 @@ its tests.
 ### Share link screen (`/share/:token`)
 
 - **ShareLinkLoader:** Reads `token` from route params; calls `getPublicShareLinkInfo(token)`. While loading, shows spinner and “Loading” text. On error (e.g. 404, 410), shows error message. On success:
-  - If `linkInfo` indicates directory: render `FileManager` with `shareToken` and `linkInfo` (browse shared folder).
-  - If single file: render `ShareLinkSingleFileView` (full-screen preview/download).
+- If `linkInfo` indicates directory: render `FileManager` with `shareToken` and `linkInfo` (browse shared folder).
+- If single file: render `ShareLinkSingleFileView` (full-screen preview/download).
 - **ShareLinkSingleFileView:** Preview or download for the shared file. Unlike directory-share mode, this single-file screen does not expose share-directory overlay actions such as Login, Leave share, or Add to my permissions unless product behavior explicitly changes and the page spec is updated.
 
 ### Responsive and mobile
@@ -215,14 +215,14 @@ its tests.
 
 ```mermaid
 flowchart LR
-    A["/ or /files"] --> B{Authenticated?}
-    B -->|No| C["Redirect /login"]
-    B -->|Yes| D[FileManager]
-    C --> E[Login form]
-    E --> F[POST /api/auth/login]
-    F --> G{Success?}
-    G -->|Yes| H[Store token, redirect /files]
-    G -->|No| E
+ A["/ or /files"] --> B{Authenticated?}
+ B -->|No| C["Redirect /login"]
+ B -->|Yes| D[FileManager]
+ C --> E[Login form]
+ E --> F[POST /api/auth/login]
+ F --> G{Success?}
+ G -->|Yes| H[Store token, redirect /files]
+ G -->|No| E
 ```
 
 - On load, the client initializes auth state from the existing session-storage adapter/policy and validates the session via `GET /api/auth/me`. Authentication errors follow the existing user-visible policy: unauthorized sessions redirect to login; forbidden responses follow the established navigation policy for the current page context.
@@ -256,16 +256,16 @@ For the full browser-flow inventory and planned Playwright spec ownership across
 Browser-versus-lower-layer split:
 
 - Playwright should own representative browser-visible flows:
-  - protected-route redirects and login outcomes
-  - normal explorer CRUD/navigation
-  - public directory-share browsing and directory-share overlay actions
-  - authenticated `__shared__` and `__recent__` entry/navigation flows
-  - MyPage mobile drawer interaction and visible category switching
+- protected-route redirects and login outcomes
+- normal explorer CRUD/navigation
+- public directory-share browsing and directory-share overlay actions
+- authenticated `__shared__` and `__recent__` entry/navigation flows
+- MyPage mobile drawer interaction and visible category switching
 - RTL/MSW, supertest, and unit tests should own broader or less stable branches:
-  - full ACL and permission matrices
-  - recent-files synchronization internals
-  - share-token edge-case permutations without distinct browser value
-  - drag-and-drop cursor/gesture nuance beyond representative denied/no-op smoke
+- full ACL and permission matrices
+- recent-files synchronization internals
+- share-token edge-case permutations without distinct browser value
+- drag-and-drop cursor/gesture nuance beyond representative denied/no-op smoke
 
 - **Routing and PrivateRoute:** Unauthenticated access to `/files`, `/mypage` redirects to `/login`. Authenticated access renders the correct page. `/admin` redirects to `/mypage` with Admin category selected. Loading state shows spinner.
 - **View/sort/search and toolbar:** View mode and sort mode change UI layout and order; search filters or highlights; selecting items shows toolbar; toolbar actions trigger correct API calls (MSW) and list refresh.

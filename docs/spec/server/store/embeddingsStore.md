@@ -7,7 +7,7 @@
 | Role         | Canonical pooled embedding row per node — table `embeddings(node_id PK, model_id, dim, vector TEXT, source, content_hash, updated_at)`. The `vector TEXT` column is the SYSTEM OF RECORD for every vector in the product; all ANN indexes are derived artifacts of it (§4.13). |
 | Space key    | `model_id` is the embedding-SPACE key: vectors from different `llm_models` rows are never comparable (cross-`model_id` cosine forbidden, §4.20). One active model ⇒ one live row per node (PK is the node).                                                                    |
 | Consumers    | vectorStore adapter (shadow-index rebuild, §4.13), centroid/naming math (pooled row is canonical, §4.3), seed preview (§4.5), evolution passes (§4.9).                                                                                                                         |
-| Design owner | `AI_FEATURE_PLAN.md` §4.20 (E1), §4.13 (canonical TEXT), §5 (schema row).                                                                                                                                                                                                      |
+| Design owner | `docs/features/collections-platform.md` §4.20 , §4.13 (canonical TEXT), §5 (schema row).                                                                                                                                                                                       |
 
 ---
 
@@ -22,7 +22,7 @@
 - **Facade test:** `server/domains/ai/__tests__/embeddingsStore.test.js`
 - **DDL source of truth:** `server/store/postgresql/ddl/003_ai.sql`. **Never** in tracked
   DDL: the pgvector shadow table / sqlite vec0 virtual table — those are created and
-  managed by the vectorStore adapter only (§4.13, PLAN §6).
+  managed by the vectorStore adapter only (§4.13, CODING_STYLE.md Express Patterns).
 
 ### 2.2 Row shape
 
@@ -44,7 +44,7 @@ serialized floats (comma-separated, `dim`-checked at the repository boundary);
 
 ### 2.4 Dedupe-skip contract (content_hash)
 
-The embed worker (T1.3, E1 §4.20) performs the dedupe decision itself — this store only
+The embed worker (DEF-25, E1 §4.20) performs the dedupe decision itself — this store only
 supplies the data:
 
 - Worker reads `get(nodeId)`; if `row.modelId === activeModelId && row.contentHash ===
@@ -52,7 +52,7 @@ filecache.content_hash` ⇒ `aiJobsStore.markSkipped(jobId)` — **no provider c
   write**. Determinism within a model version makes the `(content_hash, model_id)` pair
   sufficient for this idempotency (§4.20).
 - The stored `content_hash` records WHICH content the vector describes (drift detector;
-  T0.1 populates `file_nodes.content_hash`).
+  DEF-25 populates `file_nodes.content_hash`).
 
 ### 2.5 Storage semantics & invariants
 

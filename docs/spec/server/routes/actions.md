@@ -1,7 +1,6 @@
 # actions routes Spec
 
-Target-contract spec (docs-first; AI_FEATURE_PLAN §4.11, §5 `action_journal`;
-PLAN §6/§7 T0.7).
+Target-contract spec.
 
 ## 1. Overview
 
@@ -50,12 +49,12 @@ and with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 
 ### 2.4 Request/Response Spec
 
-**Wire casing (PLAN §6):** responses snake_case; request bodies camelCase
+**Wire casing (CODING_STYLE.md Express Patterns):** responses snake_case; request bodies camelCase
 (`confirmCascade`). Route param `:id` is the numeric `action_id`.
 
 **Journal domains enum (§5):** `collection | batch | settings | permissions | tags |
 file | sharing`. **v1 writers = `collection` only** (all silent/merge/settings-adjacent
-acts, §4.11). `batch` lands with the P3.5 bulk-worker subscription, `settings` with the
+acts, §4.11). `batch` and `settings` arrive with later journal subscribers (DEF-25), `file`/`sharing` with the
 P4 admin-config subscription; `file`/`sharing`/`tags`/`permissions` are enum-reserved
 with no writer yet (the `permissions` asymmetry note applies: grant-undo = revoke is
 exposure-reduction and may be silent; revoke-undo = grant is exposure-expansion and is
@@ -68,72 +67,72 @@ explicit-only, rule 2).
   collection the requester owns (silent system acts are undoable by their victim-user
   via digest/feed surfaces). `payload` (the inverse blob) is NEVER serialized. 200:
 
-  ```json
-  {
-    "actions": [
-      {
-        "action_id": 995,
-        "domain": "collection",
-        "subject": "collection:17",
-        "subject_label": "유럽 여행",
-        "actor": 4,
-        "action": "merge",
-        "status": "applied",
-        "chain_seq": 12,
-        "is_tip": true,
-        "undo_available": true,
-        "created_at": "2026-09-16T03:00:00Z",
-        "undone_at": null,
-        "expires_at": "2026-10-16T03:00:00Z"
-      }
-    ]
-  }
-  ```
+```json
+{
+  "actions": [
+    {
+      "action_id": 995,
+      "domain": "collection",
+      "subject": "collection:17",
+      "subject_label": "유럽 여행",
+      "actor": 4,
+      "action": "merge",
+      "status": "applied",
+      "chain_seq": 12,
+      "is_tip": true,
+      "undo_available": true,
+      "created_at": "2026-09-16T03:00:00Z",
+      "undone_at": null,
+      "expires_at": "2026-10-16T03:00:00Z"
+    }
+  ]
+}
+```
 
-  Field rules: `actor` is a numeric user id or the string `"system"`;
-  `status`: `applied | undone | expired`; `subject_label` is the render-safe display
-  label captured at commit time (never re-resolved — rows outlive subjects for audit);
-  `undo_available` = `status='applied'` (payload not yet NULLed); `is_tip` = highest
-  `chain_seq` among `status='applied'` rows for the same `subject` (lets the client plan
-  the cascade dialog without a round trip). The ≤24h **toast** window is a client
-  surface rule (§4.11) — this API does not shorten availability at 24h.
-  Retention note: rows survive 30d; at expiry `payload` is NULLed and `status` flips to
-  `expired` (audit keeps "what happened" without storage growth) — expired rows stay
-  visible in the feed until their 30d listing horizon passes.
+Field rules: `actor` is a numeric user id or the string `"system"`;
+`status`: `applied | undone | expired`; `subject_label` is the render-safe display
+label captured at commit time (never re-resolved — rows outlive subjects for audit);
+`undo_available` = `status='applied'` (payload not yet NULLed); `is_tip` = highest
+`chain_seq` among `status='applied'` rows for the same `subject` (lets the client plan
+the cascade dialog without a round trip). The ≤24h **toast** window is a client
+surface rule (§4.11) — this API does not shorten availability at 24h.
+Retention note: rows survive 30d; at expiry `payload` is NULLed and `status` flips to
+`expired` (audit keeps "what happened" without storage growth) — expired rows stay
+visible in the feed until their 30d listing horizon passes.
 
 - **POST /:id/undo:** Body optional `{ confirmCascade?: true }`.
-  - **Tip undo** (`is_tip` for its subject): executes free — inverse applied in one TX,
-    row → `status='undone'`, `undone_at=now`. 200.
-  - **Non-tip undo** (older change on a moved chain): without `confirmCascade:true` →
-    **409** `serverErrors.actions.cascadeConfirmRequired` with
-    `params: { laterChanges: <count of later applied rows that would also be undone> }`
-    — nothing is executed. With `confirmCascade:true`: the target AND every later
-    applied row of the same subject are undone (all inverses, oldest-last order), each
-    fingerprint-guarded. 200.
-  - **Fingerprint guard:** each inverse checks the subject's current state against the
-    captured fingerprint. A single-inverse command that mismatches is **refused**:
-    409 `serverErrors.actions.fingerprintMismatch`, row stays `applied`. A
-    command-unit row carrying an item-level inverse list applies per item and reports
-    mixed results in the 200 body (the `11개 되돌림, 1개는 변경되어 건너뜀` toast copy
-    consumes these counts).
-  - **Expired** (`status='expired'`, payload NULLed): 409 `serverErrors.actions.expired`.
-  - **Already undone**: 409 `serverErrors.actions.alreadyUndone`.
+- **Tip undo** (`is_tip` for its subject): executes free — inverse applied in one TX,
+  row → `status='undone'`, `undone_at=now`. 200.
+- **Non-tip undo** (older change on a moved chain): without `confirmCascade:true` →
+  **409** `serverErrors.actions.cascadeConfirmRequired` with
+  `params: { laterChanges: <count of later applied rows that would also be undone> }`
+  — nothing is executed. With `confirmCascade:true`: the target AND every later
+  applied row of the same subject are undone (all inverses, oldest-last order), each
+  fingerprint-guarded. 200.
+- **Fingerprint guard:** each inverse checks the subject's current state against the
+  captured fingerprint. A single-inverse command that mismatches is **refused**:
+  409 `serverErrors.actions.fingerprintMismatch`, row stays `applied`. A
+  command-unit row carrying an item-level inverse list applies per item and reports
+  mixed results in the 200 body (the `11개 되돌림, 1개는 변경되어 건너뜀` toast copy
+  consumes these counts).
+- **Expired** (`status='expired'`, payload NULLed): 409 `serverErrors.actions.expired`.
+- **Already undone**: 409 `serverErrors.actions.alreadyUndone`.
 
-  200 response:
+200 response:
 
-  ```json
-  {
-    "action_id": 995,
-    "status": "undone",
-    "undone_at": "2026-09-17T10:00:00Z",
-    "cascade_undone": [996, 997],
-    "items_undone": 11,
-    "items_skipped": 1
-  }
-  ```
+```json
+{
+  "action_id": 995,
+  "status": "undone",
+  "undone_at": "2026-09-17T10:00:00Z",
+  "cascade_undone": [996, 997],
+  "items_undone": 11,
+  "items_skipped": 1
+}
+```
 
-  `cascade_undone` lists the additional `action_id`s flipped by a cascade (empty/absent
-  for tip undos); `items_undone`/`items_skipped` are command-row counts (≥1 / ≥0).
+`cascade_undone` lists the additional `action_id`s flipped by a cascade (empty/absent
+for tip undos); `items_undone`/`items_skipped` are command-row counts (≥1 / ≥0).
 
 ### 2.4.1 Error Codes (SERVER_ERROR_CODES style)
 
@@ -167,7 +166,7 @@ All errors follow the shared envelope (`errorCode` + optional `params`,
 
 - [api.md](../../../api.md), [shared-contracts.md](../../../shared-contracts.md),
   [collections.md](collections.md) (mutation `undo.action_id` pointers),
-  `AI_FEATURE_PLAN.md` §4.11/§5, PLAN §6/§7 (T0.7, T3.5).
+  `docs/features/collections-platform.md` §4.11/§5, CODING_STYLE.md Express Patterns/§7 (DEF-25, DEF-25).
 
 ### 2.6 Integration Test Scenarios
 

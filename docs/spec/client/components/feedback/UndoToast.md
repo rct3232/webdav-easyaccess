@@ -1,14 +1,14 @@
 # UndoToast Spec
 
-Target-contract spec (docs-first; AI_FEATURE_PLAN §4.11 UI/UX toast system; PLAN §7 T0.7).
+Target-contract spec.
 
 ## 1. Overview
 
-| Item               | Description                                                                                                                                                                                             |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role               | Bottom toast with an action slot: `[icon] {label}  [되돌리기]` — the message-bar view for user-triggered commands carrying an undo pointer. Separate surface from the appbar job-progress area (§4.11). |
-| Used in            | App-level snackbar host (same place `useMessage` renders), driven by `useUndoToast` state                                                                                                               |
-| Related components | `useMessage` (extended contract below), useUndoToast, ConfirmDialog (cascade confirm host)                                                                                                              |
+| Item               | Description                                                                                                                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role               | Bottom toast with an action slot: `[icon] {label} [되돌리기]` — the message-bar view for user-triggered commands carrying an undo pointer. Separate surface from the appbar job-progress area (§4.11). |
+| Used in            | App-level snackbar host (same place `useMessage` renders), driven by `useUndoToast` state                                                                                                              |
+| Related components | `useMessage` (extended contract below), useUndoToast, ConfirmDialog (cascade confirm host)                                                                                                             |
 
 ---
 
@@ -23,7 +23,7 @@ Target-contract spec (docs-first; AI_FEATURE_PLAN §4.11 UI/UX toast system; PLA
 
 - `showMessage(text, type, duration?, action?)` where `action = { label: string, onAction: () => void, disabled?: boolean }`.
 - Existing callers are untouched (optional 4th arg); `message` state gains `action: null` by default.
-- **Decision:** the extension is spec'd here; `hooks/useMessage.md` receives the matching row at implementation time (same PR — docs-first). Undo toasts use `type='success'` styling with the 8 s duration supplied by `useUndoToast` (default durations unchanged).
+- **Decision:** the extension is spec'd here; `hooks/useMessage.md` receives the matching row at implementation time (same PR). Undo toasts use `type='success'` styling with the 8 s duration supplied by `useUndoToast` (default durations unchanged).
 
 ### 2.3 Props
 

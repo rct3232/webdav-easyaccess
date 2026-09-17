@@ -1,6 +1,6 @@
 # SuggestionsChecklist Spec
 
-Target-contract spec (docs-first; AI_FEATURE_PLAN §4.16/§4.17 (Q4 decided), §4.11 command-unit undo; PLAN §7 T3.3).
+Target-contract spec , §4.11 command-unit undo; the collections-platform feature doc §7 DEF-25).
 
 ## 1. Overview
 
@@ -39,7 +39,7 @@ Target-contract spec (docs-first; AI_FEATURE_PLAN §4.16/§4.17 (Q4 decided), §
 
 ### 2.4 Dependencies
 
-- **imports:** MUI Checkbox/List/Button, useTranslation, file icon/thumbnail helpers; data arrives via props (dashboard controller loads through `explorerGateway` §2.6 seams — **Decision:** suggestions endpoints land with T3.3; repository/getter names already reserved in `collectionsRepository.md` §2.3).
+- **imports:** MUI Checkbox/List/Button, useTranslation, file icon/thumbnail helpers; data arrives via props (dashboard controller loads through `explorerGateway` §2.6 seams — **Decision:** suggestions endpoints land with DEF-25; repository/getter names already reserved in `collectionsRepository.md` §2.3).
 
 ### 2.5 i18n Keys
 

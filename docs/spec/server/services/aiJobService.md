@@ -1,14 +1,13 @@
 # aiJobService Spec
 
-Target-contract spec (docs-first; AI_FEATURE_PLAN §4.1, §4.3, §4.12, §4.19, §4.20, §4.21,
-§5 `ai_jobs`/`ai_usage_daily`, invariant 11; PLAN §6/§7 T1.2, T1.3, T4.2).
+Target-contract spec.
 
 ## 1. Overview
 
 | Item              | Description                                                                                                                                                                                                                                                                   |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role              | The AI enrichment pipeline: (a) fire-and-forget ENQUEUE hooks at content-commit seams, (b) a persistent-queue WORKER that executes per-kind role pipelines (`embed`, `features`, `caption`, `asr`, `backfill`), (c) budget-breaker consumption and degraded-flag bookkeeping. |
-| DB-backed         | Queue truth is `ai_jobs` only (invariant 8). The worker is stateless: restart-safe via `recoverStaleRunning` + idempotent writes. Zero CacheAdapter/operationProgress imports (PLAN §6 grep-gate).                                                                            |
+| DB-backed         | Queue truth is `ai_jobs` only (invariant 8). The worker is stateless: restart-safe via `recoverStaleRunning` + idempotent writes. Zero CacheAdapter/operationProgress imports (CODING_STYLE.md Express Patterns grep-gate).                                                   |
 | Dependency stance | LLM is an ENRICHMENT dependency: unconfigured/failed role ⇒ jobs park/skip with degraded flags, never a user-facing error; existing vector math keeps working from DB data after un-configuring (no auto-backfill, §4.2).                                                     |
 
 ---
@@ -19,7 +18,7 @@ Target-contract spec (docs-first; AI_FEATURE_PLAN §4.1, §4.3, §4.12, §4.19, 
 
 - **Source:** `server/domains/ai/jobService.js` (enqueue API + worker loop)
 - **Pipelines:** `server/domains/ai/pipelines/{embed,features,caption,asr}.js` (pure per-
-  kind executors, unit-testable with a fake llmAdapter — T4.3 seam)
+  kind executors, unit-testable with a fake llmAdapter — DEF-25 seam)
 - **Test file:** `server/domains/ai/__tests__/aiJobService.test.js`
 
 ### 2.2 Enqueue hooks (§4.1 seams)
@@ -64,7 +63,7 @@ Enqueue decision table (per node, at hook time):
   launch (§4.15) increments the kind's generation and seeds `enqueueMany` over affected
   nodes with `kind='backfill'` drivers. UNIQUE is per-generation so fresh work is forced
   without colliding with history (§4.1).
-- The upload-hook path checks derived COLLECTION admission (T2.1 definition evaluation)
+- The upload-hook path checks derived COLLECTION admission (DEF-25 definition evaluation)
   separately — that is collections domain, not this service; the only coupling is
   `touchMemberChange` on rule-admission.
 
@@ -80,15 +79,17 @@ Enqueue decision table (per node, at hook time):
    `null` ⇒ idle-sleep `AI_WORKER_POLL_MS` (default 5000, T2). Concurrency 1 per process
    (rate-limited enrichment; `AI_WORKER_CONCURRENCY` T2 default 1).
 4. Before executing, check the role gate (order matters):
-   - Role unconfigured (llmAdapter `roleConfigured()` false) ⇒ that kind's jobs stay
-     QUEUED, unconsumed: the worker claims via an ADDITIVE filter option
-     `aiJobsStore.claimNext({ excludeKinds })` (predicate-level exclusion; the existing
-     zero-arg `claimNext()` contract of aiJobsStore §2.3 is unchanged — **store-sync
-     item:** the option lands with T1.3 in the aiJobsStore spec/repository). This is how
-     "pause never destroys queued work silently" (§4.9 kill-switch semantics) holds with
-     zero attempt inflation — backlog surfaces via `countByStatus`/`listFailed` (§4.15).
-   - role budget breaker OPEN (§4.2: daily call/token cap hit) ⇒ same parking behavior;
-     counters reset at day rollover; breaker state reported to admin.
+
+- Role unconfigured (llmAdapter `roleConfigured()` false) ⇒ that kind's jobs stay
+  QUEUED, unconsumed: the worker claims via an ADDITIVE filter option
+  `aiJobsStore.claimNext({ excludeKinds })` (predicate-level exclusion; the existing
+  zero-arg `claimNext()` contract of aiJobsStore §2.3 is unchanged — **store-sync
+  item:** the option is tracked as DEF-25 in the aiJobsStore spec/repository). This is how
+  "pause never destroys queued work silently" (§4.9 kill-switch semantics) holds with
+  zero attempt inflation — backlog surfaces via `countByStatus`/`listFailed` (§4.15).
+- role budget breaker OPEN (§4.2: daily call/token cap hit) ⇒ same parking behavior;
+  counters reset at day rollover; breaker state reported to admin.
+
 5. Execute pipeline for the claimed kind (per-job timeout `AI_JOB_TIMEOUT_MS`, default
    120000 — operational): success ⇒ `markDone`; typed skip ⇒ `markSkipped(reason)`
    (content_hash dedupe, overlength `skip` policy note, unextractable text); any throw ⇒

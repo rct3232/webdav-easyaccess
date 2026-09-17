@@ -57,18 +57,18 @@
   `file.type === 'file'` (never for directories). On the `정보` tab the original dialog body renders
   (gradient header, permissions, property items). On the `버전` tab the versions list renders via
   `getFileVersions(file.nodeId)`:
-  - Each row: `v{versionNumber}`, formatted date (`createdAt`), formatted size (`size` may be
-    `null` → `dialogs.versionsUnknownSize` placeholder), `isCurrent` → `dialogs.versionsCurrentBadge`
-    badge, `status === 'orphaned'` → `dialogs.versionsExpired` marker (evicted, blob pending GC).
-  - Icon-only action buttons per non-current row: download (`dialogs.versionsDownloadTitle`,
-    `downloadFileVersion`) and restore (`dialogs.versionsRestoreTitle` → ConfirmDialog with
-    `dialogs.versionsRestoreConfirmTitle`/`dialogs.versionsRestoreConfirmBody`; success toast
-    `dialogs.versionsRestoreSuccess`, failure `dialogs.versionsRestoreFail`), each with Tooltip +
-    `aria-label`. All styling via MUI `sx` props only.
-  - Load failure → `dialogs.versionsLoadFail` message, non-fatal. Empty history →
-    `dialogs.versionsEmpty`.
-  - The versions tab is hidden entirely in WebDAV mode / for directories (server refuses or returns
-    empty; the UI does not offer the dead surface).
+- Each row: `v{versionNumber}`, formatted date (`createdAt`), formatted size (`size` may be
+  `null` → `dialogs.versionsUnknownSize` placeholder), `isCurrent` → `dialogs.versionsCurrentBadge`
+  badge, `status === 'orphaned'` → `dialogs.versionsExpired` marker (evicted, blob pending GC).
+- Icon-only action buttons per non-current row: download (`dialogs.versionsDownloadTitle`,
+  `downloadFileVersion`) and restore (`dialogs.versionsRestoreTitle` → ConfirmDialog with
+  `dialogs.versionsRestoreConfirmTitle`/`dialogs.versionsRestoreConfirmBody`; success toast
+  `dialogs.versionsRestoreSuccess`, failure `dialogs.versionsRestoreFail`), each with Tooltip +
+  `aria-label`. All styling via MUI `sx` props only.
+- Load failure → `dialogs.versionsLoadFail` message, non-fatal. Empty history →
+  `dialogs.versionsEmpty`.
+- The versions tab is hidden entirely in WebDAV mode / for directories (server refuses or returns
+  empty; the UI does not offer the dead surface).
 - **Trash actions (DEF-16 P9):** when the opened item is trashed (`file.isTrashed === true`, i.e.
   properties was opened from the trash view) and the host provides the executors, the fixed bottom
   action bar gains Restore and Permanent-delete **icon-only** buttons (Tooltip + `aria-label`,
@@ -98,20 +98,20 @@
 
 ---
 
-## 3. AI-platform extensions (AI platform — target, lands with P0/P1; membership chips with P3 — T3.6, as noted)
+## 3. AI-platform extensions (AI platform — implementation tracked as DEF-25)
 
-Addendum per AI_FEATURE_PLAN §3.3 (like entry points), §4.12 (absent-not-disabled), §4.21 (media probe); the collection-side twin of these rows was pre-announced in `CollectionPropertiesDialog.md` §2.6. Pure-dialog rule unchanged: host prepares data, dialog renders and fires callbacks.
+Addendum per docs/features/collections-platform.md §3.3 (like entry points), §4.12 (absent-not-disabled), §4.21 (media probe); the collection-side twin of these rows was pre-announced in `CollectionPropertiesDialog.md` §2.6. Pure-dialog rule unchanged: host prepares data, dialog renders and fires callbacks.
 
-### 3.1 Header like toggle (P0)
+### 3.1 Header like toggle
 
 - Right-edge of the gradient-header title block: like icon button (sole §3.3 properties-dialog entry point). State = `file.liked` from row data; click → optional `onToggleLike(file)` (viewer-scoped like, invariant 9 — no counts, no other-user state).
 - Hidden when the callback is absent (share-link, trash view, read-only grantee without like route access).
 
-### 3.2 `소속 컬렉션` chip row — 정보 tab, read-only (P3 / T3.6)
+### 3.2 `소속 컬렉션` chip row — 정보 tab, read-only (P3 / DEF-25)
 
 - Host-prepared for-nodes membership data (`POST /collections/for-nodes`; dialog performs no IO): chip row of containing collection names under the property items; chip click routes to that collection's member view via `onOpenCollection(collectionId)` (host navigates, dialog closes). Empty/absent data ⇒ no row. Read-only: no add/remove controls in the dialog (membership mutates in menus/toolbars).
 
-### 3.3 `AI 정보` tab — DISPLAY-ONLY (P1; media probe rows P4 / T4.2)
+### 3.3 `AI 정보` tab — DISPLAY-ONLY (P1; media probe rows P4 / DEF-25)
 
 - Tab present **only when the node's `ai_features` data exists** for the viewer's capability state — absent-not-disabled (§4.12 regular-user rule); never a gray tab, never an empty tab.
 - Renders read-only: derived tags, summary, category, media probe facts (V0 ffprobe container/duration etc. when present), and `truncated`/degraded badges verbatim from the payload (display honesty; no client recomputation).

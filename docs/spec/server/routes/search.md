@@ -1,6 +1,6 @@
 # search routes Spec
 
-Target-contract spec (docs-first; AI_FEATURE_PLAN §4.6, §4.22; PLAN §6/§7 T0.11, T1.5).
+Target-contract spec.
 
 ## 1. Overview
 
@@ -48,7 +48,7 @@ and with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
   Side effect: logs one `usage_events` row `action='search_hit'` per returned node
   (§3.4 — search is a low-frequency logging endpoint).
 
-  **Section 1 — `name_matches` (LLM-free, ships in P0 / T0.11):**
+  **Section 1 — `name_matches` (LLM-free, ships in P0 / DEF-25):**
   plain containment over ALL user-visible `file_nodes`, ACL-scoped with the same
   closure/owner logic as `fileService` listing:
   `lower(name) LIKE lower('%'||:query||'%')` — the `lower()` on both sides is mandatory
@@ -58,65 +58,66 @@ and with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
   (§4.6). **Decision:** order = `name` asc, then `node_id` asc; hard cap 200 rows
   (`counts.name_truncated: true` when the cap cut the set).
 
-  **Section 2 — `semantic` (P1 / T1.5, requires the `embed` role):**
-  - Scoring = **segment-AND**: query split on whitespace (≤3 segments; more → the first
-    3 are used and `counts.semantic_capped_segments: true`), per-segment cosine via
-    max-over-chunks (`embeddings_chunk`, §4.3/§4.13), document score = **MIN across
-    segments**.
-  - Gated by a **per-query dynamic baseline**: the same query is scored against a random
-    ~500-doc sample of the requester's visible corpus; if the top results are not
-    meaningfully above the sample's spread, the section is returned **honestly empty**
-    (kills the anisotropy majority-class fallback on nonsense queries; no absolute stored
-    floors anywhere).
-  - Entries already present in section 1 are **de-duplicated out of section 2** display.
-  - Order = score desc, then `node_id` asc. **Decision:** cap 50 rows.
+  **Section 2 — `semantic` (P1 / DEF-25, requires the `embed` role):**
 
-  **Hybrid assembly order:** `name_matches` first, `semantic` second, exactly as
-  received by the client ("No results in section 1 → show only section 2, and vice
-  versa" is a pure display rule on the returned arrays).
+- Scoring = **segment-AND**: query split on whitespace (≤3 segments; more → the first
+  3 are used and `counts.semantic_capped_segments: true`), per-segment cosine via
+  max-over-chunks (`embeddings_chunk`, §4.3/§4.13), document score = **MIN across
+  segments**.
+- Gated by a **per-query dynamic baseline**: the same query is scored against a random
+  ~500-doc sample of the requester's visible corpus; if the top results are not
+  meaningfully above the sample's spread, the section is returned **honestly empty**
+  (kills the anisotropy majority-class fallback on nonsense queries; no absolute stored
+  floors anywhere).
+- Entries already present in section 1 are **de-duplicated out of section 2** display.
+- Order = score desc, then `node_id` asc. **Decision:** cap 50 rows.
 
-  **`result_ref`:** opaque string = the replay **signature** of this execution —
-  `hash(normalized predicates ∥ vector query ∥ space ∥ sort)` (§4.22; the name-only
-  fallback signature covers the query string + ACL-space + sort). Always emitted, always
-  replay (never a materialized id list; Q7). The client treats it as a black box.
+**Hybrid assembly order:** `name_matches` first, `semantic` second, exactly as
+received by the client ("No results in section 1 → show only section 2, and vice
+versa" is a pure display rule on the returned arrays).
 
-  200 response (embed configured, both sections non-empty):
+**`result_ref`:** opaque string = the replay **signature** of this execution —
+`hash(normalized predicates ∥ vector query ∥ space ∥ sort)` (§4.22; the name-only
+fallback signature covers the query string + ACL-space + sort). Always emitted, always
+replay (never a materialized id list; Q7). The client treats it as a black box.
 
-  ```json
-  {
-    "name_matches": [{ "node_id": 90210, "name": "재밌는-영화노트.pdf" }],
-    "semantic": [{ "node_id": 90212, "name": "fantasy-movie-night.jpg", "score": 0.71 }],
-    "result_ref": "sr1.9f3c2a7e41b0d8c5",
-    "counts": {
-      "name": 1,
-      "semantic": 1,
-      "total": 2,
-      "name_truncated": false,
-      "semantic_capped_segments": false
-    },
-    "semantic_available": true
-  }
-  ```
+200 response (embed configured, both sections non-empty):
 
-  200 response when the `embed` role is absent (name section still works): the
-  `semantic` key is **omitted**, and the degradation is reported as data, not as an
-  HTTP error:
+```json
+{
+  "name_matches": [{ "node_id": 90210, "name": "재밌는-영화노트.pdf" }],
+  "semantic": [{ "node_id": 90212, "name": "fantasy-movie-night.jpg", "score": 0.71 }],
+  "result_ref": "sr1.9f3c2a7e41b0d8c5",
+  "counts": {
+    "name": 1,
+    "semantic": 1,
+    "total": 2,
+    "name_truncated": false,
+    "semantic_capped_segments": false
+  },
+  "semantic_available": true
+}
+```
 
-  ```json
-  {
-    "name_matches": [{ "node_id": 90210, "name": "재밌는-영화노트.pdf" }],
-    "result_ref": "sr1.44de0c9a3f7b1028",
-    "counts": { "name": 1, "semantic": 0, "total": 1, "name_truncated": false },
-    "semantic_available": false,
-    "semantic_unavailable_reason": "serverErrors.ai.notConfigured"
-  }
-  ```
+200 response when the `embed` role is absent (name section still works): the
+`semantic` key is **omitted**, and the degradation is reported as data, not as an
+HTTP error:
 
-  Field rules: `score` is a float 0–1 rounded to 2 decimals; `counts.total` =
-  post-dedup displayed rows; `semantic_available` is the client's gate for hiding the
-  `컬렉션으로 저장` button (empty or unavailable semantic ⇒ button hidden — a saved
-  collection means the semantic part only; name-match results are ALWAYS excluded from
-  collection definitions, §4.6).
+```json
+{
+  "name_matches": [{ "node_id": 90210, "name": "재밌는-영화노트.pdf" }],
+  "result_ref": "sr1.44de0c9a3f7b1028",
+  "counts": { "name": 1, "semantic": 0, "total": 1, "name_truncated": false },
+  "semantic_available": false,
+  "semantic_unavailable_reason": "serverErrors.ai.notConfigured"
+}
+```
+
+Field rules: `score` is a float 0–1 rounded to 2 decimals; `counts.total` =
+post-dedup displayed rows; `semantic_available` is the client's gate for hiding the
+`컬렉션으로 저장` button (empty or unavailable semantic ⇒ button hidden — a saved
+collection means the semantic part only; name-match results are ALWAYS excluded from
+collection definitions, §4.6).
 
 ### 2.4.1 Error Codes (SERVER_ERROR_CODES style)
 
@@ -136,7 +137,7 @@ absent, not the feature).
 - **Decision:** the request field keeps the wire name `result_ref` (snake_case) on both
   sides — it is an opaque token the client replays verbatim; a camelCase rename would
   add a mapping step with zero benefit. This is the only request-body exception to the
-  PLAN §6 camelCase rule.
+  CODING_STYLE.md Express Patterns camelCase rule.
 - **Decision:** segment cap 3 with an explicit `semantic_capped_segments` flag rather
   than rejecting 4-part queries (§4.6 "≤3 segments" read as a scoring bound, not input
   validation).
@@ -151,7 +152,7 @@ absent, not the feature).
 
 - [api.md](../../../api.md), [shared-contracts.md](../../../shared-contracts.md),
   [collections.md](collections.md) (`컬렉션으로 저장` consumes the semantic section only),
-  `AI_FEATURE_PLAN.md` §4.6/§4.12/§4.13/§4.20/§4.22, PLAN §6/§7 (T0.11, T1.5).
+  `docs/features/collections-platform.md` §4.6/§4.12/§4.13/§4.20/§4.22, CODING_STYLE.md Express Patterns/§7 (DEF-25, DEF-25).
 
 ### 2.6 Integration Test Scenarios
 

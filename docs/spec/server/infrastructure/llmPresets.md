@@ -1,7 +1,6 @@
 # llmPresets Spec
 
-Target-contract spec (docs-first; AI_FEATURE_PLAN §4.2, §4.3, §4.15, §4.23, §9;
-PLAN §6/§7 T1.1, §4.23.5 wizard surface).
+Target-contract spec.
 
 ## 1. Overview
 
@@ -27,29 +26,29 @@ PLAN §6/§7 T1.1, §4.23.5 wizard surface).
 
 ```js
 {
-  id: 'llamacpp-bge-m3',            // stable slug, admin picker value only
-  family: 'llama.cpp' | 'ollama' | 'openai-compatible' | 'tei',
-  roles: ['embed'|'chat'|'vision'|'asr'],     // endpoints this row can serve
-  expected: { text_embed, chat, vision_chat, asr },  // BOOLEAN expectations (§2.4 map)
-  endpoints: {                      // free metadata GETs for budget-chain step 2
-    models: '/v1/models', props: '/props'      // per family
-  },
-  budgets: {                        // step-3 fallbacks of the §4.2.3 chain
-    maxInputCharsDefault, chunkBudget: 4, batchSize
-  },
-  profile: {                        // release-measured model profile (§4.15 provenance)
-    dim, chPerTok,                  // chars→token safety factor
-    edgeCos: { tight, mid, loose }, thetaLo,     // kNN tiers + tag-parent θ_lo
-    throughputDocsMin, calibrated: false         // provenance flag (always false in-product)
-  },
-  kwargs: { enableThinkingChatTemplateKwarg: true|false, reasoningEffort: false }
+ id: 'llamacpp-bge-m3', // stable slug, admin picker value only
+ family: 'llama.cpp' | 'ollama' | 'openai-compatible' | 'tei',
+ roles: ['embed'|'chat'|'vision'|'asr'], // endpoints this row can serve
+ expected: { text_embed, chat, vision_chat, asr }, // BOOLEAN expectations (§2.4 map)
+ endpoints: { // free metadata GETs for budget-chain step 2
+ models: '/v1/models', props: '/props' // per family
+ },
+ budgets: { // step-3 fallbacks of the §4.2.3 chain
+ maxInputCharsDefault, chunkBudget: 4, batchSize
+ },
+ profile: { // release-measured model profile (§4.15 provenance)
+ dim, chPerTok, // chars→token safety factor
+ edgeCos: { tight, mid, loose }, thetaLo, // kNN tiers + tag-parent θ_lo
+ throughputDocsMin, calibrated: false // provenance flag (always false in-product)
+ },
+ kwargs: { enableThinkingChatTemplateKwarg: true|false, reasoningEffort: false }
 }
 ```
 
 Rows are FROZEN; the admin UI renders from the manifest; probe results persist to
 `llm_models` + `backendHealth`, never back into the manifest.
 
-### 2.3 Measured rows (project reference set; PoC evidence cited)
+### 2.3 Measured rows (project reference set; the pre-implementation study evidence cited)
 
 **`bge-m3` @ llama.cpp (embed) — MEASURED:**
 
@@ -64,13 +63,13 @@ Rows are FROZEN; the admin UI renders from the manifest; probe results persist t
 
 **`gemma-4-12b-it` @ Hana (chat/vision/asr) — MEASURED:**
 
-| Capability             | Verdict                                                                                                                                                                                                                   | Evidence note |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| `vision_chat`          | OK (in-domain photo probe passes; V2 captions ship)                                                                                                                                                                       | measured      |
-| `asr`                  | OK in-domain (REAL SPEECH transcript passes; sine-tone mis-probe lesson recorded — probes must be speech-shaped)                                                                                                          | measured      |
-| non-speech audio       | PRIOR FABRICATION DOCUMENTED: schema-forced descriptions invented instruments; open prompts contradicted themselves across runs on the same file (E13) ⇒ transcription-only scope freeze, escape-prompt mandatory (§4.21) | measured      |
-| `enable_thinking`      | switch WORKS via `chat_template_kwargs` (verified; reasoning-off shipped)                                                                                                                                                 | measured      |
-| reasoning effort tiers | UNSUPPORTED (probing finds none — params must not be sent)                                                                                                                                                                | measured      |
+| Capability             | Verdict                                                                                                                                                                                                             | Evidence note |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| `vision_chat`          | OK (in-domain photo probe passes; V2 captions ship)                                                                                                                                                                 | measured      |
+| `asr`                  | OK in-domain (REAL SPEECH transcript passes; sine-tone mis-probe lesson recorded — probes must be speech-shaped)                                                                                                    | measured      |
+| non-speech audio       | PRIOR FABRICATION DOCUMENTED: schema-forced descriptions invented instruments; open prompts contradicted themselves across runs on the same file ⇒ transcription-only scope freeze, escape-prompt mandatory (§4.21) | measured      |
+| `enable_thinking`      | switch WORKS via `chat_template_kwargs` (verified; reasoning-off shipped)                                                                                                                                           | measured      |
+| reasoning effort tiers | UNSUPPORTED (probing finds none — params must not be sent)                                                                                                                                                          | measured      |
 
 **Ollama / OpenAI-compatible / TEI-class rows — RELEASE-MEASUREMENT PENDING.**
 Expectations ship (from published docs), every PROFILE/BUDGET number is null-marked

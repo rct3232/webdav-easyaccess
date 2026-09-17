@@ -118,10 +118,10 @@ its tests.
 - **Virtual collections as overlays:** `__shared__`, `__recent__`, `__trash__`, `__collections__`, and `__archive__` reuse the explorer shell but are product overlays with their own browser-visible entry and recovery rules. They should be tracked separately from ordinary folder CRUD even when they share list and preview components.
 - **Collections family (`__collections__` / `__archive__`):** `__collections__` is a virtual node in the sidebar — a **depth-1 list node**: expanding it shows the collection list (activity-sorted; shared-with-me collections appear in the same list marked by an icon chip), and it never tree-walks into collection members. `__archive__` is a virtual child that **auto-contains every archived collection** — there is no separate archive screen and no per-collection archive node; permanent delete lives only on cards inside it. The sidebar entry follows the trash's bottom-pinned-row precedent (`__trash__` sits below the folder-tree lines; the collections row uses the same pinned chrome, not a tree section).
 - **Trash (DEF-16 P9):** The trash is available in both storage modes (WebDAV and S3) and owns the following browser-visible behavior:
-- **Sidebar entry:** a bottom-pinned row below the folder-tree lines (desktop sidebar drawer and the mobile tree collapse): `{휴지통 아이콘} 휴지통` (i18n `nav.trash`), tree-row selected styling while the trash view is active; click navigates to `/files/__trash__`. In share-link mode it goes through the leave-share confirmation like the other non-share entries. It is not a tree section (no expansion/DnD), and the tree itself gains no trash node.
+- **Sidebar entry:** a bottom-pinned row below the folder-tree lines (desktop sidebar drawer and the mobile tree collapse): `{Trash icon} Trash` (i18n `nav.trash`), tree-row selected styling while the trash view is active; click navigates to `/files/__trash__`. In share-link mode it goes through the leave-share confirmation like the other non-share entries. It is not a tree section (no expansion/DnD), and the tree itself gains no trash node.
 - **Delete feedback animation:** on any successful delete-to-trash (single delete via context menu/action sheet, or a completed bulk delete) the pinned trash icon plays a one-shot animation — lid opens then closes while the color flashes default → `error.main` → default (~1.2s). MUI `Delete` subpath-split icon + CSS keyframes via MUI `sx`; raised through the `trashNotifier` signal (`notifyTrashChanged`), raised by `useExplorerCommands.handleOperationComplete` for deletes and `useTrashOperations` for restore/purge/empty.
 - **Trash view (`/files/__trash__`):** lists the user-visible trashed items (name + size/type metadata only — no original-path or deleted-date subtitle). Hierarchical: the root level lists topmost trashed items; opening a trashed folder navigates to `/files/__trash__/node/<nodeId>` and lists its trashed children; the breadcrumb shows the Trash chip plus the trashed folder-name chain (navigable). Empty state `fileManager.trashEmpty`. FAB stays hidden (virtual-root policy); file rows do not open previews (trashed content is not-found outside the trash listing).
-- **Trash actions:** per-item context menu (desktop) / action sheet (mobile) rows — 복원 Restore, 영구삭제 Permanent delete (error accent), 속성 Properties. Bulk: multi-select shows Restore + Permanent delete in the toolbar (error-colored confirms with `{{count}}` copy; selection completes within the view). **Empty trash** is an admin-only (`user.is_admin`) icon button in the controls row (next to sort/view-mode toggles) with an error confirm whose copy states it purges ALL trashed items for ALL users. Gates follow the ACL review: restore = write permission on the row, purge = write permission (delete perm today), empty trash = admin. The main-view "Delete" label/flow is unchanged (delete still means move to trash).
+- **Trash actions:** per-item context menu (desktop) / action sheet (mobile) rows — Restore, permanent delete Permanent delete (error accent), Properties Properties. Bulk: multi-select shows Restore + Permanent delete in the toolbar (error-colored confirms with `{{count}}` copy; selection completes within the view). **Empty trash** is an admin-only (`user.is_admin`) icon button in the controls row (next to sort/view-mode toggles) with an error confirm whose copy states it purges ALL trashed items for ALL users. Gates follow the ACL review: restore = write permission on the row, purge = write permission (delete perm today), empty trash = admin. The main-view "Delete" label/flow is unchanged (delete still means move to trash).
 - **Properties trash actions:** when the properties dialog is opened for a trashed item, its fixed action bar gains Restore + Permanent-delete icon-only buttons (Tooltip + aria-label, error accent for purge) next to Close; hidden for live items.
 - **E2E anchors:** `docs/E2E_COVERAGE_PLAN.md` rows `E2E-TRASH-001`..`E2E-TRASH-011` (`e2e/trash.spec.ts`). Selectors: sidebar row `data-testid="sidebar-trash"`, trash menu/sheet rows `trash-action-restore` / `trash-action-purge`, toolbar buttons `trash-bulk-restore` / `trash-bulk-purge`, empty-trash `data-testid="trash-empty"`, properties icons `trash-props-restore` / `trash-props-purge`.
 - **Recent-file recovery boundary:** When a recent target must be verified, reopened for preview, or removed as stale, the recent-file controller uses explorer gateway seams for parent-folder checks and recent-entry cleanup instead of importing repository or file-service modules directly. Rollback and toast behavior stay unchanged from the user perspective.
@@ -140,7 +140,7 @@ its tests.
 - **Item-level More button:** Each file item (list, grid, detail) has a More (⋮) button. Visible when _not_ in selection mode; hidden when in selection mode. Opens `FileActionSheet` for that file. Placed: list = right side of item; grid = top-right of preview (thumbnail/icon) area, overlaid with z-index; detail = right end of row (last column).
 - **Filename truncation:** All file items (list, grid, detail, and recent files) use middle ellipsis (`pixelMiddleTruncate`) for long filenames, ensuring the file extension remains visible. A `Tooltip` displays the full filename on hover if it is truncated.
 - **Action sheet (mobile):** More button or right-click triggers bottom action sheet (`FileActionSheet`) with same actions as context menu. Long-press no longer opens context menu; it enters selection mode (see Selection above).
-- **Dialogs:** Upload, CreateFolder, FilePreview, FolderPicker, Share, ShareTarget, FileProperties (DEF-11: `정보`/`버전` tab bar between title and gradient header; the versions tab is S3-mode file-only — browse/download/restore past versions, icon-only actions, fixed Close bar; the dialog additionally gains an `AI 정보` tab — extracted tags/summary/caption/transcript with model provenance, rendered only where those features exist — and `소속 컬렉션` membership chips listing which collections contain the file), Confirm, ConflictResolve, Rename, Login (for share link when not logged in). Dialog state managed in `useFileManagerDialogs` or similar; list refreshes after successful close.
+- **Dialogs:** Upload, CreateFolder, FilePreview, FolderPicker, Share, ShareTarget, FileProperties (DEF-11: `Info`/`Versions` tab bar between title and gradient header; the versions tab is S3-mode file-only — browse/download/restore past versions, icon-only actions, fixed Close bar; the dialog additionally gains an `AI Info` tab — extracted tags/summary/caption/transcript with model provenance, rendered only where those features exist — and `Member of` membership chips listing which collections contain the file), Confirm, ConflictResolve, Rename, Login (for share link when not logged in). Dialog state managed in `useFileManagerDialogs` or similar; list refreshes after successful close.
 - **Browser-boundary rule for touched views:** Presentational/file-tree/share views must not call `window`, `document`, or `ResizeObserver` directly. Link opening, element observation, and similar browser work must flow through a prepared callback, hook, or adapter boundary.
 - **File preview zoom:** PDF and image previews support zoom. Bottom bar (zoom in/out, percentage, reset); Ctrl+wheel on desktop; two-finger pinch on mobile.
 - **Share link mode:** When `shareToken` and `linkInfo` are passed (e.g. from ShareLinkLoader), file manager shows only the share root; write actions may be disabled; “Add to my permissions” and “Login” available via FAB or header.
@@ -150,36 +150,36 @@ its tests.
 
 - **Results-mode search:** Submitting a search (Enter / search icon) switches the file list
   into a results mode: the breadcrumb row becomes the results header
-  `🔍 "query" · N개 결과 [컬렉션으로 저장][✕]` with the server's ordered name-match and
+  `🔍 "query" · N results [Save as collection][✕]` with the server's ordered name-match and
   semantic sections rendered as one bounded list (name matches highlighted client-side,
   duplicates shown once). Typing while in results mode re-filters the loaded results inline
   (the same filter the old client-side search used); Enter re-queries. Recent queries appear
-  as chips in the header, each saveable via its `⋮` menu; the `컬렉션으로 저장` button is
+  as chips in the header, each saveable via its `⋮` menu; the `Save as collection` button is
   present only when the semantic section has results. Exiting results mode returns the user
   to the ordinary folder listing.
 - **Merge card:** When the system suspects two of the user's collections are the same
   thing, exactly one card sits atop the collection list (never stacked, never in a
   notifications inbox): a one-line question naming both collections and the overlap count,
   with a thumbnail strip of shared members that expands into a two-column compare overlay.
-  The buttons are `병합` (executes immediately — the card IS the confirmation — followed by
-  an undo toast), `따로 둡니다` (that pair is never asked again), and `나중에` (asks once
+  The buttons are `Merge` (executes immediately — the card IS the confirmation — followed by
+  an undo toast), `Keep separate` (that pair is never asked again), and `Later` (asks once
   more in two weeks, then sleeps). With zero pending proposals the card has zero layout
   footprint.
 - **Digest banner:** After the user has been away from a collection, a single quiet line at
   the top of the member list reports what changed since their last visit
-  (`+N / -M / 병합 1 · 펼치기`). Expanding lists the entries with a one-line reason per
-  auto-added file (`왜 여기에` — which rule matched). The same surface doubles as the
-  sharing-pending strip (`공유 대기 N` with batch/individual publish) for collection owners.
+  (`+N / -M / 1 merge · expand`). Expanding lists the entries with a one-line reason per
+  auto-added file (`why is this here` — which rule matched). The same surface doubles as the
+  sharing-pending strip (`N awaiting publish` with batch/individual publish) for collection owners.
 - **Checkbox suggestions:** Cleanup/duplicate suggestions are always proposals, never acts.
   Every suggestion row carries a checkbox and a dismiss control; the only accept control is
-  `선택 수락(N)`, which moves exactly the checked files to trash. The checkbox itself is the
+  `Accept selected (N)`, which moves exactly the checked files to trash. The checkbox itself is the
   selection confirmation — no extra dialog — and the accept produces one undo toast
   covering the whole command. Unaccepted suggestions expire quietly with retention.
 - **Undo toast:** User-triggered changes (and merges) end with a bottom toast showing what
-  happened and a `되돌리기` action (`이동을 완료했습니다 (12개) [되돌리기]`) — one toast per
+  happened and a `Undo` action (`Move completed (12 items) [Undo]`) — one toast per
   command, never per item, with a ≤24 h undo window. Silent system actions get no toast;
   they surface through the digest banner and the 30-day journal feed in the user dashboard.
-  Undo that meets a changed subject reports honestly (`11개 되돌림, 1개는 변경되어 건너뜀`),
+  Undo that meets a changed subject reports honestly (`11 undone, 1 skipped (state changed since)`),
   and permanently-destructive operations (archive purge, empty trash) show a report-only
   toast with no undo button.
 

@@ -48,8 +48,8 @@ with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 | POST   | `/:id/preview`       | Token | Dry-run the stored definition of an existing one.     |
 | GET    | `/merge-suggestions` | Token | Pending merge-suggestion cards (§4.4).                |
 | POST   | `/:id/merge/:other`  | Token | Execute merge; `:id` survives.                        |
-| POST   | `/:id/merge-dismiss` | Token | `나중에` — defer the pair (2-week re-raise).          |
-| POST   | `/:id/merge-reject`  | Token | `따로 둡니다` — permanent pair suppression.           |
+| POST   | `/:id/merge-dismiss` | Token | `Later` — defer the pair (2-week re-raise).           |
+| POST   | `/:id/merge-reject`  | Token | `Keep separate` — permanent pair suppression.         |
 | GET    | `/:id/grants`        | Token | List sharing grants (owner only).                     |
 | POST   | `/:id/grants`        | Token | Grant `viewer\|editor`.                               |
 | DELETE | `/:id/grants`        | Token | Revoke grant. Query `userId`.                         |
@@ -58,7 +58,7 @@ with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 `GET /merge-suggestions` and `POST /preview` / `POST /for-nodes` are literal paths and
 MUST be registered before the `/:id` parameterized routes.
 
-**Not in this router:** `leave` (`나가기`, per-user `collection_visibility` hidden flag,
+**Not in this router:** `leave` (`Leave`, per-user `collection_visibility` hidden flag,
 §4.7) tracked as DEF-25. No digest-reset endpoint exists —
 the visit cursor advances implicitly on `GET /:id/items` (see decision below).
 
@@ -82,7 +82,7 @@ Common collection object (`collection`):
 {
   "collection_id": 17,
   "owner_id": 4,
-  "name": "유럽 여행",
+  "name": "Europe trip",
   "origin": "user",
   "status": "active",
   "publish_mode": "ask",
@@ -162,7 +162,7 @@ Field rules:
       "created_at": "2026-09-13T10:00:00Z",
       "state": "normal",
       "liked": false,
-      "reason": "tag:포스터",
+      "reason": "tag:poster",
       "shared_excluded": false
     }
   ],
@@ -229,7 +229,7 @@ under cursor.
 }
 ```
 
-`sample` is capped at 12 (the confirm dialog renders sample + `이 외 N개` from
+`sample` is capped at 12 (the confirm dialog renders sample + `plus N more` from
 `count - sample.length`). Seed preview without `embed` configured → 409
 `serverErrors.ai.notConfigured` (§4.12); definition previews never touch AI.
 
@@ -245,9 +245,9 @@ under cursor.
     {
       "suggestion_id": 88,
       "a_id": 17,
-      "a_name": "유럽",
+      "a_name": "Europe",
       "b_id": 23,
-      "b_name": "2026-여행",
+      "b_name": "2026-trip",
       "overlap_count": 41,
       "merged_count": 58,
       "score": 812,
@@ -269,7 +269,7 @@ not re-float it. **Decision:** row order = `score` desc.
 
 ```json
 {
-  "survivor": { "collection_id": 17, "name": "유럽", "item_count": 58 },
+  "survivor": { "collection_id": 17, "name": "Europe", "item_count": 58 },
   "absorbed_id": 23,
   "undo": { "action_id": 995 }
 }
@@ -278,11 +278,11 @@ not re-float it. **Decision:** row order = `score` desc.
 **Decision:** merge is allowed for any owned active pair even without a pending
 suggestion row (a suggestion state transition is opportunistic).
 
-- **POST /:id/merge-dismiss:** Body `{ otherId }`. `나중에` semantics: suggestion →
+- **POST /:id/merge-dismiss:** Body `{ otherId }`. `Later` semantics: suggestion →
   `state='dismissed'`, `dismissed_at=now`; the nightly pass re-raises once after 2 weeks
   then sleeps 30d (§4.4 — timing logic lives in the evolution pass, not the API). 200:
   `{ "suggestion_id": 88, "state": "dismissed", "dismissed_at": "…" }`.
-- **POST /:id/merge-reject:** Body `{ otherId }`. `따로 둡니다`: → `state='rejected'`,
+- **POST /:id/merge-reject:** Body `{ otherId }`. `Keep separate`: → `state='rejected'`,
   `rejected_at=now` — permanent pair suppression (§4.4). 200: `{ "suggestion_id": 88,
 "state": "rejected", "rejected_at": "…" }`.
   Both dismiss and reject 404 `collections.suggestionNotFound` when no pending row exists

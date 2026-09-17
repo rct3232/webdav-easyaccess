@@ -4,11 +4,11 @@ Target-contract spec , §4.12, §4.14/§4.15 (admin entry), §4.16; CODING_STYLE
 
 ## 1. Overview
 
-| Item               | Description                                                                                                                                                                                                                                                                                    |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role               | `저장공간` MyPage content component: hygiene cards (deep-link, never an action center), system-changes journal feed (30d, undo + cascade), my-collections status, SuggestionsChecklist block, capacity sparkline. Also owns the `myPageRegistry` entry contract for the new categories (§2.5). |
-| Used in            | MyPage via `getMyPageContentDescriptor` (`storage` category)                                                                                                                                                                                                                                   |
-| Related components | SuggestionsChecklist, MyPageContentPanel, ConfirmDialog (cascade), useUndoToast (undo execution reuse), PageHeaderContext                                                                                                                                                                      |
+| Item               | Description                                                                                                                                                                                                                                                                                   |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | `Storage` MyPage content component: hygiene cards (deep-link, never an action center), system-changes journal feed (30d, undo + cascade), my-collections status, SuggestionsChecklist block, capacity sparkline. Also owns the `myPageRegistry` entry contract for the new categories (§2.5). |
+| Used in            | MyPage via `getMyPageContentDescriptor` (`storage` category)                                                                                                                                                                                                                                  |
+| Related components | SuggestionsChecklist, MyPageContentPanel, ConfirmDialog (cascade), useUndoToast (undo execution reuse), PageHeaderContext                                                                                                                                                                     |
 
 ---
 
@@ -18,7 +18,7 @@ Target-contract spec , §4.12, §4.14/§4.15 (admin entry), §4.16; CODING_STYLE
 
 - **Source:** `client/src/components/mypage/content/CollectionDashboard.js`
 - **Test file:** `client/src/components/mypage/content/__tests__/CollectionDashboard.test.js`
-- **Decision (naming):** spec keeps the plan's module name `CollectionDashboard`; the USER-facing surface is `저장공간` (category id `storage`) because it is broader than collections — name/label divergence is intentional.
+- **Decision (naming):** spec keeps the plan's module name `CollectionDashboard`; the USER-facing surface is `Storage` (category id `storage`) because it is broader than collections — name/label divergence is intentional.
 
 ### 2.2 Props
 
@@ -32,7 +32,7 @@ Target-contract spec , §4.12, §4.14/§4.15 (admin entry), §4.16; CODING_STYLE
 ### 2.3 Blocks (render order = contract)
 
 1. **Hygiene cards** — exact/near dups count + reclaimable GB; trash size + retention countdown (`TRASH_RETENTION_DAYS`); cleanup suggestions count. Each card is a DEEP LINK to the context where the action happens (dup finder view / `/files/__trash__` / SuggestionsChecklist scroll target) — pull-overview, not action center (§4.16). Counts via gateway seams (DEF-25/DEF-25 payloads); zero/absent data block renders nothing (absent-not-disabled).
-2. **System-changes feed (journal)** — `GET /api/actions` rows (30d, `snake_case` verbatim): `subject_label` + `action` → i18n label map (`mypage.journalAction.${action}`), `actor: "system"` → `자동` tag, `created_at` formatted. Per row: `undo_available` + `is_tip` → undo button; non-tip → cascade-confirm dialog with `params.laterChanges` count then re-post (§4.11 surface 3); `복구 불가` badge for report-only rows (permanent delete/empty-trash parity contract); `status:'undone'` → strikethrough label, no action. `payload` never fetched/needed (feed contract).
+2. **System-changes feed (journal)** — `GET /api/actions` rows (30d, `snake_case` verbatim): `subject_label` + `action` → i18n label map (`mypage.journalAction.${action}`), `actor: "system"` → `auto` tag, `created_at` formatted. Per row: `undo_available` + `is_tip` → undo button; non-tip → cascade-confirm dialog with `params.laterChanges` count then re-post (§4.11 surface 3); `not recoverable` badge for report-only rows (permanent delete/empty-trash parity contract); `status:'undone'` → strikethrough label, no action. `payload` never fetched/needed (feed contract).
 3. **My-collections status** — counts (active/archived), grants received/granted (revoke inline = `DELETE /:id/grants`, instant), recent merge/archive facts from the feed subset with undo (same row renderer).
 4. **Suggestions** — `SuggestionsChecklist` block (its spec owns the accept protocol).
 5. **Capacity sparkline** — ONLY a sparkline, no insight prose (§4.16 rejection). **Decision:** series endpoint ships with later tasks; seam `loadCapacitySeries()` returns `{ points: [{ day, bytes }] }`; absent ⇒ block omitted entirely.
@@ -58,13 +58,13 @@ Target-contract spec , §4.12, §4.14/§4.15 (admin entry), §4.16; CODING_STYLE
 ### 2.7 Verification Scenarios
 
 - [ ] Hygiene card click calls `onNavigate` and performs NO mutation.
-- [ ] Feed renders `subject_label` verbatim (never re-resolved) with mapped action label; system rows tagged `자동`.
+- [ ] Feed renders `subject_label` verbatim (never re-resolved) with mapped action label; system rows tagged `auto`.
 - [ ] Non-tip undo opens cascade dialog showing `laterChanges` count BEFORE re-posting with `confirmCascade: true`.
-- [ ] Permanent-delete rows show `복구 불가` badge and no undo button.
+- [ ] Permanent-delete rows show `not recoverable` badge and no undo button.
 - [ ] `storage` category renders for non-admins; `admin-ai` only for admins and carries the 4-state chip.
 - [ ] Missing capacity/dup data hides blocks (no spinners-forever, no placeholder prose).
 
 ### 2.8 Edge Cases
 
-- Feed cap (200 rows) hit: "그 밖의 변경" note, no pagination control (30d personal scale decision).
+- Feed cap (200 rows) hit: "more changes" note, no pagination control (30d personal scale decision).
 - Revoke-grant inline success: row disappears instantly (server revocation is instant, §4.7).

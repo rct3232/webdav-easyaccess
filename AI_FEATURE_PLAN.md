@@ -107,7 +107,7 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
     job keyed by tag string+model; tag vocabulary cardinality is small). Tag match values
     resolve through orthographic normalization + `tag_parents` hints (§4.18) first.
 - `collection_exclusions (collection_id,node_id)`: applies to derived members only
-  ("제외" on an auto-added file = block for this definition). Exclusion = **touch** →
+  ("Exclude" on an auto-added file = block for this definition). Exclusion = **touch** →
   auto-pins (§4.9b); its rate is a quality metric for admin/tuning, never an archive
   trigger.
 - Member row states, rendered per read (join-time ACL check — precedent
@@ -115,18 +115,18 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
   view, now not readable → gray placeholder row WITHOUT filename/thumbnail; metadata after
   revocation is a leak) | trashed-by-owner (hidden, row kept) | purged (row cascaded away).
 - Foreign members (files the collection owner doesn't own) in a LIVE-SHARED view are
-  **excluded from rendering** with an `타인 소유 — 공유 제외` chip in the owner's view
+  **excluded from rendering** with an `Not owner's file — not shared` chip in the owner's view
   (cross-leak rule; §4.7). Adding foreign files to collections is otherwise allowed (rule:
   you may only add what you can read).
 - Member-row controls (context menu & multi-select) — file-mutating items (move/copy/rename/
   delete) are DELIBERATELY ABSENT; collection is a view, not a workspace. Present:
   exclude | publish on/off (shared collections only) | download (if file ACL allows) |
-  `원본에서 보기` (route the user to the file's real location where normal menus apply) |
+  `Reveal original location` (route the user to the file's real location where normal menus apply) |
   properties (read-only tab subset for non-owners) | like toggle.
   Multi-select adds: batch exclude (stored→delete rows; system→insert exclusions), batch
-  publish, `다른 컬렉션에 추가` (membership copy). No batch delete — by rule.
+  publish, `Add to another collection` (membership copy). No batch delete — by rule.
 - Collection-card context menu by origin: user/system: rename(→`name_locked=true`), pin,
-  archive, share settings, delete(archived only). viewer(received): open, `나가기` (hide,
+  archive, share settings, delete(archived only). viewer(received): open, `Leave` (hide,
   local), no mutations.
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/routes/collections.md`, `docs/spec/server/store/collectionsStore.md`, `docs/spec/client/components/file-manager/MemberRowControls.md`, `docs/spec/client/components/file-manager/FileContextMenu.md`
@@ -240,12 +240,12 @@ membership set-Jaccard (LLM-free variant, same pipeline). Row
 `collection_merge_suggestions(a_id,b_id,score,state pending|merged|dismissed|rejected)`.
 UI grammar (researched from Apple Photos / Google Photos / GitHub / Gmail patterns —
 proposals live at the object, never in an inbox): one card atop the collection list
-(never stacked; `외 N건` chip cycles), collapsed 68px one-line:
-`"A"을(를) "B"에 병합할까요? · N개 파일이 겹칩니다 · 병합 후 M개` + overlapping-member
+(never stacked; `+N more` chip cycles), collapsed 68px one-line:
+`"Merge "A" into "B"? · N overlapping files · M after merge"` + overlapping-member
 thumbnail strip (strip = expand toggle → ≤300px overlay two-column compare, list not
-shifted) + buttons `[병합(primary)][따로 둡니다(ghost)][나중에(text)]`; `나중에` re-raises
-once after 2 weeks then sleeps 30d; `따로 둡니다` = permanent pair suppression;
-`병합` executes immediately (NO extra dialog — the card IS the confirmation) + undo toast
+shifted) + buttons `[Merge(primary)][Keep separate(ghost)][Later(text)]`; `Later` re-raises
+once after 2 weeks then sleeps 30d; `Keep separate` = permanent pair suppression;
+`Merge` executes immediately (NO extra dialog — the card IS the confirmation) + undo toast
 (§4.11 toast system). Zero pending ⇒ zero layout footprint. No sidebar/tree chips for
 merges (rejected).
 Merge survivor: keep chosen name unless `name_locked`.
@@ -254,13 +254,13 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
 
 ### 4.5 Seed collection
 
-File context menu `이런 파일로 컬렉션 만들기` → confirm dialog (~640×560): seed preview,
-editable auto name, member sample grid with fade + `이 외 N개` counter (backend
+File context menu `Make a collection like this file` → confirm dialog (~640×560): seed preview,
+editable auto name, member sample grid with fade + `plus N more` counter (backend
 `GET /api/collections/preview?seedNodeId=` — seed vector vs user's visible candidates,
 cosine in JS over TEXT vectors, partial top-K; 10k files ≈ hundreds of ms; skeleton/streaming
 if larger) → create as `origin='seed'`, definition = `{seed_ref, θ}` vector rule. Cost:
 membership math only, no LLM. Confirm-dialog copy obligation (Q2/§4.7): the dialog states
-that the ENTIRE initial set (preview + `이 외 N개`) is publish-approved as a batch if/when
+that the ENTIRE initial set (preview + `plus N more`) is publish-approved as a batch if/when
 the collection is shared — approval must not silently cover unseen members.
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/routes/collections.md`, `docs/spec/client/components/file-manager/AddToCollectionMenu.md`, `docs/spec/server/services/collectionsService.md`
@@ -281,17 +281,17 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
   2. `semantic`: vector results (P1+, embed-only config) — no highlighting; entries already
      present in section 1 are de-duplicated from section 2's display. Scoring = **segment-
      AND**: split query on whitespace (≤3 segments), per-segment max-over-chunks cosine,
-     document score = MIN across segments (E3: composite queries like "재밌게 본 판타지 영화"
+     document score = MIN across segments (E3: composite queries like "enjoyable fantasy movies I watched"
      fail under whole-sentence cosine alone); gated by a **per-query dynamic baseline** —
      score the same query against a random ~500-doc corpus sample; if top results are not
      meaningfully above the sample's spread, return an honestly EMPTY section (kills the
      anisotropy majority-class fallback on nonsense queries, E2v2/E11). No absolute stored
      floors anywhere (PoC §2.5/2.6).
 - No results in section 1 → show only section 2, and vice versa; empty semantic ⇒
-  **`컬렉션으로 저장` button hidden** (a saved collection means the semantic part only;
+  **`Save as collection` button hidden** (a saved collection means the semantic part only;
   name-match results are ALWAYS excluded from the collection definition).
 - Server response renders in **results mode**: breadcrumb-row header
-  `🔍 "query" · N개 결과 [컬렉션으로 저장][✕]` (single button, no dropdown). Typing while in
+  `🔍 "query" · N results [Save as collection][✕]` (single button, no dropdown). Typing while in
   results mode re-filters the loaded results inline (same filter component); Enter
   re-queries. NL chat-parser (T3.4, optional later) extends the same header with a
   structured-predicate tab; §4.6 ≠ §4.11 parse grammar alignment note kept.
@@ -309,11 +309,11 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
 ### 4.7 Collection sharing (live)
 
 - Roles `viewer|editor` (+owner). Viewer: list/preview/download of members, cannot rename/
-  remove-others'-adds? (editor+ may `제외` only what they added or if owner), cannot trash
+  remove-others'-adds? (editor+ may `Exclude` only what they added or if owner), cannot trash
   anything. Editor: add/remove membership.
 - Live = membership resolved at read time + `published` gate: in `ask`/`off` collections
   members added AFTER creation (auto-added and stored-added) start `published=false` →
-  hidden from shared view; owner sees `공유 대기 N` banner (list-top, same digest surface)
+  hidden from shared view; owner sees `N awaiting publish` banner (list-top, same digest surface)
   with batch/individual publish. **Q2 decided: the initial execution's member set of
   `seed`/`search` collections is created `published=true`** (the §4.5/§4.6 confirm dialog
   is the batch approval, incl. unseen remainder — see §4.5 copy obligation); subsequent
@@ -332,8 +332,8 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
 
 Per `(user,collection)` visit cursor `collection_digest_cursors(last_visited_at)`; counts
 derived at read from `collection_items.created_at` (stored) and definition-evaluation events
-(derived: last_member_change_at on collection row). One line `+N / -M / 병합 1 · 펼치기`;
-expanded = per-entry reason (`왜 여기에` answers for auto-members come from per-row reason
+(derived: last_member_change_at on collection row). One line `+N / -M / 1 merge · expand`;
+expanded = per-entry reason (`why is this here` answers for auto-members come from per-row reason
 computed at query time — matched predicate name — NOT a history table).
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/client/components/file-manager/CollectionsListView.md`
@@ -373,7 +373,7 @@ Inputs: node_activity, likes, tags(ortho-normalized; §4.18), embeddings. Passes
    (tight+mid counted) / broad-tier ≤1 event-class per user, size caps **tight/mid ≤120,
    broad ≤500**, Jaccard ≥0.8 vs existing/tombstone → merge-proposal instead of create.
    No tier-specific lifecycle exemptions (owner decision 2026-09-16 — uniform rules only).
-2. **Split (분화)**: hot subset within a collection crossing create-gates → NEW SIBLING
+2. **Split**: hot subset within a collection crossing create-gates → NEW SIBLING
    `system` collection (never nested), parent untouched.
 3. **Archive**: activity < ε for N days OR members≈0 — **skipped for any pinned collection
    (§4.9b)**. The former exclusion-rate>θ trigger is REMOVED (owner decision 2026-09-16:
@@ -409,7 +409,7 @@ overlap-asymmetry. Rule on materialized membership sets (capped, e.g. 500 rows/c
 - `sizeRatio = min(|A|,|B|)/max(|A|,|B|) ≥ 0.7` AND
 - `jaccard = |A∩B|/|A∪B| ≥ 0.7`.
   Explicitly rejected: overlap-coefficient / containment (|A∩B|/min) metrics — they fire on
-  subset pairs (스페인 ⊂ 유럽) which must NOT merge. The (유럽, 2026-여행) near-equal-sets case
+  subset pairs (Spain ⊂ Europe) which must NOT merge. The (Europe, 2026-trip) near-equal-sets case
   passes both tests and does surface as candidate. Subset pairs with sizeRatio<0.7 may later
   become _hierarchy proposals_ (parent/child grouping) — **not in v1** (§9 rejected list).
   (Validated PoC E7: all six constructed geometries — subset, near-identical jac.82, band
@@ -421,9 +421,9 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
 ### 4.10 Naming templates
 
 Locale-style template strings (server-side module; ko/en both) keyed by creation type:
-search → query text verbatim; seed → `{seedFileName}과 유사한 파일`; system cluster →
-top-2 local derived tags `{tag1} · {tag2} 사진`; split → `{parentName} · {diffTag}`;
-fallback → `자동 컬렉션 N` (system-origin only). `llmNamer` (chat configured) produces the
+search → query text verbatim; seed → `{seedFileName} and similar files`; system cluster →
+top-2 local derived tags `{tag1} · {tag2} photos`; split → `{parentName} · {diffTag}`;
+fallback → `Auto collection N` (system-origin only). `llmNamer` (chat configured) produces the
 name for new system creations instead. Template output is final; no post-hoc rename jobs.
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/services/collectionsService.md`, `docs/spec/server/services/aiJobService.md`
@@ -446,37 +446,34 @@ Schema §5. Generic `(domain, subject)` opaque key, NO FKs (rows outlive subject
   no writer yet (asymmetry note: grant-undo=revoke is exposure-reduction, allowed silently;
   revoke-undo=grant = exposure-expansion → explicit only, rule 2).
   **UI/UX: bottom toast system (user-triggered actions), separate from the appbar job
-  progress.** Reuse/extend `useMessage` (global hook) with an action slot: `[icon] 이동을
-완료했습니다 (12개)  [되돌리기]`. One toast per COMMAND (never per item); server returns
+  progress.** Reuse/extend `useMessage` (global hook) with an action slot: `[icon] Move completed (12 items)  [Undo]`. One toast per COMMAND (never per item); server returns
   `undo: { actionId }` in the mutation response, and batch jobs return it in the terminal
   poll result (T3.5). Journal granularity follows: **one command row** per user action
   (`subject='batch:jobId'` etc.), payload carrying the item-level inverse list — item-level
   rows only when partial-failure reporting demands. Undo executes all inverses,
-  fingerprint-guarded per item; mixed results → toast reports `11개 되돌림, 1개는 변경되어
-건너뜀`.
+  fingerprint-guarded per item; mixed results → toast reports `11 undone, 1 skipped (state changed)`.
   Undo availability matrix:
   | Action | Toast | Undo? | Mechanism |
   |---|---|---|---|
-  | batch 이동/복사 | ✅ | ✅ | journal `domain=batch` command row (P3.5); copy-undo deletes created root (fingerprint-guarded) |
-  | 이름 변경(단건/batch) | ✅ | ✅ | journal `domain=file` (add to enum); undo=rename-back |
-  | 파일 삭제→휴지통 | ✅ | ✅ | **NOT journal** — existing trash restore (content world, invariant: trash owns files) |
-  | 컬렉션 생성/추가/제외/pin/publish/이름/공유부여·회수 | ✅ | ✅ | journal `domain=collection` |
-  | 머지 확정(카드), 정리 제안 수락 | ✅ | ✅ | journal / trash restore |
-  | 공유 링크 생성·취소(file) | ✅ | ✅ | journal `domain=sharing` |
-  | 컬렉션 아카이브(수동) | ✅ | ✅ | journal |
-  | **archived→영구삭제, empty-trash(admin)** | ✅ (report only) | ❌ | trash-parity contract: no undo button, no journal inverse |
-  | like / 방문 / 정렬 조작 | ❌ | — | self-reversing trivial state; toast is noise |
-  | 마이그레이션/배치 취소 완료 | ✅ (informational) | ❌ | job domain owns; journal not involved |
-  | 업로드(단순) | ❌ | ❌ | success is self-evident in list; failure toast already exists |
-  Additional candidate intro-points found (include): **충돌 해결 덮어쓰기** (undo = versions
-  restore when history enabled, else unavailable — degrade silently), **권한 요청
-  승인/거절** (undo=revoke, same exposure boundary), **관리자 GC/클린업 실행** (report toast,
-  no undo — destructive-by-design, §9 keeps), ~~**테그 병합 확정(admin)**~~ (retired — §4.18
+  | batch move/copy | ✅ | ✅ | journal `domain=batch` command row (P3.5); copy-undo deletes created root (fingerprint-guarded) |
+  | rename (single/batch) | ✅ | ✅ | journal `domain=file` (add to enum); undo=rename-back |
+  | file delete→trash | ✅ | ✅ | **NOT journal** — existing trash restore (content world, invariant: trash owns files) |
+  | collection create/add/exclude/pin/publish/rename/grant·revoke | ✅ | ✅ | journal `domain=collection` |
+  | merge confirm (card), cleanup-suggestion accept | ✅ | ✅ | journal / trash restore |
+  | share link create·revoke (file) | ✅ | ✅ | journal `domain=sharing` |
+  | manual collection archive | ✅ | ✅ | journal |
+  | **archived→permanent delete, empty-trash(admin)** | ✅ (report only) | ❌ | trash-parity contract: no undo button, no journal inverse |
+  | like / visit / sort manipulation | ❌ | — | self-reversing trivial state; toast is noise |
+  | migration/batch-cancel completion | ✅ (informational) | ❌ | job domain owns; journal not involved |
+  | upload (plain) | ❌ | ❌ | success is self-evident in list; failure toast already exists |
+  Additional candidate intro-points found (include): **conflict-resolution overwrite** (undo = versions
+  restore when history enabled, else unavailable — degrade silently), **permission-request approve/deny** (undo=revoke, same exposure boundary), **admin GC/cleanup run** (report toast,
+  no undo — destructive-by-design, §9 keeps), ~~**admin tag-merge confirm**~~ (retired — §4.18
   has no merge op; parent hints are display-only, no confirm/undo surface).
-  Cascade confirm dialog (non-tip undo) and `복구 불가` badges remain as designed for the
+  Cascade confirm dialog (non-tip undo) and `not recoverable` badges remain as designed for the
   30-day dashboard feed (`GET /api/actions`); surfaces: (1) toast (user actions, ≤24h
   undo window honored though rows live 30d), (2) digest banner undo links (system acts,
-  ≤24h), (3) dashboard feed (all, 30d, cascade), (4) `__archive__` 복구 button, (5)
+  ≤24h), (3) dashboard feed (all, 30d, cascade), (4) `__archive__` restore button, (5)
   sidebar `new` dot (system-create cue only). No toasts for silent system acts — digest/
   feed carry them.
 
@@ -593,16 +590,16 @@ feature and NO dataset shipped to end users. Panel displays profile values +
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/infrastructure/llmPresets.md`, `docs/spec/server/routes/admin.md (panel surface lands with T4.1 docs step)`
 
-### 4.16 User dashboard `저장공간`
+### 4.16 User dashboard `Storage`
 
 Nav: `myPageRegistry` entry shape `{id,icon,labelKey,visibility:'all'}` + content
 descriptor branch. Blocks: hygiene cards (exact/near dups count + reclaimable GB, trash size
 
 - retention countdown, cleanup suggestions count) → each deep-links to a context where the
-  action happens (dashboard is pull-总람, not an action center — in-context cards remain);
+  action happens (dashboard is pull-style overview, not an action center — in-context cards remain);
   system-changes feed (journal, 30d, undo buttons); my-collections status (counts,
   grants-received/granted w/ revoke, recent merge/archive facts w/ undo); suggestions list
-  (**checkbox rows + `선택 수락(N)` — Q4 decided: checkbox in ALL cases, no per-file/
+  (**checkbox rows + `Accept selected (N)` — Q4 decided: checkbox in ALL cases, no per-file/
   threshold variants; checked rows only, accept→trash, command-unit undo §4.11**).
   Capacity sparkline only — no personal-insight prose
   (rejected scope).
@@ -619,7 +616,7 @@ near-miss), "30d unopened + low score". **Short-doc exception: files ≤1 senten
 excluded from cosine near-dup (edit variants score 0.55 there — E2v2 P01) — hash/shingle
 path only.** Always PROPOSALS (file-mutating, rule 2/5), rendered inline (row chip) + in
 §4.16. **Q4 decided UX: every suggestion row carries a checkbox; the only accept control is
-`선택 수락(N)` (checked rows → trash). Dismiss stays inline per-row; unaccepted suggestions
+`Accept selected (N)` (checked rows → trash). Dismiss stays inline per-row; unaccepted suggestions
 expire with the retention job.** Undo = command journal row (checked count = inverse
 count); no extra confirm dialog — the checkbox IS the selection confirmation.
 
@@ -629,7 +626,7 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
 
 PoC E6c (1,115 tagged docs, 1,271 distinct tags) dissolved the original "merge similar
 tags" design: high-cosine pairs are overwhelmingly (a) **spelling/spacing variants**
-(`시간 낭비↔시간낭비`, cos .98+, 13/16 of the .97+ band) and (b) **containment pairs** which
+(`"wasted time" vs "wastedtime" (spacing variant)`, cos .98+, 13/16 of the .97+ band) and (b) **containment pairs** which
 are hypernym relations, not synonyms (merge would destroy distinction); doc co-occurrence
 proved uninformative at scale. The 3-step replacement, all non-destructive:
 
@@ -638,7 +635,7 @@ proved uninformative at scale. The 3-step replacement, all non-destructive:
    the normalized grouping aid.
 2. **Containment → parent hints** — `tag_parents(child PK, parent, source(auto|admin),
 created_at)`: rule `containment ∧ cos ≥ profile θ_lo(0.75)` maps e.g.
-   `배우 캐스팅 → 캐스팅`. **Display/grouping hint only — never rewrites raw tags, never
+   `actor casting → casting`. **Display/grouping hint only — never rewrites raw tags, never
    merges**; a wrong parent costs one odd group row, so no labeling audit gates this feature
    (owner scope decision). Admin may view/edit `tag_parents`.
 3. **Gray band = leave alone.** No cos-θ alias merge, no co-occurrence k gate, no
@@ -710,13 +707,13 @@ does work rules can't):
   omitted). Its verdict pre-fills §4.17 suggestion rows; accept stays user-clicked.
 - **`merge-arbiter`** — nightly, ONLY for pairs in the review band Jaccard 0.55–0.7
   (§4.9c). Below 0.55 no card; ≥0.7 card without adjudication. Why it exists: set math is
-  structurally blind to the difference between _theme+subset_ (유럽/스페인 — must NOT
-  merge), _theme+duplicate_ (유럽/2026여행 — should merge), and _sibling themes_ (유럽/
-  일본 — must not); membership overlap alone can look identical for all three. Input:
+  structurally blind to the difference between _theme+subset_ (Europe/Spain — must NOT
+  merge), _theme+duplicate_ (Europe/2026-trip — should merge), and _sibling themes_ (Europe/
+  Japan — must not); membership overlap alone can look identical for all three. Input:
   both collection names+top tags+sizes + ≤5 sampled member summaries each (features only).
   Output: verdict ∈ {merge, keep_separate, sibling} + one-line reason, written as
   prefilled recommendation + reason row on the §4.4 card (`sibling` → no card in v1,
-  §9). It advises, never acts: user still presses 병합; no arbiter call is ever
+  §9). It advises, never acts: user still presses Merge; no arbiter call is ever
   self-executing. Chat off ⇒ band pairs simply get no recommendation (card still appears,
   no preselection). **Input format is load-bearing (E7 PoC): the prompt MUST include the
   symmetric difference — unique-member counts/ratios and samples from each side — feeding
@@ -830,7 +827,7 @@ SearchSession (concept): accumulated predicates | exclusion predicates | semanti
 #### result_ref = replay, never materialized id-lists
 
 `sig = hash(normalized predicates ∥ vector query ∥ space ∥ sort)`; a follow-up like
-"그중…" = `rerun(sig) ∩ new-execution`, resolved **under current ACL at execution time**.
+"of those…" = `rerun(sig) ∩ new-execution`, resolved **under current ACL at execution time**.
 
 - Why not stored snapshots: an id list freezes past-ACL — a since-revoked file staying
   addressable violates invariant 5/§4.19 (server-side live ACL enforcement) and would
@@ -847,16 +844,16 @@ SearchSession (concept): accumulated predicates | exclusion predicates | semanti
 
 #### Utterance-merge rules (parser classifies; SERVER code decides)
 
-| Utterance                       | Example               | Interpretation                                               | Result                                                                            |
-| ------------------------------- | --------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| new field                       | "그리고 pdf"          | add                                                          | ∧ predicate                                                                       |
-| same field, explicit correction | "작년 말고 올해"      | replace                                                      | server substitutes `year` slot                                                    |
-| same field, additive            | "올해 것도"           | add-multi                                                    | field cardinals fixed in grammar up-front                                         |
-| negation, expressible           | "검은색 아니"         | NOT predicate                                                | grammar supports it                                                               |
-| negation, not expressible       | —                     | exclusion token                                              | `− set/attr` list                                                                 |
-| exclude instruction             | "비슷한 건 빼"        | `exclude_similar($ref)`                                      | pairwise sim over rerun set (vectorStore); parser only translated the instruction |
-| pronominal ref                  | "그중/그 사진들/이걸" | `$ref` slot (= latest sig, server-injected)                  | —                                                                                 |
-| unresolvable                    | —                     | vector fallback: merged original+utterance query re-embedded | structural failure ≠ search failure                                               |
+| Utterance                       | Example                          | Interpretation                                               | Result                                                                            |
+| ------------------------------- | -------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| new field                       | "and pdf"                        | add                                                          | ∧ predicate                                                                       |
+| same field, explicit correction | "last year? no — this year"      | replace                                                      | server substitutes `year` slot                                                    |
+| same field, additive            | "and this years too"             | add-multi                                                    | field cardinals fixed in grammar up-front                                         |
+| negation, expressible           | "not black"                      | NOT predicate                                                | grammar supports it                                                               |
+| negation, not expressible       | —                                | exclusion token                                              | `− set/attr` list                                                                 |
+| exclude instruction             | "exclude the similar ones"       | `exclude_similar($ref)`                                      | pairwise sim over rerun set (vectorStore); parser only translated the instruction |
+| pronominal ref                  | "of those/those photos/this one" | `$ref` slot (= latest sig, server-injected)                  | —                                                                                 |
+| unresolvable                    | —                                | vector fallback: merged original+utterance query re-embedded | structural failure ≠ search failure                                               |
 
 **Symbol boundary** (conversational restatement of §4.19): the LLM manipulates symbols and
 grammar fields only; every symbol→node-set resolution, merge, intersection, exclusion and
@@ -865,7 +862,7 @@ the prompt; hallucination class = no-match, not wrong-file.
 
 #### Actions on results
 
-`"이걸 컬렉션으로 저장"` = existing §4.6 save path accepting `$ref` as the target arg — no
+`"this one Save as collection"` = existing §4.6 save path accepting `$ref` as the target arg — no
 new action vocabulary. **Flattening rule:** a saved collection stores the SNAPSHOT of the
 referenced execution (centroid + predicate set from that signature's last run) — replay
 chains are never persisted inside definitions (session state is ephemeral; definitions are
@@ -886,7 +883,7 @@ durable). Saved semantics = semantic-section portion only (name-match exclusion 
 #### RAG is a DIFFERENT product feature — boundary statement
 
 - File finding = search/retrieval (hybrid: name SQL ∥ predicates ∥ vector; THIS plan).
-- Content questions ("이 문서에서 계약 해지 조건이 뭐야?") = retrieval + grounded
+- Content questions ("what are the termination clauses in this document?") = retrieval + grounded
   generation (RAG) — requires chunk-level embeddings (`doc_chunks`, a new space decision),
   request-path generation (invariant 11 exception family), citation rendering, its own
   degradation column (RAG-off ⇒ file answers only).

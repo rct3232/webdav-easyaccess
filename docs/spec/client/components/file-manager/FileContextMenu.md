@@ -86,9 +86,9 @@ Checklist for unit test writing:
 Addendum to §2.2/§2.5/§2.6 per docs/features/collections-platform.md §3.2/§3.3 (`AddToCollectionMenu.md`, `MemberRowControls.md`; the collections-platform feature doc §7 DEF-25).
 
 - **New entries (main listing), rendered via the existing "callback provided ⇒ item renders" idiom (§2.6):**
-- `컬렉션에 추가 ▸` — new optional callback `onAddToCollection(file)`; the submenu itself is the host-mounted `AddToCollectionMenu` component (this menu only anchors/launches it).
-- `좋아요` toggle — new optional callback `onToggleLike(file)`; pressed/label state comes from the **row data `file.liked`** verbatim (current viewer's own like only — invariant 9; no counts, no other-user state).
-- **Member-list context variant:** when the host opens this menu on a collection MEMBER row, the rendered set is exactly the `MemberRowControls.md` §2.3 set (exclude / publish / download / `원본에서 보기` / properties / like) — the host passes only those callbacks. **No move/copy/rename/delete of the file node in member context, ever** (§3.2 "collection is a view, not a workspace"; grep-able invariant in that spec).
+- `Add to collection ▸` — new optional callback `onAddToCollection(file)`; the submenu itself is the host-mounted `AddToCollectionMenu` component (this menu only anchors/launches it).
+- `Like` toggle — new optional callback `onToggleLike(file)`; pressed/label state comes from the **row data `file.liked`** verbatim (current viewer's own like only — invariant 9; no counts, no other-user state).
+- **Member-list context variant:** when the host opens this menu on a collection MEMBER row, the rendered set is exactly the `MemberRowControls.md` §2.3 set (exclude / publish / download / `Reveal original location` / properties / like) — the host passes only those callbacks. **No move/copy/rename/delete of the file node in member context, ever** (§3.2 "collection is a view, not a workspace"; grep-able invariant in that spec).
 - i18n (appends §2.5): `fileManager.addToCollection`, `fileManager.memberLike`/`fileManager.memberUnlike`.
 - E2E selector contract: `data-testid="collection-add"` / `data-testid="like-toggle"`, shared with the mobile sheet (§2.6 cross-surface rule).
 

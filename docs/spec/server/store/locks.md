@@ -54,11 +54,11 @@ Locks are **DB rows in a `locks` table** — there is no lock-file (`lockPath`) 
 - [ ] Stale lock (expired) → delete and retry
 - [ ] waitMs exceeded → LOCK_TIMEOUT error
 - [ ] release checks token ownership before delete
-- [ ] release 재호출 시 안전 동작(no-op)
+- [ ] safe behavior on repeated release calls (no-op)
 - [ ] postgresql: stale row cleanup (`expires_at < now`) runs before insert retry
 - [ ] postgresql: release only removes row when token matches
 - [ ] postgresql: concurrent contenders enforce single-owner lock semantics and loser timeout behavior
 
 ### 2.7 Edge Cases
 
-- release() 호출 후 재호출: no-op (`released` 가드, lockManager.js:24-28); 소유자 토큰 불일치 시 해당 행은 삭제되지 않음
+- repeated release() calls: no-op (`released` guard, lockManager.js:24-28); rows whose owner token mismatches are not deleted

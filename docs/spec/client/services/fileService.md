@@ -73,10 +73,10 @@ Helpers (internal or in a shared util): **isIOS** (platform). No `isImageFile` o
 - Uses getServerErrorDisplay, errorUtils for client display
 - Upload: CONFLICT (409) returned as duplicate; errors array in uploadMultipleFiles
 - Bulk ops: error via getBulkOperationStatus or thrown
-- listFiles(nodeId): nodeId가 null/undefined면 루트 레벨 목록 요청 (nodeId 파라미터 없이)
-- uploadMultipleFiles: 결과는 { results: Array, errors: Array }; results는 성공 항목, errors는 { path, error } 등. 부분 성공 허용
-- cancelBulkOperation: 404(존재하지 않는 jobId) 또는 이미 완료된 job → 구현체별 (에러 throw 또는 200)
-- 타임아웃: apiClient 5분; 개별 요청 실패 시 getServerErrorDisplay로 표시
+- listFiles(nodeId): null/undefined nodeId requests the root-level listing (no nodeId parameter)
+- uploadMultipleFiles: returns { results: Array, errors: Array }; results = successful items, errors = { path, error } etc.; partial success allowed
+- cancelBulkOperation: 404 (unknown jobId) or already-finished job → per implementation (throw or 200)
+- timeout: apiClient 5 minutes; individual request failures shown via getServerErrorDisplay
 
 ### 2.6 Verification scenarios
 
@@ -93,10 +93,10 @@ Helpers (internal or in a shared util): **isIOS** (platform). No `isImageFile` o
 - [ ] batchMove/batchCopy return jobId; status polled via getBulkOperationStatus
 - [ ] downloadMultipleFiles triggers download, onProgress called
 - [ ] checkConflicts returns conflicts array
-- [ ] listFiles() 또는 nodeId 없음 시 root 동작
-- [ ] uploadMultipleFiles 부분 성공 시 results/errors 구조
-- [ ] cancelBulkOperation 404 또는 완료된 job
-- [ ] batchMove/batchCopy onConflict 옵션별 동작
+- [ ] listFiles() / missing nodeId behaves as root
+- [ ] results/errors shape on partial success
+- [ ] cancelBulkOperation 404 or finished job
+- [ ] batchMove/batchCopy behavior per onConflict option
 - [ ] getFileVersions requests GET /api/files/versions?nodeId= and returns the parsed payload
 - [ ] restoreFileVersion posts `{ nodeId, versionNumber }` to POST /api/files/versions/restore
 - [ ] downloadFileVersion fetches the version blob and triggers an `<a download>` save (no iOS share path — the endpoint is attachment-only; used from the properties dialog's versions tab)

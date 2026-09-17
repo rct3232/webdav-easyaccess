@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item               | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role               | Dialog showing file/folder properties: thumbnail, type, size, modified date, path, and permissions. Fetches permissions via getFolderPermissions. For directories, fetches recursive statistics (fileCount, totalSize) via getFolderStats and shows a default banner/layout (gradient, icon+name block). Since DEF-11 it hosts a tab bar **between the title and the gradient thumbnail header** with tabs `정보 \| 버전` (i18n `dialogs.propertiesTabInfo` / `dialogs.propertiesTabVersions`); the versions tab lists the file's version history (S3 storage mode only) with icon-only download/restore actions (Tooltip + aria-label) and a current-version badge. The bottom action bar (Close) is fixed across tab switches. |
-| Used in            | FileManager (Properties from context menu)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| Related components | getFileIcon, getThumbnail, formatFileSize, formatDate, getFolderPermissions, getFolderStats, getFileVersions, restoreFileVersion, downloadFileVersion (fileService), getParentPath (shared pathUtils)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Item               | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role               | Dialog showing file/folder properties: thumbnail, type, size, modified date, path, and permissions. Fetches permissions via getFolderPermissions. For directories, fetches recursive statistics (fileCount, totalSize) via getFolderStats and shows a default banner/layout (gradient, icon+name block). Since DEF-11 it hosts a tab bar **between the title and the gradient thumbnail header** with tabs `Info \| Versions` (i18n `dialogs.propertiesTabInfo` / `dialogs.propertiesTabVersions`); the versions tab lists the file's version history (S3 storage mode only) with icon-only download/restore actions (Tooltip + aria-label) and a current-version badge. The bottom action bar (Close) is fixed across tab switches. |
+| Used in            | FileManager (Properties from context menu)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Related components | getFileIcon, getThumbnail, formatFileSize, formatDate, getFolderPermissions, getFolderStats, getFileVersions, restoreFileVersion, downloadFileVersion (fileService), getParentPath (shared pathUtils)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 ---
 
@@ -52,10 +52,10 @@
 - **Top block:** Thumbnail/gradient banner; icon + name block (e.g. minHeight 120); gradient overlay when no thumbnail.
 - Permission groups by PERMISSION_ORDER
 - Async fallback: permission/stats API failures are non-fatal. UI falls back to empty permissions and placeholder size without crashing.
-- **Tabs (DEF-11):** the tab bar (`정보` default active) is always rendered between the title and the
-  gradient header; the `버전` tab is rendered **only when** `activeFileStorage === 's3'` AND
-  `file.type === 'file'` (never for directories). On the `정보` tab the original dialog body renders
-  (gradient header, permissions, property items). On the `버전` tab the versions list renders via
+- **Tabs (DEF-11):** the tab bar (`Info` default active) is always rendered between the title and the
+  gradient header; the `Versions` tab is rendered **only when** `activeFileStorage === 's3'` AND
+  `file.type === 'file'` (never for directories). On the `Info` tab the original dialog body renders
+  (gradient header, permissions, property items). On the `Versions` tab the versions list renders via
   `getFileVersions(file.nodeId)`:
 - Each row: `v{versionNumber}`, formatted date (`createdAt`), formatted size (`size` may be
   `null` → `dialogs.versionsUnknownSize` placeholder), `isCurrent` → `dialogs.versionsCurrentBadge`
@@ -86,8 +86,8 @@
 - [ ] Directory: Skeleton or folderStats (fileCount, totalSize) displayed; folderStatsFormat i18n used
 - [ ] Permission/stats request failure still renders dialog (fallback values shown)
 - [ ] Returns null when !file
-- [ ] Tab bar renders between title and gradient header; `정보` active by default; Close button stays fixed across tab switches
-- [ ] `버전` tab hidden for directories and when `activeFileStorage !== 's3'`
+- [ ] Tab bar renders between title and gradient header; `Info` active by default; Close button stays fixed across tab switches
+- [ ] `Versions` tab hidden for directories and when `activeFileStorage !== 's3'`
 - [ ] Versions tab (s3 + file): getFileVersions called on tab activation; rows list versionNumber/date/size; current row carries the badge; orphaned rows carry the expired marker
 - [ ] Download icon button triggers downloadFileVersion; restore icon button opens the confirm dialog and calls restoreFileVersion on confirm; toasts on success/failure
 - [ ] Versions load failure renders `versionsLoadFail` without crashing; empty history renders `versionsEmpty`
@@ -107,11 +107,11 @@ Addendum per docs/features/collections-platform.md §3.3 (like entry points), §
 - Right-edge of the gradient-header title block: like icon button (sole §3.3 properties-dialog entry point). State = `file.liked` from row data; click → optional `onToggleLike(file)` (viewer-scoped like, invariant 9 — no counts, no other-user state).
 - Hidden when the callback is absent (share-link, trash view, read-only grantee without like route access).
 
-### 3.2 `소속 컬렉션` chip row — 정보 tab, read-only (P3 / DEF-25)
+### 3.2 `Member of` chip row — Info tab, read-only (P3 / DEF-25)
 
 - Host-prepared for-nodes membership data (`POST /collections/for-nodes`; dialog performs no IO): chip row of containing collection names under the property items; chip click routes to that collection's member view via `onOpenCollection(collectionId)` (host navigates, dialog closes). Empty/absent data ⇒ no row. Read-only: no add/remove controls in the dialog (membership mutates in menus/toolbars).
 
-### 3.3 `AI 정보` tab — DISPLAY-ONLY (P1; media probe rows P4 / DEF-25)
+### 3.3 `AI Info` tab — DISPLAY-ONLY (P1; media probe rows P4 / DEF-25)
 
 - Tab present **only when the node's `ai_features` data exists** for the viewer's capability state — absent-not-disabled (§4.12 regular-user rule); never a gray tab, never an empty tab.
 - Renders read-only: derived tags, summary, category, media probe facts (V0 ffprobe container/duration etc. when present), and `truncated`/degraded badges verbatim from the payload (display honesty; no client recomputation).
@@ -120,7 +120,7 @@ Addendum per docs/features/collections-platform.md §3.3 (like entry points), §
 
 ### 3.4 i18n (appends §2.5)
 
-- `dialogs.propertiesTabAi`, `dialogs.fileAiTags`, `dialogs.fileAiSummary`, `dialogs.fileAiCategory`, `dialogs.fileAiMedia`, `dialogs.fileAiTruncated`, `fileManager.memberLike`/`memberUnlike` (shared with menu addenda), `dialogs.fileCollections` (`소속 컬렉션`).
+- `dialogs.propertiesTabAi`, `dialogs.fileAiTags`, `dialogs.fileAiSummary`, `dialogs.fileAiCategory`, `dialogs.fileAiMedia`, `dialogs.fileAiTruncated`, `fileManager.memberLike`/`memberUnlike` (shared with menu addenda), `dialogs.fileCollections` (`Member of`).
 
 ### 3.5 Verification (appends §2.7)
 

@@ -61,7 +61,7 @@ future layer's job) — sending it never changes the response.
    same cached path. Per segment: `vectorStore.neighbors(segVec, k=50, visibleIds)` →
    per-node **max-over-chunks** cosine (§4.3/E12: chunk rows, not the pooled row).
    Document score = **MIN across segments** (E3: composite queries like
-   "재밌게 본 판타지 영화" fail under whole-sentence cosine alone). Single-segment queries:
+   "enjoyable fantasy movies I watched" fail under whole-sentence cosine alone). Single-segment queries:
    MIN degenerates to the segment score (no special case).
 6. **Per-query dynamic baseline gate:** the SAME segment vectors are scored against a
    random ~500-doc sample of the requester's visible corpus (`BASELINE_SAMPLE_DOCS`,
@@ -93,10 +93,10 @@ future layer's job) — sending it never changes the response.
   baseline sample is execution noise and deliberately NOT signature material; replay
   re-samples). **Replay is the contract:** the reference resolves by RE-RUNNING the
   signature under CURRENT ACL at future execution time (Q7 always-replay — stored
-  id-snapshots freeze past-ACL and are rejected, §9); an "그중…" follow-up =
+  id-snapshots freeze past-ACL and are rejected, §9); an "of those…" follow-up =
   `rerun(sig) ∩ new-execution`. Cost is bounded by the §4.13 candidate caps.
 - The signature doubles as the `query_parses` cache key (no separate table, §5).
-  "그 사진들" pronominal binding, delta semantics, `$ref` intersections: FUTURE layer
+  "those photos" pronominal binding, delta semantics, `$ref` intersections: FUTURE layer
   (§4.22 utterance-merge table) — this service only guarantees the emitted string is
   replay-derivable from its own content.
 
@@ -111,7 +111,7 @@ future layer's job) — sending it never changes the response.
 
 ### 2.6 Save-to-collection boundary (§4.6)
 
-`semantic_available:false` OR empty `semantic` ⇒ the `컬렉션으로 저장` button is HIDDEN
+`semantic_available:false` OR empty `semantic` ⇒ the `Save as collection` button is HIDDEN
 (client consumes the flag). Saved collections capture the SEMANTIC portion only —
 name-match results are structurally excluded from definitions (§4.6; flatten snapshot via
 `collectionsService.createSearchCollection`, whose confirm dialog carries the §4.5
@@ -153,7 +153,7 @@ provenance), never runtime-calibrated.
 
 ## 5. Verification Scenarios
 
-- [ ] `lower("NOTE")` query matches `재밌는-note.pdf` via both-sides `lower()`; a
+- [ ] `lower("NOTE")` query matches `fun-note.pdf` via both-sides `lower()`; a
       mid-string containment miss returns nothing (no fuzzy, no token-AND)
 - [ ] 2-word query, no single-name containment → `name_matches: []` with 200 + intact
       semantic section (the sections are independent)

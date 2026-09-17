@@ -35,7 +35,7 @@ Target-contract spec.
 
 ### 2.3 Rendering Contract
 
-- Header row: `{CollectionsIcon} 컬렉션` (`nav.collections`), collapsible like RecentFilesSection.
+- Header row: `{CollectionsIcon} Collections` (`nav.collections`), collapsible like RecentFilesSection.
 - Collection row: icon + name + item count; **shared-with-me rows** (`granted_role != null`) get an icon chip ONLY — never pinned to top, same activity-sorted list (§3.1). Pinned (`pinned=true`) rows keep server order (gravity, not hoisting).
 - **ArchiveNode:** auto-child at the section end listing exactly the `status=archived` collections as a navigable node — no separate archive screen, no per-collection archive toggle in the tree (§3.1). Badge = `archiveCount`; zero ⇒ row still renders (the lifecycle destination must stay reachable).
 - **Decision:** member counts come from `item_count` (already on the row); no per-row lazy child loading (depth=1 rule).

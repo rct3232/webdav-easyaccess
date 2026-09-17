@@ -16,7 +16,7 @@ undoes; it never accepts new rows. Undo flow referenced by every collection muta
 
 Undo does NOT restore: spent LLM cost, already-received external exposure (grant-snapshot
 undo restores future state only), or file content (trash/versions own that world).
-Permanent delete (`archived→영구삭제`, empty-trash) has NO undo row by contract
+Permanent delete (`archived→permanent delete`, empty-trash) has NO undo row by contract
 (invariant 10, trash-parity) — such ids return 404 from this feed.
 
 ---
@@ -74,7 +74,7 @@ explicit-only, rule 2).
       "action_id": 995,
       "domain": "collection",
       "subject": "collection:17",
-      "subject_label": "유럽 여행",
+      "subject_label": "Europe trip",
       "actor": 4,
       "action": "merge",
       "status": "applied",
@@ -113,7 +113,7 @@ visible in the feed until their 30d listing horizon passes.
   captured fingerprint. A single-inverse command that mismatches is **refused**:
   409 `serverErrors.actions.fingerprintMismatch`, row stays `applied`. A
   command-unit row carrying an item-level inverse list applies per item and reports
-  mixed results in the 200 body (the `11개 되돌림, 1개는 변경되어 건너뜀` toast copy
+  mixed results in the 200 body (the `11 undone, 1 skipped (state changed since)` toast copy
   consumes these counts).
 - **Expired** (`status='expired'`, payload NULLed): 409 `serverErrors.actions.expired`.
 - **Already undone**: 409 `serverErrors.actions.alreadyUndone`.

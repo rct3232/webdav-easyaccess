@@ -57,5 +57,5 @@
 ### 2.8 Edge Cases
 
 - Empty conflicts array – list empty
-- onResolve('overwrite'/'skip'): 전체 conflicts에 대해 일괄 적용 (개별 선택 아님)
-- conflicts 배열 resolve 중 변경: 부모가 immutable로 관리; 변경 시 예측 불가
+- onResolve('overwrite'/'skip'): applies to all conflicts at once (no per-item choice)
+- mutating the conflicts array during resolve: owned immutably by the parent; mutation is undefined

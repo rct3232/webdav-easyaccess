@@ -95,7 +95,7 @@ REJECTED (chaining); absolute-θ topic gating REJECTED (§9).
 - **No tier-specific lifecycle exemptions (uniform rules only, owner decision
   2026-09-16)** — every created system collection faces identical split/archive/purge.
 
-### 2.5 Pass 2 — split (분화)
+### 2.5 Pass 2 — split
 
 Hot subset WITHIN a collection (activity + likes density) that independently crosses the
 pass-1 create gates ⇒ create a NEW SIBLING `system` collection; parent definition and
@@ -130,14 +130,14 @@ tuned, via §4.15 counters: `tombstone-suppressed` vs `regenerated-anyway`.
 - Metric on MATERIALIZED membership sets (capped 500 rows/collection):
   `sizeRatio = min/max ≥ 0.7` AND `jaccard ≥ 0.7`. Centroid cosine is a PREFILTER ONLY —
   never grounds for a suggestion. Overlap-coefficient / containment (|A∩B|/min) metrics
-  are BANNED (they fire on subset pairs 스페인 ⊂ 유럽 which must NOT merge; the pre-implementation study E7).
+  are BANNED (they fire on subset pairs Spain ⊂ Europe which must NOT merge; the pre-implementation study E7).
 - Pair sources: derived pairs by centroid-cosine prefilter→set check; stored pairs by set
   Jaccard directly (LLM-free variant, same pipeline, DEF-25). Scope: `system`↔anything
   the SAME user owns; both must be `active`.
 - `upsertMergeSuggestion(aId,bId,score)` (pair normalized, UNIQUE(a,b) conflict keeps the
   existing row + its state); `score` = jaccard×1000 (scaled int, §5).
 - Suppression state machine: `rejected` pair ⇒ never re-suggested (permanent,
-  `따로 둡니다`); `dismissed` (`나중에`) ⇒ re-raised ONCE after 2 weeks, then sleeps 30d
+  `Keep separate`); `dismissed` (`Later`) ⇒ re-raised ONCE after 2 weeks, then sleeps 30d
   (this pass owns the timing — the API never does); re-raise updates `score` and resets
   `pending`.
 - **Review band 0.55–0.7** (§4.19): below 0.55 no card; ≥0.7 card WITHOUT adjudication;
@@ -231,7 +231,7 @@ driven by backfill completion, §4.2). `deleteCentroids` on purge/merge loser.
 - [ ] Purge: archived past retention → row+cascade gone, tombstone present, journal rows
       purged; `user|seed|search` origins NEVER archived/purged by any pass (invariant 3)
 - [ ] Merge candidates: subset pair (sizeRatio < 0.7) never suggested (E7 geometry
-      fixtures — 스페인 ⊂ 유럽); near-identical pair suggested; rejected pair terminal;
+      fixtures — Spain ⊂ Europe); near-identical pair suggested; rejected pair terminal;
       dismissed re-raised once at +2wk and sleeps after
 - [ ] Arbiter: chat on + band 0.55–0.7 ⇒ recommendation on the card; request body
       contains symmetric-difference samples; chat off ⇒ same card, verdict NULL; card

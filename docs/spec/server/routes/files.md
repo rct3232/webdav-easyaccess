@@ -177,11 +177,11 @@ Route handlers delegate to `fileService` instead of calling WebDAV directly. No 
   - Tickets are short-lived (e.g. 60–120s) and must not embed JWT in query params.
 - **GET /list:** When `user.is_admin`, items are not filtered by permission (admin bypass); each item's read permission is also treated as true for admin. Non-admin: permission-based filter as before.
 - Bulk ops: returns jobId; poll via bulk-operation
-- Upload 413 (payload too large): body-parser 또는 서버 제한; 413 반환
-- download-multiple nodeIds 빈 배열: 400 (validation)
+- Upload 413 (payload too large): body-parser or server limit; returns 413
+- download-multiple empty nodeIds array: 400 (validation)
 - download-multiple: POST returns 200 with ZIP stream (application/zip) directly. Client sends optional `downloadId` in body; server writes progress to `downloadProgress` map under that ID. Progress is polled via GET /download-progress/:id. Does not return 202+downloadId.
-- bulk-operation/:jobId 존재하지 않음: 404
-- Share token + write 요청(rename, batch-move 등): 403 (share는 read-only)
+- bulk-operation/:jobId not found: 404
+- Share token + write request (rename, batch-move ) : 403 (share is read-only)
 
 ### 2.7 Related Documents
 
@@ -202,10 +202,10 @@ Route handlers delegate to `fileService` instead of calling WebDAV directly. No 
 - [ ] Batch move/copy return 202 + jobId (API contract only; worker execution covered by batchOperationService unit tests)
 - [ ] Share token allows list/download for valid token
 - [ ] Upload 413 when payload too large
-- [ ] download-multiple 빈 nodeIds → 400
+- [ ] download-multiple empty nodeIds → 400
 - [ ] bulk-operation 404 for invalid jobId
 
-- [ ] Share token write 요청 → 403
+- [ ] Share token write request → 403
 
 - [ ] GET /versions: strips storage internals (s3_key/storage_backend/id absent), newest version first, active row flagged isCurrent
 - [ ] GET /versions: 404-masquerade for no-read-permission and unknown node; share token → 403

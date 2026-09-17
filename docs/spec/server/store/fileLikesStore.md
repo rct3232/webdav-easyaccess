@@ -6,7 +6,7 @@
 | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role      | Per-user likes on files — table `file_likes(user_id, node_id, created_at)`. Viewer-scoped only: the heart reflects the CURRENT VIEWER'S own like; other users' like states/counts/aggregates are never exposed (invariant 9). |
 | Precedent | Direct twin of `recentFilesStore` (per-user normalized table, stable node_ids, PK-pair uniqueness, `node_id → file_nodes` FK) — see `docs/spec/server/store/recentFilesStore.md`.                                             |
-| Journal   | NONE. Like is self-reversing trivial state — no toast, no `action_journal` row (§4.11 undo-availability matrix "like / 방문 / 정렬 조작").                                                                                    |
+| Journal   | NONE. Like is self-reversing trivial state — no toast, no `action_journal` row (§4.11 undo-availability matrix "like / visit / sort manipulation").                                                                           |
 
 ---
 

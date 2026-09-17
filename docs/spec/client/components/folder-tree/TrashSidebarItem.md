@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item               | Description                                                                                                                                                                                                                                                                                                                   |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role               | Bottom-pinned sidebar entry for the trash view (DEF-16 P9): `{휴지통 아이콘} 휴지통` row rendered below all FolderTree lines. Tree-row-style selected state when the trash view is active, and a one-shot lid-open animation + error flash when trash contents change. Not a tree section: no expansion, no DnD, no children. |
-| Used in            | FolderTree (desktop sidebar drawer and the mobile tree collapse use the same component)                                                                                                                                                                                                                                       |
-| Related components | FolderTree, `trashNotifier` (subscribe), BaseFolderTreeItem (selected-style idiom)                                                                                                                                                                                                                                            |
+| Item               | Description                                                                                                                                                                                                                                                                                                               |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Bottom-pinned sidebar entry for the trash view (DEF-16 P9): `{Trash icon} Trash` row rendered below all FolderTree lines. Tree-row-style selected state when the trash view is active, and a one-shot lid-open animation + error flash when trash contents change. Not a tree section: no expansion, no DnD, no children. |
+| Used in            | FolderTree (desktop sidebar drawer and the mobile tree collapse use the same component)                                                                                                                                                                                                                                   |
+| Related components | FolderTree, `trashNotifier` (subscribe), BaseFolderTreeItem (selected-style idiom)                                                                                                                                                                                                                                        |
 
 ---
 
@@ -28,7 +28,7 @@
 
 - `ListItemButton` with `data-testid="sidebar-trash"`, `aria-label`/title from i18n `nav.trash`
   (44px+ touch target via `minHeight`).
-- Label: `t('nav.trash')` (en "Trash", ko "휴지통").
+- Label: `t('nav.trash')` (en "Trash", ko "Trash").
 - Icon: the MUI `Delete` icon (the context-menu delete glyph, `FileContextMenu.js`) rendered as
   TWO `<path>` elements from its own two subpaths — lid `M19 4h-3.5l-1-1h-5l-1 1H5v2h14z` +
   can-body `M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6z`, both `fill="currentColor"`,

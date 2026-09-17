@@ -35,7 +35,7 @@ because knowing _how_ a measurement went wrong matters as much as trusting one t
 
 1. **Real operational mirror** — the running instance's own corpus (≈5.4k documents after
    augmentation, 300 wedding photos copied via S3, 6 audio clips provided by the owner), plus
-   directory names used as free labels (e.g. every photo under `결혼식/` is a wedding photo —
+   directory names used as free labels (e.g. every photo under `wedding/` is a wedding photo —
    no human labeling needed for those).
 2. **Public data** — Korean Wikipedia articles, the NSMC movie-review corpus, a
    topic-labeled Korean news dataset, random photos from picsum — chosen so each item carries a
@@ -84,7 +84,7 @@ because we fell into that trap and fixed it.
 - **Result**: `filecache.content_hash` is already populated on 100% of the 10,841 live objects;
   the live DB schema is _older_ than the repo DDL (no `file_nodes.size`); 9 stuck
   `pending_upload` nodes exist; 4.3 MB median / 362 MB max object sizes; one user's real photo
-  tree (`결혼식/본식스냅`, ~9k jpgs) doubles as free ground-truth labels.
+  tree (`wedding/ceremony-snaps`, ~9k jpgs) doubles as free ground-truth labels.
 - **Meaning**: plan task T0.1 ("populate content_hash") is actually "use the hash that's
   already there"; and a migration-status check must precede implementation.
 - **Consequence**: exact-duplicate finding (planned as AI-adjacent) becomes a _trivially
@@ -159,8 +159,8 @@ because we fell into that trap and fixed it.
 - **Why**: search is the headline feature; if meaning-search fails here, nothing else matters.
 - **Result**: images **recall@20 = 0.829** (chance = 0.004), MRR 0.566; sentence probes 0.996.
   The A/B harness exposed two more things: our _name-search code_ had a bug (OR-matching on
-  tokens dragged an unrelated GDP file into "폭설 피해 우려 지역" results because "지역" is a
-  substring of "지역별") — fixed to AND-with-segments, **and that bug revealed a spec hole**:
+  tokens dragged an unrelated GDP file into "heavy-snow damage concern areas" results because "area" is a
+  substring of "by-region") — fixed to AND-with-segments, **and that bug revealed a spec hole**:
   the plan's literal "names containing the query" would match almost nothing on multi-word
   queries. Negative-control junk queries returned "20 plausible-looking wrong answers" — which
   led to the floor/flatness gate (2.5's dynamic baseline) making "no results" an honest answer.
@@ -206,7 +206,7 @@ because we fell into that trap and fixed it.
 - **Why**: every "LLM at write time" cost estimate rests on this; also the plan's per-role
   reasoning policy needed data.
 - **Result**: nothink validity **1,115/1,117 = 99.8%**, ~5 s/doc, quality spot-good
-  (가나슈→[가나슈,디저트,초콜릿,베이킹]). Think mode: equal-or-worse tags, 5–10× slower, and
+  (ganache→[ganache,dessert,chocolate,baking]). Think mode: equal-or-worse tags, 5–10× slower, and
   it _crashed on a short review_ (burned 4,000 reasoning tokens, produced nothing) — reasoning
   hurt the one task it was "needed" for.
 - **Meaning**: extraction-class roles = always off. (The later arbiter test, 2.10, reversed the
@@ -221,7 +221,7 @@ because we fell into that trap and fixed it.
   data (almost nothing co-occurs). Act 2 (E6b, graded rules): merge-by-cosine alone mislabeled
   _sibling_ terms (conifer↔flowering-plant family words) as duplicates; containment rules
   mislabeled hypernyms. Act 3 (E6c, full 1,115-doc vocabulary = 1,271 distinct tags):
-  the high-cosine pairs are mostly (a) **spelling variants** (`시간 낭비↔시간낭비`, cos
+  the high-cosine pairs are mostly (a) **spelling variants** (`"wasted time" vs "wastedtime" (spacing variant)`, cos
   0.98+, NFKC+whitespace-normalization merges them _deterministically_) and (b) **containment
   pairs** which are _hierarchies, not duplicates_; the old rule would have merged 102 pairs
   with zero evidence; doc-set statistics remain uninformative at corpus scale.
@@ -313,7 +313,7 @@ audit needed) → gray band left alone`. The old θ.86-merge and the k≥3 co-oc
   we can tolerate is the conservative one (missed transcription = no data, vs invented genre =
   poisoned data).
 - **Consequence (owner decision)**: audio scope freezes at **ffprobe metadata + conditional
-  transcription** with the "no speech ⇒ '음성없음'" escape prompt; no audio descriptions,
+  transcription** with the "no speech ⇒ 'no speech'" escape prompt; no audio descriptions,
   genres, kinds, or mood fields. Media ladder V3 = ASR only.
 
 ---

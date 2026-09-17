@@ -75,19 +75,19 @@ Manual membership is stored; removing a member never trashes the file. Derived m
 the definition (path/tag/like/date/size predicates, optionally seed or centroid similarity) with no
 stored rows; a soft view-count boost moves only borderline members and ordering, under
 enter-above/leave-below hysteresis. Tag predicates match by vector, not string, with normalized
-string equality as the no-embedder fallback (§4.18). Exclusions ("제외") block derived adds;
+string equality as the no-embedder fallback (§4.18). Exclusions ("Exclude") block derived adds;
 excluding is a touch, hence auto-pins (§4.9), and its rate is an admin quality metric, never an
 archive trigger.
 
 Member rows render per read with a live permission check: normal; revoked (gray placeholder, no
 name/thumbnail — metadata after revocation would leak); trashed-by-owner (hidden); purged (gone).
-Foreign-owned files never render in live-shared views (cross-leak rule; `타인 소유 — 공유 제외`
+Foreign-owned files never render in live-shared views (cross-leak rule; `Not owner's file — not shared`
 chip in the owner's view), though adding them stays allowed — you may add what you can read.
 Member-row controls omit move/copy/rename/delete — a collection is a view, not a workspace —
-offering exclude, publish (shared only), download (per file ACL), `원본에서 보기`, read-only
+offering exclude, publish (shared only), download (per file ACL), `Reveal original location`, read-only
 properties, and like; multi-select adds batch exclude/publish and add-to-another-collection, never
 batch delete. Card menus: user/system — rename (locks the name), pin, archive, share settings,
-delete (archived only); received — open and `나가기` (a local hide).
+delete (archived only); received — open and `Leave` (a local hide).
 
 ### 3.3 Like
 
@@ -138,19 +138,19 @@ factor is a release constant.
 
 Detection runs nightly or on pair signals: derived pairs by centroid similarity, stored pairs by
 membership overlap (LLM-free, same pipeline). Proposals live at the object, never in an inbox: one
-card atop the collection list, never stacked (an `외 N건` chip cycles; zero pending = zero layout
+card atop the collection list, never stacked (an `+N more` chip cycles; zero pending = zero layout
 footprint), collapsed to a 68px line —
-`"A"을(를) "B"에 병합할까요? · N개 파일이 겹칩니다 · 병합 후 M개` — with a thumbnail strip that
-expands into a two-column compare overlay. `병합` executes immediately — **the card is the
-confirmation** — with an undo toast; `따로 둡니다` suppresses the pair permanently; `나중에`
+`"Merge "A" into "B"? · N overlapping files · M after merge"` — with a thumbnail strip that
+expands into a two-column compare overlay. `Merge` executes immediately — **the card is the
+confirmation** — with an undo toast; `Keep separate` suppresses the pair permanently; `Later`
 re-raises once after two weeks, then sleeps 30 days; no sidebar/tree badges (rejected). The
 survivor keeps its chosen name unless locked; an arbiter verdict may pre-select the card (§4.19),
 but the user decides.
 
 ### 4.5 Seed collection
 
-`이런 파일로 컬렉션 만들기` opens a confirm dialog: seed preview, editable auto-name, and a sample
-grid with fade and `이 외 N개` counter — vector math only, no LLM cost. It creates a seed-origin
+`Make a collection like this file` opens a confirm dialog: seed preview, editable auto-name, and a sample
+grid with fade and `plus N more` counter — vector math only, no LLM cost. It creates a seed-origin
 collection: "similar to this file" with a threshold. The dialog must state that the **entire**
 initial set — preview plus unseen remainder — is publish-approved as a batch if the collection is
 ever shared.
@@ -165,9 +165,9 @@ best-chunk similarity, the document score the minimum across segments — and ga
 dynamic baseline against a random corpus sample: unless the top hits clearly win, the section is
 honestly empty. No absolute stored floors exist anywhere.
 
-An empty semantic section hides `컬렉션으로 저장` (saved collections are semantic content only;
+An empty semantic section hides `Save as collection` (saved collections are semantic content only;
 name matches never enter definitions); empty sections do not render. Results mode replaces the
-breadcrumb row (`🔍 "query" · N개 결과 [컬렉션으로 저장][✕]`): typing re-filters loaded results,
+breadcrumb row (`🔍 "query" · N results [Save as collection][✕]`): typing re-filters loaded results,
 Enter re-queries, recent queries are saveable chips. Responses carry an opaque **result reference**
 (§4.22) and may receive one back — today ignored.
 
@@ -175,18 +175,18 @@ Enter re-queries, recent queries are saveable chips. Responses carry an opaque *
 
 Viewer: list/preview/download, no rename/trash, excludes own adds only (unless owner); editor: ±
 membership. Shared views resolve **live**, with a publish gate: in ask/off collections,
-post-creation adds start unpublished and hidden, and the owner sees a `공유 대기 N` banner with
+post-creation adds start unpublished and hidden, and the owner sees a `N awaiting publish` banner with
 batch or individual publish; auto publishes every add, explicitly chosen. Decided: the initial set
 of seed and saved-search collections is created **published** — the §4.5/§4.6 confirm dialog is
 that batch approval, unseen remainder included. A derived member's publish state stores as a marker
-(the one exception to derived-no-rows); unpublishing never removes owner-added rows. `나가기` is a
+(the one exception to derived-no-rows); unpublishing never removes owner-added rows. `Leave` is a
 recipient-local hide; foreign-owned members never render in shared views; revocation is instant,
 though already-seen metadata cannot be re-taken.
 
 ### 4.8 Digest
 
-A top-of-list banner from a visit cursor — `+N / -M / 병합 1 · 펼치기` — expanding to per-entry
-reasons; the `왜 여기에` answer names the matched predicate, computed at query time, not from a
+A top-of-list banner from a visit cursor — `+N / -M / 1 merge · expand` — expanding to per-entry
+reasons; the `why is this here` answer names the matched predicate, computed at query time, not from a
 history table.
 
 ### 4.9 Silent evolution (system-origin only)
@@ -221,14 +221,14 @@ Names via §4.10; acts journaled (§4.11); thresholds are hot admin settings wit
 previews (§4.15); pauses stop acts without destroying queued work. The **merge metric is
 containment-safe**: on bounded materialized sets, size ratio ≥ 0.7 **and** Jaccard ≥ 0.7, with
 centroid similarity prefiltering only; containment/overlap metrics are rejected because they fire
-on subset pairs (`스페인 ⊂ 유럽`, must not merge) while near-equal pairs (`유럽`, `2026-여행`)
+on subset pairs (`Spain ⊂ Europe`, must not merge) while near-equal pairs (`Europe`, `2026-trip`)
 pass. Hierarchy proposals are deferred, not in v1.
 
 ### 4.10 Naming templates
 
 Locale templates by creation type (ko/en): search → query verbatim; seed →
-`{seedFileName}과 유사한 파일`; system cluster → `{tag1} · {tag2} 사진` (top-2 tags); split →
-`{parentName} · {diffTag}`; fallback `자동 컬렉션 N`. With chat configured, the LLM namer names new
+`{seedFileName} and similar files`; system cluster → `{tag1} · {tag2} photos` (top-2 tags); split →
+`{parentName} · {diffTag}`; fallback `Auto collection N`. With chat configured, the LLM namer names new
 system creations instead (statistics only). Template output is final — no post-hoc rename jobs.
 
 ### 4.11 Undo journal and toast UX
@@ -242,10 +242,10 @@ Permission writes are reserved: undoing a grant (exposure down) may be silent, u
 (exposure up) is explicit-only.
 
 **Toasts**: bottom, for user-triggered actions (app-bar keeps job progress), one per command —
-`[icon] 이동을 완료했습니다 (12개) [되돌리기]`. Undo handles ride responses and batch jobs'
+`[icon] Move completed (12 items) [Undo]`. Undo handles ride responses and batch jobs'
 terminal poll result; item inverses run fingerprint-guarded, mixed outcomes reported honestly
-(`11개 되돌림, 1개는 변경되어 건너뜀`). Surfaces: toast (≤ 24 h; rows live 30 days), digest undo
-links, the 30-day feed with cascade, the archive `복구` button, a sidebar `new` dot; silent system
+(`11 undone, 1 skipped (state changed since)`). Surfaces: toast (≤ 24 h; rows live 30 days), digest undo
+links, the 30-day feed with cascade, the archive `restore` button, a sidebar `new` dot; silent system
 acts never toast.
 
 | Action                                                             | Toast   | Undo                       |
@@ -306,13 +306,13 @@ by the project on its own reference set**, shipped per model profile and display
 — there is no runtime calibration and no dataset ships to end users; measured corpus drift is the
 reserved re-open trigger.
 
-### 4.16 User dashboard `저장공간`
+### 4.16 User dashboard `Storage`
 
 A MyPage section: hygiene cards (duplicates + reclaimable space, trash + retention countdown,
 suggestion count) deep-linking into the action context — a pull-overview, not an action center; a
 30-day system-changes feed with undo; collections status (grants, merges, archives with undo); and
 the suggestions checklist — every row carries a checkbox, and the only accept control is
-`선택 수락(N)` (checked → trash, command-unit undo per §4.11; no per-file or threshold-specific
+`Accept selected (N)` (checked → trash, command-unit undo per §4.11; no per-file or threshold-specific
 variants). Capacity sparkline only; insight prose is rejected scope.
 
 ### 4.17 Cleanup and duplicate suggestions
@@ -332,7 +332,7 @@ Measurement dissolved "merge similar tags": high-similarity pairs are spacing/sp
 containment pairs are hypernyms (merging would destroy the distinction), and co-occurrence proved
 uninformative. The replacement is three non-destructive steps: (1) **read-time orthographic
 normalization** — case/whitespace/Unicode folding groups variants; (2) **containment + similarity →
-parent hints** (`배우 캐스팅 → 캐스팅`; rule or admin) — display/grouping only, raw tags never
+parent hints** (`actor casting → casting`; rule or admin) — display/grouping only, raw tags never
 rewritten, nothing merged, no audit gate a wrong hint costs one odd group; (3) **the gray band left
 alone** — alias merges and co-occurrence gates retired with their operation. Search is independent:
 tag predicates match by vector (§3.2).
@@ -399,11 +399,11 @@ with **zero storage today**: the first release ships only the §4.6 result-refer
 future extensions must open through those reserved fields alone, non-breakingly.
 
 A **result reference is a replay signature** over the normalized search, never an id list: a
-follow-up like `그중…` reruns it and intersects **under current permissions at execution time**.
+follow-up like `of those…` reruns it and intersects **under current permissions at execution time**.
 Snapshots were rejected — an id list freezes a past ACL — and inter-turn drift is accepted because
 live behavior is what a file system promises; decided **always-replay**, no TTL or caching variant
 retained. The parser classifies utterances while deterministic code merges them —
-add/replace/multi-add per field, NOT-predicate or exclusion token, `비슷한 건 빼` → exclude-similar
+add/replace/multi-add per field, NOT-predicate or exclusion token, `exclude the similar ones` → exclude-similar
 over the rerun set, pronouns → latest reference, unresolvable → re-embedded text-plus-utterance
 vector fallback (structural failure ≠ search failure). Per the **symbol boundary** (§4.19), no
 result content or ids ever enter prompts — hallucination is "no match", never "wrong file". Saving

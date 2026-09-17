@@ -67,7 +67,7 @@
 
 ### 2.7 Home (leading) row
 
-- Label: `nav.home` (홈 / Home) for **all roles and all modes** — never the acting user's
+- Label: `nav.home` (Home / Home) for **all roles and all modes** — never the acting user's
   username. (Admin home row label was already `nav.home`; non-admin row is relabeled from the
   username, see Breadcrumb spec §1.1 for the underlying home model.)
 - Icon: the home icon is shown in **both collapsed and expanded states** (the home row passes an
@@ -81,7 +81,7 @@
   sidebar column (footer block below the `flex: 1` tree area — not inside the `List`, no tree
   indent, no expansion/DnD). Covered by the same `(!shareLinkSection || user)` gating as the
   home/shared/recent sections (never rendered for anonymous share-link viewers).
-- Row content: `{휴지통 아이콘} 휴지통` (i18n `nav.trash`; MUI `Delete` subpath-split icon with an
+- Row content: `{Trash icon} Trash` (i18n `nav.trash`; MUI `Delete` subpath-split icon with an
   animated lid — see `TrashSidebarItem.md`). No divider/border separates the pinned row from the
   tree list above it.
 - Selected state: tree-row-selected styling when `currentPath === '/__trash__'` (any trash depth).

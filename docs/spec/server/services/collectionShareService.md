@@ -51,7 +51,7 @@ Mode lives on the collection row (`publish_mode`), changed only by the owner
 - **A `off`**: every arrival (auto- or stored-added) parks at `published=false` until the
   owner publishes; nothing new becomes shared silently.
 - **B `ask` (default)**: same parking; the owner-facing list/digest surfaces show
-  `공유 대기 N` (`publishPendingCount`) with batch/individual publish controls.
+  `N awaiting publish` (`publishPendingCount`) with batch/individual publish controls.
 - **C `auto`**: publish on every add — legal only because turning it on was itself the
   explicit act; it never applies retroactively to a collection that was not shared.
 - **Initial-batch exception (Q2)**: the member set materialized by the CONFIRMED initial

@@ -4,11 +4,11 @@ Target-contract spec.
 
 ## 1. Overview
 
-| Item               | Description                                                                                                                                                                                            |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Role               | Bottom toast with an action slot: `[icon] {label} [되돌리기]` — the message-bar view for user-triggered commands carrying an undo pointer. Separate surface from the appbar job-progress area (§4.11). |
-| Used in            | App-level snackbar host (same place `useMessage` renders), driven by `useUndoToast` state                                                                                                              |
-| Related components | `useMessage` (extended contract below), useUndoToast, ConfirmDialog (cascade confirm host)                                                                                                             |
+| Item               | Description                                                                                                                                                                                        |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Bottom toast with an action slot: `[icon] {label} [Undo]` — the message-bar view for user-triggered commands carrying an undo pointer. Separate surface from the appbar job-progress area (§4.11). |
+| Used in            | App-level snackbar host (same place `useMessage` renders), driven by `useUndoToast` state                                                                                                          |
+| Related components | `useMessage` (extended contract below), useUndoToast, ConfirmDialog (cascade confirm host)                                                                                                         |
 
 ---
 
@@ -30,14 +30,14 @@ Target-contract spec.
 | Name    | Type     | Required | Default | Description                                                                       |
 | ------- | -------- | -------- | ------- | --------------------------------------------------------------------------------- |
 | show    | boolean  | Y        | -       | Visibility                                                                        |
-| text    | string   | Y        | -       | Localized command label incl. counts (e.g. `이동을 완료했습니다 (12개)`)          |
+| text    | string   | Y        | -       | Localized command label incl. counts (e.g. `Move completed (12 items)`)           |
 | type    | string   | N        | success | Snackbar tone                                                                     |
 | action  | object   | N        | null    | `{ label, onAction, disabled? }`; `null` ⇒ plain message bar (report-only toasts) |
 | onClose | function | Y        | -       | Dismiss                                                                           |
 
 ### 2.4 Rendering Contract
 
-- Action button label: `actions.undo` (`되돌리기`), text-button style at the toast's trailing edge, min 44px touch target (mobile parity).
+- Action button label: `actions.undo` (`Undo`), text-button style at the toast's trailing edge, min 44px touch target (mobile parity).
 - `action.disabled=true` while `useUndoToast.busy` (undo in flight) — spinner-free, click-ignored.
 - One visible toast at a time is the controller's guarantee (§4.11 one-per-command); the view renders whatever single message object arrives.
 - Mixed-result and cascade outcomes are TEXT the controller composes from the response (`items_undone`/`items_skipped`) — the view never counts.

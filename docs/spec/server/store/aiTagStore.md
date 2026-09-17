@@ -97,6 +97,6 @@ re-running the auto rule after a model/profile change simply refreshes auto rows
 - [ ] `deleteParent` on unknown child → `changes: 0`; `getParent` then `null`
 - [ ] Non-destructive proof: writing/ deleting hints never touches `ai_features.tags` or `ai_tag_raw` (fixture assert)
 - [ ] CHECK constraint rejects `source` outside `auto|admin` (mapped error)
-- [ ] Store applies NO normalization: `getTagVector('시간 낭비')` and `getTagVector('시간낭비')` are independent rows (folding is the caller's pure function)
+- [ ] Store applies NO normalization: `getTagVector('wasted time')` and `getTagVector('wastedtime')` are independent rows (folding is the caller's pure function)
 - [ ] Spec-level assertion (grep/doc): no `tag_aliases`/`tag_merges` table or repository exists in the DDL chain (§4.18 explicit state)
 - [ ] L2 conformance (real sqlite + real PostgreSQL): PK pair semantics, conditional-upsert guard parity (`WHERE source <> 'admin'`), TEXT vector round-trip, batch expansion parity, FK `model_id` error mapping

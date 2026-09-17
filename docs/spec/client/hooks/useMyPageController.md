@@ -89,10 +89,10 @@
 
 Addendum to §2.3/§2.4: two new `myPageRegistry` categories flow through the existing pipeline unchanged (`resolveMyPageCategory`, `getMyPageSidebarCategories`, admin normalization; no new controller state). Entry shape per CODING_STYLE.md Express Patterns / `CollectionDashboard.md` §2.5:
 
-| Category             | Entry                                                                                      | Visibility | Content                                                                              |
-| -------------------- | ------------------------------------------------------------------------------------------ | ---------- | ------------------------------------------------------------------------------------ |
-| `storage` (저장공간) | `{ id: 'storage', icon, labelKey: 'mypage.storage', visibility: 'all' }`                   | All users  | Direct → `CollectionDashboard`.                                                      |
-| AI-ops (admin)       | `{ id: 'admin-ai', icon, labelKey: 'mypage.adminAiOps', visibility: 'admin', statusChip }` | Admin only | Direct → admin AI governance panel; regular users: row ABSENT (not disabled, §4.12). |
+| Category            | Entry                                                                                      | Visibility | Content                                                                              |
+| ------------------- | ------------------------------------------------------------------------------------------ | ---------- | ------------------------------------------------------------------------------------ |
+| `storage` (Storage) | `{ id: 'storage', icon, labelKey: 'mypage.storage', visibility: 'all' }`                   | All users  | Direct → `CollectionDashboard`.                                                      |
+| AI-ops (admin)      | `{ id: 'admin-ai', icon, labelKey: 'mypage.adminAiOps', visibility: 'admin', statusChip }` | Admin only | Direct → admin AI governance panel; regular users: row ABSENT (not disabled, §4.12). |
 
 - **`statusChip`:** plain serializable `{ labelKey, tone }` produced by a registry helper from `settings/public.ai` flags + admin `GET /api/admin/health` — 4 states `not_configured | probe_failed(reason) | partial | ok` (per-role); no JSX in registry data, sidebar renders it. Data re-read via the existing MyPage settings seam; no fetch inside this controller (§2.4 "no network calls" preserved — inputs are props/service results).
 - Deep-link bootstrapping (`location.state.category`) accepts the two new ids; legacy/unknown handling (§2.6) unchanged.

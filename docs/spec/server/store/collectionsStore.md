@@ -31,7 +31,7 @@
 ### 2.1 Journal discipline
 
 Journaled mutators (domain `collection`, subject `collection:<id>` — §4.11 matrix
-"생성/추가/제외/pin/publish/이름/공유부여·회수", archive, restore, merge-confirm side effects):
+"create/add/exclude/pin/publish/rename/grant·revoke", archive, restore, merge-confirm side effects):
 
 `createCollection`, `renameCollection`, `setPinned`, `archiveCollection`,
 `restoreCollection`, `addItem`, `removeItem`, `addExclusion`, `removeExclusion`,

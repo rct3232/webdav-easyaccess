@@ -85,7 +85,7 @@ replay (never a materialized id list; Q7). The client treats it as a black box.
 
 ```json
 {
-  "name_matches": [{ "node_id": 90210, "name": "재밌는-영화노트.pdf" }],
+  "name_matches": [{ "node_id": 90210, "name": "fun-movie-notes.pdf" }],
   "semantic": [{ "node_id": 90212, "name": "fantasy-movie-night.jpg", "score": 0.71 }],
   "result_ref": "sr1.9f3c2a7e41b0d8c5",
   "counts": {
@@ -105,7 +105,7 @@ HTTP error:
 
 ```json
 {
-  "name_matches": [{ "node_id": 90210, "name": "재밌는-영화노트.pdf" }],
+  "name_matches": [{ "node_id": 90210, "name": "fun-movie-notes.pdf" }],
   "result_ref": "sr1.44de0c9a3f7b1028",
   "counts": { "name": 1, "semantic": 0, "total": 1, "name_truncated": false },
   "semantic_available": false,
@@ -115,7 +115,7 @@ HTTP error:
 
 Field rules: `score` is a float 0–1 rounded to 2 decimals; `counts.total` =
 post-dedup displayed rows; `semantic_available` is the client's gate for hiding the
-`컬렉션으로 저장` button (empty or unavailable semantic ⇒ button hidden — a saved
+`Save as collection` button (empty or unavailable semantic ⇒ button hidden — a saved
 collection means the semantic part only; name-match results are ALWAYS excluded from
 collection definitions, §4.6).
 
@@ -151,7 +151,7 @@ absent, not the feature).
 ### 2.5 Related Documents
 
 - [api.md](../../../api.md), [shared-contracts.md](../../../shared-contracts.md),
-  [collections.md](collections.md) (`컬렉션으로 저장` consumes the semantic section only),
+  [collections.md](collections.md) (`Save as collection` consumes the semantic section only),
   `docs/features/collections-platform.md` §4.6/§4.12/§4.13/§4.20/§4.22, CODING_STYLE.md Express Patterns/§7 (DEF-25, DEF-25).
 
 ### 2.6 Integration Test Scenarios

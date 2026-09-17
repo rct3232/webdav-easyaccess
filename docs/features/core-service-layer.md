@@ -215,7 +215,7 @@ Use [TESTING_STRATEGY.md](../TESTING_STRATEGY.md) for contract and mocking guida
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `versionsService` | Version browse (`getVersionsByNode` + `headBlob` size probes, storage internals stripped), restore (one TX: history row reactivated + current active demoted to history + node → active + filecache re-assert from HEAD + thumbnail cache eviction; NO new row), old-version attachment-only download | No direct S3 calls (blob access via `blobStore.headBlob`/`downloadBlob`); no tree/closure algorithms; permission decisions delegate to `aclService` |
 
-Restore semantics (A안 reactivate-in-place, zero I/O): `reactivateObjectMapRow` (guard widened to
+Restore semantics (the chosen reactivate-in-place option, zero I/O): `reactivateObjectMapRow` (guard widened to
 `status IN ('history','orphaned')`) + `demoteActiveToHistory(current.s3_key)` — the demoted
 current version becomes `history`, never `orphaned`. Version history does not survive s3↔webdav
 cutover (active row flips; history rows are dropped) — accepted (DEF-18 class).

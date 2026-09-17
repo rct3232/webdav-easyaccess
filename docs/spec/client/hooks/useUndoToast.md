@@ -4,11 +4,11 @@ Target-contract spec.
 
 ## 1. Overview
 
-| Item                     | Description                                                                                                                                                                                                                                                                                    |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role                     | Undo-toast controller: turns a mutation's `undo: { action_id }` pointer into ONE bottom toast per COMMAND (`[icon] {label} [되돌리기]`), executes undo through the gateway, and drives the tip/cascade/fingerprint/mixed-result outcomes. Owns the ≤24h undo-window rule of the toast surface. |
-| Used by components/pages | `FileManager` shell (collection CRUD, merge, add/remove members, save-to-collection), MyPage `SuggestionsChecklist` accept, `MergeProposalCard` host, dialog flows                                                                                                                             |
-| Does not own             | Snackbar rendering details (`UndoToast` view), message queue mechanics (extended `useMessage`), journal feed presentation (dashboard), server-side inverse execution (`actions.md`)                                                                                                            |
+| Item                     | Description                                                                                                                                                                                                                                                                                |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role                     | Undo-toast controller: turns a mutation's `undo: { action_id }` pointer into ONE bottom toast per COMMAND (`[icon] {label} [Undo]`), executes undo through the gateway, and drives the tip/cascade/fingerprint/mixed-result outcomes. Owns the ≤24h undo-window rule of the toast surface. |
+| Used by components/pages | `FileManager` shell (collection CRUD, merge, add/remove members, save-to-collection), MyPage `SuggestionsChecklist` accept, `MergeProposalCard` host, dialog flows                                                                                                                         |
+| Does not own             | Snackbar rendering details (`UndoToast` view), message queue mechanics (extended `useMessage`), journal feed presentation (dashboard), server-side inverse execution (`actions.md`)                                                                                                        |
 
 ---
 
@@ -42,7 +42,7 @@ Target-contract spec.
 - **One toast per command (never per item):** showing a new undo toast replaces the pending one; the journal already holds history (§4.11 command-row granularity).
 - **≤24h window:** the undo action slot renders only while `now − shownAt ≤ 24h` AND an `actionId` exists. Toast auto-hides at 8 s (longer than the default to make the action reachable) — **Decision:** the 24h rule guards re-showing/recovery paths (e.g. restore-after-reload hooks feeding old commands), the dashboard feed carries undo beyond that horizon (rows live 30d, `actions.md`).
 - **snake_case → UI mapping:** consumed fields are `undo.action_id`, `items_undone`, `items_skipped`, `cascade_undone`, `params.laterChanges`, `errorCode`. Labels are i18n keys supplied by the CALLER (`text`), not invented here.
-- Undo execution: `undoAction(actionId)` → on 200: re-read via `refresh()`, then success toast with counts — mixed results render `11개 되돌림, 1개는 변경되어 건너뜀` (`items_undone`/`items_skipped`).
+- Undo execution: `undoAction(actionId)` → on 200: re-read via `refresh()`, then success toast with counts — mixed results render `11 undone, 1 skipped (state changed since)` (`items_undone`/`items_skipped`).
 - 409 `cascadeConfirmRequired` → set `cascadeConfirm`; re-post with `{ confirmCascade: true }` on user confirm (409-then-repost, no force flag).
 - 409 `fingerprintMismatch` / `expired` / `alreadyUndone`, 404 masquerade → error toast via `message.showError`; toast action stays visible only while undo remains possible (drop the button after terminal refusals).
 - No toast for silent system acts or trivial self-reversing state (like/visit/sort) — matrix rows belong to digest/feed surfaces (§4.11).
@@ -55,7 +55,7 @@ Target-contract spec.
 
 ### 2.6 Error Handling
 
-- Absorbed refusals never leave a dead `[되돌리기]` button: terminal errorCode removes the action slot and reports.
+- Absorbed refusals never leave a dead `[Undo]` button: terminal errorCode removes the action slot and reports.
 - Undo success but refresh failure: report the refresh error via `showError`; do not re-show undo (already `undone`).
 
 ### 2.7 Verification Scenarios

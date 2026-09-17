@@ -59,8 +59,8 @@
 - Shrink: chip rendered via createPortal into #file-progress-slot when !drawerOpen
 - Drawer: MUI Drawer anchor="right" when drawerOpen; header has X (close) and title only
 - expandedItemIndex (number | null): which item is expanded; null = all collapsed
-- Collapsed view: each item shows header + "펼치기" button (full width, narrow); body hidden
-- Expanded view: single item fills drawer (header + body); "접기" button at bottom
+- Collapsed view: each item shows header + "Expand" button (full width, narrow); body hidden
+- Expanded view: single item fills drawer (header + body); "Collapse" button at bottom
 - New preparing/processing items: setExpandedItemIndex(null)
 - Error/warning: set expandedItemIndex to error item (no auto-open drawer); call showError/showWarning with message once per item
 - Retry button only when item.status === 'error' && item.failedItems?.length && onRetry
@@ -71,8 +71,8 @@
 Checklist for unit test writing:
 
 - [ ] Shrink: chip in AppBar slot with primary/secondary labels; click opens Drawer (onDrawerOpen)
-- [ ] Collapsed: all headers visible; each has "펼치기" button; 펼치기 opens that item
-- [ ] Expanded: single item (header + body); "접기" at bottom; 접기 returns to collapsed
+- [ ] Collapsed: all headers visible; each has "Expand" button; Expand opens that item
+- [ ] Expanded: single item (header + body); "Collapse" at bottom; Collapse returns to the collapsed view
 - [ ] onClose, onRetry, onCancelFile, onCancelAll invoked correctly
 - [ ] Auto-collapse on new items; on error/warning expand that item when drawer is opened (no auto-open)
 - [ ] Upload fileItems list with per-file cancel

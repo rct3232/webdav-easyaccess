@@ -19,9 +19,9 @@
   user inside their own home. The breadcrumb MUST render that location only once:
   - **Non-admin inside own home tree**: the ancestor entry whose `nodeId === user.rootNodeId` is
     **not rendered as a chip** (home chip replaces it). Example: inside `docs` of home →
-    `홈 > docs` (never `홈 > {username} > docs`).
+    `Home > docs` (never `Home > {username} > docs`).
   - **Admin** (`rootNodeId` is `null` / no home node): no trimming applies; ancestor chips show
-    the real hierarchy under `/` (e.g. `홈 > alice > docs` when browsing another account's tree).
+    the real hierarchy under `/` (e.g. `Home > alice > docs` when browsing another account's tree).
   - A non-admin browsing **another account's** folder (shared scope) keeps that account's node
     name in the chain (only the acting user's own `rootNodeId` is ever trimmed).
 - Trimming is keyed on **nodeId equality with the acting user's `rootNodeId` and `!is_admin`** —
@@ -68,8 +68,8 @@
 
 ### 2.6 Home chip (leading chip)
 
-- Label: `nav.home` (홈 / Home) for **all roles**. The admin chip is no longer a distinct
-  "All/전체" label — the admin home scope (filesystem root `/`) is still represented by the home
+- Label: `nav.home` (Home / Home) for **all roles**. The admin chip is no longer a distinct
+  "All" label — the admin home scope (filesystem root `/`) is still represented by the home
   chip and must navigate to `/` (`homeClickTarget` = `null` for admins, `user.rootNodeId` for
   non-admins).
 - Icon: home icon.

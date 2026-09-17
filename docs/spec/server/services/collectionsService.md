@@ -97,7 +97,7 @@ JOIN-TIME ACL check of the REQUESTER against `fileNodesStore`:
 | purged                                 | absent (FK cascade removed the rows)                                                                     |
 
 - Foreign-owned members (`node.ownerId ≠ collection.ownerId`): in the OWNER's view they
-  render with `shared_excluded: true` (`타인 소유 — 공유 제외` chip); in a SHARED view
+  render with `shared_excluded: true` (`Not owner's file — not shared` chip); in a SHARED view
   (requester is grantee) they are omitted entirely — the cross-leak rule (§3.2/§4.7).
 - Publish gate (§4.7, via `shareService.isVisibleToGrantee`): grantees only ever see
   `published:true` rows; the owner sees everything plus `publish_pending_count`
@@ -108,7 +108,7 @@ JOIN-TIME ACL check of the REQUESTER against `fileNodesStore`:
 - `liked` = `fileLikesStore.filterLiked(requester, nodeIds)` — current viewer only,
   identical in every collection (invariant 9); no counts, no other users' states.
 - `reason` (derived rows only) = matched predicate name computed at query time
-  (`"tag:포스터"`, `"path:/여행/2026"`, `"similar:θ_in"`); `null` for stored. NOT a
+  (`"tag:poster"`, `"path:/travel/2026"`, `"similar:θ_in"`); `null` for stored. NOT a
   history table (§4.8).
 - Adding: unreadable nodes go to `rejected_not_readable`, the rest still add (200). A
   foreign file may be added — you may add what you can READ (§3.2).
@@ -146,7 +146,7 @@ input `nodeIds`; every requested node gets an entry (possibly `collection_ids: [
   Cosine via `vectorStore.neighbors(seedVec, k=200+, visibleIds)`, partial top-K;
   `sample` capped at 12, `count` exact (within the cap), `sample_truncated = count>12`.
 - Confirm-dialog copy obligation (§4.5): the dialog states that the ENTIRE initial set
-  (preview + `이 외 N개`) is publish-approved as a batch if/when the collection is shared.
+  (preview + `plus N more`) is publish-approved as a batch if/when the collection is shared.
 - Initial-batch publish rule (§4.7 Q2): the members materialized by the CONFIRMED initial
   execution of a `seed`/`search` collection are created `published=true` (the dialog IS
   the batch approval); all later arrivals park at `published=false` under `ask`/`off`
@@ -184,17 +184,17 @@ input `nodeIds`; every requested node gets an entry (possibly `collection_ids: [
   never migrated (exposure expansion must be explicit — rule 2); matching suggestion row
   → `state='merged'`; survivor `touchMemberChange`. Accepting a merge as survivor is a
   user touch → auto-pin.
-- Dismiss = `나중에` (`state='dismissed'` + `dismissed_at`; the 2-week re-raise / 30-day
-  sleep timing lives in evolution pass 5, NOT here). Reject = `따로 둡니다`
+- Dismiss = `Later` (`state='dismissed'` + `dismissed_at`; the 2-week re-raise / 30-day
+  sleep timing lives in evolution pass 5, NOT here). Reject = `Keep separate`
   (`state='rejected'`, permanent suppression — evolution never re-suggests a rejected
   pair).
 
 ### 2.10 Naming (templateNamer first, llmNamer swap)
 
 - `templateNamer` (this domain, deterministic, ko/en locale strings) is DEFAULT and FINAL:
-  search → query text verbatim; seed → `{seedFileName}과 유사한 파일`; system cluster →
-  top-2 local derived tags `{tag1} · {tag2} 사진`; split → `{parentName} · {diffTag}`;
-  fallback `자동 컬렉션 N` (system-origin only). `llmNamer` (ai domain) replaces it for
+  search → query text verbatim; seed → `{seedFileName} and similar files`; system cluster →
+  top-2 local derived tags `{tag1} · {tag2} photos`; split → `{parentName} · {diffTag}`;
+  fallback `Auto collection N` (system-origin only). `llmNamer` (ai domain) replaces it for
   NEW creations only while chat is configured; failure ⇒ templateNamer (lossless swap).
   Existing names are never renamed (`name_locked` respected) (§2.7/§4.10).
 - Service-side name writes (rename) always lock; auto-generated names do not lock.

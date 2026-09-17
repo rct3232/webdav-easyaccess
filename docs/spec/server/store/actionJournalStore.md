@@ -84,7 +84,7 @@ chain_seq, status, created_at, undone_at, expires_at)`; `UNIQUE(domain,subject,c
    `journal_cascade_required` unless `cascade:true`, in which case rows `tip..target` are
    undone newest-first (LIFO) as one operation.
 3. Dispatch to the domain's registered executor. Per-item fingerprint mismatch ⇒ that item
-   is SKIPPED, not failed (mixed results allowed: `11개 되돌림, 1개는 변경되어 건너뜀`).
+   is SKIPPED, not failed (mixed results allowed: `11 undone, 1 skipped (state changed since)`).
 4. Flip each row `status='undone'`, `undone_at=now()`. The undo itself is NOT journaled
    (**Decision:** no undo-of-undo; status flip is the record).
 

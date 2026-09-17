@@ -86,7 +86,7 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 - T0.3 Collections CRUD API `/api/collections` (§3.1/§3.2 ops; activity-sort graceful
   fallback) + route spec + integration tests.
 - T0.4 Sidebar `__collections__`/`__archive__` + list view + card menus (client per §6).
-- T0.5 File-side: `컬렉션에 추가` submenu (context+multi-select), member-row controls
+- T0.5 File-side: `Add to collection` submenu (context+multi-select), member-row controls
   (§3.2 exact set), like toggle everywhere.
 - T0.6 `usage_events` + nightly rollup in maintenanceScheduler + activity score fn.
 - T0.7 `action_journal` infra + `commitChange` + TX/lock discipline (writers v1 =
@@ -100,7 +100,7 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
   detection redundant, PoC §2.2/E2**), local derived tags (mime/ext/month/path/EXIF),
   stored digest banner, cosine-free rule evaluation (path/tag/like predicates incl.
   upload-hook rule check).
-- T0.10 user dashboard `저장공간` v1 (hygiene: exact dups, trash, journal feed,
+- T0.10 user dashboard `Storage` v1 (hygiene: exact dups, trash, journal feed,
   collections status) — no AI blocks yet.
 - T0.11 server-wide **name search** + results-mode UI + two-section rendering with
   client-side highlight (LLM-free §4.6 stage; semantic section lands as P1 add-on).

@@ -362,6 +362,12 @@ per-query dynamic baseline exists precisely because we refuse to guess).
 
 ## 5. Reproduction map
 
+> **Archival note (2026-09-16):** the `poc/` scripts, datasets and the `poc-pgvec` bench
+> container have been deleted after the PoC closed; paths below describe what existed, not
+> what is kept. Re-running any experiment requires rebuilding its harness from §2's method
+> descriptions (each is specified tightly enough to do so). The three plan documents remain
+> the live artifacts.
+
 | Artifact                  | Where                                                                                                                                                   |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Corpus builder scripts    | `poc/gen_poc_data.py`, `build_nsmc.py`, `build_news.py`, `wiki_slow.py`, S3 copy `dl.py` (keys via `.env.bak`)                                          |

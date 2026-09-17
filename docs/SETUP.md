@@ -113,6 +113,45 @@ cp .env.example .env
 > `THUMBNAIL_CONCURRENCY_LIMIT`, `THUMBNAIL_TOKEN_SECRET`, `THUMBNAIL_TOKEN_EXPIRY`,
 > `FFMPEG_INIT_TIMEOUT_MS`, `WEA_PREVIEW_TICKET_TTL_MS`, `HOSTNAME` (registry `dbOnly` flag).
 
+### AI Features Configuration (LLM\_\* — optional)
+
+AI features are driven by role-based LLM config keys (`LLM_*` — each configured role
+`embed` / `chat` / optional `vision` / `asr` gets a `{BASE_URL, API_KEY, MODEL}` triple,
+e.g. `LLM_EMBED_BASE_URL`). Operator-facing semantics (full contract:
+`AI_FEATURE_PLAN.md` §4.2/§4.23, `docs/features/config-source-resolution.md`):
+
+- **Tier T2 (hot)** — recommended surface is the admin config editor ("Advanced settings"),
+  or the **optional, skippable AI step** of the first-run setup wizard
+  (`docs/spec/server/routes/setup.md` §2.4). Values are stored as **DB `settings` rows**
+  (secrets plaintext + masked in UI, like all other DB-stored secrets), applied without a
+  restart (per-call resolution; editor changes re-probe live).
+- `.env`-provided `LLM_*` remains **legal** (env wins per D1) but then the rows are
+  read-only in the editor (`source=env`, Section B) — so the DB is the recommended surface.
+- **No `LLM_ENABLED` flag**: presence of a resolved role config decides candidacy; the
+  runtime probe decides truth. Unconfigured roles simply remove their AI affordances for
+  users (the product is fully useful in the None state).
+- Presets declare EXPECTED capabilities; probe results are the final authority (a
+  declared-but-failing capability is turned off with an admin warning card). Measured
+  reference profiles from the project PoC:
+
+  | Family (preset)                                          | Verified on dev reference set                                                               | Status                                                   |
+  | -------------------------------------------------------- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+  | llama.cpp serving bge-m3                                 | **text-embed only, 1024-dim** (silently wrong on image input — image capability probes OFF) | measured profile value                                   |
+  | llama.cpp serving Hana (gemma-4-12b)                     | **vision + audio**, verified in-domain with real photos/speech                              | measured profile value                                   |
+  | other families (Ollama, OpenAI-compatible, TEI-class, …) | expected capability set declared in `infrastructure/adapters/llm/presets.js`                | **release-measurement-pending** (no shipped numbers yet) |
+
+- **Node ≥ 24 is the product floor** (release prerequisite): the native sqlite vector path
+  (sqlite-vec) needs the built-in `node:sqlite` driver with loadable-extension support
+  (T0.12, `docs/spec/server/store/executor.md`).
+- **Vector engine notes (affects speed, never availability):**
+  - PostgreSQL: without the `vector` extension the AI features still work on the
+    JavaScript fallback with an admin **performance warning**; install **`vector` ≥ 0.7**
+    for native HNSW ANN.
+  - SQLite: the sqlite-vec loadable extension ships as a **binary bundled with the npm
+    preset package** — no manual install.
+- **Nothing about AI config is boot-frozen** — unlike the metadata backend choice (T0),
+  LLM config, budgets, thresholds, and model changes apply without restart.
+
 ## 3. Metadata Storage Configuration
 
 The system supports a SQLite-backed (default) and a remote PostgreSQL-backed metadata store with the same store interfaces. The legacy `fs`/`webdav` metadata backends are removed (Phase 7).

@@ -109,6 +109,23 @@ Rationale: read per-request/per-operation via the lazy resolver (F3 fix — thes
 mislabeled T1 but never boot-frozen in practice); changing them has no boot-time singleton
 impact.
 
+**LLM\_\* — T2 hot-apply family (AI platform, AI_FEATURE_PLAN §4.2):** every `LLM_*` key is
+T2 and **fully hot** — the LLM adapter resolves its role configs per call through this
+resolver (5 s TTL + `invalidateCache` on settings PUT), and an internal provider-client
+cache **keyed by the resolved-config signature** rebuilds clients on change. A signature
+change triggers a debounced re-probe of the affected role, so `backendHealth` and
+`settings/public` `ai` flags update live; workers pick the new config at the next job and
+budget counters reset. **No restart, ever.** Contrast with the other config families: the
+metadata DB connection (T0) is boot-frozen by definition and the blob store (T1) needs a
+restart — the LLM is an enrichment dependency, so it is the only subsystem whose entire
+connection layer is hot. `.env`-provided `LLM_*` values remain legal (standard D1
+precedence) but relocate the rows to the read-only Section B (`source=env`), so the DB is
+the recommended surface; no `LLM_ENABLED` flag exists — role presence decides candidacy,
+probes decide truth. The preset manifest (`infrastructure/adapters/llm/presets.js`) is a
+**release artifact declaring EXPECTED capabilities** (text_embed/chat/vision_chat/asr +
+recommended budgets) per provider family — the runtime **probe remains the final authority**
+(declared-but-failing ⇒ capability off + admin warning card; §4.23).
+
 ---
 
 ## DB storage design (D11)
@@ -185,6 +202,14 @@ metadata DB by default; only T0 keys are written to `.env`.
   `current` block of `GET /api/setup/status` (effective env → DB → default, secret rows
   masked as `'****'`, never plaintext). The former wizard-only direct-PG-read endpoint
   `POST /api/setup/prefill` was retired as dead code (no client caller).
+- **Optional AI step (AI platform, §4.23.5):** the wizard gains one OPTIONAL, skippable
+  "AI" step (preset picker → role checkboxes → base-url/key/model inputs → per-role test
+  via the new `llm` target of `POST /api/setup/test`). Its values are written as **DB
+  `settings` rows through the same `writeSettings` path as every other non-T0 key — never
+  `.env`/`envFileWriter`** (the hot-apply rule: a mid-install config must be
+  restart-free). A skipped step costs nothing (the product boots in the None state); the
+  full LLM config surface stays in admin (`/api/admin/config` + test), to which the wizard
+  step is only a shortcut to the same rows.
 
 ---
 

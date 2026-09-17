@@ -161,7 +161,9 @@ crash-retries, copies, restores). Content re-read via `blobStorageService.downlo
 
 - Factory by **runtime presence**: role-based clients — `embed`, `chat`, optional `vision`,
   `asr` — each `{BASE_URL, API_KEY, MODEL}`. **All `LLM_*` keys are T2 `dbOnly`** (admin
-  config, masked secrets, DB-stored plaintext per W-A) — NOT boot-owned: unlike the metadata
+  config, masked secrets, DB-stored plaintext — app-layer secret encryption was removed by
+  the `refactor/remove-app-encryption` workstream, see the W-A note in
+  `docs/IMPROVEMENT_PLAN.md`) — NOT boot-owned: unlike the metadata
   backend (T0) and blob store (T1), the LLM is an enrichment dependency (invariant 5), so
   its config is fully hot. No `LLM_ENABLED` flag — role presence (non-empty resolved
   config) decides candidacy; probes decide truth (§4.23).
@@ -296,6 +298,9 @@ the collection is shared — approval must not silently cover unseen members.
   `seed`/`search` collections is created `published=true`** (the §4.5/§4.6 confirm dialog
   is the batch approval, incl. unseen remainder — see §4.5 copy obligation); subsequent
   arrivals park as above. `auto` = publish on every add (explicitly enabled mode).
+  Publish state for DERIVED members materializes as a stored marker row in
+  `collection_items` (the sole exception to derived-no-rows; `stored ∪ derived` dedups by
+  node; unpublish flips the flag and never removes genuine owner-added rows).
 - `leave` for recipients = per-user hidden flag.
 - Cross-leak rule (§3.2) applies: foreign-owned members never rendered into shared views.
 - Grants revocation is instant; already-visible metadata cannot be re-taken (documented
@@ -913,7 +918,9 @@ subject TEXT, subject_label TEXT, actor, action, payload JSONB, chain_seq, statu
 CHECK(applied|undone|expired), created_at, undone_at, expires_at)`;
   UNIQUE(domain,subject,chain_seq); NO FKs.
 - `collection_merge_suggestions(id, a_id→CASCADE, b_id→CASCADE, score BIGINT,
-state, dismissed_at, rejected_at, created_at, UNIQUE(a,b))`
+state, dismissed_at, rejected_at, arbiter_verdict TEXT NULL, arbiter_reason TEXT NULL,
+created_at, UNIQUE(a,b))` (arbiter columns: advisory prefill on the §4.4 card, never
+  auto-executes)
 - `file_suggestions(id, user_id, node_id, kind, reason JSONB, state, created_at,
 expires_at)`
 - `admin_reports(id, kind CHECK(gc|migration|failsafe|night_eval), status, payload JSONB,
@@ -942,8 +949,9 @@ content_hash, created_at, started_at, finished_at, UNIQUE(node,kind,generation))
   idx(status,next_retry_at)
 - `ai_usage_daily(day TEXT, role, calls, input_chars, cached, degraded, failed_429,
 PK(day,role))`
-- `query_parses(normalized_query PK, predicates JSONB, hit_count, created_at)` — NL cache;
-  the normalized signature doubles as §4.22's `result_ref` key (no separate table)
+- `query_parses(normalized_query PK, predicates JSONB, vector TEXT NULL, hit_count,
+created_at)` — NL cache + E2 query-embed cache; the normalized signature doubles as
+  §4.22's `result_ref` key (no separate table)
 - `file_nodes.content_hash` populated in place (column exists, no DDL change).
 
 ## 9. Rejected during design (do not re-introduce without new evidence)

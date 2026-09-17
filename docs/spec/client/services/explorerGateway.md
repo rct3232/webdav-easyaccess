@@ -69,3 +69,31 @@ Verify observable IO behavior from the caller perspective:
 - [ ] `checkConflicts` returns the same conflict entries as the current preflight conflict check for the same operations list.
 - [ ] `uploadToPath({ parentNodeId, files })` triggers the same conflict behavior and supports the same progress integration points as today.
 - [ ] Move/copy/delete/download flows dispatch nodeId-based operations through `useBulkOperations` rather than this gateway.
+
+### 2.6 Collections-platform re-exports (target contract)
+
+Per PLAN §6 "Client layering", collections-platform IO is re-exported here so controller hooks (`useCollections`, `useSearchResults`, `useUndoToast`, MyPage dashboard wiring) never import `collectionsRepository`/`collectionsNotifier` directly. Names pass through unchanged; payloads stay snake_case (see `collectionsRepository.md` §2.2):
+
+| Group                           | Re-exported names                                                                                                                 |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Collection list/CRUD            | `loadCollections`, `createCollection`, `updateCollection`, `archiveCollection`, `restoreCollection`, `deleteCollection`           |
+| Membership (add/remove/publish) | `loadCollectionItems`, `addCollectionItems`, `removeCollectionItems`, `publishItems`, `getMemberships`                            |
+| Preview / seed / search-save    | `previewCollection`, `previewExistingCollection`                                                                                  |
+| Merge                           | `getMergeSuggestions`, `mergeCollections`, `dismissMerge`, `rejectMerge`                                                          |
+| Grants (sharing)                | `getGrants`, `grantCollection`, `revokeGrant`                                                                                     |
+| Search results mode             | `runSearch` (§4.6; `semantic_available`/`result_ref` consumed by `useSearchResults`)                                              |
+| Undo journal / toast payload    | `getActions`, `undoAction` (structured result incl. `params.laterChanges` for cascade confirm — `collectionsRepository.md` §2.5)  |
+| File suggestions (§4.16/§4.17)  | `getFileSuggestions`, `acceptFileSuggestions`, `dismissFileSuggestion` (T3.3 seam)                                                |
+| Change fan-out                  | `subscribeToCollections` (wraps `collectionsNotifier.onCollectionsChange`, same unsubscribe contract as `subscribeToRecentFiles`) |
+
+Rules:
+
+- The repository's failure-absorption and notify-after-real-success semantics are preserved verbatim through this boundary — the gateway adds no retry, toast, or UI logic.
+- **Decision:** no new `collectionsGateway` module; re-export keeps one explorer-adjacent IO surface for FileManager overlays (virtual-collection precedent: recent files ride this gateway too).
+- View components and pure helpers still must not import the gateway; they consume prepared data/callbacks from controller hooks.
+
+Verification additions:
+
+- [ ] `subscribeToCollections` returns an unsubscribe function safe for effect cleanup (same contract as `subscribeToRecentFiles`).
+- [ ] `runSearch`/`undoAction`/collection CRUD re-exports return the repository's exact shapes (snake_case payloads, absorbed fallbacks).
+- [ ] Controller hooks (`useCollections`, `useSearchResults`, `useUndoToast`) contain no direct `collectionsRepository`/`collectionsNotifier` imports (grep gate).

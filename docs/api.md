@@ -144,6 +144,53 @@ These routes are for accessing shared files via a public link (token in path). A
 
 ---
 
+## Collections / AI search / Actions
+
+Target contracts (docs-first, `ai-feature` workstream). Request bodies camelCase,
+responses snake_case (PLAN §6 wire casing). Mutation responses carry
+`undo: { action_id }` where journaled; undo semantics: `actions.md` spec.
+Full contracts: `docs/spec/server/routes/collections.md`,
+`docs/spec/server/routes/search.md`, `docs/spec/server/routes/actions.md`.
+
+### Collections
+
+| Method | Path                                 | Auth  | Description                                                                                                                                                  |
+| ------ | ------------------------------------ | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/api/collections`                   | Token | List. Query `sort=activity\|name\|created\|updated\|similar`, `include=mine,shared,archived`. Returns `{ collections: [...] }` snake_case rows.              |
+| POST   | `/api/collections`                   | Token | Create manual collection. Body `{ name }`. 201: `{ collection, undo }`; collisions auto-suffix.                                                              |
+| PUT    | `/api/collections/:id`               | Token | Update. Body `{ name?, pinned?, publishMode? }` (`ask\|off\|auto`); rename locks the name. Returns `{ collection, undo }`.                                   |
+| POST   | `/api/collections/:id/archive`       | Token | Archive (owner). 409 `collections.alreadyArchived`. Returns `{ collection, undo }`.                                                                          |
+| POST   | `/api/collections/:id/restore`       | Token | Restore archived (owner). 409 `collections.notArchived`.                                                                                                     |
+| DELETE | `/api/collections/:id`               | Token | Permanent delete — archived only (409 otherwise); no undo (trash-parity). 204.                                                                               |
+| GET    | `/api/collections/:id/items`         | Token | Member view (stored ∪ derived − exclusions, live ACL). Query `cursor`, `limit`, `since` (digest counts). Returns items + `publish_pending_count` + `digest`. |
+| POST   | `/api/collections/:id/items`         | Token | Add members. Body `{ nodeIds }`; unreadable nodes reported, rest added. Returns `{ added, rejected_not_readable, undo }`.                                    |
+| DELETE | `/api/collections/:id/items`         | Token | Remove stored rows / insert exclusions on derived collections. Body `{ nodeIds }`. Returns `{ removed, excluded, undo }`.                                    |
+| POST   | `/api/collections/preview`           | Token | Dry preview. Body `{ seedNodeId }` (needs embed role) or `{ definition }`. Returns `{ count, sample, sample_truncated }`.                                    |
+| POST   | `/api/collections/:id/preview`       | Token | Dry-run the stored definition (owner). Same response as `/preview`.                                                                                          |
+| GET    | `/api/collections/merge-suggestions` | Token | Pending merge cards. Returns `{ suggestions: [{ suggestion_id, a_id, b_id, overlap_count, merged_count, score }] }`.                                         |
+| POST   | `/api/collections/:id/merge/:other`  | Token | Merge; `:id` survives, `:other` deleted. No extra dialog (the card is the confirmation). Returns `{ survivor, absorbed_id, undo }`.                          |
+| POST   | `/api/collections/:id/merge-dismiss` | Token | `나중에` pair defer. Body `{ otherId }`. Suggestion → `dismissed` (2-week re-raise handled by the nightly pass).                                             |
+| POST   | `/api/collections/:id/merge-reject`  | Token | `따로 둡니다` pair suppression. Body `{ otherId }`. Suggestion → `rejected` (terminal).                                                                      |
+| GET    | `/api/collections/:id/grants`        | Token | List grants (owner). Returns `{ grants: [{ grantee_id, username, role, granted_by, created_at }] }`.                                                         |
+| POST   | `/api/collections/:id/grants`        | Token | Grant. Body `{ userId, role }` (`viewer\|editor`). 201: `{ grant, undo }`.                                                                                   |
+| DELETE | `/api/collections/:id/grants`        | Token | Revoke. Query `userId`. Returns `{ grantee_id, revoked, undo }`.                                                                                             |
+| POST   | `/api/collections/for-nodes`         | Token | Membership chips batch. Body `{ nodeIds }`. Returns `{ memberships: [{ node_id, collection_ids }] }`.                                                        |
+
+### Search
+
+| Method | Path          | Auth  | Description                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------ | ------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/search` | Token | Hybrid search. Body `{ query, result_ref? }` (`result_ref` accepted, ignored in MVP). Returns `{ name_matches: [{node_id, name}], semantic: [{node_id, name, score}], result_ref, counts }`; `semantic` omitted + `semantic_unavailable_reason: serverErrors.ai.notConfigured` when embed role absent. Name section = full-query containment (LLM LIKE both sides), semantic = segment-AND scoring with per-query dynamic baseline (honest empty). |
+
+### Actions (undo journal)
+
+| Method | Path                    | Auth  | Description                                                                                                                                                                                                                                                                                                                    |
+| ------ | ----------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/api/actions`          | Token | 30-day feed, newest first (cap 200). Query `domain?` (`collection\|batch\|settings\|permissions\|tags\|file\|sharing`). Rows: `action_id`, `domain`, `subject`, `subject_label`, `actor`, `action`, `status`, `chain_seq`, `is_tip`, `undo_available`, `created_at`, `undone_at`, `expires_at`. v1 writers: `collection` only. |
+| POST   | `/api/actions/:id/undo` | Token | Tip undo free; non-tip → 409 `actions.cascadeConfirmRequired` (`params.laterChanges`) unless body `{ confirmCascade: true }`. Refusals: `fingerprintMismatch`, `expired`, `alreadyUndone` (all 409). Mixed item results reported as counts.                                                                                    |
+
+---
+
 ## Health and Diagnostics
 
 | Method | Path          | Auth | Description                                                                                                                                                                           |

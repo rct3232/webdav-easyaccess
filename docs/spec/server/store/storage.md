@@ -41,6 +41,20 @@
 | withSqliteTransaction | (callback) => Promise\<T\> | Executes callback in SQLite transaction |
 | closeSqliteDb         | () => void                 | Close SQLite database                   |
 
+> **(T0.12 target — lands with P0) Driver change: `sqlite3` npm → built-in `node:sqlite`.**
+> Decided contract (AI_FEATURE_PLAN §4.13, PLAN §6/§7 T0.12): the driver swap is confined
+> to the `db/sqliteExecutor.js` seam (+ these connection helpers), so the storage surface
+> above keeps its exported semantics; `getSqliteConnection` will return a
+> `node:sqlite` `DatabaseSync` instance instead of a sqlite3 `Database`. Binding
+> requirements: **Node ≥ 24** (product floor — `node:sqlite` with
+> `enableLoadExtension`/`loadExtension` is the prerequisite for the sqlite-vec `vec0`
+> native vector path); the driver's **ExperimentalWarning is tolerated** (suppressed at
+> boot, not treated as failure); **integer PK bindings must be passed as `BigInt`** (plain
+> JS numbers bind as doubles — vec0 PK correctness depends on it). The current
+> `sqlite3`-based description remains accurate **until the migration lands**; the executor
+> behavior suite must be green on both drivers at cutover. See also
+> `docs/spec/server/store/executor.md` §2.6.
+
 #### Legacy Filesystem Helpers
 
 **Removed in Phase 7:** `getFsBaseDir`, `webdavToFsPath`, `ensureDir`, `ensureDirSafe`, `exists`, `readFile`, `writeFile`, `deletePath`, `listDir` — FsJSON metadata support is removed; `storage.js` no longer exposes filesystem helpers.

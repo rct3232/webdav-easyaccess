@@ -1,0 +1,71 @@
+# CollectionsSection Spec
+
+Target-contract spec (docs-first; AI_FEATURE_PLAN §3.1/§4.9b/§4.11 surface 5; PLAN §7 T0.4).
+
+## 1. Overview
+
+| Item               | Description                                                                                                                                                                                                                                  |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Collapsible folder-tree section for the `__collections__` virtual node (depth=1): header + activity-ordered collection rows + shared-origin icon chips + a trailing `__archive__` node (`ArchiveNode`). No tree-walking into members (§3.1). |
+| Used in            | FolderTree (desktop sidebar + mobile drawer), composed like `RecentFilesSection`/`SharedFoldersSection`                                                                                                                                      |
+| Related components | BaseFolderTreeItem (selected-style idiom), RecentFilesSection (collapsible idiom), CollectionsListView (click target view)                                                                                                                   |
+
+---
+
+## 2. Implementation Spec
+
+### 2.1 File Path
+
+- **Source:** `client/src/components/folder-tree/CollectionsSection.js` (ArchiveNode is a row variant in the same module — one spec, one file; no separate tree component)
+- **Test file:** `client/src/components/folder-tree/__tests__/CollectionsSection.test.js`
+
+### 2.2 Props
+
+| Name                | Type     | Required | Default | Description                                                                                                    |
+| ------------------- | -------- | -------- | ------- | -------------------------------------------------------------------------------------------------------------- |
+| collectionsExpanded | boolean  | Y        | -       | Section expanded                                                                                               |
+| onCollectionsToggle | function | Y        | -       | Expand/collapse header                                                                                         |
+| onCollectionsClick  | function | Y        | -       | Header click → navigate `/files/__collections__`                                                               |
+| collections         | array    | Y        | -       | snake_case Collection rows, server `activity` order (tree order is FIXED activity, §3.1 — never user-sortable) |
+| archiveCount        | number   | N        | 0       | Count badge on the ArchiveNode (`include=mine,archived` rows)                                                  |
+| currentPath         | string   | Y        | -       | Selection keying (see §2.4)                                                                                    |
+| onCollectionClick   | function | Y        | -       | Row click: `(collectionId) => void` → host routes `/files/__collections__/collection/:id`                      |
+| onArchiveClick      | function | Y        | -       | ArchiveNode click → `/files/__collections__/__archive__`                                                       |
+| newCollectionIds    | array    | N        | []      | Ids with the subtle `new` dot (system-create cue, §4.11 surface 5; computed by the controller — see §2.6)      |
+
+### 2.3 Rendering Contract
+
+- Header row: `{CollectionsIcon} 컬렉션` (`nav.collections`), collapsible like RecentFilesSection.
+- Collection row: icon + name + item count; **shared-with-me rows** (`granted_role != null`) get an icon chip ONLY — never pinned to top, same activity-sorted list (§3.1). Pinned (`pinned=true`) rows keep server order (gravity, not hoisting).
+- **ArchiveNode:** auto-child at the section end listing exactly the `status=archived` collections as a navigable node — no separate archive screen, no per-collection archive toggle in the tree (§3.1). Badge = `archiveCount`; zero ⇒ row still renders (the lifecycle destination must stay reachable).
+- **Decision:** member counts come from `item_count` (already on the row); no per-row lazy child loading (depth=1 rule).
+
+### 2.4 Selection & Conditional Rendering
+
+- Selected (BaseFolderTreeItem idiom) when `currentPath === '/__collections__'` (section header/highlight) or equals a collection or archive route.
+- Empty list ⇒ header only + `nav.collectionsEmpty` hint when expanded; no ArchiveNode? — **Decision:** ArchiveNode renders only when `archiveCount > 0` for the section-expansion view; the permanent destination stays reachable via the empty-list hint row (avoids a dead 404-ish route).
+- Hidden entirely in share-link mode (product overlay rule — shell passes no section).
+
+### 2.5 Dependencies
+
+- **imports:** MUI tree primitives, `useTranslation`, `getFileIcon`-adjacent glyphs only.
+- **Boundary:** pure view — the controller (`useFolderTreeController` extension, spec update at implementation time) loads rows via `explorerGateway.loadCollections({ sort: 'activity', include })` and subscribes to `subscribeToCollections`; this component never imports services/notifier.
+
+### 2.6 i18n Keys
+
+- `nav.collections`, `nav.collectionsArchive`, `nav.collectionsEmpty`, `nav.collectionsSharedChip` (aria-label), `nav.collectionsNewDot` (aria-label)
+- `new` dot rule (controller side, noted for contract completeness): collection ids created after the user's last `__collections__` visit (localStorage cursor, digest-cursor parity precedent) get the dot; visiting clears it. No sidebar chips for merges (§4.4 rejection).
+
+### 2.7 Verification Scenarios
+
+- [ ] Header toggles expand/collapse; header click navigates to `__collections__`.
+- [ ] Rows render in given order (no client re-sort); count shown from `item_count`.
+- [ ] `granted_role != null` row shows the chip and is NOT hoisted.
+- [ ] ArchiveNode click invokes `onArchiveClick`; selected styling matches its route.
+- [ ] `newCollectionIds` dots render/clear per prop change only (no internal state).
+- [ ] Empty list renders header + empty hint without crashing.
+
+### 2.8 Edge Cases
+
+- Duplicate render keys impossible (server list is full, unpaginated — collections.md Decision).
+- Very long names: middle truncation + tooltip per the RecentFilesSection UI-enhancement idiom.

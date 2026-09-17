@@ -91,3 +91,29 @@
 - [ ] `isUniqueConflict`: true for PG `23505` and for sqlite unique-constraint errors; false otherwise
 - [ ] `storage.getExecutor()` returns the postgres executor while the jest override is active and the sqlite executor after it is cleared
 - [ ] driver errors surface as mapped errors (standardised codes), not raw driver objects
+
+### 2.6 sqlite driver: `node:sqlite` migration — **(T0.12 target — lands with P0)**
+
+Decided contract (AI_FEATURE_PLAN §4.13, PLAN §6/§7 T0.12). The sections above describe the
+**current** `sqlite3` npm behavior and remain authoritative until the migration lands; from
+T0.12 the sqlite implementation is built on the built-in `node:sqlite` module:
+
+- **Scope:** the driver swap is confined to `server/infrastructure/db/sqliteExecutor.js`
+  (+ `storage`'s sqlite connection helpers) — this is the seam by design; no repository,
+  store facade, or route changes, and the `DbExecutor` interface (§2.2) is byte-for-byte
+  unchanged. The executor behavior suite must pass on **both drivers** at cutover
+  (regression parity is the migration's verification gate).
+- **Extension loading (why the migration exists):** `node:sqlite` exposes
+  `db.enableLoadExtension(true)` + `db.loadExtension(path)` — the prerequisite for loading
+  the sqlite-vec **vec0** extension (native sqlite vector path, §4.13); the current
+  `sqlite3` npm exposes no extension loading.
+- **BigInt integer-PK binding (mandatory convention):** `node:sqlite` binds plain JS
+  numbers as doubles, so **integer PK values (vec0 rowids and BIGINT node ids) MUST be
+  passed as `BigInt`**; repositories/adapter code binding such values follows this rule.
+- **Experimental warning tolerated:** `node:sqlite` is experimental-flagged on v24 (it
+  works); the boot path suppresses/ignores the `ExperimentalWarning` — it is never a
+  failure signal.
+- **Node floor:** **≥ 24** becomes the product requirement (release prerequisite,
+  `docs/SETUP.md`).
+- **Known driver gotcha carried into the adapter:** vec0 + JOIN planner bug ⇒ ACL filtering
+  uses oversample(k·f) → SQL filter → adaptive retry, never join-KNN (§4.13).

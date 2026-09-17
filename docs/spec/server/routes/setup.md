@@ -26,12 +26,20 @@ Feature Source-of-Truth: [config-source-resolution.md](../../../features/config-
 
 ### 2.2 Route List
 
-| Method | Path       | Auth                                              | Description                                                                                                                                                                                |
-| ------ | ---------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| GET    | `/status`  | None                                              | Derived setup completeness from the effective config + missing keys + safe current values (non-T0 only).                                                                                   |
-| POST   | `/test`    | None (403 `setup.complete` when already complete) | Connection test for `s3` or `webdav` targets (postgresql is `.env`-owned under D7; probed via the admin `/api/admin/config/test` instead).                                                 |
-| POST   | `/apply`   | None (403 `setup.complete` when already complete) | Validate (metadata block optional; `postgresql` rejected); write **non-T0** keys to the connected metadata DB as plaintext; apply admin-password effect. Returns `restart_required: true`. |
-| POST   | `/prefill` | —                                                 | **REMOVED** (dead-code cleanup 2026-09). The wizard prefills from `GET /status` `current` only; the endpoint had no caller.                                                                |
+| Method | Path       | Auth                                              | Description                                                                                                                                                                                                                                               |
+| ------ | ---------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/status`  | None                                              | Derived setup completeness from the effective config + missing keys + safe current values (non-T0 only).                                                                                                                                                  |
+| POST   | `/test`    | None (403 `setup.complete` when already complete) | Connection test for `s3` or `webdav` targets (postgresql is `.env`-owned under D7; probed via the admin `/api/admin/config/test` instead). **`llm` target added with the AI platform (T1.1, optional wizard AI step — §2.4a below).**                     |
+| POST   | `/apply`   | None (403 `setup.complete` when already complete) | Validate (metadata block optional; `postgresql` rejected); write **non-T0** keys to the connected metadata DB as plaintext; apply admin-password effect. Returns `restart_required: true`. **Optional `llm` block writes DB settings rows only (§2.4a).** |
+| POST   | `/prefill` | —                                                 | **REMOVED** (dead-code cleanup 2026-09). The wizard prefills from `GET /status` `current` only; the endpoint had no caller.                                                                                                                               |
+
+**AI step contract (decided — AI_FEATURE_PLAN §4.23.5, lands with P1/T1.1):** the wizard has
+one **optional, skippable** AI step. Skipping it is a legal terminal state (the None-state
+product — no `setup_complete` factor is added or changed by AI presence). Values are stored
+as **DB `settings` rows (`LLM_*`, T2 hot), never `.env`** — a mid-install or post-install
+LLM config is restart-free. The full LLM config surface remains the admin
+(`/api/admin/config` + its test target `llm` + capability matrix); the wizard step is a
+shortcut to the same rows.
 
 ### 2.3 Middleware Used
 
@@ -156,6 +164,31 @@ Public; **403 when already complete** (gate uses the same effective view as `/st
 
 **Idempotency/safety:** apply refuses (`403`) once `setup_complete` is true; concurrent applies are last-writer-wins (documented, single-operator assumption). The `.env` write happens before the DB write, so a failed apply leaves **no committed partial state** — the worst case is a written `.env` with an unchanged DB, which still boots into setup mode (never a false "complete").
 
+#### POST test/apply — AI step additions (T1.1 target; contract decided now)
+
+- **`POST /api/setup/test` — fourth target shape:**
+
+  ```jsonc
+  { "target": "llm", "role": "embed" | "chat" | "vision" | "asr", "baseUrl": "…", "apiKey": "…", "model": "…" }
+  ```
+
+  Runs the per-role capability probe (`probeLlm` core, shared with
+  `POST /api/admin/config/test` target `llm`) against the **submitted** values — an
+  in-domain probe, never a declared-capability shortcut. Success `200 { ok: true }`;
+  failures use the same `{ ok:false, errorCode, message, reason? }` envelope —
+  generic `serverErrors.setup.test.failed` with the probe detail in `reason` until T1.1
+  ships a finer llm taxonomy.
+
+- **`POST /api/setup/apply` — optional `llm` block:** the payload may carry
+  `"llm": { "embed": { "baseUrl": "…", "apiKey": "…", "model": "…" }, "chat": { … }, … }`
+  (only configured roles present). Apply upserts each triple into the connected DB
+  `settings` table as `LLM_*` keys via the same `writeSettings` path — **never**
+  `envFileWriter` (hot-apply rule, config-source-resolution §LLM\_\* family). A masked
+  `'****'` apiKey keeps the stored value (keep-existing). An absent/omitted `llm` block is
+  a no-op (skip = None-state product; no error, no completeness effect). `restart_required`
+  semantics are unchanged for the rest of the payload — the AI rows themselves need no
+  restart.
+
 ### 2.5 Related Documents
 
 - [api.md](../../../api.md)
@@ -195,3 +228,5 @@ Connection-test taxonomy codes are module-local i18n keys (same `ns.key` format;
 - [ ] POST /apply with unknown keys / invalid payload → 400 with per-field errors
 - [ ] Setup-mode guard: file-domain and admin-write routes → 503 `setup.incomplete` while incomplete; open again after completion
 - [ ] Request logger does not leak apply body (bodies are never logged)
+- [ ] (T1.1) POST /test with `target: "llm"` probes the submitted per-role values and returns the pass/fail envelope; unknown role → 400
+- [ ] (T1.1) POST /apply with an `llm` block writes `LLM_*` rows to the DB `settings` table only (never `.env`); masked apiKey keeps the stored value; omitted block is a no-op and `setup_complete` never depends on AI presence

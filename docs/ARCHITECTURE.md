@@ -43,14 +43,25 @@ Each domain encapsulates its own routes, services, stores, and policy logic unde
 
 ```
 server/domains/
+├── actions/
+│   ├── routes.js      # GET /api/actions 30d feed + POST /:id/undo (undo journal, AI_FEATURE_PLAN §4.11)
+│   └── service.js
 ├── admin/
 │   ├── routes/        # config.js, maintenance.js, migration.js, migrationStatus.js, settings.js, userManagement.js, users.js
 │   └── services/      # cleanupService.js, userService.js
+├── ai/
+│   ├── routes.js           # /api/search mount (name + semantic sections, §4.6)
+│   ├── searchService.js    # section assembly, dedup, per-query dynamic baseline
+│   └── vectorStore/        # vector engine seam (§4.13): native (PgVector/SqliteVec) + TextVectorJs fallback
 ├── auth/
 │   ├── routes/        # (nested test files)
 │   ├── routes.js      # login, register, refresh, logout, me
 │   ├── service.js     # auth business logic
 │   └── tokenStore.js  # token persistence
+├── collections/
+│   ├── routes.js      # /api/collections: CRUD, membership, preview, merge-suggestions, grants, publish
+│   ├── service.js     # throws bare string codes; route-level ERROR_MAP (recentFiles precedent)
+│   └── __tests__/     # persistence via server/store/repositories collections twins (§1.1)
 ├── files/
 │   ├── routes/        # crud.js, batch.js, folders.js, preview.js
 │   ├── services/      # fileService.js, downloadService.js, etc.
@@ -80,10 +91,11 @@ Domains are mounted in `server/index.js` under their respective API prefixes. Cr
 
 The adapter layer sits between domains and physical storage, providing interchangeable blob, file, and cache backends. Metadata persistence is not an adapter — it runs through per-domain repositories on the backend-neutral `DbExecutor` seam (see the metadata-persistence note below and §2.1):
 
-| Adapter            | Location                             | Purpose                                                                                                                                                                                                                                                                                                                |
-| ------------------ | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| File store adapter | `infrastructure/adapters/filestore/` | Wraps file operations behind the `FileStoreAdapter` interface. In **webdav blob mode** (`WEA_FILE_STORAGE=webdav`), `WebdavFileStoreAdapter` delegates to `utils/webdav.js`; in **s3 mode** (`WEA_FILE_STORAGE=s3`, the default) blob content is served by `S3BlobStore` instead. Factory: `createFileStoreAdapter()`. |
-| Cache adapter      | `infrastructure/adapters/cache/`     | In-memory LRU cache used for client caching, thumbnail storage, etc. Factory: `createCacheAdapter()`. Extensible for Redis in future.                                                                                                                                                                                  |
+| Adapter            | Location                             | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| File store adapter | `infrastructure/adapters/filestore/` | Wraps file operations behind the `FileStoreAdapter` interface. In **webdav blob mode** (`WEA_FILE_STORAGE=webdav`), `WebdavFileStoreAdapter` delegates to `utils/webdav.js`; in **s3 mode** (`WEA_FILE_STORAGE=s3`, the default) blob content is served by `S3BlobStore` instead. Factory: `createFileStoreAdapter()`.                                                                                                                                                                                                                                                                     |
+| Cache adapter      | `infrastructure/adapters/cache/`     | In-memory LRU cache used for client caching, thumbnail storage, etc. Factory: `createCacheAdapter()`. Extensible for Redis in future.                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| LLM adapter        | `infrastructure/adapters/llm/`       | Provider clients for the AI enrichment roles (`embed`, `chat`, optional `vision`, `asr`), each `{ BASE_URL, API_KEY, MODEL }`. **T2-hot** (AI_FEATURE_PLAN §4.2): factory-by-runtime-presence — no `LLM_ENABLED` flag, role presence decides candidacy; connection config is resolved per call via `configResolver` and an internal client cache keyed by the resolved-config signature rebuilds on change (re-probe, restart-free). Preset manifest `presets.js` declares EXPECTED capabilities; probes are the final authority (§4.23). Startup `probeLlm` reports into `backendHealth`. |
 
 **Metadata persistence (not an adapter):**
 
@@ -97,6 +109,15 @@ remote DB credential keys (`WEA_DB_*`) or the SQLite default. Store modules (`us
 `settingsStore`, `shareLinkStore`, `recentFilesStore`, `fileNodesStore`, `permissionStore`,
 `permissionRequestStore`) are thin facades: they obtain `storage.getExecutor()` and delegate
 every method to the matching repository — they contain no SQL and no dialect branching.
+
+**Vector index artifacts (derived, never tracked DDL):** canonical vector truth is the
+`embeddings.vector` TEXT column (+ `dim`, model version; §4.13). The engine-native indexes —
+a pgvector shadow table on PostgreSQL, a sqlite-vec `vec0` virtual table on SQLite — are
+**derived artifacts created and managed by the `domains/ai/vectorStore/` adapter, never part
+of the numbered DDL chain** (symmetric rule for both; PLAN §6). `chunk_pool` and
+`embeddings_chunk` rows follow the same canonical-TEXT + derived-index discipline. If a
+native engine is absent, the `TextVectorJs` fallback runs — features degrade in speed only,
+never in availability.
 
 Blob store adapters (S3 / WebDAV) and their contract are covered by `docs/spec/server/store/blobstore.md`.
 
@@ -171,6 +192,7 @@ flowchart TD
 - **File grant precedence**: a file-specific grant (`permissions_user_files`) overrides any inherited directory-level permission on that file node.
 - **Owner exception**: a user owns their home root node and every descendant of it (resolved via `isOwnerNode`); the owner has full access without explicit grants.
 - **Permission enum**: `read < write < admin` (source of truth: `shared/constants.js`; DB enforcement in `server/store/postgresql/ddl/001_initial_normalized_schema.sql`).
+- **Separate sharing channel (invariant 1)**: collection sharing uses `collection_grants` (`viewer|editor`) — a **separate table domain** that is never read from or written to by `aclService`, the permission stores/caches, or `__shared__`; file access to collection members continues to be governed exclusively by the node ACL model above.
 
 ---
 
@@ -185,6 +207,7 @@ PostgreSQL backend. The store API is the same across backends.
 - **Backend selection**:
   - `sqlite` (default): SQLite via the node `sqlite3` driver for development/testing.
   - `postgresql`: Normalized relational schema for metadata and locks (recommended for production).
+  - **Decided (T0.12, lands with P0):** the sqlite driver migrates to the built-in `node:sqlite` (`DatabaseSync`) — confined to `db/sqliteExecutor.js` by seam design — because extension loading (`enableLoadExtension`/`loadExtension`) is required for the sqlite-vec `vec0` path (§4.13); this sets a **product Node floor of ≥24** and tolerates the driver's experimental warning. The `sqlite3` description above remains current until the migration lands; contract: `docs/spec/server/store/executor.md` / `storage.md`.
 - **Interface parity**:
   - Store public interfaces remain stable across backends.
   - `userStore`, `settingsStore`, `shareLinkStore`, `recentFilesStore`, `fileNodesStore`,

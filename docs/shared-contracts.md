@@ -38,6 +38,17 @@ Defined in `shared/serverMessageCodes.js`.
   - Server usage (where the code is thrown or returned)
   - Client locale files (e.g. `client/src/locales/en.json`, `ko.json`) so the key exists and is translated.
 
+### Error-code domains introduced by the AI platform
+
+The collections/search/undo-feed/AI surfaces (`docs/spec/server/routes/{collections,search,actions}.md`) add four domain keys to `SERVER_ERROR_CODES`. Concrete keys (`serverErrors.<domain>.<key>`; the `en.json`/`ko.json` mirror is mandatory per the rules above):
+
+| Domain        | Keys                                                                                                                                                                                                                                                                                     | Notes                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `collections` | `nameRequired`, `invalidName`, `invalidSort`, `invalidInclude`, `invalidPublishMode`, `invalidRole`, `emptyNodeIds`, `previewTargetRequired`, `mergeSameCollection`, `forbidden`, `notFound`, `granteeNotFound`, `grantNotFound`, `suggestionNotFound`, `alreadyArchived`, `notArchived` | `notArchived` = restore/permanent-delete on an active collection (archived state required). `notFound` doubles as the no-access 404 masquerade; every ownership / shared-write violation collapses into the single 403 `forbidden`. Name collision is **not** an error (auto-suffix counter, AI_FEATURE_PLAN §3.1); membership/batch-cap violations ride on `emptyNodeIds`. |
+| `search`      | `queryRequired`, `queryTooLong`, `fail`                                                                                                                                                                                                                                                  | `tooManySegments` is a RESERVED (optional) key: the ≤3-segment cap is currently a silent scorer truncation, not an error.                                                                                                                                                                                                                                                   |
+| `ai`          | `notConfigured`, `budgetExceeded`, `providerProbeFailed`                                                                                                                                                                                                                                 | `notConfigured` is returned (409, never 404 — §4.12) when an AI-surface request needs an unconfigured role, and also travels as the `semantic_unavailable_reason` field value on search (HTTP stays 200 there). `providerProbeFailed` carries the probe `reason` in `params`.                                                                                               |
+| `actions`     | `invalidDomain`, `notFound`, `cascadeConfirmRequired`, `fingerprintMismatch`, `expired`, `alreadyUndone`                                                                                                                                                                                 | `cascadeConfirmRequired` is the non-tip-undo case (`params: { laterChanges }`). `expired` = journal payload NULLed at retention.                                                                                                                                                                                                                                            |
+
 ---
 
 ## Shared Constants
@@ -55,7 +66,30 @@ Defined in `shared/constants.js`. Both client and server may import `@webdav-eas
 | `AUDIO_EXTENSIONS`          | Recognized audio extensions     | Array of strings                                                                                                   |
 | `TEXT_EXTENSIONS`           | Recognized text extensions      | Array of strings                                                                                                   |
 
+AI-platform enums (same file, same `ALL`/`isValid` shape as the existing status enums):
+
+| Constant            | Purpose                                                          | Allowed values / notes                                                                                     |
+| ------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `COLLECTION_ORIGIN` | Collection provenance                                            | `system`, `user`, `seed`, `search` — silent evolution touches `system` only (invariant 3)                  |
+| `COLLECTION_STATUS` | Collection lifecycle                                             | `active`, `archived`                                                                                       |
+| `PUBLISH_MODE`      | Per-collection shared-view publish gate                          | `ask` (default), `off`, `auto`                                                                             |
+| `GRANT_ROLE`        | Collection grant role (separate channel from file `PERMISSIONS`) | `viewer`, `editor` (owner is implicit, not a grant row)                                                    |
+| `JOURNAL_DOMAIN`    | `action_journal.domain`                                          | `collection`, `batch`, `settings`, `permissions`, `tags`, `file`, `sharing`                                |
+| `LLM_ROLE`          | LLM adapter role                                                 | `embed`, `chat`, `vision`, `asr`                                                                           |
+| `SUGGESTION_STATE`  | Merge-suggestion state (`collection_merge_suggestions`)          | `pending`, `merged`, `dismissed`, `rejected` — the `file_suggestions` state enum is owned by its T3.3 spec |
+| `USAGE_ACTION`      | `usage_events.action`                                            | `open`, `download`, `preview`, `search_hit`, `like`                                                        |
+
 Use these constants instead of magic strings so client and server stay in sync.
+
+---
+
+## Response Casing
+
+Per `docs/CODING_STYLE.md` (Express Patterns): JSON **responses** use `snake_case`; request bodies stay camelCase nodeId-based (`{ nodeIds }`, `{ seedNodeId }`).
+
+- **All NEW endpoints** — `/api/collections`, `/api/search`, `/api/actions`, future AI surfaces — return snake_case from day one (`collection_id`, `publish_mode`, `created_at`, `result_ref`, `undo.action_id`). This is a binding rule for the AI platform (PLAN §6).
+- The file domain's existing camel responses (`nodeId` in listings) are **legacy violations, not precedent**; the repo-wide compliance rewrite is tracked as **DEF-24** in `docs/IMPROVEMENT_PLAN.md`. New AI surfaces must not propagate the legacy style.
+- Error envelope fields (`errorCode`, `params`, `details`) are unchanged on every domain.
 
 ---
 

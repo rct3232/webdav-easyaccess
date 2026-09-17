@@ -48,6 +48,47 @@ Rules:
 
 ---
 
+## AI-platform test tiers
+
+Additive policy for the collections/AI platform (AI_FEATURE_PLAN §4.x, PLAN §6–§8). The
+L0–L3 definitions above are **unchanged**; this section only adds rules and IDs.
+
+- **Fake-LLM hermeticism:** every server-side suite that exercises AI enrichment or query
+  embed runs against an **in-process fake LLM server injected via the adapter's role config**
+  (`{BASE_URL, API_KEY, MODEL}` pointing at a local test listener) — never a real provider,
+  never a module-level mock that bypasses the adapter contract. The same network-guard
+  precedent as blob-migration testing (stubbed sockets) applies: an accidental real request
+  fails the test.
+- **Hermetic scratch projects:** each destructive AI E2E suite (evolution passes, merge
+  execution, archive/purge lifecycles) gets its **own scratch server project** following the
+  setup-wizard/trash precedent (`:5003`, `:5012`) — next free ports from **`:5013+`**, own
+  env file, own sqlite/PG scratch DB, per-case cleanup. This extends the destructive-case
+  policy: **auto-evolution mutates user data, so AI suites are scratch-only, never run
+  against the shared E2E server/database.**
+- **E2E ID ranges:** collection-lifecycle cases use `E2E-COLLECTION-NNN`, AI-behavior cases
+  use `E2E-AI-NNN`, third-person declarative titles per the naming convention above.
+  Minimum lifecycle chain: create→digest→archive→undo→restore→purge (PLAN §6 gate).
+- **Degradation-matrix suite:** one suite per §4.12 capability column — `None` (no adapter
+  configured at all), `embed` (fake embed only), `embed+chat` (fake embed+chat) — and the
+  **None and embed columns must pass green with no real adapter present** (the
+  "never-a-render-dependency" invariant, verified by construction).
+- **Repository conformance additions:** the new repository twins (collections, fileLikes,
+  actionJournal, aiJobs, embeddings, embeddingsChunk, aiTag) join the existing
+  `*.conformance.test.js` L2 leg (sqlite default + `test:ci:pg:adapters` PG twin). Notable
+  contract cases: `ai_jobs` **claim race** (one runner wins per `(node_id, kind,
+generation)`, backoff/retry parity), embeddings/chunks upsert + FK-cascade parity,
+  actionJournal `chain_seq` monotonicity and `UNIQUE(domain,subject,chain_seq)`.
+- **§4.13c vectorStore contract tests:** a per-engine conformance suite asserting — exact
+  engines (JS fallback, vec0) return results **identical to the JS oracle**; ANN engines
+  (pgvector HNSW, `ef_search=400` fixed) achieve **recall@50 ≥ 0.99 graded with HELD-OUT
+  external queries only** (self-queries flatter the index and must not be the grade
+  basis). Cross-engine result-identity is not asserted (ANN is approximate) — the promise
+  is the recall floor.
+- **CI grep-gate:** `domains/(collections|ai)/**` and new stores contain zero
+  `CacheAdapter`/`operationProgress` imports (invariant 8).
+
+---
+
 ## Mocking
 
 ### Schema-first principle

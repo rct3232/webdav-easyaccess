@@ -115,7 +115,8 @@ its tests.
 - **View modes:** List, grid, detail (from `VIEW_MODES` in `constants/fileManager.js`). Persisted through the existing client preference-storage policy/helper boundary.
 - **Sort:** Name/date, asc/desc (`SORT_MODES`). Persisted through the same preference-storage policy boundary and applied before render.
 - **Explorer ownership split:** `useExplorerSession` is the single owner of search/sort/view-mode session state and preference persistence. `useFileManager` is the narrow path/listing seam for the active explorer location. Listing, shared-entry loading, capability checks, recent-files persistence, metadata enrichment, and parent-folder verification belong to explorer gateways plus the narrow controller/listing seams that call them. `FileManager` remains the page shell that selects product overlays such as share-link mode and virtual collections, while control-only chrome state such as an open sort menu stays local to the rendered control seam instead of the page shell.
-- **Virtual collections as overlays:** `__shared__`, `__recent__`, and `__trash__` reuse the explorer shell but are product overlays with their own browser-visible entry and recovery rules. They should be tracked separately from ordinary folder CRUD even when they share list and preview components.
+- **Virtual collections as overlays:** `__shared__`, `__recent__`, `__trash__`, `__collections__`, and `__archive__` reuse the explorer shell but are product overlays with their own browser-visible entry and recovery rules. They should be tracked separately from ordinary folder CRUD even when they share list and preview components.
+- **Collections family (`__collections__` / `__archive__`):** `__collections__` is a virtual node in the sidebar — a **depth-1 list node**: expanding it shows the collection list (activity-sorted; shared-with-me collections appear in the same list marked by an icon chip), and it never tree-walks into collection members. `__archive__` is a virtual child that **auto-contains every archived collection** — there is no separate archive screen and no per-collection archive node; permanent delete lives only on cards inside it. The sidebar entry follows the trash's bottom-pinned-row precedent (`__trash__` sits below the folder-tree lines; the collections row uses the same pinned chrome, not a tree section).
 - **Trash (DEF-16 P9):** The trash is available in both storage modes (WebDAV and S3) and owns the following browser-visible behavior:
   - **Sidebar entry:** a bottom-pinned row below the folder-tree lines (desktop sidebar drawer and the mobile tree collapse): `{휴지통 아이콘} 휴지통` (i18n `nav.trash`), tree-row selected styling while the trash view is active; click navigates to `/files/__trash__`. In share-link mode it goes through the leave-share confirmation like the other non-share entries. It is not a tree section (no expansion/DnD), and the tree itself gains no trash node.
   - **Delete feedback animation:** on any successful delete-to-trash (single delete via context menu/action sheet, or a completed bulk delete) the pinned trash icon plays a one-shot animation — lid opens then closes while the color flashes default → `error.main` → default (~1.2s). MUI `Delete` subpath-split icon + CSS keyframes via MUI `sx`; raised through the `trashNotifier` signal (`notifyTrashChanged`), raised by `useExplorerCommands.handleOperationComplete` for deletes and `useTrashOperations` for restore/purge/empty.
@@ -139,11 +140,48 @@ its tests.
 - **Item-level More button:** Each file item (list, grid, detail) has a More (⋮) button. Visible when _not_ in selection mode; hidden when in selection mode. Opens `FileActionSheet` for that file. Placed: list = right side of item; grid = top-right of preview (thumbnail/icon) area, overlaid with z-index; detail = right end of row (last column).
 - **Filename truncation:** All file items (list, grid, detail, and recent files) use middle ellipsis (`pixelMiddleTruncate`) for long filenames, ensuring the file extension remains visible. A `Tooltip` displays the full filename on hover if it is truncated.
 - **Action sheet (mobile):** More button or right-click triggers bottom action sheet (`FileActionSheet`) with same actions as context menu. Long-press no longer opens context menu; it enters selection mode (see Selection above).
-- **Dialogs:** Upload, CreateFolder, FilePreview, FolderPicker, Share, ShareTarget, FileProperties (DEF-11: `정보`/`버전` tab bar between title and gradient header; the versions tab is S3-mode file-only — browse/download/restore past versions, icon-only actions, fixed Close bar), Confirm, ConflictResolve, Rename, Login (for share link when not logged in). Dialog state managed in `useFileManagerDialogs` or similar; list refreshes after successful close.
+- **Dialogs:** Upload, CreateFolder, FilePreview, FolderPicker, Share, ShareTarget, FileProperties (DEF-11: `정보`/`버전` tab bar between title and gradient header; the versions tab is S3-mode file-only — browse/download/restore past versions, icon-only actions, fixed Close bar; the dialog additionally gains an `AI 정보` tab — extracted tags/summary/caption/transcript with model provenance, rendered only where those features exist — and `소속 컬렉션` membership chips listing which collections contain the file), Confirm, ConflictResolve, Rename, Login (for share link when not logged in). Dialog state managed in `useFileManagerDialogs` or similar; list refreshes after successful close.
 - **Browser-boundary rule for touched views:** Presentational/file-tree/share views must not call `window`, `document`, or `ResizeObserver` directly. Link opening, element observation, and similar browser work must flow through a prepared callback, hook, or adapter boundary.
 - **File preview zoom:** PDF and image previews support zoom. Bottom bar (zoom in/out, percentage, reset); Ctrl+wheel on desktop; two-finger pinch on mobile.
 - **Share link mode:** When `shareToken` and `linkInfo` are passed (e.g. from ShareLinkLoader), file manager shows only the share root; write actions may be disabled; “Add to my permissions” and “Login” available via FAB or header.
 - **Internal sharing outcomes:** Internal sharing does not route through `/share/:token`. When access is granted through permissions or approved requests, the browser-visible entry point is the authenticated explorer, especially `__shared__`, with the main observable distinction being read-only versus write-capable actions.
+
+### Collection-platform surfaces (product behavior)
+
+- **Results-mode search:** Submitting a search (Enter / search icon) switches the file list
+  into a results mode: the breadcrumb row becomes the results header
+  `🔍 "query" · N개 결과 [컬렉션으로 저장][✕]` with the server's ordered name-match and
+  semantic sections rendered as one bounded list (name matches highlighted client-side,
+  duplicates shown once). Typing while in results mode re-filters the loaded results inline
+  (the same filter the old client-side search used); Enter re-queries. Recent queries appear
+  as chips in the header, each saveable via its `⋮` menu; the `컬렉션으로 저장` button is
+  present only when the semantic section has results. Exiting results mode returns the user
+  to the ordinary folder listing.
+- **Merge card:** When the system suspects two of the user's collections are the same
+  thing, exactly one card sits atop the collection list (never stacked, never in a
+  notifications inbox): a one-line question naming both collections and the overlap count,
+  with a thumbnail strip of shared members that expands into a two-column compare overlay.
+  The buttons are `병합` (executes immediately — the card IS the confirmation — followed by
+  an undo toast), `따로 둡니다` (that pair is never asked again), and `나중에` (asks once
+  more in two weeks, then sleeps). With zero pending proposals the card has zero layout
+  footprint.
+- **Digest banner:** After the user has been away from a collection, a single quiet line at
+  the top of the member list reports what changed since their last visit
+  (`+N / -M / 병합 1 · 펼치기`). Expanding lists the entries with a one-line reason per
+  auto-added file (`왜 여기에` — which rule matched). The same surface doubles as the
+  sharing-pending strip (`공유 대기 N` with batch/individual publish) for collection owners.
+- **Checkbox suggestions:** Cleanup/duplicate suggestions are always proposals, never acts.
+  Every suggestion row carries a checkbox and a dismiss control; the only accept control is
+  `선택 수락(N)`, which moves exactly the checked files to trash. The checkbox itself is the
+  selection confirmation — no extra dialog — and the accept produces one undo toast
+  covering the whole command. Unaccepted suggestions expire quietly with retention.
+- **Undo toast:** User-triggered changes (and merges) end with a bottom toast showing what
+  happened and a `되돌리기` action (`이동을 완료했습니다 (12개) [되돌리기]`) — one toast per
+  command, never per item, with a ≤24 h undo window. Silent system actions get no toast;
+  they surface through the digest banner and the 30-day journal feed in the user dashboard.
+  Undo that meets a changed subject reports honestly (`11개 되돌림, 1개는 변경되어 건너뜀`),
+  and permanently-destructive operations (archive purge, empty trash) show a report-only
+  toast with no undo button.
 
 - **Single-file download (iOS + single file):** On iOS (e.g. iPhone Chrome), downloading a single file (any type) uses a share-sheet–friendly path so the user can save to Files or Photos. **Policy:** (1) The app creates a `File` from the blob and calls `navigator.canShare({ files: [file] })` with the actual file; if true, it uses the Web Share API so the system share sheet appears; the user chooses "Save to Files" or similar. (2) If `canShare` returns false or share fails (non-AbortError), the app falls back to blob + `<a download>` + `visibilitychange` revoke. (3) All other cases (desktop, folder download, multi-file zip) keep the existing blob + `<a download>` behavior. **User guidance:** When the share sheet is shown, no in-app hint is displayed (decided 2026-09-02); the share sheet itself provides native save options. See `docs/spec/client/services/fileService.md` (§ 2.3) for the service-level spec.
 

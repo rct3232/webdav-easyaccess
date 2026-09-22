@@ -40,6 +40,38 @@ jest.mock('../recentFilesNotifier', () => {
   return createRecentFilesNotifierMock();
 });
 
+jest.mock('../collectionsRepository', () => {
+  const fns = [
+    'addCollectionItems',
+    'archiveCollection',
+    'createCollection',
+    'deleteCollection',
+    'dismissMerge',
+    'getCollectionItems',
+    'getCollections',
+    'getGrants',
+    'getMemberships',
+    'getMergeSuggestions',
+    'grantCollection',
+    'mergeCollections',
+    'previewCollection',
+    'previewExistingCollection',
+    'publishItems',
+    'rejectMerge',
+    'removeCollectionItems',
+    'restoreCollection',
+    'revokeGrant',
+    'updateCollection',
+  ];
+  const mock = {};
+  for (const name of fns) mock[name] = jest.fn();
+  return mock;
+});
+
+jest.mock('../collectionsNotifier', () => ({
+  onCollectionsChange: jest.fn(),
+}));
+
 jest.mock('../../utils/localStorage', () => {
   const { createLocalStorageUiMock } = require('../../testing/mocks/serviceMocks');
   return createLocalStorageUiMock({
@@ -360,4 +392,102 @@ describe('explorerGateway', () => {
     expect(addRecentFile).toHaveBeenCalledWith({ path: '/docs/report.txt' }, undefined);
     expect(result).toEqual([{ path: '/docs/report.txt' }]);
   });
+
+describe('explorerGateway collections re-exports (T0.3)', () => {
+  const {
+    getCollections,
+    createCollection,
+    updateCollection,
+    archiveCollection,
+    restoreCollection,
+    deleteCollection,
+    getCollectionItems,
+    addCollectionItems,
+    removeCollectionItems,
+    publishItems,
+    getMemberships,
+    previewCollection,
+    getMergeSuggestions,
+    mergeCollections,
+    dismissMerge,
+    rejectMerge,
+  } = require('../collectionsRepository');
+  const { onCollectionsChange } = require('../collectionsNotifier');
+
+  it('re-exports the collections seams under the §2.6 names, preserving shapes and fallbacks', async () => {
+    getCollections.mockResolvedValueOnce({ collections: [] });
+    await expect(explorerGateway.loadCollections({ sort: 'name' })).resolves.toEqual({
+      collections: [],
+    });
+    expect(getCollections).toHaveBeenCalledWith({ sort: 'name' });
+
+    createCollection.mockResolvedValueOnce({ undo: { action_id: 1 } });
+    await expect(explorerGateway.createCollection({ name: 'X' })).resolves.toEqual({
+      undo: { action_id: 1 },
+    });
+
+    updateCollection.mockResolvedValueOnce(null);
+    await expect(explorerGateway.updateCollection(17, { pinned: true })).resolves.toBeNull();
+
+    archiveCollection.mockResolvedValueOnce({ undo: { action_id: 2 } });
+    restoreCollection.mockResolvedValueOnce({ undo: { action_id: 3 } });
+    await explorerGateway.archiveCollection(17);
+    await explorerGateway.restoreCollection(17);
+    expect(archiveCollection).toHaveBeenCalledWith(17);
+    expect(restoreCollection).toHaveBeenCalledWith(17);
+
+    deleteCollection.mockResolvedValueOnce(true);
+    await expect(explorerGateway.deleteCollection(17)).resolves.toBe(true);
+
+    getCollectionItems.mockResolvedValueOnce({ items: [], next_cursor: null });
+    await expect(explorerGateway.loadCollectionItems(17, { limit: 50 })).resolves.toEqual({
+      items: [],
+      next_cursor: null,
+    });
+    expect(getCollectionItems).toHaveBeenCalledWith(17, { limit: 50 });
+
+    addCollectionItems.mockResolvedValueOnce({ added: [1] });
+    removeCollectionItems.mockResolvedValueOnce({ removed: [1] });
+    await explorerGateway.addCollectionItems(17, [1]);
+    await explorerGateway.removeCollectionItems(17, [1]);
+    expect(addCollectionItems).toHaveBeenCalledWith(17, [1]);
+    expect(removeCollectionItems).toHaveBeenCalledWith(17, [1]);
+
+    publishItems.mockResolvedValueOnce(null);
+    await expect(explorerGateway.publishItems(17, [1])).resolves.toBeNull();
+
+    getMemberships.mockResolvedValueOnce({ memberships: [] });
+    await expect(explorerGateway.getMemberships([1])).resolves.toEqual({ memberships: [] });
+
+    previewCollection.mockResolvedValueOnce({ count: 0, sample: [], sample_truncated: false });
+    await expect(explorerGateway.previewCollection({ seedNodeId: 5 })).resolves.toEqual({
+      count: 0,
+      sample: [],
+      sample_truncated: false,
+    });
+
+    getMergeSuggestions.mockResolvedValueOnce({ suggestions: [] });
+    await expect(explorerGateway.getMergeSuggestions()).resolves.toEqual({ suggestions: [] });
+
+    mergeCollections.mockResolvedValueOnce({ absorbed_id: 23 });
+    dismissMerge.mockResolvedValueOnce({ state: 'dismissed' });
+    rejectMerge.mockResolvedValueOnce({ state: 'rejected' });
+    await explorerGateway.mergeCollections(1, 2);
+    await explorerGateway.dismissMerge(1, 2);
+    await explorerGateway.rejectMerge(1, 2);
+    expect(mergeCollections).toHaveBeenCalledWith(1, 2);
+    expect(dismissMerge).toHaveBeenCalledWith(1, 2);
+    expect(rejectMerge).toHaveBeenCalledWith(1, 2);
+  });
+
+  it('subscribeToCollections wraps the notifier unsubscribe contract', () => {
+    const unsub = jest.fn();
+    onCollectionsChange.mockReturnValueOnce(unsub);
+
+    const result = explorerGateway.subscribeToCollections(() => {});
+    expect(result).toBe(unsub);
+    expect(typeof result).toBe('function');
+  });
+});
+
 });

@@ -1,0 +1,283 @@
+/**
+ * Server-backed repository for the collections platform (T0.3 surface).
+ *
+ * Isolates HTTP IO and notification triggering. Responses are consumed
+ * verbatim in snake_case (no client-side key remapping — consumers map fields
+ * at render time). Failures are absorbed into the contract-safe fallback:
+ * reads never reject and mutations return `null` (delete → `false`), while
+ * the absorbed error envelope is surfaced through `options.onError` so
+ * controllers can still show a mapped message (docs/spec/client/services/
+ * collectionsRepository.md §2.3/§2.4).
+ */
+import { get, post, put, del } from './apiClient';
+import { notifyCollectionsChange } from './collectionsNotifier';
+
+function readPayload(response) {
+  return response?.data ?? null;
+}
+
+function extractErrorEnvelope(error) {
+  const data = error?.response?.data;
+  if (!data || typeof data !== 'object') return null;
+  return {
+    ...(data.errorCode !== undefined && { errorCode: data.errorCode }),
+    params: data.params ?? {},
+  };
+}
+
+function reportEnvelope(handler, error) {
+  try {
+    handler(extractErrorEnvelope(error));
+  } catch (handlerError) {
+    // eslint-disable-next-line no-console
+    console.error('collectionsRepository onError handler failed:', handlerError);
+  }
+}
+
+/**
+ * Read wrapper: never rejects; on failure returns `fallback` and logs.
+ */
+async function absorbRead(url, fallback, onError) {
+  try {
+    return readPayload(await get(url));
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error(`Failed to load ${url}:`, error);
+    if (onError) reportEnvelope(onError, error);
+    return fallback;
+  }
+}
+
+/**
+ * Mutation wrapper: a real (2xx) success returns the payload verbatim and
+ * notifies unless `silent`; any failure returns the fallback without
+ * notifying. `fallback` is `null` for payload mutations, `false` for
+ * boolean-contract deletes.
+ */
+async function absorbMutation(
+  url,
+  { method = 'post', data = undefined, options, fallback = null } = {}
+) {
+  const opts = options && typeof options === 'object' ? options : {};
+  try {
+    let payload;
+    if (method === 'post') {
+      payload = readPayload(await post(url, data));
+    } else if (method === 'put') {
+      payload = readPayload(await put(url, data));
+    } else if (data == null) {
+      payload = readPayload(await del(url));
+    } else {
+      payload = readPayload(await del(url, data));
+    }
+    if (!opts.silent) notifyCollectionsChange();
+    return payload;
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error(`Failed to ${method.toUpperCase()} ${url}:`, error);
+    if (typeof opts.onError === 'function') reportEnvelope(opts.onError, error);
+    return fallback;
+  }
+}
+
+/**
+ * Owner-only sharing-grant read.
+ * @returns {Promise<{ grants: Array<Object> }>} empty array on failure
+ */
+export const getGrants = async (id) => {
+  return absorbRead(`/collections/${id}/grants`, { grants: [] });
+};
+
+function buildQuery(pairs) {
+  const search = new URLSearchParams();
+  for (const [key, value] of pairs) {
+    if (value !== undefined && value !== null && value !== '') {
+      search.append(key, String(value));
+    }
+  }
+  return search.toString();
+}
+
+// -- reads -------------------------------------------------------------------
+
+/**
+ * @param {{ sort?: 'activity'|'name'|'created'|'updated'|'similar', include?: string }} [params]
+ * @returns {Promise<{ collections: Array<Object> }>} snake_case rows verbatim;
+ *   `{ collections: [] }` on failure
+ */
+export const getCollections = async (params = {}) => {
+  const query = buildQuery([
+    ['sort', params.sort],
+    ['include', params.include],
+  ]);
+  return absorbRead(query ? `/collections?${query}` : '/collections', { collections: [] });
+};
+
+/**
+ * @param {number} id
+ * @param {{ cursor?: string, limit?: number, since?: string }} [params]
+ * @returns {Promise<{ items: Array<Object>, next_cursor: string|null,
+ *   publish_pending_count?: number, digest?: Object }>} fallback view shape on failure
+ */
+export const getCollectionItems = async (id, params = {}) => {
+  const query = buildQuery([
+    ['cursor', params.cursor],
+    ['limit', params.limit],
+    ['since', params.since],
+  ]);
+  return absorbRead(query ? `/collections/${id}/items?${query}` : `/collections/${id}/items`, {
+    items: [],
+    next_cursor: null,
+  });
+};
+
+/**
+ * @returns {Promise<{ suggestions: Array<Object> }>} empty array on failure —
+ *   the merge slot renders zero footprint (useCollections §2.8)
+ */
+export const getMergeSuggestions = async () => {
+  return absorbRead('/collections/merge-suggestions', { suggestions: [] });
+};
+
+/**
+ * Batch membership chips for the file listing (DEF-25 — listing contracts frozen).
+ * @param {number[]} nodeIds
+ */
+export const getMemberships = async (nodeIds) => {
+  try {
+    return (await post('/collections/for-nodes', { nodeIds }))?.data ?? { memberships: [] };
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to load collection memberships:', error);
+    return { memberships: [] };
+  }
+};
+
+/**
+ * Dry preview (`{ seedNodeId }` or `{ definition }`). `null` only on
+ * transport/5xx-style failure — a degraded payload from the server is still a
+ * success payload.
+ * @param {{ seedNodeId?: number, definition?: Object }} target
+ */
+export const previewCollection = async (target = {}) => {
+  try {
+    return (await post('/collections/preview', target))?.data ?? null;
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to preview collection:', error);
+    return null;
+  }
+};
+
+/**
+ * Dry-run the stored definition of an existing collection (owner-only server-side).
+ */
+export const previewExistingCollection = async (id) => {
+  try {
+    return (await post(`/collections/${id}/preview`, {}))?.data ?? null;
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error(`Failed to preview collection ${id}:`, error);
+    return null;
+  }
+};
+
+// -- mutations ---------------------------------------------------------------
+
+/**
+ * @param {{ name: string }} payload
+ * @param {{ silent?: boolean, onError?: Function }} [options]
+ * @returns {Promise<Object|null>} `{ collection, undo: { action_id } } ∥ null`
+ */
+export const createCollection = async (payload, options) => {
+  return absorbMutation('/collections', { data: payload, options });
+};
+
+/**
+ * @param {number} id
+ * @param {{ name?: string, pinned?: boolean, publishMode?: 'ask'|'off'|'auto' }} payload
+ */
+export const updateCollection = async (id, payload, options) => {
+  return absorbMutation(`/collections/${id}`, { method: 'put', data: payload, options });
+};
+
+export const archiveCollection = async (id, options) => {
+  return absorbMutation(`/collections/${id}/archive`, { data: {}, options });
+};
+
+export const restoreCollection = async (id, options) => {
+  return absorbMutation(`/collections/${id}/restore`, { data: {}, options });
+};
+
+/**
+ * Archived-only 2-step permanent delete (trash-parity). `true` on 204,
+ * `false` on failure; carries no undo pointer by contract (invariant 10).
+ */
+export const deleteCollection = async (id, options) => {
+  const opts = options && typeof options === 'object' ? options : {};
+  try {
+    await del(`/collections/${id}`);
+    if (!opts.silent) notifyCollectionsChange();
+    return true;
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error(`Failed to DELETE /collections/${id}:`, error);
+    if (typeof opts.onError === 'function') reportEnvelope(opts.onError, error);
+    return false;
+  }
+};
+
+/**
+ * @param {number} id
+ * @param {number[]} nodeIds — camelCase body; unreadable nodes are reported
+ *   by the server in `rejected_not_readable` while the rest still add
+ */
+export const addCollectionItems = async (id, nodeIds, options) => {
+  return absorbMutation(`/collections/${id}/items`, { data: { nodeIds }, options });
+};
+
+/**
+ * DELETE with a JSON body — symmetric batch semantics with POST /:id/items.
+ */
+export const removeCollectionItems = async (id, nodeIds, options) => {
+  return absorbMutation(`/collections/${id}/items`, {
+    method: 'del',
+    data: { data: { nodeIds } },
+    options,
+  });
+};
+
+/**
+ * DEF-25 publish seam (repository signature stable now; the endpoint ships
+ * with the sharing PR).
+ */
+export const publishItems = async (id, nodeIds, options) => {
+  return absorbMutation(`/collections/${id}/publish`, { data: { nodeIds }, options });
+};
+
+/**
+ * Merge execution: `:id` survives, `:otherId` is absorbed.
+ */
+export const mergeCollections = async (id, otherId, options) => {
+  return absorbMutation(`/collections/${id}/merge/${otherId}`, { data: {}, options });
+};
+
+export const dismissMerge = async (id, otherId, options) => {
+  return absorbMutation(`/collections/${id}/merge-dismiss`, { data: { otherId }, options });
+};
+
+export const rejectMerge = async (id, otherId, options) => {
+  return absorbMutation(`/collections/${id}/merge-reject`, { data: { otherId }, options });
+};
+
+/**
+ * @param {number} id
+ * @param {{ userId: number, role: 'viewer'|'editor' }} payload
+ */
+export const grantCollection = async (id, payload, options) => {
+  return absorbMutation(`/collections/${id}/grants`, { data: payload, options });
+};
+
+export const revokeGrant = async (id, userId, options) => {
+  return absorbMutation(`/collections/${id}/grants?userId=${userId}`, { method: 'del', options });
+};

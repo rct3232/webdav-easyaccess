@@ -394,6 +394,16 @@ module.exports = function createSqliteCollectionsRepository(executor) {
       return { changes: result.changes };
     },
 
+    async updatePublishMode(tx, collectionId, publishMode) {
+      const result = await tx.run(
+        `UPDATE collections
+         SET publish_mode = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [String(publishMode), Number(collectionId)]
+      );
+      return { changes: result.changes };
+    },
+
     async archiveRow(tx, collectionId) {
       const result = await tx.run(
         `UPDATE collections

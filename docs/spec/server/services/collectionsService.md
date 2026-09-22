@@ -59,6 +59,19 @@ additive body fields (wire name `semantic` carries the §4.22 snapshot: centroid
 predicate set + member node ids of the semantic section only); [routes/collections.md](../routes/collections.md)
 syncs this row in the same PR that lands DEF-25/T3.x.
 
+**As-built scope (T0.3, 2026-09-22):** `createCollection` (manual) and
+`createSeedCollection` (embed-gate entry) ship with the routes surface; the
+`{ name, semantic }` dispatch and `createSearchCollection`/`publishItems` route rows land
+with their DEF-25 sync PRs (T3.x) — the service functions and their rows above remain the
+binding target contract until then. `createSeedCollection` at T0.3 implements the embed
+presence gate (throw `aiNotConfigured`); vector candidate evaluation attaches when the
+vectorStore seam (T1.4) and seed-confirm flow (T1.6) land. Seed preview with the embed
+role present but no pooled embedding for the seed node resolves through the §2.7
+missing-embedding branch (`count: 0`, `degraded: true`) — the `embeddingsStore` read is
+wired at T1.2. The embed-role presence check resolves the `LLM_EMBED_*` config keys
+(dbOnly registry group from T0.7b) per call until `infrastructure/adapters/llm`
+`roleConfigured('embed')` exists (T1.1 swaps the helper in place).
+
 ### 2.3 Definition engine (derived membership)
 
 - Definition kinds: `{kind:'predicate', any_of/all_of: [path_prefix|tag|like|date|size …]}`
@@ -83,6 +96,18 @@ syncs this row in the same PR that lands DEF-25/T3.x.
 - `exclusions = listExclusions(id)` is subtracted from the derived set; exclusions never
   affect stored rows. After each evaluation wave the engine calls `touchMemberChange(id)`
   when the admitted set changed (drives digest + activity sort).
+- **Decision (as-built T0.3 — candidate-set mechanism):** predicate-bool membership
+  evaluates in JS over a candidate set assembled from existing store reads — the
+  requester's own-root subtree (`getUserRootNode` + `getDescendants`, readable by
+  ownership) plus explicitly granted nodes/subtrees (`permissionStore.getUserFilePermissions`
+  / `getUserPermissions` + subtree expansion), mirroring the fileService listing parity.
+  Per-node point checks: path (ancestor walk over the loaded candidate rows), date
+  (`file_nodes.created_at`), size (`filecache` point read when a size atom is present),
+  like (`fileLikesStore.listLikedNodeIds`), tag (no tag source until the T0.9 tag store /
+  local tags land — tag atoms match nothing at T0.3, identical observable behavior to the
+  normalized-equality fallback over an empty tag set). The ACL-joined SQL variant of this
+  scan is the tracked optimization for the T0.9 rule-evaluation PR; no new repository
+  surface was added for T0.3.
 
 ### 2.4 Member-view enrichment (per read; precedent `recentFiles/service.js` enrichRecentEntry)
 
@@ -117,6 +142,11 @@ JOIN-TIME ACL check of the REQUESTER against `fileNodesStore`:
 
 - `active → archived` (manual or evolution pass 3) `→ restore | permanent delete`
   (archived only). Manual archive/restore are journaled like any collection act.
+  **As-built (T0.3):** restore with a name collision journals the suffix rename and the
+  restore as two chained commands; the surfaced `undo` pointer is the RESTORE command
+  (undoing it re-archives; the silent rename keeps the row reachable). A multi-field
+  `updateCollection` journals one command per present field; the response's undo pointer
+  is the FIRST (lowest chain_seq) command so a tip undo cascade covers the whole update.
 - `deleteCollectionPermanent`: guard active → `notArchived`. Executes
   `collectionsStore.deleteCollectionPermanent(id, { defFingerprint })`: ONE TX under the
   subject lock — DELETE (cascades items/exclusions/grants/visibility/centroids/cursors/
@@ -188,6 +218,13 @@ input `nodeIds`; every requested node gets an entry (possibly `collection_ids: [
   sleep timing lives in evolution pass 5, NOT here). Reject = `Keep separate`
   (`state='rejected'`, permanent suppression — evolution never re-suggests a rejected
   pair).
+- **As-built (T0.3):** the merge command executes through the `collectionsStore.mergeCollections`
+  journaled mutator (store spec §2.2): survivor subject lock via `commitChange` plus the
+  loser subject lock held across the pre-read/move window; overlap duplicates drop via
+  the idempotent item insert and are recorded in the inverse payload (`dropped`); the
+  matching pending suggestion flips to `merged` opportunistically (guarded UPDATE — a
+  concurrent dismiss/reject between the lookup and the TX leaves the row untouched
+  without failing the merge).
 
 ### 2.10 Naming (templateNamer first, llmNamer swap)
 
@@ -211,6 +248,7 @@ Service throws bare codes; `server/domains/collections/routes.js` maps
 | `invalidSort`           | `collections.invalidSort`           | 400  |
 | `invalidInclude`        | `collections.invalidInclude`        | 400  |
 | `invalidPublishMode`    | `collections.invalidPublishMode`    | 400  |
+| `invalidDefinition`     | `collections.invalidDefinition`     | 400  |
 | `emptyNodeIds`          | `collections.emptyNodeIds`          | 400  |
 | `previewTargetRequired` | `collections.previewTargetRequired` | 400  |
 | `mergeSameCollection`   | `collections.mergeSameCollection`   | 400  |
@@ -221,7 +259,10 @@ Service throws bare codes; `server/domains/collections/routes.js` maps
 | `aiNotConfigured`       | `ai.notConfigured`                  | 409  |
 
 Grant-domain codes (`invalidRole`, `granteeNotFound`, `grantNotFound`) are thrown by
-`collectionShareService` and mapped by the SAME router-level ERROR_MAP. Unknown
+`collectionShareService` and mapped by the SAME router-level ERROR_MAP. **As-built
+(T0.3):** the collections service throws the grant codes itself (user lookup +
+`viewer|editor` validation) until `collectionShareService` exists (T3.2 moves the
+delegation in without changing the thrown codes or the ERROR_MAP). Unknown
 collections / no-access reads throw `notFound` (404 masquerade — existence never leaks).
 
 ---

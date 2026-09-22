@@ -36,6 +36,7 @@ with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 | Method | Path                 | Auth  | Description                                           |
 | ------ | -------------------- | ----- | ----------------------------------------------------- |
 | GET    | `/`                  | Token | List collections (sort, include filters).             |
+| GET    | `/:id`               | Token | Single collection (owner definition; grantee `granted_role`; ungranted → 404 masquerade). |
 | POST   | `/`                  | Token | Create manual (`origin='user'`) collection.           |
 | PUT    | `/:id`               | Token | Update name / pin / publish_mode.                     |
 | POST   | `/:id/archive`       | Token | Archive (manual; confirm dialog is client-side).      |
@@ -236,7 +237,8 @@ under cursor.
 `serverErrors.ai.notConfigured` (§4.12); definition previews never touch AI.
 
 - **POST /:id/preview:** Empty body; dry-runs the collection's stored `definition` for the
-  requester. Owner-only (403 otherwise). Response identical to POST /preview.
+  requester. Owner-only (granted viewers/editors → 403 `forbidden`; ungranted → 404
+  masquerade per §2.4.2). Response identical to POST /preview.
 - **GET /merge-suggestions:** Rows `state='pending'` where the requester owns both sides
   (§4.4; one card at a time is a client concern — the full pending set is returned).
   200:
@@ -317,6 +319,7 @@ suggestion row (a suggestion state transition is opportunistic).
 | 400  | `serverErrors.collections.emptyNodeIds`          | Missing/empty/over-cap `nodeIds`.                                                                    |
 | 400  | `serverErrors.collections.previewTargetRequired` | 0 or 2 of `seedNodeId`/`definition`.                                                                 |
 | 400  | `serverErrors.collections.mergeSameCollection`   | `:id == :other`.                                                                                     |
+| 400  | `serverErrors.collections.invalidDefinition`     | Malformed `definition` payload (unknown kind / predicate type / bad atom).                            |
 | 403  | `serverErrors.collections.forbidden`             | Non-owner mutation; viewer writes; editor removing what they did not add.                            |
 | 404  | `serverErrors.collections.notFound`              | Unknown id, or no access at all (read = 404 masquerade — ungranted reads do not disclose existence). |
 | 404  | `serverErrors.collections.granteeNotFound`       | Unknown user on grant.                                                                               |
@@ -346,6 +349,16 @@ All errors follow the shared error envelope (`errorCode` + optional `params`,
   consistent with §4.12 "not 404".
 - **Decision:** `pinned` accepts only `true|false`; there is no `pinned_by` write surface
   (`auto` is set only by the evolution pass, §4.9b).
+- **Decision (as-built T0.3):** a multi-field `PUT /:id` body journals one command per
+  present field (rename / pin / publish-mode, in that order) and the response's
+  `undo.action_id` points at the FIRST command — a tip undo of it cascades through the
+  later commands of the same update (journal chain semantics, actions.md).
+- **Decision (as-built T0.3):** restore with a name collision journals the silent
+  suffix rename and the restore; the undo pointer is the restore command.
+- **Decision (as-built T0.3):** item ordering reads member activity scores from the
+  `node_activity` rollup when its store lands (T0.6); until then every score is absent
+  and ordering falls through to the `node_id` asc tie-break. The cursor keyset is
+  `(activity score, node_id)`-shaped so paging stays stable when scores appear.
 
 ### 2.5 Related Documents
 

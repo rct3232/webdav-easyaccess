@@ -27,6 +27,7 @@ Target-contract spec.
 | showError  | function | Y        | User-visible error feedback (from `useMessage`).                                                       |
 | gateway    | object   | N        | Collections seams from `explorerGateway` §2.6 (default: the real gateway; mock seam for tests)         |
 | onUndoable | function | N        | `(payload, textKey, params) => void` — forwards mutation `undo.action_id` to the undo-toast controller |
+| include    | string   | N        | `'mine,shared'` (default) \| `'mine,archived'` — driven by the active virtual route (shell passes it; the hook never derives it itself). As-built T0.3: an input prop, re-read on change. |
 
 ### 2.3 Return Value / State
 

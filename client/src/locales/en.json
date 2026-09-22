@@ -852,7 +852,7 @@
       "emptyNodeIds": "Please select at least one file or folder.",
       "previewTargetRequired": "A target collection is required for the preview.",
       "mergeSameCollection": "A collection cannot be merged with itself.",
-      "forbidden": "You do not have permission to access this collection.",
+      "invalidDefinition": "This collection rule is not valid.",      "forbidden": "You do not have permission to access this collection.",
       "notFound": "This collection does not exist.",
       "granteeNotFound": "The share target user was not found.",
       "grantNotFound": "This share grant was not found.",

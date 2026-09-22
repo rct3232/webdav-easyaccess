@@ -90,6 +90,7 @@ describe('SERVER_ERROR_CODES ↔ client locale mirror (collections + ai domains)
         'forbidden',
         'grantNotFound',
         'granteeNotFound',
+        'invalidDefinition',
         'invalidInclude',
         'invalidName',
         'invalidPublishMode',

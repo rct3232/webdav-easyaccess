@@ -81,22 +81,22 @@ async function createCollection(input, ctx = {}) {
   return withActionId(committed.result, committed);
 }
 
-/** JOURNALED. Sets `name_locked=true` when `lockName` (user rename, §3.2). */
+/** JOURNALED. Sets `name_locked=true` when `lockName` (user rename, §3.2).
+ * The previous row is read BEFORE the TX: commitChange evaluates the inverse
+ * synchronously, so async inverse builders would serialize a Promise. */
 async function renameCollection(collectionId, name, { lockName } = {}, ctx = {}) {
   const repo = getRepository();
+  const previous = await repo.getCollection(collectionId);
   const committed = await actionJournalStore.commitChange(
     'collection',
     `collection:${collectionId}`,
     { actor: ctx.actor, action: 'rename', subjectLabel: name },
-    async (tx) => {
-      const previous = await repo.getCollectionTx(tx, collectionId);
-      return {
-        inverse: {
-          op: 'rename-collection',
-          collectionId,
-          previousName: previous ? previous.name : null,
-        },
-      };
+    {
+      inverse: {
+        op: 'rename-collection',
+        collectionId,
+        previousName: previous ? previous.name : null,
+      },
     },
     async (tx) => {
       await repo.renameCollection(tx, collectionId, name, lockName === true);
@@ -115,6 +115,34 @@ async function setPinned(collectionId, pinned, ctx = {}) {
     { actor: ctx.actor, action: pinned ? 'pin' : 'unpin' },
     { inverse: { op: 'set-pinned', collectionId, pinned: !pinned } },
     (tx) => repo.updatePin(tx, collectionId, Boolean(pinned), pinned ? 'user' : null)
+  );
+  return withActionId(committed.result, committed);
+}
+
+/**
+ * JOURNALED (T0.3): the explicit sharing-mode act (§4.7) —
+ * publishMode ∈ ask|off|auto; owner-only enforcement is the service's job.
+ * commitChange evaluates the inverse synchronously (no await), so the
+ * previous row is read BEFORE the TX and the inverse is a static descriptor.
+ */
+async function setPublishMode(collectionId, publishMode, ctx = {}) {
+  const repo = getRepository();
+  const previous = await repo.getCollection(collectionId);
+  const committed = await actionJournalStore.commitChange(
+    'collection',
+    `collection:${collectionId}`,
+    { actor: ctx.actor, action: 'set-publish-mode' },
+    {
+      inverse: {
+        op: 'set-publish-mode',
+        collectionId,
+        publishMode: previous ? previous.publishMode : null,
+      },
+    },
+    async (tx) => {
+      await repo.updatePublishMode(tx, collectionId, publishMode);
+      return repo.getCollectionTx(tx, collectionId);
+    }
   );
   return withActionId(committed.result, committed);
 }
@@ -187,6 +215,94 @@ async function touchMemberChange(collectionId) {
   return storage.getExecutor().transaction((tx) => repo.touchMemberChange(tx, collectionId));
 }
 
+/**
+ * JOURNALED merge command (T0.3, §2.9 collectionsService.md): ONE command row
+ * (action='merge', subject `collection:<survivorId>`). Runs under the
+ * SURVIVOR subject lock (via commitChange) with the LOSER subject lock held
+ * across the pre-read/move window (deadlock-free: no other writer locks two
+ * subjects). Stored members and exclusions move to the survivor — PK
+ * conflicts drop the loser duplicates and the inverse records them as
+ * `dropped`; the loser row is deleted (FK cascade wipes its grants/visibility/
+ * centroids/cursors/remaining rows); a matching pending suggestion flips to
+ * 'merged' opportunistically; the survivor keeps name/name_locked and is
+ * touched. The caller (service) owns owner/active guards.
+ */
+async function mergeCollections(survivorId, loserId, ctx = {}) {
+  const repo = getRepository();
+  const loser = await repo.getCollection(loserId);
+  if (!loser || loser.status !== 'active') {
+    const error = new Error('notFound');
+    error.status = 404;
+    throw error;
+  }
+  const loserLock = await lockManager.acquireLock(`journal:collection:collection:${loserId}`);
+  try {
+    const loserItems = await repo.listStoredItems(loserId);
+    const loserExclusions = await repo.listExclusions(loserId);
+    const suggestions = await repo.listMergeSuggestions([survivorId, loserId]);
+    const low = Math.min(Number(survivorId), Number(loserId));
+    const high = Math.max(Number(survivorId), Number(loserId));
+    const suggestion = suggestions.find((row) => row.aId === low && row.bId === high) || null;
+
+    const committed = await actionJournalStore.commitChange(
+      'collection',
+      `collection:${survivorId}`,
+      { actor: ctx.actor, action: 'merge', subjectLabel: loser.name },
+      (result) => ({
+        inverse: {
+          op: 'merge-collections',
+          survivorId: Number(survivorId),
+          loserId: Number(loserId),
+          loser: {
+            name: loser.name,
+            origin: loser.origin,
+            publishMode: loser.publishMode,
+            definition: loser.definition,
+            pinned: loser.pinned,
+            pinnedBy: loser.pinnedBy,
+            items: loserItems.map((item) => ({
+              nodeId: item.nodeId,
+              addedBy: item.addedBy,
+              published: item.published,
+            })),
+            exclusions: loserExclusions,
+          },
+        },
+        dropped: result.dropped,
+      }),
+      async (tx) => {
+        const droppedItems = [];
+        for (const item of loserItems) {
+          const insert = await repo.insertItem(tx, survivorId, item.nodeId, item.addedBy, {
+            published: item.published,
+          });
+          if (insert.changes === 0) droppedItems.push(item.nodeId);
+          await repo.deleteItem(tx, loserId, item.nodeId);
+        }
+        const droppedExclusions = [];
+        for (const nodeId of loserExclusions) {
+          const insert = await repo.insertExclusion(tx, survivorId, nodeId);
+          if (insert.changes === 0) droppedExclusions.push(nodeId);
+          await repo.deleteExclusion(tx, loserId, nodeId);
+        }
+        if (suggestion) {
+          await repo.setSuggestionState(tx, suggestion.id, 'merged');
+        }
+        await repo.touchMemberChange(tx, survivorId);
+        await repo.deleteCollectionRow(tx, loserId);
+        const survivorRow = await repo.getCollectionTx(tx, survivorId);
+        return {
+          survivor: survivorRow,
+          dropped: { items: droppedItems, exclusions: droppedExclusions },
+        };
+      }
+    );
+    return { ...committed.result, actionId: committed.id };
+  } finally {
+    await loserLock.release();
+  }
+}
+
 // -- membership (items ∪ derived − exclusions) (§2.3) ------------------------
 
 async function listStoredItems(collectionId, options = {}) {
@@ -225,6 +341,105 @@ async function removeItem(collectionId, nodeId, ctx = {}) {
     (tx) => repo.deleteItem(tx, collectionId, nodeId)
   );
   return withActionId(committed.result, committed);
+}
+
+/**
+ * JOURNALED batch add (T0.3): ONE command row whose payload carries the
+ * item-level inverse list (§4.11). Idempotent on the PK pair — duplicates are
+ * reported in `alreadyMembers` (pre-read) and never re-inserted;
+ * `touchMemberChange` runs inside the same TX.
+ */
+async function addItems(collectionId, nodeIds, addedBy, { published } = {}, ctx = {}) {
+  const repo = getRepository();
+  const alreadyMembers = [];
+  const toInsert = [];
+  for (const rawNodeId of nodeIds) {
+    const nodeId = Number(rawNodeId);
+    const existing = await repo.getStoredItem(collectionId, nodeId);
+    if (existing) {
+      alreadyMembers.push(nodeId);
+    } else {
+      toInsert.push(nodeId);
+    }
+  }
+  const committed = await actionJournalStore.commitChange(
+    'collection',
+    `collection:${collectionId}`,
+    { actor: ctx.actor, action: 'add-items' },
+    {
+      inverse: { op: 'remove-items', collectionId },
+      items: toInsert.map((nodeId) => ({
+        nodeId,
+        inverse: { op: 'remove-item', collectionId, nodeId },
+      })),
+    },
+    async (tx) => {
+      const added = [];
+      for (const nodeId of toInsert) {
+        const result = await repo.insertItem(tx, collectionId, nodeId, addedBy, {
+          published: published ?? true,
+        });
+        if (result.changes > 0) added.push(nodeId);
+      }
+      await repo.touchMemberChange(tx, collectionId);
+      return { added };
+    }
+  );
+  return { ...committed.result, alreadyMembers, actionId: committed.id };
+}
+
+/**
+ * JOURNALED batch remove (T0.3): deletes the stored rows and inserts the
+ * exclusions in ONE command row (per-item inverses in the payload). The
+ * service classifies stored vs derived; on `origin='system'` collections the
+ * auto-pin rides inside the same TX (§4.9b). Membership only — the node is
+ * never trashed (§3.2).
+ */
+async function removeItems(
+  collectionId,
+  { storedNodeIds = [], excludeNodeIds = [] } = {},
+  ctx = {}
+) {
+  const repo = getRepository();
+  const collection = await repo.getCollection(collectionId);
+  const committed = await actionJournalStore.commitChange(
+    'collection',
+    `collection:${collectionId}`,
+    { actor: ctx.actor, action: 'remove-items' },
+    {
+      inverse: { op: 'remove-items', collectionId },
+      items: [
+        ...storedNodeIds.map((nodeId) => ({
+          nodeId: Number(nodeId),
+          kind: 'stored',
+          inverse: { op: 'add-item', collectionId, nodeId: Number(nodeId), addedBy: ctx.actor },
+        })),
+        ...excludeNodeIds.map((nodeId) => ({
+          nodeId: Number(nodeId),
+          kind: 'exclusion',
+          inverse: { op: 'remove-exclusion', collectionId, nodeId: Number(nodeId) },
+        })),
+      ],
+    },
+    async (tx) => {
+      const removed = [];
+      const excluded = [];
+      for (const rawNodeId of storedNodeIds) {
+        const result = await repo.deleteItem(tx, collectionId, Number(rawNodeId));
+        if (result.changes > 0) removed.push(Number(rawNodeId));
+      }
+      for (const rawNodeId of excludeNodeIds) {
+        const result = await repo.insertExclusion(tx, collectionId, Number(rawNodeId));
+        if (result.changes > 0) excluded.push(Number(rawNodeId));
+      }
+      if (collection && collection.origin === 'system') {
+        await repo.setAutoPin(tx, collectionId);
+      }
+      await repo.touchMemberChange(tx, collectionId);
+      return { removed, excluded };
+    }
+  );
+  return { ...committed.result, actionId: committed.id };
 }
 
 async function listExclusions(collectionId) {
@@ -420,15 +635,19 @@ module.exports = {
   createCollection,
   renameCollection,
   setPinned,
+  setPublishMode,
   setAutoPin,
   archiveCollection,
   restoreCollection,
   deleteCollectionPermanent,
+  mergeCollections,
   touchMemberChange,
   listStoredItems,
   getStoredItem,
   addItem,
   removeItem,
+  addItems,
+  removeItems,
   listExclusions,
   isExcluded,
   addExclusion,

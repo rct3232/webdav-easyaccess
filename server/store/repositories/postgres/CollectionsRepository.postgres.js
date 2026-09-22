@@ -410,6 +410,16 @@ module.exports = function createPostgresCollectionsRepository(executor) {
       return { changes: result.changes };
     },
 
+    async updatePublishMode(tx, collectionId, publishMode) {
+      const result = await tx.run(
+        `UPDATE collections
+         SET publish_mode = $2, updated_at = NOW()
+         WHERE id = $1`,
+        [Number(collectionId), String(publishMode)]
+      );
+      return { changes: result.changes };
+    },
+
     async archiveRow(tx, collectionId) {
       const result = await tx.run(
         `UPDATE collections

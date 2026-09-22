@@ -36,6 +36,7 @@ with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 | Method | Path                 | Auth  | Description                                           |
 | ------ | -------------------- | ----- | ----------------------------------------------------- |
 | GET    | `/`                  | Token | List collections (sort, include filters).             |
+| GET    | `/:id`               | Token | Single collection (owner definition; grantee `granted_role`; ungranted → 404 masquerade). |
 | POST   | `/`                  | Token | Create manual (`origin='user'`) collection.           |
 | PUT    | `/:id`               | Token | Update name / pin / publish_mode.                     |
 | POST   | `/:id/archive`       | Token | Archive (manual; confirm dialog is client-side).      |
@@ -236,7 +237,8 @@ under cursor.
 `serverErrors.ai.notConfigured` (§4.12); definition previews never touch AI.
 
 - **POST /:id/preview:** Empty body; dry-runs the collection's stored `definition` for the
-  requester. Owner-only (403 otherwise). Response identical to POST /preview.
+  requester. Owner-only (granted viewers/editors → 403 `forbidden`; ungranted → 404
+  masquerade per §2.4.2). Response identical to POST /preview.
 - **GET /merge-suggestions:** Rows `state='pending'` where the requester owns both sides
   (§4.4; one card at a time is a client concern — the full pending set is returned).
   200:

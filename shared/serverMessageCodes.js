@@ -213,6 +213,8 @@ const SERVER_ERROR_CODES = {
     emptyNodeIds: P('serverErrors.collections', 'emptyNodeIds'),
     previewTargetRequired: P('serverErrors.collections', 'previewTargetRequired'),
     mergeSameCollection: P('serverErrors.collections', 'mergeSameCollection'),
+
+    invalidDefinition: P('serverErrors.collections', 'invalidDefinition'),
     forbidden: P('serverErrors.collections', 'forbidden'),
     notFound: P('serverErrors.collections', 'notFound'),
     granteeNotFound: P('serverErrors.collections', 'granteeNotFound'),

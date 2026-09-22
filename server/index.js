@@ -176,6 +176,7 @@ app.use(
 app.use('/api/share-links', setupModeGuardInstance, require('./domains/sharing/routes/shareLinks'));
 app.use('/api/share', setupModeGuardInstance, require('./domains/sharing/routes/sharePublic'));
 app.use('/api/recent-files', setupModeGuardInstance, require('./domains/recentFiles/routes'));
+app.use('/api/collections', setupModeGuardInstance, require('./domains/collections/routes'));
 
 app.use('/api', require('./infrastructure/healthRoutes'));
 

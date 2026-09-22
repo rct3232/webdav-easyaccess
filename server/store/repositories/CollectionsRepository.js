@@ -26,6 +26,7 @@
  * @property {(tx, collectionId, name, lockName?) => Promise<{ changes }>} renameCollection
  * @property {(tx, collectionId, pinned, pinnedBy) => Promise<{ changes }>} updatePin
  * @property {(tx, collectionId) => Promise<{ changes }>} setAutoPin
+ * @property {(tx, collectionId, publishMode) => Promise<{ changes }>} updatePublishMode
  * @property {(tx, collectionId) => Promise<{ changes }>} archiveRow
  * @property {(tx, collectionId) => Promise<{ changes }>} restoreRow
  * @property {(tx, collectionId) => Promise<{ changes }>} deleteCollectionRow

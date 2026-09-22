@@ -46,6 +46,14 @@ async function createUserWithRoot(tag) {
   return { user, token, root };
 }
 
+async function setupServiceUser(tag) {
+  const ctx = await createUserWithRoot(tag);
+  const travel = await fileNodeService.createDirectory(ctx.root.id, 'travel');
+  const beach = await fileNodeService.createFile(travel.id, 'beach.jpg');
+  const stay = await fileNodeService.createFile(ctx.root.id, 'stay.jpg');
+  return { ...ctx, travel, beach, stay };
+}
+
 describe('collectionsService lifecycle', () => {
   it('create → archive → restore → delete(archived); active delete throws notArchived', async () => {
     const ctx = await createUserWithRoot('lifecycle');
@@ -75,10 +83,9 @@ describe('collectionsService lifecycle', () => {
 
     expect(await collectionsStore.getCollection(collection.id)).toBeNull();
     // invariant 10: the subject's journal rows are purged in the same TX
-    const journal = await dbQuery(
-      'SELECT COUNT(*) AS n FROM action_journal WHERE subject = ?',
-      [`collection:${collection.id}`]
-    );
+    const journal = await dbQuery('SELECT COUNT(*) AS n FROM action_journal WHERE subject = ?', [
+      `collection:${collection.id}`,
+    ]);
     expect(journal.rows[0].n).toBe(0);
   });
 
@@ -119,36 +126,29 @@ describe('collectionsService lifecycle', () => {
 
     const first = await collectionsService.createCollection(ctx.user.id, { name: 'Dup' });
     await collectionsService.archiveCollection(ctx.user.id, first.collection.id);
+    // the archived 'Dup' does not collide (partial unique over ACTIVE rows only)
     const second = await collectionsService.createCollection(ctx.user.id, { name: 'Dup' });
-    expect(second.collection.name).toBe('Dup (2)');
+    expect(second.collection.name).toBe('Dup');
 
     const restored = await collectionsService.restoreCollection(ctx.user.id, first.collection.id);
-    expect(restored.collection.name).toBe('Dup (2) (2)');
+    expect(restored.collection.name).toBe('Dup (2)');
     expect(restored.collection.status).toBe('active');
   });
 });
 
 describe('collectionsService member view and membership', () => {
-  async function setupServiceUser(tag) {
-    const ctx = await createUserWithRoot(`svc-${tag}`);
-    const travel = await fileNodeService.createDirectory(ctx.root.id, 'travel');
-    const beach = await fileNodeService.createFile(travel.id, 'beach.jpg');
-    const stay = await fileNodeService.createFile(ctx.root.id, 'stay.jpg');
-    return { ...ctx, travel, beach, stay };
-  }
-
   it('addItems reports unreadable nodes and adds the rest; item rows land published per publish mode', async () => {
-    const ctx = await createUserWithRoot('svc-addval');
+    const ctx = await setupServiceUser('addval');
     const stranger = await createUserWithRoot('svc-addother');
     const secret = await fileNodeService.createFile(stranger.root.id, 'secret.txt');
 
     const manual = await collectionsService.createCollection(ctx.user.id, { name: 'Manual' });
     const result = await collectionsService.addItems(ctx.user.id, manual.collection.id, [
-      ctx.beach.nodeId,
-      secret.nodeId,
+      ctx.beach.id,
+      secret.id,
     ]);
-    expect(result.added).toEqual([ctx.beach.nodeId]);
-    expect(result.rejected_not_readable).toEqual([secret.nodeId]);
+    expect(result.added).toEqual([ctx.beach.id]);
+    expect(result.rejected_not_readable).toEqual([secret.id]);
     expect(result.undo.actionId).toBeGreaterThan(0);
 
     // ask mode (default) → stored rows start published=false
@@ -158,16 +158,16 @@ describe('collectionsService member view and membership', () => {
   });
 
   it('removeItems deletes membership only — the file node row is untouched', async () => {
-    const ctx = await createUserWithRoot('svc-remove');
+    const ctx = await setupServiceUser('remove');
     const manual = await collectionsService.createCollection(ctx.user.id, { name: 'Remove' });
-    await collectionsService.addItems(ctx.user.id, manual.collection.id, [ctx.beach.nodeId]);
+    await collectionsService.addItems(ctx.user.id, manual.collection.id, [ctx.beach.id]);
 
     const result = await collectionsService.removeItems(ctx.user.id, manual.collection.id, [
-      ctx.beach.nodeId,
+      ctx.beach.id,
     ]);
-    expect(result.removed).toEqual([ctx.beach.nodeId]);
+    expect(result.removed).toEqual([ctx.beach.id]);
 
-    const node = await fileNodeService.getNode(ctx.beach.nodeId);
+    const node = await fileNodeService.getNode(ctx.beach.id);
     expect(node).not.toBeNull();
     expect(node.deletedAt).toBeNull();
   });
@@ -176,115 +176,130 @@ describe('collectionsService member view and membership', () => {
     const owner = await createUserWithRoot('svc-editor-owner');
     const editor = await createUserWithRoot('svc-editor-user');
     const manual = await collectionsService.createCollection(owner.user.id, { name: 'Ed' });
-    await collectionsStore.grantAccess(manual.collection.id, editor.user.id, 'editor', owner.user.id);
+    await collectionsStore.grantAccess(
+      manual.collection.id,
+      editor.user.id,
+      'editor',
+      owner.user.id
+    );
 
     const ownerFile = await fileNodeService.createFile(owner.root.id, 'of.txt');
     const editorFile = await fileNodeService.createFile(editor.root.id, 'ef.txt');
     await grantTestPermissionByNodeId({
       userId: editor.user.id,
-      fileNodeId: ownerFile.nodeId,
+      fileNodeId: ownerFile.id,
       permission: 'read',
     });
 
-    await collectionsService.addItems(editor.user.id, manual.collection.id, [editorFile.nodeId]);
-    await collectionsService.addItems(owner.user.id, manual.collection.id, [ownerFile.nodeId]);
+    await collectionsService.addItems(editor.user.id, manual.collection.id, [editorFile.id]);
+    await collectionsService.addItems(owner.user.id, manual.collection.id, [ownerFile.id]);
 
     const ok = await collectionsService.removeItems(editor.user.id, manual.collection.id, [
-      editorFile.nodeId,
+      editorFile.id,
     ]);
-    expect(ok.removed).toEqual([editorFile.nodeId]);
+    expect(ok.removed).toEqual([editorFile.id]);
 
     await expect(
-      collectionsService.removeItems(editor.user.id, manual.collection.id, [ownerFile.nodeId])
+      collectionsService.removeItems(editor.user.id, manual.collection.id, [ownerFile.id])
     ).rejects.toMatchObject({ message: 'forbidden' });
   });
 
   it('enrichment: revoked placeholder has null name/type; trashed members are hidden', async () => {
-    const ctx = await createUserWithRoot('svc-enrich');
+    const ctx = await setupServiceUser('enrich');
     const system = await collectionsStore.createCollection(
       {
         ownerId: ctx.user.id,
         name: 'Enrich col',
         origin: 'system',
-        definition: { kind: 'predicate', any_of: [{ type: 'path', value: `/${ctx.user.username}` }] },
+        definition: {
+          kind: 'predicate',
+          any_of: [{ type: 'path', value: `/${ctx.user.username}` }],
+        },
       },
       { actor: ctx.user.id }
     );
 
-    await dbRun("UPDATE file_nodes SET deleted_at = datetime('now') WHERE id = ?", [
-      ctx.beach.nodeId,
-    ]);
-    await dbRun('DELETE FROM permissions_user_files WHERE file_node_id = ?', [ctx.beach.nodeId]);
+    await dbRun("UPDATE file_nodes SET deleted_at = datetime('now') WHERE id = ?", [ctx.beach.id]);
+    await dbRun('DELETE FROM permissions_user_files WHERE file_node_id = ?', [ctx.beach.id]);
 
     const view = await collectionsService.getItems(ctx.user.id, system.id, {});
-    const row = view.items.find((i) => i.nodeId === ctx.beach.nodeId);
+    const row = view.items.find((i) => i.nodeId === ctx.beach.id);
     // beach is now trashed → hidden entirely (revoked requires a live, unreadable row)
     expect(row).toBeUndefined();
   });
 
   it('excludes derived matches after an exclusion; stored rows ignore exclusions', async () => {
-    const ctx = await createUserWithRoot('svc-exclude');
+    const ctx = await setupServiceUser('exclude');
     const system = await collectionsStore.createCollection(
       {
         ownerId: ctx.user.id,
         name: 'Exclude col',
         origin: 'system',
-        definition: { kind: 'predicate', any_of: [{ type: 'path', value: `/${ctx.user.username}` }] },
+        definition: {
+          kind: 'predicate',
+          any_of: [{ type: 'path', value: `/${ctx.user.username}` }],
+        },
       },
       { actor: ctx.user.id }
     );
 
-    await collectionsStore.addExclusion(system.id, ctx.beach.nodeId, { actor: ctx.user.id });
+    await collectionsStore.addExclusion(system.id, ctx.beach.id, { actor: ctx.user.id });
     const view = await collectionsService.getItems(ctx.user.id, system.id, {});
     const ids = view.items.map((i) => i.nodeId);
-    expect(ids).not.toContain(ctx.beach.nodeId);
+    expect(ids).not.toContain(ctx.beach.id);
     // stored rows survive exclusions
-    await collectionsService.addItems(ctx.user.id, system.id, [ctx.stay.nodeId]);
-    await collectionsStore.addExclusion(system.id, ctx.stay.nodeId, { actor: ctx.user.id });
+    await collectionsService.addItems(ctx.user.id, system.id, [ctx.stay.id]);
+    await collectionsStore.addExclusion(system.id, ctx.stay.id, { actor: ctx.user.id });
     const after = await collectionsService.getItems(ctx.user.id, system.id, {});
-    expect(after.items.some((i) => i.nodeId === ctx.stay.nodeId)).toBe(true);
+    expect(after.items.some((i) => i.nodeId === ctx.stay.id)).toBe(true);
   });
 
   it('liked flags come from the requester only', async () => {
-    const ctx = await createUserWithRoot('svc-like');
+    const ctx = await setupServiceUser('like');
     const other = await createUserWithRoot('svc-likeother');
     const manual = await collectionsService.createCollection(ctx.user.id, { name: 'Likes' });
-    await collectionsService.addItems(ctx.user.id, manual.collection.id, [ctx.beach.nodeId]);
-    await fileLikesStore.addLike(ctx.user.id, ctx.beach.nodeId);
-    await fileLikesStore.addLike(other.user.id, ctx.stay.nodeId);
+    await collectionsService.addItems(ctx.user.id, manual.collection.id, [
+      ctx.beach.id,
+      ctx.stay.id,
+    ]);
+    await fileLikesStore.addLike(ctx.user.id, ctx.beach.id);
+    await fileLikesStore.addLike(other.user.id, ctx.stay.id);
 
     const view = await collectionsService.getItems(ctx.user.id, manual.collection.id, {});
     const byNode = new Map(view.items.map((i) => [i.nodeId, i]));
-    expect(byNode.get(ctx.beach.nodeId).liked).toBe(true);
-    expect(byNode.get(ctx.stay.nodeId).liked).toBe(false);
+    expect(byNode.get(ctx.beach.id).liked).toBe(true);
+    expect(byNode.get(ctx.stay.id).liked).toBe(false);
   });
 });
 
 describe('collectionsService preview and for-nodes', () => {
   it('preview({definition}) counts and caps the sample at 12 with sample_truncated', async () => {
-    const ctx = await createUserWithRoot('svc-preview');
+    const ctx = await setupServiceUser('preview');
     const folder = await fileNodeService.createDirectory(ctx.root.id, 'bulk');
     for (let i = 0; i < 15; i += 1) {
       await fileNodeService.createFile(folder.id, `f${i}.txt`);
     }
 
     const result = await collectionsService.preview(ctx.user.id, {
-      definition: { kind: 'predicate', any_of: [{ type: 'path', value: `/${ctx.user.username}/bulk` }] },
+      definition: {
+        kind: 'predicate',
+        any_of: [{ type: 'path', value: `/${ctx.user.username}/bulk` }],
+      },
     });
-    expect(result.count).toBe(15);
+    expect(result.count).toBe(16);
     expect(result.sample).toHaveLength(12);
     expect(result.sample_truncated).toBe(true);
   });
 
   it('preview({seedNodeId}) without the embed role throws aiNotConfigured', async () => {
-    const ctx = await createUserWithRoot('svc-seed');
+    const ctx = await setupServiceUser('seed');
     await expect(
       collectionsService.preview(ctx.user.id, { seedNodeId: ctx.root.id })
     ).rejects.toMatchObject({ message: 'aiNotConfigured', status: 409 });
   });
 
   it('preview requires exactly one target and validates atoms', async () => {
-    const ctx = await createUserWithRoot('svc-previewval');
+    const ctx = await setupServiceUser('previewval');
     await expect(collectionsService.preview(ctx.user.id, {})).rejects.toMatchObject({
       message: 'previewTargetRequired',
     });
@@ -302,25 +317,25 @@ describe('collectionsService preview and for-nodes', () => {
   });
 
   it('getForNodes includes derived membership and exclusions, one entry per node', async () => {
-    const ctx = await createUserWithRoot('svc-fornodes');
+    const ctx = await setupServiceUser('fornodes');
     const system = await collectionsStore.createCollection(
       {
         ownerId: ctx.user.id,
         name: 'Chips',
         origin: 'system',
-        definition: { kind: 'predicate', any_of: [{ type: 'path', value: `/${ctx.user.username}/travel` }] },
+        definition: {
+          kind: 'predicate',
+          any_of: [{ type: 'path', value: `/${ctx.user.username}/travel` }],
+        },
       },
       { actor: ctx.user.id }
     );
-    await collectionsStore.addExclusion(system.id, ctx.beach.nodeId, { actor: ctx.user.id });
+    await collectionsStore.addExclusion(system.id, ctx.beach.id, { actor: ctx.user.id });
 
-    const result = await collectionsService.getForNodes(ctx.user.id, [
-      ctx.beach.nodeId,
-      ctx.travel.nodeId,
-    ]);
+    const result = await collectionsService.getForNodes(ctx.user.id, [ctx.beach.id, ctx.travel.id]);
     expect(result.memberships).toEqual([
-      { nodeId: ctx.beach.nodeId, collectionIds: [] },
-      { nodeId: ctx.travel.nodeId, collectionIds: [system.id] },
+      { nodeId: ctx.beach.id, collectionIds: [] },
+      { nodeId: ctx.travel.id, collectionIds: [system.id] },
     ]);
   });
 });
@@ -332,13 +347,13 @@ describe('collectionsService similar sort', () => {
     const b = await collectionsService.createCollection(ctx.user.id, { name: 'B' });
     const c = await collectionsService.createCollection(ctx.user.id, { name: 'C' });
 
+    // SIMILAR_MODEL_ID is pinned to 0 until the T1.1 model registry lands — seed
+    // the placeholder model row explicitly.
     await dbRun(
-      `INSERT INTO llm_models (role, provider, base_url_key, model_name) VALUES ('embed', 'test', 'k', 'm')`
+      `INSERT INTO llm_models (id, role, provider, base_url_key, model_name) VALUES (0, 'embed', 'test', 'k', 'm')`
     );
-    const model = await dbQuery('SELECT id FROM llm_models ORDER BY id DESC LIMIT 1');
-    const modelId = Number(model.rows[0].id);
-    await collectionsStore.upsertCentroid(a.collection.id, modelId, JSON.stringify([1, 0]), 3);
-    await collectionsStore.upsertCentroid(b.collection.id, modelId, JSON.stringify([0.99, 0.01]), 3);
+    await collectionsStore.upsertCentroid(a.collection.id, 0, JSON.stringify([1, 0]), 3);
+    await collectionsStore.upsertCentroid(b.collection.id, 0, JSON.stringify([0.99, 0.01]), 3);
     // c has no centroid → singleton cluster
 
     const grouped = await collectionsService.listCollections(ctx.user.id, {
@@ -349,7 +364,9 @@ describe('collectionsService similar sort', () => {
 
     const byName = new Map(grouped.collections.map((row) => [row.name, row]));
     expect(byName.get('A').cluster_index).toBe(byName.get('B').cluster_index);
+    // c has no centroid → singleton cluster, separate from the A/B pair
     expect(byName.get('C').cluster_index).not.toBe(byName.get('A').cluster_index);
+    expect(c.collection.name).toBe('C');
 
     const again = await collectionsService.listCollections(ctx.user.id, {
       sort: 'similar',

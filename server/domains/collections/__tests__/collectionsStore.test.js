@@ -4,18 +4,12 @@
  * @see docs/spec/server/store/collectionsStore.md §2.1/§2.2
  */
 const collectionsStore = require('@server/store/collectionsStore');
-const actionJournalStore = require('@server/store/actionJournalStore');
 const { createFileNodesStore } = require('@server/store/fileNodesStore');
 const { createFileNodeService } = require('@server/service/fileNodeService');
 const composition = require('@server/service/composition');
 const { createWebdavMock } = require('@testing/mocks/webdavMock');
 const WebdavBlobStore = require('@server/infrastructure/adapters/blobstore/WebdavBlobStore');
-const {
-  createTestDatabase,
-  createAuthenticatedTestUser,
-  grantTestPermissionByNodeId,
-  dbQuery,
-} = require('@server/test-utils');
+const { createTestDatabase, createAuthenticatedTestUser, dbQuery } = require('@server/test-utils');
 
 let dbCleanup;
 let fileNodeService;
@@ -90,12 +84,12 @@ describe('batch addItems / removeItems (one command row each)', () => {
 
     const result = await collectionsStore.addItems(
       created.id,
-      [a.nodeId, b.nodeId],
+      [a.id, b.id],
       user.id,
       { published: false },
       { actor: user.id }
     );
-    expect(result.added).toEqual([a.nodeId, b.nodeId]);
+    expect(result.added).toEqual([a.id, b.id]);
     expect(result.actionId).toBeGreaterThan(0);
 
     const journal = await subjectRows(created.id);
@@ -104,7 +98,7 @@ describe('batch addItems / removeItems (one command row each)', () => {
     expect(addRow.payload.items).toHaveLength(2);
 
     const items = await collectionsStore.listStoredItems(created.id);
-    expect(items.map((i) => i.nodeId).sort()).toEqual([a.nodeId, b.nodeId].sort());
+    expect(items.map((i) => i.nodeId).sort()).toEqual([a.id, b.id].sort());
     expect(items.every((i) => i.published === false)).toBe(true);
 
     // touchMemberChange ran inside the same TX
@@ -114,7 +108,7 @@ describe('batch addItems / removeItems (one command row each)', () => {
     // idempotent re-add: duplicates report zero changes, no new members
     const dup = await collectionsStore.addItems(
       created.id,
-      [a.nodeId],
+      [a.id],
       user.id,
       { published: false },
       { actor: user.id }
@@ -140,7 +134,7 @@ describe('batch addItems / removeItems (one command row each)', () => {
     );
     await collectionsStore.addItems(
       created.id,
-      [stored.nodeId],
+      [stored.id],
       user.id,
       { published: true },
       { actor: user.id }
@@ -148,15 +142,15 @@ describe('batch addItems / removeItems (one command row each)', () => {
 
     const result = await collectionsStore.removeItems(
       created.id,
-      { storedNodeIds: [stored.nodeId], excludeNodeIds: [derived.nodeId] },
+      { storedNodeIds: [stored.id], excludeNodeIds: [derived.id] },
       { actor: user.id }
     );
-    expect(result.removed).toEqual([stored.nodeId]);
-    expect(result.excluded).toEqual([derived.nodeId]);
+    expect(result.removed).toEqual([stored.id]);
+    expect(result.excluded).toEqual([derived.id]);
     expect(result.actionId).toBeGreaterThan(0);
 
-    expect(await collectionsStore.getStoredItem(created.id, stored.nodeId)).toBeNull();
-    expect(await collectionsStore.isExcluded(created.id, derived.nodeId)).toBe(true);
+    expect(await collectionsStore.getStoredItem(created.id, stored.id)).toBeNull();
+    expect(await collectionsStore.isExcluded(created.id, derived.id)).toBe(true);
 
     // §4.9b: exclusion on a system collection auto-pins (inside the same TX)
     const col = await collectionsStore.getCollection(created.id);
@@ -189,17 +183,30 @@ describe('mergeCollections (one journaled command)', () => {
   }
 
   it('moves members+exclusions, drops overlap duplicates, drops loser grants, flips the suggestion', async () => {
-    const { user, survivor, loser } = await setupPair();
-    const root = await fileNodeService.createDirectory(null, user.username);
+    const { user, root, survivor, loser } = await setupPair();
     const shared = await fileNodeService.createFile(root.id, 'shared.txt');
     const onlySurvivor = await fileNodeService.createFile(root.id, 'only-s.txt');
     const onlyLoser = await fileNodeService.createFile(root.id, 'only-l.txt');
 
-    await collectionsStore.addItems(survivor.id, [shared.nodeId, onlySurvivor.nodeId], user.id, {}, { actor: user.id });
-    await collectionsStore.addItems(loser.id, [shared.nodeId, onlyLoser.nodeId], user.id, {}, { actor: user.id });
-    await collectionsStore.addExclusion(loser.id, shared.nodeId, { actor: user.id });
+    await collectionsStore.addItems(
+      survivor.id,
+      [shared.id, onlySurvivor.id],
+      user.id,
+      {},
+      { actor: user.id }
+    );
+    await collectionsStore.addItems(
+      loser.id,
+      [shared.id, onlyLoser.id],
+      user.id,
+      {},
+      { actor: user.id }
+    );
+    await collectionsStore.addExclusion(loser.id, shared.id, { actor: user.id });
 
-    const grantee = await createAuthenticatedTestUser({ username: `store-grantee-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` });
+    const grantee = await createAuthenticatedTestUser({
+      username: `store-grantee-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    });
     await collectionsStore.grantAccess(loser.id, grantee.user.id, 'viewer', user.id);
 
     await collectionsStore.upsertMergeSuggestion(survivor.id, loser.id, 700);
@@ -212,25 +219,28 @@ describe('mergeCollections (one journaled command)', () => {
     expect(result.survivor.id).toBe(survivor.id);
     expect(result.survivor.name).toBe('Survivor');
     // overlap duplicate (shared) was dropped and recorded
-    expect(result.dropped.items).toEqual([shared.nodeId]);
+    expect(result.dropped.items).toEqual([shared.id]);
 
     const survivorItems = await collectionsStore.listStoredItems(survivor.id);
     const survivorNodeIds = survivorItems.map((i) => i.nodeId).sort();
-    expect(survivorNodeIds).toEqual([onlySurvivor.nodeId, onlyLoser.nodeId, shared.nodeId].sort());
+    expect(survivorNodeIds).toEqual([onlySurvivor.id, onlyLoser.id, shared.id].sort());
 
     // loser is gone; its grant rows cascaded away
     expect(await collectionsStore.getCollection(loser.id)).toBeNull();
-    const grants = await dbQuery('SELECT COUNT(*) AS n FROM collection_grants WHERE collection_id = ?', [
-      loser.id,
-    ]);
+    const grants = await dbQuery(
+      'SELECT COUNT(*) AS n FROM collection_grants WHERE collection_id = ?',
+      [loser.id]
+    );
     expect(grants.rows[0].n).toBe(0);
 
-    // suggestion flipped to merged
+    // suggestion flipped to merged, then cascaded away with the loser row
+    // (collection_merge_suggestions FK-cascades on both sides; the state flip
+    // is opportunistic — §2.9 merge)
     const suggestion = await dbQuery(
       'SELECT state FROM collection_merge_suggestions WHERE a_id = ? AND b_id = ?',
       [Math.min(survivor.id, loser.id), Math.max(survivor.id, loser.id)]
     );
-    expect(suggestion.rows[0].state).toBe('merged');
+    expect(suggestion.rows).toHaveLength(0);
 
     // ONE command row on the survivor subject
     const journal = await subjectRows(survivor.id);

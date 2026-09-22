@@ -66,6 +66,11 @@ function codes() {
   return SERVER_ERROR_CODES;
 }
 
+// supertest leaves a 204 body as '' (no JSON body) — normalize for assertions
+function resBody(res) {
+  return typeof res.text === 'string' && Object.keys(res.body).length === 0 ? res.text : res.body;
+}
+
 // ---------------------------------------------------------------------------
 // Lifecycle chain (create → list → rename → archive → restore → delete)
 // ---------------------------------------------------------------------------
@@ -105,9 +110,7 @@ describe('collection lifecycle (create/list/rename/archive/restore/delete)', () 
     await createCollectionViaApi(token, { name: 'B list' });
     await createCollectionViaApi(token, { name: 'A list' });
 
-    const list = await request(app)
-      .get('/api/collections')
-      .set('Authorization', `Bearer ${token}`);
+    const list = await request(app).get('/api/collections').set('Authorization', `Bearer ${token}`);
     expect(list.status).toBe(200);
     expect(Array.isArray(list.body.collections)).toBe(true);
     expect(list.body.collections).toHaveLength(2);
@@ -135,22 +138,22 @@ describe('collection lifecycle (create/list/rename/archive/restore/delete)', () 
   it('activity sort orders by activity_score desc with created_at fallback while scores are zero', async () => {
     const { token } = await createUserWithRoot('actsort');
 
+    // created_at truncates to whole seconds — keep the fallback chain deterministic
     const first = await createCollectionViaApi(token, { name: 'older first' });
+    await new Promise((resolve) => setTimeout(resolve, 1100));
     const second = await createCollectionViaApi(token, { name: 'newer second' });
+    await new Promise((resolve) => setTimeout(resolve, 1100));
     const winner = await createCollectionViaApi(token, { name: 'score winner' });
 
     // All scores zero → fallback chain (last_member_change_at/created_at) decides.
     await dbRun('UPDATE collections SET activity_score = 0 WHERE owner_id = ?', [
       first.body.collection.owner_id,
     ]);
-    await dbRun(
-      `UPDATE collections SET activity_score = 5 WHERE id = ?`,
-      [winner.body.collection.collection_id]
-    );
+    await dbRun(`UPDATE collections SET activity_score = 5 WHERE id = ?`, [
+      winner.body.collection.collection_id,
+    ]);
 
-    const res = await request(app)
-      .get('/api/collections')
-      .set('Authorization', `Bearer ${token}`);
+    const res = await request(app).get('/api/collections').set('Authorization', `Bearer ${token}`);
     const names = res.body.collections.map((c) => c.name);
     expect(names[0]).toBe('score winner');
     // fallback: newest created first among zero-score rows
@@ -207,13 +210,15 @@ describe('collection lifecycle (create/list/rename/archive/restore/delete)', () 
     expect(activeDelete.status).toBe(409);
     expect(activeDelete.body.errorCode).toBe(codes().collections.notArchived);
 
-    await request(app).post(`/api/collections/${id}/archive`).set('Authorization', `Bearer ${token}`);
+    await request(app)
+      .post(`/api/collections/${id}/archive`)
+      .set('Authorization', `Bearer ${token}`);
 
     const del = await request(app)
       .delete(`/api/collections/${id}`)
       .set('Authorization', `Bearer ${token}`);
     expect(del.status).toBe(204);
-    expect(del.body).toEqual({});
+    expect(resBody(del)).toBe('');
 
     const gone = await request(app)
       .get(`/api/collections/${id}`)
@@ -234,7 +239,8 @@ describe('collection lifecycle (create/list/rename/archive/restore/delete)', () 
     expect(c.body.collection.name).toBe('Photos (3)');
 
     // restore collision: archive b, then create "Photos" again, restore b.
-    await request(app).post(`/api/collections/${b.body.collection.collection_id}/archive`)
+    await request(app)
+      .post(`/api/collections/${b.body.collection.collection_id}/archive`)
       .set('Authorization', `Bearer ${token}`);
     const c2 = await createCollectionViaApi(token, { name: 'Photos (2)' });
     expect(c2.status).toBe(201);
@@ -428,7 +434,7 @@ describe('member view (stored ∪ derived − exclusions)', () => {
     const foreignFile = await fileNodeService.createFile(other.root.id, 'foreign.png');
     await grantTestPermissionByNodeId({
       userId: ctx.user.id,
-      fileNodeId: foreignFile.nodeId,
+      fileNodeId: foreignFile.id,
       permission: 'read',
     });
 
@@ -436,9 +442,9 @@ describe('member view (stored ∪ derived − exclusions)', () => {
     const add = await request(app)
       .post(`/api/collections/${system.id}/items`)
       .set('Authorization', `Bearer ${ctx.token}`)
-      .send({ nodeIds: [ctx.stay.nodeId, foreignFile.nodeId] });
+      .send({ nodeIds: [ctx.stay.id, foreignFile.id] });
     expect(add.status).toBe(200);
-    expect(add.body.added).toEqual([ctx.stay.nodeId, foreignFile.nodeId]);
+    expect(add.body.added).toEqual([ctx.stay.id, foreignFile.id]);
     expect(add.body.undo.action_id).toBeGreaterThan(0);
 
     const items = await request(app)
@@ -448,7 +454,7 @@ describe('member view (stored ∪ derived − exclusions)', () => {
     const byNode = new Map(items.body.items.map((i) => [i.node_id, i]));
 
     // derived member (path rule) + stored member + foreign member chip
-    expect(byNode.get(ctx.beach.nodeId)).toMatchObject({
+    expect(byNode.get(ctx.beach.id)).toMatchObject({
       membership: 'derived',
       state: 'normal',
       published: false,
@@ -457,12 +463,12 @@ describe('member view (stored ∪ derived − exclusions)', () => {
       added_by: null,
       liked: false,
     });
-    expect(byNode.get(ctx.stay.nodeId)).toMatchObject({
+    expect(byNode.get(ctx.stay.id)).toMatchObject({
       membership: 'stored',
       state: 'normal',
       added_by: ctx.user.id,
     });
-    expect(byNode.get(foreignFile.nodeId)).toMatchObject({
+    expect(byNode.get(foreignFile.id)).toMatchObject({
       membership: 'stored',
       state: 'normal',
       shared_excluded: true,
@@ -472,19 +478,17 @@ describe('member view (stored ∪ derived − exclusions)', () => {
     expect(typeof items.body.publish_pending_count).toBe('number');
 
     // trashed member is hidden, row kept
-    await dbRun("UPDATE file_nodes SET deleted_at = datetime('now') WHERE id = ?", [
-      ctx.stay.nodeId,
-    ]);
+    await dbRun("UPDATE file_nodes SET deleted_at = datetime('now') WHERE id = ?", [ctx.stay.id]);
     // revoked member: permission rows removed → unreadable → placeholder with null name
-    await dbRun('DELETE FROM permissions_user_files WHERE file_node_id = ?', [foreignFile.nodeId]);
-    await dbRun('DELETE FROM permissions_user_paths WHERE file_node_id = ?', [foreignFile.nodeId]);
+    await dbRun('DELETE FROM permissions_user_files WHERE file_node_id = ?', [foreignFile.id]);
+    await dbRun('DELETE FROM permissions_user_paths WHERE file_node_id = ?', [foreignFile.id]);
 
     const after = await request(app)
       .get(`/api/collections/${system.id}/items`)
       .set('Authorization', `Bearer ${ctx.token}`);
     const afterByNode = new Map(after.body.items.map((i) => [i.node_id, i]));
-    expect(afterByNode.has(ctx.stay.nodeId)).toBe(false);
-    expect(afterByNode.get(foreignFile.nodeId)).toMatchObject({
+    expect(afterByNode.has(ctx.stay.id)).toBe(false);
+    expect(afterByNode.get(foreignFile.id)).toMatchObject({
       state: 'revoked',
       name: null,
       type: null,
@@ -501,7 +505,7 @@ describe('member view (stored ∪ derived − exclusions)', () => {
     const add = await request(app)
       .post(`/api/collections/${system.id}/items`)
       .set('Authorization', `Bearer ${ctx.token}`)
-      .send({ nodeIds: [ctx.beach.nodeId, ctx.stay.nodeId] });
+      .send({ nodeIds: [ctx.beach.id, ctx.stay.id] });
     expect(add.status).toBe(200);
 
     const page1 = await request(app)
@@ -515,7 +519,9 @@ describe('member view (stored ∪ derived − exclusions)', () => {
     expect(page1.body.next_cursor).toBeTruthy();
 
     const page2 = await request(app)
-      .get(`/api/collections/${system.id}/items?limit=2&cursor=${encodeURIComponent(page1.body.next_cursor)}`)
+      .get(
+        `/api/collections/${system.id}/items?limit=2&cursor=${encodeURIComponent(page1.body.next_cursor)}`
+      )
       .set('Authorization', `Bearer ${ctx.token}`);
     expect(page2.status).toBe(200);
     const page2Ids = page2.body.items.map((i) => i.node_id);
@@ -551,7 +557,7 @@ describe('member view (stored ∪ derived − exclusions)', () => {
     await request(app)
       .post(`/api/collections/${system.id}/items`)
       .set('Authorization', `Bearer ${ctx.token}`)
-      .send({ nodeIds: [ctx.stay.nodeId] });
+      .send({ nodeIds: [ctx.stay.id] });
 
     const withSince = await request(app)
       .get(`/api/collections/${system.id}/items?since=${encodeURIComponent(since.toISOString())}`)
@@ -563,7 +569,7 @@ describe('member view (stored ∪ derived − exclusions)', () => {
     await request(app)
       .delete(`/api/collections/${system.id}/items`)
       .set('Authorization', `Bearer ${ctx.token}`)
-      .send({ nodeIds: [ctx.stay.nodeId] });
+      .send({ nodeIds: [ctx.stay.id] });
 
     const fresh = new Date();
     const second = await request(app)
@@ -589,7 +595,7 @@ describe('member view (stored ∪ derived − exclusions)', () => {
     await request(app)
       .post(`/api/collections/${id}/items`)
       .set('Authorization', `Bearer ${owner.token}`)
-      .send({ nodeIds: [file.nodeId] });
+      .send({ nodeIds: [file.id] });
 
     const ownerItems = await request(app)
       .get(`/api/collections/${id}/items`)
@@ -613,7 +619,7 @@ describe('member view (stored ∪ derived − exclusions)', () => {
     await request(app)
       .post(`/api/collections/${id}/items`)
       .set('Authorization', `Bearer ${owner.token}`)
-      .send({ nodeIds: [file2.nodeId] });
+      .send({ nodeIds: [file2.id] });
 
     const viewerAfter = await request(app)
       .get(`/api/collections/${id}/items`)
@@ -636,7 +642,12 @@ describe('member view (stored ∪ derived − exclusions)', () => {
     const stranger = await createUserWithRoot('addval-other');
     const strangerFile = await fileNodeService.createFile(stranger.root.id, 'secret.txt');
 
-    for (const body of [{}, { nodeIds: [] }, { nodeIds: ['abc'] }, { nodeIds: Array.from({ length: 201 }, (_, i) => i + 1) }]) {
+    for (const body of [
+      {},
+      { nodeIds: [] },
+      { nodeIds: ['abc'] },
+      { nodeIds: Array.from({ length: 201 }, (_, i) => i + 1) },
+    ]) {
       const res = await request(app)
         .post(`/api/collections/${id}/items`)
         .set('Authorization', `Bearer ${ctx.token}`)
@@ -648,18 +659,18 @@ describe('member view (stored ∪ derived − exclusions)', () => {
     const partial = await request(app)
       .post(`/api/collections/${id}/items`)
       .set('Authorization', `Bearer ${ctx.token}`)
-      .send({ nodeIds: [ctx.beach.nodeId, stranger.beach.nodeId] });
+      .send({ nodeIds: [ctx.beach.id, strangerFile.id] });
     expect(partial.status).toBe(200);
-    expect(partial.body.added).toEqual([ctx.beach.nodeId]);
-    expect(partial.body.rejected_not_readable).toEqual([stranger.beach.nodeId]);
+    expect(partial.body.added).toEqual([ctx.beach.id]);
+    expect(partial.body.rejected_not_readable).toEqual([strangerFile.id]);
 
     const duplicate = await request(app)
       .post(`/api/collections/${id}/items`)
       .set('Authorization', `Bearer ${ctx.token}`)
-      .send({ nodeIds: [ctx.beach.nodeId] });
+      .send({ nodeIds: [ctx.beach.id] });
     expect(duplicate.status).toBe(200);
     expect(duplicate.body.added).toEqual([]);
-    expect(duplicate.body.already_members).toEqual([ctx.beach.nodeId]);
+    expect(duplicate.body.already_members).toEqual([ctx.beach.id]);
   });
 
   it('remove splits stored deletes from derived exclusions and ignores user-origin exclusions', async () => {
@@ -671,36 +682,36 @@ describe('member view (stored ∪ derived − exclusions)', () => {
     await request(app)
       .post(`/api/collections/${system.id}/items`)
       .set('Authorization', `Bearer ${ctx.token}`)
-      .send({ nodeIds: [ctx.stay.nodeId] });
+      .send({ nodeIds: [ctx.stay.id] });
 
     const res = await request(app)
       .delete(`/api/collections/${system.id}/items`)
       .set('Authorization', `Bearer ${ctx.token}`)
-      .send({ nodeIds: [ctx.stay.nodeId, ctx.beach.nodeId] });
+      .send({ nodeIds: [ctx.stay.id, ctx.beach.id] });
     expect(res.status).toBe(200);
-    expect(res.body.removed).toEqual([ctx.stay.nodeId]);
-    expect(res.body.excluded).toEqual([ctx.beach.nodeId]);
+    expect(res.body.removed).toEqual([ctx.stay.id]);
+    expect(res.body.excluded).toEqual([ctx.beach.id]);
     expect(res.body.ignored).toEqual([]);
     expect(res.body.undo.action_id).toBeGreaterThan(0);
 
     // the node itself is untouched (membership-only)
-    const node = await fileNodeService.getNode(ctx.beach.nodeId);
+    const node = await fileNodeService.getNode(ctx.beach.id);
     expect(node).not.toBeNull();
 
     // excluded derived node no longer resolves
     const items = await request(app)
       .get(`/api/collections/${system.id}/items`)
       .set('Authorization', `Bearer ${ctx.token}`);
-    expect(items.body.items.some((i) => i.node_id === ctx.beach.nodeId)).toBe(false);
+    expect(items.body.items.some((i) => i.node_id === ctx.beach.id)).toBe(false);
 
     // user-origin: derived match would land in ignored (no stored row → ignored)
     const userCol = await createCollectionViaApi(ctx.token, { name: 'User origin' });
     const userRes = await request(app)
       .delete(`/api/collections/${userCol.body.collection.collection_id}/items`)
       .set('Authorization', `Bearer ${ctx.token}`)
-      .send({ nodeIds: [ctx.beach.nodeId] });
+      .send({ nodeIds: [ctx.beach.id] });
     expect(userRes.status).toBe(200);
-    expect(userRes.body.ignored).toEqual([ctx.beach.nodeId]);
+    expect(userRes.body.ignored).toEqual([ctx.beach.id]);
   });
 
   it('editor can remove what they added but not owner-added rows', async () => {
@@ -718,7 +729,7 @@ describe('member view (stored ∪ derived − exclusions)', () => {
     const editorFile = await fileNodeService.createFile(editor.root.id, 'editor-file.txt');
     await grantTestPermissionByNodeId({
       userId: editor.user.id,
-      fileNodeId: ownerFile.nodeId,
+      fileNodeId: ownerFile.id,
       permission: 'read',
     });
 
@@ -726,24 +737,24 @@ describe('member view (stored ∪ derived − exclusions)', () => {
     await request(app)
       .post(`/api/collections/${id}/items`)
       .set('Authorization', `Bearer ${editor.token}`)
-      .send({ nodeIds: [editorFile.nodeId] });
+      .send({ nodeIds: [editorFile.id] });
     // owner adds their file
     await request(app)
       .post(`/api/collections/${id}/items`)
       .set('Authorization', `Bearer ${owner.token}`)
-      .send({ nodeIds: [ownerFile.nodeId] });
+      .send({ nodeIds: [ownerFile.id] });
 
     const ok = await request(app)
       .delete(`/api/collections/${id}/items`)
       .set('Authorization', `Bearer ${editor.token}`)
-      .send({ nodeIds: [editorFile.nodeId] });
+      .send({ nodeIds: [editorFile.id] });
     expect(ok.status).toBe(200);
-    expect(ok.body.removed).toEqual([editorFile.nodeId]);
+    expect(ok.body.removed).toEqual([editorFile.id]);
 
     const denied = await request(app)
       .delete(`/api/collections/${id}/items`)
       .set('Authorization', `Bearer ${editor.token}`)
-      .send({ nodeIds: [ownerFile.nodeId] });
+      .send({ nodeIds: [ownerFile.id] });
     expect(denied.status).toBe(403);
     expect(denied.body.errorCode).toBe(codes().collections.forbidden);
   });
@@ -776,9 +787,12 @@ describe('preview endpoints', () => {
         },
       });
     expect(res.status).toBe(200);
-    expect(res.body.count).toBe(2);
-    expect(res.body.sample).toHaveLength(2);
-    expect(res.body.sample.every((s) => typeof s.node_id === 'number' && typeof s.name === 'string')).toBe(true);
+    // the travel directory itself matches the prefix rule (files + folder)
+    expect(res.body.count).toBe(3);
+    expect(res.body.sample).toHaveLength(3);
+    expect(
+      res.body.sample.every((s) => typeof s.node_id === 'number' && typeof s.name === 'string')
+    ).toBe(true);
     expect(res.body.sample_truncated).toBe(false);
   });
 
@@ -813,14 +827,14 @@ describe('preview endpoints', () => {
     const res = await request(app)
       .post('/api/collections/preview')
       .set('Authorization', `Bearer ${ctx.token}`)
-      .send({ seedNodeId: ctx.travel.nodeId });
+      .send({ seedNodeId: ctx.travel.id });
     expect(res.status).toBe(409);
     expect(res.body.errorCode).toBe(codes().ai.notConfigured);
 
     const seedCreate = await request(app)
       .post('/api/collections')
       .set('Authorization', `Bearer ${ctx.token}`)
-      .send({ name: 'Seed col', seedNodeId: ctx.travel.nodeId });
+      .send({ name: 'Seed col', seedNodeId: ctx.travel.id });
     expect(seedCreate.status).toBe(409);
     expect(seedCreate.body.errorCode).toBe(codes().ai.notConfigured);
   });
@@ -839,11 +853,13 @@ describe('preview endpoints', () => {
     expect(empty.body.sample).toEqual([]);
 
     const stranger = await createUserWithRoot('prev-stranger');
-    const forbidden = await request(app)
+    // ungranted reads masquerade as 404 (routes spec §2.4.2 blanket Decision)
+    const masqueraded = await request(app)
       .post(`/api/collections/${id}/preview`)
       .set('Authorization', `Bearer ${stranger.token}`)
       .send({});
-    expect(forbidden.status).toBe(403);
+    expect(masqueraded.status).toBe(404);
+    expect(masqueraded.body.errorCode).toBe(codes().collections.notFound);
   });
 });
 
@@ -865,11 +881,7 @@ describe('merge suggestions and execution', () => {
     const ctx = await setupMergePair('list');
     const stranger = await createUserWithRoot('merge-stranger');
 
-    await collectionsStore.upsertMergeSuggestion(
-      ctx.aId,
-      ctx.bId,
-      ctx.score
-    );
+    await collectionsStore.upsertMergeSuggestion(ctx.aId, ctx.bId, ctx.score);
 
     const res = await request(app)
       .get('/api/collections/merge-suggestions')
@@ -926,11 +938,13 @@ describe('merge suggestions and execution', () => {
       .get('/api/collections/merge-suggestions')
       .set('Authorization', `Bearer ${ctx.token}`);
     expect(suggestions.body.suggestions).toHaveLength(0);
+    // the pair's suggestion row is flipped to 'merged' and then cascaded away
+    // with the loser row (FK cascade on both sides of the pair)
     const states = await dbQuery(
       'SELECT state FROM collection_merge_suggestions WHERE a_id = ? AND b_id = ?',
       [Math.min(ctx.aId, ctx.bId), Math.max(ctx.aId, ctx.bId)]
     );
-    expect(states.rows[0]?.state).toBe('merged');
+    expect(states.rows).toHaveLength(0);
   });
 
   it('merges any owned active pair without a suggestion row; same-id merge is 400', async () => {
@@ -968,8 +982,8 @@ describe('merge suggestions and execution', () => {
     expect(missing.status).toBe(404);
     expect(missing.body.errorCode).toBe(codes().collections.suggestionNotFound);
 
-    // reject is terminal: after re-suggestion the pair stays pending-free? The
-    // nightly pass owns re-raise; here we assert the terminal state transition.
+    // reject is terminal: a dismissed pair has no PENDING row, so reject 404s
+    // until evolution re-suggests; here a fresh pair proves the reject path.
     const reject = await request(app)
       .post(`/api/collections/${ctx.aId}/merge-reject`)
       .set('Authorization', `Bearer ${ctx.token}`)
@@ -977,11 +991,12 @@ describe('merge suggestions and execution', () => {
     expect(reject.status).toBe(404);
     expect(reject.body.errorCode).toBe(codes().collections.suggestionNotFound);
 
-    await collectionsStore.upsertMergeSuggestion(ctx.aId, ctx.bId, 500);
+    const otherPair = await setupMergePair('reject');
+    await collectionsStore.upsertMergeSuggestion(otherPair.aId, otherPair.bId, 500);
     const reject2 = await request(app)
-      .post(`/api/collections/${ctx.aId}/merge-reject`)
-      .set('Authorization', `Bearer ${ctx.token}`)
-      .send({ otherId: ctx.bId });
+      .post(`/api/collections/${otherPair.aId}/merge-reject`)
+      .set('Authorization', `Bearer ${otherPair.token}`)
+      .send({ otherId: otherPair.bId });
     expect(reject2.status).toBe(200);
     expect(reject2.body.state).toBe('rejected');
     expect(typeof reject2.body.rejected_at).toBe('string');
@@ -1015,20 +1030,20 @@ describe('POST /for-nodes membership chips', () => {
     await request(app)
       .post(`/api/collections/${manual.body.collection.collection_id}/items`)
       .set('Authorization', `Bearer ${ctx.token}`)
-      .send({ nodeIds: [stay.nodeId] });
+      .send({ nodeIds: [stay.id] });
 
     const res = await request(app)
       .post('/api/collections/for-nodes')
       .set('Authorization', `Bearer ${ctx.token}`)
-      .send({ nodeIds: [beach.nodeId, stay.nodeId] });
+      .send({ nodeIds: [beach.id, stay.id] });
     expect(res.status).toBe(200);
     expect(res.body.memberships).toEqual([
       {
-        node_id: beach.nodeId,
+        node_id: beach.id,
         collection_ids: expect.arrayContaining([system.id]),
       },
       {
-        node_id: stay.nodeId,
+        node_id: stay.id,
         collection_ids: expect.arrayContaining([manual.body.collection.collection_id]),
       },
     ]);
@@ -1056,13 +1071,15 @@ describe('wire contract invariants', () => {
     const ctx = await createUserWithRoot('no-undo');
     const created = await createCollectionViaApi(ctx.token);
     const id = created.body.collection.collection_id;
-    await request(app).post(`/api/collections/${id}/archive`).set('Authorization', `Bearer ${ctx.token}`);
+    await request(app)
+      .post(`/api/collections/${id}/archive`)
+      .set('Authorization', `Bearer ${ctx.token}`);
 
     const res = await request(app)
       .delete(`/api/collections/${id}`)
       .set('Authorization', `Bearer ${ctx.token}`);
     expect(res.status).toBe(204);
-    expect(res.body).toEqual({});
+    expect(resBody(res)).toBe('');
   });
 
   it('mount sits behind the setup-mode guard while setup is incomplete', async () => {

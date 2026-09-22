@@ -263,7 +263,7 @@ config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
 | Wave | Tasks (parallel) | Entry condition | RED-first test targets | Status |
 | ---- | ---------------- | --------------- | ---------------------- | ------ |
 | 0 | T0.2 ∥ T0.12 ∥ T0.7b (∥ T0.11 if capacity) | none (roots) | T0.2: 3 conformance twins + dual-dialect §5 table-presence; T0.12: node:sqlite driver + BigInt PK binding; T0.7b: en/ko i18n key mirror + settings/flags exposure | `[done]` — T0.11 carried into Wave 2 |
-| 1 | T0.3 ∥ T0.6 ∥ T0.7 ∥ T0.8 (+ T0.1 absorbed) | T0.2 + T0.7b merged | T0.3: camelCase req / snake_case res + activity_score fallback sort; T0.8: NULL content_hash backfill idempotency | T0.3 `[wip]` (`feature/t03-collections-crud`); others `[todo]` |
+| 1 | T0.3 ∥ T0.6 ∥ T0.7 ∥ T0.8 (+ T0.1 absorbed) | T0.2 + T0.7b merged | T0.3: camelCase req / snake_case res + activity_score fallback sort; T0.8: NULL content_hash backfill idempotency | T0.3 `[done]` (`feature/t03-collections-crud`); others `[todo]` |
 | 2 | T0.4 ∥ T0.5 ∥ T0.9 ∥ T0.11 (carried from Wave 0) | T0.3 API surface (client) / T0.2 (T0.9) | component+hook tests; T0.9 hash-first dup (NULL never forms a group), derived tags v1 | `[todo]` |
 | 3 | T0.10 → P0 exit gate | T0.9 + T0.7 + T0.8 merged | dashboard blocks per §4.16 | `[todo]` |
 

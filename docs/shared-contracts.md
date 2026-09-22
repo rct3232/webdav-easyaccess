@@ -110,7 +110,7 @@ Defined in `shared/validation.js`. Used by both client and server for form and i
 **Reserved name namespace (`.wea-`):** names starting with `.wea-` (case-insensitive) are
 RESERVED — `validateFileName` returns `'validation.fileNameReserved'` for them. The server
 enforces the same check on create/upload/folder/rename routes (400 `files.fileNameReserved`), so
-the trash subsystem's hidden root namespace `/.wea-trash/<nodeId>` (DEF-16) can never collide with
+the trash subsystem's hidden root namespace `/.wea-trash/<nodeId>` can never collide with
 a user-created node.
 
 **Client usage:** If the result is a string, use `t(result)`. If it is an object, use `t(result.key, result)` (or `t(result.key, { fieldName: result.fieldName })` etc.). Changing the return shape (e.g. adding a new param) requires updating client display logic and any tests that assert on validation output.

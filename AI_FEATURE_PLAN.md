@@ -39,7 +39,7 @@ dependency.** The collection platform (P0) ships and is useful with zero LLM con
 7. **Naming has two implementors, template first.** `templateNamer` (collections domain,
    deterministic, locale-string based) is default and FINAL; `llmNamer` (ai domain) replaces
    it only for new creations once chat is configured; never renames existing (`name_locked`).
-8. **No new state in CacheAdapter** (DEF-9 stays DEFERRED; AI/collection state is DB-backed by
+8. **No new state in CacheAdapter** — AI/collection state is DB-backed by
    design). Enforced by grep-gate in CI (§6 verification).
 9. **Likes are per-file, viewer-scoped:** `file_likes(user_id,node_id)`; the heart reflects
    the CURRENT VIEWER'S OWN like only, identical across all collections for that file.
@@ -80,7 +80,7 @@ similar` (similar = centroid cluster grouping with group headers, not one path o
   remains the explicit act; within a shared collection, `ask` parks new members in the
   pending-publish banner.
 - Name uniqueness: partial-unique per owner over active; collision → suffix counter
-  (reuse trash-restore suffix precedent, DEF-16).
+  (reuse the trash-restore suffix precedent).
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/routes/collections.md`, `docs/spec/server/store/collectionsStore.md`, `docs/spec/client/hooks/useCollections.md`, `docs/spec/client/components/file-manager/CollectionsListView.md`
 
@@ -1072,7 +1072,7 @@ collections; proposal-inbox/alarm-center surfaces; merge-without-proposal; neste
 collections ("sub-collection" terminology banned); inline like hearts on list rows (context
 menu + properties header only); subset/parent-child hierarchy proposals in v1 (merge is
 same-size-only, §4.9c); auto-archive of user-origin;
-hierarchical chat summarization; ORM adoption (DEF-14 gate); Redis/DEF-9 coupling;
+hierarchical chat summarization; ORM adoption gate; Redis cache coupling;
 clear-all-style bulk destructive admin actions; LLM backfill on model change without
 explicit admin trigger; notification/`ask`-centering of evolution; real-time SSE (none in
 stack); admin-created collections on behalf of users (Q5 — NO; any future org-wide content

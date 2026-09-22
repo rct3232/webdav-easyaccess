@@ -1,0 +1,457 @@
+'use strict';
+
+/**
+ * collectionsStore facade — facade over the collections platform tables
+ * (docs/spec/server/store/collectionsStore.md). No SQL here: journaled
+ * mutators go through actionJournalStore.commitChange() with the tx-bound
+ * CollectionsRepository inside the mutation; everything else delegates to the
+ * repository built over storage.getExecutor() (recentFiles precedent).
+ */
+const storage = require('./storage');
+const lockManager = require('../infrastructure/lockManager');
+const createCollectionsRepository = require('./repositories/CollectionsRepository');
+const actionJournalStore = require('./actionJournalStore');
+
+// One repository per dialect; `getExecutor()` switches on the active backend
+// (including the jest test-only override).
+const reposByDialect = new Map();
+
+function getRepository() {
+  const executor = storage.getExecutor();
+  let repo = reposByDialect.get(executor.dialect);
+  if (!repo) {
+    repo = createCollectionsRepository(executor);
+    reposByDialect.set(executor.dialect, repo);
+  }
+  return repo;
+}
+
+// Journaled mutators return their §2.2 shape (row / { changes }) plus the
+// `actionId` undo pointer the toast contract requires (§4.11).
+function withActionId(mutationResult, committed) {
+  return { ...mutationResult, actionId: committed.id };
+}
+
+// -- reads -------------------------------------------------------------------
+
+async function getCollection(collectionId) {
+  return getRepository().getCollection(collectionId);
+}
+
+async function listForUser(userId, options = {}) {
+  return getRepository().listForUser(userId, options);
+}
+
+async function listArchived(ownerId) {
+  return getRepository().listArchived(ownerId);
+}
+
+async function existsActiveName(ownerId, name) {
+  return getRepository().existsActiveName(ownerId, name);
+}
+
+// -- collections (§2.2) ------------------------------------------------------
+
+/**
+ * JOURNALED (domain=collection, subject resolved inside the TX).
+ * origin ∈ system|user|seed|search; publishMode defaults to 'ask'.
+ * @param {{ ownerId, name, origin, publishMode?, definition? }} input
+ * @param {{ actor, actionId? }} [ctx]
+ * @returns {Promise<Object>} created collection row (plus `actionId` for the
+ *   toast contract `undo: { action_id }`).
+ */
+async function createCollection(input, ctx = {}) {
+  const committed = await actionJournalStore.commitChange(
+    'collection',
+    (result) => `collection:${result.id}`,
+    { actor: ctx.actor, action: 'create', subjectLabel: input.name },
+    (result) => ({ inverse: { op: 'delete-collection', collectionId: result.id } }),
+    async (tx) => {
+      const repo = getRepository();
+      const created = await repo.insertCollection(tx, {
+        ownerId: input.ownerId,
+        name: input.name,
+        origin: input.origin,
+        publishMode: input.publishMode,
+        definition: input.definition,
+      });
+      return repo.getCollectionTx(tx, created.id);
+    }
+  );
+  return withActionId(committed.result, committed);
+}
+
+/** JOURNALED. Sets `name_locked=true` when `lockName` (user rename, §3.2). */
+async function renameCollection(collectionId, name, { lockName } = {}, ctx = {}) {
+  const repo = getRepository();
+  const committed = await actionJournalStore.commitChange(
+    'collection',
+    `collection:${collectionId}`,
+    { actor: ctx.actor, action: 'rename', subjectLabel: name },
+    async (tx) => {
+      const previous = await repo.getCollectionTx(tx, collectionId);
+      return {
+        inverse: {
+          op: 'rename-collection',
+          collectionId,
+          previousName: previous ? previous.name : null,
+        },
+      };
+    },
+    async (tx) => {
+      await repo.renameCollection(tx, collectionId, name, lockName === true);
+      return repo.getCollectionTx(tx, collectionId);
+    }
+  );
+  return withActionId(committed.result, committed);
+}
+
+/** JOURNALED. User pin/unpin only (writes pinned; pinned_by='user' on pin). */
+async function setPinned(collectionId, pinned, ctx = {}) {
+  const repo = getRepository();
+  const committed = await actionJournalStore.commitChange(
+    'collection',
+    `collection:${collectionId}`,
+    { actor: ctx.actor, action: pinned ? 'pin' : 'unpin' },
+    { inverse: { op: 'set-pinned', collectionId, pinned: !pinned } },
+    (tx) => repo.updatePin(tx, collectionId, Boolean(pinned), pinned ? 'user' : null)
+  );
+  return withActionId(committed.result, committed);
+}
+
+/**
+ * NON-JOURNALED (§4.9b): auto-pin on user touch of a system collection.
+ * No-op when already pinned; only origin='system' rows.
+ */
+async function setAutoPin(collectionId) {
+  const repo = getRepository();
+  return storage.getExecutor().transaction((tx) => repo.setAutoPin(tx, collectionId));
+}
+
+/** JOURNALED. status='archived', archived_at=now(); guarded → changes: 0 when already archived. */
+async function archiveCollection(collectionId, ctx = {}) {
+  const repo = getRepository();
+  const committed = await actionJournalStore.commitChange(
+    'collection',
+    `collection:${collectionId}`,
+    { actor: ctx.actor, action: 'archive' },
+    { inverse: { op: 'restore-collection', collectionId } },
+    (tx) => repo.archiveRow(tx, collectionId)
+  );
+  return withActionId(committed.result, committed);
+}
+
+/** JOURNALED. status='active', clears archived_at; guarded → changes: 0 when not archived. */
+async function restoreCollection(collectionId, ctx = {}) {
+  const repo = getRepository();
+  const committed = await actionJournalStore.commitChange(
+    'collection',
+    `collection:${collectionId}`,
+    { actor: ctx.actor, action: 'restore' },
+    { inverse: { op: 'archive-collection', collectionId } },
+    (tx) => repo.restoreRow(tx, collectionId)
+  );
+  return withActionId(committed.result, committed);
+}
+
+/**
+ * NOT journaled (no inverse — trash-parity, §4.11): single TX under the
+ * subject lock. Deletes the row (FK CASCADE wipes items/exclusions/grants/
+ * visibility/centroids/cursors/merge suggestions), tombstones when a
+ * defFingerprint is given (system-origin only, invariant 10), and purges the
+ * subject's journal rows in the SAME TX (invariant 10).
+ */
+async function deleteCollectionPermanent(collectionId, { defFingerprint } = {}) {
+  const repo = getRepository();
+  const collection = await repo.getCollection(collectionId);
+  if (!collection) return { changes: 0 };
+
+  const lock = await lockManager.acquireLock(`journal:collection:collection:${collectionId}`);
+  try {
+    return await storage.getExecutor().transaction(async (tx) => {
+      const removed = await repo.deleteCollectionRow(tx, collectionId);
+      if (removed.changes === 0) return { changes: 0 };
+      if (defFingerprint && collection.origin === 'system') {
+        await repo.insertTombstone(tx, collection.ownerId, defFingerprint);
+      }
+      await actionJournalStore.purgeSubjectTx(tx, 'collection', `collection:${collectionId}`);
+      return { changes: removed.changes };
+    });
+  } finally {
+    await lock.release();
+  }
+}
+
+async function touchMemberChange(collectionId) {
+  const repo = getRepository();
+  return storage.getExecutor().transaction((tx) => repo.touchMemberChange(tx, collectionId));
+}
+
+// -- membership (items ∪ derived − exclusions) (§2.3) ------------------------
+
+async function listStoredItems(collectionId, options = {}) {
+  return getRepository().listStoredItems(collectionId, options);
+}
+
+async function getStoredItem(collectionId, nodeId) {
+  return getRepository().getStoredItem(collectionId, nodeId);
+}
+
+/**
+ * JOURNALED. Idempotent on the PK pair (the duplicate command still records
+ * its own journal row with a no-op inverse). Default `published=true` for
+ * owner-added rows.
+ */
+async function addItem(collectionId, nodeId, addedBy, { published } = {}, ctx = {}) {
+  const repo = getRepository();
+  const committed = await actionJournalStore.commitChange(
+    'collection',
+    `collection:${collectionId}`,
+    { actor: ctx.actor, action: 'add-item' },
+    { inverse: { op: 'remove-item', collectionId, nodeId } },
+    (tx) => repo.insertItem(tx, collectionId, nodeId, addedBy, { published: published ?? true })
+  );
+  return withActionId(committed.result, committed);
+}
+
+/** JOURNALED. Membership removal only — never trashes the node (§3.2). */
+async function removeItem(collectionId, nodeId, ctx = {}) {
+  const repo = getRepository();
+  const committed = await actionJournalStore.commitChange(
+    'collection',
+    `collection:${collectionId}`,
+    { actor: ctx.actor, action: 'remove-item' },
+    { inverse: { op: 'add-item', collectionId, nodeId, addedBy: ctx.actor } },
+    (tx) => repo.deleteItem(tx, collectionId, nodeId)
+  );
+  return withActionId(committed.result, committed);
+}
+
+async function listExclusions(collectionId) {
+  return getRepository().listExclusions(collectionId);
+}
+
+async function isExcluded(collectionId, nodeId) {
+  return getRepository().isExcluded(collectionId, nodeId);
+}
+
+/**
+ * JOURNALED. Applies to derived members only ("block for this definition");
+ * on origin='system' collections it also auto-pins INSIDE the same TX
+ * (exclusion = touch, §4.9b).
+ */
+async function addExclusion(collectionId, nodeId, ctx = {}) {
+  const repo = getRepository();
+  const collection = await repo.getCollection(collectionId);
+  const committed = await actionJournalStore.commitChange(
+    'collection',
+    `collection:${collectionId}`,
+    { actor: ctx.actor, action: 'exclude' },
+    { inverse: { op: 'remove-exclusion', collectionId, nodeId } },
+    async (tx) => {
+      const result = await repo.insertExclusion(tx, collectionId, nodeId);
+      if (collection && collection.origin === 'system') {
+        await repo.setAutoPin(tx, collectionId);
+      }
+      return result;
+    }
+  );
+  return withActionId(committed.result, committed);
+}
+
+async function removeExclusion(collectionId, nodeId, ctx = {}) {
+  const repo = getRepository();
+  const committed = await actionJournalStore.commitChange(
+    'collection',
+    `collection:${collectionId}`,
+    { actor: ctx.actor, action: 'unexclude' },
+    { inverse: { op: 'add-exclusion', collectionId, nodeId } },
+    (tx) => repo.deleteExclusion(tx, collectionId, nodeId)
+  );
+  return withActionId(committed.result, committed);
+}
+
+async function setItemPublished(collectionId, nodeIds, published, ctx = {}) {
+  const repo = getRepository();
+  const committed = await actionJournalStore.commitChange(
+    'collection',
+    `collection:${collectionId}`,
+    { actor: ctx.actor, action: 'set-items-published' },
+    { inverse: { op: 'set-items-published', collectionId, nodeIds, published: !published } },
+    (tx) => repo.setItemPublished(tx, collectionId, nodeIds, Boolean(published))
+  );
+  return withActionId(committed.result, committed);
+}
+
+async function listForNodes(userId, nodeIds) {
+  return getRepository().listForNodes(userId, nodeIds);
+}
+
+// -- sharing, visibility, cursors, centroids, tombstones, suggestions (§2.4) -
+
+async function listGrants(collectionId) {
+  return getRepository().listGrants(collectionId);
+}
+
+async function getGrant(collectionId, granteeId) {
+  return getRepository().getGrant(collectionId, granteeId);
+}
+
+/** JOURNALED. UPSERT on PK (collection, grantee) — role change replaces in place. */
+async function grantAccess(collectionId, granteeId, role, grantedBy, ctx = {}) {
+  const repo = getRepository();
+  const committed = await actionJournalStore.commitChange(
+    'collection',
+    `collection:${collectionId}`,
+    { actor: ctx.actor, action: 'grant' },
+    { inverse: { op: 'revoke-access', collectionId, granteeId } },
+    (tx) => repo.upsertGrant(tx, collectionId, granteeId, role, grantedBy)
+  );
+  return withActionId(committed.result, committed);
+}
+
+/** JOURNALED. Instant (§4.7); the payload notes restore-future-only semantics. */
+async function revokeAccess(collectionId, granteeId, ctx = {}) {
+  const repo = getRepository();
+  const existing = await repo.getGrant(collectionId, granteeId);
+  const committed = await actionJournalStore.commitChange(
+    'collection',
+    `collection:${collectionId}`,
+    { actor: ctx.actor, action: 'revoke' },
+    {
+      inverse: {
+        op: 'grant-access',
+        collectionId,
+        granteeId,
+        role: existing ? existing.role : null,
+      },
+    },
+    (tx) => repo.deleteGrant(tx, collectionId, granteeId)
+  );
+  return withActionId(committed.result, committed);
+}
+
+async function setVisible(userId, collectionId, hidden) {
+  const repo = getRepository();
+  return storage
+    .getExecutor()
+    .transaction((tx) => repo.setVisible(tx, userId, collectionId, Boolean(hidden)));
+}
+
+async function isHiddenFor(userId, collectionId) {
+  return getRepository().isHiddenFor(userId, collectionId);
+}
+
+async function getDigestCursor(userId, collectionId) {
+  return getRepository().getDigestCursor(userId, collectionId);
+}
+
+async function upsertDigestCursor(userId, collectionId, lastVisitedAt) {
+  const repo = getRepository();
+  return storage
+    .getExecutor()
+    .transaction((tx) => repo.upsertDigestCursor(tx, userId, collectionId, lastVisitedAt));
+}
+
+async function recomputeActivityScores(collectionIds) {
+  return getRepository().recomputeActivityScores(collectionIds);
+}
+
+async function getCentroids(collectionIds, modelId) {
+  return getRepository().getCentroids(collectionIds, modelId);
+}
+
+async function upsertCentroid(collectionId, modelId, centroid, memberCount) {
+  const repo = getRepository();
+  return storage
+    .getExecutor()
+    .transaction((tx) => repo.upsertCentroid(tx, collectionId, modelId, centroid, memberCount));
+}
+
+async function deleteCentroids(collectionId) {
+  const repo = getRepository();
+  return storage.getExecutor().transaction((tx) => repo.deleteCentroids(tx, collectionId));
+}
+
+async function isTombstoned(ownerId, defFingerprint) {
+  return getRepository().isTombstoned(ownerId, defFingerprint);
+}
+
+async function listTombstones(ownerId) {
+  return getRepository().listTombstones(ownerId);
+}
+
+async function purgeExpiredTombstones(cutoff) {
+  return getRepository().purgeExpiredTombstones(cutoff);
+}
+
+/**
+ * Written inside the permanent-delete TX normally; exposed standalone for
+ * direct tombstone management (non-journaled, §4.9 pass 4).
+ */
+async function addTombstone(ownerId, defFingerprint) {
+  const repo = getRepository();
+  return storage
+    .getExecutor()
+    .transaction((tx) => repo.insertTombstone(tx, ownerId, defFingerprint));
+}
+
+async function upsertMergeSuggestion(aId, bId, score) {
+  const repo = getRepository();
+  return storage.getExecutor().transaction((tx) => repo.upsertMergeSuggestion(tx, aId, bId, score));
+}
+
+async function listMergeSuggestions(collectionIds) {
+  return getRepository().listMergeSuggestions(collectionIds);
+}
+
+async function setSuggestionState(suggestionId, state) {
+  const repo = getRepository();
+  return storage
+    .getExecutor()
+    .transaction((tx) => repo.setSuggestionState(tx, suggestionId, state));
+}
+
+module.exports = {
+  getCollection,
+  listForUser,
+  listArchived,
+  existsActiveName,
+  createCollection,
+  renameCollection,
+  setPinned,
+  setAutoPin,
+  archiveCollection,
+  restoreCollection,
+  deleteCollectionPermanent,
+  touchMemberChange,
+  listStoredItems,
+  getStoredItem,
+  addItem,
+  removeItem,
+  listExclusions,
+  isExcluded,
+  addExclusion,
+  removeExclusion,
+  setItemPublished,
+  listForNodes,
+  listGrants,
+  getGrant,
+  grantAccess,
+  revokeAccess,
+  setVisible,
+  isHiddenFor,
+  getDigestCursor,
+  upsertDigestCursor,
+  recomputeActivityScores,
+  getCentroids,
+  upsertCentroid,
+  deleteCentroids,
+  isTombstoned,
+  listTombstones,
+  purgeExpiredTombstones,
+  addTombstone,
+  upsertMergeSuggestion,
+  listMergeSuggestions,
+  setSuggestionState,
+};

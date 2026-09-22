@@ -19,7 +19,7 @@
 - **Implementations:** `server/store/repositories/{sqlite,postgres}/FileLikesRepository.{sqlite,postgres}.js`
 - **Conformance (L2):** `server/store/repositories/__tests__/FileLikesRepository.conformance.test.js`
 - **Facade test:** `server/domains/collections/__tests__/fileLikesStore.test.js` (recentFiles precedent: tests live with the owning domain)
-- **DDL source of truth:** `server/store/postgresql/ddl/002_collections.sql` (table block per §5: `file_likes(user_id, node_id→CASCADE, created_at, PK(pair))`)
+- **DDL source of truth:** `server/store/postgresql/ddl/001_initial_normalized_schema.sql` (table block per §5: `file_likes(user_id, node_id→CASCADE, created_at, PK(pair))`)
 
 ### 2.2 Main Methods
 

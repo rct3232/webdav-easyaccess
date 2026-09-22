@@ -39,19 +39,18 @@ service.js, __tests__/}`; route handlers via `asyncHandler`; service throws bare
 - **Persistence**: no SQL outside repositories — interface `server/store/repositories/`
   `<Plural>Repository.js` + `sqlite/`+`postgres/` twins + `<Plural>Repository.conformance.
 test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
-  `storage.getExecutor()`. **DDL policy (big-bang, decision 2026-09-22)**: the ENTIRE §5
-  schema — every table, P0–P4, AI included — is authored INTO
-  `001_initial_normalized_schema.sql` (single source of truth; rewritten in place). The
-  file is checksum-tracked, so already-migrated dev DBs hit the schema-drift boot error
-  exactly once → one-time reset (`DELETE FROM _schema_migrations WHERE
-  filename='001_initial_normalized_schema.sql'`); boot then re-applies cleanly — every
-  statement is `IF NOT EXISTS` (13 pre-existing tables no-op, new tables created). No
-  ALTERs of existing tables (verified). Single-file ownership removes cross-file FK
-  ordering (declare `llm_models` before `collection_centroids`) and parallel-branch DDL
-  conflicts; the file stays `convertPostgresToSqlite`-compatible. Operational/prod DB
-  (schema predates the repo chain, POC §2.2) is migrated manually at the single
-  `ai-feature`→`dev` merge/deploy. Post-merge changes resume the numbered chain at
-  `002_…`. TEXT+CHECK enums, `<table>_<purpose>` indexes,
+  `storage.getExecutor()`. **DDL policy**: the ENTIRE §5 schema — every table, P0–P4, AI
+  included — lives in `001_initial_normalized_schema.sql` (single source of truth); the
+  numbered chain resumes at `002_…` only after the platform merge. No ALTERs of existing
+  tables. Single-file ownership keeps cross-file FK ordering (declare `llm_models` before
+  `collection_centroids`) and parallel-branch DDL conflicts moot; the file stays
+  `convertPostgresToSqlite`-compatible. The file is checksum-tracked: an edited
+  already-applied file fails boot fast by design — recovery is the standing one-liner
+  (`DELETE FROM _schema_migrations WHERE
+  filename='001_initial_normalized_schema.sql'`, then boot re-applies; every statement is
+  `IF NOT EXISTS`, so pre-existing tables no-op). Operational/prod DB is migrated manually
+  at the single `ai-feature`→`dev` merge/deploy. TEXT+CHECK enums,
+  `<table>_<purpose>` indexes,
   `created_at/updated_at TIMESTAMPTZ DEFAULT NOW()`. **Derived vector artifacts (pgvector
   shadow table, sqlite vec0 virtual table) are created/managed by the vectorStore adapter —
   never part of the tracked DDL chain (§4.13).** **sqlite driver: `node:sqlite` (Node ≥24
@@ -96,15 +95,14 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 
 - T0.1 `content_hash` (A1 decision 2026-09-22 — no persistent migration-state mark): boot
   runs a cheap non-blocking completeness probe (`COUNT(*) WHERE content_hash IS NULL`) →
-  warn log + admin_reports row; the admin repair action backfills ALL NULL rows
-  (idempotent, `WHERE content_hash IS NULL`); write-side population at the §4.1 commit
-  points covers new writes. Consume for exact-dup/dedup paths — NULL rows never form a dup
-  group.
-- T0.2 full-schema DDL (A6/A8 decision 2026-09-22): author ALL §5 tables P0–P4 into
-  `001_initial_normalized_schema.sql` per §6 big-bang policy (docs-first sweep: point
-  collectionsStore/fileLikesStore/actionJournalStore → 001 file; embeddings/aiTag/aiJobs/
-  embeddingsChunk stores + searchService 003_ai refs → 001 file) + collections/file_likes
-  repos + facades + conformance twins.
+  warn log + admin_reports row (`kind='failsafe'`, `contentHashCompleteness` payload
+  section); the admin repair action (`POST /api/admin/reports/:id/repair`) backfills ALL
+  NULL rows (idempotent, `WHERE content_hash IS NULL`); write-side population at the §4.1
+  commit points covers new writes. Consume for exact-dup/dedup paths — NULL rows never
+  form a dup group.
+- T0.2 full-schema DDL: author ALL §5 tables (P0–P4) into
+  `001_initial_normalized_schema.sql` per §6 DDL policy + collections/file_likes repos +
+  facades + conformance twins.
 - T0.3 Collections CRUD API `/api/collections` (§3.1/§3.2 ops; activity sort =
   `activity_score` desc w/ `last_member_change_at`/`created_at` fallback per §3.4) +
   route spec + integration tests.
@@ -120,7 +118,8 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
   add-ons, registry keys, probeLlm slot, error codes + locales, settings/public ai flags,
   SystemConfigEditor whitelist fix, WEA_SKIP test seams).
 - T0.8 admin reports endpoints + render + row repair actions via existing
-  `repair-sync`/`perm-delete`.
+  `repair-sync`/`perm-delete` + kind-dispatched `POST /api/admin/reports/:id/repair`
+  (hash backfill for the `failsafe` content-hash completeness row).
 - T0.9 LLM-free items pulled from AI-phases: exact-dup finder (**hash-first — cosine 1.0
   detection redundant, PoC §2.2/E2**), local derived tags (mime/ext/month/path — v1 set
   per §4.10; EXIF rejected for v1),
@@ -140,7 +139,7 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 - T1.1 LLM adapter (T2-hot: per-call config resolution, re-probe on change, restart-free
   §4.2) + budgets/breaker + startup probe + preset manifest & preset×capability probe-matrix
   verification (declared≠probed ⇒ capability off + admin warning, §4.23) + wizard optional
-  skippable AI step storing DB rows (§4.23 item 5 — wizard).
+  skippable AI step storing DB rows (§4.23.5).
 - T1.2 AI repos (`llm_models`,`embeddings`,`embeddings_chunk`,`ai_features`,`ai_jobs`,
   `ai_usage_daily` — tables already shipped in the T0.2 full-schema DDL) +
   restart-survival test.

@@ -33,7 +33,7 @@ Target-contract spec.
 | Copy                  | `fileService.copyFile` success                             |
 | Version restore       | `versionsService.restore` success                          |
 
-The same commit points populate `file_nodes.content_hash` (column exists, null today —
+The same commit points populate `filecache.content_hash` (column exists, null today —
 `blobStorageService.js:66`); the hook receives the fresh hash.
 
 Enqueue decision table (per node, at hook time):

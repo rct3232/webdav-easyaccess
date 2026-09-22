@@ -87,7 +87,7 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
 ### 3.2 Members
 
 - Stored rows: `collection_items (collection_id, node_id, added_by, published bool)`.
-  Both FKs CASCADE (recent_files precedent, DDL 001:127-134). Removal = membership only,
+  Both FKs CASCADE (recent_files precedent, DDL 001 `recent_files` table). Removal = membership only,
   NEVER trashes the node.
 - Derived membership: evaluated from `definition` (predicates: path-prefix/tag/like/date/
   size; and/or vector-similarity to `seed_vector`/centroid) — no stored rows.
@@ -184,7 +184,7 @@ return (≈:73-88), WebDAV success return in `server/domains/files/services/file
 thumbnail invalidation `uploadService.js:181-187`. Idempotency by
 `UNIQUE(ai_jobs.node_id,kind,generation)` + skip-if same `content_hash` (never re-pays for
 crash-retries, copies, restores). Content re-read via `blobStorageService.downloadBlob`
-(works both backends; upload buffer is not retained). Also populate `file_nodes.content_hash`
+(works both backends; upload buffer is not retained). Also populate `filecache.content_hash`
 (null today, `blobStorageService.js:66`) at the same commit points.
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/services/aiJobService.md`, `docs/spec/server/store/aiJobsStore.md`
@@ -938,44 +938,56 @@ installer runs (own env may be llama.cpp-fixed; nobody else's is). Governing rul
 offered option is a complete feature bundle or it is not offered** — a feature that is
 visible but half-works under the active provider is a defect, not a degradation.
 
-1. **Preset manifest** (`infrastructure/adapters/llm/presets.js`): per provider/server-family
-   entry (llama.cpp, Ollama, OpenAI-compatible, TEI-class, …) declaring its EXPECTED
-   capability set `{text_embed, chat, vision_chat, asr}` + recommended budgets
-   (`image_embed` removed 2026-09-16 — no product path consumes it, §4.21). Adding a
-   provider = adding a manifest row; core code never branches on provider names.
-2. **Probe is final authority** (extends §4.21): runtime capability flags = PROBE-VERIFIED
-   capabilities ∩ configured roles. Declared-but-failing (e.g. an endpoint that embeds
-   base64 images as text — empirically confirmed against `bge-m3@10.0.0.106:8082`; the
-   inverse: Hana's audio declared but mis-probed with sine tones) ⇒ capability
-   OFF + admin warning card (declared vs probed). **Probes MUST use in-domain samples**
-   (real speech, real photos) — an out-of-domain probe produces false negatives indistinguishable
-   from false capability claims (both error modes observed this PoC). User-visible states
-   are only ever `complete-working | absent`, never partial. Distinct from DB vector
-   capability (§4.13): missing LLM capability removes the feature (absent), missing DB
-   vector capability only degrades speed (fallback) — never both ways.
-3. **Feature ↔ capability map** (UI gating source): semantic search/seed/auto-create/near-
-   dup/`tag_embeddings` matching ← `text_embed`; NL features/summary/llmNamer ← `chat`;
-   VLM captions (the ONLY media intelligence beyond ffprobe, §4.21) ← `vision_chat`;
-   ASR transcription ← `asr`. Absent capability ⇒ that feature is absent, not degraded —
-   every advertised path is end-to-end functional under its own preset.
-4. **chat-only (no embed) is a legal deployment**: entire vector core = §4.12 None-column
-   behavior (manual collections, rules, dups-by-hash, name search) — no half-AI state exists.
-5. **Surfaces**: (b)-decision 2026-09-17 — setup wizard gains one OPTIONAL, skippable "AI"
-   step: preset picker → role checkboxes → base-url/key/model inputs → per-role test
-   (`/api/setup/test` new target `llm`); values are stored as **DB settings rows** (NOT
-   `.env`/envFileWriter — the hot-apply rule §4.2), so a skipped step costs nothing and a
-   mid-install config is restart-free. Full config surface stays in admin
-   (`/api/admin/config` + test + capability matrix); wizard is a shortcut to the same rows.
-   SETUP.md documents preset table; capability matrix display (per-role probe chips) shared
-   by both surfaces.
+### 4.23.1 Preset manifest
+
+`infrastructure/adapters/llm/presets.js`: per provider/server-family entry (llama.cpp,
+Ollama, OpenAI-compatible, TEI-class, …) declaring its EXPECTED capability set
+`{text_embed, chat, vision_chat, asr}` + recommended budgets (`image_embed` removed
+2026-09-16 — no product path consumes it, §4.21). Adding a provider = adding a manifest
+row; core code never branches on provider names.
+
+### 4.23.2 Probe is final authority
+
+Extends §4.21: runtime capability flags = PROBE-VERIFIED capabilities ∩ configured roles.
+Declared-but-failing (e.g. an endpoint that embeds base64 images as text — empirically
+confirmed against `bge-m3@10.0.0.106:8082`; the inverse: Hana's audio declared but
+mis-probed with sine tones) ⇒ capability OFF + admin warning card (declared vs probed).
+**Probes MUST use in-domain samples** (real speech, real photos) — an out-of-domain probe
+produces false negatives indistinguishable from false capability claims (both error modes
+observed this PoC). User-visible states are only ever `complete-working | absent`, never
+partial. Distinct from DB vector capability (§4.13): missing LLM capability removes the
+feature (absent), missing DB vector capability only degrades speed (fallback) — never
+both ways.
+
+### 4.23.3 Feature ↔ capability map (UI gating source)
+
+Semantic search/seed/auto-create/near-dup/`tag_embeddings` matching ← `text_embed`; NL
+features/summary/llmNamer ← `chat`; VLM captions (the ONLY media intelligence beyond
+ffprobe, §4.21) ← `vision_chat`; ASR transcription ← `asr`. Absent capability ⇒ that
+feature is absent, not degraded — every advertised path is end-to-end functional under
+its own preset.
+
+### 4.23.4 chat-only (no embed) is a legal deployment
+
+Entire vector core = §4.12 None-column behavior (manual collections, rules, dups-by-hash,
+name search) — no half-AI state exists.
+
+### 4.23.5 Surfaces
+
+(b)-decision 2026-09-17 — setup wizard gains one OPTIONAL, skippable "AI" step: preset
+picker → role checkboxes → base-url/key/model inputs → per-role test (`/api/setup/test`
+new target `llm`); values are stored as **DB settings rows** (NOT `.env`/envFileWriter —
+the hot-apply rule §4.2), so a skipped step costs nothing and a mid-install config is
+restart-free. Full config surface stays in admin (`/api/admin/config` + test + capability
+matrix); wizard is a shortcut to the same rows. SETUP.md documents preset table;
+capability matrix display (per-role probe chips) shared by both surfaces.
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/infrastructure/llmPresets.md`, `docs/spec/server/routes/setup.md`, `docs/spec/client/pages/Setup.md`
 
-## 5. Schema (PG-canonical; sqlite via transpiler). DDL delivery = single-file big-bang:
-ALL §5 tables (P0–P4) are authored into `001_initial_normalized_schema.sql` (rewritten in
-place; already-migrated dev DBs reset their `_schema_migrations` row once — see PLAN §6);
-operational/prod DB is migrated manually at the `ai-feature`→`dev` merge/deploy. Post-merge
-changes resume the numbered chain at `002_…`.
+## 5. Schema (PG-canonical; sqlite via transpiler). Single-file DDL: ALL §5 tables (P0–P4)
+live in `server/store/postgresql/ddl/001_initial_normalized_schema.sql`; the numbered chain
+resumes at `002_…` only after the platform merge. Dev-DB checksum recovery and the manual
+prod migration at the `ai-feature`→`dev` merge/deploy — see PLAN §6 DDL policy.
 
 All: snake*case, TEXT+CHECK enums, `created_at TIMESTAMPTZ DEFAULT NOW()`, indexes
 `<table>*<purpose>`.
@@ -1018,8 +1030,10 @@ created_at, UNIQUE(a,b))` (arbiter columns: advisory prefill on the §4.4 card, 
   auto-executes)
 - `file_suggestions(id, user_id, node_id, kind, reason JSONB, state, created_at,
 expires_at)`
-- `admin_reports(id, kind CHECK(gc|migration|failsafe|night_eval), status, payload JSONB,
-created_at)`
+- `admin_reports(id, kind CHECK(gc|migration|failsafe|night_eval|cleanup), status, payload
+JSONB, created_at)` — the startup fail-safe scan (`failsafe`) carries a
+`contentHashCompleteness` payload section (`{nullCount, checkedAt}`, T0.1 boot probe);
+row-level repair dispatches via `POST /api/admin/reports/:id/repair`.
 - `llm_models(id, role CHECK(embed|chat|vision|asr), provider, base_url_key, model_name,
 max_input_chars, chunk_budget, batch_size, reasoning CHECK(on|off) default 'off',
 enabled)` — reasoning is an experimental per-model switch only; all roles plan for off
@@ -1047,7 +1061,7 @@ PK(day,role))`
 - `query_parses(normalized_query PK, predicates JSONB, vector TEXT NULL, hit_count,
 created_at)` — NL cache + E2 query-embed cache; the normalized signature doubles as
   §4.22's `result_ref` key (no separate table)
-- `file_nodes.content_hash` populated in place (column exists, no DDL change).
+- `filecache.content_hash` populated in place (column exists, no DDL change).
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/store/ (collections/fileLikes/actionJournal/aiJobs/embeddings/embeddingsChunk/aiTag)`, `docs/spec/server/routes/ (collections/search/actions/admin)`
 

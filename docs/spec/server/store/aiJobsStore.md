@@ -19,7 +19,7 @@
 - **Implementations:** `server/store/repositories/{sqlite,postgres}/AiJobsRepository.{sqlite,postgres}.js`
 - **Conformance (L2):** `server/store/repositories/__tests__/AiJobsRepository.conformance.test.js`
 - **Facade test:** `server/domains/ai/__tests__/aiJobsStore.test.js`
-- **DDL source of truth:** `server/store/postgresql/ddl/003_ai.sql`; index `ai_jobs_claim`
+- **DDL source of truth:** `server/store/postgresql/ddl/001_initial_normalized_schema.sql`; index `ai_jobs_claim`
   over `(status, next_retry_at)` (§5).
 
 ### 2.2 Row shape

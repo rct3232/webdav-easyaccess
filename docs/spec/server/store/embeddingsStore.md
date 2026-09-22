@@ -20,7 +20,7 @@
 - **Implementations:** `server/store/repositories/{sqlite,postgres}/EmbeddingsRepository.{sqlite,postgres}.js`
 - **Conformance (L2):** `server/store/repositories/__tests__/EmbeddingsRepository.conformance.test.js`
 - **Facade test:** `server/domains/ai/__tests__/embeddingsStore.test.js`
-- **DDL source of truth:** `server/store/postgresql/ddl/003_ai.sql`. **Never** in tracked
+- **DDL source of truth:** `server/store/postgresql/ddl/001_initial_normalized_schema.sql`. **Never** in tracked
   DDL: the pgvector shadow table / sqlite vec0 virtual table — those are created and
   managed by the vectorStore adapter only (§4.13, CODING_STYLE.md Express Patterns).
 
@@ -52,7 +52,7 @@ filecache.content_hash` ⇒ `aiJobsStore.markSkipped(jobId)` — **no provider c
   write**. Determinism within a model version makes the `(content_hash, model_id)` pair
   sufficient for this idempotency (§4.20).
 - The stored `content_hash` records WHICH content the vector describes (drift detector;
-  DEF-25 populates `file_nodes.content_hash`).
+  DEF-25 populates `filecache.content_hash`).
 
 ### 2.5 Storage semantics & invariants
 

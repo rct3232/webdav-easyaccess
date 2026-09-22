@@ -20,7 +20,7 @@
 - **Implementations:** `server/store/repositories/{sqlite,postgres}/EmbeddingsChunkRepository.{sqlite,postgres}.js`
 - **Conformance (L2):** `server/store/repositories/__tests__/EmbeddingsChunkRepository.conformance.test.js`
 - **Facade test:** `server/domains/ai/__tests__/embeddingsChunkStore.test.js`
-- **DDL source of truth:** `server/store/postgresql/ddl/003_ai.sql`. The vec0/pgvector
+- **DDL source of truth:** `server/store/postgresql/ddl/001_initial_normalized_schema.sql`. The vec0/pgvector
   shadow carry chunk rows too, but as **never-tracked DDL** managed by vectorStore (§4.13).
 
 ### 2.2 Row shape

@@ -142,8 +142,7 @@ enforced on both backends):
   stores real `true/false`. The copy maps:
   - **→ PG:** `0 → false`, `1 → true`.
   - **→ sqlite:** `true → 1`, `false → 0`.
-    This is the only BOOLEAN column in the schema (`users.is_admin`,
-    `001_initial_normalized_schema.sql:20`).
+    This is the only BOOLEAN column in the schema (`users.is_admin`, DDL 001).
 - **Explicit-id inserts + sequence resync.** SERIAL-id tables (`users`, `file_nodes`,
   `permission_requests`) are inserted **with their explicit source `id`** so FK references stay
   intact. Afterwards the target sequences are resynced so new inserts do not collide:

@@ -50,7 +50,7 @@ future layer's job) — sending it never changes the response.
    the cache IS the `query_parses` row — signature = its PK (§4.22/§5) — via an ADDITIVE
    nullable column `vector TEXT` (serialized query embedding, model-keyed inside the
    signature's space component); the `predicates` column keeps its the corresponding docs step NL-parse meaning
-   untouched. DDL ships in `003_ai.sql` (DEF-25). On ANY
+   untouched. DDL ships in `001_initial_normalized_schema.sql` (DEF-25). On ANY
    provider failure/timeout/mid-switch error ⇒ degrade honestly: empty semantic section
 
 - `semantic_available:true` retained (config IS present) but `counts.semantic:0` —

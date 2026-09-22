@@ -418,24 +418,38 @@ extraction pipeline are reserved.
 Distribution cannot know which models an endpoint runs, so **an offered option is a complete
 feature bundle or is not offered** — visible-but-half-working is a defect, not a degradation.
 
-1. A **preset manifest** declares per provider family (llama.cpp, Ollama, OpenAI-compatible,
-   embedding-server class, …) _expected_ capabilities — text embedding, chat, vision chat, ASR
-   (image embedding retired: no consumer, §4.21) — plus budgets; providers are added as manifest
-   rows, never code branches.
-2. **The probe is final**: live flags = probe-verified ∩ configured; declared-but-failing ⇒ off,
-   with a declared-vs-probed admin card. **Probes use in-domain samples** (real speech, photos) —
-   out-of-domain probes confuse false negatives with false claims (both observed). User-visible
-   states are only ever complete-working or absent, never partial; unlike §4.13, a missing LLM
-   capability removes features while a missing database capability only slows them.
-3. The **capability map** gates UI: semantic search, seed collections, auto-create, near-dup, tag
-   matching ← text embedding; content features, parsing, LLM naming ← chat; captions ← vision chat;
-   transcription ← ASR. Absent capability ⇒ absent feature, never degraded.
-4. **Chat without an embedder is a legal deployment**: the vector core behaves exactly as the
-   no-LLM column; no half-AI state exists.
-5. **Surfaces**: the setup wizard gains one **optional, skippable AI step** (preset → roles →
-   endpoint/key/model → per-role test) storing ordinary database settings rows, never environment
-   files — skipping costs nothing and configuration stays restart-free (§4.2); admin keeps the full
-   surface, the wizard being a shortcut to the same rows.
+### 4.23.1 Preset manifest
+
+A **preset manifest** declares per provider family (llama.cpp, Ollama, OpenAI-compatible,
+embedding-server class, …) _expected_ capabilities — text embedding, chat, vision chat, ASR
+(image embedding retired: no consumer, §4.21) — plus budgets; providers are added as manifest
+rows, never code branches.
+
+### 4.23.2 The probe is final
+
+Live flags = probe-verified ∩ configured; declared-but-failing ⇒ off, with a
+declared-vs-probed admin card. **Probes use in-domain samples** (real speech, photos) —
+out-of-domain probes confuse false negatives with false claims (both observed).
+User-visible states are only ever complete-working or absent, never partial; unlike §4.13,
+a missing LLM capability removes features while a missing database capability only slows
+them.
+
+### 4.23.3 Capability map
+
+Gates UI: semantic search, seed collections, auto-create, near-dup, tag matching ← text
+embedding; content features, parsing, LLM naming ← chat; captions ← vision chat;
+transcription ← ASR. Absent capability ⇒ absent feature, never degraded.
+
+### 4.23.4 Chat without an embedder is a legal deployment
+
+The vector core behaves exactly as the no-LLM column; no half-AI state exists.
+
+### 4.23.5 Surfaces
+
+The setup wizard gains one **optional, skippable AI step** (preset → roles →
+endpoint/key/model → per-role test) storing ordinary database settings rows, never
+environment files — skipping costs nothing and configuration stays restart-free (§4.2);
+admin keeps the full surface, the wizard being a shortcut to the same rows.
 
 ---
 

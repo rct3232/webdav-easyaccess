@@ -19,7 +19,7 @@
 - **Implementations:** `server/store/repositories/{sqlite,postgres}/ActionJournalRepository.{sqlite,postgres}.js`
 - **Conformance (L2):** `server/store/repositories/__tests__/ActionJournalRepository.conformance.test.js`
 - **Facade test:** `server/store/__tests__/actionJournalStore.test.js` (infra, not a domain store)
-- **DDL source of truth:** `server/store/postgresql/ddl/002_collections.sql` — §5 row:
+- **DDL source of truth:** `server/store/postgresql/ddl/001_initial_normalized_schema.sql` — §5 row:
   `action_journal(id, domain, subject, subject_label, actor, action, payload JSONB,
 chain_seq, status, created_at, undone_at, expires_at)`; `UNIQUE(domain,subject,chain_seq)`.
 

@@ -20,7 +20,7 @@
 - **Implementations:** `server/store/repositories/{sqlite,postgres}/AiTagRepository.{sqlite,postgres}.js`
 - **Conformance (L2):** `server/store/repositories/__tests__/AiTagRepository.conformance.test.js`
 - **Facade test:** `server/domains/ai/__tests__/aiTagStore.test.js`
-- **DDL source of truth:** `server/store/postgresql/ddl/003_ai.sql` — §5 rows:
+- **DDL source of truth:** `server/store/postgresql/ddl/001_initial_normalized_schema.sql` — §5 rows:
   `tag_embeddings(tag, model_id→llm_models, vector, updated_at, PK(tag,model_id))`,
   `tag_parents(child PK, parent, source CHECK(auto|admin), created_at)`.
 

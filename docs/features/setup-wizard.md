@@ -130,7 +130,7 @@ modify a `.env` file.
    facade (`server/store/repositories/SettingsRepository.js` with `sqlite/` and `postgres/`
    implementations, executed through the `DbExecutor` seam); DDL
    `settings(key, value, updated_at)` at
-   `server/store/postgresql/ddl/001_initial_normalized_schema.sql:31-35`).
+   `server/store/postgresql/ddl/001_initial_normalized_schema.sql` (`settings` table).
 
 The two layers are independent: the wizard/CLI write the optional `JWT_SECRET` into `.env`
 (only when the operator supplies one) plus the DB `settings` rows, while the existing admin

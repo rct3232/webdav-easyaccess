@@ -25,7 +25,7 @@
 > - **Interface + factory:** `server/store/repositories/CollectionsRepository.js`
 > - **Conformance (L2):** `server/store/repositories/__tests__/CollectionsRepository.conformance.test.js`
 > - **Facade test:** `server/domains/collections/__tests__/collectionsStore.test.js` (recentFiles precedent)
-> - **DDL source of truth:** `server/store/postgresql/ddl/002_collections.sql`
+> - **DDL source of truth:** `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
 >   (PG-canonical; sqlite via the transpiler). This spec does not duplicate DDL text.
 
 ### 2.1 Journal discipline

@@ -22,6 +22,13 @@ The original monolithic `server/routes/admin.js` has been split into separate ro
 | config         | `server/domains/admin/routes/config.js`         | `/api/admin`                           | `server/domains/admin/routes/__tests__/config.test.js`    |
 | maintenance    | `server/domains/admin/routes/maintenance.js`    | `/api/admin`                           | `server/domains/admin/routes/__tests__/admin.test.js`     |
 | migration      | `server/domains/admin/routes/migration.js`      | `/api/admin`                           | `server/domains/admin/routes/__tests__/migration.test.js` |
+| reports        | `server/domains/admin/routes/reports.js`        | `/api/admin`                           | `server/domains/admin/routes/__tests__/reports.test.js`   |
+
+Mounting note: `server/index.js` mounts the admin route modules directly. The `reports`
+module is additionally mounted by the maintenance module router
+(`maintenance.js`: `router.use('/reports', require('./reports'))`) so the T0.8 endpoints
+require no `server/index.js` edit (that file is owned by another workstream);
+consolidating it into an `index.js` mount later is an optional cleanup.
 
 ### 2.2 Route List
 
@@ -85,6 +92,24 @@ both with a 202 + poll job contract. Services: `domains/admin/services/migration
 
 Destination config fields and the authoritative blob-migration rules are documented in `docs/spec/server/tools/blob-migration.md`.
 
+#### 2.2.6 reports (`/api/admin`)
+
+Admin reports (§4.14 Tier A): the persisted `admin_reports` runs (GC, startup fail-safe
+scan + boot content-hash completeness probe, cleanup) become a read-only list with
+action-dispatched row repair. Rows are written best-effort by the shared writer
+(`domains/admin/services/adminReportsService.js`): `POST /cleanup/orphaned` persists its
+§2.2.3.1 response as `kind='cleanup'` before returning 200, the scheduled GC cycle
+persists `kind='gc'` rows (`infrastructure/maintenanceScheduler.js`), and the boot
+completeness probe persists `kind='failsafe'` with a `contentHashCompleteness` payload
+section. The `admin_reports.kind` CHECK enum is `gc|migration|failsafe|night_eval|cleanup`
+(§5); `status` is `ok|partial`.
+
+| Method | Path                  | Auth          | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------ | --------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/reports`            | Token + Admin | Report list, newest first. Read-only; row-level repair actions are dispatched via `POST /reports/:id/repair` or reuse the existing §2.2.3 endpoints.                                                                                                                                                                                                                                                                                                                                                                                                           |
+| GET    | `/reports/:id`        | Token + Admin | Single report row (same shape as the list entries); 404 when the row does not exist.                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| POST   | `/reports/:id/repair` | Token + Admin | Action-dispatched row repair; returns the re-rendered row. `content_hash` (kind-dispatched: `failsafe` rows carrying a `contentHashCompleteness` payload section only) backfills ALL NULL `filecache.content_hash` (idempotent `WHERE content_hash IS NULL`; streams blob hashes per node; progress reflected on the row). `repair-sync` delegates to the §2.2.3 fail-safe repair core (`{ nodeId, repairAction }`); `perm-delete` delegates to the §2.2.3 permanent-delete purge core (`{ nodeId }`). Unknown/undispatchable rows ⇒ 404/400 per §2.4 reports. |
+
 #### 2.2.5 config (`/api/admin`)
 
 Effective-configuration management (env → DB → defaults registry). Service: the config resolver
@@ -146,6 +171,12 @@ Effective-configuration management (env → DB → defaults registry). Service: 
 - **POST /config/sync-from-env:** 200: sync result (writes env-sourced non-T0 values as plaintext, invalidates T2 cache).
 - **GET /health:** 200: `{ backends }` per-backend tracker state.
 
+#### reports
+
+- **GET /reports:** 200: `{ reports: [{ id, kind, status, payload, created_at }] }` — newest first (`created_at DESC, id DESC`); `payload` is the persisted JSON doc (parsed object on both backends). 403 for non-admin.
+- **GET /reports/:id:** 200: one row, same shape as the list entries; 404 when the row does not exist; 403 for non-admin.
+- **POST /reports/:id/repair:** Body: `{ action: 'content_hash' | 'repair-sync' | 'perm-delete', nodeId?, repairAction? }`. 200: `{ messageCode, report, result? }` — `report` is the re-rendered row; `result` carries the underlying action result for the `repair-sync`/`perm-delete` delegations. 404 for an unknown report id (`admin.reportNotFound`); 400 for an undispatchable row (`admin.repairNotAvailable` — unknown action, or `content_hash` requested on a non-`failsafe` row / a `failsafe` row without a `contentHashCompleteness` payload section); the `repair-sync`/`perm-delete` delegations surface the §2.2.3 status codes (400/404/409) unchanged. 403 for non-admin.
+
 ### 2.5 Service Layers
 
 #### userService (`domains/admin/services/userService.js`)
@@ -159,10 +190,28 @@ Effective-configuration management (env → DB → defaults registry). Service: 
 
 #### cleanupService (`domains/admin/services/cleanupService.js`)
 
-| Function                            | Description                                                                                                                                    |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `cleanupOrphanedData()`             | Removes orphaned metadata (e.g. permission/share rows referencing missing nodes) and stale permission requests from the DB.                    |
-| `ensureHomeOwnerAdminForAllUsers()` | Ensures each non-admin user has admin on their home node; removes redundant self-grants on the user's own subtree (home-root admin preserved). |
+| Function                            | Description                                                                                                                                                                                                                                                                                                                                                                                       |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cleanupOrphanedData()`             | Removes orphaned metadata (e.g. permission/share rows referencing missing nodes) and stale permission requests from the DB; persists the full result as an `admin_reports` row (`kind='cleanup'`) before returning.                                                                                                                                                                               |
+| `ensureHomeOwnerAdminForAllUsers()` | Ensures each non-admin user has admin on their home node; removes redundant self-grants on the user's own subtree (home-root admin preserved). Boot wiring (T0.1): also kicks the admin-reports boot completeness probe fire-and-forget (non-blocking, never affects the result) — the boot setImmediate hook in `server/index.js` calls this function, so the probe needs no separate boot edit. |
+
+#### adminReportsService (`domains/admin/services/adminReportsService.js`)
+
+Best-effort `admin_reports` plumbing + the T0.1 content-hash completeness machinery. The
+`admin_reports` store is `store/adminReportsStore.js` (facade over
+`AdminReportsRepository`, sqlite/postgres twins). Writes honour `WEA_SKIP_ADMIN_REPORTS`
+(all writes no-op) and never fail their caller. Writer plumbing (T0.7b, unchanged):
+`ADMIN_REPORT_KINDS` = `gc|migration|failsafe|night_eval|cleanup` constant,
+`ADMIN_REPORT_STATUSES` = `ok|partial`, `createAdminReportsWriter({ insertReport })`
+factory + shared `getAdminReportsWriter()` singleton (now wired to the store), and
+`resolveAdminReportStatus(result)` — a missing/throwing store write is caught,
+warn-logged and returns `null`, so reporting never fails GC/cleanup/boot.
+
+| Function                            | Description                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `runContentHashCompletenessProbe()` | Boot completeness probe (T0.1): non-blocking `COUNT(*) WHERE content_hash IS NULL` via FileNodeRepository; warn-logs when `nullCount > 0` and persists a `kind='failsafe'` row with `payload.contentHashCompleteness = { nullCount, checkedAt }` (`status = 'partial'` while NULL rows exist, else `'ok'`). Never throws to the caller.                                                                                                        |
+| `backfillContentHashes(...)`        | Streams `filecache` rows with `content_hash IS NULL` in batches; per node downloads the blob (S3 active object key / WebDAV display path; trashed WebDAV rows resolve to their `/.wea-trash/` path) and hashes it (`sha256HexLower`), then updates `WHERE content_hash IS NULL` only — idempotent, only NULL rows are ever touched. Missing blobs are recorded as errors, never fatal. Returns `{ backfilled, nullCount, errors, checkedAt }`. |
+| `repairAdminReport(row, params)`    | Dispatch table for `POST /reports/:id/repair`: `content_hash` (failsafe rows with the section only — runs the backfill and re-renders the row), `repair-sync` (§2.2.3 fail-safe repair core), `perm-delete` (§2.2.3 trash purge core). Throws 404 `admin.reportNotFound` / 400 `admin.repairNotAvailable`.                                                                                                                                     |
 
 #### migrationService (`domains/admin/services/migrationService.js`)
 
@@ -183,6 +232,10 @@ Effective-configuration management (env → DB → defaults registry). Service: 
 - [ ] Cleanup endpoints return results
 - [ ] Migration: start returns 202 `{ jobId }`; poll job status; cancel a running job
 - [ ] Migration: non-admin gets 403; invalid payload gets 400; running job conflict gets 409; unknown job gets 404
+- [ ] Admin reports: non-admin gets 403 on `GET /reports` and `POST /reports/:id/repair`; the list is newest-first and `payload` is the persisted JSON doc
+- [ ] A `cleanup/orphaned` run produces exactly one new `admin_reports` row with the same result body the response returned
+- [ ] `POST /reports/:id/repair` on a `failsafe` content-hash row backfills all NULL `filecache.content_hash`, re-renders the row with `nullCount: 0`, is idempotent (re-running changes nothing) and only ever touches `content_hash IS NULL` rows
+- [ ] The boot completeness probe warn-logs when NULL rows exist and persists a `kind='failsafe'` row with the `contentHashCompleteness` section (`{ nullCount, checkedAt }`)
 
 ---
 
@@ -192,23 +245,15 @@ Effective-configuration management (env → DB → defaults registry). Service: 
 
 ### 3.1 Routes (target)
 
-| Method | Path       | Auth          | Lands with  | Description                                                                                                                                                                                                                                                            |
-| ------ | ---------- | ------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/reports` | Token + Admin | P0 (DEF-25) | Admin report list: `200 { reports: [{ id, kind, status, payload, created_at }] }` — persisted `admin_reports` runs (GC, startup fail-safe orphan/pending scan, cleanup, future maintenance acts). Read-only; row-level repair actions reuse existing §2.2.3 endpoints or dispatch via `POST /:id/repair`. |
-| POST   | `/reports/:id/repair` | Token + Admin | P0 (DEF-25) | Kind-dispatched row repair: returns the re-rendered row (`202`-style async allowed for long repairs). Known action: `failsafe` rows with a `contentHashCompleteness` section (`{nullCount, checkedAt}`) ⇒ backfill ALL NULL `filecache.content_hash` (idempotent `WHERE content_hash IS NULL`; streams blob hashes; progress reflected on the row). Unknown/undispatchable row ⇒ 400 (`admin.repairNotAvailable`, registered in shared-contracts at the implementation docs step). |
+All P0 (DEF-25) route rows have landed and moved to §2.2.6.
 
 ### 3.2 Field/behavior additions (target)
 
-- **(P0, DEF-25)** `POST /cleanup/orphaned` **persists its §2.2.3.1 response to `admin_reports`** (`kind='cleanup'`, `status` = ok/partial with `errors` count, full result `payload`) before returning 200 — same for the scheduled GC run in `maintenanceScheduler` (`kind='gc'`); later reads via `GET /reports` (no console-only reports anymore, §4.14 Tier A). **Plumbing (T0.7b):** the write goes through the best-effort report writer `server/domains/admin/services/adminReportsService.js` (`ADMIN_REPORT_KINDS` = `gc|migration|failsafe|night_eval|cleanup` constant, `ADMIN_REPORT_STATUSES` = `ok|partial`, `createAdminReportsWriter({ insertReport })` factory + shared `getAdminReportsWriter()` singleton, `resolveAdminReportStatus(result)` helper). The writer is inert until the `admin_reports` store function is wired (T0.2 owns the DDL, T0.8 the store/routes): a missing/throwing `insertReport` (e.g. table not yet migrated) is caught, warn-logged and returns `null` — reporting never fails GC/cleanup/boot. Test seam: `WEA_SKIP_ADMIN_REPORTS` (truthy ⇒ all writes no-op), same idiom as `WEA_SKIP_GC_SCHEDULER`.
-- **(P0, DEF-25)** The startup fail-safe scan persists its row with `kind='failsafe'` (wired in `maintenanceScheduler.runStartupFailSafeRecovery`); its payload gains a `contentHashCompleteness` section (`{nullCount, checkedAt}`) from the T0.1 boot probe (non-blocking `COUNT(*) WHERE content_hash IS NULL` + warn log — boot is never blocked). Repair = backfill ALL NULL `filecache.content_hash` via `POST /reports/:id/repair` (idempotent). The `admin_reports.kind` CHECK enum is `gc|migration|failsafe|night_eval|cleanup` (§5 — `cleanup` regularized into the enum).
 - **(P0, DEF-25)** **`probeLlm` slot registration (plumbing only; the `target: 'llm'` route acceptance itself is the P1 row below):** `server/infrastructure/backendProbe.js` exposes `registerProbeTarget(target, handler)` + the reserved `PROBE_TARGET_LLM = 'llm'` slot. Registered handlers win over the built-in targets; an unregistered reserved slot keeps the existing 400 `serverErrors.setup.testFailed` "Unsupported target" behavior. T1.1 registers the LLM probe suite (`llmAdapter.md` §2.3 `probeLlm()`) without editing `backendProbe.js`; probe outcomes land in the `ai.<role>` tracker rows (`backendHealth.md`).
 - **(P1, DEF-25)** `POST /config/test` accepts `target: 'llm'` with per-role pending values; outcome recorded to the backend-health tracker via the `probeLlm` slot (registered P0/DEF-25) and rendered as **per-role probe chips** by the admin config UI. Probe failure ≠ save failure (test-only endpoint semantics unchanged).
 - **(P1, DEF-25/DEF-25)** `GET /health` (`backends` snapshot) gains tracker rows: **`vectorOps: 'native' | 'fallback_js'`** — a **performance warning only, never an AI-feature gate** (§4.13: fallback keeps every feature on) — and **`ai.<role>` probe states** (`embed`/`chat`: `not_configured | probe_failed(reason) | partial | ok`, §4.12; hot re-probe on config change). Consumed by the health card and the AI governance panel (DEF-25, P4); never exposed on the public health/`settings/public` surface beyond the existing `ai:{embed,chat}` booleans.
 
 ### 3.3 Verification (appends §2.7)
 
-- [ ] (target) Non-admin `GET /reports` → 403; list is newest-first and `payload` is the persisted JSON doc.
-- [ ] (target) A `cleanup/orphaned` run produces exactly one new `admin_reports` row with the same result body the response returned.
 - [ ] (target) `config/test` with `target:'llm'` updates the matching `ai.<role>` tracker row only (per-role isolation).
 - [ ] (target) `vectorOps=fallback_js` appears in `/health` yet no AI feature endpoint refuses service because of it.
-- [ ] (target) `POST /reports/:id/repair` on a `failsafe` content-hash row backfills all NULL `filecache.content_hash` and the row re-renders with `nullCount: 0`.

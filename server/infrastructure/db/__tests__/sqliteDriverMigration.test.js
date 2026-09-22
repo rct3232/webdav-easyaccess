@@ -95,9 +95,7 @@ describe('sqlite driver migration (node:sqlite, T0.12)', () => {
       );
       expect(Number(byPlainNumber.rows[0].n)).toBe(0);
     });
-  });
 
-  describe('historical bind-value coercion preserved', () => {
     it('binds Date values as ISO strings via executor.run (sqlite3-npm era behavior)', async () => {
       const executor = require('@server/infrastructure/db/sqliteExecutor');
       const createdAt = new Date('2026-01-02T03:04:05.678Z');

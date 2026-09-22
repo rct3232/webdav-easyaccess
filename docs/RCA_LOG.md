@@ -576,3 +576,8 @@ IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode repor
   added to `normalizeBindValue` + a bind-coercion contract test in
   `sqliteDriverMigration.test.js` + storage.md normalization rule updated (docs-first).
   Verified: the 4 failing suites + both T0.2 schema suites = 6 suites / 88 tests green.
+  Follow-up (same fix branch, Case B): the new bind-coercion test was initially placed in a
+  sibling describe WITHOUT the suite's temp-DB beforeAll, so it silently wrote its fixture row
+  into the default dev DB (`data/webdav.db`) — first run passed, second run failed with
+  `UNIQUE constraint failed: locks.lock_name_hash`. Moved the test into the shared beforeAll
+  describe of `sqliteDriverMigration.test.js`; verified no leftover rows in the dev DB.

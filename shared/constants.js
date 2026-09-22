@@ -68,6 +68,15 @@ const TEXT_EXTENSIONS = [
   'sh',
 ];
 
+const USAGE_ACTION = {
+  OPEN: 'open',
+  DOWNLOAD: 'download',
+  PREVIEW: 'preview',
+  SEARCH_HIT: 'search_hit',
+  LIKE: 'like',
+  ALL: ['open', 'download', 'preview', 'search_hit', 'like'],
+};
+
 module.exports = {
   PERMISSIONS,
   HTTP_STATUS,
@@ -77,4 +86,5 @@ module.exports = {
   VIDEO_EXTENSIONS,
   AUDIO_EXTENSIONS,
   TEXT_EXTENSIONS,
+  USAGE_ACTION,
 };

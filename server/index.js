@@ -177,6 +177,7 @@ app.use('/api/share-links', setupModeGuardInstance, require('./domains/sharing/r
 app.use('/api/share', setupModeGuardInstance, require('./domains/sharing/routes/sharePublic'));
 app.use('/api/recent-files', setupModeGuardInstance, require('./domains/recentFiles/routes'));
 app.use('/api/collections', setupModeGuardInstance, require('./domains/collections/routes'));
+app.use('/api/actions', setupModeGuardInstance, require('./domains/actions/routes'));
 
 app.use('/api', require('./infrastructure/healthRoutes'));
 
@@ -362,12 +363,15 @@ async function runBoot() {
           const {
             runStartupFailSafeRecovery,
             startGcScheduler,
+            startUsageRollupScheduler,
           } = require('./infrastructure/maintenanceScheduler');
+          const { getUsageService } = require('./infrastructure/usageService');
           const composition = getComposition();
           runStartupFailSafeRecovery({ failSafeService: composition.failSafeService })
             .then(() => {})
             .catch((err) => console.error('Fail-safe recovery on startup failed:', err));
           startGcScheduler({ gcService: composition.gcService });
+          startUsageRollupScheduler({ usageService: getUsageService() });
         } catch (err) {
           const { setup_complete } = computeSetupStatus(process.env);
           if (!setup_complete) {

@@ -263,7 +263,7 @@ config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
 | Wave | Tasks (parallel) | Entry condition | RED-first test targets | Status |
 | ---- | ---------------- | --------------- | ---------------------- | ------ |
 | 0 | T0.2 ∥ T0.12 ∥ T0.7b (∥ T0.11 if capacity) | none (roots) | T0.2: 3 conformance twins + dual-dialect §5 table-presence; T0.12: node:sqlite driver + BigInt PK binding; T0.7b: en/ko i18n key mirror + settings/flags exposure | `[done]` — T0.11 carried into Wave 2 |
-| 1 | T0.3 ∥ T0.6 ∥ T0.7 ∥ T0.8 (+ T0.1 absorbed) | T0.2 + T0.7b merged | T0.3: camelCase req / snake_case res + activity_score fallback sort; T0.8: NULL content_hash backfill idempotency | T0.3 `[done]` (`feature/t03-collections-crud`); others `[todo]` |
+| 1 | T0.3 ∥ T0.6 ∥ T0.7 ∥ T0.8 (+ T0.1 absorbed) | T0.2 + T0.7b merged | T0.3: camelCase req / snake_case res + activity_score fallback sort; T0.8: NULL content_hash backfill idempotency | `[done]` |
 | 2 | T0.4 ∥ T0.5 ∥ T0.9 ∥ T0.11 (carried from Wave 0) | T0.3 API surface (client) / T0.2 (T0.9) | component+hook tests; T0.9 hash-first dup (NULL never forms a group), derived tags v1 | `[todo]` |
 | 3 | T0.10 → P0 exit gate | T0.9 + T0.7 + T0.8 merged | dashboard blocks per §4.16 | `[todo]` |
 
@@ -288,6 +288,15 @@ config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
   `content_hash` — write-side population exists only at the blob-migration commit points,
   and per §4.1 the upload-point population rides the ai_jobs enqueue task; the probe +
   backfill cover the gap until that lands.
+- **Wave-1 execution (2026-09-22)**: T0.3/T0.6/T0.7/T0.8 executed in parallel via isolated
+  worktrees and merged in T0.3→T0.6→T0.7→T0.8 order — `feature/t03-collections-crud`
+  (6 commits), `feature/t06-usage-activity-rollup` (3), `feature/t07-actions-feed-undo` (5),
+  `feature/t08-admin-reports-repair` (3). Orchestrator integration: the `/api/actions` mount
+  and the `startUsageRollupScheduler` boot wiring in `server/index.js`; `USAGE_ACTION` enum
+  added to `shared/constants.js` (consumed by `usageService`). Gates: server `test:ci`
+  117 suites / 2229 tests, client `test:ci` 164 suites / 1494 tests, `test:ci:pg:adapters`
+  22 suites / 314 tests — all green. Deferred follow-ups tracked as DEF-26
+  (`docs/IMPROVEMENT_PLAN.md`).
 - **Wave-0 spec debt found during planning (2026-09-22, resolved in the T0.12 PR)**: §6/T0.12
   said the sqlite driver is confined to `db/sqliteExecutor.js`, but the real `sqlite3` npm
   sites are `store/storage.js`, `metadataMigrationService.js`, `sqliteSchemaInit.js`,

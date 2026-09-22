@@ -18,7 +18,8 @@ const { ITEM_WEIGHTS, HALF_LIFE_DAYS, applyItemAccumulator } = require('./usage/
 const DEFAULT_EVENT_RETENTION_DAYS = 90;
 
 // Mirrors the usage_events.action CHECK enum (§3.4 usage-signal kinds).
-const USAGE_ACTIONS = Object.freeze(['open', 'download', 'preview', 'search_hit', 'like']);
+const { USAGE_ACTION } = require('@webdav-easyaccess/shared/constants');
+const USAGE_ACTIONS = Object.freeze(USAGE_ACTION.ALL);
 
 /**
  * Factory. All IO through DI seams (usageStore) — tests inject fakes; the

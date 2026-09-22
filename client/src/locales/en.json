@@ -220,7 +220,10 @@
     "file": "File",
     "restore": "Restore",
     "purge": "Delete permanently",
-    "emptyTrash": "Empty trash"
+    "emptyTrash": "Empty trash",
+    "undo": "Undo",
+    "undoDone": "{{count}} undone",
+    "undoDoneMixed": "{{undone}} undone, {{skipped}} skipped (state changed since)"
   },
   "dialogs": {
     "shareLink": "Share link",

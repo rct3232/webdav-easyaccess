@@ -4,7 +4,7 @@
  * @see docs/TESTING_STRATEGY.md
  */
 import React from 'react';
-import { screen } from '@testing-library/react';
+import { screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '../../../test-utils';
 import UndoToast from '../UndoToast';
@@ -33,16 +33,22 @@ describe('UndoToast', () => {
 
   it('renders no button when action is null (report-only path)', () => {
     renderWithProviders(
-      <UndoToast show text="1 item permanently deleted" type="success" action={null} onClose={jest.fn()} />
+      <UndoToast
+        show
+        text="1 item permanently deleted"
+        type="success"
+        action={null}
+        onClose={jest.fn()}
+      />
     );
 
     expect(screen.getByText('1 item permanently deleted')).toBeInTheDocument();
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    // no UNDO action button (the Alert's own close button is not the action)
+    expect(screen.queryByTestId('undo-toast-action')).not.toBeInTheDocument();
   });
 
   it('disabled action blocks clicks without unmounting the label', async () => {
     const onAction = jest.fn();
-    const user = userEvent.setup();
 
     renderWithProviders(
       <UndoToast
@@ -55,7 +61,8 @@ describe('UndoToast', () => {
 
     const button = screen.getByRole('button', { name: 'Undo' });
     expect(button).toBeDisabled();
-    await user.click(button);
+    // disabled buttons swallow clicks (pointer-events: none) — click ignored
+    fireEvent.click(button);
     expect(onAction).not.toHaveBeenCalled();
     expect(screen.getByText('Add to collection completed')).toBeInTheDocument();
   });
@@ -64,7 +71,12 @@ describe('UndoToast', () => {
     jest.useFakeTimers();
     try {
       renderWithProviders(
-        <UndoToast show text="Moved" action={{ label: 'Undo', onAction: jest.fn() }} onClose={jest.fn()} />
+        <UndoToast
+          show
+          text="Moved"
+          action={{ label: 'Undo', onAction: jest.fn() }}
+          onClose={jest.fn()}
+        />
       );
 
       jest.advanceTimersByTime(60000);
@@ -79,7 +91,12 @@ describe('UndoToast', () => {
     const user = userEvent.setup();
 
     renderWithProviders(
-      <UndoToast show text="Rename completed" action={{ label: 'Undo', onAction: jest.fn() }} onClose={onClose} />
+      <UndoToast
+        show
+        text="Rename completed"
+        action={{ label: 'Undo', onAction: jest.fn() }}
+        onClose={onClose}
+      />
     );
 
     await user.click(screen.getByLabelText('Close'));

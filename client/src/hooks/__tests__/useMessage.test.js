@@ -233,16 +233,22 @@ describe('useMessage', () => {
     const { result } = renderHook(() => useMessage());
 
     act(() => {
-      result.current.showMessage('Move completed', 'success', null, {
-        labelKey: 'actions.undo',
-        onClick: jest.fn(),
-      }, 'move');
+      result.current.showMessage(
+        'Move completed',
+        'success',
+        null,
+        {
+          labelKey: 'actions.undo',
+          onClick: jest.fn(),
+        },
+        'move'
+      );
     });
 
     expect(result.current.message.icon).toBe('move');
   });
 
-  it('without an action, showMessage keeps today\'s duration behavior', () => {
+  it("without an action, showMessage keeps today's duration behavior", () => {
     const { result } = renderHook(() => useMessage());
 
     act(() => {

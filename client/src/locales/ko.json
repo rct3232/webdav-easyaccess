@@ -220,7 +220,10 @@
     "file": "파일",
     "restore": "복원",
     "purge": "영구삭제",
-    "emptyTrash": "휴지통 비우기"
+    "emptyTrash": "휴지통 비우기",
+    "undo": "실행 취소",
+    "undoDone": "{{count}}개 되돌림",
+    "undoDoneMixed": "{{undone}}개 되돌림, {{skipped}}개 건너뜀 (이후 변경됨)"
   },
   "dialogs": {
     "shareLink": "공유 링크",

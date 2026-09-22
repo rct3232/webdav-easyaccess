@@ -10,7 +10,10 @@ import { useUndoToast } from '../useUndoToast';
 
 jest.mock('../../i18n', () => ({
   __esModule: true,
-  default: { t: jest.fn((key, params) => `${key}${params ? `:${JSON.stringify(params)}` : ''}`) },
+  // plain function: CRA's resetMocks:true strips jest.fn implementations
+  default: {
+    t: (key, params) => `${key}${params ? `:${JSON.stringify(params)}` : ''}`,
+  },
 }));
 
 const OK_UNDO = {
@@ -95,7 +98,9 @@ describe('useUndoToast', () => {
     };
     const { result } = setup({ gateway });
 
-    act(() => result.current.undo.showUndoToast({ actionId: 42, text: 'Add completed (12 items)' }));
+    act(() =>
+      result.current.undo.showUndoToast({ actionId: 42, text: 'Add completed (12 items)' })
+    );
     await clickUndo(result);
 
     expect(result.current.message.message.text).toContain('actions.undoDoneMixed');
@@ -125,7 +130,9 @@ describe('useUndoToast', () => {
       laterChanges: 2,
     });
 
-    await result.current.undo.cascadeConfirm.confirm();
+    await act(async () => {
+      await result.current.undo.cascadeConfirm.confirm();
+    });
 
     expect(gateway.undoAction).toHaveBeenLastCalledWith(5, { confirmCascade: true });
     expect(result.current.undo.cascadeConfirm).toBeNull();
@@ -146,7 +153,9 @@ describe('useUndoToast', () => {
     await clickUndo(result);
     expect(result.current.undo.cascadeConfirm).not.toBeNull();
 
-    result.current.undo.cascadeConfirm.cancel();
+    act(() => {
+      result.current.undo.cascadeConfirm.cancel();
+    });
     expect(result.current.undo.cascadeConfirm).toBeNull();
     expect(gateway.undoAction).toHaveBeenCalledTimes(1);
   });
@@ -198,9 +207,12 @@ describe('useUndoToast', () => {
   it('busy blocks a second undo while one is in flight', async () => {
     let release;
     const gateway = {
-      undoAction: jest
-        .fn()
-        .mockImplementation(() => new Promise((resolve) => { release = resolve; })),
+      undoAction: jest.fn().mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          })
+      ),
     };
     const { result } = setup({ gateway });
 
@@ -250,7 +262,9 @@ describe('useUndoToast', () => {
     const { result } = setup();
 
     const stale = Date.now() - 25 * 3600 * 1000;
-    act(() => result.current.undo.showUndoToast({ actionId: 9, text: 'Old command', shownAt: stale }));
+    act(() =>
+      result.current.undo.showUndoToast({ actionId: 9, text: 'Old command', shownAt: stale })
+    );
 
     expect(result.current.message.message.show).toBe(true);
     expect(result.current.message.message.action).toBeNull();

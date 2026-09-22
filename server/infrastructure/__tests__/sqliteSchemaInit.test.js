@@ -1,34 +1,33 @@
-const sqlite3 = require('sqlite3').verbose();
+const { DatabaseSync } = require('node:sqlite');
 const fs = require('fs');
 const path = require('path');
 
 const { convertPostgresToSqlite } = require('../sqliteSchemaInit');
 
 function openMemoryDb() {
-  return new Promise((resolve, reject) => {
-    const db = new sqlite3.Database(':memory:', (err) => {
-      if (err) reject(err);
-      else resolve(db);
-    });
-  });
+  return new DatabaseSync(':memory:');
 }
 
 function runSql(db, sql) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, (err) => (err ? reject(err) : resolve()));
-  });
+  try {
+    db.exec(sql);
+    return Promise.resolve();
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 function queryDb(db, sql) {
-  return new Promise((resolve, reject) => {
-    db.all(sql, (err, rows) => (err ? reject(err) : resolve(rows || [])));
-  });
+  return Promise.resolve(db.prepare(sql).all() || []);
 }
 
 function closeDb(db) {
-  return new Promise((resolve, reject) => {
-    db.close((err) => (err ? reject(err) : resolve()));
-  });
+  try {
+    db.close();
+    return Promise.resolve();
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 // ---------------------------------------------------------------------------

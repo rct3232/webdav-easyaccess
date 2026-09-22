@@ -35,25 +35,53 @@
 
 #### SQLite Helpers
 
-| Method                | Signature                  | Description                             |
-| --------------------- | -------------------------- | --------------------------------------- |
-| getSqliteConnection   | () => Database             | Returns node-sqlite3 Database instance  |
-| withSqliteTransaction | (callback) => Promise\<T\> | Executes callback in SQLite transaction |
-| closeSqliteDb         | () => void                 | Close SQLite database                   |
+| Method                | Signature                  | Description                                                          |
+| --------------------- | -------------------------- | -------------------------------------------------------------------- |
+| getSqliteConnection   | () => DatabaseSync         | Returns the cached `node:sqlite` `DatabaseSync` instance (built-in driver, Node ≥ 24) |
+| withSqliteTransaction | (callback) => Promise\<T\> | Executes callback in SQLite transaction                              |
+| closeSqliteDb         | () => void                 | Close SQLite database                                                |
 
-> **(implementation tracked as DEF-25) Driver change: `sqlite3` npm → built-in `node:sqlite`.**
-> Decided contract (docs/features/collections-platform.md §4.13, CODING_STYLE.md Express Patterns/§7 DEF-25): the driver swap is confined
-> to the `db/sqliteExecutor.js` seam (+ these connection helpers), so the storage surface
-> above keeps its exported semantics; `getSqliteConnection` will return a
-> `node:sqlite` `DatabaseSync` instance instead of a sqlite3 `Database`. Binding
-> requirements: **Node ≥ 24** (product floor — `node:sqlite` with
-> `enableLoadExtension`/`loadExtension` is the prerequisite for the sqlite-vec `vec0`
-> native vector path); the driver's **ExperimentalWarning is tolerated** (suppressed at
-> boot, not treated as failure); **integer PK bindings must be passed as `BigInt`** (plain
-> JS numbers bind as doubles — vec0 PK correctness depends on it). The current
-> `sqlite3`-based description remains accurate **until the migration lands**; the executor
-> behavior suite must be green on both drivers at cutover. See also
-> `docs/spec/server/store/executor.md` §2.6.
+#### sqlite driver: `node:sqlite` (migrated in T0.12)
+
+The sqlite driver is the built-in **`node:sqlite`** module (`DatabaseSync`) — the `sqlite3`
+npm package has been removed from `server/package.json` (`engines.node` is `>=24` because
+`node:sqlite` requires it). **Complete driver-site list (do not add others):**
+
+- `server/store/storage.js` — the seam: `getSqliteConnection()` (opens and aliases the
+  cached `DatabaseSync` handle; `PRAGMA journal_mode = WAL` + `PRAGMA foreign_keys = ON`
+  at open), `closeSqliteDb()`, `sqliteQuery()` (prepare → `all` → `{ rows }`),
+  `sqliteRun()` (prepare → `run` → `{ changes, lastID }` from the driver's
+  `lastInsertRowid`), `withSqliteTransaction()` (unchanged promise-chain serialization).
+- `server/infrastructure/db/sqliteExecutor.js` — the executor over the seam
+  (`docs/spec/server/store/executor.md` §2.6).
+- `server/infrastructure/sqliteSchemaInit.js` — direct connection for the standalone
+  schema-init script (`openDatabaseAt`/`closeDatabase`/`runStatementsOn`).
+- `server/infrastructure/metadataPresence.js` — fresh short-lived probe connection.
+- `server/domains/admin/services/metadataMigrationService.js` — direct source/target
+  migration connections (readonly opens use `DatabaseSync(path, { readOnly: true })`).
+
+The earlier claim that the driver was "confined to `db/sqliteExecutor.js`" was wrong (PLAN
+§9 Wave-0 spec-debt note): the executor plus these three direct-connection sites are the
+complete surface. Repositories, store facades and routes never touch the driver — they see
+only the `storage.sqliteQuery`/`sqliteRun`/`withSqliteTransaction` promise shapes and the
+`DbExecutor` contract, both unchanged by the migration.
+
+Binding and behavior contract:
+
+- **Integer PK bindings MUST be passed as `BigInt`** (vec0-relevant — §4.13 of
+  `docs/features/collections-platform.md`): the `sqlite3` npm driver truncated BigInt
+  binds to their low 32 bits, while `node:sqlite` binds `BigInt` as exact 64-bit integers.
+- The helpers normalize bind values so historical sqlite3-npm coercion is preserved:
+  booleans bind as `1`/`0` and `undefined` binds as `NULL` (`node:sqlite` rejects both).
+- **Node ≥ 24** is the product floor; `db.enableLoadExtension(true)` /
+  `db.loadExtension(path)` are the prerequisite for the sqlite-vec `vec0` native vector
+  path (T1.4).
+- **`node:sqlite`'s ExperimentalWarning is tolerated** — it prints once per process when
+  the module first loads and is never a failure signal.
+- `DatabaseSync` is synchronous; the storage helpers keep their promise-returning shapes
+  (driver errors are rejections, never callbacks). Open failures now throw (logged, then
+  rethrown) from `getSqliteConnection()` instead of leaving a broken lazy handle; the
+  executor maps the failure through `mapDatabaseError` as before.
 
 #### Legacy Filesystem Helpers
 

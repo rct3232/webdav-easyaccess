@@ -19,7 +19,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const sqlite3 = require('sqlite3').verbose();
+const { DatabaseSync } = require('node:sqlite');
 
 const { applyPendingMigrations } = require('../../../../infrastructure/schemaManager');
 const { createMetadataMigrationService } = require('../metadataMigrationService');
@@ -102,34 +102,32 @@ class FakePg {
 // ---------------------------------------------------------------------------
 
 function openDb(dbPath, mode) {
-  return new Promise((resolve, reject) => {
-    if (mode === 'readonly') {
-      const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READONLY, (err) =>
-        err ? reject(err) : resolve(db)
-      );
-      return db;
-    }
-    const db = new sqlite3.Database(dbPath, (err) => (err ? reject(err) : resolve(db)));
-  });
+  if (mode === 'readonly') {
+    return new DatabaseSync(dbPath, { readOnly: true });
+  }
+  return new DatabaseSync(dbPath);
 }
 
 function run(db, sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
-      if (err) reject(err);
-      else resolve({ changes: this.changes, lastID: this.lastID });
-    });
-  });
+  const info = db.prepare(sql).run(...params);
+  return Promise.resolve({ changes: info.changes, lastID: info.lastInsertRowid });
 }
 
 function all(db, sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows || [])));
-  });
+  try {
+    return Promise.resolve(db.prepare(sql).all(...params) || []);
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 function closeDb(db) {
-  return new Promise((resolve, reject) => db.close((err) => (err ? reject(err) : resolve())));
+  try {
+    db.close();
+    return Promise.resolve();
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 async function createSchemaDb(dbPath) {

@@ -2,11 +2,7 @@
  * searchService unit tests (P0 name section; domain object + thrown bare codes).
  * @see docs/spec/server/services/searchService.md
  */
-const {
-  createTestDatabase,
-  createAuthenticatedTestUser,
-  dbQuery,
-} = require('@server/test-utils');
+const { createTestDatabase, createAuthenticatedTestUser, dbQuery } = require('@server/test-utils');
 const { createFileNodeService } = require('@server/service/fileNodeService');
 const { createFileNodesStore } = require('@server/store/fileNodesStore');
 const { createSearchService } = require('../searchService');
@@ -180,9 +176,7 @@ describe('searchService cap + recording', () => {
     const recorded = usageService.recordEvent.mock.calls.map((c) => c[0]);
     expect(recorded).toHaveLength(200);
     expect(new Set(recorded.map((e) => e.nodeId)).size).toBe(200);
-    expect(recorded.every((e) => e.action === 'search_hit' && e.userId === ctx.user.id)).toBe(
-      true
-    );
+    expect(recorded.every((e) => e.action === 'search_hit' && e.userId === ctx.user.id)).toBe(true);
   }, 30000);
 
   it('records one search_hit event per returned node through the default store path', async () => {

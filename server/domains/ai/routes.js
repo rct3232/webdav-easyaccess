@@ -70,7 +70,11 @@ router.post(
     }
     Promise.resolve()
       .then(() =>
-        getUsageService().recordEvent({ userId: req.user.full.id, nodeId, action: USAGE_ACTION.OPEN })
+        getUsageService().recordEvent({
+          userId: req.user.full.id,
+          nodeId,
+          action: USAGE_ACTION.OPEN,
+        })
       )
       .catch(() => {});
     res.status(204).end();

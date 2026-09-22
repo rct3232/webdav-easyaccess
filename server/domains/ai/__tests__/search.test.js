@@ -65,7 +65,10 @@ describe('POST /api/search validation', () => {
   it('rejects a missing query with 400 search.queryRequired', async () => {
     const { token } = await createUserWithRoot('validate');
 
-    const res = await request(app).post('/api/search').set('Authorization', `Bearer ${token}`).send({});
+    const res = await request(app)
+      .post('/api/search')
+      .set('Authorization', `Bearer ${token}`)
+      .send({});
 
     expect(res.status).toBe(400);
     expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.search.queryRequired);
@@ -160,7 +163,10 @@ describe('POST /api/search name section', () => {
   it('caps the name section at 200 rows with counts.name_truncated', async () => {
     const ctx = await createUserWithRoot('cap');
     for (let i = 0; i < 201; i += 1) {
-      await fileNodeService.createFile(ctx.root.id, `capped-report-${String(i).padStart(3, '0')}.txt`);
+      await fileNodeService.createFile(
+        ctx.root.id,
+        `capped-report-${String(i).padStart(3, '0')}.txt`
+      );
     }
 
     const res = await request(app)
@@ -218,7 +224,10 @@ describe('POST /api/search ACL scoping', () => {
     const folder = await fileNodeService.createDirectory(ownerCtx.root.id, 'shared-folder');
     const insideFolder = await fileNodeService.createFile(folder.id, 'shared-memo-inside.txt');
     const pointFile = await fileNodeService.createFile(ownerCtx.root.id, 'point-shared-file.txt');
-    const hiddenSibling = await fileNodeService.createFile(ownerCtx.root.id, 'not-shared-sibling.txt');
+    const hiddenSibling = await fileNodeService.createFile(
+      ownerCtx.root.id,
+      'not-shared-sibling.txt'
+    );
 
     await grantTestPermissionByNodeId({
       userId: otherCtx.user.id,

@@ -956,7 +956,11 @@ describe('FileNodeRepository conformance', () => {
       await addClosure(null, ownerRoot.id);
       grantedFolder = await repo.createNode(ownerRoot.id, `${suffix}-shared-folder`, 'directory');
       await addClosure(ownerRoot.id, grantedFolder.id);
-      grantedInside = await repo.createNode(grantedFolder.id, `${suffix}-shared-memo-inside.txt`, 'file');
+      grantedInside = await repo.createNode(
+        grantedFolder.id,
+        `${suffix}-shared-memo-inside.txt`,
+        'file'
+      );
       await addClosure(grantedFolder.id, grantedInside.id);
       pointGranted = await repo.createNode(ownerRoot.id, `${suffix}-point-shared-2.txt`, 'file');
       await addClosure(ownerRoot.id, pointGranted.id);
@@ -1008,9 +1012,7 @@ describe('FileNodeRepository conformance', () => {
       const ordered = await repo.searchNodesByName(ownerId, 'fnsearch-ord', { limit: 100 });
       const names = ordered.map((r) => r.name);
       expect(names).toEqual([...names].sort());
-      expect(names.indexOf('fnsearch-ord-a.txt')).toBeLessThan(
-        names.indexOf('fnsearch-ord-b.txt')
-      );
+      expect(names.indexOf('fnsearch-ord-a.txt')).toBeLessThan(names.indexOf('fnsearch-ord-b.txt'));
 
       const tieIdxs = ordered
         .map((r, i) => (r.name === 'fnsearch-ord-tie.txt' ? i : -1))

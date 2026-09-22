@@ -325,6 +325,6 @@ release-measured values (§4.15 provenance), never runtime-computed.
 - [ ] `similar` sort: rows grouped with `cluster_index`, greedy nearest-neighbor over
       `getCentroids` (≤~20 rows), order stable across identical inputs
 - [ ] Rename sets `name_locked`; auto names never lock
-- [ ] Name collision on create/restore suffixes (DEF-16 pattern), never errors; archived
+- [ ] Name collision on create/restore suffixes, never errors; archived
       same-name does not conflict (partial unique)
 - [ ] Grep: zero `CacheAdapter`/`operationProgress` imports; zero SQL text outside stores

@@ -39,7 +39,7 @@
 | hasReadOnlyInSelection   | boolean  | N        | false   | Show read-only warning when some selected are read-only                                                                                  |
 | bulkActionsDisabled      | boolean  | N        | false   | Disable all bulk action buttons                                                                                                          |
 | downloadOnly             | boolean  | N        | false   | Hide move, copy, delete; show only download (e.g. share link mode)                                                                       |
-| trashMode                | boolean  | N        | false   | Trash view (DEF-16 P9): selection toolbar shows Restore + Permanent delete instead of Move/Copy/Download/Delete                          |
+| trashMode                | boolean  | N        | false   | Trash view: selection toolbar shows Restore + Permanent delete instead of Move/Copy/Download/Delete                                      |
 | handleBulkRestore        | function | N        | -       | Trash bulk restore handler; receives `(nodeIds: number[])` (when selectionMode + trashMode)                                              |
 | handleBulkPurge          | function | N        | -       | Trash bulk permanent-delete handler; receives (nodeIds: number[]) (when selectionMode + trashMode)                                       |
 | onEmptyTrash             | function | N        | -       | Empty-trash click (when !selectionMode). Admin-only trash control — rendered only when the host passes it (`user.is_admin` + trash view) |
@@ -76,14 +76,14 @@ Notes:
 - `fileManager.viewMode`, `fileManager.listView`, `fileManager.gridView`, `fileManager.detailView`, `fileManager.listViewTitle`, `fileManager.gridViewTitle`, `fileManager.detailViewTitle`
 - `fileManager.readOnlyInSelection` – warning when hasReadOnlyInSelection
 - `actions.move`, `actions.copy`, `actions.download`, `actions.delete` – bulk action titles
-- `actions.restore`, `actions.purge` – trash bulk action titles (DEF-16 P9)
-- `actions.emptyTrash` – empty-trash icon button title/aria-label (DEF-16 P9)
+- `actions.restore`, `actions.purge` – trash bulk action titles
+- `actions.emptyTrash` – empty-trash icon button title/aria-label
 
 ### 2.6 Conditional Rendering
 
 - **selectionMode:** Hide sort button, sort menu, and view mode. Show: select all, deselect all, selected count (desktop only; hidden on mobile to save space), move, copy, download, delete (single row). downloadOnly hides move, copy, delete. bulkWritePermission disables move/delete. bulkActionsDisabled disables all bulk actions. hasReadOnlyInSelection: on desktop shows inline caption; on mobile shows gray-background banner below the toolbar row. **Download on mobile:** On mobile, when multiple items are selected (`selectedFiles.size > 1`), the download button is disabled (grayed out); only single-item download is allowed on mobile.
 - **!selectionMode:** Show sort button, sort menu, view mode (direct icon buttons). No select all/deselect all, no bulk action buttons.
-- **Trash mode (DEF-16 P9):**
+- **Trash mode:**
   - selectionMode: select all / deselect all / count stay; Move, Copy, Download, Delete are hidden; Restore (`data-testid="trash-bulk-restore"`) and Permanent delete (`data-testid="trash-bulk-purge"`, `color="error"`) icon buttons render instead, gated by `bulkActionsDisabled`/`bulkWritePermission` (row-level write permission from the trash selection).
   - !selectionMode: the Empty-trash admin icon button (`data-testid="trash-empty"`, `color="error"`, `actions.emptyTrash` title) renders next to the sort/view-mode toggles when `onEmptyTrash` is provided; ≥44px touch target.
 - !isMobile: detail view option; select all/deselect as Button with icon

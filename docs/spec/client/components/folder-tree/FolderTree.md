@@ -2,12 +2,12 @@
 
 ## 1. Overview
 
-| Item               | Description                                                                                                                                                                                                                                                                                                                                                                       |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role               | Folder-tree UI for explorer surfaces: renders “home” plus optional product sections such as “shared”, “recent”, and share-link entries. Delegates tree-item rendering to `BaseFolderTreeItem` and section components. A **bottom-pinned trash row** sits below the tree lines (DEF-16 P9) — the trash entry is NOT a tree section and does not participate in tree expansion/DnD. |
-| Used in            | FileManager page shell (see `docs/spec/client/pages/FileManager.md`) and other explorer-like surfaces where applicable.                                                                                                                                                                                                                                                           |
-| Related components | `BaseFolderTreeItem`, `SharedFoldersSection`, `RecentFilesSection`, `ShareLinkSection`, `TrashSidebarItem`                                                                                                                                                                                                                                                                        |
-| Ownership note     | This spec documents the **view/component contract**. Product overlays (virtual collections like `__recent__`, `__shared__`, share-link UI) remain **outside** reusable explorer core.                                                                                                                                                                                             |
+| Item               | Description                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Folder-tree UI for explorer surfaces: renders “home” plus optional product sections such as “shared”, “recent”, and share-link entries. Delegates tree-item rendering to `BaseFolderTreeItem` and section components. A **bottom-pinned trash row** sits below the tree lines — the trash entry is NOT a tree section and does not participate in tree expansion/DnD. |
+| Used in            | FileManager page shell (see `docs/spec/client/pages/FileManager.md`) and other explorer-like surfaces where applicable.                                                                                                                                                                                                                                               |
+| Related components | `BaseFolderTreeItem`, `SharedFoldersSection`, `RecentFilesSection`, `ShareLinkSection`, `TrashSidebarItem`                                                                                                                                                                                                                                                            |
+| Ownership note     | This spec documents the **view/component contract**. Product overlays (virtual collections like `__recent__`, `__shared__`, share-link UI) remain **outside** reusable explorer core.                                                                                                                                                                                 |
 
 ---
 
@@ -75,7 +75,7 @@
 - Click target semantics are unchanged: home row nodeId is `homeNodeId`
   (admin → `null` = filesystem root; non-admin → `user.rootNodeId`).
 
-### 2.7.1 Bottom-pinned trash row (DEF-16 P9)
+### 2.7.1 Bottom-pinned trash row
 
 - Rendered by `TrashSidebarItem` **after the scrollable tree List**, pinned at the bottom of the
   sidebar column (footer block below the `flex: 1` tree area — not inside the `List`, no tree

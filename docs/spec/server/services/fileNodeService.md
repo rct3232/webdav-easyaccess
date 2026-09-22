@@ -74,7 +74,7 @@ Moves a node (and its subtree) to a new parent. Includes cycle detection and clo
 
 Hard-deletes a node and all its descendants (rows are physically removed). Explicit ancestor cleanup + CASCADE delete. Wrapped in TX.
 
-This is the ONLY hard-delete tree primitive. Trash (DEF-16 P2) does NOT route through it: the
+This is the ONLY hard-delete tree primitive. Trash does NOT route through it: the
 user-facing delete in `fileService` marks the subtree via `markSubtreeDeleted` instead. Consumers
 of the hard delete: the fail-safe repair channel (`retry-delete`, `pending_upload` `delete`/`auto`),
 the WebDAV upload/copy rollback of freshly created nodes, and the admin permanent-delete
@@ -88,7 +88,7 @@ maintenance route.
 
 #### `markSubtreeDeleted(nodeIds)`
 
-Soft-delete primitive (DEF-16 P2): marks every row in the id list `deleted_at` via
+Soft-delete primitive: marks every row in the id list `deleted_at` via
 `fileNodesStore.markSubtreeDeleted` (`UPDATE file_nodes SET deleted_at = NOW() WHERE id IN (...)`).
 No TX wrap (single UPDATE), no `updated_at` touch, idempotent (re-running marks nothing new).
 The caller (fileService.deleteNode) passes `[rootId, ...descendantIds]`. Closure rows, permission

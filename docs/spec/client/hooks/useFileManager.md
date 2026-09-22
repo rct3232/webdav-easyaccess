@@ -39,7 +39,7 @@
 | trashTrail         | array                  | Trash-view breadcrumb chain `[{ nodeId, name }]` (trashed folder names from the trash root down to the current trashed parent).                                                 |
 | openTrashFolder    | (nodeId, name) => void | Trash-view navigation setter: `nodeId == null` → `/files/__trash__`; otherwise remember the folder name in the trash trail cache and navigate `/files/__trash__/node/<nodeId>`. |
 
-### 2.3.1 Trash view branch (DEF-16 P9)
+### 2.3.1 Trash view branch
 
 - **URL forms:** `/files/__trash__` (trash root: topmost trashed items) and
   `/files/__trash__/node/<nodeId>` (inside a trashed folder: lists its trashed children).
@@ -84,7 +84,7 @@
 - **Route-param contract (`/files/*`)**:
   - The explorer route uses a splat param (`*`) to represent the explorer location under `/files/`.
   - **Real folders:** URL form is `/files/node/<nodeId>` (decision D1). `useFileManager` parses the splat into a `nodeId`; that `nodeId` is the source of truth and is passed to `explorerGateway.listDirectory({ nodeId })`.
-  - **Virtual roots:** `/files/__recent__` and `/files/__shared__` URLs are unchanged; they map to the recent-files and shared-folder views (no nodeId). `/files/__trash__` and `/files/__trash__/node/<nodeId>` map to the trash view (`trashNodeId` = trashed parent, `null` at root; DEF-16 P9).
+  - **Virtual roots:** `/files/__recent__` and `/files/__shared__` URLs are unchanged; they map to the recent-files and shared-folder views (no nodeId). `/files/__trash__` and `/files/__trash__/node/<nodeId>` map to the trash view (`trashNodeId` = trashed parent, `null` at root).
   - **Legacy path URLs** (e.g. `/files/<username>/<subpath>`): resolved via `POST /files/resolve-path { path } → { nodeId }` (server S3) and redirected to `/files/node/<nodeId>`; if resolution fails, fall back to the root-level listing. The client keeps no persistent path→nodeId mapping for this; the session-local `path → nodeId` map is removed in the nodeId end-state.
   - Router upgrades that change relative splat resolution (React Router v6 `future.v7_relativeSplatPath`, and React Router v7 baseline behavior) must not change the user-visible nodeId contract above.
 - **Must route explorer IO through:** `explorerGateway` (directory listing, path access checks, recent-file load/remove subscription helpers, metadata enrichment, and shared-entry loading when special collections need them).
@@ -123,7 +123,7 @@
 - [ ] Load files when the current nodeId changes (root-level listing when `null`)
 - [ ] Real-folder URL `/files/node/<nodeId>` lists via `listDirectory({ nodeId })`; current-folder write capability via `getPathAccess({ nodeId })` is loaded through `explorerGateway`, not direct service imports.
 - [ ] Virtual-root URLs `/files/__recent__` and `/files/__shared__` keep their existing behavior.
-- [ ] Trash view: `/files/__trash__` lists topmost trashed entries via `explorerGateway.loadTrashEntries()`; `/files/__trash__/node/<nodeId>` reloads with `{ parentId }`; location key changes clear selection; `trashTrail` follows the navigation chain and rebuilds from cached trashed names (or the first child's `displayPath` on refresh); `openTrashFolder(null)` returns to the trash root (DEF-16 P9).
+- [ ] Trash view: `/files/__trash__` lists topmost trashed entries via `explorerGateway.loadTrashEntries()`; `/files/__trash__/node/<nodeId>` reloads with `{ parentId }`; location key changes clear selection; `trashTrail` follows the navigation chain and rebuilds from cached trashed names (or the first child's `displayPath` on refresh); `openTrashFolder(null)` returns to the trash root.
 - [ ] A legacy path URL is resolved via `POST /files/resolve-path` and redirected to `/files/node/<nodeId>`; an unknown path falls back to the root listing.
 - [ ] `__recent__` flow continues to render the same recent-file entries and metadata while all repository/notifier access flows through `explorerGateway`.
 - [ ] While viewing `__recent__`, notifier-driven recent-file changes trigger a reload through this hook without extra page-shell wiring.

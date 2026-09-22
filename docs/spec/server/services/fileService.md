@@ -133,7 +133,7 @@ Creates a new file node and stores its content. Dispatch strategy differs by sto
 6. On WebDAV PUT failure — **new file**: roll back the just-created node via `fileNodeService.deleteNode(nodeId)` (best-effort), then re-throw the original error — no phantom 0-byte file remains and a retry is not blocked by a duplicate-name conflict. On WebDAV PUT failure — **overwrite**: restore the last-good bytes with `blobStore.moveBlob(tmpPath, displayPath, true)` (native MOVE, Overwrite:T); on restore success re-throw the original error — the node keeps its pre-state (previous content downloadable, `sync_status` untouched). If the restore itself fails (or no snapshot existed because the PUT destroyed content that was never protected), mark `sync_status='orphaned_node'` via `fileNodeService.updateSyncStatus(nodeId, 'orphaned_node')` as fail-safe (the pre-existing node must not be deleted) and re-throw.
 7. Returns `{ nodeId, size: buffer.length, mimeType }`.
 
-**Failure recovery:** See Section 5 (Sync Status Fail-Safe Semantics). S3 mode follows uploadService failure table (`uploadService.md` §2.5). WebDAV mode rolls back NEW nodes on PUT failure and restores the previous bytes from the last-good snapshot on overwrite PUT failure; `orphaned_node` remains only where restoration is impossible (restore failed / snapshot source was missing and content may be destroyed). A `/.wea-tmp/<nodeId>` entry left by a crash or a failed cleanup is reconciliation residue (DEF-18 class).
+**Failure recovery:** See Section 5 (Sync Status Fail-Safe Semantics). S3 mode follows uploadService failure table (`uploadService.md` §2.5). WebDAV mode rolls back NEW nodes on PUT failure and restores the previous bytes from the last-good snapshot on overwrite PUT failure; `orphaned_node` remains only where restoration is impossible (restore failed / snapshot source was missing and content may be destroyed). A `/.wea-tmp/<nodeId>` entry left by a crash or a failed cleanup is reconciliation residue.
 
 ---
 
@@ -223,7 +223,7 @@ Moves a node (and its subtree) to a new parent directory with closure table rebu
 #### `deleteNode(nodeId, userId, user)`
 
 Soft-deletes (trashes) a node and its entire subtree: every row of the subtree is marked
-`file_nodes.deleted_at` (DEF-16 P2). No DB row is removed and — in WebDAV mode — the subtree's
+`file_nodes.deleted_at`. No DB row is removed and — in WebDAV mode — the subtree's
 remote content is moved once, as a whole, to the hidden trash path. Restore/purge are NOT part of
 this method — they live in the trash channel (`server/service/trashService.js` + the
 `/api/files/trash/*` routes, see §4.1).
@@ -440,18 +440,18 @@ The `sync_status` column on `file_nodes` tracks consistency between database met
 | `pending_upload` | Node exists in DB but blob content has not been written to storage yet (S3). The repository `createNode` default in both modes.                                                     | INSERTed by `createNode` for **every** new row (file or directory, S3 or WebDAV; the DDL `'active'` default is always overridden). In **S3 mode** it is the intermediate state of the upload flow: `prepareUpload` marks the object_map `pending` and TX2 flips both node and object_map to `active`; a failed NEW-file upload rolls the row back (`uploadService.md` §2.5); a failed S3 OVERWRITE rolls back to the pre-state (node `active`, previous version downloadable), leaving `pending_upload` only if the rollback itself fails (scan/repair + GC cleanup). In **WebDAV mode** nodes keep `pending_upload` for their whole lifetime under normal operation — the backend is path-addressed and only the `orphaned_node` boundary is operational, so the value is never read by listing/download/migration-enumeration there. |
 | `orphaned_node`  | Database metadata and storage content are inconsistent. The node's DB row exists but the corresponding storage resource may be missing, at a wrong path, or in an unexpected state. | Set when a WebDAV storage failure leaves DB and remote inconsistent AND no restoration path exists: rename/move MOVE failure where the remote source was absent (nothing to roll back to) or the DB rollback itself failed, overwrite PUT failure whose last-good restore also failed, trash MOVE failure during deleteNode (root only), MKCOL failure during `blobStorageService.createDirectoryWebdav` (directory create / home-node ensure). rename/move/overwrite failures that DO restore (DB rollback / snapshot restore) never mark it. New nodes created for an upload/copy are rolled back instead of being marked. The error is always propagated to the caller — orphaned_node is a fail-safe marker for repair, not silent degradation.                                                                                    |
 
-**Recovery of failure states:** a failed S3 overwrite rolls back automatically to the pre-state — the node returns to `active` and the previous version stays downloadable (`uploadService.md` §2.5). Only when the rollback itself fails (or a crash lands between TX1 and the blob write) does a stuck `pending_upload` residue remain; it is surfaced by the report-only startup scan and resolved by the admin repair actions `complete` / `restore-previous` / `delete` / `auto` (`POST /api/admin/maintenance/repair-sync`, S3 storage mode only — `uploadService.md` §2.5.1). The GC last-good guard protects the stuck node's last-good row from deletion while it is unrepaired — with DEF-11's managed history the last-good row is `history` (inherently safe; the orphaned-branch guard is kept defensively) — and stale pending-live rows + blobs are cleaned after `GC_PENDING_STALE_DAYS` (`gcService.md` §2). `orphaned_node` keeps the existing manual repair path — `failSafeService.scanOrphanedNodes()` / `POST /api/admin/maintenance/repair-sync` with `retry-delete` (best-effort remote subtree delete in WebDAV mode) or `force-active` (refuses with 409 when the remote file is missing). New-file upload failures need no recovery because the node is rolled back.
+**Recovery of failure states:** a failed S3 overwrite rolls back automatically to the pre-state — the node returns to `active` and the previous version stays downloadable (`uploadService.md` §2.5). Only when the rollback itself fails (or a crash lands between TX1 and the blob write) does a stuck `pending_upload` residue remain; it is surfaced by the report-only startup scan and resolved by the admin repair actions `complete` / `restore-previous` / `delete` / `auto` (`POST /api/admin/maintenance/repair-sync`, S3 storage mode only — `uploadService.md` §2.5.1). The GC last-good guard protects the stuck node's last-good row from deletion while it is unrepaired — with managed history the last-good row is `history` (inherently safe; the orphaned-branch guard is kept defensively) — and stale pending-live rows + blobs are cleaned after `GC_PENDING_STALE_DAYS` (`gcService.md` §2). `orphaned_node` keeps the existing manual repair path — `failSafeService.scanOrphanedNodes()` / `POST /api/admin/maintenance/repair-sync` with `retry-delete` (best-effort remote subtree delete in WebDAV mode) or `force-active` (refuses with 409 when the remote file is missing). New-file upload failures need no recovery because the node is rolled back.
 
-**Delete/restore interplay (DEF-11):** `versionsService.restoreVersion` never deletes — the
+**Delete/restore interplay:** `versionsService.restoreVersion` never deletes — the
 demoted current version always becomes `history` and row removal stays the repair channel's
-(`repairPendingUploadNode`) / GC's job. `deleteNode` (DEF-16 P2) now TRASHES the subtree: rows and
+(`repairPendingUploadNode`) / GC's job. `deleteNode` now TRASHES the subtree: rows and
 their `object_map` versions (`active`/`history`/`orphaned`) all survive under `deleted_at` —
 version history outlives the trash period and dies with the node only at permanent delete
 (`fileNodeService.deleteNode` FK-cascade, used by the repair channel and the admin
 perm-delete maintenance route; the WebDAV trash path is one remote MOVE to `/.wea-trash/<nodeId>`,
 S3 mode performs no physical I/O).
 
-**Trash WebDAV semantics (DEF-16 P2/P3):** the remote content of a trashed subtree lives under the
+**Trash WebDAV semantics:** the remote content of a trashed subtree lives under the
 reserved hidden namespace `/.wea-trash/<nodeId>` (subtree ROOT's id). The historical bottom-up
 per-node remote delete helper moved out of this service into `server/service/webdavRemoteOps.js`
 (`deleteRemoteSubtreeBestEffort`) — it remains in use by the fail-safe `retry-delete` repair and the
@@ -460,7 +460,7 @@ GC Tier 3 operate on the trash paths via the shared purge core in `server/servic
 
 ---
 
-## 4.1 Trash channel (DEF-16 P3) — `server/service/trashService.js`
+## 4.1 Trash channel — `server/service/trashService.js`
 
 The OS-recycle-bin semantics on top of the P2 soft-delete model. The service is a pure
 composition-root service (`createTrashService({ fileNodesStore, fileNodeService, blobStore,
@@ -539,9 +539,11 @@ Physical removal (shared purge core, WebDAV mode):
    `blobStore.deleteBlob('/.wea-trash/<R>/<relative display path>')` — its content was covered by
    R's trash MOVE and lives under R's trash collection. Best-effort (a 404 on either candidate is
    ignored).
-3. Known edge (DEF-18 class): content of a row whose own trash-path MOVE-back partially failed
-   during a restore can remain at the display path — not purged here (a display-path delete could
-   hit a live sibling occupying that path); such residues await the DEF-18 remote reconciliation.
+3. Known edge: content of a row whose own trash-path MOVE-back partially failed during a restore
+   can remain at the display path — not purged here (a display-path delete could hit a live
+   sibling occupying that path); such residues are candidates for the gcService remote
+   reconciliation sweep (`gcService.md` §2/§3) — deleted unless a live ancestor directory biases
+   the sweep to a report-only `untrackedKeys` entry (S1).
 
 S3 mode: `blobStore.deleteBlob(s3Key)` for EVERY `object_map` row of the subtree (active + history
 
@@ -649,7 +651,7 @@ Complete checklist of testable behaviors per method, organized to drive the test
 
 ### deleteNode
 
-- [ ] Trashes the subtree (soft delete — DEF-16 P2): getDescendantIds enumeration, one `markSubtreeDeleted` over node + descendants; no row removed, `fileNodeService.deleteNode` never called
+- [ ] Trashes the subtree (soft delete): getDescendantIds enumeration, one `markSubtreeDeleted` over node + descendants; no row removed, `fileNodeService.deleteNode` never called
 - [ ] WebDAV mode: exactly ONE remote MOVE per subtree root — `moveBlob(displayPath, '/.wea-trash/<nodeId>')`; MOVE failure marks the root `orphaned_node`, leaves `deleted_at` unset and re-throws
 - [ ] S3 mode: zero physical I/O (stable UUID keys; blobs die at Tier 3 GC purge only)
 

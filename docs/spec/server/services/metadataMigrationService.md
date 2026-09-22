@@ -153,7 +153,7 @@ enforced on both backends):
 - **`_schema_migrations` is never copied.** It exists on both backends and tracks each backend's
   applied DDL files; the target's schema-apply step manages it independently (§2.5).
 - **`locks`** is copied for completeness; stale lock rows are harmless (TTL-aware cleanup).
-- **`deleted_at` is copied verbatim (DEF-16 P8).** The copy derives the full column list from the
+- **`deleted_at` is copied verbatim.** The copy derives the full column list from the
   SOURCE schema (`information_schema.columns` / `PRAGMA table_info`) and copies whole rows, so the
   trash marker (`file_nodes.deleted_at`) carries over in both directions byte-for-byte: a trashed
   node is still trashed after the metadata migration. `file_nodes.deleted_at` needs no transform —

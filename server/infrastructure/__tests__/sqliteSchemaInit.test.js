@@ -183,14 +183,15 @@ describe('initSqliteSchema integration', () => {
     }
   });
 
-  it('creates exactly 13 tables', async () => {
+  it('creates exactly 38 tables (core + full §5 platform schema)', async () => {
     const rows = await queryDb(
       db,
       "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
     );
-    expect(rows.length).toBe(13);
+    expect(rows.length).toBe(38);
 
     const expectedTables = [
+      // Core (pre-platform)
       'file_nodes',
       'filecache',
       'locks',
@@ -204,10 +205,39 @@ describe('initSqliteSchema integration', () => {
       'settings',
       'share_links',
       'users',
+      // §5 collections platform
+      'collections',
+      'collection_items',
+      'collection_exclusions',
+      'collection_grants',
+      'collection_visibility',
+      'collection_tombstones',
+      'collection_digest_cursors',
+      'collection_merge_suggestions',
+      'file_likes',
+      // §5 usage signals + undo journal
+      'usage_events',
+      'node_activity',
+      'action_journal',
+      // §5 suggestions + admin reports
+      'file_suggestions',
+      'admin_reports',
+      // §5 AI foundation
+      'llm_models',
+      'collection_centroids',
+      'tag_embeddings',
+      'tag_parents',
+      'ai_tag_raw',
+      'embeddings',
+      'embeddings_chunk',
+      'ai_features',
+      'ai_jobs',
+      'ai_usage_daily',
+      'query_parses',
     ];
 
     const actualNames = rows.map((r) => r.name).sort();
-    expect(actualNames).toEqual(expectedTables);
+    expect(actualNames).toEqual([...expectedTables].sort());
   });
 
   it('file_nodes.id is INTEGER PRIMARY KEY AUTOINCREMENT', async () => {

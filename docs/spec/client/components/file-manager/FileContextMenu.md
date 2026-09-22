@@ -81,9 +81,9 @@ Checklist for unit test writing:
 
 ---
 
-## 3. AI-platform entries (AI platform — implementation tracked as DEF-25)
+## 3. AI-platform entries (AI platform)
 
-Addendum to §2.2/§2.5/§2.6 per docs/features/collections-platform.md §3.2/§3.3 (`AddToCollectionMenu.md`, `MemberRowControls.md`; the collections-platform feature doc §7 DEF-25).
+Addendum to §2.2/§2.5/§2.6 per docs/features/collections-platform.md §3.2/§3.3 (`AddToCollectionMenu.md`, `MemberRowControls.md`).
 
 - **New entries (main listing), rendered via the existing "callback provided ⇒ item renders" idiom (§2.6):**
 - `Add to collection ▸` — new optional callback `onAddToCollection(file)`; the submenu itself is the host-mounted `AddToCollectionMenu` component (this menu only anchors/launches it).

@@ -54,7 +54,7 @@ and with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 
 **Journal domains enum (§5):** `collection | batch | settings | permissions | tags |
 file | sharing`. **v1 writers = `collection` only** (all silent/merge/settings-adjacent
-acts, §4.11). `batch` and `settings` arrive with later journal subscribers (DEF-25), `file`/`sharing` with the
+acts, §4.11). `batch` and `settings` arrive with later journal subscribers, `file`/`sharing` with the
 P4 admin-config subscription; `file`/`sharing`/`tags`/`permissions` are enum-reserved
 with no writer yet (the `permissions` asymmetry note applies: grant-undo = revoke is
 exposure-reduction and may be silent; revoke-undo = grant is exposure-expansion and is
@@ -166,7 +166,7 @@ All errors follow the shared envelope (`errorCode` + optional `params`,
 
 - [api.md](../../../api.md), [shared-contracts.md](../../../shared-contracts.md),
   [collections.md](collections.md) (mutation `undo.action_id` pointers),
-  `docs/features/collections-platform.md` §4.11/§5, CODING_STYLE.md Express Patterns/§7 (DEF-25, DEF-25).
+  `docs/features/collections-platform.md` §4.11/§5, CODING_STYLE.md Express Patterns.
 
 ### 2.6 Integration Test Scenarios
 

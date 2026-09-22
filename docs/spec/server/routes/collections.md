@@ -60,7 +60,7 @@ with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 MUST be registered before the `/:id` parameterized routes.
 
 **Not in this router:** `leave` (`Leave`, per-user `collection_visibility` hidden flag,
-§4.7) tracked as DEF-25. No digest-reset endpoint exists —
+§4.7). No digest-reset endpoint exists —
 the visit cursor advances implicitly on `GET /:id/items` (see decision below).
 
 ### 2.3 Middleware Used
@@ -301,7 +301,7 @@ suggestion row (a suggestion state transition is opportunistic).
   `{ "grantee_id": 9, "revoked": true, "undo": { "action_id": 997 } }`.
   404 `collections.grantNotFound` when no such row.
 - **POST /for-nodes:** Body `{ nodeIds }` (1–200). Batch membership chips for the file
-  listing (DEF-25 — listing contracts frozen). Resolves membership in every collection
+  listing (listing contracts frozen). Resolves membership in every collection
   visible to the requester (own + granted, active only). 200: `{ "memberships": [
 { "node_id": 90210, "collection_ids": [17, 23] } ] }` — one entry per requested node,
   `collection_ids` possibly empty.

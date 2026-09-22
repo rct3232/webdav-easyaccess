@@ -239,19 +239,19 @@ warn-logged and returns `null`, so reporting never fails GC/cleanup/boot.
 
 ---
 
-## 3. AI-platform target contracts (AI platform — implementation tracked as DEF-25)
+## 3. AI-platform target contracts (AI platform — target, lands with P0/P1/P4 as noted)
 
 **Rows below are TARGET contracts, not current behavior** — when a task lands, its rows merge into §2.2/§2.4 and the marker is removed. Wire casing per CODING_STYLE.md Express Patterns (snake_case responses, camelCase request bodies).
 
 ### 3.1 Routes (target)
 
-All P0 (DEF-25) route rows have landed and moved to §2.2.6.
+All P0 route rows have landed and moved to §2.2.6.
 
 ### 3.2 Field/behavior additions (target)
 
-- **(P0, DEF-25)** **`probeLlm` slot registration (plumbing only; the `target: 'llm'` route acceptance itself is the P1 row below):** `server/infrastructure/backendProbe.js` exposes `registerProbeTarget(target, handler)` + the reserved `PROBE_TARGET_LLM = 'llm'` slot. Registered handlers win over the built-in targets; an unregistered reserved slot keeps the existing 400 `serverErrors.setup.testFailed` "Unsupported target" behavior. T1.1 registers the LLM probe suite (`llmAdapter.md` §2.3 `probeLlm()`) without editing `backendProbe.js`; probe outcomes land in the `ai.<role>` tracker rows (`backendHealth.md`).
-- **(P1, DEF-25)** `POST /config/test` accepts `target: 'llm'` with per-role pending values; outcome recorded to the backend-health tracker via the `probeLlm` slot (registered P0/DEF-25) and rendered as **per-role probe chips** by the admin config UI. Probe failure ≠ save failure (test-only endpoint semantics unchanged).
-- **(P1, DEF-25/DEF-25)** `GET /health` (`backends` snapshot) gains tracker rows: **`vectorOps: 'native' | 'fallback_js'`** — a **performance warning only, never an AI-feature gate** (§4.13: fallback keeps every feature on) — and **`ai.<role>` probe states** (`embed`/`chat`: `not_configured | probe_failed(reason) | partial | ok`, §4.12; hot re-probe on config change). Consumed by the health card and the AI governance panel (DEF-25, P4); never exposed on the public health/`settings/public` surface beyond the existing `ai:{embed,chat}` booleans.
+- **(P0)** **`probeLlm` slot registration (plumbing only; the `target: 'llm'` route acceptance itself is the P1 row below):** `server/infrastructure/backendProbe.js` exposes `registerProbeTarget(target, handler)` + the reserved `PROBE_TARGET_LLM = 'llm'` slot. Registered handlers win over the built-in targets; an unregistered reserved slot keeps the existing 400 `serverErrors.setup.testFailed` "Unsupported target" behavior. T1.1 registers the LLM probe suite (`llmAdapter.md` §2.3 `probeLlm()`) without editing `backendProbe.js`; probe outcomes land in the `ai.<role>` tracker rows (`backendHealth.md`).
+- **(P1)** `POST /config/test` accepts `target: 'llm'` with per-role pending values; outcome recorded to the backend-health tracker via the `probeLlm` slot (registered P0) and rendered as **per-role probe chips** by the admin config UI. Probe failure ≠ save failure (test-only endpoint semantics unchanged).
+- **(P1)** `GET /health` (`backends` snapshot) gains tracker rows: **`vectorOps: 'native' | 'fallback_js'`** — a **performance warning only, never an AI-feature gate** (§4.13: fallback keeps every feature on) — and **`ai.<role>` probe states** (`embed`/`chat`: `not_configured | probe_failed(reason) | partial | ok`, §4.12; hot re-probe on config change). Consumed by the health card and the AI governance panel (P4); never exposed on the public health/`settings/public` surface beyond the existing `ai:{embed,chat}` booleans.
 
 ### 3.3 Verification (appends §2.7)
 

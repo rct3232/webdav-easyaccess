@@ -1,6 +1,6 @@
 # CollectionDashboard Spec
 
-Target-contract spec , §4.12, §4.14/§4.15 (admin entry), §4.16; CODING_STYLE.md Express Patterns registry shape, §7 DEF-25/DEF-25 consumers).
+Target-contract spec (`docs/features/collections-platform.md` §4.11 (feed surface), §4.12, §4.14/§4.15 (admin entry), §4.16; registry shape per CODING_STYLE.md Express Patterns, consumers `useMyPageController.md` §3).
 
 ## 1. Overview
 
@@ -31,7 +31,7 @@ Target-contract spec , §4.12, §4.14/§4.15 (admin entry), §4.16; CODING_STYLE
 
 ### 2.3 Blocks (render order = contract)
 
-1. **Hygiene cards** — exact/near dups count + reclaimable GB; trash size + retention countdown (`TRASH_RETENTION_DAYS`); cleanup suggestions count. Each card is a DEEP LINK to the context where the action happens (dup finder view / `/files/__trash__` / SuggestionsChecklist scroll target) — pull-overview, not action center (§4.16). Counts via gateway seams (DEF-25/DEF-25 payloads); zero/absent data block renders nothing (absent-not-disabled).
+1. **Hygiene cards** — exact/near dups count + reclaimable GB; trash size + retention countdown (`TRASH_RETENTION_DAYS`); cleanup suggestions count. Each card is a DEEP LINK to the context where the action happens (dup finder view / `/files/__trash__` / SuggestionsChecklist scroll target) — pull-overview, not action center (§4.16). Counts via gateway seams; zero/absent data block renders nothing (absent-not-disabled).
 2. **System-changes feed (journal)** — `GET /api/actions` rows (30d, `snake_case` verbatim): `subject_label` + `action` → i18n label map (`mypage.journalAction.${action}`), `actor: "system"` → `auto` tag, `created_at` formatted. Per row: `undo_available` + `is_tip` → undo button; non-tip → cascade-confirm dialog with `params.laterChanges` count then re-post (§4.11 surface 3); `not recoverable` badge for report-only rows (permanent delete/empty-trash parity contract); `status:'undone'` → strikethrough label, no action. `payload` never fetched/needed (feed contract).
 3. **My-collections status** — counts (active/archived), grants received/granted (revoke inline = `DELETE /:id/grants`, instant), recent merge/archive facts from the feed subset with undo (same row renderer).
 4. **Suggestions** — `SuggestionsChecklist` block (its spec owns the accept protocol).
@@ -43,10 +43,10 @@ Target-contract spec , §4.12, §4.14/§4.15 (admin entry), §4.16; CODING_STYLE
 
 ### 2.5 myPageRegistry entry contract (additions)
 
-| Entry | Shape                                                                                                 | Notes                                                                                                                                                                                                                |
-| ----- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| user  | `{ id: 'storage', icon: <MUI>, labelKey: 'mypage.storage', visibility: 'all' }`                       | Direct (single-panel) category → `CollectionDashboard`                                                                                                                                                               |
-| admin | `{ id: 'admin-ai', icon: <MUI>, labelKey: 'mypage.adminAiOps', visibility: 'admin', statusChip: fn }` | §4.15 panel (DEF-25); row shows health chip `not_configured \| probe_failed(reason) \| partial \| ok` from `settings/public.ai` + backend health — admin sees visible-STATE (§4.12), regular users never see the row |
+| Entry | Shape                                                                                                 | Notes                                                                                                                                                                                                       |
+| ----- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| user  | `{ id: 'storage', icon: <MUI>, labelKey: 'mypage.storage', visibility: 'all' }`                       | Direct (single-panel) category → `CollectionDashboard`                                                                                                                                                      |
+| admin | `{ id: 'admin-ai', icon: <MUI>, labelKey: 'mypage.adminAiOps', visibility: 'admin', statusChip: fn }` | §4.15 panel; row shows health chip `not_configured \| probe_failed(reason) \| partial \| ok` from `settings/public.ai` + backend health — admin sees visible-STATE (§4.12), regular users never see the row |
 
 - **Decision:** `statusChip` is a plain serializable `{ labelKey, tone }` descriptor produced by the registry helper (no JSX in registry data); sidebar renders it.
 - Registry entries and content-descriptor branches are pure data — `utils/myPageRegistry.md` gains the two rows at implementation time (same PR).

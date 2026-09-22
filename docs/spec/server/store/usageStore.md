@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item      | Description                                                                                                                                                                                                                           |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role      | Usage-signal persistence — `usage_events` (raw, append-only, 90d roll-off) and the `node_activity` per-(user,node) accumulator (`opens/downloads/previews/search_hits/likes` lifetime counts + decaying `score`). §3.4 DEF-25 domain. |
-| Precedent | `fileLikesStore` twin (per-user normalized table, stable node_ids, FK CASCADE). The night-night chain (rollup → recompute → retention tail) is sequenced by `maintenanceScheduler` (§3.1) over `usageService`.                        |
-| Journal   | NONE. Usage signals are telemetry, not undoable user actions (§4.11 matrix — like/visit/sort manipulation rows have no undo).                                                                                                         |
+| Item      | Description                                                                                                                                                                                                                                                              |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role      | Usage-signal persistence — `usage_events` (raw, append-only, 90d roll-off) and the `node_activity` per-(user,node) accumulator (`opens/downloads/previews/search_hits/likes` lifetime counts + decaying `score`) — design: `docs/features/collections-platform.md` §3.4. |
+| Precedent | `fileLikesStore` twin (per-user normalized table, stable node_ids, FK CASCADE). The night-night chain (rollup → recompute → retention tail) is sequenced by `maintenanceScheduler` (§3.1) over `usageService`.                                                           |
+| Journal   | NONE. Usage signals are telemetry, not undoable user actions (§4.11 matrix — like/visit/sort manipulation rows have no undo).                                                                                                                                            |
 
 ---
 

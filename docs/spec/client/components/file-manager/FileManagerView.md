@@ -113,9 +113,9 @@ These scenarios should be covered by a dedicated component test in `client/src/c
 
 ---
 
-## 3. AI-platform composition (AI platform — implementation tracked as DEF-25)
+## 3. AI-platform composition (AI platform)
 
-Addendum to §2.2 grouping rules (docs/features/collections-platform.md §4.6 results mode, DEF-25 virtual collections). Pure-view rule unchanged: the shell passes view-ready models; the view only swaps regions.
+Addendum to §2.2 grouping rules (docs/features/collections-platform.md §4.6 results mode, §4.9 virtual collections). Pure-view rule unchanged: the shell passes view-ready models; the view only swaps regions.
 
 - **Search results mode:** when the shell passes a `searchResults` model with `mode === 'results'` (prepared by `useSearchResults`), the view mounts the `SearchBarResultsMode` header **above the list region** (its own spec owns the header chrome; desktop replaces the breadcrumb row per `SearchBarResultsMode.md` §2.3) and the list renders the prepared two-section rows. Exiting results mode returns to the normal breadcrumb+list composition.
 - **Virtual collection nodes:** when the active node is `__collections__` (or its `__archive__` child / an opened collection route), `CollectionsListView` **replaces the FileList region** (list mode = cards + merge-card slot; members mode = explorer rows with `MemberRowControls` wiring). All other regions (controls, FAB policy per read-only virtual-view precedent, dialogs) follow the existing `__recent__`/`__shared__`/`__trash__` treatment.

@@ -21,7 +21,7 @@ Target-contract spec.
   `probe.js` (suite), `budget.js` (chain + limiter + breaker),
   `presets.js` ([llmPresets spec](llmPresets.md))
 - **Test file:** `server/infrastructure/adapters/llm/__tests__/llmAdapter.test.js`
-  (+ fake-server E2E leg, DEF-25 in-process adapter injection)
+  (+ fake-server E2E leg, in-process adapter injection)
 
 ### 2.2 Per-call config resolution + signature-keyed client cache
 

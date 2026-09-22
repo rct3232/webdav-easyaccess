@@ -4,7 +4,7 @@ This document is the permanent product-level description of the AI-driven collec
 what users and operators see, what the system promises, and which behavior decisions are settled.
 Data shapes, endpoints, and component contracts belong to the specs below, not to this one.
 
-**Status**: contract decided; implementation tracked in `docs/IMPROVEMENT_PLAN.md` (DEF-25).
+**Status**: contract decided.
 
 Canonical contract sources: the route, store, service, and infrastructure specs under
 `docs/spec/server/**` and the client specs under `docs/spec/client/**` for the collections, search,

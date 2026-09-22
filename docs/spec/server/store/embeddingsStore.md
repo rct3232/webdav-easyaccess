@@ -44,15 +44,14 @@ serialized floats (comma-separated, `dim`-checked at the repository boundary);
 
 ### 2.4 Dedupe-skip contract (content_hash)
 
-The embed worker (DEF-25, E1 §4.20) performs the dedupe decision itself — this store only
+The embed worker (E1 §4.20) performs the dedupe decision itself — this store only
 supplies the data:
 
 - Worker reads `get(nodeId)`; if `row.modelId === activeModelId && row.contentHash ===
 filecache.content_hash` ⇒ `aiJobsStore.markSkipped(jobId)` — **no provider call, no
   write**. Determinism within a model version makes the `(content_hash, model_id)` pair
   sufficient for this idempotency (§4.20).
-- The stored `content_hash` records WHICH content the vector describes (drift detector;
-  DEF-25 populates `filecache.content_hash`).
+- The stored `content_hash` records WHICH content the vector describes (drift detector).
 
 ### 2.5 Storage semantics & invariants
 

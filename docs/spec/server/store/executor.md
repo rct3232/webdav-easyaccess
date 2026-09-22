@@ -95,7 +95,7 @@
 
 ### 2.6 sqlite driver: `node:sqlite` (migrated in T0.12)
 
-Decided contract (docs/features/collections-platform.md §4.13, CODING_STYLE.md Express Patterns/§7 DEF-25). The sqlite implementation is built on the built-in `node:sqlite`
+Decided contract (docs/features/collections-platform.md §4.13, CODING_STYLE.md Express Patterns). The sqlite implementation is built on the built-in `node:sqlite`
 module (`DatabaseSync`) — the `sqlite3` npm package is removed:
 
 - **Scope (real seam — corrected from the earlier "confined to `sqliteExecutor.js`"

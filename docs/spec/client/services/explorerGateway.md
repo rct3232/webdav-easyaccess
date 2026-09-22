@@ -83,7 +83,7 @@ Per CODING_STYLE.md Express Patterns "Client layering", collections-platform IO 
 | Grants (sharing)                | `getGrants`, `grantCollection`, `revokeGrant`                                                                                     |
 | Search results mode             | `runSearch` (§4.6; `semantic_available`/`result_ref` consumed by `useSearchResults`)                                              |
 | Undo journal / toast payload    | `getActions`, `undoAction` (structured result incl. `params.laterChanges` for cascade confirm — `collectionsRepository.md` §2.5)  |
-| File suggestions (§4.16/§4.17)  | `getFileSuggestions`, `acceptFileSuggestions`, `dismissFileSuggestion` (DEF-25 seam)                                              |
+| File suggestions (§4.16/§4.17)  | `getFileSuggestions`, `acceptFileSuggestions`, `dismissFileSuggestion`                                                            |
 | Change fan-out                  | `subscribeToCollections` (wraps `collectionsNotifier.onCollectionsChange`, same unsubscribe contract as `subscribeToRecentFiles`) |
 
 Rules:

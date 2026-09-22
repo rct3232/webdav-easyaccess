@@ -84,7 +84,7 @@ Checklist for unit test writing:
 
 ---
 
-## 3. AI-platform entries (AI platform — implementation tracked as DEF-25)
+## 3. AI-platform entries (AI platform)
 
 Mobile mirror of `FileContextMenu.md` §3 — same entry set, same phase, long-press/More-sheet surface (docs/features/collections-platform.md §3.2/§3.3; `AddToCollectionMenu.md`, `MemberRowControls.md`).
 

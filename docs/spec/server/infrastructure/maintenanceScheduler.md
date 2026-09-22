@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item      | Description                                                                                                                                                                                                                                                                  |
-| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role      | Startup maintenance hooks + periodic schedules: the GC cron and the fail-safe startup scan (current); AI-adjacent nightly one-shots (§3, DEF-25). All schedules are functions in THIS module — new schedulers are never new module files (CODING_STYLE.md Express Patterns). |
-| Source    | `server/infrastructure/maintenanceScheduler.js`                                                                                                                                                                                                                              |
-| Test file | `server/infrastructure/__tests__/maintenanceScheduler.test.js`                                                                                                                                                                                                               |
+| Item      | Description                                                                                                                                                                                                                                                          |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role      | Startup maintenance hooks + periodic schedules: the GC cron and the fail-safe startup scan (current); AI-adjacent nightly one-shots (§3). All schedules are functions in THIS module — new schedulers are never new module files (CODING_STYLE.md Express Patterns). |
+| Source    | `server/infrastructure/maintenanceScheduler.js`                                                                                                                                                                                                                      |
+| Test file | `server/infrastructure/__tests__/maintenanceScheduler.test.js`                                                                                                                                                                                                       |
 
 ---
 
@@ -30,14 +30,14 @@ NOT this module — this module only schedules PERIODIC work.
 
 ---
 
-## 3. Target additions (implementation tracked as DEF-25)
+## 3. Target additions
 
 Three planned scheduler functions per CODING*STYLE.md Express Patterns (`shouldSkip`/`resolveIntervalMs` seams,
 no new module files) plus the evolution/nightly integration points. Existing §2 content
 is unchanged; new functions mirror its idioms (per-function `WEA_SKIP*\*` seam, DB-only
 interval resolution, log-never-throw).
 
-### 3.1 `startUsageRollupScheduler({ usageService, ... })` — DEF-25 nightly rollup
+### 3.1 `startUsageRollupScheduler({ usageService, ... })` — nightly rollup
 
 - Fires once per nightly anchor (§3.4). Chain: `usageService.rollupNodeActivity()`
   (`usage_events` → `node_activity` upserts, applying the §3.4 item accumulator
@@ -93,7 +93,7 @@ interval resolution, log-never-throw).
   `migrationService.js:330-348`).
 - Seam: `WEA_SKIP_EVOLUTION_SCHEDULER`.
 
-### 3.3 `startNightlyTagScheduler({ tagService })` — §4.18 3-step slot (P1, DEF-25)
+### 3.3 `startNightlyTagScheduler({ tagService })` — §4.18 3-step slot (P1)
 
 - Runs after the evolution slot in the same anchor (ordering matters: create-pass tag
   predicates want fresh parent hints; arbiter wants normalized groups): orthographic

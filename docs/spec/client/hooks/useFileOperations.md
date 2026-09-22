@@ -84,7 +84,7 @@
 
 ---
 
-## 3. AI-platform upload-queue-drain hint (AI platform — implementation tracked as DEF-25)
+## 3. AI-platform upload-queue-drain hint (AI platform)
 
 Addendum per docs/features/collections-platform.md §4.9 (silent-evolution `upload` trigger = BATCH-END; the server debounce is authoritative — the hint is **latency sugar only**).
 

@@ -270,7 +270,7 @@ config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
 | ---- | ---------------- | --------------- | ---------------------- | ------ |
 | 0 | T0.2 ∥ T0.12 ∥ T0.7b (∥ T0.11 if capacity) | none (roots) | T0.2: 3 conformance twins + dual-dialect §5 table-presence; T0.12: node:sqlite driver + BigInt PK binding; T0.7b: en/ko i18n key mirror + settings/flags exposure | `[done]` — T0.11 carried into Wave 2 |
 | 1 | T0.3 ∥ T0.6 ∥ T0.7 ∥ T0.8 (+ T0.1 absorbed) | T0.2 + T0.7b merged | T0.3: camelCase req / snake_case res + activity_score fallback sort; T0.8: NULL content_hash backfill idempotency | `[done]` |
-| 2 | T0.4 ∥ T0.5 ∥ T0.9 ∥ T0.11 (carried from Wave 0) + pre-tasks: register (c) (failsafe-row consolidation, small `chore/`) and register (f) (test-infra leak fix, small `test/`) | T0.3 API surface (client) / T0.2 (T0.9) | component+hook tests; T0.9 hash-first dup (NULL never forms a group), derived tags v1 | `[wip]` — T0.11 branch `feature/t11-name-search` (worktree wt-t11) |
+| 2 | T0.4 ∥ T0.5 ∥ T0.9 ∥ T0.11 (carried from Wave 0) + pre-tasks: register (c) (failsafe-row consolidation, small `chore/`) and register (f) (test-infra leak fix, small `test/`) | T0.3 API surface (client) / T0.2 (T0.9) | component+hook tests; T0.9 hash-first dup (NULL never forms a group), derived tags v1 | `[wip]` — T0.11 `[done]` on `feature/t11-name-search` (worktree wt-t11; merge pending) |
 | 3 | T0.10 → P0 exit gate | T0.9 + T0.7 + T0.8 merged | dashboard blocks per §4.16 | `[todo]` |
 
 - **P0 exit gate**: full `npm run test:ci` (client+server) + `test:ci:pg:adapters` + all new
@@ -325,3 +325,27 @@ config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
   (see `docs/RCA_LOG.md` 2026-09-22 entries). Gates: server `test:ci` 108 suites / 2057 tests,
   client `test:ci` 159 suites / 1438 tests, `test:ci:pg:adapters` 20 suites / 291 tests — all green.
   Known-open: one non-reproducible gcService test flake under parallel CI load (RCA-logged).
+- **Wave-2 T0.11 provenance (2026-09-22)**: branch `feature/t11-name-search`
+  (worktree wt-t11) — server-wide name search P0: `server/domains/ai/`
+  (searchService P0 name section + `sr1.` replay signature + fire-and-forget
+  `search_hit` recording; routes POST `/` + POST `/click` = the §3.4
+  list-entry-click recording point, `action='open'`), FileNodeRepository
+  sqlite/postgres search surface (`searchNodesByName`/`sampleVisibleNodeIds`,
+  ACL = own-root closure ∪ path grants ∪ point grants) + conformance block,
+  `search` error domain + `SEARCH_NAME_LIMIT` registry entry, client
+  results-mode tree (useSearchResults, SearchBarResultsMode,
+  FloatingSearchBar §3, useExplorerSession §3 D1 passthrough,
+  searchHighlight util, runSearch/recordSearchClick seams,
+  recentQueriesStorage adapter) + en/ko locales mirror. 4 commits
+  (`docs:`/`feat:`/`style:`/`feat:`). Targeted gates green: server
+  domains/ai 28 + conformance 47 + neighbor suites; client 7 suites / 96
+  tests; eslint/prettier clean. **Orchestrator integration (index.js is not
+  edited by task branches)**: after line 180 add
+  `app.use('/api/search', setupModeGuardInstance, require('./domains/ai/routes'));`.
+  Page-shell composition (FileManager.js ↔ FileManagerView): render
+  `SearchBarResultsMode` in place of the Breadcrumb row while
+  `useSearchResults().mode === 'results'`, wire `onSubmitQuery` from
+  `useExplorerSession` → `submitSearch`, typing → `setFilterText`, row open →
+  `recordEntryClick(nodeId)`; `clearRecentQueries()` joins
+  `useAuthSession.logout`. Search-origin server-side collection creation
+  (flattening + confirm dialog copy) rides T1.5.

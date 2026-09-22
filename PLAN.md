@@ -108,7 +108,8 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
   route spec + integration tests.
 - T0.4 Sidebar `__collections__`/`__archive__` + list view + card menus (client per §6).
 - T0.5 File-side: `Add to collection` submenu (context+multi-select), member-row controls
-  (§3.2 exact set), like toggle everywhere.
+  (§3.2 exact set), like toggle everywhere. Like toggles wire `usageService.recordEvent`
+  (`like` signal — DEF-26a).
 - T0.6 `usage_events` + nightly rollup in maintenanceScheduler (item accumulator `S_k` +
   `collections.activity_score` recompute) + item activity score fn (T2 constants: §3.4
   weights, H=30d).
@@ -124,12 +125,15 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
   detection redundant, PoC §2.2/E2**), local derived tags (mime/ext/month/path — v1 set
   per §4.10; EXIF rejected for v1),
   stored digest banner, cosine-free rule evaluation (path/tag/like predicates incl.
-  upload-hook rule check).
+  upload-hook rule check). NULL content_hash rows never form a dup group — pre-backfill
+  dup coverage depends on the DEF-26b repair action until write-side lands (T1.3).
 - T0.10 user dashboard `Storage` v1 (hygiene: exact dups, trash, journal feed, collections
   status, rule-based suggestions block fed by T0.9 per §4.16 — A7 decision 2026-09-22) —
-  no LLM/vector blocks yet.
+  no LLM/vector blocks yet. Journal feed renders member-op rows: decide `subject_label`
+  capture there (DEF-26d).
 - T0.11 server-wide **name search** + results-mode UI + two-section rendering with
   client-side highlight (LLM-free §4.6 stage; semantic section lands as P1 add-on).
+  Search results wire `search_hit`/list-entry-click recording (DEF-26a).
 - T0.12 **sqliteExecutor driver migration** `sqlite3` npm → `node:sqlite` (Node ≥24 floor;
   confined to the seam per §6; behavior suite green on both drivers; BigInt PK binding
   convention documented) — prerequisite for T1.4 native sqlite vector path.
@@ -143,7 +147,8 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 - T1.2 AI repos (`llm_models`,`embeddings`,`embeddings_chunk`,`ai_features`,`ai_jobs`,
   `ai_usage_daily` — tables already shipped in the T0.2 full-schema DDL) +
   restart-survival test.
-- T1.3 jobs worker (claim per dialect, backoff, lockManager, seam, hooks §4.1).
+- T1.3 jobs worker (claim per dialect, backoff, lockManager, seam, hooks §4.1). Hooks §4.1
+  carry the upload/copy/restore `content_hash` write-side population (DEF-26b).
 - T1.4 `vectorMath` + local extractors (unit-tested pure) + **`vectorStore` seam** (§4.13):
   exactly two impls — Native adapters (PG pgvector≥0.7 HNSW **ef_search=400 fixed** / sqlite
   **node:sqlite + sqlite-vec vec0** / future RDB adapters) and `TextVectorJs` fallback
@@ -178,7 +183,8 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
   symmetric-difference input per §4.19.
 - T3.1b set-Jaccard merge variant (LLM-free, same pipeline).
 - T3.2 sharing: grants, live resolution, publish pipeline/modes, cross-leak rule, viewer
-  chip, grant UI in props tabs, leave (§4.7).
+  chip, grant UI in props tabs, leave (§4.7). Cross-user writes move `is_tip` to
+  per-subject server-side computation (DEF-26e).
 - T3.3 `file_suggestions` rule variant + accept/undo (θ_dup 0.97, short-doc cosine
   exception, §4.17); dashboard AI-block appears when embed configured (§4.12); vector
   variant rides T1.7.
@@ -264,7 +270,7 @@ config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
 | ---- | ---------------- | --------------- | ---------------------- | ------ |
 | 0 | T0.2 ∥ T0.12 ∥ T0.7b (∥ T0.11 if capacity) | none (roots) | T0.2: 3 conformance twins + dual-dialect §5 table-presence; T0.12: node:sqlite driver + BigInt PK binding; T0.7b: en/ko i18n key mirror + settings/flags exposure | `[done]` — T0.11 carried into Wave 2 |
 | 1 | T0.3 ∥ T0.6 ∥ T0.7 ∥ T0.8 (+ T0.1 absorbed) | T0.2 + T0.7b merged | T0.3: camelCase req / snake_case res + activity_score fallback sort; T0.8: NULL content_hash backfill idempotency | `[done]` |
-| 2 | T0.4 ∥ T0.5 ∥ T0.9 ∥ T0.11 (carried from Wave 0) | T0.3 API surface (client) / T0.2 (T0.9) | component+hook tests; T0.9 hash-first dup (NULL never forms a group), derived tags v1 | `[todo]` |
+| 2 | T0.4 ∥ T0.5 ∥ T0.9 ∥ T0.11 (carried from Wave 0) + pre-tasks: DEF-26c (failsafe-row consolidation, small `chore/`) and DEF-26f (test-infra leak fix, small `test/`) | T0.3 API surface (client) / T0.2 (T0.9) | component+hook tests; T0.9 hash-first dup (NULL never forms a group), derived tags v1 | `[todo]` |
 | 3 | T0.10 → P0 exit gate | T0.9 + T0.7 + T0.8 merged | dashboard blocks per §4.16 | `[todo]` |
 
 - **P0 exit gate**: full `npm run test:ci` (client+server) + `test:ci:pg:adapters` + all new

@@ -109,7 +109,7 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 - T0.4 Sidebar `__collections__`/`__archive__` + list view + card menus (client per §6).
 - T0.5 File-side: `Add to collection` submenu (context+multi-select), member-row controls
   (§3.2 exact set), like toggle everywhere. Like toggles wire `usageService.recordEvent`
-  (`like` signal — DEF-26a).
+  (`like` signal — register (a)).
 - T0.6 `usage_events` + nightly rollup in maintenanceScheduler (item accumulator `S_k` +
   `collections.activity_score` recompute) + item activity score fn (T2 constants: §3.4
   weights, H=30d).
@@ -126,14 +126,14 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
   per §4.10; EXIF rejected for v1),
   stored digest banner, cosine-free rule evaluation (path/tag/like predicates incl.
   upload-hook rule check). NULL content_hash rows never form a dup group — pre-backfill
-  dup coverage depends on the DEF-26b repair action until write-side lands (T1.3).
+  dup coverage depends on the register (b) backfill action until write-side lands (T1.3).
 - T0.10 user dashboard `Storage` v1 (hygiene: exact dups, trash, journal feed, collections
   status, rule-based suggestions block fed by T0.9 per §4.16 — A7 decision 2026-09-22) —
   no LLM/vector blocks yet. Journal feed renders member-op rows: decide `subject_label`
-  capture there (DEF-26d).
+  capture there (register (d)).
 - T0.11 server-wide **name search** + results-mode UI + two-section rendering with
   client-side highlight (LLM-free §4.6 stage; semantic section lands as P1 add-on).
-  Search results wire `search_hit`/list-entry-click recording (DEF-26a).
+  Search results wire `search_hit`/list-entry-click recording (register (a)).
 - T0.12 **sqliteExecutor driver migration** `sqlite3` npm → `node:sqlite` (Node ≥24 floor;
   confined to the seam per §6; behavior suite green on both drivers; BigInt PK binding
   convention documented) — prerequisite for T1.4 native sqlite vector path.
@@ -148,7 +148,7 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
   `ai_usage_daily` — tables already shipped in the T0.2 full-schema DDL) +
   restart-survival test.
 - T1.3 jobs worker (claim per dialect, backoff, lockManager, seam, hooks §4.1). Hooks §4.1
-  carry the upload/copy/restore `content_hash` write-side population (DEF-26b).
+  carry the upload/copy/restore `content_hash` write-side population (register (b)).
 - T1.4 `vectorMath` + local extractors (unit-tested pure) + **`vectorStore` seam** (§4.13):
   exactly two impls — Native adapters (PG pgvector≥0.7 HNSW **ef_search=400 fixed** / sqlite
   **node:sqlite + sqlite-vec vec0** / future RDB adapters) and `TextVectorJs` fallback
@@ -184,7 +184,7 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 - T3.1b set-Jaccard merge variant (LLM-free, same pipeline).
 - T3.2 sharing: grants, live resolution, publish pipeline/modes, cross-leak rule, viewer
   chip, grant UI in props tabs, leave (§4.7). Cross-user writes move `is_tip` to
-  per-subject server-side computation (DEF-26e).
+  per-subject server-side computation (register (e)).
 - T3.3 `file_suggestions` rule variant + accept/undo (θ_dup 0.97, short-doc cosine
   exception, §4.17); dashboard AI-block appears when embed configured (§4.12); vector
   variant rides T1.7.
@@ -270,7 +270,7 @@ config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
 | ---- | ---------------- | --------------- | ---------------------- | ------ |
 | 0 | T0.2 ∥ T0.12 ∥ T0.7b (∥ T0.11 if capacity) | none (roots) | T0.2: 3 conformance twins + dual-dialect §5 table-presence; T0.12: node:sqlite driver + BigInt PK binding; T0.7b: en/ko i18n key mirror + settings/flags exposure | `[done]` — T0.11 carried into Wave 2 |
 | 1 | T0.3 ∥ T0.6 ∥ T0.7 ∥ T0.8 (+ T0.1 absorbed) | T0.2 + T0.7b merged | T0.3: camelCase req / snake_case res + activity_score fallback sort; T0.8: NULL content_hash backfill idempotency | `[done]` |
-| 2 | T0.4 ∥ T0.5 ∥ T0.9 ∥ T0.11 (carried from Wave 0) + pre-tasks: DEF-26c (failsafe-row consolidation, small `chore/`) and DEF-26f (test-infra leak fix, small `test/`) | T0.3 API surface (client) / T0.2 (T0.9) | component+hook tests; T0.9 hash-first dup (NULL never forms a group), derived tags v1 | `[todo]` |
+| 2 | T0.4 ∥ T0.5 ∥ T0.9 ∥ T0.11 (carried from Wave 0) + pre-tasks: register (c) (failsafe-row consolidation, small `chore/`) and register (f) (test-infra leak fix, small `test/`) | T0.3 API surface (client) / T0.2 (T0.9) | component+hook tests; T0.9 hash-first dup (NULL never forms a group), derived tags v1 | `[todo]` |
 | 3 | T0.10 → P0 exit gate | T0.9 + T0.7 + T0.8 merged | dashboard blocks per §4.16 | `[todo]` |
 
 - **P0 exit gate**: full `npm run test:ci` (client+server) + `test:ci:pg:adapters` + all new
@@ -301,8 +301,19 @@ config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
   and the `startUsageRollupScheduler` boot wiring in `server/index.js`; `USAGE_ACTION` enum
   added to `shared/constants.js` (consumed by `usageService`). Gates: server `test:ci`
   117 suites / 2229 tests, client `test:ci` 164 suites / 1494 tests, `test:ci:pg:adapters`
-  22 suites / 314 tests — all green. Deferred follow-ups tracked as DEF-26
-  (`docs/IMPROVEMENT_PLAN.md`).
+  22 suites / 314 tests — all green. Deferred follow-ups recorded in the register below.
+- **Deferred follow-ups register (wave-1 deferrals, 2026-09-22)** — sub-work recorded here,
+  not in `docs/IMPROVEMENT_PLAN.md`: (a) usage-event recording wiring rides the owning tasks
+  — T0.5 like, T0.11 search_hit/list-entry-click, files-domain wiring for download/preview
+  (Wave 2+); (b) upload/copy/restore `content_hash` write-side population rides the §4.1
+  hook wiring in T1.3 (P1) — boot probe + backfill cover the gap meanwhile; (c) consolidate
+  the T0.1 probe's failsafe row into `runStartupFailSafeRecovery` (one-call change — wave-2
+  pre-task); (d) journal `subject_label` capture decided at T0.10 (Wave 3) when the feed
+  renders member-op rows; (e) `is_tip` becomes per-subject server-side computation when
+  T3.2 introduces cross-user writes (P3); (f) pre-existing test-infra leak —
+  `migration.test.js` writes `data/webdav.db`, `createTestDatabase` cleanup can leave
+  `WEA_SQLITE_PATH='undefined'` (stray `server/undefined` SQLite files) — wave-2 pre-task
+  (`test/`).
 - **Wave-0 spec debt found during planning (2026-09-22, resolved in the T0.12 PR)**: §6/T0.12
   said the sqlite driver is confined to `db/sqliteExecutor.js`, but the real `sqlite3` npm
   sites are `store/storage.js`, `metadataMigrationService.js`, `sqliteSchemaInit.js`,

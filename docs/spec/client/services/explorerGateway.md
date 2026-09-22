@@ -81,7 +81,7 @@ Per CODING_STYLE.md Express Patterns "Client layering", collections-platform IO 
 | Preview / seed / search-save    | `previewCollection`, `previewExistingCollection`                                                                                  |
 | Merge                           | `getMergeSuggestions`, `mergeCollections`, `dismissMerge`, `rejectMerge`                                                          |
 | Grants (sharing)                | `getGrants`, `grantCollection`, `revokeGrant`                                                                                     |
-| Search results mode             | `runSearch` (§4.6; `semantic_available`/`result_ref` consumed by `useSearchResults`)                                              |
+| Search results mode             | `runSearch`, `recordSearchClick` (§4.6; `semantic_available`/`result_ref` consumed by `useSearchResults`; `recordSearchClick` = §3.4 list-entry-click signal at result open)                                              |
 | Undo journal / toast payload    | `getActions`, `undoAction` (structured result incl. `params.laterChanges` for cascade confirm — `collectionsRepository.md` §2.5)  |
 | File suggestions (§4.16/§4.17)  | `getFileSuggestions`, `acceptFileSuggestions`, `dismissFileSuggestion`                                                            |
 | Change fan-out                  | `subscribeToCollections` (wraps `collectionsNotifier.onCollectionsChange`, same unsubscribe contract as `subscribeToRecentFiles`) |
@@ -95,5 +95,5 @@ Rules:
 Verification additions:
 
 - [ ] `subscribeToCollections` returns an unsubscribe function safe for effect cleanup (same contract as `subscribeToRecentFiles`).
-- [ ] `runSearch`/`undoAction`/collection CRUD re-exports return the repository's exact shapes (snake_case payloads, absorbed fallbacks).
+- [ ] `runSearch`/`undoAction`/collection CRUD re-exports return the repository's exact shapes (snake_case payloads, absorbed fallbacks); `recordSearchClick` keeps the absorbed boolean contract.
 - [ ] Controller hooks (`useCollections`, `useSearchResults`, `useUndoToast`) contain no direct `collectionsRepository`/`collectionsNotifier` imports (grep gate).

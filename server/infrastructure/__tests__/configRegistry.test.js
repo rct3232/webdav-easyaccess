@@ -250,6 +250,58 @@ describe('configRegistry', () => {
     });
   });
 
+  describe('activity constants (T0.6 — §3.4 product constants, T2 dbOnly)', () => {
+    const ACTIVITY_KEYS = [
+      'AI_USAGE_W_OPEN',
+      'AI_USAGE_W_PREVIEW',
+      'AI_USAGE_W_DOWNLOAD',
+      'AI_USAGE_W_SEARCH_HIT',
+      'AI_USAGE_W_LIKE',
+      'AI_ACTIVITY_HALF_LIFE_DAYS',
+      'AI_USAGE_EVENT_RETENTION_DAYS',
+      'AI_NIGHTLY_ANCHOR_HOUR_UTC',
+      'ARCHIVE_RETENTION_DAYS',
+    ];
+
+    it('registers every activity constant as T2 dbOnly with the shipped default', () => {
+      const defaults = {
+        AI_USAGE_W_OPEN: 1,
+        AI_USAGE_W_PREVIEW: 2,
+        AI_USAGE_W_DOWNLOAD: 3,
+        AI_USAGE_W_SEARCH_HIT: 1,
+        AI_USAGE_W_LIKE: 5,
+        AI_ACTIVITY_HALF_LIFE_DAYS: 30,
+        AI_USAGE_EVENT_RETENTION_DAYS: 90,
+        AI_NIGHTLY_ANCHOR_HOUR_UTC: 3,
+        ARCHIVE_RETENTION_DAYS: 30,
+      };
+      for (const key of ACTIVITY_KEYS) {
+        const entry = getEntry(key);
+        expect(entry).toBeDefined();
+        expect(entry.tier).toBe(TIER.T2);
+        expect(entry.dbOnly).toBe(true);
+        expect(entry.secret).toBe(false);
+        expect(entry.default).toBe(defaults[key]);
+      }
+    });
+
+    it('registers the WEA_SKIP_ROLLUP_SCHEDULER test seam as T2, env-allowed (not dbOnly)', () => {
+      const entry = getEntry('WEA_SKIP_ROLLUP_SCHEDULER');
+      expect(entry).toBeDefined();
+      expect(entry.tier).toBe(TIER.T2);
+      expect(entry.secret).toBe(false);
+      expect(entry.dbOnly).toBeUndefined();
+    });
+
+    it('keeps the activity group inside the AI/LLM group (after runtime)', () => {
+      const keys = CONFIG_ENTRIES.map((entry) => entry.key);
+      expect(keys.indexOf('AI_SEMANTIC_SEARCH_ENABLED')).toBeLessThan(
+        keys.indexOf('AI_USAGE_W_OPEN')
+      );
+      expect(keys.indexOf('WEA_SKIP_GC_SCHEDULER')).toBeLessThan(keys.indexOf('AI_USAGE_W_OPEN'));
+    });
+  });
+
   it('contains every env var read under server/ (inventory check)', () => {
     const keys = CONFIG_ENTRIES.map((entry) => entry.key);
     for (const key of [

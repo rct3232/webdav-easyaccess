@@ -37,7 +37,7 @@ no new module files) plus the evolution/nightly integration points. Existing §2
 is unchanged; new functions mirror its idioms (per-function `WEA_SKIP*\*` seam, DB-only
 interval resolution, log-never-throw).
 
-### 3.1 `startUsageRollupScheduler({ usageService })` — DEF-25 nightly rollup
+### 3.1 `startUsageRollupScheduler({ usageService, ... })` — DEF-25 nightly rollup
 
 - Fires once per nightly anchor (§3.4). Chain: `usageService.rollupNodeActivity()`
   (`usage_events` → `node_activity` upserts, applying the §3.4 item accumulator
@@ -50,6 +50,31 @@ interval resolution, log-never-throw).
   (lifetime = `ARCHIVE_RETENTION_DAYS`, Q1) — one nightly data-hygiene slot, ordered
   rollup-before-roll-off so no unrolled event is deleted.
 - Seam: `WEA_SKIP_ROLLUP_SCHEDULER` (truthy ⇒ no schedule; unit tests + hermetic E2E).
+- Implementation contract (T0.6):
+  - The tick sequences the five legs IN ORDER (`usageService.rollupNodeActivity()` →
+    `collectionsStore.recomputeActivityScores()` → `usageService.rollOffExpiredEvents()`
+    → `actionJournalStore.expireJournalRows()` → `collectionsStore.purgeExpiredTombstones(cutoff)`).
+    Any leg failure aborts the remaining legs (logged, retried next anchor — idempotent
+    re-runs make the retry a no-op for already-consumed intervals).
+  - DI: `usageService` is required (missing ⇒ `null`); the store legs are resolved
+    lazily (`collectionsStore`, `actionJournalStore` facades) with DI overrides for
+    tests, mirroring `resolveAdminReportsWriter`.
+  - Rollup config is read per-fire (T2 hot, dbOnly): weights
+    `AI_USAGE_W_{OPEN,PREVIEW,DOWNLOAD,SEARCH_HIT,LIKE}` (defaults 1/2/3/1/5) and
+    `AI_ACTIVITY_HALF_LIFE_DAYS` (default 30) are resolved by `usageService`
+    (§3.4 owner-adjudicated product constants — NOT AI-profile numbers); the
+    `usage_events` roll-off horizon is `AI_USAGE_EVENT_RETENTION_DAYS` (default `90`,
+    `0` = retention off); the tombstone cutoff is now − `ARCHIVE_RETENTION_DAYS`
+    (default `30`, key shared with evolution pass 4 per `collectionsService.md` §3).
+  - The run does NOT persist an `admin_reports` row: the §5 `kind` CHECK enum has no
+    rollup kind, and §3.1 (unlike GC §4.14 Tier A) does not mandate one — the tick is
+    log-only (`console.error` on failure, silent on success, never throws out of the
+    timer).
+  - The usage-event RECORDING path is `usageService.recordEvent({ userId, nodeId, action })`
+    (validation + `usage_events` insert). The §3.4 recording points (download / preview /
+    search-hit / like / list-entry-click endpoints) wire it in their owning waves
+    (searchService §8 logs `search_hit` per returned node; like toggle T0.5; download/
+    preview = files domain) — this module only rolls up.
 
 ### 3.2 `startEvolutionScheduler({ evolutionService })` — nightly backbone slot
 
@@ -89,6 +114,15 @@ interval resolution, log-never-throw).
   idempotent re-scans so nothing is "wrong", only late — §4.9 correctness note).
 - All three functions return `null` (disabled) on seam or missing service, exactly like
   `startGcScheduler`.
+- Anchor math (T0.6): `resolveAnchorHour()` reads the dbOnly key via the shared resolver
+  sync seam (`getConfigSync`, GC precedent) and falls back to `3` for non-integer or
+  out-of-`0..23` values; `resolveNightlyDelayMs(nowMs, anchorHour)` returns the ms to the
+  NEXT occurrence of the anchor hour (UTC, top-of-hour) in `(0, 24h]` — a delay computed
+  as exactly `0` collapses to `24h` (boot/restarm AT the anchor instant waits for the next
+  anchor: "never twice in one day", no hot re-arm). Each scheduler re-arms with the SAME
+  resolution (anchor hour re-read at fire time — hot). The returned handle is the
+  FIRST pending timer; re-arms replace it internally (fire-and-forget boot wiring never
+  cancels; tests use fake timers + `jest.clearAllTimers()`).
 
 ### 3.5 Unchanged
 

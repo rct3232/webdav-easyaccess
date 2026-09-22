@@ -13,6 +13,10 @@ const {
   runStartupFailSafeRecovery,
   shouldSkip,
   resolveIntervalMs,
+  shouldSkipRollup,
+  resolveAnchorHour,
+  resolveNightlyDelayMs,
+  startUsageRollupScheduler,
 } = require('../maintenanceScheduler');
 
 function setIntervalValue(value) {
@@ -310,6 +314,196 @@ describe('maintenanceScheduler', () => {
         warnSpy.mockRestore();
         errorSpy.mockRestore();
       }
+    });
+  });
+
+  // ── T0.6: nightly usage-rollup scheduler (§3.1/§3.4) ──────────────────────
+
+  describe('shouldSkipRollup', () => {
+    const saved = process.env.WEA_SKIP_ROLLUP_SCHEDULER;
+
+    afterEach(() => {
+      if (saved === undefined) delete process.env.WEA_SKIP_ROLLUP_SCHEDULER;
+      else process.env.WEA_SKIP_ROLLUP_SCHEDULER = saved;
+    });
+
+    it('is false when the env flag is unset', () => {
+      delete process.env.WEA_SKIP_ROLLUP_SCHEDULER;
+      expect(shouldSkipRollup()).toBe(false);
+    });
+
+    it('is true for the truthy values 1/true/yes/on', () => {
+      for (const value of ['1', 'true', 'yes', 'on']) {
+        process.env.WEA_SKIP_ROLLUP_SCHEDULER = value;
+        expect(shouldSkipRollup()).toBe(true);
+      }
+      process.env.WEA_SKIP_ROLLUP_SCHEDULER = '0';
+      expect(shouldSkipRollup()).toBe(false);
+    });
+  });
+
+  describe('resolveAnchorHour (AI_NIGHTLY_ANCHOR_HOUR_UTC, dbOnly)', () => {
+    afterEach(() => {
+      mockGetConfigSync = undefined;
+    });
+
+    it('defaults to 3 when unset', () => {
+      mockGetConfigSync = () => undefined;
+      expect(resolveAnchorHour()).toBe(3);
+    });
+
+    it('honors a configured hour', () => {
+      mockGetConfigSync = (key) => (key === 'AI_NIGHTLY_ANCHOR_HOUR_UTC' ? '5' : undefined);
+      expect(resolveAnchorHour()).toBe(5);
+    });
+
+    it('falls back to 3 for invalid values', () => {
+      for (const bad of ['not-a-number', '24', '-1', '3.5']) {
+        mockGetConfigSync = (key) => (key === 'AI_NIGHTLY_ANCHOR_HOUR_UTC' ? bad : undefined);
+        expect(resolveAnchorHour()).toBe(3);
+      }
+    });
+  });
+
+  describe('resolveNightlyDelayMs (anchor math, §3.4)', () => {
+    const DAY = 86400000;
+    const anchor = (h) => Date.UTC(2026, 8, 22, h);
+
+    it.each([
+      ['before the anchor → same-day delay', anchor(3) - 2 * 3600000, 3, 2 * 3600000],
+      ['after the anchor → next-day delay', anchor(3) + 4 * 3600000, 3, 20 * 3600000],
+      ['exactly at the anchor → full 24h (never twice a day)', anchor(3), 3, DAY],
+      ['one ms past the anchor → ~24h', anchor(3) + 1, 3, DAY - 1],
+      ['anchor 0 wraps to the previous day', anchor(0) + 23 * 3600000, 0, 3600000],
+    ])('%s', (_label, nowMs, hour, expected) => {
+      expect(resolveNightlyDelayMs(nowMs, hour)).toBe(expected);
+    });
+  });
+
+  describe('startUsageRollupScheduler', () => {
+    const DAY = 86400000;
+    // 2026-09-22T02:00:00Z — one hour before the default 03:00 anchor.
+    const JUST_BEFORE_ANCHOR = Date.UTC(2026, 8, 22, 2, 0, 0);
+
+    function scheduleRollup({ usageService, collectionsStore, actionJournalStore }) {
+      mockGetConfigSync = (key) => (key === 'AI_NIGHTLY_ANCHOR_HOUR_UTC' ? '3' : undefined);
+      delete process.env.WEA_SKIP_ROLLUP_SCHEDULER;
+      jest.useFakeTimers();
+      jest.setSystemTime(JUST_BEFORE_ANCHOR);
+      return startUsageRollupScheduler({ usageService, collectionsStore, actionJournalStore });
+    }
+
+    afterEach(() => {
+      jest.clearAllTimers();
+      jest.useRealTimers();
+      delete process.env.WEA_SKIP_ROLLUP_SCHEDULER;
+      mockGetConfigSync = undefined;
+    });
+
+    const chainFakes = () => ({
+      usageService: {
+        rollupNodeActivity: jest.fn(async () => ({ groups: 1, changes: 1 })),
+        rollOffExpiredEvents: jest.fn(async () => ({ changes: 2 })),
+      },
+      collectionsStore: {
+        recomputeActivityScores: jest.fn(async () => ({ changes: 3 })),
+        purgeExpiredTombstones: jest.fn(async () => ({ changes: 0 })),
+      },
+      actionJournalStore: { expireJournalRows: jest.fn(async () => ({ changes: 2 })) },
+    });
+
+    it('returns null under the WEA_SKIP_ROLLUP_SCHEDULER seam', () => {
+      const prev = process.env.WEA_SKIP_ROLLUP_SCHEDULER;
+      process.env.WEA_SKIP_ROLLUP_SCHEDULER = '1';
+      try {
+        expect(startUsageRollupScheduler({ usageService: chainFakes().usageService })).toBeNull();
+      } finally {
+        if (prev === undefined) delete process.env.WEA_SKIP_ROLLUP_SCHEDULER;
+        else process.env.WEA_SKIP_ROLLUP_SCHEDULER = prev;
+      }
+    });
+
+    it('returns null when the usage service is missing', () => {
+      expect(startUsageRollupScheduler({})).toBeNull();
+    });
+
+    it('runs the five legs in order at the nightly anchor (§3.1 chain)', async () => {
+      const fakes = chainFakes();
+      const order = [];
+      fakes.usageService.rollupNodeActivity.mockImplementation(async () => {
+        order.push('rollup');
+        return { groups: 0, changes: 0 };
+      });
+      fakes.collectionsStore.recomputeActivityScores.mockImplementation(async () => {
+        order.push('recompute');
+        return { changes: 0 };
+      });
+      fakes.usageService.rollOffExpiredEvents.mockImplementation(async () => {
+        order.push('rollOff');
+        return { changes: 0 };
+      });
+      fakes.actionJournalStore.expireJournalRows.mockImplementation(async () => {
+        order.push('journal');
+        return { changes: 0 };
+      });
+      fakes.collectionsStore.purgeExpiredTombstones.mockImplementation(async () => {
+        order.push('tombstones');
+        return { changes: 0 };
+      });
+
+      const timer = scheduleRollup(fakes);
+      expect(timer).not.toBeNull();
+
+      await jest.advanceTimersByTimeAsync(3600000); // anchor reached
+      expect(order).toEqual(['rollup', 'recompute', 'rollOff', 'journal', 'tombstones']);
+      expect(fakes.collectionsStore.recomputeActivityScores).toHaveBeenCalledWith();
+      expect(fakes.collectionsStore.purgeExpiredTombstones).toHaveBeenCalledWith(
+        expect.any(Number)
+      );
+    });
+
+    it('a rollup failure aborts the retention tail (retried next anchor)', async () => {
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const fakes = chainFakes();
+      fakes.usageService.rollupNodeActivity.mockRejectedValue(new Error('rollup exploded'));
+
+      const timer = scheduleRollup(fakes);
+      expect(timer).not.toBeNull();
+      await jest.advanceTimersByTimeAsync(3600000);
+
+      expect(fakes.collectionsStore.recomputeActivityScores).not.toHaveBeenCalled();
+      expect(fakes.usageService.rollOffExpiredEvents).not.toHaveBeenCalled();
+      expect(fakes.actionJournalStore.expireJournalRows).not.toHaveBeenCalled();
+      expect(fakes.collectionsStore.purgeExpiredTombstones).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledWith('Scheduled usage rollup failed:', 'rollup exploded');
+      errorSpy.mockRestore();
+    });
+
+    it('a tail-leg failure aborts the later legs and never throws out of the tick', async () => {
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const fakes = chainFakes();
+      fakes.usageService.rollOffExpiredEvents.mockRejectedValue(new Error('rolloff exploded'));
+
+      expect(scheduleRollup(fakes)).not.toBeNull();
+      await expect(jest.advanceTimersByTimeAsync(3600000)).resolves.not.toThrow();
+
+      expect(fakes.usageService.rollupNodeActivity).toHaveBeenCalledTimes(1);
+      expect(fakes.collectionsStore.recomputeActivityScores).toHaveBeenCalledTimes(1);
+      expect(fakes.actionJournalStore.expireJournalRows).not.toHaveBeenCalled();
+      expect(fakes.collectionsStore.purgeExpiredTombstones).not.toHaveBeenCalled();
+      errorSpy.mockRestore();
+    });
+
+    it('re-arms for the next anchor after each run (drift-tolerant)', async () => {
+      const fakes = chainFakes();
+      const timer = scheduleRollup(fakes);
+
+      await jest.advanceTimersByTimeAsync(3600000); // anchor day 1
+      expect(fakes.usageService.rollupNodeActivity).toHaveBeenCalledTimes(1);
+
+      await jest.advanceTimersByTimeAsync(DAY); // next anchor (24h later)
+      expect(fakes.usageService.rollupNodeActivity).toHaveBeenCalledTimes(2);
+      expect(timer).not.toBeNull();
     });
   });
 });

@@ -33,7 +33,6 @@ function stubConfig(overrides = {}) {
 
 describe('usageService', () => {
   let usageStore;
-  let service;
   const NOW = Date.UTC(2026, 8, 22, 3, 0, 0);
 
   beforeEach(() => {
@@ -48,7 +47,7 @@ describe('usageService', () => {
   });
 
   describe('recordEvent (recording path)', () => {
-    it('inserts a validated §3.4 event', async () => {
+    it('inserts a validated §3.4 event (repo owns the at-default)', async () => {
       const service = createUsageService({ usageStore });
       const result = await service.recordEvent({ userId: 7, nodeId: 9, action: 'download' });
 
@@ -57,7 +56,7 @@ describe('usageService', () => {
         userId: 7,
         nodeId: 9,
         action: 'download',
-        at: expect.any(String),
+        at: undefined,
       });
     });
 
@@ -71,9 +70,8 @@ describe('usageService', () => {
     });
 
     it('rejects actions outside the §3.4 enum', async () => {
-      const service = createUsageService({ usageStore });
       await expect(
-        service.recordEvent({ userId: 7, nodeId: 9, action: 'list' })
+        createUsageService({ usageStore }).recordEvent({ userId: 7, nodeId: 9, action: 'list' })
       ).rejects.toThrow(/action/);
       expect(usageStore.insertUsageEvent).not.toHaveBeenCalled();
     });
@@ -108,6 +106,7 @@ describe('usageService', () => {
           prevUpdatedAtMs: NOW - 30 * DAY_MS,
         },
       ]);
+      usageStore.upsertNodeActivity.mockResolvedValue({ changes: 1 });
 
       const service = createUsageService({ usageStore, now: () => new Date(NOW) });
       const report = await service.rollupNodeActivity();

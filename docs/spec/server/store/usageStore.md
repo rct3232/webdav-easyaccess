@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item      | Description                                                                                                                                                                                                                             |
-| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Item      | Description                                                                                                                                                                                                                           |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role      | Usage-signal persistence — `usage_events` (raw, append-only, 90d roll-off) and the `node_activity` per-(user,node) accumulator (`opens/downloads/previews/search_hits/likes` lifetime counts + decaying `score`). §3.4 DEF-25 domain. |
-| Precedent | `fileLikesStore` twin (per-user normalized table, stable node_ids, FK CASCADE). The night-night chain (rollup → recompute → retention tail) is sequenced by `maintenanceScheduler` (§3.1) over `usageService`.                          |
-| Journal   | NONE. Usage signals are telemetry, not undoable user actions (§4.11 matrix — like/visit/sort manipulation rows have no undo).                                                                                                            |
+| Precedent | `fileLikesStore` twin (per-user normalized table, stable node_ids, FK CASCADE). The night-night chain (rollup → recompute → retention tail) is sequenced by `maintenanceScheduler` (§3.1) over `usageService`.                        |
+| Journal   | NONE. Usage signals are telemetry, not undoable user actions (§4.11 matrix — like/visit/sort manipulation rows have no undo).                                                                                                         |
 
 ---
 
@@ -24,12 +24,12 @@
 
 ### 2.2 Main Methods
 
-| Method                     | Signature                                                                          | Description                                                                                                                                                                                                             |
-| -------------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `insertUsageEvent`         | ({ userId, nodeId, action, at? }) => Promise\<{ changes }\>                        | One raw event row; `at` defaults to now (ISO bind — deterministic for decay tests). FK-enforced on unknown user/node.                                                                                                    |
-| `readRollupGroups`         | () => Promise\<rollupGroup[]\>                                                     | Events joined to their existing `node_activity` row, watermark-filtered, grouped by (user_id, node_id) — the rollup's ONLY read. See §2.3.                                                                               |
-| `upsertNodeActivity`       | (rows) => Promise\<{ changes }\>                                                   | Batch UPSERT on the PK pair (counts = lifetime totals, score/last_seen_at/updated_at overwritten).                                                                                                                       |
-| `deleteUsageEventsOlderThan` | (cutoffMs) => Promise\<{ changes }\>                                             | Retention roll-off (GC-parity): raw events older than the cutoff. Called by the nightly tail ONLY after a successful rollup (no unrolled event is ever deleted — maintenanceScheduler §3.1 ordering).                    |
+| Method                       | Signature                                                   | Description                                                                                                                                                                                           |
+| ---------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `insertUsageEvent`           | ({ userId, nodeId, action, at? }) => Promise\<{ changes }\> | One raw event row; `at` defaults to now (ISO bind — deterministic for decay tests). FK-enforced on unknown user/node.                                                                                 |
+| `readRollupGroups`           | () => Promise\<rollupGroup[]\>                              | Events joined to their existing `node_activity` row, watermark-filtered, grouped by (user_id, node_id) — the rollup's ONLY read. See §2.3.                                                            |
+| `upsertNodeActivity`         | (rows) => Promise\<{ changes }\>                            | Batch UPSERT on the PK pair (counts = lifetime totals, score/last_seen_at/updated_at overwritten).                                                                                                    |
+| `deleteUsageEventsOlderThan` | (cutoffMs) => Promise\<{ changes }\>                        | Retention roll-off (GC-parity): raw events older than the cutoff. Called by the nightly tail ONLY after a successful rollup (no unrolled event is ever deleted — maintenanceScheduler §3.1 ordering). |
 
 `rollupGroup = { userId, nodeId, counts: {open, download, preview, search_hit, like}, lastSeenAtMs, prevScore, prevCounts, prevUpdatedAtMs|null }` — domain-shaped (numbers; timestamps normalized to ms epoch by each dialect twin).
 

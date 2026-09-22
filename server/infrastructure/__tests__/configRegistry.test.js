@@ -298,9 +298,7 @@ describe('configRegistry', () => {
       expect(keys.indexOf('AI_SEMANTIC_SEARCH_ENABLED')).toBeLessThan(
         keys.indexOf('AI_USAGE_W_OPEN')
       );
-      expect(keys.indexOf('WEA_SKIP_GC_SCHEDULER')).toBeLessThan(
-        keys.indexOf('AI_USAGE_W_OPEN')
-      );
+      expect(keys.indexOf('WEA_SKIP_GC_SCHEDULER')).toBeLessThan(keys.indexOf('AI_USAGE_W_OPEN'));
     });
   });
 

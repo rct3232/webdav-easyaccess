@@ -381,7 +381,6 @@ describe('maintenanceScheduler', () => {
   });
 
   describe('startUsageRollupScheduler', () => {
-    const ANCHOR = 3;
     const DAY = 86400000;
     // 2026-09-22T02:00:00Z — one hour before the default 03:00 anchor.
     const JUST_BEFORE_ANCHOR = Date.UTC(2026, 8, 22, 2, 0, 0);
@@ -469,6 +468,7 @@ describe('maintenanceScheduler', () => {
       fakes.usageService.rollupNodeActivity.mockRejectedValue(new Error('rollup exploded'));
 
       const timer = scheduleRollup(fakes);
+      expect(timer).not.toBeNull();
       await jest.advanceTimersByTimeAsync(3600000);
 
       expect(fakes.collectionsStore.recomputeActivityScores).not.toHaveBeenCalled();
@@ -484,7 +484,7 @@ describe('maintenanceScheduler', () => {
       const fakes = chainFakes();
       fakes.usageService.rollOffExpiredEvents.mockRejectedValue(new Error('rolloff exploded'));
 
-      const timer = scheduleRollup(fakes);
+      expect(scheduleRollup(fakes)).not.toBeNull();
       await expect(jest.advanceTimersByTimeAsync(3600000)).resolves.not.toThrow();
 
       expect(fakes.usageService.rollupNodeActivity).toHaveBeenCalledTimes(1);

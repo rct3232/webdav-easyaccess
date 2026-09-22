@@ -166,6 +166,32 @@ const CONFIG_ENTRIES = Object.freeze([
   { key: 'LLM_DAILY_TOKEN_CAP', tier: TIER.T2, secret: false, default: 0, dbOnly: true },
   { key: 'LLM_REPROBE_DEBOUNCE_S', tier: TIER.T2, secret: false, default: 60, dbOnly: true },
   { key: 'AI_SEMANTIC_SEARCH_ENABLED', tier: TIER.T2, secret: false, default: true, dbOnly: true },
+
+  // ── Activity constants (§3.4 — T2 dbOnly product constants; PLAN §6) ────
+  // T0.6 usage/activity rollup: weights + half-life feed the nightly item
+  // accumulator (S_k, H=30d); retention governs the raw-event roll-off; the
+  // anchor hour arms the nightly schedulers; ARCHIVE_RETENTION_DAYS is the
+  // purge horizon shared with evolution pass 4 (collectionsService.md §3).
+  // Shipped defaults are the single semantic source's registry mirror
+  // (infrastructure/usage/activityScore.js — parity kept by test). The
+  // rollup scheduler test seam follows the WEA_SKIP_AI_WORKER idiom
+  // (env-allowed, NOT dbOnly).
+  { key: 'AI_USAGE_W_OPEN', tier: TIER.T2, secret: false, default: 1, dbOnly: true },
+  { key: 'AI_USAGE_W_PREVIEW', tier: TIER.T2, secret: false, default: 2, dbOnly: true },
+  { key: 'AI_USAGE_W_DOWNLOAD', tier: TIER.T2, secret: false, default: 3, dbOnly: true },
+  { key: 'AI_USAGE_W_SEARCH_HIT', tier: TIER.T2, secret: false, default: 1, dbOnly: true },
+  { key: 'AI_USAGE_W_LIKE', tier: TIER.T2, secret: false, default: 5, dbOnly: true },
+  { key: 'AI_ACTIVITY_HALF_LIFE_DAYS', tier: TIER.T2, secret: false, default: 30, dbOnly: true },
+  {
+    key: 'AI_USAGE_EVENT_RETENTION_DAYS',
+    tier: TIER.T2,
+    secret: false,
+    default: 90,
+    dbOnly: true,
+  },
+  { key: 'AI_NIGHTLY_ANCHOR_HOUR_UTC', tier: TIER.T2, secret: false, default: 3, dbOnly: true },
+  { key: 'ARCHIVE_RETENTION_DAYS', tier: TIER.T2, secret: false, default: 30, dbOnly: true },
+  { key: 'WEA_SKIP_ROLLUP_SCHEDULER', tier: TIER.T2, secret: false },
 ]);
 
 const FROZEN_ENTRIES = Object.freeze(CONFIG_ENTRIES.map((entry) => Object.freeze(entry)));

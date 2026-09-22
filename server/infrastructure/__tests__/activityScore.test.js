@@ -65,7 +65,11 @@ describe('activityScore (§3.4 item accumulator)', () => {
       ['empty events score 0', {}, 0],
       ['single open = w_open', { open: 1 }, 1],
       ['two opens and one download = 2·1 + 1·3', { open: 2, download: 1 }, 5],
-      ['one of each action = 1+2+3+1+5', { open: 1, preview: 1, download: 1, search_hit: 1, like: 1 }, 12],
+      [
+        'one of each action = 1+2+3+1+5',
+        { open: 1, preview: 1, download: 1, search_hit: 1, like: 1 },
+        12,
+      ],
       ['likes dominate: one like = 5', { like: 1 }, 5],
       ['counts multiply weights: 3 previews = 6', { preview: 3 }, 6],
     ])('%s', (_label, counts, expected) => {
@@ -123,13 +127,13 @@ describe('activityScore (§3.4 item accumulator)', () => {
     it('uses injected weights/half-life (tuned values, §4.15 counters)', () => {
       const score = applyItemAccumulator({
         previousScore: 4,
-        previousAtMs: NOW - 60 * DAY_MS,
+        previousAtMs: NOW - 20 * DAY_MS,
         nowMs: NOW,
         counts: { open: 1 },
         weights: { open: 2 },
         halfLifeDays: 10,
       });
-      expect(score).toBeCloseTo(4 * 0.25 + 2, 9);
+      expect(score).toBeCloseTo(4 * Math.pow(2, -2) + 2, 9);
     });
   });
 

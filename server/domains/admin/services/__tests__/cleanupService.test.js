@@ -1,8 +1,7 @@
 'use strict';
 
 /**
- * cleanupOrphanedData admin_reports persistence (§4.14 Tier A / T0.7b) +
- * the T0.1 boot content-hash completeness probe kick. The GC/cleanup result
+ * cleanupOrphanedData admin_reports persistence (§4.14 Tier A / T0.7b). The GC/cleanup result
  * bodies are unchanged (additive row persistence only); composition is mocked
  * so no real store/blob access happens.
  *
@@ -16,15 +15,15 @@ jest.mock('../../../../store/adminReportsStore', () => ({
   updateReport: jest.fn(() => Promise.resolve(null)),
 }));
 
-const mockRunContentHashCompletenessProbe = jest.fn(() =>
-  Promise.resolve({ nullCount: 0, checkedAt: '', row: null })
+const mockCollectContentHashCompleteness = jest.fn(() =>
+  Promise.resolve({ nullCount: 0, checkedAt: '' })
 );
 
 jest.mock('../adminReportsService', () => {
   const actual = jest.requireActual('../adminReportsService');
   return {
     ...actual,
-    runContentHashCompletenessProbe: (...args) => mockRunContentHashCompletenessProbe(...args),
+    collectContentHashCompleteness: (...args) => mockCollectContentHashCompleteness(...args),
   };
 });
 
@@ -106,37 +105,14 @@ describe('cleanupOrphanedData admin_reports persistence (T0.7b)', () => {
   });
 });
 
-describe('ensureHomeOwnerAdminForAllUsers boot probe kick (T0.1)', () => {
-  it('kicks the content-hash completeness probe fire-and-forget (non-blocking)', async () => {
+describe('ensureHomeOwnerAdminForAllUsers (T0.1 probe kick retired)', () => {
+  it('no longer runs the content-hash probe — the section rides runStartupFailSafeRecovery', async () => {
     const { ensureHomeOwnerAdminForAllUsers } = require('../cleanupService');
     const User = require('../../../../models/User');
 
     User.findAll.mockResolvedValue([]);
     await ensureHomeOwnerAdminForAllUsers();
 
-    expect(mockRunContentHashCompletenessProbe).toHaveBeenCalledTimes(1);
-  });
-
-  it('a probe failure never fails the permission cleanup (fire-and-forget contract)', async () => {
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    const { ensureHomeOwnerAdminForAllUsers } = require('../cleanupService');
-    const User = require('../../../../models/User');
-
-    mockRunContentHashCompletenessProbe.mockImplementationOnce(() =>
-      Promise.reject(new Error('probe down'))
-    );
-    User.findAll.mockResolvedValue([]);
-
-    try {
-      await expect(ensureHomeOwnerAdminForAllUsers()).resolves.toMatchObject({
-        updatedUsers: 0,
-        errors: [],
-      });
-      // Let the floating rejection settle.
-      await new Promise((resolve) => setImmediate(resolve));
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('probe'));
-    } finally {
-      warnSpy.mockRestore();
-    }
+    expect(mockCollectContentHashCompleteness).not.toHaveBeenCalled();
   });
 });

@@ -22,7 +22,7 @@ const {
   getAdminReportsWriter,
   repairAdminReport,
   resolveAdminReportStatus,
-  runContentHashCompletenessProbe,
+  collectContentHashCompleteness,
   backfillContentHashes,
 } = require('../adminReportsService');
 const adminReportsStore = require('../../../../store/adminReportsStore');
@@ -180,97 +180,52 @@ describe('ADMIN_REPAIR_ACTIONS (T0.8 dispatch table)', () => {
   });
 });
 
-describe('runContentHashCompletenessProbe (T0.1 boot probe)', () => {
+describe('collectContentHashCompleteness (T0.1 boot probe section)', () => {
   const fileNodesStore = (nullCount) => ({
     countCacheRowsWithNullContentHash: jest.fn(() => Promise.resolve(nullCount)),
   });
 
-  it('warn-logs and persists a kind=failsafe row with the contentHashCompleteness section when NULL rows exist', async () => {
+  it('warn-logs and returns the contentHashCompleteness section when NULL rows exist', async () => {
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    const writer = { writeReport: jest.fn(() => Promise.resolve({ id: 11 })) };
-
     try {
-      const result = await runContentHashCompletenessProbe({
+      const section = await collectContentHashCompleteness({
         fileNodesStore: fileNodesStore(2),
-        writer,
         now: () => '2026-09-22T08:00:00.000Z',
       });
-
-      expect(result).toMatchObject({ nullCount: 2, checkedAt: '2026-09-22T08:00:00.000Z' });
+      expect(section).toEqual({ nullCount: 2, checkedAt: '2026-09-22T08:00:00.000Z' });
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('content_hash'));
-      expect(writer.writeReport).toHaveBeenCalledWith({
-        kind: ADMIN_REPORT_KINDS.failsafe,
-        status: ADMIN_REPORT_STATUSES.partial,
-        payload: {
-          contentHashCompleteness: { nullCount: 2, checkedAt: '2026-09-22T08:00:00.000Z' },
-        },
-      });
-      expect(result.row).toMatchObject({ id: 11 });
     } finally {
       warnSpy.mockRestore();
     }
   });
 
-  it('persists status ok and stays silent when nullCount is 0', async () => {
+  it('returns nullCount 0 and stays silent when no NULL rows exist', async () => {
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    const writer = { writeReport: jest.fn(() => Promise.resolve({ id: 12 })) };
-
     try {
-      const result = await runContentHashCompletenessProbe({
+      const section = await collectContentHashCompleteness({
         fileNodesStore: fileNodesStore(0),
-        writer,
         now: () => '2026-09-22T08:01:00.000Z',
       });
-
-      expect(result.nullCount).toBe(0);
+      expect(section).toEqual({ nullCount: 0, checkedAt: '2026-09-22T08:01:00.000Z' });
       expect(warnSpy).not.toHaveBeenCalled();
-      expect(writer.writeReport).toHaveBeenCalledWith({
-        kind: ADMIN_REPORT_KINDS.failsafe,
-        status: ADMIN_REPORT_STATUSES.ok,
-        payload: {
-          contentHashCompleteness: { nullCount: 0, checkedAt: '2026-09-22T08:01:00.000Z' },
-        },
-      });
     } finally {
       warnSpy.mockRestore();
     }
   });
 
-  it('never throws when the count fails and writes no row (best-effort boot contract)', async () => {
+  it('never throws when the count fails — returns a null-count section and warns (best-effort)', async () => {
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    const writer = { writeReport: jest.fn() };
-
     try {
-      const result = await runContentHashCompletenessProbe({
+      const section = await collectContentHashCompleteness({
         fileNodesStore: {
           countCacheRowsWithNullContentHash: jest.fn(() => Promise.reject(new Error('db down'))),
         },
-        writer,
         now: () => '2026-09-22T08:02:00.000Z',
       });
-
-      expect(result.nullCount).toBeNull();
-      expect(result.error).toBe('db down');
-      expect(writer.writeReport).not.toHaveBeenCalled();
+      expect(section).toMatchObject({ nullCount: null, error: 'db down' });
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('probe skipped'));
     } finally {
       warnSpy.mockRestore();
-    }
-  });
-
-  it('honours the WEA_SKIP_ADMIN_REPORTS seam through the real writer factory', async () => {
-    const restore = savedEnv('WEA_SKIP_ADMIN_REPORTS');
-    process.env.WEA_SKIP_ADMIN_REPORTS = '1';
-    const insertReport = jest.fn();
-
-    try {
-      await runContentHashCompletenessProbe({
-        fileNodesStore: fileNodesStore(4),
-        writer: createAdminReportsWriter({ insertReport }),
-        now: () => '2026-09-22T08:02:00.000Z',
-      });
-      expect(insertReport).not.toHaveBeenCalled();
-    } finally {
-      restore();
     }
   });
 });
@@ -484,7 +439,12 @@ describe('repairAdminReport (T0.8 kind/action dispatch)', () => {
     id: 21,
     kind: 'failsafe',
     status: 'partial',
-    payload: { contentHashCompleteness: { nullCount: 2, checkedAt: '2026-09-22T08:00:00.000Z' } },
+    payload: {
+      scanned: 0,
+      resolved: 0,
+      manualReview: [],
+      contentHashCompleteness: { nullCount: 2, checkedAt: '2026-09-22T08:00:00.000Z' },
+    },
     createdAt: '2026-09-22T08:00:00.000Z',
   };
 
@@ -547,6 +507,7 @@ describe('repairAdminReport (T0.8 kind/action dispatch)', () => {
       backfilled: 2,
       backfilledAt: '2026-09-22T10:00:00.000Z',
     });
+    expect(report.payload).toMatchObject({ scanned: 0, resolved: 0, manualReview: [] });
     expect(result).toMatchObject({ backfilled: 2, nullCount: 0 });
   });
 

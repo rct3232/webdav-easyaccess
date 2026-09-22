@@ -251,7 +251,12 @@ describe('maintenanceScheduler', () => {
       );
       try {
         const writeReport = jest.fn(() => Promise.resolve({ id: 9 }));
-        const report = { scanned: 0, resolved: 0, manualReview: [], pendingUpload: { scanned: 0, nodes: [] } };
+        const report = {
+          scanned: 0,
+          resolved: 0,
+          manualReview: [],
+          pendingUpload: { scanned: 0, nodes: [] },
+        };
         await runStartupFailSafeRecovery({
           failSafeService: { runStartupRecovery: jest.fn(() => Promise.resolve(report)) },
           adminReportsWriter: { writeReport },
@@ -270,16 +275,27 @@ describe('maintenanceScheduler', () => {
     it('omits the section when the probe throws — the boot row still lands', async () => {
       const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-      mockCollectContentHashCompleteness.mockImplementationOnce(() => Promise.reject(new Error('probe down')));
+      mockCollectContentHashCompleteness.mockImplementationOnce(() =>
+        Promise.reject(new Error('probe down'))
+      );
       try {
         const writeReport = jest.fn(() => Promise.resolve({ id: 10 }));
-        const report = { scanned: 0, resolved: 0, manualReview: [], pendingUpload: { scanned: 0, nodes: [] } };
+        const report = {
+          scanned: 0,
+          resolved: 0,
+          manualReview: [],
+          pendingUpload: { scanned: 0, nodes: [] },
+        };
         await runStartupFailSafeRecovery({
           failSafeService: { runStartupRecovery: jest.fn(() => Promise.resolve(report)) },
           adminReportsWriter: { writeReport },
         });
 
-        expect(writeReport).toHaveBeenCalledWith({ kind: 'failsafe', status: 'ok', payload: report });
+        expect(writeReport).toHaveBeenCalledWith({
+          kind: 'failsafe',
+          status: 'ok',
+          payload: report,
+        });
         expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('probe'));
       } finally {
         logSpy.mockRestore();

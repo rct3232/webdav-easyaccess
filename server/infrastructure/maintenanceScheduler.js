@@ -122,33 +122,56 @@ function startGcScheduler({ gcService, adminReportsWriter } = {}) {
  * @param {Object} [opts.adminReportsWriter] - DI seam for the admin_reports writer.
  * @returns {Promise<Object>} report
  */
-async function runStartupFailSafeRecovery({ failSafeService, adminReportsWriter } = {}) {
+async function runStartupFailSafeRecovery({
+  failSafeService,
+  adminReportsWriter,
+  contentHashProbe,
+} = {}) {
   if (!failSafeService) {
     return { scanned: 0, resolved: 0, manualReview: [] };
   }
+
+  // T0.1 merged boot section (§2.2.6): the startup row carries the scan report
+  // plus the content-hash completeness section. A probe failure is logged and
+  // the section omitted — boot never fails.
+  const collectSection = async () => {
+    try {
+      const collect =
+        contentHashProbe ||
+        (() =>
+          require('../domains/admin/services/adminReportsService').collectContentHashCompleteness());
+      return await collect();
+    } catch (err) {
+      console.warn(`content_hash completeness probe skipped: ${err.message}`);
+      return null;
+    }
+  };
+
   let report;
   try {
     report = await failSafeService.runStartupRecovery();
   } catch (err) {
     console.error('Fail-safe recovery on startup failed:', err.message);
     const failed = { scanned: 0, resolved: 0, manualReview: [], error: err.message };
+    const section = await collectSection();
     // A failed scan is still a run: partial row (§4.14 Tier A), best-effort.
     try {
       await resolveAdminReportsWriter(adminReportsWriter).writeReport({
         kind: 'failsafe',
         status: 'partial',
-        payload: failed,
+        payload: section ? { ...failed, contentHashCompleteness: section } : failed,
       });
     } catch (reportErr) {
       console.error('Failed to persist fail-safe report:', reportErr.message);
     }
     return failed;
   }
+  const section = await collectSection();
   try {
     await resolveAdminReportsWriter(adminReportsWriter).writeReport({
       kind: 'failsafe',
-      status: 'ok',
-      payload: report,
+      status: section && section.nullCount !== 0 ? 'partial' : 'ok',
+      payload: section ? { ...report, contentHashCompleteness: section } : report,
     });
   } catch (err) {
     // Reporting never breaks the startup hook.

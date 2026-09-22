@@ -7,7 +7,8 @@
  * - constants + best-effort report-writer seam shared by the cleanup route,
  *   the scheduled GC cycle and the startup fail-safe scan;
  * - the boot completeness probe (`COUNT(*) WHERE content_hash IS NULL` →
- *   warn log + kind='failsafe' row with a `contentHashCompleteness` section);
+ *   warn log + `contentHashCompleteness` section merged into the startup
+ *   failsafe row by `runStartupFailSafeRecovery`);
  * - the streaming NULL content-hash backfill and the kind/action repair
  *   dispatch behind `POST /api/admin/reports/:id/repair`.
  *
@@ -165,41 +166,33 @@ function resolveBackfillDeps(overrides = {}) {
 /**
  * Boot completeness probe (T0.1): a cheap, non-blocking
  * `COUNT(*) WHERE content_hash IS NULL` through the FileNodeRepository layer.
- * Warn-logs when NULL rows exist and persists a `kind='failsafe'` row whose
- * payload carries the `contentHashCompleteness` section
- * (`{ nullCount, checkedAt }`). Best-effort boot contract: never throws to
- * the caller; honours the `WEA_SKIP_ADMIN_REPORTS` seam through the writer.
+ * Returns the `contentHashCompleteness` section (`{ nullCount, checkedAt }`;
+ * `nullCount: null` + `error` on count failure) and warn-logs when NULL rows
+ * exist or the count fails. Persists nothing itself — `runStartupFailSafeRecovery`
+ * merges the section into its single `kind='failsafe'` row
+ * (docs/spec/server/routes/admin.md §2.2.6). Best-effort: never throws.
  *
  * @param {Object} [opts]
  * @param {Object} [opts.fileNodesStore] - DI seam (tests)
- * @param {Object} [opts.writer] - DI seam for the admin-reports writer (tests)
  * @param {() => string} [opts.now] - ISO timestamp provider (tests)
- * @returns {Promise<{ nullCount: number|null, checkedAt: string, row: Object|null, error?: string }>}
+ * @returns {Promise<{ nullCount: number|null, checkedAt: string, error?: string }>}
  */
-async function runContentHashCompletenessProbe({ fileNodesStore, writer, now } = {}) {
+async function collectContentHashCompleteness({ fileNodesStore, now } = {}) {
   const checkedAt = now ? now() : new Date().toISOString();
-  let nullCount = null;
   try {
     const store = fileNodesStore || require('../../../store/fileNodesStore').createFileNodesStore();
-    nullCount = await store.countCacheRowsWithNullContentHash();
+    const nullCount = await store.countCacheRowsWithNullContentHash();
+    if (nullCount > 0) {
+      console.warn(
+        `⚠ content_hash completeness: ${nullCount} filecache row(s) missing content_hash — ` +
+          `backfill available via POST /api/admin/reports/:id/repair (action content_hash)`
+      );
+    }
+    return { nullCount, checkedAt };
   } catch (error) {
     console.warn(`content_hash completeness probe skipped: ${error.message}`);
-    return { nullCount: null, checkedAt, row: null, error: error.message };
+    return { nullCount: null, checkedAt, error: error.message };
   }
-
-  if (nullCount > 0) {
-    console.warn(
-      `⚠ content_hash completeness: ${nullCount} filecache row(s) missing content_hash — ` +
-        `backfill available via POST /api/admin/reports/:id/repair (action content_hash)`
-    );
-  }
-
-  const row = await (writer || getAdminReportsWriter()).writeReport({
-    kind: ADMIN_REPORT_KINDS.failsafe,
-    status: nullCount > 0 ? ADMIN_REPORT_STATUSES.partial : ADMIN_REPORT_STATUSES.ok,
-    payload: { contentHashCompleteness: { nullCount, checkedAt } },
-  });
-  return { nullCount, checkedAt, row };
 }
 
 /**
@@ -438,7 +431,7 @@ module.exports = {
   getAdminReportsWriter,
   resolveAdminReportStatus,
   shouldSkipAdminReports,
-  runContentHashCompletenessProbe,
+  collectContentHashCompleteness,
   backfillContentHashes,
   repairAdminReport,
 };

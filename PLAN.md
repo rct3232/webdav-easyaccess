@@ -306,9 +306,9 @@ config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
   not in `docs/IMPROVEMENT_PLAN.md`: (a) usage-event recording wiring rides the owning tasks
   — T0.5 like, T0.11 search_hit/list-entry-click, files-domain wiring for download/preview
   (Wave 2+); (b) upload/copy/restore `content_hash` write-side population rides the §4.1
-  hook wiring in T1.3 (P1) — boot probe + backfill cover the gap meanwhile; (c) consolidate
-  the T0.1 probe's failsafe row into `runStartupFailSafeRecovery` (one-call change — wave-2
-  pre-task); (d) journal `subject_label` capture decided at T0.10 (Wave 3) when the feed
+  hook wiring in T1.3 (P1) — boot probe + backfill cover the gap meanwhile; (c) DONE 2026-09-22 (wave-2 pre-task):
+  consolidated — startup row is now a single `kind='failsafe'` row whose payload merges the
+  scan report and the section; (d) journal `subject_label` capture decided at T0.10 (Wave 3) when the feed
   renders member-op rows; (e) `is_tip` becomes per-subject server-side computation when
   T3.2 introduces cross-user writes (P3); (f) pre-existing test-infra leak —
   `migration.test.js` writes `data/webdav.db`, `createTestDatabase` cleanup can leave

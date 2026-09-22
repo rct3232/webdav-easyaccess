@@ -96,7 +96,10 @@ chain_seq, status, created_at, undone_at, expires_at)`; `UNIQUE(domain,subject,c
 4. Flip each row `status='undone'`, `undone_at=now()`. The undo itself is NOT journaled
    (**Decision:** no undo-of-undo; status flip is the record).
 
-`UndoResult`: `{ undone: number, skipped: [{ index?, reason: 'changed' }] }`.
+`UndoResult`: `{ undone: number, skipped: [{ index?, reason: 'changed' }], undoneIds: number[] }` —
+`undoneIds` (added 2026-09-22, T0.7) lists the journal row ids flipped by THIS undo pass
+(target first, then cascade rows tip..target): `GET /api/actions`-adjacent undo responses
+surface the extra ids as `cascade_undone` (`routes/actions.md` §2.4) without a second read.
 Undo NEVER restores: spent LLM cost, already-received external exposure, file content
 (trash/versions own that world — §4.11).
 

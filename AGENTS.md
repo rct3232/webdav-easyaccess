@@ -35,7 +35,7 @@ Rules:
 2. **Tests**: Write tests from the updated docs before implementation (TDD); they are expected to fail initially.
 3. **Code**: Implement following `docs/ARCHITECTURE.md` and `docs/CODING_STYLE.md` until the tests pass.
 4. **Verify**: Run the relevant suites (`npm run test:ci`, plus E2E/PG legs per §2.2 when applicable) and confirm all pass before committing.
-5. **Track unresolved work** only in `docs/IMPROVEMENT_PLAN.md`; spec/feature docs describe the current implemented/decided state only.
+5. **Track work where it belongs**: deferrals on their `PLAN.md` task row; new non-blocking requirements in `docs/IMPROVEMENT_PLAN.md` only after owner approval (note the date); spec/feature docs link spec docs only and describe implemented/decided state only.
 
 ### 2.2 Branching Convention
 

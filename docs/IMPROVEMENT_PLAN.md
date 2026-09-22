@@ -1,12 +1,15 @@
 # Codebase Improvement Plan — Consolidated Open-Item Tracker
 
 > **Updated**: 2026-09-22
-> **Purpose**: This is the **single tracking document** for every unresolved, undecided, or
-> unimplemented item in the repository.
+> **Purpose**: Tracker for **newly-discovered requirements that do not block the active
+> execution plan** — separate workstreams, adopted decisions, out-of-graph defects. An entry
+> is written only after the owner has discussed and approved it; the discussion date is part
+> of the entry. This is NOT a catch-all: sub-work deferred from a planned task belongs in
+> `PLAN.md` (its landing task row / wave-ledger deferral register).
 >
 > **Governance rule**: Spec/feature docs describe only the **current implemented/decided**
-> state. Planned/future/"pending implementation"/"target contract" work must **not** be written
-> into individual docs — record it here instead (see AGENTS.md §2.1).
+> state and link spec docs only — never planning docs. Execution state and deferrals live
+> in `PLAN.md`; this tracker holds only owner-approved new requirements (see AGENTS.md §2.1).
 >
 > **Status legend**: `DEFERRED`, `DONE`
 

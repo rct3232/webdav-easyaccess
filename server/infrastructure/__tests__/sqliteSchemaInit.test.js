@@ -2,7 +2,8 @@ const { DatabaseSync } = require('node:sqlite');
 const fs = require('fs');
 const path = require('path');
 
-const { convertPostgresToSqlite } = require('../sqliteSchemaInit');
+const { convertPostgresToSqlite, initSqliteSchema } = require('../sqliteSchemaInit');
+const os = require('os');
 
 function openMemoryDb() {
   return new DatabaseSync(':memory:');
@@ -304,5 +305,35 @@ describe('initSqliteSchema integration', () => {
 
     const rows = await queryDb(db, "SELECT is_admin FROM users WHERE username='def_test'");
     expect(rows[0].is_admin).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// initSqliteSchema({ path }) — the caller-supplied file-database leg
+// ---------------------------------------------------------------------------
+describe('initSqliteSchema({ path }) file-database leg', () => {
+  it('creates the full platform schema on a real file database', async () => {
+    const dbPath = path.join(os.tmpdir(), `sqlite-init-path-${Date.now()}-${process.pid}.db`);
+
+    try {
+      await initSqliteSchema({ path: dbPath });
+
+      const db = new DatabaseSync(dbPath);
+      try {
+        const rows = db
+          .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+          .all();
+        const names = rows.map((r) => r.name).sort();
+
+        expect(names.length).toBe(38);
+        expect(names).toContain('locks');
+        expect(names).toContain('collections');
+        expect(names).toContain('admin_reports');
+      } finally {
+        db.close();
+      }
+    } finally {
+      fs.rmSync(dbPath, { force: true });
+    }
   });
 });

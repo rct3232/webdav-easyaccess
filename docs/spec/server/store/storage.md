@@ -72,7 +72,8 @@ Binding and behavior contract:
   `docs/features/collections-platform.md`): the `sqlite3` npm driver truncated BigInt
   binds to their low 32 bits, while `node:sqlite` binds `BigInt` as exact 64-bit integers.
 - The helpers normalize bind values so historical sqlite3-npm coercion is preserved:
-  booleans bind as `1`/`0` and `undefined` binds as `NULL` (`node:sqlite` rejects both).
+  booleans bind as `1`/`0`, `undefined` binds as `NULL`, and `Date` binds as its ISO string
+  (`value.toISOString()`) — `node:sqlite` rejects all three.
 - **Node ≥ 24** is the product floor; `db.enableLoadExtension(true)` /
   `db.loadExtension(path)` are the prerequisite for the sqlite-vec `vec0` native vector
   path (T1.4).

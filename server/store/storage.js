@@ -222,14 +222,15 @@ function closeSqliteDb() {
   });
 }
 
-// node:sqlite rejects boolean and undefined bind values; the sqlite3 npm
-// driver coerced booleans to 1/0 and undefined to NULL. Normalizing here
-// preserves the historical binding behavior for call sites. BigInt binds pass
-// through untouched — integer PKs MUST be bound as BigInt
+// node:sqlite rejects boolean, undefined and Date bind values; the sqlite3 npm
+// driver coerced booleans to 1/0, undefined to NULL and Dates to strings.
+// Normalizing here preserves the historical binding behavior for call sites.
+// BigInt binds pass through untouched — integer PKs MUST be bound as BigInt
 // (docs/spec/server/store/storage.md, docs/features/collections-platform.md §4.13).
 function normalizeBindValue(value) {
   if (value === undefined) return null;
   if (typeof value === 'boolean') return value ? 1 : 0;
+  if (value instanceof Date) return value.toISOString();
   return value;
 }
 

@@ -281,3 +281,54 @@ export const grantCollection = async (id, payload, options) => {
 export const revokeGrant = async (id, userId, options) => {
   return absorbMutation(`/collections/${id}/grants?userId=${userId}`, { method: 'del', options });
 };
+
+// -- Search results mode (T0.11; explorerGateway §2.6 search group) ----------
+
+/**
+ * §4.6 server-wide search. The snake_case response is returned verbatim;
+ * `null` only on transport/5xx-style failure — `semantic_available:false` is
+ * a SUCCESS payload (degradation reported as data, routes/search.md §2.4).
+ * Exception to the no-options read rule: `options.onError` receives the
+ * absorbed error envelope exactly once (side channel, no rejection) so the
+ * controller can map a still-returned 400 (useSearchResults §2.6).
+ *
+ * @param {{ query: string, resultRef?: string }} target — `resultRef` is an
+ *   opaque replay token sent verbatim as `result_ref` (the only snake_case
+ *   request-body field, routes/search.md §2.4.2)
+ * @param {{ onError?: Function }} [options]
+ * @returns {Promise<Object|null>}
+ */
+export const runSearch = async ({ query, resultRef } = {}, options = {}) => {
+  try {
+    const body = { query };
+    if (resultRef !== undefined && resultRef !== null) {
+      body.result_ref = resultRef;
+    }
+    return readPayload(await post('/search', body));
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to run search:', error);
+    if (typeof options.onError === 'function') reportEnvelope(options.onError, error);
+    return null;
+  }
+};
+
+/**
+ * §3.4 list-entry-click recording point for search results (register (a)):
+ * fire-and-forget `POST /search/click` (`action='open'` server-side).
+ * Always silent — a click signal must never fan the collections notifier.
+ * `true` on 204, `false` on absorbed failure; never rejects.
+ *
+ * @param {number} nodeId
+ * @returns {Promise<boolean>}
+ */
+export const recordSearchClick = async (nodeId) => {
+  try {
+    await post('/search/click', { nodeId });
+    return true;
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to record search entry click:', error);
+    return false;
+  }
+};

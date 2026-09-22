@@ -171,4 +171,55 @@ describe('useExplorerSession', () => {
     expect(updated.find((f) => f.nodeId === 1).thumbnailUrl).toBe('http://thumb/a.jpg');
     expect(updated.find((f) => f.nodeId === 2).thumbnailUrl).toBeUndefined();
   });
+
+  // -- §3 AI-platform boundary — server-search state handoff (D1) ------------
+
+  it('exposes a stable onSubmitQuery callback delegating to the shell wiring', () => {
+    const submitSearch = jest.fn();
+    const { result, rerender } = renderHook(() =>
+      useExplorerSession({ currentNodeId: 5, files: EMPTY_FILES, onSubmitQuery: submitSearch })
+    );
+
+    const first = result.current.onSubmitQuery;
+    rerender();
+    expect(result.current.onSubmitQuery).toBe(first);
+
+    act(() => {
+      result.current.onSubmitQuery('movie');
+    });
+    expect(submitSearch).toHaveBeenCalledWith('movie');
+  });
+
+  it('keeps calling the LATEST shell wiring while identity stays stable', () => {
+    const first = jest.fn();
+    const second = jest.fn();
+    const { result, rerender } = renderHook(
+      ({ handler }) =>
+        useExplorerSession({ currentNodeId: 5, files: EMPTY_FILES, onSubmitQuery: handler }),
+      { initialProps: { handler: first } }
+    );
+
+    const identity = result.current.onSubmitQuery;
+    rerender({ handler: second });
+    expect(result.current.onSubmitQuery).toBe(identity);
+
+    act(() => {
+      result.current.onSubmitQuery('sig');
+    });
+    expect(second).toHaveBeenCalledWith('sig');
+    expect(first).not.toHaveBeenCalled();
+  });
+
+  it('does not reset searchQuery across results-mode entry/exit (input text shared)', () => {
+    const { result } = renderHook(() =>
+      useExplorerSession({ currentNodeId: 5, files: EMPTY_FILES })
+    );
+
+    act(() => {
+      result.current.setSearchQuery('movie');
+    });
+    // results-mode entry/exit is host state; the session searchQuery survives it
+    expect(result.current.searchQuery).toBe('movie');
+    expect(result.current.filteredFiles).toEqual([]);
+  });
 });

@@ -27,6 +27,8 @@ const FloatingSearchBar = ({
   isMobile,
   placeholder,
   fabVisible = true,
+  onSubmitQuery,
+  resultsModeActive = false,
 }) => {
   const { t } = useTranslation();
   const [focused, setFocused] = useState(false);
@@ -66,6 +68,13 @@ const FloatingSearchBar = ({
             onChange={(e) => setSearchQuery(e.target.value)}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
+            onKeyDown={(e) => {
+              // §3.2 submit contract: Enter submits the server query; every
+              // keystroke still routes through setSearchQuery only.
+              if (e.key === 'Enter' && typeof onSubmitQuery === 'function') {
+                onSubmitQuery(searchQuery);
+              }
+            }}
             InputProps={{
               sx: {
                 height: '100%',
@@ -88,17 +97,30 @@ const FloatingSearchBar = ({
                   <SearchIcon sx={{ color: 'text.secondary' }} />
                 </InputAdornment>
               ),
-              endAdornment: searchQuery ? (
+              endAdornment: (
                 <InputAdornment position="end">
-                  <IconButton
-                    size="small"
-                    onClick={() => setSearchQuery('')}
-                    aria-label={t('nav.searchClose')}
-                  >
-                    <CloseIcon fontSize="small" />
-                  </IconButton>
+                  {typeof onSubmitQuery === 'function' && (
+                    <IconButton
+                      size="small"
+                      color={resultsModeActive ? 'primary' : 'default'}
+                      data-testid="search-submit"
+                      aria-label={t('nav.searchSubmit')}
+                      onClick={() => onSubmitQuery(searchQuery)}
+                    >
+                      <SearchIcon fontSize="small" />
+                    </IconButton>
+                  )}
+                  {searchQuery ? (
+                    <IconButton
+                      size="small"
+                      onClick={() => setSearchQuery('')}
+                      aria-label={t('nav.searchClose')}
+                    >
+                      <CloseIcon fontSize="small" />
+                    </IconButton>
+                  ) : null}
                 </InputAdornment>
-              ) : null,
+              ),
             }}
           />
         </Box>

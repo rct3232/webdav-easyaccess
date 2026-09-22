@@ -24,10 +24,12 @@ import {
   previewCollection,
   previewExistingCollection,
   publishItems,
+  recordSearchClick,
   rejectMerge,
   removeCollectionItems,
   restoreCollection,
   revokeGrant,
+  runSearch,
   updateCollection,
 } from './collectionsRepository';
 import { onCollectionsChange } from './collectionsNotifier';
@@ -239,6 +241,12 @@ export const subscribeToCollections = (callback) => {
   return onCollectionsChange(callback);
 };
 
+// -- Search results mode (T0.11; §2.6 search group) — names pass through      //
+// unchanged: the collectionsRepository search seams (runSearch failure-       //
+// absorption + recordSearchClick absorbed boolean; payloads stay snake_case). //
+
+export { runSearch, recordSearchClick };
+
 const explorerGateway = {
   addRecentFile: addExplorerRecentFile,
   getEntriesMetadata,
@@ -274,6 +282,9 @@ const explorerGateway = {
   grantCollection,
   revokeGrant,
   subscribeToCollections,
+  // Search results mode (§2.6 search group)
+  runSearch,
+  recordSearchClick,
 };
 
 export default explorerGateway;

@@ -38,7 +38,7 @@ Target-contract spec.
 
 - `🔍 "query" · N results [Save as collection][✕]` — exactly ONE action button, no dropdown (§4.6). NL chat-parser (future) extends this same header with a structured-predicate tab — additive slot reserved, nothing renders now (§4.22).
 - Desktop: replaces the breadcrumb row; mobile: renders above the list (no breadcrumb exists there). **Decision.**
-- Section display rules: empty section renders nothing (no header, no "0 results" block); both empty ⇒ single `fileManager.searchNoResults` line + chips remain.
+- **Inline filter (T0.11 as-built Decision):** the component renders ONE uncontrolled filter input beneath the header (§2.2 `onFilterChange` is its only consumer — every keystroke re-filters the LOADED rows client-side, no server call). Enter inside it blurs — the Enter RE-SUBMIT stays in `FloatingSearchBar` (§3.2 submit contract; host wiring passes `onSubmitQuery` there). Section display rules: empty section renders nothing (no header, no "0 results" block); both empty ⇒ single `fileManager.searchNoResults` line + chips remain.
 
 ### 2.4 Save-to-Collection Flow (host contract)
 
@@ -51,7 +51,7 @@ Target-contract spec.
 
 ### 2.6 i18n Keys
 
-- `fileManager.searchResultsCount` (`N results`), `fileManager.searchSaveCollection` (`Save as collection`), `fileManager.searchExit` (aria), `fileManager.searchNoResults`, `fileManager.searchChipMenu` (`re-search`/`Save`)
+- `fileManager.searchResultsCount` (`N results`), `fileManager.searchSaveCollection` (`Save as collection`), `fileManager.searchExit` (aria), `fileManager.searchNoResults`, `fileManager.searchChipMenu` (menu label), `fileManager.searchChipResearch` (`re-search` item — added at the T0.11 implementation step), `fileManager.searchFilterPlaceholder` (inline filter input)
 
 ### 2.7 Verification Scenarios
 

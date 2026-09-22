@@ -131,10 +131,11 @@ trashed subtree remains visible to trash/purge/restore logic.
 
 #### filecache Methods
 
-| Method                                                 | SQL Pattern                            | Returns       |
-| ------------------------------------------------------ | -------------------------------------- | ------------- |
-| `upsertCache(fileNodeId, size, mimeType, contentHash)` | INSERT ON CONFLICT DO UPDATE           | `{ changes }` |
-| `getCache(fileNodeId)`                                 | SELECT \* WHERE file_node_id=? LIMIT 1 | row \| null   |
+| Method                                                 | SQL Pattern                                                                                                                       | Returns                                                                                                                                                                                                                              |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `upsertCache(fileNodeId, size, mimeType, contentHash)` | INSERT ON CONFLICT DO UPDATE                                                                                                      | `{ changes }`                                                                                                                                                                                                                        |
+| `getCache(fileNodeId)`                                 | SELECT \* WHERE file_node_id=? LIMIT 1                                                                                            | row \| null                                                                                                                                                                                                                          |
+| `listSubtreeCacheRows(ancestorId)` (T0.9)              | SELECT live `file_nodes` rows of the subtree (`node_ancestors` JOIN, `deleted_at IS NULL`) LEFT JOIN `filecache`; `ORDER BY n.id` | `[{ nodeId, parentId, name, type, createdAt, size, mimeType, contentHash }]` — one bounded read for the AI-hygiene consumers (exact-dup finder, derived-tag backfill); NOT for predicate scanning (candidate-set decision unchanged) |
 
 ### 2.5 PostgreSQL vs SQLite Branching
 

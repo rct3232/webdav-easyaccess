@@ -48,6 +48,7 @@ passed to every journaled store mutator.
 | `dismissMerge(userId, id, otherId)` / `rejectMerge(userId, id, otherId)` | `{ suggestion_id, state, *_at }`                                | `setSuggestionState('dismissed'\|'rejected')`; no pending row → `suggestionNotFound`.                                                                                                                                                                                                                                                                                                                                                                 |
 | `getForNodes(userId, nodeIds)`                                           | `{ memberships: [{ nodeId, collectionIds[] }] }`                | §2.6. 1–200 ids.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `fingerprintDefinition(definition)`                                      | hex string                                                      | Pure. Normalized schema + core params (θ, tag-set, path — NOT raw centroid values). Shared with [evolutionService](evolutionService.md) (pass 4 tombstones); permanent delete of a `system` collection passes it to `deleteCollectionPermanent` (invariant 10).                                                                                                                                                                                       |
+| `checkUploadAdmissions(userId, nodeId)`                                  | `{ nodeId, admittedCollectionIds[] }`                           | Upload-hook rule-check SEAM (§2.3-bis). Point evaluation of the requester's ACTIVE predicate collections against ONE freshly committed node; each admitting collection gets `touchMemberChange` (the only coupling per aiJobService §2.2). NOT wired into the upload path (P1, §4.1/register (b)).                                                                                                                                                    |
 
 ### 2.2.1 Route-surface mapping note
 
@@ -82,6 +83,12 @@ wired at T1.2. The embed-role presence check resolves the `LLM_EMBED_*` config k
 ≥ θ_tag` through `aiTagStore.getTagVectors` + vectorStore lookups; match values resolve
   through the §4.18 orthographic fold + `tag_parents` hints first. With no embed role
   configured the predicate degrades to normalized string equality (§4.12 None column).
+  **As-built (T0.9):** the cosine-free path ships — the tag atom resolves through
+  `aiTagStore.listNodeIdsByRawTag(foldTag(value))` (orthographic fold
+  `domains/ai/tagVocabulary.js`, §4.18 step 1; `ai_tag_raw` rows are written folded by the
+  derived-tags pipeline, §4.10) and matches by string equality. The vector-matched variant
+  is P1 (T1.8/T2.1): it swaps the per-atom resolver behind the same provider seam
+  (`providers.listNodesByTag`), no engine or grammar change.
 - Vector membership: candidate scoring via `vectorStore.neighbors(vec, k, visibleIds)`
   (per-node max-over-chunks, §4.13). Inclusion is `score ≥ θ` with **hysteresis**
   (θ_in > θ_out, per-model profile values — release-measured) so view-boost drift does not
@@ -106,6 +113,37 @@ wired at T1.2. The embed-role presence check resolves the `LLM_EMBED_*` config k
   normalized-equality fallback over an empty tag set). The ACL-joined SQL variant of this
   scan is the tracked optimization for the T0.9 rule-evaluation PR; no new repository
   surface was added for T0.3.
+- **As-built (T0.9, 2026-09-22):** the JS candidate-set mechanism REMAINS (personal scale;
+  the ACL-joined SQL scan stays a tracked optimization — not shipped, not a defect, revisit
+  when corpus sizes demand it). The tag atom became live through the provider seam
+  (`providers.listNodesByTag` → `aiTagStore.listNodeIdsByRawTag`, folded string equality —
+  §2.3 tag bullet). This PR adds the upload-hook rule-check SEAM (`checkUploadAdmissions`,
+  §2.3-bis; invocation wiring is P1 per §4.1/register (b)) — no route surface, no client.
+  Stored-side digest (§2.8) verified already landed via T0.3 (`listStoredItems({ since })`
+  - read-stamped cursor); the derived-side `/items?since=` refinement stays T2.4.
+
+### 2.3-bis Upload-hook rule-check seam (T0.9; invocation wiring P1)
+
+`checkUploadAdmissions(userId, nodeId)` is the collections-domain half of the §4.1 commit
+points (aiJobService §2.2: "The upload-hook path checks derived COLLECTION admission
+separately — that is collections domain... the only coupling is `touchMemberChange` on
+rule-admission"). Contract:
+
+- Inputs: `userId` = the node OWNER whose collection definitions are checked; `nodeId` =
+  the freshly committed content node. No request context, no route — a plain async
+  service call, safe fire-and-forget (throws are the caller's to log; the hook never
+  blocks a request, invariant 11 discipline).
+- Behavior: point evaluation (§2.6 mechanism — the node + its ancestor chain, NOT a corpus
+  scan) against every ACTIVE predicate collection owned by `userId`; exclusions and
+  existing stored rows short-circuit (no admission change ⇒ no touch). Each collection
+  whose definition newly admits the node gets `collectionsStore.touchMemberChange(id)`
+  (drives digest `+N` + activity sort; non-journaled). Returns
+  `{ nodeId, admittedCollectionIds }`.
+- Vector definitions: the vector part is P1/T2.1 — predicate parts of mixed definitions
+  evaluate here exactly as at read time; pure vector definitions contribute nothing yet.
+- **Deferred (flagged):** the INVOCATION at the four §4.1 seams (upload S3/WebDAV, copy,
+  restore) rides the same P1 wiring as `content_hash` population and `ai_jobs` enqueue
+  (register (b)); T0.9 ships the callable seam only — the files domain is untouched.
 
 ### 2.4 Member-view enrichment (per read; precedent `recentFiles/service.js` enrichRecentEntry)
 
@@ -278,7 +316,10 @@ release-measured values (§4.15 provenance), never runtime-computed.
 ## 4. Dependencies
 
 - `collectionsStore`, `fileLikesStore`, `actionJournalStore` (indirectly via journaled
-  mutators), `fileNodesStore` (ACL enrichment joins), `embeddingsStore` (seed vector read)
+  mutators), `fileNodesStore` (ACL enrichment joins), `embeddingsStore` (seed vector read),
+  `aiTagStore` (T0.9 tag atoms: `listNodeIdsByRawTag` — folded string equality; vector
+  reads attach with the P1 variant) and `domains/ai/tagVocabulary` (pure §4.18 fold of
+  atom values before the store read)
 - `collectionShareService` (role checks, publish gate, pending counts)
 - `domains/ai/vectorStore` seam (`neighbors`, §4.13) — via `server/domains/ai` public API
 - `infrastructure/adapters/llm` presence check (`roleConfigured('embed')`) for seed
@@ -322,6 +363,12 @@ release-measured values (§4.15 provenance), never runtime-computed.
       zero-change fast path avoids definition re-evaluation
 - [ ] `getForNodes` includes derived membership + exclusions, one entry per requested
       node, empty arrays for non-members
+- [ ] Tag atom (T0.9): definition `{kind:'predicate',any_of:[{type:'tag',value:'ext:jpg'}]}`
+      admits exactly the nodes whose folded `ai_tag_raw` set contains the folded value;
+      no-embed ⇒ folded string equality only (vector variant P1, same provider seam)
+- [ ] `checkUploadAdmissions` (T0.9 seam): freshly created node admitted by an owner
+      predicate collection → `last_member_change_at` advances and the id is returned;
+      excluded / already-stored / non-owner / archived collections untouched
 - [ ] `similar` sort: rows grouped with `cluster_index`, greedy nearest-neighbor over
       `getCentroids` (≤~20 rows), order stable across identical inputs
 - [ ] Rename sets `name_locked`; auto names never lock

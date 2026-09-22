@@ -43,6 +43,10 @@ describe('useFolderTreeController', () => {
     getRecentFiles.mockResolvedValue([]);
     onRecentFilesChange.mockImplementation(() => jest.fn());
     folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([]);
+    // CRA resetMocks strips the serviceMocks factory implementations — re-supply
+    // the §3 collections seams so the new effect can mount/unmount everywhere.
+    explorerGateway.loadCollections.mockResolvedValue({ collections: [] });
+    explorerGateway.subscribeToCollections.mockImplementation(() => jest.fn());
   });
 
   it('loads recent files for a non-null user and clears them when user becomes falsy', async () => {
@@ -366,9 +370,15 @@ describe('useFolderTreeController — collections section (§3)', () => {
 
   beforeEach(() => {
     window.localStorage.clear();
+    // Base seams must stay array/cleanup-safe for this hook's other effects too.
+    getRecentFiles.mockResolvedValue([]);
+    onRecentFilesChange.mockImplementation(() => jest.fn());
+    folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([]);
     explorerGateway.loadCollections.mockReset();
     explorerGateway.loadCollections.mockImplementation(async ({ include } = {}) =>
-      include === 'mine,archived' ? { collections: [archivedRow] } : { collections: [rowA, rowShared] }
+      include === 'mine,archived'
+        ? { collections: [archivedRow] }
+        : { collections: [rowA, rowShared] }
     );
     explorerGateway.subscribeToCollections.mockReset();
     explorerGateway.subscribeToCollections.mockImplementation(() => jest.fn());

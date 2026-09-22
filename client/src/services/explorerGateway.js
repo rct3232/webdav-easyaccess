@@ -28,6 +28,7 @@ import {
   removeCollectionItems,
   restoreCollection,
   revokeGrant,
+  undoAction,
   updateCollection,
 } from './collectionsRepository';
 import { onCollectionsChange } from './collectionsNotifier';
@@ -239,6 +240,9 @@ export const subscribeToCollections = (callback) => {
   return onCollectionsChange(callback);
 };
 
+// Undo execution seam (actions.md; collectionsRepository.md §2.5 structured result).
+export { undoAction };
+
 const explorerGateway = {
   addRecentFile: addExplorerRecentFile,
   getEntriesMetadata,
@@ -274,6 +278,7 @@ const explorerGateway = {
   grantCollection,
   revokeGrant,
   subscribeToCollections,
+  undoAction,
 };
 
 export default explorerGateway;

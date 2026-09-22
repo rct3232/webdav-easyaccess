@@ -104,7 +104,10 @@ describe('CollectionsListView — list mode', () => {
     expect(screen.getByTestId('card-autopin-chip-2')).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId('card-autopin-unpin-2'));
-    expect(props.onCardAction).toHaveBeenCalledWith('unpin', expect.objectContaining({ collection_id: 2 }));
+    expect(props.onCardAction).toHaveBeenCalledWith(
+      'unpin',
+      expect.objectContaining({ collection_id: 2 })
+    );
   });
 
   it('own ACTIVE card menu: open/rename/pin/archive/sharing — NO permanent delete', () => {
@@ -118,7 +121,10 @@ describe('CollectionsListView — list mode', () => {
     expect(screen.queryByTestId('card-menu-option-restore')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId('card-menu-option-open'));
-    expect(props.onCardAction).toHaveBeenCalledWith('open', expect.objectContaining({ collection_id: 1 }));
+    expect(props.onCardAction).toHaveBeenCalledWith(
+      'open',
+      expect.objectContaining({ collection_id: 1 })
+    );
   });
 
   it('pinned own cards expose Unpin in place of Pin', () => {
@@ -146,14 +152,18 @@ describe('CollectionsListView — list mode', () => {
     openCardMenu();
     fireEvent.click(screen.getByTestId('card-menu-option-archive'));
 
-    const dialog = screen.getByTestId('collection-confirm-dialog');
-    fireEvent.click(within(dialog).getByTestId('collection-confirm-cancel'));
+    expect(screen.getByTestId('confirm-dialog-cancel')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('confirm-dialog-cancel'));
     expect(props.onCardAction).not.toHaveBeenCalled();
 
+    openCardMenu();
     fireEvent.click(screen.getByTestId('card-menu-option-archive'));
-    fireEvent.click(within(screen.getByTestId('collection-confirm-dialog')).getByTestId('collection-confirm-ok'));
+    fireEvent.click(screen.getByTestId('confirm-dialog-confirm'));
     expect(props.onCardAction).toHaveBeenCalledTimes(1);
-    expect(props.onCardAction).toHaveBeenCalledWith('archive', expect.objectContaining({ collection_id: 1 }));
+    expect(props.onCardAction).toHaveBeenCalledWith(
+      'archive',
+      expect.objectContaining({ collection_id: 1 })
+    );
   });
 
   it('permanent delete asks a SECOND confirm (trash-parity 2-step) before dispatching', () => {
@@ -163,17 +173,18 @@ describe('CollectionsListView — list mode', () => {
     openCardMenu();
     fireEvent.click(screen.getByTestId('card-menu-option-delete-permanent'));
 
-    expect(screen.getByTestId('collection-confirm-dialog')).toBeInTheDocument();
-    fireEvent.click(within(screen.getByTestId('collection-confirm-dialog')).getByTestId('collection-confirm-ok'));
+    expect(screen.getByTestId('confirm-dialog-confirm')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('confirm-dialog-confirm'));
 
-    expect(screen.getByTestId('collection-confirm-dialog')).toBeInTheDocument();
-    fireEvent.click(within(screen.getByTestId('collection-confirm-dialog')).getByTestId('collection-confirm-ok'));
+    expect(screen.getByTestId('confirm-dialog-confirm')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('confirm-dialog-confirm'));
 
     expect(props.onCardAction).toHaveBeenCalledWith(
       'delete-permanent',
       expect.objectContaining({ collection_id: 1 })
     );
-    expect(screen.queryByTestId('collection-confirm-dialog')).not.toBeInTheDocument();
+    // exactly ONE dispatch — the first confirm only arms step two.
+    expect(props.onCardAction).toHaveBeenCalledTimes(1);
   });
 
   it('viewer-received card menu has NO mutation entries (open + leave only)', () => {
@@ -199,7 +210,10 @@ describe('CollectionsListView — list mode', () => {
     renderWithProviders(<CollectionsListView {...props} />);
     openCardMenu(4);
     fireEvent.click(screen.getByTestId('card-menu-option-leave'));
-    expect(props.onCardAction).toHaveBeenCalledWith('leave', expect.objectContaining({ collection_id: 4 }));
+    expect(props.onCardAction).toHaveBeenCalledWith(
+      'leave',
+      expect.objectContaining({ collection_id: 4 })
+    );
     expect(screen.queryByTestId('collection-card-4')).not.toBeInTheDocument();
     expect(screen.getByTestId('collection-card-1')).toBeInTheDocument();
   });
@@ -250,7 +264,9 @@ describe('CollectionsListView — member mode', () => {
     const props = membersProps();
     props.items = [member({ shared_excluded: true })];
     renderWithProviders(<CollectionsListView {...props} />);
-    expect(within(screen.getByTestId('member-row-90210')).getByText("Not owner's file — not shared")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('member-row-90210')).getByText("Not owner's file — not shared")
+    ).toBeInTheDocument();
   });
 
   it('digest banner renders the one-line counts and expands', () => {
@@ -302,16 +318,19 @@ describe('CollectionsListView — member mode', () => {
     renderWithProviders(<CollectionsListView {...props} />);
     fireEvent.click(screen.getByTestId('member-load-more'));
     expect(props.onLoadMore).toHaveBeenCalledTimes(1);
+  });
 
-    const done = membersProps();
-    renderWithProviders(<CollectionsListView {...done} />);
+  it('no nextCursor ⇒ no load-more affordance', () => {
+    renderWithProviders(<CollectionsListView {...membersProps()} />);
     expect(screen.queryByTestId('member-load-more')).not.toBeInTheDocument();
   });
 
   it('member row menu trigger dispatches onMemberAction("menu", row)', () => {
     const props = membersProps();
     renderWithProviders(<CollectionsListView {...props} />);
-    fireEvent.click(within(screen.getByTestId('member-row-90210')).getByTestId('member-menu-button'));
+    fireEvent.click(
+      within(screen.getByTestId('member-row-90210')).getByTestId('member-menu-button')
+    );
     expect(props.onMemberAction).toHaveBeenCalledWith(
       'menu',
       expect.objectContaining({ nodeId: 90210 })

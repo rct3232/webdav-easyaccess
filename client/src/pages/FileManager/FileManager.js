@@ -22,6 +22,9 @@ import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
 import { getEntryKey } from '../../utils/fileViewUtils';
 
 import { useRecentFile } from './hooks/useRecentFile';
+import { useCollections } from './hooks/useCollections';
+import { useUndoToast } from '../../hooks/useUndoToast';
+import { ConfirmDialog, RenameDialog } from '../../components/dialogs';
 import { useFileManagerDialogs } from './hooks/useFileManagerDialogs';
 import { useTrashOperations } from './hooks/useTrashOperations';
 import { useContentAreaDragDrop } from './hooks/useContentAreaDragDrop';
@@ -66,7 +69,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     }
   }, [isMobile]);
 
-  const { message, showError, showWarning, clearMessage } = useMessage();
+  const messageBundle = useMessage();
+  const { message, showError, showWarning, clearMessage } = messageBundle;
   const {
     addToSharedModalOpen,
     setAddToSharedModalOpen,
@@ -106,6 +110,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     onLoadErrorRef,
     trashTrail,
     openTrashFolder,
+    collectionMembers,
+    loadMoreCollectionMembers,
   } = useFileManager(user, {
     onLoadComplete: handleLoadCompleteCallback,
     onLoadError: null, // 나중에 설정
@@ -469,6 +475,171 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       canNavigateToNode: user?.is_admin ? async () => true : explorerGateway.canNavigateToNode,
     });
 
+  // -- AI-platform collections overlay (§7): virtual-route flags --------------
+  const isCollectionsRoute = currentPath === '/__collections__';
+  const isCollectionsArchiveRoute = currentPath === '/__collections__/__archive__';
+  const isCollectionsMemberRoute = (currentPath || '').startsWith('/__collections__/collection/');
+  const isCollectionsOverlay =
+    !isShareLinkMode &&
+    (isCollectionsRoute || isCollectionsArchiveRoute || isCollectionsMemberRoute);
+  const collectionsInclude = isCollectionsArchiveRoute ? 'mine,archived' : 'mine,shared';
+
+  // Share-link embedding must NOT mount the collections overlay (FileManager §7);
+  // the hook itself is unconditional (rules of hooks), so an inert gateway seam
+  // keeps it IO-silent outside the authenticated explorer.
+  const INERT_COLLECTIONS_GATEWAY = useMemo(
+    () => ({
+      loadCollections: async () => ({ collections: [] }),
+      getMergeSuggestions: async () => ({ suggestions: [] }),
+      subscribeToCollections: () => () => {},
+    }),
+    []
+  );
+
+  const collectionsRefreshRef = useRef(null);
+  const {
+    showUndoToast,
+    cascadeConfirm,
+    busy: undoBusy,
+  } = useUndoToast({
+    message: messageBundle,
+    refresh: () => collectionsRefreshRef.current?.(),
+  });
+
+  const handleUndoable = useCallback(
+    (payload, textKey, params) => {
+      showUndoToast({
+        actionId: payload?.undo?.action_id,
+        text: params ? t(textKey, params) : t(textKey),
+      });
+    },
+    [showUndoToast, t]
+  );
+
+  const collectionsApi = useCollections({
+    showError,
+    gateway: isShareLinkMode ? INERT_COLLECTIONS_GATEWAY : undefined,
+    onUndoable: handleUndoable,
+    include: collectionsInclude,
+  });
+  collectionsRefreshRef.current = collectionsApi.refresh;
+
+  const [collectionRenameTarget, setCollectionRenameTarget] = useState(null);
+  const [collectionRenameValue, setCollectionRenameValue] = useState('');
+  const [collectionRenameError, setCollectionRenameError] = useState('');
+
+  const handleCardAction = useCallback(
+    async (action, collection) => {
+      const collectionId = collection?.collection_id;
+      switch (action) {
+        case 'open':
+          setCurrentPath(`/__collections__/collection/${collectionId}`);
+          break;
+        case 'rename':
+          setCollectionRenameTarget(collection);
+          setCollectionRenameValue(collection?.name ?? '');
+          setCollectionRenameError('');
+          break;
+        case 'pin':
+          collectionsApi.setPinned(collectionId, true);
+          break;
+        case 'unpin':
+          collectionsApi.setPinned(collectionId, false);
+          break;
+        case 'archive':
+          collectionsApi.archiveCollection(collectionId);
+          break;
+        case 'restore':
+          collectionsApi.restoreCollection(collectionId);
+          break;
+        case 'sharing':
+          // CollectionPropertiesDialog (Sharing tab) lands with T3.x — dispatch
+          // seam reserved; the menu entry is contractual (CollectionsListView §2.4).
+          break;
+        case 'delete-permanent': {
+          const ok = await collectionsApi.deleteCollectionPermanent(collectionId);
+          if (ok) messageBundle.showSuccess(t('collections.permanentDeleteReport'));
+          break;
+        }
+        case 'leave':
+          // Recipient-local hide is view-local session state (as-built §2.4).
+          break;
+        default:
+          break;
+      }
+    },
+    [collectionsApi, setCurrentPath, messageBundle, t]
+  );
+
+  const handleCollectionRenameConfirm = useCallback(async () => {
+    if (!collectionRenameTarget) return;
+    const name = collectionRenameValue.trim();
+    if (!name) {
+      setCollectionRenameError(t('serverErrors.collections.nameRequired'));
+      return;
+    }
+    const payload = await collectionsApi.renameCollection(
+      collectionRenameTarget.collection_id,
+      name
+    );
+    if (payload !== null) setCollectionRenameTarget(null);
+  }, [collectionRenameTarget, collectionRenameValue, collectionsApi, t]);
+
+  // Member-row menus are the T0.5 MemberRowControls seam; publish batch uses the
+  // loaded unpublished rows (the §4.7 banner action).
+  const handleMemberAction = useCallback(() => {
+    // Reserved seam — MemberRowControls (T0.5) will own the rendered menu.
+  }, []);
+
+  const handlePublishBatch = useCallback(async () => {
+    const pending = collectionMembers.items.filter((row) => row.published === false);
+    if (!pending.length || collectionMembers.collectionId == null) return;
+    const payload = await explorerGateway.publishItems(
+      collectionMembers.collectionId,
+      pending.map((row) => row.nodeId)
+    );
+    if (payload !== null) loadFiles();
+  }, [collectionMembers, loadFiles]);
+
+  const collectionsModel = useMemo(() => {
+    if (!isCollectionsOverlay) return null;
+    if (isCollectionsMemberRoute) {
+      return {
+        mode: 'members',
+        items: collectionMembers.items,
+        nextCursor: collectionMembers.nextCursor,
+        onLoadMore: loadMoreCollectionMembers,
+        digest: collectionMembers.digest,
+        publishPendingCount: collectionMembers.publishPendingCount,
+        onMemberAction: handleMemberAction,
+        onPublishBatch: handlePublishBatch,
+      };
+    }
+    return {
+      mode: 'list',
+      collections: collectionsApi.collections,
+      sort: collectionsApi.sort,
+      onSortChange: collectionsApi.setSort,
+      include: collectionsInclude,
+      // MergeProposalCard lands with T1.6+/T2.x — zero pending ⇒ zero footprint;
+      // suggestions data is already fetched by useCollections for that host.
+      mergeSlot: null,
+      onCardAction: handleCardAction,
+    };
+  }, [
+    isCollectionsOverlay,
+    isCollectionsMemberRoute,
+    collectionMembers,
+    loadMoreCollectionMembers,
+    collectionsApi.collections,
+    collectionsApi.sort,
+    collectionsApi.setSort,
+    collectionsInclude,
+    handleCardAction,
+    handleMemberAction,
+    handlePublishBatch,
+  ]);
+
   const handleProductPathClick = useCallback(
     async (path, file) => {
       if (!path) return false;
@@ -563,7 +734,13 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         return;
       }
       if (typeof target === 'string') {
-        if (target === '/__shared__' || target === '/__recent__' || target === '/__trash__') {
+        if (
+          target === '/__shared__' ||
+          target === '/__recent__' ||
+          target === '/__trash__' ||
+          target === '/__collections__' ||
+          target.startsWith('/__collections__/')
+        ) {
           setCurrentPath(target);
           return;
         }
@@ -1222,18 +1399,47 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   );
 
   return (
-    <FileManagerView
-      shareContext={shareContextProps}
-      shellContext={shellContextProps}
-      overlayState={overlayStateProps}
-      explorerSession={explorerSessionProps}
-      selectionState={selectionProps}
-      explorerActionState={explorerActionStateProps}
-      dialogState={dialogStateProps}
-      messaging={messagingProps}
-      explorerHandlers={explorerHandlersProps}
-      trashState={trashStateProps}
-    />
+    <>
+      <FileManagerView
+        shareContext={shareContextProps}
+        shellContext={shellContextProps}
+        overlayState={overlayStateProps}
+        explorerSession={explorerSessionProps}
+        selectionState={selectionProps}
+        explorerActionState={explorerActionStateProps}
+        dialogState={dialogStateProps}
+        messaging={messagingProps}
+        explorerHandlers={explorerHandlersProps}
+        trashState={trashStateProps}
+        collectionsModel={collectionsModel}
+      />
+      {isCollectionsOverlay && (
+        <>
+          <RenameDialog
+            open={collectionRenameTarget != null}
+            onClose={() => setCollectionRenameTarget(null)}
+            value={collectionRenameValue}
+            onChange={setCollectionRenameValue}
+            error={collectionRenameError}
+            onClearError={() => setCollectionRenameError('')}
+            loading={false}
+            onConfirm={handleCollectionRenameConfirm}
+            fullScreen={isMobile}
+          />
+          <ConfirmDialog
+            open={Boolean(cascadeConfirm?.open)}
+            onClose={cascadeConfirm?.cancel}
+            onConfirm={cascadeConfirm?.confirm}
+            title={t('common.confirm')}
+            message={t('serverErrors.actions.cascadeConfirmRequired')}
+            confirmText={t('actions.undo')}
+            cancelText={t('common.cancel')}
+            loading={undoBusy}
+            confirmColor="error"
+          />
+        </>
+      )}
+    </>
   );
 };
 

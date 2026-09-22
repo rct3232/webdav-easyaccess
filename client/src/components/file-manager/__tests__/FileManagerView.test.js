@@ -267,6 +267,10 @@ describe('FileManagerView', () => {
     folderTreeGateway.listFolderChildren.mockResolvedValue([]);
     getRecentFiles.mockResolvedValue([]);
     onRecentFilesChange.mockReturnValue(() => {});
+    // CRA resetMocks strips the gateway seam implementations — the folder tree's
+    // §3 collections effect needs array-safe defaults in every case.
+    explorerGateway.loadCollections.mockResolvedValue({ collections: [] });
+    explorerGateway.subscribeToCollections.mockImplementation(() => jest.fn());
   });
 
   it('renders the visible file list and forwards file click interactions', async () => {
@@ -704,7 +708,8 @@ describe('FileManagerView', () => {
       const props = createProps({
         shellContext: { ...base.shellContext, isMobile: false },
       });
-      const handleFolderTreeNodeClick = props.explorerHandlers.interaction.handleFolderTreeNodeClick;
+      const handleFolderTreeNodeClick =
+        props.explorerHandlers.interaction.handleFolderTreeNodeClick;
       renderWithProviders(<FileManagerView {...props} />);
 
       const tree = await screen.findByTestId('folder-tree');

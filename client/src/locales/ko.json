@@ -120,7 +120,12 @@
     "folderTreeClose": "폴더 트리 닫기",
     "shareLink": "공유 링크",
     "breadcrumb": "경로",
-    "trash": "휴지통"
+    "trash": "휴지통",
+    "collections": "컬렉션",
+    "collectionsArchive": "보관함",
+    "collectionsEmpty": "컬렉션 없음",
+    "collectionsSharedChip": "공유받음",
+    "collectionsNewDot": "새 컬렉션"
   },
   "fileManager": {
     "noFiles": "파일이 없습니다",
@@ -205,7 +210,42 @@
     "trashRestoreFail": "복원에 실패했습니다",
     "trashPurgeFail": "영구 삭제에 실패했습니다",
     "trashEmptyDone": "휴지통을 비웠습니다",
-    "trashEmptyFail": "휴지통 비우기에 실패했습니다"
+    "trashEmptyFail": "휴지통 비우기에 실패했습니다",
+    "collectionsSortMenu": "컬렉션 정렬",
+    "collectionsSortActivity": "활동",
+    "collectionsSortName": "이름",
+    "collectionsSortCreated": "생성일",
+    "collectionsSortUpdated": "수정일",
+    "collectionsSortSimilar": "유사함",
+    "collectionsEmpty": "컬렉션 없음",
+    "archiveEmpty": "보관된 항목 없음",
+    "collectionsItemCount": "{{count}}개 항목",
+    "collectionsStatusArchived": "보관됨",
+    "collectionsAutoPin": "자동 고정",
+    "collectionsAutoPinUnpin": "이 컬렉션 유지",
+    "digestLine": "+{{added}} / -{{removed}}",
+    "digestExpand": "베치기",
+    "digestCollapse": "접기",
+    "digestAdded": "추가됨",
+    "digestRemoved": "제거됨",
+    "whyHere": "이 항목이 포함된 이유",
+    "publishPending": "{{count}}개 게시 대기",
+    "publishBatch": "전체 게시",
+    "sharedExcludedChip": "소유자의 파일 아닙 — 공유되지 않음",
+    "collectionsUnavailable": "사용 불가",
+    "memberLoadMore": "더 보기",
+    "cardMenuOpen": "열기",
+    "cardMenuRename": "이름 변경",
+    "cardMenuPin": "고정",
+    "cardMenuUnpin": "고정 해제",
+    "cardMenuArchive": "보관",
+    "cardMenuRestore": "복원",
+    "cardMenuSharing": "공유 설정",
+    "cardMenuDelete": "영구 삭제",
+    "cardMenuLeave": "나가기",
+    "archiveConfirmMessage": "이 컬렉션을 보관할까요? 보관함으로 이동하며 나중에 복원할 수 있습니다.",
+    "permanentDeleteConfirm1": "이 컬렉션을 영구 삭제할까요?",
+    "permanentDeleteConfirm2": "되돌릴 수 없습니다. 메버는 컬렉션에서만 제거되며 파일은 그대로 유지됩니다."
   },
   "actions": {
     "move": "이동",
@@ -865,7 +905,8 @@
       "emptyNodeIds": "파일이나 폴더를 하나 이상 선택해 주세요.",
       "previewTargetRequired": "미리보기할 대상 컬렉션이 필요합니다.",
       "mergeSameCollection": "같은 컬렉션끼리는 병합할 수 없습니다.",
-      "invalidDefinition": "이 컬렉션 규칙이 올바르지 않습니다.",      "forbidden": "이 컬렉션에 접근할 권한이 없습니다.",
+      "invalidDefinition": "이 컬렉션 규칙이 올바르지 않습니다.",
+      "forbidden": "이 컬렉션에 접근할 권한이 없습니다.",
       "notFound": "컬렉션을 찾을 수 없습니다.",
       "granteeNotFound": "공유 대상 사용자를 찾을 수 없습니다.",
       "grantNotFound": "공유 권한을 찾을 수 없습니다.",
@@ -1090,5 +1131,14 @@
       "permissionUpdated": "권한이 업데이트되었습니다."
     }
   },
-  "migrationInProgress": "마이그레이션이 이미 진행 중입니다."
+  "migrationInProgress": "마이그레이션이 이미 진행 중입니다.",
+  "collections": {
+    "undoRenamed": "컬렉션 이름 변경됨",
+    "undoPinChanged": "컬렉션 고정됨",
+    "undoPublishModeChanged": "게시 모드 변경됨",
+    "undoArchived": "컬렉션 보관됨",
+    "undoRestored": "컬렉션 복원됨",
+    "undoMerged": "컬렉션 볁합됨",
+    "permanentDeleteReport": "컬렉션이 영구 삭제되었습니다"
+  }
 }

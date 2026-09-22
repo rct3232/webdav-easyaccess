@@ -281,3 +281,41 @@ export const grantCollection = async (id, payload, options) => {
 export const revokeGrant = async (id, userId, options) => {
   return absorbMutation(`/collections/${id}/grants?userId=${userId}`, { method: 'del', options });
 };
+
+/**
+ * Undo execution — the §2.5 structured-result exception to the `∥ null`
+ * mutation precedent: 409s are RETURNED (not collapsed) so the undo-toast
+ * controller can read `errorCode`/`params.laterChanges` without a second
+ * round trip. Camel keys here are the internal result object, not a wire
+ * payload (the snake_case 200 body maps once at this boundary).
+ * @param {number} actionId
+ * @param {{ confirmCascade?: boolean }} [options]
+ */
+export const undoAction = async (actionId, options = {}) => {
+  try {
+    const response = await post(
+      `/actions/${actionId}/undo`,
+      options?.confirmCascade ? { confirmCascade: true } : {}
+    );
+    const payload = readPayload(response) ?? {};
+    notifyCollectionsChange();
+    return {
+      ok: true,
+      status: payload.status,
+      undoneAt: payload.undone_at ?? null,
+      cascadeUndone: payload.cascade_undone ?? [],
+      itemsUndone: Number(payload.items_undone ?? 0),
+      itemsSkipped: Number(payload.items_skipped ?? 0),
+    };
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error(`Failed to undo action ${actionId}:`, error);
+    const envelope = extractErrorEnvelope(error);
+    return {
+      ok: false,
+      status: error?.response?.status,
+      errorCode: envelope?.errorCode,
+      params: envelope?.params ?? {},
+    };
+  }
+};

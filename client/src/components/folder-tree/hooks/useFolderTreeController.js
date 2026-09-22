@@ -2,8 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getRecentFiles } from '../../../services/recentFilesRepository';
 import { onRecentFilesChange } from '../../../services/recentFilesNotifier';
 import folderTreeGateway from '../../../services/folderTreeGateway';
+import explorerGateway from '../../../services/explorerGateway';
 
 const EMPTY_ANCESTORS = [];
+// Digest-cursor parity (§2.6): localStorage key of the last __collections__ visit.
+const COLLECTIONS_VISIT_KEY = 'collections.lastVisitedAt';
 
 const useFolderTreeController = ({
   currentNodeId,
@@ -18,6 +21,14 @@ const useFolderTreeController = ({
   const [recentFilesList, setRecentFilesList] = useState([]);
   const [sharedExpanded, setSharedExpanded] = useState(false);
   const [recentExpanded, setRecentExpanded] = useState(false);
+  // -- AI-platform §3: __collections__ section state (flat depth-1 rows only).
+  const [collectionsTreeRows, setCollectionsTreeRows] = useState([]);
+  const [archiveCount, setArchiveCount] = useState(0);
+  const [collectionsExpanded, setCollectionsExpanded] = useState(false);
+  const [collectionsVisitCursor, setCollectionsVisitCursor] = useState(() => {
+    const stored = Number(window.localStorage.getItem(COLLECTIONS_VISIT_KEY));
+    return Number.isFinite(stored) ? stored : 0;
+  });
 
   const homeNodeId = user?.is_admin ? null : (user?.rootNodeId ?? null);
 
@@ -69,6 +80,42 @@ const useFolderTreeController = ({
     }
   }, [user, loadSharedFolders]);
 
+  // §3: flat collection rows (activity order, server-given) + archive badge,
+  // loaded through the explorerGateway seams only; notifier refreshes rows.
+  useEffect(() => {
+    if (!user) {
+      setCollectionsTreeRows([]);
+      setArchiveCount(0);
+      return undefined;
+    }
+
+    const loadCollectionsRows = async () => {
+      try {
+        const [active, archived] = await Promise.all([
+          explorerGateway.loadCollections({ sort: 'activity', include: 'mine,shared' }),
+          explorerGateway.loadCollections({ sort: 'activity', include: 'mine,archived' }),
+        ]);
+        setCollectionsTreeRows(active?.collections ?? []);
+        setArchiveCount((archived?.collections ?? []).length);
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to load collections rows:', error);
+        setCollectionsTreeRows([]);
+        setArchiveCount(0);
+      }
+    };
+
+    loadCollectionsRows();
+    const unsubscribe = explorerGateway.subscribeToCollections(() => {
+      loadCollectionsRows();
+    });
+    return () => {
+      // Safe-cleanup idiom: a test-injected mock may resolve the subscription
+      // seam to a non-callable; never let unmount throw.
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [user]);
+
   const buildSharedFolderTree = useMemo(() => {
     if (sharedFolders.length === 0) return [];
 
@@ -104,6 +151,9 @@ const useFolderTreeController = ({
     }
     if (currentPath === '/__recent__') {
       setRecentExpanded(true);
+    }
+    if (currentPath === '/__collections__' || (currentPath || '').startsWith('/__collections__/')) {
+      setCollectionsExpanded(true);
     }
   }, [currentNodeId, currentPath, homeNodeId, chain, sharedFolders]);
 
@@ -151,6 +201,52 @@ const useFolderTreeController = ({
     onNodeClick('/__recent__');
   }, [onNodeClick]);
 
+  // -- §3 collections handlers -------------------------------------------------
+
+  // Visiting __collections__ refreshes the "new" dot cursor (digest-cursor parity).
+  useEffect(() => {
+    if (currentPath !== '/__collections__') return;
+    const now = Date.now();
+    window.localStorage.setItem(COLLECTIONS_VISIT_KEY, String(now));
+    setCollectionsVisitCursor(now);
+  }, [currentPath]);
+
+  const newCollectionIds = useMemo(() => {
+    if (!collectionsVisitCursor) return [];
+    return (collectionsTreeRows || [])
+      .filter(
+        (row) => row?.created_at != null && Date.parse(row.created_at) > collectionsVisitCursor
+      )
+      .map((row) => row.collection_id);
+  }, [collectionsTreeRows, collectionsVisitCursor]);
+
+  const handleCollectionsToggle = useCallback(
+    (e) => {
+      e.stopPropagation();
+      const nextExpanded = !collectionsExpanded;
+      setCollectionsExpanded(nextExpanded);
+      if (nextExpanded) {
+        onNodeClick('/__collections__');
+      }
+    },
+    [collectionsExpanded, onNodeClick]
+  );
+
+  const handleCollectionsClick = useCallback(() => {
+    onNodeClick('/__collections__');
+  }, [onNodeClick]);
+
+  const handleArchiveClick = useCallback(() => {
+    onNodeClick('/__collections__/__archive__');
+  }, [onNodeClick]);
+
+  const handleCollectionClick = useCallback(
+    (collectionId) => {
+      onNodeClick(`/__collections__/collection/${collectionId}`);
+    },
+    [onNodeClick]
+  );
+
   return {
     homeNodeId,
     expandedNodeIds,
@@ -165,6 +261,15 @@ const useFolderTreeController = ({
     handleRecentToggle,
     handleRecentClick,
     recentFilesList,
+    // §3 AI-platform collections section
+    collectionsExpanded,
+    handleCollectionsToggle,
+    handleCollectionsClick,
+    handleCollectionClick,
+    handleArchiveClick,
+    collectionsTreeRows,
+    archiveCount,
+    newCollectionIds,
   };
 };
 

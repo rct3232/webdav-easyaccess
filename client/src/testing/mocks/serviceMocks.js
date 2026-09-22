@@ -125,6 +125,9 @@ export function createExplorerGatewayMock(overrides = {}) {
     grantCollection: jest.fn().mockResolvedValue(null),
     revokeGrant: jest.fn().mockResolvedValue(null),
     subscribeToCollections: jest.fn(() => jest.fn()),
+    undoAction: jest
+      .fn()
+      .mockResolvedValue({ ok: true, status: 'undone', itemsUndone: 1, itemsSkipped: 0 }),
     ...overrides,
   };
 }

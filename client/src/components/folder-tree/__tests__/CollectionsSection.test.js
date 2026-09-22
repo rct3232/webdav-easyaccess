@@ -106,7 +106,8 @@ describe('CollectionsSection', () => {
     const props = defaultProps();
     props.currentPath = '/__collections__';
     const { container } = renderWithProviders(<CollectionsSection {...props} />);
-    expect(container.querySelector('[data-testid="collections-section"].Mui-selected')).toBeTruthy();
+    const section = container.querySelector('[data-testid="collections-section"]');
+    expect(section.querySelector('.MuiListItemButton-root.Mui-selected')).toBeTruthy();
   });
 
   it('ArchiveNode always renders while expanded — even at archiveCount 0 (§2.3 T0.4 decision)', () => {
@@ -127,7 +128,9 @@ describe('CollectionsSection', () => {
     const { container } = renderWithProviders(<CollectionsSection {...props} />);
     expect(screen.getByText('3')).toBeInTheDocument();
     const rows = container.querySelectorAll('.MuiListItem-root');
-    expect(rows[rows.length - 1].querySelector('[data-testid="collections-archive-node"]')).toBeTruthy();
+    expect(
+      rows[rows.length - 1].querySelector('[data-testid="collections-archive-node"]')
+    ).toBeTruthy();
   });
 
   it('ArchiveNode click invokes onArchiveClick and selects on its route', () => {
@@ -147,7 +150,9 @@ describe('CollectionsSection', () => {
   it('new dots render exactly for newCollectionIds and follow prop changes only', () => {
     const props = defaultProps();
     props.collections = [collectionRow({ collection_id: 1 }), collectionRow({ collection_id: 2 })];
-    const { rerender } = renderWithProviders(<CollectionsSection {...props} newCollectionIds={[2]} />);
+    const { rerender } = renderWithProviders(
+      <CollectionsSection {...props} newCollectionIds={[2]} />
+    );
     expect(screen.getByTestId('collection-new-dot-2')).toBeInTheDocument();
     expect(screen.queryByTestId('collection-new-dot-1')).not.toBeInTheDocument();
 

@@ -40,6 +40,38 @@ jest.mock('../recentFilesNotifier', () => {
   return createRecentFilesNotifierMock();
 });
 
+jest.mock('../collectionsRepository', () => {
+  const fns = [
+    'addCollectionItems',
+    'archiveCollection',
+    'createCollection',
+    'deleteCollection',
+    'dismissMerge',
+    'getCollectionItems',
+    'getCollections',
+    'getGrants',
+    'getMemberships',
+    'getMergeSuggestions',
+    'grantCollection',
+    'mergeCollections',
+    'previewCollection',
+    'previewExistingCollection',
+    'publishItems',
+    'rejectMerge',
+    'removeCollectionItems',
+    'restoreCollection',
+    'revokeGrant',
+    'updateCollection',
+  ];
+  const mock = {};
+  for (const name of fns) mock[name] = jest.fn();
+  return mock;
+});
+
+jest.mock('../collectionsNotifier', () => ({
+  onCollectionsChange: jest.fn(),
+}));
+
 jest.mock('../../utils/localStorage', () => {
   const { createLocalStorageUiMock } = require('../../testing/mocks/serviceMocks');
   return createLocalStorageUiMock({
@@ -401,8 +433,8 @@ describe('explorerGateway collections re-exports (T0.3)', () => {
     restoreCollection.mockResolvedValueOnce({ undo: { action_id: 3 } });
     await explorerGateway.archiveCollection(17);
     await explorerGateway.restoreCollection(17);
-    expect(archiveCollection).toHaveBeenCalledWith(17, undefined);
-    expect(restoreCollection).toHaveBeenCalledWith(17, undefined);
+    expect(archiveCollection).toHaveBeenCalledWith(17);
+    expect(restoreCollection).toHaveBeenCalledWith(17);
 
     deleteCollection.mockResolvedValueOnce(true);
     await expect(explorerGateway.deleteCollection(17)).resolves.toBe(true);

@@ -52,7 +52,7 @@ describe('collectionsRepository reads', () => {
 
     const result = await getCollections({ sort: 'activity', include: 'mine,shared' });
 
-    expect(get).toHaveBeenCalledWith('/collections', expect.anything());
+    expect(get).toHaveBeenCalledWith('/collections?sort=activity&include=mine%2Cshared');
     expect(result).toEqual(payload);
   });
 
@@ -60,6 +60,7 @@ describe('collectionsRepository reads', () => {
     get.mockRejectedValueOnce(new Error('Network error'));
 
     await expect(getCollections()).resolves.toEqual({ collections: [] });
+    expect(get).toHaveBeenCalledWith('/collections');
   });
 
   it('getCollectionItems returns the fallback view shape on failure', async () => {
@@ -67,10 +68,7 @@ describe('collectionsRepository reads', () => {
 
     const result = await getCollectionItems(17, { cursor: 'abc', since: '2026-09-01T00:00:00Z' });
     expect(result).toEqual({ items: [], next_cursor: null });
-    expect(get).toHaveBeenCalledWith(
-      '/collections/17/items?cursor=abc&since=2026-09-01T00%3A00%3A00Z',
-      expect.anything()
-    );
+    expect(get).toHaveBeenCalledWith('/collections/17/items?cursor=abc&since=2026-09-01T00%3A00%3A00Z');
   });
 
   it('getMergeSuggestions returns an empty suggestions array on failure (not null)', async () => {
@@ -88,7 +86,7 @@ describe('collectionsRepository reads', () => {
 
     post.mockRejectedValueOnce(new Error('Network error'));
     await expect(getMemberships([5])).resolves.toEqual({ memberships: [] });
-    expect(post).toHaveBeenLastCalledWith('/collections/for-nodes', { nodeIds: [5, 6] }, expect.anything());
+    expect(post).toHaveBeenLastCalledWith('/collections/for-nodes', { nodeIds: [5] });
   });
 
   it('previewCollection returns null on failure and the payload on success', async () => {
@@ -98,7 +96,7 @@ describe('collectionsRepository reads', () => {
     const payload = { count: 3, sample: [{ node_id: 1, name: 'a' }], sample_truncated: false };
     post.mockResolvedValueOnce({ data: payload });
     await expect(previewCollection({ seedNodeId: 9 })).resolves.toEqual(payload);
-    expect(post).toHaveBeenLastCalledWith('/collections/preview', { seedNodeId: 1 }, expect.anything());
+    expect(post).toHaveBeenLastCalledWith('/collections/preview', { seedNodeId: 9 });
   });
 });
 
@@ -116,7 +114,7 @@ describe('collectionsRepository mutations (absorb + notify + onError)', () => {
 
     const result = await createCollection({ name: 'X' });
 
-    expect(post).toHaveBeenCalledWith('/collections', { name: 'X' }, expect.anything());
+    expect(post).toHaveBeenCalledWith('/collections', { name: 'X' });
     expect(result).toEqual(payload);
     expect(result.undo.action_id).toBe(990);
     expect(notifyCollectionsChange).toHaveBeenCalledTimes(1);
@@ -139,7 +137,7 @@ describe('collectionsRepository mutations (absorb + notify + onError)', () => {
   it('deleteCollection returns true only on 204 success and false on failure', async () => {
     del.mockResolvedValueOnce({ status: 204, data: null });
     expect(await deleteCollection(17)).toBe(true);
-    expect(del).toHaveBeenCalledWith('/collections/17', expect.anything());
+    expect(del).toHaveBeenCalledWith('/collections/17');
     expect(notifyCollectionsChange).toHaveBeenCalledTimes(1);
 
     del.mockRejectedValueOnce(transportError(409, 'serverErrors.collections.notArchived'));
@@ -154,11 +152,7 @@ describe('collectionsRepository mutations (absorb + notify + onError)', () => {
 
     await updateCollection(17, { name: 'N', pinned: true, publishMode: 'auto' });
 
-    expect(put).toHaveBeenCalledWith(
-      '/collections/17',
-      { name: 'N', pinned: true, publishMode: 'auto' },
-      expect.anything()
-    );
+    expect(put).toHaveBeenCalledWith('/collections/17', { name: 'N', pinned: true, publishMode: 'auto' });
     expect(notifyCollectionsChange).toHaveBeenCalledTimes(1);
   });
 
@@ -167,7 +161,7 @@ describe('collectionsRepository mutations (absorb + notify + onError)', () => {
 
     await addCollectionItems(17, [1, 2], { silent: true });
 
-    expect(post).toHaveBeenCalledWith('/collections/17/items', { nodeIds: [1, 2] }, expect.anything());
+    expect(post).toHaveBeenCalledWith('/collections/17/items', { nodeIds: [1, 2] });
     expect(notifyCollectionsChange).not.toHaveBeenCalled();
 
     post.mockResolvedValueOnce({ data: { added: [3], undo: { action_id: 6 } } });
@@ -175,12 +169,12 @@ describe('collectionsRepository mutations (absorb + notify + onError)', () => {
     expect(notifyCollectionsChange).toHaveBeenCalledTimes(1);
   });
 
-  it('removeCollectionItems issues DELETE with a JSON body (symmetric batch semantics)', async () => {
+  it('removeCollectionItems issues DELETE with a JSON body in the axios config (symmetric batch semantics)', async () => {
     del.mockResolvedValueOnce({ data: { removed: [1], excluded: [], ignored: [] } });
 
     const result = await removeCollectionItems(17, [1]);
 
-    expect(del).toHaveBeenCalledWith('/collections/17/items', { nodeIds: [1] }, expect.anything());
+    expect(del).toHaveBeenCalledWith('/collections/17/items', { data: { nodeIds: [1] } });
     expect(result).toEqual({ removed: [1], excluded: [], ignored: [] });
     expect(notifyCollectionsChange).toHaveBeenCalledTimes(1);
   });
@@ -192,7 +186,7 @@ describe('collectionsRepository mutations (absorb + notify + onError)', () => {
 
     const result = await mergeCollections(17, 23);
 
-    expect(post).toHaveBeenCalledWith('/collections/17/merge/23', {}, expect.anything());
+    expect(post).toHaveBeenCalledWith('/collections/17/merge/23', {});
     expect(result.absorbed_id).toBe(23);
     expect(notifyCollectionsChange).toHaveBeenCalledTimes(1);
   });
@@ -200,21 +194,17 @@ describe('collectionsRepository mutations (absorb + notify + onError)', () => {
   it('grant/revoke use the documented paths', async () => {
     post.mockResolvedValueOnce({ data: { grant: { grantee_id: 9 }, undo: { action_id: 8 } } });
     await grantCollection(17, { userId: 9, role: 'viewer' });
-    expect(post).toHaveBeenCalledWith(
-      '/collections/17/grants',
-      { userId: 9, role: 'viewer' },
-      expect.anything()
-    );
+    expect(post).toHaveBeenCalledWith('/collections/17/grants', { userId: 9, role: 'viewer' });
 
     del.mockResolvedValueOnce({ data: { grantee_id: 9, revoked: true, undo: { action_id: 9 } } });
     await revokeGrant(17, 9);
-    expect(del).toHaveBeenCalledWith('/collections/17/grants?userId=9', expect.anything());
+    expect(del).toHaveBeenCalledWith('/collections/17/grants?userId=9');
   });
 
   it('onError receives null for transport errors without a response body', async () => {
     const onError = jest.fn();
     const boom = new Error('socket hang up');
-    post.mockRejectedValueOnce(boom);
+    put.mockRejectedValueOnce(boom);
 
     await updateCollection(17, { pinned: true }, { onError });
 

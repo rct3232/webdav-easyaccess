@@ -110,9 +110,7 @@ export function createExplorerGatewayMock(overrides = {}) {
     archiveCollection: jest.fn().mockResolvedValue(null),
     restoreCollection: jest.fn().mockResolvedValue(null),
     deleteCollection: jest.fn().mockResolvedValue(false),
-    loadCollectionItems: jest
-      .fn()
-      .mockResolvedValue({ items: [], next_cursor: null }),
+    loadCollectionItems: jest.fn().mockResolvedValue({ items: [], next_cursor: null }),
     addCollectionItems: jest.fn().mockResolvedValue(null),
     removeCollectionItems: jest.fn().mockResolvedValue(null),
     publishItems: jest.fn().mockResolvedValue(null),

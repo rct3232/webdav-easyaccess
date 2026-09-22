@@ -123,7 +123,7 @@ describe('useCollections', () => {
       expect.objectContaining({ onError: expect.any(Function) })
     );
     expect(out).toEqual(payload);
-    expect(mockOnUndoable).toHaveBeenCalledWith(payload, expect.any(String), undefined);
+    expect(mockOnUndoable).toHaveBeenCalledWith(payload, expect.any(String));
     expect(explorerGateway.loadCollections.mock.calls.length).toBeGreaterThan(1);
     expect(mockShowError).not.toHaveBeenCalled();
   });
@@ -160,7 +160,10 @@ describe('useCollections', () => {
     });
 
     expect(out).toBe(true);
-    expect(explorerGateway.deleteCollection).toHaveBeenCalledWith(1);
+    expect(explorerGateway.deleteCollection).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ onError: expect.any(Function) })
+    );
     expect(mockOnUndoable).not.toHaveBeenCalled();
   });
 
@@ -225,7 +228,7 @@ describe('useCollections', () => {
       2,
       expect.objectContaining({ onError: expect.any(Function) })
     );
-    expect(mockOnUndoable).toHaveBeenCalledWith(payload, expect.any(String), undefined);
+    expect(mockOnUndoable).toHaveBeenCalledWith(payload, expect.any(String));
   });
 
   it('dismiss/reject do not produce undo affordances', async () => {
@@ -238,7 +241,7 @@ describe('useCollections', () => {
     });
 
     expect(mockOnUndoable).not.toHaveBeenCalled();
-    expect(explorerGateway.dismissMerge).toHaveBeenCalledWith(1, 2, expect.anything());
-    expect(explorerGateway.rejectMerge).toHaveBeenCalledWith(1, 2, expect.anything());
+    expect(explorerGateway.dismissMerge).toHaveBeenCalledWith(1, 2);
+    expect(explorerGateway.rejectMerge).toHaveBeenCalledWith(1, 2);
   });
 });

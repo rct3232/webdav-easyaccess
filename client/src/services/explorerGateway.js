@@ -8,6 +8,29 @@ import {
 import { checkPermission, getSharedPermissions } from './permissionService';
 import { addRecentFile, getRecentFiles, removeRecentFile } from './recentFilesRepository';
 import { onRecentFilesChange } from './recentFilesNotifier';
+import {
+  addCollectionItems,
+  archiveCollection,
+  createCollection,
+  deleteCollection,
+  dismissMerge,
+  getCollectionItems,
+  getCollections,
+  getGrants,
+  getMemberships,
+  getMergeSuggestions,
+  grantCollection,
+  mergeCollections,
+  previewCollection,
+  previewExistingCollection,
+  publishItems,
+  rejectMerge,
+  removeCollectionItems,
+  restoreCollection,
+  revokeGrant,
+  updateCollection,
+} from './collectionsRepository';
+import { onCollectionsChange } from './collectionsNotifier';
 import { getShowHiddenFiles } from '../utils/localStorage';
 import { filterOutUserOwnFolders } from '../utils/userUtils';
 
@@ -204,6 +227,18 @@ export const subscribeToRecentFiles = (callback) => {
   return onRecentFilesChange(callback);
 };
 
+// -- Collections platform (T0.3; explorerGateway §2.6) — pass-through re-exports: //
+// the repository's failure-absorption and notify-after-real-success semantics    //
+// are preserved verbatim; payloads stay snake_case.                              //
+
+export const loadCollections = (params) => getCollections(params);
+
+export const loadCollectionItems = (id, params) => getCollectionItems(id, params);
+
+export const subscribeToCollections = (callback) => {
+  return onCollectionsChange(callback);
+};
+
 const explorerGateway = {
   addRecentFile: addExplorerRecentFile,
   getEntriesMetadata,
@@ -217,6 +252,28 @@ const explorerGateway = {
   checkConflicts: checkConflictsForExplorer,
   subscribeToRecentFiles,
   uploadToPath,
+  // Collections platform (§2.6 re-export group)
+  loadCollections,
+  createCollection,
+  updateCollection,
+  archiveCollection,
+  restoreCollection,
+  deleteCollection,
+  loadCollectionItems,
+  addCollectionItems,
+  removeCollectionItems,
+  publishItems,
+  getMemberships,
+  previewCollection,
+  previewExistingCollection,
+  getMergeSuggestions,
+  mergeCollections,
+  dismissMerge,
+  rejectMerge,
+  getGrants,
+  grantCollection,
+  revokeGrant,
+  subscribeToCollections,
 };
 
 export default explorerGateway;

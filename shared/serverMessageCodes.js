@@ -201,6 +201,31 @@ const SERVER_ERROR_CODES = {
   users: {
     emailRequired: P('serverErrors.users', 'emailRequired'),
   },
+  // AI-platform domain keys (docs/shared-contracts.md §Error-code domains
+  // introduced by the AI platform). Client en.json/ko.json mirror is mandatory.
+  collections: {
+    nameRequired: P('serverErrors.collections', 'nameRequired'),
+    invalidName: P('serverErrors.collections', 'invalidName'),
+    invalidSort: P('serverErrors.collections', 'invalidSort'),
+    invalidInclude: P('serverErrors.collections', 'invalidInclude'),
+    invalidPublishMode: P('serverErrors.collections', 'invalidPublishMode'),
+    invalidRole: P('serverErrors.collections', 'invalidRole'),
+    emptyNodeIds: P('serverErrors.collections', 'emptyNodeIds'),
+    previewTargetRequired: P('serverErrors.collections', 'previewTargetRequired'),
+    mergeSameCollection: P('serverErrors.collections', 'mergeSameCollection'),
+    forbidden: P('serverErrors.collections', 'forbidden'),
+    notFound: P('serverErrors.collections', 'notFound'),
+    granteeNotFound: P('serverErrors.collections', 'granteeNotFound'),
+    grantNotFound: P('serverErrors.collections', 'grantNotFound'),
+    suggestionNotFound: P('serverErrors.collections', 'suggestionNotFound'),
+    alreadyArchived: P('serverErrors.collections', 'alreadyArchived'),
+    notArchived: P('serverErrors.collections', 'notArchived'),
+  },
+  ai: {
+    notConfigured: P('serverErrors.ai', 'notConfigured'),
+    budgetExceeded: P('serverErrors.ai', 'budgetExceeded'),
+    providerProbeFailed: P('serverErrors.ai', 'providerProbeFailed'),
+  },
   utilsAuth: {
     accessTokenRequired: P('serverErrors.utilsAuth', 'accessTokenRequired'),
     invalidOrExpiredToken: P('serverErrors.utilsAuth', 'invalidOrExpiredToken'),

@@ -28,8 +28,10 @@ Target-contract spec.
 - Resolution per call via `configResolver` (5s TTL; `invalidateCache` fired on settings
   PUT): each role reads `{BASE_URL, API_KEY, MODEL}` → keys
   `LLM_EMBED_*`, `LLM_CHAT_*`, `LLM_VISION_*`, `LLM_ASR_*` (API keys `secret:true` —
-  masking only, plaintext at rest). `.env`-provided `LLM_*` remains legal (resolver
-  env>db precedence) but locks the editor (`setInEnv`); DB is the recommended surface.
+  masking only, plaintext at rest). All `LLM_*` keys are T2 `dbOnly` (registry §3/PLAN §6):
+  the resolver reads DB → default and **ignores env** — a `.env`-provided `LLM_*` value is
+  never effective, and the DB `settings` row is the single config surface (wizard §4.23.5
+  and admin editor both write rows).
 - **Client cache keyed by the resolved-config SIGNATURE**
   (`sha256(base_url∥model∥api_key∥dialect)`): rebuild on change — no full teardown.
   `getRoleClient(role)` → client | `null` (role unconfigured ⇒ null ⇒ capability degrades,

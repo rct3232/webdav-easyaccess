@@ -4,7 +4,7 @@
 
 | Item            | Description                                                                                                                                                                                                                                                                                                              |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Role            | In-memory per-backend health tracker for `postgresql`, `s3`, `webdav`. Passive, event-based (D2): callers report success/failure; the tracker records state, fires a transition callback only on `OK→FAIL` / `FAIL→OK`, and serves a snapshot for the admin card/banner and public status. State resets on restart (D4). |
+| Role            | In-memory per-backend health tracker for `postgresql`, `s3`, `webdav` plus the AI LLM role slots `ai.embed` / `ai.chat` (§4.12). Passive, event-based (D2): callers report success/failure; the tracker records state, fires a transition callback only on `OK→FAIL` / `FAIL→OK`, and serves a snapshot for the admin card/banner and public status. State resets on restart (D4). |
 | Source of truth | `docs/features/backend-health.md` (decisions B1, D2–D4)                                                                                                                                                                                                                                                                  |
 
 ---
@@ -16,7 +16,7 @@
 - **Source:** `server/infrastructure/backendHealth.js` (new)
 - **Test file:** `server/infrastructure/__tests__/backendHealth.test.js`
 
-### 2.2 State shape (per backend)
+### 2.2 State shape (per backend / per AI role slot)
 
 ```js
 {
@@ -35,10 +35,19 @@
 | Export                | Signature                                             | Description                                                                                                                                                                       |
 | --------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `createBackendHealth` | `() => { report, getHealth, reset, setOnTransition }` | Factory (tests get an isolated instance; production uses the shared singleton).                                                                                                   |
-| `getHealth`           | `() => { postgresql, s3, webdav }`                    | Snapshot for `GET /api/admin/health` (full) and `GET /api/health` (status strings only).                                                                                          |
-| `report`              | `(backend, { ok, code?, reason?, hint? }) => void`    | Update state; fire the transition callback only when the status flips `ok`↔`fail`. `ok:true` clears `code/reason/hint`, resets `consecutiveFailures` to 0, keeps `lastCheckedAt`. |
-| `reset`               | `() => void`                                          | Reset all backends to `unknown` (boot + test hook).                                                                                                                               |
-| `setOnTransition`     | `(cb) => void`                                        | Register a callback for `OK→FAIL` / `FAIL→OK` transitions (terminal logging).                                                                                                     |
+| `getHealth`           | `() => { postgresql, s3, webdav, 'ai.embed', 'ai.chat' }` | Snapshot for `GET /api/admin/health` (full) and `GET /api/health` (status strings only). AI role slots are keyed `ai.<role>` (`embed`/`chat`, §4.12) with the same state shape; `vision`/`asr` states are admin-surface-only additions (T4.1) and are not tracked here. |
+| `report`              | `(key, { ok, code?, reason?, hint? }) => void`        | Update state; `key` is a backend name or an `ai.<role>` slot. Fire the transition callback only when the status flips `ok`↔`fail`. `ok:true` clears `code/reason/hint`, resets `consecutiveFailures` to 0, keeps `lastCheckedAt`. Unknown keys are ignored silently (unchanged). |
+| `reset`               | `() => void`                                          | Reset all tracked keys to `unknown` (boot + test hook).                                                                                                                               |
+| `setOnTransition`     | `(cb) => void`                                        | Register a callback for `OK→FAIL` / `FAIL→OK` transitions (terminal logging).                                                                                                          |
+
+**AI role slots (`ai.embed`, `ai.chat`).** Same generic row shape; the adapter (T1.1)
+reports probe outcomes via the `probeLlm` slot (`backendProbe.registerProbeTarget('llm', …)`
+— `docs/spec/server/infrastructure/llmAdapter.md` §2.3) and the admin 4-state display
+(`not_configured | probe_failed(reason) | partial | ok`) maps the row at render time.
+`GET /api/settings/public` derives its `ai: { embed, chat }` booleans live from these rows
+(`status === 'ok'`, `docs/spec/server/routes/settings.md`). The public `/api/health`
+endpoint keeps reporting only the three backend statuses; the admin `/health` snapshot
+includes the AI rows additively.
 
 ### 2.4 Classification
 
@@ -71,5 +80,6 @@ Never logs steady-state reports.
 - [ ] `ok:true` after `fail` flips to `ok`, clears `code/reason`, resets `consecutiveFailures`
 - [ ] `ok:false` increments `consecutiveFailures`; first `fail` sets `firstFailedAt`
 - [ ] transition callback fires only on `ok`↔`fail` flips (not on repeated same-state reports)
-- [ ] `reset()` returns all backends to `unknown`
-- [ ] `getHealth()` returns the three backends with no cross-contamination
+- [ ] `reset()` returns all tracked keys (backends + AI role slots) to `unknown`
+- [ ] `getHealth()` returns the three backends plus the `ai.embed`/`ai.chat` slots with no cross-contamination
+- [ ] an `ai.<role>` report never fires a transition for a backend row and vice versa

@@ -62,6 +62,7 @@ beforeAll(async () => {
   app = express();
   app.use(express.json());
   app.use('/api/actions', setupModeGuard(), require('../routes'));
+  app.use(require('../../../utils/errorHandler').errorHandler);
 });
 
 afterAll(async () => {
@@ -80,18 +81,10 @@ describe('GET /api/actions', () => {
       { ownerId: owner.id, name: 'Europe trip', origin: 'user' },
       { actor: owner.id }
     );
-    const node = await createTestFileNode();
-    await collectionsStore.addItem(
-      collection.id,
-      node.nodeId,
-      owner.id,
-      {},
-      { actor: owner.id }
-    );
+    const node = await createTestFileNode({});
+    await collectionsStore.addItem(collection.id, node.nodeId, owner.id, {}, { actor: owner.id });
 
-    const res = await request(app)
-      .get('/api/actions')
-      .set('Authorization', `Bearer ${ownerToken}`);
+    const res = await request(app).get('/api/actions').set('Authorization', `Bearer ${ownerToken}`);
 
     expect(res.status).toBe(200);
     const actions = res.body.actions;
@@ -103,7 +96,7 @@ describe('GET /api/actions', () => {
     expect(addRow).toMatchObject({
       domain: 'collection',
       subject: `collection:${collection.id}`,
-      subject_label: 'Europe trip',
+      subject_label: null, // add-item rows carry no commit-time label (optional per DDL)
       actor: owner.id,
       action: 'add-item',
       status: 'applied',
@@ -111,6 +104,7 @@ describe('GET /api/actions', () => {
       is_tip: true,
       undo_available: true,
     });
+    expect(actions[1].subject_label).toBe('Europe trip'); // create rows capture the name
     expect(typeof addRow.action_id).toBe('number');
     expect(typeof addRow.created_at).toBe('string');
     expect(addRow.undone_at).toBeNull();
@@ -163,9 +157,7 @@ describe('GET /api/actions', () => {
       async () => null
     );
 
-    const res = await request(app)
-      .get('/api/actions')
-      .set('Authorization', `Bearer ${ownerToken}`);
+    const res = await request(app).get('/api/actions').set('Authorization', `Bearer ${ownerToken}`);
     const ids = res.body.actions.map((a) => a.action_id);
     expect(ids).toContain(systemOnOwn.id);
     expect(ids).not.toContain(systemOnForeign.id);
@@ -204,16 +196,14 @@ describe('GET /api/actions', () => {
     const expiring = await actionJournalStore.commitChange(
       'collection',
       `collection:${collection.id}`,
-      { actor: owner.id, action: 'fresh-act' },
+      { actor: owner.id, action: 'fresh-act', subjectLabel: 'Window coll' },
       { inverse: { op: 'noop' } },
       async () => null
     );
     await backdateRow(expiring.id, { createdDaysAgo: 20, expiresDaysAgo: 1 });
     await actionJournalStore.expireJournalRows();
 
-    const res = await request(app)
-      .get('/api/actions')
-      .set('Authorization', `Bearer ${ownerToken}`);
+    const res = await request(app).get('/api/actions').set('Authorization', `Bearer ${ownerToken}`);
     const byId = Object.fromEntries(res.body.actions.map((a) => [a.action_id, a]));
     expect(byId[old.id]).toBeUndefined();
     expect(byId[expiring.id]).toBeDefined();
@@ -285,8 +275,20 @@ describe('POST /api/actions/:id/undo', () => {
     );
     const nodeA = await createTestFileNode({ name: 'cascade-a.txt' });
     const nodeB = await createTestFileNode({ name: 'cascade-b.txt' });
-    const addA = await collectionsStore.addItem(created.id, nodeA.nodeId, owner.id, {}, { actor: owner.id });
-    const addB = await collectionsStore.addItem(created.id, nodeB.nodeId, owner.id, {}, { actor: owner.id });
+    const addA = await collectionsStore.addItem(
+      created.id,
+      nodeA.nodeId,
+      owner.id,
+      {},
+      { actor: owner.id }
+    );
+    const addB = await collectionsStore.addItem(
+      created.id,
+      nodeB.nodeId,
+      owner.id,
+      {},
+      { actor: owner.id }
+    );
 
     const first = await request(app)
       .post(`/api/actions/${created.actionId}/undo`)
@@ -324,7 +326,13 @@ describe('POST /api/actions/:id/undo', () => {
       { actor: owner.id }
     );
     const node = await createTestFileNode({ name: 'fp.txt' });
-    const added = await collectionsStore.addItem(created.id, node.nodeId, owner.id, {}, { actor: owner.id });
+    const added = await collectionsStore.addItem(
+      created.id,
+      node.nodeId,
+      owner.id,
+      {},
+      { actor: owner.id }
+    );
     // subject mutated out from under the inverse — non-journaled external delete
     await dbRun('DELETE FROM collection_items WHERE collection_id = ? AND node_id = ?', [
       created.id,
@@ -349,8 +357,8 @@ describe('POST /api/actions/:id/undo', () => {
     for (let i = 0; i < 11; i += 1) {
       const node = await createTestFileNode({ name: `cmd-${i}.txt` });
       await dbRun(
-        'INSERT INTO collection_items (collection_id, node_id, added_by, published) VALUES (?, ?, ?, 1)',
-        [created.id, node.nodeId, owner.id]
+        'INSERT INTO collection_items (collection_id, node_id, added_by, published) VALUES (?, ?, ?, ?)',
+        [created.id, node.nodeId, owner.id, true]
       );
       nodes.push(node.nodeId);
     }
@@ -374,9 +382,10 @@ describe('POST /api/actions/:id/undo', () => {
       .send({});
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ action_id: command.id, items_undone: 11, items_skipped: 1 });
-    const { rows } = await dbQuery('SELECT COUNT(*) AS cnt FROM collection_items WHERE collection_id = ?', [
-      created.id,
-    ]);
+    const { rows } = await dbQuery(
+      'SELECT COUNT(*) AS cnt FROM collection_items WHERE collection_id = ?',
+      [created.id]
+    );
     expect(Number(rows[0].cnt)).toBe(0);
   });
 

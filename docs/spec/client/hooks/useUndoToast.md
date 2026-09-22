@@ -30,12 +30,12 @@ Target-contract spec.
 
 ### 2.3 Return Value / State
 
-| Key             | Type                                                  | Meaning                                                                                                                        |
-| --------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Key             | Type                                                  | Meaning                                                                                                                                                                                                                                                                                                   |
+| --------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | showUndoToast   | `({ actionId, text, params?, shownAt? }) => void`     | Show (or REPLACE the current) undo toast. `text` is the already-localized label; `params` optional render values. `shownAt` (T0.7) is the optional ORIGINAL command timestamp for programmatic re-show/recovery paths — it stamps the ≤24 h window instead of the re-show moment; omitted ⇒ `Date.now()`. |
-| showReportToast | `(text, params?) => void`                             | Report-only variant (permanent delete / GC runs: toast, no undo button — §4.11 matrix).                                        |
-| cascadeConfirm  | `{ open, laterChanges, confirm(), cancel() } \| null` | Non-tip undo state: hook received 409 `actions.cascadeConfirmRequired`; host renders ConfirmDialog from `params.laterChanges`. |
-| busy            | boolean                                               | Undo execution in flight (button disabled while `true`).                                                                       |
+| showReportToast | `(text, params?) => void`                             | Report-only variant (permanent delete / GC runs: toast, no undo button — §4.11 matrix).                                                                                                                                                                                                                   |
+| cascadeConfirm  | `{ open, laterChanges, confirm(), cancel() } \| null` | Non-tip undo state: hook received 409 `actions.cascadeConfirmRequired`; host renders ConfirmDialog from `params.laterChanges`.                                                                                                                                                                            |
+| busy            | boolean                                               | Undo execution in flight (button disabled while `true`).                                                                                                                                                                                                                                                  |
 
 ### 2.4 Contract Rules
 

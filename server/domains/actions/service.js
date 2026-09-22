@@ -268,10 +268,7 @@ async function applyInverseTx(tx, inverse, row) {
       if (!existing) return { applied: false, reason: 'changed' };
       // granted_by references users: keep the capturing actor when numeric,
       // fall back to the collection owner (FK-safe on system acts).
-      const grantedBy = numericActorOr(
-        inverse.grantedBy ?? row.actor,
-        existing.ownerId
-      );
+      const grantedBy = numericActorOr(inverse.grantedBy ?? row.actor, existing.ownerId);
       const { changes } = await repo.upsertGrant(
         tx,
         inverse.collectionId,

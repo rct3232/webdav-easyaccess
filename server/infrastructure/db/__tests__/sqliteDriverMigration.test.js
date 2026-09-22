@@ -97,6 +97,24 @@ describe('sqlite driver migration (node:sqlite, T0.12)', () => {
     });
   });
 
+  describe('historical bind-value coercion preserved', () => {
+    it('binds Date values as ISO strings via executor.run (sqlite3-npm era behavior)', async () => {
+      const executor = require('@server/infrastructure/db/sqliteExecutor');
+      const createdAt = new Date('2026-01-02T03:04:05.678Z');
+
+      const res = await executor.run(
+        'INSERT INTO locks (lock_name_hash, token, owner, created_at, expires_at) VALUES (?, ?, ?, ?, ?)',
+        ['bind-date-hash', 'bind-date-token', 'bind-date-owner', createdAt, new Date(createdAt.getTime() + 1000)]
+      );
+      expect(res.changes).toBe(1);
+
+      const rows = await executor.query('SELECT created_at FROM locks WHERE lock_name_hash = ?', [
+        'bind-date-hash',
+      ]);
+      expect(rows.rows[0].created_at).toBe('2026-01-02T03:04:05.678Z');
+    });
+  });
+
   describe('storage seam exposes the node:sqlite driver', () => {
     it('getSqliteConnection returns a node:sqlite DatabaseSync handle', () => {
       const { DatabaseSync } = require('node:sqlite');

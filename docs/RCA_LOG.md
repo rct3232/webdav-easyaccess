@@ -546,3 +546,33 @@ IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode repor
   constants); archive gate re-phrased event-based (Σ w_a ≤ ε, ε=0, N=60). Updated:
   AI_FEATURE_PLAN §3.4/§4.9/§5, collectionsStore §2.5, evolutionService §2.6,
   maintenanceScheduler §3.1, routes/collections GET /, PLAN.md T0.3/T0.6/§6.
+
+### 2026-09-22 — Wave-0 merge gate: T0.12 node:sqlite migration broke the `initSqliteSchema({ path })` leg and Date binding (Case A — completed within the approved T0.12 mandate)
+
+- **Summary**: after merging `feature/t02-full-schema-ddl` + `refactor/t012-node-sqlite-driver`
+  into `ai-feature`, the full `npm run test:ci` gate failed with 4 suites / 43 tests:
+  lockManager (LOCK_TIMEOUT), migrationService (25 failures), and the T0.2 conformance twins
+  for ActionJournal/Collections (5 s timeouts + `no such table: locks`).
+- **Diagnosis**: two independent integration defects in T0.12's driver migration, both invisible
+  on T0.12's own branch (its touched-area sweep predated the T0.2 branches):
+  1. `sqliteSchemaInit.openDatabaseAt()` called `DatabaseSync(dbPath)` **without `new`** —
+     node:sqlite requires `new`, so the `{ path }` file-database leg threw
+     `TypeError: Cannot call constructor without 'new'`, leaving every `createTestDatabase()`
+     DB uninitialized (`no such table: locks`) and cascading into lock/migration/conformance
+     timeouts. `sqliteSchemaInit.test.js` never exercised the `{ path }` leg — coverage gap.
+  2. `normalizeBindValue()` (storage seam) coerced only booleans and `undefined`; call sites
+     that bind `Date` objects (e.g. `lockManager.acquireSqliteLock` createdAt/expiresAt) passed
+     Dates through, and `node:sqlite` rejects them
+     (`ERR_INVALID_ARG_TYPE: Provided value cannot be bound to SQLite parameter 4`). The
+     sqlite3 npm driver accepted Date binds, so the behavior-preservation contract was broken.
+- **Classification**: **Case A (Source Error)** — T0.12's implementation did not satisfy its
+  own "behavior suite green on both drivers" exit criterion for suites outside its touched-area
+  sweep. Not a spec-contract dispute (the spec itself was corrected in the T0.12 PR); resolved
+  by completing the already-approved behavior-preservation mandate rather than a new design
+  decision, hence no owner stop was required. The Wave-0 full-gate procedure worked as designed.
+- **Action taken**: RED→GREEN fixes on `fix/t012-node-sqlite-integration`:
+  `new DatabaseSync(dbPath)` in `openDatabaseAt` + a new `initSqliteSchema({ path })` file-DB
+  integration test (38-table assertion) closing the coverage gap; `Date → value.toISOString()`
+  added to `normalizeBindValue` + a bind-coercion contract test in
+  `sqliteDriverMigration.test.js` + storage.md normalization rule updated (docs-first).
+  Verified: the 4 failing suites + both T0.2 schema suites = 6 suites / 88 tests green.

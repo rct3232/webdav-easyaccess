@@ -68,7 +68,7 @@ function runStatementsOn(db, statements) {
 
 function openDatabaseAt(dbPath) {
   const { DatabaseSync } = require('node:sqlite');
-  return DatabaseSync(dbPath);
+  return new DatabaseSync(dbPath);
 }
 
 function closeDatabase(db) {

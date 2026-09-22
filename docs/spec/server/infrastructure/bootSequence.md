@@ -89,12 +89,12 @@ default password.
 
 ## 5. Verification
 
-- [ ] Fresh boot (no `.env`, no remote-DB credentials): metadata backend defaults to SQLite; the DB connects locally and the wizard serves non-T0 only while non-T0 config is incomplete.
+- [x] Fresh boot (no `.env`, no remote-DB credentials): metadata backend defaults to SQLite; the DB connects locally and the wizard serves non-T0 only while non-T0 config is incomplete.
 - [ ] Partial `WEA_DB_*` credential set (some but not all of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD`) → boot fails: `storage.getBackend()` throws `Partial WEA_DB_* configuration: missing <keys> …`, the `runBoot()` catch logs `Initialization failed: …`, then `process.exit(1)`.
 - [ ] Full config in DB (T0 in `.env`): boots, T1 values visible to require-time consts,
       `ADMIN_DEFAULT_PASSWORD` honored when DB-sourced.
-- [ ] `.env` wins over DB for any T1 key (`populateT1Env` never overwrites existing env).
-- [ ] T2 keys never written into process.env (stay lazy).
+- [x] `.env` wins over DB for any T1 key (`populateT1Env` never overwrites existing env).
+- [x] T2 keys never written into process.env (stay lazy).
 - [ ] PORT from DB used at listen; CORS origin list resolved per request.
 - [ ] A failing active-file-backend boot probe leaves the health tracker `fail` (reset runs first), so `GET /api/health` reports the failure and the file-screen banner shows immediately after login.
-- [ ] Boot with NULL `filecache.content_hash` rows: warn logged, one `failsafe` admin_reports row with `contentHashCompleteness`, boot NOT blocked; the repair endpoint backfills and a re-boot reports `nullCount: 0`.
+- [x] Boot with NULL `filecache.content_hash` rows: warn logged, one `failsafe` admin_reports row with `contentHashCompleteness`, boot NOT blocked; the repair endpoint backfills and a re-boot reports `nullCount: 0`.

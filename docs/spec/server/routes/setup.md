@@ -217,17 +217,17 @@ Connection-test taxonomy codes are module-local i18n keys (same `ns.key` format;
 
 ### 2.8 Integration Test Scenarios
 
-- [ ] GET /status returns derived `{ setup_complete, missing, current }` with secrets masked
-- [ ] Fresh (no env) → incomplete with the exact missing list; full s3+sqlite → complete; full pg+webdav → complete; prod with unset or default `JWT_SECRET` → complete (jwt never gates `setup_complete`)
-- [ ] GET /status prefills `current` from DB `settings` rows (effective env-first view)
-- [ ] POST /test passes through postgresql/s3/webdav probe results; error shapes are `{ ok: false, errorCode, message, reason? }` with the classified taxonomy codes
-- [ ] POST /apply (sqlite+webdav, jwt supplied): `JWT_SECRET` is written to `.env` (mode 0600) only when the payload supplies one; an apply with no jwt block writes no `.env` T0 value; the metadata T0 keys (the `WEA_DB_*` block, `WEA_SQLITE_PATH`) are never written by apply; non-T0 keys are upserted into the **booted** metadata DB `settings` table as plaintext strings (secrets included, readable back as-is)
-- [ ] POST /apply with `metadata.backend === 'postgresql'` → 400 `fields.metadata='notAllowed'` (the DB connection is `.env`-owned; apply never runs settings DDL or upserts against a target PG); a non-T0 apply upserts into the booted store's `settings` table and updates the `admin` password on that store
-- [ ] POST /apply → `restart_required: true` and `getSharedResolver().invalidateCache()` is invoked
-- [ ] POST /apply when already complete → 403 `setup.complete`
-- [ ] POST /test when already complete → 403 `setup.complete`
-- [ ] POST /apply with unknown keys / invalid payload → 400 with per-field errors
-- [ ] Setup-mode guard: file-domain and admin-write routes → 503 `setup.incomplete` while incomplete; open again after completion
-- [ ] Request logger does not leak apply body (bodies are never logged)
+- [x] GET /status returns derived `{ setup_complete, missing, current }` with secrets masked
+- [x] Fresh (no env) → incomplete with the exact missing list; full s3+sqlite → complete; full pg+webdav → complete; prod with unset or default `JWT_SECRET` → complete (jwt never gates `setup_complete`)
+- [x] GET /status prefills `current` from DB `settings` rows (effective env-first view)
+- [x] POST /test passes through postgresql/s3/webdav probe results; error shapes are `{ ok: false, errorCode, message, reason? }` with the classified taxonomy codes
+- [x] POST /apply (sqlite+webdav, jwt supplied): `JWT_SECRET` is written to `.env` (mode 0600) only when the payload supplies one; an apply with no jwt block writes no `.env` T0 value; the metadata T0 keys (the `WEA_DB_*` block, `WEA_SQLITE_PATH`) are never written by apply; non-T0 keys are upserted into the **booted** metadata DB `settings` table as plaintext strings (secrets included, readable back as-is)
+- [x] POST /apply with `metadata.backend === 'postgresql'` → 400 `fields.metadata='notAllowed'` (the DB connection is `.env`-owned; apply never runs settings DDL or upserts against a target PG); a non-T0 apply upserts into the booted store's `settings` table and updates the `admin` password on that store
+- [x] POST /apply → `restart_required: true` and `getSharedResolver().invalidateCache()` is invoked
+- [x] POST /apply when already complete → 403 `setup.complete`
+- [x] POST /test when already complete → 403 `setup.complete`
+- [x] POST /apply with unknown keys / invalid payload → 400 with per-field errors
+- [x] Setup-mode guard: file-domain and admin-write routes → 503 `setup.incomplete` while incomplete; open again after completion
+- [x] Request logger does not leak apply body (bodies are never logged)
 - [ ] POST /test with `target: "llm"` probes the submitted per-role values and returns the pass/fail envelope; unknown role → 400
 - [ ] POST /apply with an `llm` block writes `LLM_*` rows to the DB `settings` table only (never `.env`); masked apiKey keeps the stored value; omitted block is a no-op and `setup_complete` never depends on AI presence

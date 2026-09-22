@@ -131,6 +131,41 @@ const CONFIG_ENTRIES = Object.freeze([
   { key: 'WEA_SKIP_MIGRATION_WORKER', tier: TIER.T2, secret: false },
   { key: 'WEA_SKIP_BULK_WORKER', tier: TIER.T2, secret: false },
   { key: 'WEA_SKIP_GC_SCHEDULER', tier: TIER.T1, secret: false },
+  // T1.3 AI jobs worker test seam (aiJobService spec §2) — same idiom as
+  // WEA_SKIP_BULK_WORKER: T2, env-allowed so test setup can set it directly.
+  { key: 'WEA_SKIP_AI_WORKER', tier: TIER.T2, secret: false },
+
+  // ── AI / LLM (T2 dbOnly — fully hot; PLAN §6) ──────────────────────────
+  // Per-call resolver, re-probe on change, no restart (llmAdapter §1/§2).
+  // Presence decides candidacy, probes decide truth (§4.23); there is no
+  // LLM_ENABLED flag. Keys are registered before any read site exists (T1.1)
+  // so the admin config surface can manage them from day one. API keys are
+  // secret (presentation masking only; plaintext at rest).
+  { key: 'LLM_EMBED_BASE_URL', tier: TIER.T2, secret: false, dbOnly: true },
+  { key: 'LLM_EMBED_API_KEY', tier: TIER.T2, secret: true, dbOnly: true },
+  { key: 'LLM_EMBED_MODEL', tier: TIER.T2, secret: false, dbOnly: true },
+  { key: 'LLM_CHAT_BASE_URL', tier: TIER.T2, secret: false, dbOnly: true },
+  { key: 'LLM_CHAT_API_KEY', tier: TIER.T2, secret: true, dbOnly: true },
+  { key: 'LLM_CHAT_MODEL', tier: TIER.T2, secret: false, dbOnly: true },
+  { key: 'LLM_VISION_BASE_URL', tier: TIER.T2, secret: false, dbOnly: true },
+  { key: 'LLM_VISION_API_KEY', tier: TIER.T2, secret: true, dbOnly: true },
+  { key: 'LLM_VISION_MODEL', tier: TIER.T2, secret: false, dbOnly: true },
+  { key: 'LLM_ASR_BASE_URL', tier: TIER.T2, secret: false, dbOnly: true },
+  { key: 'LLM_ASR_API_KEY', tier: TIER.T2, secret: true, dbOnly: true },
+  { key: 'LLM_ASR_MODEL', tier: TIER.T2, secret: false, dbOnly: true },
+  { key: 'LLM_MAX_INPUT_CHARS', tier: TIER.T2, secret: false, dbOnly: true },
+  { key: 'LLM_CHUNK_BUDGET', tier: TIER.T2, secret: false, default: 4, dbOnly: true },
+  {
+    key: 'LLM_OVERLENGTH_POLICY',
+    tier: TIER.T2,
+    secret: false,
+    default: 'chunk-pool',
+    dbOnly: true,
+  },
+  { key: 'LLM_DAILY_CALL_CAP', tier: TIER.T2, secret: false, default: 0, dbOnly: true },
+  { key: 'LLM_DAILY_TOKEN_CAP', tier: TIER.T2, secret: false, default: 0, dbOnly: true },
+  { key: 'LLM_REPROBE_DEBOUNCE_S', tier: TIER.T2, secret: false, default: 60, dbOnly: true },
+  { key: 'AI_SEMANTIC_SEARCH_ENABLED', tier: TIER.T2, secret: false, default: true, dbOnly: true },
 ]);
 
 const FROZEN_ENTRIES = Object.freeze(CONFIG_ENTRIES.map((entry) => Object.freeze(entry)));

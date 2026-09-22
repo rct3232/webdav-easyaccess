@@ -145,12 +145,44 @@ Precedence invariant (D1): env wins whenever set; DB is read only when the env v
 | `WEA_SKIP_MIGRATION_WORKER`                   | T2   | no     | —                                                                          |
 | `WEA_SKIP_BULK_WORKER`                        | T2   | no     | —                                                                          |
 | `WEA_SKIP_GC_SCHEDULER`                       | T1   | no     | —                                                                          |
+| `WEA_SKIP_AI_WORKER`                          | T2   | no     | — (test seam for the T1.3 AI jobs worker; `aiJobService.md` §2)             |
+
+### AI / LLM (T2 `dbOnly` — fully hot)
+
+All `LLM_*` keys are T2 `dbOnly` (PLAN §6): DB row → default, env ignored, per-call
+resolution (hot — no restart; `llmAdapter.md` §1). Presence decides candidacy, probes
+decide truth (§4.23); there is no `LLM_ENABLED` flag. API keys are `secret: true`
+(presentation masking only, plaintext at rest). No read site exists before T1.1 — the
+keys are registered now so the admin config surface (editor + `GET/PUT /api/admin/config`)
+can manage them from day one.
+
+| key                        | tier | secret  | default        | notes                                                     |
+| -------------------------- | ---- | ------- | -------------- | --------------------------------------------------------- |
+| `LLM_EMBED_BASE_URL`       | T2   | no      | —              | embed role connection triplet (`dbOnly`)                  |
+| `LLM_EMBED_API_KEY`        | T2   | **yes** | —              |                                                           |
+| `LLM_EMBED_MODEL`          | T2   | no      | —              |                                                           |
+| `LLM_CHAT_BASE_URL`        | T2   | no      | —              | chat role triplet                                          |
+| `LLM_CHAT_API_KEY`         | T2   | **yes** | —              |                                                           |
+| `LLM_CHAT_MODEL`           | T2   | no      | —              |                                                           |
+| `LLM_VISION_BASE_URL`      | T2   | no      | —              | vision role triplet                                        |
+| `LLM_VISION_API_KEY`       | T2   | **yes** | —              |                                                           |
+| `LLM_VISION_MODEL`         | T2   | no      | —              |                                                           |
+| `LLM_ASR_BASE_URL`         | T2   | no      | —              | ASR role triplet                                           |
+| `LLM_ASR_API_KEY`          | T2   | **yes** | —              |                                                           |
+| `LLM_ASR_MODEL`            | T2   | no      | —              |                                                           |
+| `LLM_MAX_INPUT_CHARS`      | T2   | no      | —              | budget chain step 1 (admin cap beats published metadata)   |
+| `LLM_CHUNK_BUDGET`         | T2   | no      | `4`            | uniform-stride sample cap (§4.3 ladder)                    |
+| `LLM_OVERLENGTH_POLICY`    | T2   | no      | `'chunk-pool'` | ladder entry point selector (`llmAdapter.md` §2.6)         |
+| `LLM_DAILY_CALL_CAP`       | T2   | no      | `0` (unlimited)| per-role daily call cap (§2.5)                             |
+| `LLM_DAILY_TOKEN_CAP`      | T2   | no      | `0` (unlimited)| per-role daily token cap                                   |
+| `LLM_REPROBE_DEBOUNCE_S`   | T2   | no      | `60`           | hot re-probe debounce on config signature change (§2.2)    |
+| `AI_SEMANTIC_SEARCH_ENABLED` | T2 | no      | `true`         | query-embed kill switch (`searchService` consumer)         |
 
 ---
 
 ## 4. Behavioral Rules
 
-- **Ordering is significant**: entries are ordered so the UI can group them — T0 metadata, file storage, server/security, email, runtime. Within a group the ordering mirrors PLAN §4 where a variable is classified there; variables absent from PLAN §4 are appended at the end of their group.
+- **Ordering is significant**: entries are ordered so the UI can group them — T0 metadata, file storage, server/security, email, runtime, AI/LLM. Within a group the ordering mirrors PLAN §4 where a variable is classified there; variables absent from PLAN §4 are appended at the end of their group.
 - **Complete inventory**: every `process.env.<VAR>` read site under `server/` (excluding test-only reads) is registered.
 - `registration_enabled` is preserved as registered (T2, not secret, no default) — the resolver must never synthesize a default for it.
 - Defaults mirror the **in-code default as typed** (number/string/boolean). A missing default means the code has none.
@@ -165,3 +197,4 @@ Precedence invariant (D1): env wins whenever set; DB is read only when the env v
 - [ ] `getEntry` returns `undefined` for unknown keys; `isSecret`/`isT0` are safe for unknown keys.
 - [ ] `CONFIG_ENTRIES` and each entry are frozen.
 - [ ] `registration_enabled` present, T2, non-secret, no default.
+- [ ] Every `LLM_*` key is T2 `dbOnly`; the four role API keys are `secret: true`; `WEA_SKIP_AI_WORKER` is T2 non-dbOnly (env-allowed test seam).

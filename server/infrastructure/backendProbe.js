@@ -261,6 +261,12 @@ async function probeWebdav(payload) {
 }
 
 async function runProbe(target, body) {
+  // Registered targets win over the built-ins (extension seam): T1.1 registers
+  // the LLM probe suite under the reserved 'llm' slot (llmAdapter §2.3) without
+  // editing this module; an unregistered reserved slot keeps the existing
+  // unsupported-target 400.
+  const handler = PROBE_TARGET_HANDLERS.get(target);
+  if (handler) return handler(body);
   if (target === 'postgresql') return probePostgresql(body);
   if (target === 's3') return probeS3(body);
   if (target === 'webdav') return probeWebdav(body);
@@ -269,6 +275,31 @@ async function runProbe(target, body) {
     HTTP_STATUS.BAD_REQUEST,
     `Unsupported target: ${String(target)}`
   );
+}
+
+// Reserved slot for the LLM probe suite (admin.md §3.2 P0 plumbing; the
+// `target: 'llm'` route acceptance lands with T1.1). Registered handlers are
+// dispatch-first in runProbe.
+const PROBE_TARGET_LLM = 'llm';
+
+const PROBE_TARGET_HANDLERS = new Map();
+
+/**
+ * Register (or replace) a probe handler for a target. Test/di seam: handlers
+ * injected here win over the built-in probes of the same name.
+ * @param {string} target - probe target name ('llm' reserved, others allowed)
+ * @param {(body: Object) => Promise<Object>} handler
+ */
+function registerProbeTarget(target, handler) {
+  if (typeof handler !== 'function') {
+    throw new TypeError(`Probe handler for target '${String(target)}' must be a function`);
+  }
+  PROBE_TARGET_HANDLERS.set(target, handler);
+}
+
+/** Remove a registered handler (test cleanup). */
+function unregisterProbeTarget(target) {
+  PROBE_TARGET_HANDLERS.delete(target);
 }
 
 /**
@@ -335,4 +366,7 @@ module.exports = {
   classifyS3BucketError,
   classifyToHealthCode,
   runProbe,
+  registerProbeTarget,
+  unregisterProbeTarget,
+  PROBE_TARGET_LLM,
 };

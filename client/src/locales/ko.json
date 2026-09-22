@@ -450,7 +450,8 @@
         "fileStorage": "파일 저장소",
         "serverSecurity": "서버 및 보안",
         "email": "이메일",
-        "runtime": "런타임"
+        "runtime": "런타임",
+        "ai": "AI / LLM"
       },
       "key": {
         "WEA_SQLITE_PATH": "SQLite 경로",
@@ -509,7 +510,27 @@
         "PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY": "권한 조정 동시 처리 수",
         "WEA_SKIP_MIGRATION_WORKER": "마이그레이션 워커 건너뛰기",
         "WEA_SKIP_BULK_WORKER": "일괄 작업 워커 건너뛰기",
-        "WEA_SKIP_GC_SCHEDULER": "GC 스케줄러 건너뛰기"
+        "WEA_SKIP_GC_SCHEDULER": "GC 스케줄러 건너뛰기",
+        "WEA_SKIP_AI_WORKER": "AI 워커 건너뛰기",
+        "LLM_EMBED_BASE_URL": "임베딩 역할 — 베이스 URL",
+        "LLM_EMBED_API_KEY": "임베딩 역할 — API 키",
+        "LLM_EMBED_MODEL": "임베딩 역할 — 모델",
+        "LLM_CHAT_BASE_URL": "챗 역할 — 베이스 URL",
+        "LLM_CHAT_API_KEY": "챗 역할 — API 키",
+        "LLM_CHAT_MODEL": "챗 역할 — 모델",
+        "LLM_VISION_BASE_URL": "비전 역할 — 베이스 URL",
+        "LLM_VISION_API_KEY": "비전 역할 — API 키",
+        "LLM_VISION_MODEL": "비전 역할 — 모델",
+        "LLM_ASR_BASE_URL": "ASR 역할 — 베이스 URL",
+        "LLM_ASR_API_KEY": "ASR 역할 — API 키",
+        "LLM_ASR_MODEL": "ASR 역할 — 모델",
+        "LLM_MAX_INPUT_CHARS": "최대 입력 문자 수",
+        "LLM_CHUNK_BUDGET": "청크 예산",
+        "LLM_OVERLENGTH_POLICY": "초장분석 정책",
+        "LLM_DAILY_CALL_CAP": "일일 호출 한도 (0 = 무제한)",
+        "LLM_DAILY_TOKEN_CAP": "일일 토큰 한도 (0 = 무제한)",
+        "LLM_REPROBE_DEBOUNCE_S": "재확인 지연 (초)",
+        "AI_SEMANTIC_SEARCH_ENABLED": "시맨틱 검색 사용"
       }
     }
   },
@@ -815,6 +836,29 @@
       "repairUploadInvalidAction": "잘못된 복구 작업입니다.",
       "repairUploadNotPending": "노드가 예상된 동기화 상태가 아닙니다.",
       "repairUploadBlobMissing": "대기 중인 블롭이 없어 완료할 수 없습니다."
+    },
+    "ai": {
+      "notConfigured": "AI 기능이 구성되지 않았습니다. 관리자에게 문의하세요.",
+      "budgetExceeded": "오늘의 AI 사용 한도가 소진되었습니다. 잠시 후 다시 시도해 주세요.",
+      "providerProbeFailed": "AI 공급자 확인(probe)에 실패했습니다. AI 구성을 확인해 주세요."
+    },
+    "collections": {
+      "nameRequired": "컬렉션 이름이 필요합니다.",
+      "invalidName": "컬렉션 이름이 유효하지 않습니다.",
+      "invalidSort": "정렬 옵션이 유효하지 않습니다.",
+      "invalidInclude": "포함 옵션이 유효하지 않습니다.",
+      "invalidPublishMode": "공개 모드가 유효하지 않습니다.",
+      "invalidRole": "공유 역할이 유효하지 않습니다.",
+      "emptyNodeIds": "파일이나 폴더를 하나 이상 선택해 주세요.",
+      "previewTargetRequired": "미리보기할 대상 컬렉션이 필요합니다.",
+      "mergeSameCollection": "같은 컬렉션끼리는 병합할 수 없습니다.",
+      "forbidden": "이 컬렉션에 접근할 권한이 없습니다.",
+      "notFound": "컬렉션을 찾을 수 없습니다.",
+      "granteeNotFound": "공유 대상 사용자를 찾을 수 없습니다.",
+      "grantNotFound": "공유 권한을 찾을 수 없습니다.",
+      "suggestionNotFound": "제안을 찾을 수 없습니다.",
+      "alreadyArchived": "이 컬렉션은 이미 보관되어 있습니다.",
+      "notArchived": "보관 상태가 아닌 컬렉션입니다."
     },
     "migrationInProgress": "이미 마이그레이션이 진행 중입니다. 완료될 때까지 앱이 잠깁니다.",
     "users": {

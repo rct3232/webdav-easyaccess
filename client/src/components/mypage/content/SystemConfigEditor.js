@@ -15,7 +15,7 @@ import { getServerErrorDisplay, getServerMessageDisplay } from '../../../utils/e
 
 const SECRET_MASK = '****';
 
-const GROUP_ORDER = ['fileStorage', 'serverSecurity', 'email', 'runtime'];
+const GROUP_ORDER = ['fileStorage', 'serverSecurity', 'email', 'runtime', 'ai'];
 
 // Connection keys (D1): editing one blocks Save until a test with the pending
 // values passes. Partitioned per active file-storage backend for the payload.
@@ -34,10 +34,19 @@ const GROUP_LABEL_KEYS = {
   serverSecurity: 'admin.config.group.serverSecurity',
   email: 'admin.config.group.email',
   runtime: 'admin.config.group.runtime',
+  ai: 'admin.config.group.ai',
 };
 
-// Display metadata only. The server registry (configRegistry.js) is
-// authoritative for tier/secret/source; keys without an entry are skipped.
+// Keys deliberately kept out of the editor (registry-driven rendering renders
+// everything else the server returns): registration_enabled stays in the main
+// settings rows above the accordion and is never duplicated here.
+const INTENTIONALLY_OMITTED = new Set(['registration_enabled']);
+
+// Display metadata (OPTIONAL — registry-driven rendering, §4.14): the server
+// registry (configRegistry.js) is authoritative for tier/secret/source and
+// every returned key renders. A key without an entry falls back to its raw
+// key as label in the Section B read-only list (never silently skipped);
+// entries here only refine presentation (label/group/inputType/options).
 // Group `metadata`/inputType are unused for rendering — T0 keys are always
 // deploy-time (Section B), never Section A inputs — but each needs a label.
 const CONFIG_DISPLAY_META = {
@@ -282,6 +291,108 @@ const CONFIG_DISPLAY_META = {
     group: 'runtime',
     inputType: 'switch',
   },
+  WEA_SKIP_AI_WORKER: {
+    labelKey: 'admin.config.key.WEA_SKIP_AI_WORKER',
+    group: 'runtime',
+    inputType: 'switch',
+  },
+
+  // ── AI / LLM (T2 dbOnly — fully hot; llmAdapter §3) ─────────────────────
+  LLM_EMBED_BASE_URL: {
+    labelKey: 'admin.config.key.LLM_EMBED_BASE_URL',
+    group: 'ai',
+    inputType: 'text',
+  },
+  LLM_EMBED_API_KEY: {
+    labelKey: 'admin.config.key.LLM_EMBED_API_KEY',
+    group: 'ai',
+    inputType: 'text',
+  },
+  LLM_EMBED_MODEL: {
+    labelKey: 'admin.config.key.LLM_EMBED_MODEL',
+    group: 'ai',
+    inputType: 'text',
+  },
+  LLM_CHAT_BASE_URL: {
+    labelKey: 'admin.config.key.LLM_CHAT_BASE_URL',
+    group: 'ai',
+    inputType: 'text',
+  },
+  LLM_CHAT_API_KEY: {
+    labelKey: 'admin.config.key.LLM_CHAT_API_KEY',
+    group: 'ai',
+    inputType: 'text',
+  },
+  LLM_CHAT_MODEL: {
+    labelKey: 'admin.config.key.LLM_CHAT_MODEL',
+    group: 'ai',
+    inputType: 'text',
+  },
+  LLM_VISION_BASE_URL: {
+    labelKey: 'admin.config.key.LLM_VISION_BASE_URL',
+    group: 'ai',
+    inputType: 'text',
+  },
+  LLM_VISION_API_KEY: {
+    labelKey: 'admin.config.key.LLM_VISION_API_KEY',
+    group: 'ai',
+    inputType: 'text',
+  },
+  LLM_VISION_MODEL: {
+    labelKey: 'admin.config.key.LLM_VISION_MODEL',
+    group: 'ai',
+    inputType: 'text',
+  },
+  LLM_ASR_BASE_URL: {
+    labelKey: 'admin.config.key.LLM_ASR_BASE_URL',
+    group: 'ai',
+    inputType: 'text',
+  },
+  LLM_ASR_API_KEY: {
+    labelKey: 'admin.config.key.LLM_ASR_API_KEY',
+    group: 'ai',
+    inputType: 'text',
+  },
+  LLM_ASR_MODEL: {
+    labelKey: 'admin.config.key.LLM_ASR_MODEL',
+    group: 'ai',
+    inputType: 'text',
+  },
+  LLM_MAX_INPUT_CHARS: {
+    labelKey: 'admin.config.key.LLM_MAX_INPUT_CHARS',
+    group: 'ai',
+    inputType: 'number',
+  },
+  LLM_CHUNK_BUDGET: {
+    labelKey: 'admin.config.key.LLM_CHUNK_BUDGET',
+    group: 'ai',
+    inputType: 'number',
+  },
+  LLM_OVERLENGTH_POLICY: {
+    labelKey: 'admin.config.key.LLM_OVERLENGTH_POLICY',
+    group: 'ai',
+    inputType: 'text',
+  },
+  LLM_DAILY_CALL_CAP: {
+    labelKey: 'admin.config.key.LLM_DAILY_CALL_CAP',
+    group: 'ai',
+    inputType: 'number',
+  },
+  LLM_DAILY_TOKEN_CAP: {
+    labelKey: 'admin.config.key.LLM_DAILY_TOKEN_CAP',
+    group: 'ai',
+    inputType: 'number',
+  },
+  LLM_REPROBE_DEBOUNCE_S: {
+    labelKey: 'admin.config.key.LLM_REPROBE_DEBOUNCE_S',
+    group: 'ai',
+    inputType: 'number',
+  },
+  AI_SEMANTIC_SEARCH_ENABLED: {
+    labelKey: 'admin.config.key.AI_SEMANTIC_SEARCH_ENABLED',
+    group: 'ai',
+    inputType: 'switch',
+  },
 };
 
 const toStr = (value) => {
@@ -351,19 +462,25 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
     loadConfig();
   };
 
-  // Section A = editable keys (T1/T2, effective source not env) that have a
-  // display entry; Section B = platform-managed keys (T0, or env-sourced
-  // T1/T2) in the registry/GET order. Section A keys are the only editable,
-  // dirty-tracked and save-submitted values.
+  // Registry-driven section split (§4.14 — no silent whitelist skip): Section A
+  // = editable keys (T1/T2, effective source not env) WITH a display entry;
+  // Section B = platform-managed keys (T0, or env-sourced T1/T2) plus any key
+  // without a display entry (conservative read-only fallback — no input type is
+  // invented for an unknown key). registration_enabled is explicitly omitted.
   const sectionAKeys = useMemo(() => {
     if (!config) return [];
-    return Object.keys(config).filter((key) => CONFIG_DISPLAY_META[key] && isEditable(config[key]));
+    return Object.keys(config).filter(
+      (key) =>
+        !INTENTIONALLY_OMITTED.has(key) && CONFIG_DISPLAY_META[key] && isEditable(config[key])
+    );
   }, [config]);
 
   const sectionBKeys = useMemo(() => {
     if (!config) return [];
     return Object.keys(config).filter(
-      (key) => CONFIG_DISPLAY_META[key] && isPlatformManaged(config[key])
+      (key) =>
+        !INTENTIONALLY_OMITTED.has(key) &&
+        (isPlatformManaged(config[key]) || !CONFIG_DISPLAY_META[key])
     );
   }, [config]);
 
@@ -630,7 +747,8 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
   };
 
   // Section B row: read-only summary reading from the (server-masked) config
-  // payload, never from the editable `values` state.
+  // payload, never from the editable `values` state. Keys without a display
+  // entry fall back to the raw key as label (registry-driven, optional labels).
   const renderPlatformRow = (key) => {
     const meta = CONFIG_DISPLAY_META[key];
     const entry = config[key];
@@ -641,15 +759,17 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
         : isUnset
           ? t('admin.config.unset')
           : String(entry.value);
+    const caption =
+      entry.source === 'env' ? `${entry.tier} · ${t('admin.config.setInEnv')}` : String(entry.tier);
 
     return (
       <Box key={key} sx={{ mb: 2 }} data-testid={`platform-config-row-${key}`}>
         <Typography variant="body2" sx={{ fontWeight: 600 }}>
-          {t(meta.labelKey)}
+          {meta ? t(meta.labelKey) : key}
         </Typography>
         <Typography variant="body2">{value}</Typography>
         <Typography variant="caption" color="text.secondary">
-          {`${entry.tier} · ${t('admin.config.setInEnv')}`}
+          {caption}
         </Typography>
       </Box>
     );

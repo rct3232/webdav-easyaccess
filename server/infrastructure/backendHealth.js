@@ -2,6 +2,14 @@
 
 const BACKENDS = ['postgresql', 's3', 'webdav'];
 
+// AI LLM role slots (§4.12, admin.md §3.2 P0 plumbing): per-role probe states
+// tracked as `ai.<role>` rows. The adapter (T1.1) reports probe outcomes via
+// the probeLlm slot; `GET /api/settings/public` derives its live
+// `ai: { embed, chat }` flags from these rows (settings.md §2.4).
+const AI_ROLE_KEYS = ['ai.embed', 'ai.chat'];
+
+const TRACKED_KEYS = [...BACKENDS, ...AI_ROLE_KEYS];
+
 function initialState() {
   return {
     status: 'unknown',
@@ -20,19 +28,20 @@ function initialState() {
  * Passive, event-based: callers report success/failure; the tracker records
  * state, fires a transition callback only on OK→FAIL / FAIL→OK, and serves a
  * snapshot for the admin card/banner and public status. State resets on
- * restart (D4).
+ * restart (D4). Besides the three file/metadata backends it tracks the
+ * `ai.embed` / `ai.chat` role slots with the same generic row shape.
  */
 function createBackendHealth() {
-  const state = new Map(BACKENDS.map((backend) => [backend, initialState()]));
+  const state = new Map(TRACKED_KEYS.map((key) => [key, initialState()]));
   let onTransition = null;
 
-  function snapshot(backend) {
-    return { ...state.get(backend) };
+  function snapshot(key) {
+    return { ...state.get(key) };
   }
 
-  function fireTransition(backend, from, to, next) {
+  function fireTransition(key, from, to, next) {
     if (typeof onTransition === 'function') {
-      onTransition(backend, {
+      onTransition(key, {
         from,
         to,
         code: next.code,
@@ -42,10 +51,10 @@ function createBackendHealth() {
     }
   }
 
-  function report(backend, { ok, code, reason, hint } = {}) {
-    if (!state.has(backend)) return;
+  function report(key, { ok, code, reason, hint } = {}) {
+    if (!state.has(key)) return;
 
-    const current = state.get(backend);
+    const current = state.get(key);
     const now = Date.now();
 
     if (ok) {
@@ -53,13 +62,13 @@ function createBackendHealth() {
       const next = initialState();
       next.status = 'ok';
       next.lastCheckedAt = now;
-      state.set(backend, next);
-      if (from === 'fail') fireTransition(backend, from, next.status, next);
+      state.set(key, next);
+      if (from === 'fail') fireTransition(key, from, next.status, next);
       return;
     }
 
     const from = current.status;
-    const next = snapshot(backend);
+    const next = snapshot(key);
     next.status = 'fail';
     next.code = code;
     next.reason = reason;
@@ -67,21 +76,21 @@ function createBackendHealth() {
     next.lastCheckedAt = now;
     next.consecutiveFailures = current.consecutiveFailures + 1;
     if (current.firstFailedAt === undefined) next.firstFailedAt = now;
-    state.set(backend, next);
-    if (from === 'ok') fireTransition(backend, from, next.status, next);
+    state.set(key, next);
+    if (from === 'ok') fireTransition(key, from, next.status, next);
   }
 
   function getHealth() {
     const out = {};
-    for (const backend of BACKENDS) {
-      out[backend] = snapshot(backend);
+    for (const key of TRACKED_KEYS) {
+      out[key] = snapshot(key);
     }
     return out;
   }
 
   function reset() {
-    for (const backend of BACKENDS) {
-      state.set(backend, initialState());
+    for (const key of TRACKED_KEYS) {
+      state.set(key, initialState());
     }
   }
 

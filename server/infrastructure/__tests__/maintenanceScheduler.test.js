@@ -108,6 +108,82 @@ describe('maintenanceScheduler', () => {
         jest.useRealTimers();
       }
     });
+
+    it('persists each scheduled GC run as an admin_reports row (kind gc, §4.14 Tier A)', async () => {
+      jest.useFakeTimers();
+      const prevSkip = process.env.WEA_SKIP_GC_SCHEDULER;
+      setIntervalValue('1000');
+      delete process.env.WEA_SKIP_GC_SCHEDULER;
+
+      try {
+        const writeReport = jest.fn(() => Promise.resolve({ id: 1 }));
+        const runGcCycle = jest.fn(() =>
+          Promise.resolve({
+            tier1: { orphanedRows: 2, deletedRows: 2, errors: [] },
+            tier2: { scannedKeys: 5, deletedKeys: 1, errors: [] },
+            tier3: { purgedNodes: 0, errors: [] },
+          })
+        );
+        const timer = startGcScheduler({
+          gcService: { runGcCycle },
+          adminReportsWriter: { writeReport },
+        });
+
+        jest.advanceTimersByTime(1000);
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(writeReport).toHaveBeenCalledTimes(1);
+        expect(writeReport).toHaveBeenCalledWith({
+          kind: 'gc',
+          status: 'ok',
+          payload: expect.objectContaining({ tier1: expect.anything(), tier2: expect.anything() }),
+        });
+
+        clearInterval(timer);
+      } finally {
+        if (prevSkip === undefined) delete process.env.WEA_SKIP_GC_SCHEDULER;
+        else process.env.WEA_SKIP_GC_SCHEDULER = prevSkip;
+        jest.useRealTimers();
+      }
+    });
+
+    it('a failing gc run persists a partial row and never breaks the schedule', async () => {
+      jest.useFakeTimers();
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const prevSkip = process.env.WEA_SKIP_GC_SCHEDULER;
+      setIntervalValue('1000');
+      delete process.env.WEA_SKIP_GC_SCHEDULER;
+
+      try {
+        const writeReport = jest.fn(() => Promise.resolve(null));
+        const runGcCycle = jest.fn(() => Promise.reject(new Error('tier1 exploded')));
+        const timer = startGcScheduler({
+          gcService: { runGcCycle },
+          adminReportsWriter: { writeReport },
+        });
+
+        jest.advanceTimersByTime(1000);
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(runGcCycle).toHaveBeenCalledTimes(1);
+        // A failed run is still a run: partial row with the error payload
+        // (§4.14 — no console-only GC reports anymore).
+        expect(writeReport).toHaveBeenCalledWith({
+          kind: 'gc',
+          status: 'partial',
+          payload: { error: 'tier1 exploded' },
+        });
+
+        jest.advanceTimersByTime(1000);
+        expect(runGcCycle).toHaveBeenCalledTimes(2);
+        clearInterval(timer);
+      } finally {
+        errorSpy.mockRestore();
+        if (prevSkip === undefined) delete process.env.WEA_SKIP_GC_SCHEDULER;
+        else process.env.WEA_SKIP_GC_SCHEDULER = prevSkip;
+        jest.useRealTimers();
+      }
+    });
   });
 
   describe('runStartupFailSafeRecovery', () => {
@@ -163,6 +239,76 @@ describe('maintenanceScheduler', () => {
       } finally {
         warnSpy.mockRestore();
         logSpy.mockRestore();
+      }
+    });
+
+    it('persists the startup scan as an admin_reports row (kind failsafe, §4.14 Tier A)', async () => {
+      const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const writeReport = jest.fn(() => Promise.resolve({ id: 7 }));
+        const report = {
+          scanned: 1,
+          resolved: 0,
+          manualReview: [{ nodeId: 1, path: '/x' }],
+          pendingUpload: { scanned: 0, nodes: [] },
+        };
+        await runStartupFailSafeRecovery({
+          failSafeService: { runStartupRecovery: jest.fn(() => Promise.resolve(report)) },
+          adminReportsWriter: { writeReport },
+        });
+
+        expect(writeReport).toHaveBeenCalledWith({
+          kind: 'failsafe',
+          status: 'ok',
+          payload: report,
+        });
+      } finally {
+        warnSpy.mockRestore();
+        logSpy.mockRestore();
+      }
+    });
+
+    it('a scan error persists a partial failsafe row and keeps the boot-safe empty report', async () => {
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const writeReport = jest.fn(() => Promise.resolve(null));
+        const report = await runStartupFailSafeRecovery({
+          failSafeService: {
+            runStartupRecovery: jest.fn(() => Promise.reject(new Error('scan blew up'))),
+          },
+          adminReportsWriter: { writeReport },
+        });
+
+        expect(report.error).toBe('scan blew up');
+        expect(writeReport).toHaveBeenCalledWith({
+          kind: 'failsafe',
+          status: 'partial',
+          payload: expect.objectContaining({ error: 'scan blew up' }),
+        });
+      } finally {
+        errorSpy.mockRestore();
+      }
+    });
+
+    it('reporting never breaks the startup hook (writer throw is swallowed)', async () => {
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const report = await runStartupFailSafeRecovery({
+          failSafeService: {
+            runStartupRecovery: jest.fn(() =>
+              Promise.resolve({ scanned: 0, resolved: 0, manualReview: [] })
+            ),
+          },
+          adminReportsWriter: {
+            writeReport: jest.fn(() => Promise.reject(new Error('writer down'))),
+          },
+        });
+        expect(report.scanned).toBe(0);
+      } finally {
+        warnSpy.mockRestore();
+        errorSpy.mockRestore();
       }
     });
   });

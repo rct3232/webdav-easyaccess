@@ -450,7 +450,8 @@
         "fileStorage": "File storage",
         "serverSecurity": "Server & security",
         "email": "Email",
-        "runtime": "Runtime"
+        "runtime": "Runtime",
+        "ai": "AI / LLM"
       },
       "key": {
         "WEA_SQLITE_PATH": "SQLite path",
@@ -509,7 +510,27 @@
         "PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY": "Permissions reconcile concurrency",
         "WEA_SKIP_MIGRATION_WORKER": "Skip migration worker",
         "WEA_SKIP_BULK_WORKER": "Skip bulk worker",
-        "WEA_SKIP_GC_SCHEDULER": "Skip GC scheduler"
+        "WEA_SKIP_GC_SCHEDULER": "Skip GC scheduler",
+        "WEA_SKIP_AI_WORKER": "Skip AI worker",
+        "LLM_EMBED_BASE_URL": "Embed role — base URL",
+        "LLM_EMBED_API_KEY": "Embed role — API key",
+        "LLM_EMBED_MODEL": "Embed role — model",
+        "LLM_CHAT_BASE_URL": "Chat role — base URL",
+        "LLM_CHAT_API_KEY": "Chat role — API key",
+        "LLM_CHAT_MODEL": "Chat role — model",
+        "LLM_VISION_BASE_URL": "Vision role — base URL",
+        "LLM_VISION_API_KEY": "Vision role — API key",
+        "LLM_VISION_MODEL": "Vision role — model",
+        "LLM_ASR_BASE_URL": "ASR role — base URL",
+        "LLM_ASR_API_KEY": "ASR role — API key",
+        "LLM_ASR_MODEL": "ASR role — model",
+        "LLM_MAX_INPUT_CHARS": "Max input characters",
+        "LLM_CHUNK_BUDGET": "Chunk budget",
+        "LLM_OVERLENGTH_POLICY": "Overlength policy",
+        "LLM_DAILY_CALL_CAP": "Daily call cap (0 = unlimited)",
+        "LLM_DAILY_TOKEN_CAP": "Daily token cap (0 = unlimited)",
+        "LLM_REPROBE_DEBOUNCE_S": "Re-probe debounce (s)",
+        "AI_SEMANTIC_SEARCH_ENABLED": "Semantic search enabled"
       }
     }
   },
@@ -815,6 +836,29 @@
       "repairUploadInvalidAction": "Invalid repair action.",
       "repairUploadNotPending": "Node is not in the expected sync state.",
       "repairUploadBlobMissing": "Pending blob is missing; cannot complete."
+    },
+    "ai": {
+      "notConfigured": "The AI feature is not configured. Please contact the administrator.",
+      "budgetExceeded": "Today's AI usage budget is exhausted. Please try again tomorrow.",
+      "providerProbeFailed": "The AI provider probe failed. Check the AI configuration."
+    },
+    "collections": {
+      "nameRequired": "A collection name is required.",
+      "invalidName": "This collection name is not valid.",
+      "invalidSort": "This sort option is not valid.",
+      "invalidInclude": "This include option is not valid.",
+      "invalidPublishMode": "This publish mode is not valid.",
+      "invalidRole": "This share role is not valid.",
+      "emptyNodeIds": "Please select at least one file or folder.",
+      "previewTargetRequired": "A target collection is required for the preview.",
+      "mergeSameCollection": "A collection cannot be merged with itself.",
+      "forbidden": "You do not have permission to access this collection.",
+      "notFound": "This collection does not exist.",
+      "granteeNotFound": "The share target user was not found.",
+      "grantNotFound": "This share grant was not found.",
+      "suggestionNotFound": "This suggestion was not found.",
+      "alreadyArchived": "This collection is already archived.",
+      "notArchived": "This collection is not archived."
     },
     "migrationInProgress": "A migration is already in progress. The app is locked until it finishes.",
     "users": {

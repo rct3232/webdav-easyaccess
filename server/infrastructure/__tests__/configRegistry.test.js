@@ -176,6 +176,80 @@ describe('configRegistry', () => {
     expect(isT0('registration_enabled')).toBe(false);
   });
 
+  describe('AI / LLM keys (T0.7b — T2 dbOnly, fully hot; PLAN §6)', () => {
+    const LLM_KEYS = [
+      'LLM_EMBED_BASE_URL',
+      'LLM_EMBED_API_KEY',
+      'LLM_EMBED_MODEL',
+      'LLM_CHAT_BASE_URL',
+      'LLM_CHAT_API_KEY',
+      'LLM_CHAT_MODEL',
+      'LLM_VISION_BASE_URL',
+      'LLM_VISION_API_KEY',
+      'LLM_VISION_MODEL',
+      'LLM_ASR_BASE_URL',
+      'LLM_ASR_API_KEY',
+      'LLM_ASR_MODEL',
+      'LLM_MAX_INPUT_CHARS',
+      'LLM_CHUNK_BUDGET',
+      'LLM_OVERLENGTH_POLICY',
+      'LLM_DAILY_CALL_CAP',
+      'LLM_DAILY_TOKEN_CAP',
+      'LLM_REPROBE_DEBOUNCE_S',
+      'AI_SEMANTIC_SEARCH_ENABLED',
+    ];
+
+    it('registers every LLM_* key as T2 dbOnly', () => {
+      for (const key of LLM_KEYS) {
+        const entry = getEntry(key);
+        expect(entry).toBeDefined();
+        expect(entry.tier).toBe(TIER.T2);
+        expect(entry.dbOnly).toBe(true);
+      }
+    });
+
+    it('marks the four role API keys secret (masking only)', () => {
+      for (const key of [
+        'LLM_EMBED_API_KEY',
+        'LLM_CHAT_API_KEY',
+        'LLM_VISION_API_KEY',
+        'LLM_ASR_API_KEY',
+      ]) {
+        expect(isSecret(key)).toBe(true);
+      }
+      for (const key of LLM_KEYS.filter((k) => !k.endsWith('API_KEY'))) {
+        expect(isSecret(key)).toBe(false);
+      }
+    });
+
+    it('exposes the llmAdapter §3 defaults', () => {
+      expect(getDefault('LLM_CHUNK_BUDGET')).toBe(4);
+      expect(getDefault('LLM_OVERLENGTH_POLICY')).toBe('chunk-pool');
+      expect(getDefault('LLM_DAILY_CALL_CAP')).toBe(0);
+      expect(getDefault('LLM_DAILY_TOKEN_CAP')).toBe(0);
+      expect(getDefault('LLM_REPROBE_DEBOUNCE_S')).toBe(60);
+      expect(getDefault('AI_SEMANTIC_SEARCH_ENABLED')).toBe(true);
+      expect(getDefault('LLM_MAX_INPUT_CHARS')).toBeUndefined();
+      expect(getDefault('LLM_EMBED_BASE_URL')).toBeUndefined();
+    });
+
+    it('registers the WEA_SKIP_AI_WORKER test seam as T2, env-allowed (not dbOnly)', () => {
+      const entry = getEntry('WEA_SKIP_AI_WORKER');
+      expect(entry).toBeDefined();
+      expect(entry.tier).toBe(TIER.T2);
+      expect(entry.secret).toBe(false);
+      expect(entry.dbOnly).toBeUndefined();
+    });
+
+    it('orders the AI/LLM group after the runtime group', () => {
+      const keys = CONFIG_ENTRIES.map((entry) => entry.key);
+      expect(keys.indexOf('WEA_SKIP_GC_SCHEDULER')).toBeLessThan(
+        keys.indexOf('LLM_EMBED_BASE_URL')
+      );
+      expect(keys.indexOf('LLM_EMBED_BASE_URL')).toBeLessThan(keys.length - 1);
+    });
+  });
+
   it('contains every env var read under server/ (inventory check)', () => {
     const keys = CONFIG_ENTRIES.map((entry) => entry.key);
     for (const key of [

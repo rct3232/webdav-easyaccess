@@ -95,13 +95,15 @@ Destination config fields and the authoritative blob-migration rules are documen
 #### 2.2.6 reports (`/api/admin`)
 
 Admin reports (§4.14 Tier A): the persisted `admin_reports` runs (GC, startup fail-safe
-scan + boot content-hash completeness probe, cleanup) become a read-only list with
+scan merged with the boot content-hash completeness section, cleanup) become a read-only list with
 action-dispatched row repair. Rows are written best-effort by the shared writer
 (`domains/admin/services/adminReportsService.js`): `POST /cleanup/orphaned` persists its
 §2.2.3.1 response as `kind='cleanup'` before returning 200, the scheduled GC cycle
-persists `kind='gc'` rows (`infrastructure/maintenanceScheduler.js`), and the boot
-completeness probe persists `kind='failsafe'` with a `contentHashCompleteness` payload
-section. The `admin_reports.kind` CHECK enum is `gc|migration|failsafe|night_eval|cleanup`
+persists `kind='gc'` rows, and
+`runStartupFailSafeRecovery` (`infrastructure/maintenanceScheduler.js`) persists ONE
+`kind='failsafe'` row whose payload merges the scan report with the boot content-hash
+completeness section `contentHashCompleteness` (`{ nullCount, checkedAt }`; `status` is
+`partial` while NULL rows exist or the count failed, else `ok`). The `admin_reports.kind` CHECK enum is `gc|migration|failsafe|night_eval|cleanup`
 (§5); `status` is `ok|partial`.
 
 | Method | Path                  | Auth          | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
@@ -193,7 +195,7 @@ Effective-configuration management (env → DB → defaults registry). Service: 
 | Function                            | Description                                                                                                                                                                                                                                                                                                                                                                                       |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `cleanupOrphanedData()`             | Removes orphaned metadata (e.g. permission/share rows referencing missing nodes) and stale permission requests from the DB; persists the full result as an `admin_reports` row (`kind='cleanup'`) before returning.                                                                                                                                                                               |
-| `ensureHomeOwnerAdminForAllUsers()` | Ensures each non-admin user has admin on their home node; removes redundant self-grants on the user's own subtree (home-root admin preserved). Boot wiring (T0.1): also kicks the admin-reports boot completeness probe fire-and-forget (non-blocking, never affects the result) — the boot setImmediate hook in `server/index.js` calls this function, so the probe needs no separate boot edit. |
+| `ensureHomeOwnerAdminForAllUsers()` | Ensures each non-admin user has admin on their home node; removes redundant self-grants on the user's own subtree (home-root admin preserved). The T0.1 boot completeness probe rides `runStartupFailSafeRecovery` (`maintenanceScheduler.md`) — no kick from this function. |
 
 #### adminReportsService (`domains/admin/services/adminReportsService.js`)
 
@@ -209,7 +211,7 @@ warn-logged and returns `null`, so reporting never fails GC/cleanup/boot.
 
 | Function                            | Description                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `runContentHashCompletenessProbe()` | Boot completeness probe (T0.1): non-blocking `COUNT(*) WHERE content_hash IS NULL` via FileNodeRepository; warn-logs when `nullCount > 0` and persists a `kind='failsafe'` row with `payload.contentHashCompleteness = { nullCount, checkedAt }` (`status = 'partial'` while NULL rows exist, else `'ok'`). Never throws to the caller.                                                                                                        |
+| `collectContentHashCompleteness()` | Boot completeness probe (T0.1) section provider: non-blocking `COUNT(*) WHERE content_hash IS NULL` via FileNodeRepository; warn-logs when `nullCount > 0` and on count failure; returns the `contentHashCompleteness` section (`{ nullCount, checkedAt }`; `nullCount: null` + `error` when the count fails). Never throws. Persists nothing itself — `runStartupFailSafeRecovery` merges the section into its single `kind='failsafe'` row.                                                                                                        |
 | `backfillContentHashes(...)`        | Streams `filecache` rows with `content_hash IS NULL` in batches; per node downloads the blob (S3 active object key / WebDAV display path; trashed WebDAV rows resolve to their `/.wea-trash/` path) and hashes it (`sha256HexLower`), then updates `WHERE content_hash IS NULL` only — idempotent, only NULL rows are ever touched. Missing blobs are recorded as errors, never fatal. Returns `{ backfilled, nullCount, errors, checkedAt }`. |
 | `repairAdminReport(row, params)`    | Dispatch table for `POST /reports/:id/repair`: `content_hash` (failsafe rows with the section only — runs the backfill and re-renders the row), `repair-sync` (§2.2.3 fail-safe repair core), `perm-delete` (§2.2.3 trash purge core). Throws 404 `admin.reportNotFound` / 400 `admin.repairNotAvailable`.                                                                                                                                     |
 
@@ -235,7 +237,7 @@ warn-logged and returns `null`, so reporting never fails GC/cleanup/boot.
 - [ ] Admin reports: non-admin gets 403 on `GET /reports` and `POST /reports/:id/repair`; the list is newest-first and `payload` is the persisted JSON doc
 - [ ] A `cleanup/orphaned` run produces exactly one new `admin_reports` row with the same result body the response returned
 - [ ] `POST /reports/:id/repair` on a `failsafe` content-hash row backfills all NULL `filecache.content_hash`, re-renders the row with `nullCount: 0`, is idempotent (re-running changes nothing) and only ever touches `content_hash IS NULL` rows
-- [ ] The boot completeness probe warn-logs when NULL rows exist and persists a `kind='failsafe'` row with the `contentHashCompleteness` section (`{ nullCount, checkedAt }`)
+- [ ] The startup fail-safe recovery persists a SINGLE `kind='failsafe'` row whose payload carries both the scan report and the `contentHashCompleteness` section (`{ nullCount, checkedAt }`), warn-logs when NULL rows exist, and marks `status` `partial` while they exist; `content_hash` repair re-renders preserve the scan payload keys
 
 ---
 

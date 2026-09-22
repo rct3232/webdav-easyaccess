@@ -86,7 +86,8 @@ function registerUndoExecutor(domain, handler) {
 /**
  * @param {number} actionId
  * @param {{ cascade?: boolean }} [options]
- * @returns {Promise<{ undone: number, skipped: Array<{ reason: string }> }
+ * @returns {Promise<{ undone: number, skipped: Array<{ reason: string }>,
+ *   undoneIds: number[] }
  *   | { code: 'journal_cascade_required', laterCount: number }>}
  */
 async function undoAction(actionId, { cascade = false } = {}) {
@@ -131,12 +132,13 @@ async function undoAction(actionId, { cascade = false } = {}) {
 
       // Status flip is the record of the undo pass — it happens for every
       // processed row even when all its items were fingerprint-skipped
-      // (§2.4 step 4; no undo-of-undo).
+      // (§2.4 step 4; no undo-of-undo). undoneIds feeds the undo response's
+      // cascade_undone (routes/actions.md §2.4) without a second read.
       await repo.markUndone(
         tx,
         rows.map((target) => target.id)
       );
-      return { undone, skipped };
+      return { undone, skipped, undoneIds: rows.map((target) => target.id) };
     });
   } finally {
     await lock.release();

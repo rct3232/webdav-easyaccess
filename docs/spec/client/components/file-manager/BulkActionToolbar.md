@@ -80,12 +80,12 @@ Checklist for unit test writing:
 
 ---
 
-## 3. AI-platform bulk entries (AI platform — implementation tracked as DEF-25)
+## 3. AI-platform bulk entries (AI platform)
 
 Addendum per docs/features/collections-platform.md §3.2 (member-row control set) and §4.11 (one undo toast per command). Note: this surface is merged into `FileManagerControls` (header deprecation) — the entries below land on the merged bulk-action bar; this section is the behavioral anchor.
 
 - **Main listing (multi-select):** adds `Add to collection` — new optional callback `onBulkAddToCollection(nodes)` launching the `AddToCollectionMenu` submenu for the selected set (checkmark rows from for-nodes data, the corresponding docs step; success feedback = one undo toast from `undo.action_id`, not per-item messages).
-- **Collection-member context (`memberMode: true` prop):** the toolbar **swaps the file actions** for the §3.2 member batch set only: batch `Exclude` | batch publish/unpublish (shared collections, owner/editor — DEF-25/P3) | `Add to another collection` (membership copy, reuses the AddToCollectionMenu submenu). File actions (move/copy/download/delete) are not rendered; **no batch delete — by rule** (§3.2; `MemberRowControls.md` §2.3). Revoked/foreign rows are filtered from eligible ids host-side, same as the row menus.
+- **Collection-member context (`memberMode: true` prop):** the toolbar **swaps the file actions** for the §3.2 member batch set only: batch `Exclude` | batch publish/unpublish (shared collections, owner/editor — P3) | `Add to another collection` (membership copy, reuses the AddToCollectionMenu submenu). File actions (move/copy/download/delete) are not rendered; **no batch delete — by rule** (§3.2; `MemberRowControls.md` §2.3). Revoked/foreign rows are filtered from eligible ids host-side, same as the row menus.
 - i18n (appends §2.5): `fileManager.addToCollection`, `fileManager.memberBatchExclude`, `fileManager.memberBatchPublish`, `fileManager.memberAddToOther`.
 - E2E selector contract: `data-testid="bulk-collection-add"` on the submenu launcher.
 

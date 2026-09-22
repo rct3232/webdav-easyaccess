@@ -18,7 +18,7 @@ Target-contract spec.
 
 - **Source:** `server/domains/ai/jobService.js` (enqueue API + worker loop)
 - **Pipelines:** `server/domains/ai/pipelines/{embed,features,caption,asr}.js` (pure per-
-  kind executors, unit-testable with a fake llmAdapter — DEF-25 seam)
+  kind executors, unit-testable with a fake llmAdapter — adapter injection seam)
 - **Test file:** `server/domains/ai/__tests__/aiJobService.test.js`
 
 ### 2.2 Enqueue hooks (§4.1 seams)
@@ -63,7 +63,7 @@ Enqueue decision table (per node, at hook time):
   launch (§4.15) increments the kind's generation and seeds `enqueueMany` over affected
   nodes with `kind='backfill'` drivers. UNIQUE is per-generation so fresh work is forced
   without colliding with history (§4.1).
-- The upload-hook path checks derived COLLECTION admission (DEF-25 definition evaluation)
+- The upload-hook path checks derived COLLECTION admission (definition evaluation)
   separately — that is collections domain, not this service; the only coupling is
   `touchMemberChange` on rule-admission.
 
@@ -83,8 +83,7 @@ Enqueue decision table (per node, at hook time):
 - Role unconfigured (llmAdapter `roleConfigured()` false) ⇒ that kind's jobs stay
   QUEUED, unconsumed: the worker claims via an ADDITIVE filter option
   `aiJobsStore.claimNext({ excludeKinds })` (predicate-level exclusion; the existing
-  zero-arg `claimNext()` contract of aiJobsStore §2.3 is unchanged — **store-sync
-  item:** the option is tracked as DEF-25 in the aiJobsStore spec/repository). This is how
+  zero-arg `claimNext()` contract of aiJobsStore §2.3 is unchanged). This is how
   "pause never destroys queued work silently" (§4.9 kill-switch semantics) holds with
   zero attempt inflation — backlog surfaces via `countByStatus`/`listFailed` (§4.15).
 - role budget breaker OPEN (§4.2: daily call/token cap hit) ⇒ same parking behavior;

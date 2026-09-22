@@ -85,7 +85,7 @@ chunk_idx, model_id, embedding)`. Chunk rows carry into BOTH shadows (§4.13: "p
 ### 2.5 vec0 constraints & the ACL filter helper (spike facts, recorded)
 
 - Requires the **node:sqlite driver** (current `sqlite3` npm exposes no extension
-  loading); migration confined to `db/sqliteExecutor.js` (DEF-25 seam by design);
+  loading); migration confined to `db/sqliteExecutor.js`;
   **product Node floor ≥24** (node:sqlite experimental flag on v24 — tolerated, works).
 - vec0 integer PKs bind via **BigInt** (node:sqlite binds JS numbers as doubles —
   silently corrupts vec0 keys otherwise).

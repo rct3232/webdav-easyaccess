@@ -109,7 +109,7 @@ Verify observable outcomes (“what”), not internal implementation:
 
 ---
 
-## 3. AI-platform boundary — server-search state handoff (D1) (AI platform — implementation tracked as DEF-25)
+## 3. AI-platform boundary — server-search state handoff (D1) (AI platform)
 
 Addendum to §1/§2.4 per `docs/spec/client/hooks/useSearchResults.md` and docs/features/collections-platform.md §4.6; the sections above stay authoritative for the typing filter.
 

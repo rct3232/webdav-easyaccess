@@ -36,7 +36,7 @@ Target-contract spec.
 
 ### 2.3 Header Grammar
 
-- `🔍 "query" · N results [Save as collection][✕]` — exactly ONE action button, no dropdown (§4.6). NL chat-parser (DEF-25, future) extends this same header with a structured-predicate tab — additive slot reserved, nothing renders now (§4.22).
+- `🔍 "query" · N results [Save as collection][✕]` — exactly ONE action button, no dropdown (§4.6). NL chat-parser (future) extends this same header with a structured-predicate tab — additive slot reserved, nothing renders now (§4.22).
 - Desktop: replaces the breadcrumb row; mobile: renders above the list (no breadcrumb exists there). **Decision.**
 - Section display rules: empty section renders nothing (no header, no "0 results" block); both empty ⇒ single `fileManager.searchNoResults` line + chips remain.
 

@@ -48,7 +48,7 @@ and with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
   Side effect: logs one `usage_events` row `action='search_hit'` per returned node
   (§3.4 — search is a low-frequency logging endpoint).
 
-  **Section 1 — `name_matches` (LLM-free, ships in P0 / DEF-25):**
+  **Section 1 — `name_matches` (LLM-free, ships in P0):**
   plain containment over ALL user-visible `file_nodes`, ACL-scoped with the same
   closure/owner logic as `fileService` listing:
   `lower(name) LIKE lower('%'||:query||'%')` — the `lower()` on both sides is mandatory
@@ -58,7 +58,7 @@ and with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
   (§4.6). **Decision:** order = `name` asc, then `node_id` asc; hard cap 200 rows
   (`counts.name_truncated: true` when the cap cut the set).
 
-  **Section 2 — `semantic` (P1 / DEF-25, requires the `embed` role):**
+  **Section 2 — `semantic` (P1, requires the `embed` role):**
 
 - Scoring = **segment-AND**: query split on whitespace (≤3 segments; more → the first
   3 are used and `counts.semantic_capped_segments: true`), per-segment cosine via
@@ -152,7 +152,7 @@ absent, not the feature).
 
 - [api.md](../../../api.md), [shared-contracts.md](../../../shared-contracts.md),
   [collections.md](collections.md) (`Save as collection` consumes the semantic section only),
-  `docs/features/collections-platform.md` §4.6/§4.12/§4.13/§4.20/§4.22, CODING_STYLE.md Express Patterns/§7 (DEF-25, DEF-25).
+  `docs/features/collections-platform.md` §4.6/§4.12/§4.13/§4.20/§4.22, CODING_STYLE.md Express Patterns.
 
 ### 2.6 Integration Test Scenarios
 

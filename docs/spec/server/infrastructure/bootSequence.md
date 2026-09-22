@@ -67,7 +67,7 @@ lets DB-sourced configuration take effect before require-time consts are capture
       count is non-zero, and performs zero mutations (manual resolution via
       `POST /api/admin/maintenance/repair-sync`; the `pending_upload` scan returns an empty list
       in WebDAV mode, where healthy file nodes intentionally stay `pending_upload`).
-      (DEF-25/T0.1 target) the same scan gains a non-blocking content-hash completeness
+      The same scan gains a non-blocking content-hash completeness
       probe — `COUNT(*) WHERE content_hash IS NULL` on `filecache`; `nullCount > 0` logs a
       warn and persists the `failsafe` admin_reports row (`contentHashCompleteness`
       payload). No boot-time backfill — manual repair via
@@ -97,4 +97,4 @@ default password.
 - [ ] T2 keys never written into process.env (stay lazy).
 - [ ] PORT from DB used at listen; CORS origin list resolved per request.
 - [ ] A failing active-file-backend boot probe leaves the health tracker `fail` (reset runs first), so `GET /api/health` reports the failure and the file-screen banner shows immediately after login.
-- [ ] (DEF-25/T0.1 target) Boot with NULL `filecache.content_hash` rows: warn logged, one `failsafe` admin_reports row with `contentHashCompleteness`, boot NOT blocked; the repair endpoint backfills and a re-boot reports `nullCount: 0`.
+- [ ] Boot with NULL `filecache.content_hash` rows: warn logged, one `failsafe` admin_reports row with `contentHashCompleteness`, boot NOT blocked; the repair endpoint backfills and a re-boot reports `nullCount: 0`.

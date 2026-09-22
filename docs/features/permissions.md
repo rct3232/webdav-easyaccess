@@ -103,7 +103,7 @@ Source: `server/domains/permissions/routes/folderPermissions.js`, `filePermissio
 
 When writing or reviewing permission tests, cover at least:
 
-For user-facing negative browser flows that intersect with permissions, see [../E2E_COVERAGE_PLAN.md](../E2E_COVERAGE_PLAN.md). Keep the full ACL allow/deny matrix primarily in middleware, route integration, and related lower-level tests.
+Keep the full ACL allow/deny matrix primarily in middleware, route integration, and related lower-level tests.
 
 - **Ancestor inheritance:** Grant read on a directory node; a user can list that folder and its descendants without explicit grants on the descendants (depth N resolution).
 - **Depth 0 vs depth N:** A grant on the target node itself (depth 0) wins over a weaker grant inherited from an ancestor.

@@ -110,7 +110,7 @@ Live progress lives in the **service's local in-memory Map** (`progressStore`, d
 
 The route additionally records the **terminal state** on the operationProgress store when the archive completes or errors (`opStore.setDownloadProgress(downloadId, { status: 'completed' | 'error', progress, total, current, zipName })`, preview.js:198-217) and schedules its cleanup (`opStore.cleanupDownloadProgress(downloadId)`, 5-minute TTL — preview.js:219).
 
-The progress is pollable via `GET /api/files/download-progress/:id`, which reads the service-local Map through `getDownloadProgress(downloadId)` (preview.js:226-242). TTL-based expiry is not implemented on the service-local Map. Redis-backed operationProgress scaling is tracked in `docs/IMPROVEMENT_PLAN.md`.
+The progress is pollable via `GET /api/files/download-progress/:id`, which reads the service-local Map through `getDownloadProgress(downloadId)` (preview.js:226-242). TTL-based expiry is not implemented on the service-local Map.
 
 ---
 

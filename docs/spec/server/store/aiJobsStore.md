@@ -5,7 +5,7 @@
 | Item         | Description                                                                                                                                                                                                                                              |
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role         | Persistent queue for AI enrichment work — table `ai_jobs(node_id, generation, kind, status, attempt, next_retry_at, last_error, content_hash,...)`. DB-backed only: jobs survive restarts, the worker is stateless (invariant 8: no CacheAdapter state). |
-| Design owner | `docs/features/collections-platform.md` §5 (schema row), §4.20 (E1 file-embed call site, content_hash skip), §4.1 (upload hooks enqueue), PLAN DEF-25/DEF-25.                                                                                            |
+| Design owner | `docs/features/collections-platform.md` §5 (schema row), §4.20 (E1 file-embed call site, content_hash skip), §4.1 (upload hooks enqueue).                                                                                                                |
 | Idempotency  | `UNIQUE(node_id, kind, generation)` — per-file enqueue at commit is cheap and repeatable; a new `generation` (model change / backfill, §4.2) forces fresh work without colliding with old rows.                                                          |
 
 ---
@@ -61,7 +61,7 @@ The dialect difference is sealed inside the repository twins (facade/services se
   CODING_STYLE.md Express Patterns) — a claim-lock-free statement suffices:
   `UPDATE ai_jobs SET status='running', started_at=datetime('now') WHERE id =
 (SELECT id FROM ai_jobs WHERE <claimable> ORDER BY id LIMIT 1) RETURNING *`
-  inside one transaction. `RETURNING` requires the node:sqlite driver (DEF-25).
+  inside one transaction. `RETURNING` requires the node:sqlite driver.
 
 `claimNext` returns the full claimed job or `null` when the queue is empty — it never
 throws on "nothing to do".
@@ -93,8 +93,7 @@ throws on "nothing to do".
 ### 2.8 Dependencies
 
 - `storage.getExecutor()` + `AiJobsRepository` (+ twins)
-- Callers: upload hooks (`kind=embed|features` enqueue at commit, §4.1), backfill service
-  (DEF-25), jobs worker (DEF-25), admin reports (§4.14/§4.15). No lockManager (claim atomicity
+- Callers: upload hooks (`kind=embed|features` enqueue at commit, §4.1), backfill service, jobs worker, admin reports (§4.14/§4.15). No lockManager (claim atomicity
   is the DB's job).
 
 ### 2.9 Verification Scenarios

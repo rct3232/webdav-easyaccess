@@ -105,7 +105,7 @@ The following should be covered by `useFolderTreeController` unit tests (renderH
 
 ---
 
-## 3. AI-platform virtual-node registration (AI platform — implementation tracked as DEF-25)
+## 3. AI-platform virtual-node registration (AI platform)
 
 Addendum per docs/features/collections-platform.md §3.1/§4.9 (archive lifecycle) and `CollectionsListView.md` §2.2; extends the D1 virtual-root pattern (`__shared__`/`__recent__` semantics unchanged).
 

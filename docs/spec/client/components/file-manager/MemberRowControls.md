@@ -1,6 +1,6 @@
 # MemberRowControls Spec
 
-Target-contract spec , §4.7; the collections-platform feature doc §7 DEF-25).
+Target-contract spec (`docs/features/collections-platform.md` §3.2 member-row control set, §4.7 sharing).
 
 ## 1. Overview
 
@@ -28,7 +28,7 @@ Target-contract spec , §4.7; the collections-platform feature doc §7 DEF-25).
 | selectedRows   | array    | cond.    | -       | Multi-select variant (bulk toolbar) — exactly one of `member`/`selectedRows`                                                                   |
 | collection     | object   | Y        | -       | Parent row: `origin`, `publish_mode`, `granted_role` (viewer/editor/owner resolution)                                                          |
 | onExclude      | function | Y        | -       | `Exclude` → `DELETE /:id/items` (stored row delete; non-`user` origins also insert exclusion — server semantics §3.2)                          |
-| onPublish      | function | Y        | -       | publish on/off → DEF-25 publish seam (`nodeIds`)                                                                                               |
+| onPublish      | function | Y        | -       | publish on/off → publish seam (`nodeIds`)                                                                                                      |
 | onDownload     | function | Y        | -       | file download via existing file seam (only offered when file ACL allows)                                                                       |
 | onShowOriginal | function | Y        | -       | `Reveal original location` → host navigates to the node's real parent where normal file menus apply                                            |
 | onProperties   | function | Y        | -       | opens FilePropertiesDialog (read-only tab subset when requester is not the file owner)                                                         |

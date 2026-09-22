@@ -67,7 +67,7 @@
 
 ---
 
-## 3. Action-slot extension (D2) (AI platform — implementation tracked as DEF-25)
+## 3. Action-slot extension (D2) (AI platform)
 
 Addendum to §2.3 per docs/features/collections-platform.md §4.11 (bottom toast system). View contract: `docs/spec/client/components/feedback/UndoToast.md`; undo controller: `docs/spec/client/hooks/useUndoToast.md`.
 

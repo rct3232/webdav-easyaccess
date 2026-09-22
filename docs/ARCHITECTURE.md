@@ -207,7 +207,7 @@ PostgreSQL backend. The store API is the same across backends.
 - **Backend selection**:
 - `sqlite` (default): SQLite via the node `sqlite3` driver for development/testing.
 - `postgresql`: Normalized relational schema for metadata and locks (recommended for production).
-- **Decided (implementation DEF-25):** the sqlite driver migrates to the built-in `node:sqlite` (`DatabaseSync`) — confined to `db/sqliteExecutor.js` by seam design — because extension loading (`enableLoadExtension`/`loadExtension`) is required for the sqlite-vec `vec0` path (§4.13); this sets a **product Node floor of ≥24** and tolerates the driver's experimental warning. The `sqlite3` description above remains current until the migration lands; contract: `docs/spec/server/store/executor.md` / `storage.md`.
+- **Decided:** the sqlite driver migrates to the built-in `node:sqlite` (`DatabaseSync`) — confined to `db/sqliteExecutor.js` by seam design — because extension loading (`enableLoadExtension`/`loadExtension`) is required for the sqlite-vec `vec0` path (§4.13); this sets a **product Node floor of ≥24** and tolerates the driver's experimental warning. The `sqlite3` description above remains current until the migration lands; contract: `docs/spec/server/store/executor.md` / `storage.md`.
 - **Interface parity**:
 - Store public interfaces remain stable across backends.
 - `userStore`, `settingsStore`, `shareLinkStore`, `recentFilesStore`, `fileNodesStore`,

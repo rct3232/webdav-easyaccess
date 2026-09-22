@@ -181,7 +181,7 @@ flowchart TD
 
 When implementing or reviewing tests for auth and users, cover at least:
 
-For the full browser-flow inventory and rollout order for login, register, protected routing, and MyPage-adjacent auth outcomes, see [../E2E_COVERAGE_PLAN.md](../E2E_COVERAGE_PLAN.md). Keep this feature doc focused on behavior and contract anchors.
+Keep this feature doc focused on behavior and contract anchors.
 
 Browser-flow anchors for shared Playwright auth helpers:
 

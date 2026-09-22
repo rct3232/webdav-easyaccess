@@ -248,7 +248,7 @@ These scenarios should stay true throughout extraction steps (verify “what”,
 
 ---
 
-## 7. AI-platform shell wiring (AI platform — implementation tracked as DEF-25)
+## 7. AI-platform shell wiring (AI platform)
 
 Addendum to §2.3/§3.2. The shell composes the new controllers; all contracts live in the referenced specs.
 

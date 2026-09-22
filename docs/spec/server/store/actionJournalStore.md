@@ -6,7 +6,7 @@
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role         | The generic undo journal (`action_journal`) — common infrastructure, NOT ai-prefixed. Owns `commitChange` (the ONLY journaled write path: change + journal row in one TX under `lockManager`), the undo executor, the 30-day feed, and retention GC. |
 | Design owner | `docs/features/collections-platform.md` §4.11 (rules, subjects, retention, toast boundaries), §5 (schema row), invariant 4.                                                                                                                          |
-| Consumers v1 | collections domain (all silent/user acts, DEF-25); later: batch worker (P3.5), admin settings , file rename / sharing. `permissions` and `tags` are reserved enum values with NO writer.                                                             |
+| Consumers v1 | collections domain (all silent/user acts); later: batch worker (P3.5), admin settings , file rename / sharing. `permissions` and `tags` are reserved enum values with NO writer.                                                                     |
 
 ---
 

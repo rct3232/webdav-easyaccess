@@ -85,7 +85,7 @@
 
 ---
 
-## 3. AI-platform registry additions (AI platform — implementation tracked as DEF-25) / P4 (DEF-25) as noted)
+## 3. AI-platform registry additions (AI platform; P0/P4 as noted)
 
 Addendum to §2.3/§2.4: two new `myPageRegistry` categories flow through the existing pipeline unchanged (`resolveMyPageCategory`, `getMyPageSidebarCategories`, admin normalization; no new controller state). Entry shape per CODING_STYLE.md Express Patterns / `CollectionDashboard.md` §2.5:
 

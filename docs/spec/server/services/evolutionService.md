@@ -1,6 +1,6 @@
 # evolutionService Spec
 
-Target-contract spec , §2 invariants 3/4/6/10; CODING_STYLE.md Express Patterns/§7 DEF-25, DEF-25, DEF-25, DEF-25).
+Target-contract spec (`docs/features/collections-platform.md` §4.9 silent evolution, §4.10 naming templates, §4.18 tags, §4.19 (merge-arbiter), §2 invariants 3/4/6/10; CODING_STYLE.md Express Patterns).
 
 ## 1. Overview
 
@@ -65,7 +65,7 @@ REJECTED (chaining); absolute-θ topic gating REJECTED (§9).
 
 1. **content_hash dedup pre-pass:** identical-content twins are routed to the dup path
    (§4.17 exact-dup finder) and NEVER form clusters (hash-first; cosine-1.0 detection is
-   redundant, E2/DEF-25).
+   redundant, E2).
 2. **Mutual-kNN seed expansion** over pooled embeddings of the user's corpus (active
    model space only — cross-`model_id` cosine forbidden, §4.20): k ≈ 6 (profile
    constant); tier edge-cos thresholds from the model profile —
@@ -135,7 +135,7 @@ tuned, via §4.15 counters: `tombstone-suppressed` vs `regenerated-anyway`.
   never grounds for a suggestion. Overlap-coefficient / containment (|A∩B|/min) metrics
   are BANNED (they fire on subset pairs Spain ⊂ Europe which must NOT merge; the pre-implementation study E7).
 - Pair sources: derived pairs by centroid-cosine prefilter→set check; stored pairs by set
-  Jaccard directly (LLM-free variant, same pipeline, DEF-25). Scope: `system`↔anything
+  Jaccard directly (LLM-free variant, same pipeline). Scope: `system`↔anything
   the SAME user owns; both must be `active`.
 - `upsertMergeSuggestion(aId,bId,score)` (pair normalized, UNIQUE(a,b) conflict keeps the
   existing row + its state); `score` = jaccard×1000 (scaled int, §5).

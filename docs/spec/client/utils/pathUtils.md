@@ -27,7 +27,7 @@
 ### 2.3 Dependencies
 
 - `@webdav-easyaccess/shared/pathUtils` (normalizePath, getParentPath, getBasename)
-- VIRTUAL_ROOTS: `['/__shared__', '/__recent__', '/__trash__']` (DEF-16 P9: the trash view root
+- VIRTUAL_ROOTS: `['/__shared__', '/__recent__', '/__trash__']` (the trash view root
   is a virtual root like `__shared__`/`__recent__` — no FAB, no drag-drop, no folder-level write
   permission; `getParentPath('/__trash__')` resolves to the filesystem root).
 

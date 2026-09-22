@@ -82,7 +82,7 @@ nodes). With the synthesized activeObject, the webdav→s3 `shouldSkip`/`process
 identically: they read `activeObject.s3_key` only as the resume marker and always download the source
 from `nodePath`.
 
-**Trashed nodes are part of the snapshot (DEF-16 P8):** both enumerations above INCLUDE trashed rows
+**Trashed nodes are part of the snapshot:** both enumerations above INCLUDE trashed rows
 (`deleted_at` set) — intentionally and explicitly, so a trashed item survives the cutover **still
 trashed** (`deleted_at` is untouched by the copy; the file_nodes rows are never rewritten by blob
 migration). S3 source: trash performs no physical I/O and leaves `sync_status='active'` + the active
@@ -93,7 +93,7 @@ instead), so the `Not('orphaned_node')` enumeration includes it.
 `orphaned_node` file nodes are excluded because they represent known-unrecoverable writes (the blob
 PUT failed after the DB commit); they are a fail-safe/manual-review concern, never migration input.
 
-**Trash-aware blob paths (DEF-16 P8):** for a trashed node the blob I/O uses the reserved trash
+**Trash-aware blob paths:** for a trashed node the blob I/O uses the reserved trash
 namespace instead of the display path:
 
 - **webdav→s3**: the source blob of a trashed webdav node lives at `/.wea-trash/<nodeId>` (the trash
@@ -167,7 +167,7 @@ metadata), while the physical I/O path is trash-aware.
 - [ ] webdav-source snapshot: a node with a preserved active `s3_key` (prior migration) is skipped on rerun (resume marker), while native files are still copied
 - [ ] webdav-source snapshot: file nodes with `sync_status='orphaned_node'` are excluded
 - [ ] s3-source snapshot unchanged: only `active` file nodes with an active `object_map` row are enumerated
-- [ ] trash survival (DEF-16 P8): a trashed node is part of the snapshot in BOTH directions and is still trashed (`deleted_at` set) after apply; webdav→s3 reads its source blob FROM the trash path (`/.wea-trash/<nodeId>`); s3→webdav writes its destination blob TO the trash path (display path untouched)
+- [ ] trash survival: a trashed node is part of the snapshot in BOTH directions and is still trashed (`deleted_at` set) after apply; webdav→s3 reads its source blob FROM the trash path (`/.wea-trash/<nodeId>`); s3→webdav writes its destination blob TO the trash path (display path untouched)
 - [ ] metadata migration (sqlite↔PG, whole-row copy) preserves `deleted_at` verbatim in both directions
 - [ ] automatic resume: fail on node N → rerun → completed skipped, remainder copied, no duplicates
 - [ ] idempotent: full rerun → `0` copied

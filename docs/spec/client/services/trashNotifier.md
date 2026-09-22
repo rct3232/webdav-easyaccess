@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item    | Description                                                                                                                                                                                                                                              |
-| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role    | In-process pub-sub for trash-change events (DEF-16 P9). The pinned sidebar trash icon subscribes and plays its one-shot animation (lid open → close, color flash default → `error.main` → default, ~1.2s) whenever items are moved into or out of trash. |
-| Used by | `useExplorerCommands.handleOperationComplete` (raises on delete-to-trash), `useTrashOperations` (raises on restore/purge/empty), `TrashSidebarItem` (subscribes)                                                                                         |
+| Item    | Description                                                                                                                                                                                                                                  |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role    | In-process pub-sub for trash-change events. The pinned sidebar trash icon subscribes and plays its one-shot animation (lid open → close, color flash default → `error.main` → default, ~1.2s) whenever items are moved into or out of trash. |
+| Used by | `useExplorerCommands.handleOperationComplete` (raises on delete-to-trash), `useTrashOperations` (raises on restore/purge/empty), `TrashSidebarItem` (subscribes)                                                                             |
 
 ---
 

@@ -32,7 +32,7 @@ Target-contract spec.
 
 ### 2.3 Tabs
 
-- **Tab bar idiom:** between title and body, `Info` default active; Close fixed at the bottom bar (DEF-11 precedent).
+- **Tab bar idiom:** between title and body, `Info` default active; Close fixed at the bottom bar.
 - **`Versions` is NOT offered** — collections are not versioned. **Decision:** tab presence itself is the invariant statement; nothing fills that slot.
 - **Info:** name (inline rename → `PUT /:id`, flips `name_locked=true`), origin/status/publish_mode chips, pinned state (`pinned_by='auto'` shows the auto-pin chip + unpin CTA, §4.9b), `item_count`, timestamps (`created_at`/`updated_at`/`last_member_change_at`), member sample via `POST /:id/preview` (dry count + `sample` ≤12 + `plus N more` from `count − sample.length`) — owner-only preview call.
 - **AI Info:** owner-only, rendered ONLY when `collection.definition.kind` is AI-derived (seed/vector/tag) — **absent, not disabled** for rule/manual collections and for missing capability (§4.12 regular-user rule). Shows definition facts: kind, θ (`definition.theta`), seed reference name, template-vs-LLM naming provenance (`name_locked` state), last member-change time. NO raw vectors, NO model internals (privacy boundary §4.15 stance).

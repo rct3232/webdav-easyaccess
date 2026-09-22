@@ -101,7 +101,7 @@ These scenarios should be covered by a dedicated hook unit test in `client/src/p
 - Recent-file entries lacking a nodeId use the path-based fallback branch and preserve current error behavior (nodeId entries never hit the path branch).
 - Double-click detection resets after a confirmed open so later clicks do not re-trigger stale state.
 
-### Trash-view click policy (DEF-16 P9)
+### Trash-view click policy
 
 - Optional `trashMode` (boolean) + `onTrashFolderOpen(file)` inputs from the shell.
 - In trash mode: selection-mode clicks toggle selection (bulk restore/purge complete within the

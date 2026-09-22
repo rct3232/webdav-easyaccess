@@ -196,9 +196,9 @@ dispatcher:
    `batchMove(job.payload.moves, job.userId, user)`, `batchCopy(job.payload.copies, job.userId, user)`.
    The per-item ACL gates and `fileService`'s own gates (including the D6 ownership-transfer
    cleanup) therefore behave exactly as they do for a direct, non-admin call. Admin creators keep
-   their bypass because the real user row carries `is_admin` (DEF-21 fix — the worker previously
+   their bypass because the real user row carries `is_admin` (the batch worker previously
    passed a synthesized `{ is_admin: true }` for move/copy, silently granting every user admin
-   semantics inside the batch channel).
+   semantics inside the batch channel — fixed).
 4. Sets the job `running` at start; an unknown operation marks the job `failed`.
 5. On success, writes the aggregate result back to the job record: `completed` with
    `progress` = the result's count (`deletedCount`/`movedCount`/`copiedCount`),

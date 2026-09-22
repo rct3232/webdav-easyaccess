@@ -50,7 +50,7 @@ The blob store factory is **parameterless** — it reads `process.env.WEA_FILE_S
 #### `prepareUpload(fileNodeId)`
 
 Prepares a new upload by creating a pending object_map entry. Demotes any existing active row
-for the same file node to `status='history'` (managed prior version, DEF-11), then applies the
+for the same file node to `status='history'` (managed prior version), then applies the
 per-node version cap.
 
 | Param      | Type   | Required | Description                           |
@@ -287,7 +287,7 @@ Uploads blob via WebDAV path. Guards on node existence.
 - duplicateBlob → throws error
 - linkObject → throws error
 
-## 6. Version Number Policy (managed history, DEF-11)
+## 6. Version Number Policy (managed history)
 
 `object_map.status` values: `pending`, `active`, `history`, `orphaned`. Before each insert the
 node's previous active `object_map` row is **demoted to `history`** (`upsertObjectMap`), so **at
@@ -313,7 +313,7 @@ garbage). New rows are inserted at `version_number = MAX(version_number) + 1` fo
   no new version row is created (row count unchanged); see `versionsService` in
   `core-service-layer.md` and `routes/files.md` §2.2.
 - **Cutover:** version history does not survive s3↔webdav migration (the active row flips; history
-  rows are dropped) — accepted, DEF-18 class.
+  rows are dropped) — accepted limitation.
 
 ## 7. Verification Scenarios
 

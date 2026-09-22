@@ -12,6 +12,12 @@ jest.mock('../../store/adminReportsStore', () => ({
 
 let mockGetConfigSync;
 
+jest.mock('../../domains/admin/services/adminReportsService', () => ({
+  ...jest.requireActual('../../domains/admin/services/adminReportsService'),
+  collectContentHashCompleteness: (...args) => mockCollectContentHashCompleteness(...args),
+}));
+const mockCollectContentHashCompleteness = jest.fn(() => Promise.resolve(null));
+
 jest.mock('../configResolver', () => ({
   getSharedResolver: () => ({
     getConfigSync: (key) => (mockGetConfigSync ? mockGetConfigSync(key) : undefined),
@@ -204,6 +210,97 @@ describe('maintenanceScheduler', () => {
     it('returns an empty report when no service is provided', async () => {
       const report = await runStartupFailSafeRecovery({});
       expect(report).toEqual({ scanned: 0, resolved: 0, manualReview: [] });
+    });
+
+    it('merges the contentHashCompleteness section into ONE failsafe row (partial while NULL rows exist)', async () => {
+      const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      mockCollectContentHashCompleteness.mockImplementationOnce(() =>
+        Promise.resolve({ nullCount: 2, checkedAt: 'C1' })
+      );
+      try {
+        const writeReport = jest.fn(() => Promise.resolve({ id: 8 }));
+        const report = {
+          scanned: 0,
+          resolved: 0,
+          manualReview: [],
+          pendingUpload: { scanned: 0, nodes: [] },
+        };
+        await runStartupFailSafeRecovery({
+          failSafeService: { runStartupRecovery: jest.fn(() => Promise.resolve(report)) },
+          adminReportsWriter: { writeReport },
+        });
+
+        expect(mockCollectContentHashCompleteness).toHaveBeenCalledTimes(1);
+        expect(writeReport).toHaveBeenCalledTimes(1);
+        expect(writeReport).toHaveBeenCalledWith({
+          kind: 'failsafe',
+          status: 'partial',
+          payload: { ...report, contentHashCompleteness: { nullCount: 2, checkedAt: 'C1' } },
+        });
+      } finally {
+        logSpy.mockRestore();
+        warnSpy.mockRestore();
+      }
+    });
+
+    it('keeps status ok when the section reports zero NULL rows', async () => {
+      const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+      mockCollectContentHashCompleteness.mockImplementationOnce(() =>
+        Promise.resolve({ nullCount: 0, checkedAt: 'C2' })
+      );
+      try {
+        const writeReport = jest.fn(() => Promise.resolve({ id: 9 }));
+        const report = {
+          scanned: 0,
+          resolved: 0,
+          manualReview: [],
+          pendingUpload: { scanned: 0, nodes: [] },
+        };
+        await runStartupFailSafeRecovery({
+          failSafeService: { runStartupRecovery: jest.fn(() => Promise.resolve(report)) },
+          adminReportsWriter: { writeReport },
+        });
+
+        expect(writeReport).toHaveBeenCalledWith({
+          kind: 'failsafe',
+          status: 'ok',
+          payload: { ...report, contentHashCompleteness: { nullCount: 0, checkedAt: 'C2' } },
+        });
+      } finally {
+        logSpy.mockRestore();
+      }
+    });
+
+    it('omits the section when the probe throws — the boot row still lands', async () => {
+      const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      mockCollectContentHashCompleteness.mockImplementationOnce(() =>
+        Promise.reject(new Error('probe down'))
+      );
+      try {
+        const writeReport = jest.fn(() => Promise.resolve({ id: 10 }));
+        const report = {
+          scanned: 0,
+          resolved: 0,
+          manualReview: [],
+          pendingUpload: { scanned: 0, nodes: [] },
+        };
+        await runStartupFailSafeRecovery({
+          failSafeService: { runStartupRecovery: jest.fn(() => Promise.resolve(report)) },
+          adminReportsWriter: { writeReport },
+        });
+
+        expect(writeReport).toHaveBeenCalledWith({
+          kind: 'failsafe',
+          status: 'ok',
+          payload: report,
+        });
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('probe'));
+      } finally {
+        logSpy.mockRestore();
+        warnSpy.mockRestore();
+      }
     });
 
     it('returns the fail-safe report', async () => {

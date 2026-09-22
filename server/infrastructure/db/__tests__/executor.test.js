@@ -84,7 +84,7 @@ describe('sqliteExecutor (own isolated temp sqlite DB, both legs)', () => {
 
   it('isUniqueConflict classifies raw sqlite unique violations (raw driver shape)', async () => {
     const executor = require('@server/infrastructure/db/sqliteExecutor');
-    // Raw driver shapes: node-sqlite3 reports code SQLITE_CONSTRAINT (+ suffix)
+    // Raw driver shapes: node:sqlite reports code ERR_SQLITE_ERROR (+ errcode)
     // and a message naming the constraint. mapDatabaseError does NOT preserve
     // these, so callers must classify before mapping (see executor spec §2.2).
     expect(executor.isUniqueConflict({ code: 'SQLITE_CONSTRAINT_UNIQUE', message: 'x' })).toBe(

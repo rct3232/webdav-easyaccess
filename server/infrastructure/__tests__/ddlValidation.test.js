@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const sqlite3 = require('sqlite3');
+const { DatabaseSync } = require('node:sqlite');
 const fs = require('fs');
 const path = require('path');
 const { convertPostgresToSqlite } = require('../sqliteSchemaInit');
@@ -25,30 +25,28 @@ function splitStatements(sql) {
 }
 
 function run(db, sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
-      if (err) reject(err);
-      else resolve(this);
-    });
-  });
+  try {
+    const info = db.prepare(sql).run(...params);
+    return Promise.resolve(info);
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 function all(db, sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
-    });
-  });
+  try {
+    return Promise.resolve(db.prepare(sql).all(...params));
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 function get(db, sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) reject(err);
-      else resolve(row);
-    });
-  });
+  try {
+    return Promise.resolve(db.prepare(sql).get(...params));
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 describe('DDL Smoke Test', () => {
@@ -63,7 +61,7 @@ describe('DDL Smoke Test', () => {
       const rawDdl = fs.readFileSync(ddlPath, 'utf8');
       const convertedDdl = convertPostgresToSqlite(rawDdl);
 
-      db = new sqlite3.Database(':memory:');
+      db = new DatabaseSync(':memory:');
 
       await run(db, 'PRAGMA foreign_keys = ON');
       await run(db, 'PRAGMA defer_foreign_keys = ON');
@@ -75,11 +73,12 @@ describe('DDL Smoke Test', () => {
       }
     });
 
-    afterAll((done) => {
-      db.close((err) => {
-        if (err) console.error(err);
-        done();
-      });
+    afterAll(() => {
+      try {
+        db.close();
+      } catch (error) {
+        console.error(error);
+      }
     });
 
     it('creates exactly 13 tables', async () => {

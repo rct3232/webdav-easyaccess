@@ -13,7 +13,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const sqlite3 = require('sqlite3').verbose();
+const { DatabaseSync } = require('node:sqlite');
 
 jest.mock('../../store/storage', () => ({ getBackend: jest.fn() }));
 const { getBackend } = require('../../store/storage');
@@ -44,22 +44,21 @@ function makePgClient({ relation, count }) {
 }
 
 function openDbAt(dbPath) {
-  return new Promise((resolve, reject) => {
-    const db = new sqlite3.Database(dbPath, (err) => (err ? reject(err) : resolve(db)));
-  });
+  return new DatabaseSync(dbPath);
 }
 
 function run(db, sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
-      if (err) reject(err);
-      else resolve({ changes: this.changes });
-    });
-  });
+  const info = db.prepare(sql).run(...params);
+  return Promise.resolve({ changes: info.changes });
 }
 
 function closeDb(db) {
-  return new Promise((resolve, reject) => db.close((err) => (err ? reject(err) : resolve())));
+  try {
+    db.close();
+    return Promise.resolve();
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 let tmpDir;

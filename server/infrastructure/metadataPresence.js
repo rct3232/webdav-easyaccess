@@ -100,10 +100,11 @@ async function detectPostgresPresence() {
 }
 
 /**
- * Probe SQLite with a fresh sqlite3.Database (closed afterwards so the app's
- * cached handle is never touched). Returns `{ otherHasData, rows }` or
- * `{ error }` — never throws. When the file does not exist no DB is opened
- * (opening would create an empty file on a PostgreSQL deployment).
+ * Probe SQLite with a fresh node:sqlite DatabaseSync connection (closed
+ * afterwards so the app's cached handle is never touched). Returns
+ * `{ otherHasData, rows }` or `{ error }` — never throws. When the file does
+ * not exist no DB is opened (opening would create an empty file on a
+ * PostgreSQL deployment).
  */
 async function detectSqlitePresence() {
   const dbPath = process.env.WEA_SQLITE_PATH || DEFAULT_SQLITE_PATH;
@@ -111,34 +112,33 @@ async function detectSqlitePresence() {
     return { otherHasData: false, rows: null };
   }
 
-  let sqlite3;
+  let db;
   try {
-    sqlite3 = require('sqlite3').verbose();
-  } catch (error) {
-    return { error: `sqlite3 module unavailable: ${error.message}` };
-  }
+    let DatabaseSync;
+    try {
+      ({ DatabaseSync } = require('node:sqlite'));
+    } catch (error) {
+      return { error: `node:sqlite module unavailable: ${error.message}` };
+    }
 
-  const db = new sqlite3.Database(dbPath);
-  try {
-    const table = await new Promise((resolve, reject) => {
-      db.get(
-        `SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`,
-        [SETTINGS_TABLE],
-        (err, row) => (err ? reject(err) : resolve(row))
-      );
-    });
+    db = new DatabaseSync(dbPath);
+    const table = db
+      .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`)
+      .get(SETTINGS_TABLE);
     if (!table) return { otherHasData: false, rows: null };
-    const countRow = await new Promise((resolve, reject) => {
-      db.get(`SELECT COUNT(*) AS count FROM ${SETTINGS_TABLE}`, (err, row) =>
-        err ? reject(err) : resolve(row)
-      );
-    });
+    const countRow = db.prepare(`SELECT COUNT(*) AS count FROM ${SETTINGS_TABLE}`).get();
     const rows = Number(countRow && countRow.count) || 0;
     return { otherHasData: rows > 0, rows };
   } catch (error) {
     return { error: error && error.message ? error.message : String(error) };
   } finally {
-    await new Promise((resolve) => db.close(() => resolve()));
+    if (db) {
+      try {
+        db.close();
+      } catch {
+        /* ignore close failures on an already-failed probe */
+      }
+    }
   }
 }
 

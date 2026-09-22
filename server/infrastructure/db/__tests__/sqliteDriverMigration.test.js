@@ -84,13 +84,16 @@ describe('sqlite driver migration (node:sqlite, T0.12)', () => {
       ]);
       expect(Number(byBigInt.rows[0].n)).toBe(1);
 
-      // Decisive exactness check: plain-number comparison against the stored
-      // rowid (0 rows under the old driver's 32-bit truncation).
-      const byExactNumber = await executor.query(
+      // The same value bound as a plain JS number does NOT match: node:sqlite
+      // binds non-safe integers as doubles, which is exactly why integer PKs
+      // MUST be bound as BigInt (docs/spec/server/store/executor.md §2.6).
+      const byPlainNumber = await executor.query(
         'SELECT COUNT(*) AS n FROM file_nodes WHERE id = ?',
-        [9007199254740993]
+        // Number literal would trip no-loss-of-precision; parsed value is the
+        // same lossy double node:sqlite would bind for a plain JS number.
+        [Number('9007199254740993')]
       );
-      expect(Number(byExactNumber.rows[0].n)).toBe(1);
+      expect(Number(byPlainNumber.rows[0].n)).toBe(0);
     });
   });
 

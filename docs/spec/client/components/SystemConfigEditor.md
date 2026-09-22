@@ -53,28 +53,38 @@ Display metadata (`labelKey`, `group`, `inputType`, `options`, `helpKey`) is def
 ### 2.6 CONFIG_DISPLAY_META
 
 Client-side display map: `{ KEY: { labelKey, group, inputType, options?, helpKey? } }`.
+**The map is optional presentation metadata, not a whitelist** (§4.14: the former
+silent-skip at `SystemConfigEditor.js:360` hid new registry keys from the admin; fixed):
 
-- `labelKey` → `admin.config.key.<KEY>`; required for **every** shown key (Sections A and B).
-- `group` → Section A subgroup: `fileStorage|serverSecurity|email|runtime`. Required for editable
-  (Section A) keys only; Section B keys have no editable subgroup.
+- **Every key returned by `GET /api/admin/config` renders** (registry-driven), except the
+  explicit omission below.
+- `labelKey` → `admin.config.key.<KEY>`; when a display entry exists it is used; **when it
+  does not, the raw registry key is the label fallback** (optional labels).
+- `group` → Section A subgroup: `fileStorage|serverSecurity|email|runtime|ai`. Required for
+  editable (Section A) keys only; Section B keys have no editable subgroup.
 - `inputType` → `text | number | switch | select`. Editable keys only.
 - `options` (select only) → `[{ value, labelKey }]` (reuses existing i18n keys for s3/webdav, sqlite/postgresql, auto/digest).
-- A registry key with no display entry is **skipped** (never rendered in either section).
+- **A registry key with no display entry is never silently skipped**: it renders as a
+  Section B read-only row (conservative — no input type is invented for an unknown key)
+  with the raw key as its label and a tier-only caption (the "set in env" note appears
+  only when `source === 'env'`).
 
 **Section membership.** Section A renders only keys whose effective state is editable
-(`tier` T1/T2 AND `source !== 'env'`); every other returned key (T0, or T1/T2 with
-`source === 'env'`) is shown read-only under Section B. Because classification is state-driven,
+(`tier` T1/T2 AND `source !== 'env'`) **and** that have a display entry; every other
+returned key (T0, or T1/T2 with `source === 'env'`, or any key without a display entry)
+is shown read-only under Section B. Because classification is state-driven,
 a key's `group`/`inputType` are only exercised when the key is currently editable; the same entry
 may supply just the `labelKey` (for its Section B row) when the key is env-sourced.
 
 Section A subgroups (group → keys):
 
 | Group            | Keys                                                                                                                                                                                                                                                                                                                                                 |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `fileStorage`    | WEA_FILE_STORAGE, S3_BUCKET, AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_ENDPOINT, WEBDAV_URL, WEBDAV_USERNAME, WEBDAV_PASSWORD, WEBDAV_AUTH_TYPE, WEBDAV_UPSTREAM_URL, MAX_THUMBNAIL_SIZE, THUMBNAIL_CONCURRENCY_LIMIT, THUMBNAIL_TOKEN_SECRET, THUMBNAIL_TOKEN_EXPIRY, FFMPEG_PATH, FFMPEG_INIT_TIMEOUT_MS, WEA_PREVIEW_TICKET_TTL_MS |
 | `serverSecurity` | PORT, CORS_ORIGINS, LOGIN_RATE_LIMIT_MAX, LOGIN_RATE_LIMIT_WINDOW_MS, JWT_EXPIRES_IN, ADMIN_DEFAULT_PASSWORD, WEA_DISABLE_DEFAULT_ADMIN, HOSTNAME                                                                                                                                                                                                    |
 | `email`          | EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASSWORD, EMAIL_SECURE, EMAIL_FROM_NAME                                                                                                                                                                                                                                                                    |
-| `runtime`        | GC_INTERVAL_MS, GC_ORPHAN_TTL_DAYS, REFRESH_TOKEN_EXPIRES_IN_DAYS, USER_CACHE_TTL_MS, PERMISSION_CACHE_TTL_MS, PERMISSIONS_EXISTENCE_INDEX_TTL_MS, PERMISSIONS_EXISTENCE_RECONCILE_BATCH_SIZE, PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY, WEA_SKIP_MIGRATION_WORKER, WEA_SKIP_BULK_WORKER, WEA_SKIP_GC_SCHEDULER                                   |
+| `runtime`        | GC_INTERVAL_MS, GC_ORPHAN_TTL_DAYS, REFRESH_TOKEN_EXPIRES_IN_DAYS, USER_CACHE_TTL_MS, PERMISSION_CACHE_TTL_MS, PERMISSIONS_EXISTENCE_INDEX_TTL_MS, PERMISSIONS_EXISTENCE_RECONCILE_BATCH_SIZE, PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY, WEA_SKIP_MIGRATION_WORKER, WEA_SKIP_BULK_WORKER, WEA_SKIP_GC_SCHEDULER, WEA_SKIP_AI_WORKER                   |
+| `ai`             | LLM_EMBED_BASE_URL, LLM_EMBED_API_KEY, LLM_EMBED_MODEL, LLM_CHAT_BASE_URL, LLM_CHAT_API_KEY, LLM_CHAT_MODEL, LLM_VISION_BASE_URL, LLM_VISION_API_KEY, LLM_VISION_MODEL, LLM_ASR_BASE_URL, LLM_ASR_API_KEY, LLM_ASR_MODEL, LLM_MAX_INPUT_CHARS, LLM_CHUNK_BUDGET, LLM_OVERLENGTH_POLICY, LLM_DAILY_CALL_CAP, LLM_DAILY_TOKEN_CAP, LLM_REPROBE_DEBOUNCE_S, AI_SEMANTIC_SEARCH_ENABLED |
 
 **Section B — "Deploy-time / platform configuration" (read-only):** rendered below Section A as a
 flat list in **registry order** (the order keys arrive in `GET /api/admin/config`). A key is
@@ -96,9 +106,11 @@ with the tier plus a "set in env" note. An intro note (`admin.config.platformInt
 these values are provided at deploy time (env / `.env`), cannot be edited here, and require a
 deployment change + restart.
 
-**Intentionally omitted** (no display entry → not rendered):
+**Intentionally omitted** (explicit omission set, still not rendered):
 
 - `registration_enabled` — stays in the main settings rows (above the accordion), never duplicated.
+
+All other server-returned keys render; the display map only refines presentation.
 
 ### 2.7 Read-Only Rules
 
@@ -110,10 +122,11 @@ Section A input; it is moved out to the Section B summary.
 - **Section A** rows are editable by construction: only `tier` T1/T2 keys with effective
   `source !== 'env'` (db/default) are rendered as inputs, so no per-field `admin.config.setInEnv`
   helper text is needed.
-- **Section B** rows have **no input controls** (a flat summary list). Each row's caption combines
-  the tier with a "set in env" note (`admin.config.setInEnv`); T0 rows carry a T0/startup tier
-  marker. The `admin.config.platformIntro` note explains that these values are deploy-time and
-  require a deployment change + restart.
+- **Section B** rows have **no input controls** (a flat summary list). Each row's caption
+  combines the tier with a "set in env" note (`admin.config.setInEnv`) **when
+  `source === 'env'`**; rows that reached Section B only because they have no display entry
+  show the tier alone. T0 rows carry a T0/startup tier marker. The `admin.config.platformIntro`
+  note explains that these values are deploy-time and require a deployment change + restart.
 - Server enforcement is unchanged and matches this split: `PUT` rejects (400) T0 keys
   (`configT0Protected`) and keys whose current effective source is `env`
   (`configEnvSourcedProtected`), so Section A can never be used to write a platform-managed key.
@@ -175,7 +188,7 @@ Section A input; it is moved out to the Section B summary.
 - `admin.config.appliedNow`, `admin.config.appliedNowDetail`
 - `admin.config.tierRestart`, `admin.config.tierImmediate`
 - `admin.config.setInEnv`, `admin.config.setNewValue`, `admin.config.secretKeepExisting`
-- `admin.config.group.fileStorage`, `admin.config.group.serverSecurity`, `admin.config.group.email`, `admin.config.group.runtime` (Section A subgroup titles)
+- `admin.config.group.fileStorage`, `admin.config.group.serverSecurity`, `admin.config.group.email`, `admin.config.group.runtime`, `admin.config.group.ai` (Section A subgroup titles)
 - `admin.config.sectionTitleRuntime` ("Runtime settings"), `admin.config.sectionTitlePlatform` ("Deploy-time configuration") — Section A / Section B headers
 - `admin.config.platformIntro` — Section B intro note: values are provided at deploy time (env / `.env`), cannot be edited here, and require a deployment change + restart
 - `admin.config.unset` — "(unset)"-style text for undefined Section B values
@@ -204,7 +217,7 @@ Section A input; it is moved out to the Section B summary.
 ### 2.13 Edge Cases
 
 - Config load failure → error Alert + Retry button (no infinite spinner).
-- Registry key returned by the server with no display entry → skipped (never rendered in either section).
+- Registry key returned by the server with no display entry → rendered as a Section B read-only row with the raw key as label (never silently skipped).
 - T0 key present with no runtime value → Section B row shows the "(unset)"-style text.
 - Boolean values from `default` source (e.g. `EMAIL_SECURE`) → normalized to `'true'`/`'false'` for Switch.
 - Re-collapse/re-expand the accordion → config is not refetched (local state preserved).

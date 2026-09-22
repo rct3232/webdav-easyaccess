@@ -1,5 +1,15 @@
 'use strict';
 
+// The T0.7b admin-reports writer resolves the admin_reports store since T0.8.
+// This is a unit suite without a test database — mock the store facade so the
+// shared writer never touches a real sqlite file.
+jest.mock('../../store/adminReportsStore', () => ({
+  insertReport: jest.fn(() => Promise.resolve({ id: 1 })),
+  listReports: jest.fn(() => Promise.resolve([])),
+  getReport: jest.fn(() => Promise.resolve(null)),
+  updateReport: jest.fn(() => Promise.resolve(null)),
+}));
+
 let mockGetConfigSync;
 
 jest.mock('../configResolver', () => ({

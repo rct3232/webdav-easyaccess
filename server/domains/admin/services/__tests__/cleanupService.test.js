@@ -1,12 +1,32 @@
 'use strict';
 
 /**
- * cleanupOrphanedData admin_reports persistence (§4.14 Tier A / T0.7b).
- * The GC/cleanup result bodies are unchanged (additive row persistence only);
- * composition is mocked so no real store/blob access happens.
+ * cleanupOrphanedData admin_reports persistence (§4.14 Tier A / T0.7b) +
+ * the T0.1 boot content-hash completeness probe kick. The GC/cleanup result
+ * bodies are unchanged (additive row persistence only); composition is mocked
+ * so no real store/blob access happens.
  *
- * @see docs/spec/server/routes/admin.md §2.2.3, §3.2
+ * @see docs/spec/server/routes/admin.md §2.2.3, §2.2.6, §2.5
  */
+
+jest.mock('../../../../store/adminReportsStore', () => ({
+  insertReport: jest.fn(() => Promise.resolve({ id: 1 })),
+  listReports: jest.fn(() => Promise.resolve([])),
+  getReport: jest.fn(() => Promise.resolve(null)),
+  updateReport: jest.fn(() => Promise.resolve(null)),
+}));
+
+const mockRunContentHashCompletenessProbe = jest.fn(() =>
+  Promise.resolve({ nullCount: 0, checkedAt: '', row: null })
+);
+
+jest.mock('../adminReportsService', () => {
+  const actual = jest.requireActual('../adminReportsService');
+  return {
+    ...actual,
+    runContentHashCompletenessProbe: (...args) => mockRunContentHashCompletenessProbe(...args),
+  };
+});
 
 jest.mock('../../../../service/composition', () => ({
   getComposition: jest.fn(() => ({
@@ -83,5 +103,40 @@ describe('cleanupOrphanedData admin_reports persistence (T0.7b)', () => {
 
     expect(writeReport).toHaveBeenCalledTimes(1);
     expect(results.gc).toBeDefined();
+  });
+});
+
+describe('ensureHomeOwnerAdminForAllUsers boot probe kick (T0.1)', () => {
+  it('kicks the content-hash completeness probe fire-and-forget (non-blocking)', async () => {
+    const { ensureHomeOwnerAdminForAllUsers } = require('../cleanupService');
+    const User = require('../../../../models/User');
+
+    User.findAll.mockResolvedValue([]);
+    await ensureHomeOwnerAdminForAllUsers();
+
+    expect(mockRunContentHashCompletenessProbe).toHaveBeenCalledTimes(1);
+  });
+
+  it('a probe failure never fails the permission cleanup (fire-and-forget contract)', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const { ensureHomeOwnerAdminForAllUsers } = require('../cleanupService');
+    const User = require('../../../../models/User');
+
+    mockRunContentHashCompletenessProbe.mockImplementationOnce(() =>
+      Promise.reject(new Error('probe down'))
+    );
+    User.findAll.mockResolvedValue([]);
+
+    try {
+      await expect(ensureHomeOwnerAdminForAllUsers()).resolves.toMatchObject({
+        updatedUsers: 0,
+        errors: [],
+      });
+      // Let the floating rejection settle.
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('probe'));
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });

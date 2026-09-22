@@ -818,4 +818,80 @@ describe('FileNodeRepository conformance', () => {
     expect(root.id).toBe(created.id);
     expect(root.name).toBe(username);
   });
+
+  describe('filecache content-hash repair surface (T0.1/T0.8)', () => {
+    let dirNode;
+    let liveFile;
+    let trashedFile;
+    let hashedFile;
+
+    beforeEach(async () => {
+      dirNode = await repo.createNode(null, uniqueName('fn-hash-dir'), 'directory');
+      liveFile = await repo.createNode(dirNode.id, uniqueName('fn-hash-live'), 'file');
+      trashedFile = await repo.createNode(dirNode.id, uniqueName('fn-hash-trashed'), 'file');
+      hashedFile = await repo.createNode(dirNode.id, uniqueName('fn-hash-set'), 'file');
+      await repo.upsertCache(liveFile.id, 10, 'text/plain', null);
+      await repo.upsertCache(trashedFile.id, 20, 'text/plain', null);
+      await repo.upsertCache(hashedFile.id, 30, 'text/plain', 'already-hashed');
+      await repo.markSubtreeDeleted([trashedFile.id]);
+    });
+
+    it('countCacheRowsWithNullContentHash counts only NULL-hash rows (delta-based)', async () => {
+      const before = await repo.countCacheRowsWithNullContentHash();
+
+      const extra = await repo.createNode(null, uniqueName('fn-hash-extra'), 'file');
+      await repo.upsertCache(extra.id, 5, 'text/plain', null);
+      const mid = await repo.countCacheRowsWithNullContentHash();
+      expect(mid).toBe(before + 1);
+
+      await repo.setCacheContentHash(extra.id, 'abc');
+      const after = await repo.countCacheRowsWithNullContentHash();
+      expect(after).toBe(before);
+    });
+
+    it('listCacheRowsWithNullContentHash lists file rows with NULL hash, domain-shaped and ordered', async () => {
+      const rows = await repo.listCacheRowsWithNullContentHash();
+      const relevant = rows.filter((r) =>
+        [liveFile.id, trashedFile.id, hashedFile.id].includes(r.nodeId)
+      );
+
+      expect(relevant).toHaveLength(2); // the already-hashed row is excluded
+      expect(relevant.map((r) => r.nodeId)).toEqual([liveFile.id, trashedFile.id]); // ascending
+
+      const live = relevant.find((r) => r.nodeId === liveFile.id);
+      expect(live).toMatchObject({
+        nodeId: liveFile.id,
+        type: 'file',
+        deletedAt: null,
+      });
+      expect(typeof live.name).toBe('string');
+
+      const trashed = relevant.find((r) => r.nodeId === trashedFile.id);
+      expect(trashed.deletedAt).not.toBeNull(); // trash-aware consumers need the state
+    });
+
+    it('honours the limit option', async () => {
+      const rows = await repo.listCacheRowsWithNullContentHash({ limit: 1 });
+      expect(rows).toHaveLength(1);
+    });
+
+    it('setCacheContentHash writes only the NULL row; a re-write is a no-op', async () => {
+      const set = await repo.setCacheContentHash(liveFile.id, 'deadbeef');
+      expect(set.changes).toBe(1);
+
+      const cache = await repo.getCache(liveFile.id);
+      expect(cache.content_hash).toBe('deadbeef');
+
+      // Idempotency contract: an already-set row is NEVER touched again.
+      const rewrite = await repo.setCacheContentHash(liveFile.id, 'c0ffee');
+      expect(rewrite.changes).toBe(0);
+      const after = await repo.getCache(liveFile.id);
+      expect(after.content_hash).toBe('deadbeef');
+    });
+
+    it('setCacheContentHash reports changes=0 for an unknown node', async () => {
+      const res = await repo.setCacheContentHash(999999999, 'deadbeef');
+      expect(res.changes).toBe(0);
+    });
+  });
 });

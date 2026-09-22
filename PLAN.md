@@ -262,16 +262,22 @@ config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
 
 | Wave | Tasks (parallel) | Entry condition | RED-first test targets | Status |
 | ---- | ---------------- | --------------- | ---------------------- | ------ |
-| 0 | T0.2 ∥ T0.12 ∥ T0.7b (∥ T0.11 if capacity) | none (roots) | T0.2: 3 conformance twins + dual-dialect §5 table-presence; T0.12: node:sqlite driver + BigInt PK binding; T0.7b: en/ko i18n key mirror + settings/flags exposure | `[todo]` |
+| 0 | T0.2 ∥ T0.12 ∥ T0.7b (∥ T0.11 if capacity) | none (roots) | T0.2: 3 conformance twins + dual-dialect §5 table-presence; T0.12: node:sqlite driver + BigInt PK binding; T0.7b: en/ko i18n key mirror + settings/flags exposure | `[done]` — T0.11 carried into Wave 2 |
 | 1 | T0.3 ∥ T0.6 ∥ T0.7 ∥ T0.8 (+ T0.1 absorbed) | T0.2 + T0.7b merged | T0.3: camelCase req / snake_case res + activity_score fallback sort; T0.8: NULL content_hash backfill idempotency | `[todo]` |
-| 2 | T0.4 ∥ T0.5 ∥ T0.9 | T0.3 API surface (client) / T0.2 (T0.9) | component+hook tests; T0.9 hash-first dup (NULL never forms a group), derived tags v1 | `[todo]` |
+| 2 | T0.4 ∥ T0.5 ∥ T0.9 ∥ T0.11 (carried from Wave 0) | T0.3 API surface (client) / T0.2 (T0.9) | component+hook tests; T0.9 hash-first dup (NULL never forms a group), derived tags v1 | `[todo]` |
 | 3 | T0.10 → P0 exit gate | T0.9 + T0.7 + T0.8 merged | dashboard blocks per §4.16 | `[todo]` |
 
 - **P0 exit gate**: full `npm run test:ci` (client+server) + `test:ci:pg:adapters` + all new
   conformance suites + E2E-COLLECTION-001 lifecycle & degradation matrix — then `ai-feature`
   carries the merged P0. (`ai-feature`→`dev` merge remains a single event after ALL §7 phases.)
-- **Wave-0 spec debt found during planning (2026-09-22)**: §6/T0.12 says the sqlite driver is
-  confined to `db/sqliteExecutor.js`, but the real `sqlite3` npm sites are
-  `store/storage.js`, `metadataMigrationService.js`, `sqliteSchemaInit.js`,
-  `metadataPresence.js` — T0.12 must update `docs/spec/server/store/{storage,executor}.md`
+- **Wave-0 spec debt found during planning (2026-09-22, resolved in the T0.12 PR)**: §6/T0.12
+  said the sqlite driver is confined to `db/sqliteExecutor.js`, but the real `sqlite3` npm
+  sites are `store/storage.js`, `metadataMigrationService.js`, `sqliteSchemaInit.js`,
+  `metadataPresence.js` — T0.12 updated `docs/spec/server/store/{storage,executor}.md`
   in its PR (docs-first).
+- **Wave-0 provenance (2026-09-22)**: branches `feature/t02-full-schema-ddl` (4 commits),
+  `refactor/t012-node-sqlite-driver` (3), `chore/t07b-tier-a-plumbing` (3) merged into
+  `ai-feature`; two integration defects surfaced by the full gate were fixed and RCA-logged
+  (see `docs/RCA_LOG.md` 2026-09-22 entries). Gates: server `test:ci` 108 suites / 2057 tests,
+  client `test:ci` 159 suites / 1438 tests, `test:ci:pg:adapters` 20 suites / 291 tests — all green.
+  Known-open: one non-reproducible gcService test flake under parallel CI load (RCA-logged).

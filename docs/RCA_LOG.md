@@ -581,3 +581,16 @@ IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode repor
   into the default dev DB (`data/webdav.db`) — first run passed, second run failed with
   `UNIQUE constraint failed: locks.lock_name_hash`. Moved the test into the shared beforeAll
   describe of `sqliteDriverMigration.test.js`; verified no leftover rows in the dev DB.
+
+### 2026-09-22 — gcService.test.js single non-reproducible failure under full parallel test:ci (unclassified suspected environmental flake)
+
+- **Summary**: one full `npm run test:ci` run reported 1 gcService test failure (43→2→1-failure
+  trajectory across the day's gate runs); the error output was not captured before the log
+  buffer scrolled, and two consecutive full re-runs plus solo `--ci` runs are fully green
+  (36/36 solo, 2057/2057 server-wide).
+- **Diagnosis**: incomplete. Candidate identified but not confirmed:
+  `gcService.test.js:39` seeds retention windows as `new Date(Date.now() - daysAgo * 86400000)`
+  — ms-level boundary rows racing the suite's own DB writes can flip assertions under parallel
+  load. No code change made.
+- **Classification**: pending reproduction (treated as environmental flake for Wave-0 ledger
+  purposes). **Action**: monitor; if it recurs, capture full output first per §3.2 procedure 1.

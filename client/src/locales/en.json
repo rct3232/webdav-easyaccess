@@ -842,6 +842,14 @@
       "budgetExceeded": "Today's AI usage budget is exhausted. Please try again tomorrow.",
       "providerProbeFailed": "The AI provider probe failed. Check the AI configuration."
     },
+    "actions": {
+      "invalidDomain": "Unknown undo-journal domain filter.",
+      "notFound": "This action could not be found.",
+      "cascadeConfirmRequired": "Later changes will also be undone. Please confirm.",
+      "fingerprintMismatch": "This state changed since the action ran, so it cannot be undone.",
+      "expired": "This action can no longer be undone because the undo window has expired.",
+      "alreadyUndone": "This action has already been undone."
+    },
     "collections": {
       "nameRequired": "A collection name is required.",
       "invalidName": "This collection name is not valid.",

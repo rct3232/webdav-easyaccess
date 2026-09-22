@@ -842,6 +842,14 @@
       "budgetExceeded": "오늘의 AI 사용 한도가 소진되었습니다. 잠시 후 다시 시도해 주세요.",
       "providerProbeFailed": "AI 공급자 확인(probe)에 실패했습니다. AI 구성을 확인해 주세요."
     },
+    "actions": {
+      "invalidDomain": "알 수 없는 되돌리기 저널 도메인 필터입니다.",
+      "notFound": "해당 작업을 찾을 수 없습니다.",
+      "cascadeConfirmRequired": "이후 변경 사항도 함께 되돌려집니다. 확인해 주세요.",
+      "fingerprintMismatch": "작업이 실행된 이후 상태가 변경되어 되돌릴 수 없습니다.",
+      "expired": "되돌리기 기간이 만료되어 이 작업은 더 이상 되돌릴 수 없습니다.",
+      "alreadyUndone": "이 작업은 이미 되돌려졌습니다."
+    },
     "collections": {
       "nameRequired": "컬렉션 이름이 필요합니다.",
       "invalidName": "컬렉션 이름이 유효하지 않습니다.",

@@ -226,6 +226,14 @@ const SERVER_ERROR_CODES = {
     budgetExceeded: P('serverErrors.ai', 'budgetExceeded'),
     providerProbeFailed: P('serverErrors.ai', 'providerProbeFailed'),
   },
+  actions: {
+    invalidDomain: P('serverErrors.actions', 'invalidDomain'),
+    notFound: P('serverErrors.actions', 'notFound'),
+    cascadeConfirmRequired: P('serverErrors.actions', 'cascadeConfirmRequired'),
+    fingerprintMismatch: P('serverErrors.actions', 'fingerprintMismatch'),
+    expired: P('serverErrors.actions', 'expired'),
+    alreadyUndone: P('serverErrors.actions', 'alreadyUndone'),
+  },
   utilsAuth: {
     accessTokenRequired: P('serverErrors.utilsAuth', 'accessTokenRequired'),
     invalidOrExpiredToken: P('serverErrors.utilsAuth', 'invalidOrExpiredToken'),

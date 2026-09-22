@@ -516,3 +516,33 @@ IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode repor
   hack from the 2026-09-11 ADMIN-005 fix with `getTestSuffix`; server gap —
   `POST /api/admin/users` accepts usernames violating registration's
   50-char/charset validation (observed: 63-char colon usernames).
+
+### 2026-09-22 — Activity-score contract contradicted owner intent; found in docs-first review, no test involved (Case C analog)
+
+- **Summary**: during PLAN.md execution-prep review the owner identified that the binding
+  store decision "the richer activity score (usage signals) never reorders the card list
+  itself" (collectionsStore.md §2.5) plus §3.4's one-sentence score definition ("decayed
+  mix of node_activity + likes + exclusion negatives + definition age") had drifted from
+  owner intent: "activity sort" was meant to BE activity-score ordering, and the score was
+  meant to be a PURE activity measure.
+- **Diagnosis**: consumer survey showed the decayed-mix score had exactly one numeric
+  consumer (member ordering, routes/collections.md:182/:336 + collectionsService.md:41)
+  plus the archive gate (delta only); the card list sorted by timestamp COALESCE, and §3.4
+  mixed item-level ingredients (node_activity, likes) with collection-level ones
+  (exclusion negatives, definition age), making the score unusable for list ordering as
+  written. Two ingredients also conflicted with the standing owner decision 2026-09-16
+  (§4.9: exclusion = touch ⇒ pin — a pinning act cannot also be a penalty/trigger).
+- **Classification**: **Case C analog (Spec Error vs owner intent)** — no test failed; the
+  binding spec was wrong relative to intent. Stopped and asked the owner per AGENTS §3.2
+  (procedure applied to a docs-first review instead of a test run).
+- **Action taken**: owner re-adjudication 2026-09-22 — collection score promoted to a
+  first-class persisted value (`collections.activity_score REAL` = Σ member item
+  accumulator scores, recomputed nightly + on membership change); card list
+  `sort=activity` = `activity_score DESC, last_member_change_at DESC, created_at DESC`
+  (timestamp chain demoted to tie-breaker/graceful fallback); exclusion negatives and
+  definition age removed from the score (exclusion → touch/pin + §4.15 quality metric;
+  age → archive-gate min-age grace, default 14d); item accumulator formalized
+  (H=30d; w_open=1/w_preview=2/w_download=3/w_search_hit=1/w_like=5 — T2 hot product
+  constants); archive gate re-phrased event-based (Σ w_a ≤ ε, ε=0, N=60). Updated:
+  AI_FEATURE_PLAN §3.4/§4.9/§5, collectionsStore §2.5, evolutionService §2.6,
+  maintenanceScheduler §3.1, routes/collections GET /, PLAN.md T0.3/T0.6/§6.

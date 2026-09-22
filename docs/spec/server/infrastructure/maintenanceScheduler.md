@@ -40,7 +40,10 @@ interval resolution, log-never-throw).
 ### 3.1 `startUsageRollupScheduler({ usageService })` — DEF-25 nightly rollup
 
 - Fires once per nightly anchor (§3.4). Chain: `usageService.rollupNodeActivity()`
-  (`usage_events` → `node_activity` upserts) then the retention tail: raw
+  (`usage_events` → `node_activity` upserts, applying the §3.4 item accumulator
+  `score ← score·2^(−Δt/H) + Σ w_a` plus the count/`last_seen_at` columns), then
+  `collectionsStore.recomputeActivityScores()` (Σ member item scores →
+  `collections.activity_score`, §3.4) and the retention tail: raw
   `usage_events` rolled off at 90d (GC-parity delete), `actionJournalStore.expireJournalRows()`
   (payload NULLed, rows survive — actionJournalStore §2.5 names
   THIS module as its GC caller) and `collectionsStore.purgeExpiredTombstones(cutoff)`

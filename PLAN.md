@@ -4,8 +4,10 @@
 > behavior specs (§4.x), schema (§5), rejections/extension points (§9–§10) live there —
 > **read it before implementing any task below; task rows reference its sections by number.**
 > This file carries only: work units + deps + verification + binding conventions (§6–§8).
-> At execution start, content graduates per AGENTS.md §2.1 docs-first into
-> `docs/features/collections-platform.md` + specs (§8 docs gate) and this graph shrinks.
+> Graduation status (2026-09-17, commits 34ee64c→76ae679): the §8 docs gate is DONE —
+> `docs/features/collections-platform.md` + the full `docs/spec/**` contract suite are
+> published and binding. This graph stays as the execution ledger (work units + deps +
+> verification); it no longer shrinks.
 
 ## Branching & merge policy (binding — overrides AGENTS.md §2.2 step "merge to dev" for this workstream)
 
@@ -37,8 +39,19 @@ service.js, __tests__/}`; route handlers via `asyncHandler`; service throws bare
 - **Persistence**: no SQL outside repositories — interface `server/store/repositories/`
   `<Plural>Repository.js` + `sqlite/`+`postgres/` twins + `<Plural>Repository.conformance.
 test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
-  `storage.getExecutor()`. New tables append to the numbered DDL chain
-  (`002_collections.sql`, `003_ai.sql`): TEXT+CHECK enums, `<table>_<purpose>` indexes,
+  `storage.getExecutor()`. **DDL policy (big-bang, decision 2026-09-22)**: the ENTIRE §5
+  schema — every table, P0–P4, AI included — is authored INTO
+  `001_initial_normalized_schema.sql` (single source of truth; rewritten in place). The
+  file is checksum-tracked, so already-migrated dev DBs hit the schema-drift boot error
+  exactly once → one-time reset (`DELETE FROM _schema_migrations WHERE
+  filename='001_initial_normalized_schema.sql'`); boot then re-applies cleanly — every
+  statement is `IF NOT EXISTS` (13 pre-existing tables no-op, new tables created). No
+  ALTERs of existing tables (verified). Single-file ownership removes cross-file FK
+  ordering (declare `llm_models` before `collection_centroids`) and parallel-branch DDL
+  conflicts; the file stays `convertPostgresToSqlite`-compatible. Operational/prod DB
+  (schema predates the repo chain, POC §2.2) is migrated manually at the single
+  `ai-feature`→`dev` merge/deploy. Post-merge changes resume the numbered chain at
+  `002_…`. TEXT+CHECK enums, `<table>_<purpose>` indexes,
   `created_at/updated_at TIMESTAMPTZ DEFAULT NOW()`. **Derived vector artifacts (pgvector
   shadow table, sqlite vec0 virtual table) are created/managed by the vectorStore adapter —
   never part of the tracked DDL chain (§4.13).** **sqlite driver: `node:sqlite` (Node ≥24
@@ -68,7 +81,10 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
   admin with provenance, NEVER computed at runtime from user data and never a shipped
   dataset. `ef_search=400` fixed (external-query recall). Arbiter/keeper prompts always
   carry symmetric-difference inputs. vec0: BigInt PKs, oversample→filter (no join-KNN).
-  All chat roles reasoning-off by default; probes use in-domain samples only.
+  All chat roles reasoning-off by default; probes use in-domain samples only. Activity
+  constants (§3.4: score weights, H=30d, archive min-age 14d) follow the same discipline
+  but are product T2-hot constants (dbOnly, defaults shipped, admin-displayed) — not
+  AI-profile numbers.
 - **Verification gates**: `npm run test:ci` (+ `test:ci:pg:adapters` for repository twins);
   CI grep-gate: `domains/(collections|ai)/**` and new stores contain zero
   `CacheAdapter|operationProgress` imports; conformance suite per new repository; E2E for
@@ -78,17 +94,26 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 
 ### P0 — Non-AI foundation (shippable alone)
 
-- T0.1 `content_hash`: live DB already 100% populated (PoC §2.2) — verify at boot
-  (migration-state check), consume for exact-dup/dedup paths; write-side population only
-  where empty.
-- T0.2 collections tables + repos + facades (§5 lines `collections*`, `file_likes`,
-  `collection_digest_cursors`, `collection_visibility`) — `002_collections.sql`.
-- T0.3 Collections CRUD API `/api/collections` (§3.1/§3.2 ops; activity-sort graceful
-  fallback) + route spec + integration tests.
+- T0.1 `content_hash` (A1 decision 2026-09-22 — no persistent migration-state mark): boot
+  runs a cheap non-blocking completeness probe (`COUNT(*) WHERE content_hash IS NULL`) →
+  warn log + admin_reports row; the admin repair action backfills ALL NULL rows
+  (idempotent, `WHERE content_hash IS NULL`); write-side population at the §4.1 commit
+  points covers new writes. Consume for exact-dup/dedup paths — NULL rows never form a dup
+  group.
+- T0.2 full-schema DDL (A6/A8 decision 2026-09-22): author ALL §5 tables P0–P4 into
+  `001_initial_normalized_schema.sql` per §6 big-bang policy (docs-first sweep: point
+  collectionsStore/fileLikesStore/actionJournalStore → 001 file; embeddings/aiTag/aiJobs/
+  embeddingsChunk stores + searchService 003_ai refs → 001 file) + collections/file_likes
+  repos + facades + conformance twins.
+- T0.3 Collections CRUD API `/api/collections` (§3.1/§3.2 ops; activity sort =
+  `activity_score` desc w/ `last_member_change_at`/`created_at` fallback per §3.4) +
+  route spec + integration tests.
 - T0.4 Sidebar `__collections__`/`__archive__` + list view + card menus (client per §6).
 - T0.5 File-side: `Add to collection` submenu (context+multi-select), member-row controls
   (§3.2 exact set), like toggle everywhere.
-- T0.6 `usage_events` + nightly rollup in maintenanceScheduler + activity score fn.
+- T0.6 `usage_events` + nightly rollup in maintenanceScheduler (item accumulator `S_k` +
+  `collections.activity_score` recompute) + item activity score fn (T2 constants: §3.4
+  weights, H=30d).
 - T0.7 `action_journal` infra + `commitChange` + TX/lock discipline (writers v1 =
   collections only) + `GET /api/actions` + snackbar/30d-feed UI.
 - T0.7b existing-infra edits (§4.14 Tier A plumbing incl. `admin_reports`, gcService tier
@@ -97,11 +122,13 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 - T0.8 admin reports endpoints + render + row repair actions via existing
   `repair-sync`/`perm-delete`.
 - T0.9 LLM-free items pulled from AI-phases: exact-dup finder (**hash-first — cosine 1.0
-  detection redundant, PoC §2.2/E2**), local derived tags (mime/ext/month/path/EXIF),
+  detection redundant, PoC §2.2/E2**), local derived tags (mime/ext/month/path — v1 set
+  per §4.10; EXIF rejected for v1),
   stored digest banner, cosine-free rule evaluation (path/tag/like predicates incl.
   upload-hook rule check).
-- T0.10 user dashboard `Storage` v1 (hygiene: exact dups, trash, journal feed,
-  collections status) — no AI blocks yet.
+- T0.10 user dashboard `Storage` v1 (hygiene: exact dups, trash, journal feed, collections
+  status, rule-based suggestions block fed by T0.9 per §4.16 — A7 decision 2026-09-22) —
+  no LLM/vector blocks yet.
 - T0.11 server-wide **name search** + results-mode UI + two-section rendering with
   client-side highlight (LLM-free §4.6 stage; semantic section lands as P1 add-on).
 - T0.12 **sqliteExecutor driver migration** `sqlite3` npm → `node:sqlite` (Node ≥24 floor;
@@ -113,9 +140,10 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 - T1.1 LLM adapter (T2-hot: per-call config resolution, re-probe on change, restart-free
   §4.2) + budgets/breaker + startup probe + preset manifest & preset×capability probe-matrix
   verification (declared≠probed ⇒ capability off + admin warning, §4.23) + wizard optional
-  skippable AI step storing DB rows (§4.23.5).
-- T1.2 `003_ai.sql` (`llm_models`,`embeddings`,`embeddings_chunk`,`ai_features`,`ai_jobs`,
-  `ai_usage_daily`) - repos + restart-survival test.
+  skippable AI step storing DB rows (§4.23 item 5 — wizard).
+- T1.2 AI repos (`llm_models`,`embeddings`,`embeddings_chunk`,`ai_features`,`ai_jobs`,
+  `ai_usage_daily` — tables already shipped in the T0.2 full-schema DDL) +
+  restart-survival test.
 - T1.3 jobs worker (claim per dialect, backoff, lockManager, seam, hooks §4.1).
 - T1.4 `vectorMath` + local extractors (unit-tested pure) + **`vectorStore` seam** (§4.13):
   exactly two impls — Native adapters (PG pgvector≥0.7 HNSW **ef_search=400 fixed** / sqlite
@@ -178,8 +206,10 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 **Every task below MUST be implemented against its contract specs — read them first; a
 mismatch with §7.1 files is a bug in whichever side is newer (docs-first: fix the spec in
 the same PR).** AI_FEATURE_PLAN.md sections carry their own "Contract specs" lines; this
-map is the task-row view. Specs marked "(lands with Tx docs step)" do not exist yet —
-write them at that task's docs-first step before tests/code.
+map is the task-row view. All §7.1 spec files now exist (written by the §8 docs gate,
+2026-09-17) — they are the binding contract specs. Path prefixes are implicit:
+component/hook/service/page specs live under `docs/spec/client/`; route/store/service/
+infrastructure specs live under `docs/spec/server/`.
 
 - T0.2 `docs/spec/`store/collectionsStore.md, store/fileLikesStore.md, store/actionJournalStore.md
 - T0.3 `docs/spec/`routes/collections.md, services/collectionsService.md, hooks/useCollections.md
@@ -201,7 +231,7 @@ write them at that task's docs-first step before tests/code.
 - T3.4 `docs/spec/`services/searchService.md, routes/search.md, hooks/useSearchResults.md
 - T3.5 `docs/spec/`store/actionJournalStore.md, hooks/{useFileOperations,useUndoToast}.md
 - T3.6 `docs/spec/`routes/collections.md, services/collectionsService.md
-- T4.1/T4.2/T4.3 `docs/spec/`infrastructure/{llmPresets,llmAdapter}.md, services/aiJobService.md, routes/admin.md, server/SETUP.md + testing: docs/TESTING_STRATEGY.md (AI tiers)
+- T4.1/T4.2/T4.3 `docs/spec/`infrastructure/{llmPresets,llmAdapter}.md, services/aiJobService.md, routes/admin.md, docs/SETUP.md + testing: docs/TESTING_STRATEGY.md (AI tiers)
 
 ## 8. Docs gate (per phase, before code — AGENTS §2.1)
 
@@ -215,9 +245,8 @@ llmAdapter.md) + `maintenanceScheduler.md` update; client
 per-component/service specs (`docs/spec/client/services/collectionsRepository.md`, hooks,
 components). Updates: `api.md`, `ARCHITECTURE.md` (§1.0 domain tree, §1.2 infra table),
 `shared-contracts.md` (code blocks + enums + response-casing note per §6),
-`TESTING_STRATEGY.md` (hermetic suites, E2E ID ranges), `SETUP.md` (LLM as T2/DB-row config
-
-- preset table §4.23 + Node ≥24 floor & sqlite driver note T0.12),
+`TESTING_STRATEGY.md` (hermetic suites, E2E ID ranges), `SETUP.md` (LLM as T2/DB-row
+config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
   `docs/features/client-ui.md` (virtual collections),
   `docs/features/config-source-resolution.md` (preset/wizard surface),
   `docs/spec/server/routes/setup.md` + `docs/spec/client/pages/Setup.md` (optional AI step,

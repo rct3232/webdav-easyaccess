@@ -112,8 +112,10 @@ Field rules:
 - `item_count`: members in the requester-resolved view (stored ∪ derived − exclusions,
   live ACL + trash filter applied), exact.
 
-- **GET /:** Query `sort` = `activity` (default) | `name` | `created` | `updated` |
-  `similar`; `include` = comma list of `mine,shared,archived` (default `mine,shared`).
+- **GET /:** Query `sort` = `activity` (default — `activity_score` desc, then
+  `last_member_change_at`, `created_at` desc; store §2.5) | `name` | `created` |
+  `updated` | `similar`; `include` = comma list of `mine,shared,archived` (default
+  `mine,shared`).
   `similar` = centroid-cluster grouping (§3.1, greedy nearest-neighbor over the returned
   rows in JS): rows are pre-grouped in cluster order and each carries
   `cluster_index: 0|1|...` for group headers; all other sorts omit `cluster_index`.

@@ -104,13 +104,16 @@ Journal = create command + note on the parent's digest.
 
 ### 2.6 Pass 3 — archive (uniform, no tier exemptions)
 
-`active ∧ origin='system'` and (activity < ε for N days OR members ≈ 0) ⇒
-`archiveCollection` (journaled, `actor='system'`). ε/N are T2 hot constants (defaults:
-ε = zero activity-score delta; N = 60 — **tuning values, §4.15 counters measured**; not
-AI-profile numbers). **SKIPPED for pinned collections** (`pinned=true`, whether
-`pinned_by='user'|'auto'`, §4.9b). The former exclusion-rate > θ trigger is REMOVED
-(exclusion = touch ⇒ pin; a pinning act cannot also be an archive trigger) — exclusion
-rate stays a generator-QUALITY metric in §4.15 only.
+`active ∧ origin='system'` and (activity ≤ ε for N consecutive nightly evals OR members ≈
+0) ⇒ `archiveCollection` (journaled, `actor='system'`). activity = Σ_members w_a of NEW
+usage events in the eval interval (§3.4 rollup supplies it) — ε default 0 ⇒ "no positive
+usage for N days". ε/N and the **min-age grace (default 14d: system-origin collections
+younger than 14d are never archived — the former definition-age score ingredient,
+re-homed 2026-09-22, §3.4)** are T2 hot constants (defaults shipped, admin-displayed —
+**tuning values, §4.15 counters measured**; not AI-profile numbers). **SKIPPED for pinned
+collections** (`pinned=true`, whether `pinned_by='user'|'auto'`, §4.9b). The former
+exclusion-rate > θ trigger is REMOVED (exclusion = touch ⇒ pin; a pinning act cannot also
+be an archive trigger) — exclusion rate stays a generator-QUALITY metric in §4.15 only.
 
 ### 2.7 Pass 4 — purge + tombstone fingerprint
 

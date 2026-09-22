@@ -106,7 +106,8 @@ join-time ACL are service-layer concerns (precedent `enrichRecentEntry`).
 | `setVisible`             | (userId, collectionId, hidden) => Promise\<{ changes }\>                                  | `collection_visibility` upsert — `leave` is a local hidden flag (§4.7). NON-JOURNALED.                                                                                        |
 | `isHiddenFor`            | (userId, collectionId) => Promise\<boolean\>                                              | Visibility filter at list read time.                                                                                                                                          |
 | `getDigestCursor`        | (userId, collectionId) => Promise\<isoString \| null\>                                    | `collection_digest_cursors.last_visited_at`.                                                                                                                                  |
-| `upsertDigestCursor`     | (userId, collectionId, lastVisitedAt) => Promise\<{ changes }\>                           | PK-pair upsert; drives `+N/-M` digest counts together with `listStoredItems(since)` and `last_member_change_at` (§4.8). NON-JOURNALED.                                        |
+| `upsertDigestCursor`        | (userId, collectionId, lastVisitedAt) => Promise\<{ changes }\>                           | PK-pair upsert; drives `+N/-M` digest counts together with `listStoredItems(since)` and `last_member_change_at` (§4.8). NON-JOURNALED.                                        |
+| `recomputeActivityScores`   | (collectionIds?) => Promise\<{ changes }\>                                                | Σ member item-accumulator scores (`node_activity.score`) → `collections.activity_score` (§3.4). Called by the nightly rollup (maintenanceScheduler §3.1) and on every membership mutation (alongside `last_member_change_at`). NON-JOURNALED.  |
 | `getCentroids`           | (collectionIds, modelId) => Promise\<{ collectionId, modelId, centroid, memberCount }[]\> | Batch read of `collection_centroids` — `similar` sort grouping (service JS over ≤20 rows, §3.1) and merge PREFILTER only (never grounds, §4.9c).                              |
 | `upsertCentroid`         | (collectionId, modelId, centroid, memberCount) => Promise\<{ changes }\>                  | PK `(collection_id, model_id)` upsert; model-keyed so a stale-space centroid never mixes into new-space math (§4.20). NON-JOURNALED.                                          |
 | `deleteCentroids`        | (collectionId) => Promise\<{ changes }\>                                                  | Purge/rebuild support.                                                                                                                                                        |
@@ -119,9 +120,11 @@ join-time ACL are service-layer concerns (precedent `enrichRecentEntry`).
 
 ### 2.5 Sort and list semantics
 
-- `activity` (sidebar default, §3.1): `ORDER BY COALESCE(last_member_change_at, updated_at,
-created_at) DESC`. **Decision:** the stored column is the ordering key; the richer
-  activity score (usage signals) never reorders the card list itself.
+- `activity` (sidebar default, §3.1): `ORDER BY activity_score DESC, last_member_change_at
+  DESC, created_at DESC`. **Decision (owner, 2026-09-22 — supersedes the prior
+  timestamp-only ordering):** the card list IS activity-score ordered (§3.4);
+  `last_member_change_at` → `created_at` remain as tie-breaker AND graceful fallback
+  while `activity_score` is absent/all-zero (pre-rollup data).
 - `name`: locale-unaware `ORDER BY name` (both dialects); `created`/`updated`: timestamps.
 - `similar` is not a SQL sort: service fetches the list and groups by centroid nearest-
   neighbor in JS (§3.1, ≤~20 rows) using `getCentroids`.
@@ -168,5 +171,6 @@ created_at) DESC`. **Decision:** the stored column is the ordering key; the rich
 - [ ] `setVisible(hidden=true)` removes the collection from `listForUser` for that user only; `upsertDigestCursor` round-trips `getDigestCursor`
 - [ ] `upsertMergeSuggestion(2,1)` and `upsertMergeSuggestion(1,2)` yield ONE row (pair normalization)
 - [ ] `setSuggestionState` rejects `merged → pending` (`changes: 0`)
-- [ ] L2 conformance (`CollectionsRepository.conformance.test.js`) on real sqlite (`test:ci`) AND real PostgreSQL (`test:ci:pg:adapters`): PK/CASCADE semantics, partial-unique `(owner_id,name)` active-scoping, `activity`-sort COALESCE ordering parity, JSONB (PG) vs TEXT (sqlite) `definition` round-trip, ON CONFLICT idempotency parity
+- [ ] L2 conformance (`CollectionsRepository.conformance.test.js`) on real sqlite (`test:ci`) AND real PostgreSQL (`test:ci:pg:adapters`): PK/CASCADE semantics, partial-unique `(owner_id,name)` active-scoping, `activity`-sort (`activity_score` desc +
+tie-breaker chain) ordering parity, JSONB (PG) vs TEXT (sqlite) `definition` round-trip, ON CONFLICT idempotency parity
 - [ ] Facade parity: no SQL text in `collectionsStore.js`; all mutators route through the repository + commitChange (grep assertion)

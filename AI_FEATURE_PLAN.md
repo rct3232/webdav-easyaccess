@@ -146,11 +146,33 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
 `usage_events(user_id,node_id,action,created_at)` — actions: open | download | preview |
 search_hit | like. Logged ONLY at low-frequency endpoints (download/preview/search-hit/
 like/list-entry-click); NOT on directory listings (write-amplification guard). Nightly
-rollup → `node_activity(user_id,node_id,opens,downloads,last_seen_at,...)`; raw events
-rolled off at 90d by GC. Activity score = decayed mix of node_activity + likes + exclusion
-negatives + definition age.
+rollup → `node_activity(user_id,node_id,opens,downloads,previews,search_hits,last_seen_at,likes,updated_at,score,…)`; raw events
+rolled off at 90d by GC.
 
-Contract specs (binding, MUST read before implementing this section): `docs/spec/server/infrastructure/maintenanceScheduler.md`, `docs/spec/server/store/collectionsStore.md (activity sort)`
+**Activity score (owner re-adjudication 2026-09-22 — two levels, one formula family):**
+- **Item accumulator** (per user+node; maintained by the nightly rollup):
+  `S_k = S_(k-1) · 2^(−Δt_k/H) + Σ_(events in interval k) w_a`, H = 30d half-life,
+  `w_open=1, w_preview=2, w_download=3, w_search_hit=1, w_like=5`; stored as
+  `node_activity.score` (count columns stay lifetime totals). Weights/H are T2 hot
+  product constants (dbOnly, defaults shipped, admin-displayed — tuning values per §4.15
+  counters, not AI-profile numbers). Item ordering inside a collection applies read-time
+  lazy decay `S_read = S · 2^(−(now−updated_at)/H)`.
+- **Collection score** (first-class, persisted `collections.activity_score REAL`, §5):
+  `activity_score = Σ_(current members) S_m` — PURE activity (usage + likes, decayed).
+  Recomputed by the nightly rollup AND on every membership mutation (non-journaled,
+  alongside the `last_member_change_at` stamp; ≤500 members ⇒ negligible).
+  **Exclusion negatives and definition age are NOT score ingredients** (owner decision
+  2026-09-22): an excluded/removed member's score leaves the sum with the member itself —
+  no separate penalty (exclusions are touches/§4.9b pins per owner decision 2026-09-16,
+  never penalties or triggers) — and age lives ONLY in the archive gate as min-age grace
+  (§4.9 pass 3).
+- **Consumers:** card list `sort=activity` = `activity_score DESC, last_member_change_at
+  DESC, created_at DESC` (timestamp chain = tie-breaker + graceful fallback while the
+  score is absent/all-zero — supersedes the prior "score never reorders the card list"
+  store decision); item ordering = activity score desc, `node_id` asc (read-time decay);
+  archive gate = event-based ε/N (§4.9 pass 3).
+
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/infrastructure/maintenanceScheduler.md`, `docs/spec/server/store/collectionsStore.md (activity sort)`, `docs/spec/server/services/evolutionService.md (archive gate)`
 
 ## 4. Behavior specifications
 
@@ -278,6 +300,14 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
      legitimately return few/zero rows; that is the semantic section's job.
      **LLM-free; ships in P0** (T0.11). Response returns ids+names; highlight ranges are
      computed client-side (pure helper; server never returns markup offsets).
+     **Ordering/caps (decision 2026-09-22, mirrors `routes/search.md:58,73`):**
+     `name_matches` ordered `name` asc, then `node_id` asc, hard cap 200
+     (`counts.name_truncated: true` when cut); `semantic` ordered score desc, then
+     `node_id` asc, cap 50. Highlights are COSMETIC-ONLY (no correctness contract vs the
+     server's dialect-specific matching): the client computes case-insensitive
+     all-occurrence ranges of the trimmed query inside the returned `name` (pure helper
+     `utils/searchHighlight.js`; its util spec is written at the T0.11 docs step); a row
+     whose match cannot be located simply renders unhighlighted.
   2. `semantic`: vector results (P1+, embed-only config) — no highlighting; entries already
      present in section 1 are de-duplicated from section 2's display. Scoring = **segment-
      AND**: split query on whitespace (≤3 segments), per-segment max-over-chunks cosine,
@@ -375,7 +405,11 @@ Inputs: node_activity, likes, tags(ortho-normalized; §4.18), embeddings. Passes
    No tier-specific lifecycle exemptions (owner decision 2026-09-16 — uniform rules only).
 2. **Split**: hot subset within a collection crossing create-gates → NEW SIBLING
    `system` collection (never nested), parent untouched.
-3. **Archive**: activity < ε for N days OR members≈0 — **skipped for any pinned collection
+3. **Archive**: activity ≤ ε for N consecutive nightly evals (activity = Σ_members w_a of
+   NEW usage events in the interval — available from the §3.4 rollup; ε default 0 ⇒ "no
+   positive usage for N days") OR members≈0, gated by **min-age grace: system-origin
+   collections younger than 14d are never archived** (the former definition-age score
+   ingredient, re-homed here 2026-09-22 — §3.4) — **skipped for any pinned collection
    (§4.9b)**. The former exclusion-rate>θ trigger is REMOVED (owner decision 2026-09-16:
    exclusion counts as ownership/touch, hence pins — a pinning act cannot also be an
    archive trigger); exclusion rate stays measured as a generator-quality metric (§4.15).
@@ -425,6 +459,11 @@ search → query text verbatim; seed → `{seedFileName} and similar files`; sys
 top-2 local derived tags `{tag1} · {tag2} photos`; split → `{parentName} · {diffTag}`;
 fallback → `Auto collection N` (system-origin only). `llmNamer` (chat configured) produces the
 name for new system creations instead. Template output is final; no post-hoc rename jobs.
+
+**Local derived tags — v1 set (decision 2026-09-22)**: `mime`, `ext`, `month` (calendar
+month of node `created_at`), `path` (top-2 ancestor path segments). Computed at the §4.1
+commit points; consumed by the templates above, tag predicates (§4.12) and rule-based
+suggestions (filename/mime/age). EXIF is REJECTED for v1 (not a tag source).
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/services/collectionsService.md`, `docs/spec/server/services/aiJobService.md`
 
@@ -932,14 +971,19 @@ visible but half-works under the active provider is a defect, not a degradation.
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/infrastructure/llmPresets.md`, `docs/spec/server/routes/setup.md`, `docs/spec/client/pages/Setup.md`
 
-## 5. Schema (PG-canonical, `002_collections.sql`, `003_ai.sql`; sqlite via transpiler)
+## 5. Schema (PG-canonical; sqlite via transpiler). DDL delivery = single-file big-bang:
+ALL §5 tables (P0–P4) are authored into `001_initial_normalized_schema.sql` (rewritten in
+place; already-migrated dev DBs reset their `_schema_migrations` row once — see PLAN §6);
+operational/prod DB is migrated manually at the `ai-feature`→`dev` merge/deploy. Post-merge
+changes resume the numbered chain at `002_…`.
 
 All: snake*case, TEXT+CHECK enums, `created_at TIMESTAMPTZ DEFAULT NOW()`, indexes
 `<table>*<purpose>`.
 
 - `collections(id, owner_id→users, name, name_locked, origin, status, definition JSONB,
 publish_mode, pinned, pinned_by CHECK(user|auto) NULL, archived_at, last_member_change_at,
-created_at, updated_at)`; partial-unique (owner,name) active.
+activity_score REAL NOT NULL DEFAULT 0 (§3.4), created_at, updated_at)`; partial-unique
+(owner,name) active.
 - `collection_items(collection_id→CASCADE, node_id→CASCADE, added_by→users, published,
 created_at, PK(pair))`
 - `collection_exclusions(collection_id→CASCADE, node_id→CASCADE, created_at, PK(pair))`
@@ -962,8 +1006,8 @@ member_count, updated_at, PK(collection_id,model_id))` — model_id is the MODEL
   function, this table stores the materialized grouping aid for scale)
 - `usage_events(id, user_id, node_id→CASCADE, action, created_at)`; idx(node,created),
   (user,created)
-- `node_activity(user_id, node_id, opens, downloads, last_seen_at, likes, updated_at,
-PK(pair))`
+- `node_activity(user_id, node_id, opens, downloads, previews, search_hits, last_seen_at,
+likes, score REAL NOT NULL DEFAULT 0 (§3.4 item accumulator), updated_at, PK(pair))`
 - `action_journal(id, domain CHECK(collection|batch|settings|permissions|tags|file|sharing),
 subject TEXT, subject_label TEXT, actor, action, payload JSONB, chain_seq, status
 CHECK(applied|undone|expired), created_at, undone_at, expires_at)`;

@@ -57,7 +57,7 @@ Notes:
 
 - **Headers must remain stable** for `/preview`: `Content-Disposition: inline` and `Content-Type` derived from filename.
 - Response body bytes are identical to non-streaming behavior; only the server→client transfer uses chunked writes.
-- Range requests are **not supported** today (`req.headers.range` is not honored); adding `206 Partial Content` range support is tracked in `docs/IMPROVEMENT_PLAN.md`.
+- Range requests are **not supported** today (`req.headers.range` is not honored).
 
 ### 2.5 Related Documents
 

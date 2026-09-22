@@ -23,7 +23,7 @@ Move physical blobs between the WebDAV and S3 backends while keeping the DB meta
 - **Source-native webdav snapshot + post-copy activation:** a `webdav-to-s3` run snapshots native webdav files even without an `object_map` row (see §6) and, after each successful copy, sets the node `sync_status='active'` so the post-cutover S3 state matches the S3 lifecycle model.
 - **Mandatory dry-run before any write:** an `--apply` run first performs a dry pass; any failure blocks all writes.
 - **Per-node failure isolation:** a failing node is recorded and processing continues.
-- **Source-blob preservation:** source blobs are never deleted (a `--delete-mode` follow-up is tracked in `docs/IMPROVEMENT_PLAN.md`).
+- **Source-blob preservation:** source blobs are never deleted.
 
 **Unified migration mode (decisions D1–D4, D7–D10 in `docs/features/migration-mode.md`):**
 
@@ -262,8 +262,7 @@ reaches a terminal state.
 | `webdav-to-s3` | Upsert row → `(storage_backend='s3', s3_key=<UUID>, active)`.                                                                                 |
 | `s3-to-webdav` | Flip `storage_backend='webdav'` inline after the webdav upload succeeds; `s3_key` is retained (a legacy reference; harmless; helps rollback). |
 
-There is **no** transition that nulls `s3_key`. Source blobs are never deleted (a delete-mode
-follow-up is tracked in `docs/IMPROVEMENT_PLAN.md`).
+There is **no** transition that nulls `s3_key`. Source blobs are never deleted.
 
 ---
 
@@ -281,11 +280,9 @@ Resume is **automatic and always on** — there is no `--resume` flag or UI chec
 ## 9. Dry-Run and Safety Gates
 
 1. **Dry-run is mandatory before any write:** `--apply` first performs the dry-run pass (config validation + snapshot enumeration + destination connectivity); any failure blocks all writes (exit code `1`). `--dry-run` / `--check-env` never write.
-2. **Source blobs are never deleted** (a `--delete-mode` follow-up is tracked in
-   `docs/IMPROVEMENT_PLAN.md`).
+2. **Source blobs are never deleted**.
 3. **`.wea` is a normal folder** — included in migration like any other node. The `.wea-` NAME PREFIX is reserved server-side (`validateFileName` rejects it on create/upload/folder/rename): the trash namespace `/.wea-trash/<nodeId>` (DEF-16) lives at the root and migrates verbatim like any other folder.
-4. **`--force` re-copy** is included (overrides the automatic resume skip); `--delete-mode` is
-   not (tracked in `docs/IMPROVEMENT_PLAN.md`).
+4. **`--force` re-copy** is included (overrides the automatic resume skip); `--delete-mode` is not included.
 5. **Per-node failure isolation:** a failing node is caught, recorded in `errors`, and processing continues. The run only aborts when config/snapshot/destination validation fails.
 6. **Cancellation:** the cancel flag is set immediately; the current node finishes then the copy stops (cancel check in the `runCopy` loop). Partial progress is kept and resumed on rerun; the source is never touched.
 

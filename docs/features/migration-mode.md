@@ -352,9 +352,3 @@ Representative observable behaviors to cover:
 - Terminal always surfaces an auto modal with summary + "Go to settings" — including a job that
   completed before `/migration` mounted (recovered via the `lastJob` completion notice + ack).
 - No schema change beyond the existing DDL; `client`/`server` `test:ci` + E2E stay green.
-
----
-
-## Future work
-
-Future admin/operator app split — tracked in `docs/IMPROVEMENT_PLAN.md`.

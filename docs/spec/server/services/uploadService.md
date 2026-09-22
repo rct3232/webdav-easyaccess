@@ -102,8 +102,7 @@ Transaction helpers (`getBackend`, `withTransaction`, `withSqliteTransaction`) a
 A failed **new-file** upload (`uploadFile`) is fully rolled back so no visible DB residue remains;
 a failed **overwrite** (`overwriteFile`) rolls back to the pre-state — the node is restored to
 `active` with the previous version still downloadable. Only if the rollback itself fails does the
-documented `pending_upload` stuck state remain, handled by scan/repair + GC cleanup (DEF-12/13,
-`docs/IMPROVEMENT_PLAN.md`).
+documented `pending_upload` stuck state remain, handled by scan/repair + GC cleanup (DEF-12/13).
 
 | Method                        | Failure Point | DB State after failure                                                                                                                         | Storage State                                               | Behavior / Recovery (implemented)                                                                                                                          |
 | ----------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -165,7 +164,7 @@ same list as the additive `pendingUploadNodes` result key.
 
 - Duplicate file name under same parent → UNIQUE constraint error from DB (TX1 rollback)
 - S3 PUT failure during new-file upload (network, permissions) → created node rolled back; original error re-thrown to caller
-- S3 PUT failure during overwrite → best-effort rollback to pre-state (previous active row reactivated, node `active`, pending row/blob deleted); file remains downloadable as the previous version; original error re-thrown. If the rollback itself fails, the node stays `pending_upload` with a pending object_map (scan/repair + GC cleanup — see `docs/IMPROVEMENT_PLAN.md`)
+- S3 PUT failure during overwrite → best-effort rollback to pre-state (previous active row reactivated, node `active`, pending row/blob deleted); file remains downloadable as the previous version; original error re-thrown. If the rollback itself fails, the node stays `pending_upload` with a pending object_map (scan/repair + GC cleanup)
 - TX2 failure after successful S3 PUT (overwrite) → same best-effort rollback as S3 PUT failure; the uploaded new blob is deleted best-effort and the last-good blob B_k is never deleted
 - TX2 failure after successful S3 PUT (new file) → node rolled back; blob orphaned in S3, removed by Tier 2 GC
 - `fileNodeService.deleteNode` cleanup failure during rollback is best-effort (swallowed) — the original upload error is always surfaced

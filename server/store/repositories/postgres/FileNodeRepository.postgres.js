@@ -2,6 +2,7 @@
 
 const { mapDatabaseError } = require('../../../utils/errorHandler');
 const { mapNodeRow, mapChildRow } = require('../fileNodeShared');
+const { toIsoString } = require('../../../utils/sharedHelpers');
 
 /**
  * postgres implementation of FileNodeRepository (`$n` placeholders).
@@ -661,6 +662,56 @@ module.exports = function createPostgresFileNodeRepository(executor) {
           [Number(fileNodeId)]
         );
         return rows[0] || null;
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    // ---- content-hash completeness surface (T0.1/T0.8) ------------------
+
+    async countCacheRowsWithNullContentHash() {
+      try {
+        const { rows } = await executor.query(
+          'SELECT COUNT(*) AS cnt FROM filecache WHERE content_hash IS NULL'
+        );
+        return Number(rows[0].cnt);
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async listCacheRowsWithNullContentHash({ limit = 500, afterId = 0 } = {}) {
+      try {
+        const { rows } = await executor.query(
+          `SELECT fc.file_node_id, fn.name, fn.type, fn.deleted_at
+             FROM filecache fc
+             JOIN file_nodes fn ON fn.id = fc.file_node_id
+            WHERE fc.content_hash IS NULL AND fn.type = 'file' AND fn.id > $1
+            ORDER BY fc.file_node_id ASC
+            LIMIT $2`,
+          [Number(afterId), Number(limit)]
+        );
+        return rows.map((row) => ({
+          nodeId: Number(row.file_node_id),
+          name: row.name,
+          type: row.type,
+          deletedAt: toIsoString(row.deleted_at),
+        }));
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async setCacheContentHash(fileNodeId, contentHash) {
+      try {
+        // Guarded on content_hash IS NULL — the idempotency contract: an
+        // already-hashed row is never touched again.
+        const res = await executor.run(
+          `UPDATE filecache SET content_hash = $1, updated_at = NOW()
+            WHERE file_node_id = $2 AND content_hash IS NULL`,
+          [String(contentHash), Number(fileNodeId)]
+        );
+        return { changes: res.changes };
       } catch (error) {
         throw mapDatabaseError(error);
       }

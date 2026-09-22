@@ -50,6 +50,15 @@
  * @property {(fileNodeId) => Promise<{ changes: number }>} setObjectMapBackendWebdav
  * @property {(fileNodeId, size, mimeType, contentHash) => Promise<{ changes: number }>} upsertCache
  * @property {(fileNodeId) => Promise<Object|null>} getCache
+ * @property {() => Promise<number>} countCacheRowsWithNullContentHash
+ * @property {({ limit?: number, afterId?: number }) => Promise<Array<{ nodeId: number, name: string, type: 'file', deletedAt: string|null }>>} listCacheRowsWithNullContentHash
+ *   Content-hash completeness surface (T0.1/T0.8): file rows with a NULL
+ *   `filecache.content_hash`, ascending by node id; keyset-paginated via
+ *   `afterId` (rows with nodeId > afterId) so the streaming backfill never
+ *   re-fetches rows it failed on.
+ * @property {(fileNodeId, contentHash) => Promise<{ changes: number }>} setCacheContentHash
+ *   Idempotent write — `WHERE content_hash IS NULL` only; `changes` reports
+ *   whether the row was touched.
  * @property {() => Promise<string[]>} getKeptObjectMapKeys
  * @property {() => Promise<Array<Object>>} getFileNodesPathRows
  * @property {(olderThanDays: number) => Promise<Array<Object>>} getOrphanedObjectsWithNodeState

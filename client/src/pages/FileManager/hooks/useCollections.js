@@ -11,7 +11,6 @@ import { useTranslation } from 'react-i18next';
 import explorerGateway from '../../../services/explorerGateway';
 import { getServerErrorDisplay } from '../../../utils/errorUtils';
 
-const DEFAULT_INCLUDE = 'mine,shared';
 const DEFAULT_SORT = 'activity';
 
 /**

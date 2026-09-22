@@ -69,7 +69,11 @@ async function createTestDatabase() {
     return {
       dir: dbPath,
       cleanup: async () => {
-        process.env.WEA_SQLITE_PATH = prevSqlitePath;
+        // Restore EXACTLY: an unset previous value must be deleted, not
+        // re-assigned — a literal 'undefined' string leaks into the next
+        // suite on this worker (stray `./undefined` SQLite files).
+        if (prevSqlitePath === undefined) delete process.env.WEA_SQLITE_PATH;
+        else process.env.WEA_SQLITE_PATH = prevSqlitePath;
         try {
           storage.closeSqliteDb();
         } catch {
@@ -130,12 +134,36 @@ async function createTestDatabase() {
     });
     storage.setTestBackend('postgresql', pool);
   }
+  // On the PG leg no suite sets WEA_SQLITE_PATH, yet require-time boot paths
+  // (index.js probes via initMetadataStore) can open a SQLite handle — without
+  // a guard they fall back to the default `data/webdav.db` and create it inside
+  // the repo. Point any incidental SQLite open at a disposable temp file.
+  const pgPrevSqlitePath = process.env.WEA_SQLITE_PATH;
+  let pgSqliteGuard = null;
+  if (!pgPrevSqlitePath) {
+    pgSqliteGuard = `/tmp/wea-pgleg-sqlite-guard-${crypto.randomUUID()}.db`;
+    process.env.WEA_SQLITE_PATH = pgSqliteGuard;
+  }
   await initMetadataStore();
   await truncateAllTables();
 
   return {
     dir: null,
     cleanup: async () => {
+      if (pgPrevSqlitePath === undefined) delete process.env.WEA_SQLITE_PATH;
+      else process.env.WEA_SQLITE_PATH = pgPrevSqlitePath;
+      try {
+        await storage.closeSqliteDb();
+      } catch {
+        /* ignore */
+      }
+      if (pgSqliteGuard) {
+        try {
+          await fs.promises.unlink(pgSqliteGuard);
+        } catch {
+          /* ignore */
+        }
+      }
       // Suites run serially (--runInBand); closing the shared pool here lets
       // the final suite release the event loop so Jest can exit cleanly. The
       // pool is recreated lazily by the next suite that needs it.

@@ -838,7 +838,9 @@
       "repairSyncRemoteMissing": "Remote file is missing; cannot force-active.",
       "repairUploadInvalidAction": "Invalid repair action.",
       "repairUploadNotPending": "Node is not in the expected sync state.",
-      "repairUploadBlobMissing": "Pending blob is missing; cannot complete."
+      "repairUploadBlobMissing": "Pending blob is missing; cannot complete.",
+      "reportNotFound": "Admin report not found.",
+      "repairNotAvailable": "No repair action is available for this report."
     },
     "ai": {
       "notConfigured": "The AI feature is not configured. Please contact the administrator.",
@@ -1052,7 +1054,8 @@
       "migrationCancelled": "Migration cancelled.",
       "configSaved": "Configuration saved.",
       "configSyncDone": "Database settings synced from the environment.",
-      "repairSyncDone": "Repair action completed."
+      "repairSyncDone": "Repair action completed.",
+      "reportRepaired": "Report repair completed."
     },
     "share": {
       "addedToShared": "Added to your shared items"

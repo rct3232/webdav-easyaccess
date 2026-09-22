@@ -7,8 +7,8 @@ const permissionStore = require('../../../store/permissionStore');
  * Persist the cleanup run result as an admin_reports row (§4.14 Tier A —
  * `kind='cleanup'`, status ok/partial with the full result payload). The
  * `adminReportsWriter` parameter is a DI seam for tests; production uses the
- * shared writer from adminReportsService (inert until T0.8 wires the store).
- * Best-effort: reporting never fails the cleanup itself.
+ * shared writer from adminReportsService (wired to the admin_reports store
+ * since T0.8). Best-effort: reporting never fails the cleanup itself.
  */
 async function persistCleanupReport(results, adminReportsWriter) {
   try {
@@ -25,6 +25,27 @@ async function persistCleanupReport(results, adminReportsWriter) {
     });
   } catch (error) {
     // Swallowed by contract: a reporting failure must not fail the cleanup.
+  }
+}
+
+/**
+ * Fire-and-forget kick of the T0.1 boot content-hash completeness probe
+ * (§4.14 Tier A / docs/spec/server/routes/admin.md §2.5). The probe itself
+ * lives in adminReportsService (non-blocking COUNT + warn log + kind='failsafe'
+ * row). It runs from the boot setImmediate hook in server/index.js, which
+ * calls ensureHomeOwnerAdminForAllUsers — placing the kick here (inside the
+ * admin domain) avoids touching index.js/maintenanceScheduler.js, whose
+ * ownership belongs to other workstreams. Best-effort: a probe failure never
+ * affects the permission cleanup.
+ */
+function kickStartupAdminReportsProbe() {
+  try {
+    const { runContentHashCompletenessProbe } = require('./adminReportsService');
+    runContentHashCompletenessProbe().catch((error) =>
+      console.warn(`admin-reports boot completeness probe failed: ${error.message}`)
+    );
+  } catch (error) {
+    console.warn(`admin-reports boot completeness probe failed: ${error.message}`);
   }
 }
 
@@ -85,6 +106,8 @@ async function cleanupOrphanedData({ adminReportsWriter } = {}) {
  * @returns {{ updatedUsers: number, upgradedPaths: number, grantedPaths: number, errors: string[] }}
  */
 async function ensureHomeOwnerAdminForAllUsers() {
+  kickStartupAdminReportsProbe();
+
   const result = {
     updatedUsers: 0,
     upgradedPaths: 0,

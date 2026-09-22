@@ -63,6 +63,9 @@ function createFileNodesStore() {
     setObjectMapBackendWebdav: (...args) => repo.setObjectMapBackendWebdav(...args),
     upsertCache: (...args) => repo.upsertCache(...args),
     getCache: (...args) => repo.getCache(...args),
+    countCacheRowsWithNullContentHash: (...args) => repo.countCacheRowsWithNullContentHash(...args),
+    listCacheRowsWithNullContentHash: (...args) => repo.listCacheRowsWithNullContentHash(...args),
+    setCacheContentHash: (...args) => repo.setCacheContentHash(...args),
     getKeptObjectMapKeys: (...args) => repo.getKeptObjectMapKeys(...args),
     getFileNodesPathRows: (...args) => repo.getFileNodesPathRows(...args),
 

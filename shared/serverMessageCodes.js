@@ -69,6 +69,8 @@ const SERVER_ERROR_CODES = {
     configT0Protected: P('serverErrors.admin', 'configT0Protected'),
     configInvalidPayload: P('serverErrors.admin', 'configInvalidPayload'),
     configEnvSourcedProtected: P('serverErrors.admin', 'configEnvSourcedProtected'),
+    reportNotFound: P('serverErrors.admin', 'reportNotFound'),
+    repairNotAvailable: P('serverErrors.admin', 'repairNotAvailable'),
   },
   share: {
     shareLinkNotFound: P('serverErrors.share', 'shareLinkNotFound'),
@@ -269,6 +271,7 @@ const SERVER_MESSAGE_CODES = {
     migrationCancelled: P('serverMessages.admin', 'migrationCancelled'),
     configSaved: P('serverMessages.admin', 'configSaved'),
     configSyncDone: P('serverMessages.admin', 'configSyncDone'),
+    reportRepaired: P('serverMessages.admin', 'reportRepaired'),
   },
   folders: {
     createSuccess: P('serverMessages.folders', 'createSuccess'),

@@ -270,6 +270,24 @@ config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
 - **P0 exit gate**: full `npm run test:ci` (client+server) + `test:ci:pg:adapters` + all new
   conformance suites + E2E-COLLECTION-001 lifecycle & degradation matrix — then `ai-feature`
   carries the merged P0. (`ai-feature`→`dev` merge remains a single event after ALL §7 phases.)
+- **Wave-1 provenance (2026-09-22)**: branch `feature/t08-admin-reports-repair` — T0.8 + the
+  T0.1 remainder landed: `admin_reports` store (`server/store/adminReportsStore.js`,
+  AdminReportsRepository sqlite/postgres twins + conformance), `GET /api/admin/reports(/:id)`
+  + the kind/action-dispatched `POST /api/admin/reports/:id/repair` (`content_hash` NULL-hash
+  backfill (idempotent, `WHERE content_hash IS NULL`), `repair-sync`/`perm-delete`
+  delegations to the §2.2.3 cores — mounted via the maintenance module router, no
+  `index.js` edit), FileNodeRepository content-hash completeness surface
+  (`countCacheRowsWithNullContentHash`/`listCacheRowsWithNullContentHash` keyset-paged/
+  `setCacheContentHash` + conformance), and the boot completeness probe
+  (`kind='failsafe'` row with the `contentHashCompleteness` section, warn log,
+  `WEA_SKIP_ADMIN_REPORTS`-honoring) kicked fire-and-forget from
+  `cleanupService.ensureHomeOwnerAdminForAllUsers`. Residuals flagged to the orchestrator:
+  (a) merging the probe section INTO the `maintenanceScheduler.runStartupFailSafeRecovery`
+  failsafe row (§3.2 wording) is deferred to the T0.6 owner — the probe emits its own
+  `kind='failsafe'` row today; (b) upload/copy/restore commit points still persist NULL
+  `content_hash` — write-side population exists only at the blob-migration commit points,
+  and per §4.1 the upload-point population rides the ai_jobs enqueue task; the probe +
+  backfill cover the gap until that lands.
 - **Wave-0 spec debt found during planning (2026-09-22, resolved in the T0.12 PR)**: §6/T0.12
   said the sqlite driver is confined to `db/sqliteExecutor.js`, but the real `sqlite3` npm
   sites are `store/storage.js`, `metadataMigrationService.js`, `sqliteSchemaInit.js`,

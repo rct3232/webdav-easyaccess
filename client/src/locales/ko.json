@@ -838,7 +838,9 @@
       "repairSyncRemoteMissing": "원격 파일이 없어 강제 활성화할 수 없습니다.",
       "repairUploadInvalidAction": "잘못된 복구 작업입니다.",
       "repairUploadNotPending": "노드가 예상된 동기화 상태가 아닙니다.",
-      "repairUploadBlobMissing": "대기 중인 블롭이 없어 완료할 수 없습니다."
+      "repairUploadBlobMissing": "대기 중인 블롭이 없어 완료할 수 없습니다.",
+      "reportNotFound": "관리자 보고서를 찾을 수 없습니다.",
+      "repairNotAvailable": "이 보고서에 사용할 수 있는 복구 작업이 없습니다."
     },
     "ai": {
       "notConfigured": "AI 기능이 구성되지 않았습니다. 관리자에게 문의하세요.",
@@ -1052,7 +1054,8 @@
       "migrationCancelled": "마이그레이션이 취소되었습니다.",
       "configSaved": "설정이 저장되었습니다.",
       "configSyncDone": "환경 변수를 데이터베이스 설정에 동기화했습니다.",
-      "repairSyncDone": "복구 작업이 완료되었습니다."
+      "repairSyncDone": "복구 작업이 완료되었습니다.",
+      "reportRepaired": "보고서 복구가 완료되었습니다."
     },
     "share": {
       "addedToShared": "공유 항목에 추가되었습니다."

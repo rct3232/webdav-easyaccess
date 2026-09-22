@@ -248,6 +248,30 @@ components). Updates: `api.md`, `ARCHITECTURE.md` (§1.0 domain tree, §1.2 infr
 config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
   `docs/features/client-ui.md` (virtual collections),
   `docs/features/config-source-resolution.md` (preset/wizard surface),
-  `docs/spec/server/routes/setup.md` + `docs/spec/client/pages/Setup.md` (optional AI step,
-  DB-row storage), `docs/spec/server/store/{storage,executor}.md` (node:sqlite driver),
+  `docs/spec/server/store/{storage,executor}.md` (node:sqlite driver),
   `docs/spec/server/store/repository-contract.md` if vec0 shadow / chunk rows change repo rules
+
+## 9. P0 execution waves (execution ledger — overlay; §7 task rows/definitions unchanged)
+
+> TDD per AGENTS §2.1 (docs → RED → GREEN → verify → merge). Status markers:
+> `[todo]` → `[wip]` → `[done]`. Root ruling 2026-09-22: T0.2, T0.12, T0.7b, T0.11 are the
+> dependency-free entry points. T0.1's remaining scope (boot completeness probe + failsafe
+> row + repair backfill) depends on T0.2 (`admin_reports` DDL) and T0.8 (repair endpoint) →
+> absorbed into Waves 1–2; its write-side is already implemented (content_hash DDL +
+> commit-point population + tests verified in FileNodeRepository twins).
+
+| Wave | Tasks (parallel) | Entry condition | RED-first test targets | Status |
+| ---- | ---------------- | --------------- | ---------------------- | ------ |
+| 0 | T0.2 ∥ T0.12 ∥ T0.7b (∥ T0.11 if capacity) | none (roots) | T0.2: 3 conformance twins + dual-dialect §5 table-presence; T0.12: node:sqlite driver + BigInt PK binding; T0.7b: en/ko i18n key mirror + settings/flags exposure | `[todo]` |
+| 1 | T0.3 ∥ T0.6 ∥ T0.7 ∥ T0.8 (+ T0.1 absorbed) | T0.2 + T0.7b merged | T0.3: camelCase req / snake_case res + activity_score fallback sort; T0.8: NULL content_hash backfill idempotency | `[todo]` |
+| 2 | T0.4 ∥ T0.5 ∥ T0.9 | T0.3 API surface (client) / T0.2 (T0.9) | component+hook tests; T0.9 hash-first dup (NULL never forms a group), derived tags v1 | `[todo]` |
+| 3 | T0.10 → P0 exit gate | T0.9 + T0.7 + T0.8 merged | dashboard blocks per §4.16 | `[todo]` |
+
+- **P0 exit gate**: full `npm run test:ci` (client+server) + `test:ci:pg:adapters` + all new
+  conformance suites + E2E-COLLECTION-001 lifecycle & degradation matrix — then `ai-feature`
+  carries the merged P0. (`ai-feature`→`dev` merge remains a single event after ALL §7 phases.)
+- **Wave-0 spec debt found during planning (2026-09-22)**: §6/T0.12 says the sqlite driver is
+  confined to `db/sqliteExecutor.js`, but the real `sqlite3` npm sites are
+  `store/storage.js`, `metadataMigrationService.js`, `sqliteSchemaInit.js`,
+  `metadataPresence.js` — T0.12 must update `docs/spec/server/store/{storage,executor}.md`
+  in its PR (docs-first).

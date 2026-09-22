@@ -54,12 +54,13 @@ Target-contract spec.
 | acceptFileSuggestions                 | `(nodeIds, options?) => Promise<payload ∥ null>` (checked rows → trash, command-unit undo)                                                                                 | POST (DEF-25)                                   |
 | dismissFileSuggestion                 | `(suggestionId) => Promise<payload ∥ null>`                                                                                                                                | POST (DEF-25)                                   |
 
-`options` (mutations): `{ silent?: boolean }` — suppresses the notifier fan-out (parity with `recentFilesRepository`).
+`options` (mutations): `{ silent?: boolean }` — suppresses the notifier fan-out (parity with `recentFilesRepository`); `{ onError?: (error: { errorCode?, params? } \| null) => void }` — invoked exactly once per absorbed mutation failure with the response's error envelope (`null` for transport failures without a response body) BEFORE the fallback returns; never invoked on success (§2.4). Read functions accept no options.
 
 ### 2.4 Failure-Absorption + Notify Contract
 
 - No method rejects for ordinary API/storage failures; callers receive the contract-safe fallback in §2.3 and errors are logged for diagnostics.
 - **Notifier fires after REAL success only:** a `null`/`false` result path must never call `collectionsNotifier.notifyCollectionsChange()` — including the best-effort fallback-read path (recentFilesRepository precedent). Success = server-acknowledged mutation (any 2xx from a write endpoint).
+- **Error-envelope handoff (Decision, T0.3):** absorption alone cannot let a controller show a mapped message, so mutation methods surface the absorbed envelope through `options.onError` (§2.3) while STILL returning the `∥ null` fallback — callers branch on `null` (never on the callback) and use the envelope for `getServerErrorDisplay` mapping (useCollections §2.7). The callback is a side channel, not a rejection: the no-throw contract holds.
 - Undo-pointer integrity: when a mutation returns `null`, callers must not surface an undo affordance (absorption prevents toasts that lie about journaling).
 
 ### 2.5 undoAction — Structured-Result Exception

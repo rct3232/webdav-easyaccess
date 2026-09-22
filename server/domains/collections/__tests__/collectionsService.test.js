@@ -5,6 +5,7 @@
 const collectionsService = require('../service');
 const collectionsStore = require('@server/store/collectionsStore');
 const fileLikesStore = require('@server/store/fileLikesStore');
+const aiTagStore = require('@server/store/aiTagStore');
 const composition = require('@server/service/composition');
 const { createFileNodesStore } = require('@server/store/fileNodesStore');
 const { createFileNodeService } = require('@server/service/fileNodeService');
@@ -386,5 +387,176 @@ describe('collectionsService createSeedCollection gate', () => {
         seedNodeId: ctx.root.id,
       })
     ).rejects.toMatchObject({ message: 'aiNotConfigured', status: 409 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T0.9 — cosine-free rule evaluation: tag atoms resolve against ai_tag_raw
+// (folded string equality), like/path atoms stay live, upload-hook seam.
+// ---------------------------------------------------------------------------
+
+describe('collectionsService rule evaluation (T0.9 tag atoms)', () => {
+  it('tag atom matches through the fold (EXT: JPG ⇒ ext:jpg) via preview and getItems', async () => {
+    const ctx = await setupServiceUser('ruletag');
+    await aiTagStore.replaceRawTags(ctx.beach.id, ['ext:jpg', 'month:2026-09']);
+    await aiTagStore.replaceRawTags(ctx.stay.id, ['ext:txt']);
+
+    const definition = { kind: 'predicate', any_of: [{ type: 'tag', value: ' EXT:JPG ' }] };
+    const result = await collectionsService.preview(ctx.user.id, { definition });
+    expect(result.count).toBe(1);
+    expect(result.sample).toEqual([{ nodeId: ctx.beach.id, name: 'beach.jpg' }]);
+
+    const system = await collectionsStore.createCollection(
+      { ownerId: ctx.user.id, name: 'Jpg rule', origin: 'system', definition },
+      { actor: ctx.user.id }
+    );
+    const view = await collectionsService.getItems(ctx.user.id, system.id, {});
+    const beachRow = view.items.find((row) => row.nodeId === ctx.beach.id);
+    expect(beachRow).toMatchObject({ membership: 'derived', reason: 'tag:EXT:JPG' });
+    expect(view.items.some((row) => row.nodeId === ctx.stay.id)).toBe(false);
+  });
+
+  it('mixed all_of tag + like atoms require both (like via fileLikesStore)', async () => {
+    const ctx = await setupServiceUser('rulemix');
+    await aiTagStore.replaceRawTags(ctx.beach.id, ['mime:image']);
+    await aiTagStore.replaceRawTags(ctx.stay.id, ['mime:image']);
+
+    const definition = {
+      kind: 'predicate',
+      all_of: [{ type: 'tag', value: 'mime:image' }, { type: 'like' }],
+    };
+    expect((await collectionsService.preview(ctx.user.id, { definition })).count).toBe(0);
+
+    await fileLikesStore.addLike(ctx.user.id, ctx.beach.id);
+    const result = await collectionsService.preview(ctx.user.id, { definition });
+    expect(result.count).toBe(1);
+    expect(result.sample[0].nodeId).toBe(ctx.beach.id);
+
+    // other users' likes never drive this viewer's membership (invariant 9)
+    const other = await createUserWithRoot('rulemixother');
+    await fileLikesStore.addLike(other.user.id, ctx.stay.id);
+    expect((await collectionsService.preview(other.user.id, { definition })).count).toBe(0);
+  });
+
+  it('tag atom over an unpopulated store matches nothing (empty-set fallback parity)', async () => {
+    const ctx = await setupServiceUser('ruleempty');
+    const result = await collectionsService.preview(ctx.user.id, {
+      definition: { kind: 'predicate', any_of: [{ type: 'tag', value: 'no-such-tag' }] },
+    });
+    expect(result.count).toBe(0);
+  });
+});
+
+describe('collectionsService checkUploadAdmissions (T0.9 seam; §2.3-bis)', () => {
+  it('admits a freshly committed node into the owner predicate collection and touches it', async () => {
+    const ctx = await createUserWithRoot('hooknew');
+    const system = await collectionsStore.createCollection(
+      {
+        ownerId: ctx.user.id,
+        name: 'Travel rule',
+        origin: 'system',
+        definition: {
+          kind: 'predicate',
+          any_of: [{ type: 'path', value: `/${ctx.user.username}/travel` }],
+        },
+      },
+      { actor: ctx.user.id }
+    );
+    const folder = await fileNodeService.createDirectory(ctx.root.id, 'travel');
+    expect((await collectionsStore.getCollection(system.id)).lastMemberChangeAt).toBeNull();
+
+    const fresh = await fileNodeService.createFile(folder.id, 'dune.jpg');
+    const result = await collectionsService.checkUploadAdmissions(ctx.user.id, fresh.id);
+
+    expect(result).toEqual({ nodeId: fresh.id, admittedCollectionIds: [system.id] });
+    expect((await collectionsStore.getCollection(system.id)).lastMemberChangeAt).not.toBeNull();
+    // the member view now carries it as a derived row with its reason
+    const view = await collectionsService.getItems(ctx.user.id, system.id, {});
+    // established path-prefix parity (T0.3): the prefix directory itself matches
+    expect(view.items.map((row) => row.nodeId).sort((x, y) => x - y)).toEqual(
+      [folder.id, fresh.id].sort((x, y) => x - y)
+    );
+    const freshRow = view.items.find((row) => row.nodeId === fresh.id);
+    expect(freshRow).toMatchObject({
+      membership: 'derived',
+      reason: `path:/${ctx.user.username}/travel`,
+    });
+  });
+
+  it('short-circuits excluded, already-stored, archived and other-owner collections', async () => {
+    const ctx = await createUserWithRoot('hookguard');
+    const folder = await fileNodeService.createDirectory(ctx.root.id, 'cam');
+    const definition = {
+      kind: 'predicate',
+      any_of: [{ type: 'path', value: `/${ctx.user.username}/cam` }],
+    };
+
+    const excludedCol = await collectionsStore.createCollection(
+      { ownerId: ctx.user.id, name: 'HookExcl', origin: 'system', definition },
+      { actor: ctx.user.id }
+    );
+    const storedCol = await collectionsStore.createCollection(
+      { ownerId: ctx.user.id, name: 'HookStored', origin: 'system', definition },
+      { actor: ctx.user.id }
+    );
+    const archivedCol = await collectionsStore.createCollection(
+      { ownerId: ctx.user.id, name: 'HookArchived', origin: 'system', definition },
+      { actor: ctx.user.id }
+    );
+    await collectionsService.archiveCollection(ctx.user.id, archivedCol.id);
+    const other = await createUserWithRoot('hookother');
+    await collectionsStore.createCollection(
+      { ownerId: other.user.id, name: 'ForeignHook', origin: 'system', definition },
+      { actor: other.user.id }
+    );
+
+    const fresh = await fileNodeService.createFile(folder.id, 'shot.png');
+    await collectionsStore.addExclusion(excludedCol.id, fresh.id, { actor: ctx.user.id });
+    await collectionsService.addItems(ctx.user.id, storedCol.id, [fresh.id]);
+
+    const result = await collectionsService.checkUploadAdmissions(ctx.user.id, fresh.id);
+    expect(result).toEqual({ nodeId: fresh.id, admittedCollectionIds: [] });
+
+    // behavior parity in the views: excluded → absent, stored → present once
+    const exclView = await collectionsService.getItems(ctx.user.id, excludedCol.id, {});
+    expect(exclView.items.map((row) => row.nodeId)).not.toContain(fresh.id);
+    const storedView = await collectionsService.getItems(ctx.user.id, storedCol.id, {});
+    expect(storedView.items.map((row) => row.nodeId)).toContain(fresh.id);
+    expect(storedView.items.find((row) => row.nodeId === fresh.id).membership).toBe('stored');
+  });
+
+  it('non-matching nodes, directories and vector-only definitions admit nothing', async () => {
+    const ctx = await createUserWithRoot('hooknone');
+    await collectionsStore.createCollection(
+      {
+        ownerId: ctx.user.id,
+        name: 'TravelOnly',
+        origin: 'system',
+        definition: {
+          kind: 'predicate',
+          any_of: [{ type: 'path', value: `/${ctx.user.username}/travel` }],
+        },
+      },
+      { actor: ctx.user.id }
+    );
+    await collectionsStore.createCollection(
+      {
+        ownerId: ctx.user.id,
+        name: 'VectorOnly',
+        origin: 'system',
+        definition: { kind: 'seed_vector', seed_ref: 1, theta: 0.6 },
+      },
+      { actor: ctx.user.id }
+    );
+
+    const outside = await fileNodeService.createFile(ctx.root.id, 'outside.txt');
+    expect(
+      (await collectionsService.checkUploadAdmissions(ctx.user.id, outside.id))
+        .admittedCollectionIds
+    ).toEqual([]);
+    expect(
+      (await collectionsService.checkUploadAdmissions(ctx.user.id, ctx.root.id))
+        .admittedCollectionIds
+    ).toEqual([]);
   });
 });

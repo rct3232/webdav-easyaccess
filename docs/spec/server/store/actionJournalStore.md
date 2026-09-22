@@ -51,19 +51,24 @@ chain_seq, status, created_at, undone_at, expires_at)`; `UNIQUE(domain,subject,c
 
 ### 2.3 Main Methods — commit
 
-| Method         | Signature                                                                 | Description                                                                                                                                          |
-| -------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `commitChange` | (domain, subject, meta, inverse, mutation) => Promise\<{ id, chainSeq }\> | THE only write path. `meta = { actor, action, subjectLabel? }`; `inverse` → payload; `mutation(tx)` runs the domain change on a tx-bound repository. |
+| Method         | Signature                                                                         | Description                                                                                                                                                                                                                                                                                                                                     |
+| -------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `commitChange` | (domain, subject, meta, inverse, mutation) => Promise\<{ id, chainSeq, result }\> | THE only write path. `meta = { actor, action, subjectLabel? }`; `inverse` → the payload's `inverse` descriptor (callers pass `{ inverse: … , items?… }` for command rows); `mutation(tx)` runs the domain change on a tx-bound repository and its return value comes back as `result` (routes surface `{ ...result, undo: { actionId: id } }`). |
 
 `commitChange` mechanics (in order):
 
 1. `lockManager.acquireLock('journal:' + domain + ':' + subject)` — serializes `chain_seq`
-   assignment per subject across processes.
+   assignment per subject across processes. `subject` may be a **resolver**
+   `((mutationResult) => string)` for create-flows whose subject id only exists after the
+   mutation: the lock is then taken on the constant `journal:<domain>:new` (creates cannot
+   contend on a not-yet-existing subject) and the resolver is evaluated inside the TX
+   before the chain read; a fresh subject's chain starts at 1.
 2. `executor.transaction(tx)`: `await mutation(tx)` → read `MAX(chain_seq)` for
    `(domain,subject)` → INSERT the journal row (`status='applied'`, `expires_at`) —
-   ONE TX; any throw rolls BOTH back.
-3. Release lock; return `{ id, chainSeq }`. Routes surface `undo: { actionId: id }` in the
-   mutation response (toast contract §4.11).
+   ONE TX; any throw rolls BOTH back. `chain_seq = MAX(chain_seq)+1` over ALL rows of the
+   subject (undone rows keep consuming their slot — the chain never reuses numbers).
+3. Release lock; return `{ id, chainSeq, result }`. Routes surface `undo: { actionId: id }`
+   in the mutation response (toast contract §4.11).
 
 ### 2.4 Main Methods — undo
 
@@ -77,9 +82,12 @@ chain_seq, status, created_at, undone_at, expires_at)`; `UNIQUE(domain,subject,c
 
 `undoAction` mechanics: under the same subject lock, in ONE TX —
 
-1. Load row(s) (`FOR UPDATE` on PG; serialized on sqlite). Guards, each a typed failure
-   (thrown string code mapped by the caller: `journal_not_found`, `journal_already_undone`,
-   `journal_expired` — payload NULLed, undo impossible after expiry).
+1. Load row(s) (`FOR UPDATE` on PG; serialized on sqlite). Guards, each a **typed result**
+   (the executor TX wrapper maps thrown values through `mapDatabaseError`, so guard
+   failures cannot be thrown literals — they return the code object the caller maps to the
+   confirm dialog / error toast): `{ code: 'journal_not_found' }`,
+   `{ code: 'journal_already_undone' }`, `{ code: 'journal_expired' }` (payload NULLed,
+   undo impossible after expiry).
 2. Tip check: target must have `MAX(chain_seq)` among `applied` rows of the subject; else
    `journal_cascade_required` unless `cascade:true`, in which case rows `tip..target` are
    undone newest-first (LIFO) as one operation.
@@ -107,7 +115,8 @@ Undo NEVER restores: spent LLM cost, already-received external exposure, file co
 - Reads: missing → `null` / `[]`.
 - `commitChange` propagates whatever `mutation(tx)` throws (the TX unwinds, no row lands);
   lock timeout surfaces as `LOCK_TIMEOUT` (lockManager contract).
-- Undo guard failures are typed results/thrown string codes (service maps to
+- Undo guard failures are typed results (`{ code: 'journal_not_found' |
+'journal_already_undone' | 'journal_expired' }` — the service maps them to
   `serverErrors.journal.*`); a handler THROW (not a fingerprint skip) aborts the whole
   cascade TX — partial failure is only expressible via item outcomes.
 - No FKs exist, so subject deletion never errors here; `purgeSubject` is explicit.

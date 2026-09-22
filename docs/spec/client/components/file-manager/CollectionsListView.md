@@ -28,18 +28,19 @@ Target-contract spec.
 
 ### 2.3 Props (prepared by `useCollections` + listing seam — pure view)
 
-| Name                | Type      | Required | Description                                                                                             |
-| ------------------- | --------- | -------- | ------------------------------------------------------------------------------------------------------- |
-| mode                | string    | Y        | `'list' \| 'members'`                                                                                   |
-| collections         | array     | list     | snake_case rows for the active `sort`                                                                   |
-| sort / onSortChange | fn        | list     | Menu options `activity (default) \| name \| created \| updated \| similar` (§3.1)                       |
-| mergeSlot           | ReactNode | list     | Host injects `MergeProposalCard`; **zero pending ⇒ zero layout footprint** (no placeholder, no padding) |
-| items / nextCursor  | array/fn  | members  | Member rows + `loadMore` (cursor)                                                                       |
-| digest              | object?   | members  | `{ added_since, removed_since }` + expanded reasons (see §2.5)                                          |
-| publishPendingCount | number?   | members  | Owner-only (`publish_pending_count`); grantee rows never carry it                                       |
-| onCardAction        | fn        | list     | `(action, collection) => void` — card context-menu dispatch (see §2.4)                                  |
-| onMemberAction      | fn        | members  | `(action, memberRow) => void` — see `MemberRowControls.md`                                              |
-| onPublishBatch      | fn        | members  | Publish-pending banner batch action                                                                     |
+| Name                            | Type        | Required | Description                                                                                              |
+| ------------------------------- | ----------- | -------- | -------------------------------------------------------------------------------------------------------- |
+| mode                            | string      | Y        | `'list' \| 'members'`                                                                                    |
+| collections                     | array       | list     | snake_case rows for the active `sort`                                                                    |
+| sort / onSortChange             | fn          | list     | Menu options `activity (default) \| name \| created \| updated \| similar` (§3.1)                        |
+| mergeSlot                       | ReactNode   | list     | Host injects `MergeProposalCard`; **zero pending ⇒ zero layout footprint** (no placeholder, no padding)  |
+| items / nextCursor / onLoadMore | array/fn/fn | members  | Member rows + cursor paging (`onLoadMore` fetches `nextCursor` — as-built prop name)                     |
+| include                         | string?     | list     | `'mine,archived'` selects the `archiveEmpty` copy for the empty state (route-driven, view never derives) |
+| digest                          | object?     | members  | `{ added_since, removed_since }` + expanded reasons (see §2.5)                                           |
+| publishPendingCount             | number?     | members  | Owner-only (`publish_pending_count`); grantee rows never carry it                                        |
+| onCardAction                    | fn          | list     | `(action, collection) => void` — card context-menu dispatch (see §2.4)                                   |
+| onMemberAction                  | fn          | members  | `(action, memberRow) => void` — see `MemberRowControls.md`                                               |
+| onPublishBatch                  | fn          | members  | Publish-pending banner batch action                                                                      |
 
 ### 2.4 List Mode
 
@@ -52,7 +53,8 @@ Target-contract spec.
 
 - **Digest banner:** one line `+N / -M / 1 merge · expand` from `GET /:id/items?since=`; `since` = per-collection last-visit timestamp held client-side (localStorage; **Decision:** the server stamps its own cursor implicitly — the client copy exists only to request `digest` deltas on first paint after navigation). Expanded = per-entry rows with `why is this here` answers = item `reason` (matched predicate name, query-time, not a history table) + undo links for system-act entries (≤24h, §4.11 surface 2).
 - **Publish-pending banner:** owner sees `N awaiting publish` (`publish_pending_count`) with batch/individual publish; only when the collection is live-shared and `publish_mode != auto`. Hidden for grantees (field absent server-side).
-- Member rows render through the existing row components (icon/name/size/date from enrichment — search.md Decision reuse) with `MemberRowControls` menus; row states: `state:'revoked'` ⇒ gray placeholder WITHOUT filename/thumbnail; `shared_excluded:true` ⇒ `Not owner's file — not shared` chip (owner view only); trashed-by-owner ⇒ absent (server hides).
+- **As-built (T0.4):** member rows render through the view's own lightweight member-row renderer (MUI row primitives + `getFileIcon`/`formatFileSize`/`formatDate`) — the FileList row components cannot carry the revoked placeholder/`shared_excluded` chip/inline menu trigger; the row menu trigger dispatches `onMemberAction('menu', row)` and the hosting shell owns the menu instance (T0.5 `MemberRowControls` integration — same single-instance idiom as `FileContextMenu`). Expanded digest renders `digest.entries` when the server exposes them; the shipped `GET /:id/items` digest is counts-only (`routes/collections.md` §GET /:id/items) — per-entry `why is this here` rows + undo links ride that follow-up (surface otherwise inert).
+- Member rows carry icon/name/size/date from enrichment (search.md Decision reuse) and `MemberRowControls`-dispatched menus; row states: `state:'revoked'` ⇒ gray placeholder WITHOUT filename/thumbnail; `shared_excluded:true` ⇒ `Not owner's file — not shared` chip (owner view only); trashed-by-owner ⇒ absent (server hides).
 - Initial `seed`/`search` members are already `published:true` (Q2) — never park in the banner retroactively.
 
 ### 2.6 Dependencies
@@ -61,7 +63,7 @@ Target-contract spec.
 
 ### 2.7 i18n Keys
 
-- `fileManager.collectionsSort*` (5 options), `fileManager.collectionsEmpty`, `fileManager.archiveEmpty`, `fileManager.digestLine`, `fileManager.digestExpand`, `fileManager.whyHere`, `fileManager.publishPending`, `fileManager.publishBatch`, `fileManager.sharedExcludedChip`, `fileManager.cardMenu*`
+- `fileManager.collectionsSort*` (5 options + `collectionsSortMenu`), `fileManager.collectionsEmpty`, `fileManager.archiveEmpty`, `fileManager.digestLine`, `fileManager.digestExpand`/`digestCollapse`/`digestAdded`/`digestRemoved`, `fileManager.whyHere`, `fileManager.publishPending`, `fileManager.publishBatch`, `fileManager.sharedExcludedChip`, `fileManager.cardMenu*` (open/rename/pin/unpin/archive/restore/sharing/delete/leave), `fileManager.collectionsItemCount`, `fileManager.collectionsStatusArchived`, `fileManager.collectionsAutoPin`/`collectionsAutoPinUnpin`, `fileManager.collectionsUnavailable`, `fileManager.memberLoadMore`, `fileManager.archiveConfirmMessage`, `fileManager.permanentDeleteConfirm1`/`permanentDeleteConfirm2` (archive/permanent-delete confirms are hosted IN this view — dispatch fires only after the final confirm; the shell hosts the mutation itself)
 
 ### 2.8 Verification Scenarios
 

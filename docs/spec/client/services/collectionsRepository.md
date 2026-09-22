@@ -66,6 +66,7 @@ Target-contract spec.
 ### 2.5 undoAction — Structured-Result Exception
 
 - **Decision:** unlike the `∥ null` mutation precedent, `undoAction` never collapses 409s into `null`; it returns `{ ok: boolean, status?, undoneAt?, cascadeUndone?, itemsUndone?, itemsSkipped?, errorCode?, params? }` (camel keys allowed here — internal result object, not wire payload). 409 `actions.cascadeConfirmRequired` carries `params.laterChanges`, which the undo-toast controller needs to build the cascade-confirm dialog without a second round trip.
+- **As-built (T0.4):** the snake_case 200 body maps to the camel result at this boundary; an `ok:true` result fires `notifyCollectionsChange()` (real-success fan-out per §2.4 — undo mutates collection state visible in the tree/cards); refusals never notify.
 
 ### 2.6 Dependencies
 

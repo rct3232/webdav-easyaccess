@@ -49,7 +49,7 @@ Target-contract spec.
 ### 2.5 Dependencies
 
 - **imports:** MUI tree primitives, `useTranslation`, `getFileIcon`-adjacent glyphs only.
-- **Boundary:** pure view — the controller (`useFolderTreeController` extension, spec update at implementation time) loads rows via `explorerGateway.loadCollections({ sort: 'activity', include })` and subscribes to `subscribeToCollections`; this component never imports services/notifier.
+- **Boundary:** pure view — the controller loads rows via `explorerGateway.loadCollections({ sort: 'activity', include: 'mine,shared' })` (badge via a second `include: 'mine,archived'` read) and subscribes to `subscribeToCollections`; this component never imports services/notifier. As-built controller surface: `docs/spec/client/hooks/useFolderTreeController.md` §3 (updated with the T0.4 implementation).
 
 ### 2.6 i18n Keys
 

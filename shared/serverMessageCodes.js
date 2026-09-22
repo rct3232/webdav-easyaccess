@@ -230,6 +230,12 @@ const SERVER_ERROR_CODES = {
     budgetExceeded: P('serverErrors.ai', 'budgetExceeded'),
     providerProbeFailed: P('serverErrors.ai', 'providerProbeFailed'),
   },
+  search: {
+    queryRequired: P('serverErrors.search', 'queryRequired'),
+    queryTooLong: P('serverErrors.search', 'queryTooLong'),
+    clickTargetRequired: P('serverErrors.search', 'clickTargetRequired'),
+    fail: P('serverErrors.search', 'fail'),
+  },
   actions: {
     invalidDomain: P('serverErrors.actions', 'invalidDomain'),
     notFound: P('serverErrors.actions', 'notFound'),

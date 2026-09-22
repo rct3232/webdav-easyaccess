@@ -236,6 +236,51 @@ describe('ActionJournalRepository conformance', () => {
       ).rejects.toBeDefined();
       await expect(appliedRows('collection', subject)).resolves.toBe(0);
     });
+
+    it('serializes concurrent commits to the SAME subject via the lock (gapless chain)', async () => {
+      const subject = `collection:${Date.now()}-cc-4`;
+      const commits = await Promise.all(
+        Array.from({ length: 5 }, (_, i) =>
+          actionJournalStore.commitChange(
+            'collection',
+            subject,
+            { actor: '1', action: `concurrent-${i}` },
+            { inverse: { op: 'noop' } },
+            async () => null
+          )
+        )
+      );
+      const seqs = commits.map((c) => c.chainSeq).sort((a, b) => a - b);
+      expect(seqs).toEqual([1, 2, 3, 4, 5]); // gapless, no duplicate slots
+      await expect(
+        actionJournalStore.listBySubject('collection', subject).then((rows) => rows.length)
+      ).resolves.toBe(5);
+    });
+
+    it('commits to two different subjects concurrently without blocking each other', async () => {
+      const subjectA = `collection:${Date.now()}-cc-5a`;
+      const subjectB = `collection:${Date.now()}-cc-5b`;
+      const [a, b] = await Promise.all([
+        actionJournalStore.commitChange(
+          'collection',
+          subjectA,
+          { actor: '1', action: 'create' },
+          { inverse: { op: 'noop' } },
+          async () => null
+        ),
+        actionJournalStore.commitChange(
+          'collection',
+          subjectB,
+          { actor: '2', action: 'create' },
+          { inverse: { op: 'noop' } },
+          async () => null
+        ),
+      ]);
+      expect(a.chainSeq).toBe(1);
+      expect(b.chainSeq).toBe(1);
+      expect((await actionJournalStore.getAction(a.id)).subject).toBe(subjectA);
+      expect((await actionJournalStore.getAction(b.id)).subject).toBe(subjectB);
+    });
   });
 
   describe('undo mechanics', () => {
@@ -255,7 +300,7 @@ describe('ActionJournalRepository conformance', () => {
       const { rows: before } = await dbQuery('SELECT COUNT(*) AS cnt FROM action_journal');
 
       const result = await actionJournalStore.undoAction(first.id);
-      expect(result).toEqual({ undone: 1, skipped: [] });
+      expect(result).toEqual({ undone: 1, skipped: [], undoneIds: [first.id] });
 
       const loaded = await actionJournalStore.getAction(first.id);
       expect(loaded.status).toBe('undone');
@@ -331,7 +376,7 @@ describe('ActionJournalRepository conformance', () => {
       });
 
       const result = await actionJournalStore.undoAction(one.id, { cascade: true });
-      expect(result).toEqual({ undone: 2, skipped: [] });
+      expect(result).toEqual({ undone: 2, skipped: [], undoneIds: [two.id, one.id] });
       // LIFO: tip (chain 2) first, then the target (chain 1).
       expect(undoneRows).toEqual([two.chainSeq, one.chainSeq]);
       expect((await actionJournalStore.getAction(two.id)).status).toBe('undone');
@@ -349,7 +394,7 @@ describe('ActionJournalRepository conformance', () => {
       );
       actionJournalStore.registerUndoExecutor('collection', async () => OUTCOME_CHANGED);
       const result = await actionJournalStore.undoAction(row.id);
-      expect(result).toEqual({ undone: 0, skipped: [{ reason: 'changed' }] });
+      expect(result).toEqual({ undone: 0, skipped: [{ reason: 'changed' }], undoneIds: [row.id] });
       expect((await actionJournalStore.getAction(row.id)).status).toBe('undone');
     });
   });

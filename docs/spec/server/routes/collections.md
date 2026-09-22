@@ -364,7 +364,7 @@ All errors follow the shared error envelope (`errorCode` + optional `params`,
 
 - [api.md](../../../api.md), [shared-contracts.md](../../../shared-contracts.md),
   [ARCHITECTURE.md](../../../ARCHITECTURE.md), [actions.md](actions.md) (undo),
-  `docs/features/collections-platform.md` §2/§3.1/§3.2/§4.4/§4.5/§4.7/§4.8/§4.9/§5, CODING_STYLE.md Express Patterns/§7.
+  `docs/features/collections-platform.md` §2/§3.1/§3.2/§4.4/§4.5/§4.7/§4.8/§4.9/§5, CODING_STYLE.md Express Patterns.
 
 ### 2.6 Integration Test Scenarios
 

@@ -46,6 +46,7 @@ Target-contract spec.
 - Card: name, `item_count`, origin/status chips, shared icon chip (`granted_role != null`), auto-pin chip when `pinned_by='auto'` (subtle, with unpin CTA — §4.9b).
 - **Sort `similar`:** server pre-groups rows (`cluster_index: 0|1|…`); view renders cluster GROUP HEADERS (unlabeled visual groups), not one path order (§3.1). Other sorts render a flat list.
 - **Card context menu by origin (§3.2):** own (`user|system` rows): Open / Rename (→ server sets `name_locked`) / pin·unpin / archive (ONE confirm) / Sharing (opens CollectionPropertiesDialog Sharing tab) / Delete (visible ONLY in `__archive__`, second-step confirm, trash-parity, report-only toast). Viewer-received rows (`granted_role != null`): Open, `Leave` (hide, local — server `leave` not in the routes surface), NO mutations.
+- **As-built decision (T0.4):** archived rows (`status=archived`, `__archive__` view) render **Restore in place of Archive** (own rows there: Open / Rename / pin·unpin / Restore / Sharing / Delete) — §2.2 "restore/permanent-delete affordances enabled" and `useFolderTreeController.md` §3 ("restore … affordances live in CollectionsListView") require the restore entry, which the menu list above omitted.
 
 ### 2.5 Member Mode — top-of-list banners (same digest surface, §4.7/§4.8)
 

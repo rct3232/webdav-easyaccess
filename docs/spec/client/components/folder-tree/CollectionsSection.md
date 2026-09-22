@@ -37,13 +37,13 @@ Target-contract spec.
 
 - Header row: `{CollectionsIcon} Collections` (`nav.collections`), collapsible like RecentFilesSection.
 - Collection row: icon + name + item count; **shared-with-me rows** (`granted_role != null`) get an icon chip ONLY — never pinned to top, same activity-sorted list (§3.1). Pinned (`pinned=true`) rows keep server order (gravity, not hoisting).
-- **ArchiveNode:** auto-child at the section end listing exactly the `status=archived` collections as a navigable node — no separate archive screen, no per-collection archive toggle in the tree (§3.1). Badge = `archiveCount`; zero ⇒ row still renders (the lifecycle destination must stay reachable).
+- **ArchiveNode:** auto-child at the section end listing exactly the `status=archived` collections as a navigable node — no separate archive screen, no per-collection archive toggle in the tree (§3.1). Badge = `archiveCount`; zero ⇒ row still renders (the lifecycle destination must stay reachable). **Decision (T0.4):** the earlier "renders only when `archiveCount > 0`" wording contradicted this zero-render rule — the row renders unconditionally (the destination must stay reachable even at count 0); the badge simply hides at 0.
 - **Decision:** member counts come from `item_count` (already on the row); no per-row lazy child loading (depth=1 rule).
 
 ### 2.4 Selection & Conditional Rendering
 
 - Selected (BaseFolderTreeItem idiom) when `currentPath === '/__collections__'` (section header/highlight) or equals a collection or archive route.
-- Empty list ⇒ header only + `nav.collectionsEmpty` hint when expanded; no ArchiveNode? — **Decision:** ArchiveNode renders only when `archiveCount > 0` for the section-expansion view; the permanent destination stays reachable via the empty-list hint row (avoids a dead 404-ish route).
+- Empty list ⇒ header only + `nav.collectionsEmpty` hint when expanded. **Decision (T0.4):** ArchiveNode follows the §2.3 zero-render rule (always present) — the earlier "renders only when `archiveCount > 0`" alternative is retired because the empty destination is not dead: `/files/__collections__/__archive__` renders `fileManager.archiveEmpty` (CollectionsListView §2.2), so the lifecycle destination stays reachable at count 0.
 - Hidden entirely in share-link mode (product overlay rule — shell passes no section).
 
 ### 2.5 Dependencies

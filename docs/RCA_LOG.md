@@ -594,3 +594,29 @@ IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode repor
   load. No code change made.
 - **Classification**: pending reproduction (treated as environmental flake for Wave-0 ledger
   purposes). **Action**: monitor; if it recurs, capture full output first per §3.2 procedure 1.
+
+### 2026-09-23 — Wave-2 host wiring surfaced two merged-branch integration defects (Case A)
+
+- **Summary**: activating the three deferred seams (T0.11 results shell,
+  T0.5 like state, T0.4/T0.5 member-row menu) exposed two latent defects in
+  already-merged code that neither branch's own suites caught.
+- **Defect 1 — recordSearchClick body casing**: the client repository
+  (`collectionsRepository.recordSearchClick`) POSTed `{ nodeId }` while the
+  merged server route and `docs/spec/server/routes/search.md` §2.4.0 read the
+  snake_case `{ node_id }`. Every §3.4 list-entry-click signal would have 400'd
+  (absorbed to `false`), so the click-recording register (a) was inert.
+  **Classification**: Case A (source error) — the client violated the server's
+  documented contract. **Action**: aligned the client to `{ node_id }`, updated
+  its unit assertion and `collectionsRepository.md` §2.2, and corrected the
+  "only request-body exception" claim in `search.md` §2.4.2 (now documents both
+  `result_ref` and the click `node_id`). Verified: collectionsRepository + shell
+  click-signal tests green.
+- **Defect 2 — MemberRowControls null member**: the shell owns a single
+  `MemberRowControls` instance that renders with `member = null` while closed
+  (CollectionsListView §2.5 FileContextMenu idiom). The merged component read
+  `member.liked` in the menu-item build path before any null guard, so mounting
+  the closed instance threw `Cannot read properties of null`. **Classification**:
+  Case A (source error) — the component assumed a member was always present,
+  contradicting the shell-owned single-instance contract. **Action**: added a
+  `!isBulk && member == null → null` early return; verified across the member
+  suite and FileManager shell wiring tests.

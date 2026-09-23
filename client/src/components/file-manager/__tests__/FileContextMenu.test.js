@@ -133,3 +133,46 @@ describe('FileContextMenu', () => {
     });
   });
 });
+
+describe('FileContextMenu AI-platform entries (§3)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('omits collection-add/like-toggle rows unless callbacks are supplied', () => {
+    renderWithProviders(<FileContextMenu {...defaultProps} />);
+    expect(screen.queryByTestId('collection-add')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('like-toggle')).not.toBeInTheDocument();
+  });
+
+  it('renders Add to collection when onAddToCollection is provided and launches it with the file', () => {
+    const onAddToCollection = jest.fn();
+    renderWithProviders(<FileContextMenu {...defaultProps} onAddToCollection={onAddToCollection} />);
+
+    fireEvent.click(screen.getByTestId('collection-add'));
+    expect(onAddToCollection).toHaveBeenCalledWith(mockFile);
+    expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the Like toggle from row data: liked:false → Like, liked:true → Unlike', () => {
+    const onToggleLike = jest.fn();
+    const { unmount } = renderWithProviders(
+      <FileContextMenu {...defaultProps} onToggleLike={onToggleLike} />
+    );
+    expect(screen.getByTestId('like-toggle')).toHaveTextContent('Like');
+    unmount();
+
+    renderWithProviders(
+      <FileContextMenu
+        {...defaultProps}
+        file={{ ...mockFile, liked: true }}
+        onToggleLike={onToggleLike}
+      />
+    );
+    expect(screen.getByTestId('like-toggle')).toHaveTextContent('Unlike');
+
+    fireEvent.click(screen.getByTestId('like-toggle'));
+    expect(onToggleLike).toHaveBeenCalledWith({ ...mockFile, liked: true });
+    expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
+  });
+});

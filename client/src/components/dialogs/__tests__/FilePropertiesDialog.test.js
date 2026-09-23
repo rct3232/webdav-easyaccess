@@ -4,7 +4,7 @@
  * @see docs/TESTING_STRATEGY.md
  */
 import React from 'react';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '../../../test-utils';
 import FilePropertiesDialog from '../FilePropertiesDialog';
@@ -396,5 +396,32 @@ describe('FilePropertiesDialog', () => {
       expect(screen.queryByTestId('trash-props-restore')).not.toBeInTheDocument();
       expect(screen.queryByTestId('trash-props-purge')).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('FilePropertiesDialog AI-platform header like toggle (§3)', () => {
+  beforeEach(() => {
+    getFolderPermissions.mockResolvedValue([]);
+    getFolderStats.mockResolvedValue({ fileCount: 42, totalSize: 2048 });
+  });
+
+  it('renders the heart only when onToggleLike is provided (hidden for share/trash hosts)', () => {
+    renderWithProviders(<FilePropertiesDialog {...defaultProps} />);
+    expect(screen.queryByTestId('like-toggle')).not.toBeInTheDocument();
+  });
+
+  it('reflects file.liked and calls onToggleLike(file) once without closing the dialog', () => {
+    const onToggleLike = jest.fn();
+    const onClose = jest.fn();
+    renderWithProviders(
+      <FilePropertiesDialog {...defaultProps} onClose={onClose} onToggleLike={onToggleLike} file={{ ...fileProps, liked: true }} />
+    );
+
+    const toggle = screen.getByTestId('like-toggle');
+    fireEvent.click(toggle);
+
+    expect(onToggleLike).toHaveBeenCalledTimes(1);
+    expect(onToggleLike).toHaveBeenCalledWith(expect.objectContaining({ nodeId: 5 }));
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

@@ -68,7 +68,9 @@ describe('GET /api/file-likes', () => {
   });
 
   it('returns the viewer liked node ids ascending, snake_case-only', async () => {
-    const { user, token } = await createAuthenticatedTestUser({ username: `likes-a-${Date.now()}` });
+    const { user, token } = await createAuthenticatedTestUser({
+      username: `likes-a-${Date.now()}`,
+    });
     const low = await makeReadableNode(user.id, 'low.txt');
     const high = await makeReadableNode(user.id, 'high.txt');
 
@@ -111,7 +113,9 @@ describe('PUT /api/file-likes/:nodeId', () => {
   });
 
   it('likes a readable node: 200 echo {node_id, liked}, then GET lists it', async () => {
-    const { user, token } = await createAuthenticatedTestUser({ username: `likes-set-${Date.now()}` });
+    const { user, token } = await createAuthenticatedTestUser({
+      username: `likes-set-${Date.now()}`,
+    });
     const node = await makeReadableNode(user.id, 'beach.jpg');
 
     const res = await request(app)

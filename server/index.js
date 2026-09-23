@@ -194,6 +194,7 @@ app.use('/api/collections', setupModeGuardInstance, require('./domains/collectio
 app.use('/api/actions', setupModeGuardInstance, require('./domains/actions/routes'));
 app.use('/api/search', setupModeGuardInstance, require('./domains/ai/routes'));
 app.use('/api/file-likes', setupModeGuardInstance, require('./domains/collections/fileLikesRoutes'));
+app.use('/api/dashboard', setupModeGuardInstance, require('./domains/dashboard/routes'));
 
 app.use('/api', require('./infrastructure/healthRoutes'));
 

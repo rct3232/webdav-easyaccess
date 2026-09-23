@@ -67,6 +67,8 @@ function createFileNodesStore() {
     countCacheRowsWithNullContentHash: (...args) => repo.countCacheRowsWithNullContentHash(...args),
     listCacheRowsWithNullContentHash: (...args) => repo.listCacheRowsWithNullContentHash(...args),
     setCacheContentHash: (...args) => repo.setCacheContentHash(...args),
+    searchNodesByName: (...args) => repo.searchNodesByName(...args),
+    sampleVisibleNodeIds: (...args) => repo.sampleVisibleNodeIds(...args),
     getKeptObjectMapKeys: (...args) => repo.getKeptObjectMapKeys(...args),
     getFileNodesPathRows: (...args) => repo.getFileNodesPathRows(...args),
 

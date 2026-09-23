@@ -111,6 +111,7 @@
     "sharedFolder": "Shared folder",
     "searchClose": "Close search",
     "searchPlaceholder": "Search files...",
+    "searchSubmit": "Search",
     "mypage": "My page",
     "logout": "Log out",
     "logoAlt": "WebDAV EasyAccess",
@@ -124,6 +125,13 @@
   },
   "fileManager": {
     "noFiles": "No files",
+    "searchResultsCount": "{{count}} results",
+    "searchSaveCollection": "Save as collection",
+    "searchExit": "Exit search results",
+    "searchNoResults": "No results found",
+    "searchChipMenu": "Recent query options",
+    "searchChipResearch": "Re-search",
+    "searchFilterPlaceholder": "Filter these results",
     "createFolder": "Create folder",
     "uploadFile": "Upload file",
     "sort": "Sort",
@@ -865,13 +873,20 @@
       "emptyNodeIds": "Please select at least one file or folder.",
       "previewTargetRequired": "A target collection is required for the preview.",
       "mergeSameCollection": "A collection cannot be merged with itself.",
-      "invalidDefinition": "This collection rule is not valid.",      "forbidden": "You do not have permission to access this collection.",
+      "invalidDefinition": "This collection rule is not valid.",
+      "forbidden": "You do not have permission to access this collection.",
       "notFound": "This collection does not exist.",
       "granteeNotFound": "The share target user was not found.",
       "grantNotFound": "This share grant was not found.",
       "suggestionNotFound": "This suggestion was not found.",
       "alreadyArchived": "This collection is already archived.",
       "notArchived": "This collection is not archived."
+    },
+    "search": {
+      "queryRequired": "Please enter a search query.",
+      "queryTooLong": "The search query is too long (200 characters max).",
+      "clickTargetRequired": "A target entry is required to record the click.",
+      "fail": "Search failed. Please try again later."
     },
     "migrationInProgress": "A migration is already in progress. The app is locked until it finishes.",
     "users": {

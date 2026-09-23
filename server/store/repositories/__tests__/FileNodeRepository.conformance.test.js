@@ -6,7 +6,7 @@
  * backend via createTestDatabase() (sqlite default leg; real PG adapter leg).
  */
 
-const { createTestDatabase } = require('@server/test-utils');
+const { createTestDatabase, dbRun } = require('@server/test-utils');
 const storage = require('@server/store/storage');
 const createFileNodeRepository = require('@server/store/repositories/FileNodeRepository');
 
@@ -944,6 +944,168 @@ describe('FileNodeRepository conformance', () => {
       const afterIds = (await repo.listSubtreeCacheRows(parent.id)).map((row) => row.nodeId);
       expect(afterIds).not.toContain(child.id);
       expect(afterIds).not.toContain(fileA.id);
+    });
+  });
+
+  describe('search surface (T0.11 — searchNodesByName / sampleVisibleNodeIds)', () => {
+    /**
+     * ACL scoping mirrors the fileService listing parity rule
+     * (collections service `loadVisibleCandidates` precedent): the requester's
+     * own-root subtree ∪ granted path subtrees (node + closure descendants) ∪
+     * point-granted file nodes. Grants are written directly through the
+     * permissions_user_paths table (the permissionStore seam the conformance
+     * harness avoids on purpose).
+     */
+    async function grantPathPermission(userId, fileNodeId) {
+      await dbRun(
+        'INSERT INTO permissions_user_paths (user_id, file_node_id, permission) VALUES (?, ?, ?)',
+        [Number(userId), Number(fileNodeId), 'read']
+      );
+    }
+
+    /**
+     * Closure maintenance is a caller concern (the ancestry helper does it in
+     * production); repo-level fixtures insert the chain rows explicitly.
+     */
+    async function addClosure(parentId, childId) {
+      const rows = [{ ancestorId: Number(childId), descendantId: Number(childId), depth: 0 }];
+      if (parentId != null) {
+        // The parent's chain already includes the parent itself (depth 0),
+        // so the direct-parent row falls out of the walk — dedupe by ancestor.
+        const seen = new Set([Number(childId)]);
+        for (const entry of await repo.getAncestorChain(parentId)) {
+          const ancestorId = Number(entry.ancestorId);
+          if (seen.has(ancestorId)) continue;
+          seen.add(ancestorId);
+          rows.push({
+            ancestorId,
+            descendantId: Number(childId),
+            depth: Number(entry.depth) + 1,
+          });
+        }
+      }
+      await repo.insertAncestorRows(rows);
+    }
+
+    let ownerId;
+    let otherId;
+    let ownerRoot;
+    let grantedFolder;
+    let grantedInside;
+    let pointGranted;
+    let hiddenSibling;
+    let trashedMatch;
+
+    beforeAll(async () => {
+      const User = require('@server/models/User');
+      const suffix = uniqueName('fnsearch');
+      const owner = await User.create(`${suffix}-own`, `${suffix}-own@conf.test`, 'pw', false);
+      const other = await User.create(`${suffix}-oth`, `${suffix}-oth@conf.test`, 'pw', false);
+      ownerId = owner.id;
+      otherId = other.id;
+
+      ownerRoot = await repo.createNode(null, `${suffix}-own`, 'directory');
+      await addClosure(null, ownerRoot.id);
+      grantedFolder = await repo.createNode(ownerRoot.id, `${suffix}-shared-folder`, 'directory');
+      await addClosure(ownerRoot.id, grantedFolder.id);
+      grantedInside = await repo.createNode(
+        grantedFolder.id,
+        `${suffix}-shared-memo-inside.txt`,
+        'file'
+      );
+      await addClosure(grantedFolder.id, grantedInside.id);
+      pointGranted = await repo.createNode(ownerRoot.id, `${suffix}-point-shared-2.txt`, 'file');
+      await addClosure(ownerRoot.id, pointGranted.id);
+      hiddenSibling = await repo.createNode(ownerRoot.id, `${suffix}-hidden-sibling.txt`, 'file');
+      await addClosure(ownerRoot.id, hiddenSibling.id);
+      trashedMatch = await repo.createNode(ownerRoot.id, `${suffix}-trashed.txt`, 'file');
+      await addClosure(ownerRoot.id, trashedMatch.id);
+      await repo.markSubtreeDeleted([trashedMatch.id]);
+
+      await grantPathPermission(otherId, grantedFolder.id);
+      await grantPathPermission(otherId, pointGranted.id);
+    });
+
+    it('searchNodesByName matches containment over the requester-visible set only', async () => {
+      const ownerRows = await repo.searchNodesByName(ownerId, '-shared-', { limit: 100 });
+      const ownerIds = ownerRows.map((r) => r.id);
+      expect(ownerIds).toContain(grantedInside.id);
+      expect(ownerIds).toContain(pointGranted.id);
+      expect(ownerIds).not.toContain(hiddenSibling.id);
+      expect(ownerIds).not.toContain(trashedMatch.id);
+
+      const otherRows = await repo.searchNodesByName(otherId, '-shared-', { limit: 100 });
+      const otherIds = otherRows.map((r) => r.id);
+      expect(otherIds).toContain(grantedInside.id); // path grant → closure descendants
+      expect(otherIds).toContain(pointGranted.id); // point grant
+      expect(otherIds).not.toContain(hiddenSibling.id); // unreadable never appears
+    });
+
+    it('lower() applies to BOTH sides (ASCII-case-folded match) and rows are name/id ordered', async () => {
+      const upper = await repo.createNode(ownerRoot.id, 'FNSEARCH-UPPER.TXT', 'file');
+      await addClosure(ownerRoot.id, upper.id);
+      // name-asc fixtures with an unambiguous binary + collation order
+      const ordB = await repo.createNode(ownerRoot.id, 'fnsearch-ord-b.txt', 'file');
+      await addClosure(ownerRoot.id, ordB.id);
+      const ordA = await repo.createNode(ownerRoot.id, 'fnsearch-ord-a.txt', 'file');
+      await addClosure(ownerRoot.id, ordA.id);
+      // same-name tie-break: two visible nodes named identically under
+      // different parents (the per-parent unique index forbids duplicates)
+      const tieDir = await repo.createNode(ownerRoot.id, 'fnsearch-ord-tie-dir', 'directory');
+      await addClosure(ownerRoot.id, tieDir.id);
+      const tie1 = await repo.createNode(tieDir.id, 'fnsearch-ord-tie.txt', 'file');
+      await addClosure(tieDir.id, tie1.id);
+      const tie2 = await repo.createNode(grantedFolder.id, 'fnsearch-ord-tie.txt', 'file');
+      await addClosure(grantedFolder.id, tie2.id);
+
+      const rows = await repo.searchNodesByName(ownerId, 'FNSEARCH-UPPER', { limit: 100 });
+      expect(rows.map((r) => r.id)).toContain(upper.id);
+
+      const ordered = await repo.searchNodesByName(ownerId, 'fnsearch-ord', { limit: 100 });
+      const names = ordered.map((r) => r.name);
+      expect(names).toEqual([...names].sort());
+      expect(names.indexOf('fnsearch-ord-a.txt')).toBeLessThan(names.indexOf('fnsearch-ord-b.txt'));
+
+      const tieIdxs = ordered
+        .map((r, i) => (r.name === 'fnsearch-ord-tie.txt' ? i : -1))
+        .filter((i) => i >= 0);
+      expect(tieIdxs).toHaveLength(2);
+      expect(tieIdxs[1] - tieIdxs[0]).toBe(1); // node_id asc keeps identical names adjacent
+      const tieIds = tieIdxs.map((i) => ordered[i].id);
+      expect(tieIds).toEqual([Math.min(tie1.id, tie2.id), Math.max(tie1.id, tie2.id)]);
+      expect(ordered.map((r) => r.id)).toEqual(expect.arrayContaining([ordA.id, ordB.id]));
+    });
+
+    it('searchNodesByName honours the limit option', async () => {
+      const rows = await repo.searchNodesByName(ownerId, 'fnsearch-ord', { limit: 2 });
+      expect(rows).toHaveLength(2);
+    });
+
+    it('whole-string containment: no token split (multi-word miss returns nothing)', async () => {
+      const rows = await repo.searchNodesByName(ownerId, 'fnsearch ord .TXT', { limit: 100 });
+      expect(rows).toHaveLength(0);
+    });
+
+    it('sampleVisibleNodeIds returns at most n ids drawn from the visible set', async () => {
+      const sample = await repo.sampleVisibleNodeIds(ownerId, 2);
+      expect(sample.length).toBeLessThanOrEqual(2);
+      const visible = await repo.searchNodesByName(ownerId, 'fnsearch', { limit: 1000 });
+      const visibleIds = new Set(visible.map((r) => r.id));
+      expect(visibleIds.size).toBeGreaterThan(2);
+      for (const id of sample) {
+        expect(visibleIds.has(Number(id))).toBe(true);
+      }
+
+      const otherSample = await repo.sampleVisibleNodeIds(otherId, 100);
+      const otherVisible = new Set(
+        (await repo.searchNodesByName(otherId, 'fnsearch', { limit: 1000 })).map((r) => r.id)
+      );
+      for (const id of otherSample) {
+        expect(otherVisible.has(Number(id))).toBe(true);
+      }
+      expect(otherSample.some((id) => Number(id) === pointGranted.id)).toBe(true);
+      expect(otherSample.some((id) => Number(id) === grantedInside.id)).toBe(true);
+      expect(otherSample.some((id) => Number(id) === hiddenSibling.id)).toBe(false);
     });
   });
 });

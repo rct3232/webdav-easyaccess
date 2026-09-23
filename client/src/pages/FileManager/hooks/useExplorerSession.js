@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { VIEW_MODES } from '../../../constants/fileManager';
 import { sortFiles } from '../../../utils/fileUtils';
 import {
@@ -15,6 +15,7 @@ export const useExplorerSession = ({
   files: filesFromListing,
   initialSearchQuery = '',
   isMobile = false,
+  onSubmitQuery,
 } = {}) => {
   const sessionKey = useMemo(() => {
     if (view === 'recent') return 'view:recent';
@@ -86,6 +87,21 @@ export const useExplorerSession = ({
     });
   }, []);
 
+  // §3 AI-platform boundary (D1): the server-search submit is NOT owned here.
+  // onSubmitQuery is the stable passthrough invoked by FloatingSearchBar on
+  // Enter / search-icon press and delegated to the shell wiring
+  // (useSearchResults.submitSearch). Stable identity across renders; the hook
+  // itself performs no fetch (the no-IO rule stays absolute).
+  const onSubmitQueryRef = useRef(onSubmitQuery);
+  useEffect(() => {
+    onSubmitQueryRef.current = onSubmitQuery;
+  }, [onSubmitQuery]);
+  const submitQuery = useCallback((query) => {
+    if (typeof onSubmitQueryRef.current === 'function') {
+      onSubmitQueryRef.current(query);
+    }
+  }, []);
+
   return {
     sessionKey,
 
@@ -108,5 +124,7 @@ export const useExplorerSession = ({
     hasMore,
 
     handleThumbnailsLoaded,
+
+    onSubmitQuery: submitQuery,
   };
 };

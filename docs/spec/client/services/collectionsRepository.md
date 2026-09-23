@@ -47,7 +47,8 @@ Target-contract spec.
 | getGrants                             | `(id) => Promise<{ grants: [] }>`                                                                                                            | GET `/:id/grants`                               |
 | grantCollection                       | `(id, { userId, role }) => Promise<payload ∥ null>`                                                                                          | POST `/:id/grants`                              |
 | revokeGrant                           | `(id, userId) => Promise<payload ∥ null>`                                                                                                    | DELETE `/:id/grants?userId=`                    |
-| runSearch                             | `({ query, resultRef? }) => Promise<search response ∥ null>` — `null` only on transport/5xx; `semantic_available:false` is a success payload | POST `/api/search`                              |
+| runSearch                             | `({ query, resultRef? }, options?) => Promise<search response ∥ null>` — `null` only on transport/5xx; `semantic_available:false` is a success payload. **Exception to the no-options read rule:** `options.onError` receives the absorbed error envelope exactly once so a still-returned 400 (`queryRequired`/`queryTooLong`) can be envelope-mapped by the hook (`useSearchResults.md` §2.6). | POST `/api/search`                              |
+| recordSearchClick                     | `(nodeId, options?) => Promise<boolean>` — §3.4 list-entry-click recording point (`POST /api/search/click`, `action='open'`, fire-and-forget server-side); always `{ silent: true }` internally — a click signal must never fan the collections notifier. `true` on 204, `false` on absorbed failure. | POST `/api/search/click`                        |
 | getActions                            | `({ domain? }) => Promise<{ actions: [] }>`                                                                                                  | GET `/api/actions`                              |
 | undoAction                            | `(actionId, { confirmCascade? }) => Promise<structured result — see §2.5>`                                                                   | POST `/api/actions/:id/undo`                    |
 | getFileSuggestions                    | `() => Promise<{ suggestions: [] }>` — **Decision:** seam stable now                                                                         | GET                                             |
@@ -79,6 +80,8 @@ Target-contract spec.
 - [ ] `addCollectionItems` success notifies unless `{ silent: true }`.
 - [ ] `deleteCollection` returns `true`/`false` and its success result contains no undo pointer.
 - [ ] `runSearch` with `semantic_available: false` resolves as success (not `null`); only network/5xx yields `null`.
+- [ ] `runSearch` surfaces the error envelope through `options.onError` on an absorbed 400 while still resolving `null`.
+- [ ] `recordSearchClick` posts `{ nodeId }` (camelCase body) with `{ silent: true }`, returns `true` on 204 and `false` on failure without throwing.
 - [ ] `undoAction` on 409 `cascadeConfirmRequired` returns `ok:false` with `errorCode` + `params.laterChanges`.
 - [ ] Request bodies are camelCase (`{ nodeIds }`, `{ seedNodeId }`), response fields are consumed as snake_case.
 

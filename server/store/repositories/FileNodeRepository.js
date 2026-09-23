@@ -60,6 +60,14 @@
  *   `filecache.content_hash`, ascending by node id; keyset-paginated via
  *   `afterId` (rows with nodeId > afterId) so the streaming backfill never
  *   re-fetches rows it failed on.
+ * @property {(userId: number, query: string, opts?: { limit?: number }) => Promise<Array<{ id: number, name: string }>>} searchNodesByName
+ *   Name-section search surface (T0.11, searchService.md §2.5): live rows the
+ *   requester can read (own-root subtree ∪ path-granted subtrees ∪ point
+ *   grants), `lower(name) LIKE lower('%q%')` whole-string containment,
+ *   ordered `name` asc then `node_id` asc, capped by `opts.limit`.
+ * @property {(userId: number, n: number) => Promise<number[]>} sampleVisibleNodeIds
+ *   Random sample of at most n requester-visible live node ids (searchService
+ *   §2.5 — per-query dynamic-baseline corpus sample, P1).
  * @property {(fileNodeId, contentHash) => Promise<{ changes: number }>} setCacheContentHash
  *   Idempotent write — `WHERE content_hash IS NULL` only; `changes` reports
  *   whether the row was touched.

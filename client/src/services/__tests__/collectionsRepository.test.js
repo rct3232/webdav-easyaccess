@@ -20,6 +20,8 @@ import {
   getMemberships,
   grantCollection,
   revokeGrant,
+  runSearch,
+  recordSearchClick,
 } from '../collectionsRepository';
 
 jest.mock('../apiClient', () => ({
@@ -209,6 +211,72 @@ describe('collectionsRepository mutations (absorb + notify + onError)', () => {
     await updateCollection(17, { pinned: true }, { onError });
 
     expect(onError).toHaveBeenCalledWith(null);
+    expect(notifyCollectionsChange).not.toHaveBeenCalled();
+  });
+});
+
+// -- Search results-mode IO (T0.11 — collectionsRepository.md §2.3) ----------
+
+describe('runSearch + recordSearchClick', () => {
+  it('runSearch posts the query and returns the snake_case payload verbatim', async () => {
+    const payload = {
+      name_matches: [{ node_id: 11, name: 'Fun-MOVIE-notes.pdf' }],
+      result_ref: 'sr1.9f3c2a7e41b0d8c5',
+      counts: { name: 1, semantic: 0, total: 1, name_truncated: false },
+      semantic_available: false,
+      semantic_unavailable_reason: 'serverErrors.ai.notConfigured',
+    };
+    post.mockResolvedValueOnce({ data: payload });
+
+    const result = await runSearch({ query: 'movie' });
+
+    expect(post).toHaveBeenCalledWith('/search', { query: 'movie' });
+    expect(result).toEqual(payload);
+  });
+
+  it('runSearch treats semantic_available:false as success (not null)', async () => {
+    post.mockResolvedValueOnce({ data: { name_matches: [], semantic_available: false } });
+
+    const result = await runSearch({ query: 'anything' });
+
+    expect(result).toEqual({ name_matches: [], semantic_available: false });
+  });
+
+  it('runSearch absorbs transport/5xx failures into null and surfaces the envelope', async () => {
+    const onError = jest.fn();
+    post.mockRejectedValueOnce(transportError(400, 'serverErrors.search.queryTooLong'));
+
+    const result = await runSearch({ query: 'x'.repeat(201) }, { onError });
+
+    expect(result).toBeNull();
+    expect(onError).toHaveBeenCalledWith({ errorCode: 'serverErrors.search.queryTooLong', params: {} });
+  });
+
+  it('runSearch forwards resultRef as the opaque snake_case body field', async () => {
+    post.mockResolvedValueOnce({ data: { name_matches: [] } });
+
+    await runSearch({ query: 'movie', resultRef: 'sr1.deadbeefdeadbeef' });
+
+    expect(post).toHaveBeenCalledWith('/search', {
+      query: 'movie',
+      result_ref: 'sr1.deadbeefdeadbeef',
+    });
+  });
+
+  it('recordSearchClick posts { nodeId } silently and returns true on success', async () => {
+    post.mockResolvedValueOnce({ data: null });
+
+    const result = await recordSearchClick(11);
+
+    expect(post).toHaveBeenCalledWith('/search/click', { nodeId: 11 });
+    expect(result).toBe(true);
+    expect(notifyCollectionsChange).not.toHaveBeenCalled(); // click signal never fans the notifier
+  });
+
+  it('recordSearchClick absorbs failures into false without throwing', async () => {
+    post.mockRejectedValueOnce(new Error('Network error'));
+
+    await expect(recordSearchClick(11)).resolves.toBe(false);
     expect(notifyCollectionsChange).not.toHaveBeenCalled();
   });
 });

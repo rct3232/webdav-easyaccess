@@ -62,6 +62,8 @@ jest.mock('../collectionsRepository', () => {
     'restoreCollection',
     'revokeGrant',
     'updateCollection',
+    'runSearch',
+    'recordSearchClick',
   ];
   const mock = {};
   for (const name of fns) mock[name] = jest.fn();
@@ -487,6 +489,19 @@ describe('explorerGateway collections re-exports (T0.3)', () => {
     const result = explorerGateway.subscribeToCollections(() => {});
     expect(result).toBe(unsub);
     expect(typeof result).toBe('function');
+  });
+
+  // -- §2.6 search results-mode group (T0.11) --------------------------------
+
+  it('re-exports runSearch and recordSearchClick with the repository shapes', async () => {
+    const { runSearch, recordSearchClick } = require('../collectionsRepository');
+
+    const payload = { name_matches: [], result_ref: 'sr1.x', counts: {}, semantic_available: false };
+    runSearch.mockResolvedValueOnce(payload);
+    await expect(explorerGateway.runSearch({ query: 'movie' })).resolves.toBe(payload);
+
+    recordSearchClick.mockResolvedValueOnce(true);
+    await expect(explorerGateway.recordSearchClick(11)).resolves.toBe(true);
   });
 });
 

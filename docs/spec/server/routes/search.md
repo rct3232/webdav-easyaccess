@@ -33,6 +33,7 @@ and with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 | Method | Path | Auth  | Description                                        |
 | ------ | ---- | ----- | -------------------------------------------------- |
 | POST   | `/`  | Token | Hybrid query: `{ query, result_ref? }` → sections. |
+| POST   | `/click` | Token | §3.4 list-entry-click recording point for search results: `{ node_id }` → one `usage_events` row `action='open'`, fire-and-forget. |
 
 ### 2.3 Middleware Used
 
@@ -119,12 +120,31 @@ post-dedup displayed rows; `semantic_available` is the client's gate for hiding 
 collection means the semantic part only; name-match results are ALWAYS excluded from
 collection definitions, §4.6).
 
+### 2.4.0 `POST /click` — §3.4 list-entry-click recording point (register (a))
+
+- Body `{ node_id }` (positive integer). Auth: `authenticateToken, requireUser`
+  (per-router, same as POST `/`). The recording path is
+  `usageService.recordEvent({ userId, nodeId, action: 'open' })` (the §3.4
+  `list-entry-click` signal family records the `open` kind — the only §3.4 action
+  kind without a dedicated endpoint of its own), fire-and-forget: the route responds
+  `204` without waiting for the insert; a recording failure never surfaces
+  (usageService contract — errors are never thrown from the signal path).
+- Missing/whitespace-free invalid `node_id` (non-integer, ≤ 0) → 400
+  `serverErrors.search.clickTargetRequired`, nothing recorded.
+- Why a dedicated endpoint: search-result opens are pure client navigation (a result
+  click does not hit download/preview, and directory listings are write-amplification
+  guarded); there is no existing low-frequency endpoint to piggyback on. Scoped under
+  the search mount so the signal stays with its interaction point; other lists wire
+  their own recording points in their owning waves.
+
+
 ### 2.4.1 Error Codes (SERVER_ERROR_CODES style)
 
 | HTTP | errorCode                           | Trigger                                     |
 | ---- | ----------------------------------- | ------------------------------------------- |
 | 400  | `serverErrors.search.queryRequired` | Missing/empty/whitespace `query`.           |
 | 400  | `serverErrors.search.queryTooLong`  | `query` longer than 200 chars.              |
+| 400  | `serverErrors.search.clickTargetRequired` | `POST /click` without a positive-integer `node_id`. |
 | 500  | `serverErrors.search.fail`          | Unexpected engine failure (envelope param). |
 
 `serverErrors.ai.notConfigured` is returned **only** as
@@ -176,3 +196,6 @@ absent, not the feature).
 - [ ] All response fields snake_case; usage events `search_hit` recorded for returned
       nodes
 - [ ] Setup-mode: mount returns the guard response while setup incomplete
+- [ ] `POST /click` with a valid `node_id` → 204 and exactly one `usage_events` row
+      `action='open'` for (requester, node); missing/non-positive `node_id` → 400
+      `search.clickTargetRequired`, nothing recorded; unauthenticated → 401

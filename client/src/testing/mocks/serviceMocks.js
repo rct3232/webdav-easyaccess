@@ -89,6 +89,15 @@ export function createRecentFilesNotifierMock(overrides = {}) {
   };
 }
 
+export function createRecentQueriesStorageMock(overrides = {}) {
+  return {
+    loadRecentQueries: jest.fn(() => []),
+    saveRecentQueries: jest.fn(),
+    clearRecentQueries: jest.fn(),
+    ...overrides,
+  };
+}
+
 export function createExplorerGatewayMock(overrides = {}) {
   return {
     addRecentFile: jest.fn().mockResolvedValue([]),
@@ -125,6 +134,9 @@ export function createExplorerGatewayMock(overrides = {}) {
     grantCollection: jest.fn().mockResolvedValue(null),
     revokeGrant: jest.fn().mockResolvedValue(null),
     subscribeToCollections: jest.fn(() => jest.fn()),
+    // Search results-mode seams (T0.11 — explorerGateway §2.6 search group)
+    runSearch: jest.fn().mockResolvedValue(null),
+    recordSearchClick: jest.fn().mockResolvedValue(false),
     ...overrides,
   };
 }

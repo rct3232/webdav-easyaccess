@@ -751,5 +751,104 @@ module.exports = function createSqliteFileNodeRepository(executor) {
         throw mapDatabaseError(error);
       }
     },
+
+    // ---- search surface (T0.11) ----------------------------------------
+
+    /**
+     * Name-section search over the requester-visible live rows
+     * (docs/spec/server/services/searchService.md §2.5). Visibility = the
+     * fileService-listing closure/owner rule: the requester's own-root subtree
+     * ∪ path-granted subtrees (node + closure descendants) ∪ point-granted
+     * file nodes. Matching is `lower(name) LIKE lower('%q%')` — lower() on
+     * BOTH sides is mandatory (sqlite LIKE is ASCII-case-folded only) and the
+     * whole query string must be contained (no token split). Order: name asc,
+     * then node_id asc.
+     */
+    async searchNodesByName(userId, query, { limit = 200 } = {}) {
+      const trimmed = String(query ?? '').trim();
+      if (!trimmed) return [];
+      const cap = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Number(limit) : 200;
+      try {
+        const root = await this.getUserRootNode(userId);
+        const rootId = root ? Number(root.id) : null;
+
+        const params = [trimmed];
+        const arms = [];
+        if (rootId != null) {
+          arms.push(
+            '(fn.id = ? OR EXISTS (SELECT 1 FROM node_ancestors oa WHERE oa.ancestor_id = ? AND oa.descendant_id = fn.id))'
+          );
+          params.push(rootId, rootId);
+        }
+        arms.push(
+          'EXISTS (SELECT 1 FROM permissions_user_paths p WHERE p.user_id = ? AND (p.file_node_id = fn.id OR EXISTS (SELECT 1 FROM node_ancestors pa WHERE pa.ancestor_id = p.file_node_id AND pa.descendant_id = fn.id)))'
+        );
+        params.push(Number(userId));
+        arms.push(
+          'EXISTS (SELECT 1 FROM permissions_user_files f WHERE f.user_id = ? AND f.file_node_id = fn.id)'
+        );
+        params.push(Number(userId));
+        params.push(cap);
+
+        const { rows } = await executor.query(
+          `SELECT fn.id, fn.name
+             FROM file_nodes fn
+            WHERE fn.deleted_at IS NULL
+              AND lower(fn.name) LIKE lower('%' || ? || '%')
+              AND (${arms.join(' OR ')})
+            ORDER BY fn.name ASC, fn.id ASC
+            LIMIT ?`,
+          params
+        );
+        return rows.map((row) => ({ id: Number(row.id), name: row.name }));
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    /**
+     * Random sample of at most n requester-visible live node ids
+     * (searchService §2.5 — per-query dynamic-baseline corpus sample, P1).
+     * Same visibility rule as searchNodesByName.
+     */
+    async sampleVisibleNodeIds(userId, n) {
+      const size = Number.isFinite(Number(n)) && Number(n) > 0 ? Number(n) : 0;
+      if (size === 0) return [];
+      try {
+        const root = await this.getUserRootNode(userId);
+        const rootId = root ? Number(root.id) : null;
+
+        const params = [];
+        const arms = [];
+        if (rootId != null) {
+          arms.push(
+            '(fn.id = ? OR EXISTS (SELECT 1 FROM node_ancestors oa WHERE oa.ancestor_id = ? AND oa.descendant_id = fn.id))'
+          );
+          params.push(rootId, rootId);
+        }
+        arms.push(
+          'EXISTS (SELECT 1 FROM permissions_user_paths p WHERE p.user_id = ? AND (p.file_node_id = fn.id OR EXISTS (SELECT 1 FROM node_ancestors pa WHERE pa.ancestor_id = p.file_node_id AND pa.descendant_id = fn.id)))'
+        );
+        params.push(Number(userId));
+        arms.push(
+          'EXISTS (SELECT 1 FROM permissions_user_files f WHERE f.user_id = ? AND f.file_node_id = fn.id)'
+        );
+        params.push(Number(userId));
+        params.push(size);
+
+        const { rows } = await executor.query(
+          `SELECT fn.id
+             FROM file_nodes fn
+            WHERE fn.deleted_at IS NULL
+              AND (${arms.join(' OR ')})
+            ORDER BY RANDOM()
+            LIMIT ?`,
+          params
+        );
+        return rows.map((row) => Number(row.id));
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
   };
 };

@@ -45,10 +45,11 @@ Target-contract spec.
 | exitResults             | `() => void`                               | Clears result state, keeps filter text behavior normal                                                                                                                                  |
 | saveResultsToCollection | `(name) => Promise<payload ∥ null>`        | Confirm dialog is host-rendered; creates `origin='search'` from the semantic snapshot only (§4.6/§4.22 flattening — name-match rows never enter the definition); success → `onUndoable` |
 | saveChipQuery           | `(chip) => Promise<void>`                  | `⋮ → save` on a chip: re-runs that query (always-replay Q7) then enters the same save flow                                                                                              |
+| recordEntryClick        | `(nodeId) => Promise<boolean>`             | §3.4 list-entry-click signal at result open (register (a)): routes `gateway.recordSearchClick(nodeId)` — absorbed, never toasts. The shell wiring invokes it when a result row is opened. |
 
 ### 2.4 Dependencies
 
-- **Must route IO through:** `explorerGateway` §2.6 (`runSearch`, `createCollection`).
+- **Must route IO through:** `explorerGateway` §2.6 (`runSearch`, `createCollection`, `recordSearchClick`).
 - **May use:** pure helpers only for filter/highlight math (`searchHighlight.js` — **Decision:** its util spec is added at implementation time; ranges are computed client-side, the server never returns markup offsets).
 - **Must not use:** `fetch`, `sessionStorage` directly (**Decision:** recent-query persistence goes through a tiny browser-storage adapter seam inside the gateway layer, not this hook).
 
@@ -72,6 +73,7 @@ Target-contract spec.
 - [ ] Highlight ranges appear only on `nameMatches` rows; semantic rows carry `score`, no highlights.
 - [ ] `exitResults` returns to `filter` mode and clears result state.
 - [ ] Save creates exactly one collection with the semantic-only definition payload; success triggers `onUndoable`.
+- [ ] `recordEntryClick` routes through the gateway seam exactly once per call and absorbs failures silently (no toast, no throw).
 - [ ] Absorbed search failure produces `showError` and leaves the previous result set intact.
 
 ### 2.8 Edge Cases

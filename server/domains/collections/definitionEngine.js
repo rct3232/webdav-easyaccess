@@ -14,6 +14,10 @@
  * via filecache, likes via fileLikesStore); tag atoms match nothing until the
  * T0.9 tag source lands — identical observable behavior to the §4.12
  * normalized-equality fallback over an empty tag set.
+ * T0.9: tag atoms are LIVE — the service injects
+ * `providers.listNodesByTag(foldedValue)` (aiTagStore ai_tag_raw reverse
+ * lookup, §4.12 None-column string equality); the engine folds nothing itself
+ * and an absent provider degrades to the T0.3 no-match parity.
  *
  * Reasons: `path:<value>` / `tag:<value>` / `like` / `date` / `size`; an
  * `all_of` match joins its atom labels with '+' (deterministic, informative).
@@ -164,7 +168,9 @@ function fingerprintDefinition(definition) {
  * @param {Object} options.definition parsed definition (parseDefinition output)
  * @param {Array<{ id:number, parentId:number|null, name:string, type:string, createdAt:string|null }>} options.candidateNodes
  * @param {Map<number, Object>} options.nodesById id → row, including ancestors (path resolution)
- * @param {{ likedNodeIds: Set<number>, getSize: (nodeId:number) => Promise<number|null> }} options.providers
+ * @param {{ likedNodeIds: Set<number>, getSize: (nodeId:number) => Promise<number|null>, listNodesByTag?: (value:string) => Promise<number[]> }} options.providers
+ *   `listNodesByTag` resolves a tag atom value to the node ids carrying the
+ *   folded tag (T0.9, ai_tag_raw); absent ⇒ tag atoms match nothing.
  * @param {Date} [options.now]
  * @returns {Promise<Map<number, string>>} admitted nodeId → matched reason
  */
@@ -179,7 +185,7 @@ async function evaluateDefinition({
     return new Map();
   }
   const parsed = parseDefinition(definition);
-  const { likedNodeIds, getSize } = providers;
+  const { likedNodeIds, getSize, listNodesByTag } = providers;
   const liked = likedNodeIds instanceof Set ? likedNodeIds : new Set(likedNodeIds || []);
   const parentOf = (node) => {
     if (!node || node.parentId == null) return null;
@@ -203,7 +209,10 @@ async function evaluateDefinition({
       const path = displayPath(node);
       return path === atom.prefix || path.startsWith(`${atom.prefix}/`);
     },
-    tag: () => false,
+    tag: (atom, node) => {
+      const matched = tagSets.get(atom.value);
+      return matched ? matched.has(Number(node.id)) : false;
+    },
     like: (atom, node) => liked.has(Number(node.id)),
     date: (atom, node) => {
       const createdAt = new Date(node.createdAt);
@@ -217,6 +226,18 @@ async function evaluateDefinition({
       return true;
     },
   };
+
+  // Tag atoms resolve ONCE per distinct value through the injected provider
+  // (T0.9: ai_tag_raw reverse lookup over folded tags — §4.12 None-column
+  // string equality). An absent provider keeps the T0.3 no-match parity.
+  const tagSets = new Map();
+  if (typeof listNodesByTag === 'function') {
+    for (const atom of [...parsed.allOf, ...parsed.anyOf]) {
+      if (atom.type !== 'tag' || tagSets.has(atom.value)) continue;
+      const nodeIds = await listNodesByTag(atom.value);
+      tagSets.set(atom.value, new Set((nodeIds || []).map(Number)));
+    }
+  }
 
   const evaluateAtom = async (atom, node) => {
     if (atom.type === 'size') {

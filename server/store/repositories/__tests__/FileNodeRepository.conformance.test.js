@@ -894,4 +894,56 @@ describe('FileNodeRepository conformance', () => {
       expect(res.changes).toBe(0);
     });
   });
+
+  describe('listSubtreeCacheRows (T0.9 AI-hygiene subtree read)', () => {
+    it('returns live subtree rows with filecache columns, node-id ascending', async () => {
+      const parent = await repo.createNode(null, uniqueName('fn-sub-parent'), 'directory');
+      const child = await repo.createNode(parent.id, uniqueName('fn-sub-child'), 'directory');
+      const fileA = await repo.createNode(child.id, uniqueName('fn-sub-a'), 'file');
+      const fileB = await repo.createNode(parent.id, uniqueName('fn-sub-b'), 'file');
+      const outside = await repo.createNode(null, uniqueName('fn-sub-out'), 'file');
+      await repo.insertAncestorRows([
+        { ancestorId: parent.id, descendantId: parent.id, depth: 0 },
+        { ancestorId: parent.id, descendantId: child.id, depth: 1 },
+        { ancestorId: child.id, descendantId: child.id, depth: 0 },
+        { ancestorId: parent.id, descendantId: fileA.id, depth: 2 },
+        { ancestorId: child.id, descendantId: fileA.id, depth: 1 },
+        { ancestorId: fileA.id, descendantId: fileA.id, depth: 0 },
+        { ancestorId: parent.id, descendantId: fileB.id, depth: 1 },
+        { ancestorId: fileB.id, descendantId: fileB.id, depth: 0 },
+        { ancestorId: outside.id, descendantId: outside.id, depth: 0 },
+      ]);
+
+      await repo.upsertCache(fileA.id, 11, 'image/png', 'hash-a');
+      // fileB deliberately has NO filecache row
+
+      const rows = await repo.listSubtreeCacheRows(parent.id);
+      const ids = rows.map((row) => row.nodeId);
+      expect(ids).toEqual([...ids].sort((x, y) => x - y));
+      expect(ids).toEqual(expect.arrayContaining([parent.id, child.id, fileA.id, fileB.id]));
+      expect(ids).not.toContain(outside.id);
+
+      const a = rows.find((row) => row.nodeId === fileA.id);
+      expect(a).toMatchObject({
+        parentId: child.id,
+        name: fileA.name,
+        type: 'file',
+        size: 11,
+        mimeType: 'image/png',
+        contentHash: 'hash-a',
+      });
+      expect(typeof a.createdAt).toBe('string');
+
+      const b = rows.find((row) => row.nodeId === fileB.id);
+      expect(b.size).toBeNull();
+      expect(b.contentHash).toBeNull();
+
+      // trashed nodes disappear from the read (caller-expanded subtree ids,
+      // matching the trash-service usage)
+      await repo.markSubtreeDeleted([child.id, fileA.id]);
+      const afterIds = (await repo.listSubtreeCacheRows(parent.id)).map((row) => row.nodeId);
+      expect(afterIds).not.toContain(child.id);
+      expect(afterIds).not.toContain(fileA.id);
+    });
+  });
 });

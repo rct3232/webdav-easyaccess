@@ -21,6 +21,8 @@ const { isOwnerNode } = require('../../domains/permissions/policy/ownerNodeResol
 const { createFileNodesStore } = require('../../store/fileNodesStore');
 const { validateFileName } = require('@webdav-easyaccess/shared/validation');
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
+const aiTagStore = require('../../store/aiTagStore');
+const { foldTag } = require('../ai/tagVocabulary');
 const definitionEngine = require('./definitionEngine');
 const wire = require('./wire');
 
@@ -137,6 +139,15 @@ async function buildProviders(userId) {
     getSize: async (nodeId) => {
       const cache = await fileNodesStore.getCache(nodeId);
       return cache && cache.size != null ? Number(cache.size) : null;
+    },
+    // T0.9 tag atoms (§2.3 None-column cosine-free path): the engine hands the
+    // atom value over; the fold is the CALLER's pure function (§4.18) and the
+    // store lookup stays string-equality. The P1 vector variant swaps this
+    // resolver behind the same seam — engine and grammar unchanged.
+    listNodesByTag: async (value) => {
+      const folded = foldTag(value);
+      if (!folded) return [];
+      return aiTagStore.listNodeIdsByRawTag(folded);
     },
   };
 }
@@ -729,6 +740,60 @@ async function removeItems(userId, collectionId, nodeIds) {
 }
 
 // ---------------------------------------------------------------------------
+// Upload-hook rule-check SEAM (§2.3-bis, T0.9) — callable only; invocation
+// at the §4.1 commit points rides the P1 wiring (register (b)).
+// ---------------------------------------------------------------------------
+
+/**
+ * Point-evaluate the requester's ACTIVE predicate collections against ONE
+ * freshly committed node (no corpus scan — §2.6 mechanism). Each collection
+ * that newly admits the node gets `touchMemberChange` (the only coupling per
+ * aiJobService §2.2); exclusions and existing stored rows short-circuit.
+ * @returns {Promise<{ nodeId: number, admittedCollectionIds: number[] }>}
+ */
+async function checkUploadAdmissions(userId, nodeId) {
+  const parsedNodeId = toFiniteId(nodeId);
+  if (!parsedNodeId) throw serviceError('emptyNodeIds');
+
+  const fileNodesStore = createFileNodesStore();
+  const node = await fileNodesStore.getNode(parsedNodeId);
+  if (!node) return { nodeId: parsedNodeId, admittedCollectionIds: [] };
+
+  const nodesById = new Map();
+  let current = node;
+  while (current) {
+    nodesById.set(Number(current.id), current);
+    if (current.parentId == null) break;
+    current = await fileNodesStore.getNode(current.parentId);
+  }
+
+  const providers = await buildProviders(userId);
+  const collections = (await collectionsStore.listForUser(userId, { status: 'active' })).filter(
+    (row) => row.ownerId === userId && definitionEngine.hasPredicates(row.definition)
+  );
+
+  const admittedCollectionIds = [];
+  for (const collection of collections) {
+    const exclusions = new Set(
+      (await collectionsStore.listExclusions(collection.id)).map((excludedId) => Number(excludedId))
+    );
+    if (exclusions.has(parsedNodeId)) continue;
+    if (await collectionsStore.getStoredItem(collection.id, parsedNodeId)) continue;
+    const admitted = await definitionEngine.evaluateDefinition({
+      definition: collection.definition,
+      candidateNodes: [node],
+      nodesById,
+      providers,
+    });
+    if (admitted.has(parsedNodeId)) {
+      await collectionsStore.touchMemberChange(collection.id);
+      admittedCollectionIds.push(collection.id);
+    }
+  }
+  return { nodeId: parsedNodeId, admittedCollectionIds };
+}
+
+// ---------------------------------------------------------------------------
 // Preview (§2.7)
 // ---------------------------------------------------------------------------
 
@@ -1046,6 +1111,7 @@ module.exports = {
   dismissMerge,
   rejectMerge,
   getForNodes,
+  checkUploadAdmissions,
   listGrants,
   grantCollectionAccess,
   revokeCollectionAccess,

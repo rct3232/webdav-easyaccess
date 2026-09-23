@@ -50,6 +50,10 @@
  * @property {(fileNodeId) => Promise<{ changes: number }>} setObjectMapBackendWebdav
  * @property {(fileNodeId, size, mimeType, contentHash) => Promise<{ changes: number }>} upsertCache
  * @property {(fileNodeId) => Promise<Object|null>} getCache
+ * @property {(ancestorId) => Promise<Array<{ nodeId: number, parentId: number|null, name: string, type: string, createdAt: string|null, size: number|null, mimeType: string|null, contentHash: string|null }>>} listSubtreeCacheRows
+ *   AI-hygiene subtree read (T0.9): live subtree nodes with filecache columns
+ *   (`node_ancestors` JOIN + LEFT JOIN `filecache`, `ORDER BY n.id`) for the
+ *   exact-dup finder and derived-tags backfill.
  * @property {() => Promise<number>} countCacheRowsWithNullContentHash
  * @property {({ limit?: number, afterId?: number }) => Promise<Array<{ nodeId: number, name: string, type: 'file', deletedAt: string|null }>>} listCacheRowsWithNullContentHash
  *   Content-hash completeness surface (T0.1/T0.8): file rows with a NULL

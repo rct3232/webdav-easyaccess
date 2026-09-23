@@ -702,6 +702,33 @@ module.exports = function createPostgresFileNodeRepository(executor) {
       }
     },
 
+    async listSubtreeCacheRows(ancestorId) {
+      try {
+        const { rows } = await executor.query(
+          `SELECT n.id, n.parent_id, n.name, n.type, n.created_at,
+                  fc.size, fc.mime_type, fc.content_hash
+             FROM file_nodes n
+             JOIN node_ancestors a ON a.descendant_id = n.id
+             LEFT JOIN filecache fc ON fc.file_node_id = n.id
+            WHERE a.ancestor_id = $1 AND n.deleted_at IS NULL
+            ORDER BY n.id`,
+          [Number(ancestorId)]
+        );
+        return rows.map((row) => ({
+          nodeId: Number(row.id),
+          parentId: row.parent_id != null ? Number(row.parent_id) : null,
+          name: row.name,
+          type: row.type,
+          createdAt: toIsoString(row.created_at),
+          size: row.size != null ? Number(row.size) : null,
+          mimeType: row.mime_type ?? null,
+          contentHash: row.content_hash ?? null,
+        }));
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
     async setCacheContentHash(fileNodeId, contentHash) {
       try {
         // Guarded on content_hash IS NULL — the idempotency contract: an

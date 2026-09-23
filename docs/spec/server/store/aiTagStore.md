@@ -2,12 +2,12 @@
 
 ## 1. Overview
 
-| Item         | Description                                                                                                                                                                                                                                                                                     |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role         | Tag vocabulary substrate — facade over `tag_embeddings` (provider-global, model-keyed tag→vector cache) and `tag_parents` (display/grouping hint table).                                                                                                                                        |
-| Hard scope   | **No alias or merge tables exist.** §4.18 retired the merge design (E6c: high-cosine pairs are spelling variants or hypernym containments, not synonyms); the orthographic fold is a read-time PURE FUNCTION and `tag_parents` is display-only, non-destructive. This store ships nothing else. |
-| Out of scope | `ai_tag_raw` (materialized normalized grouping aid) is written by the tag pipeline service, not this facade; raw tags stay in `ai_features.tags`. Search-side fuzzy matching rides `tag_embeddings` vector similarity via vectorStore lookups (§3.2), never string equality here.               |
-| Design owner | `docs/features/collections-platform.md` §4.18, §4.20 E3, §3.2 (tag predicates), §5 (schema rows).                                                                                                                                                                                               |
+| Item         | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role         | Tag vocabulary substrate — facade over `tag_embeddings` (provider-global, model-keyed tag→vector cache), `tag_parents` (display/grouping hint table) and `ai_tag_raw` (materialized folded tag→node grouping aid).                                                                                                                                                                                                                                                                                                             |
+| Hard scope   | **No alias or merge tables exist.** §4.18 retired the merge design (E6c: high-cosine pairs are spelling variants or hypernym containments, not synonyms); the orthographic fold is a read-time PURE FUNCTION and `tag_parents` is display-only, non-destructive. This store ships nothing else.                                                                                                                                                                                                                                |
+| Out of scope | Tag COMPUTATION is not this facade: LLM raw tags stay in `ai_features.tags` and the nightly normalization materialization is written by the tag pipeline service (evolution §2.10), local derived tags by `domains/ai/derivedTags.js` (§4.10) — but per PLAN §6 persistence policy the SQL SURFACE for `ai_tag_raw` rides this store (no SQL outside repositories; T0.9 spec-conformance fix). Search-side fuzzy matching rides `tag_embeddings` vector similarity via vectorStore lookups (§3.2), never string equality here. |
+| Design owner | `docs/features/collections-platform.md` §4.18, §4.20 E3, §3.2 (tag predicates), §5 (schema rows).                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 ---
 
@@ -35,7 +35,10 @@
 - `tag` is stored EXACTLY as given. **Decision:** the caller passes the orthographic
   canonical form (NFKC + whitespace/case fold, §4.18 step 1 — a pure function, zero
   tables); the store performs no normalization of its own.
-- `vector` TEXT: same serialization/codec as pooled embeddings.
+- `vector` TEXT: same serialization/codec as pooled embeddings — comma-separated floats
+  (embeddingsStore §2.2 canonical codec). **Decision (T0.9):** the repository parses the
+  TEXT to `number[]` at the boundary and maps `dim` from the float count (spec §2.3);
+  writers accept `number[]` or an already-serialized comma string and persist TEXT.
 
 **`tag_parents`** — hierarchy HINTS only (§4.18 step 2):
 
@@ -73,6 +76,17 @@
 `tag_parents` has no `model_id` (textual containment relation, model-independent per §5);
 re-running the auto rule after a model/profile change simply refreshes auto rows.
 
+### 2.4.5 Main methods — ai_tag_raw (T0.9 addition)
+
+Grouping aid for tag predicates (§3.2 None-column string equality) and nightly passes;
+rows carry tags ALREADY folded by the caller (the store normalizes nothing).
+
+| Method                | Signature                                 | Description                                                                                                                                                                                                                                                                                                                                                     |
+| --------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `listRawTags`         | (nodeId) => Promise\<tag[]\>              | Folded tags of one node, `ORDER BY tag`.                                                                                                                                                                                                                                                                                                                        |
+| `listNodeIdsByRawTag` | (tag) => Promise\<nodeId[]\>              | Reverse lookup (`ai_tag_raw_tag_idx`) — drives cosine-free tag-atom evaluation; `node_id` asc.                                                                                                                                                                                                                                                                  |
+| `replaceRawTags`      | (nodeId, tags) => Promise\<{ inserted }\> | ONE TX: DELETE rows of the node + INSERT the given folded set (dedup on the PK pair). Idempotent re-run with the same set ⇒ identical rows, `inserted` = set size; stale tags vanish with the delete — the caller OWNS the node's full tag set (v1: derived tags only; the LLM materialization pass replaces this call with a merged-set writer when it lands). |
+
 ### 2.5 Transaction boundaries & error contracts
 
 - Reads: `null` / `[]` for missing data.
@@ -85,7 +99,10 @@ re-running the auto rule after a model/profile change simply refreshes auto rows
 
 - `storage.getExecutor()` + `AiTagRepository` (+ twins)
 - Callers: E3 tag-embed batch job, tag predicate evaluation (collections service
-  reads `getTagVectors` for §3.2 similarity predicates), admin AI tab (view/edit hints).
+  reads `getTagVectors` for §3.2 similarity predicates and `listNodeIdsByRawTag` for the
+  cosine-free None-column match, T0.9), derived-tags pipeline (T0.9) and the nightly tag
+  materialization (evolution §2.10) via the `ai_tag_raw` surface, admin AI tab (view/edit
+  hints).
 
 ### 2.7 Verification Scenarios
 
@@ -98,5 +115,7 @@ re-running the auto rule after a model/profile change simply refreshes auto rows
 - [ ] Non-destructive proof: writing/ deleting hints never touches `ai_features.tags` or `ai_tag_raw` (fixture assert)
 - [ ] CHECK constraint rejects `source` outside `auto|admin` (mapped error)
 - [ ] Store applies NO normalization: `getTagVector('wasted time')` and `getTagVector('wastedtime')` are independent rows (folding is the caller's pure function)
+- [ ] `listRawTags`/`listNodeIdsByRawTag` round-trip; `replaceRawTags` idempotent (re-run same set → identical rows) and removes stale tags of the node
+- [ ] `ai_tag_raw` FK cascade: purging the node takes its raw rows with it
 - [ ] Spec-level assertion (grep/doc): no `tag_aliases`/`tag_merges` table or repository exists in the DDL chain (§4.18 explicit state)
-- [ ] L2 conformance (real sqlite + real PostgreSQL): PK pair semantics, conditional-upsert guard parity (`WHERE source <> 'admin'`), TEXT vector round-trip, batch expansion parity, FK `model_id` error mapping
+- [ ] L2 conformance (real sqlite + real PostgreSQL): PK pair semantics, conditional-upsert guard parity (`WHERE source <> 'admin'`), TEXT vector round-trip (comma-separated float codec, `dim` = float count), batch expansion parity, FK `model_id` error mapping

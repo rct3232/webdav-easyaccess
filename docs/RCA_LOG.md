@@ -620,3 +620,16 @@ IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode repor
   contradicting the shell-owned single-instance contract. **Action**: added a
   `!isBulk && member == null → null` early return; verified across the member
   suite and FileManager shell wiring tests.
+
+### 2026-09-22 — Wave-2 gates: two single non-reproducible full-suite flakes (client FilePropertiesDialog, PG PlatformSchema.conformance)
+
+- **Summary**: first full gates after the wave-2 merges reported 1 failing client suite
+  (`FilePropertiesDialog.test.js`, 1/1667) and 5 failing PG tests
+  (`PlatformSchema.conformance.test.js`); both immediately preceding targeted/agent runs were
+  green.
+- **Diagnosis**: error output not captured before scroll. Re-runs: client full gate 172/172
+  twice; PG full leg 23/23 twice; `PlatformSchema.conformance` alone with PG env 5/5 twice.
+  Zero reproductions — same class as the 2026-09-22 gcService observation (parallel/coverage
+  load timing). No code change.
+- **Classification**: pending reproduction; treated as environmental for wave-2 closure.
+  **Action**: monitor; capture full output on recurrence.

@@ -276,8 +276,19 @@ config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
 | ---- | ---------------- | --------------- | ---------------------- | ------ |
 | 0 | T0.2 ∥ T0.12 ∥ T0.7b (∥ T0.11 if capacity) | none (roots) | T0.2: 3 conformance twins + dual-dialect §5 table-presence; T0.12: node:sqlite driver + BigInt PK binding; T0.7b: en/ko i18n key mirror + settings/flags exposure | `[done]` — T0.11 carried into Wave 2 |
 | 1 | T0.3 ∥ T0.6 ∥ T0.7 ∥ T0.8 (+ T0.1 absorbed) | T0.2 + T0.7b merged | T0.3: camelCase req / snake_case res + activity_score fallback sort; T0.8: NULL content_hash backfill idempotency | `[done]` |
-| 2 | T0.4 ∥ T0.5 ∥ T0.9 ∥ T0.11 (carried from Wave 0) + pre-tasks: register (c) (failsafe-row consolidation, small `chore/`) and register (f) (test-infra leak fix, small `test/`) | T0.3 API surface (client) / T0.2 (T0.9) | component+hook tests; T0.9 hash-first dup (NULL never forms a group), derived tags v1 | `[wip]` — T0.11/T0.4/T0.5 merged; client host-wiring seams `[done]` on `feature/wave2-client-wiring` (see provenance) |
+| 2 | T0.4 ∥ T0.5 ∥ T0.9 ∥ T0.11 (carried from Wave 0) + pre-tasks: register (c) (failsafe-row consolidation, small `chore/`) and register (f) (test-infra leak fix, small `test/`) | T0.3 API surface (client) / T0.2 (T0.9) | component+hook tests; T0.9 hash-first dup (NULL never forms a group), derived tags v1 | `[done]` |
 | 3 | T0.10 → P0 exit gate | T0.9 + T0.7 + T0.8 merged | dashboard blocks per §4.16 | `[todo]` |
+
+- **Wave-2 execution (2026-09-22)**: pre-tasks register (c)/(f) landed on `ai-feature`
+  first (`chore/register-c-probe-consolidation`, `test/register-f-test-infra-leak` — the
+  env-restore fix + PG-leg sqlite guard); T0.4/T0.5/T0.9/T0.11 executed in parallel via
+  isolated worktrees and merged in T0.9→T0.11→T0.4→T0.5 order (conflicts resolved:
+  FileNodeRepository conformance dual-describe, locales key unions, gateway/mocks seam
+  unions); orchestrator mounts `/api/search` + `/api/file-likes`; integration branch
+  `feature/wave2-client-wiring` closed the three deferred host seams (provenance below).
+  Full gates: server `test:ci` 126 suites / 2341 tests; client `test:ci` 172 suites /
+  1667 tests; `test:ci:pg:adapters` 23 suites / 341 tests — all green (two single
+  non-reproducible first-run flakes re-ran clean, RCA-logged).
 
 - **P0 exit gate**: full `npm run test:ci` (client+server) + `test:ci:pg:adapters` + all new
   conformance suites + E2E-COLLECTION-001 lifecycle & degradation matrix — then `ai-feature`
@@ -309,9 +320,9 @@ config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
   117 suites / 2229 tests, client `test:ci` 164 suites / 1494 tests, `test:ci:pg:adapters`
   22 suites / 314 tests — all green. Deferred follow-ups recorded in the register below.
 - **Deferred follow-ups register (wave-1 deferrals, 2026-09-22)** — sub-work recorded here,
-  not in `docs/IMPROVEMENT_PLAN.md`: (a) usage-event recording wiring rides the owning tasks
-  — T0.5 like, T0.11 search_hit/list-entry-click, files-domain wiring for download/preview
-  (Wave 2+); (b) upload/copy/restore `content_hash` write-side population rides the §4.1
+  not in `docs/IMPROVEMENT_PLAN.md`: (a) usage-event recording wiring DONE 2026-09-22 (wave 2) —
+  like (T0.5), search_hit + list-entry-click (T0.11 `POST /search/click`), download/preview
+  (T0.5 files-domain call sites); `open` and `GET /versions/download` deliberately not recorded; (b) upload/copy/restore `content_hash` write-side population rides the §4.1
   hook wiring in T1.3 (P1) — boot probe + backfill cover the gap meanwhile; (c) DONE 2026-09-22 (wave-2 pre-task):
   consolidated — startup row is now a single `kind='failsafe'` row whose payload merges the
   scan report and the section; (d) journal `subject_label` capture decided at T0.10 (Wave 3) when the feed

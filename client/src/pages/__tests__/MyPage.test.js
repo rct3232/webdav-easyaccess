@@ -442,3 +442,52 @@ describe('MyPage Admin categories (User Management, System Settings)', () => {
     );
   });
 });
+
+describe('MyPage Storage dashboard entry (T0.10)', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    sessionStorage.setItem('token', 'test-token');
+    sessionStorage.setItem('refreshToken', 'refresh-token');
+    useResponsive.mockReturnValue({
+      isMobile: false,
+      isTablet: false,
+      isDesktop: true,
+      isSmallMobile: false,
+    });
+  });
+
+  const dashboardHandlers = () => [
+    http.get('/api/dashboard', () =>
+      HttpResponse.json({
+        duplicates: { group_count: 0, duplicate_count: 0, reclaimable_bytes: 0 },
+        suggestions: [],
+        trash: { item_count: 0, total_bytes: 0, oldest_deleted_at: null, retention_days: 30 },
+      })
+    ),
+    http.get('/api/actions', () => HttpResponse.json({ actions: [] })),
+    http.get(/\/api\/collections(\?.*)?$/, () => HttpResponse.json({ collections: [] })),
+  ];
+
+  it('Storage category renders for a non-admin and shows the CollectionDashboard', async () => {
+    server.use(...dashboardHandlers());
+    const user = userEvent.setup();
+    renderWithProviders(<MyPage />, { initialEntries: ['/mypage'] });
+
+    await waitForMyPageReady();
+
+    await user.click(await screen.findByRole('button', { name: /storage/i }));
+
+    expect(await screen.findByTestId('collection-dashboard')).toBeInTheDocument();
+  });
+
+  it('location.state.category=storage boots directly into the dashboard', async () => {
+    server.use(...dashboardHandlers());
+    renderWithProviders(<MyPage />, {
+      initialEntries: [{ pathname: '/mypage', state: { category: 'storage' } }],
+    });
+
+    await waitForMyPageReady();
+
+    expect(await screen.findByTestId('collection-dashboard')).toBeInTheDocument();
+  });
+});

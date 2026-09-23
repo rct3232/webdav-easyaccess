@@ -71,6 +71,9 @@ jest.mock('../collectionsRepository', () => {
     'updateCollection',
     'runSearch',
     'recordSearchClick',
+    'getActions',
+    'getFileSuggestions',
+    'acceptFileSuggestions',
   ];
   const mock = {};
   for (const name of fns) mock[name] = jest.fn();
@@ -611,6 +614,27 @@ describe('explorerGateway', () => {
 
       const result = await explorerGateway.loadNodeAncestors(99);
       expect(result.ancestors[result.ancestors.length - 2].nodeId).toBe(42);
+    });
+  });
+
+  describe('explorerGateway actions-feed + dashboard seams (T0.10)', () => {
+    it('re-exports getActions / getFileSuggestions / acceptFileSuggestions with the repository shapes', async () => {
+      const repo = require('../collectionsRepository');
+
+      const feed = { actions: [{ action_id: 1 }] };
+      repo.getActions.mockResolvedValueOnce(feed);
+      await expect(explorerGateway.getActions({ domain: 'collection' })).resolves.toBe(feed);
+      expect(repo.getActions).toHaveBeenCalledWith({ domain: 'collection' });
+
+      const payload = { suggestions: [], duplicates: { group_count: 0 } };
+      repo.getFileSuggestions.mockResolvedValueOnce(payload);
+      await expect(explorerGateway.getFileSuggestions()).resolves.toBe(payload);
+
+      repo.acceptFileSuggestions.mockResolvedValueOnce({ trashed: [7] });
+      await expect(explorerGateway.acceptFileSuggestions([7], { silent: true })).resolves.toEqual({
+        trashed: [7],
+      });
+      expect(repo.acceptFileSuggestions).toHaveBeenCalledWith([7], { silent: true });
     });
   });
 });

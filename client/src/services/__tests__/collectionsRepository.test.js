@@ -22,6 +22,9 @@ import {
   revokeGrant,
   runSearch,
   recordSearchClick,
+  getActions,
+  getFileSuggestions,
+  acceptFileSuggestions,
 } from '../collectionsRepository';
 
 jest.mock('../apiClient', () => ({
@@ -294,6 +297,102 @@ describe('runSearch + recordSearchClick', () => {
     post.mockRejectedValueOnce(new Error('Network error'));
 
     await expect(recordSearchClick(11)).resolves.toBe(false);
+    expect(notifyCollectionsChange).not.toHaveBeenCalled();
+  });
+});
+
+// -- Actions feed + Storage dashboard seams (T0.10) --------------------------
+
+describe('getActions / getFileSuggestions / acceptFileSuggestions (T0.10)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('getActions returns the feed payload verbatim (snake_case rows)', async () => {
+    const payload = {
+      actions: [
+        {
+          action_id: 995,
+          domain: 'collection',
+          subject: 'collection:17',
+          subject_label: 'Europe trip',
+          actor: 4,
+          action: 'merge',
+          status: 'applied',
+          chain_seq: 12,
+          is_tip: true,
+          undo_available: true,
+          created_at: '2026-09-16T03:00:00Z',
+          undone_at: null,
+          expires_at: '2026-10-16T03:00:00Z',
+        },
+      ],
+    };
+    get.mockResolvedValueOnce({ data: payload });
+
+    await expect(getActions()).resolves.toEqual(payload);
+    expect(get).toHaveBeenCalledWith('/actions');
+  });
+
+  it('getActions forwards the optional domain filter as a query param', async () => {
+    get.mockResolvedValueOnce({ data: { actions: [] } });
+
+    await getActions({ domain: 'collection' });
+
+    expect(get).toHaveBeenCalledWith('/actions?domain=collection');
+  });
+
+  it('getActions absorbs failures into { actions: [] } without throwing', async () => {
+    get.mockRejectedValueOnce(new Error('Network error'));
+
+    await expect(getActions({ domain: 'collection' })).resolves.toEqual({ actions: [] });
+  });
+
+  it('getFileSuggestions returns the dashboard payload verbatim', async () => {
+    const payload = {
+      duplicates: { group_count: 1, duplicate_count: 2, reclaimable_bytes: 120 },
+      suggestions: [
+        {
+          node_id: 90211,
+          kind: 'exact_dup',
+          path: '/alice/b.bin',
+          size_bytes: 120,
+          reason: { kind: 'exact_dup', keep_node_id: 90210 },
+        },
+      ],
+      trash: { item_count: 0, total_bytes: 0, oldest_deleted_at: null, retention_days: 30 },
+    };
+    get.mockResolvedValueOnce({ data: payload });
+
+    await expect(getFileSuggestions()).resolves.toEqual(payload);
+    expect(get).toHaveBeenCalledWith('/dashboard');
+  });
+
+  it('getFileSuggestions absorbs failures into the { suggestions: [] } fallback', async () => {
+    get.mockRejectedValueOnce(new Error('Network error'));
+
+    await expect(getFileSuggestions()).resolves.toEqual({ suggestions: [] });
+  });
+
+  it('acceptFileSuggestions posts the camelCase body and notifies on real success', async () => {
+    post.mockResolvedValueOnce({ data: { trashed: [1, 2], rejected_not_owned: [], skipped: [] } });
+
+    const result = await acceptFileSuggestions([1, 2]);
+
+    expect(post).toHaveBeenCalledWith('/dashboard/suggestions/accept', { nodeIds: [1, 2] });
+    expect(result).toEqual({ trashed: [1, 2], rejected_not_owned: [], skipped: [] });
+    expect(notifyCollectionsChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('acceptFileSuggestions honors silent option, absorbs failure to null, surfaces the envelope', async () => {
+    post.mockRejectedValueOnce(transportError(400, 'serverErrors.dashboard.emptyNodeIds'));
+    const onError = jest.fn();
+
+    await expect(acceptFileSuggestions([1], { silent: true, onError })).resolves.toBeNull();
+    expect(onError).toHaveBeenCalledWith({
+      errorCode: 'serverErrors.dashboard.emptyNodeIds',
+      params: {},
+    });
     expect(notifyCollectionsChange).not.toHaveBeenCalled();
   });
 });

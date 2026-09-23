@@ -947,6 +947,66 @@ describe('FileNodeRepository conformance', () => {
     });
   });
 
+  describe('summarizeTrashedSubtree (T0.10 dashboard trash read)', () => {
+    it('aggregates trashed file rows of the subtree (count, bytes, oldest deleted_at)', async () => {
+      const root = await repo.createNode(null, uniqueName('fn-tr-root'), 'directory');
+      const folder = await repo.createNode(root.id, uniqueName('fn-tr-folder'), 'directory');
+      const inner = await repo.createNode(folder.id, uniqueName('fn-tr-inner'), 'file');
+      const solo = await repo.createNode(root.id, uniqueName('fn-tr-solo'), 'file');
+      const live = await repo.createNode(root.id, uniqueName('fn-tr-live'), 'file');
+      const outside = await repo.createNode(null, uniqueName('fn-tr-out'), 'file');
+      await repo.insertAncestorRows([
+        { ancestorId: root.id, descendantId: root.id, depth: 0 },
+        { ancestorId: root.id, descendantId: folder.id, depth: 1 },
+        { ancestorId: folder.id, descendantId: folder.id, depth: 0 },
+        { ancestorId: root.id, descendantId: inner.id, depth: 2 },
+        { ancestorId: folder.id, descendantId: inner.id, depth: 1 },
+        { ancestorId: inner.id, descendantId: inner.id, depth: 0 },
+        { ancestorId: root.id, descendantId: solo.id, depth: 1 },
+        { ancestorId: solo.id, descendantId: solo.id, depth: 0 },
+        { ancestorId: root.id, descendantId: live.id, depth: 1 },
+        { ancestorId: live.id, descendantId: live.id, depth: 0 },
+        { ancestorId: outside.id, descendantId: outside.id, depth: 0 },
+      ]);
+      await repo.upsertCache(inner.id, 100, 'text/plain', null);
+      await repo.upsertCache(solo.id, 250, 'text/plain', null);
+      await repo.upsertCache(live.id, 999, 'text/plain', null);
+      await repo.upsertCache(outside.id, 999, 'text/plain', null);
+
+      // baseline: nothing trashed yet (outside trims are irrelevant to the subtree)
+      await expect(repo.summarizeTrashedSubtree(root.id)).resolves.toEqual({
+        itemCount: 0,
+        totalBytes: 0,
+        oldestDeletedAt: null,
+      });
+
+      // trash marking covers the whole subtree — folder rows never count,
+      // children of trashed folders count exactly once each
+      await repo.markSubtreeDeleted([folder.id, inner.id, solo.id]);
+      const summary = await repo.summarizeTrashedSubtree(root.id);
+      expect(summary.itemCount).toBe(2);
+      expect(summary.totalBytes).toBe(350);
+      expect(typeof summary.oldestDeletedAt).toBe('string');
+      expect(Date.parse(summary.oldestDeletedAt)).not.toBeNaN();
+
+      // restore drains the aggregate back
+      await repo.untrashSubtree([folder.id, inner.id, solo.id]);
+      await expect(repo.summarizeTrashedSubtree(root.id)).resolves.toMatchObject({
+        itemCount: 0,
+        totalBytes: 0,
+        oldestDeletedAt: null,
+      });
+    });
+
+    it('reports zeros for an unknown subtree root', async () => {
+      await expect(repo.summarizeTrashedSubtree(999999999)).resolves.toEqual({
+        itemCount: 0,
+        totalBytes: 0,
+        oldestDeletedAt: null,
+      });
+    });
+  });
+
   describe('search surface (T0.11 — searchNodesByName / sampleVisibleNodeIds)', () => {
     /**
      * ACL scoping mirrors the fileService listing parity rule

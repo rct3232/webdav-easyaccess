@@ -54,8 +54,34 @@ describe('useMyPageController', () => {
       expect(result.current.sidebarItems.map((item) => item.id)).toEqual([
         'account',
         'sharing',
+        'storage',
         'preferences',
       ]);
+    });
+  });
+
+  it('lists the storage entry for admins too (visibility all — T0.10)', async () => {
+    useAuth.mockReturnValue({ user: { is_admin: true } });
+    useLocation.mockReturnValue({ state: { category: 'account' } });
+
+    const { result } = renderHook(() => useMyPageController({ isMobile: false }));
+
+    await waitFor(() => {
+      expect(result.current.sidebarItems.map((item) => item.id)).toContain('storage');
+    });
+    const storage = result.current.sidebarItems.find((item) => item.id === 'storage');
+    expect(storage).toMatchObject({ labelKey: 'mypage.storage', visibility: 'all' });
+    expect(storage.icon).toBeTruthy();
+  });
+
+  it('accepts the storage deep-link category id for non-admins without rewriting it (T0.10)', async () => {
+    useAuth.mockReturnValue({ user: { is_admin: false } });
+    useLocation.mockReturnValue({ state: { category: 'storage' } });
+
+    const { result } = renderHook(() => useMyPageController({ isMobile: false }));
+
+    await waitFor(() => {
+      expect(result.current.selectedCategory).toBe('storage');
     });
   });
 

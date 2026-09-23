@@ -178,6 +178,8 @@ app.use('/api/share', setupModeGuardInstance, require('./domains/sharing/routes/
 app.use('/api/recent-files', setupModeGuardInstance, require('./domains/recentFiles/routes'));
 app.use('/api/collections', setupModeGuardInstance, require('./domains/collections/routes'));
 app.use('/api/actions', setupModeGuardInstance, require('./domains/actions/routes'));
+app.use('/api/search', setupModeGuardInstance, require('./domains/ai/routes'));
+app.use('/api/file-likes', setupModeGuardInstance, require('./domains/collections/fileLikesRoutes'));
 
 app.use('/api', require('./infrastructure/healthRoutes'));
 

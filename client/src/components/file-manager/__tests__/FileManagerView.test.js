@@ -79,6 +79,7 @@ function createProps(overrides = {}) {
         setSortMode: jest.fn(),
         searchQuery: '',
         setSearchQuery: jest.fn(),
+        onSubmitQuery: jest.fn(),
       },
       listingState: {
         displayedFiles: [
@@ -259,6 +260,85 @@ function createProps(overrides = {}) {
     ...overrides,
   };
 }
+
+describe('FileManagerView search results mode (§3)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([]);
+    folderTreeGateway.listFolderChildren.mockResolvedValue([]);
+    getRecentFiles.mockResolvedValue([]);
+    onRecentFilesChange.mockReturnValue(() => {});
+    explorerGateway.loadCollections.mockResolvedValue({ collections: [] });
+    explorerGateway.subscribeToCollections.mockImplementation(() => jest.fn());
+  });
+
+  const searchModel = (overrides = {}) => ({
+    mode: 'results',
+    query: 'movie',
+    counts: { total: 1 },
+    sections: {
+      nameMatches: [{ node_id: 11, name: 'movie.pdf', highlights: [] }],
+      semantic: [],
+    },
+    canSaveToCollection: false,
+    recentQueries: [],
+    onExit: jest.fn(),
+    onFilterChange: jest.fn(),
+    onChipSelect: jest.fn(),
+    onChipSave: jest.fn(),
+    onRowOpen: jest.fn(),
+    ...overrides,
+  });
+
+  it('mounts SearchBarResultsMode in place of the breadcrumb row and suppresses the normal listing', async () => {
+    const props = createProps({ searchResults: searchModel() });
+    renderWithProviders(<FileManagerView {...props} />);
+
+    expect(await screen.findByTestId('search-results-mode')).toBeInTheDocument();
+    expect(screen.queryByTestId('breadcrumb')).not.toBeInTheDocument();
+    expect(screen.queryByText('a.txt')).not.toBeInTheDocument();
+  });
+
+  it('result-row activation dispatches the prepared model callback', async () => {
+    const onRowOpen = jest.fn();
+    const props = createProps({ searchResults: searchModel({ onRowOpen }) });
+    renderWithProviders(<FileManagerView {...props} />);
+
+    const row = await screen.findByTestId('search-result-row');
+    fireEvent.click(row);
+    expect(onRowOpen).toHaveBeenCalledWith(expect.objectContaining({ node_id: 11 }));
+  });
+
+  it('FloatingSearchBar receives the session submit passthrough (typed Enter submits)', async () => {
+    const base = createProps();
+    const onSubmitQuery = jest.fn();
+    const props = createProps({
+      explorerSession: {
+        ...base.explorerSession,
+        controlsState: {
+          ...base.explorerSession.controlsState,
+          searchQuery: 'movie',
+          onSubmitQuery,
+        },
+      },
+    });
+    renderWithProviders(<FileManagerView {...props} />);
+
+    const searchbox = await screen.findByRole('searchbox');
+    fireEvent.keyDown(searchbox, { key: 'Enter' });
+
+    expect(onSubmitQuery).toHaveBeenCalledWith('movie');
+  });
+
+  it('with the model absent the breadcrumb+listing composition is unchanged (regression)', async () => {
+    const props = createProps({ searchResults: null });
+    renderWithProviders(<FileManagerView {...props} />);
+
+    expect(await screen.findByTestId('breadcrumb')).toBeInTheDocument();
+    expect(screen.getByText('a.txt')).toBeInTheDocument();
+    expect(screen.queryByTestId('search-results-mode')).not.toBeInTheDocument();
+  });
+});
 
 describe('FileManagerView', () => {
   beforeEach(() => {

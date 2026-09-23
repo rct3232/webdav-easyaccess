@@ -325,7 +325,7 @@ describe('CollectionsListView — member mode', () => {
     expect(screen.queryByTestId('member-load-more')).not.toBeInTheDocument();
   });
 
-  it('member row menu trigger dispatches onMemberAction("menu", row)', () => {
+  it('member row menu trigger dispatches onMemberAction("menu", row, anchorEl)', () => {
     const props = membersProps();
     renderWithProviders(<CollectionsListView {...props} />);
     fireEvent.click(
@@ -333,7 +333,8 @@ describe('CollectionsListView — member mode', () => {
     );
     expect(props.onMemberAction).toHaveBeenCalledWith(
       'menu',
-      expect.objectContaining({ nodeId: 90210 })
+      expect.objectContaining({ nodeId: 90210 }),
+      expect.any(HTMLElement)
     );
   });
 

@@ -59,6 +59,12 @@ const MemberRowControls = ({
   const rows = isBulk ? selectedRows : [member];
   const target = isBulk ? selectedRows : member;
 
+  // Single-row instance not yet opened (shell-owned single instance renders
+  // closed with no member): nothing to show, no member field reads.
+  if (!isBulk && member == null) {
+    return null;
+  }
+
   // Revoked rows: gray placeholder only — the menu offers nothing but dismiss
   // (§3.2: no name/thumbnail exposure after revocation).
   if (!isBulk && member && member.state === 'revoked') {

@@ -1668,4 +1668,347 @@ describe('FileManager', () => {
       expect(await screen.findByText('1 undone')).toBeInTheDocument();
     }, 15000);
   });
+
+  /**
+   * AI-platform shell wiring (wave-2): search results mode, like state,
+   * member-row menu.
+   */
+  describe('search results shell (T0.11 wiring)', () => {
+    const searchResultsPayload = (rows, resultRef = 'sr1.abc') => ({
+      name_matches: rows.map((r) => ({ node_id: r.node_id, name: r.name })),
+      counts: { name: rows.length, semantic: 0, total: rows.length, name_truncated: false },
+      result_ref: resultRef,
+      semantic_available: false,
+      semantic_unavailable_reason: 'serverErrors.ai.notConfigured',
+    });
+
+    it('typing never submits; Enter swaps the breadcrumb row for the results surface', async () => {
+      const searchBodies = [];
+      server.use(
+        http.post('/api/search', async ({ request }) => {
+          searchBodies.push(await request.json());
+          return HttpResponse.json(searchResultsPayload([{ node_id: 11, name: 'movie.pdf' }]));
+        }),
+        http.post('/api/files/metadata', async ({ request }) => {
+          const body = await request.json();
+          return HttpResponse.json(
+            (body.nodeIds || []).map((nodeId) => ({
+              nodeId,
+              name: 'movie.pdf',
+              type: 'file',
+              size: 5,
+              lastmod: null,
+              mime: 'application/pdf',
+            }))
+          );
+        })
+      );
+
+      await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+      await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
+
+      const searchbox = screen.getByRole('searchbox');
+      fireEvent.change(searchbox, { target: { value: 'movie' } });
+      expect(searchBodies).toHaveLength(0); // two-stage rule: typing never hits POST /api/search
+
+      fireEvent.keyDown(searchbox, { key: 'Enter' });
+      expect(await screen.findByTestId('search-results-mode')).toBeInTheDocument();
+      expect(searchBodies).toEqual([{ query: 'movie' }]);
+      expect(screen.queryByTestId('breadcrumb')).not.toBeInTheDocument();
+      expect(screen.getByTestId('search-result-row')).toBeInTheDocument();
+      // the normal listing region is suppressed while results are on screen
+      expect(screen.queryByText(/test\.txt/)).not.toBeInTheDocument();
+    }, 15000);
+
+    it('result-row open fires recordEntryClick(node_id) and opens the enriched entry (file → preview)', async () => {
+      const clickBodies = [];
+      server.use(
+        http.post('/api/search', () =>
+          HttpResponse.json(searchResultsPayload([{ node_id: 11, name: 'movie.pdf' }]))
+        ),
+        http.post('/api/search/click', async ({ request }) => {
+          clickBodies.push(await request.json());
+          return new HttpResponse(null, { status: 204 });
+        }),
+        http.post('/api/files/metadata', async ({ request }) => {
+          const body = await request.json();
+          return HttpResponse.json(
+            (body.nodeIds || []).map((nodeId) => ({
+              nodeId,
+              name: 'movie.pdf',
+              type: 'file',
+              size: 5,
+              lastmod: null,
+              mime: 'application/pdf',
+            }))
+          );
+        })
+      );
+
+      await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+      await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
+
+      const searchbox = screen.getByRole('searchbox');
+      fireEvent.change(searchbox, { target: { value: 'movie' } });
+      fireEvent.keyDown(searchbox, { key: 'Enter' });
+      const row = await screen.findByTestId('search-result-row');
+      fireEvent.click(row);
+
+      await waitFor(() => expect(clickBodies).toEqual([{ node_id: 11 }]));
+      expect(await screen.findByRole('dialog', { name: /file preview/i })).toBeInTheDocument();
+      // file open keeps results on screen (preview overlays the results surface)
+      expect(screen.getByTestId('search-results-mode')).toBeInTheDocument();
+    }, 15000);
+
+    it('directory result-row open navigates to the folder and exits results mode', async () => {
+      server.use(
+        http.post('/api/search', () =>
+          HttpResponse.json(searchResultsPayload([{ node_id: 2, name: 'docs' }]))
+        ),
+        http.post('/api/search/click', () => new HttpResponse(null, { status: 204 })),
+        http.post('/api/files/metadata', async ({ request }) => {
+          const body = await request.json();
+          return HttpResponse.json(
+            (body.nodeIds || []).map((nodeId) => ({
+              nodeId,
+              name: 'docs',
+              type: 'directory',
+              size: null,
+              lastmod: null,
+              mime: null,
+            }))
+          );
+        })
+      );
+
+      await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+      await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
+
+      const searchbox = screen.getByRole('searchbox');
+      fireEvent.change(searchbox, { target: { value: 'docs' } });
+      fireEvent.keyDown(searchbox, { key: 'Enter' });
+      fireEvent.click(await screen.findByTestId('search-result-row'));
+
+      await waitFor(() =>
+        expect(screen.queryByTestId('search-results-mode')).not.toBeInTheDocument()
+      );
+      expect(screen.getByTestId('breadcrumb')).toBeInTheDocument();
+    }, 15000);
+
+    it('clearing the shared search text exits results mode (one ✕ clears both surfaces)', async () => {
+      server.use(
+        http.post('/api/search', () =>
+          HttpResponse.json(searchResultsPayload([{ node_id: 11, name: 'movie.pdf' }]))
+        )
+      );
+
+      await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+      await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
+
+      const searchbox = screen.getByRole('searchbox');
+      fireEvent.change(searchbox, { target: { value: 'movie' } });
+      fireEvent.keyDown(searchbox, { key: 'Enter' });
+      expect(await screen.findByTestId('search-results-mode')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByLabelText('Close search'));
+      await waitFor(() =>
+        expect(screen.queryByTestId('search-results-mode')).not.toBeInTheDocument()
+      );
+      expect(screen.getByTestId('breadcrumb')).toBeInTheDocument();
+    }, 15000);
+  });
+
+  describe('like state shell (T0.5 wiring)', () => {
+    it('context-menu like row calls the set seam with the flipped state and reflects it optimistically', async () => {
+      let likedNow = true;
+      let putBody = null;
+      server.use(
+        http.get('/api/file-likes', () => HttpResponse.json({ liked: likedNow ? [1] : [] })),
+        http.put('/api/file-likes/:nodeId', async ({ request, params }) => {
+          putBody = await request.json();
+          likedNow = putBody.liked;
+          return HttpResponse.json({ node_id: Number(params.nodeId), liked: putBody.liked });
+        })
+      );
+
+      await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+      await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
+
+      const row = await screen.findByText(/test\.txt/i);
+      fireEvent.contextMenu(row, { clientX: 60, clientY: 60 });
+
+      const toggle = await screen.findByTestId('like-toggle');
+      expect(within(toggle).getByText('Unlike')).toBeInTheDocument();
+
+      fireEvent.click(toggle);
+      await waitFor(() => expect(putBody).toEqual({ liked: false }));
+
+      // reopen — the optimistic row flip is what the next menu reads
+      fireEvent.contextMenu(await screen.findByText(/test\.txt/i), { clientX: 60, clientY: 60 });
+      const reopened = await screen.findByTestId('like-toggle');
+      expect(within(reopened).getByText('Like')).toBeInTheDocument();
+    }, 15000);
+
+    it('an absorbed like failure reverts the optimistic flip', async () => {
+      server.use(
+        http.get('/api/file-likes', () => HttpResponse.json({ liked: [] })),
+        http.put('/api/file-likes/:nodeId', () =>
+          HttpResponse.json({ errorCode: 'serverErrors.files.notFound' }, { status: 404 })
+        )
+      );
+
+      await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+      await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
+
+      fireEvent.contextMenu(await screen.findByText(/test\.txt/i), { clientX: 60, clientY: 60 });
+      const toggle = await screen.findByTestId('like-toggle');
+      expect(within(toggle).getByText('Like')).toBeInTheDocument();
+      fireEvent.click(toggle);
+
+      // absorbed failure ⇒ mapped error surfaces and the optimistic flip reverts
+      expect(await screen.findByText(/not found/i)).toBeInTheDocument();
+      fireEvent.contextMenu(await screen.findByText(/test\.txt/i), { clientX: 60, clientY: 60 });
+      const again = await screen.findByTestId('like-toggle');
+      expect(within(again).getByText('Like')).toBeInTheDocument();
+    }, 15000);
+  });
+
+  describe('collections member-row menu (T0.4/T0.5 host)', () => {
+    const memberCollection = {
+      collection_id: 5,
+      name: 'Roadtrip',
+      item_count: 1,
+      origin: 'user',
+      status: 'active',
+      publish_mode: 'ask',
+      granted_role: null,
+      pinned: false,
+      pinned_by: null,
+      created_at: '2026-09-01T00:00:00Z',
+    };
+    const memberItem = (liked) => ({
+      node_id: 90210,
+      name: 'poster.pdf',
+      type: 'file',
+      size: 2048,
+      lastmod: '2026-09-01T00:00:00Z',
+      membership: 'stored',
+      published: false,
+      state: 'normal',
+      liked,
+      reason: null,
+      shared_excluded: false,
+    });
+
+    const memberHandlers = ({ liked = () => false, onItems } = {}) => [
+      http.get('/api/collections', () => HttpResponse.json({ collections: [memberCollection] })),
+      http.get('/api/collections/merge-suggestions', () => HttpResponse.json({ suggestions: [] })),
+      http.get('/api/collections/5/items', () => {
+        if (onItems) onItems();
+        return HttpResponse.json({ items: [memberItem(liked())], next_cursor: null });
+      }),
+    ];
+
+    it('row More opens the shell-hosted MemberRowControls with the exact §3.2 set', async () => {
+      server.use(...memberHandlers());
+      await renderWithProvidersAct(<FileManagerWithRoutes />, {
+        initialEntries: ['/files/__collections__/collection/5'],
+      });
+
+      fireEvent.click(await screen.findByTestId('member-menu-button'));
+      expect(await screen.findByTestId('member-exclude')).toBeInTheDocument();
+      expect(screen.getByTestId('member-download')).toBeInTheDocument();
+      expect(screen.getByTestId('member-show-original')).toBeInTheDocument();
+      expect(screen.getByTestId('member-properties')).toBeInTheDocument();
+      expect(screen.getByTestId('like-toggle')).toBeInTheDocument();
+      // invariant 1: no file-mutating entries ever
+      expect(screen.queryByText(/move/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/rename/i)).not.toBeInTheDocument();
+    }, 15000);
+
+    it('exclude dispatches DELETE /:id/items for the row and reports through the undo toast', async () => {
+      let delBody = null;
+      server.use(
+        ...memberHandlers(),
+        http.delete('/api/collections/5/items', async ({ request }) => {
+          delBody = await request.json();
+          return HttpResponse.json({
+            removed: [90210],
+            excluded: [],
+            ignored: [],
+            undo: { action_id: 88 },
+          });
+        })
+      );
+
+      await renderWithProvidersAct(<FileManagerWithRoutes />, {
+        initialEntries: ['/files/__collections__/collection/5'],
+      });
+
+      fireEvent.click(await screen.findByTestId('member-menu-button'));
+      fireEvent.click(await screen.findByTestId('member-exclude'));
+
+      await waitFor(() => expect(delBody).toEqual({ nodeIds: [90210] }));
+      expect(await screen.findByText('Removed from collection')).toBeInTheDocument();
+    }, 15000);
+
+    it('like dispatches PUT /api/file-likes/:nodeId and the refetched row carries the settled state', async () => {
+      let likedNow = false;
+      let putBody = null;
+      let itemsCalls = 0;
+      server.use(
+        ...memberHandlers({
+          liked: () => likedNow,
+          onItems: () => {
+            itemsCalls += 1;
+          },
+        }),
+        http.put('/api/file-likes/:nodeId', async ({ request, params }) => {
+          putBody = await request.json();
+          likedNow = putBody.liked;
+          return HttpResponse.json({ node_id: Number(params.nodeId), liked: putBody.liked });
+        })
+      );
+
+      await renderWithProvidersAct(<FileManagerWithRoutes />, {
+        initialEntries: ['/files/__collections__/collection/5'],
+      });
+
+      fireEvent.click(await screen.findByTestId('member-menu-button'));
+      fireEvent.click(await screen.findByTestId('like-toggle'));
+      await waitFor(() => expect(putBody).toEqual({ liked: true }));
+
+      // notifier refresh: member rows re-read and the reopened menu reflects it
+      await waitFor(() => expect(itemsCalls).toBeGreaterThan(1));
+      fireEvent.click(await screen.findByTestId('member-menu-button'));
+      const reopened = await screen.findByTestId('like-toggle');
+      expect(within(reopened).getByText('Unlike')).toBeInTheDocument();
+    }, 15000);
+
+    it('reveal original resolves the ancestor chain and navigates to the real parent', async () => {
+      let ancestorsRequested = null;
+      server.use(
+        ...memberHandlers(),
+        http.get('/api/files/ancestors', ({ request }) => {
+          ancestorsRequested = new URL(request.url).searchParams.get('nodeId');
+          return HttpResponse.json({
+            ancestors: [
+              { nodeId: 1, name: 'home' },
+              { nodeId: 42, name: 'docs' },
+              { nodeId: 90210, name: 'poster.pdf' },
+            ],
+          });
+        })
+      );
+
+      await renderWithProvidersAct(<FileManagerWithRoutes />, {
+        initialEntries: ['/files/__collections__/collection/5'],
+      });
+
+      fireEvent.click(await screen.findByTestId('member-menu-button'));
+      fireEvent.click(await screen.findByTestId('member-show-original'));
+
+      await waitFor(() => expect(ancestorsRequested).toBe('90210'));
+    }, 15000);
+  });
 });

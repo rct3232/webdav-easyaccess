@@ -45,6 +45,7 @@ import {
 } from '../dialogs';
 import { FolderTree } from '../folder-tree';
 import CollectionsListView from './CollectionsListView';
+import SearchBarResultsMode from './SearchBarResultsMode';
 import { UndoToast } from '../feedback';
 
 const FileManagerView = ({
@@ -59,6 +60,7 @@ const FileManagerView = ({
   explorerHandlers,
   trashState,
   collectionsModel,
+  searchResults,
 }) => {
   const { t } = useTranslation();
   const { shareToken, isShareLinkMode, shareRootPath, shareRootName, shareRootNodeId } =
@@ -122,7 +124,12 @@ const FileManagerView = ({
     setSortMode,
     searchQuery,
     setSearchQuery,
+    onSubmitQuery,
   } = controlsState;
+  // AI-platform §3: results-mode surface — the shell prepares the model; the
+  // view only swaps regions (SearchBarResultsMode replaces the breadcrumb row
+  // and the listing region yields to the two-section rows).
+  const searchResultsMode = searchResults?.mode === 'results';
   const isTrashView = trashMode === true || currentPath === '/__trash__';
   // FAB가 자신의 실제 표시 여부를 보고(single source of truth) — 검색창 확장 트리거로 사용
   const [fabPresent, setFabPresent] = useState(false);
@@ -212,7 +219,11 @@ const FileManagerView = ({
     contentAreaDragType,
     handleActionSheetDownload,
     handleActionSheetPreview,
+    handleToggleLike,
   } = interaction;
+  // T0.5: like rows render only where the set seam applies — share-link and
+  // trash views withhold the callback (hidden, not disabled; §3.1).
+  const likeToggleHandler = isShareLinkMode || isTrashView ? undefined : handleToggleLike;
   const {
     handleRename,
     handleBulkDeleteConfirm,
@@ -354,20 +365,36 @@ const FileManagerView = ({
             position: 'relative',
           }}
         >
-          <Breadcrumb
-            currentPath={currentPath}
-            ancestors={isTrashView ? (trashTrail ?? []) : ancestors}
-            onNodeClick={isTrashView ? handleTrashBreadcrumbClick : handleFolderTreeNodeClick}
-            {...(isShareLinkMode
-              ? { shareRootPath, shareRootName, showFolderTreeToggle: true }
-              : { user })}
-            {...(isMobile
-              ? {
-                  onToggleFolderTree: () => setDrawerOpen(!drawerOpen),
-                  isFolderTreeOpen: drawerOpen,
-                }
-              : {})}
-          />
+          {searchResultsMode ? (
+            <SearchBarResultsMode
+              query={searchResults.query ?? ''}
+              counts={searchResults.counts}
+              sections={searchResults.sections}
+              canSaveToCollection={Boolean(searchResults.canSaveToCollection)}
+              onSave={searchResults.onSave}
+              onExit={searchResults.onExit}
+              recentQueries={searchResults.recentQueries ?? []}
+              onChipSelect={searchResults.onChipSelect}
+              onChipSave={searchResults.onChipSave}
+              onFilterChange={searchResults.onFilterChange}
+              onRowOpen={searchResults.onRowOpen}
+            />
+          ) : (
+            <Breadcrumb
+              currentPath={currentPath}
+              ancestors={isTrashView ? (trashTrail ?? []) : ancestors}
+              onNodeClick={isTrashView ? handleTrashBreadcrumbClick : handleFolderTreeNodeClick}
+              {...(isShareLinkMode
+                ? { shareRootPath, shareRootName, showFolderTreeToggle: true }
+                : { user })}
+              {...(isMobile
+                ? {
+                    onToggleFolderTree: () => setDrawerOpen(!drawerOpen),
+                    isFolderTreeOpen: drawerOpen,
+                  }
+                : {})}
+            />
+          )}
 
           {isMobile && (
             <Collapse in={drawerOpen} timeout="auto">
@@ -578,7 +605,7 @@ const FileManagerView = ({
                 </Box>
               )}
 
-              {collectionsModel ? (
+              {searchResultsMode ? null : collectionsModel ? (
                 /* AI-platform §3: __collections__ virtual node replaces the FileList
                    region (list cards / member rows) — no file-grid fallback. */
                 <CollectionsListView
@@ -778,6 +805,7 @@ const FileManagerView = ({
                 setFolderPickerOpen(true);
               }
         }
+        onToggleLike={likeToggleHandler}
         onShare={
           isShareLinkMode || isTrashView
             ? undefined
@@ -932,6 +960,7 @@ const FileManagerView = ({
           setSearchQuery={setSearchQuery}
           isMobile={isMobile}
           fabVisible={fabPresent}
+          {...(onSubmitQuery ? { onSubmitQuery, resultsModeActive: searchResultsMode } : {})}
         />
       )}
 
@@ -1018,6 +1047,7 @@ const FileManagerView = ({
           onPreview={
             isTrashView ? undefined : isShareLinkMode ? undefined : handleActionSheetPreview
           }
+          onToggleLike={likeToggleHandler}
           onProperties={
             isShareLinkMode
               ? undefined
@@ -1142,6 +1172,11 @@ const FileManagerView = ({
           onClose={closePropertiesDialog}
           file={propertiesFile}
           activeFileStorage={activeFileStorage}
+          {...(likeToggleHandler &&
+          propertiesFile?.isRecentFile !== true &&
+          propertiesFile?.isTrashed !== true
+            ? { onToggleLike: likeToggleHandler }
+            : {})}
           onTrashRestore={isTrashView ? handleTrashRestore : undefined}
           onTrashPurge={isTrashView ? handleTrashPurge : undefined}
         />

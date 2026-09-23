@@ -412,7 +412,7 @@ const CollectionsListView = ({
             <IconButton
               size="small"
               data-testid="member-menu-button"
-              onClick={() => onMemberAction?.('menu', row)}
+              onClick={(e) => onMemberAction?.('menu', row, e.currentTarget)}
               disabled={revoked}
             >
               <MoreVertIcon fontSize="small" />

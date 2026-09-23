@@ -633,3 +633,59 @@ IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode repor
   load timing). No code change.
 - **Classification**: pending reproduction; treated as environmental for wave-2 closure.
   **Action**: monitor; capture full output on recurrence.
+
+### 2026-09-23 — Boot-coverage tests found a Case-A defect: partial `WEA_DB_*` crashed at require time, bypassing the spec'd `Initialization failed:` handler (bootSequence §2 step 2 / §5 L93)
+
+- **Summary**: `server/__tests__/bootSequence.test.js` spawns a real
+  `node server/index.js` child with a partial remote-DB credential set
+  (`WEA_DB_HOST`+`WEA_DB_DATABASE` set, `WEA_DB_USER`/`WEA_DB_PASSWORD` blank).
+  The spec requires `storage.getBackend()` to throw and the boot error surface
+  to log `Initialization failed: <err>` and `process.exit(1)` listing the
+  missing keys. Observed: exit code was 1, but stderr carried only a raw
+  uncaught-exception stack — no `Initialization failed:` line.
+- **Evidence**: child stderr stack
+  `Error: Partial WEA_DB_* configuration: missing WEA_DB_USER, WEA_DB_PASSWORD`
+  at `store/storage.js:41 (getBackend)` ← `storage.js:345 (getExecutor)` ←
+  `store/fileNodesStore.js:18/28` ←
+  `domains/permissions/routes/folderPermissions.js:30` — the module-level
+  `createFileNodesStore()` evaluates during `app.use('/api/permissions', require(...))`
+  in `server/index.js`, i.e. at module load, BEFORE `runBoot()` is ever called.
+  The `runBoot().catch` handler at the bottom of `server/index.js` therefore
+  never sees the partial-config throw; Node's default uncaught-exception path
+  kills the process.
+- **Hypothesis**: [D6] "pre-flight metadata-backend resolution" runs at the
+  _top of runBoot_, but the route-mount section that consumes the executor runs
+  earlier (require time), so the documented ordering is not what the code
+  executes.
+- **Classification**: **Case A (source error)** — `server/index.js` violates the
+  documented boot order (docs/spec/server/infrastructure/bootSequence.md §2
+  step 2: pre-flight before mount). The exit-1 fail-fast was accidentally
+  intact; the specified log surface and the "pre-flight resolves the backend
+  before anything touches it" contract were not.
+- **Action (minimal fix, in-lane `server/index.js` only)**: perform the [D6]
+  pre-flight (`storage.getBackend()`) as a guarded step immediately after the
+  dotenv block — i.e. before any route mount can evaluate a require-time store
+  consumer — logging `Initialization failed:` with the error and calling
+  `process.exit(1)`. `runBoot()`'s catch keeps the same handling for failures
+  after module assembly. The `bootSequence.md` §2 step 2 wording was updated in
+  the same change (docs-first) to state the pre-flight runs at boot entry
+  (top-level, before mounts).
+- **Verification**: `server/__tests__/bootSequence.test.js` L93 case asserts
+  exit code 1 + stderr `Initialization failed:` + the `Partial WEA_DB_*`
+  message listing the missing keys; full server `test:ci` green on branch
+  `test/boot-sequence-coverage`.
+
+### 2026-09-23 — Single non-reproducible full-gate failure on the boot-coverage branch (pending reproduction)
+
+- **Summary**: the first full `npm run test:ci` on branch `test/boot-sequence-coverage`
+  (new spawn-based `server/__tests__/bootSequence.test.js` + the `[D6]` pre-flight in
+  `server/index.js`) reported 1 failing suite (126/127 green); the suite name was not
+  captured before the output tail scrolled. Six subsequent full gates (127 suites /
+  2353 tests each) and four solo runs of the new suite are fully green.
+- **Diagnosis**: incomplete by non-reproduction. The new suite binds only
+  OS-allocated ephemeral ports and uses 60 s boot timeouts against ~1.5 s boots;
+  a port-collision or boot-timeout signature was plausible but never observed.
+  Matches the known parallel/coverage-load flake class already logged on
+  2026-09-22 (gcService / FilePropertiesDialog / PlatformSchema.conformance).
+- **Classification**: pending reproduction; no code change. **Action**: monitor;
+  capture the full FAIL block on recurrence per §3.2 procedure 1.

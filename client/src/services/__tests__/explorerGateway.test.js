@@ -3,7 +3,14 @@
  * @see docs/spec/client/services/explorerGateway.md
  * @see docs/TESTING_STRATEGY.md
  */
-import { checkConflicts, getFilesMetadata, listFiles, uploadMultipleFiles } from '../fileService';
+import {
+  checkConflicts,
+  getAncestors,
+  getFilesMetadata,
+  listFiles,
+  uploadMultipleFiles,
+} from '../fileService';
+import { getLikedNodeIds, setFileLike } from '../fileLikesRepository';
 import { getShowHiddenFiles } from '../../utils/localStorage';
 import { checkPermission, getSharedPermissions, getUserPermissions } from '../permissionService';
 import { addRecentFile, getRecentFiles, removeRecentFile } from '../recentFilesRepository';
@@ -73,6 +80,11 @@ jest.mock('../collectionsRepository', () => {
 jest.mock('../collectionsNotifier', () => ({
   onCollectionsChange: jest.fn(),
 }));
+
+jest.mock('../fileLikesRepository', () => {
+  const { createFileLikesRepositoryMock } = require('../../testing/mocks/serviceMocks');
+  return createFileLikesRepositoryMock();
+});
 
 jest.mock('../../utils/localStorage', () => {
   const { createLocalStorageUiMock } = require('../../testing/mocks/serviceMocks');
@@ -395,114 +407,210 @@ describe('explorerGateway', () => {
     expect(result).toEqual([{ path: '/docs/report.txt' }]);
   });
 
-describe('explorerGateway collections re-exports (T0.3)', () => {
-  const {
-    getCollections,
-    createCollection,
-    updateCollection,
-    archiveCollection,
-    restoreCollection,
-    deleteCollection,
-    getCollectionItems,
-    addCollectionItems,
-    removeCollectionItems,
-    publishItems,
-    getMemberships,
-    previewCollection,
-    getMergeSuggestions,
-    mergeCollections,
-    dismissMerge,
-    rejectMerge,
-  } = require('../collectionsRepository');
-  const { onCollectionsChange } = require('../collectionsNotifier');
+  describe('explorerGateway collections re-exports (T0.3)', () => {
+    const {
+      getCollections,
+      createCollection,
+      updateCollection,
+      archiveCollection,
+      restoreCollection,
+      deleteCollection,
+      getCollectionItems,
+      addCollectionItems,
+      removeCollectionItems,
+      publishItems,
+      getMemberships,
+      previewCollection,
+      getMergeSuggestions,
+      mergeCollections,
+      dismissMerge,
+      rejectMerge,
+    } = require('../collectionsRepository');
+    const { onCollectionsChange } = require('../collectionsNotifier');
 
-  it('re-exports the collections seams under the §2.6 names, preserving shapes and fallbacks', async () => {
-    getCollections.mockResolvedValueOnce({ collections: [] });
-    await expect(explorerGateway.loadCollections({ sort: 'name' })).resolves.toEqual({
-      collections: [],
+    it('re-exports the collections seams under the §2.6 names, preserving shapes and fallbacks', async () => {
+      getCollections.mockResolvedValueOnce({ collections: [] });
+      await expect(explorerGateway.loadCollections({ sort: 'name' })).resolves.toEqual({
+        collections: [],
+      });
+      expect(getCollections).toHaveBeenCalledWith({ sort: 'name' });
+
+      createCollection.mockResolvedValueOnce({ undo: { action_id: 1 } });
+      await expect(explorerGateway.createCollection({ name: 'X' })).resolves.toEqual({
+        undo: { action_id: 1 },
+      });
+
+      updateCollection.mockResolvedValueOnce(null);
+      await expect(explorerGateway.updateCollection(17, { pinned: true })).resolves.toBeNull();
+
+      archiveCollection.mockResolvedValueOnce({ undo: { action_id: 2 } });
+      restoreCollection.mockResolvedValueOnce({ undo: { action_id: 3 } });
+      await explorerGateway.archiveCollection(17);
+      await explorerGateway.restoreCollection(17);
+      expect(archiveCollection).toHaveBeenCalledWith(17);
+      expect(restoreCollection).toHaveBeenCalledWith(17);
+
+      deleteCollection.mockResolvedValueOnce(true);
+      await expect(explorerGateway.deleteCollection(17)).resolves.toBe(true);
+
+      getCollectionItems.mockResolvedValueOnce({ items: [], next_cursor: null });
+      await expect(explorerGateway.loadCollectionItems(17, { limit: 50 })).resolves.toEqual({
+        items: [],
+        next_cursor: null,
+      });
+      expect(getCollectionItems).toHaveBeenCalledWith(17, { limit: 50 });
+
+      addCollectionItems.mockResolvedValueOnce({ added: [1] });
+      removeCollectionItems.mockResolvedValueOnce({ removed: [1] });
+      await explorerGateway.addCollectionItems(17, [1]);
+      await explorerGateway.removeCollectionItems(17, [1]);
+      expect(addCollectionItems).toHaveBeenCalledWith(17, [1]);
+      expect(removeCollectionItems).toHaveBeenCalledWith(17, [1]);
+
+      publishItems.mockResolvedValueOnce(null);
+      await expect(explorerGateway.publishItems(17, [1])).resolves.toBeNull();
+
+      getMemberships.mockResolvedValueOnce({ memberships: [] });
+      await expect(explorerGateway.getMemberships([1])).resolves.toEqual({ memberships: [] });
+
+      previewCollection.mockResolvedValueOnce({ count: 0, sample: [], sample_truncated: false });
+      await expect(explorerGateway.previewCollection({ seedNodeId: 5 })).resolves.toEqual({
+        count: 0,
+        sample: [],
+        sample_truncated: false,
+      });
+
+      getMergeSuggestions.mockResolvedValueOnce({ suggestions: [] });
+      await expect(explorerGateway.getMergeSuggestions()).resolves.toEqual({ suggestions: [] });
+
+      mergeCollections.mockResolvedValueOnce({ absorbed_id: 23 });
+      dismissMerge.mockResolvedValueOnce({ state: 'dismissed' });
+      rejectMerge.mockResolvedValueOnce({ state: 'rejected' });
+      await explorerGateway.mergeCollections(1, 2);
+      await explorerGateway.dismissMerge(1, 2);
+      await explorerGateway.rejectMerge(1, 2);
+      expect(mergeCollections).toHaveBeenCalledWith(1, 2);
+      expect(dismissMerge).toHaveBeenCalledWith(1, 2);
+      expect(rejectMerge).toHaveBeenCalledWith(1, 2);
     });
-    expect(getCollections).toHaveBeenCalledWith({ sort: 'name' });
 
-    createCollection.mockResolvedValueOnce({ undo: { action_id: 1 } });
-    await expect(explorerGateway.createCollection({ name: 'X' })).resolves.toEqual({
-      undo: { action_id: 1 },
+    it('subscribeToCollections wraps the notifier unsubscribe contract', () => {
+      const unsub = jest.fn();
+      onCollectionsChange.mockReturnValueOnce(unsub);
+
+      const result = explorerGateway.subscribeToCollections(() => {});
+      expect(result).toBe(unsub);
+      expect(typeof result).toBe('function');
     });
 
-    updateCollection.mockResolvedValueOnce(null);
-    await expect(explorerGateway.updateCollection(17, { pinned: true })).resolves.toBeNull();
+    // -- §2.6 search results-mode group (T0.11) --------------------------------
 
-    archiveCollection.mockResolvedValueOnce({ undo: { action_id: 2 } });
-    restoreCollection.mockResolvedValueOnce({ undo: { action_id: 3 } });
-    await explorerGateway.archiveCollection(17);
-    await explorerGateway.restoreCollection(17);
-    expect(archiveCollection).toHaveBeenCalledWith(17);
-    expect(restoreCollection).toHaveBeenCalledWith(17);
+    it('re-exports runSearch and recordSearchClick with the repository shapes', async () => {
+      const { runSearch, recordSearchClick } = require('../collectionsRepository');
 
-    deleteCollection.mockResolvedValueOnce(true);
-    await expect(explorerGateway.deleteCollection(17)).resolves.toBe(true);
+      const payload = {
+        name_matches: [],
+        result_ref: 'sr1.x',
+        counts: {},
+        semantic_available: false,
+      };
+      runSearch.mockResolvedValueOnce(payload);
+      await expect(explorerGateway.runSearch({ query: 'movie' })).resolves.toBe(payload);
 
-    getCollectionItems.mockResolvedValueOnce({ items: [], next_cursor: null });
-    await expect(explorerGateway.loadCollectionItems(17, { limit: 50 })).resolves.toEqual({
-      items: [],
-      next_cursor: null,
-    });
-    expect(getCollectionItems).toHaveBeenCalledWith(17, { limit: 50 });
-
-    addCollectionItems.mockResolvedValueOnce({ added: [1] });
-    removeCollectionItems.mockResolvedValueOnce({ removed: [1] });
-    await explorerGateway.addCollectionItems(17, [1]);
-    await explorerGateway.removeCollectionItems(17, [1]);
-    expect(addCollectionItems).toHaveBeenCalledWith(17, [1]);
-    expect(removeCollectionItems).toHaveBeenCalledWith(17, [1]);
-
-    publishItems.mockResolvedValueOnce(null);
-    await expect(explorerGateway.publishItems(17, [1])).resolves.toBeNull();
-
-    getMemberships.mockResolvedValueOnce({ memberships: [] });
-    await expect(explorerGateway.getMemberships([1])).resolves.toEqual({ memberships: [] });
-
-    previewCollection.mockResolvedValueOnce({ count: 0, sample: [], sample_truncated: false });
-    await expect(explorerGateway.previewCollection({ seedNodeId: 5 })).resolves.toEqual({
-      count: 0,
-      sample: [],
-      sample_truncated: false,
+      recordSearchClick.mockResolvedValueOnce(true);
+      await expect(explorerGateway.recordSearchClick(11)).resolves.toBe(true);
     });
 
-    getMergeSuggestions.mockResolvedValueOnce({ suggestions: [] });
-    await expect(explorerGateway.getMergeSuggestions()).resolves.toEqual({ suggestions: [] });
+    // -- §2.6 file-likes group (T0.5) -----------------------------------------
 
-    mergeCollections.mockResolvedValueOnce({ absorbed_id: 23 });
-    dismissMerge.mockResolvedValueOnce({ state: 'dismissed' });
-    rejectMerge.mockResolvedValueOnce({ state: 'rejected' });
-    await explorerGateway.mergeCollections(1, 2);
-    await explorerGateway.dismissMerge(1, 2);
-    await explorerGateway.rejectMerge(1, 2);
-    expect(mergeCollections).toHaveBeenCalledWith(1, 2);
-    expect(dismissMerge).toHaveBeenCalledWith(1, 2);
-    expect(rejectMerge).toHaveBeenCalledWith(1, 2);
+    it('listDirectory merges liked=false onto rows when no node is liked (absorbed read)', async () => {
+      listFiles.mockResolvedValueOnce([
+        { nodeId: 10, display_path: '/docs/a.txt', isHidden: false },
+        { nodeId: 11, display_path: '/docs/b.txt', isHidden: false },
+      ]);
+      getLikedNodeIds.mockResolvedValueOnce({ liked: [] });
+
+      const result = await listDirectory({
+        nodeId: 5,
+        options: { user: { id: '1', is_admin: false } },
+      });
+
+      expect(result.every((r) => r.liked === false)).toBe(true);
+    });
+
+    it('listDirectory marks liked=true for nodes present in the whole-viewer read', async () => {
+      listFiles.mockResolvedValueOnce([
+        { nodeId: 10, display_path: '/docs/a.txt', isHidden: false },
+        { nodeId: 11, display_path: '/docs/b.txt', isHidden: false },
+      ]);
+      getLikedNodeIds.mockResolvedValueOnce({ liked: [11] });
+
+      const result = await listDirectory({
+        nodeId: 5,
+        options: { user: { id: '1', is_admin: false } },
+      });
+
+      const byId = Object.fromEntries(result.map((r) => [r.nodeId, r.liked]));
+      expect(byId).toEqual({ 10: false, 11: true });
+    });
+
+    it('share-token listings skip the liked merge (no like read)', async () => {
+      listFiles.mockResolvedValueOnce([{ nodeId: 20, display_path: '/shared/.hidden.txt' }]);
+
+      const result = await listDirectory({
+        nodeId: 15,
+        options: { shareToken: 'share-token', user: { id: '1' } },
+      });
+
+      expect(getLikedNodeIds).not.toHaveBeenCalled();
+      expect(result[0]).not.toHaveProperty('liked');
+    });
+
+    it('re-exports loadFileLikes / setFileLike / subscribeToFileLikes with the repository shapes', async () => {
+      getLikedNodeIds.mockResolvedValueOnce({ liked: [4, 5] });
+      await expect(explorerGateway.loadFileLikes()).resolves.toEqual({ liked: [4, 5] });
+
+      setFileLike.mockResolvedValueOnce({ node_id: 4, liked: false });
+      await expect(explorerGateway.setFileLike(4, false)).resolves.toEqual({
+        node_id: 4,
+        liked: false,
+      });
+      expect(setFileLike).toHaveBeenCalledWith(4, false, undefined);
+
+      const repo = require('../fileLikesRepository');
+      const unsub = jest.fn();
+      repo.subscribeFileLikesChange = jest.fn(() => unsub);
+      expect(explorerGateway.subscribeToFileLikes(() => {})).toBe(unsub);
+    });
   });
 
-  it('subscribeToCollections wraps the notifier unsubscribe contract', () => {
-    const unsub = jest.fn();
-    onCollectionsChange.mockReturnValueOnce(unsub);
+  describe('explorerGateway narrow listing/render helpers (T0.5/T0.11)', () => {
+    it('loadNodesMetadata returns fileService metadata for raw nodeIds', async () => {
+      getFilesMetadata.mockResolvedValueOnce([{ nodeId: 11, type: 'file', size: 20 }]);
 
-    const result = explorerGateway.subscribeToCollections(() => {});
-    expect(result).toBe(unsub);
-    expect(typeof result).toBe('function');
+      await expect(explorerGateway.loadNodesMetadata([11])).resolves.toEqual([
+        { nodeId: 11, type: 'file', size: 20 },
+      ]);
+      expect(getFilesMetadata).toHaveBeenCalledWith([11]);
+    });
+
+    it('loadNodesMetadata absorbs a metadata failure into []', async () => {
+      getFilesMetadata.mockRejectedValueOnce(new Error('boom'));
+
+      await expect(explorerGateway.loadNodesMetadata([11])).resolves.toEqual([]);
+    });
+
+    it('loadNodeAncestors passes the ancestor chain through for reveal-original navigation', async () => {
+      getAncestors.mockResolvedValueOnce({
+        ancestors: [
+          { nodeId: 1, name: '/' },
+          { nodeId: 42, name: 'docs' },
+          { nodeId: 99, name: 'f.pdf' },
+        ],
+      });
+
+      const result = await explorerGateway.loadNodeAncestors(99);
+      expect(result.ancestors[result.ancestors.length - 2].nodeId).toBe(42);
+    });
   });
-
-  // -- §2.6 search results-mode group (T0.11) --------------------------------
-
-  it('re-exports runSearch and recordSearchClick with the repository shapes', async () => {
-    const { runSearch, recordSearchClick } = require('../collectionsRepository');
-
-    const payload = { name_matches: [], result_ref: 'sr1.x', counts: {}, semantic_available: false };
-    runSearch.mockResolvedValueOnce(payload);
-    await expect(explorerGateway.runSearch({ query: 'movie' })).resolves.toBe(payload);
-
-    recordSearchClick.mockResolvedValueOnce(true);
-    await expect(explorerGateway.recordSearchClick(11)).resolves.toBe(true);
-  });
-});
-
 });

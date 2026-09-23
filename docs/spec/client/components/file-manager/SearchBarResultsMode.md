@@ -33,6 +33,7 @@ Target-contract spec.
 | recentQueries             | array    | N        | []      | Chips row beneath the header; each chip `⋮` menu: `re-search` / `Save as collection`                                                                |
 | onChipSelect / onChipSave | fn       | N        | -       | `(chip) => void` re-run / save (`⋮ → save` = §4.6 chip rule)                                                                                        |
 | onFilterChange            | function | Y        | -       | Typing while in results mode (inline re-filter of loaded results)                                                                                   |
+| onRowOpen                 | function | N        | -       | `(row) => void` result-row activation (both sections). **As-built (shell wiring):** the host opens the entry (directory → navigate / file → preview) AND fires the §3.4 list-entry-click signal (`useSearchResults.recordEntryClick`) — the component itself stays IO-free. Absent ⇒ rows render inert. |
 
 ### 2.3 Header Grammar
 
@@ -61,6 +62,7 @@ Target-contract spec.
 - [ ] Chips render recent queries; `⋮` exposes re-search/Save.
 - [ ] Typing updates `filterText` without a server call (assert callback, not fetch); Enter triggers re-submit via host.
 - [ ] `✕` invokes `onExit` and normal breadcrumb/listing reappear (host state).
+- [ ] (as-built shell wiring) Result-row activation in EITHER section calls `onRowOpen(row)` once per click; absent prop ⇒ rows inert.
 
 ### 2.8 Edge Cases
 

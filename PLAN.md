@@ -276,7 +276,7 @@ config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
 | ---- | ---------------- | --------------- | ---------------------- | ------ |
 | 0 | T0.2 ∥ T0.12 ∥ T0.7b (∥ T0.11 if capacity) | none (roots) | T0.2: 3 conformance twins + dual-dialect §5 table-presence; T0.12: node:sqlite driver + BigInt PK binding; T0.7b: en/ko i18n key mirror + settings/flags exposure | `[done]` — T0.11 carried into Wave 2 |
 | 1 | T0.3 ∥ T0.6 ∥ T0.7 ∥ T0.8 (+ T0.1 absorbed) | T0.2 + T0.7b merged | T0.3: camelCase req / snake_case res + activity_score fallback sort; T0.8: NULL content_hash backfill idempotency | `[done]` |
-| 2 | T0.4 ∥ T0.5 ∥ T0.9 ∥ T0.11 (carried from Wave 0) + pre-tasks: register (c) (failsafe-row consolidation, small `chore/`) and register (f) (test-infra leak fix, small `test/`) | T0.3 API surface (client) / T0.2 (T0.9) | component+hook tests; T0.9 hash-first dup (NULL never forms a group), derived tags v1 | `[wip]` — T0.11 `[done]` on `feature/t11-name-search` (worktree wt-t11; merge pending) |
+| 2 | T0.4 ∥ T0.5 ∥ T0.9 ∥ T0.11 (carried from Wave 0) + pre-tasks: register (c) (failsafe-row consolidation, small `chore/`) and register (f) (test-infra leak fix, small `test/`) | T0.3 API surface (client) / T0.2 (T0.9) | component+hook tests; T0.9 hash-first dup (NULL never forms a group), derived tags v1 | `[wip]` — T0.11/T0.4/T0.5 merged; client host-wiring seams `[done]` on `feature/wave2-client-wiring` (see provenance) |
 | 3 | T0.10 → P0 exit gate | T0.9 + T0.7 + T0.8 merged | dashboard blocks per §4.16 | `[todo]` |
 
 - **P0 exit gate**: full `npm run test:ci` (client+server) + `test:ci:pg:adapters` + all new
@@ -331,6 +331,20 @@ config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
   (see `docs/RCA_LOG.md` 2026-09-22 entries). Gates: server `test:ci` 108 suites / 2057 tests,
   client `test:ci` 159 suites / 1438 tests, `test:ci:pg:adapters` 20 suites / 291 tests — all green.
   Known-open: one non-reproducible gcService test flake under parallel CI load (RCA-logged).
+- **Wave-2 client-wiring provenance (2026-09-23)**: branch `feature/wave2-client-wiring`
+  (worktree wt-wire) closed the three orchestrator-deferred host seams: T0.11 results shell
+  (shell-mounted `useSearchResults`, breadcrumb-row swap in the view, submit/row-open/exit
+  wiring, logout chip clear), T0.5 like state (NEW `fileLikesRepository` + gateway
+  `listDirectory` `liked` merge, optimistic `handleToggleLike`, notifier refresh,
+  context-menu/action-sheet/properties callbacks), and T0.4/T0.5 member-row menu (shell-owned
+  `MemberRowControls` instance on `onMemberAction('menu', row, anchorEl)` → exclude/publish/
+  download/show-original/properties/like). Surfaced two Case-A integration defects (RCA
+  2026-09-23): client `recordSearchClick` sent `{ nodeId }` against the server's `{ node_id }`;
+  `MemberRowControls` crashed on the closed single instance. Gates (targeted union):
+  client 45+ suites / 578 tests green incl. FileManager shell 33; eslint/prettier clean.
+  Residuals: search-origin save-confirm dialog copy + server-side flatten (T1.5), explorer
+  `Add to collection` host wiring + member bulk variant + for-nodes chips (T3.6), unpublish
+  and the `/publish` endpoint itself (T3.2), dashboard blocks (T0.10).
 - **Wave-2 T0.11 provenance (2026-09-22)**: branch `feature/t11-name-search`
   (worktree wt-t11) — server-wide name search P0: `server/domains/ai/`
   (searchService P0 name section + `sr1.` replay signature + fire-and-forget

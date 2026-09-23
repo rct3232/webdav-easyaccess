@@ -71,6 +71,7 @@ const SearchBarResultsMode = ({
   onChipSelect,
   onChipSave,
   onFilterChange,
+  onRowOpen,
 }) => {
   const { t } = useTranslation();
   const [menuAnchor, setMenuAnchor] = useState(null);
@@ -173,7 +174,13 @@ const SearchBarResultsMode = ({
           {nameMatches.length > 0 && (
             <List data-testid="search-section-name" dense disablePadding>
               {nameMatches.map((row) => (
-                <ListItem key={row.node_id} data-testid="search-result-row" dense>
+                <ListItem
+                  key={row.node_id}
+                  data-testid="search-result-row"
+                  dense
+                  button={Boolean(onRowOpen)}
+                  onClick={onRowOpen ? () => onRowOpen(row) : undefined}
+                >
                   <ListItemText
                     primary={<HighlightedName name={row.name} highlights={row.highlights} />}
                   />
@@ -184,7 +191,13 @@ const SearchBarResultsMode = ({
           {semantic.length > 0 && (
             <List data-testid="search-section-semantic" dense disablePadding>
               {semantic.map((row) => (
-                <ListItem key={row.node_id} data-testid="search-semantic-row" dense>
+                <ListItem
+                  key={row.node_id}
+                  data-testid="search-semantic-row"
+                  dense
+                  button={Boolean(onRowOpen)}
+                  onClick={onRowOpen ? () => onRowOpen(row) : undefined}
+                >
                   {/* Semantic rows are score-free plain names (§4.6) */}
                   <ListItemText primary={row.name} />
                 </ListItem>

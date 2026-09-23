@@ -23,7 +23,10 @@ import { getEntryKey } from '../../utils/fileViewUtils';
 
 import { useRecentFile } from './hooks/useRecentFile';
 import { useCollections } from './hooks/useCollections';
+import { useSearchResults } from './hooks/useSearchResults';
 import { useUndoToast } from '../../hooks/useUndoToast';
+import { getServerErrorDisplay } from '../../utils/errorUtils';
+import MemberRowControls from '../../components/file-manager/MemberRowControls';
 import { ConfirmDialog, RenameDialog } from '../../components/dialogs';
 import { useFileManagerDialogs } from './hooks/useFileManagerDialogs';
 import { useTrashOperations } from './hooks/useTrashOperations';
@@ -71,6 +74,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
 
   const messageBundle = useMessage();
   const { message, showError, showWarning, clearMessage } = messageBundle;
+  // undo-toast host ref: mounted controllers forward through it (defined once
+  // useUndoToast mounts below; identity stays stable across the shell).
+  const showUndoToastRef = useRef(null);
   const {
     addToSharedModalOpen,
     setAddToSharedModalOpen,
@@ -134,9 +140,24 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   // DEF-16 P9: trash view is a product overlay route of the explorer shell.
   const isTrashView = currentPath === '/__trash__';
 
+  // -- AI-platform search-results controller (T0.11; FileManager §7) ---------
+  // Mounted here (before the session) so the session's onSubmitQuery passthrough
+  // can delegate submits (D1). Save-from-results confirmation copy rides T1.5;
+  // the P0 wiring only calls the hook-owned save seams.
+  const searchApi = useSearchResults({
+    showError,
+    gateway: isShareLinkMode ? undefined : explorerGateway,
+    onUndoable: (undo) => {
+      showUndoToastRef.current?.({
+        actionId: undo?.action_id,
+        text: t('collections.undoCreated'),
+      });
+    },
+  });
   const {
     sessionKey,
     files,
+    setFiles,
     searchQuery,
     setSearchQuery,
     sortMode,
@@ -148,6 +169,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     loadMoreRef,
     hasMore,
     handleThumbnailsLoaded,
+    onSubmitQuery: submitSearch,
   } = useExplorerSession({
     currentNodeId,
     view: isTrashView
@@ -159,7 +181,20 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           : 'folder',
     files: filesFromHook,
     isMobile,
+    onSubmitQuery: isShareLinkMode ? undefined : searchApi.submitSearch,
   });
+
+  // Clearing the shared search text exits results mode (FloatingSearchBar §3.2:
+  // one ✕ clears the inline filter AND the results surface).
+  const handleSearchQueryChange = useCallback(
+    (query) => {
+      setSearchQuery(query);
+      if (!String(query ?? '').trim() && searchApi.mode === 'results') {
+        searchApi.exitResults();
+      }
+    },
+    [setSearchQuery, searchApi]
+  );
 
   const {
     selectionMode,
@@ -523,6 +558,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     include: collectionsInclude,
   });
   collectionsRefreshRef.current = collectionsApi.refresh;
+  showUndoToastRef.current = showUndoToast;
 
   const [collectionRenameTarget, setCollectionRenameTarget] = useState(null);
   const [collectionRenameValue, setCollectionRenameValue] = useState('');
@@ -586,10 +622,160 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   }, [collectionRenameTarget, collectionRenameValue, collectionsApi, t]);
 
   // Member-row menus are the T0.5 MemberRowControls seam; publish batch uses the
-  // loaded unpublished rows (the §4.7 banner action).
-  const handleMemberAction = useCallback(() => {
-    // Reserved seam — MemberRowControls (T0.5) will own the rendered menu.
+  // loaded unpublished rows (the §4.7 banner action). The shell owns the single
+  // menu instance (CollectionsListView §2.5 — FileContextMenu idiom).
+  const [memberMenu, setMemberMenu] = useState(null); // { anchorEl, member }
+
+  const handleMemberAction = useCallback((action, row, anchorEl) => {
+    if (action === 'menu') {
+      setMemberMenu({ anchorEl, member: row });
+    }
   }, []);
+
+  const closeMemberMenu = useCallback(() => setMemberMenu(null), []);
+
+  const memberCollection = useMemo(
+    () =>
+      collectionsApi.collections.find(
+        (collection) => collection.collection_id === collectionMembers.collectionId
+      ) ?? null,
+    [collectionsApi.collections, collectionMembers.collectionId]
+  );
+
+  // -- T0.5 like state: optimistic flip on the session rows + menu row; the
+  // repository notifier drives the server-truth re-read (FileManager §7).
+  const applyLikedToRows = useCallback(
+    (nodeId, liked) => {
+      setFiles((prev) => prev.map((f) => (f?.nodeId === nodeId ? { ...f, liked } : f)));
+      setMemberMenu((prev) =>
+        prev && (prev.member?.nodeId ?? prev.member?.node_id) === nodeId
+          ? { ...prev, member: { ...prev.member, liked } }
+          : prev
+      );
+    },
+    [setFiles]
+  );
+
+  const handleToggleLike = useCallback(
+    async (file) => {
+      const nodeId = file?.nodeId ?? file?.node_id;
+      if (nodeId == null) return;
+      const next = file?.liked !== true;
+      applyLikedToRows(nodeId, next);
+      let envelope = null;
+      const payload = await explorerGateway.setFileLike(nodeId, next, {
+        onError: (error) => {
+          envelope = error;
+        },
+      });
+      if (payload === null) {
+        applyLikedToRows(nodeId, !next);
+        showError(getServerErrorDisplay(envelope, t));
+      }
+    },
+    [applyLikedToRows, showError, t]
+  );
+
+  useEffect(() => {
+    if (isShareLinkMode) return undefined;
+    return explorerGateway.subscribeToFileLikes(() => {
+      loadFiles();
+    });
+  }, [isShareLinkMode, loadFiles]);
+
+  const handleMemberExclude = useCallback(
+    async (member) => {
+      const nodeId = member?.nodeId ?? member?.node_id;
+      if (nodeId == null || collectionMembers.collectionId == null) return;
+      let envelope = null;
+      const payload = await explorerGateway.removeCollectionItems(
+        collectionMembers.collectionId,
+        [nodeId],
+        {
+          onError: (error) => {
+            envelope = error;
+          },
+        }
+      );
+      if (payload === null) {
+        showError(getServerErrorDisplay(envelope, t));
+        return;
+      }
+      loadFiles();
+      if (payload?.undo?.action_id != null) {
+        handleUndoable(payload, 'collections.undoExcluded');
+      }
+    },
+    [collectionMembers.collectionId, showError, t, loadFiles, handleUndoable]
+  );
+
+  const handleMemberPublish = useCallback(
+    async (member) => {
+      const nodeId = member?.nodeId ?? member?.node_id;
+      if (nodeId == null || collectionMembers.collectionId == null) return;
+      const payload = await explorerGateway.publishItems(collectionMembers.collectionId, [nodeId]);
+      if (payload !== null) loadFiles();
+    },
+    [collectionMembers.collectionId, loadFiles]
+  );
+
+  const handleMemberDownload = useCallback(
+    (member) => {
+      const nodeId = member?.nodeId ?? member?.node_id;
+      if (nodeId == null) return;
+      handleFileDownloadOp({
+        nodeId,
+        name: member.name ?? member.basename ?? null,
+        basename: member.basename ?? member.name ?? null,
+        type: member.type ?? 'file',
+      });
+    },
+    [handleFileDownloadOp]
+  );
+
+  const handleMemberShowOriginal = useCallback(
+    async (member) => {
+      const nodeId = member?.nodeId ?? member?.node_id;
+      if (nodeId == null) return;
+      try {
+        const data = await explorerGateway.loadNodeAncestors(nodeId);
+        const chain = Array.isArray(data?.ancestors) ? data.ancestors : [];
+        const parent = chain.length > 1 ? chain[chain.length - 2] : null;
+        if (parent?.nodeId != null) {
+          navigateToExplorerNode(parent.nodeId);
+        }
+      } catch (error) {
+        showError(
+          getServerErrorDisplay(
+            {
+              errorCode: error?.response?.data?.errorCode,
+              params: error?.response?.data?.params ?? {},
+            },
+            t
+          )
+        );
+      }
+    },
+    [navigateToExplorerNode, showError, t]
+  );
+
+  const handleMemberProperties = useCallback(
+    (member) => {
+      const nodeId = member?.nodeId ?? member?.node_id;
+      if (nodeId == null) return;
+      openPropertiesDialog({
+        nodeId,
+        name: member.name ?? member.basename ?? null,
+        basename: member.basename ?? member.name ?? null,
+        type: member.type ?? 'file',
+        size: member.size ?? null,
+        lastmod: member.lastmod ?? null,
+        mime: member.mime ?? null,
+        path: member.path ?? '',
+      });
+    },
+    [openPropertiesDialog]
+  );
 
   const handlePublishBatch = useCallback(async () => {
     const pending = collectionMembers.items.filter((row) => row.published === false);
@@ -639,6 +825,67 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     handleMemberAction,
     handlePublishBatch,
   ]);
+
+  // -- T0.11 search-results model (FileManager §7): the shell prepares the
+  // results view-model; the view swaps regions off it. Rows open through the
+  // recordEntryClick seam (§3.4) and the metadata-enriched entry type
+  // (directory → navigate + exit; file → preview overlay).
+  const handleSearchRowOpen = useCallback(
+    async (row) => {
+      const nodeId = row?.node_id ?? row?.nodeId;
+      if (nodeId == null) return;
+      searchApi.recordEntryClick(nodeId);
+      let type = row.type;
+      if (!type) {
+        const meta = await explorerGateway.loadNodesMetadata([nodeId]);
+        type = meta?.[0]?.type ?? 'file';
+      }
+      if (type === 'directory') {
+        searchApi.exitResults();
+        navigateToExplorerNode(nodeId);
+        return;
+      }
+      const entry = {
+        nodeId,
+        name: row.name,
+        basename: row.name,
+        type: 'file',
+        size: 0,
+        path: '',
+      };
+      // The preview surface renders from the selected-file target (list-flow
+      // parity) — prepare it before opening the dialog.
+      setSelectedFile(entry);
+      openPreviewDialog(entry);
+    },
+    [searchApi, navigateToExplorerNode, openPreviewDialog, setSelectedFile]
+  );
+
+  const searchResults = useMemo(() => {
+    if (isShareLinkMode || searchApi.mode !== 'results') return null;
+    return {
+      mode: searchApi.mode,
+      query: searchApi.submittedQuery ?? searchQuery,
+      counts: searchApi.counts,
+      sections: {
+        nameMatches: searchApi.nameMatches,
+        semantic: searchApi.semantic,
+      },
+      canSaveToCollection: searchApi.canSaveToCollection,
+      recentQueries: searchApi.recentQueries,
+      onExit: searchApi.exitResults,
+      onFilterChange: searchApi.setFilterText,
+      onChipSelect: (chip) => {
+        if (chip?.query) {
+          setSearchQuery(chip.query);
+          searchApi.submitSearch(chip.query);
+        }
+      },
+      onSave: () => searchApi.saveResultsToCollection(searchApi.submittedQuery ?? ''),
+      onChipSave: (chip) => searchApi.saveChipQuery(chip),
+      onRowOpen: handleSearchRowOpen,
+    };
+  }, [isShareLinkMode, searchApi, searchQuery, setSearchQuery, handleSearchRowOpen]);
 
   const handleProductPathClick = useCallback(
     async (path, file) => {
@@ -993,7 +1240,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       sortMode,
       setSortMode,
       searchQuery,
-      setSearchQuery,
+      setSearchQuery: handleSearchQueryChange,
+      // Share-link mode: server-wide search is an authenticated-explorer
+      // feature — the bar stays typing-filter-only (FloatingSearchBar §3.2).
+      onSubmitQuery: isShareLinkMode ? undefined : submitSearch,
     }),
     [
       currentPath,
@@ -1003,7 +1253,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       sortMode,
       setSortMode,
       searchQuery,
-      setSearchQuery,
+      handleSearchQueryChange,
+      isShareLinkMode,
+      submitSearch,
     ]
   );
 
@@ -1248,6 +1500,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       contentAreaDragType,
       handleActionSheetDownload,
       handleActionSheetPreview,
+      handleToggleLike,
     }),
     [
       handleFileClick,
@@ -1271,6 +1524,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       contentAreaDragType,
       handleActionSheetDownload,
       handleActionSheetPreview,
+      handleToggleLike,
     ]
   );
 
@@ -1412,7 +1666,23 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         explorerHandlers={explorerHandlersProps}
         trashState={trashStateProps}
         collectionsModel={collectionsModel}
+        searchResults={searchResults}
       />
+      {isCollectionsMemberRoute && (
+        <MemberRowControls
+          open={Boolean(memberMenu)}
+          anchorEl={memberMenu?.anchorEl ?? null}
+          member={memberMenu?.member ?? null}
+          collection={memberCollection}
+          onExclude={handleMemberExclude}
+          onPublish={handleMemberPublish}
+          onDownload={handleMemberDownload}
+          onShowOriginal={handleMemberShowOriginal}
+          onProperties={handleMemberProperties}
+          onToggleLike={handleToggleLike}
+          onClose={closeMemberMenu}
+        />
+      )}
       {isCollectionsOverlay && (
         <>
           <RenameDialog

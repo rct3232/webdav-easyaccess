@@ -62,7 +62,7 @@ On auth actions:
 
 - `login` stores tokens via `authTokenStore` and updates `user`.
 - `register` stores tokens via `authTokenStore` and updates `user` on non-pending success.
-- `logout` clears tokens via `authTokenStore.removeTokens()` and also removes legacy local storage tokens.
+- `logout` clears tokens via `authTokenStore.removeTokens()` and also removes legacy local storage tokens. It additionally clears the session-scoped recent-search-query chips via `recentQueriesStorage.clearRecentQueries()` (`useSearchResults.md` §2.3 Decision: chips are cleared on logout) — best-effort, never blocking the token clear.
 
 ### 2.6 Error Handling
 

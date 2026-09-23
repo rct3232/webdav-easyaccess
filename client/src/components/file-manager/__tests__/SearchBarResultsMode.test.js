@@ -165,3 +165,27 @@ describe('SearchBarResultsMode inline filter', () => {
     expect(defaultProps.onFilterChange).not.toHaveBeenCalled();
   });
 });
+
+describe('SearchBarResultsMode row activation (wave-2 shell wiring)', () => {
+  it('name- and semantic-row clicks dispatch onRowOpen(row) once per click', () => {
+    const onRowOpen = jest.fn();
+    renderResults({
+      sections: { nameMatches: NAME_ROWS, semantic: SEMANTIC_ROWS },
+      onRowOpen,
+    });
+
+    fireEvent.click(screen.getAllByTestId('search-result-row')[0]);
+    expect(onRowOpen).toHaveBeenCalledTimes(1);
+    expect(onRowOpen).toHaveBeenCalledWith(expect.objectContaining({ node_id: 11 }));
+
+    fireEvent.click(screen.getByTestId('search-semantic-row'));
+    expect(onRowOpen).toHaveBeenCalledTimes(2);
+    expect(onRowOpen).toHaveBeenCalledWith(expect.objectContaining({ node_id: 90 }));
+  });
+
+  it('rows stay inert (no throw) when no onRowOpen is supplied', () => {
+    renderResults({ onRowOpen: undefined });
+
+    expect(() => fireEvent.click(screen.getAllByTestId('search-result-row')[0])).not.toThrow();
+  });
+});

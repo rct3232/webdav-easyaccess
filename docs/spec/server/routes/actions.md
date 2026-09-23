@@ -92,6 +92,9 @@ explicit-only, rule 2).
 Field rules: `actor` is a numeric user id or the string `"system"`;
 `status`: `applied | undone | expired`; `subject_label` is the render-safe display
 label captured at commit time (never re-resolved — rows outlive subjects for audit);
+as of T0.10 (register (d) decision 2026-09-23) every collection-domain writer captures
+the label — member-op rows carry the collection name so the §4.16 feed renders them
+without re-resolution (`store/collectionsStore.md` §2.1 capture table);
 `undo_available` = `status='applied'` (payload not yet NULLed); `is_tip` = highest
 `chain_seq` among `status='applied'` rows for the same `subject` (lets the client plan
 the cascade dialog without a round trip). The ≤24h **toast** window is a client

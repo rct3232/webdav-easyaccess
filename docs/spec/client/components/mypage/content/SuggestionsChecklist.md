@@ -57,3 +57,9 @@ Target-contract spec (`docs/features/collections-platform.md` §4.16/§4.17 sugg
 
 - Node trashed by owner between listing and accept: server `items_skipped`/reject lists surface via the accept result toast text (mixed outcome path).
 - `expires_at` past render horizon: row simply absent (server filters) — no client expiry math.
+- **As-built (T0.10):** the P0 suggestion rows are COMPUTED exact-dup rows
+  (`routes/dashboard.md` §2.4 — `node_id`, `kind`, `path`, `size_bytes`, `reason` with
+  `keep_node_id`; no `id`, no `expires_at`). Dismiss renders per-row ONLY for rows carrying
+  an `id` (persisted `file_suggestions` land with T3.3) — computed rows have no dismiss
+  button (unaccepted rows vanish on reload by construction); the expiry footer renders only
+  when rows carry `expires_at`. Rows equal to the group's `keep_node_id` are never listed.

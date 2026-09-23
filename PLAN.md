@@ -272,12 +272,12 @@ config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
 > absorbed into Waves 1–2; its write-side is already implemented (content_hash DDL +
 > commit-point population + tests verified in FileNodeRepository twins).
 
-| Wave | Tasks (parallel)                                                                                                                                                              | Entry condition                         | RED-first test targets                                                                                                                                            | Status                               |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| 0    | T0.2 ∥ T0.12 ∥ T0.7b (∥ T0.11 if capacity)                                                                                                                                    | none (roots)                            | T0.2: 3 conformance twins + dual-dialect §5 table-presence; T0.12: node:sqlite driver + BigInt PK binding; T0.7b: en/ko i18n key mirror + settings/flags exposure | `[done]` — T0.11 carried into Wave 2 |
-| 1    | T0.3 ∥ T0.6 ∥ T0.7 ∥ T0.8 (+ T0.1 absorbed)                                                                                                                                   | T0.2 + T0.7b merged                     | T0.3: camelCase req / snake_case res + activity_score fallback sort; T0.8: NULL content_hash backfill idempotency                                                 | `[done]`                             |
-| 2    | T0.4 ∥ T0.5 ∥ T0.9 ∥ T0.11 (carried from Wave 0) + pre-tasks: register (c) (failsafe-row consolidation, small `chore/`) and register (f) (test-infra leak fix, small `test/`) | T0.3 API surface (client) / T0.2 (T0.9) | component+hook tests; T0.9 hash-first dup (NULL never forms a group), derived tags v1                                                                             | `[done]`                             |
-| 3    | T0.10 → P0 exit gate                                                                                                                                                          | T0.9 + T0.7 + T0.8 merged               | dashboard blocks per §4.16                                                                                                                                        | `[wip]`                              |
+| Wave | Tasks (parallel)                                                                                                                                                              | Entry condition                         | RED-first test targets                                                                                                                                            | Status                                            |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| 0    | T0.2 ∥ T0.12 ∥ T0.7b (∥ T0.11 if capacity)                                                                                                                                    | none (roots)                            | T0.2: 3 conformance twins + dual-dialect §5 table-presence; T0.12: node:sqlite driver + BigInt PK binding; T0.7b: en/ko i18n key mirror + settings/flags exposure | `[done]` — T0.11 carried into Wave 2              |
+| 1    | T0.3 ∥ T0.6 ∥ T0.7 ∥ T0.8 (+ T0.1 absorbed)                                                                                                                                   | T0.2 + T0.7b merged                     | T0.3: camelCase req / snake_case res + activity_score fallback sort; T0.8: NULL content_hash backfill idempotency                                                 | `[done]`                                          |
+| 2    | T0.4 ∥ T0.5 ∥ T0.9 ∥ T0.11 (carried from Wave 0) + pre-tasks: register (c) (failsafe-row consolidation, small `chore/`) and register (f) (test-infra leak fix, small `test/`) | T0.3 API surface (client) / T0.2 (T0.9) | component+hook tests; T0.9 hash-first dup (NULL never forms a group), derived tags v1                                                                             | `[done]`                                          |
+| 3    | T0.10 → P0 exit gate                                                                                                                                                          | T0.9 + T0.7 + T0.8 merged               | dashboard blocks per §4.16                                                                                                                                        | `[done]` — P0 exit gate now with the orchestrator |
 
 - **Wave-2 execution (2026-09-22)**: pre-tasks register (c)/(f) landed on `ai-feature`
   first (`chore/register-c-probe-consolidation`, `test/register-f-test-infra-leak` — the
@@ -289,6 +289,24 @@ config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
   Full gates: server `test:ci` 126 suites / 2341 tests; client `test:ci` 172 suites /
   1667 tests; `test:ci:pg:adapters` 23 suites / 341 tests — all green (two single
   non-reproducible first-run flakes re-ran clean, RCA-logged).
+
+- **Wave-3 provenance (2026-09-23)**: branch `feature/t10-storage-dashboard` (worktree wt-t10) — T0.10
+  shipped docs→RED→GREEN. New domain `server/domains/dashboard/{routes,service}.js` (GET / = ONE
+  dupFinder pass feeding duplicates + computed exact-dup suggestions [keep rule = smallest node id] +
+  trash subtree summary via the NEW `FileNodeRepository.summarizeTrashedSubtree` twins; POST
+  /suggestions/accept = owner-gated `fileService.deleteNode`, per-node classification, NO journal row —
+  command-unit undo rides T3.3); register (d) capture landed in `collectionsStore` (every
+  collection-subject commit carries subject_label); client `CollectionDashboard`/`SuggestionsChecklist`
+  - `storage` registry entry + `getActions`/`getFileSuggestions`/`acceptFileSuggestions`
+    repository/gateway/mocks seams + `useUndoToast.undoNow` + en/ko mirrors.
+    **Orchestrator integration (index.js not edited by task branches):** after line 182 add
+    `app.use('/api/dashboard', setupModeGuardInstance, require('./domains/dashboard/routes'));`.
+    PG leg REQUIRED for the new repository surface (conformance block shipped; `test:ci:pg:adapters`
+    not run here — no e2e container in the task env). Deferred by spec: `dismissFileSuggestion` +
+    persisted suggestion ids (T3.3), capacity-series seam (later task — block omitted), dup-finder
+    dedicated-view deep link (the card scrolls to the suggestions block in P0).
+    Gates (targeted): server 27 suites / 447 pass + locale-mirror 12; client 20 suites / 238 pass;
+    eslint/prettier clean.
 
 - **Wave-3 execution (2026-09-23, T0.10 docs step)**: branch `feature/t10-storage-dashboard` (worktree wt-t10).
   Register (d) DECIDED: journal member-op rows DO need `subject_label` — every collection-domain

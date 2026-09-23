@@ -175,6 +175,17 @@ Journaled mutations return `undo: { action_id }` (see Actions). Spec: `docs/spec
 
 ---
 
+## File likes
+
+Separate mount (per-node subject, not per-collection; router still owned by the collections domain). No undo pointer (§4.11). Spec: `docs/spec/server/routes/fileLikes.md`.
+
+| Method | Path                        | Auth  | Description                                                                                       |
+| ------ | --------------------------- | ----- | ------------------------------------------------------------------------------------------------- |
+| GET    | `/api/file-likes`           | Token | Viewer's liked node ids. Returns `{ liked: [node_id, …] }` (`node_id` asc).                       |
+| PUT    | `/api/file-likes/:nodeId`   | Token | Set like state. Body `{ liked: boolean }`. Returns `{ node_id, liked }` (echo, idempotent).       |
+
+---
+
 ## Search
 
 Spec: `docs/spec/server/routes/search.md`.

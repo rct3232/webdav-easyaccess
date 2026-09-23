@@ -61,7 +61,9 @@ MUST be registered before the `/:id` parameterized routes.
 
 **Not in this router:** `leave` (`Leave`, per-user `collection_visibility` hidden flag,
 §4.7). No digest-reset endpoint exists —
-the visit cursor advances implicitly on `GET /:id/items` (see decision below).
+the visit cursor advances implicitly on `GET /:id/items` (see decision below). The file-like
+toggle and the whole-viewer liked-ids read ride the separate `/api/file-likes` mount —
+[fileLikes.md](fileLikes.md) (per-node subject; the member-view `liked` field here stays).
 
 ### 2.3 Middleware Used
 

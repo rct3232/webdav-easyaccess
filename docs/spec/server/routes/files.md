@@ -176,6 +176,7 @@ Route handlers delegate to `fileService` instead of calling WebDAV directly. No 
   - `GET /preview-stream`: validates `{ nodeId, ticket }` and responds with `Content-Disposition: inline` + `Content-Type` derived from filename.
   - Tickets are short-lived (e.g. 60–120s) and must not embed JWT in query params.
 - **GET /list:** When `user.is_admin`, items are not filtered by permission (admin bypass); each item's read permission is also treated as true for admin. Non-admin: permission-based filter as before.
+- **Usage signals (§3.4, PLAN register (a); [usageStore.md](../store/usageStore.md)):** on a SUCCESSFUL serve the files domain records one fire-and-forget `usageService.recordEvent({ userId, nodeId, action })` — `GET /download` records `preview` when `?inline=true` else `download`; `GET /preview-stream` records `preview` (per successful ticket read); `POST /download-multiple` records `download` per requested node id that streamed without error. Token-authenticated requests only (share principals carry no `usage_events` row — the subject must be a real user id). Recording errors are logged, never surfaced; no response-shape changes.
 - Bulk ops: returns jobId; poll via bulk-operation
 - Upload 413 (payload too large): body-parser or server limit; returns 413
 - download-multiple empty nodeIds array: 400 (validation)

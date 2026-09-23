@@ -114,6 +114,30 @@ describe('sqlite driver migration (node:sqlite, T0.12)', () => {
   });
 
   describe('storage seam exposes the node:sqlite driver', () => {
+    // Own the env: the BigInt describe's afterAll deletes WEA_SQLITE_PATH, and
+    // an unset env would make getSqliteConnection() fall back to the repo's
+    // default `data/webdav.db` (register (f) leak class).
+    let seamPath;
+    beforeAll(() => {
+      seamPath = `/tmp/wea-driver-seam-${process.pid}-${Date.now()}.db`;
+      process.env.WEA_SQLITE_PATH = seamPath;
+    });
+
+    afterAll(async () => {
+      const storage = require('@server/store/storage');
+      try {
+        await storage.closeSqliteDb();
+      } catch {
+        /* ignore */
+      }
+      delete process.env.WEA_SQLITE_PATH;
+      try {
+        fs.promises.unlink(seamPath).catch(() => {});
+      } catch {
+        /* ignore */
+      }
+    });
+
     it('getSqliteConnection returns a node:sqlite DatabaseSync handle', () => {
       const { DatabaseSync } = require('node:sqlite');
       const storage = require('@server/store/storage');

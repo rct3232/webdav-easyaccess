@@ -329,8 +329,10 @@ config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
   renders member-op rows; (e) `is_tip` becomes per-subject server-side computation when
   T3.2 introduces cross-user writes (P3); (f) pre-existing test-infra leak —
   `migration.test.js` writes `data/webdav.db`, `createTestDatabase` cleanup can leave
-  `WEA_SQLITE_PATH='undefined'` (stray `server/undefined` SQLite files) — wave-2 pre-task
-  (`test/`).
+  `WEA_SQLITE_PATH='undefined'` (stray `server/undefined` SQLite files) — DONE 2026-09-23
+  (wave-2 pre-task `test/register-f-test-infra-leak` + leak source `sqliteDriverMigration.test.js`
+  seam describe owning its env + test-setup per-worker default; full server+PG legs verified
+  creating no `data/webdav.db`).
 - **Wave-0 spec debt found during planning (2026-09-22, resolved in the T0.12 PR)**: §6/T0.12
   said the sqlite driver is confined to `db/sqliteExecutor.js`, but the real `sqlite3` npm
   sites are `store/storage.js`, `metadataMigrationService.js`, `sqliteSchemaInit.js`,

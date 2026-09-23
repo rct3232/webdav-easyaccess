@@ -9,6 +9,7 @@ const request = require('supertest');
 const {
   createTestDatabase,
   createAuthenticatedTestUser,
+  grantTestPermissionByNodeId,
 } = require('@server/test-utils');
 const { createFileNodeService } = require('@server/service/fileNodeService');
 const { createFileNodesStore } = require('@server/store/fileNodesStore');
@@ -48,6 +49,7 @@ beforeAll(async () => {
   userId = user.id;
   userToken = token;
   const home = await fileNodeService.createDirectory(null, user.username);
+  await grantTestPermissionByNodeId({ userId: user.id, fileNodeId: home.id, permission: 'write' });
   const file = await fileNodeService.createFile(home.id, 'doc.txt');
   const video = await fileNodeService.createFile(home.id, 'clip.mp4');
   testFileNodeId = file.id;
@@ -64,6 +66,16 @@ beforeEach(() => {
   recordEvent = jest.fn().mockResolvedValue({ changes: 1 });
   jest.spyOn(usageService, 'getUsageService').mockReturnValue({ recordEvent });
 
+  webdavMock.listDirectory.mockImplementation((path) => {
+    const p = String(path).replace(/\/$/, '');
+    if (p && /\.\w+$/.test(p)) {
+      return Promise.reject(Object.assign(new Error('Not a directory'), { status: 404 }));
+    }
+    return Promise.resolve([
+      { basename: 'doc.txt', type: 'file' },
+      { basename: 'clip.mp4', type: 'file' },
+    ]);
+  });
   webdavMock.getFileContents.mockResolvedValue(Buffer.from('test content'));
   webdavMock.getFileMetadata.mockResolvedValue({
     size: 100,
@@ -121,7 +133,9 @@ describe('GET /api/files/download — usage signal', () => {
 
   it('records nothing for share-principal downloads', async () => {
     const ShareLink = require('@server/models/ShareLink');
+    const permissionStore = require('@server/domains/permissions/stores/permissionStore');
     const link = await ShareLink.create(testFileNodeId, userId);
+    await permissionStore.grantSharePermission(link.token, testFileNodeId);
 
     const res = await request(app)
       .get('/api/files/download')

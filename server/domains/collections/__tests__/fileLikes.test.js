@@ -31,11 +31,12 @@ async function makeReadableNode(userId, name) {
 }
 
 async function usageRows(nodeId) {
-  return dbQuery('SELECT * FROM usage_events WHERE node_id = ?', [nodeId]);
+  const { rows } = await dbQuery('SELECT * FROM usage_events WHERE node_id = ?', [nodeId]);
+  return rows;
 }
 
 async function journalRowCount() {
-  const rows = await dbQuery('SELECT COUNT(*) AS count FROM action_journal', []);
+  const { rows } = await dbQuery('SELECT COUNT(*) AS count FROM action_journal', []);
   return Number(rows[0].count);
 }
 
@@ -144,7 +145,7 @@ describe('PUT /api/file-likes/:nodeId', () => {
     expect(second.status).toBe(200);
     expect(second.body).toEqual({ node_id: node.nodeId, liked: true });
 
-    const likes = await dbQuery(
+    const { rows: likes } = await dbQuery(
       'SELECT COUNT(*) AS count FROM file_likes WHERE user_id = ? AND node_id = ?',
       [user.id, node.nodeId]
     );
@@ -249,9 +250,10 @@ describe('PUT /api/file-likes/:nodeId', () => {
 
     expect(res.status).toBe(404);
     expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.files.notFound);
-    const likes = await dbQuery('SELECT COUNT(*) AS count FROM file_likes WHERE node_id = ?', [
-      node.nodeId,
-    ]);
+    const { rows: likes } = await dbQuery(
+      'SELECT COUNT(*) AS count FROM file_likes WHERE node_id = ?',
+      [node.nodeId]
+    );
     expect(Number(likes[0].count)).toBe(0);
     expect(await usageRows(node.nodeId)).toHaveLength(0);
   });

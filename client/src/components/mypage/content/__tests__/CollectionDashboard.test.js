@@ -181,17 +181,19 @@ describe('CollectionDashboard — system-changes journal feed', () => {
     const feed = section.closest('section');
     const rows = within(feed).getAllByTestId('journal-row');
     expect(rows).toHaveLength(2);
-    expect(rows[1]).toHaveTextContent('Europe trip');
+    expect(rows[0]).toHaveTextContent('Europe trip');
     // system-origin rows are tagged `auto` (§2.3 block 2)
-    expect(rows[0]).toHaveTextContent(/auto/i);
+    expect(rows[1]).toHaveTextContent(/auto/i);
     // action label map: archive row renders the archive label, subject label verbatim
-    expect(rows[0]).toHaveTextContent('Auto coll');
+    expect(rows[1]).toHaveTextContent('Auto coll');
   });
 
   it('routes tip-undo clicks to the host onUndo seam when provided', async () => {
     const onUndo = jest.fn();
     const gateway = makeGateway({
-      getActions: jest.fn().mockResolvedValue({ actions: [actionRow()] }),
+      // 'rename' keeps the row out of the collections-status merge/archive
+      // subset (same renderer) so the feed holds exactly one Undo button.
+      getActions: jest.fn().mockResolvedValue({ actions: [actionRow({ action: 'rename' })] }),
     });
 
     renderDashboard({ gateway, onUndo });
@@ -205,7 +207,7 @@ describe('CollectionDashboard — system-changes journal feed', () => {
 
   it('without onUndo executes through useUndoToast (gateway.undoAction) and re-reads the feed', async () => {
     const gateway = makeGateway({
-      getActions: jest.fn().mockResolvedValue({ actions: [actionRow()] }),
+      getActions: jest.fn().mockResolvedValue({ actions: [actionRow({ action: 'rename' })] }),
     });
 
     renderDashboard({ gateway });
@@ -221,7 +223,7 @@ describe('CollectionDashboard — system-changes journal feed', () => {
   it('non-tip undo arms the cascade dialog with the laterChanges count, then re-posts with confirmCascade', async () => {
     const gateway = makeGateway({
       getActions: jest.fn().mockResolvedValue({
-        actions: [actionRow({ action_id: 3, is_tip: false, chain_seq: 5 })],
+        actions: [actionRow({ action_id: 3, action: 'rename', is_tip: false, chain_seq: 5 })],
       }),
       undoAction: jest
         .fn()

@@ -27,6 +27,20 @@ if (fs.existsSync(envPath)) {
   dotenv.config();
 }
 
+// [D6] Pre-flight metadata-backend resolution (docs/spec/server/infrastructure/
+// bootSequence.md §2 step 2) must run BEFORE the route mounts below: mounting
+// evaluates require-time store consumers (e.g. domains/permissions/routes/
+// folderPermissions calls createFileNodesStore() at module load), so a partial
+// WEA_DB_* set would otherwise throw past the runBoot() catch as an uncaught
+// exception. Fail with the specified terminal handling instead; the runBoot()
+// catch at the bottom keeps the same handling for later boot failures.
+try {
+  require('./store/storage').getBackend();
+} catch (preflightError) {
+  console.error('Initialization failed:', preflightError);
+  process.exit(1);
+}
+
 const app = express();
 
 // CORS hardening:
@@ -212,9 +226,11 @@ if (fs.existsSync(clientBuildPath)) {
 const { initMetadataSchema, ensureDefaultAdmin } = require('./store/bootstrap');
 
 async function runBoot() {
-  // Backend selection is presence-based and validated inside
-  // storage.getBackend(): a partial WEA_DB_* credential set throws a terminal
-  // error that surfaces here (runBoot().catch → process.exit(1)); a
+  // Backend selection is presence-based and validated by the [D6] pre-flight
+  // above (storage.getBackend() throws on a partial WEA_DB_* set with the
+  // terminal `Initialization failed:` handling, before any route mount can
+  // evaluate require-time store consumers); failures raised from here on
+  // surface through the runBoot().catch at the bottom (process.exit(1)). A
   // complete-but-unreachable remote boots and reports via /api/health.
 
   await initMetadataSchema();

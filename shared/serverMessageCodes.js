@@ -244,6 +244,10 @@ const SERVER_ERROR_CODES = {
     expired: P('serverErrors.actions', 'expired'),
     alreadyUndone: P('serverErrors.actions', 'alreadyUndone'),
   },
+  // Storage dashboard (T0.10, docs/spec/server/routes/dashboard.md §2.4.1).
+  dashboard: {
+    emptyNodeIds: P('serverErrors.dashboard', 'emptyNodeIds'),
+  },
   utilsAuth: {
     accessTokenRequired: P('serverErrors.utilsAuth', 'accessTokenRequired'),
     invalidOrExpiredToken: P('serverErrors.utilsAuth', 'invalidOrExpiredToken'),

@@ -925,6 +925,9 @@
       "expired": "되돌리기 기간이 만료되어 이 작업은 더 이상 되돌릴 수 없습니다.",
       "alreadyUndone": "이 작업은 이미 되돌려졌습니다."
     },
+    "dashboard": {
+      "emptyNodeIds": "최소 하나의 파일 또는 폴더를 선택해 주세요."
+    },
     "collections": {
       "nameRequired": "컬렉션 이름이 필요합니다.",
       "invalidName": "컬렉션 이름이 유효하지 않습니다.",

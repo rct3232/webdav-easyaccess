@@ -61,7 +61,7 @@ beforeAll(async () => {
   const setupModeGuard = require('@server/middleware/setupModeGuard');
   app = express();
   app.use(express.json());
-  app.use('/api/dashboard', setupModeGuard(), require('../../routes'));
+  app.use('/api/dashboard', setupModeGuard(), require('../routes'));
   app.use(require('@server/utils/errorHandler').errorHandler);
 });
 
@@ -79,7 +79,7 @@ describe('GET /api/dashboard', () => {
   });
 
   it('returns snake_case-only hygiene + suggestions + trash from one read', async () => {
-    const { user, token, homeId } = await storageUser('shape');
+    const { token, homeId } = await storageUser('shape');
     const hash = `rt-dup-${Date.now()}`;
     const a = await addFile(homeId, 'a.bin', { hash, size: 120 });
     const b = await addFile(homeId, 'b.bin', { hash, size: 120 });
@@ -117,7 +117,7 @@ describe('GET /api/dashboard', () => {
         },
       ],
       trash: {
-        item_count: 3,
+        item_count: 2, // folder-inner.bin + deep.bin (child of the trashed folder)
         total_bytes: 100,
         oldest_deleted_at: expect.any(String),
         retention_days: 30,

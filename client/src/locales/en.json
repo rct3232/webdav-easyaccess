@@ -925,6 +925,9 @@
       "expired": "This action can no longer be undone because the undo window has expired.",
       "alreadyUndone": "This action has already been undone."
     },
+    "dashboard": {
+      "emptyNodeIds": "Please select at least one file or folder."
+    },
     "collections": {
       "nameRequired": "A collection name is required.",
       "invalidName": "This collection name is not valid.",

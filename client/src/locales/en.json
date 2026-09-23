@@ -121,7 +121,12 @@
     "folderTreeClose": "Close folder tree",
     "shareLink": "Share link",
     "breadcrumb": "Breadcrumb",
-    "trash": "Trash"
+    "trash": "Trash",
+    "collections": "Collections",
+    "collectionsArchive": "Archive",
+    "collectionsEmpty": "No collections yet",
+    "collectionsSharedChip": "Shared with you",
+    "collectionsNewDot": "New collection"
   },
   "fileManager": {
     "noFiles": "No files",
@@ -213,7 +218,42 @@
     "trashRestoreFail": "Restore failed",
     "trashPurgeFail": "Permanent delete failed",
     "trashEmptyDone": "Trash emptied",
-    "trashEmptyFail": "Failed to empty the trash"
+    "trashEmptyFail": "Failed to empty the trash",
+    "collectionsSortMenu": "Sort collections",
+    "collectionsSortActivity": "Activity",
+    "collectionsSortName": "Name",
+    "collectionsSortCreated": "Created",
+    "collectionsSortUpdated": "Updated",
+    "collectionsSortSimilar": "Similar",
+    "collectionsEmpty": "No collections yet",
+    "archiveEmpty": "Nothing archived",
+    "collectionsItemCount": "{{count}} items",
+    "collectionsStatusArchived": "Archived",
+    "collectionsAutoPin": "Auto-pinned",
+    "collectionsAutoPinUnpin": "Keep this collection",
+    "digestLine": "+{{added}} / -{{removed}}",
+    "digestExpand": "expand",
+    "digestCollapse": "collapse",
+    "digestAdded": "Added",
+    "digestRemoved": "Removed",
+    "whyHere": "why is this here",
+    "publishPending": "{{count}} awaiting publish",
+    "publishBatch": "Publish all",
+    "sharedExcludedChip": "Not owner's file — not shared",
+    "collectionsUnavailable": "Unavailable",
+    "memberLoadMore": "Load more",
+    "cardMenuOpen": "Open",
+    "cardMenuRename": "Rename",
+    "cardMenuPin": "Pin",
+    "cardMenuUnpin": "Unpin",
+    "cardMenuArchive": "Archive",
+    "cardMenuRestore": "Restore",
+    "cardMenuSharing": "Sharing",
+    "cardMenuDelete": "Delete permanently",
+    "cardMenuLeave": "Leave",
+    "archiveConfirmMessage": "Archive this collection? It moves to the archive and can be restored later.",
+    "permanentDeleteConfirm1": "Permanently delete this collection?",
+    "permanentDeleteConfirm2": "This cannot be undone. Members are only removed from the collection — files stay in place."
   },
   "actions": {
     "move": "Move",
@@ -1105,5 +1145,14 @@
       "permissionUpdated": "Permissions have been updated."
     }
   },
-  "migrationInProgress": "A migration is already in progress."
+  "migrationInProgress": "A migration is already in progress.",
+  "collections": {
+    "undoRenamed": "Collection renamed",
+    "undoPinChanged": "Collection pinned",
+    "undoPublishModeChanged": "Publish mode updated",
+    "undoArchived": "Collection archived",
+    "undoRestored": "Collection restored",
+    "undoMerged": "Collections merged",
+    "permanentDeleteReport": "Collection deleted permanently"
+  }
 }

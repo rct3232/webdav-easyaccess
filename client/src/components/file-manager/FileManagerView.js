@@ -44,6 +44,8 @@ import {
   LoginDialog,
 } from '../dialogs';
 import { FolderTree } from '../folder-tree';
+import CollectionsListView from './CollectionsListView';
+import { UndoToast } from '../feedback';
 
 const FileManagerView = ({
   shareContext,
@@ -56,6 +58,7 @@ const FileManagerView = ({
   messaging,
   explorerHandlers,
   trashState,
+  collectionsModel,
 }) => {
   const { t } = useTranslation();
   const { shareToken, isShareLinkMode, shareRootPath, shareRootName, shareRootNodeId } =
@@ -575,7 +578,26 @@ const FileManagerView = ({
                 </Box>
               )}
 
-              {viewMode === VIEW_MODES.LIST ? (
+              {collectionsModel ? (
+                /* AI-platform §3: __collections__ virtual node replaces the FileList
+                   region (list cards / member rows) — no file-grid fallback. */
+                <CollectionsListView
+                  mode={collectionsModel.mode}
+                  collections={collectionsModel.collections}
+                  sort={collectionsModel.sort}
+                  onSortChange={collectionsModel.onSortChange}
+                  mergeSlot={collectionsModel.mergeSlot}
+                  include={collectionsModel.include}
+                  items={collectionsModel.items}
+                  nextCursor={collectionsModel.nextCursor}
+                  onLoadMore={collectionsModel.onLoadMore}
+                  digest={collectionsModel.digest}
+                  publishPendingCount={collectionsModel.publishPendingCount}
+                  onCardAction={collectionsModel.onCardAction}
+                  onMemberAction={collectionsModel.onMemberAction}
+                  onPublishBatch={collectionsModel.onPublishBatch}
+                />
+              ) : viewMode === VIEW_MODES.LIST ? (
                 <FileList
                   files={displayedFiles}
                   processingMap={processingMap}
@@ -862,16 +884,32 @@ const FileManagerView = ({
         </Alert>
       </Snackbar>
 
-      <Snackbar
-        open={message.show}
-        autoHideDuration={message.type === 'error' ? 5000 : 3000}
-        onClose={clearMessage}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert onClose={clearMessage} severity={message.type} sx={{ width: '100%' }}>
-          {message.text}
-        </Alert>
-      </Snackbar>
+      {message.action ? (
+        /* useMessage action slot (undo toasts, T0.7): the snackbar host renders
+           the action variant through UndoToast — [icon] {text} [action]. */
+        <UndoToast
+          show={message.show}
+          text={message.text}
+          type={message.type}
+          action={{
+            label: t(message.action.labelKey),
+            onAction: message.action.onClick,
+            disabled: message.action.disabled,
+          }}
+          onClose={clearMessage}
+        />
+      ) : (
+        <Snackbar
+          open={message.show}
+          autoHideDuration={message.type === 'error' ? 5000 : 3000}
+          onClose={clearMessage}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        >
+          <Alert onClose={clearMessage} severity={message.type} sx={{ width: '100%' }}>
+            {message.text}
+          </Alert>
+        </Snackbar>
+      )}
 
       <FileOperationProgress
         items={progressItems}

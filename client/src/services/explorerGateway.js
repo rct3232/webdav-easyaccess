@@ -30,6 +30,7 @@ import {
   restoreCollection,
   revokeGrant,
   runSearch,
+  undoAction,
   updateCollection,
 } from './collectionsRepository';
 import { onCollectionsChange } from './collectionsNotifier';
@@ -246,6 +247,8 @@ export const subscribeToCollections = (callback) => {
 // absorption + recordSearchClick absorbed boolean; payloads stay snake_case). //
 
 export { runSearch, recordSearchClick };
+// Undo execution seam (actions.md; collectionsRepository.md §2.5 structured result).
+export { undoAction };
 
 const explorerGateway = {
   addRecentFile: addExplorerRecentFile,
@@ -285,6 +288,7 @@ const explorerGateway = {
   // Search results mode (§2.6 search group)
   runSearch,
   recordSearchClick,
+  undoAction,
 };
 
 export default explorerGateway;

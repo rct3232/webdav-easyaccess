@@ -10,6 +10,7 @@ import { renderWithProviders } from '../../../test-utils';
 import FileManagerView from '../FileManagerView';
 
 import folderTreeGateway from '../../../services/folderTreeGateway';
+import explorerGateway from '../../../services/explorerGateway';
 import { getRecentFiles } from '../../../services/recentFilesRepository';
 import { onRecentFilesChange } from '../../../services/recentFilesNotifier';
 
@@ -26,6 +27,11 @@ jest.mock('../../../services/recentFilesRepository', () => {
 jest.mock('../../../services/recentFilesNotifier', () => {
   const { createRecentFilesNotifierMock } = require('../../../testing/mocks/serviceMocks');
   return createRecentFilesNotifierMock();
+});
+
+jest.mock('../../../services/explorerGateway', () => {
+  const { createExplorerGatewayMock } = require('../../../testing/mocks/serviceMocks');
+  return { __esModule: true, default: createExplorerGatewayMock() };
 });
 
 function createProps(overrides = {}) {
@@ -196,7 +202,7 @@ function createProps(overrides = {}) {
         handleExplorerDrop: jest.fn(),
         handleInternalFileDrop: jest.fn(),
         handleLeaveSharePathClick: jest.fn(),
-        handlePathClick: jest.fn(),
+        handleFolderTreeNodeClick: jest.fn(),
         handleScrollAreaClick: jest.fn(),
         handleFileDownloadOp: jest.fn(),
         contentAreaDnD: {
@@ -261,6 +267,10 @@ describe('FileManagerView', () => {
     folderTreeGateway.listFolderChildren.mockResolvedValue([]);
     getRecentFiles.mockResolvedValue([]);
     onRecentFilesChange.mockReturnValue(() => {});
+    // CRA resetMocks strips the gateway seam implementations — the folder tree's
+    // §3 collections effect needs array-safe defaults in every case.
+    explorerGateway.loadCollections.mockResolvedValue({ collections: [] });
+    explorerGateway.subscribeToCollections.mockImplementation(() => jest.fn());
   });
 
   it('renders the visible file list and forwards file click interactions', async () => {
@@ -617,5 +627,130 @@ describe('FileManagerView', () => {
     fireEvent.click(within(tree).getByText('Home'));
 
     expect(props.explorerHandlers.interaction.handleLeaveSharePathClick).toHaveBeenCalledWith(7);
+  });
+
+  // -- AI-platform composition (§3 addendum) ---------------------------------
+  describe('collections overlay (§3)', () => {
+    const collectionsModel = () => ({
+      mode: 'list',
+      collections: [
+        {
+          collection_id: 1,
+          name: 'Roadtrip',
+          item_count: 4,
+          status: 'active',
+          origin: 'user',
+          granted_role: null,
+        },
+      ],
+      sort: 'activity',
+      onSortChange: jest.fn(),
+      onCardAction: jest.fn(),
+    });
+
+    it('active node __collections__ renders CollectionsListView in place of FileList', async () => {
+      const base = createProps();
+      const props = createProps({
+        shellContext: { ...base.shellContext, isMobile: false },
+        explorerSession: {
+          ...base.explorerSession,
+          controlsState: {
+            ...base.explorerSession.controlsState,
+            currentPath: '/__collections__',
+          },
+        },
+        collectionsModel: collectionsModel(),
+      });
+      renderWithProviders(<FileManagerView {...props} />);
+
+      expect(await screen.findByTestId('collections-list-view')).toBeInTheDocument();
+      expect(screen.getByText('Roadtrip')).toBeInTheDocument();
+      // Region swap: the explorer listing must NOT render under it.
+      expect(screen.queryByText('a.txt')).not.toBeInTheDocument();
+    });
+
+    it('no file-grid fallback while the collections model is active', async () => {
+      const base = createProps();
+      const props = createProps({
+        explorerSession: {
+          ...base.explorerSession,
+          controlsState: {
+            ...base.explorerSession.controlsState,
+            currentPath: '/__collections__/__archive__',
+            viewMode: 'grid',
+          },
+        },
+        collectionsModel: { ...collectionsModel(), include: 'mine,archived' },
+      });
+      renderWithProviders(<FileManagerView {...props} />);
+
+      expect(await screen.findByTestId('collections-list-view')).toBeInTheDocument();
+      expect(screen.queryByText('a.txt')).not.toBeInTheDocument();
+    });
+
+    it('folder tree hosts the CollectionsSection and routes collection clicks through the host', async () => {
+      explorerGateway.loadCollections.mockImplementation(async ({ include } = {}) =>
+        include === 'mine,archived'
+          ? { collections: [] }
+          : {
+              collections: [
+                {
+                  collection_id: 1,
+                  name: 'Roadtrip',
+                  item_count: 4,
+                  granted_role: null,
+                },
+              ],
+            }
+      );
+      explorerGateway.subscribeToCollections.mockImplementation(() => jest.fn());
+      const base = createProps();
+      const props = createProps({
+        shellContext: { ...base.shellContext, isMobile: false },
+      });
+      const handleFolderTreeNodeClick =
+        props.explorerHandlers.interaction.handleFolderTreeNodeClick;
+      renderWithProviders(<FileManagerView {...props} />);
+
+      const tree = await screen.findByTestId('folder-tree');
+      expect(within(tree).getByTestId('collections-section')).toBeInTheDocument();
+      fireEvent.click(within(tree).getByTestId('collections-toggle'));
+      await waitFor(() => {
+        expect(handleFolderTreeNodeClick).toHaveBeenCalledWith('/__collections__');
+      });
+      const row = await within(tree).findByTestId('collection-row-1');
+      fireEvent.click(row);
+      await waitFor(() => {
+        expect(handleFolderTreeNodeClick).toHaveBeenCalledWith('/__collections__/collection/1');
+      });
+    });
+
+    it('share-link mode renders no CollectionsSection (product overlay rule)', async () => {
+      const base = createProps();
+      const props = createProps({
+        shareContext: {
+          ...base.shareContext,
+          isShareLinkMode: true,
+          shareToken: 'share-token',
+          shareRootNodeId: 10,
+        },
+        shellContext: { ...base.shellContext, isMobile: false },
+      });
+      renderWithProviders(<FileManagerView {...props} />);
+
+      const tree = await screen.findByTestId('folder-tree');
+      await waitFor(() => {
+        expect(within(tree).getByText('Home')).toBeInTheDocument();
+      });
+      expect(within(tree).queryByTestId('collections-section')).not.toBeInTheDocument();
+    });
+
+    it('with the collections model absent the listing renders unchanged (regression)', async () => {
+      const props = createProps();
+      renderWithProviders(<FileManagerView {...props} />);
+
+      expect(await screen.findByText('a.txt')).toBeInTheDocument();
+      expect(screen.queryByTestId('collections-list-view')).not.toBeInTheDocument();
+    });
   });
 });

@@ -2,12 +2,12 @@
 
 ## 1. Overview
 
-| Item               | Description                                                                                                                                                                                                                                                                                                                                                           |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role               | Folder-tree UI for explorer surfaces: renders “home” plus optional product sections such as “shared”, “recent”, and share-link entries. Delegates tree-item rendering to `BaseFolderTreeItem` and section components. A **bottom-pinned trash row** sits below the tree lines — the trash entry is NOT a tree section and does not participate in tree expansion/DnD. |
-| Used in            | FileManager page shell (see `docs/spec/client/pages/FileManager.md`) and other explorer-like surfaces where applicable.                                                                                                                                                                                                                                               |
-| Related components | `BaseFolderTreeItem`, `SharedFoldersSection`, `RecentFilesSection`, `ShareLinkSection`, `TrashSidebarItem`                                                                                                                                                                                                                                                            |
-| Ownership note     | This spec documents the **view/component contract**. Product overlays (virtual collections like `__recent__`, `__shared__`, share-link UI) remain **outside** reusable explorer core.                                                                                                                                                                                 |
+| Item               | Description                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role               | Folder-tree UI for explorer surfaces: renders “home” plus optional product sections such as “shared”, “recent”, “collections”, and share-link entries. Delegates tree-item rendering to `BaseFolderTreeItem` and section components. A **bottom-pinned trash row** sits below the tree lines — the trash entry is NOT a tree section and does not participate in tree expansion/DnD. |
+| Used in            | FileManager page shell (see `docs/spec/client/pages/FileManager.md`) and other explorer-like surfaces where applicable.                                                                                                                                                                                                                                                              |
+| Related components | `BaseFolderTreeItem`, `SharedFoldersSection`, `RecentFilesSection`, `CollectionsSection`, `ShareLinkSection`, `TrashSidebarItem`                                                                                                                                                                                                                                                     |
+| Ownership note     | This spec documents the **view/component contract**. Product overlays (virtual collections like `__recent__`, `__shared__`, share-link UI) remain **outside** reusable explorer core.                                                                                                                                                                                                |
 
 ---
 
@@ -74,6 +74,16 @@
   `openIcon`), so auto-expanding the home row never swaps the home icon for a generic folder icon.
 - Click target semantics are unchanged: home row nodeId is `homeNodeId`
   (admin → `null` = filesystem root; non-admin → `user.rootNodeId`).
+
+### 2.7.0 Collections section (AI platform T0.4)
+
+- `CollectionsSection` composes inside the scrollable tree List directly after
+  `RecentFilesSection` — a real tree section (expand/collapse), NOT the pinned trash chrome;
+  its state comes from `useFolderTreeController` §3 (flat depth-1 rows, archive badge,
+  route-based selection).
+- Share-link mode: the section is not rendered at all (product overlay rule —
+  `CollectionsSection.md` §2.4), unlike the trash row which stays visible with the
+  leave-share confirmation.
 
 ### 2.7.1 Bottom-pinned trash row
 

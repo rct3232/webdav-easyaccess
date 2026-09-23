@@ -1510,4 +1510,162 @@ describe('FileManager', () => {
     expect(screen.queryByRole('button', { name: /^copy$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /delete/i })).not.toBeInTheDocument();
   }, 15000);
+
+  /**
+   * AI-platform shell wiring (§7): collections virtual routes.
+   */
+  describe('collections overlay (§7)', () => {
+    const ownCard = {
+      collection_id: 1,
+      name: 'Roadtrip',
+      item_count: 4,
+      origin: 'user',
+      status: 'active',
+      granted_role: null,
+      pinned: false,
+      pinned_by: null,
+      created_at: '2026-09-01T00:00:00Z',
+    };
+    const archivedCard = { ...ownCard, collection_id: 2, name: 'Old', status: 'archived' };
+
+    const collectionsHandlers = ({ onList } = {}) => [
+      http.get('/api/collections', ({ request }) => {
+        const include = new URL(request.url).searchParams.get('include');
+        if (onList) onList(include);
+        return HttpResponse.json({
+          collections: include === 'mine,archived' ? [archivedCard] : [ownCard],
+        });
+      }),
+      http.get('/api/collections/merge-suggestions', () => HttpResponse.json({ suggestions: [] })),
+    ];
+
+    it('entering /files/__collections__ swaps the list region without touching route-param ownership', async () => {
+      server.use(...collectionsHandlers());
+      await renderWithProvidersAct(<FileManagerWithRoutes />, {
+        initialEntries: ['/files/__collections__'],
+      });
+
+      expect(await screen.findByTestId('collections-list-view')).toBeInTheDocument();
+      expect(screen.getByText('Roadtrip')).toBeInTheDocument();
+      // §1.1: the swap happens under the /files/* splat — no second route owner.
+      expect(screen.queryByTestId('explorer-container')).toBeInTheDocument();
+    }, 15000);
+
+    it('the archive route drives include=mine,archived for the overlay list', async () => {
+      const seen = [];
+      server.use(...collectionsHandlers({ onList: (include) => seen.push(include) }));
+      await renderWithProvidersAct(<FileManagerWithRoutes />, {
+        initialEntries: ['/files/__collections__/__archive__'],
+      });
+
+      expect(await screen.findByTestId('collections-list-view')).toBeInTheDocument();
+      expect(screen.getByText('Old')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(seen).toContain('mine,archived');
+      });
+    }, 15000);
+
+    it('member route lists items cursor-paged with client-side node_id de-dup', async () => {
+      let itemsCalls = 0;
+      server.use(
+        ...collectionsHandlers(),
+        http.get('/api/collections/5/items', ({ request }) => {
+          itemsCalls += 1;
+          const cursor = new URL(request.url).searchParams.get('cursor');
+          if (!cursor) {
+            return HttpResponse.json({
+              items: [
+                {
+                  node_id: 90210,
+                  name: 'poster.pdf',
+                  type: 'file',
+                  size: 2048,
+                  lastmod: '2026-09-01T00:00:00Z',
+                  membership: 'derived',
+                  published: true,
+                  state: 'normal',
+                  shared_excluded: false,
+                  reason: 'tag:poster',
+                },
+              ],
+              next_cursor: 'cur-2',
+              publish_pending_count: 2,
+              digest: { added_since: 1, removed_since: 0 },
+            });
+          }
+          // Page 2 repeats 90210 (§2.9: de-dup by node_id client-side).
+          return HttpResponse.json({
+            items: [
+              {
+                node_id: 90210,
+                name: 'poster.pdf',
+                type: 'file',
+                size: 2048,
+                lastmod: '2026-09-01T00:00:00Z',
+                membership: 'derived',
+                published: true,
+                state: 'normal',
+                shared_excluded: false,
+              },
+              {
+                node_id: 90211,
+                name: 'map.jpg',
+                type: 'file',
+                size: 1024,
+                lastmod: '2026-09-02T00:00:00Z',
+                membership: 'stored',
+                published: true,
+                state: 'normal',
+                shared_excluded: false,
+              },
+            ],
+            next_cursor: null,
+          });
+        })
+      );
+
+      await renderWithProvidersAct(<FileManagerWithRoutes />, {
+        initialEntries: ['/files/__collections__/collection/5'],
+      });
+
+      expect(await screen.findByTestId('collections-list-view')).toBeInTheDocument();
+      expect(await screen.findByTestId('member-row-90210')).toBeInTheDocument();
+      // The shell supplied `since` (client-side last-visit copy) → digest banner renders.
+      expect(screen.getByTestId('digest-banner')).toBeInTheDocument();
+      expect(screen.getByTestId('publish-pending-banner')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('member-load-more'));
+      expect(await screen.findByTestId('member-row-90211')).toBeInTheDocument();
+      expect(screen.getAllByTestId('member-row-90210')).toHaveLength(1);
+      expect(screen.queryByTestId('member-load-more')).not.toBeInTheDocument();
+      expect(itemsCalls).toBeGreaterThanOrEqual(1);
+    }, 15000);
+
+    it('card pin dispatches the CRUD, shows the undo toast, and Undo executes through the gateway', async () => {
+      server.use(
+        ...collectionsHandlers(),
+        http.put('/api/collections/1', () =>
+          HttpResponse.json({
+            collection: { ...ownCard, pinned: true, pinned_by: 'user' },
+            undo: { action_id: 99 },
+          })
+        ),
+        http.post('/api/actions/99/undo', () =>
+          HttpResponse.json({ action_id: 99, status: 'undone', items_undone: 1, items_skipped: 0 })
+        )
+      );
+
+      await renderWithProvidersAct(<FileManagerWithRoutes />, {
+        initialEntries: ['/files/__collections__'],
+      });
+
+      fireEvent.click(await screen.findByTestId('card-menu-button-1'));
+      fireEvent.click(screen.getByTestId('card-menu-option-pin'));
+
+      expect(await screen.findByText('Collection pinned')).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('undo-toast-action'));
+
+      expect(await screen.findByText('1 undone')).toBeInTheDocument();
+    }, 15000);
+  });
 });

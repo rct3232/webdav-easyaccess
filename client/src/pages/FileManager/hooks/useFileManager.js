@@ -8,7 +8,45 @@ import { normalizePath, getParentPath, getBasename } from '../../../utils/pathUt
 const VIRTUAL_RECENT = '__recent__';
 const VIRTUAL_SHARED = '__shared__';
 const VIRTUAL_TRASH = '__trash__';
+const VIRTUAL_COLLECTIONS = '__collections__';
 const TRASH_TRAIL_MAX_DEPTH = 32;
+// §4.8 digest parity: client-side copy of the per-collection last-visit stamps.
+const DIGEST_VISITS_KEY = 'collections.digestVisits';
+
+const readDigestVisits = () => {
+  try {
+    return JSON.parse(window.localStorage.getItem(DIGEST_VISITS_KEY) || '{}') || {};
+  } catch {
+    return {};
+  }
+};
+
+const writeDigestVisit = (collectionId) => {
+  try {
+    const visits = readDigestVisits();
+    visits[collectionId] = new Date().toISOString();
+    window.localStorage.setItem(DIGEST_VISITS_KEY, JSON.stringify(visits));
+  } catch {
+    // storage-unavailable: digest deltas simply stop being requested
+  }
+};
+
+const toMemberRow = (item) => ({
+  nodeId: item.node_id,
+  name: item.name ?? null,
+  basename: item.name ?? null,
+  type: item.type ?? 'file',
+  size: item.size ?? null,
+  lastmod: item.lastmod ?? item.created_at ?? null,
+  mime: item.mime ?? null,
+  membership: item.membership,
+  published: item.published,
+  added_by: item.added_by ?? null,
+  state: item.state ?? 'normal',
+  liked: item.liked ?? false,
+  reason: item.reason ?? null,
+  shared_excluded: item.shared_excluded === true,
+});
 
 export const useFileManager = (user, options = {}) => {
   const { onLoadComplete, onLoadError, shareToken, linkInfo } = options;
@@ -60,6 +98,27 @@ export const useFileManager = (user, options = {}) => {
     }
     if (first === VIRTUAL_RECENT) return { kind: 'recent', path: '/__recent__' };
     if (first === VIRTUAL_SHARED) return { kind: 'shared', path: '/__shared__' };
+    if (first === VIRTUAL_COLLECTIONS) {
+      // Collections overlay routes (T0.4): /files/__collections__,
+      // /files/__collections__/__archive__ and the member view
+      // /files/__collections__/collection/<id>. Virtual-node ids never enter
+      // the nodeId explorer state (D1 route-based selection).
+      if (
+        segments[1] === 'collection' &&
+        Number.isInteger(Number(segments[2])) &&
+        Number(segments[2]) > 0
+      ) {
+        return {
+          kind: 'collection',
+          path: `/__collections__/collection/${Number(segments[2])}`,
+          collectionId: Number(segments[2]),
+        };
+      }
+      if (segments[1] === '__archive__') {
+        return { kind: 'collections-archive', path: '/__collections__/__archive__' };
+      }
+      return { kind: 'collections', path: '/__collections__' };
+    }
     if (first === VIRTUAL_TRASH) {
       // Trash view (DEF-16 P9): /files/__trash__ lists topmost trashed items;
       // /files/__trash__/node/<nodeId> lists the trashed children of that
@@ -88,6 +147,16 @@ export const useFileManager = (user, options = {}) => {
   }, [isShareMode, shareCurrentNodeId, urlView, homeNodeId]);
 
   const [files, setFiles] = useState([]);
+  // Collections member mode (T0.4): cursor-paged view rows, de-duped by node_id.
+  const [collectionMembers, setCollectionMembers] = useState({
+    items: [],
+    nextCursor: null,
+    loadingMore: false,
+    digest: undefined,
+    publishPendingCount: undefined,
+    collectionId: null,
+  });
+  const collectionMembersRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [hasWritePermission, setHasWritePermission] = useState(false);
   const [ancestors, setAncestors] = useState([]);
@@ -103,6 +172,10 @@ export const useFileManager = (user, options = {}) => {
   }, [files]);
 
   useEffect(() => {
+    collectionMembersRef.current = collectionMembers;
+  }, [collectionMembers]);
+
+  useEffect(() => {
     onLoadCompleteRef.current = onLoadComplete;
     onLoadErrorRef.current = onLoadError;
   }, [onLoadComplete, onLoadError]);
@@ -113,6 +186,9 @@ export const useFileManager = (user, options = {}) => {
     if (urlView.kind === 'recent') return '/__recent__';
     if (urlView.kind === 'shared') return '/__shared__';
     if (urlView.kind === 'trash') return '/__trash__';
+    if (urlView.kind === 'collections') return '/__collections__';
+    if (urlView.kind === 'collections-archive') return '/__collections__/__archive__';
+    if (urlView.kind === 'collection') return urlView.path;
     if (urlView.kind === 'node' && ancestors.length > 0) {
       return normalizePath('/' + ancestors.map((a) => a.name || '').join('/'));
     }
@@ -189,6 +265,9 @@ export const useFileManager = (user, options = {}) => {
       urlView.kind === 'recent' ||
       urlView.kind === 'shared' ||
       urlView.kind === 'trash' ||
+      urlView.kind === 'collections' ||
+      urlView.kind === 'collections-archive' ||
+      urlView.kind === 'collection' ||
       urlView.kind === 'home'
     ) {
       setAncestors([]);
@@ -242,6 +321,27 @@ export const useFileManager = (user, options = {}) => {
     return undefined;
   }, [urlView]);
 
+  const loadMoreCollectionMembers = useCallback(async () => {
+    const current = collectionMembersRef.current;
+    if (!current.collectionId || !current.nextCursor || current.loadingMore) return;
+    setCollectionMembers((prev) => ({ ...prev, loadingMore: true }));
+    const page = await explorerGateway.loadCollectionItems(current.collectionId, {
+      cursor: current.nextCursor,
+    });
+    setCollectionMembers((prev) => {
+      if (prev.collectionId !== current.collectionId) return prev;
+      const seen = new Set(prev.items.map((row) => row.nodeId));
+      // §2.9: de-dup by node_id; rendered page order stays stable.
+      const appended = (page?.items ?? []).map(toMemberRow).filter((row) => !seen.has(row.nodeId));
+      return {
+        ...prev,
+        items: [...prev.items, ...appended],
+        nextCursor: page?.next_cursor ?? null,
+        loadingMore: false,
+      };
+    });
+  }, []);
+
   const openTrashFolder = useCallback(
     (nodeId, name) => {
       if (nodeId == null) {
@@ -281,6 +381,13 @@ export const useFileManager = (user, options = {}) => {
   const loadFiles = useCallback(async () => {
     const requestId = ++requestIdRef.current;
     setLoading(true);
+    if (urlView.kind !== 'collection') {
+      setCollectionMembers((prev) =>
+        prev.collectionId == null
+          ? prev
+          : { ...prev, items: [], nextCursor: null, collectionId: null }
+      );
+    }
     try {
       if (urlView.kind === 'recent') {
         const recentFilesList = await explorerGateway.loadRecentFiles();
@@ -337,6 +444,29 @@ export const useFileManager = (user, options = {}) => {
         if (requestId === requestIdRef.current) {
           setFiles(sharedFiles);
         }
+      } else if (urlView.kind === 'collections' || urlView.kind === 'collections-archive') {
+        // Overlay list/cards come from the collections seams; no explorer listing.
+        if (requestId === requestIdRef.current) {
+          setFiles([]);
+        }
+      } else if (urlView.kind === 'collection') {
+        const collectionId = urlView.collectionId;
+        const since = readDigestVisits()[collectionId];
+        const page = await explorerGateway.loadCollectionItems(
+          collectionId,
+          since ? { since } : {}
+        );
+        writeDigestVisit(collectionId);
+        if (requestId === requestIdRef.current) {
+          setCollectionMembers({
+            items: (page?.items ?? []).map(toMemberRow),
+            nextCursor: page?.next_cursor ?? null,
+            loadingMore: false,
+            digest: page?.digest,
+            publishPendingCount: page?.publish_pending_count,
+            collectionId,
+          });
+        }
       } else if (urlView.kind === 'trash') {
         const trashFiles = await explorerGateway.loadTrashEntries(
           urlView.trashNodeId != null ? { parentId: urlView.trashNodeId } : {}
@@ -392,6 +522,7 @@ export const useFileManager = (user, options = {}) => {
   }, [
     urlView.kind,
     urlView.trashNodeId,
+    urlView.collectionId,
     fillTrashNameFromChildren,
     isShareMode,
     shareCurrentNodeId,
@@ -407,7 +538,9 @@ export const useFileManager = (user, options = {}) => {
     ? `share:${shareCurrentNodeId}`
     : urlView.kind === 'trash'
       ? `trash:${urlView.trashNodeId ?? 'root'}`
-      : `${urlView.kind}:${currentNodeId}`;
+      : urlView.kind === 'collection'
+        ? `collection:${urlView.collectionId}`
+        : `${urlView.kind}:${currentNodeId}`;
 
   useEffect(() => {
     if (!locationKey) return undefined;
@@ -420,7 +553,14 @@ export const useFileManager = (user, options = {}) => {
 
     loadFiles();
 
-    if (urlView.kind === 'recent' || urlView.kind === 'shared' || urlView.kind === 'trash') {
+    if (
+      urlView.kind === 'recent' ||
+      urlView.kind === 'shared' ||
+      urlView.kind === 'trash' ||
+      urlView.kind === 'collections' ||
+      urlView.kind === 'collections-archive' ||
+      urlView.kind === 'collection'
+    ) {
       setHasWritePermission(false);
       return undefined;
     }
@@ -477,5 +617,7 @@ export const useFileManager = (user, options = {}) => {
     trashTrail,
     openTrashFolder,
     homeNodeId,
+    collectionMembers,
+    loadMoreCollectionMembers,
   };
 };

@@ -137,6 +137,9 @@ export function createExplorerGatewayMock(overrides = {}) {
     // Search results-mode seams (T0.11 — explorerGateway §2.6 search group)
     runSearch: jest.fn().mockResolvedValue(null),
     recordSearchClick: jest.fn().mockResolvedValue(false),
+    undoAction: jest
+      .fn()
+      .mockResolvedValue({ ok: true, status: 'undone', itemsUndone: 1, itemsSkipped: 0 }),
     ...overrides,
   };
 }

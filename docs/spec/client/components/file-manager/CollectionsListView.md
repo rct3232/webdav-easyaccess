@@ -39,7 +39,7 @@ Target-contract spec.
 | digest                          | object?     | members  | `{ added_since, removed_since }` + expanded reasons (see §2.5)                                           |
 | publishPendingCount             | number?     | members  | Owner-only (`publish_pending_count`); grantee rows never carry it                                        |
 | onCardAction                    | fn          | list     | `(action, collection) => void` — card context-menu dispatch (see §2.4)                                   |
-| onMemberAction                  | fn          | members  | `(action, memberRow) => void` — see `MemberRowControls.md`                                               |
+| onMemberAction                  | fn          | members  | `(action, memberRow, anchorEl?) => void` — see `MemberRowControls.md`. **As-built (wave-2):** `'menu'` dispatches carry the row's `More` button element as the third argument so the hosting shell can anchor its single `MemberRowControls` instance (`§2.5` idiom). |
 | onPublishBatch                  | fn          | members  | Publish-pending banner batch action                                                                      |
 
 ### 2.4 List Mode

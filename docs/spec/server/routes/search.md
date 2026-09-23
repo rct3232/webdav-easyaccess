@@ -154,10 +154,11 @@ absent, not the feature).
 
 ### 2.4.2 Decisions (micro-details the plan left open)
 
-- **Decision:** the request field keeps the wire name `result_ref` (snake_case) on both
-  sides — it is an opaque token the client replays verbatim; a camelCase rename would
-  add a mapping step with zero benefit. This is the only request-body exception to the
-  CODING_STYLE.md Express Patterns camelCase rule.
+- **Decision:** the request fields keep the wire name `result_ref` and the §2.4.0 click
+  body `node_id` (snake_case) on both sides — they are an opaque replay token the client
+  sends verbatim and a per-node signal key mirroring the response casing; a camelCase
+  rename would add a mapping step with zero benefit. These are the search-domain
+  request-body exceptions to the CODING_STYLE.md Express Patterns camelCase rule.
 - **Decision:** segment cap 3 with an explicit `semantic_capped_segments` flag rather
   than rejecting 4-part queries (§4.6 "≤3 segments" read as a scoring bound, not input
   validation).

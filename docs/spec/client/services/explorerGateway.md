@@ -82,13 +82,15 @@ Per CODING_STYLE.md Express Patterns "Client layering", collections-platform IO 
 | Merge                           | `getMergeSuggestions`, `mergeCollections`, `dismissMerge`, `rejectMerge`                                                          |
 | Grants (sharing)                | `getGrants`, `grantCollection`, `revokeGrant`                                                                                     |
 | Search results mode             | `runSearch`, `recordSearchClick` (§4.6; `semantic_available`/`result_ref` consumed by `useSearchResults`; `recordSearchClick` = §3.4 list-entry-click signal at result open)                                              |
+| File likes (T0.5, §3.3)         | `loadFileLikes`, `setFileLike` (`fileLikesRepository.md` — absorbed `{ liked: [] }` fallback / payload ∥ null; `listDirectory` merges `liked` onto authenticated rows at this boundary)                                   |
 | Undo journal / toast payload    | `getActions`, `undoAction` (structured result incl. `params.laterChanges` for cascade confirm — `collectionsRepository.md` §2.5)  |
 | File suggestions (§4.16/§4.17)  | `getFileSuggestions`, `acceptFileSuggestions`, `dismissFileSuggestion`                                                            |
-| Change fan-out                  | `subscribeToCollections` (wraps `collectionsNotifier.onCollectionsChange`, same unsubscribe contract as `subscribeToRecentFiles`) |
+| Change fan-out                  | `subscribeToCollections`, `subscribeToFileLikes` (wrap the module-local notifiers in `collectionsNotifier` / `fileLikesRepository`; same unsubscribe contract as `subscribeToRecentFiles`) |
 
 Rules:
 
 - The repository's failure-absorption and notify-after-real-success semantics are preserved verbatim through this boundary — the gateway adds no retry, toast, or UI logic.
+- **File-likes `listDirectory` merge (T0.5, §3.3):** the authenticated (non-share) listing branch enriches each row with `liked` from `getLikedNodeIds()` (absorbed failure ⇒ every row `liked: false`; the listing never rejects on the like read). Share-token listings skip the merge (share surface carries no like state). See `fileLikesRepository.md` §2.4.
 - **Decision:** no new `collectionsGateway` module; re-export keeps one explorer-adjacent IO surface for FileManager overlays (virtual-collection precedent: recent files ride this gateway too).
 - View components and pure helpers still must not import the gateway; they consume prepared data/callbacks from controller hooks.
 

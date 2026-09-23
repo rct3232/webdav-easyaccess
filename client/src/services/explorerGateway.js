@@ -1,5 +1,6 @@
 import {
   checkConflicts,
+  getAncestors,
   getFilesMetadata,
   getTrashFiles,
   listFiles,
@@ -8,6 +9,11 @@ import {
 import { checkPermission, getSharedPermissions } from './permissionService';
 import { addRecentFile, getRecentFiles, removeRecentFile } from './recentFilesRepository';
 import { onRecentFilesChange } from './recentFilesNotifier';
+import {
+  getLikedNodeIds,
+  setFileLike as repositorySetFileLike,
+  subscribeFileLikesChange,
+} from './fileLikesRepository';
 import {
   addCollectionItems,
   archiveCollection,
@@ -66,6 +72,16 @@ export const listDirectory = async ({ nodeId, options = {} } = {}) => {
 
   if (!shouldShowHiddenFiles) {
     files = files.filter((item) => item?.isHidden !== true);
+  }
+
+  // T0.5 §3.3: the whole-viewer like read feeds `file.liked` on listing rows.
+  // The repository read absorbs failures into `{ liked: [] }`, so the listing
+  // never rejects on the like fetch.
+  if (files.length > 0) {
+    const likedIds = new Set(((await getLikedNodeIds()) || {}).liked ?? []);
+    files = files.map((item) =>
+      item?.nodeId != null ? { ...item, liked: likedIds.has(item.nodeId) } : item
+    );
   }
 
   if (!user || user.is_admin || files.length === 0) {
@@ -250,6 +266,39 @@ export { runSearch, recordSearchClick };
 // Undo execution seam (actions.md; collectionsRepository.md §2.5 structured result).
 export { undoAction };
 
+// -- File likes (T0.5; §2.6 file-likes group) — the fileLikesRepository       //
+// absorbed-read fallback ({ liked: [] }), payload ∥ null mutation and         //
+// notify-after-real-success fan-out pass through unchanged.                   //
+
+export const loadFileLikes = () => getLikedNodeIds();
+
+export const setFileLike = (nodeId, liked, options) =>
+  repositorySetFileLike(nodeId, liked, options);
+
+export const subscribeToFileLikes = (callback) => subscribeFileLikesChange(callback);
+
+/**
+ * Narrow metadata helper: `POST /api/files/metadata` for raw nodeIds (no
+ * listing entries — search result rows carry no `type` until enriched;
+ * routes/search.md §2.4.2). Absorbed to `[]` on failure.
+ */
+export const loadNodesMetadata = async (nodeIds = []) => {
+  try {
+    return await getFilesMetadata(nodeIds);
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('[explorerGateway] Failed to load node metadata:', error);
+    return [];
+  }
+};
+
+/**
+ * Ancestor chain (root → node, self last) for "Reveal original location".
+ * Pass-through of `fileService.getAncestors` — rejects map to caller-visible
+ * errors (gateway §2.3: structured, no UI here).
+ */
+export const loadNodeAncestors = (nodeId) => getAncestors(nodeId);
+
 const explorerGateway = {
   addRecentFile: addExplorerRecentFile,
   getEntriesMetadata,
@@ -263,6 +312,9 @@ const explorerGateway = {
   checkConflicts: checkConflictsForExplorer,
   subscribeToRecentFiles,
   uploadToPath,
+  // Listing/render helpers (§2.6 narrow helpers)
+  loadNodesMetadata,
+  loadNodeAncestors,
   // Collections platform (§2.6 re-export group)
   loadCollections,
   createCollection,
@@ -289,6 +341,10 @@ const explorerGateway = {
   runSearch,
   recordSearchClick,
   undoAction,
+  // File likes (§2.6 file-likes group)
+  loadFileLikes,
+  setFileLike,
+  subscribeToFileLikes,
 };
 
 export default explorerGateway;

@@ -24,7 +24,7 @@ Target-contract spec (T0.5 like state — `docs/features/collections-platform.md
 
 | Function                    | Input                                              | Return                                                                                   | API called (see api.md)            |
 | --------------------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------- |
-| getLikedNodeIds             | `(options?)`                                       | `Promise<{ liked: number[] }>` — verbatim snake_case payload; `{ liked: [] }` on failure  | GET `/api/file-likes`              |
+| getLikedNodeIds             | —                                                    | `Promise<{ liked: number[] }>` — verbatim snake_case payload; `{ liked: [] }` on failure  | GET `/api/file-likes`              |
 | setFileLike                 | `(nodeId, liked, options?)`                        | `Promise<{ node_id, liked } \| null>` — payload only on 2xx; `null` on absorbed failure   | PUT `/api/file-likes/:nodeId`      |
 | subscribeFileLikesChange    | `(callback: () => void)`                           | `() => void` unsubscribe                                                                  | — (module-local pub-sub)           |
 

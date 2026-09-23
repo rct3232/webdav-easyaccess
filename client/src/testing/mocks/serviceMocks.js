@@ -89,6 +89,16 @@ export function createRecentFilesNotifierMock(overrides = {}) {
   };
 }
 
+export function createFileLikesRepositoryMock(overrides = {}) {
+  return {
+    getLikedNodeIds: jest.fn().mockResolvedValue({ liked: [] }),
+    setFileLike: jest.fn().mockResolvedValue(null),
+    subscribeFileLikesChange: jest.fn(() => jest.fn()),
+    notifyFileLikesChange: jest.fn(),
+    ...overrides,
+  };
+}
+
 export function createRecentQueriesStorageMock(overrides = {}) {
   return {
     loadRecentQueries: jest.fn(() => []),
@@ -140,6 +150,12 @@ export function createExplorerGatewayMock(overrides = {}) {
     undoAction: jest
       .fn()
       .mockResolvedValue({ ok: true, status: 'undone', itemsUndone: 1, itemsSkipped: 0 }),
+    // File-likes seams (T0.5 — explorerGateway §2.6 file-likes group)
+    loadFileLikes: jest.fn().mockResolvedValue({ liked: [] }),
+    setFileLike: jest.fn().mockResolvedValue(null),
+    subscribeToFileLikes: jest.fn(() => jest.fn()),
+    loadNodesMetadata: jest.fn().mockResolvedValue([]),
+    loadNodeAncestors: jest.fn().mockResolvedValue({ ancestors: [] }),
     ...overrides,
   };
 }

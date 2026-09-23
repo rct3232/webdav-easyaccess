@@ -483,6 +483,9 @@ export const handlers = [
 
   http.delete(`${API_BASE}/recent-files/:fileNodeId`, () => HttpResponse.json([])),
 
+  // --- File likes (viewer-scoped whole-list read feeding file.liked) ---
+  http.get(`${API_BASE}/file-likes`, () => HttpResponse.json({ liked: [] })),
+
   http.get(`${API_BASE}/files/download`, ({ request }) => {
     const url = new URL(request.url);
     const nodeId = url.searchParams.get('nodeId');

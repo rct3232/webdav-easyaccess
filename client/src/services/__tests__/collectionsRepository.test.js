@@ -70,7 +70,9 @@ describe('collectionsRepository reads', () => {
 
     const result = await getCollectionItems(17, { cursor: 'abc', since: '2026-09-01T00:00:00Z' });
     expect(result).toEqual({ items: [], next_cursor: null });
-    expect(get).toHaveBeenCalledWith('/collections/17/items?cursor=abc&since=2026-09-01T00%3A00%3A00Z');
+    expect(get).toHaveBeenCalledWith(
+      '/collections/17/items?cursor=abc&since=2026-09-01T00%3A00%3A00Z'
+    );
   });
 
   it('getMergeSuggestions returns an empty suggestions array on failure (not null)', async () => {
@@ -93,7 +95,9 @@ describe('collectionsRepository reads', () => {
 
   it('previewCollection returns null on failure and the payload on success', async () => {
     post.mockRejectedValueOnce(new Error('Network error'));
-    await expect(previewCollection({ definition: { kind: 'predicate', any_of: [] } })).resolves.toBeNull();
+    await expect(
+      previewCollection({ definition: { kind: 'predicate', any_of: [] } })
+    ).resolves.toBeNull();
 
     const payload = { count: 3, sample: [{ node_id: 1, name: 'a' }], sample_truncated: false };
     post.mockResolvedValueOnce({ data: payload });
@@ -150,11 +154,17 @@ describe('collectionsRepository mutations (absorb + notify + onError)', () => {
   });
 
   it('updateCollection sends camelCase bodies to PUT /:id', async () => {
-    put.mockResolvedValueOnce({ data: { collection: { collection_id: 1 }, undo: { action_id: 1 } } });
+    put.mockResolvedValueOnce({
+      data: { collection: { collection_id: 1 }, undo: { action_id: 1 } },
+    });
 
     await updateCollection(17, { name: 'N', pinned: true, publishMode: 'auto' });
 
-    expect(put).toHaveBeenCalledWith('/collections/17', { name: 'N', pinned: true, publishMode: 'auto' });
+    expect(put).toHaveBeenCalledWith('/collections/17', {
+      name: 'N',
+      pinned: true,
+      publishMode: 'auto',
+    });
     expect(notifyCollectionsChange).toHaveBeenCalledTimes(1);
   });
 
@@ -183,7 +193,11 @@ describe('collectionsRepository mutations (absorb + notify + onError)', () => {
 
   it('merge posts to /:id/merge/:other and returns the snake_case payload', async () => {
     post.mockResolvedValueOnce({
-      data: { survivor: { collection_id: 17, name: 'A', item_count: 4 }, absorbed_id: 23, undo: { action_id: 7 } },
+      data: {
+        survivor: { collection_id: 17, name: 'A', item_count: 4 },
+        absorbed_id: 23,
+        undo: { action_id: 7 },
+      },
     });
 
     const result = await mergeCollections(17, 23);
@@ -249,7 +263,10 @@ describe('runSearch + recordSearchClick', () => {
     const result = await runSearch({ query: 'x'.repeat(201) }, { onError });
 
     expect(result).toBeNull();
-    expect(onError).toHaveBeenCalledWith({ errorCode: 'serverErrors.search.queryTooLong', params: {} });
+    expect(onError).toHaveBeenCalledWith({
+      errorCode: 'serverErrors.search.queryTooLong',
+      params: {},
+    });
   });
 
   it('runSearch forwards resultRef as the opaque snake_case body field', async () => {
@@ -263,12 +280,12 @@ describe('runSearch + recordSearchClick', () => {
     });
   });
 
-  it('recordSearchClick posts { nodeId } silently and returns true on success', async () => {
+  it('recordSearchClick posts { node_id } silently and returns true on success', async () => {
     post.mockResolvedValueOnce({ data: null });
 
     const result = await recordSearchClick(11);
 
-    expect(post).toHaveBeenCalledWith('/search/click', { nodeId: 11 });
+    expect(post).toHaveBeenCalledWith('/search/click', { node_id: 11 });
     expect(result).toBe(true);
     expect(notifyCollectionsChange).not.toHaveBeenCalled(); // click signal never fans the notifier
   });

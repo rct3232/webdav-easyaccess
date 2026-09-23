@@ -324,7 +324,7 @@ export const runSearch = async ({ query, resultRef } = {}, options = {}) => {
  */
 export const recordSearchClick = async (nodeId) => {
   try {
-    await post('/search/click', { nodeId });
+    await post('/search/click', { node_id: nodeId });
     return true;
   } catch (error) {
     // eslint-disable-next-line no-console

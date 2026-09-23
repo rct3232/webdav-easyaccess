@@ -1175,6 +1175,8 @@
     "undoArchived": "컬렉션 보관됨",
     "undoRestored": "컬렉션 복원됨",
     "undoMerged": "컬렉션 볁합됨",
-    "permanentDeleteReport": "컬렉션이 영구 삭제되었습니다"
+    "permanentDeleteReport": "컬렉션이 영구 삭제되었습니다",
+    "undoCreated": "컬렉션 생성됨",
+    "undoExcluded": "컬렉션에서 제거됨"
   }
 }

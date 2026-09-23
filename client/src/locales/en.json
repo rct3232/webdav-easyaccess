@@ -1175,6 +1175,8 @@
     "undoArchived": "Collection archived",
     "undoRestored": "Collection restored",
     "undoMerged": "Collections merged",
-    "permanentDeleteReport": "Collection deleted permanently"
+    "permanentDeleteReport": "Collection deleted permanently",
+    "undoCreated": "Collection created",
+    "undoExcluded": "Removed from collection"
   }
 }

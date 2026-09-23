@@ -15,17 +15,17 @@ lets DB-sourced configuration take effect before require-time consts are capture
      - the backend is resolved from the generic remote-DB credential block: setting at least one
        of WEA_DB_HOST / WEA_DB_DATABASE / WEA_DB_USER / WEA_DB_PASSWORD selects the remote
        database (PostgreSQL is the only supported remote engine); setting none selects SQLite.
-     - a partial set (some but not all of the four) → storage.getBackend() throws
-       `Partial WEA_DB_* configuration: missing <keys> …` (server/store/storage.js).
-       The resolution is validated at boot entry — a pre-flight `getBackend()` call at
-       the top of server/index.js, immediately after the dotenv block and BEFORE the
-       route mounts (which evaluate require-time store consumers such as
-       domains/permissions/routes/folderPermissions) — where a throw is surfaced with
-       the terminal handling: log `Initialization failed: <err>` and `process.exit(1)`,
-       listing the missing keys. Failures raised later in the sequence surface through
-       the runBoot() catch in server/index.js with identical handling. A
-       complete-but-unreachable remote still boots and reports the outage via GET /api/health.
-       The DB connection is .env-owned; there is no sqlite-wizard fallback for it (D6/D7).
+      - a partial set (some but not all of the four) → storage.getBackend() throws
+        `Partial WEA_DB_* configuration: missing <keys> …` (server/store/storage.js).
+        The resolution is validated at boot entry — a pre-flight `getBackend()` call at
+        the top of server/index.js, immediately after the dotenv block and BEFORE the
+        route mounts (which evaluate require-time store consumers such as
+        domains/permissions/routes/folderPermissions) — where a throw is surfaced with
+        the terminal handling: log `Initialization failed: <err>` and `process.exit(1)`,
+        listing the missing keys. Failures raised later in the sequence surface through
+        the runBoot() catch in server/index.js with identical handling. A
+        complete-but-unreachable remote still boots and reports the outage via GET /api/health.
+        The DB connection is .env-owned; there is no sqlite-wizard fallback for it (D6/D7).
 3. initMetadataSchema()            — connect the metadata DB + apply schema/migrations.
                                     (No admin seeding — deferred until after env population.)
 4. resolver = createConfigResolver({ settingsStore: Settings })
@@ -95,11 +95,11 @@ default password.
 ## 5. Verification
 
 - [x] Fresh boot (no `.env`, no remote-DB credentials): metadata backend defaults to SQLite; the DB connects locally and the wizard serves non-T0 only while non-T0 config is incomplete.
-- [ ] Partial `WEA_DB_*` credential set (some but not all of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD`) → boot fails: `storage.getBackend()` throws `Partial WEA_DB_* configuration: missing <keys> …`, the `runBoot()` catch logs `Initialization failed: …`, then `process.exit(1)`.
-- [ ] Full config in DB (T0 in `.env`): boots, T1 values visible to require-time consts,
+- [x] Partial `WEA_DB_*` credential set (some but not all of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD`) → boot fails: `storage.getBackend()` throws `Partial WEA_DB_* configuration: missing <keys> …` and the boot entry pre-flight (§2 step 2; the `runBoot()` catch for later failures) logs `Initialization failed: …`, then `process.exit(1)`.
+- [x] Full config in DB (T0 in `.env`): boots, T1 values visible to require-time consts,
       `ADMIN_DEFAULT_PASSWORD` honored when DB-sourced.
 - [x] `.env` wins over DB for any T1 key (`populateT1Env` never overwrites existing env).
 - [x] T2 keys never written into process.env (stay lazy).
-- [ ] PORT from DB used at listen; CORS origin list resolved per request.
-- [ ] A failing active-file-backend boot probe leaves the health tracker `fail` (reset runs first), so `GET /api/health` reports the failure and the file-screen banner shows immediately after login.
+- [x] PORT from DB used at listen; CORS origin list resolved per request.
+- [x] A failing active-file-backend boot probe leaves the health tracker `fail` (reset runs first), so `GET /api/health` reports the failure and the file-screen banner shows immediately after login.
 - [x] Boot with NULL `filecache.content_hash` rows: warn logged, one `failsafe` admin_reports row with `contentHashCompleteness`, boot NOT blocked; the repair endpoint backfills and a re-boot reports `nullCount: 0`.

@@ -15,7 +15,13 @@ jest.mock('../../../services/collectionsRepository', () => ({
 
 const collections = [
   { collection_id: 1, name: 'Europe trip', item_count: 4, origin: 'user', granted_role: 'owner' },
-  { collection_id: 2, name: 'System picks', item_count: 9, origin: 'system', granted_role: 'editor' },
+  {
+    collection_id: 2,
+    name: 'System picks',
+    item_count: 9,
+    origin: 'system',
+    granted_role: 'editor',
+  },
 ];
 
 const singleTarget = [{ nodeId: 90210, name: 'beach.jpg' }];
@@ -42,7 +48,9 @@ describe('AddToCollectionMenu submenu', () => {
     renderWithProviders(<AddToCollectionMenu {...defaultProps} />);
 
     expect(screen.getByTestId('collection-option-1')).toBeInTheDocument();
-    expect(within(screen.getByTestId('collection-option-1')).getByText('Europe trip')).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('collection-option-1')).getByText('Europe trip')
+    ).toBeInTheDocument();
     expect(within(screen.getByTestId('collection-option-1')).getByText('4')).toBeInTheDocument();
     expect(screen.getByTestId('collection-option-2')).toBeInTheDocument();
     expect(previewCollection).not.toHaveBeenCalled();
@@ -98,14 +106,16 @@ describe('AddToCollectionMenu submenu', () => {
     expect(screen.getByTestId('new-collection-error')).toBeInTheDocument();
 
     fireEvent.change(input, { target: { value: 'Summer 2026' } });
-    fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
     await waitFor(() => {
       expect(defaultProps.onCreateAndAdd).toHaveBeenCalledWith('Summer 2026', [90210]);
     });
   });
 
-  it('seed row is ABSENT-not-disabled unless seedItemVisible', () => {
-    const { rerender } = renderWithProviders(<AddToCollectionMenu {...defaultProps} />);
+  it('seed row is ABSENT-not-disabled when seedItemVisible=false (spec default: true)', () => {
+    const { rerender } = renderWithProviders(
+      <AddToCollectionMenu {...defaultProps} seedItemVisible={false} />
+    );
     expect(screen.queryByTestId('seed-create-row')).not.toBeInTheDocument();
 
     rerender(<AddToCollectionMenu {...defaultProps} seedItemVisible />);

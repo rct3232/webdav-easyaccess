@@ -11,6 +11,9 @@ import {
   Info as InfoIcon,
   Restore as RestoreIcon,
   DeleteForever as DeleteForeverIcon,
+  PlaylistAdd as CollectionIcon,
+  Favorite as LikedIcon,
+  FavoriteBorder as LikeIcon,
 } from '@mui/icons-material';
 
 const FileContextMenu = ({
@@ -27,6 +30,8 @@ const FileContextMenu = ({
   onDelete,
   onRestore,
   onPurge,
+  onAddToCollection,
+  onToggleLike,
 }) => {
   const { t } = useTranslation();
   const fileWritePermission =
@@ -110,6 +115,28 @@ const FileContextMenu = ({
             <ShareIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText>{t('actions.share')}</ListItemText>
+        </MenuItem>
+      )}
+      {onAddToCollection && (
+        <MenuItem data-testid="collection-add" onClick={() => handleAction(onAddToCollection)}>
+          <ListItemIcon>
+            <CollectionIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>{t('fileManager.addToCollection')}</ListItemText>
+        </MenuItem>
+      )}
+      {onToggleLike && (
+        <MenuItem data-testid="like-toggle" onClick={() => handleAction(onToggleLike)}>
+          <ListItemIcon>
+            {file.liked ? (
+              <LikedIcon fontSize="small" color="error" />
+            ) : (
+              <LikeIcon fontSize="small" />
+            )}
+          </ListItemIcon>
+          <ListItemText>
+            {t(file.liked ? 'fileManager.memberUnlike' : 'fileManager.memberLike')}
+          </ListItemText>
         </MenuItem>
       )}
       {onRestore && (

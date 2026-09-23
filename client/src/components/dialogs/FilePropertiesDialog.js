@@ -21,6 +21,8 @@ import {
   Restore as RestoreIcon,
   CheckCircle as CurrentIcon,
   DeleteForever as DeleteForeverIcon,
+  Favorite as LikedIcon,
+  FavoriteBorder as LikeIcon,
 } from '@mui/icons-material';
 import ConfirmDialog from './ConfirmDialog';
 import { formatFileSize, formatDate } from '../../utils/format';
@@ -43,6 +45,7 @@ const FilePropertiesDialog = ({
   activeFileStorage = null,
   onTrashRestore,
   onTrashPurge,
+  onToggleLike,
 }) => {
   const { t } = useTranslation();
   const permissionLabels = getPermissionLabels(t);
@@ -448,6 +451,24 @@ const FilePropertiesDialog = ({
                   {file.basename || file.name}
                 </Typography>
               </Box>
+              {/* §3.3 properties-header like toggle (sole dialog entry point).
+                  Hidden when the host withholds the callback (share/trash). */}
+              {onToggleLike && (
+                <Tooltip
+                  title={t(file.liked ? 'fileManager.memberUnlike' : 'fileManager.memberLike')}
+                >
+                  <IconButton
+                    data-testid="like-toggle"
+                    aria-label={t(
+                      file.liked ? 'fileManager.memberUnlike' : 'fileManager.memberLike'
+                    )}
+                    onClick={() => onToggleLike(file)}
+                    sx={{ position: 'absolute', top: 8, right: 8, zIndex: 4 }}
+                  >
+                    {file.liked ? <LikedIcon color="error" /> : <LikeIcon />}
+                  </IconButton>
+                </Tooltip>
+              )}
             </Box>
 
             {/* 2. 권한정보 블록: 제목 상단 / 아바타 하단 (호버 시 아이디 툴팁), admin 계정 미표시, 없는 권한 종류 미표시 */}

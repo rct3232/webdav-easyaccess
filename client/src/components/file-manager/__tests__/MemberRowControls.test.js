@@ -107,16 +107,15 @@ describe('MemberRowControls single-row set (§3.2 exact)', () => {
   });
 
   it('editor grantee keeps publish control (§4.7)', () => {
-    renderWithProviders(<MemberRowControls {...defaultProps} collection={sharedEditorCollection} />);
+    renderWithProviders(
+      <MemberRowControls {...defaultProps} collection={sharedEditorCollection} />
+    );
     expect(screen.getByTestId('member-publish')).toBeInTheDocument();
   });
 
   it('shared_excluded row: Not-owner chip in owner view, no publish toggle', () => {
     renderWithProviders(
-      <MemberRowControls
-        {...defaultProps}
-        member={{ ...member, shared_excluded: true }}
-      />
+      <MemberRowControls {...defaultProps} member={{ ...member, shared_excluded: true }} />
     );
     expect(screen.getByTestId('member-not-shared-chip')).toHaveTextContent(
       "Not owner's file — not shared"
@@ -155,7 +154,9 @@ describe('MemberRowControls multi-select (bulk toolbar) variant', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('offers batch exclude + Add to another collection and NO delete affordance', () => {
-    renderWithProviders(<MemberRowControls {...defaultProps} member={undefined} selectedRows={selectedRows} />);
+    renderWithProviders(
+      <MemberRowControls {...defaultProps} member={undefined} selectedRows={selectedRows} />
+    );
 
     expect(screen.getByTestId('member-batch-exclude')).toBeInTheDocument();
     expect(screen.getByTestId('member-add-to-other')).toBeInTheDocument();
@@ -165,7 +166,9 @@ describe('MemberRowControls multi-select (bulk toolbar) variant', () => {
   });
 
   it('batch actions receive the eligible selected rows', () => {
-    renderWithProviders(<MemberRowControls {...defaultProps} member={undefined} selectedRows={selectedRows} />);
+    renderWithProviders(
+      <MemberRowControls {...defaultProps} member={undefined} selectedRows={selectedRows} />
+    );
 
     fireEvent.click(screen.getByTestId('member-batch-exclude'));
     expect(defaultProps.onExclude).toHaveBeenCalledWith(selectedRows);

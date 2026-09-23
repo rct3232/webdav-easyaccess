@@ -25,6 +25,8 @@ import {
   Restore as RestoreIcon,
   DeleteForever as DeleteForeverIcon,
   DeleteSweep as DeleteSweepIcon,
+  PlaylistAdd as PlaylistAddIcon,
+  HighlightOff as HighlightOffIcon,
 } from '@mui/icons-material';
 import { VIEW_MODES, SORT_MODES } from '../../constants/fileManager';
 
@@ -51,6 +53,9 @@ const FileManagerControls = ({
   handleBulkRestore,
   handleBulkPurge,
   onEmptyTrash,
+  onBulkAddToCollection,
+  onBulkMemberExclude,
+  memberMode = false,
 }) => {
   const { t } = useTranslation();
   const [sortMenuAnchor, setSortMenuAnchor] = useState(null);
@@ -146,7 +151,34 @@ const FileManagerControls = ({
               </IconButton>
             )}
 
-            {!trashMode && !downloadOnly && handleBulkMove && (
+            {memberMode && onBulkMemberExclude && (
+              <IconButton
+                size="small"
+                color="primary"
+                onClick={() => onBulkMemberExclude(Array.from(selectedFiles))}
+                disabled={bulkActionsDisabled || noSelection}
+                title={t('fileManager.memberBatchExclude')}
+                data-testid="bulk-member-exclude"
+              >
+                <HighlightOffIcon fontSize="small" />
+              </IconButton>
+            )}
+            {!trashMode && !downloadOnly && onBulkAddToCollection && (
+              <IconButton
+                size="small"
+                color="primary"
+                onClick={() => onBulkAddToCollection(Array.from(selectedFiles))}
+                disabled={bulkActionsDisabled || noSelection}
+                title={t(
+                  memberMode ? 'fileManager.memberAddToOther' : 'fileManager.addToCollection'
+                )}
+                data-testid="bulk-collection-add"
+              >
+                <PlaylistAddIcon fontSize="small" />
+              </IconButton>
+            )}
+
+            {!memberMode && !trashMode && !downloadOnly && handleBulkMove && (
               <IconButton
                 size="small"
                 color="primary"
@@ -158,7 +190,7 @@ const FileManagerControls = ({
                 <MoveIcon fontSize="small" />
               </IconButton>
             )}
-            {!trashMode && !downloadOnly && handleBulkCopy && (
+            {!memberMode && !trashMode && !downloadOnly && handleBulkCopy && (
               <IconButton
                 size="small"
                 color="primary"
@@ -170,7 +202,7 @@ const FileManagerControls = ({
                 <CopyIcon fontSize="small" />
               </IconButton>
             )}
-            {!trashMode && handleBulkDownload && (
+            {!memberMode && !trashMode && handleBulkDownload && (
               <IconButton
                 size="small"
                 color="primary"
@@ -182,7 +214,7 @@ const FileManagerControls = ({
                 <DownloadIcon fontSize="small" />
               </IconButton>
             )}
-            {!trashMode && !downloadOnly && openBulkDeleteDialog && (
+            {!memberMode && !trashMode && !downloadOnly && openBulkDeleteDialog && (
               <IconButton
                 size="small"
                 color="error"

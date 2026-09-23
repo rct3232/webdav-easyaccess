@@ -24,6 +24,7 @@ Target-contract spec (`docs/features/collections-platform.md` §3.2 member-row c
 | Name           | Type     | Required | Default | Description                                                                                                                                    |
 | -------------- | -------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | open           | boolean  | Y        | -       | Menu visibility                                                                                                                                |
+| anchorEl       | node     | N        | -       | MUI Menu anchor (row `More` button); alternative `contextMenu` `{mouseX,mouseY}` follows the FileContextMenu anchorPosition idiom               |
 | member         | object   | cond.    | -       | Single row: snake_case item (`node_id`, `membership`, `published`, `state`, `shared_excluded`, `liked`, `reason`)                              |
 | selectedRows   | array    | cond.    | -       | Multi-select variant (bulk toolbar) — exactly one of `member`/`selectedRows`                                                                   |
 | collection     | object   | Y        | -       | Parent row: `origin`, `publish_mode`, `granted_role` (viewer/editor/owner resolution)                                                          |
@@ -31,8 +32,9 @@ Target-contract spec (`docs/features/collections-platform.md` §3.2 member-row c
 | onPublish      | function | Y        | -       | publish on/off → publish seam (`nodeIds`)                                                                                                      |
 | onDownload     | function | Y        | -       | file download via existing file seam (only offered when file ACL allows)                                                                       |
 | onShowOriginal | function | Y        | -       | `Reveal original location` → host navigates to the node's real parent where normal file menus apply                                            |
-| onProperties   | function | Y        | -       | opens FilePropertiesDialog (read-only tab subset when requester is not the file owner)                                                         |
-| onToggleLike   | function | Y        | -       | like toggle — **Decision:** likes route ships with T0.x file-domain work (`file_likes` exists in §5; no collections.md route yet); seam stable |
+| onProperties   | function | Y        | -       | opens FilePropertiesDialog (read-only tab subset when requester is not the file owner)                                                          |
+| onToggleLike   | function | Y        | -       | like toggle → `PUT /api/file-likes/:nodeId` (routes: [fileLikes.md](../../../server/routes/fileLikes.md)); row `liked` optimistic until refresh   |
+| onAddToOther   | function | N        | -       | `Add to another collection` (multi-select variant only) — hosts the AddToCollectionMenu submenu (membership copy)                              |
 | onClose        | function | Y        | -       | Dismiss                                                                                                                                        |
 
 ### 2.3 Rendered Set (exact — §3.2)

@@ -253,7 +253,23 @@
     "cardMenuLeave": "Leave",
     "archiveConfirmMessage": "Archive this collection? It moves to the archive and can be restored later.",
     "permanentDeleteConfirm1": "Permanently delete this collection?",
-    "permanentDeleteConfirm2": "This cannot be undone. Members are only removed from the collection — files stay in place."
+    "permanentDeleteConfirm2": "This cannot be undone. Members are only removed from the collection — files stay in place.",
+    "addToCollection": "Add to collection",
+    "newCollectionInline": "New collection…",
+    "seedCreate": "Make a collection like this file",
+    "addRejectedNotReadable": "{{count}} excluded (not readable)",
+    "memberExclude": "Exclude",
+    "memberBatchExclude": "Exclude",
+    "memberBatchPublish": "Publish",
+    "memberPublish": "Publish",
+    "memberUnpublish": "Unpublish",
+    "memberDownload": "Download",
+    "memberShowOriginal": "Reveal original location",
+    "memberProperties": "Properties",
+    "memberLike": "Like",
+    "memberUnlike": "Unlike",
+    "memberAddToOther": "Add to another collection",
+    "memberNotShared": "Not owner's file — not shared"
   },
   "actions": {
     "move": "Move",
@@ -378,7 +394,13 @@
     "restoreConfirm": "Restore {{count}} trashed item(s) to their original location?",
     "purgeConfirm": "Permanently delete \"{{name}}\"? This cannot be undone.",
     "purgeBulkMessage": "Permanently delete {{count}} trashed item(s)? This cannot be undone.",
-    "emptyTrashConfirm": "Empty the trash for ALL users? Every trashed item will be permanently deleted and cannot be recovered."
+    "emptyTrashConfirm": "Empty the trash for ALL users? Every trashed item will be permanently deleted and cannot be recovered.",
+    "seedDialogTitle": "Make a collection like this file",
+    "seedNameTemplate": "{{name}} and similar files",
+    "seedMore": "plus {{count}} more",
+    "seedPublishNotice": "If this collection is shared, every file in the set above (including the additional files) is approved for publishing as a batch.",
+    "seedCreateConfirm": "Create collection",
+    "seedPreviewFailed": "Preview failed. Try again."
   },
   "admin": {
     "users": "Users",

@@ -109,7 +109,13 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 - T0.4 Sidebar `__collections__`/`__archive__` + list view + card menus (client per §6).
 - T0.5 File-side: `Add to collection` submenu (context+multi-select), member-row controls
   (§3.2 exact set), like toggle everywhere. Like toggles wire `usageService.recordEvent`
-  (`like` signal — register (a)).
+  (`like` signal — register (a)). — DONE 2026-09-23 on `feature/t05-file-collection-menus`
+  (branch-local; register (a) like/download/preview recording landed). Orchestrator follow-ups:
+  mount `app.use('/api/file-likes', setupModeGuardInstance, require('./domains/collections/fileLikesRoutes'))`
+  in `server/index.js`; host wiring of the new callbacks (Add-to-collection/like rows,
+  MemberRowControls into T0.4's `onMemberAction('menu')` seam, fileLikes client repository);
+  `GET /versions/download` + `open` signals intentionally not recorded (deferred); bulk batch
+  publish is P3; dialog AI tab (`ai_features`) P1 / member chips P3.
 - T0.6 `usage_events` + nightly rollup in maintenanceScheduler (item accumulator `S_k` +
   `collections.activity_score` recompute) + item activity score fn (T2 constants: §3.4
   weights, H=30d).

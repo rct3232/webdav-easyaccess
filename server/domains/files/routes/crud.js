@@ -212,6 +212,22 @@ router.get(
       throw notFoundError(SERVER_ERROR_CODES.files.notFound);
     }
 
+    // §3.4 usage signal (register (a)): inline serve = preview, attachment =
+    // download. Fire-and-forget — a recording failure never breaks the stream.
+    if (!isSharePrincipal(principalId)) {
+      const { getUsageService } = require('../../../infrastructure/usageService');
+      getUsageService()
+        .recordEvent({
+          userId: Number(principalId),
+          nodeId: fileNodeId,
+          action: inline ? 'preview' : 'download',
+        })
+        .catch((error) => {
+          // eslint-disable-next-line no-console
+          console.error('usage recordEvent failed:', error);
+        });
+    }
+
     const { fileNodeService } = getComposition();
     const node = await fileNodeService.getNode(fileNodeId);
     const filename = node ? node.name : 'download';

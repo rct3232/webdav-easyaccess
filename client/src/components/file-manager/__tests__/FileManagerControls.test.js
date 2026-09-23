@@ -355,3 +355,83 @@ describe('trash mode (DEF-16 P9)', () => {
     expect(screen.queryByTestId('trash-empty')).not.toBeInTheDocument();
   });
 });
+
+describe('FileManagerControls AI-platform bulk entries (BulkActionToolbar §3)', () => {
+  const selection = { selectionMode: true, selectedFiles: new Set(['/a.txt', '/b.txt']) };
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('renders bulk-collection-add when onBulkAddToCollection is provided and passes the selection', () => {
+    const onBulkAddToCollection = jest.fn();
+    renderWithProviders(
+      <FileManagerControls {...defaultProps} {...selection} onBulkAddToCollection={onBulkAddToCollection} />
+    );
+
+    fireEvent.click(screen.getByTestId('bulk-collection-add'));
+    expect(onBulkAddToCollection).toHaveBeenCalledWith(['/a.txt', '/b.txt']);
+  });
+
+  it('hides the new entry in share-link (downloadOnly) and trash modes; absent without callback', () => {
+    const onBulkAddToCollection = jest.fn();
+    const { unmount } = renderWithProviders(
+      <FileManagerControls
+        {...defaultProps}
+        {...selection}
+        downloadOnly
+        onBulkAddToCollection={onBulkAddToCollection}
+      />
+    );
+    expect(screen.queryByTestId('bulk-collection-add')).not.toBeInTheDocument();
+    unmount();
+
+    renderWithProviders(
+      <FileManagerControls
+        {...defaultProps}
+        {...selection}
+        trashMode
+        onBulkAddToCollection={onBulkAddToCollection}
+      />
+    );
+    expect(screen.queryByTestId('bulk-collection-add')).not.toBeInTheDocument();
+    unmount();
+
+    renderWithProviders(<FileManagerControls {...defaultProps} {...selection} />);
+    expect(screen.queryByTestId('bulk-collection-add')).not.toBeInTheDocument();
+  });
+
+  it('memberMode swaps the file actions: no move/copy/download/delete buttons render', () => {
+    renderWithProviders(
+      <FileManagerControls
+        {...defaultProps}
+        {...selection}
+        {...bulkActionProps}
+        memberMode
+      />
+    );
+
+    expect(screen.queryByTestId('bulk-action-move')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bulk-action-copy')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bulk-action-download')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bulk-action-delete')).not.toBeInTheDocument();
+    expect(screen.queryByText(/delete/i)).not.toBeInTheDocument();
+  });
+
+  it('memberMode offers batch exclude + Add to another collection launchers', () => {
+    const onBulkMemberExclude = jest.fn();
+    const onBulkAddToCollection = jest.fn();
+    renderWithProviders(
+      <FileManagerControls
+        {...defaultProps}
+        {...selection}
+        memberMode
+        onBulkMemberExclude={onBulkMemberExclude}
+        onBulkAddToCollection={onBulkAddToCollection}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('bulk-member-exclude'));
+    expect(onBulkMemberExclude).toHaveBeenCalledWith(['/a.txt', '/b.txt']);
+    fireEvent.click(screen.getByTestId('bulk-collection-add'));
+    expect(onBulkAddToCollection).toHaveBeenCalledWith(['/a.txt', '/b.txt']);
+  });
+});

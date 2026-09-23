@@ -253,7 +253,23 @@
     "cardMenuLeave": "나가기",
     "archiveConfirmMessage": "이 컬렉션을 보관할까요? 보관함으로 이동하며 나중에 복원할 수 있습니다.",
     "permanentDeleteConfirm1": "이 컬렉션을 영구 삭제할까요?",
-    "permanentDeleteConfirm2": "되돌릴 수 없습니다. 메버는 컬렉션에서만 제거되며 파일은 그대로 유지됩니다."
+    "permanentDeleteConfirm2": "되돌릴 수 없습니다. 메버는 컬렉션에서만 제거되며 파일은 그대로 유지됩니다.",
+    "addToCollection": "컬렉션에 추가",
+    "newCollectionInline": "새 컬렉션…",
+    "seedCreate": "이 파일과 유사한 컬렉션 만들기",
+    "addRejectedNotReadable": "{{count}}개 제외됨(읽기 권한 없음)",
+    "memberExclude": "제외",
+    "memberBatchExclude": "제외",
+    "memberBatchPublish": "공개",
+    "memberPublish": "공개",
+    "memberUnpublish": "공개 취소",
+    "memberDownload": "다운로드",
+    "memberShowOriginal": "원본 위치 표시",
+    "memberProperties": "속성",
+    "memberLike": "좋아요",
+    "memberUnlike": "좋아요 취소",
+    "memberAddToOther": "다른 컬렉션에 추가",
+    "memberNotShared": "소유자의 파일이 아닙니다 — 공유되지 않음"
   },
   "actions": {
     "move": "이동",
@@ -378,7 +394,13 @@
     "restoreConfirm": "휴지통에서 {{count}}개 항목을 원래 위치로 복원하시겠습니까?",
     "purgeConfirm": "\"{{name}}\" 항목을 영구 삭제하시겠습니까? 되돌릴 수 없습니다.",
     "purgeBulkMessage": "휴지통에서 {{count}}개 항목을 영구 삭제하시겠습니까? 되돌릴 수 없습니다.",
-    "emptyTrashConfirm": "모든 사용자의 휴지통을 비우시겠습니까? 휴지통의 모든 항목이 영구 삭제되며 복구할 수 없습니다."
+    "emptyTrashConfirm": "모든 사용자의 휴지통을 비우시겠습니까? 휴지통의 모든 항목이 영구 삭제되며 복구할 수 없습니다.",
+    "seedDialogTitle": "이 파일과 유사한 컬렉션 만들기",
+    "seedNameTemplate": "{{name}} 및 유사한 파일",
+    "seedMore": "외 {{count}}개",
+    "seedPublishNotice": "이 컬렉션을 공유하면 위 전체 집합(추가 파일 포함)이 일괄 공개 대상으로 승인됩니다.",
+    "seedCreateConfirm": "컬렉션 만들기",
+    "seedPublishFailed": "미리보기를 불러오지 못했습니다. 다시 시도해 주세요."
   },
   "admin": {
     "users": "사용자",

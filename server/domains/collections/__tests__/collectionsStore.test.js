@@ -254,3 +254,93 @@ describe('mergeCollections (one journaled command)', () => {
     expect(col.lastMemberChangeAt).toBeTruthy();
   });
 });
+
+describe('subject_label capture (register (d) — T0.10)', () => {
+  async function labelsFor(collectionId) {
+    const rows = await dbQuery(
+      `SELECT action, subject_label FROM action_journal
+        WHERE domain = 'collection' AND subject = ? ORDER BY chain_seq`,
+      [`collection:${collectionId}`]
+    );
+    return Object.fromEntries(rows.rows.map((row) => [row.action, row.subject_label]));
+  }
+
+  it('member-op, settings, archive/restore and grant rows carry the collection name', async () => {
+    const { user } = await createAuthenticatedTestUser({
+      username: `store-label-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    });
+    const root = await fileNodeService.createDirectory(null, user.username);
+    const fileA = await fileNodeService.createFile(root.id, 'la.txt');
+    const fileB = await fileNodeService.createFile(root.id, 'lb.txt');
+
+    const created = await collectionsStore.createCollection(
+      { ownerId: user.id, name: 'Labelled', origin: 'user' },
+      { actor: user.id }
+    );
+
+    await collectionsStore.addItems(
+      created.id,
+      [fileA.id, fileB.id],
+      user.id,
+      {},
+      { actor: user.id }
+    );
+    await collectionsStore.removeItems(
+      created.id,
+      { storedNodeIds: [fileB.id] },
+      { actor: user.id }
+    );
+    await collectionsStore.addExclusion(created.id, fileB.id, { actor: user.id });
+    await collectionsStore.removeExclusion(created.id, fileB.id, { actor: user.id });
+    await collectionsStore.setPinned(created.id, true, { actor: user.id });
+    await collectionsStore.setPinned(created.id, false, { actor: user.id });
+    await collectionsStore.setPublishMode(created.id, 'auto', { actor: user.id });
+    await collectionsStore.setItemPublished(created.id, [fileA.id], true, { actor: user.id });
+    await collectionsStore.archiveCollection(created.id, { actor: user.id });
+    await collectionsStore.restoreCollection(created.id, { actor: user.id });
+    const grantee = await createAuthenticatedTestUser({
+      username: `store-label-grantee-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    });
+    await collectionsStore.grantAccess(created.id, grantee.user.id, 'viewer', user.id, {
+      actor: user.id,
+    });
+    await collectionsStore.revokeAccess(created.id, grantee.user.id, { actor: user.id });
+
+    const labels = await labelsFor(created.id);
+    for (const action of [
+      'create',
+      'add-items',
+      'remove-items',
+      'exclude',
+      'unexclude',
+      'pin',
+      'unpin',
+      'set-publish-mode',
+      'set-items-published',
+      'archive',
+      'restore',
+      'grant',
+      'revoke',
+    ]) {
+      expect([labels[action], action]).toEqual(['Labelled', action]);
+    }
+  });
+
+  it('single-item add/remove rows carry the label too', async () => {
+    const { user } = await createAuthenticatedTestUser({
+      username: `store-label-si-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    });
+    const root = await fileNodeService.createDirectory(null, user.username);
+    const file = await fileNodeService.createFile(root.id, 'si.txt');
+    const created = await collectionsStore.createCollection(
+      { ownerId: user.id, name: 'Single', origin: 'user' },
+      { actor: user.id }
+    );
+    await collectionsStore.addItem(created.id, file.id, user.id, {}, { actor: user.id });
+    await collectionsStore.removeItem(created.id, file.id, { actor: user.id });
+
+    const labels = await labelsFor(created.id);
+    expect(labels['add-item']).toBe('Single');
+    expect(labels['remove-item']).toBe('Single');
+  });
+});

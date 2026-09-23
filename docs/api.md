@@ -179,10 +179,10 @@ Journaled mutations return `undo: { action_id }` (see Actions). Spec: `docs/spec
 
 Separate mount (per-node subject, not per-collection; router still owned by the collections domain). No undo pointer (§4.11). Spec: `docs/spec/server/routes/fileLikes.md`.
 
-| Method | Path                        | Auth  | Description                                                                                       |
-| ------ | --------------------------- | ----- | ------------------------------------------------------------------------------------------------- |
-| GET    | `/api/file-likes`           | Token | Viewer's liked node ids. Returns `{ liked: [node_id, …] }` (`node_id` asc).                       |
-| PUT    | `/api/file-likes/:nodeId`   | Token | Set like state. Body `{ liked: boolean }`. Returns `{ node_id, liked }` (echo, idempotent).       |
+| Method | Path                      | Auth  | Description                                                                                 |
+| ------ | ------------------------- | ----- | ------------------------------------------------------------------------------------------- |
+| GET    | `/api/file-likes`         | Token | Viewer's liked node ids. Returns `{ liked: [node_id, …] }` (`node_id` asc).                 |
+| PUT    | `/api/file-likes/:nodeId` | Token | Set like state. Body `{ liked: boolean }`. Returns `{ node_id, liked }` (echo, idempotent). |
 
 ---
 
@@ -192,10 +192,10 @@ Spec: `docs/spec/server/routes/search.md`.
 
 | Method | Path
 
-| Method | Path          | Auth  | Description                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| ------ | ------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| POST   | `/api/search` | Token | Hybrid search. Body `{ query, result_ref? }` (`result_ref` accepted, ignored in MVP). Returns `{ name_matches: [{node_id, name}], semantic: [{node_id, name, score}], result_ref, counts }`; `semantic` omitted + `semantic_unavailable_reason: serverErrors.ai.notConfigured` when embed role absent. Name section = full-query containment (LLM LIKE both sides), semantic = segment-AND scoring with per-query dynamic baseline (honest empty). |
-| POST   | `/api/search/click` | Token | §3.4 list-entry-click recording point for search results. Body `{ node_id }`; records one `usage_events` row `action='open'` fire-and-forget, responds 204. 400 `serverErrors.search.clickTargetRequired` for a missing/non-positive `node_id`. |
+| Method | Path                | Auth  | Description                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------ | ------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/search`       | Token | Hybrid search. Body `{ query, result_ref? }` (`result_ref` accepted, ignored in MVP). Returns `{ name_matches: [{node_id, name}], semantic: [{node_id, name, score}], result_ref, counts }`; `semantic` omitted + `semantic_unavailable_reason: serverErrors.ai.notConfigured` when embed role absent. Name section = full-query containment (LLM LIKE both sides), semantic = segment-AND scoring with per-query dynamic baseline (honest empty). |
+| POST   | `/api/search/click` | Token | §3.4 list-entry-click recording point for search results. Body `{ node_id }`; records one `usage_events` row `action='open'` fire-and-forget, responds 204. 400 `serverErrors.search.clickTargetRequired` for a missing/non-positive `node_id`.                                                                                                                                                                                                    |
 
 ---
 
@@ -209,6 +209,17 @@ Spec: `docs/spec/server/routes/actions.md`.
 | ------ | ----------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | GET    | `/api/actions`          | Token | 30-day feed, newest first (cap 200). Query `domain?` (`collection\|batch\|settings\|permissions\|tags\|file\|sharing`). Rows: `action_id`, `domain`, `subject`, `subject_label`, `actor`, `action`, `status`, `chain_seq`, `is_tip`, `undo_available`, `created_at`, `undone_at`, `expires_at`. Currently journaled domains: `collection`. |
 | POST   | `/api/actions/:id/undo` | Token | Tip undo free; non-tip → 409 `actions.cascadeConfirmRequired` (`params.laterChanges`) unless body `{ confirmCascade: true }`. Refusals: `fingerprintMismatch`, `expired`, `alreadyUndone` (all 409). Mixed item results reported as counts.                                                                                                |
+
+---
+
+## Dashboard (Storage v1, T0.10)
+
+Spec: `docs/spec/server/routes/dashboard.md`. Read surfaces for the MyPage `Storage` dashboard (AI_FEATURE_PLAN §4.16): the journal feed and collections status ride `/api/actions` and `/api/collections`.
+
+| Method | Path                                | Auth  | Description                                                                                                                                                                                                                                                                                                  |
+| ------ | ----------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/api/dashboard`                    | Token | One-shot self-storage read: `{ duplicates: {group_count, duplicate_count, reclaimable_bytes}, suggestions: [{node_id, kind, path, size_bytes, reason}], trash: {item_count, total_bytes, oldest_deleted_at, retention_days} }`. P0 suggestions = computed exact-dup rows (NULL `content_hash` never groups). |
+| POST   | `/api/dashboard/suggestions/accept` | Token | Accept checked rows → trash. Body `{ nodeIds }` (1–200, else 400 `dashboard.emptyNodeIds`). Returns `{ trashed, rejected_not_owned, skipped }`; no journal row until T3.3 (trash-restore is the P0 undo path).                                                                                               |
 
 ---
 

@@ -1,0 +1,244 @@
+'use strict';
+
+/**
+ * /api/dashboard routes integration tests (T0.10 — Storage dashboard v1).
+ * @see docs/spec/server/routes/dashboard.md
+ *
+ * The orchestrator (server/index.js) mounts this router at integration time;
+ * this suite reproduces the intended mount exactly (after the app-level
+ * migrationGate, with setupModeGuardInstance):
+ *   app.use('/api/dashboard', setupModeGuardInstance, require('./domains/dashboard/routes'))
+ */
+const request = require('supertest');
+const express = require('express');
+
+const {
+  createTestDatabase,
+  createAuthenticatedTestUser,
+  createTestFileNode,
+  dbQuery,
+  grantTestPermissionByNodeId,
+} = require('@server/test-utils');
+const { createFileNodesStore } = require('@server/store/fileNodesStore');
+const { createFileNodeService } = require('@server/service/fileNodeService');
+const composition = require('@server/service/composition');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+
+let app;
+let dbCleanup;
+let fileNodeService;
+
+async function storageUser(tag) {
+  const { user, token } = await createAuthenticatedTestUser({
+    username: `dashrt-${tag}-${Date.now()}`,
+  });
+  const home = await fileNodeService.createDirectory(null, user.username);
+  await grantTestPermissionByNodeId({ userId: user.id, fileNodeId: home.id, permission: 'admin' });
+  return { user, token, homeId: home.id };
+}
+
+async function addFile(parentId, name, { size = 100, hash } = {}) {
+  const node = await createTestFileNode({ name, type: 'file', parentId });
+  await createFileNodesStore().upsertCache(node.nodeId, size, 'text/plain', hash ?? null);
+  return node;
+}
+
+beforeAll(async () => {
+  const db = await createTestDatabase();
+  dbCleanup = db.cleanup;
+  fileNodeService = createFileNodeService({ fileNodesStore: createFileNodesStore() });
+  composition.__setCompositionForTests({
+    fileStorageMode: 's3',
+    blobStore: {
+      downloadBlob: jest.fn(),
+      headBlob: jest.fn().mockResolvedValue(null),
+      moveBlob: jest.fn().mockResolvedValue(undefined),
+      deleteBlob: jest.fn().mockResolvedValue(undefined),
+    },
+    fileNodeService,
+  });
+
+  const setupModeGuard = require('@server/middleware/setupModeGuard');
+  app = express();
+  app.use(express.json());
+  app.use('/api/dashboard', setupModeGuard(), require('../routes'));
+  app.use(require('@server/utils/errorHandler').errorHandler);
+});
+
+afterAll(async () => {
+  composition.resetComposition();
+  await dbCleanup?.();
+});
+
+// -- GET / -------------------------------------------------------------------
+
+describe('GET /api/dashboard', () => {
+  it('rejects unauthenticated reads with 401', async () => {
+    const res = await request(app).get('/api/dashboard');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns snake_case-only hygiene + suggestions + trash from one read', async () => {
+    const { token, homeId } = await storageUser('shape');
+    const hash = `rt-dup-${Date.now()}`;
+    const a = await addFile(homeId, 'a.bin', { hash, size: 120 });
+    const b = await addFile(homeId, 'b.bin', { hash, size: 120 });
+    await addFile(homeId, 'solo.bin', { hash: `rt-solo-${Date.now()}` });
+    const nullA = await addFile(homeId, 'n1.bin', { hash: null, size: 500 });
+    const nullB = await addFile(homeId, 'n2.bin', { hash: null, size: 500 });
+    await addFile(homeId, 'plain.bin', { hash: `rt-hashed-live-${Date.now()}` });
+    const trashedFolderFile = await addFile(homeId, 'folder-inner.bin', { size: 40 });
+    const folder = await createTestFileNode({ name: 'gone', type: 'directory', parentId: homeId });
+    await addFile(folder.nodeId, 'deep.bin', { size: 60 });
+    await createFileNodesStore().markSubtreeDeleted([
+      Number(folder.nodeId),
+      Number(trashedFolderFile.nodeId),
+    ]);
+    // the folder's inner file must travel with the subtree marking
+    const deep = (
+      await dbQuery("SELECT id FROM file_nodes WHERE name = 'deep.bin' AND parent_id = ?", [
+        folder.nodeId,
+      ])
+    ).rows[0];
+    await createFileNodesStore().markSubtreeDeleted([Number(deep.id)]);
+
+    const res = await request(app).get('/api/dashboard').set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      duplicates: { group_count: 1, duplicate_count: 2, reclaimable_bytes: 120 },
+      suggestions: [
+        {
+          node_id: Number(b.nodeId),
+          kind: 'exact_dup',
+          path: expect.stringContaining('/'),
+          size_bytes: 120,
+          reason: { kind: 'exact_dup', keep_node_id: Number(a.nodeId) },
+        },
+      ],
+      trash: {
+        item_count: 2, // folder-inner.bin + deep.bin (child of the trashed folder)
+        total_bytes: 100,
+        oldest_deleted_at: expect.any(String),
+        retention_days: 30,
+      },
+    });
+    // NULL content_hash rows never group (register (b)) and never suggest
+    const suggestionIds = res.body.suggestions.map((row) => row.node_id);
+    expect(suggestionIds).not.toContain(Number(nullA.nodeId));
+    expect(suggestionIds).not.toContain(Number(nullB.nodeId));
+    // camelCase leakage guard: every serialized key is snake_case
+    for (const key of Object.keys(res.body)) expect(key).not.toMatch(/[A-Z]/);
+  });
+
+  it('zeroes (not 404) for a user without a root node', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `dashrt-noroot-${Date.now()}`,
+    });
+    const res = await request(app).get('/api/dashboard').set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.duplicates).toEqual({
+      group_count: 0,
+      duplicate_count: 0,
+      reclaimable_bytes: 0,
+    });
+    expect(res.body.suggestions).toEqual([]);
+    expect(res.body.trash).toEqual({
+      item_count: 0,
+      total_bytes: 0,
+      oldest_deleted_at: null,
+      retention_days: 30,
+    });
+  });
+
+  it('never mixes users: another user identical content is absent', async () => {
+    const { user, token, homeId } = await storageUser('iso-a');
+    const stranger = await storageUser('iso-b');
+    const hash = `rt-iso-${Date.now()}`;
+    await addFile(homeId, 'mine-1.bin', { hash });
+    await addFile(homeId, 'mine-2.bin', { hash });
+    await addFile(stranger.homeId, 'theirs-1.bin', { hash });
+    await addFile(stranger.homeId, 'theirs-2.bin', { hash });
+
+    const res = await request(app).get('/api/dashboard').set('Authorization', `Bearer ${token}`);
+    expect(res.body.duplicates.group_count).toBe(1);
+    const resStranger = await request(app)
+      .get('/api/dashboard')
+      .set('Authorization', `Bearer ${stranger.token}`);
+    expect(resStranger.body.duplicates.group_count).toBe(1);
+    const mineIds = res.body.suggestions.map((row) => row.node_id);
+    const theirs = await dbQuery("SELECT id FROM file_nodes WHERE name LIKE 'theirs-%.bin'", []);
+    for (const row of theirs.rows) expect(mineIds).not.toContain(Number(row.id));
+    void user;
+  });
+});
+
+// -- POST /suggestions/accept --------------------------------------------------
+
+describe('POST /api/dashboard/suggestions/accept', () => {
+  it('rejects unauthenticated accepts with 401', async () => {
+    const res = await request(app)
+      .post('/api/dashboard/suggestions/accept')
+      .send({ nodeIds: [1] });
+    expect(res.status).toBe(401);
+  });
+
+  it('validates nodeIds: missing/empty/over-cap ⇒ 400 dashboard.emptyNodeIds', async () => {
+    const { token } = await storageUser('val');
+    for (const body of [
+      {},
+      { nodeIds: [] },
+      { nodeIds: 'nope' },
+      { nodeIds: Array.from({ length: 201 }, (_, i) => i + 1) },
+    ]) {
+      const res = await request(app)
+        .post('/api/dashboard/suggestions/accept')
+        .set('Authorization', `Bearer ${token}`)
+        .send(body);
+      expect(res.status).toBe(400);
+      expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.dashboard.emptyNodeIds);
+    }
+  });
+
+  it('trashes own accepted rows, rejects foreign/trashed/unknown ids, journals nothing', async () => {
+    const { user, token, homeId } = await storageUser('acc');
+    const stranger = await storageUser('acc-stranger');
+    const keep = await addFile(homeId, 'keep-one.bin', { size: 100 });
+    const dup = await addFile(homeId, 'drop-one.bin', { size: 100 });
+    const foreign = await addFile(stranger.homeId, 'foreign.bin', {});
+    const already = await addFile(homeId, 'already.bin', {});
+    await createFileNodesStore().markSubtreeDeleted([Number(already.nodeId)]);
+
+    const journalBefore = Number(
+      (await dbQuery('SELECT COUNT(*) AS count FROM action_journal', [])).rows[0].count
+    );
+
+    const res = await request(app)
+      .post('/api/dashboard/suggestions/accept')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        nodeIds: [Number(dup.nodeId), Number(foreign.nodeId), Number(already.nodeId), 999999999],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      trashed: [Number(dup.nodeId)],
+      rejected_not_owned: [Number(foreign.nodeId), Number(already.nodeId), 999999999],
+      skipped: [],
+    });
+
+    const after = await request(app).get('/api/dashboard').set('Authorization', `Bearer ${token}`);
+    // only the kept member remains → no group, no suggestion
+    expect(after.body.duplicates.group_count).toBe(0);
+    expect(after.body.suggestions).toEqual([]);
+
+    const { rows } = await dbQuery('SELECT deleted_at FROM file_nodes WHERE id = ?', [
+      Number(keep.nodeId),
+    ]);
+    expect(rows[0].deleted_at).toBeNull();
+    expect(
+      Number((await dbQuery('SELECT COUNT(*) AS count FROM action_journal', [])).rows[0].count)
+    ).toBe(journalBefore);
+    void user;
+  });
+});

@@ -729,6 +729,32 @@ module.exports = function createPostgresFileNodeRepository(executor) {
       }
     },
 
+    // Dashboard trash-card aggregate (T0.10): trashed FILE rows of the subtree
+    // (trash marking marks the whole subtree — children of trashed folders are
+    // counted once each; directories carry no filecache size).
+    async summarizeTrashedSubtree(ancestorId) {
+      try {
+        const { rows } = await executor.query(
+          `SELECT COUNT(*) AS item_count,
+                  COALESCE(SUM(fc.size), 0) AS total_bytes,
+                  MIN(n.deleted_at) AS oldest_deleted_at
+             FROM file_nodes n
+             JOIN node_ancestors a ON a.descendant_id = n.id
+             LEFT JOIN filecache fc ON fc.file_node_id = n.id
+            WHERE a.ancestor_id = $1 AND n.deleted_at IS NOT NULL AND n.type = 'file'`,
+          [Number(ancestorId)]
+        );
+        const row = rows[0] || {};
+        return {
+          itemCount: Number(row.item_count ?? 0),
+          totalBytes: Number(row.total_bytes ?? 0),
+          oldestDeletedAt: toIsoString(row.oldest_deleted_at ?? null),
+        };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
     async setCacheContentHash(fileNodeId, contentHash) {
       try {
         // Guarded on content_hash IS NULL — the idempotency contract: an

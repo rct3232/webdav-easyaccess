@@ -370,3 +370,38 @@ export const undoAction = async (actionId, options = {}) => {
     };
   }
 };
+
+// -- Actions feed + Storage dashboard (T0.10; routes/{actions,dashboard}.md) --
+
+/**
+ * 30-day undo-journal feed (GET /api/actions) — rows consumed verbatim in
+ * snake_case (actions.md §2.4); absorbed failures return `{ actions: [] }`.
+ * @param {{ domain?: string }} [params]
+ * @returns {Promise<{ actions: Array<Object> }>}
+ */
+export const getActions = async (params = {}) => {
+  const query = buildQuery([['domain', params.domain]]);
+  return absorbRead(query ? `/actions?${query}` : '/actions', { actions: [] });
+};
+
+/**
+ * One-shot Storage-dashboard read (GET /api/dashboard): duplicates + computed
+ * suggestions + trash summary in one payload. The failure fallback keeps the
+ * spec'd `{ suggestions: [] }` shape — consumers read the other keys
+ * defensively (absent ⇒ block omitted, CollectionDashboard §2.3.1).
+ * @returns {Promise<Object>}
+ */
+export const getFileSuggestions = async () => {
+  return absorbRead('/dashboard', { suggestions: [] });
+};
+
+/**
+ * Accept checked suggestion rows → trash (POST /api/dashboard/suggestions/
+ * accept, camelCase body). P0: no undo pointer (the command row rides T3.3 —
+ * routes/dashboard.md §2.4); the trash-restore UX is the undo path.
+ * @param {number[]} nodeIds
+ * @param {{ silent?: boolean, onError?: Function }} [options]
+ */
+export const acceptFileSuggestions = async (nodeIds, options) => {
+  return absorbMutation('/dashboard/suggestions/accept', { data: { nodeIds }, options });
+};

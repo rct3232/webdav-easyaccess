@@ -96,7 +96,7 @@ describe('GET /api/actions', () => {
     expect(addRow).toMatchObject({
       domain: 'collection',
       subject: `collection:${collection.id}`,
-      subject_label: null, // add-item rows carry no commit-time label (optional per DDL)
+      subject_label: 'Europe trip', // register (d): member-op rows capture the collection name at commit time
       actor: owner.id,
       action: 'add-item',
       status: 'applied',

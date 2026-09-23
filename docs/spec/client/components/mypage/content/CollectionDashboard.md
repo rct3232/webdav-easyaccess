@@ -22,12 +22,13 @@ Target-contract spec (`docs/features/collections-platform.md` §4.11 (feed surfa
 
 ### 2.2 Props
 
-| Name       | Type     | Required | Default | Description                                                                                                            |
-| ---------- | -------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------- |
-| user       | object   | Y        | -       | Current user (visibility + scoping)                                                                                    |
-| onNavigate | function | Y        | -       | `(route) => void` — deep-link target for hygiene cards (`/files/__trash__`, collection member views, etc.)             |
-| onUndo     | function | N        | -       | `(actionId, { confirmCascade? }) => void` — routes to `useUndoToast` execution (same 409/cascade protocol, actions.md) |
-| onMessage  | function | N        | -       | `(type, text)` feedback (SharingContent precedent)                                                                     |
+| Name       | Type     | Required | Default         | Description                                                                                                            |
+| ---------- | -------- | -------- | --------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| user       | object   | Y        | -               | Current user (visibility + scoping)                                                                                    |
+| onNavigate | function | Y        | -               | `(route) => void` — deep-link target for hygiene cards (`/files/__trash__`, collection member views, etc.)             |
+| onUndo     | function | N        | -               | `(actionId, { confirmCascade? }) => void` — routes to `useUndoToast` execution (same 409/cascade protocol, actions.md) |
+| onMessage  | function | N        | -               | `(type, text)` feedback (SharingContent precedent)                                                                     |
+| gateway    | object   | N        | explorerGateway | **As-built (T0.10):** IO seam injection for tests (useUndoToast precedent); production never passes it.                |
 
 ### 2.3 Blocks (render order = contract)
 
@@ -37,9 +38,31 @@ Target-contract spec (`docs/features/collections-platform.md` §4.11 (feed surfa
 4. **Suggestions** — `SuggestionsChecklist` block (its spec owns the accept protocol).
 5. **Capacity sparkline** — ONLY a sparkline, no insight prose (§4.16 rejection). **Decision:** series endpoint ships with later tasks; seam `loadCapacitySeries()` returns `{ points: [{ day, bytes }] }`; absent ⇒ block omitted entirely.
 
+#### 2.3.1 As-built seams (T0.10)
+
+- Hygiene cards + Suggestions block read the ONE gateway seam `getFileSuggestions()`
+  (`GET /api/dashboard` — `collectionsRepository.md` §2.3): `duplicates` feeds the dup card,
+  `suggestions` feeds both the suggestions-count card and the `SuggestionsChecklist`,
+  `trash` feeds the trash card (size + countdown from `oldest_deleted_at` +
+  `retention_days`; `retention_days === 0` renders "no automatic purge"). The journal feed
+  uses `getActions({ domain: 'collection' })`; collections status uses `loadCollections` +
+  per-own-collection `getGrants` (personal scale, one absorbed read per collection).
+- Dup-card deep link (P0): the dup rows ARE the suggestions list, so the card scrolls to the
+  suggestions block (in-page target `dashboard-suggestions`) instead of a not-yet-built dup
+  finder view; trash card → `onNavigate('/files/__trash__')`.
+- Feed member-op rows render `subject_label` per register (d) (collection name captured at
+  commit time — `store/collectionsStore.md` §2.1).
+- Accept (P0): the command is not journaled yet (`routes/dashboard.md` §2.4 decision), so
+  success shows the report toast WITHOUT an Undo button; the trash-restore UX is the undo
+  path until the T3.3 command-unit row lands.
+- Undo execution: `useUndoToast` mounted inside the dashboard (own `useMessage` bundle +
+  rendered snackbar, cascade `ConfirmDialog` from `cascadeConfirm` state — FileManager
+  protocol); `onUndo` prop overrides the row handler when the host supplies one.
+
 ### 2.4 Dependencies
 
 - **imports:** MUI card/list primitives, useTranslation, formatDate/formatFileSize, MyPageContentPanel; data via `explorerGateway` §2.6 seams called from a MyPage controller seam (useMyPageController extension at implementation time) and passed as props where the panel pattern requires it (SharingContent precedent allows content-level service reads; the new gateway boundary wins for collections surfaces).
+- **As-built (T0.10):** `onNavigate` is produced by `MyPageContentArea` (`useNavigate()` — the page-level router hook stays out of the pure registry helper) and forwarded through `getMyPageContentDescriptor` inputs into the `storage` branch's `contentProps`; the registry gains the `storage` entry + descriptor branch (pure data, this PR).
 
 ### 2.5 myPageRegistry entry contract (additions)
 

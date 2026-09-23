@@ -32,6 +32,14 @@ function withActionId(mutationResult, committed) {
   return { ...mutationResult, actionId: committed.id };
 }
 
+// Register (d) — the feed renders subject_label verbatim (never re-resolves),
+// so every collection-subject commit captures the display name at commit time
+// (docs/spec/server/store/collectionsStore.md §2.1 capture table).
+async function labelOf(repo, collectionId) {
+  const row = await repo.getCollection(collectionId);
+  return row ? row.name : null;
+}
+
 // -- reads -------------------------------------------------------------------
 
 async function getCollection(collectionId) {
@@ -112,7 +120,11 @@ async function setPinned(collectionId, pinned, ctx = {}) {
   const committed = await actionJournalStore.commitChange(
     'collection',
     `collection:${collectionId}`,
-    { actor: ctx.actor, action: pinned ? 'pin' : 'unpin' },
+    {
+      actor: ctx.actor,
+      action: pinned ? 'pin' : 'unpin',
+      subjectLabel: await labelOf(repo, collectionId),
+    },
     { inverse: { op: 'set-pinned', collectionId, pinned: !pinned } },
     (tx) => repo.updatePin(tx, collectionId, Boolean(pinned), pinned ? 'user' : null)
   );
@@ -131,7 +143,11 @@ async function setPublishMode(collectionId, publishMode, ctx = {}) {
   const committed = await actionJournalStore.commitChange(
     'collection',
     `collection:${collectionId}`,
-    { actor: ctx.actor, action: 'set-publish-mode' },
+    {
+      actor: ctx.actor,
+      action: 'set-publish-mode',
+      subjectLabel: previous ? previous.name : null,
+    },
     {
       inverse: {
         op: 'set-publish-mode',
@@ -162,7 +178,7 @@ async function archiveCollection(collectionId, ctx = {}) {
   const committed = await actionJournalStore.commitChange(
     'collection',
     `collection:${collectionId}`,
-    { actor: ctx.actor, action: 'archive' },
+    { actor: ctx.actor, action: 'archive', subjectLabel: await labelOf(repo, collectionId) },
     { inverse: { op: 'restore-collection', collectionId } },
     (tx) => repo.archiveRow(tx, collectionId)
   );
@@ -175,7 +191,7 @@ async function restoreCollection(collectionId, ctx = {}) {
   const committed = await actionJournalStore.commitChange(
     'collection',
     `collection:${collectionId}`,
-    { actor: ctx.actor, action: 'restore' },
+    { actor: ctx.actor, action: 'restore', subjectLabel: await labelOf(repo, collectionId) },
     { inverse: { op: 'archive-collection', collectionId } },
     (tx) => repo.restoreRow(tx, collectionId)
   );
@@ -323,7 +339,7 @@ async function addItem(collectionId, nodeId, addedBy, { published } = {}, ctx = 
   const committed = await actionJournalStore.commitChange(
     'collection',
     `collection:${collectionId}`,
-    { actor: ctx.actor, action: 'add-item' },
+    { actor: ctx.actor, action: 'add-item', subjectLabel: await labelOf(repo, collectionId) },
     { inverse: { op: 'remove-item', collectionId, nodeId } },
     (tx) => repo.insertItem(tx, collectionId, nodeId, addedBy, { published: published ?? true })
   );
@@ -336,7 +352,7 @@ async function removeItem(collectionId, nodeId, ctx = {}) {
   const committed = await actionJournalStore.commitChange(
     'collection',
     `collection:${collectionId}`,
-    { actor: ctx.actor, action: 'remove-item' },
+    { actor: ctx.actor, action: 'remove-item', subjectLabel: await labelOf(repo, collectionId) },
     { inverse: { op: 'add-item', collectionId, nodeId, addedBy: ctx.actor } },
     (tx) => repo.deleteItem(tx, collectionId, nodeId)
   );
@@ -365,7 +381,7 @@ async function addItems(collectionId, nodeIds, addedBy, { published } = {}, ctx 
   const committed = await actionJournalStore.commitChange(
     'collection',
     `collection:${collectionId}`,
-    { actor: ctx.actor, action: 'add-items' },
+    { actor: ctx.actor, action: 'add-items', subjectLabel: await labelOf(repo, collectionId) },
     {
       inverse: { op: 'remove-items', collectionId },
       items: toInsert.map((nodeId) => ({
@@ -405,7 +421,11 @@ async function removeItems(
   const committed = await actionJournalStore.commitChange(
     'collection',
     `collection:${collectionId}`,
-    { actor: ctx.actor, action: 'remove-items' },
+    {
+      actor: ctx.actor,
+      action: 'remove-items',
+      subjectLabel: collection ? collection.name : null,
+    },
     {
       inverse: { op: 'remove-items', collectionId },
       items: [
@@ -461,7 +481,7 @@ async function addExclusion(collectionId, nodeId, ctx = {}) {
   const committed = await actionJournalStore.commitChange(
     'collection',
     `collection:${collectionId}`,
-    { actor: ctx.actor, action: 'exclude' },
+    { actor: ctx.actor, action: 'exclude', subjectLabel: collection ? collection.name : null },
     { inverse: { op: 'remove-exclusion', collectionId, nodeId } },
     async (tx) => {
       const result = await repo.insertExclusion(tx, collectionId, nodeId);
@@ -479,7 +499,7 @@ async function removeExclusion(collectionId, nodeId, ctx = {}) {
   const committed = await actionJournalStore.commitChange(
     'collection',
     `collection:${collectionId}`,
-    { actor: ctx.actor, action: 'unexclude' },
+    { actor: ctx.actor, action: 'unexclude', subjectLabel: await labelOf(repo, collectionId) },
     { inverse: { op: 'add-exclusion', collectionId, nodeId } },
     (tx) => repo.deleteExclusion(tx, collectionId, nodeId)
   );
@@ -491,7 +511,11 @@ async function setItemPublished(collectionId, nodeIds, published, ctx = {}) {
   const committed = await actionJournalStore.commitChange(
     'collection',
     `collection:${collectionId}`,
-    { actor: ctx.actor, action: 'set-items-published' },
+    {
+      actor: ctx.actor,
+      action: 'set-items-published',
+      subjectLabel: await labelOf(repo, collectionId),
+    },
     { inverse: { op: 'set-items-published', collectionId, nodeIds, published: !published } },
     (tx) => repo.setItemPublished(tx, collectionId, nodeIds, Boolean(published))
   );
@@ -518,7 +542,7 @@ async function grantAccess(collectionId, granteeId, role, grantedBy, ctx = {}) {
   const committed = await actionJournalStore.commitChange(
     'collection',
     `collection:${collectionId}`,
-    { actor: ctx.actor, action: 'grant' },
+    { actor: ctx.actor, action: 'grant', subjectLabel: await labelOf(repo, collectionId) },
     { inverse: { op: 'revoke-access', collectionId, granteeId } },
     (tx) => repo.upsertGrant(tx, collectionId, granteeId, role, grantedBy)
   );
@@ -532,7 +556,7 @@ async function revokeAccess(collectionId, granteeId, ctx = {}) {
   const committed = await actionJournalStore.commitChange(
     'collection',
     `collection:${collectionId}`,
-    { actor: ctx.actor, action: 'revoke' },
+    { actor: ctx.actor, action: 'revoke', subjectLabel: await labelOf(repo, collectionId) },
     {
       inverse: {
         op: 'grant-access',

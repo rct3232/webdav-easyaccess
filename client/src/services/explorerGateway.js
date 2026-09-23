@@ -34,6 +34,9 @@ import {
   rejectMerge,
   removeCollectionItems,
   restoreCollection,
+  acceptFileSuggestions,
+  getActions,
+  getFileSuggestions,
   revokeGrant,
   runSearch,
   undoAction,
@@ -266,6 +269,10 @@ export { runSearch, recordSearchClick };
 // Undo execution seam (actions.md; collectionsRepository.md §2.5 structured result).
 export { undoAction };
 
+// Actions feed + Storage dashboard seams (T0.10; routes/{actions,dashboard}.md) —
+// repository absorbed-read/mutation shapes pass through verbatim.
+export { getActions, getFileSuggestions, acceptFileSuggestions };
+
 // -- File likes (T0.5; §2.6 file-likes group) — the fileLikesRepository       //
 // absorbed-read fallback ({ liked: [] }), payload ∥ null mutation and         //
 // notify-after-real-success fan-out pass through unchanged.                   //
@@ -341,6 +348,10 @@ const explorerGateway = {
   runSearch,
   recordSearchClick,
   undoAction,
+  // Actions feed + Storage dashboard (T0.10 — §2.6 dashboard group)
+  getActions,
+  getFileSuggestions,
+  acceptFileSuggestions,
   // File likes (§2.6 file-likes group)
   loadFileLikes,
   setFileLike,

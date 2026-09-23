@@ -51,6 +51,10 @@
  * @property {(fileNodeId, size, mimeType, contentHash) => Promise<{ changes: number }>} upsertCache
  * @property {(fileNodeId) => Promise<Object|null>} getCache
  * @property {(ancestorId) => Promise<Array<{ nodeId: number, parentId: number|null, name: string, type: string, createdAt: string|null, size: number|null, mimeType: string|null, contentHash: string|null }>>} listSubtreeCacheRows
+ * @property {(ancestorId) => Promise<{ itemCount: number, totalBytes: number, oldestDeletedAt: string|null }>} summarizeTrashedSubtree
+ *   Dashboard trash-card aggregate (T0.10): trashed FILE rows of the subtree
+ *   (`deleted_at IS NOT NULL`, `type='file'`) with `filecache` size sum and the
+ *   oldest `deleted_at` (ISO) — the §4.16 retention-countdown read.
  *   AI-hygiene subtree read (T0.9): live subtree nodes with filecache columns
  *   (`node_ancestors` JOIN + LEFT JOIN `filecache`, `ORDER BY n.id`) for the
  *   exact-dup finder and derived-tags backfill.

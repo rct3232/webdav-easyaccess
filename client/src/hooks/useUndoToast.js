@@ -6,7 +6,7 @@
  * of the toast surface; rendering belongs to UndoToast, queue mechanics to
  * the (extended) useMessage bundle.
  */
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import i18n from '../i18n';
 import explorerGateway from '../services/explorerGateway';
 import { useMessage } from './useMessage';
@@ -29,7 +29,7 @@ const CASCADE_ERROR_CODE = 'serverErrors.actions.cascadeConfirmRequired';
  *   their snackbar host. A private fallback bundle is used when omitted.
  * @param {() => void|Promise<void>} [options.refresh] - host listing re-read
  *   invoked after a successful undo.
- * @returns {{ showUndoToast, showReportToast, cascadeConfirm, busy }}
+ * @returns {{ showUndoToast, showReportToast, undoNow, cascadeConfirm, busy }}
  */
 export const useUndoToast = ({ gateway, message, refresh } = {}) => {
   const fallbackMessage = useMessage();
@@ -141,7 +141,16 @@ export const useUndoToast = ({ gateway, message, refresh } = {}) => {
     [msg]
   );
 
-  return { showUndoToast, showReportToast, cascadeConfirm, busy };
+  // Direct execution seam (T0.10 — CollectionDashboard journal feed): row
+  // buttons undo WITHOUT the toast indirection; the ref keeps the handler
+  // stable while runUndo rebinds fresh gateway/refresh props per render.
+  const runUndoRef = useRef(runUndo);
+  useEffect(() => {
+    runUndoRef.current = runUndo;
+  });
+  const undoNow = useCallback((actionId, options) => runUndoRef.current(actionId, options), []);
+
+  return { showUndoToast, showReportToast, undoNow, cascadeConfirm, busy };
 };
 
 export default useUndoToast;

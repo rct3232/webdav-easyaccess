@@ -1,6 +1,7 @@
 import {
   Person as PersonIcon,
   Share as ShareIcon,
+  Storage as StorageIcon,
   People as PeopleIcon,
   Settings as SettingsIcon,
   Palette as PaletteIcon,
@@ -11,6 +12,7 @@ import SharingContent from '../components/mypage/content/SharingContent';
 import UserManagementContent from '../components/mypage/content/UserManagementContent';
 import SystemSettingsContent from '../components/mypage/content/SystemSettingsContent';
 import PreferencesContent from '../components/mypage/content/PreferencesContent';
+import CollectionDashboard from '../components/mypage/content/CollectionDashboard';
 
 export const DEFAULT_MY_PAGE_CATEGORY = 'account';
 
@@ -28,6 +30,12 @@ const MY_PAGE_CATEGORY_META = [
     icon: ShareIcon,
     labelKey: 'mypage.shareManage',
     visibility: 'nonAdminOnly',
+  },
+  {
+    id: 'storage',
+    icon: StorageIcon,
+    labelKey: 'mypage.storage',
+    visibility: 'all',
   },
   {
     id: 'admin-users',
@@ -71,6 +79,7 @@ export function getMyPageContentDescriptor({
   onSelectContentItem,
   user,
   onMessage,
+  onNavigate,
 }) {
   const inDetailView = isMyPageMultiCategory(selectedCategory) && selectedContentItem != null;
   const onBack = inDetailView ? () => onSelectContentItem(null) : undefined;
@@ -104,6 +113,15 @@ export function getMyPageContentDescriptor({
         user,
         onMessage,
       },
+    };
+  }
+
+  if (selectedCategory === 'storage') {
+    return {
+      categoryIcon: getMyPageCategoryIcon(selectedCategory),
+      onBack,
+      ContentComponent: CollectionDashboard,
+      contentProps: { user, onNavigate, onMessage },
     };
   }
 

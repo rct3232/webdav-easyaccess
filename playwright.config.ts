@@ -99,10 +99,12 @@ if (backendMode === 'webdav') {
       { name: `${backendMode}-admin-mobile`, testMatch: adminSpecMatch, use: mobileUse }
     );
 
-    // Additive, hermetic projects (setup-wizard / admin-config / migration).
+    // Additive, hermetic projects (setup-wizard / admin-config / migration /
+    // trash-admin / collections).
     // They spawn their own scratch servers and are isolated per suite (Option A
     // Phase 1): each suite owns ONE distinct scratch port (:5003 wizard, :5010
-    // admin-config, :5011 migration, :5012 trash-admin) mirrored by its
+    // admin-config, :5011 migration, :5012 trash-admin, :5013 collections)
+    // mirrored by its
     // baseURL below, and the
     // migration suite targets its own dedicated MinIO bucket. Phase 2 lifted the
     // strict chain: the suites are now INDEPENDENT siblings, so they can overlap
@@ -160,6 +162,17 @@ if (backendMode === 'webdav') {
         spec: /trash-admin\.spec\.ts$/,
         use: desktopUse,
         baseURL: 'http://localhost:5012',
+      },
+      {
+        // P0 collections lifecycle (E2E-COLLECTION-001..009) — scratch-hermetic
+        // on its own server (:5013) per the destructive-case policy: the suite
+        // permanently deletes collections and rewrites the per-user undo-journal
+        // chain, so it never runs against the shared :5002 pool. Desktop-only
+        // (no mobile variant); the spec boots ONE scratch server for the file.
+        name: 'collections-desktop',
+        spec: /collections\.spec\.ts$/,
+        use: desktopUse,
+        baseURL: 'http://localhost:5013',
       },
     ];
     for (const h of hermeticSpecs) {

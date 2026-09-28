@@ -316,8 +316,22 @@ config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
   suggestions, no journal writer until T3.3) + `FileNodeRepository.summarizeTrashedSubtree`
   (PG leg flagged) + client `CollectionDashboard`/`SuggestionsChecklist`/registry `storage`
   entry + `getActions`/`getFileSuggestions`/`acceptFileSuggestions` repository seams.
-  conformance suites + E2E-COLLECTION-001 lifecycle & degradation matrix — then `ai-feature`
-  carries the merged P0. (`ai-feature`→`dev` merge remains a single event after ALL §7 phases.)
+- **Wave-3 closure & P0 exit gate — PASSED 2026-09-23**: orchestrator mounted
+  `/api/dashboard` (`server/index.js`, commit 3dbf34a). Boot coverage gaps
+  (bootSequence.md §5 L93/L94/L98/L99) closed by owner-directive immediate processing
+  (`test/boot-sequence-coverage`): child-process boot suite + Case-A fix — the [D6]
+  backend pre-flight moved to boot entry so partial `WEA_DB_*` fails with
+  `Initialization failed:` + exit(1) instead of a require-time stack trace; §5 fully ticked.
+  P0 lifecycle E2E (`test/e2e-collections-lifecycle`): `E2E-COLLECTION-001..009`
+  scratch-hermetic `collections-desktop` (:5013), 3 consecutive fully-green runs (35–37 s);
+  the run surfaced 5 Case-A defects — nested item-inverse undo no-op, `listForUser` status
+  default leak, `include=archived` semantics, tied-timestamp list order (`id DESC` tie-break),
+  unreachable file-side Add-to-collection host entry — all fixed + RCA-logged (2026-09-23).
+  Final gates: server `test:ci` 129 suites / 2370 tests; client `test:ci` 174 / 1700;
+  `test:ci:pg:adapters` 23 / 344 — all green. **Degradation matrix** is structurally P1+
+  (no AI surfaces exist in P0); its suite lands with T4.3 — owner confirmation requested,
+  exit-gate text above written pre-wave-split. `ai-feature` now carries the merged P0.
+  (`ai-feature`→`dev` merge remains a single event after ALL §7 phases.)
 - **Wave-1 provenance (2026-09-22)**: branch `feature/t08-admin-reports-repair` — T0.8 + the
   T0.1 remainder landed: `admin_reports` store (`server/store/adminReportsStore.js`,
   AdminReportsRepository sqlite/postgres twins + conformance), `GET /api/admin/reports(/:id)`

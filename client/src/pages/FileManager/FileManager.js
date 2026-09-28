@@ -27,6 +27,7 @@ import { useSearchResults } from './hooks/useSearchResults';
 import { useUndoToast } from '../../hooks/useUndoToast';
 import { getServerErrorDisplay } from '../../utils/errorUtils';
 import MemberRowControls from '../../components/file-manager/MemberRowControls';
+import AddToCollectionMenu from '../../components/file-manager/AddToCollectionMenu';
 import { ConfirmDialog, RenameDialog } from '../../components/dialogs';
 import { useFileManagerDialogs } from './hooks/useFileManagerDialogs';
 import { useTrashOperations } from './hooks/useTrashOperations';
@@ -620,6 +621,81 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     );
     if (payload !== null) setCollectionRenameTarget(null);
   }, [collectionRenameTarget, collectionRenameValue, collectionsApi, t]);
+
+  // T0.5 file-side collection entry points (docs/spec/client/components/
+  // file-manager/AddToCollectionMenu.md §2.2): the explorer context menu
+  // dispatches `Add to collection` here and the shell owns the single submenu
+  // instance (same idiom as MemberRowControls/FileContextMenu). The §4.5 seed
+  // row stays gated off (`seedItemVisible=false`): P0 ships no embed
+  // capability and no aiFlags client seam (absent-not-disabled, §4.12).
+  const [addMenu, setAddMenu] = useState(null); // { targetNodes, position }
+
+  const handleOpenAddToCollection = useCallback((file, position) => {
+    const nodeId = file?.nodeId ?? file?.node_id;
+    if (nodeId == null) return;
+    setAddMenu({
+      targetNodes: [{ nodeId, name: file?.name ?? file?.basename ?? null }],
+      position: position ?? null,
+    });
+  }, []);
+
+  const closeAddMenu = useCallback(() => setAddMenu(null), []);
+
+  const writableCollections = useMemo(
+    () =>
+      collectionsApi.collections.filter(
+        (collection) => collection.granted_role == null || collection.granted_role === 'editor'
+      ),
+    [collectionsApi.collections]
+  );
+
+  const handleAddMenuAdd = useCallback(
+    async (collectionId, nodeIds) => {
+      let envelope = null;
+      const payload = await explorerGateway.addCollectionItems(collectionId, nodeIds, {
+        onError: (error) => {
+          envelope = error;
+        },
+      });
+      if (payload === null) {
+        showError(getServerErrorDisplay(envelope, t));
+        return;
+      }
+      const rejected = Array.isArray(payload.rejected_not_readable)
+        ? payload.rejected_not_readable.length
+        : 0;
+      if (rejected > 0) {
+        messageBundle.showInfo(t('fileManager.addRejectedNotReadable', { count: rejected }));
+      }
+      if (payload?.undo?.action_id != null) {
+        handleUndoable(payload, 'collections.undoAdded');
+      }
+    },
+    [showError, t, messageBundle, handleUndoable]
+  );
+
+  const handleAddMenuCreateAndAdd = useCallback(
+    async (name, nodeIds) => {
+      let envelope = null;
+      const created = await explorerGateway.createCollection(
+        { name },
+        {
+          onError: (error) => {
+            envelope = error;
+          },
+        }
+      );
+      if (created === null) {
+        showError(getServerErrorDisplay(envelope, t));
+        return;
+      }
+      // One command, one undo toast (spec §2.7): the create row's inverse
+      // removes the collection together with its just-added members.
+      await explorerGateway.addCollectionItems(created.collection.collection_id, nodeIds);
+      handleUndoable(created, 'collections.undoCreated');
+    },
+    [showError, t, handleUndoable]
+  );
 
   // Member-row menus are the T0.5 MemberRowControls seam; publish batch uses the
   // loaded unpublished rows (the §4.7 banner action). The shell owns the single
@@ -1501,6 +1577,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       handleActionSheetDownload,
       handleActionSheetPreview,
       handleToggleLike,
+      handleOpenAddToCollection,
     }),
     [
       handleFileClick,
@@ -1525,6 +1602,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       handleActionSheetDownload,
       handleActionSheetPreview,
       handleToggleLike,
+      handleOpenAddToCollection,
     ]
   );
 
@@ -1681,6 +1759,19 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           onProperties={handleMemberProperties}
           onToggleLike={handleToggleLike}
           onClose={closeMemberMenu}
+        />
+      )}
+      {!isShareLinkMode && (
+        <AddToCollectionMenu
+          open={Boolean(addMenu)}
+          contextMenu={addMenu?.position ?? null}
+          targetNodes={addMenu?.targetNodes ?? []}
+          collections={writableCollections}
+          seedItemVisible={false}
+          onAdd={handleAddMenuAdd}
+          onCreateAndAdd={handleAddMenuCreateAndAdd}
+          onCreateSeed={async () => {}}
+          onClose={closeAddMenu}
         />
       )}
       {isCollectionsOverlay && (

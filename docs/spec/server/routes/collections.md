@@ -116,7 +116,8 @@ Field rules:
   live ACL + trash filter applied), exact.
 
 - **GET /:** Query `sort` = `activity` (default — `activity_score` desc, then
-  `last_member_change_at`, `created_at` desc; store §2.5) | `name` | `created` |
+  `last_member_change_at`, `created_at` desc, final deterministic tie-break
+  `id` desc; store §2.5) | `name` | `created` |
   `updated` | `similar`; `include` = comma list of `mine,shared,archived` (default
   `mine,shared`).
   `similar` = centroid-cluster grouping (§3.1, greedy nearest-neighbor over the returned
@@ -338,6 +339,13 @@ All errors follow the shared error envelope (`errorCode` + optional `params`,
 
 - **Decision:** list `include` defaults to `mine,shared`; archived is opt-in because
   `__archive__` is a separate virtual node (§3.1).
+- **Decision (RCA 2026-09-23):** include tokens select row sets — `mine` = own rows,
+  `shared` = granted rows, `archived` = own `status='archived'` rows; `listForUser`
+  defaults to `status='active'` (store contract), so archived rows never arrive twice.
+  `mine,archived` (the `__archive__` surface and the ArchiveNode badge) is
+  ARCHIVED-ONLY (CollectionsSection §2.3 "exactly the `status=archived` collections");
+  any include carrying `shared` alongside `archived` (the dashboard status read) is the
+  full active ∪ archived ∪ granted superset.
 - **Decision:** read access without any grant is a 404 masquerade (files-read precedent),
   never 403, so collection existence is not leaked.
 - **Decision:** item ordering = activity score desc then `node_id` asc (stable cursor).

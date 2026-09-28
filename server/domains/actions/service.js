@@ -297,8 +297,16 @@ async function applyCollectionInverse({ row, tx }) {
     const outcomes = [];
     // eslint-disable-next-line no-restricted-syntax
     for (const item of payload.items) {
+      // Command-unit entries carry their inverse descriptor NESTED under
+      // `inverse` (the store facade's write format for add-items/remove-items
+      // commands, collectionsStore §2.3); a flat `{op, …}` item is honored as
+      // the historical executor-test shape. Passing the raw item here was the
+      // RCA 2026-09-23 defect: every item of a real command row silently
+      // skipped (`op` undefined ⇒ reason 'changed') while the row flipped to
+      // `undone`.
+      const descriptor = item && item.inverse ? item.inverse : item;
       // eslint-disable-next-line no-await-in-loop
-      outcomes.push(await applyInverseTx(tx, item, row));
+      outcomes.push(await applyInverseTx(tx, descriptor, row));
     }
     return outcomes;
   }

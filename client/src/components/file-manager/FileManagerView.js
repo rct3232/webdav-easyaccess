@@ -220,6 +220,7 @@ const FileManagerView = ({
     handleActionSheetDownload,
     handleActionSheetPreview,
     handleToggleLike,
+    handleOpenAddToCollection,
   } = interaction;
   // T0.5: like rows render only where the set seam applies — share-link and
   // trash views withhold the callback (hidden, not disabled; §3.1).
@@ -806,6 +807,19 @@ const FileManagerView = ({
               }
         }
         onToggleLike={likeToggleHandler}
+        onAddToCollection={
+          isShareLinkMode || isTrashView || !handleOpenAddToCollection
+            ? undefined
+            : (file) => {
+                // The closure captures the still-open contextMenu position
+                // (handleAction closes the menu before invoking the callback),
+                // anchoring the shell-owned submenu at the same spot.
+                handleOpenAddToCollection(file, {
+                  mouseX: contextMenu?.mouseX ?? 0,
+                  mouseY: contextMenu?.mouseY ?? 0,
+                });
+              }
+        }
         onShare={
           isShareLinkMode || isTrashView
             ? undefined

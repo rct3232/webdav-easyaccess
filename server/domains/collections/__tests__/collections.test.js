@@ -114,7 +114,10 @@ describe('collection lifecycle (create/list/rename/archive/restore/delete)', () 
     expect(list.status).toBe(200);
     expect(Array.isArray(list.body.collections)).toBe(true);
     expect(list.body.collections).toHaveLength(2);
-    expect(list.body.collections.map((c) => c.name)).toEqual(['B list', 'A list']);
+    // Same-second creates tie on activity_score/last_member_change/created_at;
+    // the deterministic contract is the id-DESC tie-break (newest first,
+    // routes/collections.md §2.4; RCA 2026-09-23), so 'A list' leads.
+    expect(list.body.collections.map((c) => c.name)).toEqual(['A list', 'B list']);
 
     const byName = await request(app)
       .get('/api/collections?sort=name')

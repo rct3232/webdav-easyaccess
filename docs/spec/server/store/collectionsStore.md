@@ -150,11 +150,15 @@ join-time ACL are service-layer concerns (precedent `enrichRecentEntry`).
 ### 2.5 Sort and list semantics
 
 - `activity` (sidebar default, §3.1): `ORDER BY activity_score DESC, last_member_change_at
-DESC, created_at DESC`. **Decision (owner, 2026-09-22 — supersedes the prior
+DESC, created_at DESC, id DESC`. **Decision (owner, 2026-09-22 — supersedes the prior
   timestamp-only ordering):** the card list IS activity-score ordered (§3.4);
   `last_member_change_at` → `created_at` remain as tie-breaker AND graceful fallback
   while `activity_score` is absent/all-zero (pre-rollup data).
-- `name`: locale-unaware `ORDER BY name` (both dialects); `created`/`updated`: timestamps.
+- **Decision (RCA 2026-09-23):** every timestamp sort ends in `id DESC` (newest-first)
+  as the final deterministic tie-breaker — tied second-granular/same-transaction
+  timestamps must not yield a plan-dependent row order (routes.md §2.4).
+- `name`: locale-unaware `ORDER BY name` (both dialects); `created`/`updated`: timestamps
+  DESC with the same `id DESC` tie-break.
 - `similar` is not a SQL sort: service fetches the list and groups by centroid nearest-
   neighbor in JS (§3.1, ≤~20 rows) using `getCentroids`.
 

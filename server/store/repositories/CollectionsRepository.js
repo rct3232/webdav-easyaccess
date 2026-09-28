@@ -19,6 +19,8 @@
  * @property {(collectionId) => Promise<Object|null>} getCollection
  * @property {(tx, collectionId) => Promise<Object|null>} getCollectionTx
  * @property {(userId, { sort?, status? }) => Promise<Array>} listForUser
+ *   Own + granted rows; `status` defaults to 'active' ('all' opts into every
+ *   status) — the store-contract filter (collectionsStore.md §2.1).
  *   sort ∈ activity|name|created|updated (SQL); status defaults to 'active'.
  * @property {(ownerId) => Promise<Array>} listArchived
  * @property {(ownerId, name) => Promise<boolean>} existsActiveName

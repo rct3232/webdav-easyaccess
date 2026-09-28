@@ -1230,6 +1230,7 @@
     "undoMerged": "Collections merged",
     "permanentDeleteReport": "Collection deleted permanently",
     "undoCreated": "Collection created",
+    "undoAdded": "Added to collection",
     "undoExcluded": "Removed from collection"
   }
 }

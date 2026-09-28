@@ -689,3 +689,118 @@ IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode repor
   2026-09-22 (gcService / FilePropertiesDialog / PlatformSchema.conformance).
 - **Classification**: pending reproduction; no code change. **Action**: monitor;
   capture the full FAIL block on recurrence per §3.2 procedure 1.
+
+### 2026-09-23 — E2E-COLLECTION lifecycle run: undoing a command-unit collection row silently no-ops (nested item inverses unread) (Case A)
+
+- **Summary**: E2E-COLLECTION-008 (member exclude → undo re-adds the member) failed on the
+  scratch `:5013` server: `POST /api/actions/:id/undo` answered 200 `status: undone` while the
+  excluded member stayed gone (API `GET /:id/items` unchanged). The toast/undo path reported
+  success for a mutation that never happened.
+- **Diagnosis**: `applyCollectionInverse` (`server/domains/actions/service.js`) passed each
+  `payload.items[i]` RAW into `applyInverseTx`. The store facade writes command-unit rows as
+  `items: [{ nodeId, kind?, inverse: { op, … } }]` (collectionsStore.md §2.3 write format —
+  `addItems`/`removeItems`), so the op descriptor lives NESTED under `item.inverse`;
+  `applyInverseTx` switched on `inverse.op` = undefined → default branch
+  `{ applied: false, reason: 'changed' }` for EVERY item. Command rows report per-item outcomes
+  and skipped items do not abort, so the row still flipped to `undone`. The pre-existing
+  executor tests seeded FLAT `{ op, … }` items directly (an executor-internal shape the store
+  never writes), which masked the mismatch.
+- **Classification**: **Case A (Source Error)** — the undo executor violates the journaled
+  command-payload contract its own writer produces (docs/spec/server/store/collectionsStore.md
+  §2.3; routes/actions.md undo semantics).
+- **Action**: resolve the descriptor as `item.inverse ?? item` in `applyCollectionInverse`
+  (flat items stay honored as the historical shape); added a regression test
+  (`domains/actions/__tests__/actions.test.js`) that round-trips REAL `collectionsStore`
+  command rows (add-items → remove-items → tip undo → chain undo).
+- **Verification**: targeted server suites green; E2E-008 + E2E-005 pass; the
+  `collections-desktop` project ran fully green three consecutive times.
+
+### 2026-09-23 — E2E-COLLECTION lifecycle run: `listForUser` ignored the store-contract `status` default; archived collections leaked into every list read (Case A)
+
+- **Summary**: the `__collections__` list view (E2E-COLLECTION-004) still rendered an archived
+  collection on the scratch run, and archived rows appeared TWICE in archived-including reads.
+- **Diagnosis**: `docs/spec/server/store/collectionsStore.md` §2.1 pins the repository contract:
+  `listForUser` "`status` filter defaults to `active`". Both dialect twins
+  (`CollectionsRepository.sqlite/postgres`) applied `AND c.status = <p>` only when `status` was
+  truthy — omitting the option returned EVERY status. `listCollections` (`GET /api/collections`)
+  never passes `status`, so (a) archived rows leaked into the default `mine,shared` read
+  (sidebar/list view), and (b) the `include`-carries-`archived` path CONCATENATED
+  `listArchived` onto a set that already contained those rows (duplication).
+- **Classification**: **Case A (Source Error)** — implementation violates the published store
+  contract (collectionsStore.md §2.1).
+- **Action**: `const effectiveStatus = status ?? 'active'` in both twins (`status:'all'` opts
+  into every status); the repository interface jsdoc gained the default note; pinned with a new
+  conformance case ("listForUser excludes archived by default; status:all and listArchived
+  return them") executed on BOTH dialect legs.
+- **Verification**: sqlite conformance leg green; real-PostgreSQL leg
+  (`WEA_TEST_PG_* :5433` + `CollectionsRepository.conformance`) green; E2E-004/006 pass on the
+  scratch sqlite server.
+
+### 2026-09-23 — E2E-COLLECTION lifecycle run: `include=mine,archived` returned active ∪ archived, not "exactly the archived" (Case A)
+
+- **Summary**: the `__archive__` surface and the sidebar ArchiveNode badge (reads
+  `include=mine,archived`) showed ACTIVE collections and a wrong count
+  (E2E-COLLECTION-004 badge/archive assertions failed on the scratch run).
+- **Diagnosis**: `listCollections` treated `archived` as an ADDITIVE token —
+  `listForUser(...) + listArchived(...)` — and never excluded the active rows, while
+  CollectionsSection.md §2.3 specifies the ArchiveNode lists "exactly the `status=archived`
+  collections" (badge = that row count). Combined with the twin defect above, the archived read
+  returned active ∪ archived ∪ duplicated archived.
+- **Classification**: **Case A (Source Error)** — service violated the documented include-token
+  surface semantics (docs/spec/client/components/folder-tree/CollectionsSection.md §2.3).
+- **Action**: token-set selection in `collections/service.js` — `mine,archived` (no `shared`)
+  ⇒ ARCHIVED-ONLY rows; any include carrying `shared` alongside `archived` (the dashboard
+  status read `mine,shared,archived`) ⇒ the full active ∪ archived ∪ granted superset. Written
+  into `docs/spec/server/routes/collections.md` §2.4 as a Decision (docs-first) in the same
+  change; no caller depends on the previous additive reading (grep-verified: FileManager
+  archive route + folder-tree badge use `mine,archived`; CollectionDashboard uses
+  `mine,shared,archived`).
+- **Verification**: `collections.test.js` + `actions.test.js` targeted suites green;
+  E2E-001/004/006/009 pass; three consecutive `collections-desktop` green runs.
+
+### 2026-09-23 — E2E-COLLECTION lifecycle run: tied collection timestamps produced a plan-dependent list order (Case A source + Case B test expectation)
+
+- **Summary**: rapid/same-transaction collection creates tied on every sort key
+  (`activity_score` 0 pre-rollup, `last_member_change_at`/`created_at` same second), and the
+  `GET /api/collections` order was then whatever the query plan emitted. The unit list test
+  (`collections.test.js`) asserted `['B list', 'A list']` — the INSERTION (oldest-first) order
+  the plan happened to return — while the documented chain is `created_at DESC` (newest first).
+  The E2E card assertions (E2E-COLLECTION-002/004) were order-sensitive and flaky against it.
+- **Diagnosis**: neither twin's `activity`/`created`/`updated` ORDER BY chains carried a final
+  deterministic tie-breaker; a tied-key row order is plan-dependent, i.e. not a contract. The
+  stored expectation codified the plan artifact, contradicting routes.md §2.4 / store §2.5
+  ("`created_at` desc").
+- **Classification**: **Case A (Source Error)** for the non-deterministic sort; **Case B (Test
+  Error)** for the unit expectation that asserted the accidental oldest-first order.
+- **Action**: appended `c.id DESC` (newest-first) as the final tie-break to the
+  `activity`/`created`/`updated` sorts in both twins; the decision is written into
+  `docs/spec/server/routes/collections.md` §2.4 and
+  `docs/spec/server/store/collectionsStore.md` §2.5 (docs-first); the `collections.test.js`
+  expectation corrected to `['A list', 'B list']` (newest first — the documented direction).
+- **Verification**: server targeted suites + PG conformance leg green; three consecutive fully
+  green `collections-desktop` E2E runs (9 passed; 36.5 s / 36.5 s / 35.3 s) with no ordering
+  flake.
+
+### 2026-09-23 — E2E-COLLECTION lifecycle run: the documented file-side `Add to collection` entry was unreachable from the explorer (Case A — feature gap, E2E-COLLECTION-002)
+
+- **Summary**: E2E-COLLECTION-002 failed at the first step — the file context menu carried no
+  `collection-add` row, so the whole add/create-and-add flow was unreachable, and the added
+  member's undo toast had no label key.
+- **Diagnosis**: T0.5 shipped the `AddToCollectionMenu` component + repository/gateway seams
+  but left the HOST wiring as the recorded wave-2 residual ("explorer `Add to collection` host
+  wiring" — PLAN.md §9 register); `FileManagerView` never passed `onAddToCollection` into the
+  `interaction` bag, and `collections.undoAdded` (the toast key the flow needs) was absent from
+  the en/ko locale mirror.
+- **Classification**: **Case A (Source Error)** — the implemented-and-specified surface
+  (`docs/spec/client/components/file-manager/AddToCollectionMenu.md` §2.2,
+  CollectionsListView/file-menu §3.1) was not reachable through the documented entry point.
+- **Action**: wired the shell-owned single submenu instance in `pages/FileManager/FileManager.js`
+  (same idiom as `MemberRowControls`/`FileContextMenu`): context-menu dispatch → submenu anchored
+  at the closing menu position, `Add` → `addCollectionItems` + `rejected_not_readable` info +
+  undo toast (`collections.undoAdded`), `New collection` → `createCollection` + add (one
+  command, one undo toast, §2.7), `seedItemVisible=false` (P0: no embed capability, absent-not-
+  disabled §4.12); share-link/trash views withhold the callback (§3.1 set rule); en/ko gained
+  the `undoAdded` mirror key.
+- **Verification**: client targeted suites (`FileManager*|AddToCollection|FileManagerView|
+CollectionsListView|locale` → 24 suites / 328 tests) green; E2E-COLLECTION-002 passes on
+  three consecutive scratch runs.

@@ -389,6 +389,57 @@ describe('POST /api/actions/:id/undo', () => {
     expect(Number(rows[0].cnt)).toBe(0);
   });
 
+  it('undo round-trips REAL store command rows (add-items / remove-items with nested item inverses)', async () => {
+    // RCA 2026-09-23 (found by E2E-COLLECTION-008): the store facade writes
+    // command-unit journal payloads as `items:[{nodeId, kind, inverse:{op,…}}]`
+    // — the executor must apply the NESTED inverse per item. A flat-only
+    // reader marked the row undone while silently skipping every item.
+    const created = await collectionsStore.createCollection(
+      { ownerId: owner.id, name: `Cmd real ${Date.now()}`, origin: 'user' },
+      { actor: owner.id }
+    );
+    const nodeA = (await createTestFileNode({ name: `cmd-real-a-${Date.now()}.txt` })).nodeId;
+    const nodeB = (await createTestFileNode({ name: `cmd-real-b-${Date.now()}.txt` })).nodeId;
+
+    const add = await collectionsStore.addItems(
+      created.id,
+      [nodeA, nodeB],
+      owner.id,
+      {},
+      {
+        actor: owner.id,
+      }
+    );
+    expect(await collectionsStore.getStoredItem(created.id, nodeA)).toBeTruthy();
+
+    const remove = await collectionsStore.removeItems(
+      created.id,
+      { storedNodeIds: [nodeA, nodeB], excludeNodeIds: [] },
+      { actor: owner.id }
+    );
+    expect(await collectionsStore.getStoredItem(created.id, nodeA)).toBeFalsy();
+
+    // Tip undo (remove-items): both stored members return.
+    const undoRemove = await request(app)
+      .post(`/api/actions/${remove.actionId}/undo`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({});
+    expect(undoRemove.status).toBe(200);
+    expect(undoRemove.body).toMatchObject({ status: 'undone', items_undone: 2, items_skipped: 0 });
+    expect(await collectionsStore.getStoredItem(created.id, nodeA)).toBeTruthy();
+    expect(await collectionsStore.getStoredItem(created.id, nodeB)).toBeTruthy();
+
+    // Chain undo of add-items (now the applied tip): both members leave.
+    const undoAdd = await request(app)
+      .post(`/api/actions/${add.actionId}/undo`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({});
+    expect(undoAdd.status).toBe(200);
+    expect(undoAdd.body).toMatchObject({ status: 'undone', items_undone: 2, items_skipped: 0 });
+    expect(await collectionsStore.getStoredItem(created.id, nodeA)).toBeFalsy();
+    expect(await collectionsStore.getStoredItem(created.id, nodeB)).toBeFalsy();
+  });
+
   it('expired rows refuse undo with actions.expired', async () => {
     const created = await collectionsStore.createCollection(
       { ownerId: owner.id, name: 'Expired coll', origin: 'user' },

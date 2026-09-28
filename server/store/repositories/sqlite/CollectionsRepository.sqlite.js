@@ -19,10 +19,13 @@ const {
  */
 module.exports = function createSqliteCollectionsRepository(executor) {
   const collectionSorts = {
-    activity: 'c.activity_score DESC, c.last_member_change_at DESC, c.created_at DESC',
+    // `c.id DESC` is the deterministic tie-breaker (RCA 2026-09-23): second-
+    // granular sqlite timestamps tie on rapid creates, and a plan-dependent
+    // row order is not a contract — newest-first is the §3.1 gravity.
+    activity: 'c.activity_score DESC, c.last_member_change_at DESC, c.created_at DESC, c.id DESC',
     name: 'c.name',
-    created: 'c.created_at DESC',
-    updated: 'c.updated_at DESC',
+    created: 'c.created_at DESC, c.id DESC',
+    updated: 'c.updated_at DESC, c.id DESC',
   };
 
   function placeholders(count) {
@@ -48,9 +51,12 @@ module.exports = function createSqliteCollectionsRepository(executor) {
     async listForUser(userId, { sort, status } = {}) {
       try {
         const order = collectionSorts[sort] || collectionSorts.activity;
-        const statusFilter = status && status !== 'all' ? 'AND c.status = ?' : '';
+        // Store contract: `status` defaults to 'active' (archived rows join the
+        // result only via `listArchived`/`status:'all'` — RCA 2026-09-23).
+        const effectiveStatus = status ?? 'active';
+        const statusFilter = effectiveStatus !== 'all' ? 'AND c.status = ?' : '';
         const params = [Number(userId), Number(userId), Number(userId)];
-        if (status && status !== 'all') params.push(status);
+        if (effectiveStatus !== 'all') params.push(effectiveStatus);
         const { rows } = await executor.query(
           `SELECT c.* FROM collections c
            LEFT JOIN collection_visibility v ON v.collection_id = c.id AND v.user_id = ?

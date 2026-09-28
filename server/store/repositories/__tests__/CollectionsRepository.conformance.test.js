@@ -198,6 +198,44 @@ describe('CollectionsRepository conformance', () => {
       });
     });
 
+    it('listForUser excludes archived rows by default; status:all and listArchived return them', async () => {
+      // Contract pin (collectionsStore.md §2.1, RCA 2026-09-23): the default
+      // status filter is 'active'; archived rows join only via status:'all' or
+      // listArchived, so the __archive__ read never duplicates them.
+      const owner = await uniqueUser();
+      const stamp = Date.now();
+      let liveId;
+      let archivedId;
+      await inTx(async (tx) => {
+        liveId = (
+          await repo.insertCollection(tx, {
+            ownerId: owner.id,
+            name: `Live-${stamp}`,
+            origin: 'user',
+          })
+        ).id;
+        archivedId = (
+          await repo.insertCollection(tx, {
+            ownerId: owner.id,
+            name: `Arch-${stamp}`,
+            origin: 'user',
+          })
+        ).id;
+        await repo.archiveRow(tx, archivedId);
+      });
+
+      const defaultIds = (await repo.listForUser(owner.id, {})).map((r) => Number(r.id));
+      expect(defaultIds).toContain(Number(liveId));
+      expect(defaultIds).not.toContain(Number(archivedId));
+
+      const allIds = (await repo.listForUser(owner.id, { status: 'all' })).map((r) => Number(r.id));
+      expect(allIds).toEqual(expect.arrayContaining([Number(liveId), Number(archivedId)]));
+
+      const archivedIds = (await repo.listArchived(owner.id)).map((r) => Number(r.id));
+      expect(archivedIds).toContain(Number(archivedId));
+      expect(archivedIds).not.toContain(Number(liveId));
+    });
+
     it('name sort is locale-unaware SQL ordering; created/updated sorts return the full set', async () => {
       const owner = await uniqueUser();
       const stamp = Date.now();

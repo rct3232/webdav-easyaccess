@@ -394,9 +394,22 @@ async function listCollections(userId, { sort, include } = {}) {
   if (!includeSet) throw serviceError('invalidInclude');
 
   const storeSort = STORE_SORTS.has(effectiveSort) ? effectiveSort : 'activity';
-  let rows = await collectionsStore.listForUser(userId, { sort: storeSort });
-  if (includeSet.has('archived')) {
-    rows = rows.concat(await collectionsStore.listArchived(userId));
+  // Include-token semantics (routes.md §2.4 Decision, RCA 2026-09-23):
+  //   `mine,shared` → own ACTIVE + granted  (the __collections__ list view)
+  //   `mine,archived` → own ARCHIVED only   (the __archive__ surface + badge:
+  //                    CollectionsSection §2.3 "exactly the status=archived" rows)
+  //   any include carrying `shared` alongside `archived` → the full
+  //                    active ∪ archived ∪ granted set (dashboard status counts).
+  // listForUser defaults to `status='active'` (store contract), so archived rows
+  // can only ever arrive through listArchived — never duplicated.
+  let rows = [];
+  if (includeSet.has('archived') && !includeSet.has('shared')) {
+    rows = await collectionsStore.listArchived(userId);
+  } else {
+    rows = await collectionsStore.listForUser(userId, { sort: storeSort });
+    if (includeSet.has('archived')) {
+      rows = rows.concat(await collectionsStore.listArchived(userId));
+    }
   }
   if (!includeSet.has('shared')) {
     rows = rows.filter((row) => row.ownerId === userId);

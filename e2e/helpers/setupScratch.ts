@@ -111,21 +111,11 @@ export function scratchDirFor(caseId: string): string {
   return path.join(SCRATCH_ROOT, caseId);
 }
 
-/**
- * Ensure `client/build` exists (the scratch server serves the SPA
- * statically, same-origin `/api`). No-op when the build is already present.
- */
+// Build bootstrap delegated to the shared scripts/lib module (single freshness
+// + eslint-disabled build path for ALL E2E entry points — see that file's
+// header for the rationale).
 export function ensureClientBuild(): void {
-  const buildIndex = path.join(rootDir, 'client', 'build', 'index.html');
-  if (fs.existsSync(buildIndex)) return;
-  console.log('[setup-scratch] client/build missing — building client...');
-  const result = spawnSync('npm', ['run', 'build', '--workspace', 'client'], {
-    cwd: rootDir,
-    stdio: 'inherit',
-  });
-  if (result.status !== 0 || !fs.existsSync(buildIndex)) {
-    throw new Error('client build did not produce client/build/index.html');
-  }
+  require('../../scripts/lib/ensureClientBuild.js').ensureClientBuild(rootDir, '[setup-scratch]');
 }
 
 /**

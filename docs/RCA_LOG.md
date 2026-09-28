@@ -804,3 +804,33 @@ IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode repor
 - **Verification**: client targeted suites (`FileManager*|AddToCollection|FileManagerView|
 CollectionsListView|locale` → 24 suites / 328 tests) green; E2E-COLLECTION-002 passes on
   three consecutive scratch runs.
+
+### 2026-09-29 — collections E2E failed in UI mode from the first case: stale `client/build` + CRA bundled-eslint breaking production builds (Case B, test-infra)
+
+- **Summary**: `npm run test:e2e:ui` → `e2e/collections.spec.ts` failed immediately on
+  `collection-section` missing, while the same suite passed 3× green in the authoring worktree.
+  Suite independence itself was verified sound: `playwright test collections --list` maps the
+  spec exclusively to the hermetic `collections-desktop` project (:5013) — no shared-pool
+  double-run.
+- **Diagnosis**: two stacked test-infra defects, both invisible per-worktree:
+  1. Both E2E build entry points (`e2e/helpers/setupScratch.ts` `ensureClientBuild` and
+     `scripts/e2e-serve-client.js`) checked only **existence** of `client/build/index.html`.
+     The main checkout's build dated 2026-09-13 — long before the wave-2/3 collections sources —
+     so every served URL (shared :3000 and scratch :5013) ran a pre-feature SPA; the authoring
+     worktree had built fresh, masking it.
+  2. Forcing a rebuild then failed the CRA build: react-scripts 5.0.1's bundled
+     eslint-webpack-plugin pins `resolvePluginsRelativeTo` to `react-scripts/config`, which under
+     the npm-workspaces hoisted layout does not register `eslint-plugin-react-hooks` — every
+     inline `/* eslint-disable react-hooks/exhaustive-deps */` (useUndoToast, useCollections,
+     CollectionDashboard, useFileManagerDialogs) aborted `react-scripts build` with
+     "Definition for rule ... was not found". The repo lint authority is the root flat
+     `eslint.config.js` (CI gates); CRA's embedded lint is redundant here.
+- **Classification**: **Case B (Test error)** — harness staleness + toolchain config, no spec
+  contract violated; unit/CI gates were not affected (jest has no CRA lint; CI eslint uses the
+  flat config).
+- **Action taken**: converged both entry points into one module
+  `scripts/lib/ensureClientBuild.js`: freshness gate (rebuild when any `client/src`,
+  `client/public` or `shared/` file is newer than the built index) +
+  `DISABLE_ESLINT_PLUGIN=true` for the CRA build. Verified: first run rebuilds (9 passed),
+  second run skips rebuild (0 "rebuilding" lines, 9 passed in 41 s); `--list` re-confirmed the
+  spec maps only to `collections-desktop`.

@@ -15,24 +15,16 @@
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
 
 const rootDir = process.cwd();
 const buildDir = path.join(rootDir, 'client', 'build');
 const port = Number(process.env.PORT || 3000);
 const apiTarget = `http://127.0.0.1:${process.env.REACT_APP_API_PORT || process.env.API_PORT || 5002}`;
 
-function ensureClientBuild() {
-  if (fs.existsSync(path.join(buildDir, 'index.html'))) return;
-  console.log('[e2e-serve-client] client/build missing — building client...');
-  const result = spawnSync('npm', ['run', 'build', '--workspace', 'client'], {
-    cwd: rootDir,
-    stdio: 'inherit',
-  });
-  if (result.status !== 0 || !fs.existsSync(path.join(buildDir, 'index.html'))) {
-    throw new Error('client build did not produce client/build/index.html');
-  }
-}
+// Freshness-gated build with CRA's broken bundled eslint disabled — shared
+// module so the platform webServer and the hermetic suites never diverge
+// (see scripts/lib/ensureClientBuild.js header for the rationale).
+const { ensureClientBuild } = require('./lib/ensureClientBuild.js');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -91,7 +83,7 @@ function proxyApi(req, res) {
   req.pipe(proxyReq);
 }
 
-ensureClientBuild();
+ensureClientBuild(rootDir, '[e2e-serve-client]');
 
 const server = http.createServer((req, res) => {
   if (req.url.startsWith('/api/')) {

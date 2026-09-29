@@ -422,3 +422,29 @@ config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
   `recordEntryClick(nodeId)`; `clearRecentQueries()` joins
   `useAuthSession.logout`. Search-origin server-side collection creation
   (flattening + confirm dialog copy) rides T1.5.
+
+## 10. UI polish waves (P0→P1 bridge)
+
+> Owner-adjudicated 2026-09-29 (briefing approved). Binding decisions: Path 1 — the viewer
+> `Leave` becomes a REAL self-grant revocation (`DELETE /api/collections/:id/grants/me`,
+> labels unified with the file-sharing receiver term: EN "Revoke permission" / KO "권한 반납";
+> the §3.1/§4.7 "recipient-local hide" wording is amended docs-first, `hiddenIds` view-local
+> hide removed); grid-parity cards with 2×2 recent-member previews (no name labels,
+> icon→batched-thumbnail swap, revoked/shared_excluded excluded, `preview_items` from the
+> already-resolved rows + one mime field); file-parity click semantics (single=select,
+> double=open, mobile tap=open; card menu loses `open`); selection bar = fixed set by
+> surface like files (active: Pin/Unpin/Archive; archive view: Restore/Delete — no
+> Rename/Leave/Sharing); one context-aware sort button (private menu deleted, ephemeral
+> state); member view modes with per-surface storage key (`collectionMemberViewMode`,
+> default grid, file browse untouched); member publish ships its spec'd route
+> (`PUT /:id/items/publish` — client seam URL corrected, owner `granted_role` visibility
+> bug fixed); Likes as a Collections-section child row (`/files/__collections__/liked`,
+> `GET /api/file-likes/items`, reuses the member machinery).
+
+- P-1 Path-1 grants/me endpoint + label unification + spec amendments — S–M | `[wip]`
+- P-2 sort-button context awareness (C2) + E2E sort coverage — S–M | `[wip]`
+- P-3 shared tile/grid extraction, preview quadrant, click model, selection bar, toggle hiding (C1) — M+ | `[todo]`
+- P-4 member view modes + publish route + granted_role fix (C3) — L | `[todo]`
+- P-5 Likes child-row + liked-items endpoint (C4) — L | `[todo]`
+
+Order: P-1 ∥ P-2 → P-3 → P-4 → P-5 (P-5 server part may join P-4).

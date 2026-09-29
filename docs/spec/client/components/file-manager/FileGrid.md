@@ -53,8 +53,8 @@
 
 ### 2.4 Dependencies
 
-- **imports:** React, Box, useFileViewCommon, useResponsive, useThumbnailLazyLoad, FileGridSkeleton, FileGridItem
-- **Layout:** CSS Grid via Box `sx` (no MUI Grid)
+- **imports:** React, Box, useFileViewCommon, useResponsive, useThumbnailLazyLoad, FileGridSkeleton, FileGridItemContainer, ResponsiveCardGrid (shared grid container — P-3 extraction)
+- **Layout:** CSS Grid via the shared `ResponsiveCardGrid` container (see `ResponsiveCardGrid.md`; FileGrid supplies cells + the full-span load-more sentinel). The responsive column contract below is the container's, unchanged by the extraction.
 - **Reference implementation:** `client/src/components/file-manager/FileGrid.js`
 
 ### 2.5 i18n Keys

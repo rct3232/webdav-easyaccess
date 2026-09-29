@@ -16,13 +16,19 @@ import {
 import { loginWithCredentials } from './helpers/auth';
 import {
   buildName,
+  createFolderAt,
   fileItem,
   flushPrivateWorkspaceCleanups,
   openPrivateWorkspace,
   readTestFileFixture,
   uploadFileAt,
 } from './helpers/files';
-import { getSessionToken, gotoFilesPath, resolveNodeId } from './helpers/resolvePath';
+import {
+  getSessionToken,
+  gotoFilesPath,
+  resolveNodeId,
+  resolvePathOrNull,
+} from './helpers/resolvePath';
 import { rightClickItem } from './helpers/desktop-interactions';
 import { setCollectionSort } from './helpers/explorer-controls';
 
@@ -144,6 +150,15 @@ async function openCardMenu(page: Page, name: string, action: string): Promise<v
   await page.getByTestId(`card-menu-option-${action}`).click();
 }
 
+/** File-parity open (P-3): double-click the card body (menu button sits top-right). */
+async function openCollectionCard(page: Page, name: string): Promise<void> {
+  const card = collectionCard(page, name);
+  await expect(card).toBeVisible({ timeout: 10_000 });
+  // dblclick the tile corner: the media area hosts the click target while the
+  // ⋮ menu button keeps its own (stopPropagation) click region top-right.
+  await card.dblclick({ position: { x: 8, y: 8 } });
+}
+
 /** File context menu → Add to collection → inline New collection (name + Enter). */
 async function uiCreateCollectionWithFile(page: Page, filePath: string, name: string) {
   trackedCollections.push(name);
@@ -172,6 +187,34 @@ async function loginAndOpenWorkspace(
   await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
   const base = await openPrivateWorkspace(page, request, testInfo);
   const token = await getSessionToken(page);
+  return { base, token };
+}
+
+/**
+ * P-3 preview coverage: like `openPrivateWorkspace`, but the case folder lives
+ * under the seeded admin's HOME node (`/admin`). Case folders at the filesystem
+ * ROOT are foreign-owned per the ancestry ownership model
+ * (`ownerNodeResolver.isOwnerNode`), so their collection members legitimately
+ * render as `shared_excluded` and are EXCLUDED from card previews by the
+ * binding filter (`routes/collections.md` preview_items). Members under the
+ * home root resolve as owner-owned, exercising the 2×2 preview path.
+ */
+async function loginAndOpenOwnedWorkspace(
+  page: Page,
+  request: APIRequestContext,
+  testInfo: TestInfo
+): Promise<{ base: string; token: string }> {
+  const name = buildName(testInfo, 'workspace');
+  await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
+  await page.goto('/files');
+  const token = await getSessionToken(page);
+  if ((await resolvePathOrNull(request, token, '/admin')) === null) {
+    await createFolderAt(request, token, null, 'admin');
+  }
+  const homeId = await resolveNodeId(request, token, '/admin');
+  await createFolderAt(request, token, homeId, name);
+  const base = `admin/${name}`;
+  await gotoFilesPath(page, request, `/${base}`);
   return { base, token };
 }
 
@@ -280,7 +323,9 @@ test('E2E-COLLECTION-002: Add-to-collection submenu creates a collection inline,
   page,
   request,
 }, testInfo) => {
-  const { base, token } = await loginAndOpenWorkspace(page, request, testInfo);
+  // P-3: owned-home workspace so the 2×2 card preview renders owner-owned
+  // members (root-level case folders are foreign-owner → preview-excluded).
+  const { base, token } = await loginAndOpenOwnedWorkspace(page, request, testInfo);
   const fileA = await seedFile(request, token, base, testInfo, 'col002-a');
   const fileB = await seedFile(request, token, base, testInfo, 'col002-b');
   await gotoFilesPath(page, request, `/${base}`);
@@ -300,7 +345,11 @@ test('E2E-COLLECTION-002: Add-to-collection submenu creates a collection inline,
   await page.goto('/files/__collections__');
   await expect(collectionCard(page, name)).toContainText('2 items');
 
-  await openCardMenu(page, name, 'open');
+  // P-3 previews: the card media area carries one cell per recent member.
+  await expect(page.getByTestId(`collection-preview-${fileA.nodeId}`)).toBeVisible();
+  await expect(page.getByTestId(`collection-preview-${fileB.nodeId}`)).toBeVisible();
+
+  await openCollectionCard(page, name);
   await expect(page.getByTestId('members-list')).toBeVisible();
   await expect(page.locator('[data-testid^="member-row-"]')).toHaveCount(2);
 });
@@ -325,7 +374,7 @@ test('E2E-COLLECTION-003: Re-opening a collection member view reports the digest
 
   // First visit stores the client-side digest cursor for this collection.
   await page.goto('/files/__collections__');
-  await openCardMenu(page, name, 'open');
+  await openCollectionCard(page, name);
   await expect(page.getByTestId('members-list')).toBeVisible();
   await expect(page.getByTestId('digest-banner')).toHaveCount(0);
 
@@ -336,7 +385,7 @@ test('E2E-COLLECTION-003: Re-opening a collection member view reports the digest
   await addItemsApi(request, token, collectionId, [fileB.nodeId]);
 
   await page.goto('/files/__collections__');
-  await openCardMenu(page, name, 'open');
+  await openCollectionCard(page, name);
   await expect(page.getByTestId('digest-banner')).toContainText(/\+1\s*\/\s*-0/);
 });
 
@@ -478,7 +527,7 @@ test('E2E-COLLECTION-008: Member row menu excludes a file with undo and exposes 
   await addItemsApi(request, token, collectionId, [fileA.nodeId, fileB.nodeId]);
 
   await page.goto('/files/__collections__');
-  await openCardMenu(page, name, 'open');
+  await openCollectionCard(page, name);
   const rowB = page.getByTestId(`member-row-${fileB.nodeId}`);
   await expect(rowB).toBeVisible();
   await expect(page.getByTestId(`member-row-${fileA.nodeId}`)).toBeVisible();
@@ -511,7 +560,7 @@ test('E2E-COLLECTION-008: Member row menu excludes a file with undo and exposes 
     .toBe(true);
 
   await page.goto('/files/__collections__');
-  await openCardMenu(page, name, 'open');
+  await openCollectionCard(page, name);
   await expect(page.getByTestId(`member-row-${fileB.nodeId}`)).toBeVisible();
 });
 

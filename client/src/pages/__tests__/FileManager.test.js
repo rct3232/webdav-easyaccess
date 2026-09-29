@@ -1705,6 +1705,210 @@ describe('FileManager', () => {
       expect(await screen.findByText('No collections yet')).toBeInTheDocument();
       expect(screen.queryByTestId('collection-card-3')).not.toBeInTheDocument();
     }, 15000);
+
+    /**
+     * P-3 — card grid parity shell wiring: synthetic-key selection, double-open
+     * routing, surface-aware select-all, and the bulk cluster looping the
+     * existing single-collection calls.
+     */
+    describe('P-3 card selection, double-open and bulk bar', () => {
+      const cardA = { ...ownCard, collection_id: 1, name: 'Roadtrip', preview_items: [] };
+      const cardB = {
+        ...ownCard,
+        collection_id: 2,
+        name: 'Studio',
+        preview_items: [{ node_id: 88, name: 'a.jpg', type: 'file', mime: 'image/jpeg' }],
+      };
+      const twoCards = [cardA, cardB];
+
+      const twoCardHandlers = ({ archived = false, calls = {} } = {}) => [
+        http.get('/api/collections', ({ request }) => {
+          const include = new URL(request.url).searchParams.get('include');
+          calls.listInclude = include;
+          if (archived) {
+            return HttpResponse.json({
+              collections: [
+                { ...cardA, status: 'archived' },
+                { ...cardB, status: 'archived' },
+              ],
+            });
+          }
+          return HttpResponse.json({
+            collections: include === 'mine,archived' ? [] : twoCards,
+          });
+        }),
+        http.get('/api/collections/merge-suggestions', () =>
+          HttpResponse.json({ suggestions: [] })
+        ),
+        http.put('/api/collections/:id', async ({ request }) => {
+          const body = await request.json();
+          (calls.puts ??= []).push({
+            id: new URL(request.url).pathname.split('/').pop(),
+            body,
+          });
+          return HttpResponse.json({
+            collection: { ...cardA, ...body },
+            undo: { action_id: 100 + calls.puts.length },
+          });
+        }),
+        http.post('/api/collections/:id/archive', async ({ request }) => {
+          (calls.archives ??= []).push(new URL(request.url).pathname);
+          return HttpResponse.json({
+            collection: { ...cardA, status: 'archived' },
+            undo: { action_id: 7 },
+          });
+        }),
+        http.post('/api/collections/:id/restore', async ({ request }) => {
+          (calls.restores ??= []).push(new URL(request.url).pathname);
+          return HttpResponse.json({
+            collection: { ...cardA, status: 'active' },
+            undo: { action_id: 8 },
+          });
+        }),
+        http.delete('/api/collections/:id', ({ request }) => {
+          (calls.deletes ??= []).push(new URL(request.url).pathname);
+          return new HttpResponse(null, { status: 204 });
+        }),
+      ];
+
+      it('single click selects the card (synthetic key) and the toolbar shows the fixed bulk set', async () => {
+        server.use(...twoCardHandlers());
+        await renderWithProvidersAct(<FileManagerWithRoutes />, {
+          initialEntries: ['/files/__collections__'],
+        });
+
+        fireEvent.click(await screen.findByTestId('collection-card-1'));
+        expect(screen.getByText('1 selected')).toBeInTheDocument();
+        expect(screen.getByTestId('bulk-collections-pin')).toBeInTheDocument();
+        expect(screen.getByTestId('bulk-collections-unpin')).toBeInTheDocument();
+        expect(screen.getByTestId('bulk-collections-archive')).toBeInTheDocument();
+        expect(screen.queryByTestId('bulk-action-move')).not.toBeInTheDocument();
+
+        // select-all now feeds CARD keys (not file rows): 2 selected.
+        fireEvent.click(screen.getByText('Select all'));
+        expect(await screen.findByText('2 selected')).toBeInTheDocument();
+      }, 15000);
+
+      it('double click opens the member route through the existing card-action path', async () => {
+        server.use(
+          ...twoCardHandlers(),
+          http.get('/api/collections/1/items', () =>
+            HttpResponse.json({ items: [], next_cursor: null })
+          )
+        );
+        await renderWithProvidersAct(<FileManagerWithRoutes />, {
+          initialEntries: ['/files/__collections__'],
+        });
+
+        const cardEl = await screen.findByTestId('collection-card-1');
+        fireEvent.click(cardEl);
+        fireEvent.click(cardEl);
+
+        expect(await screen.findByTestId('members-list')).toBeInTheDocument();
+      }, 15000);
+
+      it('bulk pin loops the existing PUT call once per selected card and exits selection', async () => {
+        const calls = {};
+        server.use(...twoCardHandlers({ calls }));
+        await renderWithProvidersAct(<FileManagerWithRoutes />, {
+          initialEntries: ['/files/__collections__'],
+        });
+
+        fireEvent.click(await screen.findByTestId('collection-card-1'));
+        fireEvent.click(screen.getByTestId('collection-card-2'), { ctrlKey: true });
+        expect(screen.getByText('2 selected')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('bulk-collections-pin'));
+        await waitFor(() => expect(calls.puts).toHaveLength(2));
+        expect(calls.puts.map((entry) => entry.id).sort()).toEqual(['1', '2']);
+        expect(calls.puts.every((entry) => entry.body.pinned === true)).toBe(true);
+        // selection cleared after the batch (files parity)
+        await waitFor(() => expect(screen.queryByText('2 selected')).not.toBeInTheDocument());
+      }, 15000);
+
+      it('bulk archive asks ONE confirm covering the batch, then posts per collection', async () => {
+        const calls = {};
+        server.use(...twoCardHandlers({ calls }));
+        await renderWithProvidersAct(<FileManagerWithRoutes />, {
+          initialEntries: ['/files/__collections__'],
+        });
+
+        fireEvent.click(await screen.findByTestId('collection-card-1'));
+        fireEvent.click(screen.getByTestId('collection-card-2'), { ctrlKey: true });
+        fireEvent.click(screen.getByTestId('bulk-collections-archive'));
+
+        // ONE dialog covers the batch and lists both names.
+        expect(await screen.findByText(/\(Roadtrip, Studio\)/)).toBeInTheDocument();
+        fireEvent.click(screen.getByTestId('confirm-dialog-confirm'));
+
+        await waitFor(() => expect(calls.archives).toHaveLength(2));
+      }, 15000);
+
+      it('archive view: bulk delete-permanent keeps the TWO-step and deletes both', async () => {
+        const calls = {};
+        server.use(...twoCardHandlers({ archived: true, calls }));
+        await renderWithProvidersAct(<FileManagerWithRoutes />, {
+          initialEntries: ['/files/__collections__/__archive__'],
+        });
+
+        // archive surface shows Restore · Delete permanently (no Pin set)
+        fireEvent.click(await screen.findByTestId('collection-card-1'));
+        fireEvent.click(screen.getByTestId('collection-card-2'), { ctrlKey: true });
+        expect(screen.getByTestId('bulk-collections-restore')).toBeInTheDocument();
+        expect(screen.getByTestId('bulk-collections-delete-permanent')).toBeInTheDocument();
+        expect(screen.queryByTestId('bulk-collections-pin')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('bulk-collections-delete-permanent'));
+        expect(await screen.findByText(/\(Roadtrip, Studio\)/)).toBeInTheDocument();
+        fireEvent.click(screen.getByTestId('confirm-dialog-confirm'));
+
+        // second step of the trash-parity confirm (same batch names)
+        await screen.findByText(/\(Roadtrip, Studio\)/);
+        fireEvent.click(screen.getByTestId('confirm-dialog-confirm'));
+
+        await waitFor(() => expect(calls.deletes).toHaveLength(2));
+        expect(calls.deletes.map((path) => path.split('/').pop()).sort()).toEqual(['1', '2']);
+      }, 15000);
+
+      it('card click on the menu button opens the card menu without touching selection', async () => {
+        server.use(...twoCardHandlers());
+        await renderWithProvidersAct(<FileManagerWithRoutes />, {
+          initialEntries: ['/files/__collections__'],
+        });
+
+        fireEvent.click(await screen.findByTestId('card-menu-button-1'));
+        expect(await screen.findByTestId('card-menu-option-rename')).toBeInTheDocument();
+        expect(screen.queryByTestId('card-menu-option-open')).not.toBeInTheDocument();
+        expect(screen.queryByText('1 selected')).not.toBeInTheDocument();
+      }, 15000);
+
+      it('two quick clicks on DIFFERENT cards select twice — never open (same-entry window)', async () => {
+        server.use(...twoCardHandlers());
+        await renderWithProvidersAct(<FileManagerWithRoutes />, {
+          initialEntries: ['/files/__collections__'],
+        });
+
+        fireEvent.click(await screen.findByTestId('collection-card-1'));
+        fireEvent.click(screen.getByTestId('collection-card-2'));
+        expect(screen.getByText('1 selected')).toBeInTheDocument();
+        expect(screen.queryByTestId('members-list')).not.toBeInTheDocument();
+      }, 15000);
+
+      it('preview cell renders from preview_items with the lazy-load DOM contract', async () => {
+        server.use(...twoCardHandlers());
+        await renderWithProvidersAct(<FileManagerWithRoutes />, {
+          initialEntries: ['/files/__collections__'],
+        });
+
+        // card 2 carries preview_items [{node_id: 88}] — the cell exists with the
+        // data-file-node-id contract the shared lazy-load mechanism scans.
+        const cell = await screen.findByTestId('collection-preview-88');
+        expect(cell).toHaveAttribute('data-file-node-id', '88');
+        expect(cell.querySelector('img')).not.toBeInTheDocument();
+        // no member filename label
+        expect(screen.queryByText('a.jpg')).not.toBeInTheDocument();
+      }, 15000);
+    });
   });
 
   /**

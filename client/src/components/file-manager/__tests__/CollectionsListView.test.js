@@ -1,11 +1,25 @@
 /**
  * CollectionsListView tests.
- * @see docs/spec/client/components/file-manager/CollectionsListView.md (§2.4, §2.5, §2.8)
+ * @see docs/spec/client/components/file-manager/CollectionsListView.md (§2.3, §2.4, §2.5, §2.8)
  */
 import React from 'react';
 import { screen, fireEvent, within } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import CollectionsListView from '../CollectionsListView';
+import { useResponsive } from '../../../hooks/useResponsive';
+
+jest.mock('../../../hooks/useResponsive', () => {
+  const { createUseResponsiveModuleMock } = require('../../../testing/mocks/useResponsiveMock');
+  const base = createUseResponsiveModuleMock();
+  return { ...base, useResponsive: jest.fn(base.useResponsive) };
+});
+
+jest.mock('../../../hooks/useThumbnailLazyLoad', () => ({
+  __esModule: true,
+  useThumbnailLazyLoad: jest.fn(),
+}));
+
+import { useThumbnailLazyLoad } from '../../../hooks/useThumbnailLazyLoad';
 
 const card = (overrides = {}) => ({
   collection_id: 1,
@@ -16,6 +30,7 @@ const card = (overrides = {}) => ({
   granted_role: null,
   pinned: false,
   pinned_by: null,
+  preview_items: [],
   ...overrides,
 });
 
@@ -24,11 +39,18 @@ const listProps = () => ({
   collections: [card()],
   sort: 'activity',
   onCardAction: jest.fn(),
+  onCardClick: jest.fn(),
+  onCardLongPressSelect: jest.fn(),
 });
 
 const openCardMenu = (id = 1) => {
   fireEvent.click(screen.getByTestId(`card-menu-button-${id}`));
 };
+
+beforeEach(() => {
+  useResponsive.mockReturnValue({ isMobile: false, isTablet: false, isDesktop: true });
+  useThumbnailLazyLoad.mockClear();
+});
 
 describe('CollectionsListView — list mode', () => {
   it('renders collection cards with name and item count', () => {
@@ -108,19 +130,20 @@ describe('CollectionsListView — list mode', () => {
     );
   });
 
-  it('own ACTIVE card menu: open/rename/pin/archive/sharing — NO permanent delete', () => {
+  it('own ACTIVE card menu: rename/pin/archive/sharing — NO open, NO permanent delete (P-3)', () => {
     const props = listProps();
     renderWithProviders(<CollectionsListView {...props} />);
     openCardMenu();
-    ['open', 'rename', 'pin', 'archive', 'sharing'].forEach((action) => {
+    ['rename', 'pin', 'archive', 'sharing'].forEach((action) => {
       expect(screen.getByTestId(`card-menu-option-${action}`)).toBeInTheDocument();
     });
+    expect(screen.queryByTestId('card-menu-option-open')).not.toBeInTheDocument();
     expect(screen.queryByTestId('card-menu-option-delete-permanent')).not.toBeInTheDocument();
     expect(screen.queryByTestId('card-menu-option-restore')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByTestId('card-menu-option-open'));
+    fireEvent.click(screen.getByTestId('card-menu-option-rename'));
     expect(props.onCardAction).toHaveBeenCalledWith(
-      'open',
+      'rename',
       expect.objectContaining({ collection_id: 1 })
     );
   });
@@ -185,14 +208,14 @@ describe('CollectionsListView — list mode', () => {
     expect(props.onCardAction).toHaveBeenCalledTimes(1);
   });
 
-  it('viewer-received card menu is exactly open + revoke-permission, NO mutation entries', () => {
+  it('viewer-received card menu is exactly revoke-permission, NO open/mutation entries', () => {
     const props = listProps();
     props.collections = [card({ granted_role: 'viewer' })];
     renderWithProviders(<CollectionsListView {...props} />);
     openCardMenu();
-    expect(screen.getByTestId('card-menu-option-open')).toBeInTheDocument();
     expect(screen.getByTestId('card-menu-option-revoke-permission')).toBeInTheDocument();
     expect(screen.getByText('Revoke permission')).toBeInTheDocument();
+    expect(screen.queryByTestId('card-menu-option-open')).not.toBeInTheDocument();
     expect(screen.queryByTestId('card-menu-option-leave')).not.toBeInTheDocument();
     ['rename', 'pin', 'unpin', 'archive', 'restore', 'sharing', 'delete-permanent'].forEach(
       (action) => {
@@ -233,6 +256,198 @@ describe('CollectionsListView — list mode', () => {
     // state, so the card stays until the next list read omits it
     expect(screen.getByTestId('collection-card-4')).toBeInTheDocument();
     expect(screen.getByTestId('collection-card-1')).toBeInTheDocument();
+  });
+});
+
+describe('CollectionsListView — card click parity & previews (P-3)', () => {
+  it('desktop: single click dispatches onCardClick; same-card double click opens', () => {
+    const props = listProps();
+    renderWithProviders(<CollectionsListView {...props} />);
+    const cardEl = screen.getByTestId('collection-card-1');
+    fireEvent.click(cardEl);
+    expect(props.onCardClick).toHaveBeenCalledWith(
+      expect.objectContaining({ collection_id: 1 }),
+      expect.any(Object)
+    );
+    fireEvent.click(cardEl);
+    expect(props.onCardAction).toHaveBeenCalledWith(
+      'open',
+      expect.objectContaining({ collection_id: 1 })
+    );
+    expect(props.onCardClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('desktop: two quick clicks on DIFFERENT cards select twice — never open', () => {
+    const props = listProps();
+    props.collections = [card({ collection_id: 1 }), card({ collection_id: 2, name: 'B' })];
+    renderWithProviders(<CollectionsListView {...props} />);
+    fireEvent.click(screen.getByTestId('collection-card-1'));
+    fireEvent.click(screen.getByTestId('collection-card-2'));
+    expect(props.onCardAction).not.toHaveBeenCalledWith('open', expect.anything());
+    expect(props.onCardClick).toHaveBeenCalledTimes(2);
+  });
+
+  it('mobile: tap opens directly (files parity — no selection dispatch)', () => {
+    useResponsive.mockReturnValue({ isMobile: true, isTablet: false, isDesktop: false });
+    const props = listProps();
+    renderWithProviders(<CollectionsListView {...props} />);
+    fireEvent.click(screen.getByTestId('collection-card-1'));
+    expect(props.onCardAction).toHaveBeenCalledWith(
+      'open',
+      expect.objectContaining({ collection_id: 1 })
+    );
+    expect(props.onCardClick).not.toHaveBeenCalled();
+  });
+
+  it('mobile: tap while selectionMode dispatches onCardClick (toggle semantics live shell-side)', () => {
+    useResponsive.mockReturnValue({ isMobile: true, isTablet: false, isDesktop: false });
+    const props = listProps();
+    renderWithProviders(<CollectionsListView {...props} selectionMode selectedFiles={new Set()} />);
+    fireEvent.click(screen.getByTestId('collection-card-1'));
+    expect(props.onCardClick).toHaveBeenCalledWith(
+      expect.objectContaining({ collection_id: 1 }),
+      expect.any(Object)
+    );
+    expect(props.onCardAction).not.toHaveBeenCalledWith('open', expect.anything());
+  });
+
+  it('mobile: long-press dispatches onCardLongPressSelect', () => {
+    useResponsive.mockReturnValue({ isMobile: true, isTablet: false, isDesktop: false });
+    jest.useFakeTimers();
+    const props = listProps();
+    renderWithProviders(<CollectionsListView {...props} />);
+    fireEvent.touchStart(screen.getByTestId('collection-card-1'));
+    jest.advanceTimersByTime(600);
+    expect(props.onCardLongPressSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ collection_id: 1 })
+    );
+    jest.useRealTimers();
+  });
+
+  it('card container carries the synthetic selection path key', () => {
+    renderWithProviders(<CollectionsListView {...listProps()} />);
+    expect(screen.getByTestId('collection-card-1')).toHaveAttribute(
+      'data-file-path',
+      '/__collections__/collection/1'
+    );
+  });
+
+  it('selected card renders the shared tile selected background; menu action hides in selectionMode', () => {
+    const props = listProps();
+    renderWithProviders(
+      <CollectionsListView
+        {...props}
+        selectionMode
+        selectedFiles={new Set(['/__collections__/collection/1'])}
+      />
+    );
+    const cardEl = screen.getByTestId('collection-card-1');
+    expect(cardEl.querySelector('.MuiCard-root')).toHaveStyle({
+      backgroundColor: 'rgba(65, 103, 186, 0.12)',
+    });
+    expect(screen.queryByTestId('card-menu-button-1')).not.toBeInTheDocument();
+  });
+
+  it('renders up to 4 preview cells with data-file-node-id icons and NO member filename labels', () => {
+    const props = listProps();
+    props.collections = [
+      card({
+        preview_items: [
+          { node_id: 11, name: 'beach.jpg', type: 'file', mime: 'image/jpeg' },
+          { node_id: 12, name: 'map.png', type: 'file', mime: 'image/png' },
+          { node_id: 13, name: 'note.txt', type: 'file', mime: null },
+          { node_id: 14, name: 'clip.mp4', type: 'file', mime: 'video/mp4' },
+          { node_id: 15, name: 'never.jpg', type: 'file', mime: 'image/jpeg' },
+        ],
+      }),
+    ];
+    renderWithProviders(<CollectionsListView {...props} />);
+    [11, 12, 13, 14].forEach((id) => {
+      const cell = screen.getByTestId(`collection-preview-${id}`);
+      expect(cell).toHaveAttribute('data-file-node-id', String(id));
+      expect(cell.querySelector('.MuiSvgIcon-root')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('collection-preview-15')).not.toBeInTheDocument();
+    expect(screen.queryByText('beach.jpg')).not.toBeInTheDocument();
+  });
+
+  it('preview cell swaps icon→thumbnail from the shell-held previewThumbnails map', () => {
+    const props = listProps();
+    props.collections = [
+      card({
+        preview_items: [
+          { node_id: 11, name: 'beach.jpg', type: 'file', mime: 'image/jpeg' },
+          { node_id: 12, name: 'map.png', type: 'file', mime: 'image/png' },
+        ],
+      }),
+    ];
+    const rendered = renderWithProviders(<CollectionsListView {...props} />);
+    rendered.rerender(
+      <CollectionsListView {...props} previewThumbnails={new Map([[11, '/thumbs/11.jpg']])} />
+    );
+    const swapped = screen.getByTestId('collection-preview-11').querySelector('img');
+    expect(swapped).toHaveAttribute('src', '/thumbs/11.jpg');
+    expect(
+      screen.getByTestId('collection-preview-12').querySelector('.MuiSvgIcon-root')
+    ).toBeInTheDocument();
+  });
+
+  it('empty preview_items ⇒ placeholder glyph, no cells', () => {
+    renderWithProviders(<CollectionsListView {...listProps()} />);
+    expect(document.querySelectorAll('[data-testid^="collection-preview-"]').length).toBe(0);
+  });
+
+  it('runs the batched lazy-load hook instance over the flattened preview rows', () => {
+    const props = listProps();
+    props.onPreviewThumbnailsLoaded = jest.fn();
+    props.collections = [
+      card({
+        collection_id: 1,
+        preview_items: [{ node_id: 11, name: 'a.jpg', type: 'file', mime: 'image/jpeg' }],
+      }),
+      card({
+        collection_id: 2,
+        name: 'B',
+        preview_items: [{ node_id: 21, name: 'b.png', type: 'file', mime: null }],
+      }),
+    ];
+    renderWithProviders(<CollectionsListView {...props} />);
+    expect(useThumbnailLazyLoad).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ nodeId: 11 }),
+        expect.objectContaining({ nodeId: 21 }),
+      ]),
+      props.onPreviewThumbnailsLoaded,
+      {}
+    );
+  });
+
+  it('bulk archive confirm: one hosted dialog listing names; confirm dispatches onBulkConfirm', () => {
+    const props = {
+      ...listProps(),
+      bulkConfirm: { step: 'archive', ids: [1], names: ['Roadtrip'] },
+      onBulkConfirm: jest.fn(),
+      onBulkConfirmDismiss: jest.fn(),
+    };
+    renderWithProviders(<CollectionsListView {...props} />);
+    expect(screen.getByText(/\(Roadtrip\)/)).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('confirm-dialog-confirm'));
+    expect(props.onBulkConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('bulk permanent delete: the batch is covered by the two-step host (step prop drives copy)', () => {
+    const props = {
+      ...listProps(),
+      bulkConfirm: { step: 'delete-1', ids: [1, 2], names: ['Roadtrip', 'Other'] },
+      onBulkConfirm: jest.fn(),
+      onBulkConfirmDismiss: jest.fn(),
+    };
+    renderWithProviders(<CollectionsListView {...props} />);
+    expect(screen.getByText(/Roadtrip, Other\)/)).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('confirm-dialog-confirm'));
+    expect(props.onBulkConfirm).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByTestId('confirm-dialog-cancel'));
+    expect(props.onBulkConfirmDismiss).toHaveBeenCalledTimes(1);
   });
 });
 

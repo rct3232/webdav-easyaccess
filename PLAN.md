@@ -443,7 +443,7 @@ config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
 
 - P-1 Path-1 grants/me endpoint + label unification + spec amendments — S–M | `[wip]`
 - P-2 sort-button context awareness (C2) + E2E sort coverage — S–M | `[wip]`
-- P-3 shared tile/grid extraction, preview quadrant, click model, selection bar, toggle hiding (C1) — M+ | `[todo]`
+- P-3 shared tile/grid extraction, preview quadrant, click model, selection bar, toggle hiding (C1) — M+ | `[wip]` 2026-09-29: branch `feature/polish-p3-card-grid` — docs+server(payload)+client(impl+tests) committed; FileGrid\*/FileGridItem anchors unchanged-green; full client 1753, server collections 91, e2e collections-desktop 10/10; awaits orchestrator full gates/E2E.
 - P-4 member view modes + publish route + granted_role fix (C3) — L | `[todo]`
 - P-5 Likes child-row + liked-items endpoint (C4) — L | `[todo]`
 

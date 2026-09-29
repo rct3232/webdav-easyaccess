@@ -7,6 +7,7 @@ import { FileGridSkeleton } from './FileSkeletons';
 import { useThumbnailLazyLoad } from '../../hooks/useThumbnailLazyLoad';
 import { getEntryKey } from '../../utils/fileViewUtils';
 import FileGridItemContainer from './FileGridItemContainer';
+import ResponsiveCardGrid, { CardGridSpan } from './ResponsiveCardGrid';
 
 const FileGrid = ({
   files,
@@ -66,22 +67,7 @@ const FileGrid = ({
   }
 
   return (
-    <Box
-      ref={gridRef}
-      sx={{
-        display: 'grid',
-        gridTemplateColumns: {
-          xs: 'repeat(2, 1fr)',
-          sm: 'repeat(3, 1fr)',
-          md: 'repeat(4, 1fr)',
-          lg: 'repeat(6, 1fr)',
-          xl: 'repeat(auto-fill, minmax(150px, 1fr))',
-        },
-        gap: { xs: 1.5, md: 2 },
-        position: 'relative',
-        minHeight: 'auto',
-      }}
-    >
+    <ResponsiveCardGrid ref={gridRef}>
       {files.map((file, index) => {
         const { isSelected, isDisabled, isProcessing, processingType, isPermissionDisabled } =
           getFileState(file);
@@ -116,18 +102,12 @@ const FileGrid = ({
         );
       })}
       {hasMore && (
-        <Box
+        <CardGridSpan
           ref={loadMoreRef}
-          sx={{
-            gridColumn: '1 / -1',
-            height: 20,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
+          sx={{ height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         />
       )}
-    </Box>
+    </ResponsiveCardGrid>
   );
 };
 

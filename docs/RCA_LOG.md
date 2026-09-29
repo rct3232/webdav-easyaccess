@@ -834,3 +834,22 @@ CollectionsListView|locale` → 24 suites / 328 tests) green; E2E-COLLECTION-002
   `DISABLE_ESLINT_PLUGIN=true` for the CRA build. Verified: first run rebuilds (9 passed),
   second run skips rebuild (0 "rebuilding" lines, 9 passed in 41 s); `--list` re-confirmed the
   spec maps only to `collections-desktop`.
+
+### 2026-09-29 — P-3 E2E-002 preview assertion found empty `preview_items`: root-level workspaces are foreign-owned (Case B — test fixture)
+
+- **Summary**: after the P-3 server payload shipped `preview_items`, `E2E-COLLECTION-002` still
+  rendered zero preview cells; the API returned `item_count: 2` with `preview_items: []`.
+- **Evidence**: scratch-server trace of the resolved member view rows — every row arrived with
+  `sharedExcluded: true, state: 'normal'`. `isOwnerNode(ownerId, nodeId)` resolves ownership
+  through the closure table against the user's HOME root (`parent_id IS NULL AND name =
+username`), while `openPrivateWorkspace` creates its case folder at the FILESYSTEM ROOT
+  (admin-only root creation, `folders.js`), i.e. a SIBLING of `/admin`. Root-level files are
+  therefore legitimately foreign per the §3.2 ownership model, and the binding P-3 preview
+  filter (`routes/collections.md` — revoked/shared-excluded never surface) correctly drops them.
+- **Classification**: **Case B (Test error)** — the fixture placed members outside any owner
+  home; the server contract and the filter rule are right. Existing member-list tests never
+  asserted `shared_excluded:false`, so the quirk was invisible before previews made it observable.
+- **Action taken**: collections spec gains a local `loginAndOpenOwnedWorkspace` (case folder
+  under `/admin`) used by 002 only; other cases keep the root workspace (unchanged assertions).
+  Full `collections-desktop` project re-run: 10/10 passed. Follow-up (owner visibility): whether
+  bootstrapped ADMIN should own a home root — out of P-3 scope, not changed.

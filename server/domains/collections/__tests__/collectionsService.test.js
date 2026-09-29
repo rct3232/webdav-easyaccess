@@ -378,6 +378,163 @@ describe('collectionsService similar sort', () => {
   });
 });
 
+describe('collectionsService preview_items (P-3)', () => {
+  /** Spread stored-row created_at deterministically (second-granular sqlite clock). */
+  async function setAddedAt(collectionId, nodeId, stamp) {
+    await dbRun(
+      'UPDATE collection_items SET created_at = ? WHERE collection_id = ? AND node_id = ?',
+      [stamp, collectionId, nodeId]
+    );
+  }
+
+  it('listCollections carries preview_items: newest-added first (createdAt desc, nodeId desc tie-break), sliced to 4', async () => {
+    const ctx = await setupServiceUser('preview-order');
+    const manual = await collectionsService.createCollection(ctx.user.id, {
+      name: 'Preview order',
+    });
+    const files = [];
+    for (let i = 0; i < 6; i += 1) {
+      files.push(await fileNodeService.createFile(ctx.root.id, `prev${i}.jpg`));
+    }
+    await collectionsService.addItems(
+      ctx.user.id,
+      manual.collection.id,
+      files.map((f) => f.id)
+    );
+    // prev0 oldest … prev5 newest
+    for (let i = 0; i < files.length; i += 1) {
+      await setAddedAt(manual.collection.id, files[i].id, `2026-0${i + 1}-01 00:00:00`);
+    }
+
+    const { collections } = await collectionsService.listCollections(ctx.user.id, {
+      include: 'mine',
+    });
+    const row = collections.find((c) => c.collection_id === manual.collection.id);
+    expect(row.preview_items).toEqual([
+      { node_id: files[5].id, name: 'prev5.jpg', type: 'file', mime: null },
+      { node_id: files[4].id, name: 'prev4.jpg', type: 'file', mime: null },
+      { node_id: files[3].id, name: 'prev3.jpg', type: 'file', mime: null },
+      { node_id: files[2].id, name: 'prev2.jpg', type: 'file', mime: null },
+    ]);
+  });
+
+  it('nodeId desc is the deterministic tie-break inside the same created_at second', async () => {
+    const ctx = await setupServiceUser('preview-tie');
+    const manual = await collectionsService.createCollection(ctx.user.id, { name: 'Preview tie' });
+    const first = await fileNodeService.createFile(ctx.root.id, 'tie-a.jpg');
+    const second = await fileNodeService.createFile(ctx.root.id, 'tie-b.jpg');
+    await collectionsService.addItems(ctx.user.id, manual.collection.id, [first.id, second.id]);
+    await setAddedAt(manual.collection.id, first.id, '2026-05-01 00:00:00');
+    await setAddedAt(manual.collection.id, second.id, '2026-05-01 00:00:00');
+
+    const { collections } = await collectionsService.listCollections(ctx.user.id, {
+      include: 'mine',
+    });
+    const row = collections.find((c) => c.collection_id === manual.collection.id);
+    expect(row.preview_items.map((i) => i.node_id)).toEqual([second.id, first.id]);
+  });
+
+  it('revoked and shared-excluded members NEVER appear in preview_items (name/mime leak guard)', async () => {
+    const ctx = await setupServiceUser('preview-excl');
+    const other = await createUserWithRoot('preview-excl-other');
+    const manual = await collectionsService.createCollection(ctx.user.id, { name: 'Preview excl' });
+    const own = await fileNodeService.createFile(ctx.root.id, 'own.jpg');
+
+    const foreign = await fileNodeService.createFile(other.root.id, 'foreign.png');
+    await grantTestPermissionByNodeId({
+      userId: ctx.user.id,
+      fileNodeId: foreign.id,
+      permission: 'read',
+    });
+    const gone = await fileNodeService.createFile(other.root.id, 'gone.jpg');
+    await grantTestPermissionByNodeId({
+      userId: ctx.user.id,
+      fileNodeId: gone.id,
+      permission: 'read',
+    });
+
+    await collectionsService.addItems(ctx.user.id, manual.collection.id, [
+      own.id,
+      foreign.id,
+      gone.id,
+    ]);
+    // newest-added are the foreign rows; they must still not surface
+    await setAddedAt(manual.collection.id, own.id, '2026-01-01 00:00:00');
+    await setAddedAt(manual.collection.id, foreign.id, '2026-06-01 00:00:00');
+    // revoke the `gone` grant → state:'revoked' placeholder
+    await dbRun('DELETE FROM permissions_user_files WHERE file_node_id = ?', [gone.id]);
+    await dbRun('DELETE FROM permissions_user_paths WHERE file_node_id = ?', [gone.id]);
+
+    const { collections } = await collectionsService.listCollections(ctx.user.id, {
+      include: 'mine',
+    });
+    const row = collections.find((c) => c.collection_id === manual.collection.id);
+    expect(row.preview_items).toEqual([
+      { node_id: own.id, name: 'own.jpg', type: 'file', mime: null },
+    ]);
+    // shared_excluded row is still counted in item_count (view truth), just not previewed
+    expect(row.item_count).toBe(3);
+  });
+
+  it('preview mime comes from the filecache row (one field, P-3)', async () => {
+    const ctx = await setupServiceUser('preview-mime');
+    const manual = await collectionsService.createCollection(ctx.user.id, { name: 'Preview mime' });
+    const img = await fileNodeService.createFile(ctx.root.id, 'shot.jpg');
+    await collectionsService.addItems(ctx.user.id, manual.collection.id, [img.id]);
+    await dbRun('INSERT INTO filecache (file_node_id, size, mime_type) VALUES (?, 10, ?)', [
+      img.id,
+      'image/jpeg',
+    ]);
+
+    const { collections } = await collectionsService.listCollections(ctx.user.id, {
+      include: 'mine',
+    });
+    const row = collections.find((c) => c.collection_id === manual.collection.id);
+    expect(row.preview_items).toEqual([
+      { node_id: img.id, name: 'shot.jpg', type: 'file', mime: 'image/jpeg' },
+    ]);
+  });
+
+  it('builds previews from the ALREADY-resolved member view — zero extra queries', async () => {
+    const ctx = await setupServiceUser('preview-zeroq');
+    const a = await collectionsService.createCollection(ctx.user.id, { name: 'Zero A' });
+    const b = await collectionsService.createCollection(ctx.user.id, { name: 'Zero B' });
+    const file = await fileNodeService.createFile(ctx.root.id, 'z.jpg');
+    await collectionsService.addItems(ctx.user.id, a.collection.id, [file.id]);
+    await collectionsService.addItems(ctx.user.id, b.collection.id, [file.id]);
+
+    // One requester-side liked-filter per collection row (resolveMemberRows) —
+    // preview construction must NOT add a second member-view resolution.
+    const filterLiked = jest.spyOn(fileLikesStore, 'filterLiked');
+    filterLiked.mockClear();
+    const { collections } = await collectionsService.listCollections(ctx.user.id, {
+      include: 'mine',
+    });
+    const likedCalls = filterLiked.mock.calls.length;
+    filterLiked.mockRestore();
+
+    expect(collections).toHaveLength(2);
+    expect(collections[0].preview_items).toBeDefined();
+    expect(collections[1].preview_items).toBeDefined();
+    expect(likedCalls).toBe(2);
+  });
+
+  it('getCollection serializes the same preview_items from its resolved view', async () => {
+    const ctx = await setupServiceUser('preview-single');
+    const manual = await collectionsService.createCollection(ctx.user.id, { name: 'Preview one' });
+    const file = await fileNodeService.createFile(ctx.root.id, 'solo.jpg');
+    await collectionsService.addItems(ctx.user.id, manual.collection.id, [file.id]);
+
+    const { collection } = await collectionsService.getCollection(
+      ctx.user.id,
+      manual.collection.id
+    );
+    expect(collection.preview_items).toEqual([
+      { node_id: file.id, name: 'solo.jpg', type: 'file', mime: null },
+    ]);
+  });
+});
+
 describe('collectionsService createSeedCollection gate', () => {
   it('throws aiNotConfigured without the embed role', async () => {
     const ctx = await createUserWithRoot('svc-seedcreate');

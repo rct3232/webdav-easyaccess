@@ -134,7 +134,11 @@ const FileManagerView = ({
   // P-2: the single toolbar sort button swaps its menu by surface — collections
   // list AND archive surfaces show the 5 server options (ephemeral), everything
   // else keeps the files radio menu.
+  // P-3 toggle hiding: the collections LIST surface hides the (file-inert)
+  // view-mode buttons; the MEMBERS surface hides sort AND view-mode buttons
+  // until P-4 ships real per-surface member controls.
   const isCollectionsListSurface = collectionsModel?.mode === 'list';
+  const isCollectionsMemberSurface = collectionsModel?.mode === 'members';
   // FAB가 자신의 실제 표시 여부를 보고(single source of truth) — 검색창 확장 트리거로 사용
   const [fabPresent, setFabPresent] = useState(false);
   const { displayedFiles, loading, processingMap, handleThumbnailsLoaded, loadMoreRef, hasMore } =
@@ -469,6 +473,15 @@ const FileManagerView = ({
             onCollectionSortChange={
               isCollectionsListSurface ? collectionsModel.onSortChange : undefined
             }
+            sortHidden={isCollectionsMemberSurface}
+            viewModeHidden={isCollectionsListSurface || isCollectionsMemberSurface}
+            collectionsMode={isCollectionsListSurface}
+            collectionsArchiveView={
+              isCollectionsListSurface && collectionsModel.include === 'mine,archived'
+            }
+            onCollectionsBulkAction={
+              isCollectionsListSurface ? collectionsModel.onBulkAction : undefined
+            }
             viewMode={viewMode}
             setViewMode={setViewMode}
             selectionActionsDisabled={bulkMoveCopyInProgress}
@@ -632,6 +645,15 @@ const FileManagerView = ({
                   onCardAction={collectionsModel.onCardAction}
                   onMemberAction={collectionsModel.onMemberAction}
                   onPublishBatch={collectionsModel.onPublishBatch}
+                  selectionMode={selectionMode}
+                  selectedFiles={selectedFiles}
+                  onCardClick={collectionsModel.onCardClick}
+                  onCardLongPressSelect={collectionsModel.onCardLongPressSelect}
+                  previewThumbnails={collectionsModel.previewThumbnails}
+                  onPreviewThumbnailsLoaded={collectionsModel.onPreviewThumbnailsLoaded}
+                  bulkConfirm={collectionsModel.bulkConfirm}
+                  onBulkConfirm={collectionsModel.onBulkConfirm}
+                  onBulkConfirmDismiss={collectionsModel.onBulkConfirmDismiss}
                 />
               ) : viewMode === VIEW_MODES.LIST ? (
                 <FileList

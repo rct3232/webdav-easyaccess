@@ -99,6 +99,9 @@ Common collection object (`collection`):
   "definition": { "kind": "seed_vector", "seed_ref": 90210, "theta": 0.62 },
   "granted_role": null,
   "item_count": 58,
+  "preview_items": [
+    { "node_id": 90210, "name": "beach.jpg", "type": "file", "mime": "image/jpeg" }
+  ],
   "archived_at": null,
   "last_member_change_at": "2026-09-14T02:11:00Z",
   "created_at": "2026-08-02T09:30:00Z",
@@ -118,6 +121,15 @@ Field rules:
   (`granted_role != null`); never pinned to top (§3.1).
 - `item_count`: members in the requester-resolved view (stored ∪ derived − exclusions,
   live ACL + trash filter applied), exact.
+- `preview_items` (P-3, 2026-09-29 owner ruling): up to 4 member entries for the list card's
+  2×2 preview — `{ "node_id", "name", "type", "mime" }`. Built **in memory from the same
+  requester-resolved member view that `item_count` counts** (services spec §List; zero extra
+  queries). Filter: rows with `state='revoked'` or `shared_excluded=true` are NEVER surfaced
+  (a revoked member's name/thumbnail is a leak — §3.2). Order: `created_at` desc (added time:
+  stored row's `created_at`, derived row's node `created_at`), deterministic tie-break
+  `node_id` desc, then sliced to 4. `mime` = filecache mime (nullable; the row carries it
+  from the `fileNodeShared` mapping). Always present (empty array when nothing previewable)
+  on both `GET /` and `GET /:id` rows.
 
 - **GET /:** Query `sort` = `activity` (default — `activity_score` desc, then
   `last_member_change_at`, `created_at` desc, final deterministic tie-break
@@ -166,6 +178,7 @@ Field rules:
       "node_id": 90210,
       "name": "poster.pdf",
       "type": "file",
+      "mime": null,
       "membership": "derived",
       "published": false,
       "added_by": null,
@@ -184,7 +197,8 @@ Field rules:
 
 `membership`: `stored | derived`; `state`: `normal | revoked`; `reason` = matched
 predicate name for derived members (computed at query time, §4.8 — not a history table),
-`null` for stored. `publish_pending_count` is owner-visible only (keyed on collection
+`null` for stored. `mime` (P-3) is the filecache mime type from the node row (nullable);
+it is `null` on `state:"revoked"` placeholder rows like `name`/`type` (no metadata leak). `publish_pending_count` is owner-visible only (keyed on collection
 `publish_mode != auto` rows with `published=false`); grantees get the key omitted.
 `digest` appears only when `since` was supplied.
 **Decision:** serving `GET /:id/items` stamps `collection_digest_cursors.last_visited_at`
@@ -398,6 +412,8 @@ All errors follow the shared error envelope (`errorCode` + optional `params`,
 - [ ] Items: stored member + derived member + excluded node → view shows
       stored ∪ derived − exclusions; trashed member hidden; revoked member renders
       placeholder with null name
+- [ ] `GET /` card rows carry `preview_items` (≤4, newest-added first, revoked and
+      shared-excluded rows never present; each entry `{node_id,name,type,mime}`)
 - [ ] `since` returns digest `added_since/removed_since` and reading items advances the
       visit cursor (second call with fresh `since` → zeros)
 - [ ] `publish_pending_count` visible to owner, absent for grantee; `ask` new member is

@@ -726,6 +726,8 @@ describe('FileManagerView', () => {
       sort: 'activity',
       onSortChange: jest.fn(),
       onCardAction: jest.fn(),
+      onCardClick: jest.fn(),
+      onCardLongPressSelect: jest.fn(),
     });
 
     it('active node __collections__ renders CollectionsListView in place of FileList', async () => {
@@ -825,6 +827,135 @@ describe('FileManagerView', () => {
       expect(props.explorerSession.controlsState.setSortMode).toHaveBeenCalledWith(
         expect.any(String)
       );
+    });
+
+    it('P-3: list surface hides the view-mode buttons but keeps the collections sort', async () => {
+      const base = createProps();
+      const props = createProps({
+        shellContext: { ...base.shellContext, isMobile: false },
+        explorerSession: {
+          ...base.explorerSession,
+          controlsState: {
+            ...base.explorerSession.controlsState,
+            currentPath: '/__collections__',
+          },
+        },
+        collectionsModel: collectionsModel(),
+      });
+      renderWithProviders(<FileManagerView {...props} />);
+
+      await screen.findByTestId('collections-list-view');
+      expect(screen.queryByTestId('view-mode-list')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('view-mode-grid')).not.toBeInTheDocument();
+      expect(screen.getByTestId('file-manager-sort')).toBeInTheDocument();
+    });
+
+    it('P-3: members surface hides BOTH the sort button and the view-mode toggles', async () => {
+      const base = createProps();
+      const props = createProps({
+        shellContext: { ...base.shellContext, isMobile: false },
+        explorerSession: {
+          ...base.explorerSession,
+          controlsState: {
+            ...base.explorerSession.controlsState,
+            currentPath: '/__collections__/collection/5',
+          },
+        },
+        collectionsModel: {
+          mode: 'members',
+          items: [],
+          nextCursor: null,
+          onLoadMore: jest.fn(),
+          digest: null,
+          publishPendingCount: null,
+          onMemberAction: jest.fn(),
+          onPublishBatch: jest.fn(),
+        },
+      });
+      renderWithProviders(<FileManagerView {...props} />);
+
+      await screen.findByTestId('collections-list-view');
+      expect(screen.queryByTestId('file-manager-sort')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('view-mode-list')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('view-mode-grid')).not.toBeInTheDocument();
+    });
+
+    it('P-3: selection inputs and card callbacks flow through to CollectionsListView', async () => {
+      const model = collectionsModel();
+      const propsWithSelection = (selectionModel) => {
+        const base = createProps();
+        return createProps({
+          shellContext: { ...base.shellContext, isMobile: false },
+          explorerSession: {
+            ...base.explorerSession,
+            controlsState: {
+              ...base.explorerSession.controlsState,
+              currentPath: '/__collections__',
+            },
+          },
+          selectionState: { ...base.selectionState, selectionModel },
+          collectionsModel: model,
+        });
+      };
+      const selectedFiles = new Set(['/__collections__/collection/1']);
+      renderWithProviders(
+        <FileManagerView
+          {...propsWithSelection({
+            selectionMode: true,
+            selectedFiles,
+            handleFileCheck: jest.fn(),
+          })}
+        />
+      );
+
+      const cardEl = await screen.findByTestId('collection-card-1');
+      // selectionMode hides the card menu action and the selected card renders
+      // the shared tile background (parity forwarded from selectionState).
+      expect(screen.queryByTestId('card-menu-button-1')).not.toBeInTheDocument();
+      expect(cardEl.querySelector('.MuiCard-root')).toHaveStyle({
+        backgroundColor: 'rgba(65, 103, 186, 0.12)',
+      });
+      // single click forwards the card+event dispatch to the shell callback.
+      fireEvent.click(cardEl);
+      expect(model.onCardClick).toHaveBeenCalledWith(
+        expect.objectContaining({ collection_id: 1 }),
+        expect.any(Object)
+      );
+    });
+
+    it('P-3: toolbar cluster swaps to the collections bulk set with the selection present', async () => {
+      const model = {
+        ...collectionsModel(),
+        include: 'mine,shared',
+        onBulkAction: jest.fn(),
+      };
+      const base = createProps();
+      const props = createProps({
+        shellContext: { ...base.shellContext, isMobile: false },
+        explorerSession: {
+          ...base.explorerSession,
+          controlsState: {
+            ...base.explorerSession.controlsState,
+            currentPath: '/__collections__',
+          },
+        },
+        selectionState: {
+          ...base.selectionState,
+          selectionModel: {
+            selectionMode: true,
+            selectedFiles: new Set(['/__collections__/collection/1']),
+            handleFileCheck: jest.fn(),
+          },
+        },
+        collectionsModel: model,
+      });
+      renderWithProviders(<FileManagerView {...props} />);
+
+      expect(await screen.findByTestId('bulk-collections-pin')).toBeInTheDocument();
+      expect(screen.getByTestId('bulk-collections-archive')).toBeInTheDocument();
+      expect(screen.queryByTestId('bulk-action-move')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('bulk-collections-pin'));
+      expect(model.onBulkAction).toHaveBeenCalledWith('pin');
     });
 
     it('folder tree hosts the CollectionsSection and routes collection clicks through the host', async () => {

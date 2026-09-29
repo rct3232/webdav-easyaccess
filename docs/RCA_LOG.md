@@ -853,3 +853,22 @@ username`), while `openPrivateWorkspace` creates its case folder at the FILESYST
   under `/admin`) used by 002 only; other cases keep the root workspace (unchanged assertions).
   Full `collections-desktop` project re-run: 10/10 passed. Follow-up (owner visibility): whether
   bootstrapped ADMIN should own a home root — out of P-3 scope, not changed.
+
+### 2026-09-29 — P-4 inherited "zero DOM delta" assertions matched MUI icon testids (Case B — test error)
+
+- **Summary**: four inherited P-4 unit assertions (`FileList`/`FileGrid`/`FileGridItem`/`FileDetail`
+  plain-file rows) asserted `container.querySelector('[data-testid]') === null` to prove file rows
+  gain no member slots. They failed even with a correct implementation: every file row renders a
+  `getFileIcon()` SVG that carries its own MUI `data-testid` (`InsertDriveFileIcon`, …), so "no
+  `[data-testid]` anywhere" is unsatisfiable regardless of P-4.
+- **Evidence**: failure output showed the matched node was
+  `<svg class="MuiSvgIcon-root …" data-testid="InsertDriveFileIcon">` — not a member row/menu slot.
+  The contract (spec §2.5/§2.6) only requires that file rows carry no `member-row-*` /
+  `member-menu-button` slot.
+- **Classification**: **Case B (Test error)** — over-broad assertion; no source violated the spec.
+- **Action taken**: the four assertions were scoped to the member-slot testids
+  (`[data-testid^="member-row-"]` / `[data-testid="member-menu-button"]`). Related follow-up found
+  in the same suite: the like-toggle host integration (`FileManager.test`) reopened the member menu
+  with a stale row because the memo comparators ignored `file.liked`; comparators now also compare
+  `state`/`liked` (undefined-safe, zero file-side delta) — an implementation fix surfaced by an
+  existing integration anchor. Verification: client 1795/1795, e2e collections-desktop 12/12.

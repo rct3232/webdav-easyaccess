@@ -872,3 +872,22 @@ username`), while `openPrivateWorkspace` creates its case folder at the FILESYST
   with a stale row because the memo comparators ignored `file.liked`; comparators now also compare
   `state`/`liked` (undefined-safe, zero file-side delta) — an implementation fix surfaced by an
   existing integration anchor. Verification: client 1795/1795, e2e collections-desktop 12/12.
+
+### 2026-09-29 — P-5 E2E-013 per-surface isolation assertion misread mount-time persistence (Case B)
+
+- **Summary**: first full `collections-desktop` leg failed 013 only: after the LIST toggle on the
+  Likes surface the spec asserted `collectionMemberViewMode === null` to prove per-surface isolation.
+  The value was `'grid'`.
+- **Evidence**: `useExplorerSession` persists every view-mode key through an effect on
+  `[memberViewMode]` — a persist call fires on MOUNT with the default too (P-4 as-shipped behavior,
+  exercised by the existing unit suite). Any full page load (`page.goto('/files/__collections__')`)
+  therefore writes `'grid'` into the member key before the assertion could run. The card-shell
+  assertion on the member row already proved the member surface renders its own default; the null
+  claim tested an internal write-timing detail, not the contract.
+- **Classification**: **Case B (Test error)** — no source violated `useExplorerSession.md` (the
+  per-surface keys are independent; the isolation contract is that the LIKES dispatch never writes
+  the LIKES value into the member/file keys).
+- **Action taken**: assertion corrected to `not.toBe('list')` (value-level isolation), with the
+  visual grid assertion kept. Re-run: collections-desktop 13/13. Same commit dropped an inert
+  `memberLoading` key from the liked `collectionsModel` branch (the view reads
+  `listingState.loading` directly).

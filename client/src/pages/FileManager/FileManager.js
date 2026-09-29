@@ -1176,7 +1176,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     isCollectionsLikedRoute,
     likedItems,
     loadMoreLikedItems,
-    loading,
     collectionMembers,
     loadMoreCollectionMembers,
     collectionsApi.collections,

@@ -192,7 +192,7 @@ describe('CollectionsSection — Likes child row (P-5)', () => {
 
   it('click invokes onLikesClick and selection keys off /__collections__/liked', () => {
     const props = defaultProps();
-    const { container } = renderWithProviders(<CollectionsSection {...props} />);
+    renderWithProviders(<CollectionsSection {...props} />);
     fireEvent.click(screen.getByTestId('collections-liked-node'));
     expect(props.onLikesClick).toHaveBeenCalledTimes(1);
 

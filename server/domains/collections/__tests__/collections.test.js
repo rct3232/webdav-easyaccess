@@ -1178,6 +1178,42 @@ describe('POST /for-nodes membership chips', () => {
 // ---------------------------------------------------------------------------
 
 describe('wire contract invariants', () => {
+  it('GET / rows carry preview_items (≤4 newest-added, revoked never) and items carry mime (P-3)', async () => {
+    const ctx = await createUserWithRoot('preview-wire');
+    const created = await createCollectionViaApi(ctx.token, { name: 'Preview wire' });
+    const collectionId = created.body.collection.collection_id;
+
+    const files = [];
+    for (let i = 0; i < 5; i += 1) {
+      files.push(await fileNodeService.createFile(ctx.root.id, `wire${i}.jpg`));
+    }
+    await request(app)
+      .post(`/api/collections/${collectionId}/items`)
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ nodeIds: files.map((f) => f.id) });
+
+    const items = await request(app)
+      .get(`/api/collections/${collectionId}/items`)
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(items.status).toBe(200);
+    expect(items.body.items[0]).toHaveProperty('mime');
+
+    const list = await request(app)
+      .get('/api/collections')
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(list.status).toBe(200);
+    const row = list.body.collections.find((c) => c.collection_id === collectionId);
+    expect(row.preview_items).toHaveLength(4);
+    // same-second adds: deterministic node_id DESC tie-break (newest ids first)
+    expect(row.preview_items.map((p) => p.node_id)).toEqual([
+      files[4].id,
+      files[3].id,
+      files[2].id,
+      files[1].id,
+    ]);
+    expect(Object.keys(row.preview_items[0]).sort()).toEqual(['mime', 'name', 'node_id', 'type']);
+  });
+
   it('requires authentication', async () => {
     const res = await request(app).get('/api/collections');
     expect(res.status).toBe(401);

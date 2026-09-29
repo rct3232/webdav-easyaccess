@@ -441,10 +441,17 @@ config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
 > bug fixed); Likes as a Collections-section child row (`/files/__collections__/liked`,
 > `GET /api/file-likes/items`, reuses the member machinery).
 
-- P-1 Path-1 grants/me endpoint + label unification + spec amendments — S–M | `[wip]`
-- P-2 sort-button context awareness (C2) + E2E sort coverage — S–M | `[wip]`
-- P-3 shared tile/grid extraction, preview quadrant, click model, selection bar, toggle hiding (C1) — M+ | `[wip]` 2026-09-29: branch `feature/polish-p3-card-grid` — docs+server(payload)+client(impl+tests) committed; FileGrid\*/FileGridItem anchors unchanged-green; full client 1753, server collections 91, e2e collections-desktop 10/10; awaits orchestrator full gates/E2E.
-- P-4 member view modes + publish route + granted_role fix (C3) — L | `[wip]` 2026-09-29: branch `feature/polish-p4-member-views` — docs step 4e9d321 + impl committed (server publish route, shared-renderer members swap, per-surface `collectionMemberViewMode`, publishItems PUT seam, owner publish-visibility fix, member bulk seams, synthetic-key selection reset). Client 1795/1795, server 2400/2400, e2e collections-desktop 12/12 (new 011/012); awaits orchestrator merge gate.
-- P-5 Likes child-row + liked-items endpoint (C4) — L | `[wip]` 2026-09-29: branch `feature/polish-p5-likes-view` — docs 9c41cf2 + server endpoint 0a76de0 (GET /file-likes/items: node_id asc, revoked/trashed classification, cursor 50/200) + client d60d406 (sidebar LikesNode, collections-liked route, likedItems member-parity surface, likedViewMode key, collection:null menu gates, optimistic unlike) + e2e 5e66f51/fix. Client 1818/1818, server 2407 pass, e2e collections-desktop 13/13 (new 013); no SQL added (PG conformance leg N/A); awaits orchestrator merge gate.
+- P-1 Path-1 grants/me endpoint + label unification + spec amendments — S–M | `[done]`
+- P-2 sort-button context awareness (C2) + E2E sort coverage — S–M | `[done]`
+- P-3 shared tile/grid extraction, preview quadrant, click model, selection bar, toggle hiding (C1) — M+ | `[done]` 2026-09-29: branch `feature/polish-p3-card-grid` — docs+server(payload)+client(impl+tests) committed; FileGrid\*/FileGridItem anchors unchanged-green; full client 1753, server collections 91, e2e collections-desktop 10/10; awaits orchestrator full gates/E2E.
+- P-4 member view modes + publish route + granted_role fix (C3) — L | `[done]` 2026-09-29: branch `feature/polish-p4-member-views` — docs step 4e9d321 + impl committed (server publish route, shared-renderer members swap, per-surface `collectionMemberViewMode`, publishItems PUT seam, owner publish-visibility fix, member bulk seams, synthetic-key selection reset). Client 1795/1795, server 2400/2400, e2e collections-desktop 12/12 (new 011/012); awaits orchestrator merge gate.
+- P-5 Likes child-row + liked-items endpoint (C4) — L | `[done]` 2026-09-29: branch `feature/polish-p5-likes-view` — docs 9c41cf2 + server endpoint 0a76de0 (GET /file-likes/items: node_id asc, revoked/trashed classification, cursor 50/200) + client d60d406 (sidebar LikesNode, collections-liked route, likedItems member-parity surface, likedViewMode key, collection:null menu gates, optimistic unlike) + e2e 5e66f51/fix. Client 1818/1818, server 2407 pass, e2e collections-desktop 13/13 (new 013); no SQL added (PG conformance leg N/A); awaits orchestrator merge gate.
 
 Order: P-1 ∥ P-2 → P-3 → P-4 → P-5 (P-5 server part may join P-4).
+
+- **§10 closure (2026-09-29)**: all five merged into `ai-feature`. Final orchestrator gates:
+  server `test:ci` 130 suites / 2407 tests, client `test:ci` 175 / 1818, PG conformance
+  (fileLikes+collections scoped) 36, `collections-desktop` E2E **13/13** (ids 001–013).
+  Candidates for tracker discussion (NOT written): members cursor encodes first-unreturned id
+  (row-gap at page boundaries — P-5 diverged deliberately, documented); worktree E2E runs
+  contend for the fixed `webdav-pg-e2e` container name.

@@ -3,23 +3,22 @@ import { useTranslation } from 'react-i18next';
 import {
   Box,
   Button,
-  Chip,
   Divider,
-  IconButton,
   Menu,
   MenuItem,
   ListItemIcon,
   ListItemText,
   Typography,
 } from '@mui/material';
-import { MoreVert as MoreVertIcon, PushPin as PushPinIcon } from '@mui/icons-material';
-import { getFileIcon } from '../../utils/fileIconUtils';
+import { PushPin as PushPinIcon } from '@mui/icons-material';
 import { getCollectionEntryKey } from '../../utils/fileViewUtils';
-import { formatFileSize, formatDate } from '../../utils/format';
 import { useThumbnailLazyLoad } from '../../hooks/useThumbnailLazyLoad';
 import { useResponsive } from '../../hooks/useResponsive';
 import ConfirmDialog from '../dialogs/ConfirmDialog';
 import CollectionCardItem from './CollectionCardItem';
+import FileList from './FileList';
+import FileGrid from './FileGrid';
+import FileDetail from './FileDetail';
 import ResponsiveCardGrid, { CardGridSpan } from './ResponsiveCardGrid';
 
 /**
@@ -80,6 +79,12 @@ const CollectionsListView = ({
   items = [],
   nextCursor = null,
   onLoadMore,
+  memberViewMode = 'grid',
+  memberLoading = false,
+  onMemberRowClick,
+  onMemberRowCheck,
+  onMemberRowLongPressSelect,
+  onMemberThumbnailsLoaded,
   digest,
   publishPendingCount,
   onCardAction,
@@ -180,6 +185,46 @@ const CollectionsListView = ({
       : step === 'delete-1'
         ? 'fileManager.permanentDeleteConfirm1'
         : 'fileManager.permanentDeleteConfirm2';
+
+  // -- P-4 member row delegation (CollectionsListView.md §2.5) ---------------
+  // Revoked member rows offer NO menu (§3.2 — the renderer trigger is not
+  // state-gated, so the dispatch itself guards); the row click/check/long-press
+  // ride the SHARED selection machinery through the host callbacks (the shell's
+  // handleFileClick/handleFileCheck/handleLongPressSelect — member rows carry
+  // real numeric nodeIds). FileContextMenu/FileActionSheet never render here.
+  const memberRowDisabled = (row) => row?.isCollectionMember === true && row?.state === 'revoked';
+
+  const handleMemberMore = (row, event) => {
+    if (memberRowDisabled(row)) return;
+    onMemberAction?.('menu', row, event?.currentTarget ?? null);
+  };
+
+  const handleMemberContextMenu = (event, row) => {
+    if (memberRowDisabled(row)) return;
+    onMemberAction?.('menu', row, event?.currentTarget ?? null);
+  };
+
+  const renderMemberRows = () => {
+    const delegateProps = {
+      files: items,
+      selectionMode,
+      selectedFiles,
+      loading: memberLoading,
+      onFileClick: onMemberRowClick,
+      onFileCheck: onMemberRowCheck,
+      onLongPressSelect: onMemberRowLongPressSelect,
+      onMoreClick: handleMemberMore,
+      onContextMenu: handleMemberContextMenu,
+      showMoreButton: !selectionMode,
+    };
+    if (memberViewMode === 'detail') {
+      return <FileDetail {...delegateProps} />;
+    }
+    if (memberViewMode === 'list') {
+      return <FileList {...delegateProps} onThumbnailsLoaded={onMemberThumbnailsLoaded} />;
+    }
+    return <FileGrid {...delegateProps} onThumbnailsLoaded={onMemberThumbnailsLoaded} />;
+  };
 
   const renderListMode = () => {
     // P-1: rows render straight from fetch state — the former view-local
@@ -358,59 +403,12 @@ const CollectionsListView = ({
         </Box>
       )}
 
-      {items.map((row) => {
-        const revoked = row.state === 'revoked';
-        return (
-          <Box
-            key={row.nodeId}
-            data-testid={`member-row-${row.nodeId}`}
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1,
-              py: 0.75,
-              px: 1,
-              borderBottom: 1,
-              borderColor: 'divider',
-              ...(revoked && { color: 'text.disabled' }),
-            }}
-          >
-            <Box
-              sx={{ display: 'flex', alignItems: 'center', width: 32, justifyContent: 'center' }}
-            >
-              {revoked ? null : getFileIcon({ type: row.type, basename: row.basename ?? row.name })}
-            </Box>
-            <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }} noWrap>
-              {revoked ? t('fileManager.collectionsUnavailable') : (row.basename ?? row.name)}
-            </Typography>
-            {row.shared_excluded === true && (
-              <Chip
-                size="small"
-                data-testid={`member-excluded-chip-${row.nodeId}`}
-                label={t('fileManager.sharedExcludedChip')}
-              />
-            )}
-            {!revoked && row.size != null && (
-              <Typography variant="caption" color="text.secondary">
-                {formatFileSize(row.size)}
-              </Typography>
-            )}
-            {!revoked && (
-              <Typography variant="caption" color="text.secondary">
-                {formatDate(row.lastmod)}
-              </Typography>
-            )}
-            <IconButton
-              size="small"
-              data-testid="member-menu-button"
-              onClick={(e) => onMemberAction?.('menu', row, e.currentTarget)}
-              disabled={revoked}
-            >
-              <MoreVertIcon fontSize="small" />
-            </IconButton>
-          </Box>
-        );
-      })}
+      {/* P-4 (§2.5): member rows render through the SAME shared
+          FileList/FileGrid/FileDetail renderers chosen by memberViewMode. The
+          adapter-shaped rows carry the optional member slots (rowTestId /
+          moreButtonTestId → the preserved `member-row-*` /
+          `member-menu-button` testids); this view stays the chrome host. */}
+      {renderMemberRows()}
 
       {nextCursor && (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>

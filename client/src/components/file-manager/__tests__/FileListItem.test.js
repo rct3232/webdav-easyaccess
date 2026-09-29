@@ -86,3 +86,80 @@ describe('FileListItem', () => {
     expect(onMoreClick).toHaveBeenCalledWith(mockFile, expect.any(Object));
   });
 });
+
+describe('FileListItem — member-row slots (P-4)', () => {
+  const memberRow = (overrides = {}) => ({
+    nodeId: 90210,
+    path: '',
+    basename: 'poster.pdf',
+    name: 'poster.pdf',
+    type: 'file',
+    mime: 'application/pdf',
+    lastmod: '2026-09-01T00:00:00Z',
+    isCollectionMember: true,
+    membership: 'stored',
+    published: false,
+    shared_excluded: false,
+    state: 'normal',
+    hasWritePermission: false,
+    moreButtonTestId: 'member-menu-button',
+    ...overrides,
+  });
+  const itemProps = (file, overrides = {}) => ({
+    file,
+    isSelected: false,
+    isDisabled: false,
+    isProcessing: false,
+    isDropTarget: false,
+    isDragging: false,
+    selectionMode: false,
+    showMoreButton: true,
+    onMoreClick: jest.fn(),
+    isMobile: false,
+    ...overrides,
+  });
+
+  it('omits the size caption for a size-less member row (the wire carries no size)', () => {
+    const { container } = renderWithProviders(<FileListItem {...itemProps(memberRow())} />);
+    expect(container.textContent).not.toMatch(/KB|MB|0 B/);
+    expect(screen.getByText('poster.pdf')).toBeInTheDocument();
+  });
+
+  it('renders the shared_excluded chip with the member testid', () => {
+    renderWithProviders(<FileListItem {...itemProps(memberRow({ shared_excluded: true }))} />);
+    const chip = screen.getByTestId('member-excluded-chip-90210');
+    expect(chip).toHaveTextContent(/Not owner's file/);
+  });
+
+  it('renders the awaiting-publish chip ONLY while published === false', () => {
+    const { rerender } = renderWithProviders(<FileListItem {...itemProps(memberRow())} />);
+    expect(screen.getByTestId('member-unpublished-chip-90210')).toBeInTheDocument();
+    rerender(<FileListItem {...itemProps(memberRow({ published: true }), { key: 'pub' })} />);
+    expect(screen.queryByTestId('member-unpublished-chip-90210')).not.toBeInTheDocument();
+  });
+
+  it('memo comparator: flipping published on a NEW row object re-renders the chip away', () => {
+    const props = itemProps(memberRow());
+    const { rerender } = renderWithProviders(
+      <FileListItem {...props} file={memberRow({ published: false })} />
+    );
+    expect(screen.getByTestId('member-unpublished-chip-90210')).toBeInTheDocument();
+    rerender(<FileListItem {...props} file={memberRow({ published: true })} />);
+    expect(screen.queryByTestId('member-unpublished-chip-90210')).not.toBeInTheDocument();
+  });
+
+  it('More button carries file.moreButtonTestId and dispatches onMoreClick(file, event)', () => {
+    const onMoreClick = jest.fn();
+    const file = memberRow();
+    renderWithProviders(<FileListItem {...itemProps(file, { onMoreClick })} />);
+    fireEvent.click(screen.getByTestId('member-menu-button'));
+    expect(onMoreClick).toHaveBeenCalledWith(file, expect.any(Object));
+  });
+
+  it('a plain file row keeps the size caption and renders no member testids/chips', () => {
+    renderWithProviders(<FileListItem {...itemProps({ ...mockFile })} />);
+    expect(screen.getByText(/1\.00 KB|1 KB/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('member-menu-button')).not.toBeInTheDocument();
+    expect(screen.queryByTestId(/member-.*-chip-90210/)).not.toBeInTheDocument();
+  });
+});

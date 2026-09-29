@@ -177,3 +177,42 @@ describe('MemberRowControls multi-select (bulk toolbar) variant', () => {
     expect(defaultProps.onAddToOther).toHaveBeenCalledWith(selectedRows);
   });
 });
+
+describe('MemberRowControls — publishable gate client-rule fix (P-4)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  const ownCollection = { origin: 'user', publish_mode: 'ask', granted_role: null };
+
+  it('OFFERS publish on an OWN collection (granted_role null) — the owner-visibility fix', () => {
+    renderWithProviders(<MemberRowControls {...defaultProps} collection={ownCollection} />);
+    expect(screen.getByTestId('member-publish')).toBeInTheDocument();
+  });
+
+  it('hides publish for a viewer grantee (granted_role viewer)', () => {
+    renderWithProviders(<MemberRowControls {...defaultProps} collection={viewerCollection} />);
+    expect(screen.queryByTestId('member-publish')).not.toBeInTheDocument();
+  });
+
+  it('hides publish on the row when shared_excluded (own collection)', () => {
+    renderWithProviders(
+      <MemberRowControls
+        {...defaultProps}
+        collection={ownCollection}
+        member={{ ...member, shared_excluded: true }}
+      />
+    );
+    expect(screen.queryByTestId('member-publish')).not.toBeInTheDocument();
+  });
+
+  it('bulk variant respects the same own-collection rule', () => {
+    renderWithProviders(
+      <MemberRowControls
+        {...defaultProps}
+        collection={ownCollection}
+        member={null}
+        selectedRows={[member]}
+      />
+    );
+    expect(screen.getByTestId('member-batch-publish')).toBeInTheDocument();
+  });
+});

@@ -91,6 +91,7 @@ const FileGridItem = React.memo(
       <Box
         component="button"
         type="button"
+        data-testid={file.moreButtonTestId}
         onClick={(e) => {
           e.stopPropagation();
           onMoreClick?.(file, e);
@@ -178,7 +179,13 @@ const FileGridItem = React.memo(
       prevProps.file.path === nextProps.file.path &&
       prevProps.file.thumbnailUrl === nextProps.file.thumbnailUrl &&
       prevProps.file.basename === nextProps.file.basename &&
-      prevProps.file.isHidden === nextProps.file.isHidden
+      prevProps.file.isHidden === nextProps.file.isHidden &&
+      // P-4 member state flips re-render tiles whose name/path never change;
+      // file rows carry all three as undefined (undefined-safe comparison).
+      prevProps.file.published === nextProps.file.published &&
+      prevProps.file.shared_excluded === nextProps.file.shared_excluded &&
+      prevProps.file.state === nextProps.file.state &&
+      prevProps.file.liked === nextProps.file.liked
     );
   }
 );

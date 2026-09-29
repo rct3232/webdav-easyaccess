@@ -120,6 +120,8 @@ const FileManagerView = ({
     currentNodeId,
     viewMode,
     setViewMode,
+    memberViewMode,
+    setMemberViewMode,
     sortMode,
     setSortMode,
     searchQuery,
@@ -134,9 +136,11 @@ const FileManagerView = ({
   // P-2: the single toolbar sort button swaps its menu by surface — collections
   // list AND archive surfaces show the 5 server options (ephemeral), everything
   // else keeps the files radio menu.
-  // P-3 toggle hiding: the collections LIST surface hides the (file-inert)
-  // view-mode buttons; the MEMBERS surface hides sort AND view-mode buttons
-  // until P-4 ships real per-surface member controls.
+  // P-4 toggle contract: the collections LIST/ARCHIVE surfaces hide the
+  // view-mode buttons (grid-parity cards); the MEMBERS surface keeps the sort
+  // HIDDEN (server-fixed activity→node_id order) but SHOWS the three view-mode
+  // buttons bound to the per-surface `memberViewMode` key (file viewMode
+  // untouched) — the P-3 inert flags retire here.
   const isCollectionsListSurface = collectionsModel?.mode === 'list';
   const isCollectionsMemberSurface = collectionsModel?.mode === 'members';
   // FAB가 자신의 실제 표시 여부를 보고(single source of truth) — 검색창 확장 트리거로 사용
@@ -474,7 +478,8 @@ const FileManagerView = ({
               isCollectionsListSurface ? collectionsModel.onSortChange : undefined
             }
             sortHidden={isCollectionsMemberSurface}
-            viewModeHidden={isCollectionsListSurface || isCollectionsMemberSurface}
+            viewModeHidden={isCollectionsListSurface}
+            memberMode={isCollectionsMemberSurface}
             collectionsMode={isCollectionsListSurface}
             collectionsArchiveView={
               isCollectionsListSurface && collectionsModel.include === 'mine,archived'
@@ -482,8 +487,14 @@ const FileManagerView = ({
             onCollectionsBulkAction={
               isCollectionsListSurface ? collectionsModel.onBulkAction : undefined
             }
-            viewMode={viewMode}
-            setViewMode={setViewMode}
+            onBulkMemberExclude={
+              isCollectionsMemberSurface ? collectionsModel.onBulkMemberExclude : undefined
+            }
+            onBulkAddToCollection={
+              isCollectionsMemberSurface ? collectionsModel.onBulkAddToCollection : undefined
+            }
+            viewMode={isCollectionsMemberSurface ? memberViewMode : viewMode}
+            setViewMode={isCollectionsMemberSurface ? setMemberViewMode : setViewMode}
             selectionActionsDisabled={bulkMoveCopyInProgress}
             handleBulkMove={handleBulkMove}
             handleBulkCopy={handleBulkCopy}
@@ -640,6 +651,12 @@ const FileManagerView = ({
                   items={collectionsModel.items}
                   nextCursor={collectionsModel.nextCursor}
                   onLoadMore={collectionsModel.onLoadMore}
+                  memberViewMode={memberViewMode}
+                  memberLoading={loading}
+                  onMemberRowClick={handleFileClick}
+                  onMemberRowCheck={handleFileCheck}
+                  onMemberRowLongPressSelect={handleLongPressSelect}
+                  onMemberThumbnailsLoaded={collectionsModel.onMemberThumbnailsLoaded}
                   digest={collectionsModel.digest}
                   publishPendingCount={collectionsModel.publishPendingCount}
                   onCardAction={collectionsModel.onCardAction}

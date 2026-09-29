@@ -75,3 +75,50 @@ describe('FileGridItem', () => {
     expect(onMoreClick).toHaveBeenCalledWith(mockFile, expect.any(Object));
   });
 });
+
+describe('FileGridItem — member tile slots (P-4)', () => {
+  const memberRow = (overrides = {}) => ({
+    nodeId: 90210,
+    path: '',
+    basename: 'poster.pdf',
+    type: 'file',
+    mime: 'application/pdf',
+    isCollectionMember: true,
+    published: false,
+    shared_excluded: false,
+    state: 'normal',
+    moreButtonTestId: 'member-menu-button',
+    ...overrides,
+  });
+
+  const itemProps = (file, overrides = {}) => ({
+    file,
+    isSelected: false,
+    isDisabled: false,
+    isProcessing: false,
+    isDropTarget: false,
+    isDragging: false,
+    selectionMode: false,
+    showMoreButton: true,
+    onMoreClick: jest.fn(),
+    isMobile: false,
+    ...overrides,
+  });
+
+  it('More action carries file.moreButtonTestId', () => {
+    const file = memberRow();
+    const onMoreClick = jest.fn();
+    renderWithProviders(<FileGridItem {...itemProps(file, { onMoreClick })} />);
+    fireEvent.click(screen.getByTestId('member-menu-button'));
+    expect(onMoreClick).toHaveBeenCalledWith(file, expect.any(Object));
+  });
+
+  it('a plain file tile renders NO more-button data-testid (regression anchor)', () => {
+    const { container } = renderWithProviders(
+      <FileGridItem {...itemProps({ path: '/a.txt', basename: 'a.txt', type: 'file' })} />
+    );
+    // MUI icons carry their own data-testid; scope the check to the member slots.
+    expect(container.querySelector('[data-testid="member-menu-button"]')).toBeNull();
+    expect(container.querySelector('[data-testid^="member-row-"]')).toBeNull();
+  });
+});

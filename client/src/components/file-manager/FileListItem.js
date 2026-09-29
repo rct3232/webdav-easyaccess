@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Typography, Box, Avatar, CircularProgress, Tooltip } from '@mui/material';
+import { Typography, Box, Avatar, CircularProgress, Tooltip, Chip } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import { MoreVert as MoreVertIcon } from '@mui/icons-material';
 import { formatFileSize, formatDate } from '../../utils/format';
@@ -80,6 +80,9 @@ const FileListItem = React.memo(
   ({ file, isProcessing, processingType, showMoreButton, onMoreClick }) => {
     const { t } = useTranslation();
     const thumbnail = getThumbnail(file);
+    // P-4 member-row slots (CollectionsListView §2.5): the member wire carries
+    // no size, so the caption is suppressed; files never set the marker.
+    const isSizelessMemberRow = file.isCollectionMember === true && file.size == null;
     const [containerWidth, setContainerWidth] = React.useState(200);
     const containerRef = React.useRef(null);
 
@@ -134,9 +137,11 @@ const FileListItem = React.memo(
             );
           })()}
           <Box sx={metaContainerStyles}>
-            <Typography variant="caption" color="text.secondary">
-              {file.type === 'directory' ? t('actions.folder') : formatFileSize(file.size)}
-            </Typography>
+            {!isSizelessMemberRow && (
+              <Typography variant="caption" color="text.secondary">
+                {file.type === 'directory' ? t('actions.folder') : formatFileSize(file.size)}
+              </Typography>
+            )}
             {/* Trash rows (DEF-16) carry no lastmod — the '-' placeholder would
                 read like a deleted-date subtitle, so it is suppressed. */}
             {file.lastmod && (
@@ -145,11 +150,32 @@ const FileListItem = React.memo(
               </Typography>
             )}
           </Box>
+          {/* P-4 member chips (name block, list renderer only — §2.5). The
+              file-side rows carry neither field (undefined), so nothing renders. */}
+          {(file.shared_excluded === true || file.published === false) && (
+            <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
+              {file.shared_excluded === true && (
+                <Chip
+                  size="small"
+                  data-testid={`member-excluded-chip-${file.nodeId}`}
+                  label={t('fileManager.sharedExcludedChip')}
+                />
+              )}
+              {file.published === false && (
+                <Chip
+                  size="small"
+                  data-testid={`member-unpublished-chip-${file.nodeId}`}
+                  label={t('fileManager.memberUnpublishedBadge')}
+                />
+              )}
+            </Box>
+          )}
         </Box>
         {showMoreButton && (
           <Box
             component="button"
             type="button"
+            data-testid={file.moreButtonTestId}
             onClick={(e) => {
               e.stopPropagation();
               onMoreClick?.(file, e);
@@ -202,7 +228,13 @@ const FileListItem = React.memo(
       prevProps.file.path === nextProps.file.path &&
       prevProps.file.thumbnailUrl === nextProps.file.thumbnailUrl &&
       prevProps.file.basename === nextProps.file.basename &&
-      prevProps.file.isHidden === nextProps.file.isHidden
+      prevProps.file.isHidden === nextProps.file.isHidden &&
+      // P-4 member state flips (publish-all, exclusion) must re-render rows
+      // whose name/path never change; file rows carry both as undefined.
+      prevProps.file.published === nextProps.file.published &&
+      prevProps.file.shared_excluded === nextProps.file.shared_excluded &&
+      prevProps.file.state === nextProps.file.state &&
+      prevProps.file.liked === nextProps.file.liked
     );
   }
 );

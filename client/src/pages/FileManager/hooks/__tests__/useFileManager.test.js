@@ -17,6 +17,11 @@ jest.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
 }));
 
+jest.mock('react-i18next', () => {
+  const { createI18nModuleMock } = require('../../../../testing/mocks/i18nMock');
+  return createI18nModuleMock();
+});
+
 jest.mock('../../../../services/explorerGateway', () => {
   const { createExplorerGatewayMock } = require('../../../../testing/mocks/serviceMocks');
   return {
@@ -536,5 +541,115 @@ describe('useFileManager', () => {
 
       expect(mockNavigate).toHaveBeenCalledWith('/files/__trash__');
     });
+  });
+});
+
+describe('P-4 member-row adapter (useFileManager §2.3.2)', () => {
+  const wireNormal = {
+    node_id: 7,
+    name: 'beach.jpg',
+    type: 'file',
+    mime: 'image/jpeg',
+    size: 1234,
+    lastmod: '2026-09-01T00:00:00Z',
+    created_at: '2026-08-01T00:00:00Z',
+    membership: 'stored',
+    published: false,
+    added_by: 3,
+    state: 'normal',
+    liked: true,
+    reason: 'tag:beach',
+    shared_excluded: false,
+  };
+  const wireRevoked = {
+    node_id: 8,
+    name: null,
+    type: null,
+    mime: null,
+    created_at: '2026-07-01T00:00:00Z',
+    membership: 'derived',
+    published: false,
+    state: 'revoked',
+    liked: false,
+    reason: null,
+    shared_excluded: true,
+  };
+
+  async function renderMembers(items) {
+    explorerGateway.loadCollectionItems.mockResolvedValueOnce({
+      items,
+      next_cursor: null,
+    });
+    const renderResult = renderWithPath('__collections__/collection/5');
+    await waitFor(() => {
+      expect(renderResult.result.current.loading).toBe(false);
+    });
+    return renderResult;
+  }
+
+  it('maps the wire row to file shape with the member slots and drops the size', async () => {
+    const { result } = await renderMembers([wireNormal]);
+    const row = result.current.collectionMembers.items[0];
+
+    expect(row).toMatchObject({
+      nodeId: 7,
+      path: '',
+      name: 'beach.jpg',
+      basename: 'beach.jpg',
+      type: 'file',
+      mime: 'image/jpeg',
+      lastmod: '2026-09-01T00:00:00Z',
+      membership: 'stored',
+      published: false,
+      added_by: 3,
+      state: 'normal',
+      liked: true,
+      reason: 'tag:beach',
+      shared_excluded: false,
+      isCollectionMember: true,
+      hasWritePermission: false,
+      rowTestId: 'member-row-7',
+      moreButtonTestId: 'member-menu-button',
+    });
+    // the wire DOES carry size on this legacy fixture — the adapter still
+    // omits it (the member surface must never render a size).
+    expect(row).not.toHaveProperty('size');
+  });
+
+  it('lastmod falls back to created_at', async () => {
+    const { result } = await renderMembers([{ ...wireNormal, lastmod: null }]);
+    expect(result.current.collectionMembers.items[0].lastmod).toBe('2026-08-01T00:00:00Z');
+  });
+
+  it('revoked rows carry the placeholder NAME, null mime and stay non-eligible for thumbnails', async () => {
+    const { result } = await renderMembers([wireRevoked]);
+    const row = result.current.collectionMembers.items[0];
+
+    expect(row.nodeId).toBe(8);
+    expect(row.name).toBeNull();
+    expect(row.basename).toBe('fileManager.collectionsUnavailable');
+    expect(row.mime).toBeNull();
+    expect(row.state).toBe('revoked');
+    expect(row.shared_excluded).toBe(true);
+    expect(row.isCollectionMember).toBe(true);
+    expect(row.rowTestId).toBe('member-row-8');
+    expect(row).not.toHaveProperty('size');
+  });
+
+  it('handleMemberThumbnailsLoaded merges into collectionMembers rows only (never the session files)', async () => {
+    const { result } = await renderMembers([wireNormal]);
+
+    act(() => {
+      result.current.handleMemberThumbnailsLoaded(new Map([[7, 'https://thumb/7']]));
+    });
+
+    expect(result.current.collectionMembers.items[0].thumbnailUrl).toBe('https://thumb/7');
+    // member ids never leak into the session file list
+    expect(result.current.files).toEqual([]);
+
+    act(() => {
+      result.current.handleMemberThumbnailsLoaded(new Map([[999, 'https://thumb/999']]));
+    });
+    expect(result.current.collectionMembers.items[0].thumbnailUrl).toBe('https://thumb/7');
   });
 });

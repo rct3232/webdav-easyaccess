@@ -52,9 +52,13 @@ export const getFileItemState = (file, selectionMode, selectedFiles, processingM
   // Directory permission check (files are always accessible)
   const isPermissionDisabled = file.type === 'directory' && file.hasReadPermission === false;
 
+  // P-4 member rows: an EXPLICIT member-flag + state rule (file rows carry no
+  // `state`, so a stray key can never disable them — fileViewUtils.md §2.4).
+  const isMemberRevoked = file.isCollectionMember === true && file.state === 'revoked';
+
   const processingType = processingMap?.get(file.nodeId);
   const isProcessing = Boolean(processingType);
-  const isDisabled = isPermissionDisabled || isProcessing;
+  const isDisabled = isPermissionDisabled || isProcessing || isMemberRevoked;
 
   return {
     isSelected,

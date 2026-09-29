@@ -14,6 +14,7 @@ import {
   deleteCollection,
   addCollectionItems,
   removeCollectionItems,
+  publishItems,
   previewCollection,
   getMergeSuggestions,
   mergeCollections,
@@ -402,6 +403,34 @@ describe('getActions / getFileSuggestions / acceptFileSuggestions (T0.10)', () =
     await expect(acceptFileSuggestions([1], { silent: true, onError })).resolves.toBeNull();
     expect(onError).toHaveBeenCalledWith({
       errorCode: 'serverErrors.dashboard.emptyNodeIds',
+      params: {},
+    });
+    expect(notifyCollectionsChange).not.toHaveBeenCalled();
+  });
+});
+
+describe('publishItems (P-4 URL fix)', () => {
+  it('PUTs { nodeIds, published } to /collections/:id/items/publish (NOT the nonexistent POST /:id/publish)', async () => {
+    put.mockResolvedValueOnce({
+      data: { published: [3], ignored: [], undo: { action_id: 9 } },
+    });
+
+    const result = await publishItems(17, [3], true);
+
+    expect(put).toHaveBeenCalledWith('/collections/17/items/publish', {
+      nodeIds: [3],
+      published: true,
+    });
+    expect(result).toEqual({ published: [3], ignored: [], undo: { action_id: 9 } });
+    expect(notifyCollectionsChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('absorbs failures to null with the onError envelope and never notifies', async () => {
+    put.mockRejectedValueOnce(transportError(403, 'serverErrors.collections.forbidden'));
+    const onError = jest.fn();
+    await expect(publishItems(17, [3], false, { onError })).resolves.toBe(null);
+    expect(onError).toHaveBeenCalledWith({
+      errorCode: 'serverErrors.collections.forbidden',
       params: {},
     });
     expect(notifyCollectionsChange).not.toHaveBeenCalled();

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams, useNavigate } from 'react-router-dom';
 import explorerGateway from '../../../services/explorerGateway';
 import { resolvePath, getAncestors } from '../../../services/fileService';
@@ -31,27 +32,52 @@ const writeDigestVisit = (collectionId) => {
   }
 };
 
-const toMemberRow = (item) => ({
-  nodeId: item.node_id,
-  name: item.name ?? null,
-  basename: item.name ?? null,
-  type: item.type ?? 'file',
-  size: item.size ?? null,
-  lastmod: item.lastmod ?? item.created_at ?? null,
-  mime: item.mime ?? null,
-  membership: item.membership,
-  published: item.published,
-  added_by: item.added_by ?? null,
-  state: item.state ?? 'normal',
-  liked: item.liked ?? false,
-  reason: item.reason ?? null,
-  shared_excluded: item.shared_excluded === true,
-});
+/**
+ * P-4 member-row adapter (useFileManager.md §2.3.2) — the ONE normalization
+ * point from the `serializeItem` wire shape to a FILE-SHAPE row so the shared
+ * FileList/FileGrid/FileDetail renderers and the selection/drag machinery
+ * apply unchanged:
+ * - `size` is OMITTED (the wire carries none; the FileListItem slot hides the
+ *   caption for size-less member rows instead of lying '0 B');
+ * - `hasWritePermission: false` kills drag/drop through the existing
+ *   useFileViewCommon empty-drag rule;
+ * - `state:'revoked'` rows get the translated placeholder NAME while `mime`
+ *   stays null and the extension-less placeholder basename keeps
+ *   isImageOrVideoFile false — a revoked row can never request a thumbnail;
+ * - `rowTestId`/`moreButtonTestId` preserve the member E2E testids through
+ *   the shared renderer (files carry none ⇒ zero DOM delta);
+ * - `path` is '' — previews resolve by nodeId (metadata/blob endpoints),
+ *   never by path.
+ */
+export const toMemberRow = (item, t) => {
+  const revoked = item.state === 'revoked';
+  return {
+    nodeId: item.node_id,
+    path: '',
+    name: item.name ?? null,
+    basename: item.name ?? (revoked ? t('fileManager.collectionsUnavailable') : null),
+    type: item.type ?? 'file',
+    mime: item.mime ?? null,
+    lastmod: item.lastmod ?? item.created_at ?? null,
+    membership: item.membership,
+    published: item.published,
+    added_by: item.added_by ?? null,
+    state: item.state ?? 'normal',
+    liked: item.liked ?? false,
+    reason: item.reason ?? null,
+    shared_excluded: item.shared_excluded === true,
+    isCollectionMember: true,
+    hasWritePermission: false,
+    rowTestId: `member-row-${item.node_id}`,
+    moreButtonTestId: 'member-menu-button',
+  };
+};
 
 export const useFileManager = (user, options = {}) => {
   const { onLoadComplete, onLoadError, shareToken, linkInfo } = options;
   const { '*': urlPath } = useParams();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const onLoadCompleteRef = useRef(onLoadComplete);
   const onLoadErrorRef = useRef(onLoadError);
@@ -332,13 +358,36 @@ export const useFileManager = (user, options = {}) => {
       if (prev.collectionId !== current.collectionId) return prev;
       const seen = new Set(prev.items.map((row) => row.nodeId));
       // §2.9: de-dup by node_id; rendered page order stays stable.
-      const appended = (page?.items ?? []).map(toMemberRow).filter((row) => !seen.has(row.nodeId));
+      const appended = (page?.items ?? [])
+        .map((item) => toMemberRow(item, t))
+        .filter((row) => !seen.has(row.nodeId));
       return {
         ...prev,
         items: [...prev.items, ...appended],
         nextCursor: page?.next_cursor ?? null,
         loadingMore: false,
       };
+    });
+  }, [t]);
+
+  /**
+   * P-4 member-local thumbnail merge: `useThumbnailLazyLoad` results from the
+   * delegated member renderer land on `collectionMembers.items` only — the
+   * session `handleThumbnailsLoaded` never sees member nodeIds.
+   */
+  const handleMemberThumbnailsLoaded = useCallback((thumbnailMap) => {
+    setCollectionMembers((prev) => {
+      if (!(thumbnailMap instanceof Map) || thumbnailMap.size === 0) return prev;
+      let changed = false;
+      const items = prev.items.map((row) => {
+        const thumbnailUrl = thumbnailMap.get(row.nodeId);
+        if (thumbnailUrl && !row.thumbnailUrl) {
+          changed = true;
+          return { ...row, thumbnailUrl };
+        }
+        return row;
+      });
+      return changed ? { ...prev, items } : prev;
     });
   }, []);
 
@@ -459,7 +508,7 @@ export const useFileManager = (user, options = {}) => {
         writeDigestVisit(collectionId);
         if (requestId === requestIdRef.current) {
           setCollectionMembers({
-            items: (page?.items ?? []).map(toMemberRow),
+            items: (page?.items ?? []).map((item) => toMemberRow(item, t)),
             nextCursor: page?.next_cursor ?? null,
             loadingMore: false,
             digest: page?.digest,
@@ -529,6 +578,7 @@ export const useFileManager = (user, options = {}) => {
     currentNodeId,
     user,
     shareToken,
+    t,
   ]);
 
   // Location key drives the listing reload; the display path (ancestors) must not retrigger it.
@@ -619,5 +669,6 @@ export const useFileManager = (user, options = {}) => {
     homeNodeId,
     collectionMembers,
     loadMoreCollectionMembers,
+    handleMemberThumbnailsLoaded,
   };
 };

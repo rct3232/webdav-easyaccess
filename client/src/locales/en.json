@@ -240,6 +240,7 @@
     "publishPending": "{{count}} awaiting publish",
     "publishBatch": "Publish all",
     "sharedExcludedChip": "Not owner's file — not shared",
+    "memberUnpublishedBadge": "Awaiting publish",
     "collectionsUnavailable": "Unavailable",
     "memberLoadMore": "Load more",
     "cardMenuRename": "Rename",

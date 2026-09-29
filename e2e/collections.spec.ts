@@ -24,9 +24,10 @@ import {
 } from './helpers/files';
 import { getSessionToken, gotoFilesPath, resolveNodeId } from './helpers/resolvePath';
 import { rightClickItem } from './helpers/desktop-interactions';
+import { setCollectionSort } from './helpers/explorer-controls';
 
 /**
- * E2E-COLLECTION-001..009 — the P0 collections binding lifecycle
+ * E2E-COLLECTION-001..010 — the P0 collections binding lifecycle
  * (docs/E2E_COVERAGE_PLAN.md § "Collections platform lifecycle (hermetic)").
  *
  * Chain: create → add members → digest counts → archive → undo → restore →
@@ -271,7 +272,8 @@ test('E2E-COLLECTION-001: Collections sidebar section expands to the archive nod
   await expect(page).toHaveURL(/__collections__/);
   await expect(page.getByTestId('collections-list-view')).toBeVisible();
   await expect(page.getByTestId('collections-list-region')).toBeVisible();
-  await expect(page.getByTestId('collections-sort-menu')).toBeVisible();
+  // P-2: the single context-aware toolbar sort button owns collections sort.
+  await expect(page.getByTestId('file-manager-sort')).toBeVisible();
 });
 
 test('E2E-COLLECTION-002: Add-to-collection submenu creates a collection inline, adds a second file through the collection row and the member view lists them', async ({
@@ -545,4 +547,45 @@ test('E2E-COLLECTION-009: Storage dashboard renders the collection journal feed 
   // absent) and no suggestion checkboxes (`semantic_available:false`).
   await expect(page.getByTestId('capacity-sparkline')).toHaveCount(0);
   await expect(page.getByTestId('suggestion-checkbox')).toHaveCount(0);
+});
+
+test('E2E-COLLECTION-010: The toolbar sort button re-sorts the collections list by created (newest-first) and name (ASC)', async ({
+  page,
+  request,
+}, testInfo) => {
+  const { base, token } = await loginAndOpenWorkspace(page, request, testInfo);
+  const file = await seedFile(request, token, base, testInfo, 'col010');
+  await gotoFilesPath(page, request, `/${base}`);
+  await expect(fileItem(page, file.path)).toBeVisible();
+
+  // Distinctly ordered names: 'Aaa' < 'Zzz' at the FIRST differing character,
+  // so ORDER BY name (ASC) and created_at DESC, id DESC give opposite orders.
+  const nameA = buildName(testInfo, 'col010-Aaa');
+  const nameZ = buildName(testInfo, 'col010-Zzz');
+  await uiCreateCollectionWithFile(page, file.path, nameA);
+  await expect(page.getByText(/Collection created/i)).toBeVisible();
+  await uiCreateCollectionWithFile(page, file.path, nameZ);
+
+  await page.goto('/files/__collections__');
+  await expect(collectionCard(page, nameA)).toBeVisible();
+  await expect(collectionCard(page, nameZ)).toBeVisible();
+  // P-2: ONE sort control on this surface — the toolbar button; the private
+  // CollectionsListView menu is retired. (Default `activity` order is NOT
+  // asserted: score ties make it a server concern, not a UI contract here.)
+  await expect(page.getByTestId('file-manager-sort')).toBeVisible();
+  await expect(page.getByTestId('collections-sort-menu')).toHaveCount(0);
+
+  const cards = page.locator('[data-testid^="collection-card-"]');
+
+  // Created → created_at DESC with an `id DESC` tie-break (both stores): the
+  // later-created 'Zzz' is first even when second-granular timestamps tie.
+  await setCollectionSort(page, 'created');
+  await expect(cards.nth(0)).toContainText(nameZ);
+  await expect(cards.nth(1)).toContainText(nameA);
+
+  // Name → ORDER BY name ASC: 'Aaa' first. The previous DOM held the CREATED
+  // order ([Z, A]), so passing this assertion proves a real re-sort landed.
+  await setCollectionSort(page, 'name');
+  await expect(cards.nth(0)).toContainText(nameA);
+  await expect(cards.nth(1)).toContainText(nameZ);
 });

@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/file-manager/CardTile.js`
-- **Test file:** `client/src/components/file-manager/__tests__/CardTile.test.js`
+- **Test file:** `client/src/components/file-manager/__tests__/GridCardPrimitives.test.js`
 
 ### 2.2 Props
 

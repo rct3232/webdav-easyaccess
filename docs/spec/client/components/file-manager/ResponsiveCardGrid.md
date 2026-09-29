@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/file-manager/ResponsiveCardGrid.js`
-- **Test file:** `client/src/components/file-manager/__tests__/ResponsiveCardGrid.test.js`
+- **Test file:** `client/src/components/file-manager/__tests__/GridCardPrimitives.test.js`
 
 ### 2.2 Components
 

@@ -18,6 +18,11 @@ export const SORT_MODES = {
   DATE_DESC: 'date_desc',
 };
 
+// Collections list sort (server contract GET /api/collections?sort=…, docs/spec/
+// server/routes/collections.md); state is ephemeral — never persisted
+// (useCollections.md §2.3 decision). Labels: fileManager.collectionsSort<Option>.
+export const COLLECTION_SORT_OPTIONS = ['activity', 'name', 'created', 'updated', 'similar'];
+
 // Scroll container padding: height of FloatingSearchBar + FAB bottom area (offset + 56px)
 // Keep in sync with FloatingSearchBar MOBILE_OFFSET/DESKTOP_OFFSET + FAB_SIZE
 export const FLOATING_BOTTOM_HEIGHT_MOBILE = 72; // 16 + 56

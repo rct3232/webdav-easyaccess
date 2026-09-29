@@ -768,6 +768,65 @@ describe('FileManagerView', () => {
       expect(screen.queryByText('a.txt')).not.toBeInTheDocument();
     });
 
+    it('toolbar sort button swaps to the collections menu when the list model is active (P-2)', async () => {
+      const model = collectionsModel();
+      const base = createProps();
+      const props = createProps({
+        shellContext: { ...base.shellContext, isMobile: false },
+        explorerSession: {
+          ...base.explorerSession,
+          controlsState: {
+            ...base.explorerSession.controlsState,
+            currentPath: '/__collections__',
+          },
+        },
+        collectionsModel: model,
+      });
+      renderWithProviders(<FileManagerView {...props} />);
+
+      fireEvent.click(await screen.findByTestId('file-manager-sort'));
+      expect(screen.getAllByRole('menuitem')).toHaveLength(5);
+      expect(screen.queryAllByRole('radio')).toHaveLength(0);
+      fireEvent.click(screen.getByTestId('collections-sort-option-name'));
+      expect(model.onSortChange).toHaveBeenCalledWith('name');
+    });
+
+    it('archive surface shares the collections sort menu (P-2)', async () => {
+      const model = { ...collectionsModel(), include: 'mine,archived' };
+      const base = createProps();
+      const props = createProps({
+        shellContext: { ...base.shellContext, isMobile: false },
+        explorerSession: {
+          ...base.explorerSession,
+          controlsState: {
+            ...base.explorerSession.controlsState,
+            currentPath: '/__collections__/__archive__',
+          },
+        },
+        collectionsModel: model,
+      });
+      renderWithProviders(<FileManagerView {...props} />);
+
+      await screen.findByTestId('collections-list-view');
+      fireEvent.click(screen.getByTestId('file-manager-sort'));
+      expect(screen.getByTestId('collections-sort-option-created')).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('collections-sort-option-created'));
+      expect(model.onSortChange).toHaveBeenCalledWith('created');
+    });
+
+    it('files surface keeps the radio sort menu when no collections model is active (P-2)', async () => {
+      const props = createProps();
+      renderWithProviders(<FileManagerView {...props} />);
+
+      fireEvent.click(await screen.findByTestId('file-manager-sort'));
+      expect(screen.getAllByRole('radio')).toHaveLength(4);
+      expect(screen.queryByTestId('collections-sort-option-name')).not.toBeInTheDocument();
+      fireEvent.click(screen.getAllByRole('radio')[0]);
+      expect(props.explorerSession.controlsState.setSortMode).toHaveBeenCalledWith(
+        expect.any(String)
+      );
+    });
+
     it('folder tree hosts the CollectionsSection and routes collection clicks through the host', async () => {
       explorerGateway.loadCollections.mockImplementation(async ({ include } = {}) =>
         include === 'mine,archived'

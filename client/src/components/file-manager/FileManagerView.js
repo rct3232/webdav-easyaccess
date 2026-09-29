@@ -131,6 +131,10 @@ const FileManagerView = ({
   // and the listing region yields to the two-section rows).
   const searchResultsMode = searchResults?.mode === 'results';
   const isTrashView = trashMode === true || currentPath === '/__trash__';
+  // P-2: the single toolbar sort button swaps its menu by surface — collections
+  // list AND archive surfaces show the 5 server options (ephemeral), everything
+  // else keeps the files radio menu.
+  const isCollectionsListSurface = collectionsModel?.mode === 'list';
   // FAB가 자신의 실제 표시 여부를 보고(single source of truth) — 검색창 확장 트리거로 사용
   const [fabPresent, setFabPresent] = useState(false);
   const { displayedFiles, loading, processingMap, handleThumbnailsLoaded, loadMoreRef, hasMore } =
@@ -460,6 +464,11 @@ const FileManagerView = ({
             selectedFiles={selectedFiles}
             sortMode={sortMode}
             setSortMode={setSortMode}
+            sortSurface={isCollectionsListSurface ? 'collections' : 'files'}
+            collectionSort={isCollectionsListSurface ? collectionsModel.sort : undefined}
+            onCollectionSortChange={
+              isCollectionsListSurface ? collectionsModel.onSortChange : undefined
+            }
             viewMode={viewMode}
             setViewMode={setViewMode}
             selectionActionsDisabled={bulkMoveCopyInProgress}
@@ -613,7 +622,6 @@ const FileManagerView = ({
                   mode={collectionsModel.mode}
                   collections={collectionsModel.collections}
                   sort={collectionsModel.sort}
-                  onSortChange={collectionsModel.onSortChange}
                   mergeSlot={collectionsModel.mergeSlot}
                   include={collectionsModel.include}
                   items={collectionsModel.items}

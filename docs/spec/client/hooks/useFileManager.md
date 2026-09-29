@@ -25,19 +25,25 @@
 
 ### 2.3 Return Value / State
 
-| Key                | Type                   | Meaning                                                                                                                                                                         |
-| ------------------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| currentNodeId      | number\|null           | Current folder nodeId (`null` = root / virtual-root level). **Source of truth** for the explorer location in the nodeId end-state.                                              |
-| setCurrentNodeId   | (nodeId) => void       | Set current folder nodeId and navigate to `/files/node/<nodeId>`.                                                                                                               |
-| currentPath        | string                 | Derived display path only (breadcrumbs/labels); not a navigation or lookup key.                                                                                                 |
-| files              | array                  | File list                                                                                                                                                                       |
-| loading            | boolean                | Loading                                                                                                                                                                         |
-| hasWritePermission | boolean                | Write permission                                                                                                                                                                |
-| loadFiles          | () => Promise          | Reload files                                                                                                                                                                    |
-| onLoadErrorRef     | ref                    | Ref for onLoadError callback (for external updates)                                                                                                                             |
-| trashParentNodeId  | number\|null           | Trash view only: current trashed-parent nodeId (`null` = trash root listing topmost items).                                                                                     |
-| trashTrail         | array                  | Trash-view breadcrumb chain `[{ nodeId, name }]` (trashed folder names from the trash root down to the current trashed parent).                                                 |
-| openTrashFolder    | (nodeId, name) => void | Trash-view navigation setter: `nodeId == null` → `/files/__trash__`; otherwise remember the folder name in the trash trail cache and navigate `/files/__trash__/node/<nodeId>`. |
+| Key                          | Type                   | Meaning                                                                                                                                                                         |
+| ---------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| currentNodeId                | number\|null           | Current folder nodeId (`null` = root / virtual-root level). **Source of truth** for the explorer location in the nodeId end-state.                                              |
+| setCurrentNodeId             | (nodeId) => void       | Set current folder nodeId and navigate to `/files/node/<nodeId>`.                                                                                                               |
+| currentPath                  | string                 | Derived display path only (breadcrumbs/labels); not a navigation or lookup key.                                                                                                 |
+| files                        | array                  | File list                                                                                                                                                                       |
+| loading                      | boolean                | Loading                                                                                                                                                                         |
+| hasWritePermission           | boolean                | Write permission                                                                                                                                                                |
+| loadFiles                    | () => Promise          | Reload files                                                                                                                                                                    |
+| onLoadErrorRef               | ref                    | Ref for onLoadError callback (for external updates)                                                                                                                             |
+| trashParentNodeId            | number\|null           | Trash view only: current trashed-parent nodeId (`null` = trash root listing topmost items).                                                                                     |
+| trashTrail                   | array                  | Trash-view breadcrumb chain `[{ nodeId, name }]` (trashed folder names from the trash root down to the current trashed parent).                                                 |
+| openTrashFolder              | (nodeId, name) => void | Trash-view navigation setter: `nodeId == null` → `/files/__trash__`; otherwise remember the folder name in the trash trail cache and navigate `/files/__trash__/node/<nodeId>`. |
+| collectionMembers            | object                 | Members-surface fetch state `{ items, nextCursor, loadingMore, digest, publishPendingCount, collectionId }` (`__collections__/collection/:id` rows through `toMemberRow`).      |
+| loadMoreCollectionMembers    | () => Promise          | Append the `next_cursor` members page (de-duped by `nodeId`, stable rendered order).                                                                                            |
+| likedItems                   | object                 | P-5 Likes-surface fetch state `{ items, nextCursor, loadingMore }` (`/files/__collections__/liked` rows through `toMemberRow` — member parity).                                 |
+| loadMoreLikedItems           | () => Promise          | P-5: append the `next_cursor` liked page (same de-dup rule as members).                                                                                                         |
+| applyLikedRemoval            | (nodeId) => void       | P-5: optimistic removal of a row from `likedItems` (unlike started on the Likes surface; the server re-read converges either way).                                              |
+| handleMemberThumbnailsLoaded | (Map) => void          | Member-local thumbnail merge (P-4 members rows; P-5 extends it to `likedItems` rows — the session file list never sees these nodeIds).                                          |
 
 ### 2.3.1 Trash view branch
 
@@ -90,7 +96,25 @@ snake_case payload (with `mime` since P-3) maps to a **file-shape row** so `File
   view's nodeId flow), never by path.
 
 `handleMemberThumbnailsLoaded` (this hook) merges `useThumbnailLazyLoad` results into `collectionMembers.items`
-(member-local merge — the session `handleThumbnailsLoaded` never sees member nodeIds).
+(member-local merge — the session `handleThumbnailsLoaded` never sees member nodeIds). P-5: the same merge
+also targets `likedItems.items` (only one of the two surfaces is mounted at a time; a nodeId missing from
+both lists is a no-op).
+
+### 2.3.3 Liked-items surface (P-5)
+
+- **URL:** `/files/__collections__/liked` — the `urlView` parser's `__collections__` branch gains
+  `segments[1] === 'liked'` ⇒ `kind: 'collections-liked'`; `currentPath` is the constant
+  `/__collections__/liked` (sidebar LikesNode selection key, breadcrumb label). Location key
+  `collections-liked:` — entering/leaving reloads and clears like any view change; the ancestors
+  fetch and the folder-level write-permission check are skipped (virtual-surface list).
+- **Listing:** the branch calls `explorerGateway.loadLikedItems()` (→ `GET /api/file-likes/items`,
+  `fileLikes.md` §2.4.2) and maps rows through the SAME `toMemberRow` adapter — revoked liked
+  nodes land as disabled placeholder rows, trashed liked nodes are already hidden server-side.
+  `loadMoreLikedItems` appends cursor pages, de-duped by `nodeId` (§2.9 rule verbatim).
+- **Refresh:** the shell's existing `subscribeToFileLikes` → `loadFiles` re-read keeps the surface
+  converged (like ⇒ row appears, unlike ⇒ row drops); `applyLikedRemoval(nodeId)` performs the
+  optimistic drop the moment an unlike starts from the Likes surface (a failed unlike is undone by
+  the shell's re-read, `FileManager.md` like wiring).
 
 ### 2.4 Boundaries
 
@@ -115,7 +139,7 @@ snake_case payload (with `mime` since P-3) maps to a **file-shape row** so `File
 - **Route-param contract (`/files/*`)**:
   - The explorer route uses a splat param (`*`) to represent the explorer location under `/files/`.
   - **Real folders:** URL form is `/files/node/<nodeId>` (decision D1). `useFileManager` parses the splat into a `nodeId`; that `nodeId` is the source of truth and is passed to `explorerGateway.listDirectory({ nodeId })`.
-  - **Virtual roots:** `/files/__recent__` and `/files/__shared__` URLs are unchanged; they map to the recent-files and shared-folder views (no nodeId). `/files/__trash__` and `/files/__trash__/node/<nodeId>` map to the trash view (`trashNodeId` = trashed parent, `null` at root).
+  - **Virtual roots:** `/files/__recent__` and `/files/__shared__` URLs are unchanged; they map to the recent-files and shared-folder views (no nodeId). `/files/__trash__` and `/files/__trash__/node/<nodeId>` map to the trash view (`trashNodeId` = trashed parent, `null` at root). The `__collections__` overlay maps `/files/__collections__` (list), `/files/__collections__/__archive__`, `/files/__collections__/collection/<id>` (members) and — P-5 — `/files/__collections__/liked` (Likes surface, §2.3.3); none of these ever enter nodeId explorer state.
   - **Legacy path URLs** (e.g. `/files/<username>/<subpath>`): resolved via `POST /files/resolve-path { path } → { nodeId }` (server S3) and redirected to `/files/node/<nodeId>`; if resolution fails, fall back to the root-level listing. The client keeps no persistent path→nodeId mapping for this; the session-local `path → nodeId` map is removed in the nodeId end-state.
   - Router upgrades that change relative splat resolution (React Router v6 `future.v7_relativeSplatPath`, and React Router v7 baseline behavior) must not change the user-visible nodeId contract above.
 - **Must route explorer IO through:** `explorerGateway` (directory listing, path access checks, recent-file load/remove subscription helpers, metadata enrichment, and shared-entry loading when special collections need them).
@@ -156,6 +180,7 @@ snake_case payload (with `mime` since P-3) maps to a **file-shape row** so `File
 - [ ] Virtual-root URLs `/files/__recent__` and `/files/__shared__` keep their existing behavior.
 - [ ] Trash view: `/files/__trash__` lists topmost trashed entries via `explorerGateway.loadTrashEntries()`; `/files/__trash__/node/<nodeId>` reloads with `{ parentId }`; location key changes clear selection; `trashTrail` follows the navigation chain and rebuilds from cached trashed names (or the first child's `displayPath` on refresh); `openTrashFolder(null)` returns to the trash root.
 - [ ] A legacy path URL is resolved via `POST /files/resolve-path` and redirected to `/files/node/<nodeId>`; an unknown path falls back to the root listing.
+- [ ] (P-5) `/files/__collections__/liked` parses to `kind:'collections-liked'` (`currentPath` `/__collections__/liked`), lists via `explorerGateway.loadLikedItems()` into `likedItems` through `toMemberRow`; `loadMoreLikedItems` appends the next cursor page de-duped by `nodeId`; `applyLikedRemoval` drops a row optimistically; leaving the route resets `likedItems` (symmetry rule with `collectionMembers`).
 - [ ] `__recent__` flow continues to render the same recent-file entries and metadata while all repository/notifier access flows through `explorerGateway`.
 - [ ] While viewing `__recent__`, notifier-driven recent-file changes trigger a reload through this hook without extra page-shell wiring.
 - [ ] `__shared__` flow (shared folders, file-only permissions) remains stable until overlay extraction.

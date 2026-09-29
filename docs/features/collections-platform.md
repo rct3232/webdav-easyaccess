@@ -107,6 +107,17 @@ Per-file, per-user; context menu (list and member rows share one state) plus pro
 toggle; no inline hearts (rejected, density). Feeds the activity score, the split hot set, and a
 liked-cluster fast path.
 
+**Landing (P-5, owner ruling 2026-09-29):** the Likes view is a **static child row of the
+Collections sidebar section** (`/files/__collections__/liked`, the ArchiveNode precedent — the
+earlier top-level `__liked__` virtual-root shape is REJECTED). Opening it lists the viewer's liked
+files through the SAME member-view machinery (shared `FileList`/`FileGrid`/`FileDetail` via the
+`toMemberRow` adapter, grid default under the per-surface `likedViewMode` key, no sort button,
+`MemberRowControls` menu without Exclude/publish — download/reveal/properties/unlike) backed by the
+new `GET /api/file-likes/items` endpoint (`routes/fileLikes.md` §2.4.2): `node_id` asc ordering
+(no liked-at stamp exists), unreadable likes render as `state:'revoked'` placeholders, trashed
+likes hidden, cursor-paged (default 50 / cap 200). Likes survive trash and permission loss
+(store invariant) — the listing resolves current state per read, never the write-time state.
+
 ### 3.4 Usage signals
 
 Recorded only for low-frequency actions (open, download, preview, search hit, like), never on

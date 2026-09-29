@@ -17,6 +17,7 @@ import {
   Collections as CollectionsIcon,
   FolderShared as FolderSharedIcon,
   Inventory2 as ArchiveIcon,
+  FavoriteBorder as LikesIcon,
   ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
 import { pixelMiddleTruncate } from '../../utils/stringUtils';
@@ -41,6 +42,7 @@ const CollectionsSection = ({
   currentPath,
   onCollectionClick,
   onArchiveClick,
+  onLikesClick,
   newCollectionIds = [],
 }) => {
   const { t } = useTranslation();
@@ -52,6 +54,7 @@ const CollectionsSection = ({
 
   const isHeaderSelected = currentPath === '/__collections__';
   const isArchiveSelected = currentPath === '/__collections__/__archive__';
+  const isLikesSelected = currentPath === '/__collections__/liked';
 
   const renderRowName = (name, { weight = 400 } = {}) => {
     const truncatedName = pixelMiddleTruncate(name ?? '', maxPixelWidth, font);
@@ -235,6 +238,44 @@ const CollectionsSection = ({
               );
             })
           )}
+
+          {/* LikesNode (P-5, owner ruling) — static child row ahead of the
+              ArchiveNode (which stays the section tail); renders unconditionally
+              under the same zero-state rule (empty likes = legal empty view). */}
+          <ListItem disablePadding>
+            <ListItemButton
+              data-testid="collections-liked-node"
+              onClick={onLikesClick}
+              selected={isLikesSelected}
+              sx={{
+                pl: 3,
+                py: 0.5,
+                minHeight: 32,
+                '&.Mui-selected': {
+                  backgroundColor: 'transparent',
+                  color: 'primary.main',
+                  borderLeft: '3px solid',
+                  borderLeftColor: 'primary.main',
+                  '&:hover': { backgroundColor: 'action.hover' },
+                  '& .MuiListItemIcon-root': { color: 'primary.main' },
+                },
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: 24, mr: 0.5 }}>
+                <LikesIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText
+                primary={
+                  <Typography
+                    variant="body2"
+                    sx={{ fontSize: '0.875rem', fontWeight: isLikesSelected ? 700 : 400 }}
+                  >
+                    {t('nav.collectionsLiked')}
+                  </Typography>
+                }
+              />
+            </ListItemButton>
+          </ListItem>
 
           {/* ArchiveNode — auto-child at the section end; renders unconditionally
               (§2.3 T0.4 decision); the badge hides at count 0. */}

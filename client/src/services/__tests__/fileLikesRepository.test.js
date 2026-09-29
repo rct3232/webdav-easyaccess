@@ -4,7 +4,12 @@
  * @see docs/spec/client/services/fileLikesRepository.md
  */
 import { get, put } from '../apiClient';
-import { getLikedNodeIds, setFileLike, subscribeFileLikesChange } from '../fileLikesRepository';
+import {
+  getLikedItems,
+  getLikedNodeIds,
+  setFileLike,
+  subscribeFileLikesChange,
+} from '../fileLikesRepository';
 
 jest.mock('../apiClient', () => ({
   get: jest.fn(),
@@ -99,5 +104,53 @@ describe('fileLikesRepository.setFileLike', () => {
     put.mockResolvedValueOnce({ data: { node_id: 13, liked: true } });
     await setFileLike(13, true);
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe('fileLikesRepository.getLikedItems (P-5 Likes surface)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns the cursor page verbatim and builds the query string', async () => {
+    const page = {
+      items: [
+        {
+          node_id: 7,
+          name: 'b.txt',
+          type: 'file',
+          mime: null,
+          state: 'normal',
+          liked: true,
+          created_at: null,
+        },
+      ],
+      next_cursor: 'cursor-token',
+    };
+    get.mockResolvedValueOnce({ data: page });
+
+    await expect(getLikedItems({ cursor: 'abc', limit: 50 })).resolves.toEqual(page);
+    expect(get).toHaveBeenCalledWith('/file-likes/items?cursor=abc&limit=50');
+  });
+
+  it('omits absent params (first page)', async () => {
+    get.mockResolvedValueOnce({ data: { items: [], next_cursor: null } });
+
+    await expect(getLikedItems()).resolves.toEqual({ items: [], next_cursor: null });
+    expect(get).toHaveBeenCalledWith('/file-likes/items');
+  });
+
+  it('absorbs failures into { items: [], next_cursor: null } without rejecting or notifying', async () => {
+    const listener = jest.fn();
+    const unsubscribe = subscribeFileLikesChange(listener);
+    try {
+      get.mockRejectedValueOnce(transportError(500, 'serverErrors.files.readFailed'));
+
+      await expect(getLikedItems({ cursor: 'abc' })).resolves.toEqual({
+        items: [],
+        next_cursor: null,
+      });
+      expect(listener).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+    }
   });
 });

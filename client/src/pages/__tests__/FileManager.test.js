@@ -2253,4 +2253,96 @@ describe('FileManager', () => {
       await waitFor(() => expect(ancestorsRequested).toBe('90210'));
     }, 15000);
   });
+
+  describe('Likes surface child row (P-5)', () => {
+    const likedHandlers = ({ liked } = {}) => [
+      http.get('/api/collections', () => HttpResponse.json({ collections: [] })),
+      http.get('/api/collections/merge-suggestions', () => HttpResponse.json({ suggestions: [] })),
+      http.get('/api/file-likes', () => HttpResponse.json({ liked: liked ? liked() : [] })),
+      http.get('/api/file-likes/items', () =>
+        HttpResponse.json({
+          items: [
+            {
+              node_id: 90300,
+              name: 'favourite.jpg',
+              type: 'file',
+              mime: 'image/jpeg',
+              state: 'normal',
+              liked: true,
+              created_at: '2026-09-01T00:00:00Z',
+            },
+          ],
+          next_cursor: null,
+        })
+      ),
+    ];
+
+    it('lists liked files through the member machinery with a null-collection row menu', async () => {
+      server.use(...likedHandlers({ liked: () => [90300] }));
+      await renderWithProvidersAct(<FileManagerWithRoutes />, {
+        initialEntries: ['/files/__collections__/liked'],
+      });
+
+      // the liked row lands in the shared members renderer (grid default)
+      expect(await screen.findByTestId('members-list')).toBeInTheDocument();
+      expect(screen.getByTestId('member-row-90300')).toBeInTheDocument();
+      // P-4/P-5 member-view toolbar: no sort button, view toggles present
+      expect(screen.queryByTestId('file-manager-sort')).not.toBeInTheDocument();
+      // switching to LIST persists on the dedicated likedViewMode key
+      fireEvent.click(screen.getByTestId('view-mode-list'));
+      await waitFor(() => expect(window.localStorage.getItem('likedViewMode')).toBe('list'));
+
+      // row menu = collection:null liked surface ⇒ Download/Reveal/Properties/
+      // like toggle, NO Exclude/publish (membership mutations structurally gone)
+      fireEvent.click(await screen.findByTestId('member-menu-button'));
+      expect(await screen.findByTestId('member-download')).toBeInTheDocument();
+      expect(screen.getByTestId('like-toggle')).toBeInTheDocument();
+      expect(screen.queryByTestId('member-exclude')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('member-publish')).not.toBeInTheDocument();
+    }, 15000);
+
+    it('unlike from the row menu removes the row optimistically and PUTs liked:false', async () => {
+      let putBody = null;
+      let likedNow = [90300];
+      const rowItem = {
+        node_id: 90300,
+        name: 'favourite.jpg',
+        type: 'file',
+        mime: 'image/jpeg',
+        state: 'normal',
+        liked: true,
+        created_at: '2026-09-01T00:00:00Z',
+      };
+      server.use(
+        http.get('/api/collections', () => HttpResponse.json({ collections: [] })),
+        http.get('/api/collections/merge-suggestions', () =>
+          HttpResponse.json({ suggestions: [] })
+        ),
+        http.get('/api/file-likes', () => HttpResponse.json({ liked: likedNow })),
+        http.get('/api/file-likes/items', () =>
+          HttpResponse.json({
+            items: likedNow.includes(90300) ? [rowItem] : [],
+            next_cursor: null,
+          })
+        ),
+        http.put('/api/file-likes/:nodeId', async ({ request }) => {
+          putBody = await request.json();
+          likedNow = putBody.liked ? [90300] : [];
+          return HttpResponse.json({ node_id: 90300, liked: putBody.liked });
+        })
+      );
+      await renderWithProvidersAct(<FileManagerWithRoutes />, {
+        initialEntries: ['/files/__collections__/liked'],
+      });
+
+      await screen.findByTestId('member-row-90300');
+      fireEvent.click(await screen.findByTestId('member-menu-button'));
+      // the row is liked → the menu offers the unlike entry
+      fireEvent.click(await screen.findByTestId('like-toggle'));
+
+      await waitFor(() => expect(putBody).toEqual({ liked: false }));
+      // optimistic drop (applyLikedRemoval) removes the row without a refetch
+      await waitFor(() => expect(screen.queryByTestId('member-row-90300')).not.toBeInTheDocument());
+    }, 15000);
+  });
 });

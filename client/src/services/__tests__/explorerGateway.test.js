@@ -585,6 +585,15 @@ describe('explorerGateway', () => {
       repo.subscribeFileLikesChange = jest.fn(() => unsub);
       expect(explorerGateway.subscribeToFileLikes(() => {})).toBe(unsub);
     });
+
+    it('re-exports loadLikedItems with the repository cursor shape (P-5)', async () => {
+      const repo = require('../fileLikesRepository');
+      const page = { items: [{ node_id: 7, state: 'normal' }], next_cursor: 'token' };
+      repo.getLikedItems.mockResolvedValueOnce(page);
+
+      await expect(explorerGateway.loadLikedItems({ cursor: 'token' })).resolves.toEqual(page);
+      expect(repo.getLikedItems).toHaveBeenCalledWith({ cursor: 'token' });
+    });
   });
 
   describe('explorerGateway narrow listing/render helpers (T0.5/T0.11)', () => {

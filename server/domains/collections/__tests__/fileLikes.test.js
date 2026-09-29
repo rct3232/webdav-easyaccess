@@ -17,7 +17,9 @@ const {
   createTestFileNode,
   grantTestPermissionByNodeId,
   dbQuery,
+  dbRun,
 } = require('@server/test-utils');
+const wire = require('../wire');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const usageService = require('@server/infrastructure/usageService');
 
@@ -318,5 +320,159 @@ describe('PUT /api/file-likes/:nodeId', () => {
     expect(events).toHaveLength(1);
     expect(Number(events[0].user_id)).toBe(b.user.id);
     expect(events[0].action).toBe('like');
+  });
+});
+
+// -- GET /api/file-likes/items (P-5 — the Likes surface listing) ---------------
+
+describe('GET /api/file-likes/items', () => {
+  async function like(token, nodeId) {
+    const res = await request(app)
+      .put(`/api/file-likes/${nodeId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ liked: true });
+    expect(res.status).toBe(200);
+  }
+
+  it('rejects unauthenticated reads with 401', async () => {
+    const res = await request(app).get('/api/file-likes/items');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns an empty page for a viewer without likes', async () => {
+    const { token } = await createAuthenticatedTestUser({ username: `likes-empty-${Date.now()}` });
+    const res = await request(app)
+      .get('/api/file-likes/items')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ items: [], next_cursor: null });
+  });
+
+  it('lists readable liked nodes ordered by node_id asc with the row contract', async () => {
+    const { user, token } = await createAuthenticatedTestUser({
+      username: `likes-items-${Date.now()}`,
+    });
+    const low = await makeReadableNode(user.id, 'items-low.txt');
+    const high = await makeReadableNode(user.id, 'items-high.txt');
+    // Like in REVERSE id order — the read order is node_id asc (no liked-at stamp).
+    await like(token, high.nodeId);
+    await like(token, low.nodeId);
+
+    const res = await request(app)
+      .get('/api/file-likes/items')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.next_cursor).toBeNull();
+    expect(res.body.items.map((item) => item.node_id)).toEqual(
+      [low.nodeId, high.nodeId].sort((a, b) => a - b)
+    );
+    expect(res.body.items[0]).toMatchObject({
+      node_id: low.nodeId,
+      name: 'items-low.txt',
+      type: 'file',
+      state: 'normal',
+      liked: true,
+    });
+    expect(res.body.items[0]).toHaveProperty('mime');
+    expect(res.body.items[0]).toHaveProperty('created_at');
+  });
+
+  it('renders a since-unreadable like as a revoked placeholder (null name/type/mime)', async () => {
+    const { user, token } = await createAuthenticatedTestUser({
+      username: `likes-revoked-${Date.now()}`,
+    });
+    const node = await makeReadableNode(user.id, 'items-gone-share.txt');
+    await like(token, node.nodeId);
+
+    // Permission loss: the like SURVIVES (store invariant) but the row must
+    // never disclose the name of a node the viewer can no longer read.
+    await dbRun('DELETE FROM permissions_user_files WHERE file_node_id = ?', [node.nodeId]);
+    await dbRun('DELETE FROM permissions_user_paths WHERE file_node_id = ?', [node.nodeId]);
+
+    const res = await request(app)
+      .get('/api/file-likes/items')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0]).toMatchObject({
+      node_id: node.nodeId,
+      name: null,
+      type: null,
+      mime: null,
+      state: 'revoked',
+      liked: true,
+    });
+  });
+
+  it('hides trashed liked nodes; the like row survives and restore re-surfaces the row', async () => {
+    const { user, token } = await createAuthenticatedTestUser({
+      username: `likes-trash-${Date.now()}`,
+    });
+    const node = await makeReadableNode(user.id, 'items-trashed.txt');
+    await like(token, node.nodeId);
+
+    await dbRun("UPDATE file_nodes SET deleted_at = datetime('now') WHERE id = ?", [node.nodeId]);
+    const hidden = await request(app)
+      .get('/api/file-likes/items')
+      .set('Authorization', `Bearer ${token}`);
+    expect(hidden.body.items).toHaveLength(0);
+    const { rows: likes } = await dbQuery(
+      'SELECT COUNT(*) AS count FROM file_likes WHERE user_id = ? AND node_id = ?',
+      [user.id, node.nodeId]
+    );
+    expect(Number(likes[0].count)).toBe(1); // member parity: hidden, never forgotten
+
+    await dbRun('UPDATE file_nodes SET deleted_at = NULL WHERE id = ?', [node.nodeId]);
+    const back = await request(app)
+      .get('/api/file-likes/items')
+      .set('Authorization', `Bearer ${token}`);
+    expect(back.body.items.map((item) => item.node_id)).toEqual([node.nodeId]);
+  });
+
+  it('paginates with a stable cursor (node_id key) and clamps the limit', async () => {
+    const { user, token } = await createAuthenticatedTestUser({
+      username: `likes-paging-${Date.now()}`,
+    });
+    const ids = [];
+    for (const name of ['items-a.txt', 'items-b.txt', 'items-c.txt']) {
+      const node = await makeReadableNode(user.id, name);
+      ids.push(node.nodeId);
+      await like(token, node.nodeId);
+    }
+    const asc = [...ids].sort((a, b) => a - b);
+
+    const page1 = await request(app)
+      .get('/api/file-likes/items?limit=2')
+      .set('Authorization', `Bearer ${token}`);
+    expect(page1.body.items.map((item) => item.node_id)).toEqual(asc.slice(0, 2));
+    expect(page1.body.next_cursor).toBeTruthy();
+    expect(wire.decodeCursor(page1.body.next_cursor)).toMatchObject({ nodeId: asc[1] });
+
+    const page2 = await request(app)
+      .get(`/api/file-likes/items?limit=2&cursor=${encodeURIComponent(page1.body.next_cursor)}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(page2.body.items.map((item) => item.node_id)).toEqual(asc.slice(2));
+    expect(page2.body.next_cursor).toBeNull();
+
+    const clamped = await request(app)
+      .get('/api/file-likes/items?limit=99999')
+      .set('Authorization', `Bearer ${token}`);
+    expect(clamped.body.items).toHaveLength(3); // max-cap honored, all fit
+    const junk = await request(app)
+      .get('/api/file-likes/items?limit=abc&cursor=not-a-cursor')
+      .set('Authorization', `Bearer ${token}`);
+    expect(junk.body.items.map((item) => item.node_id)).toEqual(asc); // defaults, first page
+  });
+
+  it('is viewer-scoped: B never sees A liked rows (invariant 9)', async () => {
+    const a = await createAuthenticatedTestUser({ username: `likes-items-a-${Date.now()}` });
+    const b = await createAuthenticatedTestUser({ username: `likes-items-b-${Date.now()}` });
+    const node = await makeReadableNode(a.user.id, 'items-a-only.txt');
+    await like(a.token, node.nodeId);
+
+    const res = await request(app)
+      .get('/api/file-likes/items')
+      .set('Authorization', `Bearer ${b.token}`);
+    expect(res.body.items).toHaveLength(0);
   });
 });

@@ -27,7 +27,7 @@ Target-contract spec (`docs/features/collections-platform.md` §3.2 member-row c
 | anchorEl       | node     | N        | -       | MUI Menu anchor (row `More` button); alternative `contextMenu` `{mouseX,mouseY}` follows the FileContextMenu anchorPosition idiom               |
 | member         | object   | cond.    | -       | Single row: snake_case item (`node_id`, `membership`, `published`, `state`, `shared_excluded`, `liked`, `reason`)                              |
 | selectedRows   | array    | cond.    | -       | Multi-select variant (bulk toolbar) — exactly one of `member`/`selectedRows`                                                                   |
-| collection     | object   | Y        | -       | Parent row: `origin`, `publish_mode`, `granted_role` (viewer/editor/owner resolution)                                                          |
+| collection     | object\|null | Y     | -       | Parent row: `origin`, `publish_mode`, `granted_role` (viewer/editor/owner resolution). **P-5:** the Liked surface passes `null` (the listing is not inside any collection) — the manage-publish gate then resolves FALSE and NO Exclude/publish items render; the row-target callbacks (`member`) stay fully functional. |
 | onExclude      | function | Y        | -       | `Exclude` → `DELETE /:id/items` (stored row delete; non-`user` origins also insert exclusion — server semantics §3.2)                          |
 | onPublish      | function | Y        | -       | publish on/off → publish seam (`nodeIds`)                                                                                                      |
 | onDownload     | function | Y        | -       | file download via existing file seam (only offered when file ACL allows)                                                                       |
@@ -44,6 +44,13 @@ Target-contract spec (`docs/features/collections-platform.md` §3.2 member-row c
 - Multi-select adds: batch `Exclude`, batch publish, `Add to another collection` (membership copy via AddToCollectionMenu submenu).
 - **Explicitly ABSENT (grep-able invariant):** move / copy / rename / delete of the FILE node — no such items render in any collection member context, ever (invariant 1: "view by collection, mutate by file"). **No batch delete — by rule** (§3.2).
 - Viewer-role grantees: `Exclude` only for rows they added (403 otherwise — server enforces; UI hides for others' rows). Publish controls are owner-side only.
+- **P-5 (`collection:null`):** the Liked surface (`/files/__collections__/liked`) hosts the SAME single
+  `MemberRowControls` instance with no parent collection — membership mutations are structurally
+  impossible (Exclude/publish items NEVER render; the host additionally passes no `onExclude`/
+  `onPublish` callbacks), while `Download` / `Reveal original location` / `Properties` / like toggle
+  render normally. The like toggle on this surface is the unlike entry: `handleToggleLike` (shell)
+  → `PUT /api/file-likes/:nodeId {liked:false}` → notifier refresh + optimistic row removal
+  (`FileManager.md` like-wiring note).
 - Revoked rows (`state:'revoked'`): placeholder, menu renders nothing except close (no name/thumbnail exposure).
 
 ### 2.4 Feedback (host, restated for observability)
@@ -68,6 +75,7 @@ Target-contract spec (`docs/features/collections-platform.md` §3.2 member-row c
 - [ ] (P-4) OWN collection (`granted_role:null`, `publish_mode:'ask'`) ⇒ publish on/off toggle IS offered to the owner (the owner-visibility fix); a `viewer` grantee (`granted_role:'viewer'`) is NOT.
 - [ ] Multi-select offers batch exclude/publish/`Add to another collection` and NO delete affordance.
 - [ ] Like toggle reflects `liked` from the row verbatim (viewer-scoped, no aggregate).
+- [ ] (P-5) `collection:null` (liked surface) ⇒ no Exclude/publish items render (no crash — the manage-publish gate is null-guarded) and Download/Reveal/Properties/like toggle DO render; the like item toggles via the shared `onToggleLike` seam.
 
 ### 2.8 Edge Cases
 

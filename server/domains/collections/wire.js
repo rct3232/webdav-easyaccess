@@ -64,6 +64,26 @@ function serializeItem(item) {
   };
 }
 
+/**
+ * P-5 liked-items row (routes/fileLikes.md §2.4.2): the member `serializeItem`
+ * shape minus the membership fields (no stored/derived membership, publish
+ * state, reason or shared_exclusion on the Likes surface) — `created_at` is the
+ * NODE creation time (no liked-at stamp exists) and drives the client's
+ * `lastmod` fallback; revoked rows arrive with name/type already nulled by the
+ * service (masquerade parity).
+ */
+function serializeLikedItem(item) {
+  return {
+    node_id: item.nodeId,
+    name: item.name ?? null,
+    type: item.type ?? null,
+    mime: item.mimeType ?? null,
+    state: item.state,
+    liked: true,
+    created_at: item.createdAt ?? null,
+  };
+}
+
 function serializeGrant(grant, username) {
   return {
     grantee_id: grant.granteeId,
@@ -111,6 +131,7 @@ function decodeCursor(cursor) {
 module.exports = {
   serializeCollection,
   serializeItem,
+  serializeLikedItem,
   serializeGrant,
   serializeSuggestion,
   encodeCursor,

@@ -1057,6 +1057,88 @@ describe('FileManagerView', () => {
       expect(model.onBulkAction).toHaveBeenCalledWith('pin');
     });
 
+    const likedSurfaceProps = (overrides = {}) => {
+      const base = createProps();
+      const model = {
+        ...memberModel({ items: overrides.rows ?? [] }),
+        likedSurface: true,
+        digest: undefined,
+        publishPendingCount: undefined,
+        onPublishBatch: undefined,
+        onBulkMemberExclude: undefined,
+        onBulkAddToCollection: undefined,
+      };
+      return {
+        props: createProps({
+          shellContext: { ...base.shellContext, isMobile: false },
+          explorerSession: {
+            ...base.explorerSession,
+            controlsState: {
+              ...base.explorerSession.controlsState,
+              currentPath: '/__collections__/liked',
+              likedViewMode: overrides.likedViewMode ?? 'grid',
+              setLikedViewMode: overrides.setLikedViewMode ?? jest.fn(),
+            },
+          },
+          collectionsModel: model,
+        }),
+        model,
+      };
+    };
+
+    it('P-5: liked surface hides the sort and binds the view toggles to the LIKES key only', async () => {
+      const setLikedViewMode = jest.fn();
+      const { props } = likedSurfaceProps({ setLikedViewMode });
+      renderWithProviders(<FileManagerView {...props} />);
+
+      await screen.findByTestId('collections-list-view');
+      expect(screen.queryByTestId('file-manager-sort')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('view-mode-list'));
+      expect(setLikedViewMode).toHaveBeenCalledWith('list');
+      // neither the member key nor the file key dispatches on a likes toggle
+      expect(props.explorerSession.controlsState.setMemberViewMode).not.toHaveBeenCalled();
+      expect(props.explorerSession.controlsState.setViewMode).not.toHaveBeenCalled();
+    });
+
+    it('P-5: liked surface renders rows through the shared renderer chosen by likedViewMode (no membership banners)', async () => {
+      const { props } = likedSurfaceProps({ likedViewMode: 'list', rows: [memberAdapterRow()] });
+      renderWithProviders(<FileManagerView {...props} />);
+
+      await screen.findByTestId('members-list');
+      expect(screen.getByTestId('member-row-90210')).toBeInTheDocument();
+      // list renderer ⇒ NO card shell (grid would add the MuiCard root)
+      expect(
+        screen.getByTestId('member-row-90210').querySelector('.MuiCard-root')
+      ).not.toBeInTheDocument();
+      // membership chrome never appears on the liked surface
+      expect(screen.queryByTestId('publish-pending-banner')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('digest-banner')).not.toBeInTheDocument();
+    });
+
+    it('P-5: liked surface omits the member bulk cluster even in selection mode', async () => {
+      const base = createProps();
+      const { props } = likedSurfaceProps();
+      const selectionProps = createProps({
+        ...props,
+        selectionState: {
+          ...base.selectionState,
+          selectionModel: {
+            selectionMode: true,
+            selectedFiles: new Set([90210]),
+            handleFileCheck: jest.fn(),
+          },
+        },
+        collectionsModel: props.collectionsModel,
+        explorerSession: props.explorerSession,
+      });
+      renderWithProviders(<FileManagerView {...selectionProps} />);
+
+      await screen.findByTestId('collections-list-view');
+      expect(screen.queryByTestId('bulk-member-exclude')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('bulk-collection-add')).not.toBeInTheDocument();
+    });
+
     it('folder tree hosts the CollectionsSection and routes collection clicks through the host', async () => {
       explorerGateway.loadCollections.mockImplementation(async ({ include } = {}) =>
         include === 'mine,archived'

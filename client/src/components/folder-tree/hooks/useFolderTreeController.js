@@ -240,6 +240,11 @@ const useFolderTreeController = ({
     onNodeClick('/__collections__/__archive__');
   }, [onNodeClick]);
 
+  // P-5: static Likes child row (owner ruling — section child, not a root).
+  const handleLikedClick = useCallback(() => {
+    onNodeClick('/__collections__/liked');
+  }, [onNodeClick]);
+
   const handleCollectionClick = useCallback(
     (collectionId) => {
       onNodeClick(`/__collections__/collection/${collectionId}`);
@@ -267,6 +272,7 @@ const useFolderTreeController = ({
     handleCollectionsClick,
     handleCollectionClick,
     handleArchiveClick,
+    handleLikedClick,
     collectionsTreeRows,
     archiveCount,
     newCollectionIds,

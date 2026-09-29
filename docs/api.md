@@ -181,10 +181,11 @@ Journaled mutations return `undo: { action_id }` (see Actions). Spec: `docs/spec
 
 Separate mount (per-node subject, not per-collection; router still owned by the collections domain). No undo pointer (§4.11). Spec: `docs/spec/server/routes/fileLikes.md`.
 
-| Method | Path                      | Auth  | Description                                                                                 |
-| ------ | ------------------------- | ----- | ------------------------------------------------------------------------------------------- |
-| GET    | `/api/file-likes`         | Token | Viewer's liked node ids. Returns `{ liked: [node_id, …] }` (`node_id` asc).                 |
-| PUT    | `/api/file-likes/:nodeId` | Token | Set like state. Body `{ liked: boolean }`. Returns `{ node_id, liked }` (echo, idempotent). |
+| Method | Path                      | Auth  | Description                                                                                                                                                                                                                                     |
+| ------------------------- | ------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET                       | `/api/file-likes`         | Token | Viewer's liked node ids. Returns `{ liked: [node_id, …] }` (`node_id` asc).                                                                                                                                                                       |
+| GET                       | `/api/file-likes/items`   | Token | Liked-items ROW listing (P-5 Likes surface): `{ items: [{ node_id, name, type, mime, state, liked, created_at }], next_cursor }` — `node_id` asc (no liked-at stamp), cursor-paged (default 50 / cap 200); unreadable ⇒ `state:'revoked'` null-named, trashed hidden (`fileLikes.md` §2.4.2). |
+| PUT                       | `/api/file-likes/:nodeId` | Token | Set like state. Body `{ liked: boolean }`. Returns `{ node_id, liked }` (echo, idempotent).                                                                                                                                                       |
 
 ---
 

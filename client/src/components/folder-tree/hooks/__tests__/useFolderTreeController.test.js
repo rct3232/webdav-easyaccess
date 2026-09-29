@@ -444,17 +444,19 @@ describe('useFolderTreeController — collections section (§3)', () => {
     expect(result.current.archiveCount).toBe(0);
   });
 
-  it('handleCollectionsClick / handleArchiveClick / handleCollectionClick route via the host', async () => {
+  it('handleCollectionsClick / handleArchiveClick / handleLikedClick / handleCollectionClick route via the host', async () => {
     const onNodeClick = jest.fn();
     const { result } = renderCollections({ onNodeClick });
     await waitFor(() => expect(result.current.collectionsTreeRows).toHaveLength(2));
 
     act(() => result.current.handleCollectionsClick());
     act(() => result.current.handleArchiveClick());
+    act(() => result.current.handleLikedClick());
     act(() => result.current.handleCollectionClick(7));
 
     expect(onNodeClick).toHaveBeenCalledWith('/__collections__');
     expect(onNodeClick).toHaveBeenCalledWith('/__collections__/__archive__');
+    expect(onNodeClick).toHaveBeenCalledWith('/__collections__/liked'); // P-5
     expect(onNodeClick).toHaveBeenCalledWith('/__collections__/collection/7');
   });
 

@@ -30,6 +30,16 @@ export const setCollectionMemberViewMode = (mode) => {
   localStorage.setItem('collectionMemberViewMode', mode);
 };
 
+// P-5: per-surface view mode of the collection LIKES surface (own key —
+// independent of BOTH the file viewMode and the members key; default grid)
+export const getLikedViewMode = () => {
+  return localStorage.getItem('likedViewMode') || 'grid';
+};
+
+export const setLikedViewMode = (mode) => {
+  localStorage.setItem('likedViewMode', mode);
+};
+
 // 정렬 모드 저장/로드
 export const getSortMode = () => {
   return localStorage.getItem('sortMode') || 'name_asc';

@@ -8,7 +8,7 @@
 
 function serializeCollection(
   row,
-  { grantedRole = null, itemCount = 0, includeDefinition = true } = {}
+  { grantedRole = null, itemCount = 0, includeDefinition = true, previewItems = [] } = {}
 ) {
   const payload = {
     collection_id: row.id,
@@ -22,6 +22,15 @@ function serializeCollection(
     name_locked: Boolean(row.nameLocked),
     granted_role: grantedRole ?? null,
     item_count: itemCount,
+    // P-3 card preview: ≤4 newest-added members from the already-resolved member
+    // view; revoked/shared-excluded rows are filtered by the service BEFORE this
+    // point (their name/mime must never reach the wire — routes spec §collection row).
+    preview_items: (previewItems ?? []).map((item) => ({
+      node_id: item.nodeId,
+      name: item.name ?? null,
+      type: item.type ?? null,
+      mime: item.mimeType ?? null,
+    })),
     archived_at: row.archivedAt ?? null,
     last_member_change_at: row.lastMemberChangeAt ?? null,
     created_at: row.createdAt ?? null,
@@ -43,6 +52,7 @@ function serializeItem(item) {
     node_id: item.nodeId,
     name: item.name ?? null,
     type: item.type ?? null,
+    mime: item.mimeType ?? null,
     membership: item.membership,
     published: Boolean(item.published),
     added_by: item.addedBy ?? null,

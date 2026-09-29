@@ -277,12 +277,36 @@ async function resolveMemberRows(userId, collection, getCandidates) {
       state: readable ? 'normal' : 'revoked',
       name: readable ? node.name : null,
       type: readable ? node.type : null,
+      mimeType: readable ? (node.mimeType ?? null) : null,
       reason: stored ? null : (derived.get(nodeId)?.reason ?? null),
       sharedExcluded: foreign,
       liked: likedSet.has(nodeId),
     });
   }
   return rows;
+}
+
+/**
+ * Card preview rows (P-3, owner ruling): the ≤4 newest-added members of an
+ * already-resolved member view — revoked and shared-excluded rows NEVER surface
+ * (name/thumbnail after revocation is a leak; foreign rows are not shareable
+ * content). Ordering is createdAt desc (added time), deterministic tie-break
+ * nodeId desc; pure in-memory over rows resolveMemberRows already returned —
+ * building previews adds ZERO queries.
+ */
+const PREVIEW_ITEM_CAP = 4;
+
+function buildPreviewItems(rows) {
+  return rows
+    .filter((row) => row.state !== 'revoked' && !row.sharedExcluded)
+    .slice()
+    .sort((a, b) => {
+      const at = String(a.createdAt ?? '');
+      const bt = String(b.createdAt ?? '');
+      if (at !== bt) return at < bt ? 1 : -1;
+      return b.nodeId - a.nodeId;
+    })
+    .slice(0, PREVIEW_ITEM_CAP);
 }
 
 /**
@@ -435,6 +459,7 @@ async function listCollections(userId, { sort, include } = {}) {
         grantedRole,
         itemCount: view.length,
         includeDefinition: isOwner,
+        previewItems: buildPreviewItems(view),
       })
     );
   }
@@ -455,6 +480,7 @@ async function getCollection(userId, collectionId) {
       grantedRole: grant ? grant.role : null,
       itemCount: view.length,
       includeDefinition: isOwner,
+      previewItems: buildPreviewItems(view),
     }),
   };
 }

@@ -1127,7 +1127,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         items: likedItems.items,
         nextCursor: likedItems.nextCursor,
         onLoadMore: loadMoreLikedItems,
-        memberLoading: loading,
         onMemberAction: handleMemberAction,
         onMemberThumbnailsLoaded: handleMemberThumbnailsLoaded,
       };

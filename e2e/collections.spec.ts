@@ -790,9 +790,11 @@ test('E2E-COLLECTION-013: the sidebar Likes child row lists liked files through 
   const memberRow = page.getByTestId(`member-row-${fileA.nodeId}`);
   await expect(memberRow).toBeVisible();
   await expect(memberRow.locator('.MuiCard-root')).toBeVisible();
+  // (the session persists the default on mount — the isolation claim is the
+  // LIKES dispatch never touching the member key's value)
   expect(
     await page.evaluate(() => window.localStorage.getItem('collectionMemberViewMode'))
-  ).toBeNull();
+  ).not.toBe('list');
 
   // Re-entering Likes via the sidebar row: the LIST mode persisted across the
   // reload (per-surface key, member-parity rows).

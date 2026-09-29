@@ -45,6 +45,7 @@ with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 | GET    | `/:id/items`         | Token | Member view, cursor-paged, digest counts via `since`.                                     |
 | POST   | `/:id/items`         | Token | Add members. Body `{ nodeIds }`.                                                          |
 | DELETE | `/:id/items`         | Token | Remove stored rows / insert exclusions (derived).                                         |
+| PUT    | `/:id/items/publish` | Token | Publish/unpublish members (P-4). Body `{ nodeIds, published }`.                           |
 | POST   | `/preview`           | Token | Dry preview: `{ seedNodeId }` or `{ definition }`.                                        |
 | POST   | `/:id/preview`       | Token | Dry-run the stored definition of an existing one.                                         |
 | GET    | `/merge-suggestions` | Token | Pending merge-suggestion cards (§4.4).                                                    |
@@ -237,6 +238,33 @@ under cursor.
 }
 ```
 
+- **PUT /:id/items/publish:** (P-4) Owner or editor (viewer → 403 `collections.forbidden`).
+  Body `{ nodeIds: [ … ], published: true|false }` — 1–200 ids else 400
+  `collections.emptyNodeIds` (same `parseNodeIds` boundary as the sibling item routes);
+  non-boolean `published` → 400 `collections.invalidPublishMode`. Reuses the journaled
+  `collectionsStore.setItemPublished` (§4.7 publish gate): stored rows flip
+  (`published[]`); publishing a **derived** member MATERIALIZES a stored `published=true`
+  row (membership truth stays derived — the view dedups stored ∪ derived by node), while an
+  unpublish request for a derived-only row is already-unpublished (virtual `false`) and
+  lands in `ignored[]`. ids that are NOT in the collection's membership (stored ∪ derived
+  − exclusions — the raw `composeMemberRows` set, so editors may also flip stored rows
+  their member view hides) land in `ignored[]` — the route never ADDS membership for a
+  node the collection does not admit (anti-injection rule). Auto-pin touch on a `system`
+  collection whose publish materialized rows (§4.9b). 200:
+
+```json
+{
+  "published": [90210],
+  "ignored": [90299],
+  "undo": { "action_id": 995 }
+}
+```
+
+  `undo.action_id` points at the flip command when one committed, else at the
+  materialize-insert command, and `null` when nothing mutated (all-`ignored` batch).
+  A mixed batch (flip + materialize in one request) exposes the FLIP pointer on the
+  toast; the insert row stays undoable through the journal feed (as-built Decision below).
+
 - **POST /preview:** Body exactly one of `{ seedNodeId }` (seed-vector rule: seed vector vs
   requester-visible candidates, cosine, §4.5 — requires the `embed` LLM role) or
   `{ definition }` (rule dry-count: path/tag/like/date/size predicates, §3.2 — works with
@@ -380,6 +408,12 @@ All errors follow the shared error envelope (`errorCode` + optional `params`,
   `collection_items.created_at` and the row's `last_member_change_at` (derived, §4.8).
 - **Decision:** DELETE `/items` carries a JSON body (`{ nodeIds }`) — same channel shape
   as POST for symmetric batch semantics.
+- **Decision (P-4):** PUT `/items/publish` classifies ids against the RAW membership set
+  (`composeMemberRows`: stored rows materialize-flip via journaled `setItemPublished`;
+  derived-only publishes insert a stored `published=true` marker via journaled
+  `addItems`) — never via the grantee-filtered member view, so editors can also flip
+  stored rows invisible to their own listing; non-members are `ignored` (the endpoint can
+  never graft a foreign node into membership).
 - **Decision:** merge survivor = `:id` path param (the card's target collection), loser
   hard-deleted; undo restores the loser row and moves members back (journal payload).
 - **Decision:** `ai.notConfigured` on preview uses HTTP 409 (capability-state conflict),
@@ -418,6 +452,10 @@ All errors follow the shared error envelope (`errorCode` + optional `params`,
       visit cursor (second call with fresh `since` → zeros)
 - [ ] `publish_pending_count` visible to owner, absent for grantee; `ask` new member is
       invisible to grantee until published (`auto` mode flips this)
+- [ ] PUT /:id/items/publish (P-4): owner flips a stored `ask` member → grantee sees the
+      row; `ignored[]` carries non-member ids (nothing was added); viewer → 403;
+      non-boolean `published` → 400 `invalidPublishMode`; empty/oversized `nodeIds` →
+      400 `emptyNodeIds`; undo of the returned pointer re-hides the row
 - [ ] Editor may exclude a node they added but not one added by the owner → 403
 - [ ] Exclusion on a system collection inserts `collection_exclusions` and sets
       `pinned_by='auto'`; no journal row for the pin itself (§4.9b)

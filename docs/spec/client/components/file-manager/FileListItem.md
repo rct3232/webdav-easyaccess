@@ -56,6 +56,12 @@
 - Processing overlay (CircularProgress + icon) when isProcessing
 - **Filename:** Use `pixelMiddleTruncate` for middle ellipsis (...) with `Tooltip` showing the full name when truncated. Uses `ResizeObserver` to track container width.
 - Metadata: folder label or formatFileSize, formatDate(lastmod)
+- **Member-row slots (P-4, `CollectionsListView.md` §2.5) — all keyed off OPTIONAL row fields, file rows (fields absent) render byte-identical:**
+  - the size caption renders ONLY when the row is NOT a size-less member row (`file.isCollectionMember === true && file.size == null` ⇒ caption omitted — the member wire carries no size; the slot stays a plain `formatFileSize(file.size)` for every other row);
+  - `file.shared_excluded === true` (member rows) ⇒ `Not owner's file — not shared` Chip, `data-testid="member-excluded-chip-<nodeId>"`;
+  - `file.published === false` (member rows) ⇒ awaiting-publish Chip (`fileManager.memberUnpublishedBadge`), `data-testid="member-unpublished-chip-<nodeId>"` — the publish-all flip is observable through this chip;
+  - `file.moreButtonTestId` ⇒ the More button `data-testid` (members: `member-menu-button` — the dispatch target of `onMemberAction('menu', row, anchorEl)`).
+- **Memo comparator:** additionally compares `file.published` and `file.shared_excluded` (absent ⇒ `undefined === undefined` — no file-side behavior change) so member state flips re-render rows whose name/path never change.
 
 ### 2.7 Verification Scenarios
 
@@ -66,6 +72,7 @@ Checklist for unit test writing:
 - [x] More button shown when showMoreButton; hidden when !showMoreButton; onMoreClick called with file and stopPropagation
 - [x] Thumbnail or icon displayed
 - [x] Processing overlay when isProcessing
+- [ ] (P-4) Member row (isCollectionMember, size absent): no size caption; `shared_excluded`/`published:false` chips render with the member testids; More button carries `file.moreButtonTestId`; state flips (published) re-render the row through the memo comparator. A plain file row renders unchanged.
 
 ### 2.8 Edge Cases
 

@@ -57,6 +57,7 @@
 - Border/background for isSelected, isDropTarget
 - **Filename placement:** CardContent uses flex (`display: flex`, `alignItems: center`, `justifyContent: center`) so the filename is centered horizontally and vertically within the content area. Use `pixelMiddleTruncate` for middle ellipsis (...) with `Tooltip` showing the full name when truncated. Uses `ResizeObserver` to track container width.
 - **Padding:** `p: 1`, `pt: 0.5`, `pb: 1`; `'&:last-child': { pb: 1 }` overrides MUI CardContent default paddingBottom so the text area matches FileGridSkeleton.
+- **Member-tile slots (P-4, `CollectionsListView.md` §2.5):** the collection MEMBERS surface grid mode feeds file-shape member rows through this component (hosted by `CollectionsListView`). Optional slots only — file rows (fields absent) render byte-identical (regression anchor `FileGridItem.test.js` unchanged): `file.moreButtonTestId` → the More action `data-testid` (members: `member-menu-button`); the card container `data-testid` (`member-row-<nodeId>`) rides the parent `FileGridItemContainer` via `file.rowTestId`. Tiles carry NO chips and NO size (media + name only). The memo comparator additionally compares `file.published`/`file.shared_excluded`/`file.state` (undefined-safe) so member state flips re-render tiles whose name/path never change. Revoked rows arrive already disabled (`getFileItemState`) with the placeholder name and a null mime — `getThumbnail`/`getFileIconForGrid` never request a thumbnail.
 
 ### 2.7 Verification Scenarios
 

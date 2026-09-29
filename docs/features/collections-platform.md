@@ -87,7 +87,8 @@ Member-row controls omit move/copy/rename/delete — a collection is a view, not
 offering exclude, publish (shared only), download (per file ACL), `Reveal original location`, read-only
 properties, and like; multi-select adds batch exclude/publish and add-to-another-collection, never
 batch delete. Card menus: user/system — rename (locks the name), pin, archive, share settings,
-delete (archived only); received — open and `Leave` (a local hide).
+delete (archived only); received — open and `Revoke permission` (a real self-grant
+revocation, instant — §4.7 Path 1; the former recipient-local `Leave` hide is retired).
 
 ### 3.3 Like
 
@@ -179,9 +180,11 @@ post-creation adds start unpublished and hidden, and the owner sees a `N awaitin
 batch or individual publish; auto publishes every add, explicitly chosen. Decided: the initial set
 of seed and saved-search collections is created **published** — the §4.5/§4.6 confirm dialog is
 that batch approval, unseen remainder included. A derived member's publish state stores as a marker
-(the one exception to derived-no-rows); unpublishing never removes owner-added rows. `Leave` is a
-recipient-local hide; foreign-owned members never render in shared views; revocation is instant,
-though already-seen metadata cannot be re-taken.
+(the one exception to derived-no-rows); unpublishing never removes owner-added rows. The
+viewer-side `Revoke permission` card action is an actual self-grant revocation
+(`DELETE /:id/grants/me`, instant, no confirm — the owner may trivially re-grant; former
+recipient-local `Leave` hide superseded, 2026-09-29 owner ruling); foreign-owned members never
+render in shared views; revocation is instant, though already-seen metadata cannot be re-taken.
 
 ### 4.8 Digest
 

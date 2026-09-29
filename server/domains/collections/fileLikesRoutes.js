@@ -16,6 +16,7 @@ const { asyncHandler, mapServiceError, validationError } = require('../../utils/
 const { parseNodeId } = require('../../middleware/validateNodeIdParam');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const fileLikesService = require('./fileLikesService');
+const wire = require('./wire');
 
 const ERROR_MAP = {
   notFound: SERVER_ERROR_CODES.files.notFound,
@@ -33,6 +34,26 @@ router.get(
     try {
       const liked = await fileLikesService.listLikedNodeIds(req.user.full.id);
       res.json({ liked });
+    } catch (e) {
+      throw handleServiceError(e);
+    }
+  })
+);
+
+router.get(
+  '/items',
+  authenticateToken,
+  requireUser,
+  asyncHandler(async (req, res) => {
+    try {
+      const result = await fileLikesService.listLikedItems(req.user.full.id, {
+        cursor: req.query.cursor,
+        limit: req.query.limit,
+      });
+      res.json({
+        items: result.items.map(wire.serializeLikedItem),
+        next_cursor: result.nextCursor,
+      });
     } catch (e) {
       throw handleServiceError(e);
     }

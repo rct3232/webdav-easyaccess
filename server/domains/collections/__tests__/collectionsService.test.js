@@ -773,3 +773,184 @@ describe('collectionsService revokeOwnGrant (grants/me)', () => {
     ).rejects.toMatchObject({ message: 'notFound', status: 404 });
   });
 });
+
+describe('collectionsService publishItems (P-4)', () => {
+  async function publishedOf(collectionId, nodeId) {
+    const stored = await collectionsStore.getStoredItem(collectionId, nodeId);
+    return stored ? stored.published : null;
+  }
+
+  it('owner flips stored rows both directions; the row is never deleted; journal inverse restores', async () => {
+    const ctx = await setupServiceUser('publish-flip');
+    const manual = await collectionsService.createCollection(ctx.user.id, { name: 'Flip' });
+    await collectionsService.addItems(ctx.user.id, manual.collection.id, [ctx.beach.id]);
+    expect(await publishedOf(manual.collection.id, ctx.beach.id)).toBe(false);
+
+    const publish = await collectionsService.publishItems(
+      ctx.user.id,
+      manual.collection.id,
+      [ctx.beach.id],
+      true
+    );
+    expect(publish).toMatchObject({ published: [ctx.beach.id], ignored: [] });
+    expect(publish.undo.actionId).toBeGreaterThan(0);
+    expect(await publishedOf(manual.collection.id, ctx.beach.id)).toBe(true);
+
+    const unpublish = await collectionsService.publishItems(
+      ctx.user.id,
+      manual.collection.id,
+      [ctx.beach.id],
+      false
+    );
+    expect(unpublish.published).toEqual([ctx.beach.id]);
+    expect(await publishedOf(manual.collection.id, ctx.beach.id)).toBe(false);
+    // unpublish NEVER deletes the stored row
+    expect(await collectionsStore.getStoredItem(manual.collection.id, ctx.beach.id)).not.toBeNull();
+
+    const journal = await dbQuery(
+      'SELECT payload FROM action_journal WHERE subject = ? AND action = ? ORDER BY id DESC LIMIT 1',
+      [`collection:${manual.collection.id}`, 'set-items-published']
+    );
+    const inverse = JSON.parse(journal.rows[0].payload).inverse;
+    expect(inverse).toMatchObject({ op: 'set-items-published', published: true });
+  });
+
+  it('publishing a DERIVED member materializes a stored published=true marker (membership stays derived, auto-pin touched)', async () => {
+    const ctx = await setupServiceUser('publish-derived');
+    const system = await collectionsStore.createCollection(
+      {
+        ownerId: ctx.user.id,
+        name: 'Derived pub',
+        origin: 'system',
+        definition: {
+          kind: 'predicate',
+          any_of: [{ type: 'path', value: `/${ctx.user.username}/travel` }],
+        },
+      },
+      { actor: ctx.user.id }
+    );
+    // pre: beach is a derived member, virtually published:false, NO stored row
+    expect(await collectionsStore.getStoredItem(system.id, ctx.beach.id)).toBeNull();
+    const before = await collectionsService.getItems(ctx.user.id, system.id, {});
+    expect(before.items.find((i) => i.nodeId === ctx.beach.id).published).toBe(false);
+    expect(before.publishPendingCount).toBeGreaterThan(0);
+
+    const result = await collectionsService.publishItems(
+      ctx.user.id,
+      system.id,
+      [ctx.beach.id],
+      true
+    );
+    expect(result.published).toEqual([ctx.beach.id]);
+    const stored = await collectionsStore.getStoredItem(system.id, ctx.beach.id);
+    expect(stored).toMatchObject({ published: true, addedBy: ctx.user.id });
+
+    // membership TRUTH stays derived: the view renders the node ONCE (stored wins)
+    const after = await collectionsService.getItems(ctx.user.id, system.id, {});
+    const rows = after.items.filter((i) => i.nodeId === ctx.beach.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].published).toBe(true);
+    expect(after.publishPendingCount).toBe(before.publishPendingCount - 1);
+
+    // §4.9b: publishing on a system collection touches the auto-pin
+    const col = await collectionsStore.getCollection(system.id);
+    expect(col.pinnedBy).toBe('auto');
+  });
+
+  it('unpublishing a derived-only row is a NO-OP (already virtually unpublished) — ignored', async () => {
+    const ctx = await setupServiceUser('publish-unpub');
+    const system = await collectionsStore.createCollection(
+      {
+        ownerId: ctx.user.id,
+        name: 'Derived unpub',
+        origin: 'system',
+        definition: {
+          kind: 'predicate',
+          any_of: [{ type: 'path', value: `/${ctx.user.username}/travel` }],
+        },
+      },
+      { actor: ctx.user.id }
+    );
+    const result = await collectionsService.publishItems(
+      ctx.user.id,
+      system.id,
+      [ctx.beach.id],
+      false
+    );
+    expect(result.published).toEqual([]);
+    expect(result.ignored).toEqual([ctx.beach.id]);
+    expect(result.undo).toBeNull();
+    expect(await collectionsStore.getStoredItem(system.id, ctx.beach.id)).toBeNull();
+  });
+
+  it('non-member ids land in ignored[] — the route never ADDS membership (anti-injection)', async () => {
+    const ctx = await setupServiceUser('publish-inject');
+    const manual = await collectionsService.createCollection(ctx.user.id, { name: 'Inject' });
+    const result = await collectionsService.publishItems(
+      ctx.user.id,
+      manual.collection.id,
+      [ctx.beach.id],
+      true
+    );
+    expect(result.published).toEqual([]);
+    expect(result.ignored).toEqual([ctx.beach.id]);
+    expect(result.undo).toBeNull();
+    expect(await collectionsStore.getStoredItem(manual.collection.id, ctx.beach.id)).toBeNull();
+  });
+
+  it('ACL: editor may flip stored rows; viewer throws forbidden; ungranted throws notFound', async () => {
+    const owner = await createUserWithRoot('pub-owner');
+    const editor = await createUserWithRoot('pub-editor');
+    const viewer = await createUserWithRoot('pub-viewer');
+    const stranger = await createUserWithRoot('pub-stranger');
+    const manual = await collectionsService.createCollection(owner.user.id, { name: 'Acl pub' });
+    await collectionsStore.grantAccess(
+      manual.collection.id,
+      editor.user.id,
+      'editor',
+      owner.user.id
+    );
+    await collectionsStore.grantAccess(
+      manual.collection.id,
+      viewer.user.id,
+      'viewer',
+      owner.user.id
+    );
+    const ownerBeach = await fileNodeService.createFile(owner.root.id, 'apub.jpg');
+
+    const ok = await collectionsService.publishItems(
+      editor.user.id,
+      manual.collection.id,
+      [ownerBeach.id],
+      true
+    );
+    expect(ok).toMatchObject({ published: [], ignored: [ownerBeach.id] });
+
+    await collectionsService.addItems(owner.user.id, manual.collection.id, [ownerBeach.id]);
+    const editorFlip = await collectionsService.publishItems(
+      editor.user.id,
+      manual.collection.id,
+      [ownerBeach.id],
+      true
+    );
+    expect(editorFlip.published).toEqual([ownerBeach.id]);
+
+    await expect(
+      collectionsService.publishItems(viewer.user.id, manual.collection.id, [ownerBeach.id], true)
+    ).rejects.toMatchObject({ message: 'forbidden' });
+    await expect(
+      collectionsService.publishItems(stranger.user.id, manual.collection.id, [ownerBeach.id], true)
+    ).rejects.toMatchObject({ message: 'notFound' });
+  });
+
+  it('empty/oversized nodeIds reuse the parseNodeIds boundary (emptyNodeIds)', async () => {
+    const ctx = await setupServiceUser('publish-vals');
+    const manual = await collectionsService.createCollection(ctx.user.id, { name: 'Vals' });
+    await expect(
+      collectionsService.publishItems(ctx.user.id, manual.collection.id, [], true)
+    ).rejects.toMatchObject({ message: 'emptyNodeIds' });
+    await expect(
+      collectionsService.publishItems(ctx.user.id, manual.collection.id, [ctx.beach.id], 'yes')
+    ).rejects.toMatchObject({ message: 'invalidPublishMode' });
+  });
+});

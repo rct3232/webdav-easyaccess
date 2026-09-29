@@ -778,6 +778,68 @@ async function removeItems(userId, collectionId, nodeIds) {
   };
 }
 
+/**
+ * P-4 member publish (PUT /:id/items/publish, routes spec). Owner or editor.
+ * Classification runs against the RAW membership (stored ∪ derived −
+ * exclusions, `composeMemberRows`) — never the grantee-filtered view — so
+ * editors can flip stored rows invisible to their own listing. Stored rows
+ * flip through the journaled `setItemPublished` (inverse/undo pre-existing);
+ * publishing a DERIVED member MATERIALIZES a stored `published=true` marker
+ * (journaled `addItems` — membership truth stays derived, the view dedups by
+ * node); an unpublish of a derived-only row is already-virtual-false →
+ * `ignored`, and non-member ids are `ignored` (this function can never graft
+ * a node into membership). `undo.actionId` prefers the flip command, falls
+ * back to the materialize command, `null` when nothing mutated.
+ */
+async function publishItems(userId, collectionId, nodeIds, published) {
+  const parsed = parseNodeIds(nodeIds);
+  if (published !== true && published !== false) throw serviceError('invalidPublishMode');
+  const { collection } = await getCollectionForRead(userId, collectionId);
+  await requireOwnerOrRole(userId, collection, 'editor');
+
+  const { storedByNodeId, derived } = await composeMemberRows(userId, collection);
+  const flipIds = [];
+  const materializeIds = [];
+  const ignored = [];
+  for (const nodeId of parsed) {
+    if (storedByNodeId.has(nodeId)) {
+      flipIds.push(nodeId);
+    } else if (published && derived.has(nodeId)) {
+      materializeIds.push(nodeId);
+    } else {
+      ignored.push(nodeId);
+    }
+  }
+
+  let actionId = null;
+  const publishedIds = [];
+  if (materializeIds.length > 0) {
+    const add = await collectionsStore.addItems(
+      collectionId,
+      materializeIds,
+      userId,
+      { published: true },
+      { actor: userId }
+    );
+    publishedIds.push(...add.added);
+    ignored.push(...add.alreadyMembers);
+    actionId = add.actionId;
+    await touchSystemAutoPin(collection);
+  }
+  if (flipIds.length > 0) {
+    const flip = await collectionsStore.setItemPublished(collectionId, flipIds, published, {
+      actor: userId,
+    });
+    publishedIds.push(...flipIds);
+    actionId = flip.actionId;
+  }
+  return {
+    published: publishedIds,
+    ignored,
+    undo: actionId == null ? null : { actionId },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Upload-hook rule-check SEAM (§2.3-bis, T0.9) — callable only; invocation
 // at the §4.1 commit points rides the P1 wiring (register (b)).
@@ -1158,6 +1220,7 @@ module.exports = {
   getItems,
   addItems,
   removeItems,
+  publishItems,
   preview,
   previewCollection,
   listMergeSuggestions,

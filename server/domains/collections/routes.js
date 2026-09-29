@@ -298,6 +298,31 @@ router.delete(
   })
 );
 
+// P-4 member publish — flips stored rows and materializes derived publishes.
+router.put(
+  '/:id/items/publish',
+  authenticateToken,
+  requireUser,
+  asyncHandler(async (req, res) => {
+    try {
+      const body = req.body || {};
+      const result = await collectionsService.publishItems(
+        req.user.full.id,
+        Number(req.params.id),
+        body.nodeIds,
+        body.published
+      );
+      res.json({
+        published: result.published,
+        ignored: result.ignored,
+        undo: result.undo ? { action_id: result.undo.actionId } : null,
+      });
+    } catch (e) {
+      throw handleServiceError(e);
+    }
+  })
+);
+
 router.post(
   '/:id/preview',
   authenticateToken,

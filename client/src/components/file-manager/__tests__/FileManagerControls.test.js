@@ -489,3 +489,92 @@ describe('FileManagerControls AI-platform bulk entries (BulkActionToolbar §3)',
     expect(onBulkAddToCollection).toHaveBeenCalledWith(['/a.txt', '/b.txt']);
   });
 });
+
+describe('FileManagerControls collections selection bar + toggle hiding (P-3)', () => {
+  const selection = {
+    selectionMode: true,
+    selectedFiles: new Set(['/__collections__/collection/1']),
+  };
+
+  it('active view shows the FIXED Pin/Unpin/Archive set — no file bulk buttons', () => {
+    const onCollectionsBulkAction = jest.fn();
+    renderWithProviders(
+      <FileManagerControls
+        {...defaultProps}
+        {...selection}
+        collectionsMode
+        onCollectionsBulkAction={onCollectionsBulkAction}
+        {...bulkActionProps}
+      />
+    );
+    expect(screen.getByTestId('bulk-collections-pin')).toBeInTheDocument();
+    expect(screen.getByTestId('bulk-collections-unpin')).toBeInTheDocument();
+    expect(screen.getByTestId('bulk-collections-archive')).toBeInTheDocument();
+    expect(screen.queryByTestId('bulk-action-move')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bulk-action-copy')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bulk-action-download')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bulk-action-delete')).not.toBeInTheDocument();
+    // select-all/deselect/count reuse the files affordances
+    expect(screen.getAllByText(/select all/i).length).toBeGreaterThan(0);
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('bulk-collections-archive'));
+    expect(onCollectionsBulkAction).toHaveBeenCalledWith('archive');
+  });
+
+  it('archive view shows Restore/Delete permanently instead of the Pin set', () => {
+    const onCollectionsBulkAction = jest.fn();
+    renderWithProviders(
+      <FileManagerControls
+        {...defaultProps}
+        {...selection}
+        collectionsMode
+        collectionsArchiveView
+        onCollectionsBulkAction={onCollectionsBulkAction}
+      />
+    );
+    expect(screen.getByTestId('bulk-collections-restore')).toBeInTheDocument();
+    expect(screen.getByTestId('bulk-collections-delete-permanent')).toBeInTheDocument();
+    expect(screen.queryByTestId('bulk-collections-pin')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bulk-collections-archive')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('bulk-collections-delete-permanent'));
+    expect(onCollectionsBulkAction).toHaveBeenCalledWith('delete-permanent');
+  });
+
+  it('the fixed set stays visible count-independently (disabled at zero selection)', () => {
+    renderWithProviders(
+      <FileManagerControls
+        {...defaultProps}
+        selectionMode
+        selectedFiles={new Set()}
+        collectionsMode
+      />
+    );
+    const pin = screen.getByTestId('bulk-collections-pin');
+    expect(pin).toBeInTheDocument();
+    expect(pin).toBeDisabled();
+  });
+
+  it('viewModeHidden removes the view-mode buttons but keeps the sort button', () => {
+    renderWithProviders(<FileManagerControls {...defaultProps} viewModeHidden />);
+    expect(screen.queryByTestId('view-mode-list')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('view-mode-grid')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('view-mode-detail')).not.toBeInTheDocument();
+    expect(screen.getByTestId('file-manager-sort')).toBeInTheDocument();
+  });
+
+  it('sortHidden removes the sort button AND its menu (members surface)', () => {
+    renderWithProviders(<FileManagerControls {...defaultProps} sortHidden viewModeHidden />);
+    expect(screen.queryByTestId('file-manager-sort')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('view-mode-list')).not.toBeInTheDocument();
+  });
+
+  it('files surface regression: sort + view-mode render with the radio menu untouched', () => {
+    renderWithProviders(<FileManagerControls {...defaultProps} />);
+    expect(screen.getByTestId('file-manager-sort')).toBeInTheDocument();
+    expect(screen.getByTestId('view-mode-list')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('file-manager-sort'));
+    expect(screen.getAllByRole('radio').length).toBeGreaterThan(0);
+  });
+});

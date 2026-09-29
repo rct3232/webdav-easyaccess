@@ -15,6 +15,7 @@ import {
   getFileItemState,
   getDropTargetStyles,
   getEntryKey,
+  getCollectionEntryKey,
 } from '../fileViewUtils';
 
 describe('fileViewUtils', () => {
@@ -132,6 +133,15 @@ describe('fileViewUtils', () => {
         new Map()
       );
       expect(result.isSelected).toBe(false);
+    });
+  });
+
+  describe('getCollectionEntryKey', () => {
+    it('builds the synthetic card selection key (no numeric-nodeId collision space)', () => {
+      const key = getCollectionEntryKey(12);
+      expect(key).toBe('/__collections__/collection/12');
+      // getEntryKey resolves it through the path fallback, never as a nodeId.
+      expect(getEntryKey({ path: key })).toBe(key);
     });
   });
 

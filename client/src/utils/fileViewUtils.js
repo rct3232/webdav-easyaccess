@@ -15,6 +15,16 @@ import {
 export const getEntryKey = (file) => (file?.nodeId != null ? file.nodeId : file?.path);
 
 /**
+ * Synthetic selection key for a collection card (P-3 file-parity selection).
+ * Cards join the page-level selection Set (getEntryKey semantics) through this
+ * path-shaped key — it can never collide with a numeric file nodeId.
+ * @param {number|string} collectionId
+ * @returns {string} '/__collections__/collection/<id>'
+ */
+export const getCollectionEntryKey = (collectionId) =>
+  `/__collections__/collection/${collectionId}`;
+
+/**
  * Render processing icon based on processing type
  * @param {string} processingType - Type of processing ('move', 'copy', 'delete')
  * @returns {JSX.Element|null} Icon component or null

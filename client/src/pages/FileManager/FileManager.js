@@ -19,7 +19,7 @@ import { useMessage } from '../../hooks/useMessage';
 import { resolvePath } from '../../services/fileService';
 import { normalizePath, getBasename, getParentPath } from '../../utils/pathUtils';
 import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
-import { getEntryKey } from '../../utils/fileViewUtils';
+import { getEntryKey, getCollectionEntryKey } from '../../utils/fileViewUtils';
 
 import { useRecentFile } from './hooks/useRecentFile';
 import { useCollections } from './hooks/useCollections';
@@ -570,6 +570,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       const collectionId = collection?.collection_id;
       switch (action) {
         case 'open':
+          // File-parity open (P-3): leave any card selection behind — the files
+          // grid does the same on folder navigation (sessionKey reset effect).
+          setSelectionMode(false);
+          setSelectedFiles(new Set());
           setCurrentPath(`/__collections__/collection/${collectionId}`);
           break;
         case 'rename':
@@ -608,8 +612,151 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           break;
       }
     },
-    [collectionsApi, setCurrentPath, messageBundle, t]
+    [collectionsApi, setCurrentPath, messageBundle, t, setSelectionMode, setSelectedFiles]
   );
+
+  // -- P-3 card grid parity: preview thumbnail merge + file-parity selection --
+  // The collections list runs a SECOND useThumbnailLazyLoad instance (inside
+  // CollectionsListView) over the flattened preview_items rows; results land
+  // here through the SAME merge entry the shell hands the file views. The
+  // session's handleThumbnailsLoaded merges file rows only (ids outside the
+  // file rows are a no-op there), so preview ids accumulate in their own map —
+  // views stay pure.
+  const [previewThumbnails, setPreviewThumbnails] = useState(() => new Map());
+
+  const handlePreviewThumbnailsLoaded = useCallback(
+    (thumbnailMap) => {
+      handleThumbnailsLoaded(thumbnailMap);
+      if (!(thumbnailMap instanceof Map) || thumbnailMap.size === 0) return;
+      setPreviewThumbnails((prev) => {
+        let changed = false;
+        const next = new Map(prev);
+        thumbnailMap.forEach((thumbnailUrl, nodeId) => {
+          if (thumbnailUrl && !next.has(nodeId)) {
+            next.set(nodeId, thumbnailUrl);
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+    },
+    [handleThumbnailsLoaded]
+  );
+
+  // Card selection uses synthetic path keys (getCollectionEntryKey) in the
+  // page-level selection Set — no collision with numeric file nodeIds. The
+  // 350ms double-open window is resolved card-locally inside
+  // CollectionsListView (same contract as useExplorerInteraction desktop);
+  // plain click here = enter selection mode with a single-select (files
+  // handleFileClickSelection no-modifier branch; shift range stays a
+  // file-grid affordance).
+  const handleCollectionCardClick = useCallback(
+    (collection, event) => {
+      const key = getCollectionEntryKey(collection?.collection_id);
+      enterSelectionMode();
+      if (event?.ctrlKey || event?.metaKey) {
+        setSelectedFiles((prev) => {
+          const next = new Set(prev);
+          if (next.has(key)) {
+            next.delete(key);
+          } else {
+            next.add(key);
+          }
+          return next;
+        });
+        return;
+      }
+      setSelectedFiles(new Set([key]));
+    },
+    [enterSelectionMode, setSelectedFiles]
+  );
+
+  const handleCollectionLongPressSelect = useCallback(
+    (collection) => {
+      enterSelectionMode();
+      setSelectedFiles(new Set([getCollectionEntryKey(collection?.collection_id)]));
+    },
+    [enterSelectionMode, setSelectedFiles]
+  );
+
+  // Toolbar bulk cluster (P-3 selection bar): fixed set, looped through the
+  // EXISTING single-collection calls — per-item failures tolerated (the hook
+  // maps + shows each absorbed error), journal/undo per collection, refresh
+  // rides each successful mutation. Archive asks ONE confirm and permanent
+  // delete keeps the trash-parity TWO-step; both confirms are hosted by the
+  // list view from this state and cover the whole batch.
+  const [collectionsBulkConfirm, setCollectionsBulkConfirm] = useState(null); // { step, ids, names }
+
+  const selectedCollectionRows = useCallback(
+    () =>
+      collectionsApi.collections.filter((collection) =>
+        selectedFiles.has(getCollectionEntryKey(collection.collection_id))
+      ),
+    [collectionsApi.collections, selectedFiles]
+  );
+
+  const exitCollectionsSelection = useCallback(() => {
+    setSelectionMode(false);
+    setSelectedFiles(new Set());
+  }, [setSelectionMode, setSelectedFiles]);
+
+  const runCollectionsBulk = useCallback(
+    async (action, rows) => {
+      let deletedCount = 0;
+      for (const collection of rows) {
+        const id = collection.collection_id;
+        if (action === 'pin') await collectionsApi.setPinned(id, true);
+        else if (action === 'unpin') await collectionsApi.setPinned(id, false);
+        else if (action === 'archive') await collectionsApi.archiveCollection(id);
+        else if (action === 'restore') await collectionsApi.restoreCollection(id);
+        else if (action === 'delete-permanent') {
+          const ok = await collectionsApi.deleteCollectionPermanent(id);
+          if (ok === true) deletedCount += 1;
+        }
+      }
+      // Report-style toast parity (bulk delete UX): one success report for the
+      // batch — per-item failures surfaced individually by the mutation hook.
+      if (action === 'delete-permanent' && deletedCount > 0) {
+        messageBundle.showSuccess(t('collections.permanentDeleteReport'));
+      }
+      exitCollectionsSelection();
+    },
+    [collectionsApi, exitCollectionsSelection, messageBundle, t]
+  );
+
+  const handleCollectionsBulkAction = useCallback(
+    (action) => {
+      const rows = selectedCollectionRows();
+      if (rows.length === 0) return;
+      if (action === 'archive' || action === 'delete-permanent') {
+        setCollectionsBulkConfirm({
+          step: action === 'archive' ? 'archive' : 'delete-1',
+          ids: rows.map((row) => row.collection_id),
+          names: rows.map((row) => row.name),
+        });
+        return;
+      }
+      runCollectionsBulk(action, rows);
+    },
+    [runCollectionsBulk, selectedCollectionRows]
+  );
+
+  const handleCollectionsBulkConfirm = useCallback(() => {
+    if (!collectionsBulkConfirm) return;
+    const { step, ids } = collectionsBulkConfirm;
+    if (step === 'delete-1') {
+      setCollectionsBulkConfirm({ ...collectionsBulkConfirm, step: 'delete-2' });
+      return;
+    }
+    setCollectionsBulkConfirm(null);
+    const action = step === 'archive' ? 'archive' : 'delete-permanent';
+    const rows = collectionsApi.collections.filter((collection) =>
+      ids.includes(collection.collection_id)
+    );
+    runCollectionsBulk(action, rows);
+  }, [collectionsApi.collections, collectionsBulkConfirm, runCollectionsBulk]);
+
+  const dismissCollectionsBulkConfirm = useCallback(() => setCollectionsBulkConfirm(null), []);
 
   const handleCollectionRenameConfirm = useCallback(async () => {
     if (!collectionRenameTarget) return;
@@ -890,6 +1037,16 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       // suggestions data is already fetched by useCollections for that host.
       mergeSlot: null,
       onCardAction: handleCardAction,
+      // P-3 file-parity selection + preview merge (consumed by FileManagerView
+      // and forwarded into CollectionsListView; state stays shell-side).
+      onCardClick: handleCollectionCardClick,
+      onCardLongPressSelect: handleCollectionLongPressSelect,
+      previewThumbnails,
+      onPreviewThumbnailsLoaded: handlePreviewThumbnailsLoaded,
+      onBulkAction: handleCollectionsBulkAction,
+      bulkConfirm: collectionsBulkConfirm,
+      onBulkConfirm: handleCollectionsBulkConfirm,
+      onBulkConfirmDismiss: dismissCollectionsBulkConfirm,
     };
   }, [
     isCollectionsOverlay,
@@ -903,6 +1060,14 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     handleCardAction,
     handleMemberAction,
     handlePublishBatch,
+    handleCollectionCardClick,
+    handleCollectionLongPressSelect,
+    previewThumbnails,
+    handlePreviewThumbnailsLoaded,
+    handleCollectionsBulkAction,
+    collectionsBulkConfirm,
+    handleCollectionsBulkConfirm,
+    dismissCollectionsBulkConfirm,
   ]);
 
   // -- T0.11 search-results model (FileManager §7): the shell prepares the
@@ -1367,14 +1532,33 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     [selectionMode, selectedFiles, handleFileCheck]
   );
 
+  // P-3: the shell's select-all source swaps by surface — collections list /
+  // archive surfaces feed the CARD keys (synthetic path entries of the shared
+  // selection Set), everything else keeps the file rows.
+  const handleSelectAllForSurface = useCallback(() => {
+    if (isCollectionsRoute || isCollectionsArchiveRoute) {
+      setSelectedFiles(
+        new Set(collectionsApi.collections.map((c) => getCollectionEntryKey(c.collection_id)))
+      );
+      return;
+    }
+    handleSelectAll();
+  }, [
+    isCollectionsRoute,
+    isCollectionsArchiveRoute,
+    collectionsApi.collections,
+    setSelectedFiles,
+    handleSelectAll,
+  ]);
+
   const bulkStateProps = useMemo(
     () => ({
-      handleSelectAll,
+      handleSelectAll: handleSelectAllForSurface,
       handleDeselectAll,
       allSelectedHaveWrite,
       hasReadOnlyInSelection,
     }),
-    [handleSelectAll, handleDeselectAll, allSelectedHaveWrite, hasReadOnlyInSelection]
+    [handleSelectAllForSurface, handleDeselectAll, allSelectedHaveWrite, hasReadOnlyInSelection]
   );
 
   const selectionProps = useMemo(

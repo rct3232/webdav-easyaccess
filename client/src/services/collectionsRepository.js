@@ -282,6 +282,15 @@ export const revokeGrant = async (id, userId, options) => {
   return absorbMutation(`/collections/${id}/grants?userId=${userId}`, { method: 'del', options });
 };
 
+/**
+ * Grantee self-revocation (Path 1, routes spec DELETE /:id/grants/me):
+ * instant, journaled owner-side parity; the revoked row drops out of the
+ * next `GET /api/collections` read.
+ */
+export const revokeOwnGrant = async (id, options) => {
+  return absorbMutation(`/collections/${id}/grants/me`, { method: 'del', options });
+};
+
 // -- Search results mode (T0.11; explorerGateway §2.6 search group) ----------
 
 /**

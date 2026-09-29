@@ -1105,6 +1105,21 @@ async function revokeCollectionAccess(userId, collectionId, granteeId) {
   return { grantee_id: granteeNumber, revoked: true, undo: { actionId: result.actionId } };
 }
 
+/**
+ * Grantee self-revocation (Path 1, routes spec DELETE /:id/grants/me — replaces
+ * the retired recipient-local `Leave` hide). Removal + journaling ride the SAME
+ * `collectionsStore.revokeAccess` path as the owner side (action `revoke`,
+ * inverse `grant-access`, actor = grantee). Zero-access/unknown id masquerades
+ * 404 `notFound` via getCollectionForRead; a readable collection with no grant
+ * row for the caller (i.e. the owner) throws `grantNotFound`. Instant (§4.7).
+ */
+async function revokeOwnGrant(userId, collectionId) {
+  const { collection, grant } = await getCollectionForRead(userId, collectionId);
+  if (collection.ownerId === userId || !grant) throw serviceError('grantNotFound');
+  const result = await collectionsStore.revokeAccess(collectionId, userId, { actor: userId });
+  return { grantee_id: userId, revoked: true, undo: { actionId: result.actionId } };
+}
+
 module.exports = {
   getCollection,
   listCollections,
@@ -1128,5 +1143,6 @@ module.exports = {
   listGrants,
   grantCollectionAccess,
   revokeCollectionAccess,
+  revokeOwnGrant,
   fingerprintDefinition: definitionEngine.fingerprintDefinition,
 };

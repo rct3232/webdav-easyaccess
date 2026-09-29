@@ -33,20 +33,21 @@ const CARD_MENU_LABEL_KEYS = {
   restore: 'fileManager.cardMenuRestore',
   sharing: 'fileManager.cardMenuSharing',
   'delete-permanent': 'fileManager.cardMenuDelete',
-  leave: 'fileManager.cardMenuLeave',
+  'revoke-permission': 'fileManager.cardMenuRevokePermission',
 };
 
 const isViewerRow = (collection) => collection?.granted_role != null;
 const isArchivedRow = (collection) => collection?.status === 'archived';
 
 /**
- * Exact card-menu set (CollectionsListView §2.4 + T0.4 as-built decisions):
- * own rows get Open / Rename / pin·unpin / Restore-in-place-of-Archive when
- * archived / Sharing, and Delete ONLY on archived rows; viewer-received rows
- * get Open + Leave and NO mutations.
+ * Exact card-menu set (CollectionsListView §2.4 + T0.4 as-built decisions,
+ * P-1 amended): own rows get Open / Rename / pin·unpin / Restore-in-place-of-
+ * Archive when archived / Sharing, and Delete ONLY on archived rows;
+ * viewer-received rows get Open + Revoke-permission (instant self-grant
+ * revocation, Path 1 — no confirm) and NO other mutations.
  */
 const cardMenuActions = (collection) => {
-  if (isViewerRow(collection)) return ['open', 'leave'];
+  if (isViewerRow(collection)) return ['open', 'revoke-permission'];
   const lifecycle = isArchivedRow(collection) ? 'restore' : 'archive';
   const pin = collection?.pinned ? 'unpin' : 'pin';
   const tail = isArchivedRow(collection) ? ['delete-permanent'] : [];
@@ -81,8 +82,6 @@ const CollectionsListView = ({
   const { t } = useTranslation();
   const [sortAnchor, setSortAnchor] = useState(null);
   const [cardMenu, setCardMenu] = useState(null); // { anchorEl, collection }
-  // Recipient-local hide of `Leave`d received cards (session-ephemeral, §2.4).
-  const [hiddenIds, setHiddenIds] = useState(() => new Set());
   const [confirmState, setConfirmState] = useState(null); // { step, collection }
   const [digestExpanded, setDigestExpanded] = useState(false);
 
@@ -98,11 +97,6 @@ const CollectionsListView = ({
     }
     if (action === 'delete-permanent') {
       setConfirmState({ step: 'delete-1', collection });
-      return;
-    }
-    if (action === 'leave') {
-      setHiddenIds((prev) => new Set(prev).add(collection.collection_id));
-      dispatchCard('leave', collection);
       return;
     }
     dispatchCard(action, collection);
@@ -125,7 +119,9 @@ const CollectionsListView = ({
   };
 
   const renderListMode = () => {
-    const visible = collections.filter((c) => !hiddenIds.has(c.collection_id));
+    // P-1: rows render straight from fetch state — the former view-local
+    // `hiddenIds` recipient-hide is removed (revoked rows vanish on refetch).
+    const visible = collections;
     return (
       <Box data-testid="collections-list-region">
         {mergeSlot}

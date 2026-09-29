@@ -69,6 +69,17 @@ the same activity-sorted list with an icon chip. The publish mode — ask (defau
 governs only members entering a live-shared view (§4.7); enabling sharing itself is always the
 explicit act. Names are unique per owner among active collections.
 
+List cards are grid-parity tiles (P-3): a 2×2 preview of the four most-recently-added members
+occupies the file card's media area — file icon immediately, swapped to a thumbnail through the
+same batched thumbnail mechanism, no filename labels; revoked/shared-excluded members never
+surface (`preview_items` is built from the already-resolved member view, zero extra queries).
+Click semantics match files: single click enters selection (single-select), double click opens
+the collection; on mobile tap opens and long-press starts selection. The card menu is mutations
+only (no Open); the toolbar selection bar shows a fixed count-independent set by surface —
+active view: Pin · Unpin · Archive, archive view: Restore · Delete permanently — executed by
+looping the existing per-collection calls (per-item failures tolerated, journal/undo per
+collection, permanent delete keeps the batched 2-step confirm).
+
 ### 3.2 Members
 
 Manual membership is stored; removing a member never trashes the file. Derived membership evaluates

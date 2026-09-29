@@ -41,7 +41,7 @@
 
 ### 2.4 Dependencies
 
-- **imports:** React, MUI Card/CardMedia/CardContent/Typography/Box/CircularProgress, renderProcessingIcon, getFileIconForGrid, getThumbnail
+- **imports:** React, MUI Card/CardMedia/CardContent/Typography/Box/CircularProgress, renderProcessingIcon, getFileIconForGrid, getThumbnail, CardTile (shared tile shell — P-3 extraction: the card JSX body lives in `CardTile.md` and `FileGridItem` is a thin delegation keeping this component's props, DOM and memo comparator externally IDENTICAL; the regression anchor is `FileGridItem.test.js` passing unchanged)
 - **Reference implementation:** `client/src/components/file-manager/FileGridItem.js`
 
 ### 2.5 i18n Keys

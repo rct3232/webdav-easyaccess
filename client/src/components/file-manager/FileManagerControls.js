@@ -5,6 +5,7 @@ import {
   IconButton,
   Button,
   Menu,
+  MenuItem,
   Radio,
   RadioGroup,
   FormControlLabel,
@@ -28,7 +29,10 @@ import {
   PlaylistAdd as PlaylistAddIcon,
   HighlightOff as HighlightOffIcon,
 } from '@mui/icons-material';
-import { VIEW_MODES, SORT_MODES } from '../../constants/fileManager';
+import { VIEW_MODES, SORT_MODES, COLLECTION_SORT_OPTIONS } from '../../constants/fileManager';
+
+const collectionSortLabelKey = (option) =>
+  `fileManager.collectionsSort${option.charAt(0).toUpperCase()}${option.slice(1)}`;
 
 const FileManagerControls = ({
   isMobile,
@@ -38,6 +42,9 @@ const FileManagerControls = ({
   selectedFiles,
   sortMode,
   setSortMode,
+  sortSurface = 'files',
+  collectionSort,
+  onCollectionSortChange,
   viewMode,
   setViewMode,
   selectionActionsDisabled = false,
@@ -293,7 +300,9 @@ const FileManagerControls = ({
           </>
         )}
 
-        {/* Sort Menu - only when !selectionMode */}
+        {/* Sort Menu - only when !selectionMode; content swaps by surface (P-2):
+            files → 4 radios (persisted client sortMode), collections → flat 5
+            server options (no direction radios; ephemeral; server bakes ASC/DESC). */}
         {!selectionMode && (
           <Menu
             anchorEl={sortMenuAnchor}
@@ -308,55 +317,73 @@ const FileManagerControls = ({
               horizontal: 'left',
             }}
           >
-            <Box sx={{ px: 2, py: 1 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-                {t('fileManager.sortByName')}
-              </Typography>
-              <RadioGroup
-                value={sortMode}
-                onChange={(e) => {
-                  const newMode = e.target.value;
-                  setSortMode(newMode);
-                  setSortMenuAnchor(null);
-                }}
-              >
-                <FormControlLabel
-                  value={SORT_MODES.NAME_ASC}
-                  control={<Radio size="small" />}
-                  label={t('fileManager.asc')}
-                />
-                <FormControlLabel
-                  value={SORT_MODES.NAME_DESC}
-                  control={<Radio size="small" />}
-                  label={t('fileManager.desc')}
-                />
-              </RadioGroup>
-            </Box>
-            <Divider />
-            <Box sx={{ px: 2, py: 1 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-                {t('fileManager.sortByDate')}
-              </Typography>
-              <RadioGroup
-                value={sortMode}
-                onChange={(e) => {
-                  const newMode = e.target.value;
-                  setSortMode(newMode);
-                  setSortMenuAnchor(null);
-                }}
-              >
-                <FormControlLabel
-                  value={SORT_MODES.DATE_ASC}
-                  control={<Radio size="small" />}
-                  label={t('fileManager.asc')}
-                />
-                <FormControlLabel
-                  value={SORT_MODES.DATE_DESC}
-                  control={<Radio size="small" />}
-                  label={t('fileManager.desc')}
-                />
-              </RadioGroup>
-            </Box>
+            {sortSurface === 'collections' ? (
+              COLLECTION_SORT_OPTIONS.map((option) => (
+                <MenuItem
+                  key={option}
+                  data-testid={`collections-sort-option-${option}`}
+                  selected={option === collectionSort}
+                  onClick={() => {
+                    setSortMenuAnchor(null);
+                    if (onCollectionSortChange) onCollectionSortChange(option);
+                  }}
+                >
+                  {t(collectionSortLabelKey(option))}
+                </MenuItem>
+              ))
+            ) : (
+              <>
+                <Box sx={{ px: 2, py: 1 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                    {t('fileManager.sortByName')}
+                  </Typography>
+                  <RadioGroup
+                    value={sortMode}
+                    onChange={(e) => {
+                      const newMode = e.target.value;
+                      setSortMode(newMode);
+                      setSortMenuAnchor(null);
+                    }}
+                  >
+                    <FormControlLabel
+                      value={SORT_MODES.NAME_ASC}
+                      control={<Radio size="small" />}
+                      label={t('fileManager.asc')}
+                    />
+                    <FormControlLabel
+                      value={SORT_MODES.NAME_DESC}
+                      control={<Radio size="small" />}
+                      label={t('fileManager.desc')}
+                    />
+                  </RadioGroup>
+                </Box>
+                <Divider />
+                <Box sx={{ px: 2, py: 1 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                    {t('fileManager.sortByDate')}
+                  </Typography>
+                  <RadioGroup
+                    value={sortMode}
+                    onChange={(e) => {
+                      const newMode = e.target.value;
+                      setSortMode(newMode);
+                      setSortMenuAnchor(null);
+                    }}
+                  >
+                    <FormControlLabel
+                      value={SORT_MODES.DATE_ASC}
+                      control={<Radio size="small" />}
+                      label={t('fileManager.asc')}
+                    />
+                    <FormControlLabel
+                      value={SORT_MODES.DATE_DESC}
+                      control={<Radio size="small" />}
+                      label={t('fileManager.desc')}
+                    />
+                  </RadioGroup>
+                </Box>
+              </>
+            )}
           </Menu>
         )}
       </Box>

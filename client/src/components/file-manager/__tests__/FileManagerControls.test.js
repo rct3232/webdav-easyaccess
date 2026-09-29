@@ -419,7 +419,11 @@ describe('FileManagerControls AI-platform bulk entries (BulkActionToolbar §3)',
   it('renders bulk-collection-add when onBulkAddToCollection is provided and passes the selection', () => {
     const onBulkAddToCollection = jest.fn();
     renderWithProviders(
-      <FileManagerControls {...defaultProps} {...selection} onBulkAddToCollection={onBulkAddToCollection} />
+      <FileManagerControls
+        {...defaultProps}
+        {...selection}
+        onBulkAddToCollection={onBulkAddToCollection}
+      />
     );
 
     fireEvent.click(screen.getByTestId('bulk-collection-add'));
@@ -456,12 +460,7 @@ describe('FileManagerControls AI-platform bulk entries (BulkActionToolbar §3)',
 
   it('memberMode swaps the file actions: no move/copy/download/delete buttons render', () => {
     renderWithProviders(
-      <FileManagerControls
-        {...defaultProps}
-        {...selection}
-        {...bulkActionProps}
-        memberMode
-      />
+      <FileManagerControls {...defaultProps} {...selection} {...bulkActionProps} memberMode />
     );
 
     expect(screen.queryByTestId('bulk-action-move')).not.toBeInTheDocument();

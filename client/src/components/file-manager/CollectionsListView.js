@@ -16,13 +16,10 @@ import {
   Checkroom as SharedChipIcon,
   MoreVert as MoreVertIcon,
   PushPin as PushPinIcon,
-  UnfoldMore as SortIcon,
 } from '@mui/icons-material';
 import { getFileIcon } from '../../utils/fileIconUtils';
 import { formatFileSize, formatDate } from '../../utils/format';
 import ConfirmDialog from '../dialogs/ConfirmDialog';
-
-const SORT_OPTIONS = ['activity', 'name', 'created', 'updated', 'similar'];
 
 const CARD_MENU_LABEL_KEYS = {
   open: 'fileManager.cardMenuOpen',
@@ -56,18 +53,18 @@ const cardMenuActions = (collection) => {
 
 /**
  * CollectionsListView — the `__collections__` surface (list mode: cards +
- * sort menu + merge slot; members mode: explorer rows with digest and
- * publish-pending banners). Pure view — every mutation is dispatched through
- * onCardAction/onMemberAction/onPublishBatch; the archive/permanent-delete
- * confirms are hosted here (one confirm for archive, second-step confirm for
- * delete) and the mutation dispatch happens only after the final confirm.
+ * merge slot — the sort control lives in the toolbar, P-2; members mode:
+ * explorer rows with digest and publish-pending banners). Pure view — every
+ * mutation is dispatched through onCardAction/onMemberAction/onPublishBatch;
+ * the archive/permanent-delete confirms are hosted here (one confirm for
+ * archive, second-step confirm for delete) and the mutation dispatch happens
+ * only after the final confirm.
  * @see docs/spec/client/components/file-manager/CollectionsListView.md
  */
 const CollectionsListView = ({
   mode,
   collections = [],
   sort = 'activity',
-  onSortChange,
   mergeSlot = null,
   include,
   items = [],
@@ -80,7 +77,6 @@ const CollectionsListView = ({
   onPublishBatch,
 }) => {
   const { t } = useTranslation();
-  const [sortAnchor, setSortAnchor] = useState(null);
   const [cardMenu, setCardMenu] = useState(null); // { anchorEl, collection }
   const [confirmState, setConfirmState] = useState(null); // { step, collection }
   const [digestExpanded, setDigestExpanded] = useState(false);
@@ -125,37 +121,6 @@ const CollectionsListView = ({
     return (
       <Box data-testid="collections-list-region">
         {mergeSlot}
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-          <Button
-            data-testid="collections-sort-menu"
-            size="small"
-            startIcon={<SortIcon />}
-            onClick={(e) => setSortAnchor(e.currentTarget)}
-          >
-            {t(`fileManager.collectionsSort${sort.charAt(0).toUpperCase()}${sort.slice(1)}`)}
-          </Button>
-          <Menu
-            anchorEl={sortAnchor}
-            open={Boolean(sortAnchor)}
-            onClose={() => setSortAnchor(null)}
-            data-testid="collections-sort-options"
-          >
-            {SORT_OPTIONS.map((option) => (
-              <MenuItem
-                key={option}
-                selected={option === sort}
-                onClick={() => {
-                  setSortAnchor(null);
-                  if (onSortChange) onSortChange(option);
-                }}
-              >
-                {t(
-                  `fileManager.collectionsSort${option.charAt(0).toUpperCase()}${option.slice(1)}`
-                )}
-              </MenuItem>
-            ))}
-          </Menu>
-        </Box>
 
         {visible.length === 0 ? (
           <Typography variant="body1" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>

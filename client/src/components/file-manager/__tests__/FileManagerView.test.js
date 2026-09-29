@@ -822,9 +822,9 @@ describe('FileManagerView', () => {
       expect(screen.getAllByRole('radio')).toHaveLength(4);
       expect(screen.queryByTestId('collections-sort-option-name')).not.toBeInTheDocument();
       fireEvent.click(screen.getAllByRole('radio')[0]);
-      expect(
-        props.explorerSession.controlsState.setSortMode
-      ).toHaveBeenCalledWith(expect.any(String));
+      expect(props.explorerSession.controlsState.setSortMode).toHaveBeenCalledWith(
+        expect.any(String)
+      );
     });
 
     it('folder tree hosts the CollectionsSection and routes collection clicks through the host', async () => {

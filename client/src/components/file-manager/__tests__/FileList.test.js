@@ -77,3 +77,51 @@ describe('FileList', () => {
     expect(screen.queryAllByRole('checkbox').length).toBe(0);
   });
 });
+
+describe('FileList — member row slots (P-4)', () => {
+  const memberRow = (overrides = {}) => ({
+    nodeId: 90210,
+    path: '',
+    basename: 'poster.pdf',
+    type: 'file',
+    mime: 'application/pdf',
+    lastmod: '2026-09-01T00:00:00Z',
+    isCollectionMember: true,
+    published: false,
+    shared_excluded: false,
+    state: 'normal',
+    hasWritePermission: false,
+    rowTestId: 'member-row-90210',
+    moreButtonTestId: 'member-menu-button',
+    ...overrides,
+  });
+
+  it('renders file.rowTestId as the row container data-testid', () => {
+    renderWithProviders(<FileList {...defaultProps} files={[memberRow()]} />);
+    expect(screen.getByTestId('member-row-90210')).toBeInTheDocument();
+  });
+
+  it('plain file rows carry NO container data-testid (zero DOM delta)', () => {
+    const { container } = renderWithProviders(<FileList {...defaultProps} />);
+    // MUI icons carry their own data-testid; scope the check to the member slot.
+    expect(container.querySelector('[data-testid^="member-row-"]')).toBeNull();
+  });
+
+  it('a revoked member row is disabled: click does not dispatch onFileClick', () => {
+    const onFileClick = jest.fn();
+    renderWithProviders(
+      <FileList
+        {...defaultProps}
+        files={[memberRow({ state: 'revoked' })]}
+        onFileClick={onFileClick}
+      />
+    );
+    fireEvent.click(screen.getByTestId('member-row-90210'));
+    expect(onFileClick).not.toHaveBeenCalled();
+  });
+
+  it('member rows are non-draggable (hasWritePermission:false → draggable=false)', () => {
+    renderWithProviders(<FileList {...defaultProps} files={[memberRow()]} />);
+    expect(screen.getByTestId('member-row-90210')).toHaveAttribute('draggable', 'false');
+  });
+});

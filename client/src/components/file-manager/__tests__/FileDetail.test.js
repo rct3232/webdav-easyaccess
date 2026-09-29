@@ -4,7 +4,7 @@
  * @see docs/TESTING_STRATEGY.md
  */
 import React from 'react';
-import { screen, fireEvent } from '@testing-library/react';
+import { screen, fireEvent, within } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import FileDetail from '../FileDetail';
 
@@ -94,5 +94,55 @@ describe('FileDetail', () => {
     const moreButtons = screen.getAllByRole('button', { name: /more actions/i });
     fireEvent.click(moreButtons[0]);
     expect(onMoreClick).toHaveBeenCalledWith(mockFiles[0], expect.any(Object));
+  });
+});
+
+describe('FileDetail — member row slots (P-4)', () => {
+  const memberRow = (overrides = {}) => ({
+    nodeId: 90210,
+    path: '',
+    basename: 'poster.pdf',
+    type: 'file',
+    mime: 'application/pdf',
+    lastmod: '2026-09-01T00:00:00Z',
+    isCollectionMember: true,
+    published: false,
+    shared_excluded: false,
+    state: 'normal',
+    hasWritePermission: false,
+    rowTestId: 'member-row-90210',
+    moreButtonTestId: 'member-menu-button',
+    ...overrides,
+  });
+
+  it('renders rowTestId on the TableRow and the More button testid; the size cell shows -', () => {
+    renderWithProviders(<FileDetail {...defaultProps} files={[memberRow()]} />);
+    const row = screen.getByTestId('member-row-90210');
+    expect(row.tagName).toBe('TR');
+    expect(within(row).getByTestId('member-menu-button')).toBeInTheDocument();
+    expect(within(row).getByText('poster.pdf')).toBeInTheDocument();
+    // size + no mime fallback dashes — NOT a fabricated '0 B'
+    expect(within(row).queryByText(/0 B|KB/i)).not.toBeInTheDocument();
+  });
+
+  it('a revoked member row (state revoked) is disabled — click does not dispatch', () => {
+    const onFileClick = jest.fn();
+    renderWithProviders(
+      <FileDetail
+        {...defaultProps}
+        files={[memberRow({ state: 'revoked', basename: 'Unavailable', mime: null })]}
+        onFileClick={onFileClick}
+      />
+    );
+    fireEvent.click(screen.getByTestId('member-row-90210'));
+    expect(onFileClick).not.toHaveBeenCalled();
+  });
+
+  it('plain file rows render no member testids (zero DOM delta) and keep sizes', () => {
+    const { container } = renderWithProviders(<FileDetail {...defaultProps} />);
+    // MUI icons carry their own data-testid; scope the check to the member slots.
+    expect(container.querySelector('[data-testid^="member-row-"]')).toBeNull();
+    expect(container.querySelector('[data-testid="member-menu-button"]')).toBeNull();
+    expect(screen.getByText(/1 KB|1\.00 KB/i)).toBeInTheDocument();
   });
 });

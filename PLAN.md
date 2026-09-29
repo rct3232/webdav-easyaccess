@@ -444,7 +444,7 @@ config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
 - P-1 Path-1 grants/me endpoint + label unification + spec amendments — S–M | `[wip]`
 - P-2 sort-button context awareness (C2) + E2E sort coverage — S–M | `[wip]`
 - P-3 shared tile/grid extraction, preview quadrant, click model, selection bar, toggle hiding (C1) — M+ | `[wip]` 2026-09-29: branch `feature/polish-p3-card-grid` — docs+server(payload)+client(impl+tests) committed; FileGrid\*/FileGridItem anchors unchanged-green; full client 1753, server collections 91, e2e collections-desktop 10/10; awaits orchestrator full gates/E2E.
-- P-4 member view modes + publish route + granted_role fix (C3) — L | `[todo]`
+- P-4 member view modes + publish route + granted_role fix (C3) — L | `[wip]` 2026-09-29: branch `feature/polish-p4-member-views` — docs step 4e9d321 + impl committed (server publish route, shared-renderer members swap, per-surface `collectionMemberViewMode`, publishItems PUT seam, owner publish-visibility fix, member bulk seams, synthetic-key selection reset). Client 1795/1795, server 2400/2400, e2e collections-desktop 12/12 (new 011/012); awaits orchestrator merge gate.
 - P-5 Likes child-row + liked-items endpoint (C4) — L | `[todo]`
 
 Order: P-1 ∥ P-2 → P-3 → P-4 → P-5 (P-5 server part may join P-4).

@@ -6,6 +6,8 @@ import {
   getViewMode,
   setViewMode as saveViewMode,
   setSortMode as saveSortMode,
+  getCollectionMemberViewMode,
+  setCollectionMemberViewMode as saveMemberViewMode,
 } from '../../../utils/localStorage';
 import { useInfiniteScroll } from '../../../hooks/useInfiniteScroll';
 
@@ -25,6 +27,10 @@ export const useExplorerSession = ({
   }, [view, currentNodeId]);
 
   const [viewMode, setViewMode] = useState(() => getViewMode());
+  // P-4: per-surface view mode of the collection MEMBERS surface — its own
+  // localStorage key (`collectionMemberViewMode`, default grid); file browsing
+  // keeps `viewMode` untouched.
+  const [memberViewMode, setMemberViewMode] = useState(() => getCollectionMemberViewMode());
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [sortMode, setSortMode] = useState(() => getSortMode());
 
@@ -40,15 +46,26 @@ export const useExplorerSession = ({
   }, [viewMode]);
 
   useEffect(() => {
+    saveMemberViewMode(memberViewMode);
+  }, [memberViewMode]);
+
+  useEffect(() => {
     saveSortMode(sortMode);
   }, [sortMode]);
 
-  // Mobile: preserve current behavior (detail mode is not allowed)
+  // Mobile: preserve current behavior (detail mode is not allowed) — the
+  // restriction applies to the members key too (P-4, useExplorerSession.md).
   useEffect(() => {
     if (isMobile && viewMode === VIEW_MODES.DETAIL) {
       setViewMode(VIEW_MODES.LIST);
     }
   }, [isMobile, viewMode]);
+
+  useEffect(() => {
+    if (isMobile && memberViewMode === VIEW_MODES.DETAIL) {
+      setMemberViewMode(VIEW_MODES.LIST);
+    }
+  }, [isMobile, memberViewMode]);
 
   const filteredFiles = useMemo(() => {
     const q = (searchQuery || '').trim().toLowerCase();
@@ -116,6 +133,9 @@ export const useExplorerSession = ({
 
     viewMode,
     setViewMode,
+
+    memberViewMode,
+    setMemberViewMode,
 
     filteredFiles,
     sortedFiles,

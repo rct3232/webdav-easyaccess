@@ -157,3 +157,43 @@ describe('fileViewUtils', () => {
     });
   });
 });
+
+describe('getFileItemState — member-revoked rule (P-4)', () => {
+  const base = { nodeId: 5, path: '', type: 'file', basename: 'x.txt' };
+
+  it('disables a MEMBER row with state revoked', () => {
+    const state = getFileItemState(
+      { ...base, isCollectionMember: true, state: 'revoked' },
+      false,
+      new Set(),
+      new Map()
+    );
+    expect(state.isDisabled).toBe(true);
+  });
+
+  it('keeps a member row with state normal enabled', () => {
+    const state = getFileItemState(
+      { ...base, isCollectionMember: true, state: 'normal' },
+      false,
+      new Set(),
+      new Map()
+    );
+    expect(state.isDisabled).toBe(false);
+  });
+
+  it('a plain FILE row carrying a stray state key is NOT disabled (no bare state sniff)', () => {
+    const state = getFileItemState({ ...base, state: 'revoked' }, false, new Set(), new Map());
+    expect(state.isDisabled).toBe(false);
+  });
+
+  it('member-revoked rows still report selection when selected', () => {
+    const state = getFileItemState(
+      { ...base, isCollectionMember: true, state: 'revoked' },
+      true,
+      new Set([5]),
+      new Map()
+    );
+    expect(state.isSelected).toBe(true);
+    expect(state.isDisabled).toBe(true);
+  });
+});

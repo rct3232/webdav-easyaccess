@@ -6,7 +6,14 @@
 import { renderHook, act } from '@testing-library/react';
 
 import { sortFiles } from '../../../../utils/fileUtils';
-import { getSortMode, getViewMode, setViewMode, setSortMode } from '../../../../utils/localStorage';
+import {
+  getSortMode,
+  getViewMode,
+  setViewMode,
+  setSortMode,
+  getCollectionMemberViewMode,
+  setCollectionMemberViewMode,
+} from '../../../../utils/localStorage';
 import { useInfiniteScroll } from '../../../../hooks/useInfiniteScroll';
 import { useExplorerSession } from '../useExplorerSession';
 
@@ -19,6 +26,8 @@ jest.mock('../../../../utils/localStorage', () => ({
   getViewMode: jest.fn(() => 'detail'),
   setViewMode: jest.fn(),
   setSortMode: jest.fn(),
+  getCollectionMemberViewMode: jest.fn(() => 'grid'),
+  setCollectionMemberViewMode: jest.fn(),
 }));
 
 jest.mock('../../../../hooks/useInfiniteScroll', () => ({
@@ -221,5 +230,51 @@ describe('useExplorerSession', () => {
     // results-mode entry/exit is host state; the session searchQuery survives it
     expect(result.current.searchQuery).toBe('movie');
     expect(result.current.filteredFiles).toEqual([]);
+  });
+
+  describe('memberViewMode (P-4 per-surface members key)', () => {
+    beforeEach(() => {
+      getCollectionMemberViewMode.mockReturnValue('grid');
+    });
+
+    it('initializes from the collectionMemberViewMode helper (per-surface, independent of viewMode)', () => {
+      getViewMode.mockReturnValue('detail');
+      getCollectionMemberViewMode.mockReturnValue('list');
+
+      const { result } = renderHook(() =>
+        useExplorerSession({ currentNodeId: 5, files: EMPTY_FILES })
+      );
+
+      expect(getCollectionMemberViewMode).toHaveBeenCalledTimes(1);
+      expect(result.current.memberViewMode).toBe('list');
+      expect(result.current.viewMode).toBe('detail');
+    });
+
+    it('setMemberViewMode updates the member state and persists through the member helper only', () => {
+      const { result } = renderHook(() =>
+        useExplorerSession({ currentNodeId: 5, files: EMPTY_FILES })
+      );
+
+      act(() => {
+        result.current.setMemberViewMode('list');
+      });
+
+      expect(result.current.memberViewMode).toBe('list');
+      expect(setCollectionMemberViewMode).toHaveBeenCalledWith('list');
+      // the file view mode/key never sees the member dispatch
+      expect(result.current.viewMode).toBe('detail');
+      expect(setViewMode).not.toHaveBeenCalledWith('list');
+    });
+
+    it('mobile detail→list restriction applies to the member key too', () => {
+      getCollectionMemberViewMode.mockReturnValue('detail');
+
+      const { result } = renderHook(() =>
+        useExplorerSession({ currentNodeId: 5, files: EMPTY_FILES, isMobile: true })
+      );
+
+      expect(result.current.memberViewMode).toBe('list');
+      expect(setCollectionMemberViewMode).toHaveBeenCalledWith('list');
+    });
   });
 });

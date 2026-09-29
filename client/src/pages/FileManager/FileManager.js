@@ -119,6 +119,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     openTrashFolder,
     collectionMembers,
     loadMoreCollectionMembers,
+    handleMemberThumbnailsLoaded,
   } = useFileManager(user, {
     onLoadComplete: handleLoadCompleteCallback,
     onLoadError: null, // 나중에 설정
@@ -165,6 +166,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     setSortMode,
     viewMode,
     setViewMode,
+    memberViewMode,
+    setMemberViewMode,
     sortedFiles,
     displayedFiles,
     loadMoreRef,
@@ -519,6 +522,28 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     !isShareLinkMode &&
     (isCollectionsRoute || isCollectionsArchiveRoute || isCollectionsMemberRoute);
   const collectionsInclude = isCollectionsArchiveRoute ? 'mine,archived' : 'mine,shared';
+
+  // P-4 selection reset (P-3 residue fix): the synthetic CARD keys of the
+  // collections list/archive surfaces live in the page-level selection Set but
+  // resolve to nothing outside those surfaces (sessionKey stays 'node:root'
+  // across the virtual routes). On leaving a card surface strip them so a
+  // selection can never leak into the members/file surfaces (member rows
+  // share the Set through their real numeric nodeId keys).
+  useEffect(() => {
+    if (isCollectionsRoute || isCollectionsArchiveRoute) return;
+    const isSyntheticKey = (key) =>
+      typeof key === 'string' && key.startsWith('/__collections__/collection/');
+    if (!Array.from(selectedFiles).some(isSyntheticKey)) return;
+    const next = new Set(Array.from(selectedFiles).filter((key) => !isSyntheticKey(key)));
+    setSelectedFiles(next);
+    if (next.size === 0) setSelectionMode(false);
+  }, [
+    isCollectionsRoute,
+    isCollectionsArchiveRoute,
+    selectedFiles,
+    setSelectedFiles,
+    setSelectionMode,
+  ]);
 
   // Share-link embedding must NOT mount the collections overlay (FileManager §7);
   // the hook itself is unconditional (rules of hooks), so an inert gateway seam
@@ -939,7 +964,15 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     async (member) => {
       const nodeId = member?.nodeId ?? member?.node_id;
       if (nodeId == null || collectionMembers.collectionId == null) return;
-      const payload = await explorerGateway.publishItems(collectionMembers.collectionId, [nodeId]);
+      // P-4 §2.3: the menu item is a publish ON/OFF toggle — flip the row's
+      // current state (the shared renderer re-renders the awaiting-publish
+      // chip through the FileListItem memo comparator after loadFiles).
+      const nextPublished = member.published !== true;
+      const payload = await explorerGateway.publishItems(
+        collectionMembers.collectionId,
+        [nodeId],
+        nextPublished
+      );
       if (payload !== null) loadFiles();
     },
     [collectionMembers.collectionId, loadFiles]
@@ -1008,10 +1041,59 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     if (!pending.length || collectionMembers.collectionId == null) return;
     const payload = await explorerGateway.publishItems(
       collectionMembers.collectionId,
-      pending.map((row) => row.nodeId)
+      pending.map((row) => row.nodeId),
+      true
     );
     if (payload !== null) loadFiles();
   }, [collectionMembers, loadFiles]);
+
+  // P-4 members toolbar bulk cluster (FileManagerControls.md memberMode): the
+  // buttons hand the numeric nodeId array (the shared selection Set is keyed by
+  // real node ids on the members surface); execution is shell-owned.
+  const handleMemberBulkExclude = useCallback(
+    async (nodeIds) => {
+      const ids = (nodeIds ?? []).filter((id) => id != null);
+      if (!ids.length || collectionMembers.collectionId == null) return;
+      let envelope = null;
+      const payload = await explorerGateway.removeCollectionItems(
+        collectionMembers.collectionId,
+        ids,
+        {
+          onError: (error) => {
+            envelope = error;
+          },
+        }
+      );
+      if (payload === null) {
+        showError(getServerErrorDisplay(envelope, t));
+        return;
+      }
+      loadFiles();
+      if (payload?.undo?.action_id != null) {
+        handleUndoable(payload, 'collections.undoExcluded');
+      }
+    },
+    [collectionMembers.collectionId, showError, t, loadFiles, handleUndoable]
+  );
+
+  // Bulk "Add to another collection": membership copy through the shell's
+  // single AddToCollectionMenu instance (same flow as the file-side submenu),
+  // names resolved from the loaded member rows.
+  const handleMemberBulkAddToCollection = useCallback(
+    (nodeIds) => {
+      const ids = (nodeIds ?? []).filter((id) => id != null);
+      if (!ids.length) return;
+      const rowsById = new Map(collectionMembers.items.map((row) => [row.nodeId, row]));
+      setAddMenu({
+        targetNodes: ids.map((id) => {
+          const row = rowsById.get(id);
+          return { nodeId: id, name: row?.name ?? row?.basename ?? null };
+        }),
+        position: null,
+      });
+    },
+    [collectionMembers.items]
+  );
 
   const collectionsModel = useMemo(() => {
     if (!isCollectionsOverlay) return null;
@@ -1025,6 +1107,12 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         publishPendingCount: collectionMembers.publishPendingCount,
         onMemberAction: handleMemberAction,
         onPublishBatch: handlePublishBatch,
+        // P-4 shared-renderer seams (FileManagerView §3 forwards the row
+        // click/check/long-press to the interaction handlers; only the
+        // member-local thumbnail merge and the bulk cluster are shell-owned).
+        onMemberThumbnailsLoaded: handleMemberThumbnailsLoaded,
+        onBulkMemberExclude: handleMemberBulkExclude,
+        onBulkAddToCollection: handleMemberBulkAddToCollection,
       };
     }
     return {
@@ -1060,6 +1148,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     handleCardAction,
     handleMemberAction,
     handlePublishBatch,
+    handleMemberBulkExclude,
+    handleMemberBulkAddToCollection,
+    handleMemberThumbnailsLoaded,
     handleCollectionCardClick,
     handleCollectionLongPressSelect,
     previewThumbnails,
@@ -1481,6 +1572,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       currentNodeId,
       viewMode,
       setViewMode,
+      memberViewMode,
+      setMemberViewMode,
       sortMode,
       setSortMode,
       searchQuery,
@@ -1494,6 +1587,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       currentNodeId,
       viewMode,
       setViewMode,
+      memberViewMode,
+      setMemberViewMode,
       sortMode,
       setSortMode,
       searchQuery,

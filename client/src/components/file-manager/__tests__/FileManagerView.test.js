@@ -75,6 +75,8 @@ function createProps(overrides = {}) {
         currentPath: '/docs',
         viewMode: 'list',
         setViewMode: jest.fn(),
+        memberViewMode: 'grid',
+        setMemberViewMode: jest.fn(),
         sortMode: 'name',
         setSortMode: jest.fn(),
         searchQuery: '',
@@ -850,8 +852,101 @@ describe('FileManagerView', () => {
       expect(screen.getByTestId('file-manager-sort')).toBeInTheDocument();
     });
 
-    it('P-3: members surface hides BOTH the sort button and the view-mode toggles', async () => {
+    const memberModel = (overrides = {}) => ({
+      mode: 'members',
+      items: [],
+      nextCursor: null,
+      onLoadMore: jest.fn(),
+      digest: null,
+      publishPendingCount: null,
+      onMemberAction: jest.fn(),
+      onPublishBatch: jest.fn(),
+      onBulkMemberExclude: jest.fn(),
+      onBulkAddToCollection: jest.fn(),
+      onMemberThumbnailsLoaded: jest.fn(),
+      ...overrides,
+    });
+
+    const memberAdapterRow = (overrides = {}) => ({
+      nodeId: 90210,
+      path: '',
+      name: 'poster.pdf',
+      basename: 'poster.pdf',
+      type: 'file',
+      mime: 'application/pdf',
+      lastmod: '2026-09-01T00:00:00Z',
+      membership: 'stored',
+      published: true,
+      state: 'normal',
+      liked: false,
+      reason: null,
+      shared_excluded: false,
+      isCollectionMember: true,
+      hasWritePermission: false,
+      rowTestId: 'member-row-90210',
+      moreButtonTestId: 'member-menu-button',
+      ...overrides,
+    });
+
+    const memberSurfaceProps = (overrides = {}) => {
       const base = createProps();
+      return createProps({
+        shellContext: { ...base.shellContext, isMobile: false },
+        explorerSession: {
+          ...base.explorerSession,
+          controlsState: {
+            ...base.explorerSession.controlsState,
+            currentPath: '/__collections__/collection/5',
+            memberViewMode: 'grid',
+            ...(overrides.controlsState ?? {}),
+          },
+        },
+        collectionsModel: overrides.model ?? memberModel(),
+      });
+    };
+
+    it('P-4: members surface keeps the sort hidden but renders the three view-mode buttons bound to the MEMBER key', async () => {
+      const props = memberSurfaceProps();
+      renderWithProviders(<FileManagerView {...props} />);
+
+      await screen.findByTestId('collections-list-view');
+      expect(screen.queryByTestId('file-manager-sort')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('view-mode-list'));
+      expect(props.explorerSession.controlsState.setMemberViewMode).toHaveBeenCalledWith('list');
+      // the file view-mode setter never sees a members click
+      expect(props.explorerSession.controlsState.setViewMode).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByTestId('view-mode-detail'));
+      expect(props.explorerSession.controlsState.setMemberViewMode).toHaveBeenCalledWith('detail');
+    });
+
+    it('P-4: members region delegates to the shared renderer with row callbacks (grid default)', async () => {
+      const model = memberModel({ items: [memberAdapterRow()] });
+      const props = memberSurfaceProps({ model });
+      renderWithProviders(<FileManagerView {...props} />);
+
+      const row = await screen.findByTestId('member-row-90210');
+      // grid tile shell proves the delegated renderer (memberViewMode='grid')
+      expect(row.querySelector('.MuiCard-root')).toBeTruthy();
+      // single click rides the SHARED selection machinery (interaction handler)
+      fireEvent.click(row);
+      expect(props.explorerHandlers.interaction.handleFileClick).toHaveBeenCalledWith(
+        expect.objectContaining({ nodeId: 90210 }),
+        expect.any(Object),
+        0
+      );
+      // right-click dispatches the member menu — never the file context menu
+      fireEvent.contextMenu(row);
+      expect(model.onMemberAction).toHaveBeenCalledWith(
+        'menu',
+        expect.objectContaining({ nodeId: 90210 }),
+        expect.any(HTMLElement)
+      );
+      expect(document.querySelectorAll('[data-testid^="file-action-"]')).toHaveLength(0);
+    });
+
+    it('P-4: member bulk seams activate in selection mode (bulk exclude + bulk add, no file bulk buttons)', async () => {
+      const base = createProps();
+      const model = memberModel({ items: [memberAdapterRow()] });
       const props = createProps({
         shellContext: { ...base.shellContext, isMobile: false },
         explorerSession: {
@@ -859,25 +954,29 @@ describe('FileManagerView', () => {
           controlsState: {
             ...base.explorerSession.controlsState,
             currentPath: '/__collections__/collection/5',
+            memberViewMode: 'list',
           },
         },
-        collectionsModel: {
-          mode: 'members',
-          items: [],
-          nextCursor: null,
-          onLoadMore: jest.fn(),
-          digest: null,
-          publishPendingCount: null,
-          onMemberAction: jest.fn(),
-          onPublishBatch: jest.fn(),
+        selectionState: {
+          ...base.selectionState,
+          selectionModel: {
+            selectionMode: true,
+            selectedFiles: new Set([90210]),
+            handleFileCheck: jest.fn(),
+          },
         },
+        collectionsModel: model,
       });
       renderWithProviders(<FileManagerView {...props} />);
 
-      await screen.findByTestId('collections-list-view');
-      expect(screen.queryByTestId('file-manager-sort')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('view-mode-list')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('view-mode-grid')).not.toBeInTheDocument();
+      expect(await screen.findByTestId('bulk-member-exclude')).toBeInTheDocument();
+      expect(screen.getByTestId('bulk-collection-add')).toBeInTheDocument();
+      expect(screen.queryByTestId('bulk-action-move')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('bulk-action-download')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('bulk-member-exclude'));
+      expect(model.onBulkMemberExclude).toHaveBeenCalledWith([90210]);
+      fireEvent.click(screen.getByTestId('bulk-collection-add'));
+      expect(model.onBulkAddToCollection).toHaveBeenCalledWith([90210]);
     });
 
     it('P-3: selection inputs and card callbacks flow through to CollectionsListView', async () => {

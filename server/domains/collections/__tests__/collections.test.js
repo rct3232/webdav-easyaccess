@@ -1246,3 +1246,125 @@ describe('wire contract invariants', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// PUT /:id/items/publish (P-4)
+// ---------------------------------------------------------------------------
+
+describe('PUT /:id/items/publish (P-4 member publish)', () => {
+  it('flips a stored ask-mode member and flips grantee visibility', async () => {
+    const owner = await createUserWithRoot('pub-r-owner');
+    const viewer = await createUserWithRoot('pub-r-viewer');
+    const travel = await fileNodeService.createDirectory(owner.root.id, 'ptravel');
+    const beach = await fileNodeService.createFile(travel.id, 'pub-beach.jpg');
+
+    const created = await createCollectionViaApi(owner.token);
+    const id = created.body.collection.collection_id;
+    await request(app)
+      .post(`/api/collections/${id}/items`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ nodeIds: [beach.id] });
+    await request(app)
+      .post(`/api/collections/${id}/grants`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ userId: viewer.user.id, role: 'viewer' });
+
+    // pre: invisible to the viewer (publish gate), pending for the owner
+    const before = await request(app)
+      .get(`/api/collections/${id}/items`)
+      .set('Authorization', `Bearer ${viewer.token}`);
+    expect(before.body.items.map((i) => i.node_id)).not.toContain(beach.id);
+    const ownerView = await request(app)
+      .get(`/api/collections/${id}/items`)
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(ownerView.body.publish_pending_count).toBe(1);
+
+    const pub = await request(app)
+      .put(`/api/collections/${id}/items/publish`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ nodeIds: [beach.id], published: true });
+    expect(pub.status).toBe(200);
+    expect(pub.body).toMatchObject({ published: [beach.id], ignored: [] });
+    expect(pub.body.undo.action_id).toBeGreaterThan(0);
+
+    const after = await request(app)
+      .get(`/api/collections/${id}/items`)
+      .set('Authorization', `Bearer ${viewer.token}`);
+    expect(after.body.items.map((i) => i.node_id)).toContain(beach.id);
+    const ownerAfter = await request(app)
+      .get(`/api/collections/${id}/items`)
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(ownerAfter.body.publish_pending_count).toBe(0);
+  });
+
+  it('ignores non-members (nothing grafted), returns undo:null for an all-ignored batch', async () => {
+    const owner = await createUserWithRoot('pub-r-ign');
+    const other = await createUserWithRoot('pub-r-ign-other');
+    const foreign = await fileNodeService.createFile(other.root.id, 'pub-foreign.txt');
+
+    const created = await createCollectionViaApi(owner.token);
+    const id = created.body.collection.collection_id;
+    const res = await request(app)
+      .put(`/api/collections/${id}/items/publish`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ nodeIds: [foreign.id], published: true });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ published: [], ignored: [foreign.id], undo: null });
+    const items = await request(app)
+      .get(`/api/collections/${id}/items`)
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(items.body.items).toHaveLength(0);
+  });
+
+  it('validates the body: empty nodeIds → 400 emptyNodeIds, non-boolean published → 400 invalidPublishMode', async () => {
+    const owner = await createUserWithRoot('pub-r-val');
+    const created = await createCollectionViaApi(owner.token);
+    const id = created.body.collection.collection_id;
+
+    const empty = await request(app)
+      .put(`/api/collections/${id}/items/publish`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ nodeIds: [], published: true });
+    expect(empty.status).toBe(400);
+    expect(empty.body.errorCode).toBe(codes().collections.emptyNodeIds);
+
+    const badFlag = await request(app)
+      .put(`/api/collections/${id}/items/publish`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ nodeIds: [1], published: 'yes' });
+    expect(badFlag.status).toBe(400);
+    expect(badFlag.body.errorCode).toBe(codes().collections.invalidPublishMode);
+  });
+
+  it('viewer grantee → 403; ungranted stranger → 404 masquerade', async () => {
+    const owner = await createUserWithRoot('pub-r-acl');
+    const viewer = await createUserWithRoot('pub-r-acl-viewer');
+    const stranger = await createUserWithRoot('pub-r-acl-stranger');
+    const travel = await fileNodeService.createDirectory(owner.root.id, 'atravel');
+    const beach = await fileNodeService.createFile(travel.id, 'acl-beach.jpg');
+
+    const created = await createCollectionViaApi(owner.token);
+    const id = created.body.collection.collection_id;
+    await request(app)
+      .post(`/api/collections/${id}/items`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ nodeIds: [beach.id] });
+    await request(app)
+      .post(`/api/collections/${id}/grants`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ userId: viewer.user.id, role: 'viewer' });
+
+    const denied = await request(app)
+      .put(`/api/collections/${id}/items/publish`)
+      .set('Authorization', `Bearer ${viewer.token}`)
+      .send({ nodeIds: [beach.id], published: true });
+    expect(denied.status).toBe(403);
+    expect(denied.body.errorCode).toBe(codes().collections.forbidden);
+
+    const masq = await request(app)
+      .put(`/api/collections/${id}/items/publish`)
+      .set('Authorization', `Bearer ${stranger.token}`)
+      .send({ nodeIds: [beach.id], published: true });
+    expect(masq.status).toBe(404);
+  });
+});

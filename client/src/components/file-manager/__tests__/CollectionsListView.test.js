@@ -451,54 +451,134 @@ describe('CollectionsListView — card click parity & previews (P-3)', () => {
   });
 });
 
-describe('CollectionsListView — member mode', () => {
-  const member = (overrides = {}) => ({
+describe('CollectionsListView — member mode (P-4 shared renderers)', () => {
+  // Rows arrive ADAPTER-shaped (useFileManager.md §2.3.2): file-shape + the
+  // optional member slots; the view only picks the renderer and wires events.
+  const memberRow = (overrides = {}) => ({
     nodeId: 90210,
-    basename: 'poster.pdf',
+    path: '',
     name: 'poster.pdf',
+    basename: 'poster.pdf',
     type: 'file',
-    size: 2048,
+    mime: 'application/pdf',
     lastmod: '2026-09-01T00:00:00Z',
-    membership: 'derived',
+    membership: 'stored',
     published: true,
     state: 'normal',
+    liked: false,
+    reason: null,
     shared_excluded: false,
-    reason: 'tag:poster',
+    isCollectionMember: true,
+    hasWritePermission: false,
+    rowTestId: 'member-row-90210',
+    moreButtonTestId: 'member-menu-button',
     ...overrides,
   });
 
   const membersProps = () => ({
     mode: 'members',
-    items: [member()],
+    items: [memberRow()],
     nextCursor: null,
     onLoadMore: jest.fn(),
     onMemberAction: jest.fn(),
     onPublishBatch: jest.fn(),
+    onMemberRowClick: jest.fn(),
+    onMemberRowCheck: jest.fn(),
+    onMemberRowLongPressSelect: jest.fn(),
+    onMemberThumbnailsLoaded: jest.fn(),
   });
 
-  it('renders member rows through the row area with name/size/date', () => {
+  it('default member view mode is grid: rows render through FileGrid tiles', () => {
     renderWithProviders(<CollectionsListView {...membersProps()} />);
     const row = screen.getByTestId('member-row-90210');
+    expect(row).toBeInTheDocument();
+    // grid signature: the shared Card shell wraps the tile (list rows have none)
+    expect(row.querySelector('.MuiCard-root')).toBeTruthy();
+    expect(row.tagName).toBe('DIV');
+  });
+
+  it('memberViewMode="list" renders the shared FileList rows (no card shell, no size)', () => {
+    const props = membersProps();
+    renderWithProviders(<CollectionsListView {...props} memberViewMode="list" />);
+    const row = screen.getByTestId('member-row-90210');
+    expect(row.querySelector('.MuiCard-root')).toBeNull();
     expect(within(row).getByText('poster.pdf')).toBeInTheDocument();
-    expect(within(row).getByText(/KB/)).toBeInTheDocument();
+    // member rows never render a size (the adapter omits the field)
+    expect(row.textContent).not.toMatch(/KB|MB|0 B/);
   });
 
-  it('revoked members render a gray placeholder WITHOUT filename', () => {
+  it('memberViewMode="detail" renders the shared FileDetail table row', () => {
     const props = membersProps();
-    props.items = [member({ nodeId: 5, state: 'revoked', name: null, basename: undefined })];
-    renderWithProviders(<CollectionsListView {...props} />);
-    expect(screen.getByTestId('member-row-5')).toBeInTheDocument();
-    expect(screen.queryByText('poster.pdf')).not.toBeInTheDocument();
-    expect(screen.getByText('Unavailable')).toBeInTheDocument();
+    renderWithProviders(<CollectionsListView {...props} memberViewMode="detail" />);
+    const row = screen.getByTestId('member-row-90210');
+    expect(row.tagName).toBe('TR');
+    expect(within(row).getByTestId('member-menu-button')).toBeInTheDocument();
   });
 
-  it('shared_excluded rows render the not-shared chip', () => {
+  it('single click dispatches onMemberRowClick with the row, event and index', () => {
     const props = membersProps();
-    props.items = [member({ shared_excluded: true })];
     renderWithProviders(<CollectionsListView {...props} />);
-    expect(
-      within(screen.getByTestId('member-row-90210')).getByText("Not owner's file — not shared")
-    ).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('member-row-90210'));
+    expect(props.onMemberRowClick).toHaveBeenCalledWith(
+      expect.objectContaining({ nodeId: 90210 }),
+      expect.any(Object),
+      0
+    );
+  });
+
+  it('the shared-renderer More button dispatches onMemberAction("menu", row, anchorEl)', () => {
+    const props = membersProps();
+    renderWithProviders(<CollectionsListView {...props} />);
+    fireEvent.click(
+      within(screen.getByTestId('member-row-90210')).getByTestId('member-menu-button')
+    );
+    expect(props.onMemberAction).toHaveBeenCalledWith(
+      'menu',
+      expect.objectContaining({ nodeId: 90210 }),
+      expect.any(HTMLElement)
+    );
+  });
+
+  it('desktop right-click dispatches onMemberAction("menu", row, rowEl) — no FileContextMenu ever renders', () => {
+    const props = membersProps();
+    renderWithProviders(<CollectionsListView {...props} />);
+    fireEvent.contextMenu(screen.getByTestId('member-row-90210'));
+    expect(props.onMemberAction).toHaveBeenCalledWith(
+      'menu',
+      expect.objectContaining({ nodeId: 90210 }),
+      expect.any(HTMLElement)
+    );
+    expect(document.querySelectorAll('[data-testid^="file-action-"]')).toHaveLength(0);
+  });
+
+  it('a revoked member row is disabled: neither row click nor More dispatches anything', () => {
+    const props = membersProps();
+    props.items = [
+      memberRow({
+        nodeId: 5,
+        name: null,
+        basename: 'fileManager.collectionsUnavailable',
+        mime: null,
+        state: 'revoked',
+        rowTestId: 'member-row-5',
+      }),
+    ];
+    renderWithProviders(<CollectionsListView {...props} />);
+    const row = screen.getByTestId('member-row-5');
+    fireEvent.click(row);
+    fireEvent.contextMenu(row);
+    fireEvent.click(within(row).getByTestId('member-menu-button'));
+    expect(props.onMemberRowClick).not.toHaveBeenCalled();
+    expect(props.onMemberAction).not.toHaveBeenCalled();
+  });
+
+  it('list renderer carries the member chips (shared_excluded + awaiting publish) with the member testids', () => {
+    const props = membersProps();
+    props.items = [memberRow({ published: false, shared_excluded: true })];
+    renderWithProviders(<CollectionsListView {...props} memberViewMode="list" />);
+    const row = screen.getByTestId('member-row-90210');
+    expect(within(row).getByTestId('member-excluded-chip-90210')).toBeInTheDocument();
+    expect(within(row).getByTestId('member-unpublished-chip-90210')).toBeInTheDocument();
   });
 
   it('digest banner renders the one-line counts and expands', () => {
@@ -534,40 +614,24 @@ describe('CollectionsListView — member mode', () => {
     expect(screen.getByTestId('member-row-90210')).toBeInTheDocument();
   });
 
-  it('banner order: digest above publish-pending (both co-render)', () => {
+  it('chrome host stays intact: banners + load-more wrap the delegated renderer under members-list', () => {
     const props = membersProps();
     props.digest = { added_since: 2, removed_since: 0 };
     props.publishPendingCount = 4;
-    const { container } = renderWithProviders(<CollectionsListView {...props} />);
-    const digest = container.querySelector('[data-testid="digest-banner"]');
-    const publish = container.querySelector('[data-testid="publish-pending-banner"]');
-    expect(digest.compareDocumentPosition(publish) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  });
-
-  it('cursor paging: load-more renders while nextCursor exists and calls onLoadMore', () => {
-    const props = membersProps();
     props.nextCursor = 'cur-2';
-    renderWithProviders(<CollectionsListView {...props} />);
-    fireEvent.click(screen.getByTestId('member-load-more'));
+    const { container } = renderWithProviders(<CollectionsListView {...props} />);
+    const host = container.querySelector('[data-testid="members-list"]');
+    expect(host).toBeInTheDocument();
+    expect(within(host).getByTestId('digest-banner')).toBeInTheDocument();
+    expect(within(host).getByTestId('publish-pending-banner')).toBeInTheDocument();
+    expect(within(host).getByTestId('member-row-90210')).toBeInTheDocument();
+    fireEvent.click(within(host).getByTestId('member-load-more'));
     expect(props.onLoadMore).toHaveBeenCalledTimes(1);
   });
 
   it('no nextCursor ⇒ no load-more affordance', () => {
     renderWithProviders(<CollectionsListView {...membersProps()} />);
     expect(screen.queryByTestId('member-load-more')).not.toBeInTheDocument();
-  });
-
-  it('member row menu trigger dispatches onMemberAction("menu", row, anchorEl)', () => {
-    const props = membersProps();
-    renderWithProviders(<CollectionsListView {...props} />);
-    fireEvent.click(
-      within(screen.getByTestId('member-row-90210')).getByTestId('member-menu-button')
-    );
-    expect(props.onMemberAction).toHaveBeenCalledWith(
-      'menu',
-      expect.objectContaining({ nodeId: 90210 }),
-      expect.any(HTMLElement)
-    );
   });
 
   it('list mode regions are exclusive: no member rows while mode=list', () => {

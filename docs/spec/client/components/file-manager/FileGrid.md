@@ -79,6 +79,7 @@ Uses CSS Grid (responsive `gridTemplateColumns`), not MUI Grid:
 - E2E selector contract:
   - each rendered card container keeps the stable `data-file-path` attribute so end-to-end tests can target a specific file/folder across view modes
   - no per-card `data-testid` is required when `data-file-path` is present
+- **Member-tile reuse (P-4, `CollectionsListView.md` §2.5):** the collection MEMBERS surface grid mode feeds file-shape rows through this component (hosted by `CollectionsListView`). Optional slots — absent on file rows (zero DOM delta): `file.rowTestId` → `FileGridItemContainer` card `data-testid`, `file.moreButtonTestId` → the tile More action `data-testid`; revoked member rows render disabled (`getFileItemState`) and their null `mime`/name keeps `useThumbnailLazyLoad` eligibility false (no thumbnail request); tiles carry no size/chips (media + name only — chips are a list-renderer slot, `FileListItem.md`).
 
 ### 2.8 Verification Scenarios
 

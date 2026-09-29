@@ -33,13 +33,16 @@ import { rightClickItem } from './helpers/desktop-interactions';
 import { setCollectionSort } from './helpers/explorer-controls';
 
 /**
- * E2E-COLLECTION-001..010 — the P0 collections binding lifecycle
+ * E2E-COLLECTION-001..012 — the P0 collections binding lifecycle
  * (docs/E2E_COVERAGE_PLAN.md § "Collections platform lifecycle (hermetic)").
  *
  * Chain: create → add members → digest counts → archive → undo → restore →
  * purge, plus the key P0 UI anchors: the Collections sidebar section, card
  * menus, the file-side Add-to-collection submenu, the like toggle, the
- * Storage dashboard and the actions feed + undo toast.
+ * Storage dashboard and the actions feed + undo toast. P-4 adds the members
+ * shared-renderer contract (011: grid default, per-surface list persistence,
+ * double-click preview) and the member-publish route (012: publish-all banner
+ * + owner per-row publish menu — the granted_role:null visibility fix).
  *
  * SCRATCH-HERMETIC per the destructive-case policy (docs/TESTING_STRATEGY.md):
  * the suite permanently deletes collections, exercises per-subject undo-journal
@@ -637,4 +640,103 @@ test('E2E-COLLECTION-010: The toolbar sort button re-sorts the collections list 
   await setCollectionSort(page, 'name');
   await expect(cards.nth(0)).toContainText(nameA);
   await expect(cards.nth(1)).toContainText(nameZ);
+});
+
+test('E2E-COLLECTION-011: members render the shared grid by default, the list toggle persists per-surface and double-click previews by nodeId', async ({
+  page,
+  request,
+}, testInfo) => {
+  const { base, token } = await loginAndOpenOwnedWorkspace(page, request, testInfo);
+  const fileA = await seedFile(request, token, base, testInfo, 'col011-a');
+  const fileName = fileA.path.split('/').pop() as string;
+  // Middle-truncation keeps head + tail; the unique leading prefix always shows.
+  const nameHead = fileName.slice(0, 14);
+
+  const name = buildName(testInfo, 'col');
+  const collectionId = await createCollectionApi(request, token, name);
+  await addItemsApi(request, token, collectionId, [fileA.nodeId]);
+
+  await page.goto('/files/__collections__');
+  await openCollectionCard(page, name);
+  await expect(page.getByTestId('members-list')).toBeVisible();
+  const row = page.getByTestId(`member-row-${fileA.nodeId}`);
+  await expect(row).toBeVisible();
+
+  // P-4 default: the shared FileGrid renderer (Card shell inside the row);
+  // the members toolbar keeps the sort HIDDEN but shows the view toggles.
+  await expect(row.locator('.MuiCard-root')).toBeVisible();
+  await expect(page.getByTestId('view-mode-list')).toBeVisible();
+  await expect(page.getByTestId('file-manager-sort')).toHaveCount(0);
+
+  // Toggle to LIST: FileList rows (no card shell), name shown, NO size ever
+  // rendered (the member wire carries none — the adapter suppresses the slot).
+  await page.getByTestId('view-mode-list').click();
+  await expect(row.locator('.MuiCard-root')).toHaveCount(0);
+  await expect(row).toContainText(nameHead);
+  await expect(row).not.toContainText(/KB|MB|0 B/);
+  await expect
+    .poll(() => page.evaluate(() => window.localStorage.getItem('collectionMemberViewMode')))
+    .toBe('list');
+
+  // Persistence across surface exits (per-surface key; the file viewMode is a
+  // different key and stays untouched by the member dispatch).
+  expect(await page.evaluate(() => window.localStorage.getItem('viewMode'))).not.toBe('detail');
+  await page.goto('/files/__collections__');
+  await openCollectionCard(page, name);
+  await expect(row.locator('.MuiCard-root')).toHaveCount(0);
+
+  // Double-click → preview through the SHARED click machinery (nodeId
+  // metadata/blob channel — member rows carry path:'' by contract).
+  await row.dblclick();
+  const preview = page.getByTestId('file-preview-dialog');
+  await expect(preview).toBeVisible();
+  await expect(preview).toContainText(nameHead);
+});
+
+test('E2E-COLLECTION-012: the publish-all banner flips stored members through PUT /:id/items/publish and the owner per-row publish menu is reachable', async ({
+  page,
+  request,
+}, testInfo) => {
+  const { base, token } = await loginAndOpenOwnedWorkspace(page, request, testInfo);
+  const fileA = await seedFile(request, token, base, testInfo, 'col012-a');
+  const fileB = await seedFile(request, token, base, testInfo, 'col012-b');
+
+  // Default publish_mode 'ask': stored members start published:false.
+  const name = buildName(testInfo, 'col');
+  const collectionId = await createCollectionApi(request, token, name);
+  await addItemsApi(request, token, collectionId, [fileA.nodeId, fileB.nodeId]);
+
+  await page.goto('/files/__collections__');
+  await openCollectionCard(page, name);
+  await expect(page.getByTestId('members-list')).toBeVisible();
+  await page.getByTestId('view-mode-list').click(); // chips are the LIST renderer slot
+
+  await expect(page.getByTestId('publish-pending-banner')).toContainText(/2/);
+  await expect(page.getByTestId(`member-unpublished-chip-${fileA.nodeId}`)).toBeVisible();
+  await expect(page.getByTestId(`member-unpublished-chip-${fileB.nodeId}`)).toBeVisible();
+
+  // C3 owner-visibility fix: OWN collection (granted_role null) + ask ⇒ the
+  // per-row publish toggle IS offered.
+  const rowA = page.getByTestId(`member-row-${fileA.nodeId}`);
+  await rowA.locator('[data-testid="member-menu-button"]').click();
+  await expect(page.getByTestId('member-publish')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('member-publish')).toHaveCount(0);
+
+  // Banner batch action → PUT /:id/items/publish {nodeIds, published:true}.
+  await page.getByTestId('publish-batch').click();
+  await expect(page.getByTestId('publish-pending-banner')).toHaveCount(0);
+  await expect(page.getByTestId(`member-unpublished-chip-${fileA.nodeId}`)).toHaveCount(0);
+  await expect(page.getByTestId(`member-unpublished-chip-${fileB.nodeId}`)).toHaveCount(0);
+  await expect(rowA).toBeVisible(); // membership untouched — only the flag flipped
+
+  await expect
+    .poll(async () => {
+      const res = await request.get(`/api/collections/${collectionId}/items`, {
+        headers: auth(token),
+      });
+      const body = await res.json();
+      return body.publish_pending_count as number;
+    })
+    .toBe(0);
 });

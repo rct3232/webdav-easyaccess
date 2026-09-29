@@ -39,7 +39,8 @@ Target-contract spec (`docs/features/collections-platform.md` §3.2 member-row c
 
 ### 2.3 Rendered Set (exact — §3.2)
 
-- Per row: `Exclude` | publish on/off (shared collections only, `publish_mode != auto`, owner/editor) | `Download` (ACL-allowed only) | `Reveal original location` | `Properties` | like toggle (heart reflects the CURRENT VIEWER'S OWN like only — invariant 9; no counts, no others' states anywhere).
+- Per row: `Exclude` | publish on/off (`publish_mode != auto`, owner/editor) | `Download` (ACL-allowed only) | `Reveal original location` | `Properties` | like toggle (heart reflects the CURRENT VIEWER'S OWN like only — invariant 9; no counts, no others' states anywhere).
+  - **Publishable gate — CLIENT rule (P-4 fix, 2026-09-29):** the toggle shows when `collection.publish_mode !== 'auto'` AND the requester can manage publishing AND the row is not `shared_excluded`. "Can manage" is `granted_role` ∈ {`owner`,`editor`} **OR `granted_role == null`** — an OWN collection (user/system origin in the `mine` view) serializes with `granted_role: null` (there is no grant row for the owner). The pre-P-4 client rule tested ONLY {`owner`,`editor`}, so owners never saw the publish menu (the bug this fixes); the previous spec line also required "shared collections only", which contradicted the owner case (a `publish_mode='ask'` OWN collection parks members in the pending banner and must be publishable). The fix is CLIENT-side (accept `null`); no `granted_role:'owner'` is invented on the wire. Viewer-role grantees (`granted_role:'viewer'`) stay hidden.
 - Multi-select adds: batch `Exclude`, batch publish, `Add to another collection` (membership copy via AddToCollectionMenu submenu).
 - **Explicitly ABSENT (grep-able invariant):** move / copy / rename / delete of the FILE node — no such items render in any collection member context, ever (invariant 1: "view by collection, mutate by file"). **No batch delete — by rule** (§3.2).
 - Viewer-role grantees: `Exclude` only for rows they added (403 otherwise — server enforces; UI hides for others' rows). Publish controls are owner-side only.
@@ -64,6 +65,7 @@ Target-contract spec (`docs/features/collections-platform.md` §3.2 member-row c
 - [ ] `publish_mode:'auto'` collection ⇒ publish toggles absent (nothing to gate).
 - [ ] Viewer grantee sees `Exclude` only on own-added rows; batch bar mirrors the rule.
 - [ ] `shared_excluded:true` row renders the `Not owner's file — not shared` chip in owner view and offers no publish toggle.
+- [ ] (P-4) OWN collection (`granted_role:null`, `publish_mode:'ask'`) ⇒ publish on/off toggle IS offered to the owner (the owner-visibility fix); a `viewer` grantee (`granted_role:'viewer'`) is NOT.
 - [ ] Multi-select offers batch exclude/publish/`Add to another collection` and NO delete affordance.
 - [ ] Like toggle reflects `liked` from the row verbatim (viewer-scoped, no aggregate).
 

@@ -248,11 +248,17 @@ export const removeCollectionItems = async (id, nodeIds, options) => {
 };
 
 /**
- * DEF-25 publish seam (repository signature stable now; the endpoint ships
- * with the sharing PR).
+ * P-4 member publish (routes/collections.md PUT /:id/items/publish): flips
+ * stored rows / materializes derived publishes. The DEF-25 seam POSTed the
+ * nonexistent `/collections/:id/publish` — the shipped surface is a PUT with
+ * `{ nodeIds, published }`; response `{ published, ignored, undo }`.
  */
-export const publishItems = async (id, nodeIds, options) => {
-  return absorbMutation(`/collections/${id}/publish`, { data: { nodeIds }, options });
+export const publishItems = async (id, nodeIds, published, options) => {
+  return absorbMutation(`/collections/${id}/items/publish`, {
+    method: 'put',
+    data: { nodeIds, published },
+    options,
+  });
 };
 
 /**

@@ -240,6 +240,7 @@
     "publishPending": "{{count}}개 게시 대기",
     "publishBatch": "전체 게시",
     "sharedExcludedChip": "소유자의 파일 아닙 — 공유되지 않음",
+    "memberUnpublishedBadge": "게시 대기",
     "collectionsUnavailable": "사용 불가",
     "memberLoadMore": "더 보기",
     "cardMenuRename": "이름 변경",

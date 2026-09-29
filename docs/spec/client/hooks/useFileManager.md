@@ -61,6 +61,37 @@
   (trashed = not-found). Folder opens go through `openTrashFolder`; file clicks in the trash view
   are no-ops in the shell (preview would 404 — visibility only via the trash listing).
 
+### 2.3.2 Member-row adapter (P-4 — single normalization point)
+
+The collections MEMBER route (`/files/__collections__/collection/:id`) feeds cursor-paged member
+rows into the SHARED file renderers through `CollectionsListView` (P-4,
+`CollectionsListView.md` §2.5). `toMemberRow` is the ONE normalization point: the wire `serializeItem`
+snake_case payload (with `mime` since P-3) maps to a **file-shape row** so `FileList`/`FileGrid`/
+`FileDetail` and the shared selection/drag machinery apply unchanged. Decisions:
+
+- `nodeId`, `name`/`basename` (server name, `null` on revoked), `type` (`item.type ?? 'file'`),
+  `mime` (NOW AVAILABLE from P-3's `serializeItem`), `lastmod` (`item.lastmod ?? item.created_at`),
+  `membership`, `published`, `added_by`, `state`, `liked`, `reason`, `shared_excluded` pass through.
+- **`size` is SUPPRESSED:** the wire carries no member size, so the adapter OMITS the field entirely
+  (`size == null` ⇒ `FileListItem` hides the caption via its conditional slot — the file-side
+  `formatFileSize` output is unchanged).
+- `hasWritePermission: false` — this KILLS member drag/drop through the existing `useFileViewCommon`
+  empty-drag rule (`file.hasWritePermission === false` ⇒ non-draggable); no new machinery.
+- **revoked → `isDisabled`:** `state === 'revoked'` disables the row via `getFileItemState`'s explicit
+  member rule (`fileViewUtils.md` §2.4); the adapter also keeps the row's `mime`/`type`/name
+  NON-eligible so `useThumbnailLazyLoad.isImageOrVideoFile` can never match (proof: revoked rows carry
+  `mime:null` and a null `basename`, so both the mime-prefix and `getFileType(basename)` extensions
+  fail ⇒ no thumbnail request). No separate opt-out flag is needed.
+- `isCollectionMember: true` marker + `rowTestId` (`member-row-<nodeId>`) + `moreButtonTestId`
+  (`member-menu-button`) optional slots preserve the member E2E testids through the shared renderer
+  (files carry none ⇒ zero DOM delta).
+- **`path` is `''`** — the preview call path is nodeId-only (the double-click→`handleFileClickInternal`
+  file branch reads `file.nodeId`; FilePreviewDialog resolves metadata by nodeId, same as the trash
+  view's nodeId flow), never by path.
+
+`handleMemberThumbnailsLoaded` (this hook) merges `useThumbnailLazyLoad` results into `collectionMembers.items`
+(member-local merge — the session `handleThumbnailsLoaded` never sees member nodeIds).
+
 ### 2.4 Boundaries
 
 - **Final target owns**

@@ -73,10 +73,18 @@ const MemberRowControls = ({
 
   // Bulk: revoked/foreign rows ride along untouched — eligible ids are
   // filtered server-side (MemberRowControls.md §2.8, no client pre-filter).
+  // P-4 client-rule fix: an OWN collection serializes granted_role:null (the
+  // owner has no grant row) — "can manage publishing" is owner/editor OR null;
+  // viewer grantees stay hidden (pre-P-4 the {owner,editor}-only test hid the
+  // publish menu from owners — the bug this fixes).
+  const canManagePublish =
+    collection.granted_role == null ||
+    collection.granted_role === 'owner' ||
+    collection.granted_role === 'editor';
   const publishable =
     collection &&
     collection.publish_mode !== 'auto' &&
-    ['owner', 'editor'].includes(collection.granted_role) &&
+    canManagePublish &&
     !(target && target.shared_excluded);
   const allPublished = isBulk && rows.every((row) => row.published);
 

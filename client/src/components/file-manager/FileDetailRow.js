@@ -53,10 +53,17 @@ const FileDetailRow = ({
 
   const allowContextMenu = isPermissionDisabled && !isProcessing;
   const canOpenMenu = !isDisabled || allowContextMenu;
+  // P-4 member rows: the wire carries no size — the cell shows '-' (a
+  // formatFileSize(null) output would lie '0 B'); file rows are unaffected.
+  const sizeDisplay =
+    file.type === 'directory' || (file.isCollectionMember === true && file.size == null)
+      ? '-'
+      : formatFileSize(file.size);
 
   return (
     <TableRow
       key={getEntryKey(file)}
+      data-testid={file.rowTestId}
       data-file-path={file.path}
       data-file-node-id={file.nodeId}
       {...dragHandlers}
@@ -165,7 +172,7 @@ const FileDetailRow = ({
       </TableCell>
       <TableCell align="right" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
         <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>
-          {file.type === 'directory' ? '-' : formatFileSize(file.size)}
+          {sizeDisplay}
         </Typography>
       </TableCell>
       <TableCell sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
@@ -181,6 +188,7 @@ const FileDetailRow = ({
           <Box
             component="button"
             type="button"
+            data-testid={file.moreButtonTestId}
             onClick={(e) => {
               e.stopPropagation();
               onMoreClick(file, e);

@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item               | Description                                                                                                                                                                                                                                                                                                                           |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role               | Toolbar for sort, select all/deselect all, view mode (list/grid/detail), and bulk actions (move, copy, download, delete). In selection mode: hides sort and view mode; shows select all, deselect all, and bulk action buttons in a single row. No selection mode toggle — entry/exit driven by file interactions and selected count. |
-| Used in            | FileManager                                                                                                                                                                                                                                                                                                                           |
-| Related components | VIEW_MODES, SORT_MODES constants                                                                                                                                                                                                                                                                                                      |
+| Item               | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Toolbar for sort, select all/deselect all, view mode (list/grid/detail), and bulk actions (move, copy, download, delete). In selection mode: hides sort and view mode; shows select all, deselect all, and bulk action buttons in a single row. No selection mode toggle — entry/exit driven by file interactions and selected count. The sort button is the ONLY sort control for both surfaces (P-2, 2026-09-29 owner ruling): its menu content swaps by surface — files: the 4 radio options (2×2 name/date × asc/desc, client-side, persisted) ↔ collections: the 5 server sort options (flat menu items, no direction radios — the server bakes the direction, `GET /api/collections?sort=…`; ephemeral, never persisted; see `useCollections.md` §2.3). |
+| Used in            | FileManager                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Related components | VIEW_MODES, SORT_MODES, COLLECTION_SORT_OPTIONS constants; CollectionsListView (collections list/archive surfaces)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 ---
 
@@ -26,8 +26,11 @@
 | handleSelectAll          | function | Y        | -       | Select all                                                                                                                               |
 | handleDeselectAll        | function | Y        | -       | Deselect all                                                                                                                             |
 | selectedFiles            | Set      | Y        | -       | Selected count                                                                                                                           |
-| sortMode                 | string   | Y        | -       | SORT_MODES value                                                                                                                         |
-| setSortMode              | function | Y        | -       | Set sort mode                                                                                                                            |
+| sortMode                 | string   | Y        | -       | SORT_MODES value (files surface menu state)                                                                                              |
+| setSortMode              | function | Y        | -       | Set sort mode (files surface dispatch)                                                                                                   |
+| sortSurface              | string   | N        | 'files' | Active sort surface: `'files' \| 'collections'` — swaps the sort menu content/state (P-2)                                                |
+| collectionSort           | string   | N        | -       | Current COLLECTION_SORT_OPTIONS value (`activity\|name\|created\|updated\|similar`); selected item in the collections menu               |
+| onCollectionSortChange   | function | N        | -       | Collections sort dispatch `(option) => void` — host wires it to `useCollections.setSort` (ephemeral; no localStorage)                    |
 | viewMode                 | string   | Y        | -       | VIEW_MODES value                                                                                                                         |
 | setViewMode              | function | Y        | -       | Set view mode                                                                                                                            |
 | selectionActionsDisabled | boolean  | N        | false   | Disable selection actions                                                                                                                |
@@ -46,32 +49,35 @@
 
 ### 2.3 Callback Signatures
 
-| Callback             | When invoked           | Arguments             |
-| -------------------- | ---------------------- | --------------------- |
-| handleSelectAll      | Select all click       | -                     |
-| handleDeselectAll    | Deselect all click     | -                     |
-| setSortMode          | Sort option selected   | (mode)                |
-| setViewMode          | View option selected   | (mode)                |
-| handleBulkMove       | Move button click      | -                     |
-| handleBulkCopy       | Copy button click      | -                     |
-| handleBulkDownload   | Download button click  | -                     |
-| openBulkDeleteDialog | Delete button click    | (filePaths: string[]) |
-| handleBulkRestore    | Trash restore click    | (nodeIds: number[])   |
-| handleBulkPurge      | Trash purge click      | (nodeIds: number[])   |
-| onEmptyTrash         | Empty-trash icon click | -                     |
+| Callback               | When invoked                               | Arguments             |
+| ---------------------- | ------------------------------------------ | --------------------- |
+| handleSelectAll        | Select all click                           | -                     |
+| handleDeselectAll      | Deselect all click                         | -                     |
+| setSortMode            | Sort option selected (files surface)       | (mode)                |
+| onCollectionSortChange | Sort option selected (collections surface) | (option)              |
+| setViewMode            | View option selected                       | (mode)                |
+| handleBulkMove         | Move button click                          | -                     |
+| handleBulkCopy         | Copy button click                          | -                     |
+| handleBulkDownload     | Download button click                      | -                     |
+| openBulkDeleteDialog   | Delete button click                        | (filePaths: string[]) |
+| handleBulkRestore      | Trash restore click                        | (nodeIds: number[])   |
+| handleBulkPurge        | Trash purge click                          | (nodeIds: number[])   |
+| onEmptyTrash           | Empty-trash icon click                     | -                     |
 
 ### 2.4 Dependencies
 
-- **imports:** React, useTranslation, MUI Box/IconButton/Button/Menu/MenuItem/Radio/RadioGroup/FormControlLabel/Divider/Typography, VIEW_MODES, SORT_MODES, Move/Copy/Download/Delete icons from @mui/icons-material
+- **imports:** React, useTranslation, MUI Box/IconButton/Button/Menu/MenuItem/Radio/RadioGroup/FormControlLabel/Divider/Typography, VIEW_MODES, SORT_MODES, COLLECTION_SORT_OPTIONS, Move/Copy/Download/Delete icons from @mui/icons-material
 - **Reference implementation:** `client/src/components/file-manager/FileManagerControls.js`
 
 Notes:
 
 - The control should keep its own transient menu-open state (such as the sort menu anchor) instead of pushing that shell-chrome state up into `FileManager`.
+- The collections list/archive surfaces render no sort control of their own (`CollectionsListView.md` §2.3 — private menu retired with P-2); the host passes `sortSurface='collections'` plus `collectionSort`/`onCollectionSortChange` and this toolbar owns the menu.
 
 ### 2.5 i18n Keys
 
 - `fileManager.sort`, `fileManager.sortByName`, `fileManager.sortByDate`, `fileManager.asc`, `fileManager.desc`
+- `fileManager.collectionsSortActivity` / `collectionsSortName` / `collectionsSortCreated` / `collectionsSortUpdated` / `collectionsSortSimilar` – collections-surface menu labels (shared keys with the retired CollectionsListView menu; `collectionsSortMenu` stays as the generic title key)
 - `fileManager.selectionMode`, `fileManager.selectAll`, `fileManager.deselectAll`, `fileManager.selectedCount`, `fileManager.selectedCountFull`
 - `fileManager.viewMode`, `fileManager.listView`, `fileManager.gridView`, `fileManager.detailView`, `fileManager.listViewTitle`, `fileManager.gridViewTitle`, `fileManager.detailViewTitle`
 - `fileManager.readOnlyInSelection` – warning when hasReadOnlyInSelection
@@ -83,6 +89,9 @@ Notes:
 
 - **selectionMode:** Hide sort button, sort menu, and view mode. Show: select all, deselect all, selected count (desktop only; hidden on mobile to save space), move, copy, download, delete (single row). downloadOnly hides move, copy, delete. bulkWritePermission disables move/delete. bulkActionsDisabled disables all bulk actions. hasReadOnlyInSelection: on desktop shows inline caption; on mobile shows gray-background banner below the toolbar row. **Download on mobile:** On mobile, when multiple items are selected (`selectedFiles.size > 1`), the download button is disabled (grayed out); only single-item download is allowed on mobile.
 - **!selectionMode:** Show sort button, sort menu, view mode (direct icon buttons). No select all/deselect all, no bulk action buttons.
+- **Sort menu surface swap (P-2):** same trigger button (`data-testid="file-manager-sort"`, `fileManager.sort` title) for both surfaces; the menu body renders from `sortSurface`:
+  - `files` (default): the existing two grouped RadioGroups (Name asc/desc, Date asc/desc over SORT_MODES) dispatching `setSortMode(mode)` and closing the menu.
+  - `collections`: five flat MenuItems (one per COLLECTION_SORT_OPTIONS value, labeled via `fileManager.collectionsSort*`, `data-testid="collections-sort-option-<option>"`), the item matching `collectionSort` marked selected; NO RadioGroup/Divider (server bakes direction: name ASC, created/updated/activity DESC — `routes/collections.md` GET /). Click dispatches `onCollectionSortChange(option)` and closes the menu. State is ephemeral — nothing here touches localStorage (files `sortMode` persistence stays upstream in `useExplorerSession`).
 - **Trash mode:**
   - selectionMode: select all / deselect all / count stay; Move, Copy, Download, Delete are hidden; Restore (`data-testid="trash-bulk-restore"`) and Permanent delete (`data-testid="trash-bulk-purge"`, `color="error"`) icon buttons render instead, gated by `bulkActionsDisabled`/`bulkWritePermission` (row-level write permission from the trash selection).
   - !selectionMode: the Empty-trash admin icon button (`data-testid="trash-empty"`, `color="error"`, `actions.emptyTrash` title) renders next to the sort/view-mode toggles when `onEmptyTrash` is provided; ≥44px touch target.
@@ -94,6 +103,8 @@ Notes:
 Checklist for unit test writing:
 
 - [ ] Sort menu opens from the control itself and sort options change `sortMode`
+- [ ] Collections surface (`sortSurface='collections'`): the same `file-manager-sort` trigger opens a flat 5-option menu (`collections-sort-option-*` testids), current `collectionSort` selected, no radio groups; clicking dispatches `onCollectionSortChange(option)` and closes the menu
+- [ ] Files surface regression: default props render the 4 radios (2 grouped RadioGroups) and dispatch `setSortMode` only
 - [ ] Select all, deselect all (no selection mode toggle)
 - [ ] View mode buttons/menu (when !selectionMode)
 - [ ] selectionActionsDisabled disables selection actions

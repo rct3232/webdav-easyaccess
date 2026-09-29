@@ -23,7 +23,6 @@ const listProps = () => ({
   mode: 'list',
   collections: [card()],
   sort: 'activity',
-  onSortChange: jest.fn(),
   onCardAction: jest.fn(),
 });
 
@@ -54,12 +53,11 @@ describe('CollectionsListView — list mode', () => {
     expect(screen.getByText('Nothing archived')).toBeInTheDocument();
   });
 
-  it('sort menu offers the five options and dispatches onSortChange', () => {
-    const props = listProps();
-    renderWithProviders(<CollectionsListView {...props} />);
-    fireEvent.click(screen.getByTestId('collections-sort-menu'));
-    fireEvent.click(screen.getByText('Similar'));
-    expect(props.onSortChange).toHaveBeenCalledWith('similar');
+  it('renders NO sort control — the toolbar owns collections sort (P-2)', () => {
+    renderWithProviders(<CollectionsListView {...listProps()} />);
+    expect(screen.queryByTestId('collections-sort-menu')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('collections-sort-options')).not.toBeInTheDocument();
+    expect(screen.queryByText('Activity')).not.toBeInTheDocument();
   });
 
   it('sort=similar renders cluster GROUP HEADERS per cluster_index runs; other sorts do not', () => {

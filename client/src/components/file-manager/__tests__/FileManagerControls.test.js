@@ -282,6 +282,61 @@ describe('FileManagerControls', () => {
   });
 });
 
+describe('FileManagerControls collections sort surface (P-2)', () => {
+  const collectionsProps = (overrides = {}) => ({
+    ...defaultProps,
+    sortSurface: 'collections',
+    collectionSort: 'activity',
+    onCollectionSortChange: jest.fn(),
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('keeps the same toolbar sort trigger on the collections surface', () => {
+    renderWithProviders(<FileManagerControls {...collectionsProps()} />);
+    expect(screen.getByTestId('file-manager-sort')).toBeInTheDocument();
+  });
+
+  it('renders the five server sort options with the current sort selected and no radio groups', () => {
+    renderWithProviders(<FileManagerControls {...collectionsProps()} collectionSort="updated" />);
+    fireEvent.click(screen.getByTestId('file-manager-sort'));
+
+    expect(screen.getAllByRole('menuitem')).toHaveLength(5);
+    ['Activity', 'Name', 'Created', 'Updated', 'Similar'].forEach((label) => {
+      expect(screen.getByRole('menuitem', { name: label })).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('collections-sort-option-updated')).toHaveClass('Mui-selected');
+    expect(screen.getByTestId('collections-sort-option-activity')).not.toHaveClass('Mui-selected');
+    expect(screen.queryAllByRole('radio')).toHaveLength(0);
+  });
+
+  it('dispatches onCollectionSortChange with the option value and closes the menu', () => {
+    const props = collectionsProps();
+    renderWithProviders(<FileManagerControls {...props} />);
+    fireEvent.click(screen.getByTestId('file-manager-sort'));
+    fireEvent.click(screen.getByTestId('collections-sort-option-similar'));
+
+    expect(props.onCollectionSortChange).toHaveBeenCalledWith('similar');
+    expect(props.setSortMode).not.toHaveBeenCalled();
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  it('files surface keeps the four radio options and dispatches setSortMode only', () => {
+    renderWithProviders(<FileManagerControls {...defaultProps} />);
+    fireEvent.click(screen.getByTestId('file-manager-sort'));
+
+    expect(screen.getAllByRole('radio')).toHaveLength(4);
+    expect(screen.queryByTestId('collections-sort-option-name')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole('radio')[1]);
+    expect(defaultProps.setSortMode).toHaveBeenCalledWith(SORT_MODES.NAME_DESC);
+    expect(defaultProps.onCollectionSortChange).toBeUndefined;
+  });
+});
+
 describe('trash mode (DEF-16 P9)', () => {
   const trashBulkProps = {
     handleBulkRestore: jest.fn(),

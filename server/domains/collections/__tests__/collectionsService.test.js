@@ -560,3 +560,59 @@ describe('collectionsService checkUploadAdmissions (T0.9 seam; §2.3-bis)', () =
     ).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Grantee self-revocation — revokeOwnGrant (P-1 Path 1, §4.7 instant)
+// ---------------------------------------------------------------------------
+
+describe('collectionsService revokeOwnGrant (grants/me)', () => {
+  async function setupSharedCollection(tag, role) {
+    const owner = await createUserWithRoot(`svcg-${tag}-owner`);
+    const grantee = await createUserWithRoot(`svcg-${tag}-grantee`);
+    const stranger = await createUserWithRoot(`svcg-${tag}-stranger`);
+    const { collection } = await collectionsService.createCollection(owner.user.id, {
+      name: `Shared ${tag}`,
+    });
+    await collectionsStore.grantAccess(collection.id, grantee.user.id, role, owner.user.id, {
+      actor: owner.user.id,
+    });
+    return { owner, grantee, stranger, collection };
+  }
+
+  it.each(['viewer', 'editor'])(
+    '%s grantee self-revokes: row removed via the owner-side store path (undo pointer returned)',
+    async (role) => {
+      const { grantee, collection } = await setupSharedCollection(`self-${role}`, role);
+
+      const result = await collectionsService.revokeOwnGrant(grantee.user.id, collection.id);
+      expect(result).toMatchObject({ grantee_id: grantee.user.id, revoked: true });
+      expect(result.undo.actionId).toBeGreaterThan(0);
+      expect(await collectionsStore.getGrant(collection.id, grantee.user.id)).toBeNull();
+    }
+  );
+
+  it('collection owner self-calls throw grantNotFound (no self-grant row)', async () => {
+    const { owner, collection } = await setupSharedCollection('owner-self', 'viewer');
+    await expect(
+      collectionsService.revokeOwnGrant(owner.user.id, collection.id)
+    ).rejects.toMatchObject({ message: 'grantNotFound', status: 404 });
+  });
+
+  it('zero-access callers and unknown collections throw the notFound masquerade', async () => {
+    const { stranger, collection } = await setupSharedCollection('stranger', 'viewer');
+    await expect(
+      collectionsService.revokeOwnGrant(stranger.user.id, collection.id)
+    ).rejects.toMatchObject({ message: 'notFound', status: 404 });
+    await expect(
+      collectionsService.revokeOwnGrant(stranger.user.id, 99999999)
+    ).rejects.toMatchObject({ message: 'notFound', status: 404 });
+  });
+
+  it('a revoked grantee re-calling is zero-access: notFound masquerade', async () => {
+    const { grantee, collection } = await setupSharedCollection('twice', 'viewer');
+    await collectionsService.revokeOwnGrant(grantee.user.id, collection.id);
+    await expect(
+      collectionsService.revokeOwnGrant(grantee.user.id, collection.id)
+    ).rejects.toMatchObject({ message: 'notFound', status: 404 });
+  });
+});

@@ -10,6 +10,7 @@ import { checkPermission, getSharedPermissions } from './permissionService';
 import { addRecentFile, getRecentFiles, removeRecentFile } from './recentFilesRepository';
 import { onRecentFilesChange } from './recentFilesNotifier';
 import {
+  getLikedItems,
   getLikedNodeIds,
   setFileLike as repositorySetFileLike,
   subscribeFileLikesChange,
@@ -280,6 +281,9 @@ export { getActions, getFileSuggestions, acceptFileSuggestions };
 
 export const loadFileLikes = () => getLikedNodeIds();
 
+// P-5 Likes-surface cursor read (`fileLikesRepository.getLikedItems`).
+export const loadLikedItems = (params) => getLikedItems(params);
+
 export const setFileLike = (nodeId, liked, options) =>
   repositorySetFileLike(nodeId, liked, options);
 
@@ -356,6 +360,7 @@ const explorerGateway = {
   acceptFileSuggestions,
   // File likes (§2.6 file-likes group)
   loadFileLikes,
+  loadLikedItems,
   setFileLike,
   subscribeToFileLikes,
 };

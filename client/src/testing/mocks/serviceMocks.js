@@ -92,6 +92,7 @@ export function createRecentFilesNotifierMock(overrides = {}) {
 export function createFileLikesRepositoryMock(overrides = {}) {
   return {
     getLikedNodeIds: jest.fn().mockResolvedValue({ liked: [] }),
+    getLikedItems: jest.fn().mockResolvedValue({ items: [], next_cursor: null }),
     setFileLike: jest.fn().mockResolvedValue(null),
     subscribeFileLikesChange: jest.fn(() => jest.fn()),
     notifyFileLikesChange: jest.fn(),
@@ -157,6 +158,7 @@ export function createExplorerGatewayMock(overrides = {}) {
     acceptFileSuggestions: jest.fn().mockResolvedValue(null),
     // File-likes seams (T0.5 — explorerGateway §2.6 file-likes group)
     loadFileLikes: jest.fn().mockResolvedValue({ liked: [] }),
+    loadLikedItems: jest.fn().mockResolvedValue({ items: [], next_cursor: null }),
     setFileLike: jest.fn().mockResolvedValue(null),
     subscribeToFileLikes: jest.fn(() => jest.fn()),
     loadNodesMetadata: jest.fn().mockResolvedValue([]),
@@ -184,6 +186,10 @@ export function createLocalStorageUiMock(overrides = {}) {
     setViewMode: () => {},
     getSortMode: () => 'name',
     setSortMode: () => {},
+    getCollectionMemberViewMode: () => 'grid',
+    setCollectionMemberViewMode: () => {},
+    getLikedViewMode: () => 'grid',
+    setLikedViewMode: () => {},
     ...overrides,
   };
 }

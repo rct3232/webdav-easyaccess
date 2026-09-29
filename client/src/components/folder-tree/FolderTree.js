@@ -53,6 +53,7 @@ const FolderTree = ({
     handleCollectionsClick,
     handleCollectionClick,
     handleArchiveClick,
+    handleLikedClick,
     collectionsTreeRows,
     archiveCount,
     newCollectionIds,
@@ -158,6 +159,7 @@ const FolderTree = ({
                   currentPath={currentPath}
                   onCollectionClick={handleCollectionClick}
                   onArchiveClick={handleArchiveClick}
+                  onLikesClick={handleLikedClick}
                   newCollectionIds={newCollectionIds}
                 />
               )}

@@ -653,3 +653,102 @@ describe('P-4 member-row adapter (useFileManager §2.3.2)', () => {
     expect(result.current.collectionMembers.items[0].thumbnailUrl).toBe('https://thumb/7');
   });
 });
+
+describe('P-5 collections-liked surface (useFileManager §2.3.3)', () => {
+  const wireLiked = (nodeId, overrides = {}) => ({
+    node_id: nodeId,
+    name: `liked-${nodeId}.txt`,
+    type: 'file',
+    mime: 'text/plain',
+    state: 'normal',
+    liked: true,
+    created_at: '2026-08-01T00:00:00Z',
+    ...overrides,
+  });
+
+  async function renderLiked(page) {
+    explorerGateway.loadLikedItems.mockResolvedValueOnce(page);
+    const renderResult = renderWithPath('__collections__/liked');
+    await waitFor(() => {
+      expect(renderResult.result.current.loading).toBe(false);
+    });
+    return renderResult;
+  }
+
+  it('parses the route, lists via loadLikedItems and feeds member-parity adapter rows', async () => {
+    const { result } = await renderLiked({ items: [wireLiked(41)], next_cursor: 'c1' });
+
+    expect(result.current.currentPath).toBe('/__collections__/liked');
+    expect(explorerGateway.loadLikedItems).toHaveBeenCalled();
+    expect(result.current.likedItems.nextCursor).toBe('c1');
+    expect(result.current.likedItems.items[0]).toMatchObject({
+      nodeId: 41,
+      name: 'liked-41.txt',
+      basename: 'liked-41.txt',
+      type: 'file',
+      lastmod: '2026-08-01T00:00:00Z',
+      state: 'normal',
+      liked: true,
+      isCollectionMember: true,
+      hasWritePermission: false,
+      rowTestId: 'member-row-41',
+      moreButtonTestId: 'member-menu-button',
+    });
+    expect(result.current.likedItems.items[0]).not.toHaveProperty('size');
+    // the file explorer region stays empty on the overlay surface
+    expect(result.current.files).toEqual([]);
+  });
+
+  it('revoked likes land as disabled placeholder rows (adapter parity)', async () => {
+    const { result } = await renderLiked({
+      items: [wireLiked(42, { name: null, type: null, mime: null, state: 'revoked' })],
+      next_cursor: null,
+    });
+
+    const row = result.current.likedItems.items[0];
+    expect(row.state).toBe('revoked');
+    expect(row.name).toBeNull();
+    expect(row.basename).toBe('fileManager.collectionsUnavailable');
+    expect(row.mime).toBeNull();
+  });
+
+  it('loadMoreLikedItems appends the cursor page de-duped by nodeId', async () => {
+    const { result } = await renderLiked({ items: [wireLiked(41)], next_cursor: 'c1' });
+
+    explorerGateway.loadLikedItems.mockResolvedValueOnce({
+      items: [wireLiked(41), wireLiked(42)],
+      next_cursor: null,
+    });
+    await act(async () => {
+      await result.current.loadMoreLikedItems();
+    });
+
+    expect(explorerGateway.loadLikedItems).toHaveBeenLastCalledWith({ cursor: 'c1' });
+    expect(result.current.likedItems.items.map((row) => row.nodeId)).toEqual([41, 42]);
+    expect(result.current.likedItems.nextCursor).toBeNull();
+  });
+
+  it('applyLikedRemoval drops the row optimistically (unknown ids are a no-op)', async () => {
+    const { result } = await renderLiked({
+      items: [wireLiked(41), wireLiked(42)],
+      next_cursor: null,
+    });
+
+    act(() => result.current.applyLikedRemoval(999));
+    expect(result.current.likedItems.items).toHaveLength(2);
+
+    act(() => result.current.applyLikedRemoval(41));
+    expect(result.current.likedItems.items.map((row) => row.nodeId)).toEqual([42]);
+  });
+
+  it('handleMemberThumbnailsLoaded merges into likedItems rows too (member-local, never the session files)', async () => {
+    const { result } = await renderLiked({ items: [wireLiked(41)], next_cursor: null });
+
+    act(() => {
+      result.current.handleMemberThumbnailsLoaded(new Map([[41, 'https://thumb/41']]));
+    });
+
+    expect(result.current.likedItems.items[0].thumbnailUrl).toBe('https://thumb/41');
+    expect(result.current.files).toEqual([]);
+  });
+});

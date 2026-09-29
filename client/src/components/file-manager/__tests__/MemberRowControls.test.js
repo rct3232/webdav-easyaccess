@@ -216,3 +216,39 @@ describe('MemberRowControls — publishable gate client-rule fix (P-4)', () => {
     expect(screen.getByTestId('member-batch-publish')).toBeInTheDocument();
   });
 });
+
+describe('MemberRowControls — liked surface (P-5, collection:null)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('collection:null + no membership callbacks ⇒ Download/Reveal/Properties/like render, no Exclude/publish, no crash', () => {
+    renderWithProviders(
+      <MemberRowControls
+        {...defaultProps}
+        collection={null}
+        onExclude={undefined}
+        onPublish={undefined}
+      />
+    );
+    expect(screen.queryByTestId('member-exclude')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('member-publish')).not.toBeInTheDocument();
+    expect(screen.getByTestId('member-download')).toBeInTheDocument();
+    expect(screen.getByTestId('member-show-original')).toBeInTheDocument();
+    expect(screen.getByTestId('member-properties')).toBeInTheDocument();
+    expect(screen.getByTestId('like-toggle')).toBeInTheDocument();
+  });
+
+  it('the manage-publish gate is STRUCTURAL on a null collection (even if onPublish is passed)', () => {
+    renderWithProviders(<MemberRowControls {...defaultProps} collection={null} />);
+    expect(screen.queryByTestId('member-publish')).not.toBeInTheDocument();
+    // Exclude stays a HOST callback decision (the liked shell simply never passes it)
+    expect(screen.getByTestId('member-exclude')).toBeInTheDocument();
+  });
+
+  it('like-toggle dispatches the row through the shared onToggleLike seam (unlike entry)', () => {
+    const props = { ...defaultProps, collection: null, onExclude: undefined, onPublish: undefined };
+    renderWithProviders(<MemberRowControls {...props} member={{ ...member, liked: true }} />);
+    fireEvent.click(screen.getByTestId('like-toggle'));
+    expect(props.onToggleLike).toHaveBeenCalledWith(expect.objectContaining({ node_id: 10 }));
+    expect(props.onClose).toHaveBeenCalled();
+  });
+});

@@ -29,6 +29,7 @@ const defaultProps = () => ({
   currentPath: '/',
   onCollectionClick: jest.fn(),
   onArchiveClick: jest.fn(),
+  onLikesClick: jest.fn(),
   newCollectionIds: [],
 });
 
@@ -174,5 +175,39 @@ describe('CollectionsSection', () => {
     renderWithProviders(<CollectionsSection {...props} />);
     expect(screen.queryByTestId('collection-row-1')).not.toBeInTheDocument();
     expect(screen.queryByTestId('collections-archive-node')).not.toBeInTheDocument();
+  });
+});
+
+describe('CollectionsSection — Likes child row (P-5)', () => {
+  it('renders the static Likes row before ArchiveNode (archive stays the section end)', () => {
+    const { container } = renderWithProviders(<CollectionsSection {...defaultProps()} />);
+    const statics = Array.from(
+      container.querySelectorAll(
+        '[data-testid="collections-liked-node"], [data-testid="collections-archive-node"]'
+      )
+    ).map((el) => el.getAttribute('data-testid'));
+    expect(statics).toEqual(['collections-liked-node', 'collections-archive-node']);
+    expect(screen.getByTestId('collections-liked-node')).toHaveTextContent('Liked');
+  });
+
+  it('click invokes onLikesClick and selection keys off /__collections__/liked', () => {
+    const props = defaultProps();
+    const { container } = renderWithProviders(<CollectionsSection {...props} />);
+    fireEvent.click(screen.getByTestId('collections-liked-node'));
+    expect(props.onLikesClick).toHaveBeenCalledTimes(1);
+
+    const selected = defaultProps();
+    selected.currentPath = '/__collections__/liked';
+    const sel = renderWithProviders(<CollectionsSection {...selected} />);
+    expect(
+      sel.container.querySelector('[data-testid="collections-liked-node"].Mui-selected')
+    ).toBeTruthy();
+  });
+
+  it('renders with an EMPTY collections list (static row, zero-state reachable)', () => {
+    const props = defaultProps();
+    props.collections = [];
+    renderWithProviders(<CollectionsSection {...props} />);
+    expect(screen.getByTestId('collections-liked-node')).toBeInTheDocument();
   });
 });

@@ -119,6 +119,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     openTrashFolder,
     collectionMembers,
     loadMoreCollectionMembers,
+    likedItems,
+    loadMoreLikedItems,
+    applyLikedRemoval,
     handleMemberThumbnailsLoaded,
   } = useFileManager(user, {
     onLoadComplete: handleLoadCompleteCallback,
@@ -168,6 +171,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     setViewMode,
     memberViewMode,
     setMemberViewMode,
+    likedViewMode,
+    setLikedViewMode,
     sortedFiles,
     displayedFiles,
     loadMoreRef,
@@ -518,9 +523,15 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const isCollectionsRoute = currentPath === '/__collections__';
   const isCollectionsArchiveRoute = currentPath === '/__collections__/__archive__';
   const isCollectionsMemberRoute = (currentPath || '').startsWith('/__collections__/collection/');
+  // P-5 Likes surface: static child row of the Collections section (owner
+  // ruling §10) — member-parity overlay listing fed by GET /file-likes/items.
+  const isCollectionsLikedRoute = currentPath === '/__collections__/liked';
   const isCollectionsOverlay =
     !isShareLinkMode &&
-    (isCollectionsRoute || isCollectionsArchiveRoute || isCollectionsMemberRoute);
+    (isCollectionsRoute ||
+      isCollectionsArchiveRoute ||
+      isCollectionsMemberRoute ||
+      isCollectionsLikedRoute);
   const collectionsInclude = isCollectionsArchiveRoute ? 'mine,archived' : 'mine,shared';
 
   // P-4 selection reset (P-3 residue fix): the synthetic CARD keys of the
@@ -913,6 +924,11 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       if (nodeId == null) return;
       const next = file?.liked !== true;
       applyLikedToRows(nodeId, next);
+      if (!next) {
+        // P-5: the Likes surface drops the row the moment the unlike starts
+        // (no-op elsewhere); the subscribeToFileLikes re-read converges.
+        applyLikedRemoval(nodeId);
+      }
       let envelope = null;
       const payload = await explorerGateway.setFileLike(nodeId, next, {
         onError: (error) => {
@@ -922,9 +938,12 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       if (payload === null) {
         applyLikedToRows(nodeId, !next);
         showError(getServerErrorDisplay(envelope, t));
+        // A failed unlike never notifies (absorbed write) — on the liked
+        // surface re-read so the server truth (row still liked) returns.
+        if (isCollectionsLikedRoute) loadFiles();
       }
     },
-    [applyLikedToRows, showError, t]
+    [applyLikedToRows, applyLikedRemoval, showError, t, isCollectionsLikedRoute, loadFiles]
   );
 
   useEffect(() => {
@@ -1097,6 +1116,22 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
 
   const collectionsModel = useMemo(() => {
     if (!isCollectionsOverlay) return null;
+    if (isCollectionsLikedRoute) {
+      // P-5: members-parity consumer (CollectionsListView.md §2.2) — same mode,
+      // same renderer delegation; membership chrome keys simply absent (no
+      // digest/publish/bulk seams) and FileManagerView swaps the view-mode key
+      // to the per-surface `likedViewMode` via the likedSurface flag.
+      return {
+        mode: 'members',
+        likedSurface: true,
+        items: likedItems.items,
+        nextCursor: likedItems.nextCursor,
+        onLoadMore: loadMoreLikedItems,
+        memberLoading: loading,
+        onMemberAction: handleMemberAction,
+        onMemberThumbnailsLoaded: handleMemberThumbnailsLoaded,
+      };
+    }
     if (isCollectionsMemberRoute) {
       return {
         mode: 'members',
@@ -1139,6 +1174,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   }, [
     isCollectionsOverlay,
     isCollectionsMemberRoute,
+    isCollectionsLikedRoute,
+    likedItems,
+    loadMoreLikedItems,
+    loading,
     collectionMembers,
     loadMoreCollectionMembers,
     collectionsApi.collections,
@@ -1574,6 +1613,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       setViewMode,
       memberViewMode,
       setMemberViewMode,
+      likedViewMode,
+      setLikedViewMode,
       sortMode,
       setSortMode,
       searchQuery,
@@ -1589,6 +1630,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       setViewMode,
       memberViewMode,
       setMemberViewMode,
+      likedViewMode,
+      setLikedViewMode,
       sortMode,
       setSortMode,
       searchQuery,
@@ -2028,14 +2071,18 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         collectionsModel={collectionsModel}
         searchResults={searchResults}
       />
-      {isCollectionsMemberRoute && (
+      {(isCollectionsMemberRoute || isCollectionsLikedRoute) && (
         <MemberRowControls
           open={Boolean(memberMenu)}
           anchorEl={memberMenu?.anchorEl ?? null}
           member={memberMenu?.member ?? null}
-          collection={memberCollection}
-          onExclude={handleMemberExclude}
-          onPublish={handleMemberPublish}
+          // P-5: the liked surface has NO parent collection — structural
+          // MemberRowControls gate + host callback omission (no membership
+          // mutations exist for a like); download/reveal/properties/like ride
+          // the same seams as members.
+          collection={isCollectionsLikedRoute ? null : memberCollection}
+          onExclude={isCollectionsLikedRoute ? undefined : handleMemberExclude}
+          onPublish={isCollectionsLikedRoute ? undefined : handleMemberPublish}
           onDownload={handleMemberDownload}
           onShowOriginal={handleMemberShowOriginal}
           onProperties={handleMemberProperties}

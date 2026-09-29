@@ -8,6 +8,8 @@ import {
   setSortMode as saveSortMode,
   getCollectionMemberViewMode,
   setCollectionMemberViewMode as saveMemberViewMode,
+  getLikedViewMode,
+  setLikedViewMode as saveLikedViewMode,
 } from '../../../utils/localStorage';
 import { useInfiniteScroll } from '../../../hooks/useInfiniteScroll';
 
@@ -31,6 +33,9 @@ export const useExplorerSession = ({
   // localStorage key (`collectionMemberViewMode`, default grid); file browsing
   // keeps `viewMode` untouched.
   const [memberViewMode, setMemberViewMode] = useState(() => getCollectionMemberViewMode());
+  // P-5: per-surface view mode of the collection LIKES surface — its own key
+  // (`likedViewMode`, default grid); neither the file key nor the member key.
+  const [likedViewMode, setLikedViewMode] = useState(() => getLikedViewMode());
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [sortMode, setSortMode] = useState(() => getSortMode());
 
@@ -50,6 +55,10 @@ export const useExplorerSession = ({
   }, [memberViewMode]);
 
   useEffect(() => {
+    saveLikedViewMode(likedViewMode);
+  }, [likedViewMode]);
+
+  useEffect(() => {
     saveSortMode(sortMode);
   }, [sortMode]);
 
@@ -66,6 +75,12 @@ export const useExplorerSession = ({
       setMemberViewMode(VIEW_MODES.LIST);
     }
   }, [isMobile, memberViewMode]);
+
+  useEffect(() => {
+    if (isMobile && likedViewMode === VIEW_MODES.DETAIL) {
+      setLikedViewMode(VIEW_MODES.LIST);
+    }
+  }, [isMobile, likedViewMode]);
 
   const filteredFiles = useMemo(() => {
     const q = (searchQuery || '').trim().toLowerCase();
@@ -136,6 +151,9 @@ export const useExplorerSession = ({
 
     memberViewMode,
     setMemberViewMode,
+
+    likedViewMode,
+    setLikedViewMode,
 
     filteredFiles,
     sortedFiles,

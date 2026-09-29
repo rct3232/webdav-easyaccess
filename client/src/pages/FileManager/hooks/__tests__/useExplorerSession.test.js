@@ -13,6 +13,8 @@ import {
   setSortMode,
   getCollectionMemberViewMode,
   setCollectionMemberViewMode,
+  getLikedViewMode,
+  setLikedViewMode,
 } from '../../../../utils/localStorage';
 import { useInfiniteScroll } from '../../../../hooks/useInfiniteScroll';
 import { useExplorerSession } from '../useExplorerSession';
@@ -28,6 +30,8 @@ jest.mock('../../../../utils/localStorage', () => ({
   setSortMode: jest.fn(),
   getCollectionMemberViewMode: jest.fn(() => 'grid'),
   setCollectionMemberViewMode: jest.fn(),
+  getLikedViewMode: jest.fn(() => 'grid'),
+  setLikedViewMode: jest.fn(),
 }));
 
 jest.mock('../../../../hooks/useInfiniteScroll', () => ({
@@ -275,6 +279,54 @@ describe('useExplorerSession', () => {
 
       expect(result.current.memberViewMode).toBe('list');
       expect(setCollectionMemberViewMode).toHaveBeenCalledWith('list');
+    });
+  });
+
+  describe('likedViewMode (P-5 per-surface Likes key)', () => {
+    beforeEach(() => {
+      getLikedViewMode.mockReturnValue('grid');
+    });
+
+    it('initializes from the likedViewMode helper, independent of viewMode/memberViewMode', () => {
+      getViewMode.mockReturnValue('detail');
+      getCollectionMemberViewMode.mockReturnValue('list');
+      getLikedViewMode.mockReturnValue('detail');
+
+      const { result } = renderHook(() =>
+        useExplorerSession({ currentNodeId: 5, files: EMPTY_FILES })
+      );
+
+      expect(getLikedViewMode).toHaveBeenCalledTimes(1);
+      expect(result.current.likedViewMode).toBe('detail');
+      expect(result.current.viewMode).toBe('detail');
+      expect(result.current.memberViewMode).toBe('list');
+    });
+
+    it('setLikedViewMode persists through the LIKES helper only', () => {
+      const { result } = renderHook(() =>
+        useExplorerSession({ currentNodeId: 5, files: EMPTY_FILES })
+      );
+
+      act(() => {
+        result.current.setLikedViewMode('list');
+      });
+
+      expect(result.current.likedViewMode).toBe('list');
+      expect(setLikedViewMode).toHaveBeenCalledWith('list');
+      // neither other key ever sees the likes dispatch
+      expect(setCollectionMemberViewMode).not.toHaveBeenCalledWith('list');
+      expect(setViewMode).not.toHaveBeenCalledWith('list');
+    });
+
+    it('mobile detail→list restriction applies to the likes key too', () => {
+      getLikedViewMode.mockReturnValue('detail');
+
+      const { result } = renderHook(() =>
+        useExplorerSession({ currentNodeId: 5, files: EMPTY_FILES, isMobile: true })
+      );
+
+      expect(result.current.likedViewMode).toBe('list');
+      expect(setLikedViewMode).toHaveBeenCalledWith('list');
     });
   });
 });

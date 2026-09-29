@@ -122,6 +122,8 @@ const FileManagerView = ({
     setViewMode,
     memberViewMode,
     setMemberViewMode,
+    likedViewMode,
+    setLikedViewMode,
     sortMode,
     setSortMode,
     searchQuery,
@@ -143,6 +145,14 @@ const FileManagerView = ({
   // untouched) — the P-3 inert flags retire here.
   const isCollectionsListSurface = collectionsModel?.mode === 'list';
   const isCollectionsMemberSurface = collectionsModel?.mode === 'members';
+  // P-5: the Likes surface is a member-parity CONSUMER of the same mode — the
+  // shell flags it (likedSurface) so ONLY the view-mode key binding swaps
+  // (`likedViewMode`); sort/bulk stay member-treated, banners never arrive
+  // (the liked model omits digest/publishPendingCount/onPublishBatch).
+  const isCollectionsLikedSurface =
+    isCollectionsMemberSurface && collectionsModel?.likedSurface === true;
+  const memberSurfaceViewMode = isCollectionsLikedSurface ? likedViewMode : memberViewMode;
+  const setMemberSurfaceViewMode = isCollectionsLikedSurface ? setLikedViewMode : setMemberViewMode;
   // FAB가 자신의 실제 표시 여부를 보고(single source of truth) — 검색창 확장 트리거로 사용
   const [fabPresent, setFabPresent] = useState(false);
   const { displayedFiles, loading, processingMap, handleThumbnailsLoaded, loadMoreRef, hasMore } =
@@ -493,8 +503,8 @@ const FileManagerView = ({
             onBulkAddToCollection={
               isCollectionsMemberSurface ? collectionsModel.onBulkAddToCollection : undefined
             }
-            viewMode={isCollectionsMemberSurface ? memberViewMode : viewMode}
-            setViewMode={isCollectionsMemberSurface ? setMemberViewMode : setViewMode}
+            viewMode={isCollectionsMemberSurface ? memberSurfaceViewMode : viewMode}
+            setViewMode={isCollectionsMemberSurface ? setMemberSurfaceViewMode : setViewMode}
             selectionActionsDisabled={bulkMoveCopyInProgress}
             handleBulkMove={handleBulkMove}
             handleBulkCopy={handleBulkCopy}
@@ -651,7 +661,7 @@ const FileManagerView = ({
                   items={collectionsModel.items}
                   nextCursor={collectionsModel.nextCursor}
                   onLoadMore={collectionsModel.onLoadMore}
-                  memberViewMode={memberViewMode}
+                  memberViewMode={memberSurfaceViewMode}
                   memberLoading={loading}
                   onMemberRowClick={handleFileClick}
                   onMemberRowCheck={handleFileCheck}

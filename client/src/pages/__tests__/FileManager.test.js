@@ -1667,6 +1667,44 @@ describe('FileManager', () => {
 
       expect(await screen.findByText('1 undone')).toBeInTheDocument();
     }, 15000);
+
+    it('viewer card Revoke permission DELETEs /grants/me instantly and the refetch drops the card', async () => {
+      const viewerCard = {
+        ...ownCard,
+        collection_id: 3,
+        name: 'Given',
+        granted_role: 'viewer',
+      };
+      let revoked = false;
+      const deleteCalls = [];
+      server.use(
+        http.get('/api/collections', () =>
+          HttpResponse.json({ collections: revoked ? [] : [viewerCard] })
+        ),
+        http.get('/api/collections/merge-suggestions', () =>
+          HttpResponse.json({ suggestions: [] })
+        ),
+        http.delete('/api/collections/3/grants/me', () => {
+          revoked = true;
+          deleteCalls.push('/api/collections/3/grants/me');
+          return HttpResponse.json({ grantee_id: 2, revoked: true, undo: { action_id: 55 } });
+        })
+      );
+
+      await renderWithProvidersAct(<FileManagerWithRoutes />, {
+        initialEntries: ['/files/__collections__'],
+      });
+
+      fireEvent.click(await screen.findByTestId('card-menu-button-3'));
+      fireEvent.click(screen.getByTestId('card-menu-option-revoke-permission'));
+
+      // instant: one click fires the mutation — no confirm step in between
+      await waitFor(() => expect(deleteCalls).toHaveLength(1));
+      // rows are fetch-driven (hiddenIds removed): the card vanishes only via
+      // the post-mutation refresh, which now omits the revoked collection
+      expect(await screen.findByText('No collections yet')).toBeInTheDocument();
+      expect(screen.queryByTestId('collection-card-3')).not.toBeInTheDocument();
+    }, 15000);
   });
 
   /**

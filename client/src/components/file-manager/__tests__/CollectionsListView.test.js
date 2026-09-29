@@ -187,13 +187,15 @@ describe('CollectionsListView — list mode', () => {
     expect(props.onCardAction).toHaveBeenCalledTimes(1);
   });
 
-  it('viewer-received card menu has NO mutation entries (open + leave only)', () => {
+  it('viewer-received card menu is exactly open + revoke-permission, NO mutation entries', () => {
     const props = listProps();
     props.collections = [card({ granted_role: 'viewer' })];
     renderWithProviders(<CollectionsListView {...props} />);
     openCardMenu();
     expect(screen.getByTestId('card-menu-option-open')).toBeInTheDocument();
-    expect(screen.getByTestId('card-menu-option-leave')).toBeInTheDocument();
+    expect(screen.getByTestId('card-menu-option-revoke-permission')).toBeInTheDocument();
+    expect(screen.getByText('Revoke permission')).toBeInTheDocument();
+    expect(screen.queryByTestId('card-menu-option-leave')).not.toBeInTheDocument();
     ['rename', 'pin', 'unpin', 'archive', 'restore', 'sharing', 'delete-permanent'].forEach(
       (action) => {
         expect(screen.queryByTestId(`card-menu-option-${action}`)).not.toBeInTheDocument();
@@ -201,7 +203,19 @@ describe('CollectionsListView — list mode', () => {
     );
   });
 
-  it('Leave hides the received card locally (recipient-local hide, §3.2)', () => {
+  it('viewer-received menu mirrors the owner-side revoke label in BOTH locales (i18n mirror)', () => {
+    // exact strings of dialogs.revokePermission (en.json/ko.json :356) — owner ruling P-1
+    const en = require('../../../locales/en.json');
+    const ko = require('../../../locales/ko.json');
+    expect(en.fileManager.cardMenuRevokePermission).toBe('Revoke permission');
+    expect(ko.fileManager.cardMenuRevokePermission).toBe('권한 반납');
+    expect(en.fileManager.cardMenuRevokePermission).toBe(en.dialogs.revokePermission);
+    expect(ko.fileManager.cardMenuRevokePermission).toBe(ko.dialogs.revokePermission);
+    expect(en.fileManager.cardMenuLeave).toBeUndefined();
+    expect(ko.fileManager.cardMenuLeave).toBeUndefined();
+  });
+
+  it('Revoke permission dispatches instantly (no confirm) and rows stay fetch-driven', () => {
     const props = listProps();
     props.collections = [
       card({ collection_id: 4, granted_role: 'viewer', name: 'Given' }),
@@ -209,12 +223,17 @@ describe('CollectionsListView — list mode', () => {
     ];
     renderWithProviders(<CollectionsListView {...props} />);
     openCardMenu(4);
-    fireEvent.click(screen.getByTestId('card-menu-option-leave'));
+    fireEvent.click(screen.getByTestId('card-menu-option-revoke-permission'));
+    expect(props.onCardAction).toHaveBeenCalledTimes(1);
     expect(props.onCardAction).toHaveBeenCalledWith(
-      'leave',
+      'revoke-permission',
       expect.objectContaining({ collection_id: 4 })
     );
-    expect(screen.queryByTestId('collection-card-4')).not.toBeInTheDocument();
+    // instant: the mutation dispatches on the FIRST click (archive/delete only
+    // dispatch after the hosted confirm), so no confirm step exists here
+    // the former view-local hiddenIds hide is REMOVED: rows render from fetch
+    // state, so the card stays until the next list read omits it
+    expect(screen.getByTestId('collection-card-4')).toBeInTheDocument();
     expect(screen.getByTestId('collection-card-1')).toBeInTheDocument();
   });
 });

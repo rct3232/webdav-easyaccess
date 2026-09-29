@@ -33,34 +33,38 @@ with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 
 ### 2.2 Route List (sync with api.md)
 
-| Method | Path                 | Auth  | Description                                           |
-| ------ | -------------------- | ----- | ----------------------------------------------------- |
-| GET    | `/`                  | Token | List collections (sort, include filters).             |
+| Method | Path                 | Auth  | Description                                                                               |
+| ------ | -------------------- | ----- | ----------------------------------------------------------------------------------------- |
+| GET    | `/`                  | Token | List collections (sort, include filters).                                                 |
 | GET    | `/:id`               | Token | Single collection (owner definition; grantee `granted_role`; ungranted → 404 masquerade). |
-| POST   | `/`                  | Token | Create manual (`origin='user'`) collection.           |
-| PUT    | `/:id`               | Token | Update name / pin / publish_mode.                     |
-| POST   | `/:id/archive`       | Token | Archive (manual; confirm dialog is client-side).      |
-| POST   | `/:id/restore`       | Token | Restore an archived collection.                       |
-| DELETE | `/:id`               | Token | Permanent delete — archived only, else 409.           |
-| GET    | `/:id/items`         | Token | Member view, cursor-paged, digest counts via `since`. |
-| POST   | `/:id/items`         | Token | Add members. Body `{ nodeIds }`.                      |
-| DELETE | `/:id/items`         | Token | Remove stored rows / insert exclusions (derived).     |
-| POST   | `/preview`           | Token | Dry preview: `{ seedNodeId }` or `{ definition }`.    |
-| POST   | `/:id/preview`       | Token | Dry-run the stored definition of an existing one.     |
-| GET    | `/merge-suggestions` | Token | Pending merge-suggestion cards (§4.4).                |
-| POST   | `/:id/merge/:other`  | Token | Execute merge; `:id` survives.                        |
-| POST   | `/:id/merge-dismiss` | Token | `Later` — defer the pair (2-week re-raise).           |
-| POST   | `/:id/merge-reject`  | Token | `Keep separate` — permanent pair suppression.         |
-| GET    | `/:id/grants`        | Token | List sharing grants (owner only).                     |
-| POST   | `/:id/grants`        | Token | Grant `viewer\|editor`.                               |
-| DELETE | `/:id/grants`        | Token | Revoke grant. Query `userId`.                         |
-| POST   | `/for-nodes`         | Token | Batch membership lookup for file-listing chips.       |
+| POST   | `/`                  | Token | Create manual (`origin='user'`) collection.                                               |
+| PUT    | `/:id`               | Token | Update name / pin / publish_mode.                                                         |
+| POST   | `/:id/archive`       | Token | Archive (manual; confirm dialog is client-side).                                          |
+| POST   | `/:id/restore`       | Token | Restore an archived collection.                                                           |
+| DELETE | `/:id`               | Token | Permanent delete — archived only, else 409.                                               |
+| GET    | `/:id/items`         | Token | Member view, cursor-paged, digest counts via `since`.                                     |
+| POST   | `/:id/items`         | Token | Add members. Body `{ nodeIds }`.                                                          |
+| DELETE | `/:id/items`         | Token | Remove stored rows / insert exclusions (derived).                                         |
+| POST   | `/preview`           | Token | Dry preview: `{ seedNodeId }` or `{ definition }`.                                        |
+| POST   | `/:id/preview`       | Token | Dry-run the stored definition of an existing one.                                         |
+| GET    | `/merge-suggestions` | Token | Pending merge-suggestion cards (§4.4).                                                    |
+| POST   | `/:id/merge/:other`  | Token | Execute merge; `:id` survives.                                                            |
+| POST   | `/:id/merge-dismiss` | Token | `Later` — defer the pair (2-week re-raise).                                               |
+| POST   | `/:id/merge-reject`  | Token | `Keep separate` — permanent pair suppression.                                             |
+| GET    | `/:id/grants`        | Token | List sharing grants (owner only).                                                         |
+| POST   | `/:id/grants`        | Token | Grant `viewer\|editor`.                                                                   |
+| DELETE | `/:id/grants`        | Token | Revoke grant. Query `userId`.                                                             |
+| DELETE | `/:id/grants/me`     | Token | Grantee revokes their OWN grant (`viewer\|editor`).                                       |
+| POST   | `/for-nodes`         | Token | Batch membership lookup for file-listing chips.                                           |
 
 `GET /merge-suggestions` and `POST /preview` / `POST /for-nodes` are literal paths and
-MUST be registered before the `/:id` parameterized routes.
+MUST be registered before the `/:id` parameterized routes. `DELETE /:id/grants/me` carries the
+literal `me` tail segment (different segment count from `DELETE /:id/grants`, so no Express
+shadowing exists — register it BEFORE the owner `DELETE /:id/grants` as defensive convention).
 
-**Not in this router:** `leave` (`Leave`, per-user `collection_visibility` hidden flag,
-§4.7). No digest-reset endpoint exists —
+**Not in this router:** the retired `leave` (per-user `collection_visibility` hidden flag,
+§4.7 — storage untouched; the recipient exit now rides `DELETE /:id/grants/me`, Path 1, 2026-09-29
+owner ruling). No digest-reset endpoint exists —
 the visit cursor advances implicitly on `GET /:id/items` (see decision below). The file-like
 toggle and the whole-viewer liked-ids read ride the separate `/api/file-likes` mount —
 [fileLikes.md](fileLikes.md) (per-node subject; the member-view `liked` field here stays).
@@ -303,6 +307,15 @@ suggestion row (a suggestion state transition is opportunistic).
 - **DELETE /:id/grants:** Query `userId`. Revocation is instant (§4.7). 200:
   `{ "grantee_id": 9, "revoked": true, "undo": { "action_id": 997 } }`.
   404 `collections.grantNotFound` when no such row.
+- **DELETE /:id/grants/me:** Grantee self-revocation (Path 1 — replaces the former
+  recipient-local `Leave` hide; 2026-09-29 owner ruling). Works for any held role
+  (`viewer|editor`). Revocation is instant (§4.7), no confirm client-side; journaled exactly
+  like the owner-side revoke (same store path `revokeAccess`, `action='revoke'`, inverse
+  `grant-access`, actor = grantee). Response mirrors the owner DELETE shape. 200:
+  `{ "grantee_id": 9, "revoked": true, "undo": { "action_id": 998 } }`.
+  404 `collections.grantNotFound` when the caller holds no grant row (incl. the collection
+  OWNER calling it on their own collection); unknown collection / zero-access caller →
+  404 `collections.notFound` (masquerade — existence never leaks, §2.4.2 Decision).
 - **POST /for-nodes:** Body `{ nodeIds }` (1–200). Batch membership chips for the file
   listing (listing contracts frozen). Resolves membership in every collection
   visible to the requester (own + granted, active only). 200: `{ "memberships": [
@@ -322,11 +335,11 @@ suggestion row (a suggestion state transition is opportunistic).
 | 400  | `serverErrors.collections.emptyNodeIds`          | Missing/empty/over-cap `nodeIds`.                                                                    |
 | 400  | `serverErrors.collections.previewTargetRequired` | 0 or 2 of `seedNodeId`/`definition`.                                                                 |
 | 400  | `serverErrors.collections.mergeSameCollection`   | `:id == :other`.                                                                                     |
-| 400  | `serverErrors.collections.invalidDefinition`     | Malformed `definition` payload (unknown kind / predicate type / bad atom).                            |
+| 400  | `serverErrors.collections.invalidDefinition`     | Malformed `definition` payload (unknown kind / predicate type / bad atom).                           |
 | 403  | `serverErrors.collections.forbidden`             | Non-owner mutation; viewer writes; editor removing what they did not add.                            |
 | 404  | `serverErrors.collections.notFound`              | Unknown id, or no access at all (read = 404 masquerade — ungranted reads do not disclose existence). |
 | 404  | `serverErrors.collections.granteeNotFound`       | Unknown user on grant.                                                                               |
-| 404  | `serverErrors.collections.grantNotFound`         | Revoke of a non-existing row.                                                                        |
+| 404  | `serverErrors.collections.grantNotFound`         | Revoke of a non-existing row; `/grants/me` caller holding no grant row (incl. owner).                |
 | 404  | `serverErrors.collections.suggestionNotFound`    | Dismiss/reject without a pending row.                                                                |
 | 409  | `serverErrors.collections.alreadyArchived`       | Archive of an archived collection.                                                                   |
 | 409  | `serverErrors.collections.notArchived`           | Restore/delete of an active collection.                                                              |

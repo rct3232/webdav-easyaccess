@@ -250,7 +250,7 @@
     "cardMenuRestore": "Restore",
     "cardMenuSharing": "Sharing",
     "cardMenuDelete": "Delete permanently",
-    "cardMenuLeave": "Leave",
+    "cardMenuRevokePermission": "Revoke permission",
     "archiveConfirmMessage": "Archive this collection? It moves to the archive and can be restored later.",
     "permanentDeleteConfirm1": "Permanently delete this collection?",
     "permanentDeleteConfirm2": "This cannot be undone. Members are only removed from the collection — files stay in place.",

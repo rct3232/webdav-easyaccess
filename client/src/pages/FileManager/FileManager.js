@@ -598,8 +598,11 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           if (ok) messageBundle.showSuccess(t('collections.permanentDeleteReport'));
           break;
         }
-        case 'leave':
-          // Recipient-local hide is view-local session state (as-built §2.4).
+        case 'revoke-permission':
+          // Path 1 (P-1): instant self-grant revocation — DELETE /:id/grants/me;
+          // the row drops out on the hook's post-mutation refresh (no undo
+          // affordance: re-granting is the owner's act).
+          await collectionsApi.revokeOwnGrant(collectionId);
           break;
         default:
           break;

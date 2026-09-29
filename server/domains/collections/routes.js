@@ -414,6 +414,30 @@ router.post(
   })
 );
 
+// Grantee self-revocation (Path 1). The literal `me` tail is a different segment
+// count from `/:id/grants` (no Express shadowing) — registered BEFORE the owner
+// DELETE as defensive convention (routes spec §2.2).
+router.delete(
+  '/:id/grants/me',
+  authenticateToken,
+  requireUser,
+  asyncHandler(async (req, res) => {
+    try {
+      const result = await collectionsService.revokeOwnGrant(
+        req.user.full.id,
+        Number(req.params.id)
+      );
+      res.json({
+        grantee_id: result.grantee_id,
+        revoked: result.revoked,
+        undo: { action_id: result.undo.actionId },
+      });
+    } catch (e) {
+      throw handleServiceError(e);
+    }
+  })
+);
+
 router.delete(
   '/:id/grants',
   authenticateToken,

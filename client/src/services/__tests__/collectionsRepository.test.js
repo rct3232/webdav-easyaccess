@@ -20,6 +20,7 @@ import {
   getMemberships,
   grantCollection,
   revokeGrant,
+  revokeOwnGrant,
   runSearch,
   recordSearchClick,
   getActions,
@@ -218,6 +219,16 @@ describe('collectionsRepository mutations (absorb + notify + onError)', () => {
     del.mockResolvedValueOnce({ data: { grantee_id: 9, revoked: true, undo: { action_id: 9 } } });
     await revokeGrant(17, 9);
     expect(del).toHaveBeenCalledWith('/collections/17/grants?userId=9');
+  });
+
+  it('revokeOwnGrant deletes the literal /:id/grants/me path (Path 1 self-revocation)', async () => {
+    del.mockResolvedValueOnce({ data: { grantee_id: 9, revoked: true, undo: { action_id: 10 } } });
+
+    const result = await revokeOwnGrant(17);
+
+    expect(del).toHaveBeenCalledWith('/collections/17/grants/me');
+    expect(result).toMatchObject({ grantee_id: 9, revoked: true });
+    expect(notifyCollectionsChange).toHaveBeenCalledTimes(1);
   });
 
   it('onError receives null for transport errors without a response body', async () => {

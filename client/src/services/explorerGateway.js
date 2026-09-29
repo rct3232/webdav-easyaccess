@@ -38,6 +38,7 @@ import {
   getActions,
   getFileSuggestions,
   revokeGrant,
+  revokeOwnGrant,
   runSearch,
   undoAction,
   updateCollection,
@@ -343,6 +344,7 @@ const explorerGateway = {
   getGrants,
   grantCollection,
   revokeGrant,
+  revokeOwnGrant,
   subscribeToCollections,
   // Search results mode (§2.6 search group)
   runSearch,

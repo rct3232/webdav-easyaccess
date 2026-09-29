@@ -250,7 +250,7 @@
     "cardMenuRestore": "복원",
     "cardMenuSharing": "공유 설정",
     "cardMenuDelete": "영구 삭제",
-    "cardMenuLeave": "나가기",
+    "cardMenuRevokePermission": "권한 반납",
     "archiveConfirmMessage": "이 컬렉션을 보관할까요? 보관함으로 이동하며 나중에 복원할 수 있습니다.",
     "permanentDeleteConfirm1": "이 컬렉션을 영구 삭제할까요?",
     "permanentDeleteConfirm2": "되돌릴 수 없습니다. 메버는 컬렉션에서만 제거되며 파일은 그대로 유지됩니다.",

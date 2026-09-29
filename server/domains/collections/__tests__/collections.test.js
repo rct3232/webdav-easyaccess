@@ -407,6 +407,119 @@ describe('access control (masquerade + role rules)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Grantee self-revocation — DELETE /:id/grants/me (P-1 Path 1)
+// ---------------------------------------------------------------------------
+
+describe('grants/me — recipient self-revocation (P-1 Path 1)', () => {
+  async function grantViaApi(ownerToken, id, userId, role) {
+    return request(app)
+      .post(`/api/collections/${id}/grants`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ userId, role });
+  }
+
+  it('a granted viewer self-revokes: row drops from the shared list, response mirrors the owner DELETE', async () => {
+    const owner = await createUserWithRoot('me-viewer-owner');
+    const viewer = await createUserWithRoot('me-viewer-grantee');
+    const created = await createCollectionViaApi(owner.token, { name: 'Given to me' });
+    const id = created.body.collection.collection_id;
+    await grantViaApi(owner.token, id, viewer.user.id, 'viewer');
+
+    const before = await request(app)
+      .get('/api/collections?include=mine,shared')
+      .set('Authorization', `Bearer ${viewer.token}`);
+    expect(before.body.collections.map((c) => c.collection_id)).toContain(id);
+
+    const revoke = await request(app)
+      .delete(`/api/collections/${id}/grants/me`)
+      .set('Authorization', `Bearer ${viewer.token}`);
+    expect(revoke.status).toBe(200);
+    expect(revoke.body).toMatchObject({ grantee_id: viewer.user.id, revoked: true });
+    expect(revoke.body.undo.action_id).toBeGreaterThan(0);
+
+    const after = await request(app)
+      .get('/api/collections?include=mine,shared')
+      .set('Authorization', `Bearer ${viewer.token}`);
+    expect(after.body.collections.map((c) => c.collection_id)).not.toContain(id);
+
+    const items = await request(app)
+      .get(`/api/collections/${id}/items`)
+      .set('Authorization', `Bearer ${viewer.token}`);
+    expect(items.status).toBe(404);
+    expect(items.body.errorCode).toBe(codes().collections.notFound);
+
+    const grants = await request(app)
+      .get(`/api/collections/${id}/grants`)
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(grants.body.grants).toEqual([]);
+  });
+
+  it('an editor grantee self-revokes through the same endpoint', async () => {
+    const owner = await createUserWithRoot('me-editor-owner');
+    const editor = await createUserWithRoot('me-editor-grantee');
+    const created = await createCollectionViaApi(owner.token, { name: 'Editable share' });
+    const id = created.body.collection.collection_id;
+    await grantViaApi(owner.token, id, editor.user.id, 'editor');
+
+    const revoke = await request(app)
+      .delete(`/api/collections/${id}/grants/me`)
+      .set('Authorization', `Bearer ${editor.token}`);
+    expect(revoke.status).toBe(200);
+    expect(revoke.body).toMatchObject({ grantee_id: editor.user.id, revoked: true });
+
+    const access = await request(app)
+      .get(`/api/collections/${id}`)
+      .set('Authorization', `Bearer ${editor.token}`);
+    expect(access.status).toBe(404);
+  });
+
+  it('404s grantNotFound for owner self-calls; a revoked grantee re-calling 404-masquerades', async () => {
+    const owner = await createUserWithRoot('me-owner-self');
+    const viewer = await createUserWithRoot('me-double-grantee');
+    const created = await createCollectionViaApi(owner.token, { name: 'Mine' });
+    const id = created.body.collection.collection_id;
+
+    const ownerSelf = await request(app)
+      .delete(`/api/collections/${id}/grants/me`)
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(ownerSelf.status).toBe(404);
+    expect(ownerSelf.body.errorCode).toBe(codes().collections.grantNotFound);
+
+    await grantViaApi(owner.token, id, viewer.user.id, 'viewer');
+    const first = await request(app)
+      .delete(`/api/collections/${id}/grants/me`)
+      .set('Authorization', `Bearer ${viewer.token}`);
+    expect(first.status).toBe(200);
+
+    // no grant row left → the caller is zero-access → 404 masquerade (not grantNotFound)
+    const second = await request(app)
+      .delete(`/api/collections/${id}/grants/me`)
+      .set('Authorization', `Bearer ${viewer.token}`);
+    expect(second.status).toBe(404);
+    expect(second.body.errorCode).toBe(codes().collections.notFound);
+  });
+
+  it('404-masquerades zero-access callers and unknown collections (existence never leaks)', async () => {
+    const owner = await createUserWithRoot('me-mask-owner');
+    const stranger = await createUserWithRoot('me-mask-stranger');
+    const created = await createCollectionViaApi(owner.token, { name: 'Private' });
+    const id = created.body.collection.collection_id;
+
+    const strangerCall = await request(app)
+      .delete(`/api/collections/${id}/grants/me`)
+      .set('Authorization', `Bearer ${stranger.token}`);
+    expect(strangerCall.status).toBe(404);
+    expect(strangerCall.body.errorCode).toBe(codes().collections.notFound);
+
+    const unknownId = await request(app)
+      .delete('/api/collections/99999999/grants/me')
+      .set('Authorization', `Bearer ${stranger.token}`);
+    expect(unknownId.status).toBe(404);
+    expect(unknownId.body.errorCode).toBe(codes().collections.notFound);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Membership: add/remove, publish gate, digest, enrichment
 // ---------------------------------------------------------------------------
 

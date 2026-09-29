@@ -73,6 +73,7 @@ describe('useCollections', () => {
     expect(typeof result.current.archiveCollection).toBe('function');
     expect(typeof result.current.restoreCollection).toBe('function');
     expect(typeof result.current.deleteCollectionPermanent).toBe('function');
+    expect(typeof result.current.revokeOwnGrant).toBe('function');
     expect(typeof result.current.mergePair).toBe('function');
     expect(typeof result.current.dismissMergeSuggestion).toBe('function');
     expect(typeof result.current.rejectMergeSuggestion).toBe('function');
@@ -165,6 +166,50 @@ describe('useCollections', () => {
       expect.objectContaining({ onError: expect.any(Function) })
     );
     expect(mockOnUndoable).not.toHaveBeenCalled();
+  });
+
+  it('revokeOwnGrant refreshes on success and NEVER forwards an undo affordance', async () => {
+    explorerGateway.revokeOwnGrant.mockResolvedValue({
+      grantee_id: 2,
+      revoked: true,
+      undo: { action_id: 55 },
+    });
+    const { result } = renderHook(() => useCollections(baseProps()));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let out;
+    await act(async () => {
+      out = await result.current.revokeOwnGrant(2);
+    });
+
+    expect(out).toMatchObject({ grantee_id: 2, revoked: true });
+    expect(explorerGateway.revokeOwnGrant).toHaveBeenCalledWith(
+      2,
+      expect.objectContaining({ onError: expect.any(Function) })
+    );
+    expect(mockOnUndoable).not.toHaveBeenCalled();
+    expect(mockShowError).not.toHaveBeenCalled();
+    expect(explorerGateway.loadCollections.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it('revokeOwnGrant absorbed failure maps the envelope to showError', async () => {
+    const { result } = renderHook(() => useCollections(baseProps()));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    explorerGateway.revokeOwnGrant.mockImplementation(async (_id, options) => {
+      options?.onError?.({ errorCode: 'serverErrors.collections.notFound', params: {} });
+      return null;
+    });
+
+    await act(async () => {
+      await result.current.revokeOwnGrant(2);
+    });
+
+    expect(mockOnUndoable).not.toHaveBeenCalled();
+    expect(mockShowError).toHaveBeenCalled();
+    expect(mockShowError.mock.calls[0][0]).toMatch(/notFound|Collection/i);
   });
 
   it('notifier events refresh the list; unsubscribe runs on unmount', async () => {

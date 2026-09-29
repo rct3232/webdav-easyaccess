@@ -74,17 +74,17 @@ Verify observable IO behavior from the caller perspective:
 
 Per CODING_STYLE.md Express Patterns "Client layering", collections-platform IO is re-exported here so controller hooks (`useCollections`, `useSearchResults`, `useUndoToast`, MyPage dashboard wiring) never import `collectionsRepository`/`collectionsNotifier` directly. Names pass through unchanged; payloads stay snake_case (see `collectionsRepository.md` §2.2):
 
-| Group                           | Re-exported names                                                                                                                 |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Collection list/CRUD            | `loadCollections`, `createCollection`, `updateCollection`, `archiveCollection`, `restoreCollection`, `deleteCollection`           |
-| Membership (add/remove/publish) | `loadCollectionItems`, `addCollectionItems`, `removeCollectionItems`, `publishItems`, `getMemberships`                            |
-| Preview / seed / search-save    | `previewCollection`, `previewExistingCollection`                                                                                  |
-| Merge                           | `getMergeSuggestions`, `mergeCollections`, `dismissMerge`, `rejectMerge`                                                          |
-| Grants (sharing)                | `getGrants`, `grantCollection`, `revokeGrant`                                                                                     |
-| Search results mode             | `runSearch`, `recordSearchClick` (§4.6; `semantic_available`/`result_ref` consumed by `useSearchResults`; `recordSearchClick` = §3.4 list-entry-click signal at result open)                                              |
-| File likes (T0.5, §3.3)         | `loadFileLikes`, `setFileLike` (`fileLikesRepository.md` — absorbed `{ liked: [] }` fallback / payload ∥ null; `listDirectory` merges `liked` onto authenticated rows at this boundary)                                   |
-| Undo journal / toast payload    | `getActions`, `undoAction` (structured result incl. `params.laterChanges` for cascade confirm — `collectionsRepository.md` §2.5)  |
-| File suggestions (§4.16/§4.17)  | `getFileSuggestions`, `acceptFileSuggestions`, `dismissFileSuggestion`                                                            |
+| Group                           | Re-exported names                                                                                                                                                                          |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Collection list/CRUD            | `loadCollections`, `createCollection`, `updateCollection`, `archiveCollection`, `restoreCollection`, `deleteCollection`                                                                    |
+| Membership (add/remove/publish) | `loadCollectionItems`, `addCollectionItems`, `removeCollectionItems`, `publishItems`, `getMemberships`                                                                                     |
+| Preview / seed / search-save    | `previewCollection`, `previewExistingCollection`                                                                                                                                           |
+| Merge                           | `getMergeSuggestions`, `mergeCollections`, `dismissMerge`, `rejectMerge`                                                                                                                   |
+| Grants (sharing)                | `getGrants`, `grantCollection`, `revokeGrant`, `revokeOwnGrant`                                                                                                                            |
+| Search results mode             | `runSearch`, `recordSearchClick` (§4.6; `semantic_available`/`result_ref` consumed by `useSearchResults`; `recordSearchClick` = §3.4 list-entry-click signal at result open)               |
+| File likes (T0.5, §3.3)         | `loadFileLikes`, `setFileLike` (`fileLikesRepository.md` — absorbed `{ liked: [] }` fallback / payload ∥ null; `listDirectory` merges `liked` onto authenticated rows at this boundary)    |
+| Undo journal / toast payload    | `getActions`, `undoAction` (structured result incl. `params.laterChanges` for cascade confirm — `collectionsRepository.md` §2.5)                                                           |
+| File suggestions (§4.16/§4.17)  | `getFileSuggestions`, `acceptFileSuggestions`, `dismissFileSuggestion`                                                                                                                     |
 | Change fan-out                  | `subscribeToCollections`, `subscribeToFileLikes` (wrap the module-local notifiers in `collectionsNotifier` / `fileLikesRepository`; same unsubscribe contract as `subscribeToRecentFiles`) |
 
 Rules:

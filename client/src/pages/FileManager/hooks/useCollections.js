@@ -25,7 +25,7 @@ const DEFAULT_SORT = 'activity';
  *   sort: string, setSort: (string) => Promise<void>,
  *   include: string, refresh: () => Promise<void>,
  *   renameCollection, setPinned, setPublishMode, archiveCollection,
- *   restoreCollection, deleteCollectionPermanent,
+ *   restoreCollection, deleteCollectionPermanent, revokeOwnGrant,
  *   suggestions: Array<Object>, mergePair, dismissMergeSuggestion, rejectMergeSuggestion,
  * }}
  */
@@ -215,6 +215,33 @@ export const useCollections = ({ showError, gateway, onUndoable, include } = {})
   const dismissMergeSuggestion = useCallback((id, otherId) => io.dismissMerge(id, otherId), [io]);
   const rejectMergeSuggestion = useCallback((id, otherId) => io.rejectMerge(id, otherId), [io]);
 
+  /**
+   * Grantee self-revocation (Path 1, DELETE /:id/grants/me): instant, no undo
+   * affordance (re-granting is the owner's act) — success refreshes the list so
+   * the revoked row drops out of fetch state; absorbed failure surfaces the
+   * mapped envelope via showError (sibling card-action parity).
+   */
+  const revokeOwnGrant = useCallback(
+    async (id) => {
+      let envelope = null;
+      const payload = await io.revokeOwnGrant(id, {
+        onError: (error) => {
+          envelope = error;
+        },
+      });
+      if (!mountedRef.current) return payload;
+      if (payload === null) {
+        if (showError) {
+          showError(getServerErrorDisplay(envelope, t));
+        }
+        return null;
+      }
+      await refresh();
+      return payload;
+    },
+    [io, showError, refresh, t]
+  );
+
   return {
     collections,
     loading,
@@ -228,6 +255,7 @@ export const useCollections = ({ showError, gateway, onUndoable, include } = {})
     archiveCollection,
     restoreCollection,
     deleteCollectionPermanent,
+    revokeOwnGrant,
     suggestions,
     mergePair,
     dismissMergeSuggestion,

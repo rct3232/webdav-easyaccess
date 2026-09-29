@@ -33,7 +33,7 @@ import { rightClickItem } from './helpers/desktop-interactions';
 import { setCollectionSort } from './helpers/explorer-controls';
 
 /**
- * E2E-COLLECTION-001..012 — the P0 collections binding lifecycle
+ * E2E-COLLECTION-001..013 — the P0 collections binding lifecycle
  * (docs/E2E_COVERAGE_PLAN.md § "Collections platform lifecycle (hermetic)").
  *
  * Chain: create → add members → digest counts → archive → undo → restore →
@@ -42,7 +42,9 @@ import { setCollectionSort } from './helpers/explorer-controls';
  * Storage dashboard and the actions feed + undo toast. P-4 adds the members
  * shared-renderer contract (011: grid default, per-surface list persistence,
  * double-click preview) and the member-publish route (012: publish-all banner
- * + owner per-row publish menu — the granted_role:null visibility fix).
+ * + owner per-row publish menu — the granted_role:null visibility fix). P-5
+ * adds the Likes child row (013: sidebar row → member-parity liked listing,
+ * per-surface likedViewMode persistence, unlike drops the row live).
  *
  * SCRATCH-HERMETIC per the destructive-case policy (docs/TESTING_STRATEGY.md):
  * the suite permanently deletes collections, exercises per-subject undo-journal
@@ -739,4 +741,92 @@ test('E2E-COLLECTION-012: the publish-all banner flips stored members through PU
       return body.publish_pending_count as number;
     })
     .toBe(0);
+});
+
+test('E2E-COLLECTION-013: the sidebar Likes child row lists liked files through the member machinery, persists its own view key, and unlike drops the row live without touching collections', async ({
+  page,
+  request,
+}, testInfo) => {
+  const { base, token } = await loginAndOpenOwnedWorkspace(page, request, testInfo);
+  const fileA = await seedFile(request, token, base, testInfo, 'col013-a');
+
+  // A collection the likes lifecycle must never touch (membership + sidebar).
+  const collectionName = buildName(testInfo, 'col');
+  const collectionId = await createCollectionApi(request, token, collectionName);
+  await addItemsApi(request, token, collectionId, [fileA.nodeId]);
+
+  // Like via the file context menu (same entry E2E-007 persists).
+  await gotoFilesPath(page, request, `/${base}`);
+  await expect(fileItem(page, fileA.path)).toBeVisible();
+  await rightClickItem(page, fileA.path);
+  await expect(page.getByTestId('like-toggle')).toHaveText(/^like$/i);
+  await page.getByTestId('like-toggle').click();
+
+  // Open the Likes row through the SIDEBAR (Collections-section child, P-5
+  // owner ruling — not a top-level virtual root).
+  await page.getByTestId('collections-toggle').click();
+  await expect(page.getByTestId('collections-liked-node')).toBeVisible();
+  await page.getByTestId('collections-liked-node').click();
+  await expect(page).toHaveURL(/__collections__\/liked/);
+  await expect(page.getByTestId('members-list')).toBeVisible();
+
+  // Member-parity machinery: shared grid by default, sort button hidden.
+  const row = page.getByTestId(`member-row-${fileA.nodeId}`);
+  await expect(row).toBeVisible();
+  await expect(row.locator('.MuiCard-root')).toBeVisible();
+  await expect(page.getByTestId('file-manager-sort')).toHaveCount(0);
+
+  // Toggle to LIST: persists on the DEDICATED likedViewMode key.
+  await page.getByTestId('view-mode-list').click();
+  await expect(row.locator('.MuiCard-root')).toHaveCount(0);
+  await expect
+    .poll(() => page.evaluate(() => window.localStorage.getItem('likedViewMode')))
+    .toBe('list');
+
+  // Per-surface isolation: opening the MEMBERS surface keeps its own default
+  // (grid) — the likes dispatch never bled into collectionMemberViewMode.
+  await page.goto('/files/__collections__');
+  await openCollectionCard(page, collectionName);
+  const memberRow = page.getByTestId(`member-row-${fileA.nodeId}`);
+  await expect(memberRow).toBeVisible();
+  await expect(memberRow.locator('.MuiCard-root')).toBeVisible();
+  expect(
+    await page.evaluate(() => window.localStorage.getItem('collectionMemberViewMode'))
+  ).toBeNull();
+
+  // Re-entering Likes via the sidebar row: the LIST mode persisted across the
+  // reload (per-surface key, member-parity rows).
+  await page.getByTestId('collections-liked-node').click();
+  await expect(page.getByTestId('members-list')).toBeVisible();
+  await expect(row).toBeVisible();
+  await expect(row.locator('.MuiCard-root')).toHaveCount(0);
+
+  // Unlike from the row menu: collection:null gates (no Exclude/publish —
+  // membership mutations structurally absent), Download stays; the row drops.
+  await row.locator('[data-testid="member-menu-button"]').click();
+  await expect(page.getByTestId('member-exclude')).toHaveCount(0);
+  await expect(page.getByTestId('member-publish')).toHaveCount(0);
+  await expect(page.getByTestId('member-download')).toBeVisible();
+  await page.getByTestId('like-toggle').click();
+  await expect(row).toHaveCount(0);
+
+  // Server truth converged (invariant 9 read) and the COLLECTION is untouched:
+  // sidebar row still listed, member still a member.
+  await expect
+    .poll(async () => {
+      const res = await request.get('/api/file-likes', { headers: auth(token) });
+      const body = await res.json();
+      return (body.liked as number[]).includes(fileA.nodeId);
+    })
+    .toBe(false);
+  await expect(page.getByTestId(`collection-row-${collectionId}`)).toBeVisible();
+  await expect
+    .poll(async () => {
+      const res = await request.get(`/api/collections/${collectionId}/items`, {
+        headers: auth(token),
+      });
+      const body = await res.json();
+      return (body.items as { node_id: number }[]).some((item) => item.node_id === fileA.nodeId);
+    })
+    .toBe(true);
 });

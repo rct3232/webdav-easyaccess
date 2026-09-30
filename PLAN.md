@@ -455,3 +455,35 @@ Order: P-1 ∥ P-2 → P-3 → P-4 → P-5 (P-5 server part may join P-4).
   Candidates for tracker discussion (NOT written): members cursor encodes first-unreturned id
   (row-gap at page boundaries — P-5 diverged deliberately, documented); worktree E2E runs
   contend for the fixed `webdav-pg-e2e` container name.
+
+### Decision B — member/liked listing: fetch-all + client infinite slice (2026-09-29 owner ruling)
+
+Owner decision (verbatim):
+
+> "Member/liked listing returns the complete row set in ONE response (fileManager precedent:
+> getChildren has no LIMIT, client useInfiniteScroll slices 50+50). Server cursor/next_cursor/limit
+> and the load-more button are RETIRED. This also eliminates the members-cursor page-boundary
+> defect class by deleting the mechanism."
+
+Execution: `feature/polish-b-member-fetch-all` (docs → RED → GREEN → E2E). Binding consequences:
+
+- `GET /:id/items` and `GET /api/file-likes/items` ship the FULL row set in one response; the
+  retired `cursor`/`limit` query params are **IGNORED** (never an error) and `next_cursor` is
+  absent from the wire shape. Client display paging: shared `useInfiniteScroll` (50+50) in the
+  members host — server order preserved, no client re-sort.
+- RETAINED (decision `routes/collections.md` GET /:id/items): the visit stamp
+  (`collection_digest_cursors.last_visited_at` on read — one fetch per open fits it even better)
+  and the digest counts via `since`.
+- Wire helpers `encodeCursor`/`decodeCursor` and the `clampLimit`/limit caps are deleted
+  (no other consumers — grep-verified at implementation time).
+
+- **B member-fetch-all (2026-09-30)** — branch `feature/polish-b-member-fetch-all`: docs 341fe74 +
+  server bb3f157 (`getItems`/`listLikedItems` full set, routes ignore retired params, wire helpers
+  deleted) + client 326989d (repos drop cursor/limit; `useFileManager` one-fetch state;
+  `CollectionsListView` hosts the shared `useInfiniteScroll` 50+50 slice + sentinel; load-more
+  button + `memberLoadMore` i18n deleted). RED captured (2 server + 4 client failures) before
+  GREEN. Gates: server `domains/collections` 108/108, `domains/{collections,admin}` 336 pass
+  (3 pre-existing skips); client union 272 + pages/FileManager 44 pass; `collections-desktop` E2E
+  **13/13 green** (no spec edits — fixtures <50 rows, no `member-load-more`/`next_cursor`
+  assertions existed). No repository/SQL touched → PG conformance leg N/A. Awaits orchestrator
+  merge gate.

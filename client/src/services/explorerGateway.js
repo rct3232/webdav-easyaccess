@@ -281,8 +281,9 @@ export { getActions, getFileSuggestions, acceptFileSuggestions };
 
 export const loadFileLikes = () => getLikedNodeIds();
 
-// P-5 Likes-surface cursor read (`fileLikesRepository.getLikedItems`).
-export const loadLikedItems = (params) => getLikedItems(params);
+// P-5 Likes-surface full-fetch read (`fileLikesRepository.getLikedItems`).
+// Decision B (2026-09-29): no cursor/limit — the endpoint ships the whole set.
+export const loadLikedItems = () => getLikedItems();
 
 export const setFileLike = (nodeId, liked, options) =>
   repositorySetFileLike(nodeId, liked, options);

@@ -19,7 +19,6 @@ const {
   dbQuery,
   dbRun,
 } = require('@server/test-utils');
-const wire = require('../wire');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const usageService = require('@server/infrastructure/usageService');
 
@@ -339,13 +338,13 @@ describe('GET /api/file-likes/items', () => {
     expect(res.status).toBe(401);
   });
 
-  it('returns an empty page for a viewer without likes', async () => {
+  it('returns the empty full set for a viewer without likes', async () => {
     const { token } = await createAuthenticatedTestUser({ username: `likes-empty-${Date.now()}` });
     const res = await request(app)
       .get('/api/file-likes/items')
       .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ items: [], next_cursor: null });
+    expect(res.body).toEqual({ items: [] }); // Decision B: no cursor keys on the wire
   });
 
   it('lists readable liked nodes ordered by node_id asc with the row contract', async () => {
@@ -362,7 +361,7 @@ describe('GET /api/file-likes/items', () => {
       .get('/api/file-likes/items')
       .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body.next_cursor).toBeNull();
+    expect(res.body).not.toHaveProperty('next_cursor');
     expect(res.body.items.map((item) => item.node_id)).toEqual(
       [low.nodeId, high.nodeId].sort((a, b) => a - b)
     );
@@ -429,9 +428,9 @@ describe('GET /api/file-likes/items', () => {
     expect(back.body.items.map((item) => item.node_id)).toEqual([node.nodeId]);
   });
 
-  it('paginates with a stable cursor (node_id key) and clamps the limit', async () => {
+  it('returns the FULL liked row set in one response; retired cursor/limit params are IGNORED (Decision B)', async () => {
     const { user, token } = await createAuthenticatedTestUser({
-      username: `likes-paging-${Date.now()}`,
+      username: `likes-fetchall-${Date.now()}`,
     });
     const ids = [];
     for (const name of ['items-a.txt', 'items-b.txt', 'items-c.txt']) {
@@ -441,27 +440,25 @@ describe('GET /api/file-likes/items', () => {
     }
     const asc = [...ids].sort((a, b) => a - b);
 
-    const page1 = await request(app)
+    const full = await request(app)
+      .get('/api/file-likes/items')
+      .set('Authorization', `Bearer ${token}`);
+    expect(full.status).toBe(200);
+    expect(full.body.items.map((item) => item.node_id)).toEqual(asc); // node_id asc preserved
+    expect(full.body).not.toHaveProperty('next_cursor'); // cursor retired, not nulled
+
+    const limited = await request(app)
       .get('/api/file-likes/items?limit=2')
       .set('Authorization', `Bearer ${token}`);
-    expect(page1.body.items.map((item) => item.node_id)).toEqual(asc.slice(0, 2));
-    expect(page1.body.next_cursor).toBeTruthy();
-    expect(wire.decodeCursor(page1.body.next_cursor)).toMatchObject({ nodeId: asc[1] });
+    expect(limited.status).toBe(200);
+    expect(limited.body.items.map((item) => item.node_id)).toEqual(asc); // limit IGNORED
 
-    const page2 = await request(app)
-      .get(`/api/file-likes/items?limit=2&cursor=${encodeURIComponent(page1.body.next_cursor)}`)
-      .set('Authorization', `Bearer ${token}`);
-    expect(page2.body.items.map((item) => item.node_id)).toEqual(asc.slice(2));
-    expect(page2.body.next_cursor).toBeNull();
-
-    const clamped = await request(app)
-      .get('/api/file-likes/items?limit=99999')
-      .set('Authorization', `Bearer ${token}`);
-    expect(clamped.body.items).toHaveLength(3); // max-cap honored, all fit
     const junk = await request(app)
       .get('/api/file-likes/items?limit=abc&cursor=not-a-cursor')
       .set('Authorization', `Bearer ${token}`);
-    expect(junk.body.items.map((item) => item.node_id)).toEqual(asc); // defaults, first page
+    expect(junk.status).toBe(200); // never an error — same complete body
+    expect(junk.body.items.map((item) => item.node_id)).toEqual(asc);
+    expect(junk.body).not.toHaveProperty('next_cursor');
   });
 
   it('is viewer-scoped: B never sees A liked rows (invariant 9)', async () => {

@@ -92,7 +92,7 @@ export function createRecentFilesNotifierMock(overrides = {}) {
 export function createFileLikesRepositoryMock(overrides = {}) {
   return {
     getLikedNodeIds: jest.fn().mockResolvedValue({ liked: [] }),
-    getLikedItems: jest.fn().mockResolvedValue({ items: [], next_cursor: null }),
+    getLikedItems: jest.fn().mockResolvedValue({ items: [] }),
     setFileLike: jest.fn().mockResolvedValue(null),
     subscribeFileLikesChange: jest.fn(() => jest.fn()),
     notifyFileLikesChange: jest.fn(),
@@ -130,7 +130,7 @@ export function createExplorerGatewayMock(overrides = {}) {
     archiveCollection: jest.fn().mockResolvedValue(null),
     restoreCollection: jest.fn().mockResolvedValue(null),
     deleteCollection: jest.fn().mockResolvedValue(false),
-    loadCollectionItems: jest.fn().mockResolvedValue({ items: [], next_cursor: null }),
+    loadCollectionItems: jest.fn().mockResolvedValue({ items: [] }),
     addCollectionItems: jest.fn().mockResolvedValue(null),
     removeCollectionItems: jest.fn().mockResolvedValue(null),
     publishItems: jest.fn().mockResolvedValue(null),
@@ -158,7 +158,7 @@ export function createExplorerGatewayMock(overrides = {}) {
     acceptFileSuggestions: jest.fn().mockResolvedValue(null),
     // File-likes seams (T0.5 — explorerGateway §2.6 file-likes group)
     loadFileLikes: jest.fn().mockResolvedValue({ liked: [] }),
-    loadLikedItems: jest.fn().mockResolvedValue({ items: [], next_cursor: null }),
+    loadLikedItems: jest.fn().mockResolvedValue({ items: [] }),
     setFileLike: jest.fn().mockResolvedValue(null),
     subscribeToFileLikes: jest.fn(() => jest.fn()),
     loadNodesMetadata: jest.fn().mockResolvedValue([]),

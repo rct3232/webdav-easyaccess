@@ -67,6 +67,11 @@ Notes:
 - Preference-backed persistence for sort/view mode through a storage adapter/helper boundary.
 - Session-local file shaping needed for view updates that do not re-fetch data (for example thumbnail URL merges).
 - Derived display list that the view consumes, including infinite-scroll shaping.
+- **Decision B (2026-09-29) scope note:** the session's `useInfiniteScroll` shaping is for the FILE
+  surface only. The collection MEMBERS and LIKED surfaces REUSE THE SAME HOOK (`initialCount 50`,
+  `incrementCount 50`) from their own instance hosted by `CollectionsListView` (§2.5 there) — not
+  through this hook: member/liked rows arrive as the full fetched set in SERVER order and are
+  sliced client-side with no re-sort here (the member surface never re-keys `sortMode`/`searchQuery`).
 - Exposes a node-change boundary token (`sessionKey`) used by the shell/selection seam for selection reset.
 - **Does not own**
 - Fetching/listing files (belongs to listing logic / gateway usage outside this hook).

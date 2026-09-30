@@ -110,8 +110,8 @@ describe('fileLikesRepository.setFileLike', () => {
 describe('fileLikesRepository.getLikedItems (P-5 Likes surface)', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('returns the cursor page verbatim and builds the query string', async () => {
-    const page = {
+  it('returns the FULL row set verbatim; no query params (cursor/limit retired — Decision B)', async () => {
+    const payload = {
       items: [
         {
           node_id: 7,
@@ -123,31 +123,20 @@ describe('fileLikesRepository.getLikedItems (P-5 Likes surface)', () => {
           created_at: null,
         },
       ],
-      next_cursor: 'cursor-token',
     };
-    get.mockResolvedValueOnce({ data: page });
+    get.mockResolvedValueOnce({ data: payload });
 
-    await expect(getLikedItems({ cursor: 'abc', limit: 50 })).resolves.toEqual(page);
-    expect(get).toHaveBeenCalledWith('/file-likes/items?cursor=abc&limit=50');
-  });
-
-  it('omits absent params (first page)', async () => {
-    get.mockResolvedValueOnce({ data: { items: [], next_cursor: null } });
-
-    await expect(getLikedItems()).resolves.toEqual({ items: [], next_cursor: null });
+    await expect(getLikedItems()).resolves.toEqual(payload);
     expect(get).toHaveBeenCalledWith('/file-likes/items');
   });
 
-  it('absorbs failures into { items: [], next_cursor: null } without rejecting or notifying', async () => {
+  it('absorbs failures into { items: [] } without rejecting or notifying', async () => {
     const listener = jest.fn();
     const unsubscribe = subscribeFileLikesChange(listener);
     try {
       get.mockRejectedValueOnce(transportError(500, 'serverErrors.files.readFailed'));
 
-      await expect(getLikedItems({ cursor: 'abc' })).resolves.toEqual({
-        items: [],
-        next_cursor: null,
-      });
+      await expect(getLikedItems()).resolves.toEqual({ items: [] });
       expect(listener).not.toHaveBeenCalled();
     } finally {
       unsubscribe();

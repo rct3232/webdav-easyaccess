@@ -15,17 +15,6 @@ const aclService = require('../../domains/permissions/services/aclService');
 const { isOwnerNode } = require('../../domains/permissions/policy/ownerNodeResolver');
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const usageService = require('../../infrastructure/usageService');
-const wire = require('./wire');
-
-// Members-parity paging caps (collections service.js DEFAULT_ITEM_LIMIT/MAX_ITEM_LIMIT).
-const DEFAULT_ITEM_LIMIT = 50;
-const MAX_ITEM_LIMIT = 200;
-
-function clampLimit(raw) {
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_ITEM_LIMIT;
-  return Math.min(Math.floor(parsed), MAX_ITEM_LIMIT);
-}
 
 function serviceError(code) {
   const error = new Error(code);
@@ -71,11 +60,12 @@ async function setLiked(userId, nodeId, liked) {
  * mirroring collections `resolveMemberRows`: trashed/purged (`getNode` null) →
  * HIDDEN (the like row stays, member parity); readable → `normal` row with
  * name/type/mime; since-unreadable → `revoked` placeholder with all three
- * nulled (never disclose a name the viewer can no longer read). Cursor-paged in
- * memory over the classified rows exactly like members `getItems` (score is
- * always 0 → the keyset is the `node_id` itself).
+ * nulled (never disclose a name the viewer can no longer read). Decision B
+ * (2026-09-29 owner ruling): the COMPLETE classified row set ships in ONE
+ * response — the members-parity cursor paging is DELETED (the client's
+ * `useInfiniteScroll` slices 50+50; `node_id` asc order preserved, no re-sort).
  */
-async function listLikedItems(userId, { cursor, limit } = {}) {
+async function listLikedItems(userId) {
   const fileNodesStore = createFileNodesStore();
   const likedIds = await fileLikesStore.listLikedNodeIds(userId);
 
@@ -95,21 +85,7 @@ async function listLikedItems(userId, { cursor, limit } = {}) {
     });
   }
 
-  const parsedCursor = wire.decodeCursor(cursor);
-  const filtered = parsedCursor ? rows.filter((row) => row.nodeId > parsedCursor.nodeId) : rows;
-
-  const parsedLimit = clampLimit(limit);
-  const page = filtered.slice(0, parsedLimit);
-  const lastRow = page[page.length - 1];
-  const hasMore = filtered.length > parsedLimit;
-
-  return {
-    items: page,
-    // next_cursor = the LAST RETURNED node_id (keyset; fileLikes.md §2.4.2) —
-    // the next page filters `nodeId > cursor`, so this is gap-free and
-    // duplicate-free. (The score slot stays 0: node_id is the whole key.)
-    nextCursor: hasMore && lastRow ? wire.encodeCursor({ score: 0, nodeId: lastRow.nodeId }) : null,
-  };
+  return { items: rows };
 }
 
 module.exports = { listLikedNodeIds, listLikedItems, setLiked };

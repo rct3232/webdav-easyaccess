@@ -589,7 +589,7 @@ describe('member view (stored ∪ derived − exclusions)', () => {
       state: 'normal',
       shared_excluded: true,
     });
-    expect(items.body.next_cursor).toBeNull();
+    expect(items.body).not.toHaveProperty('next_cursor'); // Decision B: key absent, not nulled
     // owner-only key present
     expect(typeof items.body.publish_pending_count).toBe('number');
 
@@ -611,8 +611,8 @@ describe('member view (stored ∪ derived − exclusions)', () => {
     });
   });
 
-  it('paginates with a stable cursor and honors the limit cap', async () => {
-    const ctx = await setupOwnerWithNodes('paging');
+  it('returns the FULL member set in one response; retired cursor/limit params are IGNORED (Decision B)', async () => {
+    const ctx = await setupOwnerWithNodes('fetch-all');
     const system = await systemDefCollection(ctx.user.id, 'All files', {
       kind: 'predicate',
       all_of: [{ type: 'path', value: `/${ctx.user.username}` }],
@@ -624,31 +624,32 @@ describe('member view (stored ∪ derived − exclusions)', () => {
       .send({ nodeIds: [ctx.beach.id, ctx.stay.id] });
     expect(add.status).toBe(200);
 
-    const page1 = await request(app)
+    const full = await request(app)
+      .get(`/api/collections/${system.id}/items`)
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(full.status).toBe(200);
+    const fullIds = full.body.items.map((i) => i.node_id);
+    expect(fullIds.length).toBeGreaterThanOrEqual(3); // the whole set — no slice, no page join
+    // all scores absent → node_id asc (order of the retired keyset, preserved)
+    expect([...fullIds]).toEqual([...fullIds].sort((a, b) => a - b));
+    expect(full.body).not.toHaveProperty('next_cursor');
+    // owner-only key stays; digest only with since
+    expect(typeof full.body.publish_pending_count).toBe('number');
+    expect(full.body.digest).toBeUndefined();
+
+    // the retired params are IGNORED, never an error — complete body every time
+    const limited = await request(app)
       .get(`/api/collections/${system.id}/items?limit=2`)
       .set('Authorization', `Bearer ${ctx.token}`);
-    expect(page1.status).toBe(200);
-    expect(page1.body.items).toHaveLength(2);
-    const page1Ids = page1.body.items.map((i) => i.node_id);
-    // all scores absent → node_id asc
-    expect([...page1Ids]).toEqual([...page1Ids].sort((a, b) => a - b));
-    expect(page1.body.next_cursor).toBeTruthy();
+    expect(limited.status).toBe(200);
+    expect(limited.body.items.map((i) => i.node_id)).toEqual(fullIds); // limit IGNORED (would cap at 2)
 
-    const page2 = await request(app)
-      .get(
-        `/api/collections/${system.id}/items?limit=2&cursor=${encodeURIComponent(page1.body.next_cursor)}`
-      )
+    const junk = await request(app)
+      .get(`/api/collections/${system.id}/items?limit=abc&cursor=not-a-cursor`)
       .set('Authorization', `Bearer ${ctx.token}`);
-    expect(page2.status).toBe(200);
-    const page2Ids = page2.body.items.map((i) => i.node_id);
-    expect(page2Ids.every((id) => !page1Ids.includes(id))).toBe(true);
-    expect(page1Ids.length + page2Ids.length).toBe(3);
-
-    const capped = await request(app)
-      .get(`/api/collections/${system.id}/items?limit=5000`)
-      .set('Authorization', `Bearer ${ctx.token}`);
-    expect(capped.status).toBe(200);
-    expect(capped.body.next_cursor).toBeNull();
+    expect(junk.status).toBe(200);
+    expect(junk.body.items.map((i) => i.node_id)).toEqual(fullIds);
+    expect(junk.body).not.toHaveProperty('next_cursor');
   });
 
   it('returns digest counts for since and advances the visit cursor on read', async () => {

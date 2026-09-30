@@ -25,7 +25,7 @@ Target-contract spec (T0.5 like state — `docs/features/collections-platform.md
 | Function                    | Input                                              | Return                                                                                   | API called (see api.md)            |
 | --------------------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------- |
 | getLikedNodeIds             | —                                                    | `Promise<{ liked: number[] }>` — verbatim snake_case payload; `{ liked: [] }` on failure  | GET `/api/file-likes`              |
-| getLikedItems               | `({ cursor?, limit? }?)`                           | `Promise<{ items: Array<object>, next_cursor: string\|null }>` — verbatim snake_case; `{ items: [], next_cursor: null }` on failure (P-5) | GET `/api/file-likes/items`        |
+| getLikedItems               | `()`                                                 | `Promise<{ items: Array<object> }>` — verbatim snake_case; `{ items: [] }` on failure (P-5; full fetch under Decision B) | GET `/api/file-likes/items`        |
 | setFileLike                 | `(nodeId, liked, options?)`                        | `Promise<{ node_id, liked } \| null>` — payload only on 2xx; `null` on absorbed failure   | PUT `/api/file-likes/:nodeId`      |
 | subscribeFileLikesChange    | `(callback: () => void)`                           | `() => void` unsubscribe                                                                  | — (module-local pub-sub)           |
 
@@ -33,10 +33,10 @@ Target-contract spec (T0.5 like state — `docs/features/collections-platform.md
 - **Notify-after-real-success only:** `subscribeFileLikesChange` callbacks fire after a 2xx `setFileLike`; absorbed failures never notify.
 - `getLikedNodeIds` never notifies (it is the read the subscribers converge on).
 - `getLikedItems` (P-5 — the Likes-surface listing, `fileLikes.md` §2.4.2) mirrors
-  `collectionsRepository.getCollectionItems`: `cursor`/`limit` ride the query string (absent
-  params ⇒ first page, server defaults), the read never rejects and never notifies (it is the
-  read the like-change subscribers converge on); rows are consumed through the shell's
-  `toMemberRow` adapter (member-parity).
+  `collectionsRepository.getCollectionItems`: **no query params** (`cursor`/`limit` RETIRED —
+  Decision B, 2026-09-29; the complete row set arrives in ONE response), the read never rejects
+  and never notifies (it is the read the like-change subscribers converge on); rows are
+  consumed through the shell's `toMemberRow` adapter (member-parity).
 
 ### 2.3 Error Handling
 
@@ -51,7 +51,8 @@ Target-contract spec (T0.5 like state — `docs/features/collections-platform.md
 ### 2.5 Verification Scenarios
 
 - [ ] `getLikedNodeIds` returns `{ liked: [...] }` verbatim on success and `{ liked: [] }` on failure (no throw).
-- [ ] (P-5) `getLikedItems({ cursor, limit })` calls GET `/api/file-likes/items?cursor=…&limit=…` and returns `{ items, next_cursor }` verbatim; on failure `{ items: [], next_cursor: null }`, no throw, no notify.
+- [ ] (P-5) `getLikedItems()` calls GET `/api/file-likes/items` (no query params — Decision B
+      full fetch) and returns `{ items }` verbatim; on failure `{ items: [] }`, no throw, no notify.
 - [ ] `setFileLike` posts `{ liked }`, returns `{ node_id, liked }` on 2xx, and calls subscribers exactly once.
 - [ ] Failed mutation returns `null`, calls `onError` once with the envelope, and notifies nobody.
 - [ ] `subscribeFileLikesChange` returns an unsubscribe function safe for effect cleanup.

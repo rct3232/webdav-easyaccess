@@ -115,19 +115,16 @@ export const getCollections = async (params = {}) => {
 
 /**
  * @param {number} id
- * @param {{ cursor?: string, limit?: number, since?: string }} [params]
- * @returns {Promise<{ items: Array<Object>, next_cursor: string|null,
- *   publish_pending_count?: number, digest?: Object }>} fallback view shape on failure
+ * @param {{ since?: string }} [params] — Decision B (2026-09-29): the former
+ *   `cursor`/`limit` params are RETIRED (the endpoint ships the FULL row set in
+ *   one response; the server ignores them), so they never ride the query string.
+ * @returns {Promise<{ items: Array<Object>, publish_pending_count?: number,
+ *   digest?: Object }>} fallback view shape on failure (no paging keys)
  */
 export const getCollectionItems = async (id, params = {}) => {
-  const query = buildQuery([
-    ['cursor', params.cursor],
-    ['limit', params.limit],
-    ['since', params.since],
-  ]);
+  const query = buildQuery([['since', params.since]]);
   return absorbRead(query ? `/collections/${id}/items?${query}` : `/collections/${id}/items`, {
     items: [],
-    next_cursor: null,
   });
 };
 

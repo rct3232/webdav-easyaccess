@@ -575,10 +575,10 @@ describe('P-4 member-row adapter (useFileManager §2.3.2)', () => {
     shared_excluded: true,
   };
 
-  async function renderMembers(items) {
+  async function renderMembers(items, extra = {}) {
     explorerGateway.loadCollectionItems.mockResolvedValueOnce({
       items,
-      next_cursor: null,
+      ...extra,
     });
     const renderResult = renderWithPath('__collections__/collection/5');
     await waitFor(() => {
@@ -586,6 +586,20 @@ describe('P-4 member-row adapter (useFileManager §2.3.2)', () => {
     });
     return renderResult;
   }
+
+  it('Decision B: ONE full fetch fills collectionMembers — no cursor state, no loadMore seam', async () => {
+    const { result } = await renderMembers([wireNormal, wireRevoked]);
+
+    expect(explorerGateway.loadCollectionItems).toHaveBeenCalledTimes(1);
+    const opts = explorerGateway.loadCollectionItems.mock.calls[0][1];
+    expect(opts).not.toHaveProperty('cursor');
+    expect(opts).not.toHaveProperty('limit');
+    expect(result.current.collectionMembers.items).toHaveLength(2);
+    expect(result.current.collectionMembers.collectionId).toBe(5);
+    expect(result.current.collectionMembers).not.toHaveProperty('nextCursor');
+    expect(result.current.collectionMembers).not.toHaveProperty('loadingMore');
+    expect(result.current.loadMoreCollectionMembers).toBeUndefined();
+  });
 
   it('maps the wire row to file shape with the member slots and drops the size', async () => {
     const { result } = await renderMembers([wireNormal]);
@@ -676,11 +690,11 @@ describe('P-5 collections-liked surface (useFileManager §2.3.3)', () => {
   }
 
   it('parses the route, lists via loadLikedItems and feeds member-parity adapter rows', async () => {
-    const { result } = await renderLiked({ items: [wireLiked(41)], next_cursor: 'c1' });
+    const { result } = await renderLiked({ items: [wireLiked(41)] });
 
     expect(result.current.currentPath).toBe('/__collections__/liked');
     expect(explorerGateway.loadLikedItems).toHaveBeenCalled();
-    expect(result.current.likedItems.nextCursor).toBe('c1');
+    expect(result.current.likedItems).not.toHaveProperty('nextCursor'); // Decision B
     expect(result.current.likedItems.items[0]).toMatchObject({
       nodeId: 41,
       name: 'liked-41.txt',
@@ -702,7 +716,6 @@ describe('P-5 collections-liked surface (useFileManager §2.3.3)', () => {
   it('revoked likes land as disabled placeholder rows (adapter parity)', async () => {
     const { result } = await renderLiked({
       items: [wireLiked(42, { name: null, type: null, mime: null, state: 'revoked' })],
-      next_cursor: null,
     });
 
     const row = result.current.likedItems.items[0];
@@ -712,26 +725,19 @@ describe('P-5 collections-liked surface (useFileManager §2.3.3)', () => {
     expect(row.mime).toBeNull();
   });
 
-  it('loadMoreLikedItems appends the cursor page de-duped by nodeId', async () => {
-    const { result } = await renderLiked({ items: [wireLiked(41)], next_cursor: 'c1' });
+  it('Decision B: liked listing is ONE full fetch — no nextCursor, no loadMoreLikedItems seam', async () => {
+    const { result } = await renderLiked({ items: [wireLiked(41), wireLiked(42)] });
 
-    explorerGateway.loadLikedItems.mockResolvedValueOnce({
-      items: [wireLiked(41), wireLiked(42)],
-      next_cursor: null,
-    });
-    await act(async () => {
-      await result.current.loadMoreLikedItems();
-    });
-
-    expect(explorerGateway.loadLikedItems).toHaveBeenLastCalledWith({ cursor: 'c1' });
+    expect(explorerGateway.loadLikedItems).toHaveBeenCalledTimes(1);
     expect(result.current.likedItems.items.map((row) => row.nodeId)).toEqual([41, 42]);
-    expect(result.current.likedItems.nextCursor).toBeNull();
+    expect(result.current.likedItems).not.toHaveProperty('nextCursor');
+    expect(result.current.likedItems).not.toHaveProperty('loadingMore');
+    expect(result.current.loadMoreLikedItems).toBeUndefined();
   });
 
   it('applyLikedRemoval drops the row optimistically (unknown ids are a no-op)', async () => {
     const { result } = await renderLiked({
       items: [wireLiked(41), wireLiked(42)],
-      next_cursor: null,
     });
 
     act(() => result.current.applyLikedRemoval(999));
@@ -742,7 +748,7 @@ describe('P-5 collections-liked surface (useFileManager §2.3.3)', () => {
   });
 
   it('handleMemberThumbnailsLoaded merges into likedItems rows too (member-local, never the session files)', async () => {
-    const { result } = await renderLiked({ items: [wireLiked(41)], next_cursor: null });
+    const { result } = await renderLiked({ items: [wireLiked(41)] });
 
     act(() => {
       result.current.handleMemberThumbnailsLoaded(new Map([[41, 'https://thumb/41']]));

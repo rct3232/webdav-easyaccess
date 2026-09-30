@@ -109,31 +109,10 @@ function serializeSuggestion(row, names) {
   };
 }
 
-// -- opaque item cursor: base64url JSON `{ s: score, n: nodeId }` ------------
-
-function encodeCursor({ score, nodeId }) {
-  return Buffer.from(JSON.stringify({ s: score, n: nodeId }), 'utf8').toString('base64url');
-}
-
-function decodeCursor(cursor) {
-  if (!cursor || typeof cursor !== 'string') return null;
-  try {
-    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
-    if (typeof parsed !== 'object' || parsed === null || !Number.isFinite(Number(parsed.n))) {
-      return null;
-    }
-    return { score: Number(parsed.s) || 0, nodeId: Number(parsed.n) };
-  } catch {
-    return null;
-  }
-}
-
 module.exports = {
   serializeCollection,
   serializeItem,
   serializeLikedItem,
   serializeGrant,
   serializeSuggestion,
-  encodeCursor,
-  decodeCursor,
 };

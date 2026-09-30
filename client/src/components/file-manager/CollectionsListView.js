@@ -13,6 +13,7 @@ import {
 import { PushPin as PushPinIcon } from '@mui/icons-material';
 import { getCollectionEntryKey } from '../../utils/fileViewUtils';
 import { useThumbnailLazyLoad } from '../../hooks/useThumbnailLazyLoad';
+import { useInfiniteScroll } from '../../hooks/useInfiniteScroll';
 import { useResponsive } from '../../hooks/useResponsive';
 import ConfirmDialog from '../dialogs/ConfirmDialog';
 import CollectionCardItem from './CollectionCardItem';
@@ -77,8 +78,6 @@ const CollectionsListView = ({
   mergeSlot = null,
   include,
   items = [],
-  nextCursor = null,
-  onLoadMore,
   memberViewMode = 'grid',
   memberLoading = false,
   onMemberRowClick,
@@ -124,6 +123,17 @@ const CollectionsListView = ({
     [mode, collections]
   );
   useThumbnailLazyLoad(previewFiles, onPreviewThumbnailsLoaded, {});
+
+  // Decision B (2026-09-29 owner ruling): member/liked rows arrive as the FULL
+  // set in ONE response — this host owns display paging through the SHARED
+  // useInfiniteScroll hook (same idiom + counts as file browse: 50+50). The
+  // server order (activity score desc, node_id asc / liked: node_id asc) is
+  // rendered AS IS — no client re-sort; the slice only trims what is mounted.
+  const {
+    displayedFiles: displayedMembers,
+    loadMoreRef: memberLoadMoreRef,
+    hasMore: membersHasMore,
+  } = useInfiniteScroll(items, { initialCount: 50, incrementCount: 50 });
 
   const dispatchCard = (action, collection) => {
     if (onCardAction) onCardAction(action, collection);
@@ -206,7 +216,7 @@ const CollectionsListView = ({
 
   const renderMemberRows = () => {
     const delegateProps = {
-      files: items,
+      files: displayedMembers,
       selectionMode,
       selectedFiles,
       loading: memberLoading,
@@ -410,12 +420,16 @@ const CollectionsListView = ({
           `member-menu-button` testids); this view stays the chrome host. */}
       {renderMemberRows()}
 
-      {nextCursor && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
-          <Button size="small" data-testid="member-load-more" onClick={() => onLoadMore?.()}>
-            {t('fileManager.memberLoadMore')}
-          </Button>
-        </Box>
+      {/* Decision B (2026-09-29): the load-more button is retired — the rows
+          arrive complete in ONE response and this host slices them 50+50 via
+          the shared useInfiniteScroll hook. The sentinel (same idiom as the
+          file grid/list) reveals the next slice on scroll — no fetch fires. */}
+      {membersHasMore && (
+        <Box
+          ref={memberLoadMoreRef}
+          data-testid="member-scroll-sentinel"
+          sx={{ height: 24, display: 'flex', justifyContent: 'center' }}
+        />
       )}
     </Box>
   );

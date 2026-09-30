@@ -179,24 +179,21 @@ export const useFileManager = (user, options = {}) => {
   }, [isShareMode, shareCurrentNodeId, urlView, homeNodeId]);
 
   const [files, setFiles] = useState([]);
-  // Collections member mode (T0.4): cursor-paged view rows, de-duped by node_id.
+  // Collections member mode: Decision B (2026-09-29 owner ruling) — the FULL row
+  // set arrives in ONE response (cursor paging retired); `items` is the complete
+  // set in server order (display slicing 50+50 is the member host's job,
+  // CollectionsListView.md §2.5).
   const [collectionMembers, setCollectionMembers] = useState({
     items: [],
-    nextCursor: null,
-    loadingMore: false,
     digest: undefined,
     publishPendingCount: undefined,
     collectionId: null,
   });
-  // P-5 liked-surface fetch state (cursor-paged GET /api/file-likes/items rows,
-  // de-duped by node_id — same machinery as the members list, no membership).
+  // P-5 liked-surface fetch state (GET /api/file-likes/items rows through the
+  // same toMemberRow machinery — full set, one response; no membership).
   const [likedItems, setLikedItems] = useState({
     items: [],
-    nextCursor: null,
-    loadingMore: false,
   });
-  const likedItemsRef = useRef(null);
-  const collectionMembersRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [hasWritePermission, setHasWritePermission] = useState(false);
   const [ancestors, setAncestors] = useState([]);
@@ -210,14 +207,6 @@ export const useFileManager = (user, options = {}) => {
   useEffect(() => {
     filesRef.current = files;
   }, [files]);
-
-  useEffect(() => {
-    collectionMembersRef.current = collectionMembers;
-  }, [collectionMembers]);
-
-  useEffect(() => {
-    likedItemsRef.current = likedItems;
-  }, [likedItems]);
 
   useEffect(() => {
     onLoadCompleteRef.current = onLoadComplete;
@@ -367,48 +356,6 @@ export const useFileManager = (user, options = {}) => {
     return undefined;
   }, [urlView]);
 
-  const loadMoreCollectionMembers = useCallback(async () => {
-    const current = collectionMembersRef.current;
-    if (!current.collectionId || !current.nextCursor || current.loadingMore) return;
-    setCollectionMembers((prev) => ({ ...prev, loadingMore: true }));
-    const page = await explorerGateway.loadCollectionItems(current.collectionId, {
-      cursor: current.nextCursor,
-    });
-    setCollectionMembers((prev) => {
-      if (prev.collectionId !== current.collectionId) return prev;
-      const seen = new Set(prev.items.map((row) => row.nodeId));
-      // §2.9: de-dup by node_id; rendered page order stays stable.
-      const appended = (page?.items ?? [])
-        .map((item) => toMemberRow(item, t))
-        .filter((row) => !seen.has(row.nodeId));
-      return {
-        ...prev,
-        items: [...prev.items, ...appended],
-        nextCursor: page?.next_cursor ?? null,
-        loadingMore: false,
-      };
-    });
-  }, [t]);
-
-  const loadMoreLikedItems = useCallback(async () => {
-    const current = likedItemsRef.current;
-    if (!current?.nextCursor || current.loadingMore) return;
-    setLikedItems((prev) => ({ ...prev, loadingMore: true }));
-    const page = await explorerGateway.loadLikedItems({ cursor: current.nextCursor });
-    setLikedItems((prev) => {
-      const seen = new Set(prev.items.map((row) => row.nodeId));
-      // §2.9 members rule verbatim: de-dup by node_id, stable rendered order.
-      const appended = (page?.items ?? [])
-        .map((item) => toMemberRow(item, t))
-        .filter((row) => !seen.has(row.nodeId));
-      return {
-        items: [...prev.items, ...appended],
-        nextCursor: page?.next_cursor ?? null,
-        loadingMore: false,
-      };
-    });
-  }, [t]);
-
   /**
    * P-5 optimistic unlike removal: the Likes surface drops the row the moment
    * the unlike starts; the notifier-driven re-read converges either way (a
@@ -497,17 +444,11 @@ export const useFileManager = (user, options = {}) => {
     setLoading(true);
     if (urlView.kind !== 'collection') {
       setCollectionMembers((prev) =>
-        prev.collectionId == null
-          ? prev
-          : { ...prev, items: [], nextCursor: null, collectionId: null }
+        prev.collectionId == null ? prev : { ...prev, items: [], collectionId: null }
       );
     }
     if (urlView.kind !== 'collections-liked') {
-      setLikedItems((prev) =>
-        prev.items.length === 0 && prev.nextCursor == null && !prev.loadingMore
-          ? prev
-          : { items: [], nextCursor: null, loadingMore: false }
-      );
+      setLikedItems((prev) => (prev.items.length === 0 ? prev : { items: [] }));
     }
     try {
       if (urlView.kind === 'recent') {
@@ -571,6 +512,8 @@ export const useFileManager = (user, options = {}) => {
           setFiles([]);
         }
       } else if (urlView.kind === 'collection') {
+        // Decision B: ONE full fetch — the COMPLETE row set in one response.
+        // `since` (digest delta) stays; display slicing is the member host's job.
         const collectionId = urlView.collectionId;
         const since = readDigestVisits()[collectionId];
         const page = await explorerGateway.loadCollectionItems(
@@ -581,23 +524,20 @@ export const useFileManager = (user, options = {}) => {
         if (requestId === requestIdRef.current) {
           setCollectionMembers({
             items: (page?.items ?? []).map((item) => toMemberRow(item, t)),
-            nextCursor: page?.next_cursor ?? null,
-            loadingMore: false,
             digest: page?.digest,
             publishPendingCount: page?.publish_pending_count,
             collectionId,
           });
         }
       } else if (urlView.kind === 'collections-liked') {
-        // Overlay listing (P-5): the file region renders likedItems through the
-        // shared member renderer — the explorer file list stays empty.
+        // Overlay listing (P-5, Decision B): ONE full fetch; the file region
+        // renders likedItems through the shared member renderer — the explorer
+        // file list stays empty.
         const page = await explorerGateway.loadLikedItems();
         if (requestId === requestIdRef.current) {
           setFiles([]);
           setLikedItems({
             items: (page?.items ?? []).map((item) => toMemberRow(item, t)),
-            nextCursor: page?.next_cursor ?? null,
-            loadingMore: false,
           });
         }
       } else if (urlView.kind === 'trash') {
@@ -753,9 +693,7 @@ export const useFileManager = (user, options = {}) => {
     openTrashFolder,
     homeNodeId,
     collectionMembers,
-    loadMoreCollectionMembers,
     likedItems,
-    loadMoreLikedItems,
     applyLikedRemoval,
     handleMemberThumbnailsLoaded,
   };

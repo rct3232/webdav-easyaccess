@@ -13,12 +13,20 @@
  *
  * Mode comes from `E2E_BACKEND_MODE` (defaults to `s3`).
  *
+ * Before `up -d` the script ensures this checkout owns a per-checkout PORT
+ * BAND (scripts/lib/e2e-band.cjs): offset 0 = the historical fixed ports, or
+ * the first free band when another worktree already holds it. The band's
+ * Docker ports are exported to the compose spawn (`E2E_WEBDAV_PORT` etc.
+ * interpolate `docker-compose.e2e.yml`) and the server dotenv file
+ * `data/e2e-runtime.env` (base `.env.e2e[.webdav]` + band ports) is
+ * regenerated for the `e2e:server*` chain's DOTENV_CONFIG_PATH.
+ *
  * The Playwright `webServer` command for the API server chains this script
  * BEFORE starting the app (`npm run e2e:server:s3` / `e2e:server:webdav`), so
  * PostgreSQL/MinIO/WebDAV are reachable by the time the server boots. Because
  * this step runs in the foreground, the webServer command stays long-running
  * (the actual `npm run dev --workspace server` is the last step) and Playwright
- * can still poll `http://localhost:5002/api/health`.
+ * can still poll `http://localhost:<band api port>/api/health`.
  *
  * `e2e/global-setup.ts` re-invokes this script idempotently as belt-and-braces
  * (it never tears the stack down). Exit code is non-zero with a status dump
@@ -26,7 +34,11 @@
  */
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+
+const require = createRequire(import.meta.url);
+const { ensureBand, effectivePorts, writeRuntimeEnv } = require('./lib/e2e-band.cjs');
 
 const ROOT_DIR = process.cwd();
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -67,10 +79,34 @@ function resolveComposeCommand() {
 
 const compose = resolveComposeCommand();
 
+// Per-checkout port band: reuse/claim the persisted band, then export the
+// Docker-facing ports to compose and regenerate the server dotenv file so
+// `e2e:server*` (DOTENV_CONFIG_PATH) boots the app on this checkout's band.
+const bandOffset = ensureBand(ROOT_DIR);
+const bandPorts = effectivePorts(ROOT_DIR);
+writeRuntimeEnv(ROOT_DIR, bandPorts);
+console.log(
+  `[e2e-wait-healthy] Port band offset ${bandOffset}: ` +
+    `api=${bandPorts.api} client=${bandPorts.client} webdav=${bandPorts.webdav} ` +
+    `pg=${bandPorts.pg} s3=${bandPorts.s3}/${bandPorts.s3Console} ` +
+    `scratch=${bandPorts.scratchWizard},${bandPorts.scratchAdminConfig},${bandPorts.scratchMigration},${bandPorts.scratchTrashAdmin},${bandPorts.scratchCollections}`
+);
+
+function composePortsEnv() {
+  return {
+    ...process.env,
+    E2E_WEBDAV_PORT: String(bandPorts.webdav),
+    E2E_PG_PORT: String(bandPorts.pg),
+    E2E_S3_PORT: String(bandPorts.s3),
+    E2E_S3_CONSOLE_PORT: String(bandPorts.s3Console),
+  };
+}
+
 function runUp() {
   console.log('[e2e-wait-healthy] Bringing the E2E Docker stack up (idempotent)...');
   const result = spawnSync(compose.command, [...compose.args, '-f', COMPOSE_FILE, 'up', '-d'], {
     cwd: ROOT_DIR,
+    env: composePortsEnv(),
     stdio: 'inherit',
   });
   if (result.status !== 0) {

@@ -8,6 +8,7 @@ import { TEST_FILES } from './fixtures/test-data';
 import { loginWithCredentials } from './helpers/auth';
 import { readTestFileFixture } from './helpers/files';
 import { blobExists, emptyS3Bucket, listS3Keys } from './helpers/minio';
+import { e2ePorts, s3Endpoint, webdavBase } from './helpers/ports';
 import {
   createScratchPgDb,
   dropScratchPgDb,
@@ -68,10 +69,10 @@ import {
 // migration :5011 — and a dedicated bucket so this suite never touches the
 // shared `e2e-test-bucket` the s3 platform tests write to. Must match
 // playwright.config.ts / e2e/global-setup.ts.
-const SCRATCH_PORT = 5011;
+const SCRATCH_PORT = e2ePorts.scratchMigration;
 const SCRATCH_BASE = `http://127.0.0.1:${SCRATCH_PORT}`;
-const WEBDAV_BASE = 'http://127.0.0.1:8090';
-const S3_ENDPOINT = 'http://127.0.0.1:9010';
+const WEBDAV_BASE = webdavBase;
+const S3_ENDPOINT = s3Endpoint;
 const MIGRATION_S3_BUCKET = 'e2e-migration-bucket';
 const S3_BUCKET = MIGRATION_S3_BUCKET;
 const S3_REGION = 'us-east-1';
@@ -79,7 +80,7 @@ const S3_ACCESS_KEY = 'minioadmin';
 const S3_SECRET_KEY = 'minioadmin';
 
 const PG_HOST = '127.0.0.1';
-const PG_PORT = '5433';
+const PG_PORT = String(e2ePorts.pg);
 const PG_USER = 'e2etest';
 const PG_PASSWORD = 'e2etest';
 

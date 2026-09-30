@@ -61,7 +61,9 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
   fails the test.
 - **Hermetic scratch projects:** each destructive AI E2E suite (evolution passes, merge
   execution, archive/purge lifecycles) gets its **own scratch server project** following the
-  setup-wizard/trash precedent (`:5003`, `:5012`) — next free ports from **`:5013+`**, own
+  setup-wizard/trash precedent (base slots `:5003`, `:5012`) — next free scratch slots are
+  band-based offsets from **`:5013+`** resolved through `e2e/helpers/ports.ts` (each
+  checkout's whole port set shifts together; see docs/TEST_GIT_GUIDE.md "Parallel E2E runs"), own
   env file, own sqlite/PG scratch DB, per-case cleanup. This extends the destructive-case
   policy: **auto-evolution mutates user data, so AI suites are scratch-only, never run
   against the shared E2E server/database.**

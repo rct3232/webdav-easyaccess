@@ -127,8 +127,8 @@ npm run test:e2e:install
 # - Resetting the data state without restarting services: TRUNCATE all app
 #   tables (preserving `_schema_migrations`) and re-seed admin + base users
 #   with home `file_nodes` roots; empty the MinIO bucket (s3 mode)
-# - Starting the E2E API/server (port 5002)
-# - Starting the E2E client (port 3000)
+# - Starting the E2E API/server (port-band API slot, default 5002)
+# - Starting the E2E client (port-band client slot, default 3000)
 # - Executing the Playwright tests
 npm run test:e2e
 
@@ -168,9 +168,62 @@ Required assumptions:
 - `playwright.config.ts` is configured with `webServer` to manage the client and server lifecycle automatically.
 - The E2E Docker stack (`docker-compose.e2e.yml`: WebDAV, PostgreSQL, MinIO) is provisioned by the `e2e:server` webServer command before the app server boots: `scripts/e2e-wait-healthy.mjs` runs an idempotent `docker compose up -d` and polls `docker compose ps` until the mode's required compose SERVICES report `healthy` (webdav-test + postgresql-e2e always; minio-e2e in s3 mode only). The stack defines no `container_name:` entries — container names stay project-scoped (compose derives the project from the checkout directory), and every helper (`e2e-wait-healthy.mjs`, `e2e/global-setup.ts`, `e2e/helpers/setupScratch.ts`, `e2e/webdav-reconcile.spec.ts`) addresses containers via `docker compose … <service>` instead of a global container name, so parallel E2E runs from multiple git worktrees never collide on shared container names. If two checkouts share a directory basename, set `COMPOSE_PROJECT_NAME` to disambiguate them. `e2e/global-setup.ts` re-runs the same helper idempotently as belt-and-braces (it never tears the stack down), restarts the WebDAV container once in BOTH modes (after wiping its `data/webdav` bind-mount, so no mid-run lazy restart is needed by the hermetic suites), then resets the data state: it TRUNCATEs all app tables (preserving `_schema_migrations`) and re-seeds the default admin and base users with home `file_nodes` roots via `e2e/global-setup.seed-db.cjs`, ensures the MinIO platform and migration buckets in both modes, and empties the platform bucket in s3 mode. `e2e/global-teardown.ts` empties the S3 bucket (s3 mode) and stops the services (`down -v` — project-scoped, it only ever affects the current checkout's stack).
 - The root Playwright config builds the projects from the active backend mode (Option A): `E2E_BACKEND_MODE=s3` defines the desktop/mobile UI matrix (`s3-desktop-setup`/`s3-desktop`, `s3-mobile-setup`/`s3-mobile`) plus the hermetic additive projects (setup-wizard/admin-config/migration, which boot their own webdav-mode scratch servers); `E2E_BACKEND_MODE=webdav` defines a thin smoke pair (`webdav-smoke-setup`/`webdav-smoke-desktop`) that greps the backend-wiring nets out of `core-flow.shared`/`share-public`/`share-internal`. Only the projects for the active mode are defined, so `npm run test:e2e:s3` runs the full s3 matrix and `npm run test:e2e:webdav` runs only the smoke (check with `E2E_BACKEND_MODE=s3 npx playwright test --list`).
-- The backend mode is selected via `E2E_BACKEND_MODE` (`s3` default, `webdav` legacy). The `e2e:server` script maps it to the matching env file (`../.env.e2e` for s3, `../.env.e2e.webdav` for webdav) and chains `scripts/e2e-wait-healthy.mjs` (compose provisioning + health wait) before starting the server; host-exposed ports are MinIO 9010, PostgreSQL 5433, and WebDAV 8090.
+- The backend mode is selected via `E2E_BACKEND_MODE` (`s3` default, `webdav` legacy). The `e2e:server` script chains `scripts/e2e-wait-healthy.mjs` (port-band provisioning + compose up + health wait), then boots the server with `DOTENV_CONFIG_PATH=../data/e2e-runtime.env` — a file GENERATED from the mode's base env (`../.env.e2e` for s3, `../.env.e2e.webdav` for webdav) with this checkout's band ports written into `PORT`, `CORS_ORIGINS`, `WEBDAV_URL`, `WEBDAV_UPSTREAM_URL`, `S3_ENDPOINT` and `WEA_DB_PORT` (git-ignored; never edit it by hand). Default host-exposed ports are MinIO 9010/9011, PostgreSQL 5433 and WebDAV 8090 — at band offset 0 these are the historical fixed numbers, so single-checkout workflows are unchanged.
 - Specs branch on the project name platform suffix (`testInfo.project.name.endsWith('-desktop')` / `endsWith('-mobile')`), so the platform checks keep working under the mode-prefixed project names.
-- The hermetic additive suites (setup-wizard / admin-config / migration / trash-admin / collections) are isolated per suite and run as independent siblings (Option A): setup-wizard boots its scratch server on `:5003`, admin-config on `:5010`, migration on `:5011`, trash-admin on `:5012`, collections-lifecycle on `:5013` (their playwright.config baseURLs mirror this); each has its own env file/sqlite/PG namespace and migration uses a dedicated MinIO bucket. Each spawns its own scratch server and supervises its own process lifecycle (restart is the behavior under test for the wizard; the destructive-case policy requires own-server isolation for trash-admin/collections). They do not use the shared `:5002` server or `:3000` client. A suite's mobile variant depends on its desktop variant so one suite never overlaps itself on the same port. `collections.spec.ts` boots ONE scratch server for the whole file (restart is not under test; the file is serial and case-contained) and runs desktop-only.
+- The hermetic additive suites (setup-wizard / admin-config / migration / trash-admin / collections) are isolated per suite and run as independent siblings (Option A): setup-wizard boots its scratch server on the `:5003` slot, admin-config on `:5010`, migration on `:5011`, trash-admin on `:5012`, collections-lifecycle on `:5013` (their playwright.config baseURLs mirror this; all slots shift together with the checkout's port band — see "Parallel E2E runs" below); each has its own env file/sqlite/PG namespace and migration uses a dedicated MinIO bucket. Each spawns its own scratch server and supervises its own process lifecycle (restart is the behavior under test for the wizard; the destructive-case policy requires own-server isolation for trash-admin/collections). They do not use the shared `:5002` server or `:3000` client. A suite's mobile variant depends on its desktop variant so one suite never overlaps itself on the same port. `collections.spec.ts` boots ONE scratch server for the whole file (restart is not under test; the file is serial and case-contained) and runs desktop-only.
+
+### Parallel E2E runs (multiple git worktrees / checkouts)
+
+The E2E environment avoids ALL globally-shared resources so two checkouts can run
+their suites concurrently:
+
+- **Container names** — `docker-compose.e2e.yml` pins no `container_name:`; names are
+  project-scoped (`<project>-<service>-<n>`, project = checkout directory name). All
+  helpers address containers through `docker compose -f docker-compose.e2e.yml
+<cmd> <service>`. If two checkouts share a directory basename, export a distinct
+  `COMPOSE_PROJECT_NAME` per checkout.
+- **Host ports** — `scripts/lib/e2e-band.cjs` allocates one PORT BAND per checkout:
+  a single offset (steps of 20) applied to the whole base port set
+  (`client 3000`, `api 5002`, scratch slots `5003/5010-5013`, `webdav 8090`,
+  `pg 5433`, `s3 9010/9011`). Offset 0 is tried first and reproduces the fixed
+  contract exactly, so a solo checkout sees no change. Allocation happens once per
+  checkout and is PERSISTED in `data/e2e-runtime.json` (git-ignored) — reusing the
+  same band on every later run keeps `reuseExistingServer` dev loops stable. A band
+  is taken only when every port passes a real listener probe AND a global claim lock
+  (`<tmpdir>/webdav-e2e-ports/band-<offset>.lock`, stale dead owners are reclaimed)
+  — this closes the race between concurrent cold starts of different checkouts.
+  If another live checkout later claims our persisted band (e.g. after a /tmp
+  sweep), the next run reallocates transparently.
+- **Consumers** — compose interpolates `${E2E_WEBDAV_PORT…}` from the env that
+  `scripts/e2e-wait-healthy.mjs` exports; the API server boots on
+  `data/e2e-runtime.env`; `playwright.config.ts`, the scratch suites and the
+  setup/teardown helpers all resolve ports through `e2e/helpers/ports.ts`
+  (per-port `E2E_*_PORT` env overrides win over the persisted band). Loading the
+  Playwright config triggers band allocation, so even a bare `playwright test`
+  from a second checkout moves off a busy default band automatically.
+
+Run commands (both backends/modes unchanged otherwise):
+
+```bash
+# Checkout A (first / solo): uses offset 0 = today's fixed ports.
+npm run test:e2e:s3
+
+# Checkout B (concurrent): base ports are busy → auto-allocates offset 20.
+npm run test:e2e:s3
+
+# Deterministic pinning for orchestrated parallelism (e.g. CI fan-out):
+E2E_PORT_OFFSET=40 npm run test:e2e:s3   # must be a multiple of 20
+
+# Inspect the current checkout's band:
+cat data/e2e-runtime.json
+
+# Force re-allocation (band conflict after /tmp cleanup, stale pins):
+rm data/e2e-runtime.json data/e2e-runtime.env   # lock is reclaimed automatically
+```
+
+Intentionally NOT isolated (per-run, not per-machine): Docker image pulls (daemon-side
+dedup is safe), `e2e-data/`/`test-results/`/`client/build` (already per-checkout), and
+Playwright browsers (shared read-only cache under `~/.cache`).
 
 ## Recommended Git Workflow
 

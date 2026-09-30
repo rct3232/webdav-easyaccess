@@ -8,6 +8,8 @@ import {
   DeleteObjectsCommand,
 } from '@aws-sdk/client-s3';
 
+import { s3Endpoint } from './ports';
+
 /**
  * Direct MinIO access for E2E scenarios that assert blob-level behavior with
  * no non-blob observable (e.g. the migration E2E's "no duplicate blobs"
@@ -20,7 +22,7 @@ import {
  * tests write to — the suites can therefore run concurrently.
  */
 
-const E2E_S3_ENDPOINT = process.env.S3_ENDPOINT || 'http://127.0.0.1:9010';
+const E2E_S3_ENDPOINT = process.env.S3_ENDPOINT || s3Endpoint;
 const E2E_S3_REGION = process.env.AWS_REGION || 'us-east-1';
 const E2E_S3_ACCESS_KEY = process.env.AWS_ACCESS_KEY_ID || 'minioadmin';
 const E2E_S3_SECRET_KEY = process.env.AWS_SECRET_ACCESS_KEY || 'minioadmin';

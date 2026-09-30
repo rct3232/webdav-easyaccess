@@ -12,6 +12,7 @@ import {
   uploadFileAt,
 } from './helpers/files';
 import { getSessionToken, resolveNodeId } from './helpers/resolvePath';
+import { e2ePorts } from './helpers/ports';
 
 /**
  * E2E-RECON-001 — DEF-18 WebDAV Tier 2 reconciliation, API level.
@@ -34,7 +35,7 @@ import { getSessionToken, resolveNodeId } from './helpers/resolvePath';
 // webdav mode (pattern: e2e/trash-admin.spec.ts). Reached via the compose
 // service `webdav-test` — containers are project-scoped, not globally named.
 const WEBDAV_HOST = '127.0.0.1';
-const WEBDAV_PORT = 8090;
+const WEBDAV_PORT = e2ePorts.webdav;
 const WEBDAV_AUTH = Buffer.from('e2etest:e2etest123').toString('base64');
 // bytemark/webdav serves the DAV root from /var/lib/dav/data inside the
 // container (verified: PROPFIND / maps to ./data/webdav/data on the host).

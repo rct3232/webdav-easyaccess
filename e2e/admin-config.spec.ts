@@ -3,6 +3,7 @@ import http from 'node:http';
 import path from 'node:path';
 
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import { e2ePorts, webdavBase } from './helpers/ports';
 
 import {
   ensureClientBuild,
@@ -44,9 +45,9 @@ import { loginWithCredentials } from './helpers/auth';
 // This suite's dedicated scratch port (Option A Phase 1): one distinct port per
 // hermetic suite — setup-wizard :5003, admin-config :5010, migration :5011, trash-admin :5012 —
 // so the suites can run concurrently. Must match playwright.config.ts.
-const SCRATCH_PORT = 5010;
+const SCRATCH_PORT = e2ePorts.scratchAdminConfig;
 const SCRATCH_BASE = `http://127.0.0.1:${SCRATCH_PORT}`;
-const WEBDAV_BASE = 'http://127.0.0.1:8090';
+const WEBDAV_BASE = webdavBase;
 const WEBDAV_AUTH = Buffer.from('e2etest:e2etest123').toString('base64');
 
 const CASE_ID = 'admin-config';

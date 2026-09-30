@@ -476,3 +476,14 @@ Execution: `feature/polish-b-member-fetch-all` (docs → RED → GREEN → E2E).
   and the digest counts via `since`.
 - Wire helpers `encodeCursor`/`decodeCursor` and the `clampLimit`/limit caps are deleted
   (no other consumers — grep-verified at implementation time).
+
+- **B member-fetch-all (2026-09-30)** — branch `feature/polish-b-member-fetch-all`: docs 341fe74 +
+  server bb3f157 (`getItems`/`listLikedItems` full set, routes ignore retired params, wire helpers
+  deleted) + client 326989d (repos drop cursor/limit; `useFileManager` one-fetch state;
+  `CollectionsListView` hosts the shared `useInfiniteScroll` 50+50 slice + sentinel; load-more
+  button + `memberLoadMore` i18n deleted). RED captured (2 server + 4 client failures) before
+  GREEN. Gates: server `domains/collections` 108/108, `domains/{collections,admin}` 336 pass
+  (3 pre-existing skips); client union 272 + pages/FileManager 44 pass; `collections-desktop` E2E
+  **13/13 green** (no spec edits — fixtures <50 rows, no `member-load-more`/`next_cursor`
+  assertions existed). No repository/SQL touched → PG conformance leg N/A. Awaits orchestrator
+  merge gate.

@@ -452,9 +452,12 @@ Order: P-1 ∥ P-2 → P-3 → P-4 → P-5 (P-5 server part may join P-4).
 - **§10 closure (2026-09-29)**: all five merged into `ai-feature`. Final orchestrator gates:
   server `test:ci` 130 suites / 2407 tests, client `test:ci` 175 / 1818, PG conformance
   (fileLikes+collections scoped) 36, `collections-desktop` E2E **13/13** (ids 001–013).
-  Candidates for tracker discussion (NOT written): members cursor encodes first-unreturned id
-  (row-gap at page boundaries — P-5 diverged deliberately, documented); worktree E2E runs
-  contend for the fixed `webdav-pg-e2e` container name.
+  Discussion outcomes: (1) the members-cursor page-boundary gap was resolved by owner
+  decision B (fetch-all + client slice — mechanism deleted, see the B decision record);
+  (2) worktree E2E resource contention fixed root-cause (a-full): project-scoped containers
+  (`container_name` removed) + per-checkout port bands with generated runtime env — verified
+  by a busy-base-ports parallel simulation (13/13) and the main-checkout default-band run
+  (13/13).
 
 ### Decision B — member/liked listing: fetch-all + client infinite slice (2026-09-29 owner ruling)
 

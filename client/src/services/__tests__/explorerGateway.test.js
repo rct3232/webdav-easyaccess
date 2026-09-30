@@ -456,12 +456,11 @@ describe('explorerGateway', () => {
       deleteCollection.mockResolvedValueOnce(true);
       await expect(explorerGateway.deleteCollection(17)).resolves.toBe(true);
 
-      getCollectionItems.mockResolvedValueOnce({ items: [], next_cursor: null });
-      await expect(explorerGateway.loadCollectionItems(17, { limit: 50 })).resolves.toEqual({
-        items: [],
-        next_cursor: null,
-      });
-      expect(getCollectionItems).toHaveBeenCalledWith(17, { limit: 50 });
+      getCollectionItems.mockResolvedValueOnce({ items: [] });
+      await expect(
+        explorerGateway.loadCollectionItems(17, { since: '2026-09-01T00:00:00Z' })
+      ).resolves.toEqual({ items: [] });
+      expect(getCollectionItems).toHaveBeenCalledWith(17, { since: '2026-09-01T00:00:00Z' });
 
       addCollectionItems.mockResolvedValueOnce({ added: [1] });
       removeCollectionItems.mockResolvedValueOnce({ removed: [1] });
@@ -586,13 +585,13 @@ describe('explorerGateway', () => {
       expect(explorerGateway.subscribeToFileLikes(() => {})).toBe(unsub);
     });
 
-    it('re-exports loadLikedItems with the repository cursor shape (P-5)', async () => {
+    it('re-exports loadLikedItems as the repository full-fetch read (P-5, Decision B)', async () => {
       const repo = require('../fileLikesRepository');
-      const page = { items: [{ node_id: 7, state: 'normal' }], next_cursor: 'token' };
-      repo.getLikedItems.mockResolvedValueOnce(page);
+      const full = { items: [{ node_id: 7, state: 'normal' }] };
+      repo.getLikedItems.mockResolvedValueOnce(full);
 
-      await expect(explorerGateway.loadLikedItems({ cursor: 'token' })).resolves.toEqual(page);
-      expect(repo.getLikedItems).toHaveBeenCalledWith({ cursor: 'token' });
+      await expect(explorerGateway.loadLikedItems()).resolves.toEqual(full);
+      expect(repo.getLikedItems).toHaveBeenCalledWith();
     });
   });
 

@@ -1565,35 +1565,12 @@ describe('FileManager', () => {
       });
     }, 15000);
 
-    it('member route lists items cursor-paged with client-side node_id de-dup', async () => {
-      let itemsCalls = 0;
+    it('member route lists the FULL set in ONE response — no paging params, no load-more (Decision B)', async () => {
+      const itemsUrls = [];
       server.use(
         ...collectionsHandlers(),
         http.get('/api/collections/5/items', ({ request }) => {
-          itemsCalls += 1;
-          const cursor = new URL(request.url).searchParams.get('cursor');
-          if (!cursor) {
-            return HttpResponse.json({
-              items: [
-                {
-                  node_id: 90210,
-                  name: 'poster.pdf',
-                  type: 'file',
-                  size: 2048,
-                  lastmod: '2026-09-01T00:00:00Z',
-                  membership: 'derived',
-                  published: true,
-                  state: 'normal',
-                  shared_excluded: false,
-                  reason: 'tag:poster',
-                },
-              ],
-              next_cursor: 'cur-2',
-              publish_pending_count: 2,
-              digest: { added_since: 1, removed_since: 0 },
-            });
-          }
-          // Page 2 repeats 90210 (§2.9: de-dup by node_id client-side).
+          itemsUrls.push(request.url);
           return HttpResponse.json({
             items: [
               {
@@ -1619,7 +1596,8 @@ describe('FileManager', () => {
                 shared_excluded: false,
               },
             ],
-            next_cursor: null,
+            publish_pending_count: 2,
+            digest: { added_since: 1, removed_since: 0 },
           });
         })
       );
@@ -1630,15 +1608,22 @@ describe('FileManager', () => {
 
       expect(await screen.findByTestId('collections-list-view')).toBeInTheDocument();
       expect(await screen.findByTestId('member-row-90210')).toBeInTheDocument();
+      // Decision B: row 2 lands from the SAME response — no second page fetch.
+      expect(screen.getByTestId('member-row-90211')).toBeInTheDocument();
       // The shell supplied `since` (client-side last-visit copy) → digest banner renders.
       expect(screen.getByTestId('digest-banner')).toBeInTheDocument();
       expect(screen.getByTestId('publish-pending-banner')).toBeInTheDocument();
-
-      fireEvent.click(screen.getByTestId('member-load-more'));
-      expect(await screen.findByTestId('member-row-90211')).toBeInTheDocument();
-      expect(screen.getAllByTestId('member-row-90210')).toHaveLength(1);
+      // The load-more affordance is retired — the host slices 50+50 client-side.
       expect(screen.queryByTestId('member-load-more')).not.toBeInTheDocument();
-      expect(itemsCalls).toBeGreaterThanOrEqual(1);
+      // The paging invariant: NO member request ever carries cursor/limit.
+      // (Notifier-driven whole-list refreshes are allowed, page continuations
+      // are not.)
+      expect(itemsUrls.length).toBeGreaterThanOrEqual(1);
+      for (const url of itemsUrls) {
+        const params = new URL(url).searchParams;
+        expect(params.has('cursor')).toBe(false);
+        expect(params.has('limit')).toBe(false);
+      }
     }, 15000);
 
     it('card pin dispatches the CRUD, shows the undo toast, and Undo executes through the gateway', async () => {
@@ -1792,9 +1777,7 @@ describe('FileManager', () => {
       it('double click opens the member route through the existing card-action path', async () => {
         server.use(
           ...twoCardHandlers(),
-          http.get('/api/collections/1/items', () =>
-            HttpResponse.json({ items: [], next_cursor: null })
-          )
+          http.get('/api/collections/1/items', () => HttpResponse.json({ items: [] }))
         );
         await renderWithProvidersAct(<FileManagerWithRoutes />, {
           initialEntries: ['/files/__collections__'],
@@ -2147,7 +2130,7 @@ describe('FileManager', () => {
       http.get('/api/collections/merge-suggestions', () => HttpResponse.json({ suggestions: [] })),
       http.get('/api/collections/5/items', () => {
         if (onItems) onItems();
-        return HttpResponse.json({ items: [memberItem(liked())], next_cursor: null });
+        return HttpResponse.json({ items: [memberItem(liked())] });
       }),
     ];
 
@@ -2272,7 +2255,6 @@ describe('FileManager', () => {
               created_at: '2026-09-01T00:00:00Z',
             },
           ],
-          next_cursor: null,
         })
       ),
     ];
@@ -2322,7 +2304,6 @@ describe('FileManager', () => {
         http.get('/api/file-likes/items', () =>
           HttpResponse.json({
             items: likedNow.includes(90300) ? [rowItem] : [],
-            next_cursor: null,
           })
         ),
         http.put('/api/file-likes/:nodeId', async ({ request }) => {

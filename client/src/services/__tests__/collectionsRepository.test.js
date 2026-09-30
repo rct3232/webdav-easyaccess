@@ -70,14 +70,28 @@ describe('collectionsRepository reads', () => {
     expect(get).toHaveBeenCalledWith('/collections');
   });
 
-  it('getCollectionItems returns the fallback view shape on failure', async () => {
+  it('getCollectionItems rides ONLY since on the query (Decision B: cursor/limit retired+dropped) and returns the { items: [] } fallback on failure', async () => {
     get.mockRejectedValueOnce(new Error('Network error'));
 
-    const result = await getCollectionItems(17, { cursor: 'abc', since: '2026-09-01T00:00:00Z' });
-    expect(result).toEqual({ items: [], next_cursor: null });
-    expect(get).toHaveBeenCalledWith(
-      '/collections/17/items?cursor=abc&since=2026-09-01T00%3A00%3A00Z'
-    );
+    const result = await getCollectionItems(17, {
+      cursor: 'abc',
+      limit: 50,
+      since: '2026-09-01T00:00:00Z',
+    });
+    expect(result).toEqual({ items: [] }); // no next_cursor in the fallback shape
+    expect(get).toHaveBeenCalledWith('/collections/17/items?since=2026-09-01T00%3A00%3A00Z');
+  });
+
+  it('getCollectionItems returns the FULL payload verbatim (no paging keys)', async () => {
+    const payload = {
+      items: [{ node_id: 9, name: 'a.jpg', type: 'file' }],
+      publish_pending_count: 2,
+      digest: { added_since: 1, removed_since: 0 },
+    };
+    get.mockResolvedValueOnce({ data: payload });
+
+    await expect(getCollectionItems(17, {})).resolves.toEqual(payload);
+    expect(get).toHaveBeenCalledWith('/collections/17/items');
   });
 
   it('getMergeSuggestions returns an empty suggestions array on failure (not null)', async () => {

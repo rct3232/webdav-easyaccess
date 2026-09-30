@@ -3,7 +3,7 @@
  * @see docs/spec/client/components/file-manager/CollectionsListView.md (§2.3, §2.4, §2.5, §2.8)
  */
 import React from 'react';
-import { screen, fireEvent, within } from '@testing-library/react';
+import { screen, fireEvent, within, act, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import CollectionsListView from '../CollectionsListView';
 import { useResponsive } from '../../../hooks/useResponsive';
@@ -478,8 +478,6 @@ describe('CollectionsListView — member mode (P-4 shared renderers)', () => {
   const membersProps = () => ({
     mode: 'members',
     items: [memberRow()],
-    nextCursor: null,
-    onLoadMore: jest.fn(),
     onMemberAction: jest.fn(),
     onPublishBatch: jest.fn(),
     onMemberRowClick: jest.fn(),
@@ -614,24 +612,136 @@ describe('CollectionsListView — member mode (P-4 shared renderers)', () => {
     expect(screen.getByTestId('member-row-90210')).toBeInTheDocument();
   });
 
-  it('chrome host stays intact: banners + load-more wrap the delegated renderer under members-list', () => {
+  it('chrome host stays intact: banners wrap the delegated renderer under members-list (load-more retired)', () => {
     const props = membersProps();
     props.digest = { added_since: 2, removed_since: 0 };
     props.publishPendingCount = 4;
-    props.nextCursor = 'cur-2';
     const { container } = renderWithProviders(<CollectionsListView {...props} />);
     const host = container.querySelector('[data-testid="members-list"]');
     expect(host).toBeInTheDocument();
     expect(within(host).getByTestId('digest-banner')).toBeInTheDocument();
     expect(within(host).getByTestId('publish-pending-banner')).toBeInTheDocument();
     expect(within(host).getByTestId('member-row-90210')).toBeInTheDocument();
-    fireEvent.click(within(host).getByTestId('member-load-more'));
-    expect(props.onLoadMore).toHaveBeenCalledTimes(1);
+    // Decision B (2026-09-29): the load-more button is gone (client slice instead).
+    expect(within(host).queryByTestId('member-load-more')).not.toBeInTheDocument();
   });
 
   it('no nextCursor ⇒ no load-more affordance', () => {
     renderWithProviders(<CollectionsListView {...membersProps()} />);
     expect(screen.queryByTestId('member-load-more')).not.toBeInTheDocument();
+  });
+
+  // -- Decision B (2026-09-29 owner ruling): members/liked rows arrive as the
+  // FULL set and the host slices them 50+50 with the shared useInfiniteScroll
+  // sentinel (file-browse parity — same hook, same counts). ------------------
+  const manyRows = (n, from = 0) =>
+    Array.from({ length: n }, (_, i) =>
+      memberRow({ nodeId: 1000 + from + i, rowTestId: `member-row-${1000 + from + i}` })
+    );
+
+  const withCapturedObserver = (testBody) => {
+    const callbacks = [];
+    const RealMock = global.IntersectionObserver;
+    global.IntersectionObserver = class CapturedIO {
+      constructor(callback) {
+        callbacks.push(callback);
+      }
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    };
+    try {
+      testBody(callbacks);
+    } finally {
+      global.IntersectionObserver = RealMock;
+    }
+  };
+
+  it('60 member rows ⇒ the grid renders exactly the first 50 (client slice)', () => {
+    withCapturedObserver(() => {
+      const props = membersProps();
+      props.items = manyRows(60);
+      renderWithProviders(<CollectionsListView {...props} />);
+      expect(screen.getAllByTestId(/^member-row-/)).toHaveLength(50);
+      expect(screen.getByTestId('member-row-1000')).toBeInTheDocument();
+      expect(screen.queryByTestId('member-row-1055')).not.toBeInTheDocument();
+    });
+  });
+
+  it('list mode also slices 50, detail mode also slices 50', () => {
+    withCapturedObserver(() => {
+      const listPropsMany = { ...membersProps(), items: manyRows(60), memberViewMode: 'list' };
+      const { unmount } = renderWithProviders(<CollectionsListView {...listPropsMany} />);
+      expect(screen.getAllByTestId(/^member-row-/)).toHaveLength(50);
+      unmount();
+
+      const detailPropsMany = { ...membersProps(), items: manyRows(60), memberViewMode: 'detail' };
+      renderWithProviders(<CollectionsListView {...detailPropsMany} />);
+      expect(screen.getAllByTestId(/^member-row-/)).toHaveLength(50);
+    });
+  });
+
+  it('sentinel intersection appends the next 50 rows — no fetch fires (client slice)', async () => {
+    await withCapturedObserver(async (callbacks) => {
+      const props = membersProps();
+      props.items = manyRows(60);
+      renderWithProviders(<CollectionsListView {...props} />);
+      expect(screen.getAllByTestId(/^member-row-/)).toHaveLength(50);
+      expect(callbacks.length).toBeGreaterThan(0);
+
+      act(() => {
+        callbacks[callbacks.length - 1]([{ isIntersecting: true }]);
+      });
+
+      await waitFor(() => expect(screen.getAllByTestId(/^member-row-/)).toHaveLength(60));
+      expect(screen.getByTestId('member-row-1055')).toBeInTheDocument();
+      // Full fetch means NO additional gateway call exists to make — nothing to assert
+      // beyond the slice growing locally.
+    });
+  });
+
+  it('≤50 rows render fully with no sentinel observer armed', () => {
+    withCapturedObserver((callbacks) => {
+      const props = membersProps();
+      props.items = manyRows(48);
+      renderWithProviders(<CollectionsListView {...props} />);
+      expect(screen.getAllByTestId(/^member-row-/)).toHaveLength(48);
+      expect(callbacks).toHaveLength(0);
+    });
+  });
+
+  it('server order is preserved — no client re-sort (Decision B)', () => {
+    withCapturedObserver(() => {
+      const props = membersProps();
+      // deliberately "unsorted" names/ids — the host must render the array AS IS.
+      props.items = [
+        memberRow({
+          nodeId: 900,
+          rowTestId: 'member-row-900',
+          name: 'zeta.pdf',
+          basename: 'zeta.pdf',
+        }),
+        memberRow({
+          nodeId: 100,
+          rowTestId: 'member-row-100',
+          name: 'alpha.pdf',
+          basename: 'alpha.pdf',
+        }),
+        memberRow({
+          nodeId: 500,
+          rowTestId: 'member-row-500',
+          name: 'mid.pdf',
+          basename: 'mid.pdf',
+        }),
+      ];
+      const { container } = renderWithProviders(<CollectionsListView {...props} />);
+      const rows = Array.from(container.querySelectorAll('[data-testid^="member-row-"]'));
+      expect(rows.map((r) => r.getAttribute('data-testid'))).toEqual([
+        'member-row-900',
+        'member-row-100',
+        'member-row-500',
+      ]);
+    });
   });
 
   it('list mode regions are exclusive: no member rows while mode=list', () => {

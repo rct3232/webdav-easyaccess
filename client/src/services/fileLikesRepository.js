@@ -90,41 +90,24 @@ export const getLikedNodeIds = async () => {
   }
 };
 
-function buildQuery(pairs) {
-  const search = new URLSearchParams();
-  for (const [key, value] of pairs) {
-    if (value !== undefined && value !== null && value !== '') {
-      search.append(key, String(value));
-    }
-  }
-  return search.toString();
-}
-
 /**
- * P-5 Likes-surface cursor read (routes/fileLikes.md §2.4.2) — mirrors
- * collectionsRepository.getCollectionItems: `cursor`/`limit` ride the query
- * string, rows stay snake_case verbatim (consumed by the shell's toMemberRow
- * adapter), and the read NEVER rejects (absorbed fallback) and never notifies
- * (it is the read the change-subscribers converge on).
- * @param {{ cursor?: string, limit?: number }} [params]
- * @returns {Promise<{ items: Array<object>, next_cursor: string|null }>}
+ * P-5 Likes-surface listing (routes/fileLikes.md §2.4.2) — mirrors
+ * collectionsRepository.getCollectionItems: Decision B (2026-09-29 owner
+ * ruling) ships the COMPLETE classified row set in ONE response (the former
+ * `cursor`/`limit` query params are RETIRED), rows stay snake_case verbatim
+ * (consumed by the shell's toMemberRow adapter), and the read NEVER rejects
+ * (absorbed `{ items: [] }` fallback) and never notifies (it is the read the
+ * change-subscribers converge on).
+ * @returns {Promise<{ items: Array<object> }>}
  */
-export const getLikedItems = async ({ cursor, limit } = {}) => {
-  const query = buildQuery([
-    ['cursor', cursor],
-    ['limit', limit],
-  ]);
-  const url = query ? `/file-likes/items?${query}` : '/file-likes/items';
+export const getLikedItems = async () => {
   try {
-    const payload = readPayload(await get(url));
-    return {
-      items: Array.isArray(payload?.items) ? payload.items : [],
-      next_cursor: payload?.next_cursor ?? null,
-    };
+    const payload = readPayload(await get('/file-likes/items'));
+    return { items: Array.isArray(payload?.items) ? payload.items : [] };
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('Failed to load liked items:', error);
-    return { items: [], next_cursor: null };
+    return { items: [] };
   }
 };
 

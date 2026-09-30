@@ -855,8 +855,6 @@ describe('FileManagerView', () => {
     const memberModel = (overrides = {}) => ({
       mode: 'members',
       items: [],
-      nextCursor: null,
-      onLoadMore: jest.fn(),
       digest: null,
       publishPendingCount: null,
       onMemberAction: jest.fn(),

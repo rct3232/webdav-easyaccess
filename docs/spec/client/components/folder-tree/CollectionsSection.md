@@ -43,8 +43,8 @@ Target-contract spec.
   ArchiveNode (the section tail stays archive's), inside the same Collapse — same always-rendered
   zero-state rule as ArchiveNode (the destination lists `GET /api/file-likes/items` live; an empty
   like set is a legal empty view, never a hidden route). `FavoriteBorderIcon` + label
-  `nav.collectionsLiked`; no count badge (the listing is cursor-paged/unbounded-cheap — no count
-  read exists). `data-testid="collections-liked-node"`.
+  `nav.collectionsLiked`; no count badge (the row listing is a per-open full fetch — Decision B,
+  2026-09-29 — and the sidebar holds no such read; no count read exists). `data-testid="collections-liked-node"`.
 - **Decision:** member counts come from `item_count` (already on the row); no per-row lazy child loading (depth=1 rule).
 
 ### 2.4 Selection & Conditional Rendering

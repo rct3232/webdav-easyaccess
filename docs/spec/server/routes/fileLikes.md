@@ -37,7 +37,7 @@ with `setupModeGuardInstance`:
 | Method | Path     | Auth  | Description                                                                       |
 | ------ | -------- | ----- | --------------------------------------------------------------------------------- |
 | GET    | `/`      | Token | All liked node ids of the current viewer.                                         |
-| GET    | `/items` | Token | Liked-items ROW listing (P-5 Likes surface) — cursor-paged, classified (§2.4.2). |
+| GET    | `/items` | Token | Liked-items ROW listing (P-5 Likes surface) — **full fetch, ONE response** (Decision B), classified (§2.4.2). |
 | PUT    | `/:nodeId` | Token | Explicit set: body `{ liked: true\|false }` → toggle row.                       |
 
 ### 2.3 Middleware Used
@@ -82,19 +82,21 @@ Backs the static Likes child row of the Collections sidebar section
 (`docs/features/collections-platform.md` §3.3 landing note; owner ruling 2026-09-29 — the
 surface is `/files/__collections__/liked`, NOT a top-level `__liked__` virtual root).
 
-- **Query:** `?cursor=` (opaque base64url `{s,n}` — the collections members-cursor idiom,
-  `wire.encodeCursor`/`decodeCursor`; the score component stays `0`, paging keys on `node_id`)
-  and `?limit=` (default 50 / max 200 — `routes/collections.md` `GET /:id/items` parity,
-  clamped, never an error). A missing/garbage cursor decodes to `null` ⇒ first page.
+- **Query:** none. `?cursor=`/`?limit=` are **RETIRED** (Decision B, 2026-09-29 owner ruling —
+  same ruling as `routes/collections.md` `GET /:id/items`): if present they are IGNORED, never
+  an error — the response always carries the complete row set (the former members-cursor idiom,
+  `wire.encodeCursor`/`decodeCursor`, is deleted with the mechanism).
 - **200:** `{ "items": [ { "node_id", "name", "type", "mime", "state", "liked": true,
-  "created_at" } ], "next_cursor": string|null }` — the `serializeItem`-shape minus the
+  "created_at" } ] }` — the COMPLETE classified row set in one response (fileManager parity:
+  `getChildren` has no LIMIT; the client's `useInfiniteScroll` slices 50+50 for display);
+  the `serializeItem`-shape minus the
   membership fields (there is no stored/derived membership, publish state or `reason` on this
   surface); `created_at` is the NODE creation time (the only timestamp available — see
   Ordering) and feeds the client's `lastmod` fallback (`toMemberRow`).
 - **Source & Ordering:** `fileLikesStore.listLikedNodeIds(userId)` (`node_id` asc) then a
   per-node `fileNodesStore.getNode` loop (house style — the collections service loop; no batch
   node read exists). **No liked-at timestamp exists in the store**, so the listing order is
-  `node_id` asc, documented as the contract (stable cursor, no score).
+  `node_id` asc, documented as the contract (stable full-set order, no score).
 - **Classification** (likes SURVIVE trash and permission loss — fileLikesStore.md §2.3 — so
   the listing must resolve each id against CURRENT state, mirroring
   `collections/service.js resolveMemberRows`):
@@ -107,11 +109,13 @@ surface is `/files/__collections__/liked`, NOT a top-level `__liked__` virtual r
   - Node trashed (or purged — then the like row cascaded away) ⇒ **row HIDDEN**, the like row
     stays in the store (member parity: `resolveMemberRows` skips missing `getNode` rows; a
     restored node surfaces again on the next read).
-- **Paging:** the classified rows are sliced in memory (`limit` + `next_cursor` = last
-  returned `node_id`, exactly the members `getItems` mechanic) — capped page from day one,
-  the likes set itself is unbounded.
+- **Paging (RETIRED — Decision B, 2026-09-29):** the former in-memory slicing (`limit` +
+  `next_cursor` = last returned `node_id`, the deliberate divergence from the members
+  first-unreturned encoding) is DELETED — the complete row set ships in one response and the
+  client's `useInfiniteScroll` (50+50) owns display paging. The page-boundary defect class dies
+  with the mechanism.
 - **Scoping:** viewer-scoped (invariant 9) — the requesting user's own likes only; auth-only,
-  no new error codes (bad `limit`/`cursor` clamp/ignore, like the members route).
+  no new error codes (retired `limit`/`cursor` params ignored, like the members route).
 
 ### 2.5 Related Documents
 
@@ -134,6 +138,7 @@ surface is `/files/__collections__/liked`, NOT a top-level `__liked__` virtual r
 - [ ] GET /items: revoked grant ⇒ `state:'revoked'` row with null `name`/`type`/`mime`
       (masquerade parity); trashed liked node ⇒ row ABSENT while the like row survives the
       trash (restore re-surfaces it)
-- [ ] GET /items paging: `limit` default 50 / clamp 200; `next_cursor` resumes at the page's
-      last `node_id` (no dup/skip); garbage cursor ⇒ first page; end of list ⇒ `next_cursor:null`
+- [ ] GET /items (Decision B): returns the FULL classified row set in one response; retired
+      `cursor`/`limit` params IGNORED (200, same complete body incl. junk values); no
+      `next_cursor` key on the response
 - [ ] GET /items unauthenticated → 401; viewer scoping holds (B's listing excludes A's likes)

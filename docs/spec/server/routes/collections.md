@@ -42,7 +42,7 @@ with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 | POST   | `/:id/archive`       | Token | Archive (manual; confirm dialog is client-side).                                          |
 | POST   | `/:id/restore`       | Token | Restore an archived collection.                                                           |
 | DELETE | `/:id`               | Token | Permanent delete — archived only, else 409.                                               |
-| GET    | `/:id/items`         | Token | Member view, cursor-paged, digest counts via `since`.                                     |
+| GET    | `/:id/items`         | Token | Member view — **full fetch, ONE response** (Decision B), digest counts via `since`.       |
 | POST   | `/:id/items`         | Token | Add members. Body `{ nodeIds }`.                                                          |
 | DELETE | `/:id/items`         | Token | Remove stored rows / insert exclusions (derived).                                         |
 | PUT    | `/:id/items/publish` | Token | Publish/unpublish members (P-4). Body `{ nodeIds, published }`.                           |
@@ -160,8 +160,9 @@ Field rules:
   Active → 409 `collections.notArchived`. Permanent delete cascades membership/grant rows;
   journal rows for the collection are cascade-purged; `origin='system'` writes one
   `collection_tombstones` row (invariant 10). 204, **no undo pointer**.
-- **GET /:id/items:** Query `cursor` (opaque, from `next_cursor`), `limit` (default 50,
-  max 200), optional `since` (ISO timestamp — digest delta counts, §4.8).
+- **GET /:id/items:** Query optional `since` (ISO timestamp — digest delta counts, §4.8).
+  `cursor`/`limit` are **RETIRED** (Decision B, 2026-09-29 owner ruling): if present they are
+  IGNORED, never an error — every caller gets the complete row set.
   View = stored ∪ derived − exclusions, resolved at read time with join-time ACL
   (enrichment precedent `recentFiles/service.js`): trashed-by-owner members are hidden
   (row kept); unreadable members render as `state:"revoked"` placeholder rows with
@@ -170,7 +171,8 @@ Field rules:
   rule); in the **owner's view** they render with `"shared_excluded": true` (§3.2 chip).
   New members of `ask`/`off` collections render `published:false` to the owner; grantees
   only ever see `published:true` rows (§4.7).
-  200:
+  200 — the COMPLETE row set in one response (fileManager parity: `getChildren` has no LIMIT;
+  the client's `useInfiniteScroll` slices 50+50 for display, server order preserved):
 
 ```json
 {
@@ -190,7 +192,6 @@ Field rules:
       "shared_excluded": false
     }
   ],
-  "next_cursor": null,
   "publish_pending_count": 5,
   "digest": { "added_since": 3, "removed_since": 1 }
 }
@@ -202,10 +203,12 @@ predicate name for derived members (computed at query time, §4.8 — not a hist
 it is `null` on `state:"revoked"` placeholder rows like `name`/`type` (no metadata leak). `publish_pending_count` is owner-visible only (keyed on collection
 `publish_mode != auto` rows with `published=false`); grantees get the key omitted.
 `digest` appears only when `since` was supplied.
-**Decision:** serving `GET /:id/items` stamps `collection_digest_cursors.last_visited_at`
-to now for the requester (the read IS the visit; no separate reset endpoint).
-`similar`-style ordering: items sort by activity score desc, then `node_id` asc — stable
-under cursor.
+**Decision (RETAINED — verified still valid under Decision B):** serving `GET /:id/items`
+stamps `collection_digest_cursors.last_visited_at` to now for the requester (the read IS the
+visit; no separate reset endpoint) — one fetch per open stamps exactly once.
+`similar`-style ordering: items sort by activity score desc, then `node_id` asc — the stable
+full-set order the client slice reads head-first (Decision B retired the cursor; ordering is
+unchanged).
 
 - **POST /:id/items:** Owner or editor. Body `{ nodeIds: [ … ] }` (1–200, else 400
   `collections.emptyNodeIds` / 400 over cap). Rule §3.2: you may only add what you can
@@ -403,7 +406,8 @@ All errors follow the shared error envelope (`errorCode` + optional `params`,
   full active ∪ archived ∪ granted superset.
 - **Decision:** read access without any grant is a 404 masquerade (files-read precedent),
   never 403, so collection existence is not leaked.
-- **Decision:** item ordering = activity score desc then `node_id` asc (stable cursor).
+- **Decision:** item ordering = activity score desc then `node_id` asc (stable full-set order —
+  Decision B retired the cursor; the ordering itself is unchanged).
 - **Decision:** `since` is an ISO timestamp compared against stored
   `collection_items.created_at` and the row's `last_member_change_at` (derived, §4.8).
 - **Decision:** DELETE `/items` carries a JSON body (`{ nodeIds }`) — same channel shape
@@ -428,8 +432,14 @@ All errors follow the shared error envelope (`errorCode` + optional `params`,
   suffix rename and the restore; the undo pointer is the restore command.
 - **Decision (as-built T0.3):** item ordering reads member activity scores from the
   `node_activity` rollup when its store lands (T0.6); until then every score is absent
-  and ordering falls through to the `node_id` asc tie-break. The cursor keyset is
-  `(activity score, node_id)`-shaped so paging stays stable when scores appear.
+  and ordering falls through to the `node_id` asc tie-break.
+- **Decision (B — 2026-09-29 owner ruling):** the member listing returns the COMPLETE row set
+  in ONE response (fileManager precedent: `getChildren` has no LIMIT, the client's
+  `useInfiniteScroll` slices 50+50). Server cursor paging is RETIRED: `cursor`/`limit` query
+  params are ignored (never an error), `next_cursor` is absent from the response, and the client
+  load-more button is gone — the members-cursor page-boundary defect class (first-unreturned
+  encoding, row-gap at page boundaries) is eliminated by deleting the mechanism. The visit stamp
+  and the `since` digest stay.
 
 ### 2.5 Related Documents
 
@@ -450,6 +460,8 @@ All errors follow the shared error envelope (`errorCode` + optional `params`,
       shared-excluded rows never present; each entry `{node_id,name,type,mime}`)
 - [ ] `since` returns digest `added_since/removed_since` and reading items advances the
       visit cursor (second call with fresh `since` → zeros)
+- [ ] (Decision B) GET /:id/items ships the FULL row set in one response; the retired
+      `cursor`/`limit` params are IGNORED (200, same complete body); `next_cursor` key absent
 - [ ] `publish_pending_count` visible to owner, absent for grantee; `ask` new member is
       invisible to grantee until published (`auto` mode flips this)
 - [ ] PUT /:id/items/publish (P-4): owner flips a stored `ask` member → grantee sees the

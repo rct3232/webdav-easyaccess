@@ -115,7 +115,8 @@ files through the SAME member-view machinery (shared `FileList`/`FileGrid`/`File
 `MemberRowControls` menu without Exclude/publish — download/reveal/properties/unlike) backed by the
 new `GET /api/file-likes/items` endpoint (`routes/fileLikes.md` §2.4.2): `node_id` asc ordering
 (no liked-at stamp exists), unreadable likes render as `state:'revoked'` placeholders, trashed
-likes hidden, cursor-paged (default 50 / cap 200). Likes survive trash and permission loss
+likes hidden, ONE full-fetch response (Decision B, 2026-09-29 — server cursor paging retired;
+display slices 50+50 client-side via `useInfiniteScroll`). Likes survive trash and permission loss
 (store invariant) — the listing resolves current state per read, never the write-time state.
 
 ### 3.4 Usage signals

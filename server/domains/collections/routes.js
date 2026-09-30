@@ -233,14 +233,14 @@ router.get(
   requireUser,
   asyncHandler(async (req, res) => {
     try {
+      // Decision B (2026-09-29): the retired `cursor`/`limit` query params are
+      // NOT read (ignored, never an error); `since` (digest) stays.
       const result = await collectionsService.getItems(req.user.full.id, Number(req.params.id), {
-        cursor: req.query.cursor,
-        limit: req.query.limit,
         since: req.query.since,
       });
       res.json({
         items: result.items.map(wire.serializeItem),
-        next_cursor: result.nextCursor,
+        // Decision B (2026-09-29): full fetch — no next_cursor on the wire.
         ...(result.publishPendingCount !== undefined && {
           publish_pending_count: result.publishPendingCount,
         }),

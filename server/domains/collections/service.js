@@ -34,8 +34,6 @@ const STORE_SORTS = new Set(['activity', 'name', 'created', 'updated']);
 const VALID_INCLUDE_TOKENS = ['mine', 'shared', 'archived'];
 const VALID_PUBLISH_MODES = ['ask', 'off', 'auto'];
 const VALID_GRANT_ROLES = ['viewer', 'editor'];
-const DEFAULT_ITEM_LIMIT = 50;
-const MAX_ITEM_LIMIT = 200;
 const MAX_NODE_IDS = 200;
 const PREVIEW_SAMPLE_CAP = 12;
 const SIMILAR_MODEL_ID = 0;
@@ -608,36 +606,20 @@ async function deleteCollectionPermanent(userId, collectionId) {
 // Member view (GET /:id/items)
 // ---------------------------------------------------------------------------
 
-function clampLimit(raw) {
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_ITEM_LIMIT;
-  return Math.min(Math.floor(parsed), MAX_ITEM_LIMIT);
-}
-
-async function getItems(userId, collectionId, { cursor, limit, since } = {}) {
+async function getItems(userId, collectionId, { since } = {}) {
   const { collection } = await getCollectionForRead(userId, collectionId);
   const isRequesterOwner = collection.ownerId === userId;
 
+  // Decision B (2026-09-29 owner ruling): the COMPLETE row set in ONE response
+  // (fileManager precedent — getChildren has no LIMIT; the client's
+  // useInfiniteScroll slices 50+50). The cursor filter/slice and next_cursor
+  // are deleted; retired `cursor`/`limit` params are ignored upstream (route
+  // does not read them). Ordering (score desc, node_id asc) is unchanged —
+  // the client renders the head of this array, no re-sort.
   const rows = sortItemRows(await resolveMemberRows(userId, collection));
 
-  const parsedCursor = wire.decodeCursor(cursor);
-  const filtered = parsedCursor
-    ? rows.filter(
-        (row) =>
-          row.score > parsedCursor.score ||
-          (row.score === parsedCursor.score && row.nodeId > parsedCursor.nodeId)
-      )
-    : rows;
-
-  const parsedLimit = clampLimit(limit);
-  const page = filtered.slice(0, parsedLimit);
-  const nextRow = filtered[parsedLimit];
-
   const payload = {
-    items: page,
-    nextCursor: nextRow
-      ? wire.encodeCursor({ score: nextRow.score, nodeId: nextRow.nodeId })
-      : null,
+    items: rows,
   };
 
   if (isRequesterOwner) {

@@ -46,13 +46,11 @@ router.get(
   requireUser,
   asyncHandler(async (req, res) => {
     try {
-      const result = await fileLikesService.listLikedItems(req.user.full.id, {
-        cursor: req.query.cursor,
-        limit: req.query.limit,
-      });
+      // Decision B (2026-09-29): full fetch — the retired `cursor`/`limit`
+      // query params are NOT read (ignored, never an error); no next_cursor.
+      const result = await fileLikesService.listLikedItems(req.user.full.id);
       res.json({
         items: result.items.map(wire.serializeLikedItem),
-        next_cursor: result.nextCursor,
       });
     } catch (e) {
       throw handleServiceError(e);

@@ -282,8 +282,12 @@ export default async function globalSetup() {
   // a webdav-mode file backend against this container's subtree. Restarting
   // once up-front removes the mid-run lazy restarts the scratch helpers used
   // to perform in s3 mode.
-  console.log('Recreating the WebDAV DAV root (restarting webdav-e2e-test)...');
-  execFileSync('docker', ['restart', 'webdav-e2e-test'], { cwd: rootDir, stdio: 'inherit' });
+  console.log('Recreating the WebDAV DAV root (compose restart webdav-test)...');
+  execFileSync(
+    'docker',
+    ['compose', '-f', path.join(rootDir, 'docker-compose.e2e.yml'), 'restart', 'webdav-test'],
+    { cwd: rootDir, stdio: 'inherit' }
+  );
 
   // MinIO runs in both modes and both the webdav-mode app (some blob writes)
   // and the migration E2E target the S3 buckets, so the buckets must exist in

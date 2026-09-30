@@ -405,18 +405,22 @@ export async function ensureWebdavSubtree(caseId: string): Promise<void> {
   }
 }
 
-/** Restore the webdav dav root (restart the container when PROPFIND / is not 200/207). */
+/** Restore the webdav dav root (compose-restart the webdav-test service when PROPFIND / is not 200/207). */
 async function ensureWebdavRootReady(): Promise<void> {
   if (await propfindRootOk(2)) return;
 
-  console.log('[setup-scratch] webdav dav root missing — restarting webdav-e2e-test...');
-  execFileSync('docker', ['restart', 'webdav-e2e-test'], { cwd: rootDir, stdio: 'inherit' });
+  console.log('[setup-scratch] webdav dav root missing — compose restart webdav-test...');
+  execFileSync(
+    'docker',
+    ['compose', '-f', path.join(rootDir, 'docker-compose.e2e.yml'), 'restart', 'webdav-test'],
+    { cwd: rootDir, stdio: 'inherit' }
+  );
 
   const startedAt = Date.now();
   // eslint-disable-next-line no-await-in-loop
   while (!(await propfindRootOk(1))) {
     if (Date.now() - startedAt > 60_000) {
-      throw new Error('webdav dav root did not become reachable after restarting webdav-e2e-test');
+      throw new Error('webdav dav root did not become reachable after restarting webdav-test');
     }
   }
 }

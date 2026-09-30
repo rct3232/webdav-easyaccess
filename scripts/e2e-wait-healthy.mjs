@@ -3,12 +3,13 @@
  * E2E Docker Compose provisioning helper.
  *
  * Brings the `docker-compose.e2e.yml` stack up (idempotent `up -d`) and waits
- * until every container required for the active E2E backend mode reports
- * `healthy`:
+ * until every compose SERVICE required for the active E2E backend mode reports
+ * `healthy` (the stack has no fixed `container_name:` — names are project-
+ * scoped, so containers are matched by the `Service` field instead):
  *
- *   - webdav-e2e-test   (service: webdav-test)    — always required
- *   - webdav-pg-e2e     (service: postgresql-e2e) — always required
- *   - webdav-minio-e2e  (service: minio-e2e)      — required only in s3 mode
+ *   - webdav-test    — always required
+ *   - postgresql-e2e — always required
+ *   - minio-e2e      — required only in s3 mode
  *
  * Mode comes from `E2E_BACKEND_MODE` (defaults to `s3`).
  *
@@ -41,12 +42,16 @@ if (backendMode !== 's3' && backendMode !== 'webdav') {
   process.exit(1);
 }
 
-// Container names from `container_name:` in docker-compose.e2e.yml. The stack
-// always starts MinIO, but webdav runs do not depend on it being healthy.
-const ALWAYS_REQUIRED = ['webdav-e2e-test', 'webdav-pg-e2e'];
-const S3_REQUIRED = ['webdav-minio-e2e'];
-const requiredContainers =
-  backendMode === 's3' ? [...ALWAYS_REQUIRED, ...S3_REQUIRED] : [...ALWAYS_REQUIRED];
+// Compose service keys from `docker-compose.e2e.yml`. Containers carry no
+// fixed `container_name:` (project-scoped names allow parallel worktree
+// stacks), so health is polled per SERVICE. The stack always starts MinIO,
+// but webdav runs do not depend on it being healthy.
+const ALWAYS_REQUIRED_SERVICES = ['webdav-test', 'postgresql-e2e'];
+const S3_REQUIRED_SERVICES = ['minio-e2e'];
+const requiredServices =
+  backendMode === 's3'
+    ? [...ALWAYS_REQUIRED_SERVICES, ...S3_REQUIRED_SERVICES]
+    : [...ALWAYS_REQUIRED_SERVICES];
 
 function resolveComposeCommand() {
   const candidates = [
@@ -106,30 +111,36 @@ function healthOf(container) {
   return status.split(' ')[0] || '';
 }
 
-function statusesByName() {
-  const byName = new Map();
+function serviceOf(container) {
+  // `compose ps --format json` field casing varies across compose versions.
+  return String(container.Service ?? container.service ?? '').trim();
+}
+
+function statusesByService() {
+  const byService = new Map();
   for (const container of getContainerList()) {
-    const name = String(container.Name ?? container.name ?? '').trim();
-    if (name) {
-      byName.set(name, {
+    const service = serviceOf(container);
+    if (service) {
+      byService.set(service, {
+        name: String(container.Name ?? container.name ?? '').trim(),
         state: String(container.State ?? container.state ?? '').trim(),
         health: healthOf(container),
       });
     }
   }
-  return byName;
+  return byService;
 }
 
 function waitForHealthy() {
   const startedAt = Date.now();
   for (;;) {
-    const byName = statusesByName();
-    const summary = requiredContainers.map((name) => {
-      const entry = byName.get(name);
-      return `${name}=${entry ? `${entry.state}/${entry.health}` : 'missing'}`;
+    const byService = statusesByService();
+    const summary = requiredServices.map((service) => {
+      const entry = byService.get(service);
+      return `${service}=${entry ? `${entry.state}/${entry.health}` : 'missing'}`;
     });
-    const allHealthy = requiredContainers.every(
-      (name) => byName.has(name) && byName.get(name).health === 'healthy'
+    const allHealthy = requiredServices.every(
+      (service) => byService.has(service) && byService.get(service).health === 'healthy'
     );
 
     if (allHealthy) {
@@ -143,7 +154,7 @@ function waitForHealthy() {
     if (Date.now() - startedAt >= TIMEOUT_MS) {
       console.error(
         `[e2e-wait-healthy] Timed out after ${TIMEOUT_MS / 1000}s waiting for E2E containers to be healthy.\n` +
-          `  Mode: ${backendMode} | Required: ${requiredContainers.join(', ')}\n` +
+          `  Mode: ${backendMode} | Required services: ${requiredServices.join(', ')}\n` +
           `  Current: ${summary.join(' | ')}`
       );
       process.exit(1);
@@ -157,6 +168,6 @@ function waitForHealthy() {
 
 runUp();
 console.log(
-  `[e2e-wait-healthy] Waiting for healthy containers: ${requiredContainers.join(', ')} (timeout ${TIMEOUT_MS / 1000}s)...`
+  `[e2e-wait-healthy] Waiting for healthy services: ${requiredServices.join(', ')} (timeout ${TIMEOUT_MS / 1000}s)...`
 );
 waitForHealthy();

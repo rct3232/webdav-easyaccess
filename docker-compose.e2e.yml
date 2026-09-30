@@ -1,7 +1,13 @@
+# E2E Docker stack. Containers are intentionally NOT pinned via
+# `container_name:` — names stay project-scoped (compose derives the project
+# from the checkout directory), so parallel E2E runs from multiple git
+# worktrees never collide on global container names. Reach containers through
+# the compose service names (`docker compose -f docker-compose.e2e.yml restart
+# webdav-test`), never through a hard-coded container name.
+# See docs/TEST_GIT_GUIDE.md.
 services:
   webdav-test:
     image: bytemark/webdav
-    container_name: webdav-e2e-test
     environment:
       AUTH_TYPE: Basic
       USERNAME: e2etest
@@ -18,7 +24,6 @@ services:
 
   postgresql-e2e:
     image: postgres:16
-    container_name: webdav-pg-e2e
     environment:
       POSTGRES_DB: webdav_e2e
       POSTGRES_USER: e2etest
@@ -33,7 +38,6 @@ services:
 
   minio-e2e:
     image: minio/minio:latest
-    container_name: webdav-minio-e2e
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin

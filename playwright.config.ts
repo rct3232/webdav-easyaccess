@@ -2,6 +2,8 @@ import path from 'path';
 
 import { defineConfig } from '@playwright/test';
 
+import { e2ePorts, apiOrigin, appOrigin } from './e2e/helpers/ports';
+
 const requestedMode = process.env.E2E_BACKEND_MODE || 's3';
 if (requestedMode !== 's3' && requestedMode !== 'webdav') {
   throw new Error(`Invalid E2E_BACKEND_MODE "${requestedMode}". Expected "s3" or "webdav".`);
@@ -102,8 +104,9 @@ if (backendMode === 'webdav') {
     // Additive, hermetic projects (setup-wizard / admin-config / migration /
     // trash-admin / collections).
     // They spawn their own scratch servers and are isolated per suite (Option A
-    // Phase 1): each suite owns ONE distinct scratch port (:5003 wizard, :5010
-    // admin-config, :5011 migration, :5012 trash-admin, :5013 collections)
+    // Phase 1): each suite owns ONE distinct scratch port slot
+    // (`e2ePorts.scratch*` = base :5003 wizard, :5010 admin-config, :5011
+    // migration, :5012 trash-admin, :5013 collections at band offset 0)
     // mirrored by its
     // baseURL below, and the
     // migration suite targets its own dedicated MinIO bucket. Phase 2 lifted the
@@ -122,37 +125,37 @@ if (backendMode === 'webdav') {
         name: 'setup-wizard-desktop',
         spec: /setup-wizard\.spec\.ts$/,
         use: desktopUse,
-        baseURL: 'http://localhost:5003',
+        baseURL: `http://localhost:${e2ePorts.scratchWizard}`,
       },
       {
         name: 'setup-wizard-mobile',
         spec: /setup-wizard\.spec\.ts$/,
         use: mobileUse,
-        baseURL: 'http://localhost:5003',
+        baseURL: `http://localhost:${e2ePorts.scratchWizard}`,
       },
       {
         name: 'admin-config-desktop',
         spec: /admin-config\.spec\.ts$/,
         use: desktopUse,
-        baseURL: 'http://localhost:5010',
+        baseURL: `http://localhost:${e2ePorts.scratchAdminConfig}`,
       },
       {
         name: 'admin-config-mobile',
         spec: /admin-config\.spec\.ts$/,
         use: mobileUse,
-        baseURL: 'http://localhost:5010',
+        baseURL: `http://localhost:${e2ePorts.scratchAdminConfig}`,
       },
       {
         name: 'migration-desktop',
         spec: /migration\.spec\.ts$/,
         use: desktopUse,
-        baseURL: 'http://localhost:5011',
+        baseURL: `http://localhost:${e2ePorts.scratchMigration}`,
       },
       {
         name: 'migration-mobile',
         spec: /migration\.spec\.ts$/,
         use: mobileUse,
-        baseURL: 'http://localhost:5011',
+        baseURL: `http://localhost:${e2ePorts.scratchMigration}`,
       },
       {
         // DEF-20: globally destructive trash case — scratch-hermetic on its
@@ -161,7 +164,7 @@ if (backendMode === 'webdav') {
         name: 'trash-admin-desktop',
         spec: /trash-admin\.spec\.ts$/,
         use: desktopUse,
-        baseURL: 'http://localhost:5012',
+        baseURL: `http://localhost:${e2ePorts.scratchTrashAdmin}`,
       },
       {
         // P0 collections lifecycle (E2E-COLLECTION-001..009) — scratch-hermetic
@@ -172,7 +175,7 @@ if (backendMode === 'webdav') {
         name: 'collections-desktop',
         spec: /collections\.spec\.ts$/,
         use: desktopUse,
-        baseURL: 'http://localhost:5013',
+        baseURL: `http://localhost:${e2ePorts.scratchCollections}`,
       },
     ];
     for (const h of hermeticSpecs) {
@@ -202,7 +205,7 @@ export default defineConfig({
   globalSetup: './e2e/global-setup.ts',
   globalTeardown: './e2e/global-teardown.ts',
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: appOrigin,
     trace: 'retain-on-failure',
   },
   projects,
@@ -210,7 +213,7 @@ export default defineConfig({
   webServer: [
     {
       command: 'npm run e2e:server',
-      url: 'http://localhost:5002/api/health',
+      url: `${apiOrigin}/api/health`,
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
       stdout: isQuiet ? 'ignore' : 'pipe',
@@ -222,7 +225,7 @@ export default defineConfig({
       // an /api proxy to the E2E API server. Faster than the webpack dev server
       // and exercises the shipped bundle. Dev iteration uses `npm run e2e:client`.
       command: 'node scripts/e2e-serve-client.js',
-      url: 'http://localhost:3000',
+      url: `http://localhost:${e2ePorts.client}`,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
       stdout: isQuiet ? 'ignore' : 'pipe',

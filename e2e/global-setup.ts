@@ -4,26 +4,28 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { cleanDir, runSeedDb } from './helpers/seedDb';
+import { apiOrigin, appOrigin, s3Endpoint, webdavBase } from './helpers/ports';
 import { TEST_USERS } from './fixtures/test-data';
 
 const rootDir = process.cwd();
 const backendMode = process.env.E2E_BACKEND_MODE || 's3';
 
 // E2E API server and client origin mirror `playwright.config.ts` webServer /
-// baseURL. The login below runs in globalSetup, AFTER Playwright has booted the
+// baseURL and resolve through this checkout's port band (e2e/helpers/ports).
+// The login below runs in globalSetup, AFTER Playwright has booted the
 // webServer (Playwright 1.58 task order: plugins/webServer -> globalSetup).
-const E2E_API_ORIGIN = 'http://127.0.0.1:5002';
-const E2E_APP_ORIGIN = 'http://localhost:3000';
+const E2E_API_ORIGIN = apiOrigin;
+const E2E_APP_ORIGIN = appOrigin;
 const ADMIN_STATE_PATH = path.join(rootDir, 'e2e-data', 'state', 'admin.json');
 
 // createRequire needs a module filename; we never rely on __filename so this
 // works both under Playwright's CJS transpile and a direct Node ESM import.
 const require = createRequire(path.join(rootDir, 'e2e', 'global-setup.ts'));
 
-// Host-reachable service defaults. They mirror `.env.e2e` / `.env.e2e.webdav`;
-// the global-setup process does not load those dotenv files itself, so we read
-// process.env overrides but fall back to the same values.
-const E2E_S3_ENDPOINT = 'http://127.0.0.1:9010';
+// Host-reachable service defaults. They mirror the generated
+// `data/e2e-runtime.env` for this checkout's band (e2e/helpers/ports); the
+// global-setup process does not load dotenv files itself.
+const E2E_S3_ENDPOINT = s3Endpoint;
 const E2E_S3_REGION = process.env.AWS_REGION || 'us-east-1';
 const E2E_S3_ACCESS_KEY = process.env.AWS_ACCESS_KEY_ID || 'minioadmin';
 const E2E_S3_SECRET_KEY = process.env.AWS_SECRET_ACCESS_KEY || 'minioadmin';
@@ -34,7 +36,7 @@ const E2E_S3_BUCKET = process.env.S3_BUCKET || 'e2e-test-bucket';
 // platform bucket, so the suite can run concurrently with the s3 platform tests.
 const E2E_MIGRATION_S3_BUCKET = 'e2e-migration-bucket';
 
-const webdavBaseUrl = 'http://127.0.0.1:8090/';
+const webdavBaseUrl = `${webdavBase}/`;
 const webdavAuth = Buffer.from('e2etest:e2etest123').toString('base64');
 
 function waitForWebdav(timeoutMs: number) {
@@ -282,8 +284,12 @@ export default async function globalSetup() {
   // a webdav-mode file backend against this container's subtree. Restarting
   // once up-front removes the mid-run lazy restarts the scratch helpers used
   // to perform in s3 mode.
-  console.log('Recreating the WebDAV DAV root (restarting webdav-e2e-test)...');
-  execFileSync('docker', ['restart', 'webdav-e2e-test'], { cwd: rootDir, stdio: 'inherit' });
+  console.log('Recreating the WebDAV DAV root (compose restart webdav-test)...');
+  execFileSync(
+    'docker',
+    ['compose', '-f', path.join(rootDir, 'docker-compose.e2e.yml'), 'restart', 'webdav-test'],
+    { cwd: rootDir, stdio: 'inherit' }
+  );
 
   // MinIO runs in both modes and both the webdav-mode app (some blob writes)
   // and the migration E2E target the S3 buckets, so the buckets must exist in

@@ -9,17 +9,26 @@
  * - Ensures `client/build` exists first (builds once when missing) so the
  *   platform webServer never depends on the hermetic suites' lazy build.
  * - Serves static assets with SPA history fallback to `index.html`.
- * - Port/API target: `PORT`/`REACT_APP_API_PORT` overrides, defaults 3000/5002.
+ * - Port/API target: this checkout's E2E port band
+ *   (scripts/lib/e2e-band.cjs; `data/e2e-runtime.json`), with
+ *   `PORT`/`REACT_APP_API_PORT` env overrides; defaults 3000/5002 (offset 0).
+ *   The built client calls `/api/*` relative (same-origin), so the proxy
+ *   target is the only place the API port matters here.
  */
 
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 
+const { effectivePorts } = require('./lib/e2e-band.cjs');
+
 const rootDir = process.cwd();
 const buildDir = path.join(rootDir, 'client', 'build');
-const port = Number(process.env.PORT || 3000);
-const apiTarget = `http://127.0.0.1:${process.env.REACT_APP_API_PORT || process.env.API_PORT || 5002}`;
+const bandPorts = effectivePorts(rootDir);
+const port = Number(process.env.PORT || bandPorts.client);
+const apiTarget = `http://127.0.0.1:${Number(
+  process.env.REACT_APP_API_PORT || process.env.API_PORT || bandPorts.api
+)}`;
 
 // Freshness-gated build with CRA's broken bundled eslint disabled — shared
 // module so the platform webServer and the hermetic suites never diverge

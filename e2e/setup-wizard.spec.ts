@@ -7,6 +7,7 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
 import { TEST_FILES } from './fixtures/test-data';
 import { loginWithCredentials } from './helpers/auth';
 import { readTestFileFixture } from './helpers/files';
+import { e2ePorts, s3Endpoint, webdavBase } from './helpers/ports';
 import {
   createScratchPgDb,
   dropScratchPgDb,
@@ -53,7 +54,7 @@ const require = createRequire(__filename);
 
 const backendMode = process.env.E2E_BACKEND_MODE || 's3';
 
-const WEBDAV_BASE = 'http://127.0.0.1:8090';
+const WEBDAV_BASE = webdavBase;
 const WEBDAV_USERNAME = 'e2etest';
 const WEBDAV_PASSWORD = 'e2etest123';
 
@@ -61,10 +62,10 @@ const S3_BUCKET = 'e2e-test-bucket';
 const S3_REGION = 'us-east-1';
 const S3_ACCESS_KEY = 'minioadmin';
 const S3_SECRET_KEY = 'minioadmin';
-const S3_ENDPOINT = 'http://127.0.0.1:9010';
+const S3_ENDPOINT = s3Endpoint;
 
 const PG_HOST = '127.0.0.1';
-const PG_PORT = '5433';
+const PG_PORT = String(e2ePorts.pg);
 const PG_USER = 'e2etest';
 const PG_PASSWORD = 'e2etest';
 const SCRATCH_PG_DB = 'webdav_e2e_setup';

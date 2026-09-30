@@ -6,6 +6,8 @@ import { createRequire } from 'node:module';
 
 import { expect, type Page } from '@playwright/test';
 
+import { e2ePorts, webdavBase } from './ports';
+
 /**
  * Hermetic scratch-instance helpers for the first-run setup-wizard
  * (`setup-wizard.spec.ts`), admin-config (`admin-config.spec.ts`) and migration
@@ -18,9 +20,12 @@ import { expect, type Page } from '@playwright/test';
  * sqlite path, own scratch PG database (`webdav_e2e_setup`, separate from the
  * read-only `webdav_e2e` used by the shared E2E infrastructure).
  *
- * Port contract (Option A Phase 1): each hermetic suite owns ONE distinct
- * scratch port so the suites can run concurrently — setup-wizard :5003
- * (the exported `scratchPort`), admin-config :5010, migration :5011, trash-admin :5012. The port
+ * Port contract (Option A Phase 1 + band isolation 2026-09-30): each hermetic
+ * suite owns ONE distinct scratch port slot so the suites can run
+ * concurrently — setup-wizard (base :5003, the exported `scratchPort`),
+ * admin-config (:5010), migration (:5011), trash-admin (:5012), collections
+ * (:5013); every slot shifts with this checkout's port band
+ * (`e2e/helpers/ports.ts`). The port
  * is passed explicitly to `spawnScratchServer`/`waitForScratchHealth` and must
  * match the suite's playwright.config.ts baseURL. `pg` is required via
  * `createRequire` (ships no types; the local structural type keeps the surface
@@ -31,7 +36,7 @@ const require = createRequire(__filename);
 
 const rootDir = process.cwd();
 const SCRATCH_ROOT = path.join(rootDir, 'e2e-data', 'setup-wizard');
-const SCRATCH_PORT = 5003;
+const SCRATCH_PORT = e2ePorts.scratchWizard;
 
 /** The setup-wizard suite's scratch server port (mirrors playwright.config.ts setup-wizard baseURL). */
 export const scratchPort = SCRATCH_PORT;
@@ -78,14 +83,14 @@ const CONFIG_ENV_KEYS = [
 ];
 
 // Docker-compose defaults (mirror e2e/global-setup.ts). The scratch PG helpers
-// connect to the e2e Postgres superuser on the host-exposed :5433.
+// connect to the e2e Postgres superuser on this band's host-exposed port.
 const PG_HOST = '127.0.0.1';
-const PG_PORT = 5433;
+const PG_PORT = e2ePorts.pg;
 const PG_USER = process.env.WEA_DB_USER || 'e2etest';
 const PG_PASSWORD = process.env.WEA_DB_PASSWORD || 'e2etest';
 
 // bytemark/webdav container defaults (mirror e2e/global-setup.ts).
-const WEBDAV_BASE = 'http://127.0.0.1:8090';
+const WEBDAV_BASE = webdavBase;
 const WEBDAV_AUTH = Buffer.from('e2etest:e2etest123').toString('base64');
 
 type PgPool = {
@@ -405,18 +410,22 @@ export async function ensureWebdavSubtree(caseId: string): Promise<void> {
   }
 }
 
-/** Restore the webdav dav root (restart the container when PROPFIND / is not 200/207). */
+/** Restore the webdav dav root (compose-restart the webdav-test service when PROPFIND / is not 200/207). */
 async function ensureWebdavRootReady(): Promise<void> {
   if (await propfindRootOk(2)) return;
 
-  console.log('[setup-scratch] webdav dav root missing — restarting webdav-e2e-test...');
-  execFileSync('docker', ['restart', 'webdav-e2e-test'], { cwd: rootDir, stdio: 'inherit' });
+  console.log('[setup-scratch] webdav dav root missing — compose restart webdav-test...');
+  execFileSync(
+    'docker',
+    ['compose', '-f', path.join(rootDir, 'docker-compose.e2e.yml'), 'restart', 'webdav-test'],
+    { cwd: rootDir, stdio: 'inherit' }
+  );
 
   const startedAt = Date.now();
   // eslint-disable-next-line no-await-in-loop
   while (!(await propfindRootOk(1))) {
     if (Date.now() - startedAt > 60_000) {
-      throw new Error('webdav dav root did not become reachable after restarting webdav-e2e-test');
+      throw new Error('webdav dav root did not become reachable after restarting webdav-test');
     }
   }
 }

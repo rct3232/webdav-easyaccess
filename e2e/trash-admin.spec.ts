@@ -4,6 +4,7 @@ import http from 'node:http';
 import { expect, test } from '@playwright/test';
 
 import { TEST_FILES } from './fixtures/test-data';
+import { e2ePorts, webdavBase } from './helpers/ports';
 import {
   ensureClientBuild,
   ensureWebdavSubtree,
@@ -40,8 +41,8 @@ import { deleteItemViaUi } from './helpers/trash';
  * boots its own server on :5012 (own sqlite, fresh DB per run) and the
  * global purge can only ever affect its own world. Requires docker infra.
  */
-const SCRATCH_PORT = 5012;
-const WEBDAV_BASE = 'http://127.0.0.1:8090';
+const SCRATCH_PORT = e2ePorts.scratchTrashAdmin;
+const WEBDAV_BASE = webdavBase;
 const WEBDAV_AUTH = Buffer.from('e2etest:e2etest123').toString('base64');
 const CASE_ID = 'trash-admin';
 const ADMIN_PASSWORD = 'TrashAdminE2e!123';
@@ -57,7 +58,7 @@ function deleteWebdavPath(davPath: string): Promise<void> {
     const req = http.request(
       {
         hostname: '127.0.0.1',
-        port: 8090,
+        port: e2ePorts.webdav,
         path: davPath,
         method: 'DELETE',
         headers: { Authorization: `Basic ${WEBDAV_AUTH}` },

@@ -13,6 +13,7 @@ import {
   waitForScratchHealth,
   writeScratchEnv,
 } from './helpers/setupScratch';
+import { e2ePorts, webdavBase } from './helpers/ports';
 import { loginWithCredentials } from './helpers/auth';
 import {
   buildName,
@@ -54,8 +55,8 @@ import { setCollectionSort } from './helpers/explorer-controls';
  * desktop-only) file — restart is not a behavior under test here. No AI
  * surfaces are expected (`semantic_available:false`): P0 only.
  */
-const SCRATCH_PORT = 5013;
-const WEBDAV_BASE = 'http://127.0.0.1:8090';
+const SCRATCH_PORT = e2ePorts.scratchCollections;
+const WEBDAV_BASE = webdavBase;
 const CASE_ID = 'collections';
 const ADMIN_PASSWORD = 'CollectionsE2e!123';
 

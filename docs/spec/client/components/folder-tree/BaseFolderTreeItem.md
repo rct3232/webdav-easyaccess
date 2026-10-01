@@ -2,12 +2,13 @@
 
 ## 1. Overview
 
-| Item               | Description                                                                                                                                                                                   |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role               | Folder tree item view: renders a folder row with expand/collapse affordance, highlights current path, and wires drop/drag callbacks provided by the host. Supports `path`/`name` or `node`.   |
-| Used in            | FolderTree, SharedFoldersSection                                                                                                                                                              |
-| Related components | `FolderTree`, `SharedFoldersSection`, `FileTreeSkeleton`                                                                                                                                      |
-| Ownership note     | This component is primarily a **view** + interaction wiring. Child loading, permission derivation, tree-update reconciliation, and DnD policy are delegated to `useFolderTreeItemController`. |
+| Item               | Description                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Folder tree item view: renders a folder row with expand/collapse affordance, highlights current path, and wires drop/drag callbacks provided by the host. Supports `path`/`name` or `node`.                                                                                                                                                                                                                                                              |
+| Used in            | FolderTree, SharedFoldersSection                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Related components | `TreeRow` (visual row primitive), `FolderTree`, `SharedFoldersSection`, `FileTreeSkeleton`                                                                                                                                                                                                                                                                                                                                                               |
+| Ownership note     | This component is primarily a **view** + interaction wiring. Child loading, permission derivation, tree-update reconciliation, and DnD policy are delegated to `useFolderTreeItemController`.                                                                                                                                                                                                                                                            |
+| Visual core note   | Owner ruling 2026-10-01 (PLAN §12, sidebar tree-row unification): the visual row (padding/indent, icon geometry, name cell, selection highlight) is rendered by the shared `TreeRow` primitive. This component's BEHAVIOR and **props surface are unchanged** — it keeps expand/chevron (`leading` slot), drag/drop wiring (`listItemProps`), drop-target highlight (`buttonSx`) and disabled state, all delegated to `TreeRow` slots. See `TreeRow.md`. |
 
 ---
 
@@ -85,7 +86,12 @@
 
 ### 2.8 Display
 
-- Folder name: long names are truncated with CSS ellipsis (`overflow: hidden`, `textOverflow: ellipsis`, `whiteSpace: nowrap`). Tooltip with full name is shown on hover only when the name is truncated (detected via `scrollWidth` > `clientWidth` and ResizeObserver).
+- Folder name: rendered by `TreeRow` — observed-width MIDDLE truncation (`useObservedElementWidth`
+  - `pixelMiddleTruncate`, the single font-metrics source shared with the recent/collections rows).
+    Tooltip with the full name is shown on hover only when the name is truncated. (Amendment, owner
+    ruling 2026-10-01: replaces the former inline `scrollWidth`/`ResizeObserver` + CSS-ellipsis
+    detection — the last direct browser-observer use inside this pure view; the row's interaction
+    behavior is otherwise unchanged.)
 
 ### 2.9 Edge Cases
 

@@ -88,10 +88,12 @@ describe('CollectionsSection', () => {
     expect(rows[1].getAttribute('data-testid')).toBe('collection-row-2');
   });
 
-  it('child rows render the MEASURED 24px padding-left — parity with RecentFilesSection children (F5)', () => {
+  it('child rows render via TreeRow at the level-1 tree indent — parity with shared-folder rows (F5 rewrite, 2026-10-01)', () => {
     renderWithProviders(<CollectionsSection {...defaultProps()} />);
     ['collections-liked-node', 'collection-row-1', 'collections-archive-node'].forEach((testid) => {
-      expect(window.getComputedStyle(screen.getByTestId(testid)).paddingLeft).toBe('24px');
+      const el = screen.getByTestId(testid);
+      expect(el.getAttribute('data-tree-row')).toBe('true');
+      expect(window.getComputedStyle(el).paddingLeft).toBe('16px');
     });
   });
 

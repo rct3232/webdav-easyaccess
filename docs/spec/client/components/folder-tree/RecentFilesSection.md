@@ -40,7 +40,9 @@
 
 ### 2.4 Dependencies
 
-- **imports:** `getFileIcon`, `pixelMiddleTruncate`, a width-observation hook for prepared container width
+- **imports:** `getFileIcon`, `TreeRow` (the row primitive owns the width-observation hook and
+  the middle-truncation idiom internally — this component no longer imports `pixelMiddleTruncate`
+  or the observation hook directly)
 - **Reference implementation:** `client/src/components/folder-tree/RecentFilesSection.js`
 - **Boundary:** This component must not instantiate `ResizeObserver` directly. Width measurement belongs to a reusable hook/adapter seam that exposes the current container width as render-ready state.
 
@@ -50,10 +52,12 @@
 
 ### 2.6 Conditional Rendering
 
-- **Child-row indent parity (F5 measurement, 2026-10-01 §11 follow-up):** a recent child row is
-  a SINGLE `sx={{ pl: 3 }}` ListItemButton (computed `padding-left: 24px` — jsdom-measured);
-  the `pl: 3` Box in the file is the EMPTY-STATE branch only, never a row wrapper. This is the
-  same effective indent as every CollectionsSection child row (pinned by per-section tests).
+- **Child-row rendering (TreeRow, owner ruling 2026-10-01, PLAN §12):** every recent child row
+  renders through the shared `TreeRow` primitive at `level = 1` — computed `padding-left: 16px`,
+  identical to a shared-folder/file-tree child row (`pl: level*2`, the unified tree indent rule).
+  The earlier F5 pin (`sx={{ pl: 3 }}` ⇒ 24px, equal to CollectionsSection children) is RETIRED:
+  section children intentionally moved onto the tree's level-based indent. The `pl: 3` Box is the
+  EMPTY-STATE branch only, never a row wrapper (unchanged).
 - Selected when currentPath === '/**recent**'
 - Collapse for file list
 - Empty: recentItemsEmpty message
@@ -69,7 +73,7 @@
 
 ### 2.9 UI Enhancements
 
-- **Middle-Truncation:** Long filenames should be truncated in the middle (e.g., `abc...jk.docx`) to fit the component width while preserving the start and the extension.
+- **Middle-Truncation:** Long filenames should be truncated in the middle (e.g., `abc...jk.docx`) to fit the component width while preserving the start and the extension. Implemented inside the shared `TreeRow` primitive (owner ruling 2026-10-01 — one font-metrics source for all sidebar rows).
 - **Dynamic Width:** Truncation should adapt to the component's width and consider character widths (e.g., CJK).
 - **Tooltip:** Full filename should be visible via tooltip on hover.
 - **A11y/testing note:** Tooltip content may be exposed via ARIA attributes; tests should verify user-observable full-name access and should not require a static `title` attribute on the text node.

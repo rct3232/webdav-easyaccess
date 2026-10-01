@@ -8,7 +8,7 @@ Target-contract spec.
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Role               | Collapsible folder-tree section for the `__collections__` virtual node (depth=1): header + a static `Likes` child row AT THE TOP (M-2) + activity-ordered collection rows + shared-origin icon chips + a trailing `__archive__` node (`ArchiveNode`). No tree-walking into members (§3.1). |
 | Used in            | FolderTree (desktop sidebar + mobile drawer), composed like `RecentFilesSection`/`SharedFoldersSection`                                                                                                                                                                                    |
-| Related components | BaseFolderTreeItem (selected-style idiom), RecentFilesSection (collapsible idiom), CollectionsListView (click target view)                                                                                                                                                                 |
+| Related components | TreeRow (shared child-row primitive), BaseFolderTreeItem (selected-style idiom), RecentFilesSection (collapsible idiom), CollectionsListView (click target view)                                                                                                                           |
 
 ---
 
@@ -35,15 +35,14 @@ Target-contract spec.
 
 ### 2.3 Rendering Contract
 
-- **Child-row indent parity (F5 measurement, 2026-10-01 §11 follow-up):** every section child
-  row (LikesNode, collection rows, ArchiveNode) renders a SINGLE `sx={{ pl: 3 }}` ListItemButton —
-  computed `padding-left: 24px`, the SAME as a RecentFilesSection child row (measured via jsdom
-  `getComputedStyle`; pinned by per-section tests in both suites). The follow-up briefing's
-  "wrapper pl:3 + row pl:3 ⇒ 48px on recent" reading conflated the EMPTY-STATE Box
-  (`RecentFilesSection.js` empty branch — only rendered when the list is empty) with the rows;
-  the sections already match, so NO shared `SECTION_CHILD_INDENT` constant was introduced.
-  (The file-tree children — `BaseFolderTreeItem`, `pl: level*2` at 16px/level + chevron slot —
-  are a recursive-depth idiom by design and stay outside this parity rule.)
+- **Child-row rendering (TreeRow, owner ruling 2026-10-01, PLAN §12):** every section child row
+  (LikesNode, collection rows, ArchiveNode) renders through the shared `TreeRow` primitive at
+  `level = 1` — computed `padding-left: 16px`, identical to a shared-folder/file-tree child row
+  (`pl: level*2`, the unified tree indent rule; pinned cross-section in `TreeRow.test.js` and the
+  per-section computed-paddingLeft tests). The earlier F5 pin (`sx={{ pl: 3 }}` ⇒ 24px equality
+  between the two sections) is RETIRED: section children intentionally moved onto the tree's
+  level-based indent, so the sections and the file tree now share ONE row implementation instead
+  of two parallel indent idioms.
 - Header row: `{CollectionsIcon} Collections` (`nav.collections`), collapsible like RecentFilesSection.
 - Collection row: icon + name (**M-1, 2026-09-30: the secondary item-count display is REMOVED** —
   the row secondary keeps only the `new` dot); **shared-with-me rows** (`granted_role != null`) get
@@ -69,7 +68,8 @@ Target-contract spec.
 
 ### 2.5 Dependencies
 
-- **imports:** MUI tree primitives, `useTranslation`, `getFileIcon`-adjacent glyphs only.
+- **imports:** MUI tree primitives, `useTranslation`, `TreeRow` (child rows; the primitive owns
+  `pixelMiddleTruncate`/width observation internally), `getFileIcon`-adjacent glyphs only.
 - **Boundary:** pure view — the controller loads rows via `explorerGateway.loadCollections({ sort: 'activity', include: 'mine,shared' })` (badge via a second `include: 'mine,archived'` read) and subscribes to `subscribeToCollections`; this component never imports services/notifier. As-built controller surface: `docs/spec/client/hooks/useFolderTreeController.md` §3 (updated with the T0.4 implementation).
 
 ### 2.6 i18n Keys
@@ -91,4 +91,5 @@ Target-contract spec.
 ### 2.8 Edge Cases
 
 - Duplicate render keys impossible (server list is full, unpaginated — collections.md Decision).
-- Very long names: middle truncation + tooltip per the RecentFilesSection UI-enhancement idiom.
+- Very long names: middle truncation + tooltip, rendered by the shared `TreeRow` primitive
+  (single font-metrics source with RecentFilesSection/file-tree rows).

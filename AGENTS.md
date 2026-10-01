@@ -85,4 +85,5 @@ Rules:
    - **Case A (Source Error)**: Implementation violates spec → **STOP** and ask user.
    - **Case B (Test Error)**: Test misinterprets spec/asserts on internals → **Proceed** to fix test.
    - **Case C (Spec Error)**: Spec is undefined or ambiguous → **STOP** and ask user.
+   - **Verdict discipline**: a 'legitimate/correct' verdict must cite the spec clause that makes it so; with no citable clause the incident is Case C (stop and ask), never Case B.
 3. **Recording**: Log the incident in `docs/RCA_LOG.md`.

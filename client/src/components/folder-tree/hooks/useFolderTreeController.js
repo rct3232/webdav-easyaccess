@@ -23,7 +23,6 @@ const useFolderTreeController = ({
   const [recentExpanded, setRecentExpanded] = useState(false);
   // -- AI-platform §3: __collections__ section state (flat depth-1 rows only).
   const [collectionsTreeRows, setCollectionsTreeRows] = useState([]);
-  const [archiveCount, setArchiveCount] = useState(0);
   const [collectionsExpanded, setCollectionsExpanded] = useState(false);
   const [collectionsVisitCursor, setCollectionsVisitCursor] = useState(() => {
     const stored = Number(window.localStorage.getItem(COLLECTIONS_VISIT_KEY));
@@ -80,28 +79,25 @@ const useFolderTreeController = ({
     }
   }, [user, loadSharedFolders]);
 
-  // §3: flat collection rows (activity order, server-given) + archive badge,
+  // §3: flat collection rows (activity order, server-given) — no badge read.
   // loaded through the explorerGateway seams only; notifier refreshes rows.
   useEffect(() => {
     if (!user) {
       setCollectionsTreeRows([]);
-      setArchiveCount(0);
       return undefined;
     }
 
     const loadCollectionsRows = async () => {
       try {
-        const [active, archived] = await Promise.all([
-          explorerGateway.loadCollections({ sort: 'activity', include: 'mine,shared' }),
-          explorerGateway.loadCollections({ sort: 'activity', include: 'mine,archived' }),
-        ]);
+        const active = await explorerGateway.loadCollections({
+          sort: 'activity',
+          include: 'mine,shared',
+        });
         setCollectionsTreeRows(active?.collections ?? []);
-        setArchiveCount((archived?.collections ?? []).length);
       } catch (error) {
         // eslint-disable-next-line no-console
         console.error('Failed to load collections rows:', error);
         setCollectionsTreeRows([]);
-        setArchiveCount(0);
       }
     };
 
@@ -274,7 +270,6 @@ const useFolderTreeController = ({
     handleArchiveClick,
     handleLikedClick,
     collectionsTreeRows,
-    archiveCount,
     newCollectionIds,
   };
 };

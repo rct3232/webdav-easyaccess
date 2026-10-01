@@ -25,7 +25,6 @@ const defaultProps = () => ({
   onCollectionsToggle: jest.fn(),
   onCollectionsClick: jest.fn(),
   collections: [collectionRow()],
-  archiveCount: 0,
   currentPath: '/',
   onCollectionClick: jest.fn(),
   onArchiveClick: jest.fn(),
@@ -132,9 +131,7 @@ describe('CollectionsSection', () => {
       collectionRow({ collection_id: 1 }),
       collectionRow({ collection_id: 2, name: 'Second' }),
     ];
-    props.archiveCount = 3;
     const { container } = renderWithProviders(<CollectionsSection {...props} />);
-    expect(screen.getByText('3')).toBeInTheDocument();
     const rows = container.querySelectorAll('.MuiListItem-root');
     expect(
       rows[rows.length - 1].querySelector('[data-testid="collections-archive-node"]')

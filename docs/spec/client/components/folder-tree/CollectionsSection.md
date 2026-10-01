@@ -27,7 +27,6 @@ Target-contract spec.
 | onCollectionsToggle | function | Y        | -       | Expand/collapse header                                                                                         |
 | onCollectionsClick  | function | Y        | -       | Header click → navigate `/files/__collections__`                                                               |
 | collections         | array    | Y        | -       | snake_case Collection rows, server `activity` order (tree order is FIXED activity, §3.1 — never user-sortable) |
-| archiveCount        | number   | N        | 0       | Count badge on the ArchiveNode (`include=mine,archived` rows)                                                  |
 | currentPath         | string   | Y        | -       | Selection keying (see §2.4)                                                                                    |
 | onCollectionClick   | function | Y        | -       | Row click: `(collectionId) => void` → host routes `/files/__collections__/collection/:id`                      |
 | onArchiveClick      | function | Y        | -       | ArchiveNode click → `/files/__collections__/__archive__`                                                       |
@@ -50,7 +49,7 @@ Target-contract spec.
   the row secondary keeps only the `new` dot); **shared-with-me rows** (`granted_role != null`) get
   an icon chip ONLY — never pinned to top, same activity-sorted list (§3.1). Pinned (`pinned=true`)
   rows keep server order (gravity, not hoisting).
-- **ArchiveNode:** auto-child at the section end listing exactly the `status=archived` collections as a navigable node — no separate archive screen, no per-collection archive toggle in the tree (§3.1). Badge = `archiveCount`; zero ⇒ row still renders (the lifecycle destination must stay reachable). **Decision (T0.4):** the earlier "renders only when `archiveCount > 0`" wording contradicted this zero-render rule — the row renders unconditionally (the destination must stay reachable even at count 0); the badge simply hides at 0.
+- **ArchiveNode:** auto-child at the section end listing exactly the `status=archived` collections as a navigable node — no separate archive screen, no per-collection archive toggle in the tree (§3.1). The row renders unconditionally (the lifecycle destination must stay reachable). **Decision (T0.4):** the earlier "renders only when `archiveCount > 0`" wording contradicted this zero-render rule — the row renders unconditionally (the destination must stay reachable even at count 0); **No count badge (owner ruling, 2026-10-01 §11 follow-up):** the former `archiveCount` badge — and the second `mine,archived` fetch feeding it — are removed (M-1 purity: the sidebar shows no numeric counts).
 - **LikesNode (P-5, owner ruling 2026-09-29; MOVED TO TOP by M-2, 2026-09-30):** static child row
   rendering at the TOP of the section body — immediately BEFORE the active collection rows (the
   ArchiveNode stays the section tail), inside the same Collapse — same always-rendered

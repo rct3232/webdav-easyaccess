@@ -29,22 +29,22 @@
 
 ### 2.2 Props
 
-| Name          | Type      | Required | Default | Description                                                                                                                                              |
-| ------------- | --------- | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| level         | number    | N        | 0       | Depth-based indent: ListItemButton `pl: level * 2` (16px/level — the tree rule, owner ruling 2026-10-01)                                                 |
-| name          | string    | Y        | -       | Row label. Middle-truncated (see §2.4) and bold (700) when `selected`.                                                                                   |
-| onClick       | function  | N        | -       | Row click                                                                                                                                                |
-| selected      | boolean   | N        | false   | Selected highlight: `Mui-selected`, `primary.main` text/icon color, 3px `primary.main` border-left, transparent bg                                       |
-| disabled      | boolean   | N        | false   | Disabled button + `opacity: 0.4`                                                                                                                         |
-| leading       | ReactNode | N        | -       | Optional leading slot with the `minWidth: 24, mr: 0.5` geometry (tree chevron/spinner column). When absent the icon slot gains `mr: 0.5` (section idiom) |
-| icon          | ReactNode | N        | -       | Icon slot (`minWidth: 24`)                                                                                                                               |
-| iconProps     | object    | N        | -       | Spread onto the icon `ListItemIcon` (e.g. `data-testid` chips); `sx` merges with the base geometry                                                       |
-| secondary     | ReactNode | N        | -       | `ListItemText.secondary` (e.g. the collection `new` dot)                                                                                                 |
-| trailing      | ReactNode | N        | -       | Optional trailing slot after the text (no consumer today; part of the owner-ruled API)                                                                   |
-| textSx        | object    | N        | -       | Merged onto the `ListItemText` sx (e.g. hidden-name `opacity`)                                                                                           |
-| buttonProps   | object    | N        | -       | Spread onto the `ListItemButton` (e.g. row `data-testid`s)                                                                                               |
-| buttonSx      | object    | N        | -       | Merged LAST onto the `ListItemButton` sx (consumer overrides, e.g. drop-target highlight)                                                                |
-| listItemProps | object    | N        | -       | Spread onto the wrapper `ListItem` (`data-testid="folder-tree-item"`, drag handlers, hover sx)                                                           |
+| Name          | Type      | Required | Default | Description                                                                                                                                                                                                                                      |
+| ------------- | --------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| level         | number    | N        | 0       | Depth-based indent: ListItemButton `pl: level * 2` (16px/level — the tree rule, owner ruling 2026-10-01)                                                                                                                                         |
+| name          | string    | Y        | -       | Row label. Middle-truncated (see §2.4) and bold (700) when `selected`.                                                                                                                                                                           |
+| onClick       | function  | N        | -       | Row click                                                                                                                                                                                                                                        |
+| selected      | boolean   | N        | false   | Selected highlight: `Mui-selected`, `primary.main` text/icon color, 3px `primary.main` border-left, transparent bg                                                                                                                               |
+| disabled      | boolean   | N        | false   | Disabled button + `opacity: 0.4`                                                                                                                                                                                                                 |
+| leading       | ReactNode | N        | -       | Leading column (`minWidth: 24, mr: 0.5`) — the tree chevron/spinner slot. ALL sidebar child rows reserve it: non-expandable tree rows pass `TreeRowSpacer`, section rows pass it too; without it the icon column self-compensates with `mr: 0.5` |
+| icon          | ReactNode | N        | -       | Icon slot (`minWidth: 24`)                                                                                                                                                                                                                       |
+| iconProps     | object    | N        | -       | Spread onto the icon `ListItemIcon` (e.g. `data-testid` chips); `sx` merges with the base geometry                                                                                                                                               |
+| secondary     | ReactNode | N        | -       | `ListItemText.secondary` (e.g. the collection `new` dot)                                                                                                                                                                                         |
+| trailing      | ReactNode | N        | -       | Optional trailing slot after the text (no consumer today; part of the owner-ruled API)                                                                                                                                                           |
+| textSx        | object    | N        | -       | Merged onto the `ListItemText` sx (e.g. hidden-name `opacity`)                                                                                                                                                                                   |
+| buttonProps   | object    | N        | -       | Spread onto the `ListItemButton` (e.g. row `data-testid`s)                                                                                                                                                                                       |
+| buttonSx      | object    | N        | -       | Merged LAST onto the `ListItemButton` sx (consumer overrides, e.g. drop-target highlight)                                                                                                                                                        |
+| listItemProps | object    | N        | -       | Spread onto the wrapper `ListItem` (`data-testid="folder-tree-item"`, drag handlers, hover sx)                                                                                                                                                   |
 
 ### 2.3 Rendering Contract
 
@@ -55,6 +55,10 @@ column] + ListItemText + trailing`.
 - Indent: `pl: level * 2`. Section child rows render at `level = 1`, i.e. the SAME computed
   padding-left (16px) as a shared-folder/file-tree child row (owner ruling 2026-10-01;
   supersedes the F5 `pl: 3` / 24px pin).
+- Icon-column parity (ruling A, 2026-10-01): every child row — file-tree leaf, shared-folder
+  row, recent row, collection row — reserves the leading column via the exported
+  `TreeRowSpacer` (20px span), so icon glyphs start at the same x offset regardless of
+  expand affordance. Padding equality alone previously hid a 24px icon misalignment.
 - Every row button carries `data-tree-row` (primitive-usage assertion seam for the parity pins).
 
 ### 2.4 Name truncation (single font-metrics source)
@@ -79,7 +83,7 @@ column] + ListItemText + trailing`.
 - [ ] Long names middle-truncate with tooltip exposing the full name; short names render intact.
 - [ ] Slots: leading/icon/secondary/trailing render; `onClick` fires; `disabled` blocks click.
 - [ ] Cross-section indent equality: recent / collection / shared child rows compute the same
-      `padding-left` (pinned in `TreeRow.test.js`, section suites).
+      `padding-left` AND render the leading+icon column pair (pinned in `TreeRow.test.js`, section suites).
 
 ### 2.7 Consumers & regression posture
 

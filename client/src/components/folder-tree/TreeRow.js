@@ -112,4 +112,9 @@ const TreeRow = ({
   );
 };
 
+// 20px leading-column spacer that BaseFolderTreeItem reserves for non-expandable
+// rows; sidebar child rows (recent/collections) render it so icon columns align
+// across all tree surfaces (owner ruling A, 2026-10-01).
+export const TreeRowSpacer = () => <span style={{ width: 20 }} />;
+
 export default TreeRow;

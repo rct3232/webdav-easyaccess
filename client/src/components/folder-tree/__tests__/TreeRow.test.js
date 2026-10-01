@@ -176,5 +176,16 @@ describe('TreeRow cross-section indent parity (owner ruling 2026-10-01)', () => 
     expect(recentPadding).toBe(sharedPadding);
     expect(collectionsPadding).toBe(sharedPadding);
     expect(sharedPadding).toBe('16px');
+
+    // Icon-column parity (owner ruling A): every surface's first child row reserves
+    // the 20px leading column, so icons start at the same x offset — padding alone
+    // previously hid a 24px misalignment between file/shared rows and section rows.
+    const firstRowIconColumns = (container) => {
+      const row = container.querySelector('.MuiListItemButton-root[data-tree-row]');
+      return row.querySelectorAll('.MuiListItemIcon-root').length;
+    };
+    expect(firstRowIconColumns(recent.container)).toBe(2);
+    expect(firstRowIconColumns(collections.container)).toBe(2);
+    expect(firstRowIconColumns(shared.container)).toBe(2);
   });
 });

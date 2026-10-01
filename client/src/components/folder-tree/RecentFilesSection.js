@@ -17,7 +17,7 @@ import {
   AccessTime as AccessTimeIcon,
 } from '@mui/icons-material';
 import { getFileIcon } from '../../utils/fileIconUtils';
-import TreeRow from './TreeRow';
+import TreeRow, { TreeRowSpacer } from './TreeRow';
 
 /**
  * Recent-files section keyed by stable nodeId.
@@ -140,6 +140,7 @@ const RecentFilesSection = ({
               <TreeRow
                 key={recentFile.nodeId}
                 level={1}
+                leading={<TreeRowSpacer />}
                 name={recentFile.name}
                 onClick={() => handleRecentItemClick(recentFile)}
                 icon={

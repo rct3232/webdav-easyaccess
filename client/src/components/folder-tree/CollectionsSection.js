@@ -19,7 +19,7 @@ import {
   FavoriteBorder as LikesIcon,
   ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
-import TreeRow from './TreeRow';
+import TreeRow, { TreeRowSpacer } from './TreeRow';
 
 const COLLECTION_ROUTE_PREFIX = '/__collections__/collection/';
 
@@ -126,6 +126,7 @@ const CollectionsSection = ({
               legal empty view). */}
           <TreeRow
             level={1}
+            leading={<TreeRowSpacer />}
             name={t('nav.collectionsLiked')}
             selected={isLikesSelected}
             onClick={onLikesClick}
@@ -151,6 +152,7 @@ const CollectionsSection = ({
                 <TreeRow
                   key={collectionId}
                   level={1}
+                  leading={<TreeRowSpacer />}
                   name={collection.name}
                   selected={selected}
                   onClick={() => onCollectionClick(collectionId)}
@@ -195,9 +197,10 @@ const CollectionsSection = ({
           )}
 
           {/* ArchiveNode — auto-child at the section end; renders unconditionally
-              (§2.3 T0.4 decision); the badge hides at count 0. */}
+              (§2.3 T0.4 decision); no count badge (§11 follow-up 2). */}
           <TreeRow
             level={1}
+            leading={<TreeRowSpacer />}
             name={t('nav.collectionsArchive')}
             selected={isArchiveSelected}
             onClick={onArchiveClick}

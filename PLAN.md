@@ -591,6 +591,9 @@ FileActionSheet|FilePropertiesDialog` 140/140. M-5 clarification: no pre-existin
   orchestrator gates: server `test:ci` 130 suites / 2407, client 176 / 1856,
   `collections-desktop` E2E 14/14 (001–014) — all green. One follow-up test fix landed
   alongside (derivedTags month expectation → production-derived, TZ-safe; RCA 2026-10-01).
+- **§11 follow-up 2 (2026-10-01, owner ruling):** ArchiveNode count badge removed (M-1
+  purity — the sidebar shows no numeric counts): `archiveCount` state/prop/`Badge` and its
+  second `mine,archived` fetch deleted from the tree path; parity specs updated.
 
 - **§11 FOLLOW-UP batch (2026-10-01, owner-spotted post-ship defects)** — branch
   `fix/polish-11-followups` (worktree wt-11f off `e8e29db`); docs-first `34fefb7` → RED →

@@ -356,7 +356,6 @@ describe('useFolderTreeController — collections section (§3)', () => {
     origin: 'seed',
     created_at: '2026-01-02T00:00:00Z',
   };
-  const archivedRow = { ...rowA, collection_id: 9, name: 'Old', status: 'archived' };
 
   const renderCollections = (props = {}) =>
     renderControllerHook({
@@ -375,11 +374,9 @@ describe('useFolderTreeController — collections section (§3)', () => {
     onRecentFilesChange.mockImplementation(() => jest.fn());
     folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([]);
     explorerGateway.loadCollections.mockReset();
-    explorerGateway.loadCollections.mockImplementation(async ({ include } = {}) =>
-      include === 'mine,archived'
-        ? { collections: [archivedRow] }
-        : { collections: [rowA, rowShared] }
-    );
+    explorerGateway.loadCollections.mockImplementation(async () => ({
+      collections: [rowA, rowShared],
+    }));
     explorerGateway.subscribeToCollections.mockReset();
     explorerGateway.subscribeToCollections.mockImplementation(() => jest.fn());
   });
@@ -393,20 +390,10 @@ describe('useFolderTreeController — collections section (§3)', () => {
       sort: 'activity',
       include: 'mine,shared',
     });
-    expect(explorerGateway.loadCollections).toHaveBeenCalledWith({
-      sort: 'activity',
-      include: 'mine,archived',
-    });
+    expect(explorerGateway.loadCollections).toHaveBeenCalledTimes(1);
     // depth-1: the tree state exposes collection rows only — never member items
     expect(result.current.collectionsTreeRows.map((r) => r.collection_id)).toEqual([7, 8]);
     expect(explorerGateway.loadCollectionItems).not.toHaveBeenCalled();
-  });
-
-  it('exposes archiveCount from the archived include read', async () => {
-    const { result } = renderCollections();
-    await waitFor(() => {
-      expect(result.current.archiveCount).toBe(1);
-    });
   });
 
   it('notifier events refresh the flat rows; unmount unsubscribes', async () => {
@@ -420,14 +407,11 @@ describe('useFolderTreeController — collections section (§3)', () => {
     await waitFor(() => expect(result.current.collectionsTreeRows).toHaveLength(2));
     expect(explorerGateway.subscribeToCollections).toHaveBeenCalled();
 
-    explorerGateway.loadCollections.mockImplementation(async ({ include } = {}) =>
-      include === 'mine,archived' ? { collections: [] } : { collections: [rowA] }
-    );
+    explorerGateway.loadCollections.mockImplementation(async () => ({ collections: [rowA] }));
     await act(async () => {
       notify();
     });
     await waitFor(() => expect(result.current.collectionsTreeRows).toHaveLength(1));
-    await waitFor(() => expect(result.current.archiveCount).toBe(0));
 
     unmount();
     expect(unsubscribe).toHaveBeenCalled();
@@ -441,7 +425,6 @@ describe('useFolderTreeController — collections section (§3)', () => {
     });
     expect(Array.isArray(result.current.collectionsTreeRows)).toBe(true);
     expect(result.current.collectionsTreeRows).toEqual([]);
-    expect(result.current.archiveCount).toBe(0);
   });
 
   it('handleCollectionsClick / handleArchiveClick / handleLikedClick / handleCollectionClick route via the host', async () => {

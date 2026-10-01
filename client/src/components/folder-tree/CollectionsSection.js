@@ -1,7 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Badge,
   Box,
   Collapse,
   List,
@@ -38,7 +37,6 @@ const CollectionsSection = ({
   onCollectionsToggle,
   onCollectionsClick,
   collections,
-  archiveCount = 0,
   currentPath,
   onCollectionClick,
   onArchiveClick,
@@ -309,7 +307,6 @@ const CollectionsSection = ({
                     >
                       {t('nav.collectionsArchive')}
                     </Typography>
-                    {archiveCount > 0 && <Badge badgeContent={archiveCount} color="default" />}
                   </Box>
                 }
               />

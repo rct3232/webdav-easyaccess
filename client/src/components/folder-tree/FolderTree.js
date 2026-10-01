@@ -55,7 +55,6 @@ const FolderTree = ({
     handleArchiveClick,
     handleLikedClick,
     collectionsTreeRows,
-    archiveCount,
     newCollectionIds,
   } = useFolderTreeController({
     currentNodeId,
@@ -155,7 +154,6 @@ const FolderTree = ({
                   onCollectionsToggle={handleCollectionsToggle}
                   onCollectionsClick={handleCollectionsClick}
                   collections={collectionsTreeRows}
-                  archiveCount={archiveCount}
                   currentPath={currentPath}
                   onCollectionClick={handleCollectionClick}
                   onArchiveClick={handleArchiveClick}

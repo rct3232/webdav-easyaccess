@@ -178,9 +178,14 @@ async function uiCreateCollectionWithFile(page: Page, filePath: string, name: st
 async function uiAddToCollection(page: Page, filePath: string, collectionName: string) {
   await rightClickItem(page, filePath);
   await page.getByTestId('collection-add').click();
+  // F1 (2026-10-01): menu rows middle-truncate long names inside the fixed 280px paper —
+  // the leading fragment (always ≥ the 12 chars used here for ASCII names) and the final
+  // 6 chars survive truncation (`pixelMiddleTruncate` back-length contract), short names
+  // render verbatim ⇒ both fragments match either way.
   await page
     .locator('[data-testid^="collection-option-"]')
-    .filter({ hasText: collectionName })
+    .filter({ hasText: collectionName.slice(0, 12) })
+    .filter({ hasText: collectionName.slice(-6) })
     .first()
     .click();
 }
@@ -835,7 +840,7 @@ test('E2E-COLLECTION-013: the sidebar Likes child row lists liked files through 
     .toBe(true);
 });
 
-test('E2E-COLLECTION-014: the collections grid hosts Likes-first/Archive-last pseudo-tiles that navigate, the archive view shows NO pseudo-tiles (with a Collections › Archive crumb), and opening a collection trails Collections › <name>', async ({
+test('E2E-COLLECTION-014: Likes-first/Archive-last tiles navigate, archive view shows no tiles under Collections › Archive crumb, collection opens as Collections › <name>', async ({
   page,
   request,
 }, testInfo) => {

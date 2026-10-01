@@ -29,7 +29,8 @@ Use `PERMISSIONS.isValid(permission)` to check a value. Ordering for "higher" is
 ### Owner exception
 
 - A user owns their **home root node** and every descendant of it in the `file_nodes` tree.
-- Ownership is resolved by nodeId via the closure table: `isOwnerNode(userId, nodeId)` returns `true` when the target node is the user's root node or `fileNodesStore.isAncestor(rootNodeId, nodeId)` holds (see `server/domains/permissions/policy/ownerNodeResolver.js`).
+- Ownership is resolved by nodeId via the closure table: `isOwnerNode(userId, nodeId)` returns `true` when the user is an **admin** (the admin-owns-everything convention below), or the target node is the user's root node, or `fileNodesStore.isAncestor(rootNodeId, nodeId)` holds (see `server/domains/permissions/policy/ownerNodeResolver.js`).
+- **Admin convention:** `permissionPolicy.js` codifies admin ⇒ full access for read/write/manage (`isAdminUser(user) → true`); `isOwnerNode` honors the same convention — an admin user is the owner of every node (the admin check precedes the home/ancestry path).
 - The owner has full access (read, write, and effectively admin) on owned nodes with **no explicit permission record** required.
 - **No self-grants:** Creating a folder under the user's own home does **not** write a permission row for the creator (the home-root `ADMIN` grant covers descendants via inheritance). Permission rows exist only for grants that carry external meaning (access given to other users or received from other users).
 

@@ -116,7 +116,10 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
   revocation is a leak) | trashed-by-owner (hidden, row kept) | purged (row cascaded away).
 - Foreign members (files the collection owner doesn't own) in a LIVE-SHARED view are
   **excluded from rendering** with an `Not owner's file — not shared` chip in the owner's view
-  (cross-leak rule; §4.7). Adding foreign files to collections is otherwise allowed (rule:
+  (cross-leak rule; §4.7). Ownership follows the `permissionPolicy.js` convention — an admin
+  owns the whole tree — so an ADMIN-owned collection has NO foreign members: its rows never
+  render `shared_excluded`/publish-pending markers and its publish path is real.
+  Adding foreign files to collections is otherwise allowed (rule:
   you may only add what you can read).
 - Member-row controls (context menu & multi-select) — file-mutating items (move/copy/rename/
   delete) are DELIBERATELY ABSENT; collection is a view, not a workspace. Present:
@@ -150,6 +153,7 @@ rollup → `node_activity(user_id,node_id,opens,downloads,previews,search_hits,l
 rolled off at 90d by GC.
 
 **Activity score (owner re-adjudication 2026-09-22 — two levels, one formula family):**
+
 - **Item accumulator** (per user+node; maintained by the nightly rollup):
   `S_k = S_(k-1) · 2^(−Δt_k/H) + Σ_(events in interval k) w_a`, H = 30d half-life,
   `w_open=1, w_preview=2, w_download=3, w_search_hit=1, w_like=5`; stored as
@@ -167,7 +171,7 @@ rolled off at 90d by GC.
   never penalties or triggers) — and age lives ONLY in the archive gate as min-age grace
   (§4.9 pass 3).
 - **Consumers:** card list `sort=activity` = `activity_score DESC, last_member_change_at
-  DESC, created_at DESC` (timestamp chain = tie-breaker + graceful fallback while the
+DESC, created_at DESC` (timestamp chain = tie-breaker + graceful fallback while the
   score is absent/all-zero — supersedes the prior "score never reorders the card list"
   store decision); item ordering = activity score desc, `node_id` asc (read-time decay);
   archive gate = event-based ε/N (§4.9 pass 3).
@@ -985,6 +989,7 @@ capability matrix display (per-role probe chips) shared by both surfaces.
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/infrastructure/llmPresets.md`, `docs/spec/server/routes/setup.md`, `docs/spec/client/pages/Setup.md`
 
 ## 5. Schema (PG-canonical; sqlite via transpiler). Single-file DDL: ALL §5 tables (P0–P4)
+
 live in `server/store/postgresql/ddl/001_initial_normalized_schema.sql`; the numbered chain
 resumes at `002_…` only after the platform merge. Dev-DB checksum recovery and the manual
 prod migration at the `ai-feature`→`dev` merge/deploy — see PLAN §6 DDL policy.
@@ -995,7 +1000,7 @@ All: snake*case, TEXT+CHECK enums, `created_at TIMESTAMPTZ DEFAULT NOW()`, index
 - `collections(id, owner_id→users, name, name_locked, origin, status, definition JSONB,
 publish_mode, pinned, pinned_by CHECK(user|auto) NULL, archived_at, last_member_change_at,
 activity_score REAL NOT NULL DEFAULT 0 (§3.4), created_at, updated_at)`; partial-unique
-(owner,name) active.
+  (owner,name) active.
 - `collection_items(collection_id→CASCADE, node_id→CASCADE, added_by→users, published,
 created_at, PK(pair))`
 - `collection_exclusions(collection_id→CASCADE, node_id→CASCADE, created_at, PK(pair))`
@@ -1032,8 +1037,8 @@ created_at, UNIQUE(a,b))` (arbiter columns: advisory prefill on the §4.4 card, 
 expires_at)`
 - `admin_reports(id, kind CHECK(gc|migration|failsafe|night_eval|cleanup), status, payload
 JSONB, created_at)` — the startup fail-safe scan (`failsafe`) carries a
-`contentHashCompleteness` payload section (`{nullCount, checkedAt}`, T0.1 boot probe);
-row-level repair dispatches via `POST /api/admin/reports/:id/repair`.
+  `contentHashCompleteness` payload section (`{nullCount, checkedAt}`, T0.1 boot probe);
+  row-level repair dispatches via `POST /api/admin/reports/:id/repair`.
 - `llm_models(id, role CHECK(embed|chat|vision|asr), provider, base_url_key, model_name,
 max_input_chars, chunk_budget, batch_size, reasoning CHECK(on|off) default 'off',
 enabled)` — reasoning is an experimental per-model switch only; all roles plan for off

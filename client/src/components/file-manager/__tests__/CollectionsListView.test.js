@@ -716,17 +716,35 @@ describe('CollectionsListView — member mode (P-4 shared renderers)', () => {
 
   it('member-state badges render in ALL THREE member views with the badge testids (§11 follow-up 3)', () => {
     const props = membersProps();
-    props.items = [memberRow({ published: false, shared_excluded: true })];
+    // R2 (2026-10-01): excluded+pending ⇒ VpnLock ONLY; pending renders on a
+    // publishable row (shared_excluded false) — two rows pin both halves.
+    props.items = [
+      memberRow({
+        nodeId: 7,
+        rowTestId: 'member-row-7',
+        published: false,
+        shared_excluded: true,
+      }),
+      memberRow({
+        nodeId: 8,
+        rowTestId: 'member-row-8',
+        published: false,
+        shared_excluded: false,
+      }),
+    ];
     ['grid', 'list', 'detail'].forEach((memberViewMode) => {
       const { unmount } = renderWithProviders(
         <CollectionsListView {...props} memberViewMode={memberViewMode} />
       );
-      const row = screen.getByTestId('member-row-90210');
-      expect(within(row).getByTestId('member-excluded-badge-90210')).toBeInTheDocument();
-      expect(within(row).getByTestId('member-publish-pending-badge-90210')).toBeInTheDocument();
+      const excludedRow = screen.getByTestId('member-row-7');
+      expect(within(excludedRow).getByTestId('member-excluded-badge-7')).toBeInTheDocument();
+      expect(within(excludedRow).queryByTestId('member-publish-pending-badge-7')).toBeNull();
+      const pendingRow = screen.getByTestId('member-row-8');
+      expect(within(pendingRow).getByTestId('member-publish-pending-badge-8')).toBeInTheDocument();
+      expect(within(pendingRow).queryByTestId('member-excluded-badge-8')).toBeNull();
       // the chip ids are retired everywhere (grid and detail never carried them)
-      expect(within(row).queryByTestId('member-excluded-chip-90210')).toBeNull();
-      expect(within(row).queryByTestId('member-unpublished-chip-90210')).toBeNull();
+      expect(within(excludedRow).queryByTestId('member-excluded-chip-7')).toBeNull();
+      expect(within(pendingRow).queryByTestId('member-unpublished-chip-8')).toBeNull();
       unmount();
     });
   });

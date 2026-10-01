@@ -114,13 +114,13 @@ describe('FileGridItem — member tile slots (P-4)', () => {
   });
 
   it('member-state badges render in the card TOP-LEFT corner slot (M-4 geometry mirror)', () => {
-    renderWithProviders(
-      <FileGridItem {...itemProps(memberRow({ published: false, shared_excluded: true }))} />
+    const { unmount } = renderWithProviders(
+      <FileGridItem {...itemProps(memberRow({ published: true, shared_excluded: true }))} />
     );
     const excluded = screen.getByTestId('member-excluded-badge-90210');
-    const pending = screen.getByTestId('member-publish-pending-badge-90210');
+    // R2 (2026-10-01): publish-pending NEVER co-renders with shared_excluded.
+    expect(screen.queryByTestId('member-publish-pending-badge-90210')).toBeNull();
     expect(excluded.getAttribute('aria-label')).toBe("Not owner's file — not shared");
-    expect(pending.getAttribute('aria-label')).toBe('Awaiting publish');
     // TileCornerBadge plate geometry: 28px circle over the media
     expect(getComputedStyle(excluded).width).toBe('28px');
     // CardTile cornerBadges container: absolute top-left, opposite the More action
@@ -128,6 +128,10 @@ describe('FileGridItem — member tile slots (P-4)', () => {
     expect(getComputedStyle(corner).position).toBe('absolute');
     expect(getComputedStyle(corner).top).toBe('4px');
     expect(getComputedStyle(corner).left).toBe('4px');
+    unmount();
+    renderWithProviders(<FileGridItem {...itemProps(memberRow())} />);
+    const pending = screen.getByTestId('member-publish-pending-badge-90210');
+    expect(pending.getAttribute('aria-label')).toBe('Awaiting publish');
   });
 
   it('pending badge disappears when published flips (memo comparator tracks the field)', () => {

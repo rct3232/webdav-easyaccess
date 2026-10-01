@@ -95,12 +95,13 @@ describe('getMemberStateBadges — gating matrix (MemberStateBadges.md §2.3)', 
     expect(badges[0].title).toBe('fileManager.memberNotShared');
   });
 
-  it('excluded AND pending ⇒ both badges, excluded first (chip-era order)', () => {
+  it('excluded AND pending ⇒ excluded (VpnLock) badge ONLY — pending suppressed (§2.3, 2026-10-01)', () => {
     const badges = getMemberStateBadges(
       memberRow({ published: false, shared_excluded: true }),
       identityT
     );
-    expect(badges.map((b) => b.kind)).toEqual(['excluded', 'publish-pending']);
+    expect(badges.map((b) => b.kind)).toEqual(['excluded']);
+    expect(badges[0].testid).toBe('member-excluded-badge-90210');
   });
 
   it('revoked member ⇒ NO badges even with published:false (the chip-era leak)', () => {
@@ -175,12 +176,16 @@ describe('MemberStateBadges — grid variant (CardTile cornerBadges slot plates)
     );
 
   it('badges are TileCornerBadge plates (28px circle, 16px icon) with testid + aria', () => {
-    renderGrid(memberRow({ published: false, shared_excluded: true }));
+    const { unmount } = renderGrid(memberRow({ published: false, shared_excluded: true }));
+    // R2 (2026-10-01): excluded + pending ⇒ VpnLock ONLY (un-publishable row).
     const excluded = screen.getByTestId('member-excluded-badge-90210');
-    const pending = screen.getByTestId('member-publish-pending-badge-90210');
+    expect(screen.queryByTestId('member-publish-pending-badge-90210')).toBeNull();
     expect(getComputedStyle(excluded).width).toBe('28px');
     expect(getComputedStyle(excluded).height).toBe('28px');
     expect(excluded.getAttribute('aria-label')).toBe(en.fileManager.memberNotShared);
+    unmount();
+    renderGrid(memberRow({ published: false }));
+    const pending = screen.getByTestId('member-publish-pending-badge-90210');
     expect(pending.getAttribute('aria-label')).toBe(en.fileManager.memberUnpublishedBadge);
     // the composite overlay keeps its 10px inline size inside the plate
     // (immune to the plate `& .MuiSvgIcon-root { fontSize: 16 }` rule)
@@ -200,7 +205,7 @@ describe('MemberStateBadges — grid variant (CardTile cornerBadges slot plates)
 
 describe('MemberStateBadges — detail variant (inline 16px before the name)', () => {
   it('renders plain inline badges (no plate, no absolute container)', () => {
-    renderWithProviders(
+    const { unmount } = renderWithProviders(
       <Box sx={{ display: 'flex' }}>
         <MemberStateBadges
           file={memberRow({ published: false, shared_excluded: true })}
@@ -208,11 +213,19 @@ describe('MemberStateBadges — detail variant (inline 16px before the name)', (
         />
       </Box>
     );
+    // R2 (2026-10-01): both flags ⇒ VpnLock ONLY; pending renders on its own.
     const excluded = screen.getByTestId('member-excluded-badge-90210');
-    const pending = screen.getByTestId('member-publish-pending-badge-90210');
+    expect(screen.queryByTestId('member-publish-pending-badge-90210')).toBeNull();
     expect(getComputedStyle(excluded).position).not.toBe('absolute');
     expect(getComputedStyle(excluded).width).not.toBe('28px');
     expect(excluded.getAttribute('aria-label')).toBe(en.fileManager.memberNotShared);
+    unmount();
+    renderWithProviders(
+      <Box sx={{ display: 'flex' }}>
+        <MemberStateBadges file={memberRow({ published: false })} variant="detail" />
+      </Box>
+    );
+    const pending = screen.getByTestId('member-publish-pending-badge-90210');
     expect(pending.getAttribute('aria-label')).toBe(en.fileManager.memberUnpublishedBadge);
   });
 });

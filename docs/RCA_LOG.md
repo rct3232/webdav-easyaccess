@@ -906,3 +906,36 @@ username`), while `openPrivateWorkspace` creates its case folder at the FILESYST
 - **Action taken**: expected month now derived through the production function
   (`computeDerivedTags({ createdAt }).find(...)`); verified green under default,
   `TZ=Asia/Tokyo` and `TZ=America/Los_Angeles`.
+
+### 2026-10-01 — E2E-003 double badge: admin-owned collections marked every file foreign (Case C — undefined term; owner adjudication)
+
+- **Summary**: in the member view of an ADMIN-owned collection, root-level and other-home
+  members rendered BOTH the VpnLock (`shared_excluded`) and the awaiting-publish badge (the
+  "double badge" of E2E-003), card previews came back empty, grantees received nothing, and
+  the admin publish path was unreachable.
+- **Evidence**: `service.js:262` computes `foreign = !isOwnerNode(collection.ownerId, nodeId)`
+  while `ownerNodeResolver.isOwnerNode` was a pure home-membership predicate
+  (`getUserRootNode` = root-level directory named `username`, FileNodeRepository.sqlite.js
+  313-322) with NO admin rule — even though `permissionPolicy.js` codifies admin ⇒
+  everything (`isAdminUser` short-circuit on read/write/manage, documented in fileService.md
+  54/56/70, aclService.md and features/permissions.md §3). E2E pin (pre-fix):
+  `member-excluded-badge-3` received count 1, expected 0.
+- **Prior misruling**: the 2026-09-29 P-3 entry ("root-level workspaces are foreign-owned")
+  ruled the flag "legitimately shared_excluded" — Case B, test fixture. Under the verdict
+  discipline added in fd1bac4 (AGENTS §3.2: a 'legitimate/correct' verdict must cite the
+  spec clause), no clause defined foreign-ness for ADMIN-owned collections; the correct
+  classification was Case C (spec undefined/ambiguous) — stop and ask, never bless the
+  behavior as a fixture quirk.
+- **Classification**: Case C → owner adjudication 2026-10-01 (binding rulings R1–R3).
+- **Action taken**: R1 — `isOwnerNode` now loads the user (`userStore.findById`) and returns
+  true for `is_admin` BEFORE the root/ancestry path (commit 4efa3e9); foreign stays keyed on
+  the collection OWNER, so real cross-leak cases (non-admin owner, other-home file) still
+  render `shared_excluded:true` and grantees still never receive foreign rows. R2 —
+  publish-pending is suppressed when `shared_excluded === true` (an excluded row is
+  un-publishable forever; commit 0c87b1d + renderer pins 429f993). R3 — the term is now
+  defined in AI_FEATURE_PLAN.md §3.2, collections-platform.md §3.2, features/permissions.md
+  (Owner exception) and the permissionPolicy spec (commit d97bf09). E2E-003 asserts
+  excluded-badge count 0 with the pending badge visible. Gates: server `test:ci` 130 suites
+  / 2412 pass (5 skip), client full 178 / 1895, PG conformance leg 23 / 344 (1 skip),
+  `E2E_BACKEND_MODE=s3 collections-desktop` 14/14. This entry APPENDS; the 2026-09-29 entry
+  above is kept verbatim as historical record.

@@ -139,19 +139,30 @@ describe('FileDetail — member row slots (P-4)', () => {
   });
 
   it('member rows render the state badges INLINE in the name cell, before the name (§11 follow-up 3)', () => {
-    renderWithProviders(
-      <FileDetail {...defaultProps} files={[memberRow({ shared_excluded: true })]} />
+    const { rerender } = renderWithProviders(
+      <FileDetail
+        {...defaultProps}
+        files={[memberRow({ published: false, shared_excluded: true })]}
+      />
     );
     const row = screen.getByTestId('member-row-90210');
     const excluded = within(row).getByTestId('member-excluded-badge-90210');
-    const pending = within(row).getByTestId('member-publish-pending-badge-90210');
+    // R2 (2026-10-01): an excluded row is un-publishable forever — both flags
+    // render the VpnLock ONLY (MemberStateBadges.md §2.3).
+    expect(within(row).queryByTestId('member-publish-pending-badge-90210')).toBeNull();
     expect(excluded.getAttribute('aria-label')).toBe("Not owner's file — not shared");
-    expect(pending.getAttribute('aria-label')).toBe('Awaiting publish');
     // inline geometry: plain 16px icons (no plate), BEFORE the name text
     expect(getComputedStyle(excluded).position).not.toBe('absolute');
     expect(getComputedStyle(excluded).width).not.toBe('28px');
     const name = within(row).getByText('poster.pdf');
     expect(excluded.compareDocumentPosition(name)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    rerender(<FileDetail {...defaultProps} files={[memberRow({ published: false })]} />);
+    const pendingRow = screen.getByTestId('member-row-90210');
+    const pending = within(pendingRow).getByTestId('member-publish-pending-badge-90210');
+    expect(pending.getAttribute('aria-label')).toBe('Awaiting publish');
+    expect(pending.compareDocumentPosition(within(pendingRow).getByText('poster.pdf'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
   });
 
   it('a revoked member row renders NEITHER badge', () => {

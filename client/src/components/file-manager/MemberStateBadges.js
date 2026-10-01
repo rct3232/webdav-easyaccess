@@ -45,7 +45,10 @@ export const PublishPendingIcon = () => (
  * Pure gating (MemberStateBadges.md §2.3): descriptor order is excluded FIRST,
  * then pending (chip-era order). Strict comparisons keep plain file rows
  * (fields `undefined`) and liked rows badge-free; `state:'revoked'` rows are
- * badge-free regardless of the flags.
+ * badge-free regardless of the flags; publish-pending is SUPPRESSED when
+ * `shared_excluded === true` (2026-10-01 R2: an excluded row is un-publishable
+ * forever — its member menu omits the publish action — so both flags render
+ * the VpnLock ONLY).
  */
 export const getMemberStateBadges = (file, t) => {
   if (!file || file.state === 'revoked') {
@@ -60,7 +63,7 @@ export const getMemberStateBadges = (file, t) => {
       icon: <VpnLock style={{ fontSize: BADGE_ICON_SIZE }} />,
     });
   }
-  if (file.published === false) {
+  if (file.published === false && file.shared_excluded !== true) {
     badges.push({
       kind: 'publish-pending',
       testid: `member-publish-pending-badge-${file.nodeId}`,

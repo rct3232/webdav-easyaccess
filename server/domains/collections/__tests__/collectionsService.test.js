@@ -954,3 +954,147 @@ describe('collectionsService publishItems (P-4)', () => {
     ).rejects.toMatchObject({ message: 'invalidPublishMode' });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Admin-owned collections — ownership convention (owner-approved 2026-10-01):
+// permissionPolicy codifies admin-owns-everything, so isOwnerNode(admin, node)
+// is true for EVERY node. Foreign members are keyed on the collection OWNER:
+// an admin-owned collection has no foreign members (no bogus shared_excluded
+// rows, publish path is real, previews/digest include the members), while a
+// non-admin owner keeps the real cross-leak exclusion even over admin-home
+// files and even when an admin requests the shared view.
+// ---------------------------------------------------------------------------
+
+describe('collectionsService admin-owned collections (ownership convention)', () => {
+  async function createAdminUserWithRoot(tag) {
+    const { user } = await createAuthenticatedTestUser({
+      username: `adm-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      isAdmin: true,
+    });
+    const root = await fileNodeService.createDirectory(null, user.username);
+    return { user, root };
+  }
+
+  it('NON-admin owner keeps shared_excluded for a member inside ADMIN home (owner-keyed rule)', async () => {
+    const admin = await createAdminUserWithRoot('lockadm');
+    const alice = await createUserWithRoot('lock-alice');
+    const adminHomeFile = await fileNodeService.createFile(admin.root.id, 'admhome.txt');
+    const manual = await collectionsService.createCollection(alice.user.id, { name: 'Locked' });
+    await grantTestPermissionByNodeId({
+      userId: alice.user.id,
+      fileNodeId: adminHomeFile.id,
+      permission: 'read',
+    });
+    await collectionsService.addItems(alice.user.id, manual.collection.id, [adminHomeFile.id]);
+
+    const view = await collectionsService.getItems(alice.user.id, manual.collection.id, {});
+    const row = view.items.find((item) => item.nodeId === adminHomeFile.id);
+    expect(row).toMatchObject({ sharedExcluded: true });
+
+    // the admin REQUESTER must not launder the owner-keyed cross-leak rule:
+    // foreign rows are omitted from shared views (§3.2/§4.7).
+    await collectionsService.grantCollectionAccess(
+      alice.user.id,
+      manual.collection.id,
+      admin.user.id,
+      'viewer'
+    );
+    await collectionsService.publishItems(
+      alice.user.id,
+      manual.collection.id,
+      [adminHomeFile.id],
+      true
+    );
+    const adminView = await collectionsService.getItems(admin.user.id, manual.collection.id, {});
+    expect(adminView.items.map((item) => item.nodeId)).not.toContain(adminHomeFile.id);
+  });
+
+  it('admin collection over root-level/other-home members: not foreign, publishes, previews, digests', async () => {
+    const admin = await createAdminUserWithRoot('ownsall');
+    const alice = await createUserWithRoot('ownsall-alice');
+    const orphanDir = await fileNodeService.createDirectory(null, `orphan-${Date.now()}`);
+    const rootFile = await fileNodeService.createFile(orphanDir.id, 'root.txt');
+    const aliceHomeFile = await fileNodeService.createFile(alice.root.id, 'alice.txt');
+    const manual = await collectionsService.createCollection(admin.user.id, { name: 'OwnsAll' });
+
+    const added = await collectionsService.addItems(admin.user.id, manual.collection.id, [
+      rootFile.id,
+      aliceHomeFile.id,
+    ]);
+    expect(added.added).toHaveLength(2);
+
+    const view = await collectionsService.getItems(admin.user.id, manual.collection.id, {});
+    expect(view.items).toHaveLength(2);
+    for (const row of view.items) {
+      expect(row.sharedExcluded).toBe(false);
+    }
+
+    const publish = await collectionsService.publishItems(
+      admin.user.id,
+      manual.collection.id,
+      [rootFile.id, aliceHomeFile.id],
+      true
+    );
+    expect(publish).toMatchObject({
+      published: [rootFile.id, aliceHomeFile.id],
+      ignored: [],
+    });
+    // DB flip + journal row (the publish path is REAL for admin-owned rows)
+    for (const nodeId of [rootFile.id, aliceHomeFile.id]) {
+      const stored = await collectionsStore.getStoredItem(manual.collection.id, nodeId);
+      expect(stored.published).toBe(true);
+    }
+    const journal = await dbQuery(
+      'SELECT COUNT(*) AS n FROM action_journal WHERE subject = ? AND action = ?',
+      [`collection:${manual.collection.id}`, 'set-items-published']
+    );
+    expect(Number(journal.rows[0].n)).toBeGreaterThanOrEqual(1);
+
+    // card previews include them (the bogus shared-excluded filter is gone)
+    const { collections } = await collectionsService.listCollections(admin.user.id, {
+      include: 'mine',
+    });
+    const card = collections.find((c) => c.collection_id === manual.collection.id);
+    expect(new Set(card.preview_items.map((i) => i.node_id))).toEqual(
+      new Set([rootFile.id, aliceHomeFile.id])
+    );
+
+    // digest counts include them
+    const since = new Date(Date.now() - 10_000).toISOString();
+    const digestView = await collectionsService.getItems(admin.user.id, manual.collection.id, {
+      since,
+    });
+    expect(digestView.digest.added_since).toBe(2);
+  });
+
+  it('grantee of an admin-owned collection receives the members (cross-leak filter was bogus)', async () => {
+    const admin = await createAdminUserWithRoot('gview');
+    const alice = await createUserWithRoot('gview-alice');
+    const bob = await createUserWithRoot('gview-bob');
+    const aliceFile = await fileNodeService.createFile(alice.root.id, 'seeme.txt');
+    const manual = await collectionsService.createCollection(admin.user.id, { name: 'GView' });
+
+    await collectionsService.addItems(admin.user.id, manual.collection.id, [aliceFile.id]);
+    await collectionsService.publishItems(
+      admin.user.id,
+      manual.collection.id,
+      [aliceFile.id],
+      true
+    );
+    await collectionsService.grantCollectionAccess(
+      admin.user.id,
+      manual.collection.id,
+      bob.user.id,
+      'viewer'
+    );
+    await grantTestPermissionByNodeId({
+      userId: bob.user.id,
+      fileNodeId: aliceFile.id,
+      permission: 'read',
+    });
+
+    const view = await collectionsService.getItems(bob.user.id, manual.collection.id, {});
+    const row = view.items.find((item) => item.nodeId === aliceFile.id);
+    expect(row).toMatchObject({ sharedExcluded: false, state: 'normal', name: 'seeme.txt' });
+  });
+});

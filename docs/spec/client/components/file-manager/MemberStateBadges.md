@@ -36,7 +36,7 @@ Badge visibility is decided ONLY by the adapter fields (`useFileManager.md` `toM
 | member, published+shared                  | `true`      | `false`           | `'normal'`  | –              | –             |
 | publish-pending member                    | `false`     | `false`           | `'normal'`  | –              | ✓             |
 | shared-excluded member (published)        | `true`      | `true`            | `'normal'`  | ✓              | –             |
-| excluded AND pending member               | `false`     | `true`            | `'normal'`  | ✓              | ✓             |
+| excluded AND pending member               | `false`     | `true`            | `'normal'`  | ✓              | –             |
 | revoked member                            | `false`     | `false`           | `'revoked'` | –              | –             |
 | revoked AND excluded member               | any         | `true`            | `'revoked'` | –              | –             |
 | plain FILE row (fields absent)            | `undefined` | `undefined`       | `undefined` | –              | –             |
@@ -44,9 +44,9 @@ Badge visibility is decided ONLY by the adapter fields (`useFileManager.md` `toM
 
 Rules:
 
-- `shared_excluded === true` (STRICT) ⇒ excluded badge; `published === false` (STRICT) ⇒ pending badge. Absent (`undefined`) fields on file-browser rows therefore render NOTHING — member-context rows only.
+- `shared_excluded === true` (STRICT) ⇒ excluded badge; `published === false` AND `shared_excluded !== true` (STRICT) ⇒ pending badge — an excluded row is un-publishable forever (its member menu omits the publish action), so publish-pending NEVER renders together with `shared_excluded`. Absent (`undefined`) fields on file-browser rows therefore render NOTHING — member-context rows only.
 - `state === 'revoked'` ⇒ NEITHER badge, regardless of the flags. This fixes the pre-migration leak: the server (`service.js` `resolveMemberRows`) serializes revoked stored rows with `published: false` (`Boolean(stored.published)`) and revoked foreign rows with `shared_excluded: true`, and the old `FileListItem` chip block gated ONLY on the flags — so revoked rows could carry the awaiting-publish (and excluded) CHIP. Badges never leak onto the gray placeholder rows.
-- Order when both badges render: excluded FIRST, then pending (chip-era order kept).
+- Descriptor order when badges render is excluded FIRST, then pending (chip-era order kept) — per the suppression rule only one of the two can ever be present.
 
 ### 2.4 Per-view placement geometry
 
@@ -80,7 +80,7 @@ Former chip testids `member-excluded-chip-<nodeId>` / `member-unpublished-chip-<
 Checklist for unit test writing:
 
 - [ ] Composite icon: exactly two SVGs (globe + clock) inside one relative wrapper; overlay 10px absolutely positioned top-left; inherits `currentColor`.
-- [ ] Gating matrix (§2.3) row-for-row: none / excluded only / pending only / both / revoked none / revoked+excluded none / plain file row none.
+- [ ] Gating matrix (§2.3) row-for-row: none / excluded only / pending only / excluded+pending ⇒ excluded ONLY (pending suppressed) / revoked none / revoked+excluded none / plain file row none.
 - [ ] Testids `member-excluded-badge-<nodeId>` / `member-publish-pending-badge-<nodeId>`; aria-labels equal the `fileManager.memberNotShared` / `fileManager.memberUnpublishedBadge` strings (both locales); chip testids are GONE.
 - [ ] Grid variant renders inside the `CardTile` corner-badge container (`TileCornerBadge` plates); list variant overlays the thumbnail column; detail variant renders inline before the name.
 - [ ] Zero DOM delta for plain file rows and revoked rows in all three variants.

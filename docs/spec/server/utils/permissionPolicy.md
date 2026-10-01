@@ -12,11 +12,11 @@
 
 ### 2.1 File Paths
 
-| Module            | Source                                                   | Purpose                                                                                 |
-| ----------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| permissionPolicy  | `server/domains/permissions/policy/permissionPolicy.js`  | Main policy: nodeId-based read/write/grant/revoke/view checks with admin + owner bypass |
-| ownerNodeResolver | `server/domains/permissions/policy/ownerNodeResolver.js` | Owner node detection: isOwnerNode(userId, nodeId) via closure table                     |
-| permissionRank    | `server/domains/permissions/policy/permissionRank.js`    | Permission level comparison: getPermissionRank, meetsRank                               |
+| Module            | Source                                                   | Purpose                                                                                                                                |
+| ----------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| permissionPolicy  | `server/domains/permissions/policy/permissionPolicy.js`  | Main policy: nodeId-based read/write/grant/revoke/view checks with admin + owner bypass                                                |
+| ownerNodeResolver | `server/domains/permissions/policy/ownerNodeResolver.js` | Owner node detection: isOwnerNode(userId, nodeId) via closure table; admin ⇒ owner of every node (the `isAdminUser` policy convention) |
+| permissionRank    | `server/domains/permissions/policy/permissionRank.js`    | Permission level comparison: getPermissionRank, meetsRank                                                                              |
 
 - **Test file:** `server/utils/__tests__/permissionPolicy.test.js` (test has not been relocated yet)
 
@@ -56,7 +56,7 @@ All Tier 2 (path-based compat layer) and Tier 3 (sync checker builder) functions
 - `@webdav-easyaccess/shared/constants` (PERMISSIONS)
 - User model
 - permissionStore — direct store import for checkPermission calls
-- ownerNodeResolver.isOwnerNode — nodeId-based ownership check
+- ownerNodeResolver.isOwnerNode — nodeId-based ownership check (admin ⇒ owner of every node)
 
 ### 2.6 Mock Targets
 

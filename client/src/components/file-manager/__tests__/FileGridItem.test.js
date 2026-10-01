@@ -113,6 +113,40 @@ describe('FileGridItem — member tile slots (P-4)', () => {
     expect(onMoreClick).toHaveBeenCalledWith(file, expect.any(Object));
   });
 
+  it('member-state badges render in the card TOP-LEFT corner slot (M-4 geometry mirror)', () => {
+    renderWithProviders(
+      <FileGridItem {...itemProps(memberRow({ published: false, shared_excluded: true }))} />
+    );
+    const excluded = screen.getByTestId('member-excluded-badge-90210');
+    const pending = screen.getByTestId('member-publish-pending-badge-90210');
+    expect(excluded.getAttribute('aria-label')).toBe("Not owner's file — not shared");
+    expect(pending.getAttribute('aria-label')).toBe('Awaiting publish');
+    // TileCornerBadge plate geometry: 28px circle over the media
+    expect(getComputedStyle(excluded).width).toBe('28px');
+    // CardTile cornerBadges container: absolute top-left, opposite the More action
+    const corner = excluded.parentElement;
+    expect(getComputedStyle(corner).position).toBe('absolute');
+    expect(getComputedStyle(corner).top).toBe('4px');
+    expect(getComputedStyle(corner).left).toBe('4px');
+  });
+
+  it('pending badge disappears when published flips (memo comparator tracks the field)', () => {
+    const { rerender } = renderWithProviders(<FileGridItem {...itemProps(memberRow())} />);
+    expect(screen.getByTestId('member-publish-pending-badge-90210')).toBeInTheDocument();
+    rerender(<FileGridItem {...itemProps(memberRow({ published: true }), { key: 'pub' })} />);
+    expect(screen.queryByTestId('member-publish-pending-badge-90210')).not.toBeInTheDocument();
+  });
+
+  it('revoked member tile renders NEITHER badge', () => {
+    renderWithProviders(
+      <FileGridItem
+        {...itemProps(memberRow({ state: 'revoked', published: false, shared_excluded: true }))}
+      />
+    );
+    expect(screen.queryByTestId('member-excluded-badge-90210')).toBeNull();
+    expect(screen.queryByTestId('member-publish-pending-badge-90210')).toBeNull();
+  });
+
   it('a plain file tile renders NO more-button data-testid (regression anchor)', () => {
     const { container } = renderWithProviders(
       <FileGridItem {...itemProps({ path: '/a.txt', basename: 'a.txt', type: 'file' })} />
@@ -120,5 +154,8 @@ describe('FileGridItem — member tile slots (P-4)', () => {
     // MUI icons carry their own data-testid; scope the check to the member slots.
     expect(container.querySelector('[data-testid="member-menu-button"]')).toBeNull();
     expect(container.querySelector('[data-testid^="member-row-"]')).toBeNull();
+    expect(
+      container.querySelector('[data-testid^="member-excluded-badge"], [data-testid^="member-publish-pending-badge"]')
+    ).toBeNull();
   });
 });

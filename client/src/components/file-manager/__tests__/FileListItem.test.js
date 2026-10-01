@@ -125,27 +125,42 @@ describe('FileListItem — member-row slots (P-4)', () => {
     expect(screen.getByText('poster.pdf')).toBeInTheDocument();
   });
 
-  it('renders the shared_excluded chip with the member testid', () => {
+  it('renders the shared_excluded BADGE overlaying the leading icon column (VpnLock, §11 follow-up 3)', () => {
     renderWithProviders(<FileListItem {...itemProps(memberRow({ shared_excluded: true }))} />);
-    const chip = screen.getByTestId('member-excluded-chip-90210');
-    expect(chip).toHaveTextContent(/Not owner's file/);
+    const badge = screen.getByTestId('member-excluded-badge-90210');
+    expect(badge.getAttribute('aria-label')).toBe("Not owner's file — not shared");
+    // overlay geometry: absolute badge row inside the relative thumbnail column
+    const overlayRow = badge.parentElement;
+    expect(getComputedStyle(overlayRow).position).toBe('absolute');
+    expect(getComputedStyle(overlayRow).zIndex).toBe('1');
+    expect(screen.queryByTestId('member-excluded-chip-90210')).toBeNull();
   });
 
-  it('renders the awaiting-publish chip ONLY while published === false', () => {
+  it('renders the awaiting-publish BADGE ONLY while published === false', () => {
     const { rerender } = renderWithProviders(<FileListItem {...itemProps(memberRow())} />);
-    expect(screen.getByTestId('member-unpublished-chip-90210')).toBeInTheDocument();
+    expect(screen.getByTestId('member-publish-pending-badge-90210')).toBeInTheDocument();
     rerender(<FileListItem {...itemProps(memberRow({ published: true }), { key: 'pub' })} />);
-    expect(screen.queryByTestId('member-unpublished-chip-90210')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('member-publish-pending-badge-90210')).not.toBeInTheDocument();
   });
 
-  it('memo comparator: flipping published on a NEW row object re-renders the chip away', () => {
+  it('renders NEITHER badge for a revoked member row (chip-era pending leak fixed)', () => {
+    renderWithProviders(
+      <FileListItem
+        {...itemProps(memberRow({ state: 'revoked', published: false, shared_excluded: true }))}
+      />
+    );
+    expect(screen.queryByTestId('member-publish-pending-badge-90210')).toBeNull();
+    expect(screen.queryByTestId('member-excluded-badge-90210')).toBeNull();
+  });
+
+  it('memo comparator: flipping published on a NEW row object re-renders the badge away', () => {
     const props = itemProps(memberRow());
     const { rerender } = renderWithProviders(
       <FileListItem {...props} file={memberRow({ published: false })} />
     );
-    expect(screen.getByTestId('member-unpublished-chip-90210')).toBeInTheDocument();
+    expect(screen.getByTestId('member-publish-pending-badge-90210')).toBeInTheDocument();
     rerender(<FileListItem {...props} file={memberRow({ published: true })} />);
-    expect(screen.queryByTestId('member-unpublished-chip-90210')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('member-publish-pending-badge-90210')).not.toBeInTheDocument();
   });
 
   it('More button carries file.moreButtonTestId and dispatches onMoreClick(file, event)', () => {
@@ -156,10 +171,11 @@ describe('FileListItem — member-row slots (P-4)', () => {
     expect(onMoreClick).toHaveBeenCalledWith(file, expect.any(Object));
   });
 
-  it('a plain file row keeps the size caption and renders no member testids/chips', () => {
+  it('a plain file row keeps the size caption and renders no member testids/chips/badges', () => {
     renderWithProviders(<FileListItem {...itemProps({ ...mockFile })} />);
     expect(screen.getByText(/1\.00 KB|1 KB/i)).toBeInTheDocument();
     expect(screen.queryByTestId('member-menu-button')).not.toBeInTheDocument();
     expect(screen.queryByTestId(/member-.*-chip-90210/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId(/member-.*-badge-90210/)).not.toBeInTheDocument();
   });
 });

@@ -609,8 +609,12 @@ FileActionSheet|FilePropertiesDialog` 140/140. M-5 clarification: no pre-existin
   NEITHER badge (the chip-era flag-only gating leaked the pending chip onto revoked rows —
   `service.js` revoked stored rows carry `published:false`). Spec: MemberStateBadges.md. Branch
   `feature/11-member-state-badges` (worktree wt-badge off `ai-feature` @ 65b7096); docs-first →
-  RED → GREEN; `[in flight]` — gates (full client suite + collections-desktop E2E) appended as a
-  ledger update at branch close.
+  RED → GREEN. `[done]` — gates: full client suite **178 suites / 1895 pass** (branch base
+  177/1869 + 1 suite / 26 tests); server leg N/A (only the `fileManager.sharedExcludedChip`
+  en+ko deletion — locale-mirror suite (`serverErrorCodesI18nMirror`, serverErrors.\* scope)
+  re-run green); `E2E_BACKEND_MODE=s3 collections-desktop` **14/14 green first run** (012
+  migrated to badge ids, asserted in grid default AND the kept list path). Commits: docs
+  `ca25263`, RED `6f6e190`, GREEN+locales `c43855a`, E2E `4170bdc`.
 
 - **§11 FOLLOW-UP batch (2026-10-01, owner-spotted post-ship defects)** — branch
   `fix/polish-11-followups` (worktree wt-11f off `e8e29db`); docs-first `34fefb7` → RED →

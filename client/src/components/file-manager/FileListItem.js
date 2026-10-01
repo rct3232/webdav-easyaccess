@@ -1,12 +1,13 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Typography, Box, Avatar, CircularProgress, Tooltip, Chip } from '@mui/material';
+import { Typography, Box, Avatar, CircularProgress, Tooltip } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import { MoreVert as MoreVertIcon } from '@mui/icons-material';
 import { formatFileSize, formatDate } from '../../utils/format';
 import { renderProcessingIcon, getDropTargetStyles } from '../../utils/fileViewUtils';
 import { getFileIcon, getThumbnail } from '../../utils/fileIconUtils';
 import { pixelMiddleTruncate } from '../../utils/stringUtils';
+import MemberStateBadges from './MemberStateBadges';
 
 /**
  * 정적 스타일 - 컴포넌트 외부에 정의하여 매 렌더링마다 재생성 방지
@@ -34,6 +35,7 @@ const thumbnailContainerStyles = {
   display: 'flex',
   justifyContent: 'center',
   mr: 2,
+  position: 'relative',
 };
 
 const avatarStyles = {
@@ -115,6 +117,9 @@ const FileListItem = React.memo(
           ) : (
             <Box sx={iconContainerStyles}>{getFileIcon(file)}</Box>
           )}
+          {/* P-4 member-state badges (§11 follow-up 3): overlay on the leading
+              icon column; file rows (fields absent) render nothing here. */}
+          <MemberStateBadges file={file} variant="list" />
         </Box>
         <Box sx={contentStyles} ref={containerRef}>
           {(() => {
@@ -150,26 +155,9 @@ const FileListItem = React.memo(
               </Typography>
             )}
           </Box>
-          {/* P-4 member chips (name block, list renderer only — §2.5). The
-              file-side rows carry neither field (undefined), so nothing renders. */}
-          {(file.shared_excluded === true || file.published === false) && (
-            <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
-              {file.shared_excluded === true && (
-                <Chip
-                  size="small"
-                  data-testid={`member-excluded-chip-${file.nodeId}`}
-                  label={t('fileManager.sharedExcludedChip')}
-                />
-              )}
-              {file.published === false && (
-                <Chip
-                  size="small"
-                  data-testid={`member-unpublished-chip-${file.nodeId}`}
-                  label={t('fileManager.memberUnpublishedBadge')}
-                />
-              )}
-            </Box>
-          )}
+          {/* Member-state badges now render as a leading-column overlay (the
+              §2.6 shared `MemberStateBadges`, variant="list") in all three
+              member views — the former list-only Chip block is gone. */}
         </Box>
         {showMoreButton && (
           <Box

@@ -138,11 +138,51 @@ describe('FileDetail — member row slots (P-4)', () => {
     expect(onFileClick).not.toHaveBeenCalled();
   });
 
+  it('member rows render the state badges INLINE in the name cell, before the name (§11 follow-up 3)', () => {
+    renderWithProviders(
+      <FileDetail {...defaultProps} files={[memberRow({ shared_excluded: true })]} />
+    );
+    const row = screen.getByTestId('member-row-90210');
+    const excluded = within(row).getByTestId('member-excluded-badge-90210');
+    const pending = within(row).getByTestId('member-publish-pending-badge-90210');
+    expect(excluded.getAttribute('aria-label')).toBe("Not owner's file — not shared");
+    expect(pending.getAttribute('aria-label')).toBe('Awaiting publish');
+    // inline geometry: plain 16px icons (no plate), BEFORE the name text
+    expect(getComputedStyle(excluded).position).not.toBe('absolute');
+    expect(getComputedStyle(excluded).width).not.toBe('28px');
+    const name = within(row).getByText('poster.pdf');
+    expect(excluded.compareDocumentPosition(name)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('a revoked member row renders NEITHER badge', () => {
+    renderWithProviders(
+      <FileDetail
+        {...defaultProps}
+        files={[
+          memberRow({
+            state: 'revoked',
+            shared_excluded: true,
+            basename: 'Unavailable',
+            mime: null,
+          }),
+        ]}
+      />
+    );
+    const row = screen.getByTestId('member-row-90210');
+    expect(within(row).queryByTestId('member-excluded-badge-90210')).toBeNull();
+    expect(within(row).queryByTestId('member-publish-pending-badge-90210')).toBeNull();
+  });
+
   it('plain file rows render no member testids (zero DOM delta) and keep sizes', () => {
     const { container } = renderWithProviders(<FileDetail {...defaultProps} />);
     // MUI icons carry their own data-testid; scope the check to the member slots.
     expect(container.querySelector('[data-testid^="member-row-"]')).toBeNull();
     expect(container.querySelector('[data-testid="member-menu-button"]')).toBeNull();
+    expect(
+      container.querySelector(
+        '[data-testid^="member-excluded-badge"], [data-testid^="member-publish-pending-badge"]'
+      )
+    ).toBeNull();
     expect(screen.getByText(/1 KB|1\.00 KB/i)).toBeInTheDocument();
   });
 });

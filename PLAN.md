@@ -594,6 +594,27 @@ FileActionSheet|FilePropertiesDialog` 140/140. M-5 clarification: no pre-existin
 - **§11 follow-up 2 (2026-10-01, owner ruling):** ArchiveNode count badge removed (M-1
   purity — the sidebar shows no numeric counts): `archiveCount` state/prop/`Badge` and its
   second `mine,archived` fetch deleted from the tree path; parity specs updated.
+- **§11 follow-up 3 (2026-10-01, owner decisions — F4 report follow-up):** the two list-only
+  member-state CHIPS become shared BADGE markers rendered in ALL three member views. Owner
+  decisions (binding): `shared_excluded` → `VpnLock` icon (globe+padlock — "member file not
+  delivered to collection viewers"); publish-pending → composite `Public` (globe) + 10-12px
+  `Pending` glyph overlaid top-left, defined ONCE as a shared component (`MemberStateBadges.js`),
+  inheriting currentColor. Testids `member-excluded-badge-<nodeId>` /
+  `member-publish-pending-badge-<nodeId>` replace the `-chip-` ids everywhere (tests/E2E/specs);
+  tooltips `fileManager.memberNotShared` / `fileManager.memberUnpublishedBadge`; the KO-orphan
+  key `fileManager.sharedExcludedChip` (truncated KO value) DELETED en+ko after migration; the
+  `MemberRowControls` in-menu `member-not-shared` chip STAYS (menu-internal detail, prior owner
+  call). Geometry: list = overlay on the leading icon/avatar column; grid = `CardTile.cornerBadges`
+  slot top-left (M-4 mirror); detail = inline 16px before the name. Gating fix: revoked rows render
+  NEITHER badge (the chip-era flag-only gating leaked the pending chip onto revoked rows —
+  `service.js` revoked stored rows carry `published:false`). Spec: MemberStateBadges.md. Branch
+  `feature/11-member-state-badges` (worktree wt-badge off `ai-feature` @ 65b7096); docs-first →
+  RED → GREEN. `[done]` — gates: full client suite **178 suites / 1895 pass** (branch base
+  177/1869 + 1 suite / 26 tests); server leg N/A (only the `fileManager.sharedExcludedChip`
+  en+ko deletion — locale-mirror suite (`serverErrorCodesI18nMirror`, serverErrors.\* scope)
+  re-run green); `E2E_BACKEND_MODE=s3 collections-desktop` **14/14 green first run** (012
+  migrated to badge ids, asserted in grid default AND the kept list path). Commits: docs
+  `ca25263`, RED `6f6e190`, GREEN+locales `c43855a`, E2E `4170bdc`.
 
 - **§11 FOLLOW-UP batch (2026-10-01, owner-spotted post-ship defects)** — branch
   `fix/polish-11-followups` (worktree wt-11f off `e8e29db`); docs-first `34fefb7` → RED →

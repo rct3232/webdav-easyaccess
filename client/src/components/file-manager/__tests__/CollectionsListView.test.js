@@ -714,13 +714,46 @@ describe('CollectionsListView — member mode (P-4 shared renderers)', () => {
     expect(props.onMemberAction).not.toHaveBeenCalled();
   });
 
-  it('list renderer carries the member chips (shared_excluded + awaiting publish) with the member testids', () => {
+  it('member-state badges render in ALL THREE member views with the badge testids (§11 follow-up 3)', () => {
     const props = membersProps();
     props.items = [memberRow({ published: false, shared_excluded: true })];
-    renderWithProviders(<CollectionsListView {...props} memberViewMode="list" />);
-    const row = screen.getByTestId('member-row-90210');
-    expect(within(row).getByTestId('member-excluded-chip-90210')).toBeInTheDocument();
-    expect(within(row).getByTestId('member-unpublished-chip-90210')).toBeInTheDocument();
+    ['grid', 'list', 'detail'].forEach((memberViewMode) => {
+      const { unmount } = renderWithProviders(
+        <CollectionsListView {...props} memberViewMode={memberViewMode} />
+      );
+      const row = screen.getByTestId('member-row-90210');
+      expect(within(row).getByTestId('member-excluded-badge-90210')).toBeInTheDocument();
+      expect(within(row).getByTestId('member-publish-pending-badge-90210')).toBeInTheDocument();
+      // the chip ids are retired everywhere (grid and detail never carried them)
+      expect(within(row).queryByTestId('member-excluded-chip-90210')).toBeNull();
+      expect(within(row).queryByTestId('member-unpublished-chip-90210')).toBeNull();
+      unmount();
+    });
+  });
+
+  it('a revoked member row renders NEITHER badge in any view', () => {
+    const props = membersProps();
+    props.items = [
+      memberRow({
+        nodeId: 5,
+        name: null,
+        basename: 'fileManager.collectionsUnavailable',
+        mime: null,
+        state: 'revoked',
+        shared_excluded: true,
+        published: false,
+        rowTestId: 'member-row-5',
+      }),
+    ];
+    ['grid', 'list', 'detail'].forEach((memberViewMode) => {
+      const { unmount } = renderWithProviders(
+        <CollectionsListView {...props} memberViewMode={memberViewMode} />
+      );
+      const row = screen.getByTestId('member-row-5');
+      expect(within(row).queryByTestId('member-excluded-badge-5')).toBeNull();
+      expect(within(row).queryByTestId('member-publish-pending-badge-5')).toBeNull();
+      unmount();
+    });
   });
 
   it('digest banner renders the one-line counts and expands', () => {

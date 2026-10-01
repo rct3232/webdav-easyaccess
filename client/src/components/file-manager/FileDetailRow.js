@@ -8,6 +8,7 @@ import { getFileIcon } from '../../utils/fileIconUtils';
 import { pixelMiddleTruncate } from '../../utils/stringUtils';
 import { useLongPress } from '../../hooks/useLongPress';
 import { useLongPressSelect } from './hooks/useLongPressSelect';
+import MemberStateBadges from './MemberStateBadges';
 
 const FileDetailRow = ({
   file,
@@ -141,6 +142,10 @@ const FileDetailRow = ({
       <TableCell sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, fontSize: '1.25rem' }}>
           {getFileIcon(file)}
+          {/* P-4 member-state badges (§11 follow-up 3): INLINE 16px icons in
+              the name cell (gap:0.75 spaces them), before the name; plain file
+              rows (flags absent) render nothing here. */}
+          <MemberStateBadges file={file} variant="detail" />
           {(() => {
             const originalName = file.basename;
             const truncatedName = pixelMiddleTruncate(originalName, maxPixelWidth, font);

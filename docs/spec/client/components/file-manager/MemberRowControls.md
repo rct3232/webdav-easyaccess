@@ -52,6 +52,7 @@ Target-contract spec (`docs/features/collections-platform.md` §3.2 member-row c
   → `PUT /api/file-likes/:nodeId {liked:false}` → notifier refresh + optimistic row removal
   (`FileManager.md` like-wiring note).
 - Revoked rows (`state:'revoked'`): placeholder, menu renders nothing except close (no name/thumbnail exposure).
+- **In-menu `member-not-shared` chip STAYS (§11 follow-up 3 owner ruling, 2026-10-01):** it is a menu-INTERNAL detail. The ROW-level excluded/unpublished markers are NO LONGER chips — they are the shared `MemberStateBadges` badges rendered in all three member views (`MemberStateBadges.md`); the old `member-excluded-chip-*`/`member-unpublished-chip-*` testids live nowhere outside this menu's `member-not-shared-chip` id, which is unchanged.
 
 ### 2.4 Feedback (host, restated for observability)
 

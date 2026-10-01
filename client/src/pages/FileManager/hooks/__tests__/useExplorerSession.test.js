@@ -15,6 +15,8 @@ import {
   setCollectionMemberViewMode,
   getLikedViewMode,
   setLikedViewMode,
+  getCollectionMemberSortMode,
+  setCollectionMemberSortMode,
 } from '../../../../utils/localStorage';
 import { useInfiniteScroll } from '../../../../hooks/useInfiniteScroll';
 import { useExplorerSession } from '../useExplorerSession';
@@ -32,6 +34,8 @@ jest.mock('../../../../utils/localStorage', () => ({
   setCollectionMemberViewMode: jest.fn(),
   getLikedViewMode: jest.fn(() => 'grid'),
   setLikedViewMode: jest.fn(),
+  getCollectionMemberSortMode: jest.fn(() => 'date_desc'),
+  setCollectionMemberSortMode: jest.fn(),
 }));
 
 jest.mock('../../../../hooks/useInfiniteScroll', () => ({
@@ -279,6 +283,46 @@ describe('useExplorerSession', () => {
 
       expect(result.current.memberViewMode).toBe('list');
       expect(setCollectionMemberViewMode).toHaveBeenCalledWith('list');
+    });
+  });
+
+  describe('memberSortMode (M-8 per-surface members+liked sort key)', () => {
+    it('initializes from the collectionMemberSortMode helper (default date_desc, independent of the file sortMode)', () => {
+      getSortMode.mockReturnValue('name_asc');
+      getCollectionMemberSortMode.mockReturnValue('date_desc');
+
+      const { result } = renderHook(() =>
+        useExplorerSession({ currentNodeId: 5, files: EMPTY_FILES })
+      );
+
+      expect(getCollectionMemberSortMode).toHaveBeenCalledTimes(1);
+      expect(result.current.memberSortMode).toBe('date_desc');
+      expect(result.current.sortMode).toBe('name_asc');
+    });
+
+    it('honors a persisted non-default member sort mode', () => {
+      getCollectionMemberSortMode.mockReturnValue('name_asc');
+
+      const { result } = renderHook(() =>
+        useExplorerSession({ currentNodeId: 5, files: EMPTY_FILES })
+      );
+
+      expect(result.current.memberSortMode).toBe('name_asc');
+    });
+
+    it('setMemberSortMode persists through the MEMBER helper only — the file sortMode/key never sees it', () => {
+      const { result } = renderHook(() =>
+        useExplorerSession({ currentNodeId: 5, files: EMPTY_FILES })
+      );
+
+      act(() => {
+        result.current.setMemberSortMode('date_asc');
+      });
+
+      expect(result.current.memberSortMode).toBe('date_asc');
+      expect(setCollectionMemberSortMode).toHaveBeenCalledWith('date_asc');
+      expect(result.current.sortMode).toBe('name_desc'); // file sortMode untouched by the member dispatch
+      expect(setSortMode).not.toHaveBeenCalledWith('date_asc');
     });
   });
 

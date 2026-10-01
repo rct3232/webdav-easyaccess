@@ -10,6 +10,8 @@ import {
   setCollectionMemberViewMode as saveMemberViewMode,
   getLikedViewMode,
   setLikedViewMode as saveLikedViewMode,
+  getCollectionMemberSortMode,
+  setCollectionMemberSortMode as saveMemberSortMode,
 } from '../../../utils/localStorage';
 import { useInfiniteScroll } from '../../../hooks/useInfiniteScroll';
 
@@ -36,6 +38,10 @@ export const useExplorerSession = ({
   // P-5: per-surface view mode of the collection LIKES surface — its own key
   // (`likedViewMode`, default grid); neither the file key nor the member key.
   const [likedViewMode, setLikedViewMode] = useState(() => getLikedViewMode());
+  // M-8: per-surface sort of the members + liked surfaces — ONE shared key
+  // (`collectionMemberSortMode`, default date_desc); the file `sortMode` is a
+  // different state and is never touched by member dispatches.
+  const [memberSortMode, setMemberSortMode] = useState(() => getCollectionMemberSortMode());
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [sortMode, setSortMode] = useState(() => getSortMode());
 
@@ -57,6 +63,10 @@ export const useExplorerSession = ({
   useEffect(() => {
     saveLikedViewMode(likedViewMode);
   }, [likedViewMode]);
+
+  useEffect(() => {
+    saveMemberSortMode(memberSortMode);
+  }, [memberSortMode]);
 
   useEffect(() => {
     saveSortMode(sortMode);
@@ -154,6 +164,9 @@ export const useExplorerSession = ({
 
     likedViewMode,
     setLikedViewMode,
+
+    memberSortMode,
+    setMemberSortMode,
 
     filteredFiles,
     sortedFiles,

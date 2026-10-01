@@ -665,10 +665,11 @@ test('E2E-COLLECTION-011: members render the shared grid by default, the list to
   await expect(row).toBeVisible();
 
   // P-4 default: the shared FileGrid renderer (Card shell inside the row);
-  // the members toolbar keeps the sort HIDDEN but shows the view toggles.
+  // M-8: the members toolbar shows the sort button (files-style radios bound to
+  // the persisted collectionMemberSortMode) alongside the view toggles.
   await expect(row.locator('.MuiCard-root')).toBeVisible();
   await expect(page.getByTestId('view-mode-list')).toBeVisible();
-  await expect(page.getByTestId('file-manager-sort')).toHaveCount(0);
+  await expect(page.getByTestId('file-manager-sort')).toBeVisible();
 
   // Toggle to LIST: FileList rows (no card shell), name shown, NO size ever
   // rendered (the member wire carries none — the adapter suppresses the slot).
@@ -770,11 +771,12 @@ test('E2E-COLLECTION-013: the sidebar Likes child row lists liked files through 
   await expect(page).toHaveURL(/__collections__\/liked/);
   await expect(page.getByTestId('members-list')).toBeVisible();
 
-  // Member-parity machinery: shared grid by default, sort button hidden.
+  // Member-parity machinery: shared grid by default; M-8: the sort button
+  // renders (same collectionMemberSortMode state as the members surface).
   const row = page.getByTestId(`member-row-${fileA.nodeId}`);
   await expect(row).toBeVisible();
   await expect(row.locator('.MuiCard-root')).toBeVisible();
-  await expect(page.getByTestId('file-manager-sort')).toHaveCount(0);
+  await expect(page.getByTestId('file-manager-sort')).toBeVisible();
 
   // Toggle to LIST: persists on the DEDICATED likedViewMode key.
   await page.getByTestId('view-mode-list').click();
@@ -831,4 +833,48 @@ test('E2E-COLLECTION-013: the sidebar Likes child row lists liked files through 
       return (body.items as { node_id: number }[]).some((item) => item.node_id === fileA.nodeId);
     })
     .toBe(true);
+});
+
+test('E2E-COLLECTION-014: the collections grid hosts Likes-first/Archive-last pseudo-tiles that navigate, the archive view shows only Likes, and opening a collection trails Collections › <name>', async ({
+  page,
+  request,
+}, testInfo) => {
+  const { base, token } = await loginAndOpenOwnedWorkspace(page, request, testInfo);
+  const fileA = await seedFile(request, token, base, testInfo, 'col014-a');
+
+  const name = buildName(testInfo, 'col');
+  const collectionId = await createCollectionApi(request, token, name);
+  await addItemsApi(request, token, collectionId, [fileA.nodeId]);
+
+  // Active list: Likes tile FIRST, Archive tile LAST (M-2).
+  await page.goto('/files/__collections__');
+  await expect(collectionCard(page, name)).toBeVisible();
+  const likedTile = page.getByTestId('collection-tile-liked');
+  const archiveTile = page.getByTestId('collection-tile-archive');
+  await expect(likedTile).toBeVisible();
+  await expect(archiveTile).toBeVisible();
+
+  // Breadcrumb (M-9): opening the collection trails Collections › <name> (no Home).
+  await openCollectionCard(page, name);
+  await expect(page.getByTestId('members-list')).toBeVisible();
+  const crumb = page.getByTestId('breadcrumb');
+  await expect(crumb.getByText('Collections', { exact: true })).toBeVisible();
+  await expect(crumb.getByText(name, { exact: true })).toBeVisible();
+
+  // The Collections chip navigates back to the list surface.
+  await crumb.getByText('Collections', { exact: true }).click();
+  await expect(page).toHaveURL(/__collections__/);
+  await expect(page.getByTestId('collections-list-view')).toBeVisible();
+
+  // Archive tile → archive view: only the Likes tile remains (M-2 ruling).
+  await archiveTile.click();
+  await expect(page).toHaveURL(/__collections__\/__archive__/);
+  await expect(page.getByTestId('collection-tile-liked')).toBeVisible();
+  await expect(page.getByTestId('collection-tile-archive')).toHaveCount(0);
+
+  // Likes tile → the liked surface (empty here — legal empty view, tiles gone).
+  await page.getByTestId('collection-tile-liked').click();
+  await expect(page).toHaveURL(/__collections__\/liked/);
+  await expect(page.getByTestId('members-list')).toBeVisible();
+  await expect(page.getByTestId('collection-tile-liked')).toHaveCount(0);
 });

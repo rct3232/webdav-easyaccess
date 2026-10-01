@@ -152,6 +152,46 @@ const CollectionsSection = ({
 
       <Collapse in={collectionsExpanded} timeout="auto" unmountOnExit>
         <List component="div" disablePadding ref={setObservedElement}>
+          {/* LikesNode (P-5; MOVED TO TOP by M-2, 2026-09-30 owner ruling) — the
+              static child row leads the section body, before the active
+              collection rows (ArchiveNode stays the section tail); renders
+              unconditionally under the same zero-state rule (empty likes =
+              legal empty view). */}
+          <ListItem disablePadding>
+            <ListItemButton
+              data-testid="collections-liked-node"
+              onClick={onLikesClick}
+              selected={isLikesSelected}
+              sx={{
+                pl: 3,
+                py: 0.5,
+                minHeight: 32,
+                '&.Mui-selected': {
+                  backgroundColor: 'transparent',
+                  color: 'primary.main',
+                  borderLeft: '3px solid',
+                  borderLeftColor: 'primary.main',
+                  '&:hover': { backgroundColor: 'action.hover' },
+                  '& .MuiListItemIcon-root': { color: 'primary.main' },
+                },
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: 24, mr: 0.5 }}>
+                <LikesIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText
+                primary={
+                  <Typography
+                    variant="body2"
+                    sx={{ fontSize: '0.875rem', fontWeight: isLikesSelected ? 700 : 400 }}
+                  >
+                    {t('nav.collectionsLiked')}
+                  </Typography>
+                }
+              />
+            </ListItemButton>
+          </ListItem>
+
           {(collections ?? []).length === 0 ? (
             <ListItem disablePadding>
               <Box sx={{ pl: 3, py: 1 }}>
@@ -232,44 +272,6 @@ const CollectionsSection = ({
               );
             })
           )}
-
-          {/* LikesNode (P-5, owner ruling) — static child row ahead of the
-              ArchiveNode (which stays the section tail); renders unconditionally
-              under the same zero-state rule (empty likes = legal empty view). */}
-          <ListItem disablePadding>
-            <ListItemButton
-              data-testid="collections-liked-node"
-              onClick={onLikesClick}
-              selected={isLikesSelected}
-              sx={{
-                pl: 3,
-                py: 0.5,
-                minHeight: 32,
-                '&.Mui-selected': {
-                  backgroundColor: 'transparent',
-                  color: 'primary.main',
-                  borderLeft: '3px solid',
-                  borderLeftColor: 'primary.main',
-                  '&:hover': { backgroundColor: 'action.hover' },
-                  '& .MuiListItemIcon-root': { color: 'primary.main' },
-                },
-              }}
-            >
-              <ListItemIcon sx={{ minWidth: 24, mr: 0.5 }}>
-                <LikesIcon fontSize="small" />
-              </ListItemIcon>
-              <ListItemText
-                primary={
-                  <Typography
-                    variant="body2"
-                    sx={{ fontSize: '0.875rem', fontWeight: isLikesSelected ? 700 : 400 }}
-                  >
-                    {t('nav.collectionsLiked')}
-                  </Typography>
-                }
-              />
-            </ListItemButton>
-          </ListItem>
 
           {/* ArchiveNode — auto-child at the section end; renders unconditionally
               (§2.3 T0.4 decision); the badge hides at count 0. */}

@@ -568,3 +568,14 @@ status-chip assertion removed; new E2E-COLLECTION-014 tiles case).
     mirrors the token (kept-in-sync comment). M-6 clarification: the `:248` tail-ellipsis is the
     seed-dialog sample-TILE name style (the only one in the file) — middle-truncated with the
     documented 190px budget. eslint/prettier clean on touched files. Awaits orchestrator gates.
+  - Batch C (M-2/M-8/M-9): `[wip]` — docs commit 77d3479; RED captured (3 test-side corrections
+    after first run: file-key persistence-on-mount assertion relaxed to `not.toHaveBeenCalledWith`,
+    tile-absence test needed `unmount()`, P-5 liked-surface test flipped to the M-8 contract — all
+    Case B test errors, implementation unchanged) → GREEN:
+    `useExplorerSession|CollectionsListView|FileManagerView` 126/126;
+    `CollectionsSection|Breadcrumb|FileManagerControls|useFileManager|pages/FileManager` +
+    anchors `GridCardPrimitives|FileGridItem|FolderTree*` all pass. Verified routes: liked
+    `/files/__collections__/liked`, archive `/files/__collections__/__archive__`
+    (`useFileManager.js` urlView). E2E: 011/013 sort-visibility flips + new case 014
+    (tiles/navigation/breadcrumb). eslint/prettier clean on touched files. Awaits orchestrator
+    full gates (client union + collections-desktop E2E).

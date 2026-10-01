@@ -155,3 +155,61 @@ describe('Breadcrumb', () => {
     expect(onNodeClick).toHaveBeenCalledWith(12);
   });
 });
+
+describe('Breadcrumb — collections crumbs (M-9, 2026-09-30)', () => {
+  it('member route renders Collections › <name> — the Home chip is replaced, ancestors never render', () => {
+    const onNodeClick = jest.fn();
+    renderWithProviders(
+      <Breadcrumb
+        {...defaultProps}
+        onNodeClick={onNodeClick}
+        currentPath="/__collections__/collection/5"
+        collectionName="Roadtrip"
+        ancestors={[{ nodeId: 42, name: 'should-not-render' }]}
+      />
+    );
+    expect(screen.getByText('Collections')).toBeInTheDocument();
+    expect(screen.getByText('Roadtrip')).toBeInTheDocument();
+    expect(screen.queryByText('Home')).not.toBeInTheDocument();
+    expect(screen.queryByText('should-not-render')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Collections'));
+    expect(onNodeClick).toHaveBeenCalledWith('/__collections__');
+    fireEvent.click(screen.getByText('Roadtrip'));
+    expect(onNodeClick).toHaveBeenCalledWith('/__collections__/collection/5');
+  });
+
+  it('unresolved name renders the TRANSIENT ellipsis segment (owner option (a) — never hides)', () => {
+    renderWithProviders(
+      <Breadcrumb {...defaultProps} currentPath="/__collections__/collection/5" />
+    );
+    expect(screen.getByText('Collections')).toBeInTheDocument();
+    expect(screen.getByText('…')).toBeInTheDocument();
+  });
+
+  it('liked route renders Collections › Liked with the TREE PARITY labels (nav keys)', () => {
+    const onNodeClick = jest.fn();
+    renderWithProviders(
+      <Breadcrumb
+        {...defaultProps}
+        onNodeClick={onNodeClick}
+        currentPath="/__collections__/liked"
+      />
+    );
+    const en = require('../../../locales/en.json');
+    expect(screen.getByText('Collections')).toBeInTheDocument();
+    // tree parity: same i18n keys the sidebar section uses
+    expect(en.nav.collections).toBe('Collections');
+    expect(en.nav.collectionsLiked).toBe('Liked');
+    expect(screen.getByText('Liked')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Liked'));
+    expect(onNodeClick).toHaveBeenCalledWith('/__collections__/liked');
+  });
+
+  it('collection/archive list routes keep the plain Home chip (unchanged surfaces)', () => {
+    renderWithProviders(<Breadcrumb {...defaultProps} currentPath="/__collections__" />);
+    expect(screen.getByText('Home')).toBeInTheDocument();
+    expect(screen.queryByText('Collections')).not.toBeInTheDocument();
+  });
+});

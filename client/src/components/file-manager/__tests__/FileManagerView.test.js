@@ -77,6 +77,10 @@ function createProps(overrides = {}) {
         setViewMode: jest.fn(),
         memberViewMode: 'grid',
         setMemberViewMode: jest.fn(),
+        likedViewMode: 'grid',
+        setLikedViewMode: jest.fn(),
+        memberSortMode: 'date_desc',
+        setMemberSortMode: jest.fn(),
         sortMode: 'name',
         setSortMode: jest.fn(),
         searchQuery: '',
@@ -903,12 +907,101 @@ describe('FileManagerView', () => {
       });
     };
 
-    it('P-4: members surface keeps the sort hidden but renders the three view-mode buttons bound to the MEMBER key', async () => {
+    it("M-2: the list model's onPseudoTileNavigate is forwarded to CollectionsListView (tile click dispatches)", async () => {
+      const base = createProps();
+      const navigate = jest.fn();
+      const props = createProps({
+        shellContext: { ...base.shellContext, isMobile: false },
+        explorerSession: {
+          ...base.explorerSession,
+          controlsState: {
+            ...base.explorerSession.controlsState,
+            currentPath: '/__collections__',
+          },
+        },
+        collectionsModel: { ...collectionsModel(), onPseudoTileNavigate: navigate },
+      });
+      renderWithProviders(<FileManagerView {...props} />);
+
+      await screen.findByTestId('collection-tile-liked');
+      fireEvent.click(screen.getByTestId('collection-tile-archive'));
+      expect(navigate).toHaveBeenCalledWith('/__collections__/__archive__');
+    });
+
+    it('M-9: member route renders the Collections › <name> breadcrumb chips (name from the model)', async () => {
+      const model = memberModel({
+        collectionId: 5,
+        collections: [{ collection_id: 5, name: 'Roadtrip' }],
+      });
+      const props = memberSurfaceProps({ model });
+      renderWithProviders(<FileManagerView {...props} />);
+
+      await screen.findByTestId('collections-list-view');
+      const crumb = await screen.findByTestId('breadcrumb');
+      expect(crumb).toHaveTextContent('Collections');
+      expect(crumb).toHaveTextContent('Roadtrip');
+      expect(crumb).not.toHaveTextContent('Home');
+    });
+
+    it('M-9: unresolved collection list shows the transient ellipsis segment (owner option (a))', async () => {
+      const model = memberModel({ collectionId: 5, collections: [] });
+      const props = memberSurfaceProps({ model });
+      renderWithProviders(<FileManagerView {...props} />);
+
+      const crumb = await screen.findByTestId('breadcrumb');
+      expect(crumb).toHaveTextContent('Collections');
+      expect(crumb).toHaveTextContent('…');
+    });
+
+    it('M-9: liked route renders Collections › Liked', async () => {
+      const base = createProps();
+      const props = createProps({
+        shellContext: { ...base.shellContext, isMobile: false },
+        explorerSession: {
+          ...base.explorerSession,
+          controlsState: {
+            ...base.explorerSession.controlsState,
+            currentPath: '/__collections__/liked',
+          },
+        },
+        collectionsModel: {
+          mode: 'members',
+          likedSurface: true,
+          items: [],
+          onMemberAction: jest.fn(),
+          onMemberThumbnailsLoaded: jest.fn(),
+        },
+      });
+      renderWithProviders(<FileManagerView {...props} />);
+
+      const crumb = await screen.findByTestId('breadcrumb');
+      expect(crumb).toHaveTextContent('Collections');
+      expect(crumb).toHaveTextContent('Liked');
+    });
+
+    it('M-8: members surface SHOWS the sort button bound to the MEMBER sort key (files-style radios)', async () => {
       const props = memberSurfaceProps();
       renderWithProviders(<FileManagerView {...props} />);
 
       await screen.findByTestId('collections-list-view');
-      expect(screen.queryByTestId('file-manager-sort')).not.toBeInTheDocument();
+      expect(screen.getByTestId('file-manager-sort')).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('file-manager-sort'));
+      // FILES-style radios: name asc/desc first, then date asc/desc — the FIRST
+      // radio is the persisted-surface default group's `name_asc`.
+      const radios = await screen.findAllByRole('radio');
+      fireEvent.click(radios[0]);
+      // the member dispatch fires, the FILE sort setter never sees it
+      expect(props.explorerSession.controlsState.setMemberSortMode).toHaveBeenCalledWith(
+        'name_asc'
+      );
+      expect(props.explorerSession.controlsState.setSortMode).not.toHaveBeenCalled();
+    });
+
+    it('P-4: members surface renders the three view-mode buttons bound to the MEMBER key', async () => {
+      const props = memberSurfaceProps();
+      renderWithProviders(<FileManagerView {...props} />);
+
+      await screen.findByTestId('collections-list-view');
       fireEvent.click(screen.getByTestId('view-mode-list'));
       expect(props.explorerSession.controlsState.setMemberViewMode).toHaveBeenCalledWith('list');
       // the file view-mode setter never sees a members click
@@ -1084,13 +1177,15 @@ describe('FileManagerView', () => {
       };
     };
 
-    it('P-5: liked surface hides the sort and binds the view toggles to the LIKES key only', async () => {
+    it('P-5/M-8: liked surface SHOWS the sort button and binds the view toggles to the LIKES key only', async () => {
       const setLikedViewMode = jest.fn();
       const { props } = likedSurfaceProps({ setLikedViewMode });
       renderWithProviders(<FileManagerView {...props} />);
 
       await screen.findByTestId('collections-list-view');
-      expect(screen.queryByTestId('file-manager-sort')).not.toBeInTheDocument();
+      // M-8 (2026-09-30): the liked surface shares the members sort state — the
+      // FILES-style sort button renders (collectionMemberSortMode binding).
+      expect(screen.getByTestId('file-manager-sort')).toBeInTheDocument();
 
       fireEvent.click(screen.getByTestId('view-mode-list'));
       expect(setLikedViewMode).toHaveBeenCalledWith('list');

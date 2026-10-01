@@ -2268,8 +2268,9 @@ describe('FileManager', () => {
       // the liked row lands in the shared members renderer (grid default)
       expect(await screen.findByTestId('members-list')).toBeInTheDocument();
       expect(screen.getByTestId('member-row-90300')).toBeInTheDocument();
-      // P-4/P-5 member-view toolbar: no sort button, view toggles present
-      expect(screen.queryByTestId('file-manager-sort')).not.toBeInTheDocument();
+      // P-4/P-5 member-view toolbar: view toggles present; M-8: the sort button
+      // now renders on the members/liked surfaces (files-style radio menu)
+      expect(screen.getByTestId('file-manager-sort')).toBeInTheDocument();
       // switching to LIST persists on the dedicated likedViewMode key
       fireEvent.click(screen.getByTestId('view-mode-list'));
       await waitFor(() => expect(window.localStorage.getItem('likedViewMode')).toBe('list'));

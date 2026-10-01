@@ -68,6 +68,83 @@ describe('CollectionsListView — list mode', () => {
     expect(screen.getByText('No collections yet')).toBeInTheDocument();
   });
 
+  describe('pseudo-tiles (M-2, 2026-09-30 owner ruling)', () => {
+    const tileProps = () => ({ ...listProps(), onPseudoTileNavigate: jest.fn() });
+
+    it('active list renders Likes FIRST and Archive LAST around the cards', () => {
+      const props = tileProps();
+      props.collections = [card({ collection_id: 1 })];
+      const { container } = renderWithProviders(<CollectionsListView {...props} />);
+      const cells = Array.from(container.querySelectorAll('[data-testid]'))
+        .map((el) => el.getAttribute('data-testid'))
+        .filter(
+          (id) => /^collection-tile-(liked|archive)$/.test(id) || /^collection-card-\d+$/.test(id)
+        );
+      expect(cells).toEqual([
+        'collection-tile-liked',
+        'collection-card-1',
+        'collection-tile-archive',
+      ]);
+      // the Likes tile carries the pink like-token heart
+      expect(
+        screen.getByTestId('collection-tile-liked').querySelector('svg.MuiSvgIcon-colorLike, svg')
+      ).toBeTruthy();
+    });
+
+    it('clicks dispatch onPseudoTileNavigate with the verified virtual routes (never card actions)', () => {
+      const props = tileProps();
+      renderWithProviders(<CollectionsListView {...props} />);
+      fireEvent.click(screen.getByTestId('collection-tile-liked'));
+      expect(props.onPseudoTileNavigate).toHaveBeenCalledWith('/__collections__/liked');
+      fireEvent.click(screen.getByTestId('collection-tile-archive'));
+      expect(props.onPseudoTileNavigate).toHaveBeenCalledWith('/__collections__/__archive__');
+      expect(props.onCardClick).not.toHaveBeenCalled();
+      expect(props.onCardAction).not.toHaveBeenCalled();
+    });
+
+    it('ARCHIVE view shows ONLY the Likes tile (owner default)', () => {
+      const props = tileProps();
+      props.include = 'mine,archived';
+      renderWithProviders(<CollectionsListView {...props} />);
+      expect(screen.getByTestId('collection-tile-liked')).toBeInTheDocument();
+      expect(screen.queryByTestId('collection-tile-archive')).not.toBeInTheDocument();
+    });
+
+    it('EMPTY section still shows the tiles next to the empty copy (destinations stay reachable)', () => {
+      const props = tileProps();
+      props.collections = [];
+      renderWithProviders(<CollectionsListView {...props} />);
+      expect(screen.getByText('No collections yet')).toBeInTheDocument();
+      expect(screen.getByTestId('collection-tile-liked')).toBeInTheDocument();
+      expect(screen.getByTestId('collection-tile-archive')).toBeInTheDocument();
+    });
+
+    it('tiles carry NO card chrome (menu button) and member mode renders NO tiles', () => {
+      const props = tileProps();
+      const { unmount } = renderWithProviders(<CollectionsListView {...props} />);
+      expect(
+        screen.getByTestId('collection-tile-liked').querySelector('[data-testid^="card-menu"]')
+      ).toBeNull();
+      expect(
+        screen.getByTestId('collection-tile-archive').querySelector('[data-testid^="card-menu"]')
+      ).toBeNull();
+      unmount();
+
+      const members = {
+        mode: 'members',
+        items: [],
+        onMemberAction: jest.fn(),
+        onMemberRowClick: jest.fn(),
+        onMemberRowCheck: jest.fn(),
+        onMemberRowLongPressSelect: jest.fn(),
+        onMemberThumbnailsLoaded: jest.fn(),
+      };
+      renderWithProviders(<CollectionsListView {...members} />);
+      expect(screen.queryByTestId('collection-tile-liked')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('collection-tile-archive')).not.toBeInTheDocument();
+    });
+  });
+
   it('empty archive view renders the archive empty state (§2.2)', () => {
     const props = listProps();
     props.collections = [];
@@ -781,7 +858,7 @@ describe('CollectionsListView — member mode (P-4 shared renderers)', () => {
     });
   });
 
-  it('server order is preserved — no client re-sort (Decision B)', () => {
+  it('server order is preserved while no memberSortMode prop is passed (host order-agnostic)', () => {
     withCapturedObserver(() => {
       const props = membersProps();
       // deliberately "unsorted" names/ids — the host must render the array AS IS.
@@ -819,5 +896,89 @@ describe('CollectionsListView — member mode (P-4 shared renderers)', () => {
     renderWithProviders(<CollectionsListView {...listProps()} />);
     expect(screen.queryByTestId('members-list')).not.toBeInTheDocument();
     expect(screen.getByTestId('collections-list-region')).toBeInTheDocument();
+  });
+
+  // -- M-8 (2026-09-30 owner ruling): the FULL row set sorts CLIENT-SIDE by the
+  // persisted per-surface sort mode BEFORE the useInfiniteScroll slice. -------
+  describe('member sort (M-8 order matrix)', () => {
+    const sortRows = () => [
+      memberRow({
+        nodeId: 1,
+        rowTestId: 'member-row-1',
+        name: 'beta.pdf',
+        basename: 'beta.pdf',
+        created_at: '2026-03-01T00:00:00Z',
+      }),
+      memberRow({
+        nodeId: 2,
+        rowTestId: 'member-row-2',
+        name: 'Alpha.pdf',
+        basename: 'Alpha.pdf',
+        created_at: '2026-01-01T00:00:00Z',
+      }),
+      memberRow({
+        nodeId: 3,
+        rowTestId: 'member-row-3',
+        name: null,
+        basename: 'fileManager.collectionsUnavailable',
+        mime: null,
+        state: 'revoked',
+        created_at: null,
+      }),
+      memberRow({
+        nodeId: 4,
+        rowTestId: 'member-row-4',
+        name: 'gamma.pdf',
+        basename: 'gamma.pdf',
+        created_at: '2026-02-01T00:00:00Z',
+      }),
+    ];
+
+    const renderedOrder = (memberSortMode) => {
+      const props = membersProps();
+      props.items = sortRows();
+      const { container } = renderWithProviders(
+        <CollectionsListView {...props} memberSortMode={memberSortMode} />
+      );
+      return Array.from(container.querySelectorAll('[data-testid^="member-row-"]')).map((el) =>
+        el.getAttribute('data-testid')
+      );
+    };
+
+    it('name_asc lowercases before localeCompare (sortFiles parity) — revoked placeholder sorts as text', () => {
+      expect(renderedOrder('name_asc')).toEqual([
+        'member-row-2', // Alpha.pdf
+        'member-row-1', // beta.pdf
+        'member-row-3', // fileManager... placeholder (text-verbatim parity)
+        'member-row-4', // gamma.pdf
+      ]);
+    });
+
+    it('name_desc mirrors the direction', () => {
+      expect(renderedOrder('name_desc')).toEqual([
+        'member-row-4',
+        'member-row-3',
+        'member-row-1',
+        'member-row-2',
+      ]);
+    });
+
+    it('date_asc sorts by created_at; the revoked row (null) PINS TO THE END', () => {
+      expect(renderedOrder('date_asc')).toEqual([
+        'member-row-2', // Jan
+        'member-row-4', // Feb
+        'member-row-1', // Mar
+        'member-row-3', // null ⇒ end
+      ]);
+    });
+
+    it('date_desc sorts newest-first; the revoked row STILL PINS TO THE END (both directions)', () => {
+      expect(renderedOrder('date_desc')).toEqual([
+        'member-row-1', // Mar
+        'member-row-4', // Feb
+        'member-row-2', // Jan
+        'member-row-3', // null ⇒ end (never first)
+      ]);
+    });
   });
 });

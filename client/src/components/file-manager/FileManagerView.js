@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Box,
@@ -124,6 +124,8 @@ const FileManagerView = ({
     setMemberViewMode,
     likedViewMode,
     setLikedViewMode,
+    memberSortMode,
+    setMemberSortMode,
     sortMode,
     setSortMode,
     searchQuery,
@@ -153,6 +155,16 @@ const FileManagerView = ({
     isCollectionsMemberSurface && collectionsModel?.likedSurface === true;
   const memberSurfaceViewMode = isCollectionsLikedSurface ? likedViewMode : memberViewMode;
   const setMemberSurfaceViewMode = isCollectionsLikedSurface ? setLikedViewMode : setMemberViewMode;
+  // M-9: the member-route breadcrumb NAME resolves from the shell's already-fetched
+  // useCollections list (matched by collectionId). null ⇒ Breadcrumb renders the
+  // transient ellipsis segment (owner option (a) — the trail never hides).
+  const memberCollectionName = useMemo(() => {
+    if (!isCollectionsMemberSurface || isCollectionsLikedSurface) return null;
+    const found = (collectionsModel?.collections ?? []).find(
+      (collection) => collection.collection_id === collectionsModel?.collectionId
+    );
+    return found?.name ?? null;
+  }, [isCollectionsMemberSurface, isCollectionsLikedSurface, collectionsModel]);
   // FAB가 자신의 실제 표시 여부를 보고(single source of truth) — 검색창 확장 트리거로 사용
   const [fabPresent, setFabPresent] = useState(false);
   const { displayedFiles, loading, processingMap, handleThumbnailsLoaded, loadMoreRef, hasMore } =
@@ -405,6 +417,7 @@ const FileManagerView = ({
           ) : (
             <Breadcrumb
               currentPath={currentPath}
+              collectionName={isCollectionsMemberSurface ? memberCollectionName : undefined}
               ancestors={isTrashView ? (trashTrail ?? []) : ancestors}
               onNodeClick={isTrashView ? handleTrashBreadcrumbClick : handleFolderTreeNodeClick}
               {...(isShareLinkMode
@@ -480,14 +493,13 @@ const FileManagerView = ({
             handleSelectAll={handleSelectAll}
             handleDeselectAll={handleDeselectAll}
             selectedFiles={selectedFiles}
-            sortMode={sortMode}
-            setSortMode={setSortMode}
+            sortMode={isCollectionsMemberSurface ? memberSortMode : sortMode}
+            setSortMode={isCollectionsMemberSurface ? setMemberSortMode : setSortMode}
             sortSurface={isCollectionsListSurface ? 'collections' : 'files'}
             collectionSort={isCollectionsListSurface ? collectionsModel.sort : undefined}
             onCollectionSortChange={
               isCollectionsListSurface ? collectionsModel.onSortChange : undefined
             }
-            sortHidden={isCollectionsMemberSurface}
             viewModeHidden={isCollectionsListSurface}
             memberMode={isCollectionsMemberSurface}
             collectionsMode={isCollectionsListSurface}
@@ -658,8 +670,10 @@ const FileManagerView = ({
                   sort={collectionsModel.sort}
                   mergeSlot={collectionsModel.mergeSlot}
                   include={collectionsModel.include}
+                  onPseudoTileNavigate={collectionsModel.onPseudoTileNavigate}
                   items={collectionsModel.items}
                   memberViewMode={memberSurfaceViewMode}
+                  memberSortMode={isCollectionsMemberSurface ? memberSortMode : undefined}
                   memberLoading={loading}
                   onMemberRowClick={handleFileClick}
                   onMemberRowCheck={handleFileCheck}

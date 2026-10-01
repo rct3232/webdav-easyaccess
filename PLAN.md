@@ -685,3 +685,18 @@ use in a pure view).
   exported; all sidebar child rows now reserve the leading column; parity pins upgraded to
   assert the leading+icon column pair. Folder-tree group 99/99; BaseFolderTreeItem suite
   untouched-green.
+
+## 13. Cross-leak ownership fix (owner-approved 2026-10-01)
+
+- `[done]` Branch `fix/collections-admin-ownership` (worktree wt-own, base fd1bac4): admin
+  cross-leak ownership defect per RCA 2026-10-01. R1 `isOwnerNode` honors the
+  admin-owns-everything convention (foreign stays owner-keyed; real cross-leak preserved);
+  R1.1 callers enumerated — permissionPolicy/files/trash/fileLikes already admin-guarded or
+  ACL-bypassed (unchanged), collections `service.js` :262 the fixed intent; R2 badge matrix
+  both-flags → VpnLock only; R3 definitions landed in AI_FEATURE_PLAN §3.2 +
+  collections-platform §3.2. Commits: docs `d97bf09` → RED `14bc0f3` → fix `4efa3e9` +
+  `0c87b1d` + pins `429f993` → RCA `c8c3cf8`. Gates: server 130/2412, client 178/1895,
+  PG 23/344, E2E collections-desktop 14/14 — all green. Known residual (listed, not fixed):
+  `loadVisibleCandidates` is home+grants scoped, so an ADMIN requester's DERIVED candidate
+  set still misses nodes outside their home subtree — publishItems flip/materialize is
+  stored-row based and unaffected; candidate-set widening for admins is a separate ruling.

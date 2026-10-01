@@ -350,6 +350,7 @@ describe('CollectionDashboard — my-collections status', () => {
     expect(within(block).getByText(/1 archived/i)).toBeInTheDocument();
     // received = granted_role rows; granted = owner-side grant rows (bob)
     expect(within(block).getByText('Shared in')).toBeInTheDocument();
+    expect(within(block).getByText('Viewer')).toBeInTheDocument();
     expect(within(block).getByText(/bob/i)).toBeInTheDocument();
 
     await userEvent.click(within(block).getByTestId('grants-revoke'));

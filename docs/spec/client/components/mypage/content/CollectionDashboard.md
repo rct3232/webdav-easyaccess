@@ -76,7 +76,7 @@ Target-contract spec (`docs/features/collections-platform.md` §4.11 (feed surfa
 
 ### 2.6 i18n Keys
 
-- `mypage.storage`, `mypage.adminAiOps`, `mypage.journal*` (title/labels/action map/undone), `mypage.hygiene*` (cards), `mypage.capacityTitle`, `mypage.collectionsStatus*`, `mypage.grantsReceived`/`grantsGranted`/`revoke`
+- `mypage.storage`, `mypage.adminAiOps`, `mypage.journal*` (title/labels/action map/undone), `mypage.hygiene*` (cards), `mypage.capacityTitle`, `mypage.collectionsStatus*`, `mypage.grantsReceived`/`grantsGranted`/`revoke`, `permissions.editor`/`permissions.viewer` (received-grant role chip — localized, never the raw enum)
 
 ### 2.7 Verification Scenarios
 

@@ -333,7 +333,11 @@ const CollectionDashboard = ({ user, onNavigate, onUndo, onMessage, gateway }) =
                       secondary={
                         <Chip
                           size="small"
-                          label={row.granted_role}
+                          label={
+                            row.granted_role === 'editor'
+                              ? t('permissions.editor')
+                              : t('permissions.viewer')
+                          }
                           data-testid="grants-received-role"
                         />
                       }

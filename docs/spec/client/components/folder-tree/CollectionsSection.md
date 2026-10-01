@@ -37,7 +37,8 @@ Target-contract spec.
 
 - **Child-row rendering (TreeRow, owner ruling 2026-10-01, PLAN §12):** every section child row
   (LikesNode, collection rows, ArchiveNode) renders through the shared `TreeRow` primitive at
-  `level = 1` — computed `padding-left: 16px`, identical to a shared-folder/file-tree child row
+  `level = 1` with the reserved `TreeRowSpacer` leading column — computed `padding-left: 16px`
+  and icon offset identical to a shared-folder/file-tree child row
   (`pl: level*2`, the unified tree indent rule; pinned cross-section in `TreeRow.test.js` and the
   per-section computed-paddingLeft tests). The earlier F5 pin (`sx={{ pl: 3 }}` ⇒ 24px equality
   between the two sections) is RETIRED: section children intentionally moved onto the tree's

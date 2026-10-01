@@ -679,3 +679,9 @@ use in a pure view).
     suite with 8 tests); eslint `--max-warnings=0` + prettier clean on touched files;
     `E2E_BACKEND_MODE=s3 --project=collections-desktop` **14/14 green** (own port band,
     project-scoped stack). Server leg N/A (no server source touched).
+- **§12 follow-up (2026-10-01, owner ruling A):** the unification equalized PADDING but not the
+  reserved leading column — file/shared rows kept the 20px chevron-spacer slot while recent/
+  collection rows omitted it (≈24px icon misalignment, reported by the owner). `TreeRowSpacer`
+  exported; all sidebar child rows now reserve the leading column; parity pins upgraded to
+  assert the leading+icon column pair. Folder-tree group 99/99; BaseFolderTreeItem suite
+  untouched-green.

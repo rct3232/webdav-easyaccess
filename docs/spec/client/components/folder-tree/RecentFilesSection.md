@@ -54,7 +54,8 @@
 
 - **Child-row rendering (TreeRow, owner ruling 2026-10-01, PLAN §12):** every recent child row
   renders through the shared `TreeRow` primitive at `level = 1` — computed `padding-left: 16px`,
-  identical to a shared-folder/file-tree child row (`pl: level*2`, the unified tree indent rule).
+  identical to a shared-folder/file-tree child row (`pl: level*2`, the unified tree indent rule),
+  and the row reserves the leading column via `TreeRowSpacer` (ruling A, 2026-10-01 — icon offsets align across surfaces).
   The earlier F5 pin (`sx={{ pl: 3 }}` ⇒ 24px, equal to CollectionsSection children) is RETIRED:
   section children intentionally moved onto the tree's level-based indent. The `pl: 3` Box is the
   EMPTY-STATE branch only, never a row wrapper (unchanged).

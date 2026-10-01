@@ -8,7 +8,7 @@ import {
 } from '@mui/icons-material';
 import { FileTreeSkeleton } from '../file-manager/FileSkeletons';
 import useFolderTreeItemController from './hooks/useFolderTreeItemController';
-import TreeRow from './TreeRow';
+import TreeRow, { TreeRowSpacer } from './TreeRow';
 
 /**
  * 통합된 폴더 트리 아이템 컴포넌트
@@ -193,7 +193,7 @@ const BaseFolderTreeItem = ({
               )}
             </Box>
           ) : (
-            <Box sx={{ width: 20 }} />
+            <TreeRowSpacer />
           )
         }
         icon={

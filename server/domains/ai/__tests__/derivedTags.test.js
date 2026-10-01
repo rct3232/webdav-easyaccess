@@ -190,18 +190,26 @@ describe('derivedTags persistence pipeline (real DB via aiTagStore)', () => {
     expect(result.nodes).toBe(2);
     expect(result.tagsWritten).toBeGreaterThan(0);
 
-    const monthOf = async (nodeId) => String((await store.getNode(nodeId)).createdAt).slice(0, 7);
+    // Expected month tag derived through the SAME production function as the
+    // SUT — representation/timezone-independent (a local String() slice can
+    // disagree with production's UTC toISOString() near month boundaries).
+    const monthTagOf = async (nodeId) => {
+      const row = await store.getNode(nodeId);
+      return derivedTags
+        .computeDerivedTags({ createdAt: row.createdAt })
+        .find((tag) => tag.startsWith('month:'));
+    };
     expect(await aiTagStore.listRawTags(nested.nodeId)).toEqual([
       'ext:jpg',
       'mime:image',
-      `month:${await monthOf(nested.nodeId)}`,
+      await monthTagOf(nested.nodeId),
       'path:2026',
       'path:photos',
     ]);
     expect(await aiTagStore.listRawTags(shallow.nodeId)).toEqual([
       'ext:txt',
       'mime:text',
-      `month:${await monthOf(shallow.nodeId)}`,
+      await monthTagOf(shallow.nodeId),
     ]);
     expect(await aiTagStore.listRawTags(nodeIds[0])).toEqual([]);
     expect(await aiTagStore.listRawTags(foreign.nodeId)).toEqual([]);

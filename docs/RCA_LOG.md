@@ -891,3 +891,18 @@ username`), while `openPrivateWorkspace` creates its case folder at the FILESYST
   visual grid assertion kept. Re-run: collections-desktop 13/13. Same commit dropped an inert
   `memberLoading` key from the liked `collectionsModel` branch (the view reads
   `listingState.loading` directly).
+
+### 2026-10-01 — derivedTags backfill test failed only in UTC+9 near month rollover (Case B, test error)
+
+- **Summary**: first §11 merge gate run reported `derivedTags.test.js` "backfill … idempotent"
+  failing with `month:2026-10` expected vs `month:2026-09` received (host local JST Oct 1,
+  UTC still Sep 30). The server suite itself and all §11 code were unrelated to the change.
+- **Diagnosis**: the test helper re-derived the expected month from the raw DB `createdAt`
+  with `String(v).slice(0, 7)` — a representation/timezone-dependent expression — while
+  production `monthOf` pins to `toISOString()` UTC (spec: "month is the UTC calendar month").
+  The two definitions disagree exactly when local date ≠ UTC date. Unit tests elsewhere use
+  fixed ISO literals so only this dynamic test is exposed.
+- **Classification**: Case B (Test Error) — production behavior correct.
+- **Action taken**: expected month now derived through the production function
+  (`computeDerivedTags({ createdAt }).find(...)`); verified green under default,
+  `TZ=Asia/Tokyo` and `TZ=America/Los_Angeles`.

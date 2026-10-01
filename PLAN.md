@@ -555,14 +555,14 @@ status-chip assertion removed; new E2E-COLLECTION-014 tiles case).
 - **11 execution log** — branch `feature/polish-11-micro`:
   - Batch A (M-1/M-4/M-7): `[wip]` — docs commit 7772d34; RED captured (6 failures / 3 suites)
     before implementation. GREEN: targeted client suites `CollectionsListView|CollectionsSection|
-    GridCardPrimitives|FileGridItem` 89/89 + `FileManagerView|pages/FileManager` 82/82; locale
+GridCardPrimitives|FileGridItem` 89/89 + `FileManagerView|pages/FileManager` 82/82; locale
     mirror suite 12/12; eslint/prettier clean on touched files; E2E spec updated (002 count
     assertion dropped, 004 status-chip assertion dropped — 006 verified chip-free). Awaits
     orchestrator final gates.
   - Batch B (M-3/M-5/M-6): `[wip]` — docs commit 2a919b2; RED captured (7 failures / 5 suites)
     before implementation. GREEN: targeted client suites
     `CollectionsListView|AddToCollectionMenu|FileContextMenu|MemberRowControls|AppTheme|
-    FileActionSheet|FilePropertiesDialog` 140/140. M-5 clarification: no pre-existing test
+FileActionSheet|FilePropertiesDialog` 140/140. M-5 clarification: no pre-existing test
     asserted error-color on likes (verified by grep) — pink/`like`-token assertions ADDED instead
     (FileContextMenu + MemberRowControls) + `AppTheme` palette contract; `test-utils.jsx` theme
     mirrors the token (kept-in-sync comment). M-6 clarification: the `:248` tail-ellipsis is the
@@ -579,3 +579,10 @@ status-chip assertion removed; new E2E-COLLECTION-014 tiles case).
     (`useFileManager.js` urlView). E2E: 011/013 sort-visibility flips + new case 014
     (tiles/navigation/breadcrumb). eslint/prettier clean on touched files. Awaits orchestrator
     full gates (client union + collections-desktop E2E).
+  - **§11 final gates (this wave, awaiting orchestrator [done]):** full client suite **176
+    suites / 1856 tests pass** (base 1818 + 38 new); server leg unchanged and verified green
+    (`domains/collections` + locale mirror: 6 suites / 120 pass, no server source touched);
+    `E2E_BACKEND_MODE=s3 collections-desktop` **14/14 green** (001–013 updated assertions +
+    NEW 014 tiles/navigation/breadcrumb; wt-11 port band, own containers). Batch commits:
+    A `7772d34`+`2dbfff5`, B `2a919b2`+`e822480`, C `77d3479`+`dc2eebb`. No repository/SQL/
+    schema touched → PG conformance leg N/A.

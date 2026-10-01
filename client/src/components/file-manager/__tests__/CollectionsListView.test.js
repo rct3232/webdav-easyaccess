@@ -102,11 +102,21 @@ describe('CollectionsListView — list mode', () => {
       expect(props.onCardAction).not.toHaveBeenCalled();
     });
 
-    it('ARCHIVE view shows ONLY the Likes tile (owner default)', () => {
+    it('ARCHIVE view shows NO pseudo-tiles (F3 follow-up — supersedes the M-2 "Likes only" default)', () => {
       const props = tileProps();
       props.include = 'mine,archived';
       renderWithProviders(<CollectionsListView {...props} />);
-      expect(screen.getByTestId('collection-tile-liked')).toBeInTheDocument();
+      expect(screen.queryByTestId('collection-tile-liked')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('collection-tile-archive')).not.toBeInTheDocument();
+    });
+
+    it('EMPTY archive view shows NO pseudo-tiles either — empty copy stays (F3)', () => {
+      const props = tileProps();
+      props.collections = [];
+      props.include = 'mine,archived';
+      renderWithProviders(<CollectionsListView {...props} />);
+      expect(screen.getByText('Nothing archived')).toBeInTheDocument();
+      expect(screen.queryByTestId('collection-tile-liked')).not.toBeInTheDocument();
       expect(screen.queryByTestId('collection-tile-archive')).not.toBeInTheDocument();
     });
 

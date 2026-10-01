@@ -44,16 +44,56 @@ describe('AddToCollectionMenu submenu', () => {
     previewCollection.mockResolvedValue({ count: 0, sample: [], sample_truncated: false });
   });
 
-  it('renders writable collection rows with name + item count, no collection IO', () => {
+  it('renders writable collection rows with the NAME ONLY — no item-count secondary (F1, ex-M-1 straggler)', () => {
     renderWithProviders(<AddToCollectionMenu {...defaultProps} />);
 
     expect(screen.getByTestId('collection-option-1')).toBeInTheDocument();
     expect(
       within(screen.getByTestId('collection-option-1')).getByText('Europe trip')
     ).toBeInTheDocument();
-    expect(within(screen.getByTestId('collection-option-1')).getByText('4')).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('collection-option-1')).queryByText('4')
+    ).not.toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('collection-option-2')).queryByText('9')
+    ).not.toBeInTheDocument();
     expect(screen.getByTestId('collection-option-2')).toBeInTheDocument();
     expect(previewCollection).not.toHaveBeenCalled();
+  });
+
+  it('long collection names MIDDLE-truncate inside the FIXED-width menu paper (F1)', () => {
+    const longName = 'extremely-descriptive-vacation-photo-archive-file.png';
+    renderWithProviders(
+      <AddToCollectionMenu
+        {...defaultProps}
+        collections={[
+          {
+            collection_id: 7,
+            name: longName,
+            item_count: 3,
+            origin: 'user',
+            granted_role: 'owner',
+          },
+        ]}
+      />
+    );
+
+    const shown = screen.getByTestId('collection-option-7').textContent;
+    expect(shown.length).toBeLessThan(longName.length);
+    expect(shown).toContain('...');
+    expect(shown.startsWith('extremely-')).toBe(true);
+    expect(shown.endsWith(longName.slice(-6))).toBe(true);
+
+    const paper = document.querySelector('.MuiPopover-paper');
+    expect(window.getComputedStyle(paper).width).toBe('280px');
+  });
+
+  it('short collection names render VERBATIM at the fixed menu width (F1)', () => {
+    renderWithProviders(<AddToCollectionMenu {...defaultProps} />);
+    expect(
+      within(screen.getByTestId('collection-option-1')).getByText('Europe trip')
+    ).toBeInTheDocument();
+    expect(screen.getByText('System picks')).toBeInTheDocument();
   });
 
   it('checkmarks membership rows from prop data without extra network calls', () => {

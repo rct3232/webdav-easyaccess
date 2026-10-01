@@ -178,9 +178,14 @@ async function uiCreateCollectionWithFile(page: Page, filePath: string, name: st
 async function uiAddToCollection(page: Page, filePath: string, collectionName: string) {
   await rightClickItem(page, filePath);
   await page.getByTestId('collection-add').click();
+  // F1 (2026-10-01): menu rows middle-truncate long names inside the fixed 280px paper —
+  // the leading fragment (always ≥ the 12 chars used here for ASCII names) and the final
+  // 6 chars survive truncation (`pixelMiddleTruncate` back-length contract), short names
+  // render verbatim ⇒ both fragments match either way.
   await page
     .locator('[data-testid^="collection-option-"]')
-    .filter({ hasText: collectionName })
+    .filter({ hasText: collectionName.slice(0, 12) })
+    .filter({ hasText: collectionName.slice(-6) })
     .first()
     .click();
 }
@@ -835,7 +840,7 @@ test('E2E-COLLECTION-013: the sidebar Likes child row lists liked files through 
     .toBe(true);
 });
 
-test('E2E-COLLECTION-014: the collections grid hosts Likes-first/Archive-last pseudo-tiles that navigate, the archive view shows only Likes, and opening a collection trails Collections › <name>', async ({
+test('E2E-COLLECTION-014: Likes-first/Archive-last tiles navigate, archive view shows no tiles under Collections › Archive crumb, collection opens as Collections › <name>', async ({
   page,
   request,
 }, testInfo) => {
@@ -866,15 +871,18 @@ test('E2E-COLLECTION-014: the collections grid hosts Likes-first/Archive-last ps
   await expect(page).toHaveURL(/__collections__/);
   await expect(page.getByTestId('collections-list-view')).toBeVisible();
 
-  // Archive tile → archive view: only the Likes tile remains (M-2 ruling).
+  // Archive tile → archive view: NO pseudo-tiles remain (F3, 2026-10-01 — supersedes
+  // the M-2 "Likes only" default) and the crumb reads Collections › Archive (F2).
   await archiveTile.click();
   await expect(page).toHaveURL(/__collections__\/__archive__/);
-  await expect(page.getByTestId('collection-tile-liked')).toBeVisible();
+  await expect(page.getByTestId('collection-tile-liked')).toHaveCount(0);
   await expect(page.getByTestId('collection-tile-archive')).toHaveCount(0);
+  await expect(crumb.getByText('Collections', { exact: true })).toBeVisible();
+  await expect(crumb.getByText('Archive', { exact: true })).toBeVisible();
 
-  // Likes tile → the liked surface (empty here — legal empty view, tiles gone).
-  await page.getByTestId('collection-tile-liked').click();
-  await expect(page).toHaveURL(/__collections__\/liked/);
+  // Liked surface via route (tiles are gone from the archive view): member mode,
+  // empty here — legal empty view, no list chrome either.
+  await page.goto('/files/__collections__/liked');
   await expect(page.getByTestId('members-list')).toBeVisible();
   await expect(page.getByTestId('collection-tile-liked')).toHaveCount(0);
 });

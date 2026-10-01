@@ -68,6 +68,9 @@
 - nav.home, nav.recentShort, nav.shared, nav.sharedFolder, nav.folderTreeOpen, nav.folderTreeClose
 - **M-9:** nav.collections (Collections chip — SAME key the tree header uses: label parity),
   nav.collectionsLiked (Likes segment — SAME key as the tree LikesNode; EN "Liked" / KO "좋아요")
+- **F2 (2026-10-01 §11 follow-up):** nav.collectionsArchive (Archive segment — SAME key as the
+  tree ArchiveNode; EN "Archive" / KO "보관함"; STATIC label — the archive surface resolves no
+  name from data)
 
 ### 2.6 Home chip (leading chip)
 
@@ -94,6 +97,12 @@
   - liked route (`currentPath === '/__collections__/liked'`): home chip `Collections` + segment
     `Liked` (`nav.collectionsLiked` — the SAME key as the tree's LikesNode: label parity, never a
     third wording).
+  - archive route (`currentPath === '/__collections__/__archive__'`) — **F2 (2026-10-01 §11
+    follow-up, closing the M-9 gap where this route fell through to the generic Home chip)**:
+    home chip `Collections` (click → `/__collections__`, the member/liked chain precedent) +
+    segment `Archive` (`nav.collectionsArchive` — the SAME key as the tree's ArchiveNode: label
+    parity). STATIC label: the archive surface has no per-row name to resolve from data. The
+    segment chip points at the current archive route (mirrors the liked chain).
   - The ancestor chain never renders on these virtual routes (overlay fetches no ancestors).
 
 ### 2.8 Verification Scenarios
@@ -107,6 +116,7 @@
 - [ ] Toggle folder tree
 - [ ] (M-9) Member route (`/__collections__/collection/:id`): chips are `Collections › <name>` — the leading chip navigates to `/__collections__`, the name chip to the current route; `collectionName=null` renders the transient `…` segment (never hides the trail — owner option (a) 2026-09-30).
 - [ ] (M-9) Liked route (`/__collections__/liked`): chips are `Collections › Liked`; both labels come from the SAME i18n keys as the tree rows (tree parity).
+- [ ] (F2) Archive route (`/__collections__/__archive__`): chips are `Collections › Archive` — the leading chip navigates to `/__collections__`, the Archive chip to the archive route itself; label = `nav.collectionsArchive` (tree parity, static — no name resolution); the generic Home chip NEVER renders on this route.
 
 ### 2.9 Edge Cases
 

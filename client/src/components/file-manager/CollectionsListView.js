@@ -316,10 +316,13 @@ const CollectionsListView = ({
     // P-1: rows render straight from fetch state — the former view-local
     // `hiddenIds` recipient-hide is removed (revoked rows vanish on refetch).
     const visible = collections;
-    // M-2 pseudo-tiles: Likes FIRST (always), Archive LAST (active view only —
-    // the archive surface is already there). Never selectable, no menu, never
-    // gated by the empty state (the destinations stay reachable at zero rows).
-    const likedTile = (
+    // M-2 pseudo-tiles (F3, 2026-10-01 owner ruling — "archive에 likes 아이템이 있으면
+    // 안돼" — supersedes the M-2 "archive shows ONLY Likes" default): the ACTIVE view
+    // renders Likes FIRST and Archive LAST; the ARCHIVE surface is terminal — ZERO
+    // pseudo-tiles there (both destinations are one click away in the sidebar).
+    // Never selectable, no menu, never gated by the empty state on the active view.
+    const isArchiveSurface = include === 'mine,archived';
+    const likedTile = isArchiveSurface ? null : (
       <PseudoTile
         testId="collection-tile-liked"
         label={t('nav.collectionsLiked')}
@@ -327,15 +330,14 @@ const CollectionsListView = ({
         onClick={() => onPseudoTileNavigate?.('/__collections__/liked')}
       />
     );
-    const archiveTile =
-      include === 'mine,archived' ? null : (
-        <PseudoTile
-          testId="collection-tile-archive"
-          label={t('nav.collectionsArchive')}
-          icon={<InventoryIcon fontSize="large" color="action" />}
-          onClick={() => onPseudoTileNavigate?.('/__collections__/__archive__')}
-        />
-      );
+    const archiveTile = isArchiveSurface ? null : (
+      <PseudoTile
+        testId="collection-tile-archive"
+        label={t('nav.collectionsArchive')}
+        icon={<InventoryIcon fontSize="large" color="action" />}
+        onClick={() => onPseudoTileNavigate?.('/__collections__/__archive__')}
+      />
+    );
     return (
       <Box data-testid="collections-list-region">
         {visible.length === 0 ? (

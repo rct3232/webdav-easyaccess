@@ -35,7 +35,21 @@ Target-contract spec.
 
 ### 2.3 Submenu Contract
 
-- Rows: writable collections with name + item count; checkmark when `membershipIds` contains the id.
+- Rows: writable collections with NAME ONLY (F1, 2026-10-01 §11 follow-up: the leftover M-1
+  `item_count` secondary is REMOVED — `item_count` stays wire data, unrendered); checkmark when
+  `membershipIds` contains the id.
+- **Fixed menu width + middle-truncated names (F1, 2026-10-01 §11 follow-up — M-6 parity for
+  the ROWS, not only the seed-dialog tiles):** the submenu `Paper` gets a FIXED width
+  (`MENU_PAPER_WIDTH_PX = 280`). The app's context menus (FileContextMenu precedent) are
+  content-sized (MUI popover default `minWidth: 16` — no shared width constant exists), so the
+  value is pinned here from the menu's own inline-create row (240px border-box Box ⇒ ~280 with
+  gutters) and the MyPage width-280 Select-paper precedent. `primary` renders through
+  `pixelMiddleTruncate(collection.name, MENU_NAME_BUDGET_PX, MENU_NAME_FONT)`; budget arithmetic
+  (mirrored in the code comment): 280 − 2×16 MenuItem horizontal padding − 56 trailing-check
+  `ListItemIcon` slot (MUI v7 `minWidth`, reserved for EVERY row so truncation is
+  check-state-independent) = **192px**; font = 16px (the `body1` variant non-dense
+  `ListItemText` `primary` actually renders) in the CollectionsSection family idiom
+  (`16px Inter, Roboto, "Helvetica Neue", Arial, sans-serif`).
 - Terminal row `+ New collection…`: inline name field (validation via `validateFileName`/`validationMessage` precedent — same rules as folder names); Enter → `onCreateAndAdd`; server never errors on collision (silent suffix; the refreshed/returned `collection.name` is what toasts show).
 - Adding to a `system` collection is legal and triggers auto-pin SERVER-side (§4.9b) — the client just refreshes; no client pin logic.
 - Result feedback (host): `rejected_not_readable` entries ⇒ info toast `N excluded (not readable)`; success ⇒ undo toast from `undo.action_id` (§4.11).
@@ -65,6 +79,7 @@ Target-contract spec.
 - [ ] `seedItemVisible=false` ⇒ the seed row is absent from the DOM (absent-not-disabled rule).
 - [ ] Inline `New collection` validates name and chains create→add in one host action (one undo toast for the command).
 - [ ] (M-6) A sample name wider than the budget renders MIDDLE-truncated (keeps the leading fragment AND the trailing fragment/extension, `...` between); short names render verbatim; no `textOverflow: ellipsis` style remains on the tiles.
+- [ ] (F1, 2026-10-01) Submenu rows render the collection NAME only — no count text anywhere; a name wider than the 192px budget renders MIDDLE-truncated inside the FIXED 280px menu paper (leading + trailing fragments, `...` between, row width never grows); short names verbatim; the `collection-option-*` testids are unchanged (E2E contract preserved).
 - [ ] Seed dialog shows preview + `plus N more` + the publish-approval line before enabling Create.
 - [ ] `membershipIds` rows render checkmarks without extra network calls.
 - [ ] Member-row invocation behaves identically to main-listing invocation (same component state).

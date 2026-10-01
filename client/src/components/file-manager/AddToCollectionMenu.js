@@ -33,6 +33,22 @@ const SAMPLE_TILE_CAP = 12;
 const SEED_TILE_NAME_BUDGET_PX = 190;
 const SEED_TILE_NAME_FONT = '14px Inter, Roboto, "Helvetica Neue", Arial, sans-serif';
 
+// F1 (2026-10-01 §11 follow-up): the M-6 middle-truncation never reached the submenu ROWS
+// themselves (only the seed-dialog tiles) and the M-1 `item_count` secondary survived here.
+// The app's context menus (FileContextMenu precedent) are CONTENT-sized (MUI v7 popover paper
+// `minWidth: 16` — there is no fixed-width constant to reuse), so the width is PINNED here:
+// 280px — driven by this menu's own inline-create row (minWidth 240 border-box + gutters ⇒
+// ~280) and the MyPage width-280 Select-paper precedent; fixed width keeps the truncation
+// budget deterministic ("기존 context menu 너비" stability: rows can no longer stretch the menu).
+// BUDGET arithmetic: 280 paper − 2×16 MenuItem horizontal padding − 56 trailing-check
+// ListItemIcon slot (MUI v7 minWidth, RESERVED FOR EVERY ROW so truncation is
+// check-state-independent) = 192px.
+const MENU_PAPER_WIDTH_PX = 280;
+const MENU_NAME_BUDGET_PX = MENU_PAPER_WIDTH_PX - 2 * 16 - 56;
+// Family idiom per the CollectionsSection row font; 16px = the `body1` variant ListItemText
+// `primary` actually renders in a non-dense Menu (CollectionsSection rows render 14px).
+const MENU_NAME_FONT = '16px Inter, Roboto, "Helvetica Neue", Arial, sans-serif';
+
 /**
  * AddToCollectionMenu — file-side collection entry points
  * (docs/spec/client/components/file-manager/AddToCollectionMenu.md):
@@ -88,7 +104,12 @@ const AddToCollectionMenu = ({
 
   return (
     <>
-      <Menu open={open && !seedDialogOpen} onClose={onClose} {...menuAnchor}>
+      <Menu
+        open={open && !seedDialogOpen}
+        onClose={onClose}
+        PaperProps={{ sx: { width: MENU_PAPER_WIDTH_PX } }}
+        {...menuAnchor}
+      >
         {(collections || []).map((collection) => {
           const checked = (membershipIds || []).includes(collection.collection_id);
           return (
@@ -100,11 +121,14 @@ const AddToCollectionMenu = ({
                 onAdd(collection.collection_id, nodeIds);
               }}
             >
+              {/* F1: NAME ONLY (the leftover M-1 item_count secondary is deleted) —
+                  middle-truncated to the fixed-width budget above. */}
               <ListItemText
-                primary={collection.name}
-                secondary={
-                  collection.item_count != null ? String(collection.item_count) : undefined
-                }
+                primary={pixelMiddleTruncate(
+                  collection.name ?? '',
+                  MENU_NAME_BUDGET_PX,
+                  MENU_NAME_FONT
+                )}
               />
               {checked && (
                 <ListItemIcon data-testid={`collection-checked-${collection.collection_id}`}>

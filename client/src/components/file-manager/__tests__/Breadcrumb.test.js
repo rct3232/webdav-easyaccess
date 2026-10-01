@@ -207,6 +207,30 @@ describe('Breadcrumb — collections crumbs (M-9, 2026-09-30)', () => {
     expect(onNodeClick).toHaveBeenCalledWith('/__collections__/liked');
   });
 
+  it('archive route renders Collections › Archive — static tree-parity label, NO Home chip (F2)', () => {
+    const onNodeClick = jest.fn();
+    renderWithProviders(
+      <Breadcrumb
+        {...defaultProps}
+        onNodeClick={onNodeClick}
+        currentPath="/__collections__/__archive__"
+        ancestors={[{ nodeId: 42, name: 'should-not-render' }]}
+      />
+    );
+    const en = require('../../../locales/en.json');
+    // tree parity: the SAME key the sidebar ArchiveNode uses (static — no name resolution)
+    expect(en.nav.collectionsArchive).toBe('Archive');
+    expect(screen.getByText('Collections')).toBeInTheDocument();
+    expect(screen.getByText('Archive')).toBeInTheDocument();
+    expect(screen.queryByText('Home')).not.toBeInTheDocument();
+    expect(screen.queryByText('should-not-render')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Collections'));
+    expect(onNodeClick).toHaveBeenCalledWith('/__collections__');
+    fireEvent.click(screen.getByText('Archive'));
+    expect(onNodeClick).toHaveBeenCalledWith('/__collections__/__archive__');
+  });
+
   it('collection/archive list routes keep the plain Home chip (unchanged surfaces)', () => {
     renderWithProviders(<Breadcrumb {...defaultProps} currentPath="/__collections__" />);
     expect(screen.getByText('Home')).toBeInTheDocument();

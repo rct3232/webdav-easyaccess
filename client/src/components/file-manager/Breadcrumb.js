@@ -43,7 +43,11 @@ const Breadcrumb = ({
   const isCollectionsMemberView =
     !isShareMode && (currentPath || '').startsWith('/__collections__/collection/');
   const isCollectionsLikedView = !isShareMode && currentPath === '/__collections__/liked';
-  const isCollectionsView = isCollectionsMemberView || isCollectionsLikedView;
+  // F2 (2026-10-01 §11 follow-up, closing the M-9 gap): the archive route fell
+  // through to the generic Home chip — it now mirrors the member/liked chain.
+  const isCollectionsArchiveView = !isShareMode && currentPath === '/__collections__/__archive__';
+  const isCollectionsView =
+    isCollectionsMemberView || isCollectionsLikedView || isCollectionsArchiveView;
 
   // Share mode: keep the existing path-segment rendering (do not regress; C2.5).
   const shareSegments = (() => {
@@ -82,11 +86,15 @@ const Breadcrumb = ({
 
   // M-9: the collections trails carry the destination chip (member NAME /
   // Likes); unresolved name ⇒ transient '…' segment (option (a) — never hides).
+  // F2: the archive surface needs NO name resolution — static nav.collectionsArchive
+  // label (tree parity with the sidebar ArchiveNode).
   const collectionsTrail = isCollectionsMemberView
     ? [{ name: collectionName ?? '…', path: currentPath }]
     : isCollectionsLikedView
       ? [{ name: t('nav.collectionsLiked'), path: currentPath }]
-      : [];
+      : isCollectionsArchiveView
+        ? [{ name: t('nav.collectionsArchive'), path: currentPath }]
+        : [];
 
   const segments = isShareMode
     ? shareSegments

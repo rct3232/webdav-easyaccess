@@ -104,7 +104,7 @@ Addendum per docs/features/collections-platform.md §3.3 (like entry points), §
 
 ### 3.1 Header like toggle
 
-- Right-edge of the gradient-header title block: like icon button (sole §3.3 properties-dialog entry point). State = `file.liked` from row data; click → optional `onToggleLike(file)` (viewer-scoped like, invariant 9 — no counts, no other-user state).
+- Right-edge of the gradient-header title block: like icon button (sole §3.3 properties-dialog entry point). State = `file.liked` from row data; click → optional `onToggleLike(file)` (viewer-scoped like, invariant 9 — no counts, no other-user state). Liked-state heart color = theme token `like` (M-5 — see `FileContextMenu.md`; never `error`).
 - Hidden when the callback is absent (share-link, trash view, read-only grantee without like route access).
 
 ### 3.2 `Member of` chip row — Info tab, read-only (P3)

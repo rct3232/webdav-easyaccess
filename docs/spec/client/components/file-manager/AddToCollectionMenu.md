@@ -46,6 +46,7 @@ Target-contract spec.
 - Seed preview: the chosen file (icon/name).
 - Editable auto name, prefilled `{seedFileName} and similar files` (`dialogs.seedNameTemplate`, §4.10 — client-composed default; server templateNamer owns SYSTEM-origin names only).
 - Member sample grid: `POST /collections/preview { seedNodeId }` → ≤12 tiles with fade-out + `plus N more` counter (`count − sample.length`); skeleton while loading; large-set streaming is a server concern.
+- **Long-name rule (M-6, 2026-09-30 owner ruling — middle-truncate):** sample-tile names render through `pixelMiddleTruncate` (leading + trailing fragments survive; `...` in the middle) instead of the retired CSS tail-ellipsis (`textOverflow:'ellipsis'`). Budget is a FIXED constant derived from the dialog's `maxWidth="md"` (900px) layout: 900 − 2×24 content padding − 3×8 grid gaps = 828 → 207 per tile − 2×8 tile padding ⇒ `SEED_TILE_NAME_BUDGET_PX = 190`; font metrics follow the CollectionsSection row idiom (`14px Inter, Roboto, "Helvetica Neue", Arial, sans-serif`).
 - **Mandatory copy line (§4.5 Q2):** states the ENTIRE initial set (preview + `plus N more`) is publish-approved as a batch if/when the collection is shared — the approval must not silently cover unseen members.
 - Submit → `onCreateSeed` → create `origin='seed'` with definition `{ seed_ref, theta }` (additive create fields, collectionsRepository §2.8); undo toast after.
 - Absorbed 409 `serverErrors.ai.notConfigured` (config race after gating) → plain error toast, dialog stays.
@@ -63,6 +64,7 @@ Target-contract spec.
 - [ ] Multi-select shows the submenu with count = selected nodes; single context-select passes 1 node.
 - [ ] `seedItemVisible=false` ⇒ the seed row is absent from the DOM (absent-not-disabled rule).
 - [ ] Inline `New collection` validates name and chains create→add in one host action (one undo toast for the command).
+- [ ] (M-6) A sample name wider than the budget renders MIDDLE-truncated (keeps the leading fragment AND the trailing fragment/extension, `...` between); short names render verbatim; no `textOverflow: ellipsis` style remains on the tiles.
 - [ ] Seed dialog shows preview + `plus N more` + the publish-approval line before enabling Create.
 - [ ] `membershipIds` rows render checkmarks without extra network calls.
 - [ ] Member-row invocation behaves identically to main-listing invocation (same component state).

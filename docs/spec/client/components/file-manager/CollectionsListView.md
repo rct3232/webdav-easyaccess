@@ -115,6 +115,12 @@ Target-contract spec.
 - **Card context menu by origin (§3.2) — the `open` entry is REMOVED (P-3; opening is the
   double-click/tap):** own (`user|system` rows): Rename (→ server sets `name_locked`) / pin·unpin / archive (ONE confirm) / Sharing (opens CollectionPropertiesDialog Sharing tab) / Delete (visible ONLY in `__archive__`, second-step confirm, trash-parity, report-only toast). Viewer-received rows (`granted_role != null`): `Revoke permission` ONLY (action `revoke-permission` — dispatched to the host, which runs `DELETE /:id/grants/me`; INSTANT, no confirm dialog — Path 1 self-grant revocation, 2026-09-29 owner ruling), NO mutations. **As-amended (P-1):** the former view-local `hiddenIds` recipient-hide is REMOVED — rows render straight from fetch state, the revoked row disappears on the next list read.
 - **As-built decision (T0.4):** archived rows (`status=archived`, `__archive__` view) render **Restore in place of Archive** (own rows there: Rename / pin·unpin / Restore / Sharing / Delete) — §2.2 "restore/permanent-delete affordances enabled" and `useFolderTreeController.md` §3 ("restore … affordances live in CollectionsListView") require the restore entry, which the menu list above omitted.
+- **Menu icons (M-3, 2026-09-30):** EVERY card-menu `MenuItem` renders a `ListItemIcon`
+  (files-menu parity — the former pin/unpin-only icons left the other rows bare):
+  rename `Edit` · pin/unpin `PushPin` (kept) · archive `Archive` · restore `Unarchive` ·
+  sharing `Share` · delete-permanent `DeleteForever` · revoke-permission `ExitToApp`
+  (all from `@mui/icons-material`, same alias idiom as `FileContextMenu.js`/
+  `FileManagerControls.js`).
 
 ### 2.5 Member Mode — shared-renderer rows + top-of-list banners (P-4 restructure)
 
@@ -157,6 +163,9 @@ Target-contract spec.
       `onCardAction('unpin', collection)`).
 - [ ] (M-7) `digest={ added_since: 0, removed_since: 0 }` renders NO `digest-banner`.
 - [ ] 2×2 preview renders one cell per `preview_items` entry (`collection-preview-<node_id>`, `data-file-node-id`), icon first, thumbnail swap when `previewThumbnails` gains the id; NO member filename labels; empty `preview_items` ⇒ placeholder glyph, no cells.
+- [ ] (M-3) every rendered card-menu option carries a `ListItemIcon` (svg present inside
+      `.MuiListItemIcon-root`) matching the action mapping above — including rename/archive/
+      restore/sharing/delete-permanent/revoke-permission.
 - [ ] Bulk confirm host: `bulkConfirm.step='archive'` = one confirm; `'delete-1'`→`'delete-2'` = two-step with the batch names in the message; confirm clicks dispatch `onBulkConfirm` (execution is the shell's).
 - [ ] Revoked member renders no name/thumbnail; grantee never sees `shared_excluded` chip or pending banner.
 - [ ] `auto` publish_mode collection shows no pending banner even after adds.

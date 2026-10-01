@@ -638,13 +638,13 @@ gate. Behavior change declared in the ruling: the file-tree name cell's inline
 middle-truncation (single font-metrics source; also retires the last direct `ResizeObserver`
 use in a pure view).
 
-| Task            | Objective                                                                                    | Deps  | Verification                                                            | Status |
-| --------------- | -------------------------------------------------------------------------------------------- | ----- | ----------------------------------------------------------------------- | ------ |
-| R12.1 docs      | TreeRow.md + amend BaseFolderTreeItem/RecentFilesSection/CollectionsSection specs            | none  | owner-ruling date present; prettier clean                               | `[ ]`  |
-| R12.2 RED pins  | rewrite F5 pins to TreeRow usage + cross-section indent equality (recent/collections/shared) | R12.1 | pins FAIL pre-migration; other section tests keep passing               | `[ ]`  |
-| R12.3 primitive | extract `TreeRow`; `BaseFolderTreeItem` consumes it (props unchanged)                        | R12.2 | `BaseFolderTreeItem.test.js` UNMODIFIED green; TreeRow unit tests green | `[ ]`  |
-| R12.4 migration | Recent/Collections child rows → TreeRow; testids/clicks/selection/slice(0,10) kept           | R12.3 | folder-tree suite group green (pins now GREEN)                          | `[ ]`  |
-| R12.5 closure   | full client run + eslint/prettier + report                                                   | R12.4 | 176 suites green; optional s3 collections-desktop E2E                   | `[ ]`  |
+| Task            | Objective                                                                                    | Deps  | Verification                                                            | Status   |
+| --------------- | -------------------------------------------------------------------------------------------- | ----- | ----------------------------------------------------------------------- | -------- |
+| R12.1 docs      | TreeRow.md + amend BaseFolderTreeItem/RecentFilesSection/CollectionsSection specs            | none  | owner-ruling date present; prettier clean                               | `[done]` |
+| R12.2 RED pins  | rewrite F5 pins to TreeRow usage + cross-section indent equality (recent/collections/shared) | R12.1 | pins FAIL pre-migration; other section tests keep passing               | `[done]` |
+| R12.3 primitive | extract `TreeRow`; `BaseFolderTreeItem` consumes it (props unchanged)                        | R12.2 | `BaseFolderTreeItem.test.js` UNMODIFIED green; TreeRow unit tests green | `[done]` |
+| R12.4 migration | Recent/Collections child rows → TreeRow; testids/clicks/selection/slice(0,10) kept           | R12.3 | folder-tree suite group green (pins now GREEN)                          | `[done]` |
+| R12.5 closure   | full client run + eslint/prettier + report                                                   | R12.4 | 176 suites green; optional s3 collections-desktop E2E                   | `[done]` |
 
 - **§12 execution log (branch `refactor/tree-row-unification`, base bb36c97):**
   - R12.1 docs `37aafb9`. R12.2 RED `f1be9b8` — RED observed: TreeRow suite failed

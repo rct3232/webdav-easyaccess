@@ -4,11 +4,11 @@ Target-contract spec.
 
 ## 1. Overview
 
-| Item               | Description                                                                                                                                                                                                                                                                     |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role               | Collapsible folder-tree section for the `__collections__` virtual node (depth=1): header + activity-ordered collection rows + shared-origin icon chips + a static `Likes` child row (P-5) + a trailing `__archive__` node (`ArchiveNode`). No tree-walking into members (§3.1). |
-| Used in            | FolderTree (desktop sidebar + mobile drawer), composed like `RecentFilesSection`/`SharedFoldersSection`                                                                                                                                                                         |
-| Related components | BaseFolderTreeItem (selected-style idiom), RecentFilesSection (collapsible idiom), CollectionsListView (click target view)                                                                                                                                                      |
+| Item               | Description                                                                                                                                                                                                                                                                                |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role               | Collapsible folder-tree section for the `__collections__` virtual node (depth=1): header + a static `Likes` child row AT THE TOP (M-2) + activity-ordered collection rows + shared-origin icon chips + a trailing `__archive__` node (`ArchiveNode`). No tree-walking into members (§3.1). |
+| Used in            | FolderTree (desktop sidebar + mobile drawer), composed like `RecentFilesSection`/`SharedFoldersSection`                                                                                                                                                                                    |
+| Related components | BaseFolderTreeItem (selected-style idiom), RecentFilesSection (collapsible idiom), CollectionsListView (click target view)                                                                                                                                                                 |
 
 ---
 
@@ -42,8 +42,9 @@ Target-contract spec.
   an icon chip ONLY — never pinned to top, same activity-sorted list (§3.1). Pinned (`pinned=true`)
   rows keep server order (gravity, not hoisting).
 - **ArchiveNode:** auto-child at the section end listing exactly the `status=archived` collections as a navigable node — no separate archive screen, no per-collection archive toggle in the tree (§3.1). Badge = `archiveCount`; zero ⇒ row still renders (the lifecycle destination must stay reachable). **Decision (T0.4):** the earlier "renders only when `archiveCount > 0`" wording contradicted this zero-render rule — the row renders unconditionally (the destination must stay reachable even at count 0); the badge simply hides at 0.
-- **LikesNode (P-5, owner ruling 2026-09-29):** static child row rendering immediately BEFORE the
-  ArchiveNode (the section tail stays archive's), inside the same Collapse — same always-rendered
+- **LikesNode (P-5, owner ruling 2026-09-29; MOVED TO TOP by M-2, 2026-09-30):** static child row
+  rendering at the TOP of the section body — immediately BEFORE the active collection rows (the
+  ArchiveNode stays the section tail), inside the same Collapse — same always-rendered
   zero-state rule as ArchiveNode (the destination lists `GET /api/file-likes/items` live; an empty
   like set is a legal empty view, never a hidden route). `FavoriteBorderIcon` + label
   `nav.collectionsLiked`; no count badge (the row listing is a per-open full fetch — Decision B,

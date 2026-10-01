@@ -76,6 +76,11 @@ snake_case payload (with `mime` since P-3) maps to a **file-shape row** so `File
 - `nodeId`, `name`/`basename` (server name, `null` on revoked), `type` (`item.type ?? 'file'`),
   `mime` (NOW AVAILABLE from P-3's `serializeItem`), `lastmod` (`item.lastmod ?? item.created_at`),
   `membership`, `published`, `added_by`, `state`, `liked`, `reason`, `shared_excluded` pass through.
+- **M-8 (2026-09-30):** the row ALSO carries `created_at: item.created_at ?? null` — the
+  MEMBERSHIP-ADDED date on the members surface (wire `serializeItem.created_at`) and the NODE
+  creation time on the liked surface (`serializeLikedItem.created_at`, `fileLikes.md` §2.4.2).
+  It is the client-side member/liked DATE-SORT key (`CollectionsListView.md` §2.5); revoked rows
+  arrive null and pin to the date-sort end.
 - **`size` is SUPPRESSED:** the wire carries no member size, so the adapter OMITS the field entirely
   (`size == null` ⇒ `FileListItem` hides the caption via its conditional slot — the file-side
   `formatFileSize` output is unchanged).

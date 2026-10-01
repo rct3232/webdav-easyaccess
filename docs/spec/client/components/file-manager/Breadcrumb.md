@@ -38,16 +38,17 @@
 
 ### 2.2 Props
 
-| Name                 | Type     | Required | Default | Description                                                                                                                               |
-| -------------------- | -------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| ancestors            | array    | Y        | -       | Current folder's ancestor chain `[{ nodeId, name }]`, fetched via `fileService.getAncestors` (`GET /files/ancestors`) in `useFileManager` |
-| onNodeClick          | function | Y        | -       | Ancestor chip click (by nodeId)                                                                                                           |
-| user                 | object   | N        | -       | User                                                                                                                                      |
-| onToggleFolderTree   | function | N        | -       | Toggle folder tree                                                                                                                        |
-| isFolderTreeOpen     | boolean  | N        | -       | Tree open                                                                                                                                 |
-| shareRootPath        | string   | N        | -       | Share root (share mode)                                                                                                                   |
-| shareRootName        | string   | N        | -       | Share root name                                                                                                                           |
-| showFolderTreeToggle | boolean  | N        | -       | Show toggle                                                                                                                               |
+| Name                 | Type     | Required | Default | Description                                                                                                                                                                                                                                                                                                                        |
+| -------------------- | -------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ancestors            | array    | Y        | -       | Current folder's ancestor chain `[{ nodeId, name }]`, fetched via `fileService.getAncestors` (`GET /files/ancestors`) in `useFileManager`                                                                                                                                                                                          |
+| onNodeClick          | function | Y        | -       | Ancestor chip click (by nodeId)                                                                                                                                                                                                                                                                                                    |
+| user                 | object   | N        | -       | User                                                                                                                                                                                                                                                                                                                               |
+| onToggleFolderTree   | function | N        | -       | Toggle folder tree                                                                                                                                                                                                                                                                                                                 |
+| isFolderTreeOpen     | boolean  | N        | -       | Tree open                                                                                                                                                                                                                                                                                                                          |
+| shareRootPath        | string   | N        | -       | Share root (share mode)                                                                                                                                                                                                                                                                                                            |
+| shareRootName        | string   | N        | -       | Share root name                                                                                                                                                                                                                                                                                                                    |
+| showFolderTreeToggle | boolean  | N        | -       | Show toggle                                                                                                                                                                                                                                                                                                                        |
+| collectionName       | string?  | N        | null    | **M-9 (2026-09-30 owner decision, option (a)):** the collection NAME for the member-route trail — resolved SHELL-side from the existing `useCollections` fetched list matched by `collectionId` (`FileManagerView.md` §3). `null` while the list is still loading ⇒ the transient `…` segment renders (the trail is NEVER hidden). |
 
 ### 2.3 Callback Signatures
 
@@ -65,6 +66,8 @@
 ### 2.5 i18n Keys
 
 - nav.home, nav.recentShort, nav.shared, nav.sharedFolder, nav.folderTreeOpen, nav.folderTreeClose
+- **M-9:** nav.collections (Collections chip — SAME key the tree header uses: label parity),
+  nav.collectionsLiked (Likes segment — SAME key as the tree LikesNode; EN "Liked" / KO "좋아요")
 
 ### 2.6 Home chip (leading chip)
 
@@ -82,6 +85,16 @@
 - **shared**/**recent**: no segments
 - Home/shared/recent: special icons
 - showFolderTreeToggle: up/down icon
+- **Collections surfaces (M-9, 2026-09-30)** — home-chip replacement precedent of trash/recent:
+  - member route (`currentPath` starts with `/__collections__/collection/`): the home chip becomes
+    `Collections` (`nav.collections`, Collections icon, click → `/__collections__`) and ONE
+    segment chip renders: the collection NAME (`collectionName`), or the transient `…` while the
+    list has not resolved it (owner decision (a) — never hide the segment). The name chip is the
+    current location (click → the member route itself).
+  - liked route (`currentPath === '/__collections__/liked'`): home chip `Collections` + segment
+    `Liked` (`nav.collectionsLiked` — the SAME key as the tree's LikesNode: label parity, never a
+    third wording).
+  - The ancestor chain never renders on these virtual routes (overlay fetches no ancestors).
 
 ### 2.8 Verification Scenarios
 
@@ -92,6 +105,8 @@
       as chips; nothing is trimmed
 - [ ] Share mode path parsing
 - [ ] Toggle folder tree
+- [ ] (M-9) Member route (`/__collections__/collection/:id`): chips are `Collections › <name>` — the leading chip navigates to `/__collections__`, the name chip to the current route; `collectionName=null` renders the transient `…` segment (never hides the trail — owner option (a) 2026-09-30).
+- [ ] (M-9) Liked route (`/__collections__/liked`): chips are `Collections › Liked`; both labels come from the SAME i18n keys as the tree rows (tree parity).
 
 ### 2.9 Edge Cases
 

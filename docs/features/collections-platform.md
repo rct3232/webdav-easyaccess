@@ -85,6 +85,14 @@ only (no Open); the toolbar selection bar shows a fixed count-independent set by
 active view: Pin · Unpin · Archive, archive view: Restore · Delete permanently — executed by
 looping the existing per-collection calls (per-item failures tolerated, journal/undo per
 collection, permanent delete keeps the batched 2-step confirm).
+Micro-polish M-2 (2026-09-30): the grid also hosts two navigation pseudo-tiles — Likes FIRST
+(pink heart icon, opens the Likes surface) and Archive LAST (archive view) — never selectable,
+never menu-carrying, present even when the section is empty; the archive view shows only the
+Likes tile, the Likes surface shows none. In the sidebar the Likes row moved to the TOP of the
+section body (archive stays the tail), and the breadcrumb names the trail: `Collections › <name>`
+(member) / `Collections › Liked` — the same labels as the tree. Members/liked rows sort
+client-side like files (Name/Date × asc/desc, persisted per surface `collectionMemberSortMode`,
+default newest-added first — date = membership-added stamp; revoked rows pin to the end).
 
 ### 3.2 Members
 

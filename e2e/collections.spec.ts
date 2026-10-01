@@ -717,11 +717,16 @@ test('E2E-COLLECTION-012: the publish-all banner flips stored members through PU
   await page.goto('/files/__collections__');
   await openCollectionCard(page, name);
   await expect(page.getByTestId('members-list')).toBeVisible();
-  await page.getByTestId('view-mode-list').click(); // chips are the LIST renderer slot
 
   await expect(page.getByTestId('publish-pending-banner')).toContainText(/2/);
-  await expect(page.getByTestId(`member-unpublished-chip-${fileA.nodeId}`)).toBeVisible();
-  await expect(page.getByTestId(`member-unpublished-chip-${fileB.nodeId}`)).toBeVisible();
+  // §11 follow-up 3: the badges render in ALL member views — assert them in the
+  // surface DEFAULT view (grid) first, then keep the list path valid.
+  await expect(page.getByTestId(`member-publish-pending-badge-${fileA.nodeId}`)).toBeVisible();
+  await expect(page.getByTestId(`member-publish-pending-badge-${fileB.nodeId}`)).toBeVisible();
+
+  await page.getByTestId('view-mode-list').click();
+  await expect(page.getByTestId(`member-publish-pending-badge-${fileA.nodeId}`)).toBeVisible();
+  await expect(page.getByTestId(`member-publish-pending-badge-${fileB.nodeId}`)).toBeVisible();
 
   // C3 owner-visibility fix: OWN collection (granted_role null) + ask ⇒ the
   // per-row publish toggle IS offered.
@@ -734,8 +739,8 @@ test('E2E-COLLECTION-012: the publish-all banner flips stored members through PU
   // Banner batch action → PUT /:id/items/publish {nodeIds, published:true}.
   await page.getByTestId('publish-batch').click();
   await expect(page.getByTestId('publish-pending-banner')).toHaveCount(0);
-  await expect(page.getByTestId(`member-unpublished-chip-${fileA.nodeId}`)).toHaveCount(0);
-  await expect(page.getByTestId(`member-unpublished-chip-${fileB.nodeId}`)).toHaveCount(0);
+  await expect(page.getByTestId(`member-publish-pending-badge-${fileA.nodeId}`)).toHaveCount(0);
+  await expect(page.getByTestId(`member-publish-pending-badge-${fileB.nodeId}`)).toHaveCount(0);
   await expect(rowA).toBeVisible(); // membership untouched — only the flag flipped
 
   await expect

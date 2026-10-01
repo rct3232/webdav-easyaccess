@@ -29,6 +29,8 @@
 | onMoreActivate      | function | N        | -              | `(event) => void` — invoked on click/touchend; the tile calls `stopPropagation` (and mobile touch suppression) so the card click never fires. |
 | moreButtonTestId    | string   | N        | -              | `data-testid` for the More button (collections: `card-menu-button-<id>`; files render none — DOM unchanged).                                  |
 | moreButtonAriaLabel | string   | N        | 'More actions' | Accessible name of the More button.                                                                                                           |
+| moreAction          | node     | N        | null           | Pre-built More overlay (absolute top-right inside the media box; CollectionCardItem composes its own IconButton; FileGridItem delegates).     |
+| cornerBadges        | node     | N        | null           | (M-4) Top-left media overlay: one or more `TileCornerBadge` nodes (`client/src/components/file-manager/TileCornerBadge.js` — 16px icon in a translucent circular container, absolute top-left inside the media box, pointer-events preserved for real-button badges). The right media corner stays owned by `moreAction`. |
 | isSelected          | boolean  | N        | false          | Light primary background (alpha 0.12); hover deepens it (parity with the pre-extraction FileGridItem styles).                                 |
 | isDropTarget        | boolean  | N        | false          | Primary border/background highlight (file drag-drop only; collections never pass it).                                                         |
 | isDragging          | boolean  | N        | false          | Opacity 0.5.                                                                                                                                  |
@@ -56,4 +58,7 @@
       `onMoreActivate` with propagation stopped; `moreButtonTestId`/`moreButtonAriaLabel`
       applied.
 - [ ] `isSelected` background parity; `isDropTarget` border parity; processing overlay.
+- [ ] (M-4) `cornerBadges` renders inside the media Box anchored top-left (opposite corner of
+      `moreAction`); null ⇒ zero DOM delta for file tiles; button badges stay clickable
+      (`stopPropagation` is the consumer's contract, the tile itself never gates pointer events).
 - [ ] Mobile styles (`userSelect: none`, `touchAction: manipulation`) applied when `isMobile`.

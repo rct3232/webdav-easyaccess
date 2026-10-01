@@ -83,10 +83,21 @@ Target-contract spec.
   once `previewThumbnails` (Map, keyed by node id) gains that id via the batch mechanism
   (§2.3 `onPreviewThumbnailsLoaded`). A collection with no previewable members renders the
   `getFileIconForGrid` directory glyph.
-- **Footer area:** collection name, `item_count`, origin/status chips, shared icon chip
-  (`granted_role != null`), auto-pin chip when `pinned_by='auto'` (subtle, with unpin CTA — §4.9b).
-  The card menu trigger is the tile More action (`data-testid="card-menu-button-<id>"`),
-  hidden while `selectionMode` (files parity).
+- **Footer area (M-1/M-4, 2026-09-30):** collection name ONLY — the member-count line
+  (`fileManager.collectionsItemCount`) and the `status=archived` Chip are REMOVED (archive
+  membership is view-scoped; the count was pure noise). The card menu trigger is the tile
+  More action (`data-testid="card-menu-button-<id>"`), hidden while `selectionMode`
+  (files parity).
+- **Media badges (M-4):** corner overlays on the tile media area (shared `CardTile`
+  `cornerBadges` slot, top-left; the right side hosts the More action), each a 16px icon in
+  a translucent circular container:
+  - received/shared (`granted_role != null`) → `FolderSharedIcon` (the `Checkroom`
+    `SharedChipIcon` import is RETIRED — icon unified with the tree's shared glyph),
+    tooltip reusing `nav.collectionsSharedChip`, testid `card-shared-chip-<id>`;
+  - auto-pin (`pinned_by='auto'`) → `PushPinIcon` rendered as a REAL BUTTON — click
+    dispatches the existing `onCardAction('unpin', collection)`; aria-label/tooltip reuse
+    `fileManager.collectionsAutoPin`; testid `card-autopin-chip-<id>` (the inner unpin
+    CTA testid `card-autopin-unpin-<id>` is preserved on the button).
 - **Click semantics = file parity (P-3):** the card container keeps
   `data-file-path="/__collections__/collection/<id>"` (the synthetic selection key for
   `getEntryKey` — numeric file node ids can never collide; also the empty-space deselect
@@ -109,7 +120,10 @@ Target-contract spec.
 
 **Supersession note (P-4, 2026-09-29 owner ruling):** the former as-built T0.4 decision — "member rows render through the view's own lightweight member-row renderer (MUI row primitives) because the FileList row components CANNOT carry the revoked placeholder/`shared_excluded` chip/inline menu trigger" — is SUPERSEDED. Member rows now render through the SAME shared `FileList`/`FileGrid`/`FileDetail` renderers as files (list/grid/detail), driven by the per-surface `memberViewMode` (default **grid**, `collectionMemberViewMode` localStorage key — `useExplorerSession.md` §2.3). The member adapter (`useFileManager.md` toMemberRow) normalizes rows to file shape so the shared slots apply: the revoked placeholder is the row NAME (`fileManager.collectionsUnavailable` label substituted for the null name), the `shared_excluded` chip and the awaiting-publish chip render through the optional member slots (`FileListItem.md`), drag/drop dies via `hasWritePermission:false`, and the row menu is dispatched (not hosted) through `onMemberAction('menu', row, anchorEl)`. THIS view stays the CHROME HOST: digest banner and publish-pending banner render around the delegated renderer; `mode==='list'` collection cards are unchanged. Decision B (2026-09-29) retired the load-more button — member/liked rows arrive complete in one response and this host applies the shared `useInfiniteScroll` (50+50) slice + sentinel instead.
 
-- **Digest banner:** one line `+N / -M / 1 merge · expand` from `GET /:id/items?since=`; `since` = per-collection last-visit timestamp held client-side (localStorage; **Decision:** the server stamps its own cursor implicitly — the client copy exists only to request `digest` deltas on first paint after navigation). Expanded digest renders `digest.entries` when the server exposes them; the shipped `GET /:id/items` digest is counts-only (`routes/collections.md` §GET /:id/items) — per-entry `why is this here` rows + undo links ride that follow-up (surface otherwise inert).
+- **Digest banner:** renders ONLY when at least one delta is non-zero —
+  `(digest?.added_since ?? 0) > 0 || (digest?.removed_since ?? 0) > 0` (M-7, 2026-09-30: an
+  all-zero `since` digest is noise, the banner must not mount). One line
+  `+N / -M / 1 merge · expand` from `GET /:id/items?since=`; `since` = per-collection last-visit timestamp held client-side (localStorage; **Decision:** the server stamps its own cursor implicitly — the client copy exists only to request `digest` deltas on first paint after navigation). Expanded digest renders `digest.entries` when the server exposes them; the shipped `GET /:id/items` digest is counts-only (`routes/collections.md` §GET /:id/items) — per-entry `why is this here` rows + undo links ride that follow-up (surface otherwise inert).
 - **Publish-pending banner:** owner sees `N awaiting publish` (`publish_pending_count`) with the batch `Publish all` action (→ `onPublishBatch` → `PUT /:id/items/publish`, P-4 route); only when the collection is live-shared and `publish_mode != auto`. Hidden for grantees (field absent server-side).
 - **Row delegation contracts:**
   - `memberViewMode` (`'list' | 'grid' | 'detail'`) selects the renderer; mobile detail force-to-list applies to the member key too (`useExplorerSession.md`).
@@ -127,7 +141,7 @@ Target-contract spec.
 
 ### 2.7 i18n Keys
 
-- ~~`fileManager.collectionsSort*`~~ — consumed by the toolbar's collections sort surface since P-2 (`FileManagerControls.md` §2.5); the view itself uses none of these keys. `fileManager.collectionsEmpty`, `fileManager.archiveEmpty`, `fileManager.digestLine`, `fileManager.digestExpand`/`digestCollapse`/`digestAdded`/`digestRemoved`, `fileManager.whyHere`, `fileManager.publishPending`, `fileManager.publishBatch`, `fileManager.sharedExcludedChip`, `fileManager.memberUnpublishedBadge` (P-4 row chip, list renderer only — §2.5), `fileManager.collectionsUnavailable` (P-4 revoked placeholder NAME substituted in the member adapter — §2.5), `fileManager.cardMenu*` (rename/pin/unpin/archive/restore/sharing/delete/revoke-permission — the `open` label key was removed with P-3; opening is click-parity, not a menu entry), `fileManager.collectionsItemCount`, `fileManager.collectionsStatusArchived`, `fileManager.collectionsAutoPin`/`collectionsAutoPinUnpin`, `fileManager.memberLoadMore`, `fileManager.archiveConfirmMessage`, `fileManager.permanentDeleteConfirm1`/`permanentDeleteConfirm2` (archive/permanent-delete confirms are hosted IN this view — dispatch fires only after the final confirm; the shell hosts the mutation itself)
+- ~~`fileManager.collectionsSort*`~~ — consumed by the toolbar's collections sort surface since P-2 (`FileManagerControls.md` §2.5); the view itself uses none of these keys. `fileManager.collectionsEmpty`, `fileManager.archiveEmpty`, `fileManager.digestLine`, `fileManager.digestExpand`/`digestCollapse`/`digestAdded`/`digestRemoved`, `fileManager.whyHere`, `fileManager.publishPending`, `fileManager.publishBatch`, `fileManager.sharedExcludedChip`, `fileManager.memberUnpublishedBadge` (P-4 row chip, list renderer only — §2.5), `fileManager.collectionsUnavailable` (P-4 revoked placeholder NAME substituted in the member adapter — §2.5), `fileManager.cardMenu*` (rename/pin/unpin/archive/restore/sharing/delete/revoke-permission — the `open` label key was removed with P-3; opening is click-parity, not a menu entry), `fileManager.collectionsAutoPin` (M-4: the autopin BADGE tooltip/aria; `collectionsItemCount`/`collectionsStatusArchived`/`collectionsAutoPinUnpin` DROPPED en+ko with M-1/M-4), `fileManager.archiveConfirmMessage`, `fileManager.permanentDeleteConfirm1`/`permanentDeleteConfirm2` (archive/permanent-delete confirms are hosted IN this view — dispatch fires only after the final confirm; the shell hosts the mutation itself)
 
 ### 2.8 Verification Scenarios
 
@@ -137,6 +151,11 @@ Target-contract spec.
 - [ ] Archive-mode cards expose Delete; live cards do NOT (2-step lifecycle enforced in UI).
 - [ ] Card menu has NO `open` entry (P-3): own-active = rename/pin/archive/sharing, own-archived adds restore+delete, viewer = `revoke-permission` only (instant, no confirm, no view-local hide — the card vanishes only when the next fetch omits it).
 - [ ] Click parity: `onCardClick(collection, event)` on every card click (selection/open resolution is the shell's); mobile long-press dispatches `onCardLongPressSelect(collection)`; More action hidden while `selectionMode`; selected card renders the shared tile selected background.
+- [ ] (M-1/M-4) Card footer shows the name ONLY (no item-count caption, no `archived` chip);
+      received cards overlay the `card-shared-chip-<id>` `FolderSharedIcon` badge and
+      auto-pinned cards the `card-autopin-chip-<id>` `PushPinIcon` BUTTON badge (click =
+      `onCardAction('unpin', collection)`).
+- [ ] (M-7) `digest={ added_since: 0, removed_since: 0 }` renders NO `digest-banner`.
 - [ ] 2×2 preview renders one cell per `preview_items` entry (`collection-preview-<node_id>`, `data-file-node-id`), icon first, thumbnail swap when `previewThumbnails` gains the id; NO member filename labels; empty `preview_items` ⇒ placeholder glyph, no cells.
 - [ ] Bulk confirm host: `bulkConfirm.step='archive'` = one confirm; `'delete-1'`→`'delete-2'` = two-step with the batch names in the message; confirm clicks dispatch `onBulkConfirm` (execution is the shell's).
 - [ ] Revoked member renders no name/thumbnail; grantee never sees `shared_excluded` chip or pending banner.

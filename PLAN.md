@@ -490,3 +490,65 @@ Execution: `feature/polish-b-member-fetch-all` (docs → RED → GREEN → E2E).
   **13/13 green** (no spec edits — fixtures <50 rows, no `member-load-more`/`next_cursor`
   assertions existed). No repository/SQL touched → PG conformance leg N/A. Awaits orchestrator
   merge gate.
+
+## 11. Micro-polish wave (M-1..M-9)
+
+> Owner-adjudicated 2026-09-30 (briefing). Nine display/menu/structure polish items on the
+> `ai-feature` collections surfaces (base 5f65d03, includes P-1..P-5 + B + e2e isolation).
+> Branch `feature/polish-11-micro`; three batches, each docs-first → RED → GREEN, committed
+> atomically. Binding owner decisions recorded inline per item.
+
+Batch A — display/content:
+- M-1 member-count display REMOVED (card footer "N items" + tree-row secondary count;
+  `fileManager.collectionsItemCount` dropped en+ko) — S | `[wip]`
+- M-4 card chips → TOP-LEFT MEDIA BADGES (binding 2026-09-30: badge SET = received
+  `FolderSharedIcon` + autopin `PushPinIcon` real-button (click = existing `unpin` dispatch);
+  the `Checkroom as SharedChipIcon` import is RETIRED (icon unified with the tree's
+  `FolderShared`); the status `archived` Chip is DELETED entirely — archive membership is
+  already view-scoped; testids `card-shared-chip-<id>`/`card-autopin-chip-<id>` MOVE onto the
+  badges; shared tooltip reuses `nav.collectionsSharedChip`, autopin aria/tooltip reuse
+  `collectionsAutoPin`) — M | `[wip]`
+- M-7 digest banner renders ONLY when `(digest?.added_since ?? 0) > 0 || (digest?.removed_since ?? 0) > 0`
+  (a since-requested all-zero digest is noise) — S | `[wip]`
+
+Batch B — menu/visual:
+- M-3 card-menu icons on ALL items (rename `Edit`, archive `Archive`, restore `Unarchive`,
+  delete-permanent `DeleteForever`, revoke-permission `ExitToApp`, sharing `Share`,
+  pin/unpin `PushPin` kept) — S | `[wip]`
+- M-5 like color token: theme palette gains `like:{main:'#FF3E55'}`; like-state icons move
+  `color="error"` → `color="like"` (delete-red vs like-pink semantic split documented at the
+  theme) — S | `[wip]`
+- M-6 binding (2026-09-30): AddToCollectionMenu long names — tail-truncate
+  (`textOverflow:'ellipsis'`) replaced by `pixelMiddleTruncate` with a FIXED menu-width
+  budget (seed dialog `maxWidth="md"` = 900px ⇒ per-tile text budget constant 190px,
+  font metrics per CollectionsSection idiom) — S | `[wip]`
+
+Batch C — structure:
+- M-2 binding (2026-09-30): pseudo-tiles on the collections GRID — Likes tile FIRST,
+  Archive tile LAST (active list); ARCHIVE VIEW shows ONLY the Likes tile; LIKED surface
+  shows NO tiles; tiles are excluded from selection/sort/cluster/card-menu logic AND from
+  the empty-state gate (empty section still shows tiles). Tree: LikesNode moves to TOP
+  (before active collection rows; Archive stays last). Verified routes: liked
+  `/files/__collections__/liked`, archive `/files/__collections__/__archive__`
+  (useFileManager urlView) — M | `[wip]`
+- M-8 member/liked sorting like files: `sortHidden` on members REMOVED; surface-aware
+  FILES-style menu bound to new per-surface persisted `collectionMemberSortMode`
+  (default `date_desc`); the FULL row set is sorted client-side BEFORE the
+  `useInfiniteScroll` input (name → lowercase localeCompare parity; date → `created_at`
+  = membership-ADDED date, wire `serializeItem.created_at`; rows lacking it (revoked →
+  null) pin to END); liked surface shares the state; collections LIST surface keeps the
+  P-2 5-server-option menu unchanged — M | `[wip]`
+- M-9 binding (2026-09-30, option (a)): breadcrumb title chips — Breadcrumb gains
+  collections awareness: member route renders `Collections › <name>`, liked route
+  `Collections › Likes` (home-chip replacement precedent of trash/recent). Collection name
+  resolved from the existing useCollections fetched list matched by collectionId; while the
+  list is not yet loaded the transient `Collections › …` segment renders (option (a) —
+  never hides the trail) — M | `[wip]`
+
+Verification: targeted suites per batch; final gates = full client suite +
+`collections-desktop` E2E (assertions updated: E2E-002 count assertion removed, E2E-004
+status-chip assertion removed; new E2E-COLLECTION-014 tiles case).
+
+- **11 execution log** — branch `feature/polish-11-micro`:
+  - Batch A (M-1/M-4/M-7): `[wip]` — docs commit lands with the batch; evidence appended
+    per batch after targeted suites go green. Awaits orchestrator final gates.

@@ -73,6 +73,12 @@ List cards are grid-parity tiles (P-3): a 2×2 preview of the four most-recently
 occupies the file card's media area — file icon immediately, swapped to a thumbnail through the
 same batched thumbnail mechanism, no filename labels; revoked/shared-excluded members never
 surface (`preview_items` is built from the already-resolved member view, zero extra queries).
+Micro-polish M-1/M-4 (2026-09-30): the card footer shows the collection name ONLY — the member
+count and the `archived` status chip are gone (archive membership is view-scoped); instead the
+media area carries top-left corner badges (translucent circular, 16px): received collections a
+`FolderShared` glyph (tree-parity icon — `Checkroom` retired; tooltip "shared with me"), and
+auto-pinned collections a `PushPin` BUTTON whose click unpins (keeps the gravity exemption —
+§4.9).
 Click semantics match files: single click enters selection (single-select), double click opens
 the collection; on mobile tap opens and long-press starts selection. The card menu is mutations
 only (no Open); the toolbar selection bar shows a fixed count-independent set by surface —

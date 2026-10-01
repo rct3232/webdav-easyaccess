@@ -89,6 +89,13 @@ describe('CollectionsSection', () => {
     expect(rows[1].getAttribute('data-testid')).toBe('collection-row-2');
   });
 
+  it('child rows render the MEASURED 24px padding-left — parity with RecentFilesSection children (F5)', () => {
+    renderWithProviders(<CollectionsSection {...defaultProps()} />);
+    ['collections-liked-node', 'collection-row-1', 'collections-archive-node'].forEach((testid) => {
+      expect(window.getComputedStyle(screen.getByTestId(testid)).paddingLeft).toBe('24px');
+    });
+  });
+
   it('row click invokes onCollectionClick with the collection id', () => {
     const props = defaultProps();
     renderWithProviders(<CollectionsSection {...props} />);

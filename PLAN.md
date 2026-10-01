@@ -625,3 +625,23 @@ FileActionSheet|FilePropertiesDialog` 140/140. M-5 clarification: no pre-existin
     (no server source touched); `E2E_BACKEND_MODE=s3 collections-desktop` **14/14 green**
     (two E2E adaptations landed: truncation-aware `uiAddToCollection` fragments, 014 title kept
     under the 255-byte `buildName`→NAME_MAX budget — `49ff9b4`); eslint/prettier clean.
+
+## 12. Refactor — sidebar tree-row unification (owner-directed, 2026-10-01)
+
+Branch `refactor/tree-row-unification` (off `ai-feature` @ bb36c97). ONE shared row primitive
+(`TreeRow`) for ALL sidebar child rows (file/shared already share `BaseFolderTreeItem`;
+recent/collections join). Owner ruling 2026-10-01: section children move onto the tree's
+level-based indent (`pl: level*2`); the F5 24px pins are rewritten to the TreeRow model.
+`BaseFolderTreeItem` props surface UNCHANGED — its suite passing unmodified is the regression
+gate. Behavior change declared in the ruling: the file-tree name cell's inline
+`ResizeObserver`+CSS-ellipsis detection is replaced by the TreeRow observed-width
+middle-truncation (single font-metrics source; also retires the last direct `ResizeObserver`
+use in a pure view).
+
+| Task            | Objective                                                                                    | Deps  | Verification                                                            | Status |
+| --------------- | -------------------------------------------------------------------------------------------- | ----- | ----------------------------------------------------------------------- | ------ |
+| R12.1 docs      | TreeRow.md + amend BaseFolderTreeItem/RecentFilesSection/CollectionsSection specs            | none  | owner-ruling date present; prettier clean                               | `[ ]`  |
+| R12.2 RED pins  | rewrite F5 pins to TreeRow usage + cross-section indent equality (recent/collections/shared) | R12.1 | pins FAIL pre-migration; other section tests keep passing               | `[ ]`  |
+| R12.3 primitive | extract `TreeRow`; `BaseFolderTreeItem` consumes it (props unchanged)                        | R12.2 | `BaseFolderTreeItem.test.js` UNMODIFIED green; TreeRow unit tests green | `[ ]`  |
+| R12.4 migration | Recent/Collections child rows → TreeRow; testids/clicks/selection/slice(0,10) kept           | R12.3 | folder-tree suite group green (pins now GREEN)                          | `[ ]`  |
+| R12.5 closure   | full client run + eslint/prettier + report                                                   | R12.4 | 176 suites green; optional s3 collections-desktop E2E                   | `[ ]`  |

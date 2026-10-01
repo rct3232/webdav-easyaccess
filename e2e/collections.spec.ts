@@ -398,6 +398,12 @@ test('E2E-COLLECTION-003: Re-opening a collection member view reports the digest
   await page.goto('/files/__collections__');
   await openCollectionCard(page, name);
   await expect(page.getByTestId('digest-banner')).toContainText(/\+1\s*\/\s*-0/);
+  // Owner-approbation 2026-10-01: admin owns the whole tree (permissionPolicy
+  // convention) — a root-level member of an ADMIN-owned collection is NOT
+  // foreign: no bogus `shared_excluded` lock badge. fileB is unpublished ⇒ the
+  // publish-pending badge renders (R2 suppression applies to excluded rows only).
+  await expect(page.getByTestId(`member-excluded-badge-${fileB.nodeId}`)).toHaveCount(0);
+  await expect(page.getByTestId(`member-publish-pending-badge-${fileB.nodeId}`)).toBeVisible();
 });
 
 test('E2E-COLLECTION-004: Card menu archive moves the collection into the archive view and restore returns it to the active list', async ({

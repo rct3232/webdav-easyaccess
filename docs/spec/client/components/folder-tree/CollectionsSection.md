@@ -36,6 +36,15 @@ Target-contract spec.
 
 ### 2.3 Rendering Contract
 
+- **Child-row indent parity (F5 measurement, 2026-10-01 §11 follow-up):** every section child
+  row (LikesNode, collection rows, ArchiveNode) renders a SINGLE `sx={{ pl: 3 }}` ListItemButton —
+  computed `padding-left: 24px`, the SAME as a RecentFilesSection child row (measured via jsdom
+  `getComputedStyle`; pinned by per-section tests in both suites). The follow-up briefing's
+  "wrapper pl:3 + row pl:3 ⇒ 48px on recent" reading conflated the EMPTY-STATE Box
+  (`RecentFilesSection.js` empty branch — only rendered when the list is empty) with the rows;
+  the sections already match, so NO shared `SECTION_CHILD_INDENT` constant was introduced.
+  (The file-tree children — `BaseFolderTreeItem`, `pl: level*2` at 16px/level + chevron slot —
+  are a recursive-depth idiom by design and stay outside this parity rule.)
 - Header row: `{CollectionsIcon} Collections` (`nav.collections`), collapsible like RecentFilesSection.
 - Collection row: icon + name (**M-1, 2026-09-30: the secondary item-count display is REMOVED** —
   the row secondary keeps only the `new` dot); **shared-with-me rows** (`granted_role != null`) get

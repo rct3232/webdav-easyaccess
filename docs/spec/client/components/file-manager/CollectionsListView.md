@@ -132,8 +132,11 @@ Target-contract spec.
     `onPseudoTileNavigate('/__collections__/__archive__')` — routes verified against
     `useFileManager.js` `urlView` parsing: `/files/__collections__/liked`,
     `/files/__collections__/__archive__`).
-  - ARCHIVE view: ONLY the Likes tile (the archive tile would target the current route — owner
-    default 2026-09-30).
+  - ARCHIVE view: NO pseudo-tiles at all — F3 (2026-10-01 §11 follow-up owner ruling,
+    "archive에 likes 아이템이 있으면 안돼") SUPERSEDES the M-2 default "ONLY the Likes tile":
+    `include === 'mine,archived'` suppresses BOTH tiles; the archive surface is
+    the terminal view of the pair (sidebar Likes/Archive nodes stay the navigation
+    destinations). Active list unchanged: Likes FIRST, Archive LAST.
   - LIKED surface: NO tiles (member mode never renders list chrome).
   - Tiles are EXCLUDED from the `collections.length === 0` empty-state gate: an empty section
     still shows the tiles (plus the localized empty copy) — the destinations must stay reachable.
@@ -209,7 +212,7 @@ Target-contract spec.
 - [ ] (P-4) Member rows render through the shared renderer chosen by `memberViewMode`: `grid`→`FileGrid`, `list`→`FileList`, `detail`→`FileDetail` (mobile forces detail→list); the `member-row-<nodeId>` and `member-menu-button` testids survive via the adapter's `rowTestId`/`moreButtonTestId` optional slots.
 - [ ] (P-4) Single click on a member row dispatches `onMemberRowClick` (shared selection, numeric `nodeId` key); the shared-renderer `More` button AND right-click BOTH dispatch `onMemberAction('menu', row, anchorEl)` — no `FileContextMenu`/`file-action-*` ever renders for a member.
 - [ ] (P-4) Digest + publish-pending banners stay hosted HERE, wrapping the delegated renderer (`members-list` testid unchanged). (Decision B) member/liked rows render in the client 50+50 slice with the sentinel; NO `member-load-more` button exists.
-- [ ] (M-2) active list renders `collection-tile-liked` FIRST and `collection-tile-archive` LAST (icon `color="like"` / `Archive`); archive view renders ONLY the Likes tile; member mode renders none; clicks dispatch `onPseudoTileNavigate` with the verified virtual routes; an EMPTY collection list still shows the tiles next to the empty copy; tiles never mount a `card-menu-button` and never enter the selection Set.
+- [ ] (M-2) active list renders `collection-tile-liked` FIRST and `collection-tile-archive` LAST (icon `color="like"` / `Archive`); member mode renders none; clicks dispatch `onPseudoTileNavigate` with the verified virtual routes; an EMPTY collection list still shows the tiles next to the empty copy; tiles never mount a `card-menu-button` and never enter the selection Set. (F3, 2026-10-01: the ARCHIVE view renders NEITHER tile — `collection-tile-liked` and `collection-tile-archive` are both absent when `include === 'mine,archived'`.)
 - [ ] (M-8) order matrix on the members/liked surface: `name_asc`/`name_desc` lowercase localeCompare (dirs first); `date_asc`/`date_desc` by `created_at`; revoked rows (null `created_at`) pin to END in BOTH date directions; ties keep server order (stable); no `memberSortMode` ⇒ as-is.
 - [ ] (B, 2026-09-29) 60 member rows ⇒ 50 `member-row-*` rendered initially; sentinel intersection reveals rows 51–60; no fetch fires on slice (single fetch per open).
 - [ ] (P-4) Member rows show NO size (adapter omits it — the wire carries none); `shared_excluded` rows render the `Not owner's file — not shared` chip and un-published rows the awaiting-publish chip.

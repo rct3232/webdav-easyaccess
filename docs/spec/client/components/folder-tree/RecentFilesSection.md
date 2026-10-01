@@ -50,6 +50,10 @@
 
 ### 2.6 Conditional Rendering
 
+- **Child-row indent parity (F5 measurement, 2026-10-01 §11 follow-up):** a recent child row is
+  a SINGLE `sx={{ pl: 3 }}` ListItemButton (computed `padding-left: 24px` — jsdom-measured);
+  the `pl: 3` Box in the file is the EMPTY-STATE branch only, never a row wrapper. This is the
+  same effective indent as every CollectionsSection child row (pinned by per-section tests).
 - Selected when currentPath === '/**recent**'
 - Collapse for file list
 - Empty: recentItemsEmpty message

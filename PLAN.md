@@ -559,3 +559,12 @@ status-chip assertion removed; new E2E-COLLECTION-014 tiles case).
     mirror suite 12/12; eslint/prettier clean on touched files; E2E spec updated (002 count
     assertion dropped, 004 status-chip assertion dropped — 006 verified chip-free). Awaits
     orchestrator final gates.
+  - Batch B (M-3/M-5/M-6): `[wip]` — docs commit 2a919b2; RED captured (7 failures / 5 suites)
+    before implementation. GREEN: targeted client suites
+    `CollectionsListView|AddToCollectionMenu|FileContextMenu|MemberRowControls|AppTheme|
+    FileActionSheet|FilePropertiesDialog` 140/140. M-5 clarification: no pre-existing test
+    asserted error-color on likes (verified by grep) — pink/`like`-token assertions ADDED instead
+    (FileContextMenu + MemberRowControls) + `AppTheme` palette contract; `test-utils.jsx` theme
+    mirrors the token (kept-in-sync comment). M-6 clarification: the `:248` tail-ellipsis is the
+    seed-dialog sample-TILE name style (the only one in the file) — middle-truncated with the
+    documented 190px budget. eslint/prettier clean on touched files. Awaits orchestrator gates.

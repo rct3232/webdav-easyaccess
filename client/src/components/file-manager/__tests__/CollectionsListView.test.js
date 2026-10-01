@@ -192,6 +192,38 @@ describe('CollectionsListView — list mode', () => {
     expect(screen.queryByTestId('card-menu-option-archive')).not.toBeInTheDocument();
   });
 
+  it('EVERY card-menu option renders a ListItemIcon svg (M-3 — icons on all rows)', () => {
+    const iconOf = (action) =>
+      screen.getByTestId(`card-menu-option-${action}`).querySelector('.MuiListItemIcon-root svg');
+
+    const props = listProps();
+    renderWithProviders(<CollectionsListView {...props} />);
+    openCardMenu();
+    ['rename', 'pin', 'archive', 'sharing'].forEach((action) => {
+      expect(iconOf(action)).toBeTruthy();
+    });
+  });
+
+  it('archived + viewer menus also icon every entry (restore/delete-permanent/revoke)', () => {
+    const iconOf = (action) =>
+      screen.getByTestId(`card-menu-option-${action}`).querySelector('.MuiListItemIcon-root svg');
+
+    const archived = listProps();
+    archived.collections = [card({ status: 'archived' })];
+    const { unmount } = renderWithProviders(<CollectionsListView {...archived} />);
+    openCardMenu();
+    ['rename', 'pin', 'restore', 'sharing', 'delete-permanent'].forEach((action) => {
+      expect(iconOf(action)).toBeTruthy();
+    });
+    unmount();
+
+    const viewer = listProps();
+    viewer.collections = [card({ granted_role: 'viewer' })];
+    renderWithProviders(<CollectionsListView {...viewer} />);
+    openCardMenu();
+    expect(iconOf('revoke-permission')).toBeTruthy();
+  });
+
   it('archive goes through exactly ONE confirm, then dispatches', () => {
     const props = listProps();
     renderWithProviders(<CollectionsListView {...props} />);

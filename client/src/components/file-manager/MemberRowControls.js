@@ -208,7 +208,7 @@ const MemberRowControls = ({
         <MenuItem key="like" data-testid="like-toggle" onClick={handle(onToggleLike, member)}>
           <ListItemIcon>
             {member.liked ? (
-              <LikedIcon fontSize="small" color="error" />
+              <LikedIcon fontSize="small" color="like" />
             ) : (
               <LikeIcon fontSize="small" />
             )}

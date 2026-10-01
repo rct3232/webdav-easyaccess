@@ -465,7 +465,7 @@ const FilePropertiesDialog = ({
                     onClick={() => onToggleLike(file)}
                     sx={{ position: 'absolute', top: 8, right: 8, zIndex: 4 }}
                   >
-                    {file.liked ? <LikedIcon color="error" /> : <LikeIcon />}
+                    {file.liked ? <LikedIcon color="like" /> : <LikeIcon />}
                   </IconButton>
                 </Tooltip>
               )}

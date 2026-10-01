@@ -10,7 +10,15 @@ import {
   ListItemText,
   Typography,
 } from '@mui/material';
-import { PushPin as PushPinIcon } from '@mui/icons-material';
+import {
+  Edit as EditIcon,
+  PushPin as PushPinIcon,
+  Archive as ArchiveIcon,
+  Unarchive as UnarchiveIcon,
+  Share as ShareIcon,
+  DeleteForever as DeleteForeverIcon,
+  ExitToApp as ExitToAppIcon,
+} from '@mui/icons-material';
 import { getCollectionEntryKey } from '../../utils/fileViewUtils';
 import { useThumbnailLazyLoad } from '../../hooks/useThumbnailLazyLoad';
 import { useInfiniteScroll } from '../../hooks/useInfiniteScroll';
@@ -37,6 +45,19 @@ const CARD_MENU_LABEL_KEYS = {
   sharing: 'fileManager.cardMenuSharing',
   'delete-permanent': 'fileManager.cardMenuDelete',
   'revoke-permission': 'fileManager.cardMenuRevokePermission',
+};
+
+// M-3 (2026-09-30): EVERY card-menu row carries a ListItemIcon (files-menu
+// parity; alias idiom matches FileContextMenu/FileManagerControls).
+const CARD_MENU_ICONS = {
+  rename: EditIcon,
+  pin: PushPinIcon,
+  unpin: PushPinIcon,
+  archive: ArchiveIcon,
+  restore: UnarchiveIcon,
+  sharing: ShareIcon,
+  'delete-permanent': DeleteForeverIcon,
+  'revoke-permission': ExitToAppIcon,
 };
 
 const isViewerRow = (collection) => collection?.granted_role != null;
@@ -295,18 +316,21 @@ const CollectionsListView = ({
           onClose={() => setCardMenu(null)}
         >
           {cardMenu &&
-            cardMenuActions(cardMenu.collection).map((action) => (
-              <MenuItem
-                key={action}
-                data-testid={`card-menu-option-${action}`}
-                onClick={() => handleCardMenuSelect(action, cardMenu.collection)}
-              >
-                <ListItemIcon>
-                  {action === 'pin' || action === 'unpin' ? <PushPinIcon fontSize="small" /> : null}
-                </ListItemIcon>
-                <ListItemText>{t(CARD_MENU_LABEL_KEYS[action])}</ListItemText>
-              </MenuItem>
-            ))}
+            cardMenuActions(cardMenu.collection).map((action) => {
+              const MenuIcon = CARD_MENU_ICONS[action];
+              return (
+                <MenuItem
+                  key={action}
+                  data-testid={`card-menu-option-${action}`}
+                  onClick={() => handleCardMenuSelect(action, cardMenu.collection)}
+                >
+                  <ListItemIcon>
+                    <MenuIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText>{t(CARD_MENU_LABEL_KEYS[action])}</ListItemText>
+                </MenuItem>
+              );
+            })}
         </Menu>
 
         <ConfirmDialog

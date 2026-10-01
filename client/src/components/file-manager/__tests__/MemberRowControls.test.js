@@ -85,6 +85,10 @@ describe('MemberRowControls single-row set (§3.2 exact)', () => {
       <MemberRowControls {...defaultProps} member={{ ...member, liked: true }} />
     );
     expect(screen.getByTestId('like-toggle')).toHaveTextContent('Unlike');
+    // M-5: liked heart = theme `like` token pink — never `error` (delete/danger).
+    expect(screen.getByTestId('like-toggle').querySelector('svg')).toHaveStyle({
+      color: 'rgb(255, 62, 85)',
+    });
     fireEvent.click(screen.getByTestId('like-toggle'));
     expect(defaultProps.onToggleLike).toHaveBeenCalledWith({ ...member, liked: true });
   });

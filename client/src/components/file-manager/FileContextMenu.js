@@ -129,7 +129,7 @@ const FileContextMenu = ({
         <MenuItem data-testid="like-toggle" onClick={() => handleAction(onToggleLike)}>
           <ListItemIcon>
             {file.liked ? (
-              <LikedIcon fontSize="small" color="error" />
+              <LikedIcon fontSize="small" color="like" />
             ) : (
               <LikeIcon fontSize="small" />
             )}

@@ -147,7 +147,9 @@ describe('FileContextMenu AI-platform entries (§3)', () => {
 
   it('renders Add to collection when onAddToCollection is provided and launches it with the file', () => {
     const onAddToCollection = jest.fn();
-    renderWithProviders(<FileContextMenu {...defaultProps} onAddToCollection={onAddToCollection} />);
+    renderWithProviders(
+      <FileContextMenu {...defaultProps} onAddToCollection={onAddToCollection} />
+    );
 
     fireEvent.click(screen.getByTestId('collection-add'));
     expect(onAddToCollection).toHaveBeenCalledWith(mockFile);
@@ -170,6 +172,10 @@ describe('FileContextMenu AI-platform entries (§3)', () => {
       />
     );
     expect(screen.getByTestId('like-toggle')).toHaveTextContent('Unlike');
+    // M-5: liked heart = theme `like` token pink — NEVER the delete/danger `error` red.
+    expect(screen.getByTestId('like-toggle').querySelector('svg')).toHaveStyle({
+      color: 'rgb(255, 62, 85)',
+    });
 
     fireEvent.click(screen.getByTestId('like-toggle'));
     expect(onToggleLike).toHaveBeenCalledWith({ ...mockFile, liked: true });

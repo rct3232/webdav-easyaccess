@@ -270,7 +270,7 @@ const FileActionSheet = ({
               onClick={() => handleAction(() => onToggleLike(file))}
               sx={{ minHeight: 56, borderRadius: 1 }}
             >
-              <ListItemIcon>{file.liked ? <LikedIcon color="error" /> : <LikeIcon />}</ListItemIcon>
+              <ListItemIcon>{file.liked ? <LikedIcon color="like" /> : <LikeIcon />}</ListItemIcon>
               <ListItemText
                 primary={t(file.liked ? 'fileManager.memberUnlike' : 'fileManager.memberLike')}
               />

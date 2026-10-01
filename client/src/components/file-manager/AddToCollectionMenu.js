@@ -20,9 +20,18 @@ import { Add as AddIcon, Check as CheckIcon, AutoAwesome as SeedIcon } from '@mu
 import { validateFileName } from '@webdav-easyaccess/shared/validation';
 import { getValidationMessage } from '../../utils/validationMessage';
 import { getFileIcon } from '../../utils/fileIconUtils';
+import { pixelMiddleTruncate } from '../../utils/stringUtils';
 import { previewCollection } from '../../services/collectionsRepository';
 
 const SAMPLE_TILE_CAP = 12;
+
+// M-6 (2026-09-30 owner ruling): sample-tile names MIDDLE-truncate instead of
+// the retired CSS tail-ellipsis. Fixed budget from the dialog's `maxWidth="md"`
+// (900px): 900 − 2×24 content padding − 3×8 grid gaps = 828 ⇒ 207/tile − 2×8
+// tile padding ⇒ 190px usable text. Font metrics follow the CollectionsSection
+// row idiom.
+const SEED_TILE_NAME_BUDGET_PX = 190;
+const SEED_TILE_NAME_FONT = '14px Inter, Roboto, "Helvetica Neue", Arial, sans-serif';
 
 /**
  * AddToCollectionMenu — file-side collection entry points
@@ -244,12 +253,14 @@ const SeedCollectionDialog = ({ open, seedNode, onClose, onCreateSeed }) => {
                     border: 1,
                     borderColor: 'divider',
                     borderRadius: 1,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  {item.name}
+                  {pixelMiddleTruncate(
+                    item.name ?? '',
+                    SEED_TILE_NAME_BUDGET_PX,
+                    SEED_TILE_NAME_FONT
+                  )}
                 </Box>
               ))}
             </Box>

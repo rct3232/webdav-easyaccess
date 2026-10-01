@@ -50,16 +50,28 @@ const cardContentBaseStyles = {
   minHeight: 0,
 };
 
+const cornerBadgesContainerStyles = {
+  position: 'absolute',
+  top: 4,
+  left: 4,
+  zIndex: 1,
+  display: 'flex',
+  gap: 0.5,
+};
+
 /**
  * Shared card-tile shell (P-3 extraction from FileGridItem's JSX body).
  * Slots: media (square area), moreAction (absolute overlay inside the media box),
- * optional content (between media and footer), footer (CardContent).
+ * cornerBadges (absolute top-left overlay inside the media box — M-4 badge set,
+ * `TileCornerBadge` atoms), optional content (between media and footer),
+ * footer (CardContent).
  * Selection shows the light primary card background — no checkbox (files parity).
  * @see docs/spec/client/components/file-manager/CardTile.md
  */
 const CardTile = ({
   media = null,
   moreAction = null,
+  cornerBadges = null,
   content = null,
   footer = null,
   footerRef = null,
@@ -126,6 +138,7 @@ const CardTile = ({
       <Box sx={thumbnailContainerStyles}>
         {media}
         {moreAction}
+        {cornerBadges != null && <Box sx={cornerBadgesContainerStyles}>{cornerBadges}</Box>}
       </Box>
       {content}
       <CardContent sx={cardContentStyles} ref={footerRef}>

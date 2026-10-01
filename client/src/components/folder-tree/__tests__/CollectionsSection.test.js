@@ -70,9 +70,9 @@ describe('CollectionsSection', () => {
     expect(screen.getByText('Mango')).toBeInTheDocument();
   });
 
-  it('shows item_count on each row', () => {
+  it('renders NO member count on rows (M-1 — secondary is the new dot only)', () => {
     renderWithProviders(<CollectionsSection {...defaultProps()} />);
-    expect(screen.getByText('12')).toBeInTheDocument();
+    expect(screen.queryByText('12')).not.toBeInTheDocument();
   });
 
   it('granted_role rows get the shared chip only and are never hoisted', () => {
@@ -179,14 +179,20 @@ describe('CollectionsSection', () => {
 });
 
 describe('CollectionsSection — Likes child row (P-5)', () => {
-  it('renders the static Likes row before ArchiveNode (archive stays the section end)', () => {
-    const { container } = renderWithProviders(<CollectionsSection {...defaultProps()} />);
-    const statics = Array.from(
-      container.querySelectorAll(
-        '[data-testid="collections-liked-node"], [data-testid="collections-archive-node"]'
-      )
-    ).map((el) => el.getAttribute('data-testid'));
-    expect(statics).toEqual(['collections-liked-node', 'collections-archive-node']);
+  it('renders the static Likes row FIRST — above the collection rows (M-2), Archive stays last', () => {
+    const props = defaultProps();
+    props.collections = [collectionRow({ collection_id: 7, name: 'Road' })];
+    const { container } = renderWithProviders(<CollectionsSection {...props} />);
+    const order = Array.from(container.querySelectorAll('.MuiListItem-root')).flatMap((li) => {
+      const liked = li.querySelector('[data-testid="collections-liked-node"]');
+      const archive = li.querySelector('[data-testid="collections-archive-node"]');
+      const row = li.querySelector('[data-testid^="collection-row-"]');
+      if (liked) return ['liked'];
+      if (archive) return ['archive'];
+      if (row) return [row.getAttribute('data-testid')];
+      return [];
+    });
+    expect(order).toEqual(['liked', 'collection-row-7', 'archive']);
     expect(screen.getByTestId('collections-liked-node')).toHaveTextContent('Liked');
   });
 

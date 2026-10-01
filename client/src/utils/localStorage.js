@@ -40,6 +40,17 @@ export const setLikedViewMode = (mode) => {
   localStorage.setItem('likedViewMode', mode);
 };
 
+// M-8 (2026-09-30): per-surface sort of the collection MEMBERS + LIKED surfaces
+// (ONE shared key — unlike the view-mode keys, likes reuse the member state).
+// Default date_desc = newest-added first; independent of the file `sortMode`.
+export const getCollectionMemberSortMode = () => {
+  return localStorage.getItem('collectionMemberSortMode') || 'date_desc';
+};
+
+export const setCollectionMemberSortMode = (mode) => {
+  localStorage.setItem('collectionMemberSortMode', mode);
+};
+
 // 정렬 모드 저장/로드
 export const getSortMode = () => {
   return localStorage.getItem('sortMode') || 'name_asc';

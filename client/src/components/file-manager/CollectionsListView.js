@@ -10,12 +10,23 @@ import {
   ListItemText,
   Typography,
 } from '@mui/material';
-import { PushPin as PushPinIcon } from '@mui/icons-material';
+import {
+  Edit as EditIcon,
+  PushPin as PushPinIcon,
+  Archive as ArchiveIcon,
+  Unarchive as UnarchiveIcon,
+  Share as ShareIcon,
+  DeleteForever as DeleteForeverIcon,
+  ExitToApp as ExitToAppIcon,
+  Favorite as FavoriteIcon,
+  Inventory2 as InventoryIcon,
+} from '@mui/icons-material';
 import { getCollectionEntryKey } from '../../utils/fileViewUtils';
 import { useThumbnailLazyLoad } from '../../hooks/useThumbnailLazyLoad';
 import { useInfiniteScroll } from '../../hooks/useInfiniteScroll';
 import { useResponsive } from '../../hooks/useResponsive';
 import ConfirmDialog from '../dialogs/ConfirmDialog';
+import CardTile from './CardTile';
 import CollectionCardItem from './CollectionCardItem';
 import FileList from './FileList';
 import FileGrid from './FileGrid';
@@ -39,8 +50,67 @@ const CARD_MENU_LABEL_KEYS = {
   'revoke-permission': 'fileManager.cardMenuRevokePermission',
 };
 
+// M-3 (2026-09-30): EVERY card-menu row carries a ListItemIcon (files-menu
+// parity; alias idiom matches FileContextMenu/FileManagerControls).
+const CARD_MENU_ICONS = {
+  rename: EditIcon,
+  pin: PushPinIcon,
+  unpin: PushPinIcon,
+  archive: ArchiveIcon,
+  restore: UnarchiveIcon,
+  sharing: ShareIcon,
+  'delete-permanent': DeleteForeverIcon,
+  'revoke-permission': ExitToAppIcon,
+};
+
 const isViewerRow = (collection) => collection?.granted_role != null;
 const isArchivedRow = (collection) => collection?.status === 'archived';
+
+/**
+ * M-8 (2026-09-30 owner ruling): member/liked rows sort CLIENT-SIDE like files,
+ * on the FULL fetched set, BEFORE the display slice. Semantics mirror
+ * `sortFiles` (directories partition ahead; lowercase name localeCompare), with
+ * the date key = `created_at` (membership-added date; node creation on the liked
+ * surface). Rows LACKING created_at (revoked masquerade) pin to the END in BOTH
+ * date directions. The sort is stable — ties keep the server (activity/node_id)
+ * order. No mode ⇒ render as-is (host stays order-agnostic).
+ * @see docs/spec/client/components/file-manager/CollectionsListView.md §2.5
+ */
+const sortMemberItems = (rows, mode) => {
+  if (!mode || rows.length === 0) return rows;
+  const dir = mode.endsWith('_asc') ? 1 : -1;
+  const isName = mode === 'name_asc' || mode === 'name_desc';
+  const nameOf = (row) => (row.basename || row.name || '').toLowerCase();
+  const dateOf = (row) => (row.created_at != null ? new Date(row.created_at).getTime() : null);
+  const sortGroup = (list) => {
+    if (isName) return [...list].sort((a, b) => dir * nameOf(a).localeCompare(nameOf(b)));
+    const dated = list.filter((row) => dateOf(row) != null);
+    const undated = list.filter((row) => dateOf(row) == null);
+    return [...dated.sort((a, b) => dir * (dateOf(a) - dateOf(b))), ...undated];
+  };
+  const dirs = rows.filter((row) => row.type === 'directory');
+  const files = rows.filter((row) => row.type !== 'directory');
+  return [...sortGroup(dirs), ...sortGroup(files)];
+};
+
+/**
+ * M-2 pseudo-tile — a navigation cell on the collections grid (Likes FIRST /
+ * Archive LAST, never selectable, no menu, no card actions). Same tile shell as
+ * the cards so the grid columns and hover language stay file-parity.
+ */
+const PseudoTile = ({ testId, label, icon, onClick }) => (
+  <Box data-testid={testId} sx={{ height: '100%', minWidth: 0 }} onClick={onClick}>
+    <CardTile
+      media={icon}
+      footer={
+        <Typography variant="body2" sx={{ fontWeight: 'medium' }} noWrap>
+          {label}
+        </Typography>
+      }
+      cursor="pointer"
+    />
+  </Box>
+);
 
 /**
  * Exact card-menu set (CollectionsListView §2.4 + T0.4 as-built decisions,
@@ -77,8 +147,10 @@ const CollectionsListView = ({
   sort = 'activity',
   mergeSlot = null,
   include,
+  onPseudoTileNavigate,
   items = [],
   memberViewMode = 'grid',
+  memberSortMode,
   memberLoading = false,
   onMemberRowClick,
   onMemberRowCheck,
@@ -126,14 +198,18 @@ const CollectionsListView = ({
 
   // Decision B (2026-09-29 owner ruling): member/liked rows arrive as the FULL
   // set in ONE response — this host owns display paging through the SHARED
-  // useInfiniteScroll hook (same idiom + counts as file browse: 50+50). The
-  // server order (activity score desc, node_id asc / liked: node_id asc) is
-  // rendered AS IS — no client re-sort; the slice only trims what is mounted.
+  // useInfiniteScroll hook (same idiom + counts as file browse: 50+50). M-8
+  // (2026-09-30): the FULL set is first sorted CLIENT-SIDE by the per-surface
+  // `memberSortMode` (file parity; ties keep server order — stable sort).
+  const sortedItems = useMemo(
+    () => sortMemberItems(items, memberSortMode),
+    [items, memberSortMode]
+  );
   const {
     displayedFiles: displayedMembers,
     loadMoreRef: memberLoadMoreRef,
     hasMore: membersHasMore,
-  } = useInfiniteScroll(items, { initialCount: 50, incrementCount: 50 });
+  } = useInfiniteScroll(sortedItems, { initialCount: 50, incrementCount: 50 });
 
   const dispatchCard = (action, collection) => {
     if (onCardAction) onCardAction(action, collection);
@@ -240,11 +316,35 @@ const CollectionsListView = ({
     // P-1: rows render straight from fetch state — the former view-local
     // `hiddenIds` recipient-hide is removed (revoked rows vanish on refetch).
     const visible = collections;
+    // M-2 pseudo-tiles: Likes FIRST (always), Archive LAST (active view only —
+    // the archive surface is already there). Never selectable, no menu, never
+    // gated by the empty state (the destinations stay reachable at zero rows).
+    const likedTile = (
+      <PseudoTile
+        testId="collection-tile-liked"
+        label={t('nav.collectionsLiked')}
+        icon={<FavoriteIcon color="like" fontSize="large" />}
+        onClick={() => onPseudoTileNavigate?.('/__collections__/liked')}
+      />
+    );
+    const archiveTile =
+      include === 'mine,archived' ? null : (
+        <PseudoTile
+          testId="collection-tile-archive"
+          label={t('nav.collectionsArchive')}
+          icon={<InventoryIcon fontSize="large" color="action" />}
+          onClick={() => onPseudoTileNavigate?.('/__collections__/__archive__')}
+        />
+      );
     return (
       <Box data-testid="collections-list-region">
         {visible.length === 0 ? (
           <>
             {mergeSlot}
+            <ResponsiveCardGrid>
+              {likedTile}
+              {archiveTile}
+            </ResponsiveCardGrid>
             <Typography variant="body1" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
               {t(
                 include === 'mine,archived'
@@ -255,6 +355,7 @@ const CollectionsListView = ({
           </>
         ) : (
           <ResponsiveCardGrid>
+            {likedTile}
             {mergeSlot && <CardGridSpan>{mergeSlot}</CardGridSpan>}
             {visible.map((collection, index) => {
               const showClusterHeader =
@@ -286,6 +387,7 @@ const CollectionsListView = ({
                 </React.Fragment>
               );
             })}
+            {archiveTile}
           </ResponsiveCardGrid>
         )}
 
@@ -295,18 +397,21 @@ const CollectionsListView = ({
           onClose={() => setCardMenu(null)}
         >
           {cardMenu &&
-            cardMenuActions(cardMenu.collection).map((action) => (
-              <MenuItem
-                key={action}
-                data-testid={`card-menu-option-${action}`}
-                onClick={() => handleCardMenuSelect(action, cardMenu.collection)}
-              >
-                <ListItemIcon>
-                  {action === 'pin' || action === 'unpin' ? <PushPinIcon fontSize="small" /> : null}
-                </ListItemIcon>
-                <ListItemText>{t(CARD_MENU_LABEL_KEYS[action])}</ListItemText>
-              </MenuItem>
-            ))}
+            cardMenuActions(cardMenu.collection).map((action) => {
+              const MenuIcon = CARD_MENU_ICONS[action];
+              return (
+                <MenuItem
+                  key={action}
+                  data-testid={`card-menu-option-${action}`}
+                  onClick={() => handleCardMenuSelect(action, cardMenu.collection)}
+                >
+                  <ListItemIcon>
+                    <MenuIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText>{t(CARD_MENU_LABEL_KEYS[action])}</ListItemText>
+                </MenuItem>
+              );
+            })}
         </Menu>
 
         <ConfirmDialog
@@ -359,7 +464,9 @@ const CollectionsListView = ({
 
   const renderMembersMode = () => (
     <Box data-testid="members-list">
-      {digest && (
+      {/* M-7 (2026-09-30): a since-requested all-zero digest is noise — the
+          banner renders only when at least one delta is non-zero. */}
+      {digest && ((digest.added_since ?? 0) > 0 || (digest.removed_since ?? 0) > 0) && (
         <Box data-testid="digest-banner" sx={{ mb: 1 }}>
           <Typography variant="body2" component="span">
             {t('fileManager.digestLine', {

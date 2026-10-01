@@ -157,6 +157,23 @@ describe('AddToCollectionMenu seed dialog (§4.5)', () => {
     expect(screen.getByTestId('seed-name-input')).toHaveValue('beach.jpg and similar files');
   });
 
+  it('long sample names render MIDDLE-truncated — leading + trailing fragments (M-6)', async () => {
+    const longName = 'extremely-descriptive-vacation-photo-archive-file.png';
+    previewCollection.mockResolvedValueOnce({
+      count: 1,
+      sample: [{ node_id: 977, name: longName }],
+      sample_truncated: false,
+    });
+    await openSeedDialog();
+
+    const tile = screen.getByTestId('seed-sample-tile');
+    const shown = tile.textContent;
+    expect(shown.length).toBeLessThan(longName.length);
+    expect(shown).toContain('...');
+    expect(shown.startsWith('extremely-')).toBe(true);
+    expect(shown.endsWith(longName.slice(-6))).toBe(true);
+  });
+
   it('loads the member sample via POST /collections/preview with plus N more and the publish notice', async () => {
     await openSeedDialog();
 

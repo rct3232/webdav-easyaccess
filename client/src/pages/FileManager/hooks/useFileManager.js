@@ -59,6 +59,10 @@ export const toMemberRow = (item, t) => {
     type: item.type ?? 'file',
     mime: item.mime ?? null,
     lastmod: item.lastmod ?? item.created_at ?? null,
+    // M-8: the client-side date-sort key — MEMBERSHIP-ADDED date on the members
+    // surface, NODE creation time on the liked surface; revoked rows arrive null
+    // and pin to the date-sort end (CollectionsListView.md §2.5).
+    created_at: item.created_at ?? null,
     membership: item.membership,
     published: item.published,
     added_by: item.added_by ?? null,

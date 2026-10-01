@@ -152,6 +152,46 @@ const CollectionsSection = ({
 
       <Collapse in={collectionsExpanded} timeout="auto" unmountOnExit>
         <List component="div" disablePadding ref={setObservedElement}>
+          {/* LikesNode (P-5; MOVED TO TOP by M-2, 2026-09-30 owner ruling) — the
+              static child row leads the section body, before the active
+              collection rows (ArchiveNode stays the section tail); renders
+              unconditionally under the same zero-state rule (empty likes =
+              legal empty view). */}
+          <ListItem disablePadding>
+            <ListItemButton
+              data-testid="collections-liked-node"
+              onClick={onLikesClick}
+              selected={isLikesSelected}
+              sx={{
+                pl: 3,
+                py: 0.5,
+                minHeight: 32,
+                '&.Mui-selected': {
+                  backgroundColor: 'transparent',
+                  color: 'primary.main',
+                  borderLeft: '3px solid',
+                  borderLeftColor: 'primary.main',
+                  '&:hover': { backgroundColor: 'action.hover' },
+                  '& .MuiListItemIcon-root': { color: 'primary.main' },
+                },
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: 24, mr: 0.5 }}>
+                <LikesIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText
+                primary={
+                  <Typography
+                    variant="body2"
+                    sx={{ fontSize: '0.875rem', fontWeight: isLikesSelected ? 700 : 400 }}
+                  >
+                    {t('nav.collectionsLiked')}
+                  </Typography>
+                }
+              />
+            </ListItemButton>
+          </ListItem>
+
           {(collections ?? []).length === 0 ? (
             <ListItem disablePadding>
               <Box sx={{ pl: 3, py: 1 }}>
@@ -209,28 +249,22 @@ const CollectionsSection = ({
                         weight: selected ? 700 : 400,
                       })}
                       secondary={
-                        <Box
-                          component="span"
-                          sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}
-                        >
-                          <Typography variant="caption" color="text.secondary">
-                            {collection.item_count}
-                          </Typography>
-                          {isNew && (
-                            <Box
-                              component="span"
-                              data-testid={`collection-new-dot-${collectionId}`}
-                              aria-label={t('nav.collectionsNewDot')}
-                              sx={{
-                                width: 6,
-                                height: 6,
-                                borderRadius: '50%',
-                                bgcolor: 'primary.main',
-                                display: 'inline-block',
-                              }}
-                            />
-                          )}
-                        </Box>
+                        // M-1 (2026-09-30): the secondary member-count display is REMOVED —
+                        // the `new` dot is the only secondary affordance left.
+                        isNew ? (
+                          <Box
+                            component="span"
+                            data-testid={`collection-new-dot-${collectionId}`}
+                            aria-label={t('nav.collectionsNewDot')}
+                            sx={{
+                              width: 6,
+                              height: 6,
+                              borderRadius: '50%',
+                              bgcolor: 'primary.main',
+                              display: 'inline-block',
+                            }}
+                          />
+                        ) : undefined
                       }
                     />
                   </ListItemButton>
@@ -238,44 +272,6 @@ const CollectionsSection = ({
               );
             })
           )}
-
-          {/* LikesNode (P-5, owner ruling) — static child row ahead of the
-              ArchiveNode (which stays the section tail); renders unconditionally
-              under the same zero-state rule (empty likes = legal empty view). */}
-          <ListItem disablePadding>
-            <ListItemButton
-              data-testid="collections-liked-node"
-              onClick={onLikesClick}
-              selected={isLikesSelected}
-              sx={{
-                pl: 3,
-                py: 0.5,
-                minHeight: 32,
-                '&.Mui-selected': {
-                  backgroundColor: 'transparent',
-                  color: 'primary.main',
-                  borderLeft: '3px solid',
-                  borderLeftColor: 'primary.main',
-                  '&:hover': { backgroundColor: 'action.hover' },
-                  '& .MuiListItemIcon-root': { color: 'primary.main' },
-                },
-              }}
-            >
-              <ListItemIcon sx={{ minWidth: 24, mr: 0.5 }}>
-                <LikesIcon fontSize="small" />
-              </ListItemIcon>
-              <ListItemText
-                primary={
-                  <Typography
-                    variant="body2"
-                    sx={{ fontSize: '0.875rem', fontWeight: isLikesSelected ? 700 : 400 }}
-                  >
-                    {t('nav.collectionsLiked')}
-                  </Typography>
-                }
-              />
-            </ListItemButton>
-          </ListItem>
 
           {/* ArchiveNode — auto-child at the section end; renders unconditionally
               (§2.3 T0.4 decision); the badge hides at count 0. */}

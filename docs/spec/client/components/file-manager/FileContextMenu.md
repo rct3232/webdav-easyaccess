@@ -87,7 +87,7 @@ Addendum to §2.2/§2.5/§2.6 per docs/features/collections-platform.md §3.2/§
 
 - **New entries (main listing), rendered via the existing "callback provided ⇒ item renders" idiom (§2.6):**
 - `Add to collection ▸` — new optional callback `onAddToCollection(file)`; the submenu itself is the host-mounted `AddToCollectionMenu` component (this menu only anchors/launches it).
-- `Like` toggle — new optional callback `onToggleLike(file)`; pressed/label state comes from the **row data `file.liked`** verbatim (current viewer's own like only — invariant 9; no counts, no other-user state).
+- `Like` toggle — new optional callback `onToggleLike(file)`; pressed/label state comes from the **row data `file.liked`** verbatim (current viewer's own like only — invariant 9; no counts, no other-user state). **M-5 (2026-09-30):** the liked-state heart uses the dedicated theme palette token `like` (`#FF3E55`, `App.js`) — `color="like"`, NOT `color="error"`; `error` stays reserved for delete/danger semantics repo-wide.
 - **Member-list context variant:** when the host opens this menu on a collection MEMBER row, the rendered set is exactly the `MemberRowControls.md` §2.3 set (exclude / publish / download / `Reveal original location` / properties / like) — the host passes only those callbacks. **No move/copy/rename/delete of the file node in member context, ever** (§3.2 "collection is a view, not a workspace"; grep-able invariant in that spec).
 - i18n (appends §2.5): `fileManager.addToCollection`, `fileManager.memberLike`/`fileManager.memberUnlike`.
 - E2E selector contract: `data-testid="collection-add"` / `data-testid="like-toggle"`, shared with the mobile sheet (§2.6 cross-surface rule).

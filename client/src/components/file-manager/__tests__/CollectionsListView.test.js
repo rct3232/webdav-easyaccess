@@ -53,11 +53,12 @@ beforeEach(() => {
 });
 
 describe('CollectionsListView — list mode', () => {
-  it('renders collection cards with name and item count', () => {
+  it('renders collection cards with the name ONLY — no member-count line (M-1)', () => {
     renderWithProviders(<CollectionsListView {...listProps()} />);
     const cardEl = screen.getByTestId('collection-card-1');
     expect(within(cardEl).getByText('Roadtrip')).toBeInTheDocument();
-    expect(within(cardEl).getByText(/12/)).toBeInTheDocument();
+    expect(within(cardEl).queryByText(/12 items/)).not.toBeInTheDocument();
+    expect(within(cardEl).queryByText('12')).not.toBeInTheDocument();
   });
 
   it('empty list renders the localized empty state', () => {
@@ -65,6 +66,83 @@ describe('CollectionsListView — list mode', () => {
     props.collections = [];
     renderWithProviders(<CollectionsListView {...props} />);
     expect(screen.getByText('No collections yet')).toBeInTheDocument();
+  });
+
+  describe('pseudo-tiles (M-2, 2026-09-30 owner ruling)', () => {
+    const tileProps = () => ({ ...listProps(), onPseudoTileNavigate: jest.fn() });
+
+    it('active list renders Likes FIRST and Archive LAST around the cards', () => {
+      const props = tileProps();
+      props.collections = [card({ collection_id: 1 })];
+      const { container } = renderWithProviders(<CollectionsListView {...props} />);
+      const cells = Array.from(container.querySelectorAll('[data-testid]'))
+        .map((el) => el.getAttribute('data-testid'))
+        .filter(
+          (id) => /^collection-tile-(liked|archive)$/.test(id) || /^collection-card-\d+$/.test(id)
+        );
+      expect(cells).toEqual([
+        'collection-tile-liked',
+        'collection-card-1',
+        'collection-tile-archive',
+      ]);
+      // the Likes tile carries the pink like-token heart
+      expect(
+        screen.getByTestId('collection-tile-liked').querySelector('svg.MuiSvgIcon-colorLike, svg')
+      ).toBeTruthy();
+    });
+
+    it('clicks dispatch onPseudoTileNavigate with the verified virtual routes (never card actions)', () => {
+      const props = tileProps();
+      renderWithProviders(<CollectionsListView {...props} />);
+      fireEvent.click(screen.getByTestId('collection-tile-liked'));
+      expect(props.onPseudoTileNavigate).toHaveBeenCalledWith('/__collections__/liked');
+      fireEvent.click(screen.getByTestId('collection-tile-archive'));
+      expect(props.onPseudoTileNavigate).toHaveBeenCalledWith('/__collections__/__archive__');
+      expect(props.onCardClick).not.toHaveBeenCalled();
+      expect(props.onCardAction).not.toHaveBeenCalled();
+    });
+
+    it('ARCHIVE view shows ONLY the Likes tile (owner default)', () => {
+      const props = tileProps();
+      props.include = 'mine,archived';
+      renderWithProviders(<CollectionsListView {...props} />);
+      expect(screen.getByTestId('collection-tile-liked')).toBeInTheDocument();
+      expect(screen.queryByTestId('collection-tile-archive')).not.toBeInTheDocument();
+    });
+
+    it('EMPTY section still shows the tiles next to the empty copy (destinations stay reachable)', () => {
+      const props = tileProps();
+      props.collections = [];
+      renderWithProviders(<CollectionsListView {...props} />);
+      expect(screen.getByText('No collections yet')).toBeInTheDocument();
+      expect(screen.getByTestId('collection-tile-liked')).toBeInTheDocument();
+      expect(screen.getByTestId('collection-tile-archive')).toBeInTheDocument();
+    });
+
+    it('tiles carry NO card chrome (menu button) and member mode renders NO tiles', () => {
+      const props = tileProps();
+      const { unmount } = renderWithProviders(<CollectionsListView {...props} />);
+      expect(
+        screen.getByTestId('collection-tile-liked').querySelector('[data-testid^="card-menu"]')
+      ).toBeNull();
+      expect(
+        screen.getByTestId('collection-tile-archive').querySelector('[data-testid^="card-menu"]')
+      ).toBeNull();
+      unmount();
+
+      const members = {
+        mode: 'members',
+        items: [],
+        onMemberAction: jest.fn(),
+        onMemberRowClick: jest.fn(),
+        onMemberRowCheck: jest.fn(),
+        onMemberRowLongPressSelect: jest.fn(),
+        onMemberThumbnailsLoaded: jest.fn(),
+      };
+      renderWithProviders(<CollectionsListView {...members} />);
+      expect(screen.queryByTestId('collection-tile-liked')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('collection-tile-archive')).not.toBeInTheDocument();
+    });
   });
 
   it('empty archive view renders the archive empty state (§2.2)', () => {
@@ -113,21 +191,45 @@ describe('CollectionsListView — list mode', () => {
     expect(screen.getByTestId('merge-card')).toBeInTheDocument();
   });
 
-  it('shared-received cards carry the shared chip; auto-pin chips expose the unpin CTA', () => {
+  it('shared-received/auto-pin cards render top-left MEDIA BADGES (footer chips retired, M-4)', () => {
     const props = listProps();
     props.collections = [
       card({ collection_id: 2, name: 'Auto', pinned: true, pinned_by: 'auto' }),
       card({ collection_id: 3, name: 'Given', granted_role: 'viewer' }),
     ];
     renderWithProviders(<CollectionsListView {...props} />);
-    expect(screen.getByTestId('card-shared-chip-3')).toBeInTheDocument();
-    expect(screen.getByTestId('card-autopin-chip-2')).toBeInTheDocument();
+    const sharedBadge = screen.getByTestId('card-shared-chip-3');
+    const autoPinBadge = screen.getByTestId('card-autopin-chip-2');
+    expect(sharedBadge).toBeInTheDocument();
+    expect(autoPinBadge).toBeInTheDocument();
+    // badges sit inside the card (media overlay) — the footer carries no chips
+    expect(within(screen.getByTestId('collection-card-3')).queryByText('Archived')).toBeNull();
 
+    // autopin badge is a REAL button dispatching the existing unpin action
+    expect(autoPinBadge.tagName).toBe('BUTTON');
+    fireEvent.click(autoPinBadge);
+    expect(props.onCardAction).toHaveBeenCalledWith(
+      'unpin',
+      expect.objectContaining({ collection_id: 2 })
+    );
+
+    // preserved unpin-CTA testid still dispatches (inner element bubbles to the button)
+    props.onCardAction.mockClear();
     fireEvent.click(screen.getByTestId('card-autopin-unpin-2'));
     expect(props.onCardAction).toHaveBeenCalledWith(
       'unpin',
       expect.objectContaining({ collection_id: 2 })
     );
+  });
+
+  it('archived rows render NO status chip (M-4 deletion; view-scoped membership)', () => {
+    const props = listProps();
+    props.collections = [card({ collection_id: 9, name: 'Old', status: 'archived' })];
+    renderWithProviders(<CollectionsListView {...props} />);
+    expect(screen.queryByTestId('card-status-chip-9')).not.toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('collection-card-9')).queryByText('Archived')
+    ).not.toBeInTheDocument();
   });
 
   it('own ACTIVE card menu: rename/pin/archive/sharing — NO open, NO permanent delete (P-3)', () => {
@@ -165,6 +267,38 @@ describe('CollectionsListView — list mode', () => {
     expect(screen.getByTestId('card-menu-option-restore')).toBeInTheDocument();
     expect(screen.getByTestId('card-menu-option-delete-permanent')).toBeInTheDocument();
     expect(screen.queryByTestId('card-menu-option-archive')).not.toBeInTheDocument();
+  });
+
+  it('EVERY card-menu option renders a ListItemIcon svg (M-3 — icons on all rows)', () => {
+    const iconOf = (action) =>
+      screen.getByTestId(`card-menu-option-${action}`).querySelector('.MuiListItemIcon-root svg');
+
+    const props = listProps();
+    renderWithProviders(<CollectionsListView {...props} />);
+    openCardMenu();
+    ['rename', 'pin', 'archive', 'sharing'].forEach((action) => {
+      expect(iconOf(action)).toBeTruthy();
+    });
+  });
+
+  it('archived + viewer menus also icon every entry (restore/delete-permanent/revoke)', () => {
+    const iconOf = (action) =>
+      screen.getByTestId(`card-menu-option-${action}`).querySelector('.MuiListItemIcon-root svg');
+
+    const archived = listProps();
+    archived.collections = [card({ status: 'archived' })];
+    const { unmount } = renderWithProviders(<CollectionsListView {...archived} />);
+    openCardMenu();
+    ['rename', 'pin', 'restore', 'sharing', 'delete-permanent'].forEach((action) => {
+      expect(iconOf(action)).toBeTruthy();
+    });
+    unmount();
+
+    const viewer = listProps();
+    viewer.collections = [card({ granted_role: 'viewer' })];
+    renderWithProviders(<CollectionsListView {...viewer} />);
+    openCardMenu();
+    expect(iconOf('revoke-permission')).toBeTruthy();
   });
 
   it('archive goes through exactly ONE confirm, then dispatches', () => {
@@ -596,6 +730,20 @@ describe('CollectionsListView — member mode (P-4 shared renderers)', () => {
     expect(screen.queryByTestId('digest-banner')).not.toBeInTheDocument();
   });
 
+  it('all-zero digest (0 added / 0 removed) ⇒ NO banner (M-7)', () => {
+    const props = membersProps();
+    props.digest = { added_since: 0, removed_since: 0 };
+    renderWithProviders(<CollectionsListView {...props} />);
+    expect(screen.queryByTestId('digest-banner')).not.toBeInTheDocument();
+  });
+
+  it('zero/zero with only-added digest still renders (one side non-zero)', () => {
+    const props = membersProps();
+    props.digest = { added_since: 0, removed_since: 2 };
+    renderWithProviders(<CollectionsListView {...props} />);
+    expect(screen.getByTestId('digest-banner')).toBeInTheDocument();
+  });
+
   it('publish-pending banner shows the owner count with a batch action', () => {
     const props = membersProps();
     props.publishPendingCount = 5;
@@ -710,7 +858,7 @@ describe('CollectionsListView — member mode (P-4 shared renderers)', () => {
     });
   });
 
-  it('server order is preserved — no client re-sort (Decision B)', () => {
+  it('server order is preserved while no memberSortMode prop is passed (host order-agnostic)', () => {
     withCapturedObserver(() => {
       const props = membersProps();
       // deliberately "unsorted" names/ids — the host must render the array AS IS.
@@ -748,5 +896,89 @@ describe('CollectionsListView — member mode (P-4 shared renderers)', () => {
     renderWithProviders(<CollectionsListView {...listProps()} />);
     expect(screen.queryByTestId('members-list')).not.toBeInTheDocument();
     expect(screen.getByTestId('collections-list-region')).toBeInTheDocument();
+  });
+
+  // -- M-8 (2026-09-30 owner ruling): the FULL row set sorts CLIENT-SIDE by the
+  // persisted per-surface sort mode BEFORE the useInfiniteScroll slice. -------
+  describe('member sort (M-8 order matrix)', () => {
+    const sortRows = () => [
+      memberRow({
+        nodeId: 1,
+        rowTestId: 'member-row-1',
+        name: 'beta.pdf',
+        basename: 'beta.pdf',
+        created_at: '2026-03-01T00:00:00Z',
+      }),
+      memberRow({
+        nodeId: 2,
+        rowTestId: 'member-row-2',
+        name: 'Alpha.pdf',
+        basename: 'Alpha.pdf',
+        created_at: '2026-01-01T00:00:00Z',
+      }),
+      memberRow({
+        nodeId: 3,
+        rowTestId: 'member-row-3',
+        name: null,
+        basename: 'fileManager.collectionsUnavailable',
+        mime: null,
+        state: 'revoked',
+        created_at: null,
+      }),
+      memberRow({
+        nodeId: 4,
+        rowTestId: 'member-row-4',
+        name: 'gamma.pdf',
+        basename: 'gamma.pdf',
+        created_at: '2026-02-01T00:00:00Z',
+      }),
+    ];
+
+    const renderedOrder = (memberSortMode) => {
+      const props = membersProps();
+      props.items = sortRows();
+      const { container } = renderWithProviders(
+        <CollectionsListView {...props} memberSortMode={memberSortMode} />
+      );
+      return Array.from(container.querySelectorAll('[data-testid^="member-row-"]')).map((el) =>
+        el.getAttribute('data-testid')
+      );
+    };
+
+    it('name_asc lowercases before localeCompare (sortFiles parity) — revoked placeholder sorts as text', () => {
+      expect(renderedOrder('name_asc')).toEqual([
+        'member-row-2', // Alpha.pdf
+        'member-row-1', // beta.pdf
+        'member-row-3', // fileManager... placeholder (text-verbatim parity)
+        'member-row-4', // gamma.pdf
+      ]);
+    });
+
+    it('name_desc mirrors the direction', () => {
+      expect(renderedOrder('name_desc')).toEqual([
+        'member-row-4',
+        'member-row-3',
+        'member-row-1',
+        'member-row-2',
+      ]);
+    });
+
+    it('date_asc sorts by created_at; the revoked row (null) PINS TO THE END', () => {
+      expect(renderedOrder('date_asc')).toEqual([
+        'member-row-2', // Jan
+        'member-row-4', // Feb
+        'member-row-1', // Mar
+        'member-row-3', // null ⇒ end
+      ]);
+    });
+
+    it('date_desc sorts newest-first; the revoked row STILL PINS TO THE END (both directions)', () => {
+      expect(renderedOrder('date_desc')).toEqual([
+        'member-row-1', // Mar
+        'member-row-4', // Feb
+        'member-row-2', // Jan
+        'member-row-3', // null ⇒ end (never first)
+      ]);
+    });
   });
 });

@@ -105,6 +105,45 @@ describe('CardTile', () => {
     expect(footerRef.current.className).toMatch('MuiCardContent-root');
   });
 
+  it('renders cornerBadges in the media box opposite the More action (M-4 slot)', () => {
+    renderWithProviders(
+      <CardTile
+        media={<div data-testid="tile-media-corner">m</div>}
+        moreAction={
+          <button type="button" data-testid="tile-more-corner">
+            ⋮
+          </button>
+        }
+        cornerBadges={<div data-testid="tile-corner-badge">b</div>}
+        footer={<div>f</div>}
+      />
+    );
+    const mediaBox = screen.getByTestId('tile-media-corner').parentElement;
+    const badge = screen.getByTestId('tile-corner-badge');
+    expect(mediaBox).toContainElement(badge);
+    expect(mediaBox).toContainElement(screen.getByTestId('tile-more-corner'));
+    // corner overlay is absolutely anchored top-left, inside the media box
+    expect(badge.parentElement).toHaveStyle({ position: 'absolute', top: '4px', left: '4px' });
+  });
+
+  it('no cornerBadges ⇒ zero DOM delta (files parity)', () => {
+    const { rerender } = renderWithProviders(
+      <CardTile media={<div data-testid="tile-media-plain">m</div>} footer={<div>f</div>} />
+    );
+    const mediaBox = screen.getByTestId('tile-media-plain').parentElement;
+    expect(mediaBox.querySelectorAll('[data-testid^="corner"], button')).toHaveLength(0);
+    rerender(
+      <CardTile
+        media={<div data-testid="tile-media-plain">m</div>}
+        cornerBadges={null}
+        footer={<div>f</div>}
+      />
+    );
+    expect(
+      screen.getByTestId('tile-media-plain').parentElement.querySelectorAll('button')
+    ).toHaveLength(0);
+  });
+
   it('shows the light primary selected background (FileGridItem parity)', () => {
     renderWithProviders(<CardTile isSelected media={<span>m</span>} footer={<span>f</span>} />);
     const card = document.querySelector('.MuiCard-root');

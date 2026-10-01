@@ -171,6 +171,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     setMemberViewMode,
     likedViewMode,
     setLikedViewMode,
+    memberSortMode,
+    setMemberSortMode,
     sortedFiles,
     displayedFiles,
     loadMoreRef,
@@ -1112,6 +1114,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     [collectionMembers.items]
   );
 
+  // M-2 (2026-09-30): pseudo-tile navigation — the SAME string-path setter the
+  // sidebar rows use (virtual routes never enter nodeId explorer state).
+  const handlePseudoTileNavigate = useCallback((route) => setCurrentPath(route), [setCurrentPath]);
+
   const collectionsModel = useMemo(() => {
     if (!isCollectionsOverlay) return null;
     if (isCollectionsLikedRoute) {
@@ -1133,6 +1139,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         items: collectionMembers.items,
         digest: collectionMembers.digest,
         publishPendingCount: collectionMembers.publishPendingCount,
+        // M-9: the view resolves the breadcrumb NAME from this already-fetched
+        // useCollections list (matched by collectionId; null while loading).
+        collectionId: collectionMembers.collectionId,
+        collections: collectionsApi.collections,
         onMemberAction: handleMemberAction,
         onPublishBatch: handlePublishBatch,
         // P-4 shared-renderer seams (FileManagerView §3 forwards the row
@@ -1149,6 +1159,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       sort: collectionsApi.sort,
       onSortChange: collectionsApi.setSort,
       include: collectionsInclude,
+      // M-2: Likes/Archive pseudo-tile navigation dispatch (virtual routes only).
+      onPseudoTileNavigate: handlePseudoTileNavigate,
       // MergeProposalCard lands with T1.6+/T2.x — zero pending ⇒ zero footprint;
       // suggestions data is already fetched by useCollections for that host.
       mergeSlot: null,
@@ -1188,6 +1200,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     collectionsBulkConfirm,
     handleCollectionsBulkConfirm,
     dismissCollectionsBulkConfirm,
+    handlePseudoTileNavigate,
   ]);
 
   // -- T0.11 search-results model (FileManager §7): the shell prepares the
@@ -1605,6 +1618,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       setMemberViewMode,
       likedViewMode,
       setLikedViewMode,
+      memberSortMode,
+      setMemberSortMode,
       sortMode,
       setSortMode,
       searchQuery,
@@ -1622,6 +1637,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       setMemberViewMode,
       likedViewMode,
       setLikedViewMode,
+      memberSortMode,
+      setMemberSortMode,
       sortMode,
       setSortMode,
       searchQuery,

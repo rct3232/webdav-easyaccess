@@ -4,11 +4,11 @@ Target-contract spec.
 
 ## 1. Overview
 
-| Item               | Description                                                                                                                                                                                                                                                                     |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role               | Collapsible folder-tree section for the `__collections__` virtual node (depth=1): header + activity-ordered collection rows + shared-origin icon chips + a static `Likes` child row (P-5) + a trailing `__archive__` node (`ArchiveNode`). No tree-walking into members (§3.1). |
-| Used in            | FolderTree (desktop sidebar + mobile drawer), composed like `RecentFilesSection`/`SharedFoldersSection`                                                                                                                                                                         |
-| Related components | BaseFolderTreeItem (selected-style idiom), RecentFilesSection (collapsible idiom), CollectionsListView (click target view)                                                                                                                                                      |
+| Item               | Description                                                                                                                                                                                                                                                                                |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role               | Collapsible folder-tree section for the `__collections__` virtual node (depth=1): header + a static `Likes` child row AT THE TOP (M-2) + activity-ordered collection rows + shared-origin icon chips + a trailing `__archive__` node (`ArchiveNode`). No tree-walking into members (§3.1). |
+| Used in            | FolderTree (desktop sidebar + mobile drawer), composed like `RecentFilesSection`/`SharedFoldersSection`                                                                                                                                                                                    |
+| Related components | BaseFolderTreeItem (selected-style idiom), RecentFilesSection (collapsible idiom), CollectionsListView (click target view)                                                                                                                                                                 |
 
 ---
 
@@ -37,15 +37,21 @@ Target-contract spec.
 ### 2.3 Rendering Contract
 
 - Header row: `{CollectionsIcon} Collections` (`nav.collections`), collapsible like RecentFilesSection.
-- Collection row: icon + name + item count; **shared-with-me rows** (`granted_role != null`) get an icon chip ONLY — never pinned to top, same activity-sorted list (§3.1). Pinned (`pinned=true`) rows keep server order (gravity, not hoisting).
+- Collection row: icon + name (**M-1, 2026-09-30: the secondary item-count display is REMOVED** —
+  the row secondary keeps only the `new` dot); **shared-with-me rows** (`granted_role != null`) get
+  an icon chip ONLY — never pinned to top, same activity-sorted list (§3.1). Pinned (`pinned=true`)
+  rows keep server order (gravity, not hoisting).
 - **ArchiveNode:** auto-child at the section end listing exactly the `status=archived` collections as a navigable node — no separate archive screen, no per-collection archive toggle in the tree (§3.1). Badge = `archiveCount`; zero ⇒ row still renders (the lifecycle destination must stay reachable). **Decision (T0.4):** the earlier "renders only when `archiveCount > 0`" wording contradicted this zero-render rule — the row renders unconditionally (the destination must stay reachable even at count 0); the badge simply hides at 0.
-- **LikesNode (P-5, owner ruling 2026-09-29):** static child row rendering immediately BEFORE the
-  ArchiveNode (the section tail stays archive's), inside the same Collapse — same always-rendered
+- **LikesNode (P-5, owner ruling 2026-09-29; MOVED TO TOP by M-2, 2026-09-30):** static child row
+  rendering at the TOP of the section body — immediately BEFORE the active collection rows (the
+  ArchiveNode stays the section tail), inside the same Collapse — same always-rendered
   zero-state rule as ArchiveNode (the destination lists `GET /api/file-likes/items` live; an empty
   like set is a legal empty view, never a hidden route). `FavoriteBorderIcon` + label
   `nav.collectionsLiked`; no count badge (the row listing is a per-open full fetch — Decision B,
   2026-09-29 — and the sidebar holds no such read; no count read exists). `data-testid="collections-liked-node"`.
-- **Decision:** member counts come from `item_count` (already on the row); no per-row lazy child loading (depth=1 rule).
+- **Decision (M-1 amended, 2026-09-30):** rows display NO member count (the former
+  `item_count` secondary text is removed — depth-1 stays: no per-row lazy child loading;
+  `item_count` remains wire data, just unrendered).
 
 ### 2.4 Selection & Conditional Rendering
 
@@ -66,7 +72,8 @@ Target-contract spec.
 ### 2.7 Verification Scenarios
 
 - [ ] Header toggles expand/collapse; header click navigates to `__collections__`.
-- [ ] Rows render in given order (no client re-sort); count shown from `item_count`.
+- [ ] Rows render in given order (no client re-sort); NO count text (M-1 — secondary is the
+      `new` dot only).
 - [ ] `granted_role != null` row shows the chip and is NOT hoisted.
 - [ ] ArchiveNode click invokes `onArchiveClick`; selected styling matches its route.
 - [ ] (P-5) Likes row renders unconditionally (empty like set still navigable) before ArchiveNode; click invokes `onLikesClick`; selected styling matches `/__collections__/liked`.

@@ -635,6 +635,15 @@ describe('P-4 member-row adapter (useFileManager §2.3.2)', () => {
     expect(result.current.collectionMembers.items[0].lastmod).toBe('2026-08-01T00:00:00Z');
   });
 
+  it('M-8: the row carries created_at explicitly (membership-added date — the client date-sort key)', async () => {
+    const { result } = await renderMembers([wireNormal, { ...wireRevoked, created_at: null }]);
+    const [normal, revoked] = result.current.collectionMembers.items;
+
+    expect(normal.created_at).toBe('2026-08-01T00:00:00Z');
+    // revoked masquerade: null created_at (pins to the date-sort END — CollectionsListView §2.5)
+    expect(revoked.created_at).toBeNull();
+  });
+
   it('revoked rows carry the placeholder NAME, null mime and stay non-eligible for thumbnails', async () => {
     const { result } = await renderMembers([wireRevoked]);
     const row = result.current.collectionMembers.items[0];

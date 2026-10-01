@@ -490,3 +490,99 @@ Execution: `feature/polish-b-member-fetch-all` (docs → RED → GREEN → E2E).
   **13/13 green** (no spec edits — fixtures <50 rows, no `member-load-more`/`next_cursor`
   assertions existed). No repository/SQL touched → PG conformance leg N/A. Awaits orchestrator
   merge gate.
+
+## 11. Micro-polish wave (M-1..M-9)
+
+> Owner-adjudicated 2026-09-30 (briefing). Nine display/menu/structure polish items on the
+> `ai-feature` collections surfaces (base 5f65d03, includes P-1..P-5 + B + e2e isolation).
+> Branch `feature/polish-11-micro`; three batches, each docs-first → RED → GREEN, committed
+> atomically. Binding owner decisions recorded inline per item.
+
+Batch A — display/content:
+
+- M-1 member-count display REMOVED (card footer "N items" + tree-row secondary count;
+  `fileManager.collectionsItemCount` dropped en+ko) — S | `[wip]`
+- M-4 card chips → TOP-LEFT MEDIA BADGES (binding 2026-09-30: badge SET = received
+  `FolderSharedIcon` + autopin `PushPinIcon` real-button (click = existing `unpin` dispatch);
+  the `Checkroom as SharedChipIcon` import is RETIRED (icon unified with the tree's
+  `FolderShared`); the status `archived` Chip is DELETED entirely — archive membership is
+  already view-scoped; testids `card-shared-chip-<id>`/`card-autopin-chip-<id>` MOVE onto the
+  badges; shared tooltip reuses `nav.collectionsSharedChip`, autopin aria/tooltip reuse
+  `collectionsAutoPin`) — M | `[wip]`
+- M-7 digest banner renders ONLY when `(digest?.added_since ?? 0) > 0 || (digest?.removed_since ?? 0) > 0`
+  (a since-requested all-zero digest is noise) — S | `[wip]`
+
+Batch B — menu/visual:
+
+- M-3 card-menu icons on ALL items (rename `Edit`, archive `Archive`, restore `Unarchive`,
+  delete-permanent `DeleteForever`, revoke-permission `ExitToApp`, sharing `Share`,
+  pin/unpin `PushPin` kept) — S | `[wip]`
+- M-5 like color token: theme palette gains `like:{main:'#FF3E55'}`; like-state icons move
+  `color="error"` → `color="like"` (delete-red vs like-pink semantic split documented at the
+  theme) — S | `[wip]`
+- M-6 binding (2026-09-30): AddToCollectionMenu long names — tail-truncate
+  (`textOverflow:'ellipsis'`) replaced by `pixelMiddleTruncate` with a FIXED menu-width
+  budget (seed dialog `maxWidth="md"` = 900px ⇒ per-tile text budget constant 190px,
+  font metrics per CollectionsSection idiom) — S | `[wip]`
+
+Batch C — structure:
+
+- M-2 binding (2026-09-30): pseudo-tiles on the collections GRID — Likes tile FIRST,
+  Archive tile LAST (active list); ARCHIVE VIEW shows ONLY the Likes tile; LIKED surface
+  shows NO tiles; tiles are excluded from selection/sort/cluster/card-menu logic AND from
+  the empty-state gate (empty section still shows tiles). Tree: LikesNode moves to TOP
+  (before active collection rows; Archive stays last). Verified routes: liked
+  `/files/__collections__/liked`, archive `/files/__collections__/__archive__`
+  (useFileManager urlView) — M | `[wip]`
+- M-8 member/liked sorting like files: `sortHidden` on members REMOVED; surface-aware
+  FILES-style menu bound to new per-surface persisted `collectionMemberSortMode`
+  (default `date_desc`); the FULL row set is sorted client-side BEFORE the
+  `useInfiniteScroll` input (name → lowercase localeCompare parity; date → `created_at`
+  = membership-ADDED date, wire `serializeItem.created_at`; rows lacking it (revoked →
+  null) pin to END); liked surface shares the state; collections LIST surface keeps the
+  P-2 5-server-option menu unchanged — M | `[wip]`
+- M-9 binding (2026-09-30, option (a)): breadcrumb title chips — Breadcrumb gains
+  collections awareness: member route renders `Collections › <name>`, liked route
+  `Collections › Likes` (home-chip replacement precedent of trash/recent). Collection name
+  resolved from the existing useCollections fetched list matched by collectionId; while the
+  list is not yet loaded the transient `Collections › …` segment renders (option (a) —
+  never hides the trail) — M | `[wip]`
+
+Verification: targeted suites per batch; final gates = full client suite +
+`collections-desktop` E2E (assertions updated: E2E-002 count assertion removed, E2E-004
+status-chip assertion removed; new E2E-COLLECTION-014 tiles case).
+
+- **11 execution log** — branch `feature/polish-11-micro`:
+  - Batch A (M-1/M-4/M-7): `[wip]` — docs commit 7772d34; RED captured (6 failures / 3 suites)
+    before implementation. GREEN: targeted client suites `CollectionsListView|CollectionsSection|
+GridCardPrimitives|FileGridItem` 89/89 + `FileManagerView|pages/FileManager` 82/82; locale
+    mirror suite 12/12; eslint/prettier clean on touched files; E2E spec updated (002 count
+    assertion dropped, 004 status-chip assertion dropped — 006 verified chip-free). Awaits
+    orchestrator final gates.
+  - Batch B (M-3/M-5/M-6): `[wip]` — docs commit 2a919b2; RED captured (7 failures / 5 suites)
+    before implementation. GREEN: targeted client suites
+    `CollectionsListView|AddToCollectionMenu|FileContextMenu|MemberRowControls|AppTheme|
+FileActionSheet|FilePropertiesDialog` 140/140. M-5 clarification: no pre-existing test
+    asserted error-color on likes (verified by grep) — pink/`like`-token assertions ADDED instead
+    (FileContextMenu + MemberRowControls) + `AppTheme` palette contract; `test-utils.jsx` theme
+    mirrors the token (kept-in-sync comment). M-6 clarification: the `:248` tail-ellipsis is the
+    seed-dialog sample-TILE name style (the only one in the file) — middle-truncated with the
+    documented 190px budget. eslint/prettier clean on touched files. Awaits orchestrator gates.
+  - Batch C (M-2/M-8/M-9): `[wip]` — docs commit 77d3479; RED captured (3 test-side corrections
+    after first run: file-key persistence-on-mount assertion relaxed to `not.toHaveBeenCalledWith`,
+    tile-absence test needed `unmount()`, P-5 liked-surface test flipped to the M-8 contract — all
+    Case B test errors, implementation unchanged) → GREEN:
+    `useExplorerSession|CollectionsListView|FileManagerView` 126/126;
+    `CollectionsSection|Breadcrumb|FileManagerControls|useFileManager|pages/FileManager` +
+    anchors `GridCardPrimitives|FileGridItem|FolderTree*` all pass. Verified routes: liked
+    `/files/__collections__/liked`, archive `/files/__collections__/__archive__`
+    (`useFileManager.js` urlView). E2E: 011/013 sort-visibility flips + new case 014
+    (tiles/navigation/breadcrumb). eslint/prettier clean on touched files. Awaits orchestrator
+    full gates (client union + collections-desktop E2E).
+  - **§11 final gates (this wave, awaiting orchestrator [done]):** full client suite **176
+    suites / 1856 tests pass** (base 1818 + 38 new); server leg unchanged and verified green
+    (`domains/collections` + locale mirror: 6 suites / 120 pass, no server source touched);
+    `E2E_BACKEND_MODE=s3 collections-desktop` **14/14 green** (001–013 updated assertions +
+    NEW 014 tiles/navigation/breadcrumb; wt-11 port band, own containers). Batch commits:
+    A `7772d34`+`2dbfff5`, B `2a919b2`+`e822480`, C `77d3479`+`dc2eebb`. No repository/SQL/
+    schema touched → PG conformance leg N/A.

@@ -137,9 +137,7 @@ describe('TreeRow cross-section indent parity (owner ruling 2026-10-01)', () => 
         handleRecentToggle={jest.fn()}
         handleRecentClick={jest.fn()}
         currentPath="/"
-        recentFilesList={[
-          { nodeId: 1, path: '/docs/a.pdf', name: 'a.pdf', type: 'file' },
-        ]}
+        recentFilesList={[{ nodeId: 1, path: '/docs/a.pdf', name: 'a.pdf', type: 'file' }]}
         onNodeClick={jest.fn()}
         onFileClick={jest.fn()}
       />

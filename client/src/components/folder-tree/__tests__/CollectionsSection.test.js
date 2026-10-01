@@ -90,13 +90,11 @@ describe('CollectionsSection', () => {
 
   it('child rows render via TreeRow at the level-1 tree indent — parity with shared-folder rows (F5 rewrite, 2026-10-01)', () => {
     renderWithProviders(<CollectionsSection {...defaultProps()} />);
-    ['collections-liked-node', 'collection-row-1', 'collections-archive-node'].forEach(
-      (testid) => {
-        const el = screen.getByTestId(testid);
-        expect(el.getAttribute('data-tree-row')).toBe('true');
-        expect(window.getComputedStyle(el).paddingLeft).toBe('16px');
-      }
-    );
+    ['collections-liked-node', 'collection-row-1', 'collections-archive-node'].forEach((testid) => {
+      const el = screen.getByTestId(testid);
+      expect(el.getAttribute('data-tree-row')).toBe('true');
+      expect(window.getComputedStyle(el).paddingLeft).toBe('16px');
+    });
   });
 
   it('row click invokes onCollectionClick with the collection id', () => {

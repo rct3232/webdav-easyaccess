@@ -107,7 +107,10 @@ archive trigger.
 Member rows render per read with a live permission check: normal; revoked (gray placeholder, no
 name/thumbnail — metadata after revocation would leak); trashed-by-owner (hidden); purged (gone).
 Foreign-owned files never render in live-shared views (cross-leak rule; `Not owner's file — not shared`
-chip in the owner's view), though adding them stays allowed — you may add what you can read.
+chip in the owner's view), though adding them stays allowed — you may add what you can read. Ownership
+follows the `permissionPolicy.js` convention (admin owns the whole tree): admin-owned collections have
+no foreign members — their rows never render `shared_excluded`/publish-pending markers and their
+publish path is real.
 Member-row controls omit move/copy/rename/delete — a collection is a view, not a workspace —
 offering exclude, publish (shared only), download (per file ACL), `Reveal original location`, read-only
 properties, and like; multi-select adds batch exclude/publish and add-to-another-collection, never

@@ -645,3 +645,16 @@ use in a pure view).
 | R12.3 primitive | extract `TreeRow`; `BaseFolderTreeItem` consumes it (props unchanged)                        | R12.2 | `BaseFolderTreeItem.test.js` UNMODIFIED green; TreeRow unit tests green | `[ ]`  |
 | R12.4 migration | Recent/Collections child rows → TreeRow; testids/clicks/selection/slice(0,10) kept           | R12.3 | folder-tree suite group green (pins now GREEN)                          | `[ ]`  |
 | R12.5 closure   | full client run + eslint/prettier + report                                                   | R12.4 | 176 suites green; optional s3 collections-desktop E2E                   | `[ ]`  |
+
+- **§12 execution log (branch `refactor/tree-row-unification`, base bb36c97):**
+  - R12.1 docs `37aafb9`. R12.2 RED `f1be9b8` — RED observed: TreeRow suite failed
+    (primitive missing), both F5 pins failed (`data-tree-row` absent); the other 27 tests
+    in the three suites kept passing. R12.3 primitive `80f5e1b` — `BaseFolderTreeItem.test.js`
+    passed UNMODIFIED (regression gate; zero test edits, no justification needed).
+    R12.4 migration `c30827c` — pins GREEN.
+  - Gates: folder-tree group 8 suites / 67 pass; targeted union (folder-tree +
+    `FileManagerView` + `pages/FileManager`) 30 suites / 360 pass; FULL client
+    `CI=1 npm test` **177 suites / 1869 tests pass** (baseline 176 / 1861 + TreeRow
+    suite with 8 tests); eslint `--max-warnings=0` + prettier clean on touched files;
+    `E2E_BACKEND_MODE=s3 --project=collections-desktop` **14/14 green** (own port band,
+    project-scoped stack). Server leg N/A (no server source touched).

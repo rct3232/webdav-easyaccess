@@ -155,7 +155,9 @@ describe('FileGridItem — member tile slots (P-4)', () => {
     expect(container.querySelector('[data-testid="member-menu-button"]')).toBeNull();
     expect(container.querySelector('[data-testid^="member-row-"]')).toBeNull();
     expect(
-      container.querySelector('[data-testid^="member-excluded-badge"], [data-testid^="member-publish-pending-badge"]')
+      container.querySelector(
+        '[data-testid^="member-excluded-badge"], [data-testid^="member-publish-pending-badge"]'
+      )
     ).toBeNull();
   });
 });

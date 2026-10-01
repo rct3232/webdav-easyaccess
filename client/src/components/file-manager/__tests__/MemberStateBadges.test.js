@@ -11,10 +11,7 @@ import PublicReference from '@mui/icons-material/Public';
 import PendingReference from '@mui/icons-material/Pending';
 import VpnLockReference from '@mui/icons-material/VpnLock';
 import { renderWithProviders } from '../../../test-utils';
-import MemberStateBadges, {
-  PublishPendingIcon,
-  getMemberStateBadges,
-} from '../MemberStateBadges';
+import MemberStateBadges, { PublishPendingIcon, getMemberStateBadges } from '../MemberStateBadges';
 
 const en = require('../../../locales/en.json');
 const ko = require('../../../locales/ko.json');
@@ -56,15 +53,21 @@ describe('PublishPendingIcon — composite marker (owner decision 2026-10-01)', 
     expect(overlay.style.left).toBe('-2px');
   });
 
-  it('inherits currentColor (no explicit color on wrapper or svgs)', () => {
+  it('inherits currentColor (no explicit color anywhere in the composition)', () => {
+    // jsdom getComputedStyle does not resolve INHERITED color — the observable
+    // contract is instead: the wrapper/svg carry no inline or sx color, so the
+    // MuiSvgIcon `fill: currentColor` paints with whatever the row provides.
     const { container } = renderWithProviders(
       <span style={{ color: 'rgb(255, 0, 0)' }}>
         <PublishPendingIcon />
       </span>
     );
+    const wrapper = container.querySelector('span > span');
+    expect(wrapper.style.color).toBe('');
     const svgs = container.querySelectorAll('.MuiSvgIcon-root');
+    expect(svgs).toHaveLength(2);
     svgs.forEach((svg) => {
-      expect(getComputedStyle(svg).color).toBe('rgb(255, 0, 0)');
+      expect(svg.style.color).toBe('');
     });
   });
 });
@@ -199,7 +202,10 @@ describe('MemberStateBadges — detail variant (inline 16px before the name)', (
   it('renders plain inline badges (no plate, no absolute container)', () => {
     renderWithProviders(
       <Box sx={{ display: 'flex' }}>
-        <MemberStateBadges file={memberRow({ published: false, shared_excluded: true })} variant="detail" />
+        <MemberStateBadges
+          file={memberRow({ published: false, shared_excluded: true })}
+          variant="detail"
+        />
       </Box>
     );
     const excluded = screen.getByTestId('member-excluded-badge-90210');

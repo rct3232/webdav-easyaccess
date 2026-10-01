@@ -49,13 +49,14 @@ describe('RecentFilesSection', () => {
     expect(screen.getByText(/No recent items/)).toBeInTheDocument();
   });
 
-  it('child rows render the MEASURED 24px padding-left — parity with CollectionsSection children (F5)', () => {
+  it('child rows render via TreeRow at the level-1 tree indent — parity with shared-folder rows (F5 rewrite, 2026-10-01)', () => {
     const files = [{ nodeId: 1, path: '/docs/a.pdf', name: 'a.pdf', type: 'file' }];
     const { container } = renderWithProviders(
       <RecentFilesSection {...defaultProps} recentExpanded recentFilesList={files} />
     );
-    const childRow = container.querySelectorAll('.MuiListItemButton-root')[1];
-    expect(window.getComputedStyle(childRow).paddingLeft).toBe('24px');
+    const childRow = container.querySelector('.MuiListItemButton-root[data-tree-row]');
+    expect(childRow).toBeTruthy();
+    expect(window.getComputedStyle(childRow).paddingLeft).toBe('16px');
   });
 
   it('shows file list when recentFilesList has items and expanded', () => {

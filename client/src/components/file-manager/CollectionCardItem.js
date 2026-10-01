@@ -1,8 +1,8 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Box, CardMedia, Chip, IconButton, Typography } from '@mui/material';
+import { Box, CardMedia, IconButton, Typography } from '@mui/material';
 import {
-  Checkroom as SharedChipIcon,
+  FolderShared as FolderSharedIcon,
   MoreVert as MoreVertIcon,
   PushPin as PushPinIcon,
 } from '@mui/icons-material';
@@ -11,14 +11,18 @@ import { getCollectionEntryKey } from '../../utils/fileViewUtils';
 import { useLongPress } from '../../hooks/useLongPress';
 import { useLongPressSelect } from './hooks/useLongPressSelect';
 import CardTile from './CardTile';
+import TileCornerBadge from './TileCornerBadge';
 
 /**
  * CollectionCardItem — grid-parity collection card (P-3): the shared CardTile
  * shell whose media area is the 2×2 preview of the newest-added members
  * (`preview_items`: icon immediately, swapped to a batched thumbnail once the
- * shell's preview map gains the node id — NO filename labels), footer = name +
- * count/status/pin chips. Click semantics are dispatched, never decided here
- * (single=select / double=open / tap=open / long-press=select is shell-owned).
+ * shell's preview map gains the node id — NO filename labels). Footer = name
+ * only (M-1: member count removed, 2026-09-30); received/auto-pin markers are
+ * TOP-LEFT MEDIA BADGES (M-4 — the footer chips and the `archived` status Chip
+ * are retired; the autopin badge is a REAL unpin button). Click semantics are
+ * dispatched, never decided here (single=select / double=open / tap=open /
+ * long-press=select is shell-owned).
  * @see docs/spec/client/components/file-manager/CollectionsListView.md §2.4
  */
 const PREVIEW_CAP = 4;
@@ -86,7 +90,7 @@ const CollectionCardItem = ({
   });
 
   const isViewer = collection.granted_role != null;
-  const isArchived = collection.status === 'archived';
+  const isAutoPinned = collection.pinned_by === 'auto';
   const previews = (collection.preview_items ?? []).slice(0, PREVIEW_CAP);
 
   const media =
@@ -135,6 +139,40 @@ const CollectionCardItem = ({
     </IconButton>
   ) : null;
 
+  // M-4: received/shared and auto-pin markers are TOP-LEFT MEDIA BADGES (the
+  // footer chips are retired). The autopin badge is a real button dispatching
+  // the existing `unpin` card action; the preserved testids ride the badges.
+  const cornerBadges =
+    isViewer || isAutoPinned ? (
+      <>
+        {isViewer && (
+          <TileCornerBadge
+            title={t('nav.collectionsSharedChip')}
+            aria-label={t('nav.collectionsSharedChip')}
+            data-testid={`card-shared-chip-${collection.collection_id}`}
+          >
+            <FolderSharedIcon />
+          </TileCornerBadge>
+        )}
+        {isAutoPinned && (
+          <TileCornerBadge
+            title={t('fileManager.collectionsAutoPin')}
+            aria-label={t('fileManager.collectionsAutoPin')}
+            data-testid={`card-autopin-chip-${collection.collection_id}`}
+            onClick={() => onCardAction?.('unpin', collection)}
+          >
+            <Box
+              component="span"
+              data-testid={`card-autopin-unpin-${collection.collection_id}`}
+              sx={{ display: 'inline-flex' }}
+            >
+              <PushPinIcon />
+            </Box>
+          </TileCornerBadge>
+        )}
+      </>
+    ) : null;
+
   const footer = (
     <Box
       sx={{
@@ -146,52 +184,9 @@ const CollectionCardItem = ({
         minWidth: 0,
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
-        <Typography variant="body2" sx={{ fontWeight: 'medium', minWidth: 0 }} noWrap>
-          {collection.name}
-        </Typography>
-        {isViewer && (
-          <Box component="span" data-testid={`card-shared-chip-${collection.collection_id}`}>
-            <SharedChipIcon fontSize="small" color="action" />
-          </Box>
-        )}
-      </Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-        <Typography variant="caption" color="text.secondary">
-          {t('fileManager.collectionsItemCount', { count: collection.item_count })}
-        </Typography>
-        {isArchived && (
-          <Chip
-            size="small"
-            label={t('fileManager.collectionsStatusArchived')}
-            data-testid={`card-status-chip-${collection.collection_id}`}
-          />
-        )}
-        {collection.pinned_by === 'auto' && (
-          <Chip
-            size="small"
-            variant="outlined"
-            data-testid={`card-autopin-chip-${collection.collection_id}`}
-            label={t('fileManager.collectionsAutoPin')}
-            onDelete={() => onCardAction?.('unpin', collection)}
-            deleteIcon={
-              <Box
-                component="span"
-                role="button"
-                data-testid={`card-autopin-unpin-${collection.collection_id}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCardAction?.('unpin', collection);
-                }}
-                aria-label={t('fileManager.collectionsAutoPinUnpin')}
-                sx={{ display: 'inline-flex', cursor: 'pointer' }}
-              >
-                <PushPinIcon fontSize="inherit" />
-              </Box>
-            }
-          />
-        )}
-      </Box>
+      <Typography variant="body2" sx={{ fontWeight: 'medium', minWidth: 0 }} noWrap>
+        {collection.name}
+      </Typography>
     </Box>
   );
 
@@ -211,6 +206,7 @@ const CollectionCardItem = ({
       <CardTile
         media={media}
         moreAction={moreAction}
+        cornerBadges={cornerBadges}
         footer={footer}
         isSelected={isSelected}
         selectionMode={selectionMode}

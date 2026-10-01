@@ -53,11 +53,12 @@ beforeEach(() => {
 });
 
 describe('CollectionsListView — list mode', () => {
-  it('renders collection cards with name and item count', () => {
+  it('renders collection cards with the name ONLY — no member-count line (M-1)', () => {
     renderWithProviders(<CollectionsListView {...listProps()} />);
     const cardEl = screen.getByTestId('collection-card-1');
     expect(within(cardEl).getByText('Roadtrip')).toBeInTheDocument();
-    expect(within(cardEl).getByText(/12/)).toBeInTheDocument();
+    expect(within(cardEl).queryByText(/12 items/)).not.toBeInTheDocument();
+    expect(within(cardEl).queryByText('12')).not.toBeInTheDocument();
   });
 
   it('empty list renders the localized empty state', () => {
@@ -113,21 +114,45 @@ describe('CollectionsListView — list mode', () => {
     expect(screen.getByTestId('merge-card')).toBeInTheDocument();
   });
 
-  it('shared-received cards carry the shared chip; auto-pin chips expose the unpin CTA', () => {
+  it('shared-received/auto-pin cards render top-left MEDIA BADGES (footer chips retired, M-4)', () => {
     const props = listProps();
     props.collections = [
       card({ collection_id: 2, name: 'Auto', pinned: true, pinned_by: 'auto' }),
       card({ collection_id: 3, name: 'Given', granted_role: 'viewer' }),
     ];
     renderWithProviders(<CollectionsListView {...props} />);
-    expect(screen.getByTestId('card-shared-chip-3')).toBeInTheDocument();
-    expect(screen.getByTestId('card-autopin-chip-2')).toBeInTheDocument();
+    const sharedBadge = screen.getByTestId('card-shared-chip-3');
+    const autoPinBadge = screen.getByTestId('card-autopin-chip-2');
+    expect(sharedBadge).toBeInTheDocument();
+    expect(autoPinBadge).toBeInTheDocument();
+    // badges sit inside the card (media overlay) — the footer carries no chips
+    expect(within(screen.getByTestId('collection-card-3')).queryByText('Archived')).toBeNull();
 
+    // autopin badge is a REAL button dispatching the existing unpin action
+    expect(autoPinBadge.tagName).toBe('BUTTON');
+    fireEvent.click(autoPinBadge);
+    expect(props.onCardAction).toHaveBeenCalledWith(
+      'unpin',
+      expect.objectContaining({ collection_id: 2 })
+    );
+
+    // preserved unpin-CTA testid still dispatches (inner element bubbles to the button)
+    props.onCardAction.mockClear();
     fireEvent.click(screen.getByTestId('card-autopin-unpin-2'));
     expect(props.onCardAction).toHaveBeenCalledWith(
       'unpin',
       expect.objectContaining({ collection_id: 2 })
     );
+  });
+
+  it('archived rows render NO status chip (M-4 deletion; view-scoped membership)', () => {
+    const props = listProps();
+    props.collections = [card({ collection_id: 9, name: 'Old', status: 'archived' })];
+    renderWithProviders(<CollectionsListView {...props} />);
+    expect(screen.queryByTestId('card-status-chip-9')).not.toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('collection-card-9')).queryByText('Archived')
+    ).not.toBeInTheDocument();
   });
 
   it('own ACTIVE card menu: rename/pin/archive/sharing — NO open, NO permanent delete (P-3)', () => {
@@ -594,6 +619,20 @@ describe('CollectionsListView — member mode (P-4 shared renderers)', () => {
   it('no `since` digest data ⇒ no banner', () => {
     renderWithProviders(<CollectionsListView {...membersProps()} />);
     expect(screen.queryByTestId('digest-banner')).not.toBeInTheDocument();
+  });
+
+  it('all-zero digest (0 added / 0 removed) ⇒ NO banner (M-7)', () => {
+    const props = membersProps();
+    props.digest = { added_since: 0, removed_since: 0 };
+    renderWithProviders(<CollectionsListView {...props} />);
+    expect(screen.queryByTestId('digest-banner')).not.toBeInTheDocument();
+  });
+
+  it('zero/zero with only-added digest still renders (one side non-zero)', () => {
+    const props = membersProps();
+    props.digest = { added_since: 0, removed_since: 2 };
+    renderWithProviders(<CollectionsListView {...props} />);
+    expect(screen.getByTestId('digest-banner')).toBeInTheDocument();
   });
 
   it('publish-pending banner shows the owner count with a batch action', () => {

@@ -349,7 +349,7 @@ test('E2E-COLLECTION-002: Add-to-collection submenu creates a collection inline,
   await expect(page.getByText(/Added to collection/i)).toBeVisible();
 
   await page.goto('/files/__collections__');
-  await expect(collectionCard(page, name)).toContainText('2 items');
+  await expect(collectionCard(page, name)).toBeVisible();
 
   // P-3 previews: the card media area carries one cell per recent member.
   await expect(page.getByTestId(`collection-preview-${fileA.nodeId}`)).toBeVisible();
@@ -410,16 +410,15 @@ test('E2E-COLLECTION-004: Card menu archive moves the collection into the archiv
   await dialog.getByTestId('confirm-dialog-confirm').click();
   await expect(page.getByText(/Collection archived/i)).toBeVisible();
 
-  // Gone from the active list, present in the archive view with the status chip.
+  // Gone from the active list, present in the archive view (M-4: the status
+  // chip is retired — archive membership is view-scoped, the card itself is
+  // the anchor).
   await page.goto('/files/__collections__');
   await expect(page.getByTestId('collections-list-region')).toBeVisible();
   await expect(collectionCard(page, name)).toHaveCount(0);
   await page.goto('/files/__collections__/__archive__');
   const archivedCard = collectionCard(page, name);
   await expect(archivedCard).toBeVisible();
-  await expect(archivedCard.locator('[data-testid^="card-status-chip-"]')).toContainText(
-    /archived/i
-  );
 
   // Restore replaces the archive entry in the archive view (§2.4 as-built).
   await archivedCard.locator('[data-testid^="card-menu-button-"]').click();

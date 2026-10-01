@@ -359,7 +359,9 @@ const CollectionsListView = ({
 
   const renderMembersMode = () => (
     <Box data-testid="members-list">
-      {digest && (
+      {/* M-7 (2026-09-30): a since-requested all-zero digest is noise — the
+          banner renders only when at least one delta is non-zero. */}
+      {digest && ((digest.added_since ?? 0) > 0 || (digest.removed_since ?? 0) > 0) && (
         <Box data-testid="digest-banner" sx={{ mb: 1 }}>
           <Typography variant="body2" component="span">
             {t('fileManager.digestLine', {

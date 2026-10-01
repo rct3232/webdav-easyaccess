@@ -70,9 +70,9 @@ describe('CollectionsSection', () => {
     expect(screen.getByText('Mango')).toBeInTheDocument();
   });
 
-  it('shows item_count on each row', () => {
+  it('renders NO member count on rows (M-1 — secondary is the new dot only)', () => {
     renderWithProviders(<CollectionsSection {...defaultProps()} />);
-    expect(screen.getByText('12')).toBeInTheDocument();
+    expect(screen.queryByText('12')).not.toBeInTheDocument();
   });
 
   it('granted_role rows get the shared chip only and are never hoisted', () => {

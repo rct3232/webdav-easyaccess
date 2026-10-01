@@ -209,28 +209,22 @@ const CollectionsSection = ({
                         weight: selected ? 700 : 400,
                       })}
                       secondary={
-                        <Box
-                          component="span"
-                          sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}
-                        >
-                          <Typography variant="caption" color="text.secondary">
-                            {collection.item_count}
-                          </Typography>
-                          {isNew && (
-                            <Box
-                              component="span"
-                              data-testid={`collection-new-dot-${collectionId}`}
-                              aria-label={t('nav.collectionsNewDot')}
-                              sx={{
-                                width: 6,
-                                height: 6,
-                                borderRadius: '50%',
-                                bgcolor: 'primary.main',
-                                display: 'inline-block',
-                              }}
-                            />
-                          )}
-                        </Box>
+                        // M-1 (2026-09-30): the secondary member-count display is REMOVED —
+                        // the `new` dot is the only secondary affordance left.
+                        isNew ? (
+                          <Box
+                            component="span"
+                            data-testid={`collection-new-dot-${collectionId}`}
+                            aria-label={t('nav.collectionsNewDot')}
+                            sx={{
+                              width: 6,
+                              height: 6,
+                              borderRadius: '50%',
+                              bgcolor: 'primary.main',
+                              display: 'inline-block',
+                            }}
+                          />
+                        ) : undefined
                       }
                     />
                   </ListItemButton>

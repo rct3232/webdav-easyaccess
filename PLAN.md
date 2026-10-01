@@ -499,6 +499,7 @@ Execution: `feature/polish-b-member-fetch-all` (docs → RED → GREEN → E2E).
 > atomically. Binding owner decisions recorded inline per item.
 
 Batch A — display/content:
+
 - M-1 member-count display REMOVED (card footer "N items" + tree-row secondary count;
   `fileManager.collectionsItemCount` dropped en+ko) — S | `[wip]`
 - M-4 card chips → TOP-LEFT MEDIA BADGES (binding 2026-09-30: badge SET = received
@@ -512,6 +513,7 @@ Batch A — display/content:
   (a since-requested all-zero digest is noise) — S | `[wip]`
 
 Batch B — menu/visual:
+
 - M-3 card-menu icons on ALL items (rename `Edit`, archive `Archive`, restore `Unarchive`,
   delete-permanent `DeleteForever`, revoke-permission `ExitToApp`, sharing `Share`,
   pin/unpin `PushPin` kept) — S | `[wip]`
@@ -524,6 +526,7 @@ Batch B — menu/visual:
   font metrics per CollectionsSection idiom) — S | `[wip]`
 
 Batch C — structure:
+
 - M-2 binding (2026-09-30): pseudo-tiles on the collections GRID — Likes tile FIRST,
   Archive tile LAST (active list); ARCHIVE VIEW shows ONLY the Likes tile; LIKED surface
   shows NO tiles; tiles are excluded from selection/sort/cluster/card-menu logic AND from
@@ -550,5 +553,9 @@ Verification: targeted suites per batch; final gates = full client suite +
 status-chip assertion removed; new E2E-COLLECTION-014 tiles case).
 
 - **11 execution log** — branch `feature/polish-11-micro`:
-  - Batch A (M-1/M-4/M-7): `[wip]` — docs commit lands with the batch; evidence appended
-    per batch after targeted suites go green. Awaits orchestrator final gates.
+  - Batch A (M-1/M-4/M-7): `[wip]` — docs commit 7772d34; RED captured (6 failures / 3 suites)
+    before implementation. GREEN: targeted client suites `CollectionsListView|CollectionsSection|
+    GridCardPrimitives|FileGridItem` 89/89 + `FileManagerView|pages/FileManager` 82/82; locale
+    mirror suite 12/12; eslint/prettier clean on touched files; E2E spec updated (002 count
+    assertion dropped, 004 status-chip assertion dropped — 006 verified chip-free). Awaits
+    orchestrator final gates.

@@ -591,3 +591,34 @@ FileActionSheet|FilePropertiesDialog` 140/140. M-5 clarification: no pre-existin
   orchestrator gates: server `test:ci` 130 suites / 2407, client 176 / 1856,
   `collections-desktop` E2E 14/14 (001–014) — all green. One follow-up test fix landed
   alongside (derivedTags month expectation → production-derived, TZ-safe; RCA 2026-10-01).
+
+- **§11 FOLLOW-UP batch (2026-10-01, owner-spotted post-ship defects)** — branch
+  `fix/polish-11-followups` (worktree wt-11f off `e8e29db`); docs-first `34fefb7` → RED →
+  GREEN, one commit per concern:
+  - F1 `[done]` M-1/M-6 stragglers on `AddToCollectionMenu` rows: `primary` middle-truncates at
+    a FIXED 280px menu paper (budget 192 = 280 − 2×16 MenuItem padding − 56 reserved check
+    ListItemIcon; 16px body1 metrics, family idiom per CollectionsSection) and the leftover
+    `item_count` secondary is DELETED; `collection-option-*` testids kept. RED 2 → GREEN. `9963b79`.
+  - F2 `[done]` M-9 gap closed: `/__collections__/__archive__` breadcrumb renders
+    `Collections › Archive` (STATIC `nav.collectionsArchive`, tree parity; parent chip →
+    `/__collections__` like the member/liked chain). RED 1 → GREEN. `22aa6d5`.
+  - F3 `[done]` archive surface renders ZERO pseudo-tiles (owner ruling supersedes the M-2
+    "Likes only" default; active view unchanged: Likes FIRST / Archive LAST incl. empty state);
+    CollectionsListView.md M-2 wording amended. RED 2 → GREEN; E2E-014 rewritten (both tile
+    testids absent in archive view + Collections › Archive crumb; liked surface reached via its
+    verified route since no tile remains there as exit). `d267c70`.
+  - F5 `[measured — no behavior change]`: jsdom computed-style measurement (emotion sheet
+    rules ARE resolved by `getComputedStyle` — assertable): Recent child row and ALL three
+    Collections child rows render `padding-left: 24px` (identical emotion class hash). The
+    briefing's "~48px recent" reading conflated the empty-state Box (`:134`) with the rows; no
+    shared `SECTION_CHILD_INDENT` constant introduced (minimal-change rule). Parity pinned by
+    per-section computed-paddingLeft tests + spec notes in both section specs. `d267c70`.
+  - F4 `[report-only]`: full chip/badge inventory delivered to owner (member excluded/
+    unpublished chips render list-ONLY while grid/detail comparators track the fields silently;
+    `MemberRowControls` in-menu not-shared chip; M-4 card corner badges; ArchiveNode count Badge
+    as the remaining sidebar count; search/mypage/migration chips; KO `sharedExcludedChip`
+    typo). No code or doc changes.
+  - Gates: full client suite **176 suites / 1862 tests** (base 1856 + 6 new); server leg N/A
+    (no server source touched); `E2E_BACKEND_MODE=s3 collections-desktop` **14/14 green**
+    (two E2E adaptations landed: truncation-aware `uiAddToCollection` fragments, 014 title kept
+    under the 255-byte `buildName`→NAME_MAX budget — `49ff9b4`); eslint/prettier clean.

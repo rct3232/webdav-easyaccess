@@ -5,6 +5,7 @@ import { MoreVert as MoreVertIcon } from '@mui/icons-material';
 import { getFileIconForGrid, getThumbnail } from '../../utils/fileIconUtils';
 import { pixelMiddleTruncate } from '../../utils/stringUtils';
 import CardTile from './CardTile';
+import MemberStateBadges, { hasMemberStateBadges } from './MemberStateBadges';
 
 /**
  * 더 버튼 오버레이 스타일
@@ -150,6 +151,9 @@ const FileGridItem = React.memo(
       <CardTile
         media={media}
         moreAction={moreAction}
+        cornerBadges={
+          hasMemberStateBadges(file) ? <MemberStateBadges file={file} variant="grid" /> : null
+        }
         footer={footer}
         footerRef={containerRef}
         isSelected={isSelected}

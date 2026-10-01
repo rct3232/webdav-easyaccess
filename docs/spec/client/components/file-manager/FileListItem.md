@@ -41,7 +41,7 @@
 
 ### 2.4 Dependencies
 
-- **imports:** React, useTranslation, MUI Typography/Box/Avatar/CircularProgress, formatFileSize, formatDate, renderProcessingIcon, getDropTargetStyles, getFileIcon, getThumbnail
+- **imports:** React, useTranslation, MUI Typography/Box/Avatar/CircularProgress/Tooltip, formatFileSize, formatDate, renderProcessingIcon, getDropTargetStyles, getFileIcon, getThumbnail, MemberStateBadges, MemberStateBadges
 - **Reference implementation:** `client/src/components/file-manager/FileListItem.js`
 
 ### 2.5 i18n Keys
@@ -58,8 +58,7 @@
 - Metadata: folder label or formatFileSize, formatDate(lastmod)
 - **Member-row slots (P-4, `CollectionsListView.md` §2.5) — all keyed off OPTIONAL row fields, file rows (fields absent) render byte-identical:**
   - the size caption renders ONLY when the row is NOT a size-less member row (`file.isCollectionMember === true && file.size == null` ⇒ caption omitted — the member wire carries no size; the slot stays a plain `formatFileSize(file.size)` for every other row);
-  - `file.shared_excluded === true` (member rows) ⇒ `Not owner's file — not shared` Chip, `data-testid="member-excluded-chip-<nodeId>"`;
-  - `file.published === false` (member rows) ⇒ awaiting-publish Chip (`fileManager.memberUnpublishedBadge`), `data-testid="member-unpublished-chip-<nodeId>"` — the publish-all flip is observable through this chip;
+  - **member-state badges (§11 follow-up 3, 2026-10-01 — the former list-only `Chip`s are REPLACED by the shared `MemberStateBadges` component rendered in ALL three member views):** `<MemberStateBadges file={file} variant="list" />` overlays a badge row on the LEADING icon/avatar column — the thumbnail container gains `position: relative`, the badge row is `position: absolute; top: 2; left: 2; z-index: 1` (flex, gap 8px, plain 16px icon badges, no plate); excluded badge (`VpnLock`, `data-testid="member-excluded-badge-<nodeId>"`, tooltip/aria `fileManager.memberNotShared`) when `file.shared_excluded === true`; publish-pending badge (`Public`+`Pending` composite, `data-testid="member-publish-pending-badge-<nodeId>"`, tooltip/aria `fileManager.memberUnpublishedBadge`) when `file.published === false`; `state:'revoked'` rows render NEITHER (the chip-era flag-only gating leaked the awaiting-publish chip onto revoked rows — fixed); file rows (fields `undefined`) render zero DOM. Gating matrix: `MemberStateBadges.md` §2.3.
   - `file.moreButtonTestId` ⇒ the More button `data-testid` (members: `member-menu-button` — the dispatch target of `onMemberAction('menu', row, anchorEl)`).
 - **Memo comparator:** additionally compares `file.published` and `file.shared_excluded` (absent ⇒ `undefined === undefined` — no file-side behavior change) so member state flips re-render rows whose name/path never change.
 
@@ -72,7 +71,7 @@ Checklist for unit test writing:
 - [x] More button shown when showMoreButton; hidden when !showMoreButton; onMoreClick called with file and stopPropagation
 - [x] Thumbnail or icon displayed
 - [x] Processing overlay when isProcessing
-- [ ] (P-4) Member row (isCollectionMember, size absent): no size caption; `shared_excluded`/`published:false` chips render with the member testids; More button carries `file.moreButtonTestId`; state flips (published) re-render the row through the memo comparator. A plain file row renders unchanged.
+- [ ] (P-4 + §11 follow-up 3) Member row (isCollectionMember, size absent): no size caption; `shared_excluded`/`published:false` badges render with the member testids (`member-excluded-badge-*` / `member-publish-pending-badge-*`) as an overlay on the leading icon/avatar column; revoked rows render NEITHER badge; More button carries `file.moreButtonTestId`; state flips (published) re-render the row through the memo comparator. A plain file row renders unchanged.
 
 ### 2.8 Edge Cases
 

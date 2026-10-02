@@ -100,7 +100,7 @@ Target-contract spec.
   More action (`data-testid="card-menu-button-<id>"`), hidden while `selectionMode`
   (files parity).
 - **Media badges (M-4):** corner overlays on the tile media area (shared `CardTile`
-  `cornerBadges` slot, top-left; the right side hosts the More action), each a 16px icon in
+  `cornerBadges` slot, top-right ring-offset dots; the More action sits inside the media edge), each a 16px icon in
   a translucent circular container:
   - received/shared (`granted_role != null`) → `ShareIcon` (2026-10-01 owner ruling: the
     generic share glyph; the tree row no longer carries a received marker),

@@ -243,3 +243,10 @@ describe('MemberStateBadges — i18n contract', () => {
     expect(ko.fileManager.sharedExcludedChip).toBeUndefined();
   });
 });
+
+describe('pending warning tone (owner ruling (a), 2026-10-01)', () => {
+  it('renders both composite icons in the warning tone', () => {
+    const { container } = render(<PublishPendingIcon />);
+    expect(container.querySelectorAll('.MuiSvgIcon-colorWarning')).toHaveLength(2);
+  });
+});

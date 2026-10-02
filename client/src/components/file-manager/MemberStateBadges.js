@@ -24,7 +24,8 @@ const OVERLAY_ICON_SIZE = 10;
  * glyph overlaid top-left. Defined ONCE here (owner wording). The two font
  * sizes are INLINE styles so the `TileCornerBadge`
  * `& .MuiSvgIcon-root { fontSize: 16 }` descendant rule cannot resize the
- * overlay; both icons inherit `currentColor` from the row.
+ * overlay rendered in the theme WARNING tone (owner ruling (a), 2026-10-01 —
+ * MUI default warning #ed6c02 via color prop; the plate stays translucent).
  */
 export const PublishPendingIcon = () => (
   <Box
@@ -36,8 +37,11 @@ export const PublishPendingIcon = () => (
       height: BADGE_ICON_SIZE,
     }}
   >
-    <Public style={{ fontSize: BADGE_ICON_SIZE }} />
-    <Pending style={{ fontSize: OVERLAY_ICON_SIZE, position: 'absolute', top: -2, left: -2 }} />
+    <Public color="warning" style={{ fontSize: BADGE_ICON_SIZE }} />
+    <Pending
+      color="warning"
+      style={{ fontSize: OVERLAY_ICON_SIZE, position: 'absolute', top: -2, left: -2 }}
+    />
   </Box>
 );
 

@@ -130,8 +130,10 @@ Field rules:
 - `preview_items` (P-3, 2026-09-29 owner ruling): up to 4 member entries for the list card's
   2×2 preview — `{ "node_id", "name", "type", "mime" }`. Built **in memory from the same
   requester-resolved member view that `item_count` counts** (services spec §List; zero extra
-  queries). Filter: rows with `state='revoked'` or `shared_excluded=true` are NEVER surfaced
-  (a revoked member's name/thumbnail is a leak — §3.2). Order: `created_at` desc (added time:
+  queries). Filter (amended 2026-10-01): only rows with `state='revoked'` are NEVER surfaced
+  (a revoked member's name/thumbnail is a leak — §3.2); `shared_excluded` members DO preview —
+  the owner already reads them in the member list and the grantee view omits them upstream, so
+  a preview-side exclusion protected nothing and desynced card vs list. Order: `created_at` desc (added time:
   stored row's `created_at`, derived row's node `created_at`), deterministic tie-break
   `node_id` desc, then sliced to 4. `mime` = filecache mime (nullable; the row carries it
   from the `fileNodeShared` mapping). Always present (empty array when nothing previewable)

@@ -61,6 +61,12 @@ describe('CollectionsListView — list mode', () => {
     expect(within(cardEl).queryByText('12')).not.toBeInTheDocument();
   });
 
+  it('empty preview_items renders the sidebar collections fallback glyph, not a folder icon (2026-10-01)', () => {
+    renderWithProviders(<CollectionsListView {...listProps()} />);
+    const cardEl = screen.getByTestId('collection-card-1');
+    expect(within(cardEl).getByTestId('collection-card-fallback')).toBeInTheDocument();
+  });
+
   it('empty list renders the localized empty state', () => {
     const props = listProps();
     props.collections = [];

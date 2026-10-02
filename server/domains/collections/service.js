@@ -285,18 +285,20 @@ async function resolveMemberRows(userId, collection, getCandidates) {
 }
 
 /**
- * Card preview rows (P-3, owner ruling): the ≤4 newest-added members of an
- * already-resolved member view — revoked and shared-excluded rows NEVER surface
- * (name/thumbnail after revocation is a leak; foreign rows are not shareable
- * content). Ordering is createdAt desc (added time), deterministic tie-break
- * nodeId desc; pure in-memory over rows resolveMemberRows already returned —
- * building previews adds ZERO queries.
+ * Card preview rows (P-3, owner ruling; 2026-10-01 amendment): the ≤4
+ * newest-added members of an already-resolved member view — only revoked rows
+ * NEVER surface (name/thumbnail after access loss is a leak). Foreign-owned
+ * (shared_excluded) members DO preview to their viewer: the member list already
+ * renders them to the owner, and the grantee view omits them upstream, so the
+ * old preview-side exclusion protected nobody and only desynced card vs list.
+ * Ordering is createdAt desc (added time), deterministic tie-break nodeId desc;
+ * pure in-memory over rows resolveMemberRows already returned — ZERO extra queries.
  */
 const PREVIEW_ITEM_CAP = 4;
 
 function buildPreviewItems(rows) {
   return rows
-    .filter((row) => row.state !== 'revoked' && !row.sharedExcluded)
+    .filter((row) => row.state !== 'revoked')
     .slice()
     .sort((a, b) => {
       const at = String(a.createdAt ?? '');

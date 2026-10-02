@@ -90,8 +90,10 @@ Target-contract spec.
   `data-file-node-id` + `data-testid="collection-preview-<node_id>"` and shows the file icon
   immediately (`getFileIcon` from `{type, mime, name}`), swapping to a thumbnail `CardMedia`
   once `previewThumbnails` (Map, keyed by node id) gains that id via the batch mechanism
-  (§2.3 `onPreviewThumbnailsLoaded`). A collection with no previewable members renders the
-  `getFileIconForGrid` directory glyph.
+  (§2.3 `onPreviewThumbnailsLoaded`). A collection with no previewable members renders the sidebar collections
+  glyph (`Collections as CollectionsIcon`, `fontSize="large"`, `color="action"`,
+  centered in the media area, `data-testid="collection-card-fallback"`) — not a
+  file-tree folder icon (2026-10-01 owner ruling).
 - **Footer area (M-1/M-4, 2026-09-30):** collection name ONLY — the member-count line
   (`fileManager.collectionsItemCount`) and the `status=archived` Chip are REMOVED (archive
   membership is view-scoped; the count was pure noise). The card menu trigger is the tile

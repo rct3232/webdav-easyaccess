@@ -84,6 +84,7 @@ interface CollectionRow {
   collection_id: number;
   name: string;
   status: string;
+  last_visited_at?: string | null;
 }
 
 // Collections created by the running case (UI or API); afterEach purges them
@@ -378,6 +379,12 @@ test('E2E-COLLECTION-002: Add-to-collection submenu creates a collection inline,
   // P-3 previews: the card media area carries one cell per recent member.
   await expect(page.getByTestId(`collection-preview-${fileA.nodeId}`)).toBeVisible();
   await expect(page.getByTestId(`collection-preview-${fileB.nodeId}`)).toBeVisible();
+
+  // §11 follow-up 5 (2026-10-01): the creator's cursor is seeded at create — the
+  // sidebar row for a freshly created collection carries NO new dot.
+  const createdRow = await findCollectionByName(request, token, name);
+  expect(createdRow?.last_visited_at).toBeTruthy();
+  await expect(page.getByTestId(`collection-new-dot-${createdRow?.collection_id}`)).toHaveCount(0);
 
   await openCollectionCard(page, name);
   await expect(page.getByTestId('members-list')).toBeVisible();

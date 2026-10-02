@@ -555,6 +555,43 @@ describe('CollectionsRepository conformance', () => {
       expect(new Date(cursor).getTime()).toBe(new Date('2026-09-02T10:00:00.000Z').getTime());
     });
 
+    it('listDigestCursorMap batches the requester cursors: seeded pairs present, never-opened absent', async () => {
+      const owner = await uniqueUser();
+      const stranger = await uniqueUser();
+      let idA;
+      let idB;
+      await inTx(async (tx) => {
+        idA = (
+          await repo.insertCollection(tx, {
+            ownerId: owner.id,
+            name: 'CursorMap A',
+            origin: 'user',
+          })
+        ).id;
+        idB = (
+          await repo.insertCollection(tx, {
+            ownerId: owner.id,
+            name: 'CursorMap B',
+            origin: 'user',
+          })
+        ).id;
+        await repo.upsertDigestCursor(tx, owner.id, idA, new Date('2026-09-01T10:00:00.000Z'));
+        await repo.upsertDigestCursor(tx, stranger.id, idA, new Date('2026-09-05T10:00:00.000Z'));
+      });
+
+      const map = await repo.listDigestCursorMap(owner.id);
+      expect(Object.keys(map).map(Number)).toEqual([Number(idA)]);
+      expect(new Date(map[idA]).getTime()).toBe(new Date('2026-09-01T10:00:00.000Z').getTime());
+      // never-opened collection: ABSENT key (the client new-dot rule keys on this)
+      expect(map[idB]).toBeUndefined();
+
+      const strangerMap = await repo.listDigestCursorMap(stranger.id);
+      expect(Object.keys(strangerMap).map(Number)).toEqual([Number(idA)]);
+
+      const nobody = await uniqueUser();
+      expect(await repo.listDigestCursorMap(nobody.id)).toEqual({});
+    });
+
     it('centroids are keyed by (collection, model) — a new model adds a row, same model replaces', async () => {
       const owner = await uniqueUser();
       let id;
@@ -726,6 +763,28 @@ describe('CollectionsRepository conformance', () => {
         inverse: { op: 'delete-collection', collectionId: Number(created.id) },
       });
       expect(Number(rows[0].chain_seq)).toBe(1);
+    });
+
+    it('createCollection seeds the creator digest cursor inside the same journaled TX (2026-10-01 ruling)', async () => {
+      const owner = await uniqueUser();
+      const created = await collectionsStore.createCollection(
+        { ownerId: owner.id, name: 'Seeded create', origin: 'user' },
+        ctx
+      );
+
+      const { rows } = await dbQuery(
+        'SELECT user_id, last_visited_at FROM collection_digest_cursors WHERE collection_id = ?',
+        [Number(created.id)]
+      );
+      expect(rows).toHaveLength(1);
+      expect(Number(rows[0].user_id)).toBe(Number(owner.id));
+      // the seed value is the collection's created_at (same instant, both dialects)
+      expect(new Date(rows[0].last_visited_at).getTime()).toBe(
+        new Date(created.createdAt).getTime()
+      );
+
+      const map = await repo.listDigestCursorMap(owner.id);
+      expect(new Date(map[created.id]).getTime()).toBe(new Date(created.createdAt).getTime());
     });
 
     it('addItem journals the add; the idempotent duplicate still records its own row', async () => {

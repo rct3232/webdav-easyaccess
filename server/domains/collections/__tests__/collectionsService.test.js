@@ -1023,3 +1023,90 @@ describe('collectionsService admin operator rule (grantee ban + owner-keyed fore
     expect(ok.grant.granteeId).toBe(bob.user.id);
   });
 });
+
+describe('collectionsService new-dot cursor fields (2026-10-01 owner ruling)', () => {
+  it('createCollection seeds the creator cursor; listCollections rows carry last_visited_at', async () => {
+    const ctx = await setupServiceUser('lvc-seed');
+    const { collection } = await collectionsService.createCollection(ctx.user.id, {
+      name: 'LVC seed',
+    });
+
+    const cursors = await dbQuery(
+      'SELECT user_id, last_visited_at FROM collection_digest_cursors WHERE collection_id = ?',
+      [collection.id]
+    );
+    expect(cursors.rows).toHaveLength(1);
+    expect(Number(cursors.rows[0].user_id)).toBe(Number(ctx.user.id));
+    expect(new Date(cursors.rows[0].last_visited_at).getTime()).toBe(
+      new Date(collection.createdAt).getTime()
+    );
+
+    const { collections } = await collectionsService.listCollections(ctx.user.id, {
+      include: 'mine',
+    });
+    const row = collections.find((c) => c.collection_id === collection.id);
+    expect(row).toHaveProperty('last_visited_at');
+    expect(row.last_visited_at).not.toBeNull();
+    expect(new Date(row.last_visited_at).getTime()).toBe(new Date(collection.createdAt).getTime());
+  });
+
+  it('legacy collection without a cursor row → listCollections row carries null; getCollection omits the field', async () => {
+    const ctx = await createUserWithRoot('lvc-legacy');
+    const storage = require('@server/store/storage');
+    const createCollectionsRepository = require('@server/store/repositories/CollectionsRepository');
+    const repo = createCollectionsRepository(storage.getExecutor());
+    const legacy = await storage
+      .getExecutor()
+      .transaction((tx) =>
+        repo.insertCollection(tx, { ownerId: ctx.user.id, name: 'Legacy row', origin: 'user' })
+      );
+
+    const { collections } = await collectionsService.listCollections(ctx.user.id, {
+      include: 'mine',
+    });
+    const row = collections.find((c) => c.collection_id === Number(legacy.id));
+    expect(row).toHaveProperty('last_visited_at', null);
+
+    const single = await collectionsService.getCollection(ctx.user.id, Number(legacy.id));
+    expect(single.collection).not.toHaveProperty('last_visited_at');
+  });
+
+  it('grantee flow: null until first open; getItems stamps so the next list carries an ISO cursor', async () => {
+    const owner = await setupServiceUser('lvc-g-o');
+    const grantee = await setupServiceUser('lvc-g-g');
+    const { collection } = await collectionsService.createCollection(owner.user.id, {
+      name: 'LVC shared',
+    });
+    await collectionsService.grantCollectionAccess(
+      owner.user.id,
+      collection.id,
+      grantee.user.id,
+      'viewer'
+    );
+
+    const before = await collectionsService.listCollections(grantee.user.id, {
+      include: 'mine,shared',
+    });
+    const beforeRow = before.collections.find((c) => c.collection_id === collection.id);
+    expect(beforeRow).toHaveProperty('last_visited_at', null);
+
+    const openedAt = Date.now();
+    await collectionsService.getItems(grantee.user.id, collection.id);
+
+    const after = await collectionsService.listCollections(grantee.user.id, {
+      include: 'mine,shared',
+    });
+    const afterRow = after.collections.find((c) => c.collection_id === collection.id);
+    expect(afterRow.last_visited_at).not.toBeNull();
+    expect(new Date(afterRow.last_visited_at).getTime()).toBeGreaterThanOrEqual(openedAt - 1000);
+
+    // the OWNER's seeded cursor is untouched by the grantee's visit
+    const ownerList = await collectionsService.listCollections(owner.user.id, {
+      include: 'mine',
+    });
+    const ownerRow = ownerList.collections.find((c) => c.collection_id === collection.id);
+    expect(new Date(ownerRow.last_visited_at).getTime()).toBe(
+      new Date(collection.createdAt).getTime()
+    );
+  });
+});

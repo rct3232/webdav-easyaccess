@@ -126,8 +126,8 @@ describe('FileGridItem — member tile slots (P-4)', () => {
     // CardTile cornerBadges container: absolute top-left, opposite the More action
     const corner = excluded.parentElement;
     expect(getComputedStyle(corner).position).toBe('absolute');
-    expect(getComputedStyle(corner).top).toBe('4px');
-    expect(getComputedStyle(corner).left).toBe('4px');
+    expect(getComputedStyle(corner).top).toBe('8px');
+    expect(getComputedStyle(corner).left).toBe('8px');
     unmount();
     renderWithProviders(<FileGridItem {...itemProps(memberRow())} />);
     const pending = screen.getByTestId('member-publish-pending-badge-90210');

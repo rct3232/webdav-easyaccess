@@ -123,7 +123,7 @@ describe('CardTile', () => {
     expect(mediaBox).toContainElement(badge);
     expect(mediaBox).toContainElement(screen.getByTestId('tile-more-corner'));
     // corner overlay is absolutely anchored top-left, inside the media box
-    expect(badge.parentElement).toHaveStyle({ position: 'absolute', top: '4px', left: '4px' });
+    expect(badge.parentElement).toHaveStyle({ position: 'absolute', top: '8px', left: '8px' });
   });
 
   it('no cornerBadges ⇒ zero DOM delta (files parity)', () => {

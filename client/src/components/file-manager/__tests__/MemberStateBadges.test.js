@@ -244,9 +244,9 @@ describe('MemberStateBadges — i18n contract', () => {
   });
 });
 
-describe('pending warning tone (owner ruling (a), 2026-10-01)', () => {
-  it('renders both composite icons in the warning tone', () => {
+describe('pending tone carrier (2026-10-01 revised)', () => {
+  it('composite glyphs carry no icon-level color — the tone rides the badge carrier', () => {
     const { container } = render(<PublishPendingIcon />);
-    expect(container.querySelectorAll('.MuiSvgIcon-colorWarning')).toHaveLength(2);
+    expect(container.querySelectorAll('.MuiSvgIcon-colorWarning')).toHaveLength(0);
   });
 });

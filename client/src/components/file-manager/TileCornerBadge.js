@@ -48,7 +48,11 @@ const TileCornerBadge = ({ title = null, onClick = null, children, tone = null, 
       {children}
     </Box>
   ) : (
-    <Box component="span" sx={tone ? { ...badgeBaseStyles, ...toneSx } : badgeBaseStyles} {...other}>
+    <Box
+      component="span"
+      sx={tone ? { ...badgeBaseStyles, ...toneSx } : badgeBaseStyles}
+      {...other}
+    >
       {children}
     </Box>
   );

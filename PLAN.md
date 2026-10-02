@@ -716,8 +716,8 @@ unchanged (gates make admin rows unreachable). RCA: 2026-10-01 pivot adjudicatio
 | Task             | Objective                                                                                                         | Deps | Verification                                                                                        | Status   |
 | ---------------- | ----------------------------------------------------------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------- | -------- |
 | U1 server gates  | `requireNonAdmin` on ALL collections/file-likes/dashboard routes + grantee-admin service ban (+ docs-first flips) | none | RED→GREEN; server `test:ci` + `test:ci:pg:adapters`; ownerNodeResolver admin tests UNMODIFIED-green | `[done]` |
-| U2 client gating | collections/likes/dashboard surfaces ABSENT for admin actors (sibling agent, `wt-pivot-cli`)                      | U1   | client suite + eslint/prettier; server 403 already enforces regardless                              | `[todo]` |
-| U3 e2e migration | retire/repoint admin-participation fixtures; add admin-403 legs (e2e agent, later)                                | U1   | E2E collections/dashboard specs green                                                               | `[done]` |
+| U2 client gating | collections/likes/dashboard surfaces ABSENT for admin actors (sibling agent, `wt-pivot-cli`)                      | U1   | client suite + eslint/prettier; server 403 already enforces regardless                              | `[done]` (merged `5ac5246`) |
+| U3 e2e migration | collections E2E migrated to a regular-user actor (scratch user provisioning, home-based workspaces, dual-token cleanup); admin-403 coverage owned by U1 unit gates               | U1   | `collections-desktop` 14/14 twice consecutive                                                       | `[done]` |
 
 - **§14 execution log (branch `feature/admin-operator-server`, base `822df02`):** U1 commits:
   docs `d22e617` → RED `df8f654` → gates `5f5a00a` → ledger (this commit). RED observed: 30 new

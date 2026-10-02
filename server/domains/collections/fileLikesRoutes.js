@@ -12,6 +12,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../../utils/auth');
 const requireUser = require('../../middleware/requireUser');
+const requireNonAdmin = require('../../middleware/requireNonAdmin');
 const { asyncHandler, mapServiceError, validationError } = require('../../utils/errorHandler');
 const { parseNodeId } = require('../../middleware/validateNodeIdParam');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
@@ -30,6 +31,7 @@ router.get(
   '/',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       const liked = await fileLikesService.listLikedNodeIds(req.user.full.id);
@@ -44,6 +46,7 @@ router.get(
   '/items',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       // Decision B (2026-09-29): full fetch — the retired `cursor`/`limit`
@@ -62,6 +65,7 @@ router.put(
   '/:nodeId',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       const nodeId = parseNodeId(req.params.nodeId, 'nodeId');

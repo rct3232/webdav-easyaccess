@@ -45,6 +45,10 @@ and with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 ### 2.3 Middleware Used
 
 - `authenticateToken`, `requireUser` (per-router)
+- **No admin gate on this router (journal unchanged):** every collections-mutating endpoint is
+  server-gated against ADMIN requesters (operator rule, owner pivot 2026-10-01), so ADMIN actors
+  have no journal rows to list — the collections-domain feed is EMPTY BY CONSTRUCTION for admins.
+  File-surface usage recording (download/preview/search-hit) for admins is unchanged.
 - `setupModeGuardInstance` at mount (see §2.1)
 
 ### 2.4 Request/Response Spec

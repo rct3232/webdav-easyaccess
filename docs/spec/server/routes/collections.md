@@ -72,7 +72,12 @@ toggle and the whole-viewer liked-ids read ride the separate `/api/file-likes` m
 
 ### 2.3 Middleware Used
 
-- `authenticateToken`, `requireUser` (per-router, domain layout per recentFiles precedent)
+- `authenticateToken`, `requireUser`, `requireNonAdmin` (per-router, in that order; domain layout
+  per recentFiles precedent)
+- **Actor restriction (operator rule, owner pivot 2026-10-01):** EVERY route in this router responds
+  **403 `serverErrors.collections.forbidden`** when the requester is an ADMIN (`requireNonAdmin`).
+  `POST /:id/grants` additionally 403s (same code) when the resolved **grantee is an admin**
+  (service-level ban in `grantCollectionAccess`); collections never reference admins.
 - `setupModeGuardInstance` at mount (see §2.1)
 - `parseNodeId`-style validation for `nodeIds`/`seedNodeId` payload fields (numeric nodeIds
   only; invalid ids are rejected 400, never normalized)
@@ -381,7 +386,7 @@ suggestion row (a suggestion state transition is opportunistic).
 | 400  | `serverErrors.collections.previewTargetRequired` | 0 or 2 of `seedNodeId`/`definition`.                                                                 |
 | 400  | `serverErrors.collections.mergeSameCollection`   | `:id == :other`.                                                                                     |
 | 400  | `serverErrors.collections.invalidDefinition`     | Malformed `definition` payload (unknown kind / predicate type / bad atom).                           |
-| 403  | `serverErrors.collections.forbidden`             | Non-owner mutation; viewer writes; editor removing what they did not add.                            |
+| 403  | `serverErrors.collections.forbidden`             | Non-owner mutation; viewer writes; editor removing what they did not add. ALSO the admin-operator gate: EVERY endpoint for an ADMIN requester (`requireNonAdmin`) and `POST /:id/grants` with an ADMIN grantee (service ban) — owner pivot 2026-10-01. |
 | 404  | `serverErrors.collections.notFound`              | Unknown id, or no access at all (read = 404 masquerade — ungranted reads do not disclose existence). |
 | 404  | `serverErrors.collections.granteeNotFound`       | Unknown user on grant.                                                                               |
 | 404  | `serverErrors.collections.grantNotFound`         | Revoke of a non-existing row; `/grants/me` caller holding no grant row (incl. owner).                |

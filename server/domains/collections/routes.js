@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../../utils/auth');
 const requireUser = require('../../middleware/requireUser');
+const requireNonAdmin = require('../../middleware/requireNonAdmin');
 const { asyncHandler, mapServiceError } = require('../../utils/errorHandler');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const collectionsService = require('./service');
@@ -47,6 +48,7 @@ router.post(
   '/preview',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       res.json(
@@ -62,6 +64,7 @@ router.get(
   '/merge-suggestions',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       res.json(await collectionsService.listMergeSuggestions(req.user.full.id));
@@ -75,6 +78,7 @@ router.post(
   '/for-nodes',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       const result = await collectionsService.getForNodes(req.user.full.id, req.body.nodeIds);
@@ -94,6 +98,7 @@ router.get(
   '/',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       res.json(
@@ -112,6 +117,7 @@ router.get(
   '/:id',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       const result = await collectionsService.getCollection(
@@ -129,6 +135,7 @@ router.post(
   '/',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       const body = req.body || {};
@@ -152,6 +159,7 @@ router.put(
   '/:id',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       const result = await collectionsService.updateCollection(
@@ -177,6 +185,7 @@ router.post(
   '/:id/archive',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       const result = await collectionsService.archiveCollection(
@@ -197,6 +206,7 @@ router.post(
   '/:id/restore',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       const result = await collectionsService.restoreCollection(
@@ -217,6 +227,7 @@ router.delete(
   '/:id',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       await collectionsService.deleteCollectionPermanent(req.user.full.id, Number(req.params.id));
@@ -231,6 +242,7 @@ router.get(
   '/:id/items',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       // Decision B (2026-09-29): the retired `cursor`/`limit` query params are
@@ -256,6 +268,7 @@ router.post(
   '/:id/items',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       const result = await collectionsService.addItems(
@@ -279,6 +292,7 @@ router.delete(
   '/:id/items',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       const result = await collectionsService.removeItems(
@@ -303,6 +317,7 @@ router.put(
   '/:id/items/publish',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       const body = req.body || {};
@@ -327,6 +342,7 @@ router.post(
   '/:id/preview',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       res.json(
@@ -344,6 +360,7 @@ router.post(
   '/:id/merge/:other',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       const result = await collectionsService.mergeCollections(
@@ -370,6 +387,7 @@ router.post(
   '/:id/merge-dismiss',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       res.json(
@@ -389,6 +407,7 @@ router.post(
   '/:id/merge-reject',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       res.json(
@@ -408,6 +427,7 @@ router.get(
   '/:id/grants',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       res.json(await collectionsService.listGrants(req.user.full.id, Number(req.params.id)));
@@ -421,6 +441,7 @@ router.post(
   '/:id/grants',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       const result = await collectionsService.grantCollectionAccess(
@@ -446,6 +467,7 @@ router.delete(
   '/:id/grants/me',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       const result = await collectionsService.revokeOwnGrant(
@@ -467,6 +489,7 @@ router.delete(
   '/:id/grants',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       const result = await collectionsService.revokeCollectionAccess(

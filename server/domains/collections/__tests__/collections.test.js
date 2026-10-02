@@ -1369,3 +1369,137 @@ describe('PUT /:id/items/publish (P-4 member publish)', () => {
     expect(masq.status).toBe(404);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Admin operator gate (owner pivot 2026-10-01, routes spec §2.3): collections
+// are a personal-storage surface — the ADMIN actor NEVER participates. Every
+// endpoint responds 403 serverErrors.collections.forbidden for admin
+// requesters (requireNonAdmin), and admin-as-grantee is banned at creation.
+// The file-ACL admin-owns-everything convention must not launder a 200 here.
+// ---------------------------------------------------------------------------
+
+describe('admin operator gate (403 on every collections endpoint)', () => {
+  async function createAdminUser(tag) {
+    const { user, token } = await createAuthenticatedTestUser({
+      username: `opadm-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      isAdmin: true,
+    });
+    return { user, token };
+  }
+
+  // One shared admin principal for the table: the gate is request-scoped and
+  // runs before any handler, so per-case user creation would only slow the suite.
+  let gateAdmin;
+  beforeAll(async () => {
+    gateAdmin = await createAdminUser('gate');
+  });
+
+  const CALLS = [
+    [{ verb: 'get', path: '/api/collections' }],
+    [{ verb: 'post', path: '/api/collections', body: { name: 'Admin set' } }],
+    [{ verb: 'get', path: '/api/collections/1' }],
+    [{ verb: 'put', path: '/api/collections/1', body: { name: 'renamed', pinned: true } }],
+    [{ verb: 'post', path: '/api/collections/1/archive' }],
+    [{ verb: 'post', path: '/api/collections/1/restore' }],
+    [{ verb: 'delete', path: '/api/collections/1' }],
+    [{ verb: 'get', path: '/api/collections/1/items' }],
+    [{ verb: 'post', path: '/api/collections/1/items', body: { nodeIds: [1] } }],
+    [{ verb: 'delete', path: '/api/collections/1/items', body: { nodeIds: [1] } }],
+    [
+      {
+        verb: 'put',
+        path: '/api/collections/1/items/publish',
+        body: { nodeIds: [1], published: true },
+      },
+    ],
+    [{ verb: 'post', path: '/api/collections/preview', body: { seedNodeId: 1 } }],
+    [{ verb: 'post', path: '/api/collections/1/preview' }],
+    [{ verb: 'get', path: '/api/collections/merge-suggestions' }],
+    [{ verb: 'post', path: '/api/collections/for-nodes', body: { nodeIds: [1] } }],
+    [{ verb: 'post', path: '/api/collections/1/merge/2' }],
+    [{ verb: 'post', path: '/api/collections/1/merge-dismiss', body: { otherId: 2 } }],
+    [{ verb: 'post', path: '/api/collections/1/merge-reject', body: { otherId: 2 } }],
+    [{ verb: 'get', path: '/api/collections/1/grants' }],
+    [{ verb: 'post', path: '/api/collections/1/grants', body: { userId: 1, role: 'viewer' } }],
+    [{ verb: 'delete', path: '/api/collections/1/grants?userId=1' }],
+    [{ verb: 'delete', path: '/api/collections/1/grants/me' }],
+  ];
+
+  it.each(CALLS)(
+    '$verb $path responds 403 forbidden for an admin requester',
+    async ({ verb, path, body }) => {
+      const call = request(app)[verb](path).set('Authorization', `Bearer ${gateAdmin.token}`);
+      const res = await (body ? call.send(body) : call);
+      expect(res.status).toBe(403);
+      expect(res.body.errorCode).toBe(codes().collections.forbidden);
+    }
+  );
+
+  it('gates deep list/read/create flows even against otherwise-valid admin requests', async () => {
+    const admin = await createAdminUser('deep');
+    const owner = await createUserWithRoot('deep-owner');
+    const created = await createCollectionViaApi(owner.token, { name: 'Deep' });
+    const id = created.body.collection.collection_id;
+    const beach = await fileNodeService.createFile(owner.root.id, 'deep-beach.jpg');
+    await request(app)
+      .post(`/api/collections/${id}/items`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ nodeIds: [beach.id] });
+
+    const list = await request(app)
+      .get('/api/collections')
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(list.status).toBe(403);
+    expect(list.body.errorCode).toBe(codes().collections.forbidden);
+
+    const read = await request(app)
+      .get(`/api/collections/${id}`)
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(read.status).toBe(403);
+
+    const items = await request(app)
+      .get(`/api/collections/${id}/items`)
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(items.status).toBe(403);
+
+    const made = await createCollectionViaApi(admin.token, { name: 'Admin deep' });
+    expect(made.status).toBe(403);
+    const after = await request(app)
+      .get('/api/collections')
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(after.body.collections.filter((row) => row.name.startsWith('Admin'))).toHaveLength(0);
+  });
+
+  it('rejects granting collection access to an ADMIN grantee (403 ban at creation)', async () => {
+    const admin = await createAdminUser('gban');
+    const owner = await createUserWithRoot('gban-owner');
+    const created = await createCollectionViaApi(owner.token, { name: 'GrantBan' });
+    const id = created.body.collection.collection_id;
+
+    const banned = await request(app)
+      .post(`/api/collections/${id}/grants`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ userId: admin.user.id, role: 'viewer' });
+    expect(banned.status).toBe(403);
+    expect(banned.body.errorCode).toBe(codes().collections.forbidden);
+
+    // non-admin grantee still succeeds (regression guard)
+    const viewer = await createUserWithRoot('gban-viewer');
+    const ok = await request(app)
+      .post(`/api/collections/${id}/grants`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ userId: viewer.user.id, role: 'viewer' });
+    expect(ok.status).toBe(201);
+  });
+
+  it('keeps non-admin routes fully functional under the gate (regression)', async () => {
+    const owner = await createUserWithRoot('gate-owner');
+    const made = await createCollectionViaApi(owner.token, { name: 'StillMine' });
+    expect(made.status).toBe(201);
+    const listed = await request(app)
+      .get('/api/collections')
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(listed.status).toBe(200);
+    expect(listed.body.collections.map((row) => row.name)).toContain('StillMine');
+  });
+});

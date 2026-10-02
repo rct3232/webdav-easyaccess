@@ -473,3 +473,54 @@ describe('GET /api/file-likes/items', () => {
     expect(res.body.items).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Admin operator gate (owner pivot 2026-10-01, routes spec §2.3): the ADMIN
+// actor never likes — every file-likes endpoint responds 403
+// serverErrors.collections.forbidden for admin requesters (requireNonAdmin).
+// ---------------------------------------------------------------------------
+
+describe('admin operator gate (file-likes 403 for admin requesters)', () => {
+  async function createAdmin(tag) {
+    const { user, token } = await createAuthenticatedTestUser({
+      username: `fladm-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      isAdmin: true,
+    });
+    return { user, token };
+  }
+
+  it('GET / → 403 forbidden', async () => {
+    const admin = await createAdmin('list');
+    const res = await request(app)
+      .get('/api/file-likes')
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(403);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.collections.forbidden);
+  });
+
+  it('GET /items → 403 forbidden', async () => {
+    const admin = await createAdmin('items');
+    const res = await request(app)
+      .get('/api/file-likes/items')
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(403);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.collections.forbidden);
+  });
+
+  it('PUT /:nodeId → 403 forbidden even for an explicitly readable node, and writes nothing', async () => {
+    const admin = await createAdmin('set');
+    const node = await makeReadableNode(admin.user.id, 'adm-likeable.txt');
+
+    const res = await request(app)
+      .put(`/api/file-likes/${node.nodeId}`)
+      .set('Authorization', `Bearer ${admin.token}`)
+      .send({ liked: true });
+    expect(res.status).toBe(403);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.collections.forbidden);
+
+    const { rows } = await dbQuery('SELECT COUNT(*) AS count FROM file_likes WHERE user_id = ?', [
+      admin.user.id,
+    ]);
+    expect(Number(rows[0].count)).toBe(0);
+  });
+});

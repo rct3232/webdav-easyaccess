@@ -146,7 +146,7 @@ These routes are for accessing shared files via a public link (token in path). A
 
 ## Collections
 
-Journaled mutations return `undo: { action_id }` (see Actions). Spec: `docs/spec/server/routes/collections.md`.
+Journaled mutations return `undo: { action_id }` (see Actions). Spec: `docs/spec/server/routes/collections.md`. **Actor restriction (operator rule, owner pivot 2026-10-01):** every `/api/collections` row below responds **403 `serverErrors.collections.forbidden`** for ADMIN requesters; `POST /:id/grants` additionally 403s for an ADMIN grantee (admin-as-grantee banned).
 
 | Method | Path
 
@@ -179,7 +179,7 @@ Journaled mutations return `undo: { action_id }` (see Actions). Spec: `docs/spec
 
 ## File likes
 
-Separate mount (per-node subject, not per-collection; router still owned by the collections domain). No undo pointer (§4.11). Spec: `docs/spec/server/routes/fileLikes.md`.
+Separate mount (per-node subject, not per-collection; router still owned by the collections domain). No undo pointer (§4.11). Spec: `docs/spec/server/routes/fileLikes.md`. **Actor restriction:** all rows below respond **403 `serverErrors.collections.forbidden`** for ADMIN requesters (the admin actor never likes).
 
 | Method | Path                      | Auth  | Description                                                                                                                                                                                                                                     |
 | ------------------------- | ------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -217,7 +217,7 @@ Spec: `docs/spec/server/routes/actions.md`.
 
 ## Dashboard (Storage v1, T0.10)
 
-Spec: `docs/spec/server/routes/dashboard.md`. Read surfaces for the MyPage `Storage` dashboard (AI_FEATURE_PLAN §4.16): the journal feed and collections status ride `/api/actions` and `/api/collections`.
+Spec: `docs/spec/server/routes/dashboard.md`. Read surfaces for the MyPage `Storage` dashboard (AI_FEATURE_PLAN §4.16): the journal feed and collections status ride `/api/actions` and `/api/collections`. **Actor restriction:** both rows below respond **403 `serverErrors.collections.forbidden`** for ADMIN requesters — the dashboard is non-admin-only (operator rule, owner pivot 2026-10-01).
 
 | Method | Path                                | Auth  | Description                                                                                                                                                                                                                                                                                                  |
 | ------ | ----------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

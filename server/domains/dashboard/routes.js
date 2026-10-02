@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../../utils/auth');
 const requireUser = require('../../middleware/requireUser');
+const requireNonAdmin = require('../../middleware/requireNonAdmin');
 const { asyncHandler, mapServiceError } = require('../../utils/errorHandler');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const dashboardService = require('./service');
@@ -42,6 +43,7 @@ router.get(
   '/',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       const result = await dashboardService.getDashboardSummary(req.user.full.id);
@@ -58,6 +60,7 @@ router.post(
   '/suggestions/accept',
   authenticateToken,
   requireUser,
+  requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
       const result = await dashboardService.acceptSuggestions(

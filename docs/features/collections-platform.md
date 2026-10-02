@@ -107,10 +107,12 @@ archive trigger.
 Member rows render per read with a live permission check: normal; revoked (gray placeholder, no
 name/thumbnail — metadata after revocation would leak); trashed-by-owner (hidden); purged (gone).
 Foreign-owned files never render in live-shared views (cross-leak rule; `Not owner's file — not shared`
-chip in the owner's view), though adding them stays allowed — you may add what you can read. Ownership
-follows the `permissionPolicy.js` convention (admin owns the whole tree): admin-owned collections have
-no foreign members — their rows never render `shared_excluded`/publish-pending markers and their
-publish path is real.
+chip in the owner's view), though adding them stays allowed — you may add what you can read. Operator
+rule (owner pivot 2026-10-01): the ADMIN actor never participates in collections/likes/dashboard —
+these are personal-storage surfaces and every collection endpoint is server-gated 403
+(`collections.forbidden`) for admin requesters, so an admin-owned collection is unreachable by
+definition. The `permissionPolicy.js` convention (admin owns the whole tree) remains scoped to
+file-ACL surfaces.
 Member-row controls omit move/copy/rename/delete — a collection is a view, not a workspace —
 offering exclude, publish (shared only), download (per file ACL), `Reveal original location`, read-only
 properties, and like; multi-select adds batch exclude/publish and add-to-another-collection, never
@@ -122,7 +124,8 @@ revocation, instant — §4.7 Path 1; the former recipient-local `Leave` hide is
 
 Per-file, per-user; context menu (list and member rows share one state) plus properties-header
 toggle; no inline hearts (rejected, density). Feeds the activity score, the split hot set, and a
-liked-cluster fast path.
+liked-cluster fast path. Operator rule: the ADMIN actor never likes — every like entry point rides
+`/api/file-likes`, which is server-gated 403 (`collections.forbidden`) for admin requesters (§3.2).
 
 **Landing (P-5, owner ruling 2026-09-29):** the Likes view is a **static child row of the
 Collections sidebar section** (`/files/__collections__/liked`, the ArchiveNode precedent — the
@@ -139,7 +142,10 @@ display slices 50+50 client-side via `useInfiniteScroll`). Likes survive trash a
 ### 3.4 Usage signals
 
 Recorded only for low-frequency actions (open, download, preview, search hit, like), never on
-listings; a nightly rollup feeds the activity score; raw events age out after 90 days.
+listings; a nightly rollup feeds the activity score; raw events age out after 90 days. Usage
+recording is UNCHANGED for admins (download/preview/search-hit keep recording on file surfaces);
+only the `like` signal becomes unreachable for the admin actor — it rides the gated `/api/file-likes`
+surface (§3.2/§3.3), so admin `like` rows are never written.
 
 ## 4. Behavior areas
 
@@ -194,7 +200,8 @@ but the user decides.
 grid with fade and `plus N more` counter — vector math only, no LLM cost. It creates a seed-origin
 collection: "similar to this file" with a threshold. The dialog must state that the **entire**
 initial set — preview plus unseen remainder — is publish-approved as a batch if the collection is
-ever shared.
+ever shared. Admin exclusion: the dialog never renders for the ADMIN actor — seeding creates a
+collection, and collections are server-gated to non-admins (§3.2 operator rule).
 
 ### 4.6 Search
 
@@ -210,7 +217,9 @@ An empty semantic section hides `Save as collection` (saved collections are sema
 name matches never enter definitions); empty sections do not render. Results mode replaces the
 breadcrumb row (`🔍 "query" · N results [Save as collection][✕]`): typing re-filters loaded results,
 Enter re-queries, recent queries are saveable chips. Responses carry an opaque **result reference**
-(§4.22) and may receive one back — today ignored.
+(§4.22) and may receive one back — today ignored. Admin exclusion (T1.5 input): `Save as collection`
+is ABSENT for the ADMIN actor (search itself is unchanged for admins) — saving creates a collection
+and the collections surface is server-gated 403 for admin requesters (§3.2 operator rule).
 
 ### 4.7 Collection sharing
 
@@ -225,6 +234,8 @@ viewer-side `Revoke permission` card action is an actual self-grant revocation
 (`DELETE /:id/grants/me`, instant, no confirm — the owner may trivially re-grant; former
 recipient-local `Leave` hide superseded, 2026-09-29 owner ruling); foreign-owned members never
 render in shared views; revocation is instant, though already-seen metadata cannot be re-taken.
+Admin-as-grantee is PROHIBITED at grant creation: `POST /:id/grants` with an admin grantee 403s
+(`collections.forbidden`, service-level ban) — collections never reference admins (§3.2 operator rule).
 
 ### 4.8 Digest
 
@@ -314,7 +325,9 @@ exist. For admins it is **visible-disabled**: a nav item plus a per-role health 
 (`not_configured | probe_failed (reason) | partial | ok`) with configuration and test entry points;
 unconfigured endpoints answer "not configured", never a misleading 404. Partial configuration shows
 no filler — template names read as ordinary names and missing fields stay absent — and
-insufficiency is admin-visible only.
+insufficiency is admin-visible only. Disambiguation: the admin **visible-disabled** shape applies to
+AI-CONFIG surfaces only. The personal-storage surfaces — collections, likes, dashboard — are
+**ABSENT** for the admin actor (never grayed-out-but-clickable): server-gated 403 (§3.2 operator rule).
 
 ### 4.13 Vector backend behavior
 
@@ -356,7 +369,9 @@ suggestion count) deep-linking into the action context — a pull-overview, not 
 30-day system-changes feed with undo; collections status (grants, merges, archives with undo); and
 the suggestions checklist — every row carries a checkbox, and the only accept control is
 `Accept selected (N)` (checked → trash, command-unit undo per §4.11; no per-file or threshold-specific
-variants). Capacity sparkline only; insight prose is rejected scope.
+variants). Capacity sparkline only; insight prose is rejected scope. Non-admin-only: the dashboard is
+a personal-storage surface — `/api/dashboard` is server-gated 403 for the ADMIN actor and the MyPage
+section never renders for admins (§3.2 operator rule).
 
 ### 4.17 Cleanup and duplicate suggestions
 

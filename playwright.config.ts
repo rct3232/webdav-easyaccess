@@ -55,6 +55,67 @@ type PlaywrightProject = NonNullable<Parameters<typeof defineConfig>[0]['project
 
 const projects: PlaywrightProject[] = [];
 
+// Hermetic scratch-suite entry shape + the shared push rule (P0 closeout
+// item 3 extracted this from the s3-only loop): a `-mobile` variant depends
+// on its `-desktop` sibling only when they SHARE one scratch port; entries
+// flagged `standalone` boot their own scratch server on their own port slot
+// and stay independent siblings (hermetic-dechain rule).
+interface HermeticEntry {
+  name: string;
+  spec: RegExp;
+  use: typeof desktopUse | typeof mobileUse;
+  baseURL: string;
+  standalone?: boolean;
+}
+
+const pushHermetic = (entries: HermeticEntry[]) => {
+  for (const h of entries) {
+    const dependencies =
+      h.name.endsWith('-mobile') && !h.standalone ? [h.name.replace(/-mobile$/, '-desktop')] : [];
+    projects.push({
+      name: h.name,
+      testMatch: h.spec,
+      dependencies,
+      use: {
+        ...h.use,
+        baseURL: h.baseURL,
+      },
+    });
+  }
+};
+
+// The collections legs run in BOTH backend modes (P0 closeout item 3): their
+// scratch servers boot a webdav file backend UNCONDITIONALLY
+// (`writeScratchEnv({ WEA_FILE_STORAGE: 'webdav' })` in the specs), never use
+// the shared :5002 pool nor the MinIO bucket, so an s3 host stack adds nothing
+// they depend on and a webdav host stack breaks nothing. Desktop (:5013) and
+// mobile (:5014) own distinct slots ⇒ standalone siblings, no dependency link.
+const collectionsSpecs: HermeticEntry[] = [
+  {
+    // P0 collections lifecycle (E2E-COLLECTION-001..014) — scratch-hermetic
+    // on its own server (:5013) per the destructive-case policy: the suite
+    // permanently deletes collections and rewrites the per-user undo-journal
+    // chain, so it never runs against the shared :5002 pool. The spec boots
+    // ONE scratch server for the file. Mobile leg (E2E-COLLECTION-015..017):
+    // `collections.mobile.spec.ts` below on its OWN scratch server.
+    name: 'collections-desktop',
+    spec: /collections\.spec\.ts$/,
+    use: desktopUse,
+    baseURL: `http://localhost:${e2ePorts.scratchCollections}`,
+  },
+  {
+    // P0 collections mobile leg (E2E-COLLECTION-015..017, P0 closeout):
+    // boots its own scratch server (:5014) — a distinct port slot means NO
+    // self-overlap with the desktop leg, so it needs no `dependencies`
+    // link (standalone sibling, hermetic-dechain rule).
+    name: 'collections-mobile',
+    spec: /collections\.mobile\.spec\.ts$/,
+    use: mobileUse,
+    baseURL: `http://localhost:${e2ePorts.scratchCollectionsMobile}`,
+    standalone: true,
+  },
+];
+
 if (backendMode === 'webdav') {
   // trash-admin.spec.ts is EXCLUDED from the smoke: E2E-TRASH-007 is
   // scratch-hermetic (:5012, DEF-20) and runs only in the s3 full matrix.
@@ -70,6 +131,7 @@ if (backendMode === 'webdav') {
     grep: smokeTitleMatch,
     use: desktopUse,
   });
+  pushHermetic(collectionsSpecs);
 } else {
   // Platform core matrix: desktop → (full only: admin-desktop) → mobile →
   // (full only: admin-mobile). Each project boundary with mutable state gets
@@ -102,26 +164,22 @@ if (backendMode === 'webdav') {
     );
 
     // Additive, hermetic projects (setup-wizard / admin-config / migration /
-    // trash-admin / collections).
+    // trash-admin); the collections legs are mode-agnostic and pushed below
+    // (`collectionsSpecs`).
     // They spawn their own scratch servers and are isolated per suite (Option A
     // Phase 1): each suite owns ONE distinct scratch port slot
     // (`e2ePorts.scratch*` = base :5003 wizard, :5010 admin-config, :5011
     // migration, :5012 trash-admin, :5013 collections desktop, :5014
     // collections mobile — band offset 0) mirrored by its
-    // baseURL below, and the
-    // migration suite targets its own dedicated MinIO bucket. Phase 2 lifted the
-    // strict chain: the suites are now INDEPENDENT siblings, so they can overlap
-    // the platform/admin projects and each other on idle workers. A suite's
-    // mobile variant still depends on its desktop variant so one suite never
-    // overlaps itself on the same port. Their scratch servers always boot a
-    // webdav-mode file backend, so the s3 run still exercises real WebDAV wiring.
-    const hermeticSpecs: Array<{
-      name: string;
-      spec: RegExp;
-      use: typeof desktopUse | typeof mobileUse;
-      baseURL: string;
-      standalone?: boolean;
-    }> = [
+    // baseURL, and the migration suite targets its own dedicated MinIO bucket.
+    // Phase 2 lifted the strict chain: the suites are now INDEPENDENT siblings,
+    // so they can overlap the platform/admin projects and each other on idle
+    // workers. A suite's mobile variant still depends on its desktop variant so
+    // one suite never overlaps itself on the same port (the `standalone` flag
+    // exempts mobile variants that boot their own scratch server). Their scratch
+    // servers always boot a webdav-mode file backend, so the s3 run still
+    // exercises real WebDAV wiring.
+    const hermeticSpecs: HermeticEntry[] = [
       {
         name: 'setup-wizard-desktop',
         spec: /setup-wizard\.spec\.ts$/,
@@ -167,43 +225,9 @@ if (backendMode === 'webdav') {
         use: desktopUse,
         baseURL: `http://localhost:${e2ePorts.scratchTrashAdmin}`,
       },
-      {
-        // P0 collections lifecycle (E2E-COLLECTION-001..014) — scratch-hermetic
-        // on its own server (:5013) per the destructive-case policy: the suite
-        // permanently deletes collections and rewrites the per-user undo-journal
-        // chain, so it never runs against the shared :5002 pool. The spec boots
-        // ONE scratch server for the file. Mobile leg (E2E-COLLECTION-015..017):
-        // `collections.mobile.spec.ts` below on its OWN scratch server.
-        name: 'collections-desktop',
-        spec: /collections\.spec\.ts$/,
-        use: desktopUse,
-        baseURL: `http://localhost:${e2ePorts.scratchCollections}`,
-      },
-      {
-        // P0 collections mobile leg (E2E-COLLECTION-015..017, P0 closeout):
-        // boots its own scratch server (:5014) — a distinct port slot means NO
-        // self-overlap with the desktop leg, so it needs no `dependencies`
-        // link (standalone sibling, hermetic-dechain rule).
-        name: 'collections-mobile',
-        spec: /collections\.mobile\.spec\.ts$/,
-        use: mobileUse,
-        baseURL: `http://localhost:${e2ePorts.scratchCollectionsMobile}`,
-        standalone: true,
-      },
     ];
-    for (const h of hermeticSpecs) {
-      const dependencies =
-        h.name.endsWith('-mobile') && !h.standalone ? [h.name.replace(/-mobile$/, '-desktop')] : [];
-      projects.push({
-        name: h.name,
-        testMatch: h.spec,
-        dependencies,
-        use: {
-          ...h.use,
-          baseURL: h.baseURL,
-        },
-      });
-    }
+    pushHermetic(hermeticSpecs);
+    pushHermetic(collectionsSpecs);
   }
 }
 

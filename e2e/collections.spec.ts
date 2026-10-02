@@ -74,6 +74,7 @@ interface CollectionRow {
   collection_id: number;
   name: string;
   status: string;
+  item_count?: number;
   last_visited_at?: string | null;
 }
 
@@ -597,6 +598,24 @@ test('E2E-COLLECTION-010: The toolbar sort button re-sorts the collections list 
   await expect(page.getByText(/Collection created/i)).toBeVisible();
   await uiCreateCollectionWithFile(page, file.path, nameZ);
 
+  // Settle wait (flake fix, RCA 2026-10-02): Enter dispatches the async
+  // create→addItems chain (`onCreateAndAdd`); a page.goto issued before the
+  // CHAINED `POST /:id/items` leaves the unload window kills that request —
+  // the new card then legitimately renders the empty `collection-card-fallback`
+  // and shifts every nth() index below. Poll until both members landed
+  // SERVER-side; the sort assertions themselves are unchanged.
+  await expect
+    .poll(
+      async () => {
+        const rows = await listCollections(request, token, 'mine,shared');
+        const a = rows.find((r) => r.name === nameA);
+        const z = rows.find((r) => r.name === nameZ);
+        return Boolean(a && z && a.item_count === 1 && z.item_count === 1);
+      },
+      { timeout: 15_000 }
+    )
+    .toBe(true);
+
   await page.goto('/files/__collections__');
   await expect(collectionCard(page, nameA)).toBeVisible();
   await expect(collectionCard(page, nameZ)).toBeVisible();
@@ -606,7 +625,11 @@ test('E2E-COLLECTION-010: The toolbar sort button re-sorts the collections list 
   await expect(page.getByTestId('file-manager-sort')).toBeVisible();
   await expect(page.getByTestId('collections-sort-menu')).toHaveCount(0);
 
-  const cards = page.locator('[data-testid^="collection-card-"]');
+  // Real card roots only: the prefix also matches the decorative
+  // `collection-card-fallback` child (zero-preview cards) — never count it.
+  const cards = page.locator(
+    '[data-testid^="collection-card-"]:not([data-testid="collection-card-fallback"])'
+  );
 
   // Created → created_at DESC with an `id DESC` tie-break (both stores): the
   // later-created 'Zzz' is first even when second-granular timestamps tie.

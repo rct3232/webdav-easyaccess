@@ -983,3 +983,25 @@ username`), while `openPrivateWorkspace` creates its case folder at the FILESYST
   (`applyInverseTx(tx, payload.inverse, row)`); pinned by the ruling-B service test
   "undo-revoke restores the GRANT but NOT the cursor". No behavior change for other inverses
   (they never read `row`).
+
+### 2026-10-02 — E2E-COLLECTION-010 flaked: nth() resolved to the empty-card fallback (Case B, test race)
+
+- **Summary**: under the new `E2E_BACKEND_MODE=webdav` collections runs, 010 failed
+  intermittently (~half the runs): `cards.nth(1)` expected the second collection name but
+  received `""` — the locator resolved to `div[data-testid="collection-card-fallback"]`.
+- **Diagnosis (trace-proven)**: the second `uiCreateCollectionWithFile` press(Enter) returns
+  while the client's create→add chain is still in flight — `AddToCollectionMenu.submitting()`
+  closes the menu BEFORE `await onCreateAndAdd(...)` (two sequential POSTs;
+  `routes/collections.md` documents them as separate calls: create `/:id`, then
+  `POST /:id/items`). The test's immediate `page.goto('/files/__collections__')` unloaded the
+  document between the two POSTs (trace: `POST /api/collections` 201 for Zzz, NO
+  `POST /api/collections/2/items` anywhere in the run) → Zzz legitimately listed with
+  `preview_items: []` → its card renders the decorative `collection-card-fallback` child,
+  which the prefix selector `[data-testid^="collection-card-"]` also matches — shifting every
+  `nth()` index by one (9 polls, stable: not a render flicker).
+- **Classification**: **Case B (Test Error)** — the app behaves per spec; the helper pressed
+  Enter and moved on without waiting for the documented second call to land.
+- **Action taken**: settle-wait in 010 — API-poll until BOTH collections report
+  `item_count: 1` before navigating (no assertion weakened; the order checks stay); the card
+  locator now excludes `collection-card-fallback` (real card roots only). Surfaced by the
+  webdav runs added in P0 closeout item 3.

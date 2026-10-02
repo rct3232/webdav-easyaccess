@@ -717,10 +717,31 @@ unchanged (gates make admin rows unreachable). RCA: 2026-10-01 pivot adjudicatio
 | ---------------- | ----------------------------------------------------------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------- | -------- |
 | U1 server gates  | `requireNonAdmin` on ALL collections/file-likes/dashboard routes + grantee-admin service ban (+ docs-first flips) | none | RED→GREEN; server `test:ci` + `test:ci:pg:adapters`; ownerNodeResolver admin tests UNMODIFIED-green | `[done]` |
 | U2 client gating | collections/likes/dashboard surfaces ABSENT for admin actors (sibling agent, `wt-pivot-cli`)                      | U1   | client suite + eslint/prettier; server 403 already enforces regardless                              | `[todo]` |
-| U3 e2e migration | retire/repoint admin-participation fixtures; add admin-403 legs (e2e agent, later)                                | U1   | E2E collections/dashboard specs green                                                               | `[todo]` |
+| U3 e2e migration | retire/repoint admin-participation fixtures; add admin-403 legs (e2e agent, later)                                | U1   | E2E collections/dashboard specs green                                                               | `[done]` |
 
 - **§14 execution log (branch `feature/admin-operator-server`, base `822df02`):** U1 commits:
   docs `d22e617` → RED `df8f654` → gates `5f5a00a` → ledger (this commit). RED observed: 30 new
   gate tests failed, 107 pre-existing green. GREEN gates: server `test:ci` **130 suites / 2441 pass
   (5 skip)**; PG adapters leg **23 suites / 344 pass (1 skip)**; affected groups
   (collections+dashboard+policy) 174/174. eslint/prettier clean.
+- **§14 U3 execution log (branch `test/e2e-admin-operator-migration`, base = ai-feature incl.
+  U1+U2 merges; worktree `wt-pivot-e2e`):** `collections-desktop` migrated to a REGULAR-USER
+  actor — commits docs `22d4b09` → code `beae34a` → ledger (this commit). New
+  `e2e/helpers/scratchUser.ts` (`loginScratchAdmin` + `ensureScratchRegularUser`, admin-API
+  create which also ensures the `/<username>` home node); `loginAndOpenWorkspace`/
+  `loginAndOpenOwnedWorkspace` generalized into `loginAndOpenUserWorkspace` (home-based case
+  folder, returns `{base, token, userCreds}`); all 14 cases + case 001 direct login rewired;
+  ownership comments flipped to home-closure wording. Dual-token cleanup: collection purges stay
+  on the user session; `flushPrivateWorkspaceCleanups` gained an optional OPERATOR fallbackToken
+  (`perm-delete` is admin-only BY DESIGN — the admin stays bootstrapped for operator duties, the
+  pivot's role split; documented in `helpers/files.ts`). No admin-403 E2E legs added — those
+  assertions belong to the U1 unit gates (owner ruling in the U3 brief); no assertion weakened.
+  Gates (2026-10-02, own port band, project-scoped compose): full
+  `E2E_BACKEND_MODE=s3 collections-desktop` **14/14 twice consecutively** (1.4 m / 48.2 s); run
+  logs show the designed user-403→operator-200 perm-delete fallback per workspace purge.
+  tsc+prettier clean on touched files (e2e eslint-ignored per repo config). Product finding:
+  NONE — no collections/dashboard/file-likes endpoint wrongly 403s the regular user. Remaining
+  debt (report-only): no other e2e suite touches collections/file-likes/dashboard surfaces
+  (grep: `api/collections|file-likes|dashboard` appears only in `collections.spec.ts`); the
+  ledger U2 row still reads `[todo]` on this base although U2 is merged (`5ac5246`) — left to
+  the U2 owner/coordinator.

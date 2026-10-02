@@ -116,9 +116,11 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
   revocation is a leak) | trashed-by-owner (hidden, row kept) | purged (row cascaded away).
 - Foreign members (files the collection owner doesn't own) in a LIVE-SHARED view are
   **excluded from rendering** with an `Not owner's file — not shared` chip in the owner's view
-  (cross-leak rule; §4.7). Ownership follows the `permissionPolicy.js` convention — an admin
-  owns the whole tree — so an ADMIN-owned collection has NO foreign members: its rows never
-  render `shared_excluded`/publish-pending markers and its publish path is real.
+  (cross-leak rule; §4.7). Operator rule (owner pivot 2026-10-01): collections/likes/dashboard
+  are personal-storage surfaces — the ADMIN actor NEVER participates in them; every endpoint is
+  server-gated 403 (`collections.forbidden`) for admin requesters, so an admin-owned collection
+  is unreachable by definition. The `permissionPolicy.js` convention (admin owns the whole tree)
+  remains — it scopes FILE-ACL surfaces only (permissionPolicy consumers), not these surfaces.
   Adding foreign files to collections is otherwise allowed (rule:
   you may only add what you can read).
 - Member-row controls (context menu & multi-select) — file-mutating items (move/copy/rename/

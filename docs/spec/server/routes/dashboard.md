@@ -42,7 +42,10 @@ with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 
 ### 2.3 Middleware Used
 
-- `authenticateToken`, `requireUser` (per-router; domain layout per recentFiles precedent)
+- `authenticateToken`, `requireUser`, `requireNonAdmin` (per-router, in that order; domain layout per recentFiles precedent)
+- **Actor restriction (operator rule, owner pivot 2026-10-01):** BOTH routes (GET `/` and POST
+  `/suggestions/accept`) respond **403 `serverErrors.collections.forbidden`** when the requester is
+  an ADMIN — the Storage dashboard is a non-admin-only personal-storage surface (§4.16).
 - `setupModeGuardInstance` at mount (see §2.1)
 
 ### 2.4 Request/Response Spec
@@ -121,6 +124,7 @@ dashboard renders a report toast (no Undo button) after accept.
 | HTTP | errorCode                             | Trigger                                           |
 | ---- | ------------------------------------- | ------------------------------------------------- |
 | 400  | `serverErrors.dashboard.emptyNodeIds` | Missing/empty/non-array/over-cap (200) `nodeIds`. |
+| 403  | `serverErrors.collections.forbidden`  | ADMIN requester — operator-rule gate (`requireNonAdmin`, owner pivot 2026-10-01); dashboard is non-admin-only. |
 
 All errors follow the shared envelope (`errorCode` + optional `params`,
 [shared-contracts.md](../../../shared-contracts.md)); client locale mirror mandatory.

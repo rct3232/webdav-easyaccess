@@ -42,7 +42,10 @@ with `setupModeGuardInstance`:
 
 ### 2.3 Middleware Used
 
-- `authenticateToken`, `requireUser` (per-router, recentFiles/collections precedent)
+- `authenticateToken`, `requireUser`, `requireNonAdmin` (per-router, in that order; recentFiles/collections precedent)
+- **Actor restriction (operator rule, owner pivot 2026-10-01):** ALL routes (`GET /`, `GET /items`,
+  `PUT /:nodeId`) respond **403 `serverErrors.collections.forbidden`** for ADMIN requesters — the
+  admin actor never likes (collections/likes/dashboard are personal-storage surfaces).
 - `setupModeGuardInstance` at mount (coverage invariant, ARCHITECTURE §1.3)
 - `parseNodeId` for `:nodeId` (numeric only; invalid → 400, never normalized)
 
@@ -72,6 +75,7 @@ Wire casing per PLAN §6: request bodies camelCase nodeId-based; responses snake
 | HTTP | errorCode                          | Trigger                                             |
 | ---- | ---------------------------------- | ---------------------------------------------------- |
 | 400  | `serverErrors.files.invalidPath`   | Non-numeric `:nodeId`, missing/empty, or non-boolean `liked`. |
+| 403  | `serverErrors.collections.forbidden` | ADMIN requester — operator-rule gate (`requireNonAdmin`, owner pivot 2026-10-01); admin never likes. |
 | 404  | `serverErrors.files.notFound`      | Node unknown or not readable by the requester (masquerade). |
 
 No new `SERVER_ERROR_CODES` keys (locale mirrors untouched); all existing codes/en/ko strings apply.

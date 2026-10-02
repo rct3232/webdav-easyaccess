@@ -40,7 +40,14 @@ export async function openPrivateWorkspace(
 
 const pendingWorkspaceCleanups: Array<{ token: string; basePath: string }> = [];
 
-function trackWorkspaceCleanup(token: string, basePath: string) {
+/**
+ * Register a case-owned workspace folder for the `afterEach` purge. Entries
+ * carry the SESSION token that owned the folder; the purge itself is an
+ * admin-only maintenance call, so regular-user sessions need the operator
+ * fallback token on `flushPrivateWorkspaceCleanups` (admin-operator pivot —
+ * see that function).
+ */
+export function trackWorkspaceCleanup(token: string, basePath: string) {
   pendingWorkspaceCleanups.push({ token, basePath });
 }
 
@@ -53,30 +60,58 @@ function trackWorkspaceCleanup(token: string, basePath: string) {
  * TRASHES the subtree, and cleanup must physically remove the case folder so
  * containment runs stay residue-free (see docs/TESTING_STRATEGY.md,
  * assertion-context containment).
+ *
+ * Dual-token cleanup (admin-operator pivot, PLAN §14): `perm-delete` is an
+ * admin-only OPERATOR route — collections-era suites now track folders with a
+ * regular-user session token, which 403s here. When the primary token fails
+ * and the caller supplied a `fallbackToken` (the scratch operator token), the
+ * purge retries as the operator. Without a fallback the primary-token result
+ * keeps its original assertion (admin-session suites are unchanged).
  */
 async function deleteFolderAt(
   request: APIRequestContext,
   token: string,
-  folderPath: string
+  folderPath: string,
+  fallbackToken?: string
 ): Promise<void> {
-  const nodeId = await resolvePathOrNull(request, token, folderPath);
+  let nodeId = await resolvePathOrNull(request, token, folderPath);
+  if (nodeId === null && fallbackToken) {
+    nodeId = await resolvePathOrNull(request, fallbackToken, folderPath);
+  }
   if (nodeId === null) return;
   const res = await request.delete('/api/admin/maintenance/perm-delete', {
     headers: { Authorization: `Bearer ${token}` },
     data: { nodeId },
   });
-  expect(res.ok()).toBeTruthy();
+  if (res.ok()) return;
+  if (!fallbackToken) {
+    expect(res.ok()).toBeTruthy();
+    return;
+  }
+  const fallbackNodeId = await resolvePathOrNull(request, fallbackToken, folderPath);
+  if (fallbackNodeId === null) return; // the case already removed the subtree
+  const retried = await request.delete('/api/admin/maintenance/perm-delete', {
+    headers: { Authorization: `Bearer ${fallbackToken}` },
+    data: { nodeId: fallbackNodeId },
+  });
+  expect(retried.ok()).toBeTruthy();
 }
 
 /**
  * Deletes every case-owned base folder registered for the current test. Call
  * from a per-file `test.afterEach` so per-case data never accumulates at the
  * filesystem root across a run (assertion-context containment cleanup).
+ * `fallbackToken` (optional) is the admin OPERATOR token used when a tracked
+ * entry's own session may not call the admin-only perm-delete route
+ * (regular-user workspaces after the admin-operator pivot).
  */
-export async function flushPrivateWorkspaceCleanups(request: APIRequestContext): Promise<void> {
+export async function flushPrivateWorkspaceCleanups(
+  request: APIRequestContext,
+  fallbackToken?: string
+): Promise<void> {
   const pending = pendingWorkspaceCleanups.splice(0, pendingWorkspaceCleanups.length);
   for (const cleanup of pending) {
-    await deleteFolderAt(request, cleanup.token, cleanup.basePath);
+    await deleteFolderAt(request, cleanup.token, cleanup.basePath, fallbackToken);
   }
 }
 

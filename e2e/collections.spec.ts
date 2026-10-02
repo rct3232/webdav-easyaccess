@@ -16,25 +16,25 @@ import {
 import { e2ePorts, webdavBase } from './helpers/ports';
 import { loginWithCredentials } from './helpers/auth';
 import {
+  ensureScratchRegularUser,
+  loginScratchAdmin,
+  type ScratchUserCreds,
+} from './helpers/scratchUser';
+import {
   buildName,
   createFolderAt,
   fileItem,
   flushPrivateWorkspaceCleanups,
-  openPrivateWorkspace,
+  trackWorkspaceCleanup,
   readTestFileFixture,
   uploadFileAt,
 } from './helpers/files';
-import {
-  getSessionToken,
-  gotoFilesPath,
-  resolveNodeId,
-  resolvePathOrNull,
-} from './helpers/resolvePath';
+import { getSessionToken, gotoFilesPath, resolveNodeId } from './helpers/resolvePath';
 import { rightClickItem } from './helpers/desktop-interactions';
 import { setCollectionSort } from './helpers/explorer-controls';
 
 /**
- * E2E-COLLECTION-001..013 — the P0 collections binding lifecycle
+ * E2E-COLLECTION-001..014 — the P0 collections binding lifecycle
  * (docs/E2E_COVERAGE_PLAN.md § "Collections platform lifecycle (hermetic)").
  *
  * Chain: create → add members → digest counts → archive → undo → restore →
@@ -49,16 +49,32 @@ import { setCollectionSort } from './helpers/explorer-controls';
  *
  * SCRATCH-HERMETIC per the destructive-case policy (docs/TESTING_STRATEGY.md):
  * the suite permanently deletes collections, exercises per-subject undo-journal
- * tip semantics and renders the shared-user MyPage dashboard, so it boots its
- * OWN server on :5013 (own sqlite, webdav file backend) and never touches the
- * shared :5002 pool. One scratch server serves the whole (serial,
+ * tip semantics and renders the regular user's MyPage Storage dashboard, so it
+ * boots its OWN server on :5013 (own sqlite, webdav file backend) and never
+ * touches the shared :5002 pool. One scratch server serves the whole (serial,
  * desktop-only) file — restart is not a behavior under test here. No AI
  * surfaces are expected (`semantic_available:false`): P0 only.
+ *
+ * IDENTITY (admin-operator pivot, PLAN §14): every case authenticates as a
+ * REGULAR USER provisioned by `beforeAll` (`ensureScratchRegularUser` — admin
+ * API create, which also ensures the `/<username>` home node). The U1 server
+ * gates 403 admin on collections/file-likes/dashboard and U2 hides those
+ * surfaces for admin sessions, so an admin actor can no longer exercise this
+ * lifecycle. The scratch admin stays bootstrapped for OPERATOR duties only:
+ * user provisioning and the perm-delete folder-purge fallback
+ * (`flushPrivateWorkspaceCleanups`).
  */
 const SCRATCH_PORT = e2ePorts.scratchCollections;
 const WEBDAV_BASE = webdavBase;
 const CASE_ID = 'collections';
+/** Scratch boot identity (ADMIN_DEFAULT_PASSWORD) — OPERATOR duties only since the pivot (PLAN §14). */
 const ADMIN_PASSWORD = 'CollectionsE2e!123';
+/** The provisioned regular user every case acts as (home node: `/collections-e2e-user`). */
+const USER_CREDS: ScratchUserCreds = {
+  username: 'collections-e2e-user',
+  password: 'CollectionsE2eUser!123',
+  email: 'collections-e2e-user@e2etest.com',
+};
 
 const textFixtureBuffer = readTestFileFixture(TEST_FILES.smallText);
 
@@ -190,43 +206,34 @@ async function uiAddToCollection(page: Page, filePath: string, collectionName: s
     .click();
 }
 
-async function loginAndOpenWorkspace(
-  page: Page,
-  request: APIRequestContext,
-  testInfo: TestInfo
-): Promise<{ base: string; token: string }> {
-  await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
-  const base = await openPrivateWorkspace(page, request, testInfo);
-  const token = await getSessionToken(page);
-  return { base, token };
-}
-
 /**
- * P-3 preview coverage: like `openPrivateWorkspace`, but the case folder lives
- * under the seeded admin's HOME node (`/admin`). Case folders at the filesystem
- * ROOT are foreign-owned per the ancestry ownership model
- * (`ownerNodeResolver.isOwnerNode`), so their collection members legitimately
- * render as `shared_excluded` and are EXCLUDED from card previews by the
- * binding filter (`routes/collections.md` preview_items). Members under the
- * home root resolve as owner-owned, exercising the 2×2 preview path.
+ * P-3/P-4 preview coverage + the admin-operator pivot (PLAN §14): log in as
+ * the provisioned REGULAR USER and open the case folder under their HOME node
+ * (`/<username>/<name>`). Home-based for two binding reasons: root-level case
+ * folders would be foreign-owned per the ancestry ownership model
+ * (`ownerNodeResolver.isOwnerNode`) and their members legitimately render
+ * `shared_excluded` and get EXCLUDED from card previews
+ * (`routes/collections.md` preview_items), while members inside the user's
+ * home subtree resolve as owner-owned through the home-root ADMIN closure
+ * grant — the 2×2 preview and the unshared pending-badge paths need that.
+ * Cleanup registers the user session token; the physical folder purge falls
+ * back to the OPERATOR token because perm-delete is an admin-only maintenance
+ * route (dual-token cleanup — see `helpers/files.ts`).
  */
-async function loginAndOpenOwnedWorkspace(
+async function loginAndOpenUserWorkspace(
   page: Page,
   request: APIRequestContext,
   testInfo: TestInfo
-): Promise<{ base: string; token: string }> {
+): Promise<{ base: string; token: string; userCreds: ScratchUserCreds }> {
   const name = buildName(testInfo, 'workspace');
-  await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
-  await page.goto('/files');
+  await loginWithCredentials(page, USER_CREDS.username, USER_CREDS.password);
   const token = await getSessionToken(page);
-  if ((await resolvePathOrNull(request, token, '/admin')) === null) {
-    await createFolderAt(request, token, null, 'admin');
-  }
-  const homeId = await resolveNodeId(request, token, '/admin');
+  const homeId = await resolveNodeId(request, token, `/${USER_CREDS.username}`);
   await createFolderAt(request, token, homeId, name);
-  const base = `admin/${name}`;
+  const base = `${USER_CREDS.username}/${name}`;
+  trackWorkspaceCleanup(token, `/${base}`);
   await gotoFilesPath(page, request, `/${base}`);
-  return { base, token };
+  return { base, token, userCreds: USER_CREDS };
 }
 
 /** Seed `<workspace>/<prefix file>` via the stable upload API; returns nodeId + path. */
@@ -252,8 +259,10 @@ async function seedFile(
 
 let scratch: string;
 let spawned: ReturnType<typeof spawnScratchServer> | null = null;
+/** Scratch admin bearer — OPERATOR duties only after boot: provisioning (beforeAll) + perm-delete fallback (afterEach). */
+let operatorToken = '';
 
-test.beforeAll(async () => {
+test.beforeAll(async ({ request }) => {
   scratch = scratchDirFor(CASE_ID);
   fs.rmSync(scratch, { recursive: true, force: true });
   fs.mkdirSync(scratch, { recursive: true });
@@ -269,6 +278,11 @@ test.beforeAll(async () => {
   ensureClientBuild();
   spawned = spawnScratchServer(scratch, SCRATCH_PORT);
   await waitForScratchHealth(spawned, SCRATCH_PORT);
+  // Admin-operator pivot (PLAN §14): the lifecycle ACTOR is a regular user,
+  // provisioned through the bootstrapped admin (which also creates + grants
+  // the `/<username>` home node). The admin token stays for OPERATOR calls.
+  operatorToken = await loginScratchAdmin(request, ADMIN_PASSWORD);
+  await ensureScratchRegularUser(request, operatorToken, USER_CREDS);
 });
 
 test.afterAll(async () => {
@@ -283,10 +297,14 @@ test.afterAll(async () => {
 
 test.afterEach(async ({ page, request }) => {
   // Case containment: purge every collection the case tracked (archive first
-  // when still active — permanent delete is archived-only), then the workspace.
+  // when still active — permanent delete is archived-only) with the USER
+  // session token (collections CRUD is the user's own surface), then the
+  // workspace folders. The physical folder purge is the admin-only perm-delete
+  // maintenance route, so the flush gets the OPERATOR token as fallback
+  // (dual-token cleanup — admin-operator pivot, PLAN §14).
   const pending = trackedCollections.splice(0, trackedCollections.length);
   if (pending.length === 0) {
-    await flushPrivateWorkspaceCleanups(request);
+    await flushPrivateWorkspaceCleanups(request, operatorToken);
     return;
   }
   try {
@@ -306,13 +324,13 @@ test.afterEach(async ({ page, request }) => {
     // A failed setup leaves an incomplete world; afterAll's rm -rf scratch
     // removes the whole database anyway.
   }
-  await flushPrivateWorkspaceCleanups(request);
+  await flushPrivateWorkspaceCleanups(request, operatorToken);
 });
 
 test('E2E-COLLECTION-001: Collections sidebar section expands to the archive node and routes to the collections list view', async ({
   page,
 }) => {
-  await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
+  await loginWithCredentials(page, USER_CREDS.username, USER_CREDS.password);
   await page.goto('/files');
 
   const section = page.getByTestId('collections-section');
@@ -334,9 +352,10 @@ test('E2E-COLLECTION-002: Add-to-collection submenu creates a collection inline,
   page,
   request,
 }, testInfo) => {
-  // P-3: owned-home workspace so the 2×2 card preview renders owner-owned
-  // members (root-level case folders are foreign-owner → preview-excluded).
-  const { base, token } = await loginAndOpenOwnedWorkspace(page, request, testInfo);
+  // P-3: home-based user workspace so the 2×2 card preview renders
+  // owner-owned members (home-closure ownership; root-level case folders
+  // would be foreign-owner → preview-excluded).
+  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo);
   const fileA = await seedFile(request, token, base, testInfo, 'col002-a');
   const fileB = await seedFile(request, token, base, testInfo, 'col002-b');
   await gotoFilesPath(page, request, `/${base}`);
@@ -369,7 +388,7 @@ test('E2E-COLLECTION-003: Re-opening a collection member view reports the digest
   page,
   request,
 }, testInfo) => {
-  const { base, token } = await loginAndOpenWorkspace(page, request, testInfo);
+  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo);
   const fileA = await seedFile(request, token, base, testInfo, 'col003-a');
   const fileB = await seedFile(request, token, base, testInfo, 'col003-b');
   await gotoFilesPath(page, request, `/${base}`);
@@ -398,10 +417,11 @@ test('E2E-COLLECTION-003: Re-opening a collection member view reports the digest
   await page.goto('/files/__collections__');
   await openCollectionCard(page, name);
   await expect(page.getByTestId('digest-banner')).toContainText(/\+1\s*\/\s*-0/);
-  // Owner-approbation 2026-10-01: admin owns the whole tree (permissionPolicy
-  // convention) — a root-level member of an ADMIN-owned collection is NOT
-  // foreign: no bogus `shared_excluded` lock badge. fileB is unpublished ⇒ the
-  // publish-pending badge renders (R2 suppression applies to excluded rows only).
+  // Admin-operator pivot (PLAN §14): the acting regular user OWNS the whole
+  // workspace subtree through the home-root ADMIN closure grant — a member
+  // inside it is NOT foreign: no bogus `shared_excluded` lock badge. fileB is
+  // unpublished ⇒ the publish-pending badge renders (R2 suppression applies
+  // to excluded rows only).
   await expect(page.getByTestId(`member-excluded-badge-${fileB.nodeId}`)).toHaveCount(0);
   await expect(page.getByTestId(`member-publish-pending-badge-${fileB.nodeId}`)).toBeVisible();
 });
@@ -410,7 +430,7 @@ test('E2E-COLLECTION-004: Card menu archive moves the collection into the archiv
   page,
   request,
 }, testInfo) => {
-  const { token } = await loginAndOpenWorkspace(page, request, testInfo);
+  const { token } = await loginAndOpenUserWorkspace(page, request, testInfo);
   const name = buildName(testInfo, 'col');
   await createCollectionApi(request, token, name);
 
@@ -446,7 +466,7 @@ test('E2E-COLLECTION-005: Undo toast reverses a collection archive', async ({
   page,
   request,
 }, testInfo) => {
-  const { token } = await loginAndOpenWorkspace(page, request, testInfo);
+  const { token } = await loginAndOpenUserWorkspace(page, request, testInfo);
   const name = buildName(testInfo, 'col');
   const collectionId = await createCollectionApi(request, token, name);
 
@@ -469,7 +489,7 @@ test('E2E-COLLECTION-006: Permanent delete is offered only in the archive view a
   page,
   request,
 }, testInfo) => {
-  const { token } = await loginAndOpenWorkspace(page, request, testInfo);
+  const { token } = await loginAndOpenUserWorkspace(page, request, testInfo);
   const name = buildName(testInfo, 'col');
   const collectionId = await createCollectionApi(request, token, name);
 
@@ -508,7 +528,7 @@ test('E2E-COLLECTION-007: Like toggle from the file context menu persists the vi
   page,
   request,
 }, testInfo) => {
-  const { base, token } = await loginAndOpenWorkspace(page, request, testInfo);
+  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo);
   const fileA = await seedFile(request, token, base, testInfo, 'col007');
   await gotoFilesPath(page, request, `/${base}`);
   await expect(fileItem(page, fileA.path)).toBeVisible();
@@ -534,7 +554,7 @@ test('E2E-COLLECTION-008: Member row menu excludes a file with undo and exposes 
   page,
   request,
 }, testInfo) => {
-  const { base, token } = await loginAndOpenWorkspace(page, request, testInfo);
+  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo);
   const fileA = await seedFile(request, token, base, testInfo, 'col008-a');
   const fileB = await seedFile(request, token, base, testInfo, 'col008-b');
 
@@ -584,7 +604,7 @@ test('E2E-COLLECTION-009: Storage dashboard renders the collection journal feed 
   page,
   request,
 }, testInfo) => {
-  const { token } = await loginAndOpenWorkspace(page, request, testInfo);
+  const { token } = await loginAndOpenUserWorkspace(page, request, testInfo);
   const name = buildName(testInfo, 'col');
   const collectionId = await createCollectionApi(request, token, name);
   await archiveCollectionApi(request, token, collectionId);
@@ -618,7 +638,7 @@ test('E2E-COLLECTION-010: The toolbar sort button re-sorts the collections list 
   page,
   request,
 }, testInfo) => {
-  const { base, token } = await loginAndOpenWorkspace(page, request, testInfo);
+  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo);
   const file = await seedFile(request, token, base, testInfo, 'col010');
   await gotoFilesPath(page, request, `/${base}`);
   await expect(fileItem(page, file.path)).toBeVisible();
@@ -659,7 +679,7 @@ test('E2E-COLLECTION-011: members render the shared grid by default, the list to
   page,
   request,
 }, testInfo) => {
-  const { base, token } = await loginAndOpenOwnedWorkspace(page, request, testInfo);
+  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo);
   const fileA = await seedFile(request, token, base, testInfo, 'col011-a');
   const fileName = fileA.path.split('/').pop() as string;
   // Middle-truncation keeps head + tail; the unique leading prefix always shows.
@@ -711,7 +731,7 @@ test('E2E-COLLECTION-012: the publish-all banner flips stored members through PU
   page,
   request,
 }, testInfo) => {
-  const { base, token } = await loginAndOpenOwnedWorkspace(page, request, testInfo);
+  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo);
   const fileA = await seedFile(request, token, base, testInfo, 'col012-a');
   const fileB = await seedFile(request, token, base, testInfo, 'col012-b');
 
@@ -764,7 +784,7 @@ test('E2E-COLLECTION-013: the sidebar Likes child row lists liked files through 
   page,
   request,
 }, testInfo) => {
-  const { base, token } = await loginAndOpenOwnedWorkspace(page, request, testInfo);
+  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo);
   const fileA = await seedFile(request, token, base, testInfo, 'col013-a');
 
   // A collection the likes lifecycle must never touch (membership + sidebar).
@@ -855,7 +875,7 @@ test('E2E-COLLECTION-014: Likes-first/Archive-last tiles navigate, archive view 
   page,
   request,
 }, testInfo) => {
-  const { base, token } = await loginAndOpenOwnedWorkspace(page, request, testInfo);
+  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo);
   const fileA = await seedFile(request, token, base, testInfo, 'col014-a');
 
   const name = buildName(testInfo, 'col');

@@ -125,6 +125,11 @@ Field rules:
 - `granted_role`: `viewer | editor` when the row is shared to the requester, else `null`
   (own collections). Shared rows appear in the same list, icon chip is client-side
   (`granted_role != null`); never pinned to top (§3.1).
+- `last_visited_at` (GET / rows, 2026-10-01 owner ruling): the REQUESTER's
+  `collection_digest_cursors.last_visited_at` (ISO string) or `null` when the requester has
+  NEVER opened the collection. This is the sidebar `new`-dot source (dot ⇔ `null`;
+  `CollectionsSection.md` §2.6) — seeded at create for the creator, stamped on
+  `GET /:id/items` opens. Omitted on `GET /:id`/POST/PUT payloads (list-only field).
 - `item_count`: members in the requester-resolved view (stored ∪ derived − exclusions,
   live ACL + trash filter applied), exact.
 - `preview_items` (P-3, 2026-09-29 owner ruling): up to 4 member entries for the list card's
@@ -150,9 +155,15 @@ Field rules:
   200: `{ "collections": [ <collection>, … ] }` — the full list, no pagination.
   **Decision:** the collection list is unpaginated (personal scale; §3.1 "≤~20 rows"
   in-JS sort precedent).
+  **`GET /` rows carry the requester-scoped `last_visited_at`** (see field rules — the
+  sidebar `new` dot source, owner ruling 2026-10-01); one batched cursor read
+  (`listDigestCursorMap(userId)`) serves the whole list — no per-row query.
 - **POST /:** Body `{ name }`. Creates `origin='user'`, `status='active'`,
   `publish_mode='ask'` (default, §3.1). Name collision never errors: a trash-restore-style
-  suffix counter is applied server-side (§3.1). 201: `{ "collection": <collection>,
+  suffix counter is applied server-side (§3.1). Create SEEDS the requester's digest cursor
+  (`collection_digest_cursors.last_visited_at = created_at`, inside the same journaled
+  mutation TX — owner ruling 2026-10-01), so a self-created collection never renders the
+  sidebar `new` dot. 201: `{ "collection": <collection>,
 "undo": { "action_id": 990 } }`.
 - **PUT /:id:** Body any of `{ name?, pinned?, publishMode? }` (publishMode ∈
   `ask|off|auto`). A user `name` write sets `name_locked=true` (§3.2). `pinned:true` sets
@@ -213,6 +224,12 @@ it is `null` on `state:"revoked"` placeholder rows like `name`/`type` (no metada
 **Decision (RETAINED — verified still valid under Decision B):** serving `GET /:id/items`
 stamps `collection_digest_cursors.last_visited_at` to now for the requester (the read IS the
 visit; no separate reset endpoint) — one fetch per open stamps exactly once.
+**Seed at create (owner ruling 2026-10-01):** `POST /` writes the creator's cursor row
+(`last_visited_at = created_at`) INSIDE the journaled create mutation TX — a post-commit
+fallback would leave partial state on rollback. Consequence: the creator's own fresh
+collections never dot; collections shared to a requester dot (no cursor row) until first
+open; the sidebar `created_at > localStorage-cursor` heuristic is RETIRED (client rule =
+`last_visited_at == null`, `useFolderTreeController.md` §3).
 `similar`-style ordering: items sort by activity score desc, then `node_id` asc — the stable
 full-set order the client slice reads head-first (Decision B retired the cursor; ordering is
 unchanged).
@@ -270,10 +287,10 @@ unchanged).
 }
 ```
 
-  `undo.action_id` points at the flip command when one committed, else at the
-  materialize-insert command, and `null` when nothing mutated (all-`ignored` batch).
-  A mixed batch (flip + materialize in one request) exposes the FLIP pointer on the
-  toast; the insert row stays undoable through the journal feed (as-built Decision below).
+`undo.action_id` points at the flip command when one committed, else at the
+materialize-insert command, and `null` when nothing mutated (all-`ignored` batch).
+A mixed batch (flip + materialize in one request) exposes the FLIP pointer on the
+toast; the insert row stays undoable through the journal feed (as-built Decision below).
 
 - **POST /preview:** Body exactly one of `{ seedNodeId }` (seed-vector rule: seed vector vs
   requester-visible candidates, cosine, §4.5 — requires the `embed` LLM role) or
@@ -376,26 +393,26 @@ suggestion row (a suggestion state transition is opportunistic).
 
 ### 2.4.1 Error Codes (SERVER_ERROR_CODES style)
 
-| HTTP | errorCode                                        | Trigger                                                                                              |
-| ---- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| 400  | `serverErrors.collections.nameRequired`          | Empty/missing name on create.                                                                        |
-| 400  | `serverErrors.collections.invalidName`           | `validateFileName` failure (incl. `.wea-` prefix).                                                   |
-| 400  | `serverErrors.collections.invalidSort`           | Unknown `sort` value.                                                                                |
-| 400  | `serverErrors.collections.invalidInclude`        | Unknown token in `include`.                                                                          |
-| 400  | `serverErrors.collections.invalidPublishMode`    | Bad `publishMode`.                                                                                   |
-| 400  | `serverErrors.collections.invalidRole`           | Grant role outside `viewer\|editor`.                                                                 |
-| 400  | `serverErrors.collections.emptyNodeIds`          | Missing/empty/over-cap `nodeIds`.                                                                    |
-| 400  | `serverErrors.collections.previewTargetRequired` | 0 or 2 of `seedNodeId`/`definition`.                                                                 |
-| 400  | `serverErrors.collections.mergeSameCollection`   | `:id == :other`.                                                                                     |
-| 400  | `serverErrors.collections.invalidDefinition`     | Malformed `definition` payload (unknown kind / predicate type / bad atom).                           |
+| HTTP | errorCode                                        | Trigger                                                                                                                                                                                                                                                |
+| ---- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 400  | `serverErrors.collections.nameRequired`          | Empty/missing name on create.                                                                                                                                                                                                                          |
+| 400  | `serverErrors.collections.invalidName`           | `validateFileName` failure (incl. `.wea-` prefix).                                                                                                                                                                                                     |
+| 400  | `serverErrors.collections.invalidSort`           | Unknown `sort` value.                                                                                                                                                                                                                                  |
+| 400  | `serverErrors.collections.invalidInclude`        | Unknown token in `include`.                                                                                                                                                                                                                            |
+| 400  | `serverErrors.collections.invalidPublishMode`    | Bad `publishMode`.                                                                                                                                                                                                                                     |
+| 400  | `serverErrors.collections.invalidRole`           | Grant role outside `viewer\|editor`.                                                                                                                                                                                                                   |
+| 400  | `serverErrors.collections.emptyNodeIds`          | Missing/empty/over-cap `nodeIds`.                                                                                                                                                                                                                      |
+| 400  | `serverErrors.collections.previewTargetRequired` | 0 or 2 of `seedNodeId`/`definition`.                                                                                                                                                                                                                   |
+| 400  | `serverErrors.collections.mergeSameCollection`   | `:id == :other`.                                                                                                                                                                                                                                       |
+| 400  | `serverErrors.collections.invalidDefinition`     | Malformed `definition` payload (unknown kind / predicate type / bad atom).                                                                                                                                                                             |
 | 403  | `serverErrors.collections.forbidden`             | Non-owner mutation; viewer writes; editor removing what they did not add. ALSO the admin-operator gate: EVERY endpoint for an ADMIN requester (`requireNonAdmin`) and `POST /:id/grants` with an ADMIN grantee (service ban) — owner pivot 2026-10-01. |
-| 404  | `serverErrors.collections.notFound`              | Unknown id, or no access at all (read = 404 masquerade — ungranted reads do not disclose existence). |
-| 404  | `serverErrors.collections.granteeNotFound`       | Unknown user on grant.                                                                               |
-| 404  | `serverErrors.collections.grantNotFound`         | Revoke of a non-existing row; `/grants/me` caller holding no grant row (incl. owner).                |
-| 404  | `serverErrors.collections.suggestionNotFound`    | Dismiss/reject without a pending row.                                                                |
-| 409  | `serverErrors.collections.alreadyArchived`       | Archive of an archived collection.                                                                   |
-| 409  | `serverErrors.collections.notArchived`           | Restore/delete of an active collection.                                                              |
-| 409  | `serverErrors.ai.notConfigured`                  | Seed preview without the `embed` role (§4.12).                                                       |
+| 404  | `serverErrors.collections.notFound`              | Unknown id, or no access at all (read = 404 masquerade — ungranted reads do not disclose existence).                                                                                                                                                   |
+| 404  | `serverErrors.collections.granteeNotFound`       | Unknown user on grant.                                                                                                                                                                                                                                 |
+| 404  | `serverErrors.collections.grantNotFound`         | Revoke of a non-existing row; `/grants/me` caller holding no grant row (incl. owner).                                                                                                                                                                  |
+| 404  | `serverErrors.collections.suggestionNotFound`    | Dismiss/reject without a pending row.                                                                                                                                                                                                                  |
+| 409  | `serverErrors.collections.alreadyArchived`       | Archive of an archived collection.                                                                                                                                                                                                                     |
+| 409  | `serverErrors.collections.notArchived`           | Restore/delete of an active collection.                                                                                                                                                                                                                |
+| 409  | `serverErrors.ai.notConfigured`                  | Seed preview without the `embed` role (§4.12).                                                                                                                                                                                                         |
 
 All errors follow the shared error envelope (`errorCode` + optional `params`,
 [shared-contracts.md](../../../shared-contracts.md)); client locale mirror is mandatory.
@@ -467,6 +484,11 @@ All errors follow the shared error envelope (`errorCode` + optional `params`,
       shared-excluded rows never present; each entry `{node_id,name,type,mime}`)
 - [ ] `since` returns digest `added_since/removed_since` and reading items advances the
       visit cursor (second call with fresh `since` → zeros)
+- [ ] (2026-10-01) `POST /` responds and the creator's `GET /` row carries
+      `last_visited_at` = the collection's `created_at` (cursor seeded inside the create TX
+      — a direct DB read shows exactly one `collection_digest_cursors` row); `GET /` rows
+      for a never-opened shared collection carry `last_visited_at: null`; opening
+      `GET /:id/items` then refreshing `GET /` flips it to an ISO stamp
 - [ ] (Decision B) GET /:id/items ships the FULL row set in one response; the retired
       `cursor`/`limit` params are IGNORED (200, same complete body); `next_cursor` key absent
 - [ ] `publish_pending_count` visible to owner, absent for grantee; `ask` new member is

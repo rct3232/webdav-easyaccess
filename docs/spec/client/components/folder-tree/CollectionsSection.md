@@ -21,17 +21,17 @@ Target-contract spec.
 
 ### 2.2 Props
 
-| Name                | Type     | Required | Default | Description                                                                                                    |
-| ------------------- | -------- | -------- | ------- | -------------------------------------------------------------------------------------------------------------- |
-| collectionsExpanded | boolean  | Y        | -       | Section expanded                                                                                               |
-| onCollectionsToggle | function | Y        | -       | Expand/collapse header                                                                                         |
-| onCollectionsClick  | function | Y        | -       | Header click → navigate `/files/__collections__`                                                               |
-| collections         | array    | Y        | -       | snake_case Collection rows, server `activity` order (tree order is FIXED activity, §3.1 — never user-sortable) |
-| currentPath         | string   | Y        | -       | Selection keying (see §2.4)                                                                                    |
-| onCollectionClick   | function | Y        | -       | Row click: `(collectionId) => void` → host routes `/files/__collections__/collection/:id`                      |
-| onArchiveClick      | function | Y        | -       | ArchiveNode click → `/files/__collections__/__archive__`                                                       |
-| onLikesClick        | function | Y        | -       | (P-5) Likes row click → `/files/__collections__/liked`                                                         |
-| newCollectionIds    | array    | N        | []      | Ids with the subtle `new` dot (system-create cue, §4.11 surface 5; computed by the controller — see §2.6)      |
+| Name                | Type     | Required | Default | Description                                                                                                                     |
+| ------------------- | -------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| collectionsExpanded | boolean  | Y        | -       | Section expanded                                                                                                                |
+| onCollectionsToggle | function | Y        | -       | Expand/collapse header                                                                                                          |
+| onCollectionsClick  | function | Y        | -       | Header click → navigate `/files/__collections__`                                                                                |
+| collections         | array    | Y        | -       | snake_case Collection rows, server `activity` order (tree order is FIXED activity, §3.1 — never user-sortable)                  |
+| currentPath         | string   | Y        | -       | Selection keying (see §2.4)                                                                                                     |
+| onCollectionClick   | function | Y        | -       | Row click: `(collectionId) => void` → host routes `/files/__collections__/collection/:id`                                       |
+| onArchiveClick      | function | Y        | -       | ArchiveNode click → `/files/__collections__/__archive__`                                                                        |
+| onLikesClick        | function | Y        | -       | (P-5) Likes row click → `/files/__collections__/liked`                                                                          |
+| newCollectionIds    | array    | N        | []      | Ids with the subtle `new` dot (never-opened cue, §4.11 surface 5; computed by the controller from the server cursor — see §2.6) |
 
 ### 2.3 Rendering Contract
 
@@ -77,7 +77,12 @@ Target-contract spec.
 ### 2.6 i18n Keys
 
 - `nav.collections`, `nav.collectionsArchive`, `nav.collectionsLiked` (P-5 LikesNode label — EN "Liked" / KO "좋아요"), `nav.collectionsEmpty`, `nav.collectionsSharedChip` (aria-label), `nav.collectionsNewDot` (aria-label)
-- `new` dot rule (controller side, noted for contract completeness): collection ids created after the user's last `__collections__` visit (localStorage cursor, digest-cursor parity precedent) get the dot; visiting clears it. No sidebar chips for merges (§4.4 rejection).
+- `new` dot rule (controller side, noted for contract completeness; owner ruling 2026-10-01):
+  dot ⇔ the row's `last_visited_at == null` — the requesting user has NEVER opened that
+  collection (server digest cursor absent; creator is seeded at create, so self-created
+  collections never dot). Opening stamps the cursor; the dot clears on the next list refresh
+  (the controller re-fetches when returning to `/__collections__`). The former localStorage
+  visit-cursor heuristic is REMOVED. No sidebar chips for merges (§4.4 rejection).
 
 ### 2.7 Verification Scenarios
 

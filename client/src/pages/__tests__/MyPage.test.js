@@ -491,3 +491,65 @@ describe('MyPage Storage dashboard entry (T0.10)', () => {
     expect(await screen.findByTestId('collection-dashboard')).toBeInTheDocument();
   });
 });
+
+describe('MyPage admin operator suppression — storage (PLAN §14 client half)', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    sessionStorage.setItem('token', 'admin-token');
+    sessionStorage.setItem('refreshToken', 'refresh');
+    useResponsive.mockReturnValue({
+      isMobile: false,
+      isTablet: false,
+      isDesktop: true,
+      isSmallMobile: false,
+    });
+  });
+
+  const adminHandlers = () => [
+    http.get('/api/auth/me', () =>
+      HttpResponse.json({
+        id: '1',
+        username: 'admin',
+        email: 'admin@ex.com',
+        is_admin: true,
+        status: 'approved',
+      })
+    ),
+    http.get('/api/admin/users/pending', () => HttpResponse.json([])),
+    http.get('/api/admin/users', () => HttpResponse.json([])),
+    http.get('/api/admin/settings', () => HttpResponse.json({ registration_enabled: 'false' })),
+    http.get('/api/dashboard', () =>
+      HttpResponse.json({
+        duplicates: { group_count: 0, duplicate_count: 0, reclaimable_bytes: 0 },
+        suggestions: [],
+        trash: { item_count: 0, total_bytes: 0, oldest_deleted_at: null, retention_days: 30 },
+      })
+    ),
+    http.get('/api/actions', () => HttpResponse.json({ actions: [] })),
+    http.get(/\/api\/collections(\?.*)?$/, () => HttpResponse.json({ collections: [] })),
+  ];
+
+  it('admin sidebar has no Storage row (nonAdminOnly)', async () => {
+    server.use(...adminHandlers());
+
+    renderWithProviders(<MyPage />, { initialEntries: ['/mypage'] });
+
+    await waitForMyPageReady();
+    // deterministic hydration signal: the admin-only System Settings row appears
+    await screen.findByRole('button', { name: /settings/i }, { timeout: 5000 });
+
+    expect(screen.queryByRole('button', { name: /storage/i })).not.toBeInTheDocument();
+  });
+
+  it('admin deep-link category=storage falls back to the default section (no dashboard)', async () => {
+    server.use(...adminHandlers());
+
+    renderWithProviders(<MyPage />, {
+      initialEntries: [{ pathname: '/mypage', state: { category: 'storage' } }],
+    });
+
+    // only the post-hydration fallback renders Account; non-admins never hit this
+    await screen.findByRole('heading', { name: /account info/i }, { timeout: 5000 });
+    expect(screen.queryByTestId('collection-dashboard')).not.toBeInTheDocument();
+  });
+});

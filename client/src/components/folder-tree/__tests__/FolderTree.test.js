@@ -7,7 +7,9 @@
  */
 import React from 'react';
 import { screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { http, HttpResponse } from 'msw';
 import { renderWithProviders } from '../../../test-utils';
+import { server } from '../../../setupTests';
 import FolderTree from '../FolderTree';
 import { getRecentFiles } from '../../../services/recentFilesRepository';
 import { onRecentFilesChange } from '../../../services/recentFilesNotifier';
@@ -164,6 +166,38 @@ describe('FolderTree', () => {
         />
       );
       expect(screen.queryByTestId('sidebar-trash')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('admin operator suppression (PLAN §14 client half)', () => {
+    const adminUser = { id: '1', username: 'admin', is_admin: true, rootNodeId: null };
+
+    it('hides the Collections section for admin and issues no /api/collections call', async () => {
+      let collectionsCalls = 0;
+      server.use(
+        http.get('/api/collections', () => {
+          collectionsCalls += 1;
+          return HttpResponse.json({ collections: [] });
+        }),
+        http.get('/api/collections/merge-suggestions', () => HttpResponse.json({ suggestions: [] }))
+      );
+
+      renderWithProviders(<FolderTree {...defaultProps} user={adminUser} />);
+      await waitFor(() => {
+        expect(screen.getByText('Home')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('collections-section')).not.toBeInTheDocument();
+      // the controller load effect runs on mount — give it a settle tick, then
+      // assert the seam never fired
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect(collectionsCalls).toBe(0);
+    });
+
+    it('non-admin control: the Collections section still mounts', async () => {
+      renderWithProviders(<FolderTree {...defaultProps} />);
+      expect(await screen.findByTestId('collections-section')).toBeInTheDocument();
     });
   });
 });

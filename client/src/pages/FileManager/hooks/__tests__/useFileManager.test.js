@@ -767,3 +767,82 @@ describe('P-5 collections-liked surface (useFileManager §2.3.3)', () => {
     expect(result.current.files).toEqual([]);
   });
 });
+
+describe('admin urlView guard (PLAN §14 client half)', () => {
+  const adminUser = { id: '1', username: 'admin', is_admin: true, rootNodeId: null };
+
+  beforeEach(() => {
+    explorerGateway.listDirectory.mockResolvedValue(defaultListedFiles);
+    explorerGateway.getPathAccess.mockResolvedValue(defaultPathAccess);
+    explorerGateway.loadCollectionItems.mockResolvedValue({ items: [] });
+    explorerGateway.loadLikedItems.mockResolvedValue({ items: [] });
+    explorerGateway.subscribeToRecentFiles.mockReturnValue(jest.fn());
+    resolvePath.mockResolvedValue({ nodeId: 3 });
+    getAncestors.mockResolvedValue({ ancestors: [] });
+  });
+
+  async function renderAdmin(urlPath, options = {}) {
+    const wrapper = ({ children }) => <TestWrapper initialPath={urlPath}>{children}</TestWrapper>;
+    const renderResult = renderHook(() => useFileManager(adminUser, options), { wrapper });
+    await waitFor(() => {
+      expect(renderResult.result.current.loading).toBe(false);
+    });
+    return renderResult;
+  }
+
+  it('resolves /files/__collections__ for admin to the home view (root listing, no error toast)', async () => {
+    const onLoadError = jest.fn();
+    const { result } = await renderAdmin('__collections__', { onLoadError });
+
+    expect(result.current.currentPath).toBe('/');
+    expect(explorerGateway.listDirectory).toHaveBeenCalledWith({
+      nodeId: null,
+      options: expect.objectContaining({ user: adminUser }),
+    });
+    expect(onLoadError).not.toHaveBeenCalled();
+    expect(result.current.files).toEqual(defaultListedFiles);
+  });
+
+  it('resolves /files/__collections__/__archive__ for admin to the home view', async () => {
+    const { result } = await renderAdmin('__collections__/__archive__');
+
+    expect(result.current.currentPath).toBe('/');
+    expect(explorerGateway.listDirectory).toHaveBeenCalledWith({
+      nodeId: null,
+      options: expect.objectContaining({ user: adminUser }),
+    });
+  });
+
+  it('resolves /files/__collections__/collection/<id> for admin to the home view (no member fetch)', async () => {
+    const { result } = await renderAdmin('__collections__/collection/5');
+
+    expect(result.current.currentPath).toBe('/');
+    expect(explorerGateway.loadCollectionItems).not.toHaveBeenCalled();
+    expect(result.current.collectionMembers.collectionId).toBeNull();
+    expect(explorerGateway.listDirectory).toHaveBeenCalled();
+  });
+
+  it('resolves /files/__collections__/liked for admin to the home view (no liked fetch)', async () => {
+    const { result } = await renderAdmin('__collections__/liked');
+
+    expect(result.current.currentPath).toBe('/');
+    expect(explorerGateway.loadLikedItems).not.toHaveBeenCalled();
+    expect(result.current.likedItems.items).toEqual([]);
+    expect(explorerGateway.listDirectory).toHaveBeenCalled();
+  });
+
+  it('non-admin control: the collections overlay kinds still parse', async () => {
+    const wrapper = ({ children }) => (
+      <TestWrapper initialPath="__collections__/liked">{children}</TestWrapper>
+    );
+    explorerGateway.loadLikedItems.mockResolvedValue({ items: [] });
+    const { result } = renderHook(() => useFileManager(mockUser), { wrapper });
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.currentPath).toBe('/__collections__/liked');
+    expect(explorerGateway.loadLikedItems).toHaveBeenCalled();
+    expect(explorerGateway.listDirectory).not.toHaveBeenCalled();
+  });
+});

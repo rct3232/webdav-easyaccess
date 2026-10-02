@@ -18,6 +18,7 @@ import {
 import { http, HttpResponse } from 'msw';
 import { renderWithProviders, ThemeAndAuthProviders } from '../../test-utils';
 import { server } from '../../setupTests';
+import { useAuth } from '../../contexts/AuthContext';
 import FileManager from '../FileManager';
 import { notifyRecentFilesChange } from '../../services/recentFilesNotifier';
 
@@ -202,6 +203,39 @@ function FileManagerWithRoutes() {
     </Routes>
   );
 }
+
+// AuthProbe renders the async /api/auth/me hydration as DOM so the admin
+// suppression cases can assert NEGATIVE outcomes without hydration races.
+function AuthProbe() {
+  const { user } = useAuth();
+  const state = user ? (user.is_admin ? 'admin' : 'non-admin') : 'pending';
+  return <span data-testid="auth-probe">{state}</span>;
+}
+
+function FileManagerWithAdminProbe() {
+  return (
+    <Routes>
+      <Route
+        path="/files/*"
+        element={
+          <>
+            <FileManager />
+            <AuthProbe />
+          </>
+        }
+      />
+    </Routes>
+  );
+}
+
+const waitForAuthState = async (state) => {
+  await waitFor(
+    () => {
+      expect(screen.getByTestId('auth-probe').textContent).toBe(state);
+    },
+    { timeout: 5000 }
+  );
+};
 
 const renderWithProvidersAct = async (ui, options = {}) => {
   let renderResult;
@@ -2325,6 +2359,101 @@ describe('FileManager', () => {
       await waitFor(() => expect(putBody).toEqual({ liked: false }));
       // optimistic drop (applyLikedRemoval) removes the row without a refetch
       await waitFor(() => expect(screen.queryByTestId('member-row-90300')).not.toBeInTheDocument());
+    }, 15000);
+  });
+
+  describe('admin operator suppression (PLAN §14 client half)', () => {
+    const adminAuthHandler = () =>
+      http.get('/api/auth/me', () =>
+        HttpResponse.json({
+          id: '1',
+          username: 'admin',
+          email: 'admin@ex.com',
+          is_admin: true,
+          status: 'approved',
+        })
+      );
+
+    it('admin: context menu withholds the like-toggle and collection-add rows', async () => {
+      server.use(
+        adminAuthHandler(),
+        http.get('/api/file-likes', () => HttpResponse.json({ liked: [1] }))
+      );
+
+      await renderWithProvidersAct(<FileManagerWithAdminProbe />, { initialEntries: ['/files'] });
+      const row = await screen.findByText(/test\.txt/i);
+      await waitForAuthState('admin');
+
+      fireEvent.contextMenu(row, { clientX: 60, clientY: 60 });
+      // positive anchor: the menu itself opened
+      await screen.findByRole('menuitem', { name: /download/i });
+      expect(screen.queryByTestId('like-toggle')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('collection-add')).not.toBeInTheDocument();
+    }, 15000);
+
+    it('non-admin control: the same context menu still offers like-toggle and collection-add', async () => {
+      await renderWithProvidersAct(<FileManagerWithAdminProbe />, { initialEntries: ['/files'] });
+      const row = await screen.findByText(/test\.txt/i);
+      await waitForAuthState('non-admin');
+
+      fireEvent.contextMenu(row, { clientX: 60, clientY: 60 });
+      expect(await screen.findByTestId('collection-add')).toBeInTheDocument();
+      expect(screen.getByTestId('like-toggle')).toBeInTheDocument();
+    }, 15000);
+
+    it('admin: the /__collections__/liked deep link resolves to the home listing (no member surface, no bulk add)', async () => {
+      server.use(
+        adminAuthHandler(),
+        http.get('/api/file-likes/items', () =>
+          HttpResponse.json({
+            items: [
+              {
+                node_id: 90300,
+                name: 'favourite.jpg',
+                type: 'file',
+                mime: 'image/jpeg',
+                state: 'normal',
+                liked: true,
+                created_at: '2026-09-01T00:00:00Z',
+              },
+            ],
+          })
+        )
+      );
+
+      await renderWithProvidersAct(<FileManagerWithAdminProbe />, {
+        initialEntries: ['/files/__collections__/liked'],
+      });
+      await waitForAuthState('admin');
+
+      expect(await screen.findByText(/test\.txt/i)).toBeInTheDocument();
+      expect(screen.queryByTestId('members-list')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('member-row-90300')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('bulk-collection-add')).not.toBeInTheDocument();
+    }, 15000);
+
+    it('admin: the shell issues no /api/collections IO while the explorer is mounted', async () => {
+      let collectionsCalls = 0;
+      server.use(
+        adminAuthHandler(),
+        http.get('/api/collections', () => {
+          collectionsCalls += 1;
+          return HttpResponse.json({ collections: [] });
+        }),
+        http.get('/api/collections/merge-suggestions', () => {
+          collectionsCalls += 1;
+          return HttpResponse.json({ suggestions: [] });
+        })
+      );
+
+      await renderWithProvidersAct(<FileManagerWithAdminProbe />, { initialEntries: ['/files'] });
+      await screen.findByText(/test\.txt/i);
+      await waitForAuthState('admin');
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      expect(collectionsCalls).toBe(0);
     }, 15000);
   });
 });

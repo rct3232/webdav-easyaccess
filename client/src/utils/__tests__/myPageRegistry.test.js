@@ -29,6 +29,11 @@ describe('myPageRegistry', () => {
       expect(resolveMyPageCategory('sharing', false)).toBe('sharing');
     });
 
+    it('normalizes storage for admins (operator rule — PLAN §14 client half)', () => {
+      expect(resolveMyPageCategory('storage', true)).toBe(DEFAULT_MY_PAGE_CATEGORY);
+      expect(resolveMyPageCategory('storage', false)).toBe('storage');
+    });
+
     it('preserves unknown categories', () => {
       expect(resolveMyPageCategory('weird', true)).toBe('weird');
     });
@@ -41,11 +46,16 @@ describe('myPageRegistry', () => {
         expect.arrayContaining(['account', 'admin-users', 'admin-settings', 'preferences'])
       );
       expect(idsAdmin).not.toEqual(expect.arrayContaining(['sharing']));
+      // operator rule (PLAN §14 client half): the collections dashboard entry
+      // is hidden for admins — admin never participates in collections.
+      expect(idsAdmin).not.toEqual(expect.arrayContaining(['storage']));
     });
 
     it('includes sharing only for non-admins', () => {
       const idsNonAdmin = getMyPageSidebarCategories(false).map((c) => c.id);
-      expect(idsNonAdmin).toEqual(expect.arrayContaining(['account', 'sharing', 'preferences']));
+      expect(idsNonAdmin).toEqual(
+        expect.arrayContaining(['account', 'sharing', 'storage', 'preferences'])
+      );
       expect(idsNonAdmin).not.toEqual(expect.arrayContaining(['admin-users', 'admin-settings']));
     });
   });

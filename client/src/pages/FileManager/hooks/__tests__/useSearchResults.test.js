@@ -35,10 +35,15 @@ function createGateway(overrides = {}) {
   };
 }
 
-function renderResultsHook({ showError = jest.fn(), onUndoable = jest.fn(), gateway } = {}) {
+function renderResultsHook({
+  showError = jest.fn(),
+  onUndoable = jest.fn(),
+  gateway,
+  isAdmin = false,
+} = {}) {
   const resolvedGateway = gateway ?? createGateway();
   const utils = renderHook(() =>
-    useSearchResults({ showError, onUndoable, gateway: resolvedGateway })
+    useSearchResults({ showError, onUndoable, gateway: resolvedGateway, isAdmin })
   );
   return { ...utils, gateway: resolvedGateway, showError, onUndoable };
 }
@@ -347,5 +352,57 @@ describe('useSearchResults results-mode filter contract', () => {
     expect(gateway.listDirectory).toBeUndefined();
     expect(gateway.loadCollections).toBeUndefined();
     expect(result.current.mode).toBe('filter');
+  });
+});
+
+describe('useSearchResults admin operator suppression (PLAN §14 client half)', () => {
+  const semanticResponse = () => ({
+    name_matches: [],
+    semantic: [{ node_id: 90, name: 'fantasy.jpg', score: 0.9 }],
+    result_ref: 'sr1.cccccccccccccccc',
+    counts: { name: 0, semantic: 1, total: 1, name_truncated: false },
+    semantic_available: true,
+  });
+
+  it('canSaveToCollection is false for admin even with a savable semantic set', async () => {
+    const gateway = createGateway({ runSearch: jest.fn().mockResolvedValue(semanticResponse()) });
+    const { result } = renderResultsHook({ gateway, isAdmin: true });
+
+    await act(async () => {
+      await result.current.submitSearch('fantasy');
+    });
+
+    expect(result.current.canSaveToCollection).toBe(false);
+
+    let payload = 'unset';
+    await act(async () => {
+      payload = await result.current.saveResultsToCollection('Fantasy picks');
+    });
+    expect(payload).toBeNull();
+    expect(gateway.createCollection).not.toHaveBeenCalled();
+  });
+
+  it('saveChipQuery is inert for admin — no re-run, no create', async () => {
+    const gateway = createGateway({ runSearch: jest.fn().mockResolvedValue(semanticResponse()) });
+    const { result } = renderResultsHook({ gateway, isAdmin: true });
+
+    let payload = 'unset';
+    await act(async () => {
+      payload = await result.current.saveChipQuery({ id: 'fantasy', query: 'fantasy' });
+    });
+
+    expect(payload).toBeNull();
+    expect(gateway.createCollection).not.toHaveBeenCalled();
+  });
+
+  it('non-admin control: the identical savable payload still yields canSaveToCollection true', async () => {
+    const gateway = createGateway({ runSearch: jest.fn().mockResolvedValue(semanticResponse()) });
+    const { result } = renderResultsHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('fantasy');
+    });
+
+    expect(result.current.canSaveToCollection).toBe(true);
   });
 });

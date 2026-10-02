@@ -633,7 +633,12 @@ FileActionSheet|FilePropertiesDialog` 140/140. M-5 clarification: no pre-existin
   REMOVED; `newCollectionIds` is NULL-based; rows re-fetch when `currentPath` returns to
   `/__collections__`. Note: revoke→re-grant keeps the grantee's stale cursor (no re-dot) —
   accepted, flagged for owner. Branch `feature/per-collection-new-dot` (worktree wt-dot off
-  `ai-feature` @ 4e303b9); docs-first → RED → GREEN. `[in-progress]`
+  `ai-feature` @ 4e303b9); docs-first → RED → GREEN. `[done]` — gates: server `test:ci`
+  **130 suites / 2447 pass (5 skipped)**; PG leg `test:ci:pg:adapters` **23 suites /
+  346 pass (1 skipped)** incl. the new cursor conformance; client **178 suites / 1919
+  pass**; `E2E_BACKEND_MODE=s3 collections-desktop` **14/14 green** (002 carries the
+  no-dot-on-self-create pin + `last_visited_at` truthy on the creator row). Commits:
+  docs `94a7f9d`, RED `a8a2d9a`, GREEN + ledger `this`.
 - **§11 FOLLOW-UP batch (2026-10-01, owner-spotted post-ship defects)** — branch
   `fix/polish-11-followups` (worktree wt-11f off `e8e29db`); docs-first `34fefb7` → RED →
   GREEN, one commit per concern:

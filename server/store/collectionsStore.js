@@ -63,6 +63,9 @@ async function existsActiveName(ownerId, name) {
 /**
  * JOURNALED (domain=collection, subject resolved inside the TX).
  * origin ∈ system|user|seed|search; publishMode defaults to 'ask'.
+ * Seeds the creator's digest cursor (`last_visited_at = created_at`) inside the
+ * same mutation TX — self-created collections never carry the sidebar new dot
+ * (owner ruling 2026-10-01, §2.2).
  * @param {{ ownerId, name, origin, publishMode?, definition? }} input
  * @param {{ actor, actionId? }} [ctx]
  * @returns {Promise<Object>} created collection row (plus `actionId` for the
@@ -83,7 +86,13 @@ async function createCollection(input, ctx = {}) {
         publishMode: input.publishMode,
         definition: input.definition,
       });
-      return repo.getCollectionTx(tx, created.id);
+      const row = await repo.getCollectionTx(tx, created.id);
+      // Seed the creator's digest cursor INSIDE this journaled TX (ruling
+      // 2026-10-01): self-created collections must never carry the sidebar
+      // new dot (`last_visited_at = created_at`). A post-commit seed would
+      // leave a dangling cursor row if the TX rolled back.
+      await repo.upsertDigestCursor(tx, input.ownerId, created.id, row.createdAt);
+      return row;
     }
   );
   return withActionId(committed.result, committed);
@@ -585,6 +594,10 @@ async function getDigestCursor(userId, collectionId) {
   return getRepository().getDigestCursor(userId, collectionId);
 }
 
+async function listDigestCursorMap(userId) {
+  return getRepository().listDigestCursorMap(userId);
+}
+
 async function upsertDigestCursor(userId, collectionId, lastVisitedAt) {
   const repo = getRepository();
   return storage
@@ -685,6 +698,7 @@ module.exports = {
   setVisible,
   isHiddenFor,
   getDigestCursor,
+  listDigestCursorMap,
   upsertDigestCursor,
   recomputeActivityScores,
   getCentroids,

@@ -54,6 +54,9 @@
  * @property {(tx, userId, collectionId, hidden) => Promise<{ changes }>} setVisible
  * @property {(userId, collectionId) => Promise<boolean>} isHiddenFor
  * @property {(userId, collectionId) => Promise<string|null>} getDigestCursor
+ * @property {(userId) => Promise<Object>} listDigestCursorMap
+ *   Batched `{ [collection_id]: isoString }` — collections WITHOUT a cursor row
+ *   are absent keys (never-opened; client new-dot rule, ruling 2026-10-01).
  * @property {(tx, userId, collectionId, lastVisitedAt) => Promise<{ changes }>} upsertDigestCursor
  * @property {(collectionIds?) => Promise<{ changes }>} recomputeActivityScores
  * @property {(collectionIds, modelId) => Promise<Array>} getCentroids

@@ -1,12 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getRecentFiles } from '../../../services/recentFilesRepository';
 import { onRecentFilesChange } from '../../../services/recentFilesNotifier';
 import folderTreeGateway from '../../../services/folderTreeGateway';
 import explorerGateway from '../../../services/explorerGateway';
 
 const EMPTY_ANCESTORS = [];
-// Digest-cursor parity (§2.6): localStorage key of the last __collections__ visit.
-const COLLECTIONS_VISIT_KEY = 'collections.lastVisitedAt';
 
 const useFolderTreeController = ({
   currentNodeId,
@@ -24,10 +22,6 @@ const useFolderTreeController = ({
   // -- AI-platform §3: __collections__ section state (flat depth-1 rows only).
   const [collectionsTreeRows, setCollectionsTreeRows] = useState([]);
   const [collectionsExpanded, setCollectionsExpanded] = useState(false);
-  const [collectionsVisitCursor, setCollectionsVisitCursor] = useState(() => {
-    const stored = Number(window.localStorage.getItem(COLLECTIONS_VISIT_KEY));
-    return Number.isFinite(stored) ? stored : 0;
-  });
 
   const homeNodeId = user?.is_admin ? null : (user?.rootNodeId ?? null);
 
@@ -83,36 +77,34 @@ const useFolderTreeController = ({
   // loaded through the explorerGateway seams only; notifier refreshes rows.
   // Operator rule (PLAN §14 client half): admins never load collections —
   // no loadCollections call, no subscription, no /api/collections traffic.
+  const loadCollectionsRows = useCallback(async () => {
+    try {
+      const active = await explorerGateway.loadCollections({
+        sort: 'activity',
+        include: 'mine,shared',
+      });
+      setCollectionsTreeRows(active?.collections ?? []);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to load collections rows:', error);
+      setCollectionsTreeRows([]);
+    }
+  }, []);
+
   useEffect(() => {
     if (!user || user.is_admin) {
       setCollectionsTreeRows([]);
       return undefined;
     }
 
-    const loadCollectionsRows = async () => {
-      try {
-        const active = await explorerGateway.loadCollections({
-          sort: 'activity',
-          include: 'mine,shared',
-        });
-        setCollectionsTreeRows(active?.collections ?? []);
-      } catch (error) {
-        // eslint-disable-next-line no-console
-        console.error('Failed to load collections rows:', error);
-        setCollectionsTreeRows([]);
-      }
-    };
-
     loadCollectionsRows();
-    const unsubscribe = explorerGateway.subscribeToCollections(() => {
-      loadCollectionsRows();
-    });
+    const unsubscribe = explorerGateway.subscribeToCollections(loadCollectionsRows);
     return () => {
       // Safe-cleanup idiom: a test-injected mock may resolve the subscription
       // seam to a non-callable; never let unmount throw.
       if (typeof unsubscribe === 'function') unsubscribe();
     };
-  }, [user]);
+  }, [user, loadCollectionsRows]);
 
   const buildSharedFolderTree = useMemo(() => {
     if (sharedFolders.length === 0) return [];
@@ -201,22 +193,28 @@ const useFolderTreeController = ({
 
   // -- §3 collections handlers -------------------------------------------------
 
-  // Visiting __collections__ refreshes the "new" dot cursor (digest-cursor parity).
+  // Returning to the list view re-fetches the rows: opening a collection stamps
+  // the server digest cursor (GET /:id/items), so the cleared dots appear on the
+  // refreshed rows (ruling 2026-10-01 — replaces the localStorage write effect).
+  // Transition-only: the mount load (or a same-path re-render) never double-fetches.
+  const previousPathRef = useRef(currentPath);
   useEffect(() => {
-    if (currentPath !== '/__collections__') return;
-    const now = Date.now();
-    window.localStorage.setItem(COLLECTIONS_VISIT_KEY, String(now));
-    setCollectionsVisitCursor(now);
-  }, [currentPath]);
+    const previousPath = previousPathRef.current;
+    previousPathRef.current = currentPath;
+    if (currentPath !== '/__collections__' || previousPath === '/__collections__') return;
+    if (!user || user.is_admin) return;
+    loadCollectionsRows();
+  }, [currentPath, user, loadCollectionsRows]);
 
-  const newCollectionIds = useMemo(() => {
-    if (!collectionsVisitCursor) return [];
-    return (collectionsTreeRows || [])
-      .filter(
-        (row) => row?.created_at != null && Date.parse(row.created_at) > collectionsVisitCursor
-      )
-      .map((row) => row.collection_id);
-  }, [collectionsTreeRows, collectionsVisitCursor]);
+  // New-dot rule (ruling 2026-10-01): dot ⇔ the requester NEVER opened the
+  // collection — the server-cursor row field `last_visited_at` is null/absent.
+  const newCollectionIds = useMemo(
+    () =>
+      (collectionsTreeRows ?? [])
+        .filter((row) => row?.last_visited_at == null)
+        .map((row) => row.collection_id),
+    [collectionsTreeRows]
+  );
 
   const handleCollectionsToggle = useCallback(
     (e) => {

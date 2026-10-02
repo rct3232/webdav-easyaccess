@@ -475,8 +475,18 @@ describe('useFolderTreeController — collections section (§3)', () => {
   });
 
   it('new dots come from NULL last_visited_at rows — the controller never touches localStorage (2026-10-01 ruling)', async () => {
-    const getItem = jest.spyOn(window.localStorage, 'getItem');
-    const setItem = jest.spyOn(window.localStorage, 'setItem');
+    // jsdom keeps getItem/setItem on Storage.prototype (not own props) —
+    // shadow them with jest.fn() and restore after the assertion.
+    const originalGetItem = window.localStorage.getItem.bind(window.localStorage);
+    const originalSetItem = window.localStorage.setItem.bind(window.localStorage);
+    const getItem = jest.fn(originalGetItem);
+    const setItem = jest.fn(originalSetItem);
+    window.localStorage.getItem = getItem;
+    window.localStorage.setItem = setItem;
+    const restoreLocalStorageSpies = () => {
+      window.localStorage.getItem = originalGetItem;
+      window.localStorage.setItem = originalSetItem;
+    };
     explorerGateway.loadCollections.mockImplementation(async () => ({
       collections: [
         { ...rowA, last_visited_at: null },
@@ -491,8 +501,7 @@ describe('useFolderTreeController — collections section (§3)', () => {
     expect(result.current.newCollectionIds).toEqual([7, 9]);
     expect(getItem).not.toHaveBeenCalled();
     expect(setItem).not.toHaveBeenCalled();
-    getItem.mockRestore();
-    setItem.mockRestore();
+    restoreLocalStorageSpies();
   });
 
   it('returning to /__collections__ re-fetches the rows so cleared dots refresh', async () => {

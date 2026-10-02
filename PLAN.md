@@ -632,7 +632,10 @@ FileActionSheet|FilePropertiesDialog` 140/140. M-5 clarification: no pre-existin
   localStorage cursor, its write effect and the `created_at > cursor` comparison are
   REMOVED; `newCollectionIds` is NULL-based; rows re-fetch when `currentPath` returns to
   `/__collections__`. Note: revoke→re-grant keeps the grantee's stale cursor (no re-dot) —
-  accepted, flagged for owner. Branch `feature/per-collection-new-dot` (worktree wt-dot off
+  accepted, flagged for owner. **→ RESOLVED by ruling B (owner, 2026-10-02, P0 closeout):**
+  both revoke paths now DELETE the grantee's cursor row inside the journaled revoke TX —
+  re-grant after revoke RE-DOTS; `undoAction` of a revoke restores the grant but NOT the
+  cursor (undo-revoke re-dots — accepted boundary). Spec: collectionsService.md §2.8. Branch `feature/per-collection-new-dot` (worktree wt-dot off
   `ai-feature` @ 4e303b9); docs-first → RED → GREEN. `[done]` — gates: server `test:ci`
   **130 suites / 2447 pass (5 skipped)**; PG leg `test:ci:pg:adapters` **23 suites /
   346 pass (1 skipped)** incl. the new cursor conformance; client **178 suites / 1919

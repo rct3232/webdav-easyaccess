@@ -8,7 +8,13 @@
 
 function serializeCollection(
   row,
-  { grantedRole = null, itemCount = 0, includeDefinition = true, previewItems = [] } = {}
+  {
+    grantedRole = null,
+    itemCount = 0,
+    includeDefinition = true,
+    previewItems = [],
+    lastVisitedAt,
+  } = {}
 ) {
   const payload = {
     collection_id: row.id,
@@ -38,6 +44,12 @@ function serializeCollection(
   };
   if (includeDefinition) {
     payload.definition = row.definition ?? null;
+  }
+  // requester-scoped digest cursor (GET / rows only, ruling 2026-10-01): the
+  // sidebar new-dot source — dot ⇔ null (never opened). Attached solely by
+  // listCollections; every other surface omits the key entirely.
+  if (lastVisitedAt !== undefined) {
+    payload.last_visited_at = lastVisitedAt;
   }
   // similar-sort grouping header key (camelCase internal → snake wire); other
   // sorts omit it entirely

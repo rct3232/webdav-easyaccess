@@ -344,3 +344,21 @@ describe('subject_label capture (register (d) — T0.10)', () => {
     expect(labels['remove-item']).toBe('Single');
   });
 });
+
+describe('listDigestCursorMap (facade passthrough, 2026-10-01 owner ruling)', () => {
+  it('exposes the batched repo read: seeded cursor present, never-opened pairs absent', async () => {
+    const { user } = await createAuthenticatedTestUser({
+      username: `store-cmap-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    });
+    const created = await collectionsStore.createCollection(
+      { ownerId: user.id, name: 'CMap', origin: 'user' },
+      { actor: user.id }
+    );
+
+    const map = await collectionsStore.listDigestCursorMap(user.id);
+    expect(Object.keys(map).map(Number)).toContain(Number(created.id));
+    expect(new Date(map[created.id]).getTime()).toBe(new Date(created.createdAt).getTime());
+    // a collection the user never opened has NO entry (absent key = never-opened)
+    expect(map[created.id + 999999]).toBeUndefined();
+  });
+});

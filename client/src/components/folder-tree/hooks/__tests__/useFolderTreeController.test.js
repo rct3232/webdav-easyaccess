@@ -474,17 +474,53 @@ describe('useFolderTreeController — collections section (§3)', () => {
     });
   });
 
-  it('new-collection dots come from the stored visit cursor; visiting __collections__ clears them', async () => {
-    // Cursor predates both rows' created_at → everything is "new".
-    window.localStorage.setItem(
-      'collections.lastVisitedAt',
-      String(new Date('2025-12-01T00:00:00Z').getTime())
-    );
+  it('new dots come from NULL last_visited_at rows — the controller never touches localStorage (2026-10-01 ruling)', async () => {
+    // jsdom keeps getItem/setItem on Storage.prototype (not own props) —
+    // shadow them with jest.fn() and restore after the assertion.
+    const originalGetItem = window.localStorage.getItem.bind(window.localStorage);
+    const originalSetItem = window.localStorage.setItem.bind(window.localStorage);
+    const getItem = jest.fn(originalGetItem);
+    const setItem = jest.fn(originalSetItem);
+    window.localStorage.getItem = getItem;
+    window.localStorage.setItem = setItem;
+    const restoreLocalStorageSpies = () => {
+      window.localStorage.getItem = originalGetItem;
+      window.localStorage.setItem = originalSetItem;
+    };
+    explorerGateway.loadCollections.mockImplementation(async () => ({
+      collections: [
+        { ...rowA, last_visited_at: null },
+        { ...rowShared, last_visited_at: '2026-09-30T08:00:00.000Z' },
+        { collection_id: 9, name: 'No key at all' },
+      ],
+    }));
+
+    const { result } = renderCollections();
+    await waitFor(() => expect(result.current.collectionsTreeRows).toHaveLength(3));
+    // dot ⇔ never opened: null AND absent keys dot, an ISO cursor does not.
+    expect(result.current.newCollectionIds).toEqual([7, 9]);
+    expect(getItem).not.toHaveBeenCalled();
+    expect(setItem).not.toHaveBeenCalled();
+    restoreLocalStorageSpies();
+  });
+
+  it('returning to /__collections__ re-fetches the rows so cleared dots refresh', async () => {
     const { result, rerender } = renderCollections();
     await waitFor(() => expect(result.current.collectionsTreeRows).toHaveLength(2));
-    expect(result.current.newCollectionIds).toEqual([7, 8]);
+    expect(explorerGateway.loadCollections).toHaveBeenCalledTimes(1);
 
-    // Arriving at the section visits it: cursor refreshes → dots clear.
+    // deep inside a collection: no spurious refetch
+    rerender({
+      currentNodeId: null,
+      currentPath: '/__collections__/collection/7',
+      user: baseUser,
+      onNodeClick: jest.fn(),
+      ancestors: [],
+    });
+    await waitFor(() => expect(result.current.collectionsTreeRows).toHaveLength(2));
+    expect(explorerGateway.loadCollections).toHaveBeenCalledTimes(1);
+
+    // back to the list view: rows re-fetch (server-cursor stamping becomes visible)
     rerender({
       currentNodeId: null,
       currentPath: '/__collections__',
@@ -492,12 +528,7 @@ describe('useFolderTreeController — collections section (§3)', () => {
       onNodeClick: jest.fn(),
       ancestors: [],
     });
-    await waitFor(() => {
-      expect(result.current.newCollectionIds).toEqual([]);
-    });
-    expect(Number(window.localStorage.getItem('collections.lastVisitedAt'))).toBeGreaterThan(
-      Date.now() - 60 * 1000
-    );
+    await waitFor(() => expect(explorerGateway.loadCollections).toHaveBeenCalledTimes(2));
   });
 });
 

@@ -252,6 +252,22 @@ module.exports = function createPostgresCollectionsRepository(executor) {
       }
     },
 
+    async listDigestCursorMap(userId) {
+      try {
+        const { rows } = await executor.query(
+          'SELECT collection_id, last_visited_at FROM collection_digest_cursors WHERE user_id = $1',
+          [Number(userId)]
+        );
+        const map = {};
+        rows.forEach((row) => {
+          map[Number(row.collection_id)] = toIsoString(row.last_visited_at);
+        });
+        return map;
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
     async recomputeActivityScores(collectionIds) {
       try {
         const scoped =

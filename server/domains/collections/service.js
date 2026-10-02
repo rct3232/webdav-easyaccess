@@ -444,6 +444,10 @@ async function listCollections(userId, { sort, include } = {}) {
   }
 
   const getCandidates = createCandidatesProvider(userId);
+  // One batched cursor read for the whole list (ruling 2026-10-01): rows carry
+  // the requester-scoped `last_visited_at` — the sidebar new-dot source
+  // (dot ⇔ null, never opened; absent map key = null).
+  const cursorMap = await collectionsStore.listDigestCursorMap(userId);
   const collections = [];
   for (const row of rows) {
     const isOwner = row.ownerId === userId;
@@ -460,6 +464,7 @@ async function listCollections(userId, { sort, include } = {}) {
         itemCount: view.length,
         includeDefinition: isOwner,
         previewItems: buildPreviewItems(view),
+        lastVisitedAt: cursorMap[row.id] ?? null,
       })
     );
   }

@@ -620,6 +620,25 @@ FileActionSheet|FilePropertiesDialog` 140/140. M-5 clarification: no pre-existin
   migrated to badge ids, asserted in grid default AND the kept list path). Commits: docs
   `ca25263`, RED `6f6e190`, GREEN+locales `c43855a`, E2E `4170bdc`.
 
+- **§11 follow-up 5 (2026-10-02, owner ruling 2026-10-01 — per-collection new dot):** the
+  sidebar dot rule becomes the SERVER cursor: dot ⇔ the requesting user has NEVER opened
+  that collection (`GET /` row `last_visited_at == null`). `createCollection` SEEDS the
+  creator's digest cursor (`last_visited_at = created_at`) INSIDE the same journaled create
+  TX — self-created collections never dot; collections shared to me dot until first open;
+  opening (`GET /:id/items` stamp, existing) clears on the next list refresh. Server: new
+  repo `listDigestCursorMap(userId)` (both dialects + conformance: two seeded cursors +
+  absent-row case) → facade passthrough → one batched read in `listCollections`, attached
+  to `serializeCollection` rows. Client `useFolderTreeController`: `COLLECTIONS_VISIT_KEY`
+  localStorage cursor, its write effect and the `created_at > cursor` comparison are
+  REMOVED; `newCollectionIds` is NULL-based; rows re-fetch when `currentPath` returns to
+  `/__collections__`. Note: revoke→re-grant keeps the grantee's stale cursor (no re-dot) —
+  accepted, flagged for owner. Branch `feature/per-collection-new-dot` (worktree wt-dot off
+  `ai-feature` @ 4e303b9); docs-first → RED → GREEN. `[done]` — gates: server `test:ci`
+  **130 suites / 2447 pass (5 skipped)**; PG leg `test:ci:pg:adapters` **23 suites /
+  346 pass (1 skipped)** incl. the new cursor conformance; client **178 suites / 1919
+  pass**; `E2E_BACKEND_MODE=s3 collections-desktop` **14/14 green** (002 carries the
+  no-dot-on-self-create pin + `last_visited_at` truthy on the creator row). Commits:
+  docs `94a7f9d`, RED `a8a2d9a`, GREEN + ledger `this`.
 - **§11 FOLLOW-UP batch (2026-10-01, owner-spotted post-ship defects)** — branch
   `fix/polish-11-followups` (worktree wt-11f off `e8e29db`); docs-first `34fefb7` → RED →
   GREEN, one commit per concern:
@@ -717,11 +736,11 @@ exists behind the gates. Error contract: reuse `serverErrors.collections.forbidd
 no new i18n codes; grantee=admin banned at grant creation; usage recording and the journal are
 unchanged (gates make admin rows unreachable). RCA: 2026-10-01 pivot adjudication entry.
 
-| Task             | Objective                                                                                                         | Deps | Verification                                                                                        | Status   |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------- | -------- |
-| U1 server gates  | `requireNonAdmin` on ALL collections/file-likes/dashboard routes + grantee-admin service ban (+ docs-first flips) | none | RED→GREEN; server `test:ci` + `test:ci:pg:adapters`; ownerNodeResolver admin tests UNMODIFIED-green | `[done]` |
-| U2 client gating | collections/likes/dashboard surfaces ABSENT for admin actors (sibling agent, `wt-pivot-cli`)                      | U1   | client suite + eslint/prettier; server 403 already enforces regardless                              | `[done]` (merged `5ac5246`) |
-| U3 e2e migration | collections E2E migrated to a regular-user actor (scratch user provisioning, home-based workspaces, dual-token cleanup); admin-403 coverage owned by U1 unit gates               | U1   | `collections-desktop` 14/14 twice consecutive                                                       | `[done]` |
+| Task             | Objective                                                                                                                                                          | Deps | Verification                                                                                        | Status                      |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---- | --------------------------------------------------------------------------------------------------- | --------------------------- |
+| U1 server gates  | `requireNonAdmin` on ALL collections/file-likes/dashboard routes + grantee-admin service ban (+ docs-first flips)                                                  | none | RED→GREEN; server `test:ci` + `test:ci:pg:adapters`; ownerNodeResolver admin tests UNMODIFIED-green | `[done]`                    |
+| U2 client gating | collections/likes/dashboard surfaces ABSENT for admin actors (sibling agent, `wt-pivot-cli`)                                                                       | U1   | client suite + eslint/prettier; server 403 already enforces regardless                              | `[done]` (merged `5ac5246`) |
+| U3 e2e migration | collections E2E migrated to a regular-user actor (scratch user provisioning, home-based workspaces, dual-token cleanup); admin-403 coverage owned by U1 unit gates | U1   | `collections-desktop` 14/14 twice consecutive                                                       | `[done]`                    |
 
 - **§14 execution log (branch `feature/admin-operator-server`, base `822df02`):** U1 commits:
   docs `d22e617` → RED `df8f654` → gates `5f5a00a` → ledger (this commit). RED observed: 30 new

@@ -1,6 +1,7 @@
 'use strict';
 
 const { mapDatabaseError } = require('../../../utils/errorHandler');
+const { toIsoString } = require('../../../utils/sharedHelpers');
 const {
   mapCollectionRow,
   mapItemRow,
@@ -234,6 +235,22 @@ module.exports = function createSqliteCollectionsRepository(executor) {
           [Number(userId), Number(collectionId)]
         );
         return rows.length > 0 ? String(rows[0].last_visited_at) : null;
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async listDigestCursorMap(userId) {
+      try {
+        const { rows } = await executor.query(
+          'SELECT collection_id, last_visited_at FROM collection_digest_cursors WHERE user_id = ?',
+          [Number(userId)]
+        );
+        const map = {};
+        rows.forEach((row) => {
+          map[Number(row.collection_id)] = toIsoString(row.last_visited_at);
+        });
+        return map;
       } catch (error) {
         throw mapDatabaseError(error);
       }

@@ -2,11 +2,12 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Box, CardMedia, IconButton, Typography } from '@mui/material';
 import {
+  Collections as CollectionsIcon,
   FolderShared as FolderSharedIcon,
   MoreVert as MoreVertIcon,
   PushPin as PushPinIcon,
 } from '@mui/icons-material';
-import { getFileIcon, getFileIconForGrid } from '../../utils/fileIconUtils';
+import { getFileIcon } from '../../utils/fileIconUtils';
 import { getCollectionEntryKey } from '../../utils/fileViewUtils';
 import { useLongPress } from '../../hooks/useLongPress';
 import { useLongPressSelect } from './hooks/useLongPressSelect';
@@ -120,7 +121,18 @@ const CollectionCardItem = ({
         })}
       </Box>
     ) : (
-      getFileIconForGrid({ type: 'directory' })
+      <Box
+        data-testid="collection-card-fallback"
+        sx={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <CollectionsIcon fontSize="large" color="action" />
+      </Box>
     );
 
   const moreAction = !selectionMode ? (

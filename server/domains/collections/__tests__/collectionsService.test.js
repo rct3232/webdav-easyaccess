@@ -434,7 +434,7 @@ describe('collectionsService preview_items (P-3)', () => {
     expect(row.preview_items.map((i) => i.node_id)).toEqual([second.id, first.id]);
   });
 
-  it('revoked and shared-excluded members NEVER appear in preview_items (name/mime leak guard)', async () => {
+  it('revoked members NEVER appear in preview_items; shared-excluded DO (owner can read them — 2026-10-01 amendment)', async () => {
     const ctx = await setupServiceUser('preview-excl');
     const other = await createUserWithRoot('preview-excl-other');
     const manual = await collectionsService.createCollection(ctx.user.id, { name: 'Preview excl' });
@@ -458,7 +458,7 @@ describe('collectionsService preview_items (P-3)', () => {
       foreign.id,
       gone.id,
     ]);
-    // newest-added are the foreign rows; they must still not surface
+    // newest-added are the foreign rows; they surface for the owner (readable)
     await setAddedAt(manual.collection.id, own.id, '2026-01-01 00:00:00');
     await setAddedAt(manual.collection.id, foreign.id, '2026-06-01 00:00:00');
     // revoke the `gone` grant → state:'revoked' placeholder
@@ -470,9 +470,11 @@ describe('collectionsService preview_items (P-3)', () => {
     });
     const row = collections.find((c) => c.collection_id === manual.collection.id);
     expect(row.preview_items).toEqual([
+      { node_id: foreign.id, name: 'foreign.png', type: 'file', mime: null },
       { node_id: own.id, name: 'own.jpg', type: 'file', mime: null },
     ]);
-    // shared_excluded row is still counted in item_count (view truth), just not previewed
+    // revoked row stays excluded (access lost); item_count unchanged (view truth)
+    expect(row.preview_items.map((i) => i.node_id)).not.toContain(gone.id);
     expect(row.item_count).toBe(3);
   });
 

@@ -645,4 +645,40 @@ describe('explorerGateway', () => {
       expect(repo.acceptFileSuggestions).toHaveBeenCalledWith([7], { silent: true });
     });
   });
+
+  describe('explorerGateway — admin operator suppression (PLAN §14 client half)', () => {
+    beforeEach(() => {
+      getShowHiddenFiles.mockReturnValue(false);
+    });
+
+    it('listDirectory skips the liked merge for admin — no file-likes read, rows lack liked', async () => {
+      listFiles.mockResolvedValueOnce([
+        { nodeId: 10, display_path: '/a.txt', isHidden: false },
+        { nodeId: 11, display_path: '/b.txt', isHidden: false },
+      ]);
+
+      const result = await listDirectory({
+        nodeId: null,
+        options: { user: { id: '1', is_admin: true } },
+      });
+
+      expect(getLikedNodeIds).not.toHaveBeenCalled();
+      expect(result).toHaveLength(2);
+      expect(result[0]).not.toHaveProperty('liked');
+      expect(result[1]).not.toHaveProperty('liked');
+    });
+
+    it('non-admin control: the liked merge still marks rows (unchanged contract)', async () => {
+      listFiles.mockResolvedValueOnce([{ nodeId: 10, display_path: '/a.txt', isHidden: false }]);
+      getLikedNodeIds.mockResolvedValueOnce({ liked: [10] });
+
+      const result = await listDirectory({
+        nodeId: 5,
+        options: { user: { id: '1', is_admin: false } },
+      });
+
+      expect(getLikedNodeIds).toHaveBeenCalled();
+      expect(result[0].liked).toBe(true);
+    });
+  });
 });

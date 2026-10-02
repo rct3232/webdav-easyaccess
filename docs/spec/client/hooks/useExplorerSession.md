@@ -133,3 +133,4 @@ Verification (appends to §2.8):
 
 - [ ] (target) `onSubmitQuery` only delegates — no listing state change beyond the shared query text, no network path from this hook.
 - [ ] (target) After results-mode exit, the same `searchQuery` re-applies to the listing filter without a re-fetch.
+- Operator rule (admin is a pure operator — PLAN §14 client half): hidden / never invoked for admin — session listing rows never carry `liked` in an admin session (`explorerGateway.listDirectory` skips the merge); the session state itself stays role-neutral (no redundant checks here).

@@ -111,3 +111,4 @@
 ### 2.8 Edge Cases
 
 - !user: recent files cleared
+- Operator rule (admin is a pure operator — PLAN §14 client half): the `CollectionsSection` mount is gated `&& !user?.is_admin` — the section is hidden for admin (its load is skipped by `useFolderTreeController`, so no `/api/collections` call fires).

@@ -81,8 +81,10 @@ const useFolderTreeController = ({
 
   // §3: flat collection rows (activity order, server-given) — no badge read.
   // loaded through the explorerGateway seams only; notifier refreshes rows.
+  // Operator rule (PLAN §14 client half): admins never load collections —
+  // no loadCollections call, no subscription, no /api/collections traffic.
   useEffect(() => {
-    if (!user) {
+    if (!user || user.is_admin) {
       setCollectionsTreeRows([]);
       return undefined;
     }

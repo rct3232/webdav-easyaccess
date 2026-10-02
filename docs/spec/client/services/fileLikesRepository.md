@@ -4,11 +4,11 @@ Target-contract spec (T0.5 like state — `docs/features/collections-platform.md
 
 ## 1. Overview
 
-| Item       | Description                                                                                                                                                                                                                          |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Role       | Viewer-scoped like state IO: the whole-viewer read that feeds `file.liked` on explorer listing rows plus the explicit set (toggle) write. Swallows failures into fallback values (collectionsRepository pattern) and carries a module-local change notifier (pub-sub fan-out after real success). |
-| Used by    | `explorerGateway` (re-export + `listDirectory` `liked` merge); shell like handlers via the gateway — never imported by components/hooks directly (`docs/spec/client/services/explorerGateway.md` §2.6).                              |
-| Does not own | Like presentation (context menu / action sheet / properties header / `MemberRowControls`), usage recording (server `fileLikesService`), collection member `liked` (rides `GET /collections/:id/items`).                               |
+| Item         | Description                                                                                                                                                                                                                                                                                       |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role         | Viewer-scoped like state IO: the whole-viewer read that feeds `file.liked` on explorer listing rows plus the explicit set (toggle) write. Swallows failures into fallback values (collectionsRepository pattern) and carries a module-local change notifier (pub-sub fan-out after real success). |
+| Used by      | `explorerGateway` (re-export + `listDirectory` `liked` merge); shell like handlers via the gateway — never imported by components/hooks directly (`docs/spec/client/services/explorerGateway.md` §2.6).                                                                                           |
+| Does not own | Like presentation (context menu / action sheet / properties header / `MemberRowControls`), usage recording (server `fileLikesService`), collection member `liked` (rides `GET /collections/:id/items`).                                                                                           |
 
 ---
 
@@ -22,12 +22,12 @@ Target-contract spec (T0.5 like state — `docs/features/collections-platform.md
 
 ### 2.2 Main Functions
 
-| Function                    | Input                                              | Return                                                                                   | API called (see api.md)            |
-| --------------------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------- |
-| getLikedNodeIds             | —                                                    | `Promise<{ liked: number[] }>` — verbatim snake_case payload; `{ liked: [] }` on failure  | GET `/api/file-likes`              |
-| getLikedItems               | `()`                                                 | `Promise<{ items: Array<object> }>` — verbatim snake_case; `{ items: [] }` on failure (P-5; full fetch under Decision B) | GET `/api/file-likes/items`        |
-| setFileLike                 | `(nodeId, liked, options?)`                        | `Promise<{ node_id, liked } \| null>` — payload only on 2xx; `null` on absorbed failure   | PUT `/api/file-likes/:nodeId`      |
-| subscribeFileLikesChange    | `(callback: () => void)`                           | `() => void` unsubscribe                                                                  | — (module-local pub-sub)           |
+| Function                 | Input                       | Return                                                                                                                   | API called (see api.md)       |
+| ------------------------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------- |
+| getLikedNodeIds          | —                           | `Promise<{ liked: number[] }>` — verbatim snake_case payload; `{ liked: [] }` on failure                                 | GET `/api/file-likes`         |
+| getLikedItems            | `()`                        | `Promise<{ items: Array<object> }>` — verbatim snake_case; `{ items: [] }` on failure (P-5; full fetch under Decision B) | GET `/api/file-likes/items`   |
+| setFileLike              | `(nodeId, liked, options?)` | `Promise<{ node_id, liked } \| null>` — payload only on 2xx; `null` on absorbed failure                                  | PUT `/api/file-likes/:nodeId` |
+| subscribeFileLikesChange | `(callback: () => void)`    | `() => void` unsubscribe                                                                                                 | — (module-local pub-sub)      |
 
 - `setFileLike` body is camelCase `{ liked: boolean }` (PLAN §6 request casing); responses stay snake_case and are returned verbatim.
 - **Notify-after-real-success only:** `subscribeFileLikesChange` callbacks fire after a 2xx `setFileLike`; absorbed failures never notify.
@@ -57,3 +57,4 @@ Target-contract spec (T0.5 like state — `docs/features/collections-platform.md
 - [ ] Failed mutation returns `null`, calls `onError` once with the envelope, and notifies nobody.
 - [ ] `subscribeFileLikesChange` returns an unsubscribe function safe for effect cleanup.
 - [ ] `listDirectory` (authenticated) rows carry merged `liked`; share-token listings and absorbed read failures leave the listing shape unchanged (`liked: false`).
+- [ ] (P-4) Admin operator rule (PLAN §14 client half): no file-likes read/write is ever issued for an admin session — `explorerGateway.listDirectory` skips the `getLikedNodeIds` merge and no like affordance is offered, so this repository is hidden / never invoked for admin.

@@ -79,3 +79,4 @@ Target-contract spec.
 
 - Concurrent mutations from other tabs: last notify-refresh wins; no client merge logic.
 - Rename collision: server suffixes silently (§3.1) — the refreshed row shows the final name; no client error.
+- Operator rule (admin is a pure operator — PLAN §14 client half): never invoked for admin — the shell mounts the hook per the rules of hooks but wires it to the inert gateway seam (share-link precedent), so no `/api/collections` read/mutation fires in an admin session.

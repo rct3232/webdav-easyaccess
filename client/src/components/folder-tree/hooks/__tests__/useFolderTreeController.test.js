@@ -500,3 +500,33 @@ describe('useFolderTreeController — collections section (§3)', () => {
     );
   });
 });
+
+describe('useFolderTreeController — admin operator suppression (PLAN §14 client half)', () => {
+  const adminUser = { id: '1', username: 'admin', is_admin: true, rootNodeId: null };
+
+  beforeEach(() => {
+    getRecentFiles.mockResolvedValue([]);
+    onRecentFilesChange.mockImplementation(() => jest.fn());
+    folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([]);
+    explorerGateway.loadCollections.mockResolvedValue({ collections: [] });
+    explorerGateway.subscribeToCollections.mockImplementation(() => jest.fn());
+  });
+
+  it('admin: never loads collections rows and never subscribes (no /api/collections call)', async () => {
+    const { result } = renderControllerHook({
+      currentNodeId: null,
+      currentPath: '/',
+      user: adminUser,
+      onNodeClick: jest.fn(),
+      ancestors: [],
+    });
+
+    // Home row still resolves (admin home is the filesystem root) while the
+    // collections seams stay silent.
+    await waitFor(() => {
+      expect(result.current.collectionsTreeRows).toEqual([]);
+    });
+    expect(explorerGateway.loadCollections).not.toHaveBeenCalled();
+    expect(explorerGateway.subscribeToCollections).not.toHaveBeenCalled();
+  });
+});

@@ -96,3 +96,4 @@ Verification (appends §2.7):
 
 - [ ] (target) Items render only when their callbacks are supplied; `liked:true` row renders the unlike-state label.
 - [ ] (target) Member-context rendered-items snapshot contains no move/copy/rename/delete entries.
+- Operator rule (admin is a pure operator — PLAN §14 client half): `collection-add` / `like-toggle` rows are hidden for admin via callback-withhold (shell passes `onAddToCollection`/`onToggleLike` as `undefined` — absent, never disabled).

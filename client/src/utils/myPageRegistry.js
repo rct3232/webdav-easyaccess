@@ -35,7 +35,9 @@ const MY_PAGE_CATEGORY_META = [
     id: 'storage',
     icon: StorageIcon,
     labelKey: 'mypage.storage',
-    visibility: 'all',
+    // Operator rule (PLAN §14 client half): the collections dashboard is a
+    // user surface — admin is a pure operator, never a participant.
+    visibility: 'nonAdminOnly',
   },
   {
     id: 'admin-users',
@@ -165,6 +167,12 @@ export function resolveMyPageCategory(categoryId, isAdmin) {
   }
 
   if (categoryId === 'sharing' && isAdmin) {
+    return DEFAULT_MY_PAGE_CATEGORY;
+  }
+
+  // Operator rule (PLAN §14 client half): storage (collections dashboard)
+  // deep-links fall back for admins — mirrors the `sharing` precedent.
+  if (categoryId === 'storage' && isAdmin) {
     return DEFAULT_MY_PAGE_CATEGORY;
   }
 

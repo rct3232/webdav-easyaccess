@@ -122,3 +122,4 @@
 
 - User own folder – no shared segments
 - Horizontal scroll for long chains
+- Operator rule (admin is a pure operator — PLAN §14 client half): the M-9 collections/liked/archive crumb variants are unreachable for admin (the `useFileManager` urlView guard resolves admin deep links to home) — hidden by guard; NO redundant admin checks inside the component (avoid-scatter rule).

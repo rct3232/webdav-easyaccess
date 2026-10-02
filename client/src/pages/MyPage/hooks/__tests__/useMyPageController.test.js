@@ -60,18 +60,35 @@ describe('useMyPageController', () => {
     });
   });
 
-  it('lists the storage entry for admins too (visibility all — T0.10)', async () => {
+  // PIVOT (PLAN §14 client half): the owner-approved operator rule supersedes
+  // the T0.10 "visibility all" contract — admin is a pure operator and never
+  // a collections/dashboard participant.
+  it('hides the storage entry for admins (operator rule — nonAdminOnly)', async () => {
     useAuth.mockReturnValue({ user: { is_admin: true } });
     useLocation.mockReturnValue({ state: { category: 'account' } });
 
     const { result } = renderHook(() => useMyPageController({ isMobile: false }));
 
     await waitFor(() => {
-      expect(result.current.sidebarItems.map((item) => item.id)).toContain('storage');
+      expect(result.current.sidebarItems.map((item) => item.id)).not.toContain('storage');
     });
-    const storage = result.current.sidebarItems.find((item) => item.id === 'storage');
-    expect(storage).toMatchObject({ labelKey: 'mypage.storage', visibility: 'all' });
-    expect(storage.icon).toBeTruthy();
+    expect(result.current.sidebarItems.map((item) => item.id)).toEqual([
+      'account',
+      'admin-users',
+      'admin-settings',
+      'preferences',
+    ]);
+  });
+
+  it('rewrites the storage deep-link to the default section for admins (operator rule)', async () => {
+    useAuth.mockReturnValue({ user: { is_admin: true } });
+    useLocation.mockReturnValue({ state: { category: 'storage' } });
+
+    const { result } = renderHook(() => useMyPageController({ isMobile: false }));
+
+    await waitFor(() => {
+      expect(result.current.selectedCategory).toBe('account');
+    });
   });
 
   it('accepts the storage deep-link category id for non-admins without rewriting it (T0.10)', async () => {

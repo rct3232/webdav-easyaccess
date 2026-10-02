@@ -94,3 +94,4 @@ Target-contract spec.
 - Duplicate render keys impossible (server list is full, unpaginated — collections.md Decision).
 - Very long names: middle truncation + tooltip, rendered by the shared `TreeRow` primitive
   (single font-metrics source with RecentFilesSection/file-tree rows).
+- Operator rule (admin is a pure operator — PLAN §14 client half): the section is NEVER mounted for admin (`user.is_admin`) — hidden via the FolderTree mount gate; the component itself stays role-neutral.

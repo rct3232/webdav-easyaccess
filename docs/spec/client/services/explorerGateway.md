@@ -100,3 +100,4 @@ Verification additions:
 - [ ] `subscribeToCollections` returns an unsubscribe function safe for effect cleanup (same contract as `subscribeToRecentFiles`).
 - [ ] `runSearch`/`undoAction`/collection CRUD re-exports return the repository's exact shapes (snake_case payloads, absorbed fallbacks); `recordSearchClick` keeps the absorbed boolean contract.
 - [ ] Controller hooks (`useCollections`, `useSearchResults`, `useUndoToast`) contain no direct `collectionsRepository`/`collectionsNotifier` imports (grep gate).
+- [ ] (operator rule, PLAN §14 client half) `listDirectory` skips the `liked` merge when `options.user.is_admin` — no `GET /api/file-likes` call fires and the returned rows LACK the `liked` key (not `liked:false`); non-admin listings keep the merge unchanged.

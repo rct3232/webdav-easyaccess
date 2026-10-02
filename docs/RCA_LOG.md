@@ -964,3 +964,44 @@ username`), while `openPrivateWorkspace` creates its case folder at the FILESYST
   §13 residual "admin derived candidates" declared MOOT. The prior entry is kept verbatim as
   historical record (append-only). Gates: server `test:ci` 130 suites / 2441 pass (5 skip),
   PG adapters leg 23 / 344 (1 skip), ownerNodeResolver admin tests unmodified-green.
+
+### 2026-10-02 — undo of a collection revoke crashes (single-inverse loses the journal row) (Case A, source error)
+
+- **Summary**: while pinning the ruling-B undo boundary (undo-revoke restores the grant but
+  NOT the digest cursor), `undoAction` on a revoke row threw
+  `serverErrors.errorHandler.databaseQueryFailed`; raw cause:
+  `TypeError: Cannot read properties of undefined (reading 'actor')`.
+- **Diagnosis**: `applyCollectionInverse` (server/domains/actions/service.js) forwards the
+  journal `row` to `applyInverseTx` on the command-unit (items) branch but DROPPED it on the
+  single-inverse branch. The `grant-access` inverse (revoke's undo) reads
+  `inverse.grantedBy ?? row.actor` — undefined `row` throws inside the undo TX, which rolls
+  the whole undo back and surfaces as a mapped DB error. Never caught before: no test or E2E
+  ever undid a revoke (grant/create/add-item inverses do not read `row`).
+- **Classification**: **Case A (Source Error)** — routes/actions.md §2.4 specifies undo
+  applying the journaled inverse; the code path violates it for `grant-access`.
+- **Action taken**: pass `row` through the single-inverse call
+  (`applyInverseTx(tx, payload.inverse, row)`); pinned by the ruling-B service test
+  "undo-revoke restores the GRANT but NOT the cursor". No behavior change for other inverses
+  (they never read `row`).
+
+### 2026-10-02 — E2E-COLLECTION-010 flaked: nth() resolved to the empty-card fallback (Case B, test race)
+
+- **Summary**: under the new `E2E_BACKEND_MODE=webdav` collections runs, 010 failed
+  intermittently (~half the runs): `cards.nth(1)` expected the second collection name but
+  received `""` — the locator resolved to `div[data-testid="collection-card-fallback"]`.
+- **Diagnosis (trace-proven)**: the second `uiCreateCollectionWithFile` press(Enter) returns
+  while the client's create→add chain is still in flight — `AddToCollectionMenu.submitting()`
+  closes the menu BEFORE `await onCreateAndAdd(...)` (two sequential POSTs;
+  `routes/collections.md` documents them as separate calls: create `/:id`, then
+  `POST /:id/items`). The test's immediate `page.goto('/files/__collections__')` unloaded the
+  document between the two POSTs (trace: `POST /api/collections` 201 for Zzz, NO
+  `POST /api/collections/2/items` anywhere in the run) → Zzz legitimately listed with
+  `preview_items: []` → its card renders the decorative `collection-card-fallback` child,
+  which the prefix selector `[data-testid^="collection-card-"]` also matches — shifting every
+  `nth()` index by one (9 polls, stable: not a render flicker).
+- **Classification**: **Case B (Test Error)** — the app behaves per spec; the helper pressed
+  Enter and moved on without waiting for the documented second call to land.
+- **Action taken**: settle-wait in 010 — API-poll until BOTH collections report
+  `item_count: 1` before navigating (no assertion weakened; the order checks stay); the card
+  locator now excludes `collection-card-fallback` (real card roots only). Surfaced by the
+  webdav runs added in P0 closeout item 3.

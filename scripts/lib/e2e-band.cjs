@@ -22,7 +22,7 @@
  *   4. `E2E_PORT_OFFSET` pins the band exactly (parallel-run scheduling);
  *      per-port `E2E_*_PORT` env vars override the effective ports last.
  *
- * BAND_STEP (20) must exceed the span of the scratch base ports (5002..5013)
+ * BAND_STEP (20) must exceed the span of the scratch base ports (5002..5014)
  * so two allocated bands can never overlap each other's slots.
  *
  * The module also regenerates `data/e2e-runtime.env` — a copy of the mode's
@@ -46,6 +46,7 @@ const PORT_BASES = {
   scratchMigration: 5011,
   scratchTrashAdmin: 5012,
   scratchCollections: 5013,
+  scratchCollectionsMobile: 5014,
   webdav: 8090,
   pg: 5433,
   s3: 9010,
@@ -63,6 +64,7 @@ const PORT_ENV_OVERRIDES = {
   scratchMigration: 'E2E_SCRATCH_MIGRATION_PORT',
   scratchTrashAdmin: 'E2E_SCRATCH_TRASH_ADMIN_PORT',
   scratchCollections: 'E2E_SCRATCH_COLLECTIONS_PORT',
+  scratchCollectionsMobile: 'E2E_SCRATCH_COLLECTIONS_MOBILE_PORT',
   webdav: 'E2E_WEBDAV_PORT',
   pg: 'E2E_PG_PORT',
   s3: 'E2E_S3_PORT',

@@ -373,14 +373,17 @@ suggestion row (a suggestion state transition is opportunistic).
   `collections.invalidRole`; unknown/approved-absent user → 404
   `collections.granteeNotFound`). Re-grant overwrites the role (PK pair), journaled as one
   command. 201: `{ "grant": { …row… }, "undo": { "action_id": 996 } }`.
-- **DELETE /:id/grants:** Query `userId`. Revocation is instant (§4.7). 200:
+- **DELETE /:id/grants:** Query `userId`. Revocation is instant (§4.7). The journaled revoke TX
+  also deletes the grantee's digest cursor row (ruling B, 2026-10-02): a re-grant afterwards
+  re-dots the collection in the grantee's sidebar. 200:
   `{ "grantee_id": 9, "revoked": true, "undo": { "action_id": 997 } }`.
   404 `collections.grantNotFound` when no such row.
 - **DELETE /:id/grants/me:** Grantee self-revocation (Path 1 — replaces the former
   recipient-local `Leave` hide; 2026-09-29 owner ruling). Works for any held role
   (`viewer|editor`). Revocation is instant (§4.7), no confirm client-side; journaled exactly
   like the owner-side revoke (same store path `revokeAccess`, `action='revoke'`, inverse
-  `grant-access`, actor = grantee). Response mirrors the owner DELETE shape. 200:
+  `grant-access`, actor = grantee — and the same TX deletes the self-revoking grantee's digest
+  cursor, ruling B 2026-10-02). Response mirrors the owner DELETE shape. 200:
   `{ "grantee_id": 9, "revoked": true, "undo": { "action_id": 998 } }`.
   404 `collections.grantNotFound` when the caller holds no grant row (incl. the collection
   OWNER calling it on their own collection); unknown collection / zero-access caller →

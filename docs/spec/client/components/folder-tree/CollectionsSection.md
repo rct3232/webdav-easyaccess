@@ -82,7 +82,10 @@ Target-contract spec.
   collection (server digest cursor absent; creator is seeded at create, so self-created
   collections never dot). Opening stamps the cursor; the dot clears on the next list refresh
   (the controller re-fetches when returning to `/__collections__`). The former localStorage
-  visit-cursor heuristic is REMOVED. No sidebar chips for merges (§4.4 rejection).
+  visit-cursor heuristic is REMOVED. Re-grant after a revoke RE-DOTS: both revoke paths delete
+  the grantee's cursor row server-side (owner ruling B, 2026-10-02 — the former "stale cursor
+  survives revoke, no re-dot" case is resolved; undo of a revoke restores the grant but not the
+  cursor, so undo-revoke re-dots too). No sidebar chips for merges (§4.4 rejection).
 
 ### 2.7 Verification Scenarios
 

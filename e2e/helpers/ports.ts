@@ -8,7 +8,7 @@ import { createRequire } from 'node:module';
  * Values resolve as: per-port `E2E_*_PORT` env override > persisted checkout
  * band (`data/e2e-runtime.json`, managed by scripts/lib/e2e-band.cjs) >
  * offset-0 defaults equal to the historical fixed contract (API :5002,
- * client :3000, scratch :5003/:5010-:5013, WebDAV :8090, PG :5433,
+ * client :3000, scratch :5003/:5010-:5014, WebDAV :8090, PG :5433,
  * MinIO :9010/:9011). Loading this module ensures the checkout band exists
  * (allocating the first free band when none is persisted yet), so a plain
  * `playwright test` without a pre-run provisioning step still works — at
@@ -34,6 +34,7 @@ export interface E2EPorts {
   scratchMigration: number;
   scratchTrashAdmin: number;
   scratchCollections: number;
+  scratchCollectionsMobile: number;
   webdav: number;
   pg: number;
   s3: number;

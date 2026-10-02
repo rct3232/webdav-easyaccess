@@ -124,6 +124,7 @@ describe('FileGridItem — member tile slots (P-4)', () => {
     // TileCornerBadge plate geometry: 28px circle over the media
     expect(getComputedStyle(excluded).width).toBe('28px');
     // CardTile cornerBadges container: absolute top-left, opposite the More action
+    // — 8px inset per the owner ruling (e483466; CardTile.md §cornerBadges)
     const corner = excluded.parentElement;
     expect(getComputedStyle(corner).position).toBe('absolute');
     expect(getComputedStyle(corner).top).toBe('8px');

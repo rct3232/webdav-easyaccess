@@ -520,6 +520,59 @@ describe('grants/me — recipient self-revocation (P-1 Path 1)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Revoke deletes the grantee digest cursor — ruling B (owner, 2026-10-02)
+// ---------------------------------------------------------------------------
+
+describe('grants revoke cursor deletion (ruling B, 2026-10-02)', () => {
+  async function openedShare(tag) {
+    const owner = await createUserWithRoot(`rbc-${tag}-owner`);
+    const grantee = await createUserWithRoot(`rbc-${tag}-grantee`);
+    const created = await createCollectionViaApi(owner.token, { name: `Cursor revoke ${tag}` });
+    const id = created.body.collection.collection_id;
+    await request(app)
+      .post(`/api/collections/${id}/grants`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ userId: grantee.user.id, role: 'viewer' });
+    // the read IS the visit — stamps the grantee cursor row
+    await request(app)
+      .get(`/api/collections/${id}/items`)
+      .set('Authorization', `Bearer ${grantee.token}`);
+    expect(await collectionsStore.getDigestCursor(grantee.user.id, id)).not.toBeNull();
+    return { owner, grantee, id };
+  }
+
+  it('owner DELETE /:id/grants deletes the grantee cursor; re-grant lists last_visited_at null again', async () => {
+    const { owner, grantee, id } = await openedShare('owner-side');
+
+    const revoke = await request(app)
+      .delete(`/api/collections/${id}/grants?userId=${grantee.user.id}`)
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(revoke.status).toBe(200);
+    expect(await collectionsStore.getDigestCursor(grantee.user.id, id)).toBeNull();
+
+    await request(app)
+      .post(`/api/collections/${id}/grants`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ userId: grantee.user.id, role: 'viewer' });
+    const list = await request(app)
+      .get('/api/collections?include=mine,shared')
+      .set('Authorization', `Bearer ${grantee.token}`);
+    const row = list.body.collections.find((c) => c.collection_id === id);
+    expect(row).toHaveProperty('last_visited_at', null);
+  });
+
+  it('DELETE /:id/grants/me deletes the self-revoking grantee cursor', async () => {
+    const { grantee, id } = await openedShare('self-side');
+
+    const revoke = await request(app)
+      .delete(`/api/collections/${id}/grants/me`)
+      .set('Authorization', `Bearer ${grantee.token}`);
+    expect(revoke.status).toBe(200);
+    expect(await collectionsStore.getDigestCursor(grantee.user.id, id)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Membership: add/remove, publish gate, digest, enrichment
 // ---------------------------------------------------------------------------
 

@@ -311,7 +311,10 @@ async function applyCollectionInverse({ row, tx }) {
     return outcomes;
   }
 
-  const outcome = await applyInverseTx(tx, payload.inverse);
+  // The row is needed by inverses that fall back to the capturing actor
+  // (`grant-access` → row.actor); dropping it here broke undo-revoke with a
+  // raw TypeError mapped to databaseQueryFailed (RCA 2026-10-02).
+  const outcome = await applyInverseTx(tx, payload.inverse, row);
   if (!outcome.applied) {
     throw fingerprintRefusal();
   }

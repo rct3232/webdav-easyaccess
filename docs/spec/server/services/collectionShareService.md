@@ -86,7 +86,9 @@ createdAt }` (username resolved via `userStore` at read).
   **Decision:** (re-)granting a user clears that user's hidden flag for the collection
   (`setVisible(hidden=false)`) — a fresh grant is intent to show them the collection.
 - `revoke(userId, id, granteeId)` → owner-only; no row → `grantNotFound`. INSTANT (§4.7):
-  the next read resolves role=null and every member view 404-masquerades. Already-visible
+  the next read resolves role=null and every member view 404-masquerades. The revoke TX also
+  DELETES the grantee's digest-cursor row (ruling B, 2026-10-02 — re-grant re-dots;
+  collectionsService.md §2.8). Already-visible
   metadata cannot be re-taken — documented limitation, same stance as journal boundaries;
   the journaled inverse restores FUTURE state only (undo of a revoke re-grants — that is
   exposure expansion, hence the journal matrix keeps it behind an explicit user undo

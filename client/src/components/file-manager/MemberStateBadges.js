@@ -24,8 +24,8 @@ const OVERLAY_ICON_SIZE = 10;
  * glyph overlaid top-left. Defined ONCE here (owner wording). The two font
  * sizes are INLINE styles so the `TileCornerBadge`
  * `& .MuiSvgIcon-root { fontSize: 16 }` descendant rule cannot resize the
- * overlay rendered in the theme WARNING tone (owner ruling (a), 2026-10-01 —
- * MUI default warning #ed6c02 via color prop; the plate stays translucent).
+ * overlay in the default inherited color; the WARNING tone (owner ruling, 2026-10-01
+ * revised) rides the BADGE: grid plate bgcolor / inline wrapper color, not the glyphs).
  */
 export const PublishPendingIcon = () => (
   <Box
@@ -37,11 +37,8 @@ export const PublishPendingIcon = () => (
       height: BADGE_ICON_SIZE,
     }}
   >
-    <Public color="warning" style={{ fontSize: BADGE_ICON_SIZE }} />
-    <Pending
-      color="warning"
-      style={{ fontSize: OVERLAY_ICON_SIZE, position: 'absolute', top: -2, left: -2 }}
-    />
+    <Public style={{ fontSize: BADGE_ICON_SIZE }} />
+    <Pending style={{ fontSize: OVERLAY_ICON_SIZE, position: 'absolute', top: -2, left: -2 }} />
   </Box>
 );
 
@@ -98,9 +95,9 @@ const listOverlayStyles = {
   gap: 0.5,
 };
 
-const InlineBadge = ({ testid, title, children }) => (
+const InlineBadge = ({ testid, title, children, tone = null }) => (
   <Tooltip title={title} disableInteractive>
-    <Box component="span" data-testid={testid} aria-label={title} sx={{ color: 'inherit' }}>
+    <Box component="span" data-testid={testid} aria-label={title} sx={{ color: tone || 'inherit' }}>
       {children}
     </Box>
   </Tooltip>
@@ -114,13 +111,24 @@ const MemberStateBadges = ({ file, variant = 'detail' }) => {
   }
   if (variant === 'grid') {
     return badges.map(({ kind, testid, title, icon }) => (
-      <TileCornerBadge key={kind} title={title} data-testid={testid} aria-label={title}>
+      <TileCornerBadge
+        key={kind}
+        title={title}
+        data-testid={testid}
+        aria-label={title}
+        tone={kind === 'publish-pending' ? 'warning.main' : null}
+      >
         {icon}
       </TileCornerBadge>
     ));
   }
   const rendered = badges.map(({ kind, testid, title, icon }) => (
-    <InlineBadge key={kind} testid={testid} title={title}>
+    <InlineBadge
+      key={kind}
+      testid={testid}
+      title={title}
+      tone={kind === 'publish-pending' ? 'warning.main' : null}
+    >
       {icon}
     </InlineBadge>
   ));

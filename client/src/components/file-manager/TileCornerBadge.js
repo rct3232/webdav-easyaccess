@@ -32,12 +32,13 @@ const buttonBadgeStyles = {
   },
 };
 
-const TileCornerBadge = ({ title = null, onClick = null, children, ...other }) => {
+const TileCornerBadge = ({ title = null, onClick = null, children, tone = null, ...other }) => {
+  const toneSx = tone ? { bgcolor: tone, '&:hover': { bgcolor: tone } } : null;
   const badge = onClick ? (
     <Box
       component="button"
       type="button"
-      sx={buttonBadgeStyles}
+      sx={tone ? { ...buttonBadgeStyles, ...toneSx } : buttonBadgeStyles}
       onClick={(e) => {
         e.stopPropagation();
         onClick(e);
@@ -47,7 +48,7 @@ const TileCornerBadge = ({ title = null, onClick = null, children, ...other }) =
       {children}
     </Box>
   ) : (
-    <Box component="span" sx={badgeBaseStyles} {...other}>
+    <Box component="span" sx={tone ? { ...badgeBaseStyles, ...toneSx } : badgeBaseStyles} {...other}>
       {children}
     </Box>
   );

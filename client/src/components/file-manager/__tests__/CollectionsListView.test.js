@@ -212,12 +212,16 @@ describe('CollectionsListView — list mode', () => {
     props.collections = [
       card({ collection_id: 2, name: 'Auto', pinned: true, pinned_by: 'auto' }),
       card({ collection_id: 3, name: 'Given', granted_role: 'viewer' }),
+      card({ collection_id: 4, name: 'Mine-Pinned', pinned: true, pinned_by: 'user' }),
     ];
     renderWithProviders(<CollectionsListView {...props} />);
     const sharedBadge = screen.getByTestId('card-shared-chip-3');
     const autoPinBadge = screen.getByTestId('card-autopin-chip-2');
     expect(sharedBadge).toBeInTheDocument();
     expect(autoPinBadge).toBeInTheDocument();
+    // 2026-10-01: explicit user pins badge too (plain PushPin, click unbinds)
+    const userPinBadge = screen.getByTestId('card-userpin-chip-4');
+    expect(userPinBadge.tagName).toBe('BUTTON');
     // badges sit inside the card (media overlay) — the footer carries no chips
     expect(within(screen.getByTestId('collection-card-3')).queryByText('Archived')).toBeNull();
 

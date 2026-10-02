@@ -8,13 +8,11 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
-  Tooltip,
   Typography,
 } from '@mui/material';
 import {
   ChevronRight as ChevronRightIcon,
   Collections as CollectionsIcon,
-  FolderShared as FolderSharedIcon,
   Inventory2 as ArchiveIcon,
   FavoriteBorder as LikesIcon,
   ExpandMore as ExpandMoreIcon,
@@ -147,7 +145,7 @@ const CollectionsSection = ({
               const collectionId = collection.collection_id;
               const selected = currentPath === `${COLLECTION_ROUTE_PREFIX}${collectionId}`;
               const isNew = (newCollectionIds ?? []).includes(collectionId);
-              const isShared = collection.granted_role != null;
+
               return (
                 <TreeRow
                   key={collectionId}
@@ -156,22 +154,7 @@ const CollectionsSection = ({
                   name={collection.name}
                   selected={selected}
                   onClick={() => onCollectionClick(collectionId)}
-                  icon={
-                    isShared ? (
-                      <Tooltip title={t('nav.collectionsSharedChip')}>
-                        <Box component="span" aria-label={t('nav.collectionsSharedChip')}>
-                          <FolderSharedIcon fontSize="small" />
-                        </Box>
-                      </Tooltip>
-                    ) : (
-                      <CollectionsIcon fontSize="small" />
-                    )
-                  }
-                  iconProps={
-                    isShared
-                      ? { 'data-testid': `collection-shared-chip-${collectionId}` }
-                      : undefined
-                  }
+                  icon={<CollectionsIcon fontSize="small" />}
                   secondary={
                     // M-1 (2026-09-30): the secondary member-count display is REMOVED —
                     // the `new` dot is the only secondary affordance left.

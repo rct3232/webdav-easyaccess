@@ -74,15 +74,15 @@ describe('CollectionsSection', () => {
     expect(screen.queryByText('12')).not.toBeInTheDocument();
   });
 
-  it('granted_role rows get the shared chip only and are never hoisted', () => {
+  it('granted_role rows render the PLAIN collections icon (received swap retired 2026-10-01) and are never hoisted', () => {
     const props = defaultProps();
     props.collections = [
       collectionRow({ collection_id: 1, name: 'Mine' }),
       collectionRow({ collection_id: 2, name: 'Received', granted_role: 'viewer' }),
     ];
     renderWithProviders(<CollectionsSection {...props} />);
-    expect(screen.getByTestId('collection-shared-chip-2')).toBeInTheDocument();
-    expect(screen.queryByTestId('collection-shared-chip-1')).not.toBeInTheDocument();
+    expect(screen.queryByTestId(/collection-shared-chip-/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('collection-shared-chip-2')).not.toBeInTheDocument();
     const rows = document.querySelectorAll('[data-testid^="collection-row-"]');
     expect(rows[0].getAttribute('data-testid')).toBe('collection-row-1');
     expect(rows[1].getAttribute('data-testid')).toBe('collection-row-2');

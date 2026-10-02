@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { Box, CardMedia, IconButton, Typography } from '@mui/material';
 import {
   Collections as CollectionsIcon,
-  FolderShared as FolderSharedIcon,
+  AutoAwesome as AutoAwesomeIcon,
+  Share as ShareIcon,
   MoreVert as MoreVertIcon,
   PushPin as PushPinIcon,
 } from '@mui/icons-material';
@@ -92,6 +93,7 @@ const CollectionCardItem = ({
 
   const isViewer = collection.granted_role != null;
   const isAutoPinned = collection.pinned_by === 'auto';
+  const isUserPinned = collection.pinned === true && collection.pinned_by === 'user';
   const previews = (collection.preview_items ?? []).slice(0, PREVIEW_CAP);
 
   const media =
@@ -151,11 +153,17 @@ const CollectionCardItem = ({
     </IconButton>
   ) : null;
 
-  // M-4: received/shared and auto-pin markers are TOP-LEFT MEDIA BADGES (the
-  // footer chips are retired). The autopin badge is a real button dispatching
-  // the existing `unpin` card action; the preserved testids ride the badges.
+  // M-4 (+2026-10-01 owner adjustments): received → Share glyph; auto-pin →
+  // PushPin+AutoAwesome composite; user pin → plain PushPin. All pin badges are
+  // real buttons dispatching the existing `unpin` card action; testids ride them.
+  const pinAutoAwesomeIcon = (
+    <Box component="span" sx={{ position: 'relative', display: 'inline-flex' }}>
+      <PushPinIcon style={{ fontSize: 16 }} />
+      <AutoAwesomeIcon style={{ fontSize: 10, position: 'absolute', top: -2, left: -2 }} />
+    </Box>
+  );
   const cornerBadges =
-    isViewer || isAutoPinned ? (
+    isViewer || isAutoPinned || isUserPinned ? (
       <>
         {isViewer && (
           <TileCornerBadge
@@ -163,7 +171,7 @@ const CollectionCardItem = ({
             aria-label={t('nav.collectionsSharedChip')}
             data-testid={`card-shared-chip-${collection.collection_id}`}
           >
-            <FolderSharedIcon />
+            <ShareIcon />
           </TileCornerBadge>
         )}
         {isAutoPinned && (
@@ -178,8 +186,18 @@ const CollectionCardItem = ({
               data-testid={`card-autopin-unpin-${collection.collection_id}`}
               sx={{ display: 'inline-flex' }}
             >
-              <PushPinIcon />
+              {pinAutoAwesomeIcon}
             </Box>
+          </TileCornerBadge>
+        )}
+        {isUserPinned && (
+          <TileCornerBadge
+            title={t('fileManager.collectionsUserPin')}
+            aria-label={t('fileManager.collectionsUserPin')}
+            data-testid={`card-userpin-chip-${collection.collection_id}`}
+            onClick={() => onCardAction?.('unpin', collection)}
+          >
+            <PushPinIcon />
           </TileCornerBadge>
         )}
       </>

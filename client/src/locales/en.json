@@ -229,6 +229,7 @@
     "collectionsEmpty": "No collections yet",
     "archiveEmpty": "Nothing archived",
     "collectionsAutoPin": "Auto-pinned",
+    "collectionsUserPin": "Pinned",
     "digestLine": "+{{added}} / -{{removed}}",
     "digestExpand": "expand",
     "digestCollapse": "collapse",

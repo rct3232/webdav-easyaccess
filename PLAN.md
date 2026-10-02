@@ -595,6 +595,10 @@ FileActionSheet|FilePropertiesDialog` 140/140. M-5 clarification: no pre-existin
   purity — the sidebar shows no numeric counts): `archiveCount` state/prop/`Badge` and its
   second `mine,archived` fetch deleted from the tree path; parity specs updated.
 - **§11 follow-up 3 (2026-10-01, owner decisions — F4 report follow-up):** the two list-only
+- **§11 follow-up 4 (2026-10-01, owner badge round):** card badges split by pin kind — auto-pin = PushPin+AutoAwesome
+  composite (click unpin), user pin = plain PushPin (new `collectionsUserPin` key, click unpin, testid
+  `card-userpin-chip-*`); received marker on cards switched to the generic `Share` glyph and the TREE's
+  received icon swap was retired (plain Collections icon). Pending-color still awaiting owner choice.
   member-state CHIPS become shared BADGE markers rendered in ALL three member views. Owner
   decisions (binding): `shared_excluded` → `VpnLock` icon (globe+padlock — "member file not
   delivered to collection viewers"); publish-pending → composite `Public` (globe) + 10-12px

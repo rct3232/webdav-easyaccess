@@ -939,3 +939,28 @@ username`), while `openPrivateWorkspace` creates its case folder at the FILESYST
   / 2412 pass (5 skip), client full 178 / 1895, PG conformance leg 23 / 344 (1 skip),
   `E2E_BACKEND_MODE=s3 collections-desktop` 14/14. This entry APPENDS; the 2026-09-29 entry
   above is kept verbatim as historical record.
+
+### 2026-10-01 — admin-operator pivot: superseding the §13 ownership adjudication (owner ruling — product decision, not a defect reversal)
+
+- **Summary**: same day as the entry above, the owner re-scoped the admin's ROLE: the admin is a
+  pure operator and NEVER participates in collections/likes/dashboard — personal-storage surfaces.
+  This PIVOT SUPERSEDES the definitional rows of the 2026-10-01 §13 adjudication (the
+  "ADMIN-owned collection has no foreign members" definitions) while KEEPING §13 R1 intact:
+  `isOwnerNode`'s admin-owns-everything bypass remains the file-ACL convention for
+  permissionPolicy/files/trash/sharing consumers. It is a product-decision reversal of surface
+  participation, NOT a reversal of a defect fix — the R1 file-ACL evidence stands.
+- **Evidence**: R3 definitions made the collections domain describe admin participation ("an
+  ADMIN-owned collection", admin requester shared-view laundering) — the E2E-003 chain had forced
+  that vocabulary while the participation question was never ruled on. Owner ruling 2026-10-01
+  (pivot brief): hybrid enforcement — server gates now, client hiding as the sibling task.
+- **Classification**: Case C (owner adjudication — policy decision above spec, spec then rewritten).
+- **Action taken**: docs-first (commit d22e617 — AI_FEATURE_PLAN §3.2, collections-platform
+  §3.2/§3.3/§3.4/§4.5/§4.6/§4.7/§4.12/§4.16, permissions.md scope bullet, service/routes specs,
+  api.md, shared-contracts.md); RED (df8f654); GREEN (5f5a00a): `requireNonAdmin` middleware
+  (403 `serverErrors.collections.forbidden`, reused — no new i18n codes) on ALL 22 collections,
+  3 file-likes and 2 dashboard routes + admin-as-grantee ban at grant creation in
+  `grantCollectionAccess`. Usage recording unchanged (admin download/preview/search-hit stay);
+  journal unchanged (gates make admin rows unreachable); `like` becomes unreachable for admins.
+  §13 residual "admin derived candidates" declared MOOT. The prior entry is kept verbatim as
+  historical record (append-only). Gates: server `test:ci` 130 suites / 2441 pass (5 skip),
+  PG adapters leg 23 / 344 (1 skip), ownerNodeResolver admin tests unmodified-green.

@@ -700,3 +700,27 @@ use in a pure view).
   `loadVisibleCandidates` is home+grants scoped, so an ADMIN requester's DERIVED candidate
   set still misses nodes outside their home subtree — publishItems flip/materialize is
   stored-row based and unaffected; candidate-set widening for admins is a separate ruling.
+
+## 14. Admin-operator pivot — admin never participates in personal-storage surfaces (owner-approved 2026-10-01)
+
+Owner ruling 2026-10-01 (supersedes §13's DEFINITIONAL rows): the admin is a PURE OPERATOR —
+collections/likes/dashboard are personal-storage surfaces and the admin actor never participates
+in them; enforcement is hybrid (server gates here; client hiding is the sibling UI task). §13 R1
+KEPT as-is: `isOwnerNode`'s admin-owns-everything bypass remains the FILE-ACL convention
+(permissionPolicy consumers); only the collections DEFINITIONS flipped. §13's residual
+"admin derived candidates" (`loadVisibleCandidates`) is declared MOOT — no admin collection flow
+exists behind the gates. Error contract: reuse `serverErrors.collections.forbidden` (403) —
+no new i18n codes; grantee=admin banned at grant creation; usage recording and the journal are
+unchanged (gates make admin rows unreachable). RCA: 2026-10-01 pivot adjudication entry.
+
+| Task             | Objective                                                                                                         | Deps | Verification                                                                                        | Status   |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------- | -------- |
+| U1 server gates  | `requireNonAdmin` on ALL collections/file-likes/dashboard routes + grantee-admin service ban (+ docs-first flips) | none | RED→GREEN; server `test:ci` + `test:ci:pg:adapters`; ownerNodeResolver admin tests UNMODIFIED-green | `[done]` |
+| U2 client gating | collections/likes/dashboard surfaces ABSENT for admin actors (sibling agent, `wt-pivot-cli`)                      | U1   | client suite + eslint/prettier; server 403 already enforces regardless                              | `[todo]` |
+| U3 e2e migration | retire/repoint admin-participation fixtures; add admin-403 legs (e2e agent, later)                                | U1   | E2E collections/dashboard specs green                                                               | `[todo]` |
+
+- **§14 execution log (branch `feature/admin-operator-server`, base `822df02`):** U1 commits:
+  docs `d22e617` → RED `df8f654` → gates `5f5a00a` → ledger (this commit). RED observed: 30 new
+  gate tests failed, 107 pre-existing green. GREEN gates: server `test:ci` **130 suites / 2441 pass
+  (5 skip)**; PG adapters leg **23 suites / 344 pass (1 skip)**; affected groups
+  (collections+dashboard+policy) 174/174. eslint/prettier clean.

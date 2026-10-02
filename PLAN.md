@@ -329,8 +329,12 @@ config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
   unreachable file-side Add-to-collection host entry — all fixed + RCA-logged (2026-09-23).
   Final gates: server `test:ci` 129 suites / 2370 tests; client `test:ci` 174 / 1700;
   `test:ci:pg:adapters` 23 / 344 — all green. **Degradation matrix** is structurally P1+
-  (no AI surfaces exist in P0); its suite lands with T4.3 — owner confirmation requested,
-  exit-gate text above written pre-wave-split. `ai-feature` now carries the merged P0.
+  (no AI surfaces exist in P0); its suite lands with T4.3 — **owner-confirmed ruling
+  (2026-10-02, P0 closeout)**: the matrix stays with T4.3 (P1+), and the P0 lifecycle suite is
+  COMPLETE — desktop `E2E-COLLECTION-001..014` plus the mobile leg `015..017`
+  (`collections.mobile.spec.ts`, scratch `:5014`), run green in BOTH backend modes
+  (s3 + webdav, 3 consecutive 17/17 each; closeout batch commit).
+  `ai-feature` now carries the merged P0.
   (`ai-feature`→`dev` merge remains a single event after ALL §7 phases.)
 - **Wave-1 provenance (2026-09-22)**: branch `feature/t08-admin-reports-repair` — T0.8 + the
   T0.1 remainder landed: `admin_reports` store (`server/store/adminReportsStore.js`,
@@ -598,7 +602,10 @@ FileActionSheet|FilePropertiesDialog` 140/140. M-5 clarification: no pre-existin
 - **§11 follow-up 4 (2026-10-01, owner badge round):** card badges split by pin kind — auto-pin = PushPin+AutoAwesome
   composite (click unpin), user pin = plain PushPin (new `collectionsUserPin` key, click unpin, testid
   `card-userpin-chip-*`); received marker on cards switched to the generic `Share` glyph and the TREE's
-  received icon swap was retired (plain Collections icon). Pending-color still awaiting owner choice.
+  received icon swap was retired (plain Collections icon). Pending-color RESOLVED (owner,
+  2026-10-02 closeout): the warning tone sits on the badge CARRIER (plate/inline wrapper) —
+  `98ca99a` (tone moved off the pending glyphs), spec + tone-carrier pin `ebc0ba9`, corner
+  badges inset to 8px `768790b`/`e483466`.
   member-state CHIPS become shared BADGE markers rendered in ALL three member views. Owner
   decisions (binding): `shared_excluded` → `VpnLock` icon (globe+padlock — "member file not
   delivered to collection viewers"); publish-pending → composite `Public` (globe) + 10-12px
@@ -771,3 +778,39 @@ unchanged (gates make admin rows unreachable). RCA: 2026-10-01 pivot adjudicatio
   (grep: `api/collections|file-likes|dashboard` appears only in `collections.spec.ts`); the
   ledger U2 row still reads `[todo]` on this base although U2 is merged (`5ac5246`) — left to
   the U2 owner/coordinator.
+
+## 15. P0 closeout batch (owner-approved 2026-10-02, branch `feature/p0-closeout` @ `e483466`)
+
+- I1 `[done]` **ruling B — revoke deletes the grantee digest cursor** (re-grant re-dots;
+  undo-revoke restores the GRANT but NOT the cursor — accepted boundary, spec'd):
+  docs `2729824` → RED `be585c6` → GREEN (repo `deleteDigestCursor` typedef + sqlite/postgres
+  twins + conformance; journaled inside the `revokeAccess` TX covering BOTH revoke paths).
+  Undo-path bug found + fixed + RCA-logged: `applyCollectionInverse` dropped the journal row
+  on the single-inverse branch, so undo-of-a-revoke had never worked (grant-access inverse
+  reads `row.actor`).
+- I2 `[done]` **collections mobile E2E** — `e2e/collections.mobile.spec.ts` (015..017) +
+  `collections-mobile` project on its own scratch slot `:5014` (standalone sibling, no
+  `dependencies`); `loginAndOpenUserWorkspace`/`seedFile` hoisted to
+  `e2e/helpers/collectionsWorkspace.ts` (shared with the desktop leg). Coverage plan rows
+  - `testMatch`/config stale comments fixed. Spec-vs-brief mismatch reported: mobile forces
+    DETAIL→LIST ONLY (grid stays grid on mobile) + detail toggle hidden — assertions follow the
+    spec, not the brief's "grid/detail→list" wording. Commits `5b61fe5`/`5e28b7b`/`39543be`.
+- I3 `[done]` **both-mode collections runs** — hermetic projects restructured
+  (`HermeticEntry` + `pushHermetic`, `collectionsSpecs` pushed in BOTH mode branches);
+  010 add-settle flake fixed (Case B: Enter races the documented separate
+  `POST /:id/items`; settle-poll + fallback-excluded card locator) + RCA-logged.
+  Gates: s3 `collections-*` **17/17 × 3 consecutive**; webdav **17/17 × 3 consecutive**.
+  Commit `04345f8`.
+- I4 `[done]` **stale-ledger sweep** — §9 exit-gate degradation-matrix bullet → owner-
+  confirmed ruling (T4.3/P1+, P0 lifecycle suite complete incl. mobile + both modes);
+  §11 pending-color line → resolved with carrier/8px commit citations; §11 follow-up-5
+  cursor note annotated (I1). Base-red repair: two client test pins still asserted the
+  retired 4px corner inset after `e483466` moved code+CardTile.md to 8px (Case B) — realigned;
+  full client suite green again. Report-only: `MemberStateBadges.md` grid row still describes
+  the retired top-right `-6/-6` ring-offset geometry while committed `CardTile.md`/code say
+  top-left 8px — the owner's MAIN-checkout working tree carries an in-flight edit of that doc;
+  left untouched to avoid clobbering it.
+- Closeout gates (all on this branch): server `test:ci` **130 suites / 2455 pass (5 skip)**;
+  PG leg `test:ci:pg:adapters` **23 / 347 (1 skip)**; client **178 / 1919**;
+  e2e collections s3 **17/17** ×3; webdav **17/17** ×3; eslint `--max-warnings 0` +
+  prettier clean on every touched source file.

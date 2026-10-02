@@ -50,11 +50,14 @@ const cardContentBaseStyles = {
   minHeight: 0,
 };
 
+// Owner layout 2026-10-01: badges ride the TOP-RIGHT CORNER like notification dots —
+// offset outside the media edge with a background ring (TileCornerBadge) creating the
+// visual gap; the More action stays inside at top:4/right:4 and reads below the dots.
 const cornerBadgesContainerStyles = {
   position: 'absolute',
-  top: 4,
-  left: 4,
-  zIndex: 1,
+  top: -6,
+  right: -6,
+  zIndex: 3,
   display: 'flex',
   gap: 0.5,
 };
@@ -62,8 +65,8 @@ const cornerBadgesContainerStyles = {
 /**
  * Shared card-tile shell (P-3 extraction from FileGridItem's JSX body).
  * Slots: media (square area), moreAction (absolute overlay inside the media box),
- * cornerBadges (absolute top-left overlay inside the media box — M-4 badge set,
- * `TileCornerBadge` atoms), optional content (between media and footer),
+ * cornerBadges (top-right CORNER dots — ring-offset outside the media edge, M-4 badge
+ * set, `TileCornerBadge` atoms), optional content (between media and footer),
  * footer (CardContent).
  * Selection shows the light primary card background — no checkbox (files parity).
  * @see docs/spec/client/components/file-manager/CardTile.md

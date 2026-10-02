@@ -552,6 +552,14 @@ module.exports = function createPostgresCollectionsRepository(executor) {
       return { changes: result.changes };
     },
 
+    async deleteDigestCursor(tx, userId, collectionId) {
+      const result = await tx.run(
+        'DELETE FROM collection_digest_cursors WHERE user_id = $1 AND collection_id = $2',
+        [Number(userId), Number(collectionId)]
+      );
+      return { changes: result.changes };
+    },
+
     async upsertCentroid(tx, collectionId, modelId, centroid, memberCount) {
       const result = await tx.run(
         `INSERT INTO collection_centroids (collection_id, model_id, centroid, member_count, updated_at)

@@ -964,3 +964,22 @@ username`), while `openPrivateWorkspace` creates its case folder at the FILESYST
   §13 residual "admin derived candidates" declared MOOT. The prior entry is kept verbatim as
   historical record (append-only). Gates: server `test:ci` 130 suites / 2441 pass (5 skip),
   PG adapters leg 23 / 344 (1 skip), ownerNodeResolver admin tests unmodified-green.
+
+### 2026-10-02 — undo of a collection revoke crashes (single-inverse loses the journal row) (Case A, source error)
+
+- **Summary**: while pinning the ruling-B undo boundary (undo-revoke restores the grant but
+  NOT the digest cursor), `undoAction` on a revoke row threw
+  `serverErrors.errorHandler.databaseQueryFailed`; raw cause:
+  `TypeError: Cannot read properties of undefined (reading 'actor')`.
+- **Diagnosis**: `applyCollectionInverse` (server/domains/actions/service.js) forwards the
+  journal `row` to `applyInverseTx` on the command-unit (items) branch but DROPPED it on the
+  single-inverse branch. The `grant-access` inverse (revoke's undo) reads
+  `inverse.grantedBy ?? row.actor` — undefined `row` throws inside the undo TX, which rolls
+  the whole undo back and surfaces as a mapped DB error. Never caught before: no test or E2E
+  ever undid a revoke (grant/create/add-item inverses do not read `row`).
+- **Classification**: **Case A (Source Error)** — routes/actions.md §2.4 specifies undo
+  applying the journaled inverse; the code path violates it for `grant-access`.
+- **Action taken**: pass `row` through the single-inverse call
+  (`applyInverseTx(tx, payload.inverse, row)`); pinned by the ruling-B service test
+  "undo-revoke restores the GRANT but NOT the cursor". No behavior change for other inverses
+  (they never read `row`).

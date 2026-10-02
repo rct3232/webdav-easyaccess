@@ -558,7 +558,15 @@ async function grantAccess(collectionId, granteeId, role, grantedBy, ctx = {}) {
   return withActionId(committed.result, committed);
 }
 
-/** JOURNALED. Instant (§4.7); the payload notes restore-future-only semantics. */
+/**
+ * JOURNALED. Instant (§4.7); the payload notes restore-future-only semantics.
+ * RULING B (owner, 2026-10-02): the same journaled TX also deletes the
+ * grantee's digest cursor — a re-grant after revoke RE-DOTS the sidebar.
+ * UNDO BOUNDARY (owner-accepted): the `grant-access` inverse restores the
+ * GRANT ONLY; the deleted cursor is NOT restored, so undo-revoke re-dots too.
+ * Covers BOTH revoke paths — owner-side revokeCollectionAccess and the
+ * grantee self-revoke revokeOwnGrant ride this store function.
+ */
 async function revokeAccess(collectionId, granteeId, ctx = {}) {
   const repo = getRepository();
   const existing = await repo.getGrant(collectionId, granteeId);
@@ -574,7 +582,11 @@ async function revokeAccess(collectionId, granteeId, ctx = {}) {
         role: existing ? existing.role : null,
       },
     },
-    (tx) => repo.deleteGrant(tx, collectionId, granteeId)
+    async (tx) => {
+      const removed = await repo.deleteGrant(tx, collectionId, granteeId);
+      await repo.deleteDigestCursor(tx, granteeId, collectionId);
+      return removed;
+    }
   );
   return withActionId(committed.result, committed);
 }

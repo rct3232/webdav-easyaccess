@@ -58,6 +58,9 @@
  *   Batched `{ [collection_id]: isoString }` — collections WITHOUT a cursor row
  *   are absent keys (never-opened; client new-dot rule, ruling 2026-10-01).
  * @property {(tx, userId, collectionId, lastVisitedAt) => Promise<{ changes }>} upsertDigestCursor
+ * @property {(tx, userId, collectionId) => Promise<{ changes }>} deleteDigestCursor
+ *   Revoke companion (ruling B, 2026-10-02): deletes ONLY the (user, collection)
+ *   row; absent row = `{ changes: 0 }`, never throws.
  * @property {(collectionIds?) => Promise<{ changes }>} recomputeActivityScores
  * @property {(collectionIds, modelId) => Promise<Array>} getCentroids
  * @property {(tx, collectionId, modelId, centroid, memberCount) => Promise<{ changes }>} upsertCentroid

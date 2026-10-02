@@ -592,6 +592,50 @@ describe('CollectionsRepository conformance', () => {
       expect(await repo.listDigestCursorMap(nobody.id)).toEqual({});
     });
 
+    it('deleteDigestCursor removes ONLY the matching (user, collection) row; absent row = 0 changes no throw', async () => {
+      const owner = await uniqueUser();
+      const other = await uniqueUser();
+      let idA;
+      let idB;
+      await inTx(async (tx) => {
+        idA = (
+          await repo.insertCollection(tx, {
+            ownerId: owner.id,
+            name: 'CursorDel A',
+            origin: 'user',
+          })
+        ).id;
+        idB = (
+          await repo.insertCollection(tx, {
+            ownerId: owner.id,
+            name: 'CursorDel B',
+            origin: 'user',
+          })
+        ).id;
+        await repo.upsertDigestCursor(tx, owner.id, idA, new Date('2026-09-01T10:00:00.000Z'));
+        await repo.upsertDigestCursor(tx, other.id, idA, new Date('2026-09-02T10:00:00.000Z'));
+        await repo.upsertDigestCursor(tx, owner.id, idB, new Date('2026-09-03T10:00:00.000Z'));
+      });
+
+      await inTx(async (tx) => {
+        await expect(repo.deleteDigestCursor(tx, owner.id, idA)).resolves.toMatchObject({
+          changes: 1,
+        });
+      });
+      expect(await repo.getDigestCursor(owner.id, idA)).toBeNull();
+      // other users' cursors survive ...
+      expect(await repo.getDigestCursor(other.id, idA)).not.toBeNull();
+      // ... and so does the same user's cursor on another collection
+      expect(await repo.getDigestCursor(owner.id, idB)).not.toBeNull();
+
+      // absent row: 0 changes, NO throw (revoke TX tolerates never-opened grantees)
+      await inTx(async (tx) => {
+        await expect(repo.deleteDigestCursor(tx, owner.id, idA)).resolves.toMatchObject({
+          changes: 0,
+        });
+      });
+    });
+
     it('centroids are keyed by (collection, model) — a new model adds a row, same model replaces', async () => {
       const owner = await uniqueUser();
       let id;

@@ -1110,3 +1110,115 @@ describe('collectionsService new-dot cursor fields (2026-10-01 owner ruling)', (
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Revoke deletes the grantee cursor — ruling B (owner, 2026-10-02, P0 closeout)
+// ---------------------------------------------------------------------------
+
+describe('collectionsService revoke deletes the grantee cursor (ruling B, 2026-10-02)', () => {
+  async function setupOpenedShare(tag) {
+    const owner = await setupServiceUser(`rb-${tag}-o`);
+    const grantee = await setupServiceUser(`rb-${tag}-g`);
+    const { collection } = await collectionsService.createCollection(owner.user.id, {
+      name: `RB ${tag}`,
+    });
+    await collectionsService.grantCollectionAccess(
+      owner.user.id,
+      collection.id,
+      grantee.user.id,
+      'viewer'
+    );
+    // the read IS the visit — stamps the grantee's cursor row
+    await collectionsService.getItems(grantee.user.id, collection.id);
+    return { owner, grantee, collection };
+  }
+
+  it('owner-side revoke deletes the grantee cursor row; other users keep theirs', async () => {
+    const { owner, grantee, collection } = await setupOpenedShare('own');
+    const other = await setupServiceUser('rb-own-other');
+    await collectionsService.grantCollectionAccess(
+      owner.user.id,
+      collection.id,
+      other.user.id,
+      'viewer'
+    );
+    await collectionsService.getItems(other.user.id, collection.id);
+    expect(await collectionsStore.getDigestCursor(grantee.user.id, collection.id)).not.toBeNull();
+
+    const result = await collectionsService.revokeCollectionAccess(
+      owner.user.id,
+      collection.id,
+      grantee.user.id
+    );
+    expect(result.revoked).toBe(true);
+    expect(result.undo.actionId).toBeGreaterThan(0);
+
+    expect(await collectionsStore.getDigestCursor(grantee.user.id, collection.id)).toBeNull();
+    // cursor isolation: the other grantee's row and the owner's seeded row survive
+    expect(await collectionsStore.getDigestCursor(other.user.id, collection.id)).not.toBeNull();
+    const ownerMap = await collectionsStore.listDigestCursorMap(owner.user.id);
+    expect(ownerMap[collection.id]).toBeDefined();
+  });
+
+  it('re-grant after revoke re-dots: the grantee list row carries last_visited_at null', async () => {
+    const { owner, grantee, collection } = await setupOpenedShare('regrant');
+    await collectionsService.revokeCollectionAccess(owner.user.id, collection.id, grantee.user.id);
+    await collectionsService.grantCollectionAccess(
+      owner.user.id,
+      collection.id,
+      grantee.user.id,
+      'viewer'
+    );
+    const { collections } = await collectionsService.listCollections(grantee.user.id, {
+      include: 'mine,shared',
+    });
+    const row = collections.find((c) => c.collection_id === collection.id);
+    expect(row).toHaveProperty('last_visited_at', null);
+  });
+
+  it('self-revoke rides the same store TX: the caller cursor row is deleted', async () => {
+    const { grantee, collection } = await setupOpenedShare('self');
+    const result = await collectionsService.revokeOwnGrant(grantee.user.id, collection.id);
+    expect(result.revoked).toBe(true);
+    expect(await collectionsStore.getDigestCursor(grantee.user.id, collection.id)).toBeNull();
+  });
+
+  it('revoking a never-opened grant (no cursor row) succeeds: absent row is a no-op, not a throw', async () => {
+    const owner = await setupServiceUser('rb-noc-o');
+    const grantee = await setupServiceUser('rb-noc-g');
+    const { collection } = await collectionsService.createCollection(owner.user.id, {
+      name: 'RB NoCursor',
+    });
+    await collectionsService.grantCollectionAccess(
+      owner.user.id,
+      collection.id,
+      grantee.user.id,
+      'viewer'
+    );
+    expect(await collectionsStore.getDigestCursor(grantee.user.id, collection.id)).toBeNull();
+    await expect(
+      collectionsService.revokeCollectionAccess(owner.user.id, collection.id, grantee.user.id)
+    ).resolves.toMatchObject({ revoked: true });
+  });
+
+  it('undo-revoke restores the GRANT but NOT the cursor — re-dots (owner-accepted boundary)', async () => {
+    const { owner, grantee, collection } = await setupOpenedShare('undo');
+    const revoked = await collectionsService.revokeCollectionAccess(
+      owner.user.id,
+      collection.id,
+      grantee.user.id
+    );
+    const actionsService = require('@server/domains/actions/service');
+    await actionsService.undoAction(owner.user.id, revoked.undo.actionId);
+
+    // grant restored …
+    expect(await collectionsStore.getGrant(collection.id, grantee.user.id)).not.toBeNull();
+    // … cursor NOT restored (ruling B undo boundary): the dot is back
+    expect(await collectionsStore.getDigestCursor(grantee.user.id, collection.id)).toBeNull();
+    const { collections } = await collectionsService.listCollections(grantee.user.id, {
+      include: 'mine,shared',
+    });
+    const row = collections.find((c) => c.collection_id === collection.id);
+    expect(row).toHaveProperty('last_visited_at', null);
+  });
+});

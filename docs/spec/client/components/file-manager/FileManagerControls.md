@@ -136,3 +136,4 @@ Checklist for unit test writing:
 ### 2.8 Edge Cases
 
 - Detail view only on desktop
+- Operator rule (admin is a pure operator — PLAN §14 client half): the bulk `collection-add` button is hidden for admin — `onBulkAddToCollection` is withheld by the shell (`undefined` renders no button) and the member surface itself is admin-unreachable via the urlView guard.

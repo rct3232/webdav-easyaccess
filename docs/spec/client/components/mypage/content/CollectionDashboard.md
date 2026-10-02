@@ -84,10 +84,11 @@ Target-contract spec (`docs/features/collections-platform.md` §4.11 (feed surfa
 - [ ] Feed renders `subject_label` verbatim (never re-resolved) with mapped action label; system rows tagged `auto`.
 - [ ] Non-tip undo opens cascade dialog showing `laterChanges` count BEFORE re-posting with `confirmCascade: true`.
 - [ ] Permanent-delete rows show `not recoverable` badge and no undo button.
-- [ ] `storage` category renders for non-admins; `admin-ai` only for admins and carries the 4-state chip.
+- [ ] `storage` category renders for non-admins only (hidden / never invoked for admins — operator rule, PLAN §14 client half); `admin-ai` only for admins and carries the 4-state chip.
 - [ ] Missing capacity/dup data hides blocks (no spinners-forever, no placeholder prose).
 
 ### 2.8 Edge Cases
 
 - Feed cap (200 rows) hit: "more changes" note, no pagination control (30d personal scale decision).
 - Revoke-grant inline success: row disappears instantly (server revocation is instant, §4.7).
+- Operator rule (admin is a pure operator — PLAN §14 client half): the dashboard is hidden / never invoked for admin — the `storage` category is `nonAdminOnly` and admin deep-links fall back to the default section (no redundant checks inside the component).

@@ -120,3 +120,4 @@ Verification (appends §2.7):
 
 - [x] (as-built T0.4) `handleCollectionsToggle` expands and navigates the route; `handleArchiveClick` selects `/files/__collections__/__archive__` (host target string `/__collections__/__archive__`).
 - [x] (as-built T0.4) Location `/files/__collections__/…` auto-expands the section; collection members never appear as tree rows (depth-1 assertion — rows come only from the flat `loadCollections` read).
+- Operator rule (admin is a pure operator — PLAN §14 client half): for `user.is_admin` the controller skips the collections load AND the notifier subscription — no `loadCollections` call, no `/api/collections` request, `collectionsTreeRows` stays `[]`; the section handlers are never reachable (host hides the section).

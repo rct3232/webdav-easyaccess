@@ -88,3 +88,4 @@ Target-contract spec.
 
 - Zero writable collections: submenu shows only `+ New collection…` (+seed row if visible).
 - Adding files already member (server `already_members`): silent, no toast noise beyond the command toast.
+- Operator rule (admin is a pure operator — PLAN §14 client half): the opener callback is withheld for admin (shell passes `undefined`), so the menu is never opened / never invoked for admin.

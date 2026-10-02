@@ -156,3 +156,4 @@ Addendum to §2.2 grouping rules (docs/features/collections-platform.md §4.6 re
 - [ ] (M-9) member route: Breadcrumb receives `collectionName` resolved from `collectionsModel.collections` by `collectionId` (transient `…` when unresolved); liked route: `Collections › Liked` renders.
 - [ ] (target, P-4) LIST/ARCHIVE surfaces unchanged (`viewModeHidden`, sort menu — P-3 regression anchors).
 - [ ] (target) With both models absent, the view output is unchanged (regression assertion).
+- Operator rule (admin is a pure operator — PLAN §14 client half): the view never forwards like/add affordances for admin — the shell withholds `handleToggleLike`/`handleOpenAddToCollection` (`undefined` ⇒ `like-toggle`/`collection-add` rows hidden, not disabled; same callback-withhold idiom as share/trash §2.x).

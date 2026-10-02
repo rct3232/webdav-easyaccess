@@ -197,3 +197,4 @@ both lists is a no-op).
 - requestIdRef prevents stale updates
 - shareCurrentNodeId vs currentNodeIdFromUrl
 - Share mode when the root nodeId is unavailable (linkInfo without nodeId / unauthenticated viewer): the share root is listed via `shareToken` with `nodeId: null`, and subfolder navigation still uses child `nodeId`s from listings; the display path fallback keeps the breadcrumb usable.
+- Operator rule (admin is a pure operator — PLAN §14 client half): URL guard — for `user.is_admin` the `urlView` kinds `__collections__`, `__collections__/__archive__`, `__collections__/collection/<id>` and `__collections__/liked` all resolve to the home view (deep-link fallback, no error toast; member/liked fetch seams are never reached).

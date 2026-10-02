@@ -98,3 +98,4 @@ Verification (appends §2.7):
 
 - [ ] (target) Each new row invokes its callback then closes (handleAction idiom).
 - [ ] (target) Member-context snapshot offers no file-mutating rows.
+- Operator rule (admin is a pure operator — PLAN §14 client half): `collection-add` / `like-toggle` rows are hidden for admin via callback-withhold (shell passes `onAddToCollection`/`onToggleLike` as `undefined` — absent, never disabled).

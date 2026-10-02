@@ -221,3 +221,4 @@ Target-contract spec.
 
 - (Decision B, RETIRED) The former cursor rule — "cursor list while definition re-evaluates between pages: de-dup by `node_id` client-side; no re-order of rendered pages" — is MOOT: there is one page. `node_id` de-dup stays a server-side view-resolution property (`stored ∪ derived` by node); the client renders the full set in server order, and display slicing (head-first, stable) never re-orders rows.
 - Name collision rename: server suffixes; refresh shows final name.
+- Operator rule (admin is a pure operator — PLAN §14 client half): the surface is user-only via the guards (FolderTree mount gate + `useFileManager` urlView guard resolve admin deep links to home) — hidden / never rendered for admin; NO redundant admin checks inside the component (avoid-scatter rule).

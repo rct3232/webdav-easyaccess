@@ -148,7 +148,7 @@ Addendum to the §3.5 category table (same format; registry contract in `useMyPa
 
 | Category          | Type   | Content                                                                                                                                                                                                                                                         |
 | ----------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Storage (Storage) | Direct | `CollectionDashboard` — hygiene cards, system-changes journal feed, my-collections status, SuggestionsChecklist, capacity sparkline. All users (visibility `all`).                                                                                              |
+| Storage (Storage) | Direct | `CollectionDashboard` — hygiene cards, system-changes journal feed, my-collections status, SuggestionsChecklist, capacity sparkline. Non-admins only (visibility `nonAdminOnly` — operator rule, PLAN §14 client half).                                         |
 | Admin AI Ops      | Direct | Admin AI governance panel (§4.15). Admin only; sidebar row carries the 4-state health chip `not_configured \| probe_failed(reason) \| partial \| ok` from `settings/public.ai` + backend health — admin visible-STATE, regular users never see the row (§4.12). |
 
 - Both are single-panel categories (no list→detail pattern); `selectedContentItem` stays `null` for them (§3.4 semantics unchanged).
@@ -156,5 +156,5 @@ Addendum to the §3.5 category table (same format; registry contract in `useMyPa
 
 Verification (appends §3.9):
 
-- [ ] (target) `storage` category renders `CollectionDashboard` for every authenticated user.
+- [ ] (target) `storage` category renders `CollectionDashboard` for non-admin users only — hidden for admins (sidebar `nonAdminOnly`) and admin deep-links fall back to the default section (operator rule, PLAN §14 client half).
 - [ ] (target) AI-ops row renders only for admins and shows the status chip; absent-not-disabled for non-admins.

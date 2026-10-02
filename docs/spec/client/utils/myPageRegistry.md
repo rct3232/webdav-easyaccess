@@ -39,10 +39,12 @@ Unit tests should verify:
   - legacy `admin` maps to `admin-users` for admins and to default for non-admins
   - admin-only categories map back to default when `isAdmin=false`
   - `sharing` maps to default when `isAdmin=true`
+  - `storage` maps to default when `isAdmin=true` (operator rule — admin is a pure dashboard/MyPage operator, PLAN §14 client half)
   - unknown categories are preserved
 - `getMyPageSidebarCategories`:
   - admin-only categories are included only when `isAdmin=true`
   - sharing is included only when `isAdmin=false`
+  - `storage` is included only when `isAdmin=false` (`visibility: 'nonAdminOnly'` — never shown to admins)
   - always-visible categories are always included
 - `getMyPageContentDescriptor`:
   - returns the expected content component and props for each supported category

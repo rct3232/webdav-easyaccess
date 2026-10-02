@@ -82,3 +82,4 @@ Target-contract spec (`docs/features/collections-platform.md` §3.2 member-row c
 
 - `selectedRows` spanning readable+revoked rows: batch actions apply to eligible ids only (server ignores the rest; no client pre-filter toast).
 - Trashed-by-owner rows never arrive (server hides) — no defensive menu needed.
+- Operator rule (admin is a pure operator — PLAN §14 client half): the like row is hidden by callback-withhold (`onToggleLike` undefined renders no row — §2.3 gating); the menu surface itself is admin-unreachable via the `useFileManager` urlView guard.

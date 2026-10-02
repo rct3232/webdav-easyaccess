@@ -242,3 +242,52 @@ describe('POST /api/dashboard/suggestions/accept', () => {
     void user;
   });
 });
+
+// ---------------------------------------------------------------------------
+// Admin operator gate (owner pivot 2026-10-01, routes spec §2.3): the Storage
+// dashboard is a personal-storage surface — non-admin only. Both routes
+// respond 403 serverErrors.collections.forbidden for admin requesters.
+// ---------------------------------------------------------------------------
+
+describe('admin operator gate (dashboard 403 for admin requesters)', () => {
+  async function adminStorageUser(tag) {
+    const { user, token } = await createAuthenticatedTestUser({
+      username: `dashopadm-${tag}-${Date.now()}`,
+      isAdmin: true,
+    });
+    const home = await fileNodeService.createDirectory(null, user.username);
+    return { user, token, homeId: home.id };
+  }
+
+  it('GET /api/dashboard → 403 forbidden', async () => {
+    const admin = await adminStorageUser('read');
+    const res = await request(app)
+      .get('/api/dashboard')
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(403);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.collections.forbidden);
+  });
+
+  it('POST /api/dashboard/suggestions/accept → 403 forbidden, trashes nothing', async () => {
+    const admin = await adminStorageUser('accept');
+    const journalBefore = Number(
+      (await dbQuery('SELECT COUNT(*) AS count FROM action_journal', [])).rows[0].count
+    );
+
+    const res = await request(app)
+      .post('/api/dashboard/suggestions/accept')
+      .set('Authorization', `Bearer ${admin.token}`)
+      .send({ nodeIds: [Number(admin.homeId)] });
+    expect(res.status).toBe(403);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.collections.forbidden);
+
+    const { rows } = await dbQuery('SELECT deleted_at FROM file_nodes WHERE id = ?', [
+      Number(admin.homeId),
+    ]);
+    expect(rows[0].deleted_at).toBeNull();
+    const journalAfter = Number(
+      (await dbQuery('SELECT COUNT(*) AS count FROM action_journal', [])).rows[0].count
+    );
+    expect(journalAfter).toBe(journalBefore);
+  });
+});

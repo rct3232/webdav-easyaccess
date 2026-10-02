@@ -24,7 +24,7 @@ import { e2ePorts, webdavBase } from './ports';
  * suite owns ONE distinct scratch port slot so the suites can run
  * concurrently — setup-wizard (base :5003, the exported `scratchPort`),
  * admin-config (:5010), migration (:5011), trash-admin (:5012), collections
- * (:5013); every slot shifts with this checkout's port band
+ * (:5013), collections-mobile (:5014); every slot shifts with this checkout's port band
  * (`e2e/helpers/ports.ts`). The port
  * is passed explicitly to `spawnScratchServer`/`waitForScratchHealth` and must
  * match the suite's playwright.config.ts baseURL. `pg` is required via

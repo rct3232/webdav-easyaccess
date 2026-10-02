@@ -106,8 +106,8 @@ if (backendMode === 'webdav') {
     // They spawn their own scratch servers and are isolated per suite (Option A
     // Phase 1): each suite owns ONE distinct scratch port slot
     // (`e2ePorts.scratch*` = base :5003 wizard, :5010 admin-config, :5011
-    // migration, :5012 trash-admin, :5013 collections at band offset 0)
-    // mirrored by its
+    // migration, :5012 trash-admin, :5013 collections desktop, :5014
+    // collections mobile — band offset 0) mirrored by its
     // baseURL below, and the
     // migration suite targets its own dedicated MinIO bucket. Phase 2 lifted the
     // strict chain: the suites are now INDEPENDENT siblings, so they can overlap
@@ -120,6 +120,7 @@ if (backendMode === 'webdav') {
       spec: RegExp;
       use: typeof desktopUse | typeof mobileUse;
       baseURL: string;
+      standalone?: boolean;
     }> = [
       {
         name: 'setup-wizard-desktop',
@@ -167,21 +168,32 @@ if (backendMode === 'webdav') {
         baseURL: `http://localhost:${e2ePorts.scratchTrashAdmin}`,
       },
       {
-        // P0 collections lifecycle (E2E-COLLECTION-001..009) — scratch-hermetic
+        // P0 collections lifecycle (E2E-COLLECTION-001..014) — scratch-hermetic
         // on its own server (:5013) per the destructive-case policy: the suite
         // permanently deletes collections and rewrites the per-user undo-journal
-        // chain, so it never runs against the shared :5002 pool. Desktop-only
-        // (no mobile variant); the spec boots ONE scratch server for the file.
+        // chain, so it never runs against the shared :5002 pool. The spec boots
+        // ONE scratch server for the file. Mobile leg (E2E-COLLECTION-015..017):
+        // `collections.mobile.spec.ts` below on its OWN scratch server.
         name: 'collections-desktop',
         spec: /collections\.spec\.ts$/,
         use: desktopUse,
         baseURL: `http://localhost:${e2ePorts.scratchCollections}`,
       },
+      {
+        // P0 collections mobile leg (E2E-COLLECTION-015..017, P0 closeout):
+        // boots its own scratch server (:5014) — a distinct port slot means NO
+        // self-overlap with the desktop leg, so it needs no `dependencies`
+        // link (standalone sibling, hermetic-dechain rule).
+        name: 'collections-mobile',
+        spec: /collections\.mobile\.spec\.ts$/,
+        use: mobileUse,
+        baseURL: `http://localhost:${e2ePorts.scratchCollectionsMobile}`,
+        standalone: true,
+      },
     ];
     for (const h of hermeticSpecs) {
-      const dependencies = h.name.endsWith('-mobile')
-        ? [h.name.replace(/-mobile$/, '-desktop')]
-        : [];
+      const dependencies =
+        h.name.endsWith('-mobile') && !h.standalone ? [h.name.replace(/-mobile$/, '-desktop')] : [];
       projects.push({
         name: h.name,
         testMatch: h.spec,

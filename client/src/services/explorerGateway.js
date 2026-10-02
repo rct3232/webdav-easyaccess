@@ -82,7 +82,10 @@ export const listDirectory = async ({ nodeId, options = {} } = {}) => {
   // T0.5 §3.3: the whole-viewer like read feeds `file.liked` on listing rows.
   // The repository read absorbs failures into `{ liked: [] }`, so the listing
   // never rejects on the like fetch.
-  if (files.length > 0) {
+  // Operator rule (PLAN §14 client half): admin listings skip the merge —
+  // no GET /file-likes call, and the rows keep the bare listing shape (no
+  // `liked` key) so like affordances have nothing to latch onto.
+  if (files.length > 0 && !user?.is_admin) {
     const likedIds = new Set(((await getLikedNodeIds()) || {}).liked ?? []);
     files = files.map((item) =>
       item?.nodeId != null ? { ...item, liked: likedIds.has(item.nodeId) } : item

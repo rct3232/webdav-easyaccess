@@ -58,7 +58,7 @@ function upsertChip(queries, query, resultRef) {
   return [entry, ...rest].slice(0, MAX_RECENT_QUERIES);
 }
 
-export const useSearchResults = ({ showError, gateway, onUndoable } = {}) => {
+export const useSearchResults = ({ showError, gateway, onUndoable, isAdmin = false } = {}) => {
   const [mode, setMode] = useState('filter');
   const [submittedQuery, setSubmittedQuery] = useState(null);
   const [filterText, setFilterText] = useState('');
@@ -98,9 +98,11 @@ export const useSearchResults = ({ showError, gateway, onUndoable } = {}) => {
     [nameMatches, filteredSemantic]
   );
 
+  // Operator rule (PLAN §14 client half): admin is a pure operator — the save
+  // seam is never offered (`!isAdmin` term; §4.6 visibility rule).
   const canSaveToCollection = useMemo(
-    () => semanticAvailable && filteredSemantic.length > 0,
-    [semanticAvailable, filteredSemantic]
+    () => !isAdmin && semanticAvailable && filteredSemantic.length > 0,
+    [isAdmin, semanticAvailable, filteredSemantic]
   );
 
   const exitResults = useCallback(() => {
@@ -222,6 +224,9 @@ export const useSearchResults = ({ showError, gateway, onUndoable } = {}) => {
 
   const saveChipQuery = useCallback(
     async (chip) => {
+      // Operator rule (PLAN §14 client half): admins never create
+      // collections — the chip save is inert regardless of the payload.
+      if (isAdmin) return null;
       const query = chip?.query;
       if (!query) return null;
       const payload = await runQuery(query);
@@ -245,7 +250,7 @@ export const useSearchResults = ({ showError, gateway, onUndoable } = {}) => {
       }
       return created;
     },
-    [gateway, runQuery]
+    [gateway, runQuery, isAdmin]
   );
 
   const recordEntryClick = useCallback(

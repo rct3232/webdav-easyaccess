@@ -59,6 +59,13 @@ describe('FolderTree', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     onRecentFilesChange.mockImplementation(() => jest.fn());
+    // Deterministic baseline: the collections tree read succeeds with an empty
+    // set (the 501 unhandled fallback would schedule transport retries whose
+    // requests leak into later tests' handler windows).
+    server.use(
+      http.get('/api/collections', () => HttpResponse.json({ collections: [] })),
+      http.get('/api/collections/merge-suggestions', () => HttpResponse.json({ suggestions: [] }))
+    );
   });
 
   it('renders the Home row for a non-admin user', async () => {

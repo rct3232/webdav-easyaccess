@@ -147,8 +147,10 @@ const FolderTree = ({
               />
 
               {/* AI-platform §3: collections section — hidden entirely in
-                  share-link mode (product overlay rule, CollectionsSection §2.4). */}
-              {!shareLinkSection && (
+                  share-link mode (product overlay rule, CollectionsSection §2.4)
+                  and for admins (operator rule, PLAN §14 client half — admin is
+                  a pure operator, never a collections participant). */}
+              {!shareLinkSection && !user?.is_admin && (
                 <CollectionsSection
                   collectionsExpanded={collectionsExpanded}
                   onCollectionsToggle={handleCollectionsToggle}

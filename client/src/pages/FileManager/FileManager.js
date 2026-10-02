@@ -150,6 +150,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const searchApi = useSearchResults({
     showError,
     gateway: isShareLinkMode ? undefined : explorerGateway,
+    // Operator rule (PLAN §14 client half): save seam never offered to admin.
+    isAdmin: Boolean(user?.is_admin),
     onUndoable: (undo) => {
       showUndoToastRef.current?.({
         actionId: undo?.action_id,
@@ -588,9 +590,11 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     [showUndoToast, t]
   );
 
+  // Operator rule (PLAN §14 client half): admin sessions are IO-silent on the
+  // collections seams too (share-link inert-gateway precedent).
   const collectionsApi = useCollections({
     showError,
-    gateway: isShareLinkMode ? INERT_COLLECTIONS_GATEWAY : undefined,
+    gateway: isShareLinkMode || user?.is_admin ? INERT_COLLECTIONS_GATEWAY : undefined,
     onUndoable: handleUndoable,
     include: collectionsInclude,
   });
@@ -1150,7 +1154,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         // member-local thumbnail merge and the bulk cluster are shell-owned).
         onMemberThumbnailsLoaded: handleMemberThumbnailsLoaded,
         onBulkMemberExclude: handleMemberBulkExclude,
-        onBulkAddToCollection: handleMemberBulkAddToCollection,
+        // Operator rule (PLAN §14 client half): the bulk add cluster is
+        // WITHHELD for admin (undefined ⇒ button hidden, not disabled).
+        onBulkAddToCollection: user?.is_admin ? undefined : handleMemberBulkAddToCollection,
       };
     }
     return {
@@ -1192,6 +1198,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     handleMemberBulkExclude,
     handleMemberBulkAddToCollection,
     handleMemberThumbnailsLoaded,
+    user,
     handleCollectionCardClick,
     handleCollectionLongPressSelect,
     previewThumbnails,
@@ -1908,8 +1915,11 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       contentAreaDragType,
       handleActionSheetDownload,
       handleActionSheetPreview,
-      handleToggleLike,
-      handleOpenAddToCollection,
+      // Operator rule (PLAN §14 client half): admin is a pure operator —
+      // like/add callbacks are WITHHELD (undefined ⇒ rows hidden, not
+      // disabled; callback-withhold pattern, pages/FileManager.md §7).
+      handleToggleLike: user?.is_admin ? undefined : handleToggleLike,
+      handleOpenAddToCollection: user?.is_admin ? undefined : handleOpenAddToCollection,
     }),
     [
       handleFileClick,
@@ -1935,6 +1945,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       handleActionSheetPreview,
       handleToggleLike,
       handleOpenAddToCollection,
+      user,
     ]
   );
 

@@ -133,6 +133,13 @@ export const useFileManager = (user, options = {}) => {
       // /files/__collections__/__archive__ and the member view
       // /files/__collections__/collection/<id>. Virtual-node ids never enter
       // the nodeId explorer state (D1 route-based selection).
+      // Operator rule (PLAN §14 client half): the collections/likes/archive
+      // surfaces are user-only — for admin every deep link under
+      // __collections__ resolves to the home view (deep-link fallback,
+      // never an error toast).
+      if (user?.is_admin) {
+        return { kind: 'home', path: '/' };
+      }
       if (
         segments[1] === 'collection' &&
         Number.isInteger(Number(segments[2])) &&
@@ -166,7 +173,7 @@ export const useFileManager = (user, options = {}) => {
       return { kind: 'trash', path: '/__trash__', trashNodeId };
     }
     return { kind: 'legacy', path: `/${normalized}`, legacyPath: `/${normalized}` };
-  }, [urlPath]);
+  }, [urlPath, user]);
 
   // Admin's home is the filesystem root (`/`), so its homeNodeId is null;
   // regular users get their named home node. Mirrors useFolderTreeController.

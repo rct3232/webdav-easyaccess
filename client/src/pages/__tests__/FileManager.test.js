@@ -21,6 +21,7 @@ import { server } from '../../setupTests';
 import { useAuth } from '../../contexts/AuthContext';
 import FileManager from '../FileManager';
 import { notifyRecentFilesChange } from '../../services/recentFilesNotifier';
+import { notifyCollectionsChange } from '../../services/collectionsNotifier';
 
 jest.mock('../../components/dialogs/FilePreviewDialog', () => ({
   __esModule: true,
@@ -265,6 +266,12 @@ describe('FileManager', () => {
     sessionStorage.clear();
     sessionStorage.setItem('token', 'test-token');
     sessionStorage.setItem('refreshToken', 'refresh');
+    // Baseline: keep collections reads handled — an unhandled 501 schedules
+    // transport retries that leak into later tests' handler windows.
+    server.use(
+      http.get('/api/collections', () => HttpResponse.json({ collections: [] })),
+      http.get('/api/collections/merge-suggestions', () => HttpResponse.json({ suggestions: [] }))
+    );
   });
 
   it('renders file manager when authenticated', async () => {
@@ -2374,6 +2381,16 @@ describe('FileManager', () => {
         })
       );
 
+    beforeEach(() => {
+      // Baseline stubs: the pre-hydration window (user=null ⇒ real gateway) and
+      // earlier tests' transport retries resolve quietly here; the no-IO case
+      // arms its counting handler only AFTER the admin session has settled.
+      server.use(
+        http.get('/api/collections', () => HttpResponse.json({ collections: [] })),
+        http.get('/api/collections/merge-suggestions', () => HttpResponse.json({ suggestions: [] }))
+      );
+    });
+
     it('admin: context menu withholds the like-toggle and collection-add rows', async () => {
       server.use(
         adminAuthHandler(),
@@ -2433,9 +2450,18 @@ describe('FileManager', () => {
     }, 15000);
 
     it('admin: the shell issues no /api/collections IO while the explorer is mounted', async () => {
+      server.use(adminAuthHandler());
+      await renderWithProvidersAct(<FileManagerWithAdminProbe />, { initialEntries: ['/files'] });
+      await screen.findByText(/test\.txt/i);
+      await waitForAuthState('admin');
+      // Settle the pre-hydration window (its reads land on the describe's
+      // 200-stubs), then arm the counter for the admin session proper.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+
       let collectionsCalls = 0;
       server.use(
-        adminAuthHandler(),
         http.get('/api/collections', () => {
           collectionsCalls += 1;
           return HttpResponse.json({ collections: [] });
@@ -2445,12 +2471,14 @@ describe('FileManager', () => {
           return HttpResponse.json({ suggestions: [] });
         })
       );
-
-      await renderWithProvidersAct(<FileManagerWithAdminProbe />, { initialEntries: ['/files'] });
-      await screen.findByText(/test\.txt/i);
-      await waitForAuthState('admin');
       await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+      // Trigger a collection-change notification path as well: an admin
+      // session must stay silent even when notifiers fire.
+      await act(async () => {
+        notifyCollectionsChange();
+        await new Promise((resolve) => setTimeout(resolve, 50));
       });
 
       expect(collectionsCalls).toBe(0);

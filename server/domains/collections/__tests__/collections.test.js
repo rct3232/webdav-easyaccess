@@ -1379,45 +1379,56 @@ describe('PUT /:id/items/publish (P-4 member publish)', () => {
 // ---------------------------------------------------------------------------
 
 describe('admin operator gate (403 on every collections endpoint)', () => {
-  async function createAdminWithRoot(tag) {
+  async function createAdminUser(tag) {
     const { user, token } = await createAuthenticatedTestUser({
       username: `opadm-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       isAdmin: true,
     });
-    const root = await fileNodeService.createDirectory(null, user.username);
-    return { user, token, root };
+    return { user, token };
   }
 
+  // One shared admin principal for the table: the gate is request-scoped and
+  // runs before any handler, so per-case user creation would only slow the suite.
+  let gateAdmin;
+  beforeAll(async () => {
+    gateAdmin = await createAdminUser('gate');
+  });
+
   const CALLS = [
-    ['get', '/api/collections'],
-    ['post', '/api/collections', { name: 'Admin set' }],
-    ['get', '/api/collections/1'],
-    ['put', '/api/collections/1', { name: 'renamed', pinned: true }],
-    ['post', '/api/collections/1/archive'],
-    ['post', '/api/collections/1/restore'],
-    ['delete', '/api/collections/1'],
-    ['get', '/api/collections/1/items'],
-    ['post', '/api/collections/1/items', { nodeIds: [1] }],
-    ['delete', '/api/collections/1/items', { nodeIds: [1] }],
-    ['put', '/api/collections/1/items/publish', { nodeIds: [1], published: true }],
-    ['post', '/api/collections/preview', { seedNodeId: 1 }],
-    ['post', '/api/collections/1/preview'],
-    ['get', '/api/collections/merge-suggestions'],
-    ['post', '/api/collections/for-nodes', { nodeIds: [1] }],
-    ['post', '/api/collections/1/merge/2'],
-    ['post', '/api/collections/1/merge-dismiss', { otherId: 2 }],
-    ['post', '/api/collections/1/merge-reject', { otherId: 2 }],
-    ['get', '/api/collections/1/grants'],
-    ['post', '/api/collections/1/grants', { userId: 1, role: 'viewer' }],
-    ['delete', '/api/collections/1/grants?userId=1'],
-    ['delete', '/api/collections/1/grants/me'],
+    [{ verb: 'get', path: '/api/collections' }],
+    [{ verb: 'post', path: '/api/collections', body: { name: 'Admin set' } }],
+    [{ verb: 'get', path: '/api/collections/1' }],
+    [{ verb: 'put', path: '/api/collections/1', body: { name: 'renamed', pinned: true } }],
+    [{ verb: 'post', path: '/api/collections/1/archive' }],
+    [{ verb: 'post', path: '/api/collections/1/restore' }],
+    [{ verb: 'delete', path: '/api/collections/1' }],
+    [{ verb: 'get', path: '/api/collections/1/items' }],
+    [{ verb: 'post', path: '/api/collections/1/items', body: { nodeIds: [1] } }],
+    [{ verb: 'delete', path: '/api/collections/1/items', body: { nodeIds: [1] } }],
+    [
+      {
+        verb: 'put',
+        path: '/api/collections/1/items/publish',
+        body: { nodeIds: [1], published: true },
+      },
+    ],
+    [{ verb: 'post', path: '/api/collections/preview', body: { seedNodeId: 1 } }],
+    [{ verb: 'post', path: '/api/collections/1/preview' }],
+    [{ verb: 'get', path: '/api/collections/merge-suggestions' }],
+    [{ verb: 'post', path: '/api/collections/for-nodes', body: { nodeIds: [1] } }],
+    [{ verb: 'post', path: '/api/collections/1/merge/2' }],
+    [{ verb: 'post', path: '/api/collections/1/merge-dismiss', body: { otherId: 2 } }],
+    [{ verb: 'post', path: '/api/collections/1/merge-reject', body: { otherId: 2 } }],
+    [{ verb: 'get', path: '/api/collections/1/grants' }],
+    [{ verb: 'post', path: '/api/collections/1/grants', body: { userId: 1, role: 'viewer' } }],
+    [{ verb: 'delete', path: '/api/collections/1/grants?userId=1' }],
+    [{ verb: 'delete', path: '/api/collections/1/grants/me' }],
   ];
 
   it.each(CALLS)(
-    '%s %s responds 403 forbidden for an admin requester',
-    async (verb, path, body) => {
-      const admin = await createAdminWithRoot('gate');
-      const call = request(app)[verb](path).set('Authorization', `Bearer ${admin.token}`);
+    '$verb $path responds 403 forbidden for an admin requester',
+    async ({ verb, path, body }) => {
+      const call = request(app)[verb](path).set('Authorization', `Bearer ${gateAdmin.token}`);
       const res = await (body ? call.send(body) : call);
       expect(res.status).toBe(403);
       expect(res.body.errorCode).toBe(codes().collections.forbidden);
@@ -1425,7 +1436,7 @@ describe('admin operator gate (403 on every collections endpoint)', () => {
   );
 
   it('gates deep list/read/create flows even against otherwise-valid admin requests', async () => {
-    const admin = await createAdminWithRoot('deep');
+    const admin = await createAdminUser('deep');
     const owner = await createUserWithRoot('deep-owner');
     const created = await createCollectionViaApi(owner.token, { name: 'Deep' });
     const id = created.body.collection.collection_id;
@@ -1460,7 +1471,7 @@ describe('admin operator gate (403 on every collections endpoint)', () => {
   });
 
   it('rejects granting collection access to an ADMIN grantee (403 ban at creation)', async () => {
-    const admin = await createAdminWithRoot('gban');
+    const admin = await createAdminUser('gban');
     const owner = await createUserWithRoot('gban-owner');
     const created = await createCollectionViaApi(owner.token, { name: 'GrantBan' });
     const id = created.body.collection.collection_id;

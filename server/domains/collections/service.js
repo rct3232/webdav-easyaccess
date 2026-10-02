@@ -1153,6 +1153,9 @@ async function grantCollectionAccess(userId, collectionId, granteeId, role) {
       ? await userStore.findById(granteeNumber)
       : null;
   if (!grantee) throw serviceError('granteeNotFound');
+  // Operator rule (owner pivot 2026-10-01): admin-as-grantee is banned at grant
+  // creation — collections never reference admins (routes spec §2.3).
+  if (grantee.is_admin) throw serviceError('forbidden');
   const result = await collectionsStore.grantAccess(collectionId, grantee.id, role, userId, {
     actor: userId,
   });

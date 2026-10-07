@@ -142,19 +142,19 @@ Boundary notes:
 
 ---
 
-## 4. AI-platform registry additions (AI platform; P0/P4 as noted)
+## 4. AI-platform registry additions (AI platform)
 
 Addendum to the §3.5 category table (same format; registry contract in `useMyPageController.md` §3 / `CollectionDashboard.md` §2.5; content resolved through the registry/helper layer per the §3.5 boundary note — no new inline dispatch in this page):
 
-| Category          | Type   | Content                                                                                                                                                                                                                                                         |
-| ----------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Storage (Storage) | Direct | `CollectionDashboard` — hygiene cards, system-changes journal feed, my-collections status, SuggestionsChecklist, capacity sparkline. Non-admins only (visibility `nonAdminOnly` — operator rule, PLAN §14 client half).                                         |
-| Admin AI Ops      | Direct | Admin AI governance panel (§4.15). Admin only; sidebar row carries the 4-state health chip `not_configured \| probe_failed(reason) \| partial \| ok` from `settings/public.ai` + backend health — admin visible-STATE, regular users never see the row (§4.12). |
+| Category          | Type   | Content                                                                                                                                                                                                                                                                                         |
+| ----------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Storage (Storage) | Direct | `CollectionDashboard` — hygiene cards, system-changes journal feed, my-collections status, SuggestionsChecklist, capacity sparkline. Non-admins only (visibility `nonAdminOnly` — operator rule).                                                                                               |
+| Admin AI Ops      | Direct | Admin AI governance panel (`docs/features/collections-platform.md` §4.15). Admin only; sidebar row carries the 4-state health chip `not_configured \| probe_failed(reason) \| partial \| ok` from `settings/public.ai` + backend health — admin visible-STATE, regular users never see the row. |
 
 - Both are single-panel categories (no list→detail pattern); `selectedContentItem` stays `null` for them (§3.4 semantics unchanged).
 - Deep links: FileManager/dashboard cross-links enter via `location.state.category` (`storage` / `admin-ai` ids), same normalization as today (§3.4).
 
 Verification (appends §3.9):
 
-- [ ] (target) `storage` category renders `CollectionDashboard` for non-admin users only — hidden for admins (sidebar `nonAdminOnly`) and admin deep-links fall back to the default section (operator rule, PLAN §14 client half).
+- [ ] (target) `storage` category renders `CollectionDashboard` for non-admin users only — hidden for admins (sidebar `nonAdminOnly`) and admin deep-links fall back to the default section (operator rule).
 - [ ] (target) AI-ops row renders only for admins and shows the status chip; absent-not-disabled for non-admins.

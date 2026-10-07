@@ -57,7 +57,7 @@ After the DB node is committed the route calls
 3. On MKCOL failure marks the node `sync_status='orphaned_node'` (fail-safe, same pattern as
    `uploadToWebdav` in `fileService`) and **re-throws** the error. The route does not catch it,
    so the Express error handler maps it to the appropriate HTTP error response — the folder is
-   reported as failed even though its DB row exists (recoverable via Phase 6 GC / repair-sync).
+   reported as failed even though its DB row exists (recoverable via GC / repair-sync).
 
 S3 mode is a strict no-op: `createDirectoryWebdav` returns `null` without any storage call,
 so S3 folder creation remains DB-only and unchanged.

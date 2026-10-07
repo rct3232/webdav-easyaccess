@@ -336,6 +336,30 @@ config, preset table §4.23, Node ≥24 floor & sqlite driver note T0.12),
   (s3 + webdav, 3 consecutive 17/17 each; closeout batch commit).
   `ai-feature` now carries the merged P0.
   (`ai-feature`→`dev` merge remains a single event after ALL §7 phases.)
+- **P0 spec-purity pass (2026-10-02)** — branch `chore/p0-spec-decision-extract` (orchestrator,
+  docs-only): decision process (dated rulings, WHY/rationale, rejected/retired narratives,
+  register/task/wave provenance) was lifted from all 48 P0-created spec docs +
+  `docs/features/collections-platform.md` into the new **AI_FEATURE_PLAN.md §12 ledger**;
+  specs now state decided behavior only. Body amendments where specs
+  revealed the plan stale: Path 1 (`leave` retired), publish gate (owner∪editor∪null),
+  digest cursor/new-dot + Ruling B, dashboard accept un-journaled until T3.3, `__liked__` root
+  rejected, digest-count approximations, LLM `dbOnly` env-ignored (SETUP.md synced; llmPresets
+  measurement checklist relocated to `docs/SETUP.md` runbook section). Code-verified
+  restatements: fileLikes items = one response, `cursor`/`limit` ignored, `node_id` asc,
+  insert-only `created_at`; `setVisible` has no route caller. **Follow-up (same date, owner
+  ruling: AGENTS.md §2.1.5 is standing policy — "spec/feature docs link spec docs only and
+  describe implemented/decided state only"):** all AI_FEATURE_PLAN/PLAN links and every
+  ruling/task/D-label provenance stripped repo-wide across docs/spec/**, docs/features/**,
+  api.md, shared-contracts.md, SETUP.md, E2E_COVERAGE_PLAN.md — rules inlined as plain
+  current-state text (~530 pointers; 6 restatements where a label anchored the only
+  definition); bare design pointers re-anchored to the named feature doc
+  (`docs/features/collections-platform.md`); dead `§5` design-owner fragments dropped
+  (schema lives in the store specs themselves); migration-mode.md's own in-document
+  D1–D14 registry kept (self-contained, no planning-doc link). Verification: plan-doc
+  citations and P0 marker-grep zero across all docs/spec + docs/features + core docs;
+  every named `file.md §X` target heading verified; content-loss audit over the 15
+  highest-risk rewrites clean; prettier clean;
+  no code/test files touched (docs-only → suites unaffected by design).
 - **Wave-1 provenance (2026-09-22)**: branch `feature/t08-admin-reports-repair` — T0.8 + the
   T0.1 remainder landed: `admin_reports` store (`server/store/adminReportsStore.js`,
   AdminReportsRepository sqlite/postgres twins + conformance), `GET /api/admin/reports(/:id)`

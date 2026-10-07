@@ -68,14 +68,14 @@
 ### 2.7 Home (leading) row
 
 - Label: `nav.home` (Home / Home) for **all roles and all modes** — never the acting user's
-  username. (Admin home row label was already `nav.home`; non-admin row is relabeled from the
-  username, see Breadcrumb spec §1.1 for the underlying home model.)
+  username (the non-admin home node is named after the username; see `Breadcrumb.md` §1.1 for the
+  underlying home model).
 - Icon: the home icon is shown in **both collapsed and expanded states** (the home row passes an
   `openIcon`), so auto-expanding the home row never swaps the home icon for a generic folder icon.
 - Click target semantics are unchanged: home row nodeId is `homeNodeId`
   (admin → `null` = filesystem root; non-admin → `user.rootNodeId`).
 
-### 2.7.0 Collections section (AI platform T0.4)
+### 2.7.0 Collections section (AI platform)
 
 - `CollectionsSection` composes inside the scrollable tree List directly after
   `RecentFilesSection` — a real tree section (expand/collapse), NOT the pinned trash chrome;
@@ -111,4 +111,4 @@
 ### 2.8 Edge Cases
 
 - !user: recent files cleared
-- Operator rule (admin is a pure operator — PLAN §14 client half): the `CollectionsSection` mount is gated `&& !user?.is_admin` — the section is hidden for admin (its load is skipped by `useFolderTreeController`, so no `/api/collections` call fires).
+- Operator rule (admin is a pure operator): the `CollectionsSection` mount is gated `&& !user?.is_admin` — the section is hidden for admin (its load is skipped by `useFolderTreeController`, so no `/api/collections` call fires).

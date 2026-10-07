@@ -39,7 +39,7 @@ function createBlobStorageService({ blobStore, fileNodesStore, fileStorageMode =
 
 ### 2.3 Blob Store Factory (`createBlobStore()`)
 
-The blob store factory is **parameterless** — it reads `process.env.WEA_FILE_STORAGE` internally. This is decision D2 from Wave 1 rectification.
+The blob store factory is **parameterless** — it reads `process.env.WEA_FILE_STORAGE` internally.
 
 - `WEA_FILE_STORAGE=webdav` → returns `new WebdavBlobStore(createFileStoreAdapter())`
 - `WEA_FILE_STORAGE=s3` (or empty/undefined) → returns `new S3BlobStore(resolveS3Config())`
@@ -176,7 +176,7 @@ Write barrier: if multiple file nodes share the same s3_key, duplicates the blob
 
 ### 2.5 Dependencies
 
-- `blobStore` — S3 blob operations (`uploadBlob`, `downloadBlob`, `deleteBlob`, `copyBlob`) from Phase 1 adapter
+- `blobStore` — S3 blob operations (`uploadBlob`, `downloadBlob`, `deleteBlob`, `copyBlob`) from the S3 adapter
 - `fileNodesStore` — object_map and filecache CRUD operations
 - `fileNodeService` — (WebDAV mode) `getNode(nodeId)` and `getNodePath(nodeId)` for path resolution
 
@@ -186,7 +186,7 @@ Write barrier: if multiple file nodes share the same s3_key, duplicates the blob
 
 ### 3.1 WebdavBlobStore Adapter Interface
 
-`WebdavBlobStore` exposes the same S3-uniform method names so `blobStorageService` can call either backend transparently. Constructor takes a file-store adapter (`webdavClient`) from `createFileStoreAdapter()`. This is decision D1 from Wave 1 rectification.
+`WebdavBlobStore` exposes the same S3-uniform method names so `blobStorageService` can call either backend transparently. Constructor takes a file-store adapter (`webdavClient`) from `createFileStoreAdapter()`.
 
 | Method                  | Signature                                        | Returns                                         | Description                                                                                                                                       |
 | ----------------------- | ------------------------------------------------ | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -238,7 +238,7 @@ tolerating already-existing collections. On MKCOL failure the node is marked
 (fail-safe) and the error is re-thrown so callers surface a failure response.
 
 > **Fail-safe contract:** identical to `uploadToWebdav` — a DB node that committed but whose
-> physical directory could not be materialized is left as `orphaned_node` for Phase 6
+> physical directory could not be materialized is left as `orphaned_node` for the
 > GC / `POST /api/admin/maintenance/repair-sync`, never silently ignored.
 
 #### `uploadToWebdav(fileNodeId, buffer, mimeType)`

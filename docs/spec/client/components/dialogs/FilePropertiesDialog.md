@@ -100,23 +100,23 @@
 
 ## 3. AI-platform extensions (AI platform)
 
-Addendum per docs/features/collections-platform.md §3.3 (like entry points), §4.12 (absent-not-disabled), §4.21 (media probe); the collection-side twin of these rows was pre-announced in `CollectionPropertiesDialog.md` §2.6. Pure-dialog rule unchanged: host prepares data, dialog renders and fires callbacks.
+Addendum per docs/features/collections-platform.md §3.3 (like entry points), §4.12 (absent-not-disabled), §4.21 (media probe); the collection-side twin of these rows is specified in `CollectionPropertiesDialog.md` §2.6. Pure-dialog rule: host prepares data, dialog renders and fires callbacks.
 
 ### 3.1 Header like toggle
 
-- Right-edge of the gradient-header title block: like icon button (sole §3.3 properties-dialog entry point). State = `file.liked` from row data; click → optional `onToggleLike(file)` (viewer-scoped like, invariant 9 — no counts, no other-user state). Liked-state heart color = theme token `like` (M-5 — see `FileContextMenu.md`; never `error`).
+- Right-edge of the gradient-header title block: like icon button (the properties dialog's sole like entry point). State = `file.liked` from row data; click → optional `onToggleLike(file)` (viewer-scoped like — no counts, no other-user state). Liked-state heart color = theme token `like` (see `FileContextMenu.md`; never `error`).
 - Hidden when the callback is absent (share-link, trash view, read-only grantee without like route access).
 
-### 3.2 `Member of` chip row — Info tab, read-only (P3)
+### 3.2 `Member of` chip row — Info tab, read-only
 
 - Host-prepared for-nodes membership data (`POST /collections/for-nodes`; dialog performs no IO): chip row of containing collection names under the property items; chip click routes to that collection's member view via `onOpenCollection(collectionId)` (host navigates, dialog closes). Empty/absent data ⇒ no row. Read-only: no add/remove controls in the dialog (membership mutates in menus/toolbars).
 
-### 3.3 `AI Info` tab — DISPLAY-ONLY (P1; media probe rows P4)
+### 3.3 `AI Info` tab — DISPLAY-ONLY
 
-- Tab present **only when the node's `ai_features` data exists** for the viewer's capability state — absent-not-disabled (§4.12 regular-user rule); never a gray tab, never an empty tab.
+- Tab present **only when the node's `ai_features` data exists** for the viewer's capability state — absent-not-disabled (regular-user rule); never a gray tab, never an empty tab.
 - Renders read-only: derived tags, summary, category, media probe facts (V0 ffprobe container/duration etc. when present), and `truncated`/degraded badges verbatim from the payload (display honesty; no client recomputation).
-- **Editing is out of scope** (future extension — §9.1 extension points); the tab ships zero input affordances.
-- Grantee variant: opened from a collection member row by a non-owner ⇒ read-only tab subset per §3.2 member-properties rule (no permissions/versions mutation paths).
+- **Editing is out of scope** (future extension); the tab ships zero input affordances.
+- Grantee variant: opened from a collection member row by a non-owner ⇒ read-only tab subset (member-properties rule — no permissions/versions mutation paths).
 
 ### 3.4 i18n (appends §2.5)
 

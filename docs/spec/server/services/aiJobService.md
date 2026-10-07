@@ -7,8 +7,8 @@ Target-contract spec.
 | Item              | Description                                                                                                                                                                                                                                                                   |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role              | The AI enrichment pipeline: (a) fire-and-forget ENQUEUE hooks at content-commit seams, (b) a persistent-queue WORKER that executes per-kind role pipelines (`embed`, `features`, `caption`, `asr`, `backfill`), (c) budget-breaker consumption and degraded-flag bookkeeping. |
-| DB-backed         | Queue truth is `ai_jobs` only (invariant 8). The worker is stateless: restart-safe via `recoverStaleRunning` + idempotent writes. Zero CacheAdapter/operationProgress imports (CODING_STYLE.md Express Patterns grep-gate).                                                   |
-| Dependency stance | LLM is an ENRICHMENT dependency: unconfigured/failed role ⇒ jobs park/skip with degraded flags, never a user-facing error; existing vector math keeps working from DB data after un-configuring (no auto-backfill, §4.2).                                                     |
+| DB-backed         | Queue truth is `ai_jobs` only (DB-backed; no new state in CacheAdapter). The worker is stateless: restart-safe via `recoverStaleRunning` + idempotent writes. Zero CacheAdapter/operationProgress imports (CODING_STYLE.md Express Patterns grep-gate).                       |
+| Dependency stance | LLM is an ENRICHMENT dependency: unconfigured/failed role ⇒ jobs park/skip with degraded flags, never a user-facing error; existing vector math keeps working from DB data after un-configuring (no auto-backfill on model change — only an admin-launched re-embed).         |
 
 ---
 
@@ -21,7 +21,7 @@ Target-contract spec.
   kind executors, unit-testable with a fake llmAdapter — adapter injection seam)
 - **Test file:** `server/domains/ai/__tests__/aiJobService.test.js`
 
-### 2.2 Enqueue hooks (§4.1 seams)
+### 2.2 Enqueue hooks (content-commit seams)
 
 `onNodeContentCommitted(nodeId)` — called fire-and-forget AFTER the domain TX COMMITS
 (precedent: thumbnail invalidation `uploadService.js:181-187`) at exactly these points:
@@ -38,13 +38,13 @@ The same commit points populate `filecache.content_hash` (column exists, null to
 
 Enqueue decision table (per node, at hook time):
 
-| Node kind / config state                               | Kinds enqueued                                                |
-| ------------------------------------------------------ | ------------------------------------------------------------- |
-| text/document (pdf/docx/txt — local extractor applies) | `embed`, `features` (chat role present)                       |
-| image / video, `vision_chat` probed on                 | `caption` (on completion the caption pipeline chains `embed`) |
-| audio, `asr` probed on                                 | `asr` (on completion chains `embed`)                          |
-| media, capability absent                               | `embed` immediately (V0 `metadata_only` path, §4.21)          |
-| directory nodes                                        | none                                                          |
+| Node kind / config state                               | Kinds enqueued                                                                                           |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| text/document (pdf/docx/txt — local extractor applies) | `embed`, `features` (chat role present)                                                                  |
+| image / video, `vision_chat` probed on                 | `caption` (on completion the caption pipeline chains `embed`)                                            |
+| audio, `asr` probed on                                 | `asr` (on completion chains `embed`)                                                                     |
+| media, capability absent                               | `embed` immediately (V0 `metadata_only` path — name/mime/path/date string, the zero-LLM floor for media) |
+| directory nodes                                        | none                                                                                                     |
 
 - **Idempotency:** `aiJobsStore.enqueue(nodeId, kind, generation, contentHash)` → ON
   CONFLICT `(node_id, kind, generation)` DO NOTHING returns `null` — crash retries,
@@ -53,16 +53,16 @@ Enqueue decision table (per node, at hook time):
   retained).
 - **content_hash skip:** `embed` executor first runs the dedupe check
   (`embeddingsStore.get(node)`; same active `modelId` ∧ same `contentHash` ⇒
-  `markSkipped`, no provider call — embeddingsStore §2.4, §4.20 determinism). For
+  `markSkipped`, no provider call — embeddingsStore §2.4; determinism within a model version is what makes the `(content_hash, modelId)` skip sufficient). For
   `features`/`caption`/`asr` the analogous skip is a prior `done` job of the same
   `(node, kind, generation)` whose stamped `content_hash` equals the current one
-  (**Decision:** job-row comparison — those tables have no content_hash column; lineage
+  (job-row comparison — those tables have no content_hash column; lineage
   columns record the model, the job row records the content).
 - **generation:** per-kind integer (`embed|features|caption|asr` share one counter per
   kind), default 1, stored in settings (`AI_GEN_<KIND>`); admin model change / backfill
-  launch (§4.15) increments the kind's generation and seeds `enqueueMany` over affected
+  launch increments the kind's generation and seeds `enqueueMany` over affected
   nodes with `kind='backfill'` drivers. UNIQUE is per-generation so fresh work is forced
-  without colliding with history (§4.1).
+  without colliding with history.
 - The upload-hook path checks derived COLLECTION admission (definition evaluation)
   separately — that is collections domain, not this service; the only coupling is
   `touchMemberChange` on rule-admission.
@@ -84,10 +84,10 @@ Enqueue decision table (per node, at hook time):
   QUEUED, unconsumed: the worker claims via an ADDITIVE filter option
   `aiJobsStore.claimNext({ excludeKinds })` (predicate-level exclusion; the existing
   zero-arg `claimNext()` contract of aiJobsStore §2.3 is unchanged). This is how
-  "pause never destroys queued work silently" (§4.9 kill-switch semantics) holds with
-  zero attempt inflation — backlog surfaces via `countByStatus`/`listFailed` (§4.15).
-- role budget breaker OPEN (§4.2: daily call/token cap hit) ⇒ same parking behavior;
-  counters reset at day rollover; breaker state reported to admin.
+  "pause never destroys queued work silently" holds with
+  zero attempt inflation — backlog surfaces via `countByStatus`/`listFailed`.
+- role budget breaker OPEN (per-role daily call/token cap hit) ⇒ same parking behavior;
+  counters reset at day rollover; breaker state reported to the admin pipeline card.
 
 5. Execute pipeline for the claimed kind (per-job timeout `AI_JOB_TIMEOUT_MS`, default
    120000 — operational): success ⇒ `markDone`; typed skip ⇒ `markSkipped(reason)`
@@ -97,13 +97,13 @@ Enqueue decision table (per node, at hook time):
    failing jobs stay visible for retry/abandon in the admin table, never silently die.
 6. A late `markDone` after a reap is a `{changes:0}` no-op (delayed worker logs+drops,
    never resurrects).
-7. Running workers pick up new LLM config at the NEXT job (hot reconfig §4.2) — no
+7. Running workers pick up new LLM config at the NEXT job (hot reconfiguration — config resolves per claim) — no
    in-job config caching beyond the claim.
 
 ### 2.4 Role pipelines
 
-**`embed` (E1, §4.20/§4.3):** input = locally extracted text (doc utilities; OCR-free:
-media text arrives from caption/transcript). §4.3 budget ladder decides the call shape —
+**`embed`:** input = locally extracted text (doc utilities; OCR-free:
+media text arrives from caption/transcript). The input-budget ladder decides the call shape —
 chunking: split at paragraph/heading boundaries first (char-window fallback) → uniform-
 stride sample ≤ `LLM_CHUNK_BUDGET` (default 4) chunks → embed ALL sampled chunks →
 `embeddingsChunkStore.replace` (chunk vectors retained; retrieval scores max-over-chunks)
@@ -113,38 +113,36 @@ stride sample ≤ `LLM_CHUNK_BUDGET` (default 4) chunks → embed ALL sampled ch
   `truncate-head` (`source='head'`) → `metadata_only` (name/mime/path/date string,
   `source='metadata_only'`, weak-but-searchable — the V0 floor for media without
   capabilities) → `skip` (`markSkipped('overlength_skip')` + journal note). A length-class
-  provider error mid-ladder degrades per §2.5, it never fails the job (§4.2: overlength
+  provider error mid-ladder degrades per §2.5, it never fails the job (overlength
   never fails a job).
 
-**`features` (`features.extract`, §4.19):** chat role; runs ONLY inside this job — never
-on request paths. Input = extracted text clipped by the §4.3 ladder + a
+**`features` (`features.extract`):** chat role; runs ONLY inside this job — never
+on request paths. Input = extracted text clipped by the input-budget ladder + a
 filename/mime/path/date metadata line. Fixed prompt template; output FORCED to JSON
 schema `{tags:[{tag,confidence}], summary, category}`; ≤ small token budget; **reasoning
-OFF** (E5: 99.8% validity at 5–10× speed; `enable_thinking:false` via chat_template_kwargs
-where supported — llmAdapter owns the kwarg, §4.19). Written to `ai_features`
+OFF** (`enable_thinking:false` via chat_template_kwargs
+where supported — llmAdapter owns the kwarg). Written to `ai_features`
 (`features_model_id`, `schema_version:1`, `truncated` flag from the ladder). Schema-parse
 failure ⇒ `markFailed` (retried; provider flakiness is transient). Chat off ⇒ field
-stays empty; downstream runs on local tags + vectors (§4.12).
+stays empty; downstream runs on local tags + vectors (the LLM-free fallback keeps every other pipeline working).
 
-**`caption` (V2, §4.21):** `vision_chat` role; local ffmpeg uniform-stride frame sampling
+**`caption` (V2):** `vision_chat` role; local ffmpeg uniform-stride frame sampling
 (≤4 frames, transient — frames never persisted); VLM captions in Korean; writes
 `ai_features.caption` + `caption_model_id`; then CHAINS `enqueue(node,'embed',gen)`
-(caption text is the embedding corpus for media). No `image_embed` path exists (V1
-retired §4.21/§4.23).
+(caption text is the embedding corpus for media). No `image_embed` path exists — every modality enters the same text embedding space.
 
-**`asr` (V3 = TRANSCRIPTION ONLY, §4.21 scope freeze, E13 evidence):** `asr` role; audio
+**`asr` (V3 = TRANSCRIPTION ONLY):** `asr` role; audio
 tracks/files → conditional transcript. The escape-prompt is MANDATORY and non-editable:
 "if there is no actually audible speech, answer none". Output fields: `transcript` +
 `asr_model_id` + ffprobe metadata into `ai_features.probe` — **no** audio_desc/genre/mood/
-kind FIELDS ship in v1 (schema-forced description invented instruments for non-speech
-audio; failure direction must stay conservative). Music detection is metadata-scoped
+kind FIELDS ship in v1 (failure direction stays conservative — a missed transcript loses data, an invented genre poisons the index). Music detection is metadata-scoped
 (ffprobe tags/`media_kind`): vocal music transcripts store LYRICS in `transcript` and
 `ai_features.media_kind='music'` marks them EXCLUDED from document-content scoring —
 every consumer of `transcript` (embed ladder input, features input, near-dup) filters
 `media_kind='music'` out of doc-content paths; the transcript remains for display/search
 in its own lane. Then chains `enqueue(node,'embed',gen)` (V0 metadata_only when the
 transcript is `none`).
-**`backfill`:** admin-launched driver job (§4.2/§4.15, rate-limited): seeds `enqueueMany`
+**`backfill`:** admin-launched driver job (rate-limited; never auto-fires on model change): seeds `enqueueMany`
 per generation-bump and monitors progress via `countByModel`/`countByStatus`; the backfill
 job itself performs no provider calls.
 
@@ -156,11 +154,11 @@ role, calls, input_chars, cached, degraded, failed_429)` PK `(day,role)`); this 
 - `truncated` (overlength ladder entered — `ai_features.truncated`, embed `source` column
   for the vector side) and `degraded` (length-class halving active for the model,
   propagated from llmAdapter's limiter event) are persisted with the RESULT rows so the
-  §4.15 degraded-input histogram and per-role ledger can be rebuilt from DB alone.
+  the admin degraded-input histogram and per-role ledger can be rebuilt from DB alone.
 - A role hitting its daily cap pauses that KIND's execution (jobs park — §2.3); the
   admin pipeline card shows `queue depth, 24h fail/429 rates, breaker states` from
   `countByStatus`/`listFailed` + `ai_usage_daily`.
-- Kill switches (§4.9 semantics): pausing enrichment (role/worker level) never destroys
+- Kill switches (pause semantics — a pause never destroys queued work silently): pausing enrichment (role/worker level) never destroys
   queued work — `pending`/`failed` rows are untouched; the only sanctioned terminal
   non-success states are `skipped` (data-driven) and admin-abandon (out of v1 API).
 
@@ -176,17 +174,17 @@ recoverable). The only user-facing code in this domain is thrown by llmAdapter c
 
 ## 3. Configuration (T2 / dbOnly unless noted)
 
-| Key                                          | Default         | Use                                                                                                   |
-| -------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------- |
-| `WEA_SKIP_AI_WORKER`                         | unset           | test seam — disables worker scheduling                                                                |
-| `AI_WORKER_POLL_MS`                          | `5000`          | idle claim poll                                                                                       |
-| `AI_WORKER_CONCURRENCY`                      | `1`             | per-process parallel jobs                                                                             |
-| `AI_JOB_STALE_MS`                            | `900000`        | `recoverStaleRunning` cutoff                                                                          |
-| `AI_JOB_TIMEOUT_MS`                          | `120000`        | per-job wall clock                                                                                    |
-| `LLM_CHUNK_BUDGET`                           | `4`             | §4.3 sampled-chunk cap (profile default; part of the chunking profile key — change ⇒ re-chunk, §4.20) |
-| `LLM_OVERLENGTH_POLICY`                      | `chunk-pool`    | ladder entry point: `chunk-pool\|truncate-head\|metadata_only\|skip`                                  |
-| `AI_GEN_EMBED` … `AI_GEN_ASR`                | `1`             | per-kind generation counters (admin bump only)                                                        |
-| `LLM_DAILY_CALL_CAP` / `LLM_DAILY_TOKEN_CAP` | `0` (unlimited) | per-role budget breaker (llmAdapter enforces; consumed here)                                          |
+| Key                                          | Default         | Use                                                                                                    |
+| -------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------ |
+| `WEA_SKIP_AI_WORKER`                         | unset           | test seam — disables worker scheduling                                                                 |
+| `AI_WORKER_POLL_MS`                          | `5000`          | idle claim poll                                                                                        |
+| `AI_WORKER_CONCURRENCY`                      | `1`             | per-process parallel jobs                                                                              |
+| `AI_JOB_STALE_MS`                            | `900000`        | `recoverStaleRunning` cutoff                                                                           |
+| `AI_JOB_TIMEOUT_MS`                          | `120000`        | per-job wall clock                                                                                     |
+| `LLM_CHUNK_BUDGET`                           | `4`             | input-budget sampled-chunk cap (profile default; part of the chunking profile key — change ⇒ re-chunk) |
+| `LLM_OVERLENGTH_POLICY`                      | `chunk-pool`    | ladder entry point: `chunk-pool\|truncate-head\|metadata_only\|skip`                                   |
+| `AI_GEN_EMBED` … `AI_GEN_ASR`                | `1`             | per-kind generation counters (admin bump only)                                                         |
+| `LLM_DAILY_CALL_CAP` / `LLM_DAILY_TOKEN_CAP` | `0` (unlimited) | per-role budget breaker (llmAdapter enforces; consumed here)                                           |
 
 ## 4. Dependencies
 
@@ -194,9 +192,9 @@ recoverable). The only user-facing code in this domain is thrown by llmAdapter c
   (content_hash read), `ai_features` repository via the AI store set
 - `infrastructure/adapters/llm` (role clients + breaker state), `blobStorageService`
   (`downloadBlob` content re-read), `vectorStore` seam (`upsert`)
-- local extractors: pdf/docx text utilities, ffmpeg/ffprobe (free, §4.3/§4.21)
+- local extractors: pdf/docx text utilities, ffmpeg/ffprobe (free)
 - Callers of the hook: `uploadService`, `fileService` (upload success + `copyFile`),
-  `versionsService.restore` (§4.1)
+  `versionsService.restore`
 
 ## 5. Verification Scenarios
 

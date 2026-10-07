@@ -24,13 +24,13 @@ Registry / resolver contracts: `docs/spec/server/infrastructure/configRegistry.m
 
 ### 2.2 Route List
 
-| Method | Path                    | Auth          | Description                                                                                                                                    |
-| ------ | ----------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/config`               | Token + Admin | Effective config: masked secrets, `value`/`source`/`tier`/`secret` per registry key.                                                           |
-| PUT    | `/config`               | Token + Admin | Allowlisted non-T0 keys → DB `settings` as plaintext strings, T2 cache invalidated.                                                            |
-| POST   | `/config/test`          | Token + Admin | Connection test **with pending values** for a file-storage backend (s3/webdav); reuses the wizard probe/classification. Serves D1 save gating. |
-| GET    | `/config/sync-report`   | Token + Admin | Read-only env↔DB drift report (config-sync classification) over the **running process environment**.                                           |
-| POST   | `/config/sync-from-env` | Token + Admin | Reconcile: mirror env-sourced non-T0 registry values into DB `settings` (plaintext), then invalidate the T2 cache.                             |
+| Method | Path                    | Auth          | Description                                                                                                                                                    |
+| ------ | ----------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/config`               | Token + Admin | Effective config: masked secrets, `value`/`source`/`tier`/`secret` per registry key.                                                                           |
+| PUT    | `/config`               | Token + Admin | Allowlisted non-T0 keys → DB `settings` as plaintext strings, T2 cache invalidated.                                                                            |
+| POST   | `/config/test`          | Token + Admin | Connection test **with pending values** for a file-storage backend (s3/webdav); reuses the wizard probe/classification. Serves the connection-key save gating. |
+| GET    | `/config/sync-report`   | Token + Admin | Read-only env↔DB drift report (config-sync classification) over the **running process environment**.                                                           |
+| POST   | `/config/sync-from-env` | Token + Admin | Reconcile: mirror env-sourced non-T0 registry values into DB `settings` (plaintext), then invalidate the T2 cache.                                             |
 
 ### 2.3 Middleware Used
 
@@ -57,9 +57,9 @@ Registry / resolver contracts: `docs/spec/server/infrastructure/configRegistry.m
 ```
 
 - One entry per registry key (`configRegistry.getEntries()`), iterated in registry order.
-- `value` — the **effective** value: env (when set, D1) → DB `settings` row (plaintext, as stored) → built-in default. A secret that has a value is the mask `"****"` (never surfaced to the client; DB rows are plaintext but masked at this boundary); an **unset** secret's `value` is `undefined` (the JSON field is omitted) so an absent secret is never reported as configured.
+- `value` — the **effective** value: env (when set) → DB `settings` row (plaintext, as stored) → built-in default. A secret that has a value is the mask `"****"` (never surfaced to the client; DB rows are plaintext but masked at this boundary); an **unset** secret's `value` is `undefined` (the JSON field is omitted) so an absent secret is never reported as configured.
 - `source` — `'env'` | `'db'` | `'default'` (the layer that supplied `value`).
-- `tier` — `'T0'` | `'T1'` | `'T2'` (registry classification, PLAN §3).
+- `tier` — `'T0'` | `'T1'` | `'T2'` (registry classification).
 - `secret` — boolean; true ⇒ masked on read (presentation only). It does **not** imply encryption at rest.
 
 **Errors:** none (auth/admin guard only).
@@ -76,12 +76,12 @@ Only changed keys are sent by the client; `values` must be a non-null object (no
 
 **Validation (per key, in order):**
 
-| Condition                                                | Result                                                                                                                                                                                                    |
-| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `values` is null / non-object / array                    | `400 { errorCode: 'serverErrors.admin.configInvalidPayload' }`                                                                                                                                            |
-| Unknown key (not in registry)                            | `400 { errorCode: 'serverErrors.admin.configUnknownKey', params: { key } }`                                                                                                                               |
-| T0 key (`isT0(key)`)                                     | `400 { errorCode: 'serverErrors.admin.configT0Protected', params: { key } }` — `.env`-only per D2/D4/D7. **400, not 403** (client error, not auth).                                                       |
-| Current `source === 'env'` (from `getEffectiveConfig()`) | `400 { errorCode: 'serverErrors.admin.configEnvSourcedProtected', params: { key } }` — a DB copy would be silently shadowed by the env value (F4). Mirrors the UI's read-only rule for `source=env` rows. |
+| Condition                                                | Result                                                                                                                                                                                               |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `values` is null / non-object / array                    | `400 { errorCode: 'serverErrors.admin.configInvalidPayload' }`                                                                                                                                       |
+| Unknown key (not in registry)                            | `400 { errorCode: 'serverErrors.admin.configUnknownKey', params: { key } }`                                                                                                                          |
+| T0 key (`isT0(key)`)                                     | `400 { errorCode: 'serverErrors.admin.configT0Protected', params: { key } }` — `.env`-only. **400, not 403** (client error, not auth).                                                               |
+| Current `source === 'env'` (from `getEffectiveConfig()`) | `400 { errorCode: 'serverErrors.admin.configEnvSourcedProtected', params: { key } }` — a DB copy would be silently shadowed by the env value. Mirrors the UI's read-only rule for `source=env` rows. |
 
 Validation is sequential and all-or-nothing: the first failing key aborts the request before any write. The `getEffectiveConfig()` snapshot is taken once before the loop; a key is rejected only when its **current** effective source is `'env'`. DB-backed T1 keys mirrored into `process.env` at boot (`populateT1Env` → `markDbSourced`) report `source: 'db'`, so they remain writable.
 
@@ -112,7 +112,7 @@ Tier classification after a successful write:
 - `applied` — T2 keys written (effective immediately).
 - `restartRequired` — T1 keys written (require restart).
 
-**source=env semantics:** the server **refuses** (400 `configEnvSourcedProtected`) a write to a key whose current effective source is `'env'` — a DB copy would be silently shadowed while the env var keeps winning (D1/F4). This matches the UI, which renders `source=env` rows read-only. DB-backed T1 keys populated at boot remain writable (`source: 'db'`). `registration_enabled` is a valid non-T0 (T2) registry key and is writable by this generic route, but the admin UI keeps it in the main settings rows and never shows it in the accordion.
+**source=env semantics:** the server **refuses** (400 `configEnvSourcedProtected`) a write to a key whose current effective source is `'env'` — a DB copy would be silently shadowed while the env var keeps winning. This matches the UI, which renders `source=env` rows read-only. DB-backed T1 keys populated at boot remain writable (`source: 'db'`). `registration_enabled` is a valid non-T0 (T2) registry key and is writable by this generic route, but the admin UI keeps it in the main settings rows and never shows it in the accordion.
 
 #### POST /api/admin/config/test
 
@@ -127,7 +127,7 @@ Tier classification after a successful write:
 }
 ```
 
-- `target` selects the probe; the remaining keys are the **pending values subset** (D1). The
+- `target` selects the probe; the remaining keys are the **pending values subset**. The
   server **merges them over the current effective config** (env → DB) before probing, so an
   unchanged masked secret falls back to the stored value.
 - Reuses the wizard probe machinery (`server/infrastructure/backendProbe.js`): `runProbe(target, payload)`.
@@ -263,7 +263,7 @@ New codes added to `shared/serverMessageCodes.js`:
 - `admin.configUnknownKey` → `serverErrors.admin.configUnknownKey` — `400`, PUT value references a non-registry key.
 - `admin.configT0Protected` → `serverErrors.admin.configT0Protected` — `400`, PUT value references a T0 (`.env`-only) key.
 - `admin.configInvalidPayload` → `serverErrors.admin.configInvalidPayload` — `400`, `values` is not a non-null object.
-- `admin.configEnvSourcedProtected` → `serverErrors.admin.configEnvSourcedProtected` — `400`, PUT value's current effective source is `'env'` (F4).
+- `admin.configEnvSourcedProtected` → `serverErrors.admin.configEnvSourcedProtected` — `400`, PUT value's current effective source is `'env'`.
 
 New message code added to `shared/serverMessageCodes.js`:
 

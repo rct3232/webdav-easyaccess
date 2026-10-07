@@ -5,7 +5,7 @@
 | Item            | Description                                                                                                                                                                                        |
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role            | Liveness/health surfaces. `GET /api/health` (public) stays a liveness probe and now includes per-backend status strings. `GET /api/admin/health` (admin) returns the full backend-health snapshot. |
-| Source of truth | `docs/features/backend-health.md` (decisions B1, D3)                                                                                                                                               |
+| Source of truth | `docs/features/backend-health.md`                                                                                                                                                                  |
 
 ---
 
@@ -36,7 +36,7 @@
 ```
 
 - Backends come from `getHealth()`, reduced to the **status string only** — never codes, hints,
-  reasons, or secrets (D3/D8).
+  reasons, or secrets.
 - `activeFileStorage` is the effective file-storage backend (`process.env.WEA_FILE_STORAGE`, which
   `configResolver.populateT1Env` refreshes from env → DB at boot; default `'s3'` when unset). It is
   additive and public so any authenticated client can decide whether the ACTIVE file backend is

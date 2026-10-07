@@ -12,7 +12,7 @@
 
 ### 2.1 File Path
 
-- **Source:** `server/infrastructure/lockManager.js` (the `server/store/locks.js` re-export shim and the `withLock()` helper were retired in the 2026-09 dead-code cleanup; consumers require `infrastructure/lockManager` directly)
+- **Source:** `server/infrastructure/lockManager.js` (the `server/store/locks.js` re-export shim and the `withLock()` helper do not exist; consumers require `infrastructure/lockManager` directly)
 - **Test file:** `server/infrastructure/__tests__/lockManager.test.js`
 
 ### 2.2 Main Methods

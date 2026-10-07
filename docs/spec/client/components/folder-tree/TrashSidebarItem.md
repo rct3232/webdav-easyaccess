@@ -34,8 +34,6 @@
   can-body `M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6z`, both `fill="currentColor"`,
   20x20px (= `fontSize="small"`, the context-menu size). Splitting MUI's own subpaths keeps the
   lid separately transformable, so the static icon is pixel-identical to the delete action.
-  (2026-09-11: replaces the former custom two-path artwork — same animation, same geometry as
-  the context-menu icon.)
 - **Selected state:** when `currentPath === '/__trash__'`, same tree-row-selected idiom as
   `BaseFolderTreeItem` (`.Mui-selected`: transparent background, `primary.main` color, 3px
   `primary.main` left border, icon colored).

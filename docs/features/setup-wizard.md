@@ -34,20 +34,20 @@ Key properties:
 
 - **Persistence target:** non-T0 settings are upserted into the connected metadata DB
   `settings` table (`POST /api/setup/apply`); **T0 keys are never written to the DB by the
-  wizard** — they are `.env`-owned (decisions **D5/D6/D7**, Phase B). Of the T0 keys only
+  wizard** — they are `.env`-owned. Of the T0 keys only
   `JWT_SECRET` is `.env`-writable, and only when the operator supplies one (an omitted `jwt`
   block leaves `.env` untouched; the boot-time ephemeral fallback then applies). The metadata
   backend is the default SQLite unless the remote DB keys (`WEA_DB_*`) are declared in `.env` —
   see `docs/SETUP.md`.
-- **Restart handling:** a "Restart required" screen only (decision **D2**). No self re-exec;
+- **Restart handling:** a "Restart required" screen only. No self re-exec;
   the operator restarts the process.
 - **Scope:** the wizard serves **non-T0 only** — file storage, email, server/CORS, and the
-  admin password (decision **D7**, Phase B). The one T0 exception is the **optional**
+  admin password. The one T0 exception is the **optional**
   `JWT_SECRET`, written to `.env` only when the operator supplies one (see the Admin-account
   bullet below). The metadata-backend step (sqlite/PostgreSQL radio) is removed; PostgreSQL
-  connectivity is boot-verified (D6) and monitored by the backend-health card.
+  connectivity is boot-verified and monitored by the backend-health card.
 - **Admin account:** username is fixed to `admin` (matches `ensureDefaultAdmin`); the wizard
-  sets the admin **password** only (decision **D6**). `JWT_SECRET` is **optional** (D7): the
+  sets the admin **password** only. `JWT_SECRET` is **optional**: the
   wizard writes it to `.env` only when the operator supplies one — otherwise the boot-time
   ephemeral random secret applies.
 
@@ -124,7 +124,7 @@ modify a `.env` file.
    `WEA_SQLITE_PATH`) is `.env`-owned and **never written by apply**.
 2. **Runtime layer → DB `settings`:** `apply` upserts every **non-T0** wizard value (file
    storage, email, server/CORS, `JWT_EXPIRES_IN`) into the connected metadata DB `settings`
-   table (row key = raw env var name, D11). Secret values are stored as **plaintext strings**
+   table (row key = raw env var name). Secret values are stored as **plaintext strings**
    — there is no field-level encryption and no key to keep or generate. Per-request runtime
    flags such as `registration_enabled` stay where they are, backed by the `SettingsRepository`
    facade (`server/store/repositories/SettingsRepository.js` with `sqlite/` and `postgres/`
@@ -153,14 +153,14 @@ ephemeral random fallback, and the explicitly set placeholder only triggers a "c
 
 ---
 
-## Admin-password semantics (D6)
+## Admin-password semantics
 
 The wizard sets the admin **password** (username fixed to `admin`); `JWT_SECRET` is optional —
 apply writes it to `.env` only when the operator supplies one (otherwise the boot-time ephemeral
 random secret applies). The wizard does not create or rename users. Apply never writes an
 `ADMIN_DEFAULT_PASSWORD` value and never
 chooses a metadata backend — the DB connection is `.env`-owned, so a `metadata` block with
-`backend: 'postgresql'` is rejected (`400`, D7). The metadata backend is whatever the boot used
+`backend: 'postgresql'` is rejected (`400`). The metadata backend is whatever the boot used
 (sqlite default or the `.env`-declared PostgreSQL):
 
 - `admin` already exists in the connected metadata store from the setup-mode boot
@@ -183,7 +183,7 @@ invalidates all existing sessions (full re-login; refresh tokens are in-memory).
 therefore mandatory after any wizard write:
 
 - `apply` responds `200 { "restart_required": true }`.
-- The wizard shows a "Restart required" screen; there is no self re-exec (D2).
+- The wizard shows a "Restart required" screen; there is no self re-exec.
 - The boot guard in `server/index.js` (the `setImmediate` composition at
   `server/index.js:164-172`) is wrapped in try/catch; when `!setup_complete` the server logs a
   warning ("running in setup mode — file operations disabled") and stays up instead of crashing.
@@ -247,7 +247,7 @@ While the app is in setup mode (`setup_complete === false`) the HTTP listener is
 
 ---
 
-## Optional JWT secret and boot-time ephemeral fallback (D7)
+## Optional JWT secret and boot-time ephemeral fallback
 
 `JWT_SECRET` remains a T0, `.env`-owned key (frozen at require time, read-only/masked in the
 admin Deploy-time summary, rejected by admin config `PUT`, excluded from config-sync) but is now

@@ -118,7 +118,7 @@ trashed subtree remains visible to trash/purge/restore logic.
 | `countActiveObjectsByS3Key(s3Key)`           | SELECT COUNT(\*) WHERE s3_key=? AND status='active'                                                                                                                                                                                                                                                                    | `number`      |
 | `setObjectMapBackendWebdav(fileNodeId)`      | UPDATE object_map SET storage_backend='webdav' WHERE file_node_id=? AND status='active'                                                                                                                                                                                                                                | `{ changes }` |
 
-#### GC support methods (Phase 6)
+#### GC support methods
 
 | Method                                           | SQL Pattern                                                                                                                           | Returns                                                   |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |

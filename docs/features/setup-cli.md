@@ -79,7 +79,7 @@ and masked secret input, then offers the connection check before writing.
 
 ### 2.4 Metadata backend
 
-Mirrors the wizard/D7 rules: the metadata backend (the remote-DB block `WEA_DB_HOST` /
+Mirrors the wizard rules: the metadata backend (the remote-DB block `WEA_DB_HOST` /
 `WEA_DB_DATABASE` / `WEA_DB_USER` / `WEA_DB_PASSWORD`, or the SQLite `WEA_SQLITE_PATH` default)
 is **`.env`-owned** and never set by apply. The CLI:
 

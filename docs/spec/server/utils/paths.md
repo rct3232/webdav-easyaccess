@@ -22,10 +22,9 @@
 | getProjectRoot | () => string | Resolve \_\_dirname/../.. |
 | getDataDir     | () => string | data/ under project root  |
 
-Note: `getThumbnailDir` and `getDatabasePath` were retired (dead-code cleanup
-2026-09) — thumbnails are held in the in-memory `CacheAdapter` (no on-disk dir) and
-the SQLite DB path is resolved inside `store/storage.js`, so these helpers had no
-remaining caller.
+Note: `getThumbnailDir` and `getDatabasePath` do not exist — thumbnails are held in the in-memory
+`CacheAdapter` (no on-disk dir) and the SQLite DB path is resolved inside `store/storage.js`, so
+these helpers have no remaining caller.
 
 ### 2.3 Input / Output
 

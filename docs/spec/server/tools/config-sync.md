@@ -13,7 +13,7 @@
 
 ## 2. Purpose
 
-Make the D1 shadow-copy conditions observable and fixable without touching the running app:
+Make the shadow-copy conditions observable and fixable without touching the running app:
 
 - **detect** — compare env vs DB per non-T0 registry key and classify the result;
 - **alert** — exit 1 on any `differs` (drift) finding, so the report can gate CI/cron/pre-restart checks;

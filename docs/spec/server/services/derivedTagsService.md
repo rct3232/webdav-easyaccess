@@ -1,17 +1,17 @@
 # derivedTagsService Spec
 
-Contract spec written with T0.9 (LLM-free hygiene items; `AI_FEATURE_PLAN.md` §4.10 v1 set,
-§4.18 fold step 1). Design owner sections: §4.10 (v1 tag set), §4.12 (None column),
+Target-contract spec (LLM-free hygiene items — the module runs with zero LLM configured).
+Design owner sections: §2.3 (v1 tag set), §2.2 (fold step 1),
 `docs/spec/server/store/aiTagStore.md` §2.4.5 (storage surface).
 
 ## 1. Overview
 
-| Item         | Description                                                                                                                                                                                                                                                     |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role         | Local derived tags — the LLM-free tag source. Pure computation of the v1 set (`mime`, `ext`, `month`, `path`) from node metadata + persistence of the folded result into `ai_tag_raw` through `aiTagStore`. EXIF is REJECTED for v1 (§4.10) — not a tag source. |
-| Boundaries   | No LLM, no vectors, no CacheAdapter. Computes and persists ONLY; consumption (tag predicates, templateNamer, rule suggestions) rides `ai_tag_raw` (§3.2/§4.10).                                                                                                 |
-| State        | DB-backed via `aiTagStore.replaceRawTags` (one TX per node; store normalizes nothing — the fold happens here before the write).                                                                                                                                 |
-| Scope (T0.9) | Computation + per-node persist seam + idempotent user-scoped backfill. COMMIT-POINT WIRING (§4.1 upload/copy/restore) is P1 (register (b)) — the files domain is not touched by this module's callers yet.                                                      |
+| Item       | Description                                                                                                                                                                                                                                             |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role       | Local derived tags — the LLM-free tag source. Pure computation of the v1 set (`mime`, `ext`, `month`, `path`) from node metadata + persistence of the folded result into `ai_tag_raw` through `aiTagStore`. EXIF is not a tag source (rejected for v1). |
+| Boundaries | No LLM, no vectors, no CacheAdapter. Computes and persists ONLY; consumption (tag predicates, templateNamer, rule suggestions) rides `ai_tag_raw`.                                                                                                      |
+| State      | DB-backed via `aiTagStore.replaceRawTags` (one TX per node; store normalizes nothing — the fold happens here before the write).                                                                                                                         |
+| Scope      | Computation + per-node persist seam + idempotent user-scoped backfill. COMMIT-POINT WIRING (upload/copy/restore) is P1 — the files domain is not touched by this module's callers yet.                                                                  |
 
 ---
 
@@ -22,19 +22,19 @@ Contract spec written with T0.9 (LLM-free hygiene items; `AI_FEATURE_PLAN.md` §
 - **Source:** `server/domains/ai/derivedTags.js` (+ pure fold helper `server/domains/ai/tagVocabulary.js`)
 - **Test files:** `server/domains/ai/__tests__/derivedTags.test.js` (unit + real-DB pipeline)
 
-### 2.2 The fold (tagVocabulary.js — §4.18 step 1)
+### 2.2 The fold (tagVocabulary.js)
 
 `foldTag(value)` is the read-time orthographic normalization — a PURE function, zero
 tables: NFKC → trim → collapse internal whitespace runs to a single space → lowercase
 (asymmetric case folding). It never produces the empty string: non-string/empty input ⇒
 `null` (callers drop). Idempotent: `foldTag(foldTag(x)) === foldTag(x)`.
 
-### 2.3 v1 tag set (decision — kind-prefixed values)
+### 2.3 v1 tag set (kind-prefixed values)
 
 `computeDerivedTags({ name, createdAt, mimeType, pathSegments })` ⇒ **folded, deduped,
-sorted** string array. Adjudicated v1 encoding (T0.9, 2026-09-22): tags are KIND-PREFIXED
-so derived tags never collide with future LLM tags materialized into the same
-`ai_tag_raw` table, and predicates are self-describing:
+sorted** string array. v1 encoding: tags are KIND-PREFIXED so derived tags never collide
+with future LLM tags materialized into the same `ai_tag_raw` table, and predicates are
+self-describing:
 
 | Kind    | Value shape       | Source & rule                                                                                                                                                                                                            |
 | ------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -52,12 +52,11 @@ highest non-root segments); the sort is lexicographic over the folded values.
 | -------------------------------------------------------------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `foldTag(value)`                                                           | `string \| null`         | §2.2 pure fold (re-exported here for consumers; implemented in tagVocabulary.js).                                                                                                                                                                        |
 | `computeDerivedTags({ name, createdAt, mimeType, pathSegments })`          | `string[]`               | Pure. §2.3 table; folded/deduped/sorted; never throws on odd metadata (garbage in ⇒ fewer tags).                                                                                                                                                         |
-| `syncNodeDerivedTags({ nodeId, name, createdAt, mimeType, pathSegments })` | `{ inserted }`           | Compute → `aiTagStore.replaceRawTags(nodeId, tags)` — the per-node seam the §4.1 commit points will call (P1 wiring).                                                                                                                                    |
+| `syncNodeDerivedTags({ nodeId, name, createdAt, mimeType, pathSegments })` | `{ inserted }`           | Compute → `aiTagStore.replaceRawTags(nodeId, tags)` — the per-node seam for the upload/copy/restore commit points (P1 wiring).                                                                                                                           |
 | `backfillDerivedTagsForUser(userId)`                                       | `{ nodes, tagsWritten }` | Idempotent keyset-free full pass over the requester's OWN live subtree (`fileNodesStore.getUserRootNode` + `listSubtreeCacheRows`); ancestor chains resolved from the loaded rows; each node's derived set REPLACED. Returns counts. Re-run ⇒ same rows. |
 
-- Ownership of the whole `ai_tag_raw` row set per node: v1 the ONLY writer is this module;
-  when the nightly LLM materialization (evolution §2.10) lands it becomes a merged-set
-  writer (aiTagStore §2.4.5 note) — no schema change.
+- Ownership of the whole `ai_tag_raw` row set per node: v1 the ONLY writer is this module
+  (aiTagStore §2.4.5 note).
 - Directory nodes get NO derived tags (v1 set describes files); backfill skips them.
 - Month/path use `file_nodes.created_at` / node ancestry — never object storage state.
 
@@ -65,13 +64,13 @@ highest non-root segments); the sort is lexicographic over the folded values.
 
 - Store surfaces only (`aiTagStore` §2.5 error contract); this module adds no error codes.
 - Per-node write = ONE TX inside the store; backfill = sequential per-node TXs (no
-  global lock — idempotent, cheap, re-runnable; precedent T0.8 backfill no-lock rationale).
+  global lock — idempotent, cheap, re-runnable).
 
 ### 2.6 Dependencies
 
 - `aiTagStore` (`replaceRawTags`), `fileNodesStore` (`getUserRootNode`, `listSubtreeCacheRows`)
-- Consumers (later phases): `templateNamer` top-2 (§4.10), tag predicates via
-  `aiTagStore.listNodeIdsByRawTag` (collectionsService §2.3), rule-based suggestions (§4.17).
+- Consumers (later phases): `templateNamer` top-2 names, tag predicates via
+  `aiTagStore.listNodeIdsByRawTag` (collectionsService §2.3), rule-based cleanup suggestions.
 
 ### 2.7 Verification Scenarios
 

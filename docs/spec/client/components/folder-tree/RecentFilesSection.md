@@ -52,13 +52,12 @@
 
 ### 2.6 Conditional Rendering
 
-- **Child-row rendering (TreeRow, owner ruling 2026-10-01, PLAN §12):** every recent child row
+- **Child-row rendering (TreeRow):** every recent child row
   renders through the shared `TreeRow` primitive at `level = 1` — computed `padding-left: 16px`,
   identical to a shared-folder/file-tree child row (`pl: level*2`, the unified tree indent rule),
-  and the row reserves the leading column via `TreeRowSpacer` (ruling A, 2026-10-01 — icon offsets align across surfaces).
-  The earlier F5 pin (`sx={{ pl: 3 }}` ⇒ 24px, equal to CollectionsSection children) is RETIRED:
-  section children intentionally moved onto the tree's level-based indent. The `pl: 3` Box is the
-  EMPTY-STATE branch only, never a row wrapper (unchanged).
+  and the row reserves the leading column via `TreeRowSpacer` (icon offsets align across surfaces).
+  Section children use the tree's level-based indent — rows are never pinned to
+  `sx={{ pl: 3 }}` (24px). The `pl: 3` Box is the EMPTY-STATE branch only, never a row wrapper.
 - Selected when currentPath === '/**recent**'
 - Collapse for file list
 - Empty: recentItemsEmpty message
@@ -74,7 +73,7 @@
 
 ### 2.9 UI Enhancements
 
-- **Middle-Truncation:** Long filenames should be truncated in the middle (e.g., `abc...jk.docx`) to fit the component width while preserving the start and the extension. Implemented inside the shared `TreeRow` primitive (owner ruling 2026-10-01 — one font-metrics source for all sidebar rows).
+- **Middle-Truncation:** Long filenames should be truncated in the middle (e.g., `abc...jk.docx`) to fit the component width while preserving the start and the extension. Implemented inside the shared `TreeRow` primitive (one font-metrics source for all sidebar rows).
 - **Dynamic Width:** Truncation should adapt to the component's width and consider character widths (e.g., CJK).
 - **Tooltip:** Full filename should be visible via tooltip on hover.
 - **A11y/testing note:** Tooltip content may be exposed via ARIA attributes; tests should verify user-observable full-name access and should not require a static `title` attribute on the text node.

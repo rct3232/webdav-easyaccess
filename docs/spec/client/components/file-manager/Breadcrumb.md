@@ -38,17 +38,17 @@
 
 ### 2.2 Props
 
-| Name                 | Type     | Required | Default | Description                                                                                                                                                                                                                                                                                                                        |
-| -------------------- | -------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ancestors            | array    | Y        | -       | Current folder's ancestor chain `[{ nodeId, name }]`, fetched via `fileService.getAncestors` (`GET /files/ancestors`) in `useFileManager`                                                                                                                                                                                          |
-| onNodeClick          | function | Y        | -       | Ancestor chip click (by nodeId)                                                                                                                                                                                                                                                                                                    |
-| user                 | object   | N        | -       | User                                                                                                                                                                                                                                                                                                                               |
-| onToggleFolderTree   | function | N        | -       | Toggle folder tree                                                                                                                                                                                                                                                                                                                 |
-| isFolderTreeOpen     | boolean  | N        | -       | Tree open                                                                                                                                                                                                                                                                                                                          |
-| shareRootPath        | string   | N        | -       | Share root (share mode)                                                                                                                                                                                                                                                                                                            |
-| shareRootName        | string   | N        | -       | Share root name                                                                                                                                                                                                                                                                                                                    |
-| showFolderTreeToggle | boolean  | N        | -       | Show toggle                                                                                                                                                                                                                                                                                                                        |
-| collectionName       | string?  | N        | null    | **M-9 (2026-09-30 owner decision, option (a)):** the collection NAME for the member-route trail — resolved SHELL-side from the existing `useCollections` fetched list matched by `collectionId` (`FileManagerView.md` §3). `null` while the list is still loading ⇒ the transient `…` segment renders (the trail is NEVER hidden). |
+| Name                 | Type     | Required | Default | Description                                                                                                                                                                                                                                                                       |
+| -------------------- | -------- | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ancestors            | array    | Y        | -       | Current folder's ancestor chain `[{ nodeId, name }]`, fetched via `fileService.getAncestors` (`GET /files/ancestors`) in `useFileManager`                                                                                                                                         |
+| onNodeClick          | function | Y        | -       | Ancestor chip click (by nodeId)                                                                                                                                                                                                                                                   |
+| user                 | object   | N        | -       | User                                                                                                                                                                                                                                                                              |
+| onToggleFolderTree   | function | N        | -       | Toggle folder tree                                                                                                                                                                                                                                                                |
+| isFolderTreeOpen     | boolean  | N        | -       | Tree open                                                                                                                                                                                                                                                                         |
+| shareRootPath        | string   | N        | -       | Share root (share mode)                                                                                                                                                                                                                                                           |
+| shareRootName        | string   | N        | -       | Share root name                                                                                                                                                                                                                                                                   |
+| showFolderTreeToggle | boolean  | N        | -       | Show toggle                                                                                                                                                                                                                                                                       |
+| collectionName       | string?  | N        | null    | The collection NAME for the member-route trail — resolved SHELL-side from the existing `useCollections` fetched list matched by `collectionId` (`FileManagerView.md` §3). `null` while the list is still loading ⇒ the transient `…` segment renders (the trail is NEVER hidden). |
 
 ### 2.3 Callback Signatures
 
@@ -66,9 +66,9 @@
 ### 2.5 i18n Keys
 
 - nav.home, nav.recentShort, nav.shared, nav.sharedFolder, nav.folderTreeOpen, nav.folderTreeClose
-- **M-9:** nav.collections (Collections chip — SAME key the tree header uses: label parity),
+- nav.collections (Collections chip — SAME key the tree header uses: label parity),
   nav.collectionsLiked (Likes segment — SAME key as the tree LikesNode; EN "Liked" / KO "좋아요")
-- **F2 (2026-10-01 §11 follow-up):** nav.collectionsArchive (Archive segment — SAME key as the
+- nav.collectionsArchive (Archive segment — SAME key as the
   tree ArchiveNode; EN "Archive" / KO "보관함"; STATIC label — the archive surface resolves no
   name from data)
 
@@ -88,17 +88,16 @@
 - **shared**/**recent**: no segments
 - Home/shared/recent: special icons
 - showFolderTreeToggle: up/down icon
-- **Collections surfaces (M-9, 2026-09-30)** — home-chip replacement precedent of trash/recent:
+- **Collections surfaces** — home-chip replacement precedent of trash/recent:
   - member route (`currentPath` starts with `/__collections__/collection/`): the home chip becomes
     `Collections` (`nav.collections`, Collections icon, click → `/__collections__`) and ONE
     segment chip renders: the collection NAME (`collectionName`), or the transient `…` while the
-    list has not resolved it (owner decision (a) — never hide the segment). The name chip is the
+    list has not resolved it (never hide the segment). The name chip is the
     current location (click → the member route itself).
   - liked route (`currentPath === '/__collections__/liked'`): home chip `Collections` + segment
     `Liked` (`nav.collectionsLiked` — the SAME key as the tree's LikesNode: label parity, never a
     third wording).
-  - archive route (`currentPath === '/__collections__/__archive__'`) — **F2 (2026-10-01 §11
-    follow-up, closing the M-9 gap where this route fell through to the generic Home chip)**:
+  - archive route (`currentPath === '/__collections__/__archive__'`):
     home chip `Collections` (click → `/__collections__`, the member/liked chain precedent) +
     segment `Archive` (`nav.collectionsArchive` — the SAME key as the tree's ArchiveNode: label
     parity). STATIC label: the archive surface has no per-row name to resolve from data. The
@@ -114,12 +113,12 @@
       as chips; nothing is trimmed
 - [ ] Share mode path parsing
 - [ ] Toggle folder tree
-- [ ] (M-9) Member route (`/__collections__/collection/:id`): chips are `Collections › <name>` — the leading chip navigates to `/__collections__`, the name chip to the current route; `collectionName=null` renders the transient `…` segment (never hides the trail — owner option (a) 2026-09-30).
-- [ ] (M-9) Liked route (`/__collections__/liked`): chips are `Collections › Liked`; both labels come from the SAME i18n keys as the tree rows (tree parity).
-- [ ] (F2) Archive route (`/__collections__/__archive__`): chips are `Collections › Archive` — the leading chip navigates to `/__collections__`, the Archive chip to the archive route itself; label = `nav.collectionsArchive` (tree parity, static — no name resolution); the generic Home chip NEVER renders on this route.
+- [ ] Member route (`/__collections__/collection/:id`): chips are `Collections › <name>` — the leading chip navigates to `/__collections__`, the name chip to the current route; `collectionName=null` renders the transient `…` segment (never hides the trail).
+- [ ] Liked route (`/__collections__/liked`): chips are `Collections › Liked`; both labels come from the SAME i18n keys as the tree rows (tree parity).
+- [ ] Archive route (`/__collections__/__archive__`): chips are `Collections › Archive` — the leading chip navigates to `/__collections__`, the Archive chip to the archive route itself; label = `nav.collectionsArchive` (tree parity, static — no name resolution); the generic Home chip NEVER renders on this route.
 
 ### 2.9 Edge Cases
 
 - User own folder – no shared segments
 - Horizontal scroll for long chains
-- Operator rule (admin is a pure operator — PLAN §14 client half): the M-9 collections/liked/archive crumb variants are unreachable for admin (the `useFileManager` urlView guard resolves admin deep links to home) — hidden by guard; NO redundant admin checks inside the component (avoid-scatter rule).
+- Operator rule (admin is a pure operator): the collections/liked/archive crumb variants are unreachable for admin (the `useFileManager` urlView guard resolves admin deep links to home) — hidden by guard; NO redundant admin checks inside the component (avoid-scatter rule).

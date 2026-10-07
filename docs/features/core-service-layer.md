@@ -1,6 +1,6 @@
 # Core Service Layer
 
-This document describes the Phase 2 core service layer architecture for filesystem tree management, blob lifecycle control, and upload orchestration against the S3+PostgreSQL storage backend. It references [ARCHITECTURE.md](../ARCHITECTURE.md) and [TESTING_STRATEGY.md](../TESTING_STRATEGY.md).
+This document describes the core service layer architecture for filesystem tree management, blob lifecycle control, and upload orchestration against the S3+PostgreSQL storage backend. It references [ARCHITECTURE.md](../ARCHITECTURE.md) and [TESTING_STRATEGY.md](../TESTING_STRATEGY.md).
 
 ---
 
@@ -14,7 +14,7 @@ uploadService.js          ← Orchestration (TX1 → S3 PUT → TX2 flow)
   │       └── _ancestryHelper.js ← Closure table maintenance
   │               └── fileNodesStore.js ← facade → FileNodeRepository → per-dialect impl (sqlite | postgres) via storage.getExecutor() → DbExecutor (infrastructure/db)
   └── blobStorageService.js ← Blob lifecycle (prepareUpload → completeUpload → download)
-          └── S3BlobStore / WebdavBlobStore (adapters; the Phase-1 NoOpBlobStore was retired)
+          └── S3BlobStore / WebdavBlobStore (adapters)
 ```
 
 ---
@@ -202,8 +202,8 @@ Use [TESTING_STRATEGY.md](../TESTING_STRATEGY.md) for contract and mocking guida
 
 ## Scope notes
 
-- **Phase 2 delivered S3 mode only.** WebDAV blob storage support was deferred from Phase 2 to Phase 4 (not Phase 3), where `blobStorageService` was extended with a `WebdavBlobStore` adapter (Phase 4 Task 4.0). Blob mode is selected via `WEA_FILE_STORAGE=s3|webdav`.
-- **Phase 4 added a composition root** (`server/service/composition.js`): it builds `fileNodeService`, `blobStorageService`, `uploadService`, `aclService`, and `fileService` once at startup. The blob store (S3BlobStore vs WebdavBlobStore) and file storage mode (`fileStorageMode` from `WEA_FILE_STORAGE`, default `'s3'`) are resolved there and injected into the services, so no service reads backend-specific config directly.
+- **Blob storage supports S3 and WebDAV.** `blobStorageService` provides the `S3BlobStore` and `WebdavBlobStore` adapters. Blob mode is selected via `WEA_FILE_STORAGE=s3|webdav`.
+- **The composition root** (`server/service/composition.js`) builds `fileNodeService`, `blobStorageService`, `uploadService`, `aclService`, and `fileService` once at startup. The blob store (S3BlobStore vs WebdavBlobStore) and file storage mode (`fileStorageMode` from `WEA_FILE_STORAGE`, default `'s3'`) are resolved there and injected into the services, so no service reads backend-specific config directly.
 - **Version history**: `object_map` carries managed per-node history — `upsertObjectMap`
   demotes the previous active row to `history` and `blobStorageService.prepareUpload` evicts the
   oldest history rows beyond `GC_VERSION_MAX_PER_NODE` (default 10, 0 = unbounded) in the same TX.

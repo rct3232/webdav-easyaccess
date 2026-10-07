@@ -4,11 +4,11 @@ Target-contract spec.
 
 ## 1. Overview
 
-| Item         | Description                                                                                                                                                                                            |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Role         | Pure helper computing client-side highlight ranges for `name_matches` rows (§4.6): case-insensitive, all-occurrence ranges of the trimmed submitted query inside the returned node `name`. COSMETIC-ONLY. |
-| Used by      | `useSearchResults` (attaches `highlights` to name-section rows at response time) and `SearchBarResultsMode` (renders the ranges as spans).                                                              |
-| Does not own | The server's dialect-specific matching (sqlite `lower()` is ASCII-folded only); correctness never depends on these ranges.                                                                                |
+| Item         | Description                                                                                                                                                                                        |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role         | Pure helper computing client-side highlight ranges for `name_matches` rows: case-insensitive, all-occurrence ranges of the trimmed submitted query inside the returned node `name`. COSMETIC-ONLY. |
+| Used by      | `useSearchResults` (attaches `highlights` to name-section rows at response time) and `SearchBarResultsMode` (renders the ranges as spans).                                                         |
+| Does not own | The server's dialect-specific matching (sqlite `lower()` is ASCII-folded only); correctness never depends on these ranges.                                                                         |
 
 ---
 
@@ -18,19 +18,19 @@ Target-contract spec.
 
 - **Source:** `client/src/utils/searchHighlight.js`
 - **Test file:** `client/src/utils/__tests__/searchHighlight.test.js`
-- **Decision (written at the T0.11 implementation step per `useSearchResults.md` §2.4):** ranges are computed client-side; the server never returns markup offsets (`routes/search.md` §2.4).
+- **Ranges are computed client-side** (`useSearchResults.md` §2.4); the server never returns markup offsets (`routes/search.md` §2.4).
 
 ### 2.2 Main Functions
 
-| Function                                     | Input ⇒ Return                                                                                                                        |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `computeHighlightRanges(name, query)`        | `(string, string) => Array<{ start: number, end: number }>` — non-overlapping forward-scan ranges (end exclusive), ascending by start. |
-| `applyHighlightRanges(name, ranges)`         | `(string, Array) => Array<{ text: string, highlighted: boolean }>` — segment list for span rendering; unchanged name when no ranges.    |
+| Function                              | Input ⇒ Return                                                                                                                         |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `computeHighlightRanges(name, query)` | `(string, string) => Array<{ start: number, end: number }>` — non-overlapping forward-scan ranges (end exclusive), ascending by start. |
+| `applyHighlightRanges(name, ranges)`  | `(string, Array) => Array<{ text: string, highlighted: boolean }>` — segment list for span rendering; unchanged name when no ranges.   |
 
 ### 2.3 Rules
 
-- Case-insensitive: both sides lowercased for matching; offsets index the ORIGINAL `name` (JS `toLowerCase` mirroring is acceptable — highlights are cosmetic, §4.6).
-- All occurrences of the FULL trimmed query inside the name (plain containment, same shape as the server §1 semantics — no token split).
+- Case-insensitive: both sides lowercased for matching; offsets index the ORIGINAL `name` (JS `toLowerCase` mirroring is acceptable — highlights are cosmetic-only).
+- All occurrences of the FULL trimmed query inside the name (plain whole-string containment — no token split; multi-word queries legitimately match nothing).
 - Empty/whitespace-only query, empty name, or no match ⇒ `[]` / unchanged segments (a row whose match cannot be located simply renders unhighlighted).
 - A query longer than the name yields no range (no negative/zero-length spans).
 

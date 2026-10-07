@@ -42,7 +42,7 @@
 | children              | array    | N        | Initial children (used when `node?.children` is not provided)                                       |
 | treeUpdateTrigger     | any      | N        | Reload trigger: { type: 'created'                                                                   | 'deleted' | 'refresh', ... } |
 | isHome                | boolean  | N        | If true, allows refresh reload even when not currently expanded                                     |
-| user                  | object   | N        | Included for compatibility with existing item props; not used directly in Phase 4 controller logic  |
+| user                  | object   | N        | Included for compatibility with existing item props; not used directly in the controller logic      |
 | sharedFoldersMap      | Map      | N        | Shared-folder permission map keyed by nodeId that can override permissions                          |
 | useHiddenFilesFilter  | boolean  | N        | Defaults to true                                                                                    |
 | listFilesOptions      | object   | N        | Options forwarded to `folderTreeGateway.listFolderChildren`                                         |

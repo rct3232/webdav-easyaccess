@@ -1,4 +1,4 @@
-> **REMOVED** — `server/models/Permission.js` deleted in Phase 4 Task 4.8e.
+> **REMOVED** — `server/models/Permission.js` no longer exists.
 > The legacy Permission model wrapper no longer exists in the codebase. All permission CRUD and query operations are performed directly through `permissionStore` (`server/domains/permissions/stores/permissionStore.js`) and `aclService` (`server/domains/permissions/services/aclService.js`), both of which are nodeId-based (`file_node_id BIGINT`).
 > This spec is retained for historical reference only.
 
@@ -6,9 +6,9 @@
 
 ## 1. Overview
 
-| Item | Description                                                                                                                                                                   |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role | Removed. Legacy Permission model class that proxied path-string based methods to `permissionStore`. Superseded by direct nodeId-based `permissionStore` / `aclService` usage. |
+| Item | Description                                                                                                                                                                     |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role | Removed. Legacy Permission model class that proxied path-string based methods to `permissionStore`; callers now use direct nodeId-based `permissionStore` / `aclService` usage. |
 
 ---
 
@@ -21,7 +21,7 @@
 
 ### 2.2 Removal Details
 
-Phase 4 Task 4.8e removed `server/models/Permission.js` and `server/domains/permissions/services/permissionFacade.js`. All production callers were migrated to import `permissionStore` or `aclService` directly.
+`server/models/Permission.js` and `server/domains/permissions/services/permissionFacade.js` were removed. All production callers were migrated to import `permissionStore` or `aclService` directly.
 
 The methods this model previously proxied were path-based and have no nodeId-based counterpart on the model layer:
 

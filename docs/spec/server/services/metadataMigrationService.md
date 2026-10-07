@@ -9,8 +9,7 @@
 | Files      | `server/domains/admin/services/metadataMigrationService.js` (new)                                                                                                                                                                                                                                           |
 | Test files | `server/domains/admin/services/__tests__/metadataMigrationService.test.js` (new; sqlite↔PG roundtrip under `test:ci:pg:adapters`)                                                                                                                                                                           |
 
-Source of truth: `docs/features/migration-mode.md`, `docs/spec/server/tools/metadata-migration.md`,
-`docs/features/migration-mode.md` (decisions D4–D6, D11, D14).
+Source of truth: `docs/features/migration-mode.md`, `docs/spec/server/tools/metadata-migration.md`.
 
 The service operates on **direct target connections** (`pg.Client` for PostgreSQL,
 node `sqlite3` (`sqlite3.Database`) for SQLite) — it does **not** use the app's own store/repository layer (which is
@@ -75,7 +74,7 @@ Read-only; never writes to the target.
   - `postgresql`: `{ host, port, database, user, password, ssl? }`.
   - `sqlite`: `{ sqlitePath }` (absolute path to the target `.db` file).
 
-### 2.5 Schema apply to an explicit target (D6)
+### 2.5 Schema apply to an explicit target
 
 If `schemaExists === false`, apply the DDL **to the explicit target connection** before copying:
 
@@ -93,7 +92,7 @@ If `schemaExists === false`, apply the DDL **to the explicit target connection**
 - `_schema_migrations` is **not** copied (see §2.8); the schema-apply records the applied DDL
   files on the target so subsequent app boots are no-ops.
 
-### 2.6 Single-transaction wipe + copy (D4, D5)
+### 2.6 Single-transaction wipe + copy
 
 `runMigration` runs **one target transaction**:
 
@@ -107,9 +106,9 @@ BEGIN
 COMMIT   // or ROLLBACK on error/cancel
 ```
 
-- **Wipe** is part of the same transaction as the copy (D5) — a mid-way cancel rolls back the
+- **Wipe** is part of the same transaction as the copy — a mid-way cancel rolls back the
   wipe too, so the target is never left partially emptied.
-- **Cancellation = ROLLBACK (D4):** the worker checks the cancel signal before/after each table;
+- **Cancellation = ROLLBACK:** the worker checks the cancel signal before/after each table;
   when cancelled (or on any error) the transaction is rolled back and both sides are unharmed.
 - The active backend is only ever **read**; the target is only ever **written**.
 
@@ -164,11 +163,11 @@ enforced on both backends):
 `onProgress(stage, table, done, total)` is invoked with **positional** arguments (no options
 object, no label) at each phase/batch boundary:
 
-| Field            | Description                                                                                                                                                          |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `stage`          | `'scan'` \| `'schema'` \| `'wipe'` \| `'copy'` \| `'done'` (matches the extended job payload in `docs/spec/server/tools/blob-migration.md` §job payload and PLAN §4) |
-| `table`          | The table currently being copied during `'copy'` batches, else `null`                                                                                                |
-| `done` / `total` | Running per-table `COUNT(*)` pre-aggregation, `Σ done / Σ total` → overall `%`                                                                                       |
+| Field            | Description                                                                                                                                              |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stage`          | `'scan'` \| `'schema'` \| `'wipe'` \| `'copy'` \| `'done'` (matches the extended job payload in `docs/spec/server/tools/blob-migration.md` §job payload) |
+| `table`          | The table currently being copied during `'copy'` batches, else `null`                                                                                    |
+| `done` / `total` | Running per-table `COUNT(*)` pre-aggregation, `Σ done / Σ total` → overall `%`                                                                           |
 
 The service emits no human-readable label. The route worker composes
 `progress.currentLabel` as `"Copying <table> … <done>/<total>"` — or the stage name when

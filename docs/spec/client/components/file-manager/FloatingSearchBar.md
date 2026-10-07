@@ -81,7 +81,7 @@
 
 ## 3. AI-platform submit + results-mode props (AI platform)
 
-Addendum to §2.2/§2.3 per docs/features/collections-platform.md §4.6 (two-stage search) and `docs/spec/client/hooks/useSearchResults.md` (D1 boundary: this bar only emits intents; results state lives in the hook).
+Addendum to §2.2/§2.3 per docs/features/collections-platform.md §4.6 (two-stage search) and `docs/spec/client/hooks/useSearchResults.md` (this bar only emits intents; results state lives in the hook).
 
 ### 3.1 New optional props (join §2.2 table)
 

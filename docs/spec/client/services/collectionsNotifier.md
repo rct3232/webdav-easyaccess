@@ -35,7 +35,7 @@ Target-contract spec.
 
 ### 2.3 Event Contract
 
-- **Decision:** single coarse channel, no event payload. Silent system evolution (§4.9) can change anything (create/split/archive/purge/merge) with no per-user push channel; subscribers re-read via the gateway. No SSE/WebSocket exists in the stack (§9 rejection) — polling stays refresh-policy's job.
+- **Contract:** one coarse, payload-free channel — no event payload. Silent system evolution can change anything (create/split/archive/purge/merge) and there is no push channel in the stack (no SSE/websocket transport exists here); subscribers re-read via the gateway. Polling stays refresh-policy's job.
 - Publish timing belongs to the publisher: only after a real 2xx mutation, never on absorbed failures (`collectionsRepository` §2.4).
 
 ### 2.4 Error Handling

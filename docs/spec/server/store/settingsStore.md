@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-| Item | Description                                                                                                                                       |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role | Global settings (e.g. `registration_enabled`). Stored as key-value rows in `postgresql`/`sqlite`. FsJSON/WebDAV file fallback removed in Phase 7. |
+| Item | Description                                                                                                                               |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Role | Global settings (e.g. `registration_enabled`). Stored as key-value rows in `postgresql`/`sqlite`. FsJSON/WebDAV file fallback is removed. |
 
 ---
 
@@ -25,11 +25,11 @@
 | listRows              | () => Promise\<{ key, value, updated_at }[]\> | Every row with `updated_at`; `value` left raw (callers unwrap JSON) — used by the configSync CLI (`docs/spec/server/tools/config-sync.md`) and key-rotation tooling |
 | isRegistrationEnabled | () => Promise\<boolean\>                      | get('registration_enabled') === 'true'                                                                                                                              |
 
-> **Removed in Phase 7:** `ensureSettingsFile` — FsJSON bootstrap file creation; settings are DB rows only.
+> **Removed:** `ensureSettingsFile` — FsJSON bootstrap file creation; settings are DB rows only.
 
 ### 2.3 Storage Paths
 
-- None — settings are DB rows (`settings` table) only. FsJSON `/.wea/settings.json` removed in Phase 7.
+- None — settings are DB rows (`settings` table) only. FsJSON `/.wea/settings.json` is removed.
 
 ### 2.4 PostgreSQL v2 Table Mapping
 

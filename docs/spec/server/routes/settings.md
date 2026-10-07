@@ -15,9 +15,8 @@
 
 - **Source:** `server/domains/admin/routes/settings.js` (merged into admin domain; exports the
   admin settings router plus a `publicRouter` named export). The file exports two routers so
-  each is mounted under a single prefix — mounting one router on both prefixes created bogus
-  aliases (`/api/settings/settings`, `/api/admin/public`) which were retired in the dead-code
-  cleanup.
+  each is mounted under a single prefix — mounting one router on both prefixes would create
+  bogus aliases (`/api/settings/settings`, `/api/admin/public`).
 - **Test file:** `server/domains/admin/routes/__tests__/settings.test.js`
 
 ### 2.2 Route List
@@ -39,10 +38,10 @@
   - `setup_complete: boolean` reports whether the first-run setup wizard has been
     completed (`server/domains/admin/routes/settings.js:13-21`); consumed by the login
     page to redirect to `/setup` when `false` (`client/src/pages/Login/hooks/useLoginForm.js`).
-  - `ai: { embed: boolean, chat: boolean }` — live LLM capability flags (§4.12): `true`
+  - `ai: { embed: boolean, chat: boolean }` — live LLM capability flags: `true`
     iff the matching `ai.<role>` backend-health tracker row reports `status: 'ok'`
     (`server/infrastructure/backendHealth.js`). Read per request from the shared tracker,
-    so a re-probe flips the flags without a restart (§4.2 hot reconfiguration;
+    so a re-probe flips the flags without a restart (hot reconfiguration;
     `email_enabled` precedent). With no LLM configured/probed (P0 default) both are
     `false`. `vision`/`asr` are not exposed publicly (admin-only surfaces).
 - **GET /admin/settings:** 200: all settings rows.

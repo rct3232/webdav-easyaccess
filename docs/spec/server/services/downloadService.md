@@ -17,11 +17,11 @@
 
 ### 2.2 Implementation Status
 
-| Component                         | Status                                                                                                                      | Wave               |
-| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------ |
-| Factory (`createDownloadService`) | Implemented — accepts `{ fileNodeService, blobStorageService, aclService }`                                                 | Task W4.1 (Wave 4) |
-| `downloadMultiple`                | Implemented — uses `aclService.checkFilePermission` per file via `Promise.allSettled`                                       | Wave 4             |
-| `getDownloadProgress`             | Implemented — service-local in-memory Map (no TTL); exposed via `GET /api/files/download-progress/:id` (preview.js:226-242) | Wave 4             |
+| Component                         | Status                                                                                                                      |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Factory (`createDownloadService`) | Implemented — accepts `{ fileNodeService, blobStorageService, aclService }`                                                 |
+| `downloadMultiple`                | Implemented — uses `aclService.checkFilePermission` per file via `Promise.allSettled`                                       |
+| `getDownloadProgress`             | Implemented — service-local in-memory Map (no TTL); exposed via `GET /api/files/download-progress/:id` (preview.js:226-242) |
 
 ### 2.3 Factory Function Signature
 

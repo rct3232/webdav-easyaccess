@@ -11,7 +11,7 @@ lets DB-sourced configuration take effect before require-time consts are capture
 
 ```
 1. Load .env → process.env (dotenv, override: false). T0 keys are read here.
-2. [D6] Pre-flight metadata-backend resolution (boot entry, before mounts):
+2. Pre-flight metadata-backend resolution (boot entry, before mounts):
      - the backend is resolved from the generic remote-DB credential block: setting at least one
        of WEA_DB_HOST / WEA_DB_DATABASE / WEA_DB_USER / WEA_DB_PASSWORD selects the remote
        database (PostgreSQL is the only supported remote engine); setting none selects SQLite.
@@ -25,7 +25,7 @@ lets DB-sourced configuration take effect before require-time consts are capture
         listing the missing keys. Failures raised later in the sequence surface through
         the runBoot() catch in server/index.js with identical handling. A
         complete-but-unreachable remote still boots and reports the outage via GET /api/health.
-        The DB connection is .env-owned; there is no sqlite-wizard fallback for it (D6/D7).
+        The DB connection is .env-owned; there is no sqlite-wizard fallback for it.
 3. initMetadataSchema()            — connect the metadata DB + apply schema/migrations.
                                     (No admin seeding — deferred until after env population.)
 4. resolver = createConfigResolver({ settingsStore: Settings })
@@ -44,7 +44,7 @@ lets DB-sourced configuration take effect before require-time consts are capture
          into process.env so require-time consts see it.
      (CORS production warning uses the effective value.)
    else:
-     setup mode — no env population; the wizard serves non-T0 only (D7).
+     setup mode — no env population; the wizard serves non-T0 only.
 7. await ensureDefaultAdmin()
    — reads process.env.ADMIN_DEFAULT_PASSWORD, which may now be a DB-sourced,
      plaintext T1 value (the wizard stores it in DB for the postgresql path).
@@ -54,12 +54,12 @@ lets DB-sourced configuration take effect before require-time consts are capture
    on the health card and the file-screen banner immediately after login. A
    post-probe reset would wipe it (surfaces would report `unknown` at boot).
 9. FFmpeg init (best-effort, warn-only).
-10. Boot connection probes for the ACTIVE file backend only (D3 / warn-only):
+10. Boot connection probes for the ACTIVE file backend only (warn-only):
     - WEA_FILE_STORAGE=webdav → utils/webdav `testConnection`; failure logs warn.
     - WEA_FILE_STORAGE=s3 → `backendProbe.probeS3`; missing S3 config logs
       SKIPPED (no failure record); probe failure records to the health tracker
       (survives because step 8 already ran).
-    Probing an unused backend would record a false alert (D3), so only the
+    Probing an unused backend would record a false alert, so only the
     active file backend is probed.
 11. getMigrationGate().reset() — fresh-process migration gate.
 12. mount / listen:

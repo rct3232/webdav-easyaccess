@@ -10,14 +10,14 @@ Target-contract spec.
 | Role       | Undo journal read feed (30d) + undo execution (tip / cascade-confirm semantics). |
 
 **Ownership boundary:** the journal is common infrastructure (NOT ai-prefixed). Writers go
-exclusively through `commitChange(mutation, inverse)` (§4.11) — this router only reads and
+exclusively through `commitChange(mutation, inverse)` — this router only reads and
 undoes; it never accepts new rows. Undo flow referenced by every collection mutation's
 `undo: { action_id }` pointer lives here ([collections.md](collections.md)).
 
 Undo does NOT restore: spent LLM cost, already-received external exposure (grant-snapshot
 undo restores future state only), or file content (trash/versions own that world).
 Permanent delete (`archived→permanent delete`, empty-trash) has NO undo row by contract
-(invariant 10, trash-parity) — such ids return 404 from this feed.
+(trash-parity: permanent delete is unrecoverable) — such ids return 404 from this feed.
 
 ---
 
@@ -45,9 +45,9 @@ and with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 ### 2.3 Middleware Used
 
 - `authenticateToken`, `requireUser` (per-router)
-- **No admin gate on this router (journal unchanged):** every collections-mutating endpoint is
-  server-gated against ADMIN requesters (operator rule, owner pivot 2026-10-01), so ADMIN actors
-  have no journal rows to list — the collections-domain feed is EMPTY BY CONSTRUCTION for admins.
+- **No admin gate on this router**: every collections-mutating
+  endpoint is server-gated against ADMIN requesters (operator rule), so ADMIN actors have no
+  journal rows to list — the collections-domain feed is EMPTY BY CONSTRUCTION for admins.
   File-surface usage recording (download/preview/search-hit) for admins is unchanged.
 - `setupModeGuardInstance` at mount (see §2.1)
 
@@ -56,20 +56,19 @@ and with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 **Wire casing (CODING_STYLE.md Express Patterns):** responses snake_case; request bodies camelCase
 (`confirmCascade`). Route param `:id` is the numeric `action_id`.
 
-**Journal domains enum (§5):** `collection | batch | settings | permissions | tags |
-file | sharing`. **v1 writers = `collection` only** (all silent/merge/settings-adjacent
-acts, §4.11). `batch` and `settings` arrive with later journal subscribers, `file`/`sharing` with the
-P4 admin-config subscription; `file`/`sharing`/`tags`/`permissions` are enum-reserved
-with no writer yet (the `permissions` asymmetry note applies: grant-undo = revoke is
+**Journal domains enum:** `collection | batch | settings | permissions | tags |
+file | sharing`. **Writers = `collection` only** (all silent/merge/settings-adjacent
+acts); `batch`/`settings`/`file`/`sharing`/`tags`/`permissions` are enum-reserved
+with no writer yet. The `permissions` asymmetry applies: grant-undo = revoke is
 exposure-reduction and may be silent; revoke-undo = grant is exposure-expansion and is
-explicit-only, rule 2).
+explicit-only.
 
 - **GET /:** Query `domain?` (must be one of the enum values; 400
   `actions.invalidDomain`). Window is fixed: rows `created_at >= now − 30d`, newest
-  first, cap 200 (no cursor — personal scale; §4.11 dashboard feed). Rows included:
-  `actor = requester id`, plus `actor = 'system'` rows whose subject resolves to a
-  collection the requester owns (silent system acts are undoable by their victim-user
-  via digest/feed surfaces). `payload` (the inverse blob) is NEVER serialized. 200:
+  first, cap 200, no cursor.
+  Rows included: `actor = requester id`, plus `actor = 'system'` rows whose subject
+  resolves to a collection the requester owns. `payload` (the inverse blob) is NEVER
+  serialized. 200:
 
 ```json
 {
@@ -85,9 +84,9 @@ explicit-only, rule 2).
       "chain_seq": 12,
       "is_tip": true,
       "undo_available": true,
-      "created_at": "2026-09-16T03:00:00Z",
+      "created_at": "2025-09-16T03:00:00Z",
       "undone_at": null,
-      "expires_at": "2026-10-16T03:00:00Z"
+      "expires_at": "2025-10-16T03:00:00Z"
     }
   ]
 }
@@ -95,17 +94,15 @@ explicit-only, rule 2).
 
 Field rules: `actor` is a numeric user id or the string `"system"`;
 `status`: `applied | undone | expired`; `subject_label` is the render-safe display
-label captured at commit time (never re-resolved — rows outlive subjects for audit);
-as of T0.10 (register (d) decision 2026-09-23) every collection-domain writer captures
-the label — member-op rows carry the collection name so the §4.16 feed renders them
+label captured at commit time, never re-resolved (rows outlive subjects for audit) —
+every collection-domain writer captures the
+label; member-op rows carry the collection name so the dashboard feed renders them
 without re-resolution (`store/collectionsStore.md` §2.1 capture table);
 `undo_available` = `status='applied'` (payload not yet NULLed); `is_tip` = highest
-`chain_seq` among `status='applied'` rows for the same `subject` (lets the client plan
-the cascade dialog without a round trip). The ≤24h **toast** window is a client
-surface rule (§4.11) — this API does not shorten availability at 24h.
-Retention note: rows survive 30d; at expiry `payload` is NULLed and `status` flips to
-`expired` (audit keeps "what happened" without storage growth) — expired rows stay
-visible in the feed until their 30d listing horizon passes.
+`chain_seq` among `status='applied'` rows for the same `subject`. The ≤24h **toast**
+window is a client surface rule — this API does not shorten availability at 24h.
+Retention: rows survive 30d; at expiry `payload` is NULLed and `status` flips to
+`expired` — expired rows stay visible in the feed until their 30d listing horizon passes.
 
 - **POST /:id/undo:** Body optional `{ confirmCascade?: true }`.
 - **Tip undo** (`is_tip` for its subject): executes free — inverse applied in one TX,
@@ -131,7 +128,7 @@ visible in the feed until their 30d listing horizon passes.
 {
   "action_id": 995,
   "status": "undone",
-  "undone_at": "2026-09-17T10:00:00Z",
+  "undone_at": "2025-09-17T10:00:00Z",
   "cascade_undone": [996, 997],
   "items_undone": 11,
   "items_skipped": 1
@@ -155,25 +152,21 @@ for tip undos); `items_undone`/`items_skipped` are command-row counts (≥1 / �
 All errors follow the shared envelope (`errorCode` + optional `params`,
 [shared-contracts.md](../../../shared-contracts.md)); client locale mirror mandatory.
 
-### 2.4.2 Decisions (micro-details the plan left open)
+### 2.4.2 Contract clarifications
 
-- **Decision:** not-visible rows 404 (masquerade) instead of 403 — journal ids leak
-  nothing about other users' activity.
-- **Decision:** cascade undo is re-posted with `confirmCascade: true` (409 + params
-  first) instead of a dedicated `?force` flag or a two-phase token — the dialog counts
-  come straight from `params.laterChanges`.
-- **Decision:** feed is capped at 200 rows newest-first without a cursor (30d personal
-  scale; mirrors the collections no-pagination stance).
-- **Decision:** `is_tip` is computed per-subject among `applied` rows only — a row after
-  an already-undone successor is still a tip (undo-of-undo is out of scope §4.11).
-- **Decision:** system-origin rows are journaled with `actor='system'` and scoped to the
+- Not-visible rows 404 (masquerade), never 403.
+- Cascade undo is re-posted with `confirmCascade: true` (409 + `params` first).
+- Feed is capped at 200 rows newest-first without a cursor.
+- `is_tip` is computed per-subject among `applied` rows only — a row after
+  an already-undone successor is still a tip (no undo-of-undo).
+- System-origin rows are journaled with `actor='system'` and scoped to the
   affected owner at commit time; this router trusts that scoping for feed visibility.
 
 ### 2.5 Related Documents
 
 - [api.md](../../../api.md), [shared-contracts.md](../../../shared-contracts.md),
   [collections.md](collections.md) (mutation `undo.action_id` pointers),
-  `docs/features/collections-platform.md` §4.11/§5, CODING_STYLE.md Express Patterns.
+  `docs/features/collections-platform.md` §4.11, CODING_STYLE.md Express Patterns.
 
 ### 2.6 Integration Test Scenarios
 

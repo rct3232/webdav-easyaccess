@@ -38,8 +38,8 @@ function createFileService({ fileNodeService, blobStorageService, uploadService,
 | uploadService      | object | yes      | 4-step upload orchestration (uploadFile, overwriteFile) — see `uploadService.md`                                                                                                                                                                                                                                              |
 | aclService         | object | yes      | Permission checks (checkFolderPermission, checkFilePermission, isAdminUser) — see `aclService.js`                                                                                                                                                                                                                             |
 | fileStorageMode    | string | yes      | `'s3'` or `'webdav'`. Determined by injected blobStorageService capability at composition time, not read from environment variables inside this service.                                                                                                                                                                      |
-| permissionStore    | object | no       | Store-level permission CRUD (`revokeUserSubtreePermissions`). Defaults to the real store when omitted. Used only by `moveNode` for the ownership-transfer cleanup (D6).                                                                                                                                                       |
-| ownerNodeResolver  | object | no       | Owner detection via closure-table ancestry (`isOwnerNode`). Defaults to the real resolver when omitted. Used only by `moveNode` to decide whether a move is an ownership transfer (D6).                                                                                                                                       |
+| permissionStore    | object | no       | Store-level permission CRUD (`revokeUserSubtreePermissions`). Defaults to the real store when omitted. Used only by `moveNode` for the ownership-transfer cleanup.                                                                                                                                                            |
+| ownerNodeResolver  | object | no       | Owner detection via closure-table ancestry (`isOwnerNode`). Defaults to the real resolver when omitted. Used only by `moveNode` to decide whether a move is an ownership transfer.                                                                                                                                            |
 | blobStore          | object | no       | Raw blob-store adapter (`headBlob`/`moveBlob`/`copyBlob`/`deleteBlob`/`ensureDirectoryExists`) for WebDAV path-level operations: trash MOVE (`deleteNode`), rename/move remote MOVE, native COPY (`copyFile`, overwrite snapshot), tmp cleanup. Required in WebDAV mode; unused in S3 mode. Injected by the composition root. |
 | fileNodesStore     | object | no       | Filecache read/write (`getCache`/`upsertCache`). Used only by `copyFile` (S3 mode) to mirror the source cache row onto the copied node. Injected by the composition root.                                                                                                                                                     |
 
@@ -206,7 +206,7 @@ Moves a node (and its subtree) to a new parent directory with closure table rebu
    - Check write on source via `aclService.checkFilePermission(userId, nodeId, 'write')` (string literal). If false, throw 403.
    - Check write on destination parent via `aclService.checkFolderPermission(userId, newParentNodeId, 'write')` (string literal). If false, throw 403.
      Admin or null-user bypasses this gate entirely.
-2. **Ownership-transfer detection (D6):** for a non-admin mover, resolve BEFORE the move (the closure-table rebuild afterwards rewrites the subtree ancestry, so post-move ownership would be misreported):
+2. **Ownership-transfer detection:** for a non-admin mover, resolve BEFORE the move (the closure-table rebuild afterwards rewrites the subtree ancestry, so post-move ownership would be misreported):
    - `ownedBeforeMove = ownerNodeResolver.isOwnerNode(userId, nodeId)` — the node is currently inside the mover's home subtree.
    - `destInsideMoverHome` — `newParentNodeId != null` AND `ownerNodeResolver.isOwnerNode(userId, newParentNodeId)` — the destination is inside the mover's home subtree (stable: the destination's ancestry is unchanged by the move).
    - If `ownedBeforeMove && !destInsideMoverHome`, the move transfers ownership out of the mover's home. Admin movers are skipped (no home, no self-grant rows to leak).
@@ -215,7 +215,7 @@ Moves a node (and its subtree) to a new parent directory with closure table rebu
 5. Storage-side sync (mode-dependent):
    - **S3 mode:** No storage operation needed. Blob keys are decoupled from tree position.
    - **WebDAV mode:** Native MOVE with DB rollback — identical policy to `renameNode` step 5. `blobStore.moveBlob(oldPath, newPath)` (one server-side MOVE of the file or whole directory subtree); on failure roll the DB move back via `fileNodeService.moveNode(nodeId, oldParentNodeId)` and re-throw; the two keep-the-move exceptions (source-not-found; rollback itself failed) set `sync_status='orphaned_node'` and re-throw instead.
-6. **Ownership-transfer cleanup (D6):** after the closure rebuild (reached only when the DB move stands — a step 5 rollback re-throws first), if step 2 detected an ownership transfer, call `permissionStore.revokeUserSubtreePermissions(userId, nodeId)` to delete the mover's explicit permission rows on the moved subtree (root + descendants, depth ≥ 0) from both `permissions_user_paths` and `permissions_user_files`. Without this, the mover's historical self-grants / admin-assigned rows on the subtree would resurface in `GET /api/permissions/shared` as "shared with me" leaks even though the mover no longer owns the subtree. The mover's home-root ADMIN grant is untouched (it lives on the home root, not inside the moved subtree). This cleanup is best-effort: it runs after the DB move committed and does not abort or roll back the move.
+6. **Ownership-transfer cleanup:** after the closure rebuild (reached only when the DB move stands — a step 5 rollback re-throws first), if step 2 detected an ownership transfer, call `permissionStore.revokeUserSubtreePermissions(userId, nodeId)` to delete the mover's explicit permission rows on the moved subtree (root + descendants, depth ≥ 0) from both `permissions_user_paths` and `permissions_user_files`. Without this, the mover's historical self-grants / admin-assigned rows on the subtree would resurface in `GET /api/permissions/shared` as "shared with me" leaks even though the mover no longer owns the subtree. The mover's home-root ADMIN grant is untouched (it lives on the home root, not inside the moved subtree). This cleanup is best-effort: it runs after the DB move committed and does not abort or roll back the move.
 7. Return confirmation.
 
 ---
@@ -313,9 +313,9 @@ Creates a copy of a source file in the destination directory. Copy semantics dif
 | blobStorageService | Blob lifecycle: prepareUpload/completeUpload for S3 mode; downloadBlob for both modes; uploadToWebdav for WebDAV PUTs; getActiveS3Key/duplicateBlob/linkObject/ensureExclusiveBlob for copy-on-write. Path-level WebDAV ops (MOVE/COPY/snapshot) go to the raw `blobStore` adapter (§1) |
 | uploadService      | Orchestrates 4-step S3 upload flow (TX1 → PUT → TX2) with failure recovery states                                                                                                                                                                                                       |
 | aclService         | Async permission gates: checkFolderPermission, checkFilePermission, isAdminUser                                                                                                                                                                                                         |
-| permissionStore    | Ownership-transfer cleanup in moveNode: revokeUserSubtreePermissions (D6)                                                                                                                                                                                                               |
+| permissionStore    | Ownership-transfer cleanup in moveNode: revokeUserSubtreePermissions                                                                                                                                                                                                                    |
 | fileNodesStore     | Copy metadata mirror in copyFile (S3 mode): `getCache` on the source + `upsertCache` for the copied node. Injected via factory options (composition)                                                                                                                                    |
-| ownerNodeResolver  | Ownership detection in moveNode: isOwnerNode (D6)                                                                                                                                                                                                                                       |
+| ownerNodeResolver  | Ownership detection in moveNode: isOwnerNode                                                                                                                                                                                                                                            |
 
 ### 2.5 Error Cases
 
@@ -375,9 +375,9 @@ Creates a copy of a source file in the destination directory. Copy semantics dif
 
 - [ ] Updates parent_id and rebuilds closure table via fileNodeService.moveNode in TX
 - [ ] S3 mode: no storage operation (blob key decoupled from tree position)
-- [ ] WebDAV mode: captures the old path BEFORE the DB move, then one native `blobStore.moveBlob(oldPath, newPath)`; MOVE failure rolls the DB move back (and skips the D6 cleanup) and re-throws; only source-not-found or a failed rollback keeps the move and marks orphaned_node
+- [ ] WebDAV mode: captures the old path BEFORE the DB move, then one native `blobStore.moveBlob(oldPath, newPath)`; MOVE failure rolls the DB move back (and skips the cleanup) and re-throws; only source-not-found or a failed rollback keeps the move and marks orphaned_node
 - [ ] Rejects cycle: throws when newParentNodeId is a descendant of nodeId
-- [ ] Ownership transfer (D6): a non-admin mover that owns the node and moves it OUTSIDE the mover's home subtree has its explicit rows on the moved subtree revoked via revokeUserSubtreePermissions (root + descendants); the mover's home-root ADMIN row is preserved
+- [ ] Ownership transfer: a non-admin mover that owns the node and moves it OUTSIDE the mover's home subtree has its explicit rows on the moved subtree revoked via revokeUserSubtreePermissions (root + descendants); the mover's home-root ADMIN row is preserved
 - [ ] Non-transfer: moving within the mover's own home, or moving a node the mover merely received a grant on (does not own it), does NOT revoke any rows
 - [ ] Admin mover: ownership detection and revocation are skipped entirely
 
@@ -528,7 +528,7 @@ Semantics:
 
 Gates: node exists (404 `files.notFound`), node is trashed (409 `files.notTrashed`), write
 permission on the node (`checkFilePermission(userId, nodeId, PERMISSIONS.WRITE)` — the same
-delete perm a hard-delete requires today, admin bypasses; ACL review 2026-09-10) → 403. Works on
+delete perm a hard-delete requires today, admin bypasses) → 403. Works on
 trashed descendants whose ancestors are still trashed.
 
 Physical removal (shared purge core, WebDAV mode):
@@ -597,7 +597,7 @@ now eager instead of GC-deferred).
 
 ## 6. Verification Scenarios
 
-Complete checklist of testable behaviors per method, organized to drive the test scaffold in `W1.1-2` (see `phase4-sub-plan-wave1.md`).
+Complete checklist of testable behaviors per method, organized to drive the test scaffold.
 
 ### listDirectoryWithPermissions
 
@@ -642,9 +642,9 @@ Complete checklist of testable behaviors per method, organized to drive the test
 
 - [ ] Updates parent_id and rebuilds closure table via fileNodeService.moveNode in TX
 - [ ] S3 mode: no storage operation invoked (blob key decoupled from tree position)
-- [ ] WebDAV mode: old path/parent captured before the DB move; one native `blobStore.moveBlob(oldPath, newPath)` after it; failure → DB move rolled back + error propagated, D6 cleanup skipped (orphaned_node only when the remote source was absent or the rollback failed)
+- [ ] WebDAV mode: old path/parent captured before the DB move; one native `blobStore.moveBlob(oldPath, newPath)` after it; failure → DB move rolled back + error propagated, cleanup skipped (orphaned_node only when the remote source was absent or the rollback failed)
 - [ ] Rejects cycle: throws when newParentNodeId is a descendant of nodeId
-- [ ] Ownership transfer (D6): non-admin mover that owned the node moves it into another user's home subtree → mover's rows on the moved subtree are revoked (both tables, root included); shared listing no longer surfaces it
+- [ ] Ownership transfer: non-admin mover that owned the node moves it into another user's home subtree → mover's rows on the moved subtree are revoked (both tables, root included); shared listing no longer surfaces it
 - [ ] Received grant preserved: a mover that does NOT own the node (merely received a grant) moving it within the owning user's home keeps its grant row intact
 - [ ] Within-own-home move: no rows revoked
 - [ ] Admin mover: no ownership detection, no revocation

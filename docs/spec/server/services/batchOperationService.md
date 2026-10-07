@@ -194,7 +194,7 @@ dispatcher:
 3. Dispatches on `job.operation` to the corresponding batchOperationService method **with the
    real user object**: `batchDelete(job.payload.nodeIds, job.userId, user)`,
    `batchMove(job.payload.moves, job.userId, user)`, `batchCopy(job.payload.copies, job.userId, user)`.
-   The per-item ACL gates and `fileService`'s own gates (including the D6 ownership-transfer
+   The per-item ACL gates and `fileService`'s own gates (including the ownership-transfer
    cleanup) therefore behave exactly as they do for a direct, non-admin call. Admin creators keep
    their bypass because the real user row carries `is_admin` (the batch worker previously
    passed a synthesized `{ is_admin: true }` for move/copy, silently granting every user admin

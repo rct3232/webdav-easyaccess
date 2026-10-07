@@ -2,12 +2,12 @@
 
 ## 1. Overview
 
-| Item         | Description                                                                                                                                                                                                                                                                    |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Role         | Canonical pooled embedding row per node — table `embeddings(node_id PK, model_id, dim, vector TEXT, source, content_hash, updated_at)`. The `vector TEXT` column is the SYSTEM OF RECORD for every vector in the product; all ANN indexes are derived artifacts of it (§4.13). |
-| Space key    | `model_id` is the embedding-SPACE key: vectors from different `llm_models` rows are never comparable (cross-`model_id` cosine forbidden, §4.20). One active model ⇒ one live row per node (PK is the node).                                                                    |
-| Consumers    | vectorStore adapter (shadow-index rebuild, §4.13), centroid/naming math (pooled row is canonical, §4.3), seed preview (§4.5), evolution passes (§4.9).                                                                                                                         |
-| Design owner | `docs/features/collections-platform.md` §4.20 , §4.13 (canonical TEXT), §5 (schema row).                                                                                                                                                                                       |
+| Item         | Description                                                                                                                                                                                                                                                            |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role         | Canonical pooled embedding row per node — table `embeddings(node_id PK, model_id, dim, vector TEXT, source, content_hash, updated_at)`. The `vector TEXT` column is the SYSTEM OF RECORD for every vector in the product; all ANN indexes are derived artifacts of it. |
+| Space key    | `model_id` is the embedding-SPACE key: vectors from different `llm_models` rows are never comparable (cross-`model_id` cosine forbidden). One active model ⇒ one live row per node (PK is the node).                                                                   |
+| Consumers    | vectorStore adapter (shadow-index rebuild), centroid/naming math (pooled row is canonical), seed preview, evolution passes.                                                                                                                                            |
+| Design owner | `docs/features/collections-platform.md` §4.20, §4.13 (canonical TEXT).                                                                                                                                                                                                 |
 
 ---
 
@@ -22,45 +22,45 @@
 - **Facade test:** `server/domains/ai/__tests__/embeddingsStore.test.js`
 - **DDL source of truth:** `server/store/postgresql/ddl/001_initial_normalized_schema.sql`. **Never** in tracked
   DDL: the pgvector shadow table / sqlite vec0 virtual table — those are created and
-  managed by the vectorStore adapter only (§4.13, CODING_STYLE.md Express Patterns).
+  managed by the vectorStore adapter only (CODING_STYLE.md Express Patterns).
 
 ### 2.2 Row shape
 
 `{ nodeId, modelId, dim, vector, source, contentHash, updatedAt }` — `vector` is TEXT:
 serialized floats (comma-separated, `dim`-checked at the repository boundary);
-`source ∈ fulltext | chunk_pool | head | metadata_only` (§4.3 ladder outcome).
+`source ∈ fulltext | chunk_pool | head | metadata_only` (overlength-ladder outcome).
 
 ### 2.3 Main Methods
 
-| Method         | Signature                                                                         | Description                                                                                                                                                                           |
-| -------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `get`          | (nodeId) => Promise\<row \| null\>                                                | Single pooled row (node PK ⇒ model-current by construction after backfill).                                                                                                           |
-| `getByNodeIds` | (nodeIds) => Promise\<row[]\>                                                     | Batch read (listing enrichment, similar-file lookups). Omitted nodes are simply absent.                                                                                               |
-| `upsert`       | (nodeId, { modelId, dim, vector, source, contentHash }) => Promise\<{ changes }\> | INSERT ON CONFLICT `(node_id)` DO UPDATE — a re-embed (model change, re-chunk, content change) REPLACES the row; `updated_at` refreshed.                                              |
-| `delete`       | (nodeId) => Promise\<{ changes }\>                                                | Explicit drop (re-embed-before-replacement, retirement). Missing row → `changes: 0`.                                                                                                  |
-| `deleteMany`   | (nodeIds) => Promise\<{ changes }\>                                               | Batch drop in one TX.                                                                                                                                                                 |
-| `listAll`      | (modelId, { afterNodeId?, limit? }?) => Promise\<row[]\>                          | Keyset pagination (`node_id > afterNodeId ORDER BY node_id LIMIT n`), filtered to `model_id = modelId` — drives vectorStore shadow rebuild and the JsFallback per-query load (§4.13). |
-| `countByModel` | (modelId) => Promise\<number\>                                                    | Backfill progress / admin pipeline card (§4.15).                                                                                                                                      |
+| Method         | Signature                                                                         | Description                                                                                                                                                                   |
+| -------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `get`          | (nodeId) => Promise\<row \| null\>                                                | Single pooled row (node PK ⇒ model-current by construction after backfill).                                                                                                   |
+| `getByNodeIds` | (nodeIds) => Promise\<row[]\>                                                     | Batch read (listing enrichment, similar-file lookups). Omitted nodes are simply absent.                                                                                       |
+| `upsert`       | (nodeId, { modelId, dim, vector, source, contentHash }) => Promise\<{ changes }\> | INSERT ON CONFLICT `(node_id)` DO UPDATE — a re-embed (model change, re-chunk, content change) REPLACES the row; `updated_at` refreshed.                                      |
+| `delete`       | (nodeId) => Promise\<{ changes }\>                                                | Explicit drop (re-embed-before-replacement, retirement). Missing row → `changes: 0`.                                                                                          |
+| `deleteMany`   | (nodeIds) => Promise\<{ changes }\>                                               | Batch drop in one TX.                                                                                                                                                         |
+| `listAll`      | (modelId, { afterNodeId?, limit? }?) => Promise\<row[]\>                          | Keyset pagination (`node_id > afterNodeId ORDER BY node_id LIMIT n`), filtered to `model_id = modelId` — drives vectorStore shadow rebuild and the JsFallback per-query load. |
+| `countByModel` | (modelId) => Promise\<number\>                                                    | Backfill progress / admin pipeline card.                                                                                                                                      |
 
 ### 2.4 Dedupe-skip contract (content_hash)
 
-The embed worker (E1 §4.20) performs the dedupe decision itself — this store only
+The embed worker performs the dedupe decision itself — this store only
 supplies the data:
 
 - Worker reads `get(nodeId)`; if `row.modelId === activeModelId && row.contentHash ===
 filecache.content_hash` ⇒ `aiJobsStore.markSkipped(jobId)` — **no provider call, no
   write**. Determinism within a model version makes the `(content_hash, model_id)` pair
-  sufficient for this idempotency (§4.20).
+  sufficient for this idempotency.
 - The stored `content_hash` records WHICH content the vector describes (drift detector).
 
 ### 2.5 Storage semantics & invariants
 
 - `node_id` is BOTH PK and FK `→ file_nodes ON DELETE CASCADE`: purging a file removes its
   embedding (trash keeps the row — the node row survives).
-- A model change is a backfill overwrite (§4.2): old-space vectors are replaced row-by-row;
+- A model change is a backfill overwrite (admin-triggered, rate-limited): old-space vectors are replaced row-by-row;
   `listAll` on the new modelId returns only fully-migrated nodes until backfill completes.
-- `dim` is fixed per model (§4.20). **Decision:** the store trusts its caller (embed
-  worker / vectorStore seam resolves the model row's dim upstream) and simply persists the
+- `dim` is fixed per model. The store trusts its caller (embed worker /
+  vectorStore seam resolves the model row's dim upstream) and simply persists the
   value — no `llm_models` lookup here; cross-model comparisons are prevented by the
   `modelId` read filters, not by dim validation.
 - The pooled row is the ONE canonical vector per node for centroid/naming math; retrieval
@@ -70,7 +70,7 @@ filecache.content_hash` ⇒ `aiJobsStore.markSkipped(jobId)` — **no provider c
 
 One statement or one `executor.transaction` per call; no locks, no journal (derived AI
 state, internal worker writes). VectorStore's `upsert(node, vecs[], dim)` seam calls the
-pooled write here and the chunk write in `embeddingsChunkStore` inside ITS own TX (§4.13 seam).
+pooled write here and the chunk write in `embeddingsChunkStore` inside ITS own TX (vectorStore seam division of labor).
 
 ### 2.7 Error contracts
 
@@ -82,7 +82,7 @@ pooled write here and the chunk write in `embeddingsChunkStore` inside ITS own T
 
 - `storage.getExecutor()` + `EmbeddingsRepository` (+ twins)
 - Callers: vectorStore adapter (`domains/ai/vectorStore/`), embed worker, backfill service,
-  evolution service (§4.9 reads). No lockManager.
+  evolution service (pass reads). No lockManager.
 
 ### 2.9 Verification Scenarios
 
@@ -92,6 +92,6 @@ pooled write here and the chunk write in `embeddingsChunkStore` inside ITS own T
 - [ ] `listAll(modelId)` excludes rows of other `modelId`s; keyset pagination returns every row exactly once and in `nodeId` order across pages
 - [ ] Node purge cascades the row; trashing does NOT (node row persists)
 - [ ] `source` CHECK rejects an out-of-enum value (mapped error)
-- [ ] TEXT vector round-trips bit-stably through serialize/parse at `dim` (no lossy REAL/NUMERIC in tracked DDL, §4.13)
+- [ ] TEXT vector round-trips bit-stably through serialize/parse at `dim` (no lossy REAL/NUMERIC in tracked DDL)
 - [ ] L2 conformance (real sqlite + real PostgreSQL): ON CONFLICT DO UPDATE parity, keyset pagination parity, `countByModel`, cascade parity, row-shape mapping (number ids, ISO `updatedAt`)
 - [ ] Shadow-index independence: deleting the vec0/pgvector derived artifact and rebuilding via `listAll` reproduces identical canonical TEXT rows (vectorStore conformance owns this; store spec asserts the read path supports it)

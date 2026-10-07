@@ -70,10 +70,10 @@
 - E2E selector contract:
   - each rendered item container keeps the stable `data-file-path` attribute so end-to-end tests can target a specific file/folder without depending on localized visible text
   - no per-row `data-testid` is required when `data-file-path` is present
-- **Member-row reuse (P-4, `CollectionsListView.md` §2.5):** the collection MEMBERS surface feeds file-shape rows through this component (hosted by `CollectionsListView`, not `FileManagerView`). Optional row-object slots, absent on every file row (zero DOM delta):
+- **Member-row reuse (`CollectionsListView.md` §2.5):** the collection MEMBERS surface feeds file-shape rows through this component (hosted by `CollectionsListView`, not `FileManagerView`). Optional row-object slots, absent on every file row (zero DOM delta):
   - `file.rowTestId` → container `data-testid` (member rows: `member-row-<nodeId>`);
   - `file.moreButtonTestId` → More-button `data-testid` (member rows: `member-menu-button`);
-  - `file.isCollectionMember === true` → size caption suppressed when `file.size` is null/undefined (the member wire carries no size — `FileListItem.md`); optional `file.shared_excluded` / `file.published` chips render in the name block (`FileListItem.md`);
+  - `file.isCollectionMember === true` → size caption suppressed when `file.size` is null/undefined (the member wire carries no size — `FileListItem.md`); the optional `file.shared_excluded` / `file.published` member-state badges render through `FileListItem.md` (`MemberStateBadges.md`);
   - `file.state === 'revoked'` (member rows) → `getFileItemState` disables the row (no click/menu, grayed — `fileViewUtils.md`);
   - drag/drop is inert by data: member rows carry `hasWritePermission: false` (`useFileViewCommon` empty-drag rule) and the members host passes NO drop handlers.
 

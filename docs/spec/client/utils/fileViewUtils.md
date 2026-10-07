@@ -36,10 +36,10 @@
 - isSelected = selectionMode && selectedFiles.has(getEntryKey(file))
 - isPermissionDisabled = type===directory && hasReadPermission===false
 - isProcessing = Boolean(processingMap.get(file.nodeId)) — processingMap is nodeId-keyed by `useFileOperations`/`useBulkOperations`
-- isMemberRevoked (P-4) = `file.isCollectionMember === true && file.state === 'revoked'` — an EXPLICIT member-flag + state rule (never a bare `state` sniff: file rows carry no `state`, so file-side output is unchanged)
+- isMemberRevoked = `file.isCollectionMember === true && file.state === 'revoked'` — an EXPLICIT member-flag + state rule (never a bare `state` sniff: file rows carry no `state`, so file-side output is unchanged)
 - isDisabled = isPermissionDisabled || isProcessing || isMemberRevoked
 
-> **P-4 (member rows via shared renderers, `CollectionsListView.md` §2.5):** collection member rows carry `isCollectionMember:true`; a `state:'revoked'` row is disabled by the rule above (grayed, no click/menu action — the placeholder name is substituted by the member adapter, the thumbnail never requested because the row's `mime`/`type`/name are non-eligible). Regular file rows are unaffected.
+> **Member rows via shared renderers (`CollectionsListView.md` §2.5):** collection member rows carry `isCollectionMember:true`; a `state:'revoked'` row is disabled by the rule above (grayed, no click/menu action — the placeholder name is substituted by the member adapter, the thumbnail never requested because the row's `mime`/`type`/name are non-eligible). Regular file rows are unaffected.
 
 ### 2.5 Verification Scenarios
 

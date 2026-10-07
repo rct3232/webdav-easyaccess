@@ -21,22 +21,22 @@ Target-contract spec.
 
 ### 2.2 Props
 
-| Name       | Type     | Required | Default                    | Description                                                                                         |
-| ---------- | -------- | -------- | -------------------------- | --------------------------------------------------------------------------------------------------- |
-| open       | boolean  | Y        | -                          | Dialog open                                                                                         |
-| onClose    | function | Y        | -                          | Close handler                                                                                       |
-| collection | object   | Y        | -                          | snake_case Collection row (owner rows carry `definition`; grantee rows do not, collections.md §2.4) |
-| initialTab | string   | N        | 'info'                     | `'info' \| 'ai' \| 'sharing'` — card menu `Sharing` opens `sharing` directly                        |
-| aiFlags    | object   | N        | `{embed:false,chat:false}` | From `settings/public.ai` (host-provided; gates tabs, §4.12)                                        |
-| onPatch    | function | N        | -                          | `(patch) => void` — `PUT /:id` (`{ name?, pinned?, publishMode? }`) via host controller             |
+| Name       | Type     | Required | Default                    | Description                                                                                                   |
+| ---------- | -------- | -------- | -------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| open       | boolean  | Y        | -                          | Dialog open                                                                                                   |
+| onClose    | function | Y        | -                          | Close handler                                                                                                 |
+| collection | object   | Y        | -                          | snake_case Collection row (owner rows carry `definition`; grantee rows do not — `routes/collections.md` §2.4) |
+| initialTab | string   | N        | 'info'                     | `'info' \| 'ai' \| 'sharing'` — card menu `Sharing` opens `sharing` directly                                  |
+| aiFlags    | object   | N        | `{embed:false,chat:false}` | From `settings/public.ai` (host-provided; gates tabs)                                                         |
+| onPatch    | function | N        | -                          | `(patch) => void` — `PUT /:id` (`{ name?, pinned?, publishMode? }`) via host controller                       |
 
 ### 2.3 Tabs
 
 - **Tab bar idiom:** between title and body, `Info` default active; Close fixed at the bottom bar.
-- **`Versions` is NOT offered** — collections are not versioned. **Decision:** tab presence itself is the invariant statement; nothing fills that slot.
-- **Info:** name (inline rename → `PUT /:id`, flips `name_locked=true`), origin/status/publish_mode chips, pinned state (`pinned_by='auto'` shows the auto-pin chip + unpin CTA, §4.9b), `item_count`, timestamps (`created_at`/`updated_at`/`last_member_change_at`), member sample via `POST /:id/preview` (dry count + `sample` ≤12 + `plus N more` from `count − sample.length`) — owner-only preview call.
-- **AI Info:** owner-only, rendered ONLY when `collection.definition.kind` is AI-derived (seed/vector/tag) — **absent, not disabled** for rule/manual collections and for missing capability (§4.12 regular-user rule). Shows definition facts: kind, θ (`definition.theta`), seed reference name, template-vs-LLM naming provenance (`name_locked` state), last member-change time. NO raw vectors, NO model internals (privacy boundary §4.15 stance).
-- **Sharing:** owner-only (grants routes are owner-scoped; grantee rows simply omit the tab). Grant list from `GET /:id/grants` (`username`, `role`, `created_at`); add via UserSelectionMenu → `POST /:id/grants { userId, role }` (role select `viewer | editor`); revoke per row → `DELETE` (instant, §4.7). `publish_mode` radio `ask (default) | off | auto` (PUT) with the §4.7 explanation: `ask` parks new members behind the pending banner; enabling sharing itself stays the explicit act (invariant 2). Footer note: initial `seed`/`search` member set is pre-approved (Q2).
+- **`Versions` is NOT offered** — collections are not versioned; nothing fills that slot.
+- **Info:** name (inline rename → `PUT /:id`, flips `name_locked=true`), origin/status/publish_mode chips, pinned state (`pinned_by='auto'` shows the auto-pin chip + unpin CTA), `item_count`, timestamps (`created_at`/`updated_at`/`last_member_change_at`), member sample via `POST /:id/preview` (dry count + `sample` ≤12 + `plus N more` from `count − sample.length`) — owner-only preview call.
+- **AI Info:** owner-only, rendered ONLY when `collection.definition.kind` is AI-derived (seed/vector/tag) — **absent, not disabled** for rule/manual collections and for missing capability (regular-user rule — no gray AI affordances). Shows definition facts: kind, θ (`definition.theta`), seed reference name, template-vs-LLM naming provenance (`name_locked` state), last member-change time. NO raw vectors, NO model internals (privacy-boundary stance).
+- **Sharing:** owner-only (grants routes are owner-scoped; grantee rows simply omit the tab). Grant list from `GET /:id/grants` (`username`, `role`, `created_at`); add via UserSelectionMenu → `POST /:id/grants { userId, role }` (role select `viewer | editor`); revoke per row → `DELETE` (instant). `publish_mode` radio `ask (default) | off | auto` (PUT) with the publish-mode explanation: `ask` parks new members behind the pending banner; enabling sharing itself stays the explicit act — exposure expansion is always explicit. Footer note: the initial `seed`/`search` member set is created publish-approved as a batch (the create confirm dialog is that approval).
 
 ### 2.4 Callback Signatures
 
@@ -51,7 +51,7 @@ Target-contract spec.
 
 ### 2.6 FilePropertiesDialog extensions (collection context — cross-reference)
 
-- **Decision:** `Member of` chips and a per-FILE `AI Info` tab belong to FilePropertiesDialog, not this dialog: Info tab gains membership chips (`POST /collections/for-nodes` → collection names, click routes to that collection's member view); `AI Info` tab (file `tags/summary/caption` from `ai_features`) renders only when features exist for the viewer's capability state — absent-not-disabled (§4.12), and read-only tab subset when opened by a collection grantee who is not the file owner (§3.2 member-row properties rule). FilePropertiesDialog.md gets the corresponding row at implementation time.
+- `Member of` chips and a per-FILE `AI Info` tab in the collection context are rendered by FilePropertiesDialog (`FilePropertiesDialog.md`), not this dialog: Info tab gains membership chips (`POST /collections/for-nodes` → collection names, click routes to that collection's member view); `AI Info` tab (file `tags/summary/caption` from `ai_features`) renders only when features exist for the viewer's capability state — absent-not-disabled, and read-only tab subset when opened by a collection grantee who is not the file owner (member-row properties rule).
 
 ### 2.7 i18n Keys
 

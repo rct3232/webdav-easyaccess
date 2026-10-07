@@ -115,8 +115,8 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
   view, now not readable → gray placeholder row WITHOUT filename/thumbnail; metadata after
   revocation is a leak) | trashed-by-owner (hidden, row kept) | purged (row cascaded away).
 - Foreign members (files the collection owner doesn't own) in a LIVE-SHARED view are
-  **excluded from rendering** with an `Not owner's file — not shared` chip in the owner's view
-  (cross-leak rule; §4.7). Operator rule (owner pivot 2026-10-01): collections/likes/dashboard
+  **excluded from rendering** with a `Not owner's file — not shared` badge marker
+  (`MemberStateBadges`, §12.10) in the owner's view (cross-leak rule; §4.7). Operator rule (owner pivot 2026-10-01): collections/likes/dashboard
   are personal-storage surfaces — the ADMIN actor NEVER participates in them; every endpoint is
   server-gated 403 (`collections.forbidden`) for admin requesters, so an admin-owned collection
   is unreachable by definition. The `permissionPolicy.js` convention (admin owns the whole tree)
@@ -125,14 +125,14 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
   you may only add what you can read).
 - Member-row controls (context menu & multi-select) — file-mutating items (move/copy/rename/
   delete) are DELIBERATELY ABSENT; collection is a view, not a workspace. Present:
-  exclude | publish on/off (shared collections only) | download (if file ACL allows) |
+  exclude | publish on/off (owner/editor — own collections serialize `granted_role:null`; §12.1) | download (if file ACL allows) |
   `Reveal original location` (route the user to the file's real location where normal menus apply) |
   properties (read-only tab subset for non-owners) | like toggle.
   Multi-select adds: batch exclude (stored→delete rows; system→insert exclusions), batch
   publish, `Add to another collection` (membership copy). No batch delete — by rule.
 - Collection-card context menu by origin: user/system: rename(→`name_locked=true`), pin,
-  archive, share settings, delete(archived only). viewer(received): open, `Leave` (hide,
-  local), no mutations.
+  archive, share settings, delete(archived only). viewer(received): open, `Revoke permission`
+  (real self-grant revocation — `DELETE /:id/grants/me`, Path 1 §12.1), no mutations.
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/routes/collections.md`, `docs/spec/server/store/collectionsStore.md`, `docs/spec/client/components/file-manager/MemberRowControls.md`, `docs/spec/client/components/file-manager/FileContextMenu.md`
 
@@ -212,9 +212,10 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
   admin "test" button as manual trigger → `backendHealth` rows and `settings/public`
   `ai` flags update live; running enrichment workers pick new config at the next job; E2
   query-embed uses it at the next request (mid-switch failure degrades per §4.12, never
-  surfaces as error); budget breakers/daily counters reset. `.env`-provided `LLM_*` remains
-  legal (resolver env>db precedence) but locks the editor (`setInEnv`), so DB is the
-  recommended surface. Contrast recorded: **native vector capability (§4.13) is
+  surfaces as error); budget breakers/daily counters reset. `LLM_*` registry entries are
+  `dbOnly` — the resolver reads DB → default and IGNORES env, so a `.env`-provided `LLM_*`
+  value is never effective (DB is the only config surface; §12.8 records the superseded
+  "env remains legal" note). Contrast recorded: **native vector capability (§4.13) is
   boot-frozen (DB tier) — restart required; LLM config never is.**
 - Presets declare EXPECTED capabilities, probes decide actual ones (§4.23).
   Unconfigured role ⇒ that capability degrades (never fatal). Startup probe (symmetric to
@@ -344,9 +345,10 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
 
 ### 4.7 Collection sharing (live)
 
-- Roles `viewer|editor` (+owner). Viewer: list/preview/download of members, cannot rename/
-  remove-others'-adds? (editor+ may `Exclude` only what they added or if owner), cannot trash
-  anything. Editor: add/remove membership.
+- Roles `viewer|editor` (+owner). Viewer: list/preview/download of members; cannot rename,
+  cannot mutate membership (editor+ may `Exclude` only what they added, or anything if owner);
+  cannot trash anything. Editor: add/remove membership. Publish/unpublish control: owner OR
+  editor, viewer forbidden (§12.1). Admin may never be a grantee (operator rule, §3.2).
 - Live = membership resolved at read time + `published` gate: in `ask`/`off` collections
   members added AFTER creation (auto-added and stored-added) start `published=false` →
   hidden from shared view; owner sees `N awaiting publish` banner (list-top, same digest surface)
@@ -357,7 +359,8 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
   Publish state for DERIVED members materializes as a stored marker row in
   `collection_items` (the sole exception to derived-no-rows; `stored ∪ derived` dedups by
   node; unpublish flips the flag and never removes genuine owner-added rows).
-- `leave` for recipients = per-user hidden flag.
+- Recipient exit = real self-grant revocation, `DELETE /api/collections/:id/grants/me` (Path 1 —
+  the original `leave` = per-user hidden flag design is retired; §12.1).
 - Cross-leak rule (§3.2) applies: foreign-owned members never rendered into shared views.
 - Grants revocation is instant; already-visible metadata cannot be re-taken (documented
   limitation, same stance as journal boundaries).
@@ -366,7 +369,9 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
 
 ### 4.8 Digest (top-of-list banner, not notifications)
 
-Per `(user,collection)` visit cursor `collection_digest_cursors(last_visited_at)`; counts
+Per `(user,collection)` visit cursor `collection_digest_cursors(last_visited_at)`, stamped by the
+server on the items read ("the read IS the visit"); `last_visited_at` rides the list rows and the
+sidebar `new` dot ⇔ null; create seeds the creator's cursor inside the mutation TX (§12.2). Counts
 derived at read from `collection_items.created_at` (stored) and definition-evaluation events
 (derived: last_member_change_at on collection row). One line `+N / -M / 1 merge · expand`;
 expanded = per-entry reason (`why is this here` answers for auto-members come from per-row reason
@@ -479,9 +484,11 @@ Schema §5. Generic `(domain, subject)` opaque key, NO FKs (rows outlive subject
 
 - restore-after-undo-window reasoning). Writer discipline: domain code MUST go through
   `commitChange(mutation, inverse)` — the only write path (change + journal row in ONE TX +
-  `lockManager`; collection repo exposes no other mutators). `chain_seq` monotonic per
+  `lockManager`; collection repo exposes no other mutators). Journaled collection rows capture
+  `subject_label` at commit time — the feed renders it verbatim, never re-resolves (§12.5).
+  `chain_seq` monotonic per
   subject: tip-undo = free; non-tip = cascade-confirm listing count of later changes undone
-  too. Retention: rows survive, `payload` NULLed at expiry (`status=expired`) — audit keeps
+  too. No undo-of-undo: an undone successor still leaves the row tip-eligible (§12.6). Retention: rows survive, `payload` NULLed at expiry (`status=expired`) — audit keeps
   "what happened" without storage growth. Undo does NOT restore: spent LLM cost, already-
   received external exposure (grants snapshot restores future state only), file content
   (trash/versions own that world). Subscribers: v1 collections (all silent/merge/settings-
@@ -504,7 +511,8 @@ Schema §5. Generic `(domain, subject)` opaque key, NO FKs (rows outlive subject
   | rename (single/batch) | ✅ | ✅ | journal `domain=file` (add to enum); undo=rename-back |
   | file delete→trash | ✅ | ✅ | **NOT journal** — existing trash restore (content world, invariant: trash owns files) |
   | collection create/add/exclude/pin/publish/rename/grant·revoke | ✅ | ✅ | journal `domain=collection` |
-  | merge confirm (card), cleanup-suggestion accept | ✅ | ✅ | journal / trash restore |
+  | merge confirm (card) | ✅ | ✅ | journal |
+  | cleanup-suggestion accept | ✅ | ✅ | P0: trash-restore (no journal row, §12.5); T3.3: command journal |
   | share link create·revoke (file) | ✅ | ✅ | journal `domain=sharing` |
   | manual collection archive | ✅ | ✅ | journal |
   | **archived→permanent delete, empty-trash(admin)** | ✅ (report only) | ❌ | trash-parity contract: no undo button, no journal inverse |
@@ -519,7 +527,7 @@ Schema §5. Generic `(domain, subject)` opaque key, NO FKs (rows outlive subject
   30-day dashboard feed (`GET /api/actions`); surfaces: (1) toast (user actions, ≤24h
   undo window honored though rows live 30d), (2) digest banner undo links (system acts,
   ≤24h), (3) dashboard feed (all, 30d, cascade), (4) `__archive__` restore button, (5)
-  sidebar `new` dot (system-create cue only). No toasts for silent system acts — digest/
+  sidebar `new` dot (cursor-absence rule — §12.2). No toasts for silent system acts — digest/
   feed carry them.
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/store/actionJournalStore.md`, `docs/spec/server/routes/actions.md`, `docs/spec/client/hooks/useMessage.md`, `docs/spec/client/components/feedback/UndoToast.md`, `docs/spec/client/hooks/useUndoToast.md`
@@ -645,7 +653,9 @@ descriptor branch. Blocks: hygiene cards (exact/near dups count + reclaimable GB
   system-changes feed (journal, 30d, undo buttons); my-collections status (counts,
   grants-received/granted w/ revoke, recent merge/archive facts w/ undo); suggestions list
   (**checkbox rows + `Accept selected (N)` — Q4 decided: checkbox in ALL cases, no per-file/
-  threshold variants; checked rows only, accept→trash, command-unit undo §4.11**).
+  threshold variants; checked rows only, accept→trash; command-unit undo §4.11 ships with
+  T3.3 — the P0 surface accepts un-journaled, trash-restore is the undo, report toast without
+  an Undo button (§12.5)**).
   Capacity sparkline only — no personal-insight prose
   (rejected scope).
 
@@ -661,9 +671,12 @@ near-miss), "30d unopened + low score". **Short-doc exception: files ≤1 senten
 excluded from cosine near-dup (edit variants score 0.55 there — E2v2 P01) — hash/shingle
 path only.** Always PROPOSALS (file-mutating, rule 2/5), rendered inline (row chip) + in
 §4.16. **Q4 decided UX: every suggestion row carries a checkbox; the only accept control is
-`Accept selected (N)` (checked rows → trash). Dismiss stays inline per-row; unaccepted suggestions
-expire with the retention job.** Undo = command journal row (checked count = inverse
-count); no extra confirm dialog — the checkbox IS the selection confirmation.
+`Accept selected (N)` (checked rows → trash). Dismiss stays inline per-row; unaccepted
+suggestions expire with the retention job — both scoped to PERSISTED rows (T3.3); the P0
+suggestions are computed, carrying no id/dismiss/expiry (§12.5).** Undo = command journal row
+(checked count = inverse count) — ships with the T3.3 persisted rows; the P0 accept is
+un-journaled, trash-restore is the undo (§12.5); no extra confirm dialog — the checkbox IS the
+selection confirmation.
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/client/components/mypage/content/SuggestionsChecklist.md (file_suggestions store/route specs land with the T3.3 docs step)`
 
@@ -1008,7 +1021,8 @@ created_at, PK(pair))`
 - `collection_exclusions(collection_id→CASCADE, node_id→CASCADE, created_at, PK(pair))`
 - `collection_grants(collection_id→CASCADE, grantee_id→users→CASCADE, role, granted_by,
 created_at, PK(collection,grantee))` — never referenced by file-ACL code.
-- `collection_visibility(user_id, collection_id, hidden, PK(pair))` (leave)
+- `collection_visibility(user_id, collection_id, hidden, PK(pair))` (leave — endpoint retired by
+  Path 1 §12.1; the store visibility primitive remains with no API caller at P0)
 - `collection_centroids(collection_id→CASCADE, model_id→llm_models, centroid TEXT,
 member_count, updated_at, PK(collection_id,model_id))` — model_id is the MODEL-VERSION key
   (a stale-model centroid must never mix into new-space math; §4.20/§4.21 — the V1
@@ -1077,7 +1091,8 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
 Personal-insight dashboards for users; definition editor UI; membership storage for derived
 collections; proposal-inbox/alarm-center surfaces; merge-without-proposal; nested
 collections ("sub-collection" terminology banned); inline like hearts on list rows (context
-menu + properties header only); subset/parent-child hierarchy proposals in v1 (merge is
+menu + properties header only); top-level `__liked__` virtual root (Likes is a Collections child
+row, §12.4); event-sourced exact digest counts (display-truth approximations, §12.2); subset/parent-child hierarchy proposals in v1 (merge is
 same-size-only, §4.9c); auto-archive of user-origin;
 hierarchical chat summarization; ORM adoption gate; Redis cache coupling;
 clear-all-style bulk destructive admin actions; LLM backfill on model change without
@@ -1108,7 +1123,8 @@ A4 decision), **`ef_search=100` defaults** (E11: 0.74 external recall — 400 fi
 
 ## 10. Open questions
 
-None outstanding (2026-09-15). Q1–Q7 resolved and absorbed into their sections: Q1 tombstone
+None outstanding (2026-09-15). The 2026-09-29→10-02 P0 rulings (Path 1, Decision B, Ruling B,
+cursor/dot, dashboard P0 scope, publish gate) are ledgered in §12. Q1–Q7 resolved and absorbed into their sections: Q1 tombstone
 fingerprint/lifetime (§4.9 pass 4, §4.15), Q2 initial-set publish (§4.5/§4.7), Q3 provider
 presets & completeness (§4.23), Q4 checkbox suggestions (§4.16/§4.17), Q5 admin-created
 collections → rejected (§9), Q6 per-family model lineage (§5 `ai_features`, T1.2 unblocked),
@@ -1120,3 +1136,324 @@ T1.4 at 100k+ — a sizing study, not a decision. Q10 (NEW): remote-provider ado
 profile constants on the dev reference set (release-runbook step, not a product feature —
 §4.15 provenance).
 New open questions get appended here before/at their named task.
+
+## 12. P0 decision ledger (consolidated from contract specs, 2026-10-02)
+
+> Contract specs (`docs/spec/**`, `docs/features/collections-platform.md`) carry decided/implemented
+> state ONLY. The decision process — dated rulings, rationale, rejected alternatives, register/task
+> provenance — lives here (design authority) and in PLAN §9–§15 (execution ledger: waves/branches/
+> commits, verbatim owner records). Decisions already stated in §2–§9 are not restated — pointers
+> only. _amends_ marks body corrections applied when this ledger was compiled.
+
+### 12.1 Sharing & grants (Path 1)
+
+- **Path 1 self-revocation** (owner ruling 2026-09-29, PLAN §10 P-1) _amends_ §3.2/§4.7/§5:
+  recipient exit = real grant revocation `DELETE /api/collections/:id/grants/me` (instant, no
+  confirm — revoke is exposure REDUCTION, silent per the §4.11 asymmetry); labels unified with the
+  file-sharing receiver term (EN "Revoke permission" / KO "권한 반납"); the view-local `hiddenIds`
+  hide removed; the original `leave` = per-user hidden-flag design retired (visibility table still
+  read by list SQL, `setVisible` retains no route caller at P0). Rationale: a local hide that
+  leaves the grant live is a false exit.
+- **Publish controls = owner OR editor** (P-4 ruling 2026-09-29) _amends_ §3.2's "shared
+  collections only": own collections serialize `granted_role: null` (the owner has no grant row),
+  so the manage gate is `{owner, editor} ∪ null`; viewers hidden. The pre-fix `{owner,editor}`-only
+  test hid the publish menu from owners (the bug); the pre-P-4 owner-only spec line contradicted
+  the owner case — parity with `addItems` was decided by the owner. Fix is CLIENT-side: the wire
+  never invents `granted_role:'owner'`. (Code: `MemberRowControls.js` gate, `service.js publishItems`.)
+- **Publish route classifies ids against the RAW membership set**, not the grantee-filtered member
+  view — editors can flip stored rows invisible to their own listing; the endpoint can never graft
+  a foreign node into membership (P-4).
+- **Re-grant clears the grantee's hidden state** (2026-09-29): a fresh grant IS intent to show.
+  **No separate un-hide endpoint in v1** — re-grant is the sole recovery path; an un-hide UI is
+  additive-only if real usage demands.
+- **Rule definitions owner-only** (2026-10-01): a rule definition leaks the owner's predicate set;
+  grantees never receive it.
+- **`preview_items` card payload** (P-3 ruling 2026-09-29; filter _amended_ 2026-10-01): 2×2 card
+  previews are built from the already-resolved list rows + one mime field; shared-excluded rows DO
+  preview to the OWNER — the former preview-side exclusion "protected nothing and desynced card
+  vs list"; grantees never receive those rows at all.
+- **404 masquerade, never 403, for non-readable objects** (files-read precedent): collection
+  existence is not leaked; journal rows for non-visible subjects 404 likewise (journal ids leak
+  nothing about other users' activity).
+- **Revoke-undo = re-grant behind an explicit user undo-click** — exposure expansion is never
+  silent (§2 rule 2, §4.11 asymmetry); the "already-visible metadata cannot be re-taken" stance is
+  unchanged (grant snapshots restore future state only).
+- **Admin-as-grantee banned at grant creation** (operator rule, §3.2 pivot) — collections are
+  personal surfaces; no grant row may name the admin actor.
+
+### 12.2 Digest cursor & sidebar `new` dot (2026-10-01; Ruling B 2026-10-02)
+
+- **The read IS the visit** (owner ruling 2026-10-01) _amends_ §4.11 surfaces-(5) and completes
+  §4.8: the server stamps `collection_digest_cursors.last_visited_at` implicitly on the items read
+  (one fetch per open fits it); `last_visited_at` rides the GET / rows (null = never visited); the
+  dot ⇔ null for ANY viewer — the old "system-create cue only" wording was wrong.
+- **Seed at create, inside the mutation TX** (2026-10-01): create leaves exactly ONE cursor row
+  for the creator ⇒ self-created collections never dot; a post-commit seed would leave partial
+  state on rollback.
+- **Client localStorage visit heuristics retired** (2026-10-01, PLAN §11 FU-5): the
+  `created_at > stored-cursor` sidebar heuristic was REMOVED — the server cursor is the dot source.
+  (Digest DELTA requests still ride a client-held per-collection visit stamp — `since` — owned by
+  the listing host; the two cursors are distinct concerns.)
+- **Ruling B** (owner ruling 2026-10-02, PLAN §15 I1): the journaled revoke TX — owner-side revoke
+  AND grantee self-revoke — deletes the grantee's cursor row ⇒ re-grant re-dots; undo-of-a-revoke
+  restores the grant but NOT the cursor ⇒ undo-revoke re-dots too (owner-accepted boundary).
+- **Digest counts are display-truth approximations from live state**; the exact event-sourced
+  variant is rejected (§9).
+
+### 12.3 Listing, paging & ordering (Decision B)
+
+- **Decision B** (owner ruling 2026-09-29; verbatim record PLAN §10): member/liked listings ship
+  the FULL row set in ONE response; retired `cursor`/`limit` params are IGNORED (never an error);
+  `next_cursor` absent from the wire; the load-more button deleted; client display paging is the
+  shared `useInfiniteScroll` 50+50 slice over server order. Rationale: fileManager precedent
+  (`getChildren` has no LIMIT); the ruling eliminates the whole members-cursor defect class
+  (first-unreturned encoding, row-gap at page boundaries) by deleting the mechanism. Wire helpers
+  (`encodeCursor`/`decodeCursor`/`clampLimit`) removed — grep-verified no other consumers.
+  RETAINED under the ruling: the visit stamp ("the read IS the visit") and the `since` digest.
+- **Unpaginated at personal scale**: the collection card list (mirrors §3.1's "≤~20 rows" cluster
+  precedent) and the journal feed (cap 200, newest-first, no cursor — mirrors the same stance).
+- **`id DESC` tie-break** (RCA 2026-09-23, PLAN §9 E2E batch): every timestamp-ordered listing
+  ends in `id DESC` — a plan-dependent row order corrupts cursor-less full-set rendering.
+- **`include` tokens select ROW SETS** (RCA 2026-09-23): `include=archived` means the
+  ARCHIVED-ONLY set; a `status` default never leaks into the query; archived rows never arrive
+  twice.
+- Item ordering while `activity_score` is absent/all-zero falls through to timestamps then
+  `node_id` asc — behavior normed in §3.4; the T0.3/T0.6 staging behind it is PLAN §9 history.
+
+### 12.4 Likes
+
+- **Surface** (owner ruling 2026-09-29, PLAN §10 P-5): Likes = a Collections-section child row at
+  `/files/__collections__/liked`; the earlier top-level `__liked__` virtual root is REJECTED (§9).
+- **Separate `/api/file-likes` mount**: likes are per (user, node), not per collection, AND the
+  collections router's `/:id` parameterized routes would shadow a `/likes` literal — the mount is
+  structurally forced, not stylistic; the router file stays in the collections domain (PLAN §6
+  kebab-plural convention).
+- **`file_likes.created_at` is insert-only** — no upsert-time bump: no recency ordering exists for
+  likes (contrast `recent_files`); ordering, when needed, is `created_at DESC` client-side.
+- **Liked-items order contract = `node_id` asc** — no liked-at stamp exists to order by; reads ride
+  the house-style per-node loop (no batch node read).
+- **Malformed toggle payload reuses the generic invalid code** (`emptyNodeIds`-style precedent):
+  the toggle is client-initiated and never guesses a node id.
+- **Like = self-reversing state**: no journal row, no undo pointer (§4.11 matrix). The change
+  notifier is CO-LOCATED inside `fileLikesRepository` (no `fileLikesNotifier` twin) to keep the
+  integration surface minimal.
+- **`collection: null` gate (P-5)**: the Liked surface hosts the shared member menu with no
+  collection context — membership/publish controls resolve structurally FALSE (gate is
+  structural, not role-based).
+
+### 12.5 Dashboard & suggestion accept (A7, P0 scope)
+
+- **A7 + P0 scope** (decision 2026-09-22) _amends_ §4.16/§4.17: P0 ships hygiene READ surfaces +
+  computed exact-dup suggestions + ACCEPT only; no LLM/vector blocks. Suggestions are COMPUTED,
+  not persisted — persisted `file_suggestions` (ids, dismiss, expiry) rides T3.3; the §4.17
+  "expire with the retention job" wording is scoped to the PERSISTED rows (computed rows carry no
+  `id`/`expires_at`, render no dismiss control).
+- **Accept is NOT journaled at P0** _amends_ §4.11/§4.16/§4.17: journal writers = collections-only
+  until P3.5/T3.3; the trash-restore UX IS the undo path; accept returns a report toast WITHOUT an
+  Undo button; the command-unit journal row ships with the T3.3 `file_suggestions` route spec.
+- **Keep rule = smallest `node_id`** in each dup group — P0 has no keeper-adjudicator (chat role);
+  deterministic stability beats cleverness; users re-check siblings via the checkbox list.
+  (Heuristic ordering is also the §4.19 "chat off ⇒ fallback" column, correct by construction.)
+- **One GET** feeds hygiene cards and the suggestion list (single dup pass, one round trip);
+  **`/api/dashboard` is singular** (`/api/search` precedent — a personal surface, not a
+  collection); empty storage / missing user root = ZEROS, never 404 (pull-overview stance §4.16).
+- **register (a)** (wave-2, PLAN §9): `search_hit` + list-entry-click recording rides a DEDICATED
+  `POST /api/search/click` (`action='open'`) — search-result opens are pure client navigation and
+  no existing low-frequency endpoint exists to piggyback on; each other list wires its own
+  recording point in its owning wave. `open` and `GET /versions/download` are DELIBERATELY not
+  recorded.
+- **register (b) accepted gap**: NULL `content_hash` rows NEVER form a dup group (NULL ≠ a hash of
+  anything — grouping on NULL would invent duplicates); the boot completeness probe + admin repair
+  backfill cover the gap until the §4.1 upload/copy/restore write-side population (T1.3) lands.
+- **register (d)** (decision 2026-09-23) _amends_ §4.11: the 30 d feed renders `subject_label`
+  VERBATIM and never re-resolves (a vanished subject must still render its row) — EVERY
+  collection-domain journaled mutator captures the label at commit time (capture table: store spec
+  §2.1). Cost = the existing pre-read or exactly one extra `getCollection` (same shape as
+  `renameCollection`'s pre-read precedent); a vanished-subject race yields `subject_label null` and
+  the row renders with its action label — ACCEPTED.
+
+### 12.6 Journal API & undo UI rulings
+
+- **No undo-of-undo** — the status flip IS the record (§4.11 body amended).
+- **Cascade = 409 + re-post with `confirmCascade: true`** — a dedicated `?force` flag and a
+  two-phase token were rejected; the dialog counts come straight from `params.laterChanges`, and
+  `is_tip` rides each row so the client plans the dialog without a round trip.
+- **Actions router deliberately NOT admin-gated**: every mutating endpoint already 403s admin
+  requesters (operator rule §3.2), so admin actors have ZERO journal rows — the feed is EMPTY BY
+  CONSTRUCTION; usage recording is unchanged by the gate's absence.
+- **Undo toast auto-hides at 8 s** (longer than the default to keep the action reachable); the
+  ≤ 24 h window governs toast re-show/recovery paths ONLY — the 30 d dashboard feed carries undo
+  beyond that horizon.
+
+### 12.7 Search rulings
+
+- **Request bodies camelCase except the documented search exceptions** — `/search/click` posts
+  snake `node_id`: a camelCase rename there adds a mapping step with zero benefit (wave-2 Case-A
+  defect fixed against this contract).
+- **POST (not GET)** although read-only — keeps query strings out of access logs (§4.6 contract).
+- **≤ 3 segments is a SCORING bound, not input validation**: longer queries score the first three
+  segments and set `semantic_capped_segments`; never rejected.
+- **The baseline corpus sample is EXCLUDED from the `result_ref` signature** — execution noise,
+  not query identity; replay re-samples.
+- **Whole-string containment only — token-AND explicitly NOT used** (§4.6): a multi-word query
+  legitimately returns zero name matches; that is the semantic section's job.
+- **Name results carry ids+names only** — no type/size fields (listing enrichment is the single
+  source); highlights are COSMETIC-only, computed client-side (§4.6).
+- **Unavailable semantic section still returns 200 + flag** — §4.12 codes report AI ABSENCE, never
+  a missing section of a successful query.
+- Results-mode component: named for the plan surface ("results mode"), it is a header+sections
+  chrome — NOT a `FloatingSearchBar` input replacement; desktop = breadcrumb-row swap, mobile
+  renders above the list (no breadcrumb row exists there); recent queries live in `sessionStorage`
+  behind a tiny browser-storage adapter seam (`recentQueriesStorage`), cleared on logout.
+- Search-origin save-collection flattening + confirm-dialog copy ride T1.5 (PLAN §9 residuals).
+
+### 12.8 LLM config precedence (2026-10-02, code-confirmed)
+
+- `LLM_*` registry entries are **`dbOnly`**: the resolver reads DB → default and IGNORES env — a
+  `.env`-provided `LLM_*` value is NEVER effective; DB (admin surface) is the only config source.
+  The earlier §4.2 note ("`.env` remains legal, resolver env>db precedence, `setInEnv` locks the
+  editor") predates the dbOnly registry and is superseded (`setInEnv` remains for db-sourced
+  non-`dbOnly` keys). Verified against `configRegistry.js` (LLM block `dbOnly: true`) and
+  `configResolver.js` (`!entry.dbOnly` env gate).
+
+### 12.9 AI-domain stores, jobs, vectors, tags
+
+- **One repository interface covers the whole `collection*` table cluster** (repository-contract
+  rule 1); conformance grouped per table.
+- **Merge is the only dual-subject journal writer**: the merge pre-read runs OUTSIDE the
+  `commitChange` TX while holding the LOSER's journal subject lock — deadlock-free by
+  construction (no other writer locks two subjects).
+- **Merge allowed for any owned active pair WITHOUT a pending suggestion row** — a suggestion is a
+  hint; its state transition is opportunistic. Suggestion rows order `score desc` (score is the
+  §5 scaled ×1000 BIGINT).
+- **One create endpoint, additive body fields** (`{name}` manual / `{name,seedNodeId}` seed /
+  `{name,semantic}` search snapshot) — shape dispatch, not more routes.
+- **Seed preview never blocks on enrichment**: an unembedded seed has no vector basis ⇒ count 0 +
+  degraded flag; the dialog says so client-side via the empty result.
+- **Rule-evaluation mechanism (P0 as-shipped)**: membership candidates materialize via ID-only
+  queries, predicates evaluated in JS; the ACL-joined SQL candidate scan is a TRACKED optimization
+  (not shipped — personal scale; revisit when corpus sizes demand); the vector-matched tag variant
+  is P1 (T1.8/T2.1) — the cosine-free None-column variant ships first (§4.12). Upload-hook rule
+  check + `content_hash`/derived-tag commit-point wiring are callable seams with no wired caller
+  until the §4.1 hook task (PLAN register (b)).
+- `DELETE /items` carries a JSON body — same channel shape as POST for symmetric batch semantics.
+- Grant error codes are thrown by the collections service today; the delegation into
+  `collectionShareService` lands with its own task (target contract unchanged).
+- **`ai_jobs`**: no delete methods beyond the `node_id` FK cascade — enqueue idempotency makes
+  tombstone retention unnecessary; terminal rows are history. Features/caption/asr re-run skip
+  compares the PRIOR DONE JOB's stamped `content_hash` (job-row comparison — lineage columns
+  record the model, the job row records the content). Retry backoff = plain exponential, NO
+  jitter, module constants — a failure-rate knob, not an AI-quality threshold ⇒ not per-model
+  profile material.
+- **`embeddings`**: the store persists `dim` as given and TRUSTS the caller's modelId — no
+  `llm_models` lookup; cross-model comparison is prevented by the modelId READ FILTERS, not by dim
+  validation. **`embeddings_chunk`**: replace-only API ⇒ single-model homogeneity per node by
+  construction (no per-chunk upsert ON PURPOSE); readers may assume it.
+- **vectorStore**: derived shadow-artifact names are FIXED literals (`…_pg` / `…_vec0`) so ops
+  runbooks can reference them; vec0 binding asserts BigInt (not double) and skips `id > 2^53`
+  sentinel rows with a warning (product ids are sequences far below); `ef_search` is fixed in code
+  and NOT a knob — making it tunable invites re-introducing the banned library default (§9).
+  Benchmark figures live ONLY in §4.13/§4.13c's evidence columns — cited as justification
+  anywhere else they read as runtime-calibration, which §4.15 forbids.
+- **Chat params**: send only probe-verified params — unknown params break strict servers (§4.19).
+- **`ai_tag_raw` SQL rides the aiTag repository** (no SQL outside repositories); the repo parses
+  TEXT → `number[]` at the boundary and maps `dim` from the float count (writers accept `number[]`
+  or comma string). Tag-parent hint edits are NOT journaled — rows are trivially re-editable,
+  "undo would be theater" (§4.18 hints are display-only).
+- **Derived tag values are KIND-PREFIXED** (`mime:`/`ext:`/`month:`/`path:`; T0.9 ruling) — derived
+  tags never collide with future LLM tags materialized into the same table, and rule predicates
+  are self-describing (v1 set + EXIF rejection per §4.10).
+- **Nightly usage rollup**: the tick is log-only — NO `admin_reports` row (the §5 kind CHECK enum
+  has no rollup kind; §4.14 Tier A persistence is GC-scoped); the read→upsert cycle is
+  deliberately NOT one TX — watermark idempotency makes crash-recovery a no-op re-run and the
+  ≤ 500-member sums keep the window negligible (§3.4).
+- **Preset manifest**: no `image_embed` key anywhere (V1 retired — §9); release-pending models ship
+  as null values + `pending:true` and are NOT offered in the picker; the release-measurement
+  checklist belongs to the release runbook (§10 Q10), not the product spec.
+
+### 12.10 UI polish rulings (P/M/F/A series)
+
+Verbatim owner records live in PLAN §10–§12/§15; the decided states are in the owning specs.
+Consolidated rulings: one context-aware sort button, private menu deleted, ephemeral state (P-2);
+grid-parity cards — 2×2 previews (§12.1), file-parity click semantics with the chosen "card-local
+equivalent" 350 ms double-tap tracker, card menu loses `open`, selection bar = fixed set per
+surface (active: Pin/Unpin/Archive; archive view: Restore/Delete — no Rename/Leave/Sharing) (P-3);
+member view modes persisted per surface (`collectionMemberViewMode`, default grid; file browse
+untouched) (P-4); Likes child row + liked-items endpoint (P-5, §12.4). NO numeric counts anywhere
+in sidebar/cards (M-1 + FU-2: member-count line removed — `item_count` stays WIRE-ONLY unrendered;
+`archiveCount` badge and its second `mine,archived` fetch removed; ArchiveNode renders
+unconditionally — the empty destination is not dead); status chip removed — archive membership is
+view-scoped (M-4); card badges top-LEFT corners — autopin = PushPin+AutoAwesome composite (click
+unpins), user pin = plain PushPin, received = generic `Share` glyph (`Checkroom`/`FolderShared`
+retired on cards; the tree keeps the plain Collections icon — its received-icon swap retired);
+menu icons on ALL card-menu items (M-3); like state = theme `like` token (`#FF3E55`), never
+`error` — delete-red vs like-pink semantic split documented at the theme (M-5); long names
+MIDDLE-truncated with FIXED budgets — menu paper 280 px ⇒ 192 px name budget, seed tile ⇒ 190 px
+(`maxWidth="md"` 900 − 2×24 − 3×8 = 828 ⇒ 207 − 2×8), font = the 16 px body1 the theme actually
+renders; CSS tail-ellipsis retired; no shared width constant exists — values pinned from the
+inline-create row + MyPage Select-paper precedent (M-6/F1); digest banner mounts ONLY when
+added/removed > 0 — an all-zero `since` digest is noise (M-7); member/liked sorting like files —
+per-surface persisted `collectionMemberSortMode` (default `date_desc`), the FULL row set sorted
+client-side BEFORE the infinite-scroll slice, date = membership-added (`serializeItem.created_at`;
+revoked → null pins LAST), the collections LIST surface keeps the 5-option server-sort menu (M-8);
+breadcrumb title chips — member route `Collections › <name>`, liked route `Collections › Liked`
+(home-chip replacement precedent of trash/recent; transient `…` segment while the list loads —
+never hides the trail) (M-9); pseudo-tiles — active view = Likes FIRST + Archive LAST, ARCHIVE
+view and LIKED surface render NONE ("archive에 likes 아이템이 있으면 안돼", F3 supersedes M-2's
+"only the Likes tile" default), tiles excluded from selection/sort/cluster/card-menu AND the
+empty-state gate (empty section still shows tiles); archive-view own-card menu renders Restore IN
+PLACE of Archive (Rename/pin/Restore/Sharing/Delete) (T0.4 as-built); card empty-preview fallback
+glyph = the sidebar Collections glyph, never a file-tree folder icon (2026-10-01 owner ruling).
+**Member-state chips → BADGE markers in ALL three member views** (FU-3): `shared_excluded` =
+VpnLock (globe+padlock — "member file not delivered to collection viewers"); publish-pending =
+composite Public globe + Pending glyph; ONE shared `MemberStateBadges` component, currentColor
+inherited; testids `-badge-` replaced `-chip-` everywhere; `sharedExcludedChip` i18n key deleted
+(KO-truncated orphan); revoked rows render NEITHER badge (the flag-only chip-era gating leaked the
+pending marker onto revoked rows — server fix: revoked stored rows carry `published:false`); the
+in-menu not-shared chip STAYS (menu-internal detail, prior owner call); pending warning tone rides
+the badge CARRIER (plate bg / inline color, MUI `warning.main`), NEVER the glyphs (FU-4,
+2026-10-02 closeout); corner badges inset 8 px (matches the top-right processing-overlay rhythm);
+list geometry = overlay on the leading icon column, grid = `CardTile.cornerBadges` slot (M-4
+mirror), detail = inline 16 px before the name. `CardTile`/`ResponsiveCardGrid` were extracted
+from the FileGrid\* JSX bodies with the original suites kept UNCHANGED as regression anchors (P-3)
+— the parity is the contract, the extraction is history.
+
+- TreeRow single-source ruling (PLAN §12, 2026-10-01) _amends_ the §6 client-layering note: the
+  collections tree rows share ONE row implementation with the file tree (level-based indent — the
+  earlier per-surface `pl:3`/24 px pins retired, one indent idiom); padding equality alone had
+  hidden a 24 px icon misalignment (ruling A follow-up); BaseFolderTreeItem name cells
+  MIDDLE-truncate (was CSS ellipsis + ResizeObserver detection) and tooltip delay is 300 ms —
+  these are the current facts, not deltas.
+- `FileDetailRow` keeps the default row memo — a field-only custom comparator was REJECTED (stale
+  drag/drop-handler closure risk in the shared renderer).
+
+### 12.11 Client structure & doc conventions
+
+- Hook specs live under `docs/spec/client/hooks/` even when the source is page-local
+  (`useRecentFile`/`useFileManager` precedent); `useUndoToast` was WIDENED out of
+  `pages/FileManager/hooks/` to global `client/src/hooks/` because the §4.16/§4.17 accept is a
+  second, unrelated consumer (MyPage) — a recorded exception to the §6 page-local-hooks convention.
+- `docs/spec/client/i18n.md` = the SINGLE en/ko key-group catalog (no per-module docs READMEs
+  exist under `docs/spec/client/`); owning specs repeat only their own group.
+- `CollectionDashboard` keeps the plan module name while the user-facing surface label is
+  `Storage` — name/label divergence intentional.
+- `statusChip` registry entries are plain serializable `{ labelKey, tone }` descriptors — no JSX
+  in registry data.
+- `collectionsRepository` returns server payloads VERBATIM in snake_case (CODING_STYLE Express
+  rule makes camelCase an INTERNAL server-boundary convention); reads absorb failures to fallback
+  values but hand the mapped error envelope over a side channel — absorption alone cannot let a
+  controller show the mapped message; `undoAction` never collapses 409s to null unlike the
+  mutation `∥ null` precedent — the toast controller needs the structured cascade payload without
+  a second round trip.
+- `collectionsNotifier` = ONE coarse, payload-free channel — silent evolution can change anything,
+  so per-event typing buys nothing; no push channel exists in the stack (§9) ⇒ subscribers re-read;
+  polling stays a refresh-policy concern.
+- MergeProposalCard: KO count-particle grammar is solved by a client-side PARTICLE PICKER, EN copy
+  phrased without particles; the compare overlay REQUIRES an `overlap_sample` (+ side-unique
+  samples) extension of the suggestion payload at its own docs step (the route ships counts only)
+  — until shipped, the strip/overlay render skeleton rows.
+- CollectionPropertiesDialog: NO Versions tab — collections are not versioned and the tab's
+  ABSENCE is the invariant (nothing fills the slot); `Member of` chips and the per-file `AI Info`
+  tab belong to `FilePropertiesDialog` (member chips T3.6 / AI tab P1), not this dialog.
+- UndoToast's `type='success'` + 8 s timing are owned by its own spec; `useMessage.md` receives
+  the matching row in the same PR (allocation: PLAN §8 docs gate).

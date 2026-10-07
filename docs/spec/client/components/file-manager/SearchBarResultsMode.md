@@ -18,33 +18,32 @@ Target-contract spec.
 
 - **Source:** `client/src/components/file-manager/SearchBarResultsMode.js`
 - **Test file:** `client/src/components/file-manager/__tests__/SearchBarResultsMode.test.js`
-- **Decision:** spec/component name follows the plan's surface name ("results mode"); it is a header+sections chrome component, not a replacement of FloatingSearchBar's input.
 
 ### 2.2 Props
 
-| Name                      | Type     | Required | Default | Description                                                                                                                                                                                                                                                                                             |
-| ------------------------- | -------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| query                     | string   | Y        | -       | Submitted query (rendered quoted)                                                                                                                                                                                                                                                                       |
-| counts                    | object   | N        | -       | `total` drives `N results`; truncation flags render silently                                                                                                                                                                                                                                            |
-| sections                  | object   | Y        | -       | `{ nameMatches, semantic }` prepared rows (highlight ranges attached; rows enriched to explorer entries by the host via `POST /api/files/metadata`)                                                                                                                                                     |
-| canSaveToCollection       | boolean  | Y        | -       | **Button visibility rule (§4.6):** single `[Save as collection]` button; hidden (absent, no gray state) when semantic empty/unavailable                                                                                                                                                                 |
-| onSave                    | function | N        | -       | Opens the save confirm flow (§2.4)                                                                                                                                                                                                                                                                      |
-| onExit                    | function | Y        | -       | `✕` → back to normal listing                                                                                                                                                                                                                                                                            |
-| recentQueries             | array    | N        | []      | Chips row beneath the header; each chip `⋮` menu: `re-search` / `Save as collection`                                                                                                                                                                                                                    |
-| onChipSelect / onChipSave | fn       | N        | -       | `(chip) => void` re-run / save (`⋮ → save` = §4.6 chip rule)                                                                                                                                                                                                                                            |
-| onFilterChange            | function | Y        | -       | Typing while in results mode (inline re-filter of loaded results)                                                                                                                                                                                                                                       |
-| onRowOpen                 | function | N        | -       | `(row) => void` result-row activation (both sections). **As-built (shell wiring):** the host opens the entry (directory → navigate / file → preview) AND fires the §3.4 list-entry-click signal (`useSearchResults.recordEntryClick`) — the component itself stays IO-free. Absent ⇒ rows render inert. |
+| Name                      | Type     | Required | Default | Description                                                                                                                                                                                                                                                                 |
+| ------------------------- | -------- | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| query                     | string   | Y        | -       | Submitted query (rendered quoted)                                                                                                                                                                                                                                           |
+| counts                    | object   | N        | -       | `total` drives `N results`; truncation flags render silently                                                                                                                                                                                                                |
+| sections                  | object   | Y        | -       | `{ nameMatches, semantic }` prepared rows (highlight ranges attached; rows enriched to explorer entries by the host via `POST /api/files/metadata`)                                                                                                                         |
+| canSaveToCollection       | boolean  | Y        | -       | **Button visibility rule:** single `[Save as collection]` button; hidden (absent, no gray state) when semantic empty/unavailable — a saved collection means the semantic section only                                                                                       |
+| onSave                    | function | N        | -       | Opens the save confirm flow (§2.4)                                                                                                                                                                                                                                          |
+| onExit                    | function | Y        | -       | `✕` → back to normal listing                                                                                                                                                                                                                                                |
+| recentQueries             | array    | N        | []      | Chips row beneath the header; each chip `⋮` menu: `re-search` / `Save as collection`                                                                                                                                                                                        |
+| onChipSelect / onChipSave | fn       | N        | -       | `(chip) => void` re-run / save (`⋮ → save` chip rule)                                                                                                                                                                                                                       |
+| onFilterChange            | function | Y        | -       | Typing while in results mode (inline re-filter of loaded results)                                                                                                                                                                                                           |
+| onRowOpen                 | function | N        | -       | `(row) => void` result-row activation (both sections). The host opens the entry (directory → navigate / file → preview) AND fires the list-entry-click usage signal (`useSearchResults.recordEntryClick`) — the component itself stays IO-free. Absent ⇒ rows render inert. |
 
 ### 2.3 Header Grammar
 
-- `🔍 "query" · N results [Save as collection][✕]` — exactly ONE action button, no dropdown (§4.6). NL chat-parser (future) extends this same header with a structured-predicate tab — additive slot reserved, nothing renders now (§4.22).
-- Desktop: replaces the breadcrumb row; mobile: renders above the list (no breadcrumb exists there). **Decision.**
-- **Inline filter (T0.11 as-built Decision):** the component renders ONE uncontrolled filter input beneath the header (§2.2 `onFilterChange` is its only consumer — every keystroke re-filters the LOADED rows client-side, no server call). Enter inside it blurs — the Enter RE-SUBMIT stays in `FloatingSearchBar` (§3.2 submit contract; host wiring passes `onSubmitQuery` there). Section display rules: empty section renders nothing (no header, no "0 results" block); both empty ⇒ single `fileManager.searchNoResults` line + chips remain.
+- `🔍 "query" · N results [Save as collection][✕]` — exactly ONE action button, no dropdown. NL chat-parser (future) extends this same header with a structured-predicate tab — additive slot reserved, nothing renders now.
+- Desktop: replaces the breadcrumb row; mobile: renders above the list (no breadcrumb exists there).
+- **Inline filter:** the component renders ONE uncontrolled filter input beneath the header (§2.2 `onFilterChange` is its only consumer — every keystroke re-filters the LOADED rows client-side, no server call). Enter inside it blurs — the Enter RE-SUBMIT stays in `FloatingSearchBar` (§3.2 submit contract; host wiring passes `onSubmitQuery` there). Section display rules: empty section renders nothing (no header, no "0 results" block); both empty ⇒ single `fileManager.searchNoResults` line + chips remain.
 
 ### 2.4 Save-to-Collection Flow (host contract)
 
-- Click opens the confirm dialog (invariant 5) reused from the seed dialog surface (§4.5): editable name (default = query text verbatim, §4.10) + member preview + the §4.5 initial-batch publish copy line. Name-match rows NEVER enter the definition; saved set = semantic portion only (flattening: semantic-section snapshot + centroid from the replayed signature, §4.22).
-- `result_ref` is stored opaquely by the host for the create request (client treats it as a black box, search.md Decision).
+- Click opens the confirm dialog (a user-triggered save gets exactly one confirmation) reused from the seed dialog surface: editable name (default = query text verbatim) + member preview + the seed dialog's initial-batch publish copy line. Name-match rows NEVER enter the definition; saved set = semantic portion only (flattening: semantic-section snapshot + centroid from the replayed signature).
+- `result_ref` is stored opaquely by the host for the create request (client treats it as a black box — `search.md` contract).
 
 ### 2.5 Dependencies
 
@@ -52,7 +51,7 @@ Target-contract spec.
 
 ### 2.6 i18n Keys
 
-- `fileManager.searchResultsCount` (`N results`), `fileManager.searchSaveCollection` (`Save as collection`), `fileManager.searchExit` (aria), `fileManager.searchNoResults`, `fileManager.searchChipMenu` (menu label), `fileManager.searchChipResearch` (`re-search` item — added at the T0.11 implementation step), `fileManager.searchFilterPlaceholder` (inline filter input)
+- `fileManager.searchResultsCount` (`N results`), `fileManager.searchSaveCollection` (`Save as collection`), `fileManager.searchExit` (aria), `fileManager.searchNoResults`, `fileManager.searchChipMenu` (menu label), `fileManager.searchChipResearch` (`re-search` item), `fileManager.searchFilterPlaceholder` (inline filter input)
 
 ### 2.7 Verification Scenarios
 
@@ -62,10 +61,10 @@ Target-contract spec.
 - [ ] Chips render recent queries; `⋮` exposes re-search/Save.
 - [ ] Typing updates `filterText` without a server call (assert callback, not fetch); Enter triggers re-submit via host.
 - [ ] `✕` invokes `onExit` and normal breadcrumb/listing reappear (host state).
-- [ ] (as-built shell wiring) Result-row activation in EITHER section calls `onRowOpen(row)` once per click; absent prop ⇒ rows inert.
+- [ ] Result-row activation in EITHER section calls `onRowOpen(row)` once per click; absent prop ⇒ rows inert.
 
 ### 2.8 Edge Cases
 
 - `counts.total` vs displayed rows after inline filter: header shows the SERVER count; filtered view shows the client subset (honesty rule — no count rewrite).
 - Long query in narrow mobile width: header truncates the quoted query middle-style, buttons never wrap away.
-- Operator rule (admin is a pure operator — PLAN §14 client half): the Save-as-collection affordance is never offered for admin — `canSaveToCollection` gains the `!is_admin` term at the host (`useSearchResults`); with the flag false the component renders the header button-less (absent, not disabled).
+- Operator rule (admin is a pure operator): the Save-as-collection affordance is never offered for admin — `canSaveToCollection` gains the `!is_admin` term at the host (`useSearchResults`); with the flag false the component renders the header button-less (absent, not disabled).

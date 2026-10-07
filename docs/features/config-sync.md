@@ -17,7 +17,7 @@ Implementation contract: `docs/spec/server/routes/config.md` (web) and
 
 ## Purpose
 
-Under the `.env`-first model (D1), a value present in the environment **always wins**; a DB
+Under the `.env`-first model, a value present in the environment **always wins**; a DB
 `settings` row under an env-set key is a shadow copy that can go stale the moment an operator
 changes the environment (`.env` file edit or a redeploy with new variables). The config-sync
 surface makes that condition visible and fixable:
@@ -74,7 +74,7 @@ For every non-T0 registry key:
 | `differs`  | key set in env, DB row exists, stored values differ | **DRIFT**                                        |
 | `shadowed` | key set in env, DB row exists, stored values equal  | informational (env wins; the DB copy is current) |
 | `env-only` | key set in env, no DB row                           | informational                                    |
-| `db-only`  | key not set in env, DB row exists                   | informational (normal per D1)                    |
+| `db-only`  | key not set in env, DB row exists                   | informational (normal)                           |
 
 There is no `key-lost` status: DB rows are plaintext and need no key to read, so nothing can
 become unrecoverable. The severity column drives the CLI's exit code (see below); the web
@@ -159,7 +159,7 @@ source"). Both routes sit behind `authenticateToken` + admin and share the algor
 - **T0 is never written** — the write set is constructed from the registry with T0
   filtered out; no surface or flag can override this.
 - **No deletes** — reconcile upserts only; rows for keys absent from the env source are
-  left untouched (they remain the effective value per D1).
+  left untouched (they remain the effective value).
 - **CLI only: `--yes` required** for any write; the read-only report is the default mode.
 - **Secrets masked** in all output; secret values are only ever compared in-process and
   never displayed.

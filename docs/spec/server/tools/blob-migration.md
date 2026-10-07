@@ -2,14 +2,14 @@
 
 ## 1. Overview
 
-| Item       | Description                                                                                                                                                                                                                                                                                                                                                                                                             |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role       | Bidirectional physical-blob migration between the two supported `WEA_FILE_STORAGE` backends (WebDAV and S3), guided by DB metadata (`file_nodes` + `object_map` + `filecache`). Exposed in-app via the admin API (`docs/spec/server/routes/admin.md`) — the **primary path** (D14) — and as a standalone CLI (`server/scripts/migrateBlobs.js`, kept but not the primary path); both drive the same `migrationService`. |
-| Depends on | `migrationService` (`server/domains/admin/services/migrationService.js`), dest-config normalization (`server/infrastructure/adapters/blobstore/config.js`), `fileNodesStore` / `fileNodeService`, blob store adapters                                                                                                                                                                                                   |
-| Files      | `server/scripts/migrateBlobs.js` (CLI entry — thin wrapper), exported `runMigrationCli(argv, deps)`                                                                                                                                                                                                                                                                                                                     |
-| Test files | `server/scripts/__tests__/migrateBlobs.test.js` (CLI tests call `runMigrationCli` in-process with injected fake deps)                                                                                                                                                                                                                                                                                                   |
+| Item       | Description                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role       | Bidirectional physical-blob migration between the two supported `WEA_FILE_STORAGE` backends (WebDAV and S3), guided by DB metadata (`file_nodes` + `object_map` + `filecache`). Exposed in-app via the admin API (`docs/spec/server/routes/admin.md`) — the **primary path** — and as a standalone CLI (`server/scripts/migrateBlobs.js`, kept but not the primary path); both drive the same `migrationService`. |
+| Depends on | `migrationService` (`server/domains/admin/services/migrationService.js`), dest-config normalization (`server/infrastructure/adapters/blobstore/config.js`), `fileNodesStore` / `fileNodeService`, blob store adapters                                                                                                                                                                                             |
+| Files      | `server/scripts/migrateBlobs.js` (CLI entry — thin wrapper), exported `runMigrationCli(argv, deps)`                                                                                                                                                                                                                                                                                                               |
+| Test files | `server/scripts/__tests__/migrateBlobs.test.js` (CLI tests call `runMigrationCli` in-process with injected fake deps)                                                                                                                                                                                                                                                                                             |
 
-This document is the canonical reference for the blob migration tooling and replaces the missing Phase D `webdav-s3-migration.md`. The tool is **bidirectional** — it is no longer a one-shot legacy WebDAV→S3 import; it migrates live blobs in either direction against the current schema.
+This document is the canonical reference for the blob migration tooling. The tool is **bidirectional** — it is no longer a one-shot legacy WebDAV→S3 import; it migrates live blobs in either direction against the current schema.
 
 ---
 
@@ -25,7 +25,7 @@ Move physical blobs between the WebDAV and S3 backends while keeping the DB meta
 - **Per-node failure isolation:** a failing node is recorded and processing continues.
 - **Source-blob preservation:** source blobs are never deleted.
 
-**Unified migration mode (decisions D1–D4, D7–D10 in `docs/features/migration-mode.md`):**
+**Unified migration mode (`docs/features/migration-mode.md`):**
 
 - **Execution moves to `/migration`:** starting a **`dry-run` or `apply`** run from the
   `MigrationDialog` sets the migration gate and **auto-redirects to `/migration`**; the operator is
@@ -36,7 +36,7 @@ Move physical blobs between the WebDAV and S3 backends while keeping the DB meta
 - **Cancellation:** the cancel flag is set immediately; the current node finishes, then the copy
   stops (the `runCopy` loop gains a cancel check). Partial progress is kept (source preserved)
   and resumed on rerun via the existing `shouldSkip` markers.
-- **Auto-persist of the destination config (D10):** when an **`apply`** completes, DB-sourced
+- **Auto-persist of the destination config:** when an **`apply`** completes, DB-sourced
   storage keys are written to the DB via `Settings.set` as plaintext strings (secret values
   included), then `getSharedResolver().invalidateCache(persisted)` is called, and the job
   records `configPersist { persisted, skippedEnvSourced }`. Env-sourced keys fall back to the
@@ -108,7 +108,7 @@ The in-app UI calls this endpoint when the migration dialog opens to show a read
 - An `apply` run **auto-redirects to `/migration`** (gate active). Progress is node-count based;
   the run is cancellable mid-copy and resumable on rerun.
 - On `completed`, the terminal popup shows the persist result and next-step guidance:
-  - **DB-sourced** storage keys → auto-persisted to the DB (`configPersist.persisted`, D10);
+  - **DB-sourced** storage keys → auto-persisted to the DB (`configPersist.persisted`);
     the popup instructs a **restart** (storage config is boot-frozen).
   - **Env-sourced** keys → `configPersist.skippedEnvSourced`; the popup shows the manual `.env`
     guidance (set `WEA_FILE_STORAGE` + the target storage env block, then restart).
@@ -117,7 +117,7 @@ The in-app UI calls this endpoint when the migration dialog opens to show a read
 - A `dry-run` also enters migration mode (gate active, progress on `/migration`); on completion it
   shows only the dry-run summary — nothing was written.
 
-### 4.4 Job payload and `configPersist` (D10)
+### 4.4 Job payload and `configPersist`
 
 Blob and metadata jobs do **not** share one identical shape; they only share the same
 in-memory store row (`migrationJobStore.create`,
@@ -148,7 +148,7 @@ in-memory store row (`migrationJobStore.create`,
 - **Metadata jobs** instead carry the extended `progress: { percent, currentLabel }` plus a
   `stage` (`scan`/`schema`/`wipe`/`copy`/`done`) — see
   `docs/spec/server/tools/metadata-migration.md` §3.
-- **Blob `%`:** `progress / total` over the snapshot node count (D8); the current-file label
+- **Blob `%`:** `progress / total` over the snapshot node count; the current-file label
   is the top-level `current` field. The `/migration` page derives the percent and current
   label from either shape (`client/src/pages/Migration/MigrationPage.js`).
 - **`configPersist`:** set only when `mode === 'apply'` reaches `completed`. Computed by
@@ -229,7 +229,7 @@ The tool does **not** take the app into a write-blocking maintenance mode. Inste
 
 The app remains fully usable during the copy run. Directories are only relevant for WebDAV destinations (ancestor MKCOL).
 
-**Cancellation (D4):** while the migration gate is active, the admin can cancel via
+**Cancellation:** while the migration gate is active, the admin can cancel via
 `POST /api/admin/migration/jobs/:jobId/cancel`. The cancel flag is set immediately; the
 `runCopy` loop checks it between nodes, finishes the current node, then stops. Partial progress
 is kept (source preserved) and rerun resumes via the automatic `shouldSkip` markers. In migration
@@ -318,7 +318,7 @@ Resume is **automatic and always on** — there is no `--resume` flag or UI chec
 - [ ] Unknown flag combination exits `2` with a usage message
 - [ ] `runMigrationCli` output includes progress and a summary of copied/skipped/failed
 
-**Migration-mode additions (decisions D1–D4, D8, D10 in `docs/features/migration-mode.md`):**
+**Migration-mode additions (`docs/features/migration-mode.md`):**
 
 - [ ] Any start (both `apply` and `dry-run`) sets the migration gate and the client auto-redirects to `/migration`; a `dry-run` enters migration mode too but writes nothing
 - [ ] Progress is node-count based (`% = progress/total` over the snapshot) with a current-file label and copied/skipped/failed counters

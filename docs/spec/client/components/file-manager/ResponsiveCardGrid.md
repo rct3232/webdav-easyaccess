@@ -1,4 +1,4 @@
-# ResponsiveCardGrid Spec (P-3 extraction)
+# ResponsiveCardGrid Spec
 
 ## 1. Overview
 
@@ -38,14 +38,14 @@
 - **Breakpoints:** identical to the extracted FileGrid container: `xs: repeat(2, 1fr)`,
   `sm: repeat(3, 1fr)`, `md: repeat(4, 1fr)`, `lg: repeat(6, 1fr)`,
   `xl: repeat(auto-fill, minmax(150px, 1fr))`; gap `1.5` at xs, `2` from md.
-- Collections cards use the same container → grid parity with files (P-3 owner ruling).
+- Collections cards use the same container → grid parity with files.
 - `CardGridSpan` children span the full row regardless of column count.
 
 ### 2.5 Rules
 
 - Pure layout: no data logic, no IO, no callbacks. Children are host-provided nodes.
 - Extracting it must not change FileGrid's rendered DOM (regression anchor:
-  `FileGrid.test.js` passes UNCHANGED after the P-3 extraction).
+  `FileGrid.test.js` passes UNCHANGED).
 - Full-width children contract: cluster headers, the merge-card slot and the load-more sentinel
   render as `CardGridSpan` children — the container itself adds no extra wrappers.
 

@@ -31,7 +31,7 @@
 
 ### 2.3 Entry shape
 
-- `key` — raw env var name (row key in the `settings` table, D11).
+- `key` — raw env var name (row key in the `settings` table).
 - `tier` — one of `TIER.*`.
 - `secret` — boolean; drives **presentation-level** `'****'` masking in `getEffectiveConfig` and the admin/setup surfaces. It no longer implies any encryption at rest — secret DB rows are stored plaintext like any other value.
 - `dbOnly` — optional boolean. When `true` the key is **never env-driven**: `configResolver` resolves it from the DB settings row or the built-in default only, `populateT1Env` does not mirror it into `process.env`, and `configSync`/setup-wizard never treat env as authoritative (value is written to the DB `settings` table). Internal tuning knobs (e.g. `JWT_EXPIRES_IN`, `GC_ORPHAN_TTL_DAYS`, rate-limit/cache/thumbnail settings) are `dbOnly`.
@@ -53,7 +53,7 @@ required**. When the env var is unset/empty the read site generates an ephemeral
 secret at boot for that process (restart → new secret → sessions invalidated); only a set
 value is used verbatim.
 
-Precedence invariant (D1): env wins whenever set; DB is read only when the env var is absent.
+Precedence invariant: env wins whenever set; DB is read only when the env var is absent.
 
 ---
 
@@ -145,14 +145,14 @@ Precedence invariant (D1): env wins whenever set; DB is read only when the env v
 | `WEA_SKIP_MIGRATION_WORKER`                   | T2   | no     | —                                                                          |
 | `WEA_SKIP_BULK_WORKER`                        | T2   | no     | —                                                                          |
 | `WEA_SKIP_GC_SCHEDULER`                       | T1   | no     | —                                                                          |
-| `WEA_SKIP_AI_WORKER`                          | T2   | no     | — (test seam for the T1.3 AI jobs worker; `aiJobService.md` §2)            |
+| `WEA_SKIP_AI_WORKER`                          | T2   | no     | — (test seam for the AI jobs worker; `aiJobService.md` §2)                 |
 
 ### AI / LLM (T2 `dbOnly` — fully hot)
 
-All `LLM_*` keys are T2 `dbOnly` (PLAN §6): DB row → default, env ignored, per-call
+All `LLM_*` keys are T2 `dbOnly`: DB row → default, env ignored, per-call
 resolution (hot — no restart; `llmAdapter.md` §1). Presence decides candidacy, probes
-decide truth (§4.23); there is no `LLM_ENABLED` flag. API keys are `secret: true`
-(presentation masking only, plaintext at rest). No read site exists before T1.1 — the
+decide truth; there is no `LLM_ENABLED` flag. API keys are `secret: true`
+(presentation masking only, plaintext at rest). No read site exists yet — the
 keys are registered now so the admin config surface (editor + `GET/PUT /api/admin/config`)
 can manage them from day one.
 
@@ -171,16 +171,16 @@ can manage them from day one.
 | `LLM_ASR_API_KEY`            | T2   | **yes** | —               |                                                          |
 | `LLM_ASR_MODEL`              | T2   | no      | —               |                                                          |
 | `LLM_MAX_INPUT_CHARS`        | T2   | no      | —               | budget chain step 1 (admin cap beats published metadata) |
-| `LLM_CHUNK_BUDGET`           | T2   | no      | `4`             | uniform-stride sample cap (§4.3 ladder)                  |
+| `LLM_CHUNK_BUDGET`           | T2   | no      | `4`             | uniform-stride sample cap (overlength ladder)            |
 | `LLM_OVERLENGTH_POLICY`      | T2   | no      | `'chunk-pool'`  | ladder entry point selector (`llmAdapter.md` §2.6)       |
 | `LLM_DAILY_CALL_CAP`         | T2   | no      | `0` (unlimited) | per-role daily call cap (§2.5)                           |
 | `LLM_DAILY_TOKEN_CAP`        | T2   | no      | `0` (unlimited) | per-role daily token cap                                 |
 | `LLM_REPROBE_DEBOUNCE_S`     | T2   | no      | `60`            | hot re-probe debounce on config signature change (§2.2)  |
 | `AI_SEMANTIC_SEARCH_ENABLED` | T2   | no      | `true`          | query-embed kill switch (`searchService` consumer)       |
 
-### Activity constants (T2 `dbOnly` — §3.4 product constants, T0.6)
+### Activity constants (T2 `dbOnly` — §3.4 product constants)
 
-PLAN §6 numeric-constants discipline: the §3.4 activity constants are product T2-hot
+Numeric-constants discipline: the §3.4 activity constants are product T2-hot
 constants (dbOnly, defaults shipped, admin-displayed via the registry-driven config
 surface) — NOT AI-profile numbers. The same defaults live in
 `server/infrastructure/usage/activityScore.js` (single semantic source; registry
@@ -203,7 +203,7 @@ defaults are kept in parity by test).
 
 ## 4. Behavioral Rules
 
-- **Ordering is significant**: entries are ordered so the UI can group them — T0 metadata, file storage, server/security, email, runtime, AI/LLM. Within a group the ordering mirrors PLAN §4 where a variable is classified there; variables absent from PLAN §4 are appended at the end of their group.
+- **Ordering is significant**: entries are ordered so the UI can group them — T0 metadata, file storage, server/security, email, runtime, AI/LLM. Within a group the ordering follows the classification in the registry table above where a variable is classified there; variables not classified there are appended at the end of their group.
 - **Complete inventory**: every `process.env.<VAR>` read site under `server/` (excluding test-only reads) is registered.
 - `registration_enabled` is preserved as registered (T2, not secret, no default) — the resolver must never synthesize a default for it.
 - Defaults mirror the **in-code default as typed** (number/string/boolean). A missing default means the code has none.
@@ -214,7 +214,7 @@ defaults are kept in parity by test).
 
 ## 6. Verification Scenarios
 
-- [ ] Every tier/secret spot-checked against PLAN §4.
+- [ ] Every tier/secret spot-checked against the registry table.
 - [ ] `getEntry` returns `undefined` for unknown keys; `isSecret`/`isT0` are safe for unknown keys.
 - [ ] `CONFIG_ENTRIES` and each entry are frozen.
 - [ ] `registration_enabled` present, T2, non-secret, no default.

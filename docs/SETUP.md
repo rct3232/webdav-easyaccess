@@ -62,7 +62,7 @@ cp.env.example.env
 
 ### Environment Variable Reference
 
-**Source column** — `T0` = `.env`-owned (read at boot / `.env`-only, D2/D4/D7); `DB` = may be stored in the metadata DB `settings` table (via the wizard or the admin "Advanced settings" editor); a `.env` value always wins over the DB row (D1). T0 does not imply required: `JWT_SECRET` is `.env`-owned but **optional** (unset/empty → ephemeral random secret generated at boot).
+**Source column** — `T0` = `.env`-owned (read at boot / `.env`-only); `DB` = may be stored in the metadata DB `settings` table (via the wizard or the admin "Advanced settings" editor); a `.env` value always wins over the DB row. T0 does not imply required: `JWT_SECRET` is `.env`-owned but **optional** (unset/empty → ephemeral random secret generated at boot).
 
 | Variable                         | Source |              Required               | Description                                                                                                                                                                                        | Default            |
 | :------------------------------- | :----: | :---------------------------------: | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------- |
@@ -125,8 +125,9 @@ e.g. `LLM_EMBED_BASE_URL`). Operator-facing semantics (full contract:
   (`docs/spec/server/routes/setup.md` §2.4). Values are stored as **DB `settings` rows**
   (secrets plaintext + masked in UI, like all other DB-stored secrets), applied without a
   restart (per-call resolution; editor changes re-probe live).
-- `.env`-provided `LLM_*` remains **legal** (env wins per D1) but then the rows are
-  read-only in the editor (`source=env`, Section B) — so the DB is the recommended surface.
+- `LLM_*` entries are registry **`dbOnly`**: `.env`-provided values are never effective
+  (the resolver reads DB → default, env ignored). The DB
+  (admin config editor / wizard AI step) is the only LLM config surface.
 - **No `LLM_ENABLED` flag**: presence of a resolved role config decides candidacy; the
   runtime probe decides truth. Unconfigured roles simply remove their AI affordances for
   users (the product is fully useful in the None state).
@@ -139,6 +140,23 @@ e.g. `LLM_EMBED_BASE_URL`). Operator-facing semantics (full contract:
 | llama.cpp serving bge-m3                                 | **text-embed only, 1024-dim** (silently wrong on image input — image capability probes OFF) | measured profile value                                   |
 | llama.cpp serving Hana (gemma-4-12b)                     | **vision + audio**, verified in-domain with real photos/speech                              | measured profile value                                   |
 | other families (Ollama, OpenAI-compatible, TEI-class, …) | expected capability set declared in `infrastructure/adapters/llm/presets.js`                | **release-measurement-pending** (no shipped numbers yet) |
+
+**Release measurement checklist per pending row** (a release-runbook step, not a product
+feature):
+
+- [ ] free metadata GETs verified (`/api/show`, `/v1/models`, TEI `/info`) and
+      budget-chain step-2 field extraction proven (n_ctx / max_input_tokens)
+- [ ] length-class passive-limiter exercise: one deliberately overlong input halves and
+      recovers only via manual raise (`docs/spec/server/infrastructure/llmAdapter.md` §2.5)
+- [ ] embed: dim + non-degeneracy + throughput @ reference corpus; chat: JSON-schema
+      validity rate; vision: real-photo caption check (base64-as-text trap); asr: real
+      speech check
+- [ ] chPerTok measured on the mixed-text sample (1.7 is the llama.cpp-mixed reference,
+      NOT assumed portable)
+- [ ] probe kwarg map (which provider honors `chat_template_kwargs` vs `think` vs
+      nothing) recorded; unsupported params confirmed ABSENT from emitted requests
+- [ ] declared-vs-probed mismatch injection: force-fail one probe ⇒ capability OFF +
+      admin warning card renders
 
 - **Node ≥ 24 is the product floor** (release prerequisite): the native sqlite vector path
   (sqlite-vec) needs the built-in `node:sqlite` driver with loadable-extension support
@@ -154,12 +172,12 @@ e.g. `LLM_EMBED_BASE_URL`). Operator-facing semantics (full contract:
 
 ## 3. Metadata Storage Configuration
 
-The system supports a SQLite-backed (default) and a remote PostgreSQL-backed metadata store with the same store interfaces. The legacy `fs`/`webdav` metadata backends are removed (Phase 7).
+The system supports a SQLite-backed (default) and a remote PostgreSQL-backed metadata store with the same store interfaces. The legacy `fs`/`webdav` metadata backends are removed.
 
 > **The metadata (DB) connection is `.env`-owned.** The remote DB block (`WEA_DB_HOST`,
 > `WEA_DB_DATABASE`, `WEA_DB_USER`, `WEA_DB_PASSWORD`, plus optional pool/SSL keys) and the
 > SQLite path (`WEA_SQLITE_PATH`) must be declared in `.env`/env before boot; the metadata
-> backend is **not** configurable through the admin UI or the setup wizard (D5/D6/D7).
+> backend is **not** configurable through the admin UI or the setup wizard.
 > Setting any one of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` selects
 > the remote PostgreSQL backend; an incomplete set (at least one set but not all four) aborts
 > boot with a clear terminal error that lists the missing keys. When none of them is set, the

@@ -53,8 +53,7 @@ Display metadata (`labelKey`, `group`, `inputType`, `options`, `helpKey`) is def
 ### 2.6 CONFIG_DISPLAY_META
 
 Client-side display map: `{ KEY: { labelKey, group, inputType, options?, helpKey? } }`.
-**The map is optional presentation metadata, not a whitelist** (§4.14: the former
-silent-skip at `SystemConfigEditor.js:360` hid new registry keys from the admin; fixed):
+**The map is optional presentation metadata, not a whitelist**:
 
 - **Every key returned by `GET /api/admin/config` renders** (registry-driven), except the
   explicit omission below.
@@ -78,12 +77,12 @@ may supply just the `labelKey` (for its Section B row) when the key is env-sourc
 
 Section A subgroups (group → keys):
 
-| Group            | Keys                                                                                                                                                                                                                                                                                                                                                 |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `fileStorage`    | WEA_FILE_STORAGE, S3_BUCKET, AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_ENDPOINT, WEBDAV_URL, WEBDAV_USERNAME, WEBDAV_PASSWORD, WEBDAV_AUTH_TYPE, WEBDAV_UPSTREAM_URL, MAX_THUMBNAIL_SIZE, THUMBNAIL_CONCURRENCY_LIMIT, THUMBNAIL_TOKEN_SECRET, THUMBNAIL_TOKEN_EXPIRY, FFMPEG_PATH, FFMPEG_INIT_TIMEOUT_MS, WEA_PREVIEW_TICKET_TTL_MS |
-| `serverSecurity` | PORT, CORS_ORIGINS, LOGIN_RATE_LIMIT_MAX, LOGIN_RATE_LIMIT_WINDOW_MS, JWT_EXPIRES_IN, ADMIN_DEFAULT_PASSWORD, WEA_DISABLE_DEFAULT_ADMIN, HOSTNAME                                                                                                                                                                                                    |
-| `email`          | EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASSWORD, EMAIL_SECURE, EMAIL_FROM_NAME                                                                                                                                                                                                                                                                    |
-| `runtime`        | GC_INTERVAL_MS, GC_ORPHAN_TTL_DAYS, REFRESH_TOKEN_EXPIRES_IN_DAYS, USER_CACHE_TTL_MS, PERMISSION_CACHE_TTL_MS, PERMISSIONS_EXISTENCE_INDEX_TTL_MS, PERMISSIONS_EXISTENCE_RECONCILE_BATCH_SIZE, PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY, WEA_SKIP_MIGRATION_WORKER, WEA_SKIP_BULK_WORKER, WEA_SKIP_GC_SCHEDULER, WEA_SKIP_AI_WORKER                   |
+| Group            | Keys                                                                                                                                                                                                                                                                                                                                                                                |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fileStorage`    | WEA_FILE_STORAGE, S3_BUCKET, AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_ENDPOINT, WEBDAV_URL, WEBDAV_USERNAME, WEBDAV_PASSWORD, WEBDAV_AUTH_TYPE, WEBDAV_UPSTREAM_URL, MAX_THUMBNAIL_SIZE, THUMBNAIL_CONCURRENCY_LIMIT, THUMBNAIL_TOKEN_SECRET, THUMBNAIL_TOKEN_EXPIRY, FFMPEG_PATH, FFMPEG_INIT_TIMEOUT_MS, WEA_PREVIEW_TICKET_TTL_MS                                |
+| `serverSecurity` | PORT, CORS_ORIGINS, LOGIN_RATE_LIMIT_MAX, LOGIN_RATE_LIMIT_WINDOW_MS, JWT_EXPIRES_IN, ADMIN_DEFAULT_PASSWORD, WEA_DISABLE_DEFAULT_ADMIN, HOSTNAME                                                                                                                                                                                                                                   |
+| `email`          | EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASSWORD, EMAIL_SECURE, EMAIL_FROM_NAME                                                                                                                                                                                                                                                                                                   |
+| `runtime`        | GC_INTERVAL_MS, GC_ORPHAN_TTL_DAYS, REFRESH_TOKEN_EXPIRES_IN_DAYS, USER_CACHE_TTL_MS, PERMISSION_CACHE_TTL_MS, PERMISSIONS_EXISTENCE_INDEX_TTL_MS, PERMISSIONS_EXISTENCE_RECONCILE_BATCH_SIZE, PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY, WEA_SKIP_MIGRATION_WORKER, WEA_SKIP_BULK_WORKER, WEA_SKIP_GC_SCHEDULER, WEA_SKIP_AI_WORKER                                              |
 | `ai`             | LLM_EMBED_BASE_URL, LLM_EMBED_API_KEY, LLM_EMBED_MODEL, LLM_CHAT_BASE_URL, LLM_CHAT_API_KEY, LLM_CHAT_MODEL, LLM_VISION_BASE_URL, LLM_VISION_API_KEY, LLM_VISION_MODEL, LLM_ASR_BASE_URL, LLM_ASR_API_KEY, LLM_ASR_MODEL, LLM_MAX_INPUT_CHARS, LLM_CHUNK_BUDGET, LLM_OVERLENGTH_POLICY, LLM_DAILY_CALL_CAP, LLM_DAILY_TOKEN_CAP, LLM_REPROBE_DEBOUNCE_S, AI_SEMANTIC_SEARCH_ENABLED |
 
 **Section B — "Deploy-time / platform configuration" (read-only):** rendered below Section A as a
@@ -91,12 +90,9 @@ flat list in **registry order** (the order keys arrive in `GET /api/admin/config
 platform-managed — listed in Section B, never editable — when `tier === 'T0'` **or**
 `source === 'env'`:
 
-- **All T0 keys the server returns**, including the metadata DB/boot set that previously had no
-  editor surface (`WEA_SQLITE_PATH`, the `WEA_DB_*` block — incl. the
-  `WEA_DB_PASSWORD` secret — `NODE_ENV`, `DOTENV_CONFIG_PATH`) and the boot auth secret
-  `JWT_SECRET`. The former "Metadata (T0) group removed (D5)" behavior is **superseded**: these
-  keys are no longer hidden; they are shown read-only here, so the metadata DB / boot secrets are
-  visible without being editable.
+- **All T0 keys the server returns** — the metadata DB/boot set (`WEA_SQLITE_PATH`, the
+  `WEA_DB_*` block — incl. the `WEA_DB_PASSWORD` secret — `NODE_ENV`, `DOTENV_CONFIG_PATH`) and
+  the boot auth secret `JWT_SECRET` — are shown read-only here, visible without being editable.
 - **Any T1/T2 key whose effective `source === 'env'`** — a DB edit would be silently shadowed by
   the env value, so the row is moved out of Section A into this summary.
 
@@ -151,7 +147,7 @@ Section A input; it is moved out to the Section B summary.
 
 `source === 'env'` secrets never appear as editable inputs (they belong to Section B).
 
-### 2.9 Connection-Key Save Gating (D1)
+### 2.9 Connection-Key Save Gating
 
 **Connection keys:** S3 → `S3_BUCKET`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`,
 `AWS_SECRET_ACCESS_KEY`, `S3_ENDPOINT`; WebDAV → `WEBDAV_URL`, `WEBDAV_USERNAME`,

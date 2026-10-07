@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item            | Description                                                                                                                                                                                                                                                                                                              |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Role            | In-memory per-backend health tracker for `postgresql`, `s3`, `webdav` plus the AI LLM role slots `ai.embed` / `ai.chat` (§4.12). Passive, event-based (D2): callers report success/failure; the tracker records state, fires a transition callback only on `OK→FAIL` / `FAIL→OK`, and serves a snapshot for the admin card/banner and public status. State resets on restart (D4). |
-| Source of truth | `docs/features/backend-health.md` (decisions B1, D2–D4)                                                                                                                                                                                                                                                                  |
+| Item            | Description                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role            | In-memory per-backend health tracker for `postgresql`, `s3`, `webdav` plus the AI LLM role slots `ai.embed` / `ai.chat` (feature doc `docs/features/collections-platform.md` §4.12). Passive, event-based: callers report success/failure; the tracker records state, fires a transition callback only on `OK→FAIL` / `FAIL→OK`, and serves a snapshot for the admin card/banner and public status. State resets on restart. |
+| Source of truth | `docs/features/backend-health.md`                                                                                                                                                                                                                                                                                                                                                                                            |
 
 ---
 
@@ -32,13 +32,13 @@
 
 ### 2.3 Public API
 
-| Export                | Signature                                             | Description                                                                                                                                                                       |
-| --------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `createBackendHealth` | `() => { report, getHealth, reset, setOnTransition }` | Factory (tests get an isolated instance; production uses the shared singleton).                                                                                                   |
-| `getHealth`           | `() => { postgresql, s3, webdav, 'ai.embed', 'ai.chat' }` | Snapshot for `GET /api/admin/health` (full) and `GET /api/health` (status strings only). AI role slots are keyed `ai.<role>` (`embed`/`chat`, §4.12) with the same state shape; `vision`/`asr` states are admin-surface-only additions (T4.1) and are not tracked here. |
-| `report`              | `(key, { ok, code?, reason?, hint? }) => void`        | Update state; `key` is a backend name or an `ai.<role>` slot. Fire the transition callback only when the status flips `ok`↔`fail`. `ok:true` clears `code/reason/hint`, resets `consecutiveFailures` to 0, keeps `lastCheckedAt`. Unknown keys are ignored silently (unchanged). |
-| `reset`               | `() => void`                                          | Reset all tracked keys to `unknown` (boot + test hook).                                                                                                                               |
-| `setOnTransition`     | `(cb) => void`                                        | Register a callback for `OK→FAIL` / `FAIL→OK` transitions (terminal logging).                                                                                                          |
+| Export                | Signature                                                 | Description                                                                                                                                                                                                                                                                                                          |
+| --------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createBackendHealth` | `() => { report, getHealth, reset, setOnTransition }`     | Factory (tests get an isolated instance; production uses the shared singleton).                                                                                                                                                                                                                                      |
+| `getHealth`           | `() => { postgresql, s3, webdav, 'ai.embed', 'ai.chat' }` | Snapshot for `GET /api/admin/health` (full) and `GET /api/health` (status strings only). AI role slots are keyed `ai.<role>` (`embed`/`chat`, feature doc `docs/features/collections-platform.md` §4.12) with the same state shape; `vision`/`asr` states are admin-surface-only additions and are not tracked here. |
+| `report`              | `(key, { ok, code?, reason?, hint? }) => void`            | Update state; `key` is a backend name or an `ai.<role>` slot. Fire the transition callback only when the status flips `ok`↔`fail`. `ok:true` clears `code/reason/hint`, resets `consecutiveFailures` to 0, keeps `lastCheckedAt`. Unknown keys are ignored silently (unchanged).                                     |
+| `reset`               | `() => void`                                              | Reset all tracked keys to `unknown` (boot + test hook).                                                                                                                                                                                                                                                              |
+| `setOnTransition`     | `(cb) => void`                                            | Register a callback for `OK→FAIL` / `FAIL→OK` transitions (terminal logging).                                                                                                                                                                                                                                        |
 
 **AI role slots (`ai.embed`, `ai.chat`).** Same generic row shape; the adapter (T1.1)
 reports probe outcomes via the `probeLlm` slot (`backendProbe.registerProbeTarget('llm', …)`
@@ -61,7 +61,7 @@ Stable `code` values and the probe/i18n codes that map to them (shared with
 | `missing_resource` | PG `3D000`; S3 `NoSuchBucket`/404; webdav `pathNotFound`/`sourceNotFound`/`fileOrFolderNotFound`                                                                                             |
 | `unknown`          | anything else                                                                                                                                                                                |
 
-### 2.5 Terminal logging (D3)
+### 2.5 Terminal logging
 
 The boot path installs a transition callback that logs only transitions:
 

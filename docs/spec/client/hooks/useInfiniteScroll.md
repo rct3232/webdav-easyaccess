@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item                     | Description                                                                                                                                                                                                                                                                                                                        |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role                     | IntersectionObserver-based infinite scroll. Returns displayedFiles (slice), loadMoreRef, hasMore, reset.                                                                                                                                                                                                                           |
-| Used by components/pages | FileList, FileGrid. **Decision B (2026-09-29):** the collection MEMBERS and LIKED surfaces reuse this exact hook (server order preserved, no re-sort) — the host is `CollectionsListView` (§2.5); the fetch-all listings arrive whole and are displayed 50+50, replacing the retired server cursor/next_cursor + load-more button. |
+| Item                     | Description                                                                                                                                                                                                                                                                                  |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | IntersectionObserver-based infinite scroll. Returns displayedFiles (slice), loadMoreRef, hasMore, reset.                                                                                                                                                                                     |
+| Used by components/pages | FileList, FileGrid. The collection MEMBERS and LIKED surfaces reuse this exact hook (server order preserved, no re-sort) — the host is `CollectionsListView` (§2.5); the fetch-all listings arrive whole and are displayed 50+50 (there is no server cursor/next_cursor + load-more button). |
 
 ---
 

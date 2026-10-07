@@ -4,11 +4,11 @@ Target-contract spec.
 
 ## 1. Overview
 
-| Item               | Description                                                                                                                                                                                                                                                  |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Role               | The ONLY proposal UI in the product: one card atop the collection list (never stacked, never an inbox) presenting a pending merge pair with the §4.4 grammar; `+N more` cycles the pending set; `Merge` executes immediately (the card IS the confirmation). |
-| Used in            | `CollectionsListView` merge slot (host fetches `suggestions` via `useCollections`)                                                                                                                                                                           |
-| Related components | CollectionsListView, useUndoToast (host side-effect after `Merge`), BaseDialog-ish overlay for compare mode                                                                                                                                                  |
+| Item               | Description                                                                                                                                                                                                                                                                       |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | The ONLY proposal UI in the product: one card atop the collection list (never stacked, never an inbox) presenting a pending merge pair with the collapsed one-line grammar (§2.3); `+N more` cycles the pending set; `Merge` executes immediately (the card IS the confirmation). |
+| Used in            | `CollectionsListView` merge slot (host fetches `suggestions` via `useCollections`)                                                                                                                                                                                                |
+| Related components | CollectionsListView, useUndoToast (host side-effect after `Merge`), BaseDialog-ish overlay for compare mode                                                                                                                                                                       |
 
 ---
 
@@ -26,26 +26,26 @@ Target-contract spec.
 | suggestion     | object   | Y        | -       | One `GET /merge-suggestions` row (`suggestion_id`, `a_id/a_name`, `b_id/b_name`, `overlap_count`, `merged_count`, `score`, optional `recommendation`) |
 | remainingCount | number   | N        | 0       | Other pending rows ⇒ renders `+N more` cycle chip                                                                                                     |
 | onCycle        | function | N        | -       | `+N more` chip click → host advances the displayed row (order = server `score` desc)                                                                  |
-| onMerge        | function | Y        | -       | `Merge` click → host executes `mergeCollections(a_id, b_id)`; no dialog here (§4.4)                                                                   |
+| onMerge        | function | Y        | -       | `Merge` click → host executes `mergeCollections(a_id, b_id)`; no dialog here (the card is the confirmation)                                           |
 | onKeepSeparate | function | Y        | -       | `Keep separate` → host `rejectMerge` (permanent pair suppression)                                                                                     |
 | onLater        | function | Y        | -       | `Later` → host `dismissMerge` (server pass re-raises once after 2 weeks, then 30d sleep)                                                              |
 
 ### 2.3 Grammar (collapsed, 68px, one line)
 
-- `"Merge "A" into "B"? · N overlapping files · M after merge"` — `a_name`, `b_name`, `overlap_count`, `merged_count` verbatim (ko particle handling is a pure i18n formatter; **Decision:** client-side particle picker, en copy rephrases without particles).
+- `"Merge "A" into "B"? · N overlapping files · M after merge"` — `a_name`, `b_name`, `overlap_count`, `merged_count` verbatim (ko particle handling is a pure i18n formatter — a client-side particle picker; en copy is phrased without particles).
 - Overlapping-member **thumbnail strip** below/right of the line: strip is the expand toggle.
 - Buttons: `[Merge(primary)] [Keep separate(ghost)] [Later(text)]`.
-- `recommendation` (arbiter, chat configured): verdict + one-line reason rendered as a prefilled recommendation row; **absent (chat off / no band pair) ⇒ row omitted, card unchanged** (§4.19 — advise only; user still presses Merge).
+- `recommendation` (arbiter, chat configured): verdict + one-line reason rendered as a prefilled recommendation row; **absent (chat off / no band pair) ⇒ row omitted, card unchanged** (advise only; user still presses Merge).
 
 ### 2.4 Expanded Compare Overlay
 
 - Strip click → two-column compare overlay (`A` | `B`, unique + shared member lists), **≤300px**, rendered OVER the list (the list is not shifted/collapsed).
-- **Decision:** overlay data needs `overlap_sample: [{ a_node_id, b_node_id }]` + side-unique samples on the suggestion row (the corresponding docs step server payload extension; the route spec currently ships counts only). Until shipped, the strip and overlay render skeleton rows — count grammar stays authoritative (zero fabrication).
+- The two-column compare overlay requires a server payload extension on the suggestion row: `overlap_sample: [{ a_node_id, b_node_id }]` + side-unique samples (`GET /merge-suggestions` currently ships counts only). Until shipped, the strip and overlay render skeleton rows — count grammar stays authoritative (zero fabrication).
 - Esc/outside-click collapses back to the 68px card.
 
 ### 2.5 Zero-Footprint Rule
 
-- `suggestions.length === 0` ⇒ the slot renders NOTHING (no card, no spacing, no collapsed hint). No sidebar/tree chips for merges (§4.4 rejection).
+- `suggestions.length === 0` ⇒ the slot renders NOTHING (no card, no spacing, no collapsed hint). No sidebar/tree chips for merges.
 
 ### 2.6 Post-`Merge` Flow (host contract, restated for observability)
 
@@ -72,4 +72,4 @@ Target-contract spec.
 ### 2.10 Edge Cases
 
 - Pair disappearing server-side (merged in another tab): next `Merge` absorbs a 404/409 into an error toast + slot refresh.
-- `merged_count === overlap_count` (full containment is pre-filtered §4.9c; still renderable): grammar unchanged.
+- `merged_count === overlap_count` (full containment is pre-filtered server-side; still renderable): grammar unchanged.

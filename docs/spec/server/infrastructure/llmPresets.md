@@ -4,11 +4,11 @@ Target-contract spec.
 
 ## 1. Overview
 
-| Item            | Description                                                                                                                                                                                                                                                                      |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role            | The provider/server-family PRESET MANIFEST: per-family declarations of EXPECTED capabilities + recommended budgets + per-model profile constants. Adding a provider = adding a manifest row; CORE CODE NEVER BRANCHES ON PROVIDER NAMES.                                         |
-| Authority split | Presets declare EXPECTED; [llmAdapter](llmAdapter.md) §2.4 probes decide ACTUAL. Declared-but-failing ⇒ capability OFF + admin warning card (declared vs probed).                                                                                                                |
-| Provenance rule | Every numeric constant the AI passes (cos thresholds, ef_search, char/token factor) is a RELEASE ARTIFACT measured by the project on its dev-owned reference set (§4.15). No runtime calibration, no dataset shipped to end users (§9.1 keeps the corpus-drift re-open trigger). |
+| Item            | Description                                                                                                                                                                                                                                                                        |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role            | The provider/server-family PRESET MANIFEST: per-family declarations of EXPECTED capabilities + recommended budgets + per-model profile constants. Adding a provider = adding a manifest row; CORE CODE NEVER BRANCHES ON PROVIDER NAMES.                                           |
+| Authority split | Presets declare EXPECTED; [llmAdapter](llmAdapter.md) §2.4 probes decide ACTUAL. Declared-but-failing ⇒ capability OFF + admin warning card (declared vs probed).                                                                                                                  |
+| Provenance rule | Every numeric constant the AI passes (cos thresholds, ef_search, char/token factor) is a RELEASE ARTIFACT produced by the project on its dev-owned reference set. No runtime calibration, no dataset shipped to end users (measured corpus drift is the reserved re-open trigger). |
 
 ---
 
@@ -19,7 +19,7 @@ Target-contract spec.
 - **Source:** `server/infrastructure/adapters/llm/presets.js` (frozen array + lookup)
 - **Test file:** `server/infrastructure/adapters/llm/__tests__/presets.test.js`
 - Consumed by: llmAdapter budget chain step 3 + probe expectation matrix + admin/setup
-  preset picker UIs (wizard optional AI step, §4.23.5 — shortcut to the same DB rows);
+  preset picker UIs (wizard optional AI step — shortcut to the same DB rows);
   `SETUP.md` mirrors the table for operators.
 
 ### 2.2 Manifest schema (per row)
@@ -33,10 +33,10 @@ Target-contract spec.
  endpoints: { // free metadata GETs for budget-chain step 2
  models: '/v1/models', props: '/props' // per family
  },
- budgets: { // step-3 fallbacks of the §4.2.3 chain
+ budgets: { // step-3 fallbacks of the budget chain (llmAdapter.md §2.5)
  maxInputCharsDefault, chunkBudget: 4, batchSize
  },
- profile: { // release-measured model profile (§4.15 provenance)
+ profile: { // model profile — release artifact
  dim, chPerTok, // chars→token safety factor
  edgeCos: { tight, mid, loose }, thetaLo, // kNN tiers + tag-parent θ_lo
  throughputDocsMin, calibrated: false // provenance flag (always false in-product)
@@ -48,68 +48,55 @@ Target-contract spec.
 Rows are FROZEN; the admin UI renders from the manifest; probe results persist to
 `llm_models` + `backendHealth`, never back into the manifest.
 
-### 2.3 Measured rows (project reference set; the pre-implementation study evidence cited)
+### 2.3 Manifest rows (bge-m3, gemma-4-12b-it)
 
-**`bge-m3` @ llama.cpp (embed) — MEASURED:**
+**`bge-m3` @ llama.cpp (embed):**
 
-| Field            | Value                                                                                  | Status                          |
-| ---------------- | -------------------------------------------------------------------------------------- | ------------------------------- |
-| modality         | TEXT ONLY — vision/audio expectations false                                            | measured                        |
-| dim              | 1024                                                                                   | measured                        |
-| budget profile   | llama.cpp ub-512 build profile (`maxInputCharsDefault` from the ub-512 context budget) | measured (E-series budget runs) |
-| chPerTok         | ≈1.7 chars/token (mixed text, E10)                                                     | release constant                |
-| throughput       | ≈15k docs/min (local batch)                                                            | measured                        |
-| degeneracy check | distinct samples → non-degenerate cosines                                              | measured                        |
+| Field            | Value                                                                                  |
+| ---------------- | -------------------------------------------------------------------------------------- |
+| modality         | TEXT ONLY — vision/audio expectations false                                            |
+| dim              | 1024                                                                                   |
+| budget profile   | llama.cpp ub-512 build profile (`maxInputCharsDefault` from the ub-512 context budget) |
+| chPerTok         | ≈1.7 chars/token (release constant)                                                    |
+| throughput       | ≈15k docs/min (local batch)                                                            |
+| degeneracy check | distinct samples → non-degenerate cosines                                              |
 
-**`gemma-4-12b-it` @ Hana (chat/vision/asr) — MEASURED:**
+**`gemma-4-12b-it` (chat/vision/asr):**
 
-| Capability             | Verdict                                                                                                                                                                                                             | Evidence note |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| `vision_chat`          | OK (in-domain photo probe passes; V2 captions ship)                                                                                                                                                                 | measured      |
-| `asr`                  | OK in-domain (REAL SPEECH transcript passes; sine-tone mis-probe lesson recorded — probes must be speech-shaped)                                                                                                    | measured      |
-| non-speech audio       | PRIOR FABRICATION DOCUMENTED: schema-forced descriptions invented instruments; open prompts contradicted themselves across runs on the same file ⇒ transcription-only scope freeze, escape-prompt mandatory (§4.21) | measured      |
-| `enable_thinking`      | switch WORKS via `chat_template_kwargs` (verified; reasoning-off shipped)                                                                                                                                           | measured      |
-| reasoning effort tiers | UNSUPPORTED (probing finds none — params must not be sent)                                                                                                                                                          | measured      |
+| Capability             | Verdict                                                                    |
+| ---------------------- | -------------------------------------------------------------------------- |
+| `vision_chat`          | OK (in-domain photo probe passes; V2 captions ship)                        |
+| `asr`                  | OK in-domain (REAL SPEECH transcript passes; probes must be speech-shaped) |
+| non-speech audio       | transcription-only scope; escape-prompt mandatory                          |
+| `enable_thinking`      | switch WORKS via `chat_template_kwargs`; default reasoning-off ships       |
+| reasoning effort tiers | UNSUPPORTED (probing finds none — params must not be sent)                 |
 
-**Ollama / OpenAI-compatible / TEI-class rows — RELEASE-MEASUREMENT PENDING.**
+**Ollama / OpenAI-compatible / TEI-class rows — RELEASE MEASUREMENT PENDING.**
 Expectations ship (from published docs), every PROFILE/BUDGET number is null-marked
 `pending` and MUST be filled on the dev reference set before the row is offered in the
-picker (governing rule §4.23: a complete bundle or not offered). Measurement checklist
-per pending row (runbook step, not a product feature — Q10):
+picker (governing rule: a complete bundle or not offered). The per-row measurement
+checklist is a release-runbook concern, not product behavior (runbook: `docs/SETUP.md`,
+preset table).
 
-- [ ] free metadata GETs verified (`/api/show`, `/v1/models`, TEI `/info`) and
-      budget-chain step-2 field extraction proven (n_ctx / max_input_tokens)
-- [ ] length-class passive-limiter exercise: one deliberately overlong input halves and
-      recovers only via manual raise (§2.5 chain invariants)
-- [ ] embed: dim + non-degeneracy + throughput @ reference corpus; chat: JSON-schema
-      validity rate; vision: real-photo caption check (base64-as-text trap); asr: real
-      speech check
-- [ ] chPerTok measured on the mixed-text sample (1.7 is the llama.cpp-mixed reference,
-      NOT assumed portable)
-- [ ] probe kwarg map (which provider honors `chat_template_kwargs` vs `think` vs
-      nothing) recorded; unsupported params confirmed ABSENT from emitted requests
-- [ ] declared-vs-probed mismatch injection: force-fail one probe ⇒ capability OFF +
-      admin warning card renders
-
-### 2.4 Capability → feature map (§4.23.3 — the UI gating source)
+### 2.4 Capability → feature map (the UI gating source)
 
 | Capability    | Features it gates                                                                                             |
 | ------------- | ------------------------------------------------------------------------------------------------------------- |
 | `text_embed`  | semantic search, seed collections, auto-create (clusters), vector merges, near-dup, `tag_embeddings` matching |
 | `chat`        | NL features/summary (`features.extract`), llmNamer, `parse.nl`, merge-arbiter/keeper-adjudicator advisories   |
-| `vision_chat` | VLM captions — the ONLY media intelligence beyond ffprobe (§4.21)                                             |
-| `asr`         | ASR transcription (transcript-only scope, §4.21)                                                              |
+| `vision_chat` | VLM captions — the ONLY media intelligence beyond ffprobe                                                     |
+| `asr`         | ASR transcription (transcript-only scope)                                                                     |
 
 Absent capability ⇒ the feature is ABSENT (regular users), not disabled — every
 advertised path is end-to-end functional under its own preset. **`chat-only` (no embed)
-is a legal deployment**: the entire vector core runs as the §4.12 None column (manual
+is a legal deployment**: the entire vector core runs as the None column of the
+feature-degradation matrix (manual
 collections, rules, dups-by-hash, name search) — no half-AI state exists. Distinct from
-DB vector capability (§4.13): missing LLM capability REMOVES a feature; missing DB vector
+DB vector capability: missing LLM capability REMOVES a feature; missing DB vector
 capability only degrades SPEED (fallback) — never both ways.
 
-**Explicitly NOT in the manifest: `image_embed`** — V1 retired 2026-09-16
-(single text space; no product path consumes it; cross-space cosine machinery deleted,
-§4.21/§4.23.1). Re-adding it requires overriding the §9 rejection with new evidence.
+**Explicitly NOT in the manifest: `image_embed`** — the product has a single text space;
+no product path consumes image embeddings.
 
 ### 2.5 Preset consumption surfaces
 
@@ -117,7 +104,7 @@ capability only degrades SPEED (fallback) — never both ways.
   (`POST /api/admin/config/test` target `llm`); values stored as DB settings rows.
 - Setup wizard OPTIONAL skippable "AI" step: preset picker → role checkboxes →
   base-url/key/model → per-role test (`/api/setup/test` target `llm`) — DB rows, NOT
-  `.env`/envFileWriter (hot-apply rule §4.2): skipped step costs nothing, mid-install
+  `.env`/envFileWriter (hot-apply rule): skipped step costs nothing, mid-install
   config is restart-free.
 - Capability matrix display (per-role probe chips) is SHARED by both surfaces.
 
@@ -132,9 +119,9 @@ capability only degrades SPEED (fallback) — never both ways.
       string appears in adapter/service control flow (`switch (provider)` ban)
 - [ ] All rows frozen; `findPreset(id)` lookup; unknown id ⇒ picker shows nothing, no
       crash
-- [ ] Measured rows carry non-null profile numbers + cited evidence markers; pending
+- [ ] Manifest rows carry non-null profile numbers; pending
       rows carry EXPLICIT `null` + `pending: true` — the wizard/admin picker refuses to
-      complete a pending row without the operator acknowledging measured-fallback
+      complete a pending row without the operator acknowledging the fallback
       (defaults from expectations, budgets unset ⇒ budget chain falls to step 4 limiter)
 - [ ] No `image_embed` key exists anywhere in the manifest, types, or consumers (grep)
 - [ ] Probe result overrides expectation in BOTH directions: declared-not-probed ⇒ off +

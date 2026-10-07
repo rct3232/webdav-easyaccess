@@ -1,19 +1,19 @@
-# files routes Spec (Phase 6 Domain Split)
+# files routes Spec
 
 ## 1. Overview
 
-| Item       | Description                                                                                                                                                                                                                                                                    |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Mount path | `/api/files`                                                                                                                                                                                                                                                                   |
-| Role       | File and folder operations: list, download, upload, rename, batch move/copy/delete, metadata, conflicts, thumbnails, bulk job status. Post-Phase 4, all routes accept `nodeId` exclusively; path strings are display-only in responses and never accepted in request payloads. |
+| Item       | Description                                                                                                                                                                                                                                                      |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mount path | `/api/files`                                                                                                                                                                                                                                                     |
+| Role       | File and folder operations: list, download, upload, rename, batch move/copy/delete, metadata, conflicts, thumbnails, bulk job status. All routes accept `nodeId` exclusively; path strings are display-only in responses and never accepted in request payloads. |
 
 ---
 
 ## 2. Implementation Spec
 
-### 2.1 File Path (Post-Phase 6)
+### 2.1 File Path
 
-The monolithic `server/routes/files.js` was split into domain-bounded modules:
+The `server/routes/files.js` routes are split into domain-bounded modules:
 
 | Route Module         | Source File                        | Mount Point  | Endpoints                                                                                                   |
 | -------------------- | ---------------------------------- | ------------ | ----------------------------------------------------------------------------------------------------------- |
@@ -51,13 +51,12 @@ The monolithic `server/routes/files.js` was split into domain-bounded modules:
 
 #### Mutation channels
 
-Single-node mutations do **not** have dedicated endpoints (the former `POST /move`, `POST /copy`
-and `DELETE /delete` routes were removed). The batch job endpoints are the canonical mutation
+Single-node mutations do **not** have dedicated endpoints. The batch job endpoints are the canonical mutation
 channel for one item or many: `POST /api/files/batch-move`, `POST /api/files/batch-copy` and
 `POST /api/files/batch-delete` return **202 + `{ jobId }`**, the async bulk worker executes the
 operation, and clients poll `GET /api/files/bulk-operation/:jobId` until a terminal status
 (`completed` / `failed` / `cancelled`) with per-item `results`. The batch worker delegates to the
-same `fileService.moveNode` / `copyFile` / `deleteNode` methods the removed routes called
+same `fileService.moveNode` / `copyFile` / `deleteNode` methods
 (`fileService` itself stays the single implementation seam, also used by the trash routes and the
 repair channel).
 
@@ -72,7 +71,7 @@ real byte count for files, null for directories and cache-less rows) plus `delet
 `displayPath` (original path — path resolution is trash-aware, so a trashed subtree root resolves
 its full pre-trash path). **Hierarchical navigation:** WITHOUT `parentId` the route returns only the
 TOPMOST trashed rows (deleted_at ≠ NULL AND the parent is live-or-NULL — never the full flat
-subtree list; the former flat `getTrashedNodes` enumeration was retired — topmost + hierarchical reads cover the GC/empty paths). With `parentId` = an existing node id
+subtree list — topmost + hierarchical reads cover the GC/empty paths). With `parentId` = an existing node id
 (404 `files.notFound` when unknown), the route returns that node's trashed children
 (`getTrashChildren`) — the trash view navigates into trashed folders. `limit` (default 50, capped
 at 200) / `offset` query params paginate the caller-visible set; `total` is the caller-visible
@@ -136,13 +135,13 @@ endpoints (past-content disclosure guard): `authenticateTokenOrShare` + `require
   of missing content is a plain miss, not a repairable conflict). The sent filename is the node's
   display name.
 
-### 2.3 Phase 4 nodeId Contracts
+### 2.3 nodeId Contracts
 
 **All endpoints accept `nodeId` exclusively.** Path strings are display-only in responses and are never accepted in request payloads. Response objects include `nodeId` field for every file/folder entry.
 
 **Exception — `POST /resolve-path`:** the sole path-accepting endpoint. It is a legacy-URL/boostrap resolver (deep-link + share-link fallback for nodeId-first navigation) exposing `fileNodeService.resolvePath(path)`. It returns `{ nodeId }` for a resolvable path and 404 `files.notFound` otherwise. No other path-based endpoints may be added (Execution Rule 13).
 
-#### Route Module Mapping (Post-Phase 4)
+#### Route Module Mapping
 
 Route handlers delegate to `fileService` instead of calling WebDAV directly. No path fallback anywhere — nodeId is mandatory.
 
@@ -155,12 +154,12 @@ Route handlers delegate to `fileService` instead of calling WebDAV directly. No 
 
 #### Middleware Removal
 
-- `normalizePathParam` middleware is deleted in Task 4.8. Routes validate `nodeId`/`parentNodeId` as positive integers (400 on missing/invalid).
+- `normalizePathParam` middleware is removed. Routes validate `nodeId`/`parentNodeId` as positive integers (400 on missing/invalid).
 
 ### 2.4 Middleware Used
 
 - `authenticateTokenOrShare`, `authenticateToken`, `requireUser`, `requireAuth`
-- ~~`normalizePathParam`~~ — removed in Phase 4; replaced by nodeId integer validation at route level.
+- No path-parameter middleware: routes validate `nodeId`/`parentNodeId` as positive integers at the route level.
 
 ### 2.5 Test Mock Strategy
 
@@ -169,14 +168,14 @@ Route handlers delegate to `fileService` instead of calling WebDAV directly. No 
 ### 2.6 Request/Response Spec
 
 - List, download, metadata, download-multiple, thumbnails: support share token (header/query)
-- All request payloads use nodeId-based fields post-Phase 4 (`nodeId`, `parentNodeId`, `destinationParentNodeId`, `sourceNodeId`, `nodeIds`). Path strings are never accepted in request bodies.
+- All request payloads use nodeId-based fields (`nodeId`, `parentNodeId`, `destinationParentNodeId`, `sourceNodeId`, `nodeIds`). Path strings are never accepted in request bodies.
 - **preview-ticket / preview-stream (video preview streaming):**
   - Purpose: allow `<video src>` to load video preview without custom headers (browser cannot set `Authorization` header on `<video src>`).
   - `POST /preview-ticket`: validates `nodeId` references an existing file, caller has read permission, and file type is `video`. Returns `{ ticket }`.
   - `GET /preview-stream`: validates `{ nodeId, ticket }` and responds with `Content-Disposition: inline` + `Content-Type` derived from filename.
   - Tickets are short-lived (e.g. 60–120s) and must not embed JWT in query params.
 - **GET /list:** When `user.is_admin`, items are not filtered by permission (admin bypass); each item's read permission is also treated as true for admin. Non-admin: permission-based filter as before.
-- **Usage signals (§3.4, PLAN register (a); [usageStore.md](../store/usageStore.md)):** on a SUCCESSFUL serve the files domain records one fire-and-forget `usageService.recordEvent({ userId, nodeId, action })` — `GET /download` records `preview` when `?inline=true` else `download`; `GET /preview-stream` records `preview` (per successful ticket read); `POST /download-multiple` records `download` per requested node id that streamed without error. Token-authenticated requests only (share principals carry no `usage_events` row — the subject must be a real user id). Recording errors are logged, never surfaced; no response-shape changes.
+- **Usage signals (§3.4; [usageStore.md](../store/usageStore.md)):** on a SUCCESSFUL serve the files domain records one fire-and-forget `usageService.recordEvent({ userId, nodeId, action })` — `GET /download` records `preview` when `?inline=true` else `download`; `GET /preview-stream` records `preview` (per successful ticket read); `POST /download-multiple` records `download` per requested node id that streamed without error. Token-authenticated requests only (share principals carry no `usage_events` row — the subject must be a real user id). Recording errors are logged, never surfaced; no response-shape changes.
 - Bulk ops: returns jobId; poll via bulk-operation
 - Upload 413 (payload too large): body-parser or server limit; returns 413
 - download-multiple empty nodeIds array: 400 (validation)

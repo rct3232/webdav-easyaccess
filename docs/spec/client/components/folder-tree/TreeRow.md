@@ -2,12 +2,12 @@
 
 ## 1. Overview
 
-| Item               | Description                                                                                                                                                                                                                                                     |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role               | Shared sidebar ROW PRIMITIVE: the single visual/behavioral core of every folder-tree child row (file-tree rows, shared-folder rows, recent rows, collection/Likes/Archive rows). Owner ruling 2026-10-01 (PLAN §12) unifies these rows onto one implementation. |
-| Used in            | `BaseFolderTreeItem` (file/shared/share-link rows), `RecentFilesSection` (child rows), `CollectionsSection` (collection/Likes/Archive rows)                                                                                                                     |
-| Related components | `BaseFolderTreeItem`, `RecentFilesSection`, `CollectionsSection`, `useObservedElementWidth`, `pixelMiddleTruncate`                                                                                                                                              |
-| Ownership note     | Pure view. Renders a row from props only; owns no controller, service, or DnD logic.                                                                                                                                                                            |
+| Item               | Description                                                                                                                                                                                                           |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Shared sidebar ROW PRIMITIVE: the single visual/behavioral core of every folder-tree child row (file-tree rows, shared-folder rows, recent rows, collection/Likes/Archive rows) — one implementation for all of them. |
+| Used in            | `BaseFolderTreeItem` (file/shared/share-link rows), `RecentFilesSection` (child rows), `CollectionsSection` (collection/Likes/Archive rows)                                                                           |
+| Related components | `BaseFolderTreeItem`, `RecentFilesSection`, `CollectionsSection`, `useObservedElementWidth`, `pixelMiddleTruncate`                                                                                                    |
+| Ownership note     | Pure view. Renders a row from props only; owns no controller, service, or DnD logic.                                                                                                                                  |
 
 ### Non-goals (binding)
 
@@ -31,7 +31,7 @@
 
 | Name          | Type      | Required | Default | Description                                                                                                                                                                                                                                      |
 | ------------- | --------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| level         | number    | N        | 0       | Depth-based indent: ListItemButton `pl: level * 2` (16px/level — the tree rule, owner ruling 2026-10-01)                                                                                                                                         |
+| level         | number    | N        | 0       | Depth-based indent: ListItemButton `pl: level * 2` (16px/level — the tree rule)                                                                                                                                                                  |
 | name          | string    | Y        | -       | Row label. Middle-truncated (see §2.4) and bold (700) when `selected`.                                                                                                                                                                           |
 | onClick       | function  | N        | -       | Row click                                                                                                                                                                                                                                        |
 | selected      | boolean   | N        | false   | Selected highlight: `Mui-selected`, `primary.main` text/icon color, 3px `primary.main` border-left, transparent bg                                                                                                                               |
@@ -40,7 +40,7 @@
 | icon          | ReactNode | N        | -       | Icon slot (`minWidth: 24`)                                                                                                                                                                                                                       |
 | iconProps     | object    | N        | -       | Spread onto the icon `ListItemIcon` (e.g. `data-testid` chips); `sx` merges with the base geometry                                                                                                                                               |
 | secondary     | ReactNode | N        | -       | `ListItemText.secondary` (e.g. the collection `new` dot)                                                                                                                                                                                         |
-| trailing      | ReactNode | N        | -       | Optional trailing slot after the text (no consumer today; part of the owner-ruled API)                                                                                                                                                           |
+| trailing      | ReactNode | N        | -       | Optional trailing slot after the text (no consumer today; part of the primitive's API)                                                                                                                                                           |
 | textSx        | object    | N        | -       | Merged onto the `ListItemText` sx (e.g. hidden-name `opacity`)                                                                                                                                                                                   |
 | buttonProps   | object    | N        | -       | Spread onto the `ListItemButton` (e.g. row `data-testid`s)                                                                                                                                                                                       |
 | buttonSx      | object    | N        | -       | Merged LAST onto the `ListItemButton` sx (consumer overrides, e.g. drop-target highlight)                                                                                                                                                        |
@@ -51,14 +51,13 @@
 - Structure: `ListItem (disablePadding) > ListItemButton > [leading icon column] + [icon
 column] + ListItemText + trailing`.
 - Geometry parity: `py: 0.5`, `minHeight: 32`, icon column `minWidth: 24`, leading column
-  `minWidth: 24, mr: 0.5` — the `BaseFolderTreeItem` idiom, now the single source.
+  `minWidth: 24, mr: 0.5` — the `BaseFolderTreeItem` idiom, the single source.
 - Indent: `pl: level * 2`. Section child rows render at `level = 1`, i.e. the SAME computed
-  padding-left (16px) as a shared-folder/file-tree child row (owner ruling 2026-10-01;
-  supersedes the F5 `pl: 3` / 24px pin).
-- Icon-column parity (ruling A, 2026-10-01): every child row — file-tree leaf, shared-folder
+  padding-left (16px) as a shared-folder/file-tree child row.
+- Icon-column parity: every child row — file-tree leaf, shared-folder
   row, recent row, collection row — reserves the leading column via the exported
   `TreeRowSpacer` (20px span), so icon glyphs start at the same x offset regardless of
-  expand affordance. Padding equality alone previously hid a 24px icon misalignment.
+  expand affordance.
 - Every row button carries `data-tree-row` (primitive-usage assertion seam for the parity pins).
 
 ### 2.4 Name truncation (single font-metrics source)
@@ -90,5 +89,7 @@ column] + ListItemText + trailing`.
 - `BaseFolderTreeItem` keeps its full behavior surface (expand/chevron via `leading`,
   drag/drop via `listItemProps`, drop highlight via `buttonSx`, disabled via `disabled`) and
   its props surface is UNCHANGED; `data-testid="folder-tree-item"` stays on the row `ListItem`.
-- Declared behavior deltas of the ruling: file-tree name cells now MIDDLE-truncate (was CSS
-  ellipsis + inline `ResizeObserver` detection); tooltip delay becomes 300ms for section rows.
+- Current behavior facts: all child rows render through this single row implementation with
+  level-based indent and the `TreeRowSpacer` leading column; file-tree name cells MIDDLE-truncate
+  (no CSS-ellipsis or inline-`ResizeObserver` path remains in name cells); tooltip delay is 300ms
+  for all rows, section rows included.

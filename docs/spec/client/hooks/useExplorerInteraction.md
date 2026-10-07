@@ -65,7 +65,7 @@
   - Progress drawer state.
   - Share-link overlay modal state (login, add-to-my-permissions, leave-share confirm).
 
-> **Note:** Selection, long-press, and double-click detection are keyed by `getEntryKey(file)` (`file.nodeId` when present, else `file.path`). Recent-file click branches (`file.isRecentFile`) are nodeId-first since Phase 5: when `file.nodeId` is present they navigate/open by nodeId and only fall back to the path-based branch for legacy entries that lack a nodeId.
+> **Note:** Selection, long-press, and double-click detection are keyed by `getEntryKey(file)` (`file.nodeId` when present, else `file.path`). Recent-file click branches (`file.isRecentFile`) are nodeId-first: when `file.nodeId` is present they navigate/open by nodeId and only fall back to the path-based branch for legacy entries that lack a nodeId.
 
 ### 2.5 Dependencies
 

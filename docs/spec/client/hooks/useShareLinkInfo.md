@@ -7,7 +7,7 @@
 | Role                     | Fetches public share-link info for `/share/:token` and normalizes loading + error state for the route shell. |
 | Used by components/pages | `client/src/pages/ShareLinkLoader.js`                                                                        |
 
-> **Phase 5 nodeId end-state:** `GET /api/share/:token/info` always returns a `nodeId` for the shared root, so the hook never needs to resolve a path. The Phase 4 gap-closure `resolve-path` fallback (C2.5) was removed in Phase 5; `useShareLinkInfo` only fetches link info and passes it through as-is.
+> `GET /api/share/:token/info` always returns a `nodeId` for the shared root, so the hook never needs to resolve a path. There is no `resolve-path` fallback; `useShareLinkInfo` only fetches link info and passes it through as-is.
 
 ---
 

@@ -233,7 +233,7 @@ Metadata migration between the `sqlite` and `postgresql` backends is a **support
 (schemas are structurally identical — the sqlite DDL is generated from the same
 `server/store/postgresql/ddl/*.sql` chain via `sqliteSchemaInit.js` type-conversion). It is exposed as
 an admin API + config dialogs (no standalone CLI; the legacy
-`server/scripts/migrateMetadataToPostgresql.js` was removed in Phase 7):
+`server/scripts/migrateMetadataToPostgresql.js` was removed):
 
 - `GET /api/admin/migration/target-scan` — scan the non-active target backend
   (`schemaExists` + per-table row counts).

@@ -170,6 +170,13 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 - T1.8 tag pipeline: `tag_embeddings` cache + §4.18 3-step (ortho normalization →
   parent hints → gray band untouched); embed role required, None state = normalized
   string equality only. (No merge/alias tables.)
+- T1.9 media direct-embed pipeline (V1/V3 revived, owner 2026-10-08; §4.20 E1-M/§4.21,
+  deps T1.1–T1.4): media-capability probes with positive controls (§4.23.2), §4.3 media
+  chunk ladder (19 s audio windows / frame sampling under server ub), `media_direct`
+  source rows + segment chunks, V2 caption-fallback path when media capability absent,
+  backfill scope for media rows. Gated release-measurement of profile constants
+  (§4.15 adoption checklist, Q10) rides the release runbook (`docs/SETUP.md`), NOT product
+  code (§12.9 preset rule).
 
 ### P2 — Silent evolution
 
@@ -838,3 +845,39 @@ unchanged (gates make admin rows unreachable). RCA: 2026-10-01 pivot adjudicatio
   PG leg `test:ci:pg:adapters` **23 / 347 (1 skip)**; client **178 / 1919**;
   e2e collections s3 **17/17** ×3; webdav **17/17** ×3; eslint `--max-warnings 0` +
   prettier clean on every touched source file.
+
+## 16. EmbeddingGemma 2 adoption — V1/V3 revival (owner decision 2026-10-08, branch `feature/eg2-v1v3-docs`)
+
+Owner record (verbatim, 2026-10-08): "V1 V3 도입할거야. 안할 이유가 없잖아." — following the
+EG2 probe session (PoC addendum §6; artifacts in git-ignored `data/corpus/eg2-test/`).
+The 2026-09-16 retirements of V1 (image-embedding path) and the audio text-only routing are
+**reversed**; the audio ATTRIBUTE-GENERATION ban (E13) and all no-absolute-θ rules are
+**kept**. Live embed server `10.0.0.106:8082` now runs embeddinggemma-2 (llama.cpp b11459,
+`--pooling mean` required — cls mis-shapes the plain-text space silently; GPU serving).
+
+Doc changes in this changeset (docs-first step; no product code):
+
+- AI_FEATURE_PLAN.md: §4.2 request-shape/profile-property rule · §4.3 media chunk ladder ·
+  §4.13c MRL dims · §4.15 provenance extended to server-shape flags + adoption checklist ·
+  §4.17 media near-dup band note · §4.19 caption role change · §4.20 E1-M call site ·
+  §4.21 rewrite (V1/V3, fallback ladder, E13 ban boundary) · §4.23.1/.2/.3 media
+  capabilities + positive-control probes · §5 `media_direct` source · §9 revocation entry ·
+  §10 Q10 status TRIGGERED.
+- POC.md: §6 addendum (probes, bands, failure modes, scorecard deltas).
+- docs/spec llmPresets.md + llmAdapter.md: capability set, EG2 preset row, media probes,
+  `embedMedia`, overlength media ladder — updated in the same PR (AGENTS §1).
+- DDL: `001_initial_normalized_schema.sql` embeddings.source CHECK + `media_direct`
+  (checksum recovery one-liner per §6 DDL policy; applied to prod manually at the
+  ai-feature→dev deploy).
+
+Release-runbook obligation before shipping the model (§4.15 checklist / Q10): re-measure on
+the dev reference set — text near-dup θ_dup, unrelated-floor spread, image/audio/video
+near-dup bands, mutual-kNN tier edges (0.82/0.86/0.80/0.72 were caption-space measures),
+tag θ_lo/ortho band, char→token factor (1.7 was bge-m3), media token rates/segment windows,
+query-embed latency class (GPU passes <100 ms; CPU ~3.8 s/sentence fails). E3 recall@20
+must be re-run with TRUE image queries (no captions) against the wedding ground-truth tree
+before the caption-path 0.829 baseline is replaced.
+
+Open probe gaps explicitly not closed by this decision: interleaved text+media fusion
+untested on llama.cpp serving; native video input needs `-ub ≥2048` on the server (owner
+infra call, not product); EG2 Korean text quality unmeasured beyond directional probes.

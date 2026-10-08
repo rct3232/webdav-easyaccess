@@ -45,17 +45,18 @@ Target-contract spec.
 
 ### 2.3 Public API
 
-| Export                                              | Contract                                                                                                                                                                                                                                                 |
-| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `roleConfigured(role)`                              | `true` iff the role resolves a non-empty `{base_url, model}` (presence, not probe — probes gate CAPABILITY, see §2.4)                                                                                                                                    |
-| `embed(texts[])`                                    | batch per provider `batch_size` (llm_models row); returns `{vectors[][], dim, modelId, degraded?}`; pooled/chunk callers (worker) decide the ladder                                                                                                      |
-| `embedQuery(query)`                                 | Request-path wrapper (query embed): <100 ms-class, `query_parses` signature-cache read/write first, kill-switch respected, timeout ⇒ throw `transport` (caller degrades to empty section)                                                                |
-| `chat(messages, {schema?, maxTokens?, reasoning?})` | JSON-schema-forced where supported; `reasoning` defaults OFF (§2.7); returns `{json, text, usage, truncated}`                                                                                                                                            |
-| `visionCaption(frames[], {prompt})`                 | V2 path ONLY from worker context                                                                                                                                                                                                                         |
-| `asrTranscribe(audioBuffer, {escapePrompt: true})`  | escape-prompt is part of the fixed template — callers cannot omit it.                                                                                                                                                                                    |
-| `probeLlm()`                                        | suite (§2.4); `runProbe(target='llm')` registration in `backendProbe.js:263` + `POST /api/admin/config/test` target `llm` + `/api/setup/test` target `llm` (wizard)                                                                                      |
-| `breakerState(role)` / `budgetStatus()`             | admin card inputs: `ok \| budget_paused \| breaker_open(cooldown_left)` + `ai_usage_daily` rows                                                                                                                                                          |
-| `syncModelRegistry()`                               | upsert `llm_models` rows from resolved configs + probe results (`dim`, `max_input_chars`, `chunk_budget`, `batch_size`, `reasoning`, `enabled`) — the registry is the adapter's persisted view, never hand-edited except `reasoning` (experiment switch) |
+| Export                                              | Contract                                                                                                                                                                                                                                                                                               |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `roleConfigured(role)`                              | `true` iff the role resolves a non-empty `{base_url, model}` (presence, not probe — probes gate CAPABILITY, see §2.4)                                                                                                                                                                                  |
+| `embed(texts[])`                                    | batch per provider `batch_size` (llm_models row); returns `{vectors[][], dim, modelId, degraded?}`; pooled/chunk callers (worker) decide the ladder; applies the profile's `requestShape` + TEXT prefixes (§2.6)                                                                                       |
+| `embedMedia(buffers[], {mediaType})`                | V1/V3 direct media embed: image/audio/video bytes → same embed role, NO text prefix, profile `requestShape` (media rides the `content`-wrapper); oversized media enters the §2.6 MEDIA segment ladder; returns `{vectors[][], dim, modelId, degraded?}`                                                |
+| `embedQuery(query)`                                 | Request-path wrapper (query embed): <100 ms-class (serving-mode profiled — CPU-served multimodal embedders FAIL this gate), `query_parses` signature-cache read/write first, kill-switch respected, timeout ⇒ throw `transport` (caller degrades to empty section); applies the profile's query prefix |
+| `chat(messages, {schema?, maxTokens?, reasoning?})` | JSON-schema-forced where supported; `reasoning` defaults OFF (§2.7); returns `{json, text, usage, truncated}`                                                                                                                                                                                          |
+| `visionCaption(frames[], {prompt})`                 | V2 path ONLY from worker context                                                                                                                                                                                                                                                                       |
+| `asrTranscribe(audioBuffer, {escapePrompt: true})`  | escape-prompt is part of the fixed template — callers cannot omit it.                                                                                                                                                                                                                                  |
+| `probeLlm()`                                        | suite (§2.4); `runProbe(target='llm')` registration in `backendProbe.js:263` + `POST /api/admin/config/test` target `llm` + `/api/setup/test` target `llm` (wizard)                                                                                                                                    |
+| `breakerState(role)` / `budgetStatus()`             | admin card inputs: `ok \| budget_paused \| breaker_open(cooldown_left)` + `ai_usage_daily` rows                                                                                                                                                                                                        |
+| `syncModelRegistry()`                               | upsert `llm_models` rows from resolved configs + probe results (`dim`, `max_input_chars`, `chunk_budget`, `batch_size`, `reasoning`, `enabled`) — the registry is the adapter's persisted view, never hand-edited except `reasoning` (experiment switch)                                               |
 
 ### 2.4 Probe suite (IN-DOMAIN samples — hard rule)
 
@@ -66,7 +67,19 @@ claims:
 
 - `embed`: real mixed-ko/en sentence set → verify non-empty, `dim` == profile, and
   NON-DEGENERACY (two distinct samples must not cosine ≥0.999 — catches constant-output
-  endpoints).
+  endpoints). Text is sent with the profile's task prefixes. When the profile declares
+  `pooling`, `/props` (llama family) is read: server pooling ≠ profile pooling ⇒ `text_embed`
+  OFF with reason — pooling is SPACE-shaping (same weights, different space, zero errors).
+- `image_embed` / `audio_embed` / `video_embed`: probes need POSITIVE CONTROLS
+  in the profile `requestShape` — known failure mode: a multimodal-DECLARING endpoint
+  silently ignores wrongly-shaped media and returns a TEXT vector with HTTP 200.
+  Pass requires ALL of: (a) in-domain photo vs its
+  re-encode cosine ≥ profile media near-dup floor; (b) the same bytes as base64 TEXT
+  diverge (proves pixels were consumed — an INPUT-shaping failure, not a space change); (c) when
+  `vision_chat` is also configured, image↔its-caption > image↔unrelated text. Audio:
+  real-speech clip vs noise clip must yield DISTINCT vectors; sine/noise-only probes
+  remain BANNED as pass criteria. A failed media probe switches ONLY that sub-capability
+  (media falls back to the caption→E1 or metadata path), it never blocks `text_embed`.
 - `chat`: instruction-following JSON echo on an in-domain prompt (tag extraction from one
   real sentence) → schema validity is the pass criterion.
 - `vision_chat`: a REAL PHOTO sample → non-trivial caption. Known failure mode: an
@@ -109,7 +122,15 @@ sample ≤ `LLM_CHUNK_BUDGET` (4) chunks → every chunk vector returned for sto
 mean+renormalize for the pooled row → `truncate-head` → `metadata_only` → `skip`
 (+journal note). Chat-role inputs NEVER hierarchical-summarize: head+stride excerpt only.
 char→token safety factor **1.7** — release constant shipped in
-the profile, used to convert `max_input_chars` budgeting. Retrieval note (ownership):
+the profile, used to convert `max_input_chars` budgeting (per-profile value; on a new model
+it ships null+pending until release measurement). MEDIA segment ladder: media never
+degrades to head-truncation; instead, per profile `mediaTokenCost` × server budget
+(budget chain §2.5): audio → fixed windows (`min(ub/25 s, 327 s)` model cap), video →
+frame-sampling to fit, image → single-item always; every segment vector returned
+(`embeddings_chunk` rows) + mean+renormalized pooled row; segment windows are chunking-
+profile params — changing them re-embeds the media (chunking-profile rule, §2.6).
+`source='media_direct'`.
+Retrieval note (ownership):
 the adapter only produces vectors; max-over-chunks SCORING is vectorStore's rule.
 
 ### 2.7 `enable_thinking` / chat_template_kwargs handling
@@ -170,6 +191,15 @@ kill switch family).
       declared-vs-probed admin warning (a base64-as-text fixture reproduces the known
       failure mode); sine-tone audio sample NEVER used (test asserts the
       speech fixture is in the probe set)
+- [ ] Media-embed probe against the fake server that SILENTLY DROPS media fields (returns
+      the text vector, HTTP 200 — reproduces the known silent media-drop failure mode):
+      positive-control probe must fail it ⇒ media capability OFF + fallback V2/V0, while
+      `text_embed` stays ON; correctly-shaped fake returns pass the near-dup + divergence
+      checks
+- [ ] `embedQuery`/`embed` bodies carry the profile prefixes; `embedMedia` bodies carry
+      NONE; profile-declared `pooling` mismatch vs `/props` ⇒ `text_embed` OFF with reason
+- [ ] Media over budget → segment ladder (fixed audio windows / sampled frames), segment
+      rows + pooled row stored, `source='media_direct'`; no head-truncate on media
 - [ ] Budget chain order: admin char cap beats published metadata beats preset default;
       with all absent, one real length-class failure halves the budget and the
       limiter never raises it back on success (sequence assertion)

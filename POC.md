@@ -1,6 +1,7 @@
 # Proof of Concept — AI-Driven Storage
 
-> **Status: closed, 2026-09-16.** This document records every experiment run before writing any
+> **Status: closed, 2026-09-16 (+ dated addendum §6, 2026-10-08 — EmbeddingGemma 2
+> migration probes; §1–§5 untouched).** This document records every experiment run before writing any
 > product code. Each experiment states **Where** (the real environment used), **What** (the
 > question it had to answer), **How** (the method), **Why** (which plan assumption it tests),
 > and then **Result → Meaning → What it makes possible / impossible**.
@@ -384,3 +385,72 @@ per-query dynamic baseline exists precisely because we refuse to guess).
 
 _Numbers in §2 are as measured on 2026-09-15/16 on the hardware of §1. Treat them as
 per-model, per-corpus constants — that is literally the lesson the document repeats._
+
+---
+
+## 6. Addendum — EmbeddingGemma 2 migration probes (2026-10-08)
+
+> This addendum **does not revise §1–§5**: those numbers are the bge-m3 record and remain
+> true per-model constants. It records the first probes against the new embed model and the
+> decisions they trigger (owner: **V1/V3 revived 2026-10-08** — media enters the embedding
+> space directly; see AI_FEATURE_PLAN §4.20/§4.21/§9). Test data: `data/corpus/eg2-test/`
+> (git-ignored, same archival policy as `poc/`).
+
+**Environment change (§1, historical now):** `10.0.0.106:8082` no longer serves bge-m3 — it
+serves `embeddinggemma-2` (llama.cpp 0.6.0-dev b11459, GGUF Q4_K_XL + mmproj Q8, GPU,
+`--embeddings --pooling mean -c 8192 -ub 512 -ngl 99`). Model: 740M (270M text + 170M vision
+
+- 300M audio encoders), 768-dim, one shared multimodal space, Apache-2.0, 8K token context.
+
+### 6.1 Capability probe — declared vs actual, again (extends §2.1)
+
+- `/v1/models` declared `input_modalities:[text,image,audio,video]`. **Wrong-format media
+  requests returned HTTP 200 with the TEXT vector** (top-level `image`/`audio` fields
+  silently dropped; cos vs plain-text control = 1.000000) — the §2.1 "silent wrong vector"
+  failure class reproduced on the very model that supports media. Correct shape:
+  `{"input":[{"content":[{"type":"image_url|input_audio|video_url", ...}]}]}`.
+- **Pooling is a space-changer:** server started `--pooling cls` (model trained mean) moved
+  unrelated text-pair cosines 0.457→0.664 with zero errors. Fixed to `mean`; the `content`
+  media path was unaffected by the flag (internally pooled).
+- `-ub 512` wall repeats: >~20 s audio or >~1 image/frame per call → HTTP 500; 60 s video
+  tokenized (5,922 tok) then rejected. Client-side segment/pool worked (19 s audio windows).
+- Q4_K_XL GGUF vs reference: probe battery differences ≤0.004 — quantization class OK on
+  this model at this checkpoint (release-measure still required per §4.15).
+
+### 6.2 Cross-modal battery (new ground truth)
+
+Wedding photos (S3, DB-path-mapped `rct3232/picture/25/25.09.28 결혼식/…`) + 6.2 s event
+video `62.mp4`; owner-labeled audio clips (news/lofi/vocal-music/meeting/subway/pink-noise/
+Japanese-info); Hana captions as text references.
+
+- **text↔image**: photo ↔ its caption 0.66–0.75; video ↔ event photos **0.78–0.79**;
+  near-dup re-encode 0.972 / half-crop 0.947 / different-photo 0.661 → media bands exist and
+  order correctly.
+- **audio↔text**: every target pair ranked top-1 in its row (news 0.848, meeting 0.796,
+  lofi-label 0.787, JP summary 0.787/ko-translation 0.735, subway 0.709, noise-label 0.738)
+  — **but margins thin (+0.02–0.07) and floors high (0.59–0.69)**: absolute-θ decisions stay
+  banned (§2.5 lesson survives); dynamic baseline + ranking remain the only honest gate.
+- **video↔audio identity**: `test-1.mp4` (pink-noise audio track) vs `test-6.mp3`: audio
+  track vs audio file **0.9988**; native video embedding vs audio 0.654 (frames ≠ waveform —
+  llama.cpp video input is vision-only; interleaved `<|audio|>` fusion unproven on this
+  server).
+- Hana-side findings: full-file >~300 s audio crashed the container once; 45–90 s chunked
+  ASR stable (385 s meeting clean, 13/14 chunks of 588 s Japanese, one permanently
+  degenerated chunk); ASR said "no speech" on vocal music even with priming → §2.13's
+  conservative-failure profile confirmed; **none of this poisons the embed space** (transcript
+  is stored, never silently invented).
+
+### 6.3 Scorecard deltas
+
+| Assumption                      | Δ                     | Evidence                             | Action taken                                                                               |
+| ------------------------------- | --------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------ |
+| V1 image embeddings (abandoned) | **REVIVED**           | 6.1–6.2 cross-modal ordering correct | owner decision 2026-10-08; AI_FEATURE_PLAN §4.20/§4.21/§9 rewritten                        |
+| Audio scope (ASR only)          | REVIVED as embed-only | 6.2 audio rows top-1                 | §4.21 V3: direct audio embed added; **genre/mood/desc ban HOLDS** (retrieval ≠ generation) |
+| Declared capability ≠ real      | ❌ again (3rd model)  | 6.1 silent-ignore                    | probe suite must use positive media controls (§4.23.2)                                     |
+| One θ per population            | unchanged             | 6.2 compressed bands                 | adoption re-measurement checklist opened (PLAN §16 / Q10)                                  |
+
+### 6.4 Still unproven (carried forward)
+
+θ_dup/tier/θ_lo/chPerTok re-measurement on the EG2 reference set (the whole §2 battery in
+EG2 space); interleaved text+media fusion; video native serving (`-ub` raise); Korean
+cross-modal recall@20 vs the 0.829 caption-path baseline; 100k-doc media backfill cost.

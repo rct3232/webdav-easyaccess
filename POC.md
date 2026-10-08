@@ -481,6 +481,11 @@ on EG2).
 | tag vocabulary (E6c, 909 tags, 100% JSON validity)         | θ_lo .75 worked       | containment P10 **.8025** < sibling P90 **.8913**; unrelated P50 .7527    | **absolute θ_lo unusable → Q11 open (owner)**                             |
 | video band reproduction                                    | n/a                   | frames↔event-photos .763–.798; track↔noise .9988                          | reproducible                                                              |
 
+**Q8 quantization control (same day)** — Q11's band overlap re-measured on the Q8_0 GGUF
+(CPU): per-tag Q4↔Q8 vector cos median 0.9958; containment P10 .7954 / sibling P90 .8918 /
+unrelated P50 .7511 — class bands shifted ≤0.008, the overlap persists. Verdict: band
+compression is model-space geometry, not quantization (artifact `q8_compare.json`).
+
 Not closed here: interleaved text+media fusion (untested on llama.cpp serving), native
 `video_embed` (server `-ub` infra call — Q10-adjacent), 100k-doc media backfill cost,
 text-space kNN tier rerun, real-world ortho-variant tag folding (synthetic only),

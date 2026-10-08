@@ -1248,6 +1248,9 @@ reference-set measurement: containment P10 0.8025 < sibling P90 0.8913 and unrel
 P50 0.7527 (band overlap by design of the model's anisotropy, not a harness bug). Options:
 percentile/rank re-anchoring, margin-based promotion, or accept 21%-recall θ_lo=0.92.
 **OWNER DECISION REQUIRED before T1.8 ships on EG2**; llmPresets thetaLo stays unresolved.
+Quantization-cause hypothesis TESTED AND REJECTED (Q8_0 control re-run, 2026-10-08: class
+bands moved ≤0.008 vs Q4_K_XL, containment-P10/sibling-P90 gap persists at −0.096) — the
+compression is the model's space geometry, not the GGUF precision.
 New open questions get appended here before/at their named task.
 
 ## 12. P0 decision ledger (consolidated from contract specs, 2026-10-02)

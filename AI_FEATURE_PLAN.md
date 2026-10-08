@@ -433,7 +433,9 @@ Inputs: node_activity, likes, tags(ortho-normalized; §4.18), embeddings. Passes
 1. **Create**: multi-tier candidate generation (PoC E4 evidence: narrow and broad groups both
    real; naive connected-components REJECTED for chaining, absolute-θ topic gating REJECTED).
    Algorithm = **mutual-kNN seed-expansion** (k≈6, either-side top-k + edge cos from the
-   model profile, default 0.82 tight / 0.80 mid / 0.72 loose tiers), preceded by a
+   model profile, default 0.82 tight / 0.80 mid / 0.72 loose tiers — tier defaults are
+   per-model profile values; EG2 image-space rerun confirms zero cross-class contamination
+   at the same tiers (provisional); text-space rerun outstanding — Q10 checklist), preceded by a
    **content_hash dedup pre-pass** (identical-content twins go to the dup path, never form
    clusters). Facet sources (path-subtree purity, normalized tags, like-density) generate
    candidates in parallel; a facet/embedding cluster pair with Jaccard ≥0.8 does NOT double-
@@ -718,10 +720,14 @@ Rule variant (LLM-free): filename/temp patterns, stale screenshots, old installe
 dups via **content_hash first (T0.9a — cosine 1.0 detection redundant, E2)**. Vector
 variant: low-quality picks among near-dup groups at **θ_dup = 0.97** (E2v2: realistic-edit
 P10 = 0.977 vs unrelated P99 = 0.471 — separation measured; the earlier 0.98 guess was
-near-miss), "30d unopened + low score". θ_dup is a per-profile text-space constant; media
-near-dup bands get their own profile value after the adoption battery (first EG2 probe:
-image re-encode 0.972 / half-crop 0.947 / different-photo 0.661 — band class transfers,
-numbers must be re-measured on the reference set). **Short-doc exception: files ≤1 sentence are
+near-miss), "30d unopened + low score". θ_dup is a per-profile text-space constant —
+EG2 reference-set measured **0.955** (near-dup overall P10 0.9746 vs same-topic P90
+0.8105 / unrelated P99 0.7294; separable for near-dup only, topic/unrelated overlap
+reproduced from bge-m3). MEDIA θ_dup is FLAG-ONLY, never an auto-pick signal: image
+0.94 but same-event photos reach 0.990, audio 0.969 but pink-noise twins reach 0.9988 —
+media near-dup proposals are necessarily high-recall/low-precision (§4.17 is already
+PROPOSALS + hash-first, so this weakens the vector variant only, not the exact-dup path).
+**Short-doc exception: files ≤1 sentence are
 excluded from cosine near-dup (edit variants score 0.55 there — E2v2 P01) — hash/shingle
 path only.** Always PROPOSALS (file-mutating, rule 2/5), rendered inline (row chip) + in
 §4.16. **Q4 decided UX: every suggestion row carries a checkbox; the only accept control is
@@ -917,9 +923,12 @@ enters it directly instead of through a generation hop. The pipeline:
   document-content scoring by `media_kind=music`; measured caveat (EG2 battery): thin
   margins on noise-like audio (unrelated floor rises; "노이즈" ranked 2nd in most rows) —
   media results obey the §4.6 dynamic baseline gate, never an absolute θ.
-- Image/video/audio near-duplicate: measured directly in media space (first EG2 probe:
-  re-encode 0.972 / half-crop 0.947 / different-photo 0.661) — the old "weaker against
-  reencode/trim than a CLIP path" acceptance note is obsolete; release re-measures (Q10).
+- Image/video/audio near-duplicate: measured directly in media space — EG2 reference set:
+  image variant band P10 0.9426 (min 0.9042) but SAME-EVENT photos reach 0.990; audio
+  variants P10 0.969 but distinct pink-noise files pair at 0.9988. Consequence encoded:
+  media near-dup cosine = recall-oriented FLAG for suggestions only (exact-dup path
+  remains hash-first, §2 invariant set unchanged); the old "weaker than a CLIP path"
+  acceptance note is obsolete.
 - Model change → backfill re-projection in one space (§4.2) covering MEDIA rows too (media
   files without captions become newly embeddable; media-capable→text-only swap must re-project
   media rows back through V2 or drop them — backfill scoping via media-embed coverage, §4.15).
@@ -1230,9 +1239,15 @@ Q9 (RESOLVED 2026-09-16): multi-vector chunk retention ADOPTED via A1 (§4.3/§4
 residual open part = cost/scale calibration (index size, chunk-row bloat) measured during
 T1.4 at 100k+ — a sizing study, not a decision. Q10 (NEW): remote-provider adoption requires re-measuring
 profile constants on the dev reference set (release-runbook step, not a product feature —
-§4.15 provenance). **STATUS 2026-10-08: TRIGGERED — embeddinggemma-2 adoption (V1/V3 revival,
-PLAN §16); battery list in §4.15 adoption checklist, first probe results in PoC addendum;
-product ships nothing until the reference-set re-measure is recorded as release artifacts.**
+§4.15 provenance). **STATUS 2026-10-08: TRIGGERED → battery run** — text bands/chPerTok/
+throughput/E12 + image/audio/video bands + tag vocabulary measured on the dev reference set
+(PoC addendum §6.5); llmPresets EG2 row carries the values. Ship-blocked sub-items closed:
+text θ_dup 0.955, chPerTok 1.5, recall@20 image-direct 1.000 (vs 0.829 caption path).
+Q11 (NEW): **θ_lo absolute-containment rule (parent hints §4.18) not usable on EG2** —
+reference-set measurement: containment P10 0.8025 < sibling P90 0.8913 and unrelated tags
+P50 0.7527 (band overlap by design of the model's anisotropy, not a harness bug). Options:
+percentile/rank re-anchoring, margin-based promotion, or accept 21%-recall θ_lo=0.92.
+**OWNER DECISION REQUIRED before T1.8 ships on EG2**; llmPresets thetaLo stays unresolved.
 New open questions get appended here before/at their named task.
 
 ## 12. P0 decision ledger (consolidated from contract specs, 2026-10-02)

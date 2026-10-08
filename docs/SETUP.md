@@ -135,11 +135,12 @@ e.g. `LLM_EMBED_BASE_URL`). Operator-facing semantics (full contract:
   declared-but-failing capability is turned off with an admin warning card). Measured
   reference profiles from the project the pre-implementation study:
 
-| Family (preset)                                          | Verified on dev reference set                                                               | Status                                                   |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| llama.cpp serving bge-m3                                 | **text-embed only, 1024-dim** (silently wrong on image input — image capability probes OFF) | measured profile value                                   |
-| llama.cpp serving Hana (gemma-4-12b)                     | **vision + audio**, verified in-domain with real photos/speech                              | measured profile value                                   |
-| other families (Ollama, OpenAI-compatible, TEI-class, …) | expected capability set declared in `infrastructure/adapters/llm/presets.js`                | **release-measurement-pending** (no shipped numbers yet) |
+| Family (preset)                                          | Verified on dev reference set                                                                                                                                                          | Status                                                     |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| llama.cpp serving bge-m3                                 | **text-embed only, 1024-dim** (silently wrong on image input — image capability probes OFF)                                                                                            | measured profile value                                     |
+| llama.cpp serving embeddinggemma-2                       | **multimodal shared 768-d space** (text/image/audio probe-OK via `content`-wrapper + positive controls; `video_embed` NOT OFFERED until server batch limit accepts multi-frame inputs) | measured profile value (θ_lo unresolved — llmPresets §2.3) |
+| llama.cpp serving Hana (gemma-4-12b)                     | **vision + audio**, verified in-domain with real photos/speech                                                                                                                         | measured profile value                                     |
+| other families (Ollama, OpenAI-compatible, TEI-class, …) | expected capability set declared in `infrastructure/adapters/llm/presets.js`                                                                                                           | **release-measurement-pending** (no shipped numbers yet)   |
 
 **Release measurement checklist per pending row** (a release-runbook step, not a product
 feature):

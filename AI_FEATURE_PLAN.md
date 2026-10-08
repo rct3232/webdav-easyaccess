@@ -226,6 +226,19 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
   adapter owns the truncation policy ladder and per-role daily call/token caps (budget
   breaker → pause role, surface in admin). Overlength never fails a job: degrade + flag
   (`truncated`, `degraded`).
+- **Request shape is a profile property (EG2 probe, 2026-10-08):** embedding servers differ
+  in ways that fail SILENTLY. Measured against llama.cpp b11459 serving embeddinggemma-2:
+  (a) top-level `image`/`audio` fields on `/v1/embeddings` are ignored — success returns the
+  TEXT vector of whatever `input` held (near-duplicate of the plain-text control, cos≈1.0);
+  media must ride the `{"input":[{"content":[...]}]}` wrapper; (b) text inputs carry task
+  prefixes (`task: search result | query:` / `title: … | text: …`, text-only — media takes no
+  prefix) and omitting them degrades quality without error; (c) the server's `--pooling` flag
+  changes the plain-text vector space without error (measured: mis-pooling shifted an
+  unrelated-pair cosine 0.457→0.664); (d) fp16 inference is banned for this model family
+  (NaN/silent degradation). The adapter MUST send the profile-declared format/prefixes and
+  the probe MUST verify media consumption + server pooling shape (§4.23.2) — declared
+  capabilities in `/v1/models` prove nothing (observed: multimodal declared, media silently
+  dropped).
 - **No LLM call on request paths** except semantic-search query-embed (must be <100ms class
   model; results cached). Nightly evolution ≈ ≤1 chat call/user/day with aggregate-only
   input and 1 structured multi-output (create+split+merge candidates).
@@ -258,7 +271,22 @@ chunk params means re-chunk, §4.20) → mean+renormalize for the pooled row) �
 E12 measured pooled-only hides a mid-document section (0.51 ≈ below the unrelated floor vs
 0.67 chunk-max). The pooled row remains canonical for centroid/naming math. NL extraction
 (chat) never hierarchical-summarizes; head+stride excerpt only. char→token safety factor
-≈1.7 (mixed text, E10) ships as release constant.
+≈1.7 (mixed text, E10) ships as release constant — **it is bge-m3-specific; every model
+change re-measures it (Q10).**
+
+**Media chunk ladder (V1/V3 revival, 2026-10-08):** media inputs consume the SAME token
+budget by fixed per-modality rates (profile metadata; EG2 measured: image 280 tok default
+[70–1120 "soft budget" range], video 140 tok/frame at 1 fps sampling, audio 25 tok/sec;
+model window 8,192 shared). Server-side physical batch limits cut through these: a `-ub
+512` llama.cpp build 500s above ~20 s of audio / rejects multi-frame video (measured: 60 s
+audio → HTTP 500, 60 s video → 5,922 tok rejected), and long audio exceeds the window
+regardless (≈327 s cap). The ladder therefore mirrors §4.3 text chunking: fixed windows
+(audio ≤ ub/25 s segments; video sampled to ≤ ub/140 frames; image always single) → embed
+each segment → store every segment vector (`embeddings_chunk` rows, same profile-key rule —
+**media sampling params are part of the chunking profile: changing fps/window segments
+means re-embed**) → mean+renormalize pooled row; scoring max-over-segments (same E12
+reasoning). Media overlength never degrades to `metadata_only` silently: `source` records
+`media_direct` vs the fallback path taken (§4.21).
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/infrastructure/llmAdapter.md`, `docs/spec/server/services/aiJobService.md`, `docs/spec/server/store/embeddingsStore.md`, `docs/spec/server/store/embeddingsChunkStore.md`
 
@@ -596,7 +624,12 @@ never ship the library default 100** (measured: external-query recall 0.74@100 �
 cost ~2 ms). Consequence of external-query testing (self-queries flatter the index):
 §4.13c is graded with held-out queries only. Cross-engine result-identity is NOT promised
 (ANN is approximate); the promise is the recall floor. HNSW shadow dim is bound to active
-model (model change → rebuild derived index; TEXT canonical untouched). hnswlib-node is
+model (model change → rebuild derived index; TEXT canonical untouched). **MRL-capable
+profiles (EG2: 128/256/512/768 truncations) MAY ship a reduced stored dim as a profile
+choice — ~3× smaller vectors, ~256d near-lossless, 128d text-only-safe (release-measured);
+hard rules: query and corpus share the dim, truncation MUST be followed by L2 renormalization
+(slicing breaks unit length — produces plausible-looking scores silently), and the chosen dim
+joins the profile key.** hnswlib-node is
 REJECTED (§9) — vec0 covers sqlite at all expected product scales as an exact engine
 (5.3 ms @5.4k measured); ANN headroom lives on the PG tier by design (docs already
 recommend PG for large deployments).
@@ -631,15 +664,33 @@ top-N), evolution governance (rule hit-rate, survival curves, merge-accept %, ga
 with live impact counts + rollback via settings journal, tombstone-suppressed vs
 regenerated-anyway counters §4.9/Q1), model registry (model_id/dim per
 role, per-version embedding distribution, **three ai_features lineages — features/caption/
-asr model coverage filters for backfill scoping (Q6)**, backfill launcher with rate limit),
+asr model coverage filters for backfill scoping (Q6)** + media-embed coverage (which nodes
+carry `media_direct` vectors vs which fell back — V1/V3 rows, backfill scoping),
+backfill launcher with rate limit),
 degraded-input histogram (overlength stats), kill switches (§4.9). Privacy boundary:
 aggregates and ids
 only — never file names/queries/contents of other users. **Constants provenance
-(2026-09-16 decision): every numeric constant the AI passes (cos thresholds, ef_search,
-char/token safety factor) is a RELEASE ARTIFACT — measured by the project on a dev-owned
+(2026-09-16 decision, extended 2026-10-08): every numeric constant the AI passes (cos
+thresholds, ef_search, char/token safety factor, media token rates/window sizes) AND every
+server-shape flag (request format, `--pooling` expectation, task-prefix policy, MRL dim,
+quantization/dtype constraint) is a RELEASE ARTIFACT — measured by the project on a dev-owned
 reference set and shipped as per-model profile values; there is NO runtime calibration
 feature and NO dataset shipped to end users. Panel displays profile values +
-`calibrated:false`-style provenance; §9.1 keeps the re-open trigger (corpus drift).**
+`calibrated:false`-style provenance; §9.1 keeps the re-open trigger (corpus drift).
+**Server-shape flags split into two silent-failure classes and MUST NOT be conflated:**
+(a) SPACE-shaping (pooling, dtype, stored MRL dim) — the same weights produce a
+DIFFERENT vector space (EG2 probe: mis-pooling `cls` vs `mean` moved an unrelated-pair
+cosine 0.457→0.664, zero errors); (b) INPUT-shaping (request format, task prefixes) — the
+space is UNCHANGED but the intended input is not consumed (media silently dropped → the
+text vector is returned with HTTP 200; omitted prefix → degraded embedding). Class (a)
+re-embeds everything on change; class (b) is caught by probe shape/positive-controls
+(§4.23.2), not by re-measuring θ.
+Embed-model adoption checklist (profile constants to measure before a model ships): text
+near-dup band (θ_dup), unrelated floor/dynamic baseline spread, image/audio/video near-dup
+bands, mutual-kNN tier edges, tag θ_lo + ortho band (§4.18 values are bge-m3 text-space
+measures), char/token factor, media chunk costs, query-embed latency class (CPU-served EG2
+measured ~3.8 s/sentence — fails the <100 ms §4.2 requirement; GPU 0.01 s passes — the
+profile records which serving mode was measured).**
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/infrastructure/llmPresets.md`, `docs/spec/server/routes/admin.md (panel surface lands with T4.1 docs step)`
 
@@ -667,7 +718,10 @@ Rule variant (LLM-free): filename/temp patterns, stale screenshots, old installe
 dups via **content_hash first (T0.9a — cosine 1.0 detection redundant, E2)**. Vector
 variant: low-quality picks among near-dup groups at **θ_dup = 0.97** (E2v2: realistic-edit
 P10 = 0.977 vs unrelated P99 = 0.471 — separation measured; the earlier 0.98 guess was
-near-miss), "30d unopened + low score". **Short-doc exception: files ≤1 sentence are
+near-miss), "30d unopened + low score". θ_dup is a per-profile text-space constant; media
+near-dup bands get their own profile value after the adoption battery (first EG2 probe:
+image re-encode 0.972 / half-crop 0.947 / different-photo 0.661 — band class transfers,
+numbers must be re-measured on the reference set). **Short-doc exception: files ≤1 sentence are
 excluded from cosine near-dup (edit variants score 0.55 there — E2v2 P01) — hash/shingle
 path only.** Always PROPOSALS (file-mutating, rule 2/5), rendered inline (row chip) + in
 §4.16. **Q4 decided UX: every suggestion row carries a checkbox; the only accept control is
@@ -736,9 +790,10 @@ does work rules can't):
   metadata line. Prompt = fixed template, output forced to JSON schema
   `{tags:[{tag,confidence}], summary, category}` ≤ small token budget. Written to
   `ai_features`. Its value is being the **supplier**: tags feed predicate/tag-collection
-  machinery, summary/caption become the embedding input corpus for media, and the material
-  the two adjudicators read. Chat off ⇒ field empty; everything else runs on local tags +
-  vectors.
+  machinery, and (since V1/V3 revival 2026-10-08) caption/transcript are display + adjudicator
+  material — media embeds directly, no longer routed through text as its embedding corpus
+  (§4.21). The two adjudicators read them. Chat off ⇒ field empty; everything else runs on
+  local tags + vectors (+ media-direct embeds when the embed role probes media-capable).
 - **`parse.nl`** — the only role on a request path, at search submit (batched with query-
   embed, ≤1 call, cached in `query_parses`). Input: query string + the CLOSED predicate
   grammar (enumerated fields, operator list, current tag vocabulary ≤ bounded) + the
@@ -800,7 +855,8 @@ membership, near-dup, merge prefilter, similar-sort — is set math on its outpu
 sites (4, deterministic; only #1 is file-proportional):
 
 - **E1 file embed** — async, inside `ai_jobs kind=embed`. Input = locally extracted text
-  (doc/OCR/caption/transcript) through the §4.3 ladder: paragraph-aware chunks → store
+  (doc/OCR/caption/transcript) through the §4.3 ladder (text files; media files use E1-M):
+  paragraph-aware chunks → store
   **all** chunk vectors (`embeddings_chunk`) + mean+renormalized pooled row
   (`chunk_pool`) | head | `metadata_only` (name/path/date string — same text space, weak
   hits preserved) | skip(+journal note). Skipped entirely on identical `content_hash`
@@ -810,45 +866,66 @@ sites (4, deterministic; only #1 is file-proportional):
 - **E2 query embed** — the ONLY request-path AI call in the system (§4.6; see §4.19
   `parse.nl` chaining for vector-input refinement).
 - **E3 tag embed** — batch on new distinct vocabulary (`tag_embeddings`; tiny cardinality).
-- **No frame/image embedding call (V1 retired, 2026-09-16)** — ALL modalities route through
-  text: images/video-frames → VLM captions → E1; audio → ASR transcript → E1. Single text
-  space; cross-space cosine machinery is gone (§4.21).
+- **E1-M media direct-embed (V1/V3 REVIVED, owner decision 2026-10-08)** — images, video and
+  audio bytes go to the SAME embed role, no prefix, producing vectors in the model's one
+  shared multimodal space (EG2 probe: wedding video ↔ event photos 0.78–0.79; audio ↔
+  transcript summary 0.79–0.85; cross-modal ranking correct on the probe battery). Requires
+  probe-verified media capability (§4.23); sampling/chunking per the §4.3 media ladder;
+  `source='media_direct'`. When the active embed model lacks media capability, the V2
+  caption→E1 fallback of §4.21 applies — never a mixed-space read (§4.21 model-change rule).
 - **No calls**: collection centroids = weighted means of stored vectors; seed definitions =
   references to existing vectors. Evolution math is call-free by construction.
 
 Invariants: vectors live in the space of their `llm_models` row — **`model_id` is the
 space key** (one embedding model active; cross-`model_id` cosine forbidden — mixing spaces
-only ever happens across a model migration, handled by backfill §4.2); `dim` fixed per
+only ever happens across a model migration, handled by backfill §4.2); with a multimodal
+embed model, **cross-MODALITY cosine inside one `model_id` is legal and is the product's
+media-search basis** (§4.21) — the retired "cross-space machinery" remains retired: there is
+one space per model, media merely enters it directly now; `dim` fixed per
 model; TEXT canonical (§4.13); budgets/kill-switches per role like chat.
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/infrastructure/llmAdapter.md`, `docs/spec/server/infrastructure/vectorStore.md`, `docs/spec/server/services/aiJobService.md`
 
-### 4.21 Media pipeline (text space only; V1 retired)
+### 4.21 Media pipeline (one shared multimodal space; V1/V3 revived — owner decision 2026-10-08)
 
-Owner decision 2026-09-16: **every modality enters the SAME text embedding space** — no
-image-embedder geometry, no query fan-out, no per-space centroid pairs, no score-mixing
-rules. The pipeline:
+The 2026-09-16 ruling ("every modality enters the SAME _text_ embedding space", V1 retired)
+is REVISED, not erased: it stood while image embedding spaces were provably incomparable to
+text space (bge-m3 embeds base64 letters — §2.1). EmbeddingGemma 2 ships one probe-verified
+multimodal space where cross-modal cosine works (PoC addendum: img↔photo 0.78, audio↔
+transcript-summary 0.79–0.85, re-encode 0.972 band; text↔image ranking correct on the probe
+battery). Decisions that SURVIVE the revision: no query fan-out, no per-space centroid pairs,
+no score-mixing rules — because there is still exactly ONE space per active model; media now
+enters it directly instead of through a generation hop. The pipeline:
 
 - **V0 (free, always)**: ffprobe metadata + filename/path/date → `metadata_only` embed and
   probe JSONB — works with zero LLM.
-- **V2 (needs `vision_chat` capability)**: uniform-stride frame sampling (≤4, local ffmpeg)
-  → VLM captions in Korean → caption text feeds BOTH `ai_features.caption` and E1
-  (caption→embed). Default media path when vision is configured.
-- **V3 = ASR TRANSCRIPTION ONLY (2026-09-16 scope freeze, E13 evidence)**: audio tracks /
-  audio files → conditional transcript (`transcript` + `asr_model_id`) with the mandatory
-  escape-prompt ("if not actually audible, say none") and ffprobe metadata. **No
-  audio_desc / genre / mood / kind fields ship in v1** — measured: schema-forced
-  description invented instruments for non-music audio, and even open prompts
-  contradicted themselves across runs on the same file; failure direction must stay
-  conservative (a missed transcript loses data, an invented genre poisons the index).
-  Vocal music transcribes _lyrics_ — store as `transcript`, excluded from
-  document-content scoring by `media_kind=music`.
-- Image/video near-duplicate = caption/feature vector distance (weaker against reencode/trim
-  variants than a CLIP path would have been — accepted trade for single-space simplicity).
-- Model change → backfill re-projection in one space (§4.2), no fan-out machinery.
+- **V1 (revived; needs embed role with probe-verified media capability)**: images → direct
+  embed (single image, ≤ vision token budget); audio/video → §4.3 media ladder segments +
+  pooled/segment rows (`source='media_direct'`). Search-by-content, clustering, near-dup and
+  seed-math then see the RAW media, not a generated description.
+- **V2 (needs `vision_chat`)**: uniform-stride frame sampling (≤4, local ffmpeg) → VLM
+  captions in Korean → `ai_features.caption`. Role changed 2026-10-08: caption is DISPLAY +
+  adjudicator/keeper material and the OCR/legibility channel — and the **media embedding
+  FALLBACK when V1 capability is absent** (caption text → E1). With a media-capable embed
+  model both run; captions no longer _are_ the media's searchable representation.
+- **V3 (ASR + direct audio embed; 2026-09-16 field freeze HOLDS)**: audio tracks/files →
+  conditional transcript (`transcript` + `asr_model_id`, mandatory escape-prompt) AND, when
+  media-capable, a direct audio embedding. **The E13 ban is on GENERATED ATTRIBUTES
+  (audio_desc/genre/mood/kind fields) — it is untouched by V1/V3: direct embedding retrieves
+  by meaning without inventing labels** ("find my rock tracks" becomes a vector search, not a
+  metadata field). Vocal music transcribes _lyrics_ — store as `transcript`, excluded from
+  document-content scoring by `media_kind=music`; measured caveat (EG2 battery): thin
+  margins on noise-like audio (unrelated floor rises; "노이즈" ranked 2nd in most rows) —
+  media results obey the §4.6 dynamic baseline gate, never an absolute θ.
+- Image/video/audio near-duplicate: measured directly in media space (first EG2 probe:
+  re-encode 0.972 / half-crop 0.947 / different-photo 0.661) — the old "weaker against
+  reencode/trim than a CLIP path" acceptance note is obsolete; release re-measures (Q10).
+- Model change → backfill re-projection in one space (§4.2) covering MEDIA rows too (media
+  files without captions become newly embeddable; media-capable→text-only swap must re-project
+  media rows back through V2 or drop them — backfill scoping via media-embed coverage, §4.15).
 
-`LLM_MEDIA_PATH` and its tier options are deleted; media selection is now purely
-capability-driven: vision_chat present → captions, else V0.
+`LLM_MEDIA_PATH` stays deleted; media selection is capability-driven: media-capable embed →
+V1, else vision_chat → V2 captions feeding E1, else V0.
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/services/aiJobService.md`, `docs/spec/server/infrastructure/llmPresets.md`
 
@@ -961,9 +1038,11 @@ visible but half-works under the active provider is a defect, not a degradation.
 
 `infrastructure/adapters/llm/presets.js`: per provider/server-family entry (llama.cpp,
 Ollama, OpenAI-compatible, TEI-class, …) declaring its EXPECTED capability set
-`{text_embed, chat, vision_chat, asr}` + recommended budgets (`image_embed` removed
-2026-09-16 — no product path consumes it, §4.21). Adding a provider = adding a manifest
-row; core code never branches on provider names.
+`{text_embed, image_embed, audio_embed, video_embed, chat, vision_chat, asr}` + recommended
+budgets + server-shape flags (§4.15 provenance). (`image_embed` was removed 2026-09-16 under
+"no product path consumes it"; REVIVED 2026-10-08 — §4.21 V1/V3 consume it; media embed
+capabilities live on the `embed` role, probed separately from text.) Adding a provider =
+adding a manifest row; core code never branches on provider names.
 
 ### 4.23.2 Probe is final authority
 
@@ -971,20 +1050,33 @@ Extends §4.21: runtime capability flags = PROBE-VERIFIED capabilities ∩ confi
 Declared-but-failing (e.g. an endpoint that embeds base64 images as text — empirically
 confirmed against `bge-m3@10.0.0.106:8082`; the inverse: Hana's audio declared but
 mis-probed with sine tones) ⇒ capability OFF + admin warning card (declared vs probed).
-**Probes MUST use in-domain samples** (real speech, real photos) — an out-of-domain probe
+**Probes MUST use _in-domain_ samples** (real speech, real photos) — an out-of-domain probe
 produces false negatives indistinguishable from false capability claims (both error modes
-observed this PoC). User-visible states are only ever `complete-working | absent`, never
-partial. Distinct from DB vector capability (§4.13): missing LLM capability removes the
+observed this PoC). **Media-embed probes need POSITIVE controls (2026-10-08, llama.cpp EG2
+b11459):** `/v1/models` declared `input_modalities:[text,image,audio,video]` while the
+endpoint silently ignored top-level media fields (returned the plain-text vector,
+cos≈1.0 vs text control, HTTP 200). A media capability probe MUST therefore (a) use the
+profile-declared request shape (`content`-wrapper), (b) prove pixels/waveform were consumed:
+near-dup self-consistency (image vs re-encode above profile band, image vs base64-as-text
+below it) and cross-modal sanity (image vs its VLM caption > image vs unrelated text),
+(c) verify server pooling shape matches the profile when `/props` exposes it (mis-pooling =
+capability OFF — silently different space, §4.2). Text-embed probes additionally send the
+profile's task prefixes; prefixes are part of the request shape, not decoration.
+User-visible states are only ever `complete-working | absent`, never partial. Distinct from
+DB vector capability (§4.13): missing LLM capability removes the
 feature (absent), missing DB vector capability only degrades speed (fallback) — never
 both ways.
 
 ### 4.23.3 Feature ↔ capability map (UI gating source)
 
-Semantic search/seed/auto-create/near-dup/`tag_embeddings` matching ← `text_embed`; NL
-features/summary/llmNamer ← `chat`; VLM captions (the ONLY media intelligence beyond
-ffprobe, §4.21) ← `vision_chat`; ASR transcription ← `asr`. Absent capability ⇒ that
-feature is absent, not degraded — every advertised path is end-to-end functional under
-its own preset.
+Semantic search/seed/auto-create/near-dup/`tag_embeddings` matching ← `text_embed`; media
+direct-embed search/clustering/near-dup on raw media ← `image_embed`/`audio_embed`/
+`video_embed` (V1/V3, same embed role; absent ⇒ media falls back to V2/caption→E1 or V0,
+never mixed-space reads); NL
+features/summary/llmNamer ← `chat`; VLM captions (display + adjudicator material + the
+media-embed FALLBACK, §4.21) ← `vision_chat`; ASR transcription ← `asr`. Absent capability
+⇒ that feature is absent, not degraded — every advertised path is end-to-end functional
+under its own preset.
 
 ### 4.23.4 chat-only (no embed) is a legal deployment
 
@@ -1060,8 +1152,9 @@ max_input_chars, chunk_budget, batch_size, reasoning CHECK(on|off) default 'off'
 enabled)` — reasoning is an experimental per-model switch only; all roles plan for off
   (E5/E7b)
 - `embeddings(node_id PK→CASCADE, model_id→llm_models, dim, vector TEXT, source
-CHECK(fulltext|chunk_pool|head|metadata_only), content_hash, updated_at)` (frames: V1
-  retired §4.21)
+CHECK(fulltext|chunk_pool|head|metadata_only|media_direct), content_hash, updated_at)`
+  (`media_direct` added 2026-10-08 for §4.20 E1-M; segment rows ride `embeddings_chunk`
+  like text chunks)
 - `embeddings_chunk(node_id→CASCADE, chunk_idx SMALLINT, vector TEXT, model_id→llm_models,
 updated_at, PK(node_id,chunk_idx))` — retained per §4.3; search scores max-over-chunks
   (§4.13 seam); derived-cache semantics: dropping rows loses only long-doc recall depth
@@ -1105,12 +1198,15 @@ decided); hnswlib-node (A-plan decided: node:sqlite+vec0 for sqlite, ANN headroo
 the PG tier); AI-off on missing vector capability (superseded 2026-09-15 — now
 JsFallback-degrade + admin performance warning, §4.13); PoC-retired 2026-09-16: **audio
 attribute generation** (genre/mood/kind/desc — E13 self-contradiction, transcription only
-§4.21), **V1 image-embedding path** (single text space, E4c decision), **absolute-θ topic
+§4.21), ~~**V1 image-embedding path** (single text space, E4c decision)~~ — **REVIVED
+2026-10-08 (owner)**: probe-verified multimodal space (EmbeddingGemma 2, PoC addendum)
+invalidates the incomparability premise (§4.20 E1-M/§4.21); the audio-attribute-generation
+ban and the dynamic-baseline/no-absolute-θ rules SURVIVE the revival**, **absolute-θ topic
 gates & stored cosine floors** (E2v2 — relative/dynamic only), **connected-components
 clustering** (E4 chaining), **tag cos-merge + co-occurrence evidence gates** (E6c — §4.18
 3-step replaces), **tier lifecycle exemptions & purity suppression** (uniform rules only,
 A4 decision), **`ef_search=100` defaults** (E11: 0.74 external recall — 400 fixed),
-**reasoning-for-judgment assumption** (E7b v2: noise at n=2; all roles off).
+**reasoning-for-judgment assumption\*\* (E7b v2: noise at n=2; all roles off).
 
 ### 9.1 Extension points reserved (deferred, NOT rejected — do not implement until trigger)
 
@@ -1134,7 +1230,9 @@ Q9 (RESOLVED 2026-09-16): multi-vector chunk retention ADOPTED via A1 (§4.3/§4
 residual open part = cost/scale calibration (index size, chunk-row bloat) measured during
 T1.4 at 100k+ — a sizing study, not a decision. Q10 (NEW): remote-provider adoption requires re-measuring
 profile constants on the dev reference set (release-runbook step, not a product feature —
-§4.15 provenance).
+§4.15 provenance). **STATUS 2026-10-08: TRIGGERED — embeddinggemma-2 adoption (V1/V3 revival,
+PLAN §16); battery list in §4.15 adoption checklist, first probe results in PoC addendum;
+product ships nothing until the reference-set re-measure is recorded as release artifacts.**
 New open questions get appended here before/at their named task.
 
 ## 12. P0 decision ledger (consolidated from contract specs, 2026-10-02)
@@ -1367,7 +1465,9 @@ New open questions get appended here before/at their named task.
   has no rollup kind; §4.14 Tier A persistence is GC-scoped); the read→upsert cycle is
   deliberately NOT one TX — watermark idempotency makes crash-recovery a no-op re-run and the
   ≤ 500-member sums keep the window negligible (§3.4).
-- **Preset manifest**: no `image_embed` key anywhere (V1 retired — §9); release-pending models ship
+- **Preset manifest**: ~~no `image_embed` key anywhere (V1 retired — §9)~~ _amended
+  2026-10-08_: media embed capabilities REVIVED (owner, PLAN §16) — §4.21/§9 govern;
+  release-pending models ship
   as null values + `pending:true` and are NOT offered in the picker; the release-measurement
   checklist belongs to the release runbook (§10 Q10), not the product spec.
 

@@ -411,7 +411,7 @@ CREATE TABLE IF NOT EXISTS embeddings (
   model_id BIGINT NOT NULL REFERENCES llm_models(id),
   dim INTEGER NOT NULL,
   vector TEXT NOT NULL,
-  source TEXT NOT NULL CHECK (source IN ('fulltext', 'chunk_pool', 'head', 'metadata_only')),
+  source TEXT NOT NULL CHECK (source IN ('fulltext', 'chunk_pool', 'head', 'metadata_only', 'media_direct')),
   content_hash TEXT DEFAULT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

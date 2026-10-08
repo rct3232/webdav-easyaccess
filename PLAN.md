@@ -881,3 +881,13 @@ before the caption-path 0.829 baseline is replaced.
 Open probe gaps explicitly not closed by this decision: interleaved text+media fusion
 untested on llama.cpp serving; native video input needs `-ub ≥2048` on the server (owner
 infra call, not product); EG2 Korean text quality unmeasured beyond directional probes.
+
+**Battery outcome (2026-10-08, branch `feature/q10-eg2-battery`)** — Q10 release-measurement
+run complete: 4 parallel harnesses rebuilt from PoC §2 methods (artifacts in git-ignored
+`data/corpus/q10/`); results logged in PoC addendum §6.5. llmPresets EG2 row updated from
+null+pending to measured profile values (θ_dup 0.955, chPerTok 1.5, throughput, media bands
+flag-only, image-space tiers provisional-OK). Two profile fields stay open BY DECISION, not
+by omission: `thetaLo` (→ AI_FEATURE_PLAN §10 **Q11 — owner: percentile re-anchor vs
+margin-rule vs 0.92-restricted; blocks T1.8 on EG2**) and text-space tier rerun (rides T1.x
+evolution calibration, §4.9). Remaining carry-forward: interleaved fusion, native
+`video_embed` `-ub` infra call, 100k-doc media backfill cost (rides T1.4/Q9 sizing study).

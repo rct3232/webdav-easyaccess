@@ -454,3 +454,34 @@ Japanese-info); Hana captions as text references.
 θ_dup/tier/θ_lo/chPerTok re-measurement on the EG2 reference set (the whole §2 battery in
 EG2 space); interleaved text+media fusion; video native serving (`-ub` raise); Korean
 cross-modal recall@20 vs the 0.829 caption-path baseline; 100k-doc media backfill cost.
+(§6.4 items 1 and 4 closed by §6.5 below; items 2, 3, 5 stay open.)
+
+### 6.5 Q10 release-measurement battery (2026-10-08, same day, post-decision)
+
+Four parallel reference-set runs, harnesses rebuilt from §2 method descriptions; artifacts
+in `data/corpus/q10/{text,images,media,tags}/` (git-ignored; each with result.json +
+METHODOLOGY.md). Server as §6 environment (GPU, mean, ub-512). Determinism: re-embedding
+matched cached vectors at cos 1.0000 (the `(content_hash, model_id)` idempotency rule holds
+on EG2).
+
+| Measurement (§2 counterpart)                               | bge-m3 (original)     | EG2 (this battery)                                                        | Verdict                                                                   |
+| ---------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| text near-dup P10 (E2v2)                                   | 0.977                 | **0.9746** (typo .9775/del .9617/swap .9896, n=751)                       | band class transfers                                                      |
+| text same-topic median / unrelated P99 (E2v2)              | .655 / .471           | **.7392 / .7294** (max .8826)                                             | FLOORS RISE — compressed space; one-θ near-dup-only conclusion REPRODUCED |
+| θ_dup recommendation                                       | 0.97                  | **0.955**                                                                 | per-model, confirmed                                                      |
+| E12 pooled vs max-over-chunks                              | .51 vs .67            | .665 flat-pooled vs clause-rank 1–3; **stride-4 missed at all positions** | hazard reproduced → multi-vector design validated                         |
+| chPerTok (E10)                                             | ≈1.7                  | **1.74 mean / 1.50 worst-class**                                          | ship 1.5                                                                  |
+| throughput (E1)                                            | 15.2k docs/min        | **6.1k seq / 12.1k batch-8** (GPU)                                        | still cheap                                                               |
+| prefix policy sensitivity                                  | n/a                   | band deltas ≤0.006 (text); tag-hierarchy gap ×3 with doc-form             | keep prefixes; doc-form for tags                                          |
+| E3 image recall@20 — NOW with real photos, no caption path | 0.829 (caption-based) | **1.000 / MRR 0.881** (n=20, exact-caption queries — upper bound)         | V1 beats retired path                                                     |
+| image near-dup P10 / same-event max                        | (caption proxy only)  | **.9426 / .990**                                                          | media θ flag-only (proposal generator, never auto-pick)                   |
+| audio near-dup P10 / noise-twin                            | n/a                   | .969 / **.9988**                                                          | same conclusion                                                           |
+| E4-style mutual-kNN (55 images, tiers .86/.80/.72)         | zero contamination    | **zero contamination**; event blob ≥0.80 (size gates already exist)       | tiers provisional-OK in image space                                       |
+| junk-query floor (§4.6 gate data)                          | —                     | top1 .545–.640, rank1–20 spread .037–.054 flat                            | δ≈.06–.10 directional (n=5)                                               |
+| tag vocabulary (E6c, 909 tags, 100% JSON validity)         | θ_lo .75 worked       | containment P10 **.8025** < sibling P90 **.8913**; unrelated P50 .7527    | **absolute θ_lo unusable → Q11 open (owner)**                             |
+| video band reproduction                                    | n/a                   | frames↔event-photos .763–.798; track↔noise .9988                          | reproducible                                                              |
+
+Not closed here: interleaved text+media fusion (untested on llama.cpp serving), native
+`video_embed` (server `-ub` infra call — Q10-adjacent), 100k-doc media backfill cost,
+text-space kNN tier rerun, real-world ortho-variant tag folding (synthetic only),
+speech/noise class continuum (no global θ separates; ranking survives, thresholding dies).

@@ -153,6 +153,12 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
   objects) + local positive-control probe + `llm_models.engine/precision/model_revision`
   (DDL 001 edited here; live/prod DB moves by the BIG-BANG script at the §6 merge/deploy —
   owner is the sole user, no compat path) + caps-off-on-failure path (§4.12).
+- T1.0b Dead tag-surface purge (rides §19 dissolution): delete `tag_embeddings`/
+  `tag_parents` DDL rows (big-bang script), the 11 zero-caller facade/repo methods
+  (aiTagStore §2.1 purge-state note), their conformance scenarios, and llmPresets/
+  profile θ_lo remnants; grep-gate `no tag_embeddings|tag_parents|getTagVectors|
+upsertAutoParent references` across `server/` except the purge commit itself.
+  RED-first: flip aiTagStore §2.6 grep assertions to expect absence, then delete.
 - T1.1 LLM adapter (T2-hot: per-call config resolution, re-probe on change, restart-free
   §4.2) + budgets/breaker + startup probe + preset manifest & preset×capability probe-matrix
   verification (declared≠probed ⇒ capability off + admin warning, §4.23) + **EG2 model-pin
@@ -178,9 +184,10 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 - T1.6 seed collections: preview endpoint + confirm dialog + `templateNamer`
   (collections domain) / `llmNamer` strategy swap.
 - T1.7 near-dup finder (vectors) → feeds §4.17 vector variant.
-- T1.8 tag pipeline: `tag_embeddings` cache + §4.18 3-step (ortho normalization →
-  parent hints → gray band untouched); embed role required, None state = normalized
-  string equality only. (No merge/alias tables.)
+- T1.8 tag pipeline — **WITHDRAWN 2026-10-16 (§4.18 dissolved, PoC §6.9, PLAN §19)**: no
+  `tag_embeddings` cache, no θ_tag/θ_lo, no parent-hint pass, no LLM-tag materialization.
+  Slot kept for numbering continuity; derived local facets (`ai_tag_raw`) + string-equality
+  predicates stay as-is from P0/T0.9.
 - T1.9 media direct-embed pipeline (V1/V3 revived, owner 2026-10-08; §4.20 E1-M/§4.21,
   deps T1.1–T1.4): media-capability probes with positive controls (§4.23.2), §4.3 media
   chunk ladder (19 s audio windows / frame sampling under server ub), `media_direct`
@@ -258,7 +265,7 @@ infrastructure specs live under `docs/spec/server/`.
 - T1.1/T1.4 `docs/spec/`infrastructure/{llmAdapter,llmPresets,vectorStore}.md
 - T1.2 `docs/spec/`store/{embeddingsStore,embeddingsChunkStore,aiJobsStore}.md
 - T1.3 `docs/spec/`services/aiJobService.md
-- T1.6/T1.7/T1.8/T2.1-T2.5 `docs/spec/`services/{collectionsService,evolutionService,aiJobService}.md, store/aiTagStore.md, components/file-manager/MergeProposalCard.md
+- T1.6/T1.7/T2.1-T2.5 `docs/spec/`services/{collectionsService,evolutionService,aiJobService}.md, store/aiTagStore.md (derived-facet scope), components/file-manager/MergeProposalCard.md
 - T3.1/T3.1b/T3.2 `docs/spec/`routes/collections.md, services/{collectionsService,collectionShareService}.md, store/collectionsStore.md, components/dialogs/CollectionPropertiesDialog.md, components/mypage/content/SuggestionsChecklist.md (publish/leave + suggestion routes are flagged sync items there — write at T3.2/T3.3 docs step)
 - T3.3 `docs/spec/`components/mypage/content/SuggestionsChecklist.md (+ file_suggestions store/route specs at its docs step)
 - T3.4 `docs/spec/`services/searchService.md, routes/search.md, hooks/useSearchResults.md
@@ -894,7 +901,7 @@ Doc changes in this changeset (docs-first step; no product code):
 Release-runbook obligation before shipping the model (§4.15 checklist / Q10): re-measure on
 the dev reference set — text near-dup θ_dup, unrelated-floor spread, image/audio/video
 near-dup bands, mutual-kNN tier edges (0.82/0.86/0.80/0.72 were caption-space measures),
-tag θ_lo/ortho band, char→token factor (1.7 was bge-m3), media token rates/segment windows,
+tag θ_lo/ortho band (measured in §6.5 — feature since dissolved, §19), char→token factor (1.7 was bge-m3), media token rates/segment windows,
 query-embed latency class (GPU passes <100 ms; CPU ~3.8 s/sentence fails). E3 recall@20
 must be re-run with TRUE image queries (no captions) against the wedding ground-truth tree
 before the caption-path 0.829 baseline is replaced.
@@ -909,7 +916,8 @@ run complete: 4 parallel harnesses rebuilt from PoC §2 methods (artifacts in gi
 null+pending to measured profile values (θ_dup 0.955, chPerTok 1.5, throughput, media bands
 flag-only, image-space tiers provisional-OK). Two profile fields stay open BY DECISION, not
 by omission: `thetaLo` (→ AI_FEATURE_PLAN §10 **Q11 — owner: percentile re-anchor vs
-margin-rule vs 0.92-restricted; blocks T1.8 on EG2**) and text-space tier rerun (rides T1.x
+margin-rule vs 0.92-restricted; blocks T1.8 on EG2** — RESOLVED 2026-10-16 by dissolution,
+field removed from the profile schema entirely, see §19) and text-space tier rerun (rides T1.x
 evolution calibration, §4.9). Remaining carry-forward: interleaved fusion, native
 `video_embed` `-ub` infra call, 100k-doc media backfill cost (rides T1.4/Q9 sizing study).
 
@@ -940,8 +948,8 @@ model_revision` [this section]; checksum-recovery per §6 DDL policy is owner-si
      llmAdapter (provision.js/embedded client/provisioning error class) updated same PR.
 
 Open measurements (rides §10 Q12 / §16 runbook): q4 text θ_dup + baseline-spread re-check,
-target-hardware query-embed latency verdict, q4 long-audio pooling drift. Q11 (θ_lo)
-remains independently open.
+target-hardware query-embed latency verdict, q4 long-audio pooling drift. ~~Q11 (θ_lo)
+remains independently open.~~ **[SUPERSEDED 2026-10-16: Q11 closed by DISSOLUTION — §19.]**
 
 ## 18. Embedding model pinned to EG2 (owner decision 2026-10-14, branch `feature/pin-eg2-conformance`)
 
@@ -971,3 +979,30 @@ Rulings encoded:
    §2.4 no-fallback/§2.5 verify-before-save/§4 fixtures), llmAdapter (§2.2/§2.3/§2.4/§2.8/
    §5), AI_FEATURE_PLAN (§1 scope note/§4.2/§4.12/§4.20/§4.23.2/§10 Q12), SETUP (table +
    checklist), PLAN T1.1. No DDL change (precision/model_revision columns from §17 serve).
+
+## 19. Tag layer dissolved to descriptive-only (owner decision 2026-10-16, branch `feature/tag-dissolve`)
+
+Owner record (2026-10-16, after the θ_tag/θ_lo/lifecycle review chain): "llm tag는 파일을
+묶어주는 범례가 아니라 그냥 파일을 설명하는 단어 정도로 남기고 parent hint 기능도 쓸모
+없어보여. tag 필터, tag 검색등은 애초에 생각하지 않는 기능이니 정형화된 카테고리처럼 만들
+이유도 없어." Rulings:
+
+1. **LLM tags = description**: `ai_features.tags` (free words) is the ONLY storage;
+   consumers are exactly display (AI Info chips), llmNamer + merge-arbiter text material.
+   No tag filters, no tag search, no vocabulary status.
+2. **Retired**: θ_tag vector predicate matching (§3.2), θ_lo + parent hints + `tag_parents`,
+   `tag_embeddings` cache + E3 embed call site, LLM-tag materialization in `ai_tag_raw`,
+   tag vocabulary injection into parse.nl, tag facet source in §4.9 create. T1.8 withdrawn.
+3. **Survives untouched**: derived local facets (`mime:`/`ext:`/`month:`/`path:` →
+   `ai_tag_raw`, folded by derivedTagsService) as string-equality predicates + naming
+   material — no embedding, model-invariant; E6c "nothing merges automatically" becomes law.
+4. **Evidentiary chain** (PoC §6.5/§6.9): tag-band overlap made any absolute θ invalid; the
+   refined string-rule trial (263/318) showed the correct error layer is strings, and
+   cos REVERSED on discrimination (real .679 < junk .881) — dissolving beat re-anchoring.
+5. **DDL posture**: `tag_embeddings`/`tag_parents` definitions stay in 001 only until the
+   big-bang deploy (§17 ruling) drops them + `JOURNAL_DOMAIN` enum loses the unused `tags`
+   value; NO new code references them (grep-gate in llmPresets §4).
+6. **Docs touched**: AI_FEATURE_PLAN §3.1/§3.2/§4.9/§4.10/§4.11/§4.12/§4.15/§4.18(rewritten)/
+   §4.19/§4.20/§4.23.3/§5/§10(Q11 closed)/§12.9; llmPresets (θ_lo field gone, map row, §4);
+   specs: aiTagStore (derived-facet scope), collectionsService/evolutionService/searchService/
+   derivedTagsService tag clauses; PoC §6.9; PLAN §7/§16 pointers above.

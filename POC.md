@@ -478,7 +478,7 @@ on EG2).
 | audio near-dup P10 / noise-twin                            | n/a                   | .969 / **.9988**                                                          | same conclusion                                                           |
 | E4-style mutual-kNN (55 images, tiers .86/.80/.72)         | zero contamination    | **zero contamination**; event blob ≥0.80 (size gates already exist)       | tiers provisional-OK in image space                                       |
 | junk-query floor (§4.6 gate data)                          | —                     | top1 .545–.640, rank1–20 spread .037–.054 flat                            | δ≈.06–.10 directional (n=5)                                               |
-| tag vocabulary (E6c, 909 tags, 100% JSON validity)         | θ_lo .75 worked       | containment P10 **.8025** < sibling P90 **.8913**; unrelated P50 .7527    | **absolute θ_lo unusable → Q11 open (owner)**                             |
+| tag vocabulary (E6c, 909 tags, 100% JSON validity)         | θ_lo .75 worked       | containment P10 **.8025** < sibling P90 **.8913**; unrelated P50 .7527    | absolute θ_lo unusable → Q11, CLOSED §6.9                                 |
 | video band reproduction                                    | n/a                   | frames↔event-photos .763–.798; track↔noise .9988                          | reproducible                                                              |
 
 **Q8 quantization control (same day)** — Q11's band overlap re-measured on the Q8_0 GGUF
@@ -616,3 +616,18 @@ speech/noise class continuum (no global θ separates; ranking survives, threshol
   become PLAN task **T1.0** recorded in **§17** (new section, owner ruling). Pending
   measurements: q4 TEXT θ_dup band re-check, text-only interactive latency on target
   hardware, q4 audio long-file pooling drift (§6.5 rows were q8-GPU measured).
+
+### 6.9 Tag layer dissolved to descriptive-only (2026-10-16, owner decision)
+
+The §6.5 tag battery + the follow-up review chain (θ_tag → θ_lo → lifecycle) ended not in
+re-anchoring but in DISSOLUTION: LLM tags stay words that describe a file (display chips,
+naming/adjudication material), and every institution around them is retired — θ_tag fuzzy
+predicates, θ_lo/parent hints, `tag_embeddings`, LLM-tag materialization/fold-tables.
+Decisive measurements (this addendum): containment P10 .8025 < sibling P90 .8913 (cos gate
+dead); a refined string-rule trial kept 263/318 while REVERSING cos's discrimination (real
+parent .679 vs junk .881) — proving the error lived in the string layer all along; and the
+products' semantic-expansion need is already served by document/media vectors (V1/V3 +
+E3-validated). Derived local facets (`mime:`/`ext:`/`month:`/`path:` in `ai_tag_raw`)
+survive unchanged — folded string-equality predicates, no embedding, model-invariant.
+Q11 closes by removal; E6c's "nothing merges automatically" becomes a permanent law rather
+than a pipeline step. Record: AI_FEATURE_PLAN §4.18/§3.2, PLAN §19.

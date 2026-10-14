@@ -62,7 +62,7 @@ dependency.** The collection platform (P0) ships and is useful with zero LLM con
 
 ### 3.1 Collection
 
-- `origin`: `system` (silent generator, split child, tag-materialized) | `user` (manual)
+- `origin`: `system` (silent generator, split child) | `user` (manual)
   | `seed` (right-click "collect similar") | `search` (semantic query saved).
 - `status`: `active` | `archived`. Lifecycle:
   `active →(auto by activity gates | manual, confirm 1) archived →(restore | permanent
@@ -104,12 +104,12 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
     doesn't flip membership every night (enter above θ_in, leave below θ_out; tag/path/
     date predicates are bool and unaffected). Cost: rollup join at evaluation (rows already
     cached per user; negligible vs the cosine itself).
-  - **Tags are vector-matched, not string-matched**: tag predicates compare
-    `cosine(embed(tag_value), embed(query_tag)) ≥ θ_tag` with graded weight. Raw LLM tags
-    never collapse to one exact string; near-synonyms partially match. Requires
-    `tag_embeddings` cache table (distinct-tag → vector, produced by a cheap batch embed
-    job keyed by tag string+model; tag vocabulary cardinality is small). Tag match values
-    resolve through orthographic normalization + `tag_parents` hints (§4.18) first.
+  - **Tag predicate = folded string equality over `ai_tag_raw` — and `ai_tag_raw` holds
+    ONLY derived facets** (kind-prefixed `mime:`/`ext:`/`month:`/`path:`, §4.10). LLM tags
+    (`ai_features.tags`) never enter rules: descriptive material only (§4.18, dissolved
+    2026-10-16). The former vector-matched tag predicate (`θ_tag`, `tag_embeddings`) is
+    RETIRED — semantic expansion lives in document/media-vector collections (§4.5/§4.6),
+    never in tag-string fuzzy.
 - `collection_exclusions (collection_id,node_id)`: applies to derived members only
   ("Exclude" on an auto-added file = block for this definition). Exclusion = **touch** →
   auto-pins (§4.9b); its rate is a quality metric for admin/tuning, never an archive
@@ -450,7 +450,7 @@ upload mode can only replace it by also running nightly at least once/day via th
 existing scheduler). Same `runEvolutionPass(scope)` function either way; scheduler slot in
 `maintenanceScheduler.js`, `lockManager` TX group (precedent `migrationService.js:330-348`).
 
-Inputs: node_activity, likes, tags(ortho-normalized; §4.18), embeddings. Passes:
+Inputs: node_activity, likes, embeddings. Passes:
 
 1. **Create**: multi-tier candidate generation (PoC E4 evidence: narrow and broad groups both
    real; naive connected-components REJECTED for chaining, absolute-θ topic gating REJECTED).
@@ -459,7 +459,7 @@ Inputs: node_activity, likes, tags(ortho-normalized; §4.18), embeddings. Passes
    per-model profile values; EG2 image-space rerun confirms zero cross-class contamination
    at the same tiers (provisional); text-space rerun outstanding — Q10 checklist), preceded by a
    **content_hash dedup pre-pass** (identical-content twins go to the dup path, never form
-   clusters). Facet sources (path-subtree purity, normalized tags, like-density) generate
+   clusters). Facet sources (path-subtree purity, like-density) generate
    candidates in parallel; a facet/embedding cluster pair with Jaccard ≥0.8 does NOT double-
    create — the existing collection is definition-promoted instead. Per-tier gates: min
    members ≥8, persistence ≥2wk (waived by likes-density), rate ≤1/week, active-system ≤12
@@ -478,7 +478,7 @@ Inputs: node_activity, likes, tags(ortho-normalized; §4.18), embeddings. Passes
    archive trigger); exclusion rate stays measured as a generator-quality metric (§4.15).
 4. **Purge**: archived > `ARCHIVE_RETENTION_DAYS` → permanent (FK cascade) + tombstone.
    **Q1 decided**: tombstone lifetime defaults to `ARCHIVE_RETENTION_DAYS`; fingerprint =
-   normalized definition (schema + core params: θ/tag-set/path — NOT raw centroid values,
+   normalized definition (schema + core params: θ/path/size — NOT raw centroid values,
    so trivial member drift doesn't slip past) hashed. Both granularities and lifetime are
    measured-then-tuned via §4.15 counters (tombstone-suppressed vs regenerated-anyway).
 5. **Merge candidates** → §4.4 rows (this is the only "proposal" output).
@@ -525,7 +525,8 @@ name for new system creations instead. Template output is final; no post-hoc ren
 
 **Local derived tags — v1 set (decision 2026-09-22)**: `mime`, `ext`, `month` (calendar
 month of node `created_at`), `path` (top-2 ancestor path segments). Computed at the §4.1
-commit points; consumed by the templates above, tag predicates (§4.12) and rule-based
+commit points; consumed by the templates above and by tag predicates (§3.2 — derived facets
+are the ONLY tag predicates, §4.18) and rule-based
 suggestions (filename/mime/age). EXIF is REJECTED for v1 (not a tag source).
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/services/collectionsService.md`, `docs/spec/server/services/aiJobService.md`
@@ -573,8 +574,8 @@ Schema §5. Generic `(domain, subject)` opaque key, NO FKs (rows outlive subject
   | upload (plain) | ❌ | ❌ | success is self-evident in list; failure toast already exists |
   Additional candidate intro-points found (include): **conflict-resolution overwrite** (undo = versions
   restore when history enabled, else unavailable — degrade silently), **permission-request approve/deny** (undo=revoke, same exposure boundary), **admin GC/cleanup run** (report toast,
-  no undo — destructive-by-design, §9 keeps), ~~**admin tag-merge confirm**~~ (retired — §4.18
-  has no merge op; parent hints are display-only, no confirm/undo surface).
+  no undo — destructive-by-design, §9 keeps), ~~**admin tag-merge confirm**~~ (retired —
+  §4.18 dissolved 2026-10-16: no merge op ever existed and the whole vocabulary layer is gone).
   Cascade confirm dialog (non-tip undo) and `not recoverable` badges remain as designed for the
   30-day dashboard feed (`GET /api/actions`); surfaces: (1) toast (user actions, ≤24h
   undo window honored though rows live 30d), (2) digest banner undo links (system acts,
@@ -590,12 +591,12 @@ Capability by config state (embed only = mostly full vector features; chat adds 
 extract/parser; none =):
 
 - **None**: manual collections, stored membership, path/tag/like-predicate collections
-  (cosine-free rule evaluation; tag predicates = normalized string equality, §4.18
-  vector-matching/parent-hint machinery dormant), server-wide name search (§4.6 name branch), usage/activity
+  (cosine-free rule evaluation; tag predicates = normalized string equality — identical
+  behavior in every state, §4.18), server-wide name search (§4.6 name branch), usage/activity
   gravity, archive lifecycle, digests, merge-by-set-Jaccard, exact-dup finder
   (content_hash), rule-based suggestions (filename/mime/age), likes, sharing, journal —
   ALL ship in P0. **Absent: semantic search, seed collection, vector-merge, near-dup, NL
-  parser, tag normalization pass.**
+  parser.**
 - **embed**: + semantic search, seed, vector merges, near-dup, auto-create (clusters by
   vector), naming templates (system). **absent: chat-only (summaries/tags-from-content,
   NL parse, llmNamer).** (Since 2026-10-14 the embed column is the **built-in default** —
@@ -715,8 +716,7 @@ re-embeds everything on change; class (b) is caught by probe shape/positive-cont
 (§4.23.2), not by re-measuring θ.
 Embed-model adoption checklist (profile constants to measure before a model ships): text
 near-dup band (θ_dup), unrelated floor/dynamic baseline spread, image/audio/video near-dup
-bands, mutual-kNN tier edges, tag θ_lo + ortho band (§4.18 values are bge-m3 text-space
-measures), char/token factor, media chunk costs, query-embed latency class (CPU-served EG2
+bands, mutual-kNN tier edges, char/token factor, media chunk costs, query-embed latency class (CPU-served EG2
 measured ~3.8 s/sentence — fails the <100 ms §4.2 requirement; GPU 0.01 s passes — the
 profile records which serving mode was measured).**
 
@@ -766,35 +766,39 @@ selection confirmation.
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/client/components/mypage/content/SuggestionsChecklist.md (file_suggestions store/route specs land with the T3.3 docs step)`
 
-### 4.18 Tag vocabulary: normalization, hierarchy hints, no merging
+### 4.18 Tags: descriptive words only — no vocabulary machinery (dissolved 2026-10-16)
 
-PoC E6c (1,115 tagged docs, 1,271 distinct tags) dissolved the original "merge similar
-tags" design: high-cosine pairs are overwhelmingly (a) **spelling/spacing variants**
-(`"wasted time" vs "wastedtime" (spacing variant)`, cos .98+, 13/16 of the .97+ band) and (b) **containment pairs** which
-are hypernym relations, not synonyms (merge would destroy distinction); doc co-occurrence
-proved uninformative at scale. The 3-step replacement, all non-destructive:
+Owner ruling 2026-10-16 closes the last open thread (Q11) by DISSOLUTION. LLM tags
+(`ai_features.tags`) are **words that describe a file** — a display facet and text material,
+never a controlled vocabulary. Consumers, exhaustively: AI Info chips (P1, display-only —
+tag filters/search were never planned), `llmNamer` + `merge-arbiter` inputs (read as text),
+regeneration via `features_model_id`/`schema_version` lineage. Nothing else.
 
-1. **Orthographic normalization at read time** — NFKC + whitespace/case fold resolves
-   spacing variants deterministically (a pure function, zero tables); `ai_tag_raw` stores
-   the normalized grouping aid.
-2. **Containment → parent hints** — `tag_parents(child PK, parent, source(auto|admin),
-created_at)`: rule `containment ∧ cos ≥ profile θ_lo(0.75)` maps e.g.
-   `actor casting → casting`. **Display/grouping hint only — never rewrites raw tags, never
-   merges**; a wrong parent costs one odd group row, so no labeling audit gates this feature
-   (owner scope decision). Admin may view/edit `tag_parents`.
-3. **Gray band = leave alone.** No cos-θ alias merge, no co-occurrence k gate, no
-   merge-ratio cap — those instruments are retired with the operation they governed.
+What this retires (all measured dead ends on EG2 — PoC §6.5/§6.9):
 
-Search never depended on any of it: tag predicates match by `tag_embeddings` vector
-similarity (§3.2) — fuzzy matching is the retrieval layer's job, which is why consolidating
-the vocabulary was always display-scoped.
+- **θ_tag vector-matched tag predicates** (was §3.2): semantic expansion belongs to
+  document/media-vector collections; tag-string fuzzy re-imported the compressed-band
+  problem into rule membership (unrelated tag-pair median .75).
+- **θ_lo + `tag_parents` parent hints**: cosine has zero discriminative power at this
+  decision (measured reversal: real parents below junk pairs); string-rule replacements
+  work but grouping-by-legend was never a product need → feature removed, not re-anchored.
+- **`tag_embeddings` cache**: consumers = the two above → table + "E3 tag embed" call site
+  retired; physical DDL drop rides the big-bang migration.
+- **Vocabulary normalization as an institution**: `ai_tag_raw` survives with a narrowed
+  role — storage for LOCAL derived facets (`mime:`/`ext:`/`month:`/`path:`,
+  derivedTagsService; kind-prefixed, folded, exact-equality predicates §3.2). LLM tags are
+  NOT materialized there; any fold for display/naming counting is a read-time pure
+  function, zero state.
+
+The surviving principle from E6c unchanged: **nothing merges tags automatically**; raw
+`ai_features.tags` is never rewritten. Gray band = leave alone, forever.
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/store/aiTagStore.md`, `docs/spec/server/services/evolutionService.md`
 
 ### 4.19 Chat-model roles
 
 Scope rule: **embeddings + set math do the analysis; the chat model legitimately does only
-two things — (1) translate between language and machines (NL parse ↔ tag/summary/naming
+two things — (1) translate between language and machines (NL parse ↔ summary/naming
 extraction: these feed the embeddings and predicates), (2) adjudicate genuinely ambiguous
 decisions where rules would guess.** Narrating numbers the LLM didn't compute is
 fabrication of explanation, not analysis — roles doing that are REMOVED:
@@ -806,13 +810,13 @@ intent is the PARSER's job — decompose to predicates+vector, not a list-patch 
 LLM rewriting of a live definition is unreviewable churn for marginal gain). KEPT (each
 does work rules can't):
 
-| Role                 | Decision it makes                                                                                     | Why rules can't                                                                                                                                                                 |
-| -------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `features.extract`   | tags/summary/category per file → feeds embeddings input & predicates                                  | core (already elsewhere)                                                                                                                                                        |
-| `parse.nl`           | user sentence → shared predicate grammar                                                              | core (§4.6/T3.4)                                                                                                                                                                |
-| `name`               | templateNamer fallback when chat on                                                                   | cosmetic but cheap, bounded                                                                                                                                                     |
-| `keeper-adjudicator` | which file of a near-dup group to keep (+reason)                                                      | rules can rank by resolution/date but cannot weigh content meaning (caption/summary exist at this point); reason text rides along free                                          |
-| `merge-arbiter`      | borderline pairs (Jaccard in review band 0.55–0.7): merge candidate / keep separate / hierarchy-later | set math is by-design blind between "same theme twice" vs "theme + subset"; the card can show its verdict as a prefilled recommendation — final call stays with the user (§4.4) |
+| Role                 | Decision it makes                                                                                                     | Why rules can't                                                                                                                                                                 |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `features.extract`   | tags/summary/category per file → ai_features display + naming/adjudication material (§4.18 — not rule or embed input) | core (already elsewhere)                                                                                                                                                        |
+| `parse.nl`           | user sentence → shared predicate grammar                                                                              | core (§4.6/T3.4)                                                                                                                                                                |
+| `name`               | templateNamer fallback when chat on                                                                                   | cosmetic but cheap, bounded                                                                                                                                                     |
+| `keeper-adjudicator` | which file of a near-dup group to keep (+reason)                                                                      | rules can rank by resolution/date but cannot weigh content meaning (caption/summary exist at this point); reason text rides along free                                          |
+| `merge-arbiter`      | borderline pairs (Jaccard in review band 0.55–0.7): merge candidate / keep separate / hierarchy-later                 | set math is by-design blind between "same theme twice" vs "theme + subset"; the card can show its verdict as a prefilled recommendation — final call stays with the user (§4.4) |
 
 **Per-role mechanics (detailed):**
 
@@ -821,14 +825,16 @@ does work rules can't):
   captions/transcript per §4.3) clipped by the §4.3 ladder + filename/mime/path/date
   metadata line. Prompt = fixed template, output forced to JSON schema
   `{tags:[{tag,confidence}], summary, category}` ≤ small token budget. Written to
-  `ai_features`. Its value is being the **supplier**: tags feed predicate/tag-collection
-  machinery, and (since V1/V3 revival 2026-10-08) caption/transcript are display + adjudicator
-  material — media embeds directly, no longer routed through text as its embedding corpus
-  (§4.21). The two adjudicators read them. Chat off ⇒ field empty; everything else runs on
-  local tags + vectors (+ media-direct embeds when the embed role probes media-capable).
+  `ai_features`. Its value: display + the material the naming/adjudication roles read —
+  tags are descriptive words, never rule atoms or embed input (§4.18, 2026-10-16); since
+  V1/V3 revival caption/transcript are likewise display + adjudicator material — media
+  embeds directly, never routed through text as its embedding corpus (§4.21).
+  Chat off ⇒ field empty; everything else runs on local derived tags + vectors
+  (+ media-direct embeds when the embed role probes media-capable).
 - **`parse.nl`** — the only role on a request path, at search submit (batched with query-
   embed, ≤1 call, cached in `query_parses`). Input: query string + the CLOSED predicate
-  grammar (enumerated fields, operator list, current tag vocabulary ≤ bounded) + the
+  grammar (enumerated fields, operator list — NO tag-vocabulary injection; tag atoms bind
+  derived facets only, §4.18) + the
   session's existing predicate state (field/value level only — see input invariant below).
   Output: predicate JSON (+ optional refined vector-query text). It never sees file data
   and never produces ids — SQL executes the predicates server-side, so hallucinated
@@ -884,7 +890,8 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
 The embed model is the substrate, not an analyst: it answers only "where" (a fixed-dim
 unit vector), never "what/why". Everything called analysis — search ranking, clustering,
 membership, near-dup, merge prefilter, similar-sort — is set math on its outputs. Call
-sites (4, deterministic; only #1 is file-proportional):
+sites (3, deterministic; only #1 is file-proportional; E3 tag embed retired 2026-10-16
+with §4.18):
 
 - **E1 file embed** — async, inside `ai_jobs kind=embed`. Input = locally extracted text
   (doc/OCR/caption/transcript) through the §4.3 ladder (text files; media files use E1-M):
@@ -897,7 +904,6 @@ sites (4, deterministic; only #1 is file-proportional):
   changing them means re-chunk, never mixed-chunk scoring.
 - **E2 query embed** — the ONLY request-path AI call in the system (§4.6; see §4.19
   `parse.nl` chaining for vector-input refinement).
-- **E3 tag embed** — batch on new distinct vocabulary (`tag_embeddings`; tiny cardinality).
 - **E1-M media direct-embed (V1/V3 REVIVED, owner decision 2026-10-08)** — images, video and
   audio bytes go to the SAME embed role, no prefix, producing vectors in the model's one
   shared multimodal space (EG2 probe: wedding video ↔ event photos 0.78–0.79; audio ↔
@@ -1119,7 +1125,7 @@ both ways.
 
 ### 4.23.3 Feature ↔ capability map (UI gating source)
 
-Semantic search/seed/auto-create/near-dup/`tag_embeddings` matching ← `text_embed`; media
+Semantic search/seed/auto-create/near-dup ← `text_embed`; media
 direct-embed search/clustering/near-dup on raw media ← `image_embed`/`audio_embed`/
 `video_embed` (V1/V3, same embed role; absent ⇒ media falls back to V2/caption→E1 or V0,
 never mixed-space reads); NL
@@ -1177,13 +1183,13 @@ member_count, updated_at, PK(collection_id,model_id))` — model_id is the MODEL
 - `collection_tombstones(owner_id, def_fingerprint, deleted_at, PK(owner,fingerprint))`
 - `collection_digest_cursors(user_id, collection_id, last_visited_at, PK(pair))`
 - `file_likes(user_id, node_id→CASCADE, created_at, PK(pair))`
-- `tag_embeddings(tag TEXT, model_id→llm_models, vector TEXT, updated_at, PK(tag,model_id))`
-  (provider-global vocabulary table; no user scoping)
-- `tag_parents(child TEXT PK, parent TEXT, source CHECK(auto|admin), created_at)` —
-  display/grouping hint ONLY (§4.18; no alias-merge table exists)
-- `ai_tag_raw(node_id→CASCADE, tag, PK(pair))` — normalized (ortho-folded) tag view for
-  grouping/predicates (raw stays in `ai_features.tags`; normalization is read-time pure
-  function, this table stores the materialized grouping aid for scale)
+- ~~`tag_embeddings(...)`, `tag_parents(...)`~~ — **RETIRED 2026-10-16 (§4.18 dissolution)**;
+  definitions linger in 001 until the big-bang migration removes them; NO code may
+  reference them
+- `ai_tag_raw(node_id→CASCADE, tag, PK(pair))` — materialized LOCAL derived tags only
+  (kind-prefixed `mime:`/`ext:`/`month:`/`path:`, folded by derivedTagsService before
+  write). LLM tags are NOT stored here (§4.18: never materialized, never normalized
+  institutionally; read-time fold is a pure function for display/naming counts)
 - `usage_events(id, user_id, node_id→CASCADE, action, created_at)`; idx(node,created),
   (user,created)
 - `node_activity(user_id, node_id, opens, downloads, previews, search_hits, last_seen_at,
@@ -1297,6 +1303,9 @@ reference-set measurement: containment P10 0.8025 < sibling P90 0.8913 and unrel
 P50 0.7527 (band overlap by design of the model's anisotropy, not a harness bug). Options:
 percentile/rank re-anchoring, margin-based promotion, or accept 21%-recall θ_lo=0.92.
 **OWNER DECISION REQUIRED before T1.8 ships on EG2**; llmPresets thetaLo stays unresolved.
+**Q11 CLOSED 2026-10-16 BY DISSOLUTION** — parent hints/θ_lo/θ_tag retired entirely: tags
+are descriptive-only (§4.18, PLAN §19); no re-anchoring needed, no label battery needed,
+T1.8 withdrawn. The measurements above stand as the evidence trail.
 Quantization-cause hypothesis TESTED AND REJECTED (Q8_0 control re-run, 2026-10-08: class
 bands moved ≤0.008 vs Q4_K_XL, containment-P10/sibling-P90 gap persists at −0.096) — the
 compression is the model's space geometry, not the GGUF precision.
@@ -1532,13 +1541,12 @@ New open questions get appended here before/at their named task.
   Benchmark figures live ONLY in §4.13/§4.13c's evidence columns — cited as justification
   anywhere else they read as runtime-calibration, which §4.15 forbids.
 - **Chat params**: send only probe-verified params — unknown params break strict servers (§4.19).
-- **`ai_tag_raw` SQL rides the aiTag repository** (no SQL outside repositories); the repo parses
-  TEXT → `number[]` at the boundary and maps `dim` from the float count (writers accept `number[]`
-  or comma string). Tag-parent hint edits are NOT journaled — rows are trivially re-editable,
-  "undo would be theater" (§4.18 hints are display-only).
+- **`ai_tag_raw` SQL rides the aiTag repository** (no SQL outside repositories). ~~the repo
+  parses TEXT → `number[]` ... Tag-parent hint edits are NOT journaled~~ — vector-cache and
+  parent-hint clauses removed with §4.18 (2026-10-16).
 - **Derived tag values are KIND-PREFIXED** (`mime:`/`ext:`/`month:`/`path:`; T0.9 ruling) — derived
-  tags never collide with future LLM tags materialized into the same table, and rule predicates
-  are self-describing (v1 set + EXIF rejection per §4.10).
+  tags are the ONLY `ai_tag_raw` content (§4.18 dissolution: LLM tags never materialized), and rule
+  predicates are self-describing (v1 set + EXIF rejection per §4.10).
 - **Nightly usage rollup**: the tick is log-only — NO `admin_reports` row (the §5 kind CHECK enum
   has no rollup kind; §4.14 Tier A persistence is GC-scoped); the read→upsert cycle is
   deliberately NOT one TX — watermark idempotency makes crash-recovery a no-op re-run and the

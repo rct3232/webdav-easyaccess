@@ -155,7 +155,10 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
   owner is the sole user, no compat path) + caps-off-on-failure path (§4.12).
 - T1.1 LLM adapter (T2-hot: per-call config resolution, re-probe on change, restart-free
   §4.2) + budgets/breaker + startup probe + preset manifest & preset×capability probe-matrix
-  verification (declared≠probed ⇒ capability off + admin warning, §4.23) + wizard optional
+  verification (declared≠probed ⇒ capability off + admin warning, §4.23) + **EG2 model-pin
+  enforcement: remote-embed activation requires the reference-kit conformance gate
+  (§4.23.2, kit threshold calibrated via §10 Q12 runbook item; endpoint self-naming never
+  consulted)** + wizard optional
   skippable AI step storing DB rows (§4.23.5) — embed role covered by T1.0 (built-in;
   wizard/step surface = chat/vision/asr + provisioning status card).
 - T1.2 AI repos (`llm_models`,`embeddings`,`embeddings_chunk`,`ai_features`,`ai_jobs`,
@@ -264,6 +267,11 @@ infrastructure specs live under `docs/spec/server/`.
 - T4.1/T4.2/T4.3 `docs/spec/`infrastructure/{llmPresets,llmAdapter}.md, services/aiJobService.md, routes/admin.md, docs/SETUP.md + testing: docs/TESTING_STRATEGY.md (AI tiers)
 
 ## 8. Docs gate (per phase, before code — AGENTS §2.1)
+
+**State-only rule (restated; recurs since 2026-10-14):** `docs/spec/**` carries decided/
+implemented STATE only — dated rulings, rationale, retracted proposals, and "why we changed"
+narratives live ONLY in AI_FEATURE_PLAN (design authority) and this ledger / PoC addenda
+(AGENTS §2.1.5, AI_FEATURE_PLAN §12 preamble).
 
 New: `docs/features/collections-platform.md`; routes `docs/spec/server/routes/{collections,
 search,actions}.md`; stores `.../store/{collectionsStore,fileLikesStore,actionJournalStore,
@@ -934,3 +942,32 @@ model_revision` [this section]; checksum-recovery per §6 DDL policy is owner-si
 Open measurements (rides §10 Q12 / §16 runbook): q4 text θ_dup + baseline-spread re-check,
 target-hardware query-embed latency verdict, q4 long-audio pooling drift. Q11 (θ_lo)
 remains independently open.
+
+## 18. Embedding model pinned to EG2 (owner decision 2026-10-14, branch `feature/pin-eg2-conformance`)
+
+Owner record (this turn): "eg2를 유일한 모델로 놓고 다른 모델은 지원하지 않는게 좋겠어. 단지
+내장 eg2를 사용할건지 외부 api를 호출할건지 두가지 선택지만 남기고자해 (LLM은 유지)" +
+refinements: precision-level drift is irrelevant ("같은 공간의 노이즈") — the enemy is an
+entirely different vector space; endpoint-declared model names are worthless as identity
+(aliased server = cautionary example from our own env).
+
+Rulings encoded:
+
+1. **Embed = 2 providers, 1 model**: `embedded` (lockfile identity) | `external-endpoint`
+   (any dialect — **transport matrix kept**, the earlier "OpenAI-compat 단일화" proposal was
+   retracted as not implied by the decision and hostile to Ollama users). bge-m3 removed from
+   the manifest + CI (history stays in PoC/AI_FEATURE_PLAN). No embed fallback chain:
+   provisioning/conformance failure ⇒ embed OFF, honestly.
+2. **Conformance gate (external only)**: structural dim + reference-kit median-cos ≥ τ;
+   **τ = release artifact, calibration item rides §10 Q12** (positives EG2 ×
+   precision/engine; negatives embeddinggemma-1 twin + 768-d foreign). The initially
+   proposed reference τ=0.97 self-check-failed against in-session data (q4↔q8 P01 .9604)
+   → aggregate median + calibrated threshold + role redefinition agreed over two review
+   rounds; precision-declared UI field dropped (annotation only).
+3. **θ constants single-set per model** (quantization noise tolerated) — withdraws the
+   per-precision re-check; Q12 re-scoped to kit calibration + hardware latency + info-only
+   drift.
+4. Doc set this change touched: llmPresets (§1/§2.2 conformance field/§2.3 restructure/
+   §2.4 no-fallback/§2.5 verify-before-save/§4 fixtures), llmAdapter (§2.2/§2.3/§2.4/§2.8/
+   §5), AI_FEATURE_PLAN (§1 scope note/§4.2/§4.12/§4.20/§4.23.2/§10 Q12), SETUP (table +
+   checklist), PLAN T1.1. No DDL change (precision/model_revision columns from §17 serve).

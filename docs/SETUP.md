@@ -135,12 +135,18 @@ e.g. `LLM_EMBED_BASE_URL`). Operator-facing semantics (full contract:
   declared-but-failing capability is turned off with an admin warning card). Measured
   reference profiles from the project the pre-implementation study:
 
-| Family (preset)                                          | Verified on dev reference set                                                                                                                                                          | Status                                                     |
-| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| llama.cpp serving bge-m3                                 | **text-embed only, 1024-dim** (silently wrong on image input — image capability probes OFF)                                                                                            | measured profile value                                     |
-| llama.cpp serving embeddinggemma-2                       | **multimodal shared 768-d space** (text/image/audio probe-OK via `content`-wrapper + positive controls; `video_embed` NOT OFFERED until server batch limit accepts multi-frame inputs) | measured profile value (θ_lo unresolved — llmPresets §2.3) |
-| llama.cpp serving Hana (gemma-4-12b)                     | **vision + audio**, verified in-domain with real photos/speech                                                                                                                         | measured profile value                                     |
-| other families (Ollama, OpenAI-compatible, TEI-class, …) | expected capability set declared in `infrastructure/adapters/llm/presets.js`                                                                                                           | **release-measurement-pending** (no shipped numbers yet)   |
+| Family (preset)                                          | Verified on dev reference set                                                                                                                                                                                          | Status                                                     |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| **embedded** (in-process ONNX EG2, default)              | **model-pinned embeddinggemma-2**; lockfile sha256 = identity, boot-blocking provisioning (llmPresets §2.3)                                                                                                            | product default (embed needs no config)                    |
+| external endpoint serving embeddinggemma-2               | **multimodal shared 768-d space** (text/image/audio probe-OK via `content`-wrapper + positive controls; `video_embed` gated on server batch limit; **EG2 conformance required — model name self-declared is ignored**) | measured profile value (θ_lo unresolved — llmPresets §2.3) |
+| llama.cpp serving Hana (gemma-4-12b)                     | **vision + audio**, verified in-domain with real photos/speech                                                                                                                                                         | measured profile value                                     |
+| other families (Ollama, OpenAI-compatible, TEI-class, …) | **chat/vision/asr only** (embed is model-pinned — no 768-d foreign model, no bge-m3); expected capability set declared in `infrastructure/adapters/llm/presets.js`                                                     | **release-measurement-pending** (chat roles)               |
+
+> Embedding is **model-pinned to EmbeddingGemma 2**. There is no bge-m3 or
+> alternate-embed-model support and no embed fallback chain: built-in provisioning
+> failure or external conformance failure ⇒ embed OFF + admin reason; other features keep
+> working. To use an external embed server, point at any EG2-serving endpoint — the adapter
+> verifies it IS EG2 (dim + reference conformance), not what it claims to be named.
 
 **Release measurement checklist per pending row** (a release-runbook step, not a product
 feature):
@@ -154,6 +160,9 @@ feature):
       speech check
 - [ ] chPerTok measured on the mixed-text sample (1.7 is the llama.cpp-mixed reference,
       NOT assumed portable)
+- [ ] embed **conformance reference kit** calibration (§llmPresets 2.2 `conformance`):
+      positives EG2 × {GGUF q8/q4, ONNX q4/q8, fp16}, negatives embeddinggemma-1 twin +
+      one 768-d foreign model; τ ships measured, never assumed (Q12)
 - [ ] probe kwarg map (which provider honors `chat_template_kwargs` vs `think` vs
       nothing) recorded; unsupported params confirmed ABSENT from emitted requests
 - [ ] declared-vs-probed mismatch injection: force-fail one probe ⇒ capability OFF +

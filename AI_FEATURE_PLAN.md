@@ -7,7 +7,11 @@ sections below by §number; file:line anchors are verified seams in the current 
 
 Turn the app from a storage web client into an **AI-driven storage management application**.
 Differentiator: backend-agnostic layer (WebDAV remote or S3, sqlite or PG, any LLM provider
-incl. fully local Ollama) — competitors are hardware/cloud-locked.
+incl. fully local Ollama) — competitors are hardware/cloud-locked. Scope refinement
+(2026-10-14, owner): **embedding is model-pinned to EG2** — provider breadth applies to the
+_generation_ roles (chat/vision/asr) and to the embed _transport_ (built-in vs external
+endpoint), not to the embed _model_; both embed paths must pass the EG2 conformance gate
+(§4.23.2).
 
 Positioning fact that shapes everything: **LLM is an enrichment dependency, never a render
 dependency.** The collection platform (P0) ships and is useful with zero LLM configured.
@@ -253,7 +257,9 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
   or N replicas, no strict/ban mode (rejected: replicas are identical builds; pre-provisioning
   is an optimization, not a switch). Provisioning attempt fails (offline first boot, checksum
   mismatch) ⇒ boot continues with embed caps OFF + admin prompt; never a crash, never silent.
-  `llm_models` records the identity: `engine` (embedded|remote), `precision`, `model_revision`
+  `llm_models` records the identity: `engine` (embedded|remote); remote activation is additionally
+  **conformance-gated** (EG2 pin: dim + reference-kit median, §4.23.2 — endpoint-declared
+  names are untrusted metadata); `precision`/`model_revision` annotate what is verifiably known
   — space key discipline (§4.20) reads them.
 - **No LLM call on request paths** except semantic-search query-embed (must be <100ms class
   model; results cached). Nightly evolution ≈ ≤1 chat call/user/day with aggregate-only
@@ -594,8 +600,8 @@ extract/parser; none =):
   vector), naming templates (system). **absent: chat-only (summaries/tags-from-content,
   NL parse, llmNamer).** (Since 2026-10-14 the embed column is the **built-in default** —
   this column now describes the provisioning-pending/broken state only (offline first boot,
-  corrupt files, explicit external override); chat/vision/asr remain opt-in externals. §4.2
-  built-in engine.)
+  corrupt files, external override rejected by conformance); chat/vision/asr remain
+  opt-in externals. §4.2 built-in engine.)
 - UI: `GET /api/settings/public` gains `ai:{embed:bool,chat:bool}` — derived live from the
   current probe state, flips without restart whenever LLM config changes (§4.2 hot
   reconfiguration) (precedent email_enabled
@@ -909,8 +915,13 @@ embed model, **cross-MODALITY cosine inside one `model_id` is legal and is the p
 media-search basis** (§4.21) — the retired "cross-space machinery" remains retired: there is
 one space per model, media merely enters it directly now; `dim` fixed per
 model; TEXT canonical (§4.13); budgets/kill-switches per role like chat. Row-level identity
-additions (2026-10-14): `engine`/`precision`/`model_revision` — a dtype or lockfile-revision
-change is a model change (re-embed), never a silent space edit (§4.15 shape flags).
+additions (2026-10-14, refined same day by the EG2 model pin): `engine` + `precision`/
+`model_revision` — for **embedded** rows dtype/lock-revision IS identity (a change = new
+model_id = re-embed); for **external** rows they are best-effort annotations because a
+remote's precision cannot be enforced — what IS enforced at activation is the EG2
+conformance gate (§4.23.2), which exists to catch mapping to an entirely DIFFERENT space
+(same-dim foreign models), not EG2's own ±.02 quantization noise — tolerated by owner
+ruling, so θ constants are single-set for the model.
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/infrastructure/llmAdapter.md`, `docs/spec/server/infrastructure/vectorStore.md`, `docs/spec/server/services/aiJobService.md`
 
@@ -1093,6 +1104,14 @@ below it) and cross-modal sanity (image vs its VLM caption > image vs unrelated 
 (c) verify server pooling shape matches the profile when `/props` exposes it (mis-pooling =
 capability OFF — silently different space, §4.2). Text-embed probes additionally send the
 profile's task prefixes; prefixes are part of the request shape, not decoration.
+**Model pin — embed endpoints must be EG2 (owner 2026-10-14):** external embed activation
+adds a CONFORMANCE pass — structural (dim == 768) + behavioral (fixed reference-kit strings,
+median cos to canonical vectors ≥ release-calibrated threshold; llmPresets §2.2).
+Endpoint-declared model NAMES are never evidence (any `--alias` string masquerades; own
+environment used as the cautionary example): identity is what the endpoint's vectors DO,
+not what it is CALLED. Built-in rows are exempt — the lockfile sha256 is the identity.
+EG2's own ±0.02 quantization/platform drift is explicitly NOT the gate's target (same-space
+noise, owner ruling); the gate exists for mapping to a different space entirely.
 User-visible states are only ever `complete-working | absent`, never partial. Distinct from
 DB vector capability (§4.13): missing LLM capability removes the
 feature (absent), missing DB vector capability only degrades speed (fallback) — never
@@ -1281,12 +1300,15 @@ percentile/rank re-anchoring, margin-based promotion, or accept 21%-recall θ_lo
 Quantization-cause hypothesis TESTED AND REJECTED (Q8_0 control re-run, 2026-10-08: class
 bands moved ≤0.008 vs Q4_K_XL, containment-P10/sibling-P90 gap persists at −0.096) — the
 compression is the model's space geometry, not the GGUF precision.
-Q12 (NEW, 2026-10-14): **built-in embed engine ships at q4 precision (PoC §6.8 owner
-decision)** — q4-specific profile re-checks outstanding: text θ_dup band +
-dynamic-baseline spread measured at q4 (0.955 derives from GGUF/ONNX-q8 class),
-target-hardware query-embed latency (0.13 s on 6-core dev box; gate verdict is per
-deployment hardware), q4 long-audio pooling drift. Provisioning is **boot-blocking with
-CLI progress log** (owner ruling); llm_models `engine/precision/model_revision` DDL
+Q12 (REVISED 2026-10-14, same day — EG2 model pin supersedes the per-precision re-check
+list): outstanding release items are ① calibrate the **conformance reference kit** threshold
+— positives: EG2 across {GGUF q8/q4_K_XL, ONNX q4/q8, fp16}; negatives: **embeddinggemma-1
+(768-d twin)** + one further 768-d foreign model; τ ships as a measured artifact (never a
+guess); ② per-deployment-hardware query-embed latency verdict (0.13 s on 6-core dev box);
+③ q4 long-audio pooling drift observed (informational only — no gate). Precision-specific
+θ re-calibration is WITHDRAWN: ±0.02 same-space drift is tolerated by owner ruling, θ
+constants are single-set per model. Provisioning stays **boot-blocking with CLI progress
+log**; llm_models `engine/precision/model_revision` DDL
 additions ride the **big-bang migration at the `ai-feature`→`dev` deploy** (owner is the
 sole user — no compat path needed).
 New open questions get appended here before/at their named task.

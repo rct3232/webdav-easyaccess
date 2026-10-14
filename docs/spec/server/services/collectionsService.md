@@ -83,12 +83,12 @@ no pooled embedding for the seed node resolves through the §2.7 missing-embeddi
   rows are ever stored (membership is derived, not stored — except manual `user`-origin rows).
 - Predicate-bool membership: path prefix / date / size → SQL over the requester-visible
   node set (`fileNodesStore` ACL joins, listing parity with `fileService`).
-- Tag predicates are STRING-EQUALITY on folded derived facets — the vector-matched variant
-  is RETIRED (§4.18 dissolved 2026-10-16; no `tag_embeddings`, no `getTagVectors`, no
-  `θ_tag`). The tag atom resolves through `aiTagStore.listNodeIdsByRawTag(foldTag(value))`
+- Tag predicates match by folded string equality in every state — there is no vector tag
+  matching, no `θ_tag`, no `tag_embeddings` read path (§4.18). The tag atom resolves through
+  `aiTagStore.listNodeIdsByRawTag(foldTag(value))`
   (orthographic fold `domains/ai/tagVocabulary.js` — NFKC + whitespace/case fold; `ai_tag_raw`
-  rows are written folded by the derived-tags pipeline) and matches by string equality. This is
-  the ONLY tag matcher in every state (no embed/chat dependency, model-invariant).
+  rows are written folded by the derived-tags pipeline). No embed/chat dependency;
+  model-invariant.
 - Vector membership: candidate scoring via `vectorStore.neighbors(vec, k, visibleIds)`
   (per-node max-over-chunks). Inclusion is `score ≥ θ` with **hysteresis**
   (θ_in > θ_out, per-model profile values — release-measured) so view-boost drift does not
@@ -390,7 +390,7 @@ release-measured values (release artifacts, displayed with provenance in the adm
       node, empty arrays for non-members
 - [ ] Tag atom: definition `{kind:'predicate',any_of:[{type:'tag',value:'ext:jpg'}]}`
       admits exactly the nodes whose folded `ai_tag_raw` set contains the folded value;
-      folded string equality ONLY in every state (vector variant retired — §4.18 dissolved)
+      folded string equality in every state (no vector variant — §4.18)
 - [ ] `checkUploadAdmissions` (callable seam): freshly created node admitted by an owner
       predicate collection → `last_member_change_at` advances and the id is returned;
       excluded / already-stored / non-owner / archived collections untouched

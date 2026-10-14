@@ -6,7 +6,7 @@ Target-contract spec (`docs/features/collections-platform.md` §4.9 silent evolu
 
 | Item       | Description                                                                                                                                                                                                                                                                               |
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role       | Silent evolution of `origin='system'` collections ONLY (silent evolution never touches `user                                                                                                                                                                                              | seed | search` origins): triggers/debounce, the six passes (create / split / archive / purge / merge-candidates / auto-pin-reconcile), the nightly tag-vocabulary 3-step, and merge-SUGGESTION writing.                                                                                                                                                                                                                                                                                                        |
+| Role       | Silent evolution of `origin='system'` collections ONLY (silent evolution never touches `user                                                                                                                                                                                              | seed | search` origins): triggers/debounce, the six passes (create / split / archive / purge / merge-candidates / auto-pin-reconcile), the retired tag-vocabulary pass (§2.10), and merge-SUGGESTION writing.                                                                                                                                                                                                                                                                                                  |
 | Act stance | System acts silently; every act is journaled via `commitChange` with `actor='system'` — the undo journal replaces any proposal inbox; every act carries an inverse. The ONLY proposal output is merge candidates — never an inbox; the UI safety valve is undo + the merge-proposal card. |
 | Boundaries | Never touches `origin='user                                                                                                                                                                                                                                                               | seed | search'`rows for create/split/archive/purge (they get ordering gravity only). Never writes`collection_grants`/visibility. Executes OFF request paths and OFF upload commits (batch-end/nightly only). Embedding/analysis MATH is call-free by construction (centroids are means of stored vectors; seeds are references to existing vectors — no provider call ever computes evolution math); the only provider use is the `merge-arbiter` advisory (chat, nightly, ≤1 call/user/day aggregate budget). |
 
@@ -54,7 +54,7 @@ pinned[], arbiterCalls }], report }`; report row persisted as
 `admin_reports(kind='night_eval')`. Idempotent full re-scan — safe to
 re-run any time; concurrent invocations serialize on the per-user lock group (second
 caller no-ops). Inputs: `node_activity`, `file_likes` (via likes store),
-`ai_tag_raw`/normalized tags, `embeddings`/`embeddings_chunk` through the vectorStore
+`embeddings`/`embeddings_chunk` through the vectorStore
 seam, `collection_centroids`. Every mutation goes through journaled `collectionsStore`
 mutators with `ctx.actor='system'` (digest/feed carry system acts — NO toasts for silent system acts).
 
@@ -68,7 +68,7 @@ mutators with `ctx.actor='system'` (digest/feed carry system acts — NO toasts 
    constant); tier edge-cos thresholds from the model profile —
    **tight 0.82 / mid 0.80 / loose 0.72: release-measured profile values** — either-side
    top-k edge acceptance per tier.
-3. **Facet sources in parallel:** path-subtree purity, orthogonally normalized tags,
+3. **Facet sources in parallel:** path-subtree purity,
    like-density generate candidates independently. A facet/embedding cluster pair with
    **Jaccard ≥ 0.8** does NOT double-create: the existing collection is
    **definition-promoted** (predicate set widened) instead — promotion, not duplication.
@@ -119,7 +119,7 @@ with trash). Tombstone lifetime defaults to `ARCHIVE_RETENTION_DAYS`; EXPIRY CLE
 of tombstones is the nightly rollup GC slot's job (`purgeExpiredTombstones` —
 [maintenanceScheduler](../infrastructure/maintenanceScheduler.md) §3.1; aiJobsStore-style
 "GC calls" attribution), NOT this pass. Fingerprint = NORMALIZED definition (schema +
-core params: θ / tag-set / path — NOT raw centroid values, so trivial member drift
+core params: θ / path / size — NOT raw centroid values, so trivial member drift
 cannot slip past). Suppression effectiveness is measured, then
 tuned, via admin counters: `tombstone-suppressed` vs `regenerated-anyway`.
 
@@ -162,20 +162,14 @@ for user|seed|search, which silent evolution never archives); (b) never downgrad
 rows (the pin itself is journal-less, additive and invisible — pinned collections are exempt from auto-archive/purge forever; `pinned_by='auto'` shows a subtle chip so users can unpin). Reads/views/likes
 deliberately do NOT count as touches (activity gravity covers them).
 
-### 2.10 Nightly tag-vocabulary 3-step
+### 2.10 Nightly tag-vocabulary pass — RETIRED (2026-10-16)
 
-Runs in the nightly slot (after create needs tag predicates; before merge prefilter):
-
-1. **Orthographic normalization** — NFKC + whitespace/case fold, a read-time PURE
-   function materialized into `ai_tag_raw` (grouping aid; raw stays in `ai_features.tags`).
-2. **Containment → parent hints** — rule `containment ∧ cos ≥ θ_lo` (θ_lo = 0.75 profile
-   default — **release-measured value**) writes `upsertAutoParent(child,parent)` —
-   which structurally NEVER overwrites an `admin` row (aiTagStore §2.4). Display/grouping
-   hint only: no rewrite, no merge (a wrong parent costs one odd group row — admin may view/edit `tag_parents`).
-3. **Gray band = leave alone.** No alias merge, no co-occurrence gate, no merge-ratio
-   cap. No
-   confirm/undo surface exists for hints (parent edits are re-editable rows, not
-   journal acts).
+The §4.18 dissolution removes this pass entirely. **What is gone**: the orthographic-
+materialization and parent-hint steps are gone (no `ai_tag_raw` write, no `tag_parents`,
+no θ_lo, no `tag_embeddings`). **What remains**:
+`ai_tag_raw` written ONLY by derivedTagsService at commit points (derived facets);
+`tagVocabulary.fold()` as a read-time PURE function for naming/arbiter display; NO nightly
+tag pass exists.
 
 ### 2.11 Centroid maintenance
 
@@ -191,7 +185,7 @@ driven by backfill completion). `deleteCentroids` on purge/merge loser.
 | `AI_EVOLUTION_TRIGGER`                                                                          | `both`  | trigger mode                                                                                                             |
 | `AI_EVOLUTION_DEBOUNCE_S`                                                                       | `90`    | batch-end debounce                                                                                                       |
 | `AI_EVOLUTION_NIGHTLY_ENABLED` / `AI_EVOLUTION_CREATE_ENABLED` / `AI_MERGE_SUGGESTIONS_ENABLED` | `true`  | per-surface pauses                                                                                                       |
-| tier edge-cos 0.82/0.80/0.72, k≈6, θ_lo 0.75, δ/θ shapes                                        | profile | **release-measured profile values** (release artifacts — no runtime calibration; re-open trigger: measured corpus drift) |
+| tier edge-cos 0.82/0.80/0.72, k≈6, δ/θ shapes                                                   | profile | **release-measured profile values** (release artifacts — no runtime calibration; re-open trigger: measured corpus drift) |
 | min 8 / ≤1-wk / ≤12 active / caps 120·500 / band 0.55–0.7 / ratio·jaccard 0.7                   | fixed   | product rules                                                                                                            |
 
 ## 4. Dependencies
@@ -234,9 +228,9 @@ driven by backfill completion). `deleteCentroids` on purge/merge loser.
 - [ ] Auto-pin reconcile: each touch type (per §2.9) pins a system row (`pinned_by='auto'`,
       no journal row for the pin); read/view/like touches do NOT pin; user-origin rows
       keep NULL; nightly reconcile clears any illegal non-system auto-pin
-- [ ] Tag pass: spacing variants grouped via `ai_tag_raw`; containment pair gains an auto
-      parent; admin parent survives auto re-runs; gray-band pair gains NOTHING; no
-      tag-merge/alias artifact exists anywhere (schema grep)
+- [ ] Tag pass is GONE: evolution writes nothing to `ai_tag_raw`/`tag_parents`
+      (grep: no ai_tag_raw parent writes; the only derived-facet writer is
+      derivedTagsService; `tag_parents` table unreferenced pending T1.0b purge)
 - [ ] Every act journaled `actor='system'` (undoable via digest/feed ≤24h — actions
       feed), zero toast-side effects, `admin_reports(kind='night_eval')` written
 - [ ] Kill switches: global pause stops ALL acts but leaves suggestions/rendering intact;

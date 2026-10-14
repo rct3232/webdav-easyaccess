@@ -33,7 +33,7 @@ tables: NFKC → trim → collapse internal whitespace runs to a single space �
 
 `computeDerivedTags({ name, createdAt, mimeType, pathSegments })` ⇒ **folded, deduped,
 sorted** string array. v1 encoding: tags are KIND-PREFIXED so derived tags never collide
-with future LLM tags materialized into the same `ai_tag_raw` table, and predicates are
+under the dissolved §4.18 regime LLM tags are NEVER materialized into `ai_tag_raw` (derived facets only), and predicates are
 self-describing:
 
 | Kind    | Value shape       | Source & rule                                                                                                                                                                                                            |

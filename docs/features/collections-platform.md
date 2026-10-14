@@ -95,8 +95,8 @@ default newest-added first — date = membership-added stamp; revoked rows pin t
 Manual membership is stored; removing a member never trashes the file. Derived membership evaluates
 the definition (path/tag/like/date/size predicates, optionally seed or centroid similarity) with no
 stored rows; a soft view-count boost moves only borderline members and ordering, under
-enter-above/leave-below hysteresis. Tag predicates match by vector, not string, with normalized
-string equality as the no-embedder fallback (§4.18). Exclusions ("Exclude") block derived adds;
+enter-above/leave-below hysteresis. Tag predicates match by folded string equality in every
+state (§4.18 dissolved 2026-10-16 — vector tag matching retired). Exclusions ("Exclude") block derived adds;
 excluding is a touch, hence auto-pins (§4.9), and its rate is an admin quality metric, never an
 archive trigger.
 
@@ -376,14 +376,15 @@ sentence-or-less files skip similarity near-dup and use the hash path. Dismiss i
 unaccepted expire with retention; accepting is checked → trash as one undoable command — the
 checkbox _is_ the confirmation.
 
-### 4.18 Tag vocabulary: normalization, hierarchy hints, no merging
+### 4.18 Tags: description only (vocabulary machinery dissolved 2026-10-16)
 
-Tags are never merged. Three non-destructive steps: (1) **read-time orthographic
-normalization** — case/whitespace/Unicode folding groups variants; (2) **containment + similarity →
-parent hints** (`actor casting → casting`; rule or admin) — display/grouping only, raw tags never
-rewritten, nothing merged, no audit gate — a wrong hint costs one odd group; (3) **the gray band
-left alone** — no alias-merge or co-occurrence machinery exists. Search is independent:
-tag predicates match by vector (§3.2).
+LLM tags are words that describe a file — display chips and naming/adjudication material.
+No institution: no merge (never was), no parent hints, no vector predicates, no
+materialization of LLM tags. Read-time case/whitespace/Unicode folding remains a pure
+function for counts/display; `ai_tag_raw` holds ONLY derived local facets
+(`mime:`/`ext:`/`month:`/`path:`), matched by folded string equality. Evidence trail:
+PoC §6.5/§6.9 (absolute θ unusable on EG2 bands; the error lives in the string layer,
+owned by derivedTags/parse.nl, not cosine).
 
 ### 4.19 Chat-model roles
 

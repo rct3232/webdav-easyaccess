@@ -83,16 +83,12 @@ no pooled embedding for the seed node resolves through the §2.7 missing-embeddi
   rows are ever stored (membership is derived, not stored — except manual `user`-origin rows).
 - Predicate-bool membership: path prefix / date / size → SQL over the requester-visible
   node set (`fileNodesStore` ACL joins, listing parity with `fileService`).
-- Tag predicates are VECTOR-matched (near-synonyms partially match; raw tags never collapse to one exact string): `cosine(embed(tag_value), embed(query_tag))
-≥ θ_tag` through `aiTagStore.getTagVectors` + vectorStore lookups; match values resolve
-  through the orthographic fold + `tag_parents` display hints first. With no embed role
-  configured the predicate degrades to normalized string equality (the zero-LLM variant).
-  **Shipped:** the cosine-free path — the tag atom resolves through
-  `aiTagStore.listNodeIdsByRawTag(foldTag(value))` (orthographic fold
-  `domains/ai/tagVocabulary.js` — NFKC + whitespace/case fold; `ai_tag_raw` rows are written folded by the
-  derived-tags pipeline) and matches by string equality. The vector-matched variant
-  is P1: it swaps the per-atom resolver behind the same provider seam
-  (`providers.listNodesByTag`), no engine or grammar change.
+- Tag predicates are STRING-EQUALITY on folded derived facets — the vector-matched variant
+  is RETIRED (§4.18 dissolved 2026-10-16; no `tag_embeddings`, no `getTagVectors`, no
+  `θ_tag`). The tag atom resolves through `aiTagStore.listNodeIdsByRawTag(foldTag(value))`
+  (orthographic fold `domains/ai/tagVocabulary.js` — NFKC + whitespace/case fold; `ai_tag_raw`
+  rows are written folded by the derived-tags pipeline) and matches by string equality. This is
+  the ONLY tag matcher in every state (no embed/chat dependency, model-invariant).
 - Vector membership: candidate scoring via `vectorStore.neighbors(vec, k, visibleIds)`
   (per-node max-over-chunks). Inclusion is `score ≥ θ` with **hysteresis**
   (θ_in > θ_out, per-model profile values — release-measured) so view-boost drift does not
@@ -328,15 +324,14 @@ collections / no-access reads throw `notFound` (404 masquerade — existence nev
 | `AI_VIEW_WEIGHT_ALPHA`   | `0.1`   | §2.3 soft-boost α                                                  |
 | `ARCHIVE_RETENTION_DAYS` | `30`    | lifecycle parity with trash; purge horizon (evolution pass 4 / GC) |
 
-Cosine thresholds (θ, θ_in/θ_out, θ_tag) ship in the active model profile —
+Cosine thresholds (θ, θ_in/θ_out) ship in the active model profile —
 release-measured values (release artifacts, displayed with provenance in the admin governance panel), never runtime-computed.
 
 ## 4. Dependencies
 
 - `collectionsStore`, `fileLikesStore`, `actionJournalStore` (indirectly via journaled
   mutators), `fileNodesStore` (ACL enrichment joins), `embeddingsStore` (seed vector read),
-  `aiTagStore` (tag atoms: `listNodeIdsByRawTag` — folded string equality; vector
-  reads attach with the P1 variant) and `domains/ai/tagVocabulary` (pure orthographic fold of
+  `aiTagStore` (tag atoms: `listNodeIdsByRawTag` — folded string equality) and `domains/ai/tagVocabulary` (pure orthographic fold of
   atom values before the store read)
 - `collectionShareService` (role checks, publish gate, pending counts)
 - `domains/ai/vectorStore` seam (`neighbors`) — via `server/domains/ai` public API
@@ -395,7 +390,7 @@ release-measured values (release artifacts, displayed with provenance in the adm
       node, empty arrays for non-members
 - [ ] Tag atom: definition `{kind:'predicate',any_of:[{type:'tag',value:'ext:jpg'}]}`
       admits exactly the nodes whose folded `ai_tag_raw` set contains the folded value;
-      no-embed ⇒ folded string equality only (vector variant P1, same provider seam)
+      folded string equality ONLY in every state (vector variant retired — §4.18 dissolved)
 - [ ] `checkUploadAdmissions` (callable seam): freshly created node admitted by an owner
       predicate collection → `last_member_change_at` advances and the id is returned;
       excluded / already-stored / non-owner / archived collections untouched

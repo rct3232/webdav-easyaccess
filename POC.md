@@ -490,3 +490,129 @@ Not closed here: interleaved text+media fusion (untested on llama.cpp serving), 
 `video_embed` (server `-ub` infra call — Q10-adjacent), 100k-doc media backfill cost,
 text-space kNN tier rerun, real-world ortho-variant tag folding (synthetic only),
 speech/noise class continuum (no global θ separates; ranking survives, thresholding dies).
+
+### 6.6 Long-document battery (2026-10-14) — the short-slice intrusion does NOT transfer to real documents
+
+- **What**: §6.5's intrusions (30.7% of unrelated pairs ≥ topic-band floor) came from
+  ≤450-char intro slices and noun-phrase tags. Do real files — long text with context,
+  subjects, and narrative — separate better? And how do _similar-but-different_ subjects
+  cluster? Also: can the app embed long docs at all under this server (`-ub 512` caps one
+  input at ~920 Korean chars — measured: 1,200 chars = 651 tok → HTTP 500)?
+- **How**: 20 full Korean Wikipedia articles in 4 deliberately-close families (revolutions,
+  bio-energy, stellar-death, cities), truncated 6k chars, embedded production-policy:
+  paragraph-aware chunks ≤700 chars with `title:` prefix, pooled = mean+renorm(stride-4),
+  plus max-over-chunks. Server: EG2 Q8_0 CPU (10.0.0.106:8082), artifacts
+  `data/corpus/q10/longdoc/` (docs_chunked.json, emb_cache.jsonl, result.json — no
+  METHODOLOGY.md here; this section is the method record).
+- **Result**:
+  1. **Feasibility OK** — chunk ladder embeds long docs cleanly (205 chunks/58 s CPU).
+  2. **Intrusion collapses**: cross-family ≥ same-family-P10 drops **30.7% → 0.7%**
+     (pooled). Context genuinely separates macro-topics on EG2: within-family P50 .805 vs
+     cross-family P99 .773; margin +.096 at family level.
+  3. **Granularity limit**: family-level grouping is clean — mutual-kNN(k=4) recovered
+     4/4 clusters with ZERO mixing. Instance-level ("Paris" vs "London" as separate
+     collections) is NOT threshold-separable: same-family P10 .780 vs cross-family P90
+     .7485 leaves a ±.03 gray band — instance separation needs assertions (tag/path), not θ.
+  4. **max-over-chunks is the WRONG grouping metric** (new flaw): max scoring is an
+     O(n²) lottery — at θ=.75 it admits 13.3% cross-family vs pooled's 8.7%, and mutual-kNN
+     on max-scores **merged cities+revolutions into one 9-doc blob**. Retrieval keeps max
+     (E12 fact-finding role, unchanged); **grouping/membership/seed math must use pooled**.
+- **Meaning**: the user-facing promise ("collections that gather themselves") is true at
+  THEME granularity for long text, false at INSTANCE granularity for any cosine — consistent
+  with §2.5 and the assertion-vs-measurement split. And a plan bug surfaced: §4.13
+  `neighbors()` max-over-chunks is currently the single scoring path for BOTH retrieval and
+  grouping.
+- **Consequence**: AI_FEATURE_PLAN §4.13/§4.19 amendment pending (split scoring metrics:
+  pooled for grouping/seed/centroid, max for retrieval); §4.6 unchanged; §2.5 conclusion
+  REFINED (not reversed): one-θ topic separation fails on short text but succeeds at
+  family level on long text — per-corpus, per-granularity constants matter (Q10 checklist).
+
+### 6.7 In-process Node.js runtime probe (2026-10-14)
+
+- **What**: can EG2 run INSIDE the product's Node ≥24 process, with no external server —
+  and not just text: the FULL multimodal surface (text + image + audio + video)?
+- **How**: `@huggingface/transformers` v4.3.1 + `onnx-community/embeddinggemma-2-ONNX`
+  (the official transformers.js export; Apache-2.0; encoders selectively loadable by nulling
+  config sections). `device:'cpu'` (onnxruntime-node; sharp for images; ffmpeg→16k-mono
+  Float32Array for audio; 1-fps frames via `RawVideo`). dtype q8 (text+vision+audio).
+  Embed the SAME battery inputs as the llama.cpp Q8-GGUF server for parity. Dev box
+  (6-core CPU-only, NOT the 106 hardware).
+- **Result — all four modalities work in-process, ranking parity perfect**:
+  - Audio: clips 1/2/5/6 pooled ladder (19 s segments) → own text rank **1/5 in all four**
+    (0.843/0.775/0.724/0.745 vs server 0.848/0.787/0.709/0.738 — Δ≤.013, ordering identical).
+  - Video: 62.mp4 6-frame `RawVideo` ↔ wedding photos **.745–.761** (server .763–.798).
+    Images (prior battery) and text parity hold as before: cos(ONNX,GGUF)=0.9997–0.9999 text;
+    image bands shift ≤.02 with ordering preserved (re-encode .989 > crop .948 > other .649 >
+    caption .695 > unrelated .507).
+  - **Never mix engines in one corpus without re-embedding** — same space semantically,
+    different arithmetic (preprocessing/quantization paths); engine+precision join the
+    model profile (§4.15 shape-flag rule extended). model_id=space key stays load-bearing.
+  - Speed (6-core dev CPU — NOT the same hardware as 106, so no cross-machine multipliers
+    claimed): text 263 ms/embed; image 8.3–9.6 s; audio ~4.7 s/19 s-seg. (llama.cpp-CPU on
+    106 did image 0.63 s.) CPU multimodal in-process = feasible for batch enrichment, NOT
+    for interactive query-embed (<100 ms gate; text-only interactive needs target-hardware
+    measurement).
+  - Memory: RSS ~1.6 GB with all three q8 encoders loaded; q4 worst-case cos-to-fp32 .975
+    ⇒ product default q8.
+  - _Harness caution (3rd instance of this document's theme)_: an initial "audio NaN" scare
+    was MY probe bug (double `[0]` indexing turning vectors into scalars → `dot` NaN), not
+    the runtime — disproved by isolation before any conclusion; recorded as caution.
+- **Meaning**: EG2 multimodal embedding is fully embeddable inside the product's own Node
+  runtime — the "backend-agnostic, even fully local" positioning reaches its strongest
+  form: one npm package + q8 weights = text/image/audio/video search with no server, no
+  GPU. GPU llama.cpp remains the interactive path and the throughput path for media.
+- **Consequence**: candidate preset family `transformersjs-embeddinggemma2` (all four embed
+  caps, CPU-served — media caps carry a latency warning in the profile); E2 query-embed
+  gate ⇒ in-process mode advertises text-interactive only until measured on target hardware;
+  enhancement task NOT scheduled — owner decision (PLAN §16 carry-forward).
+
+### 6.8 Built-in embedding engine + q4 dtype decision (2026-10-14)
+
+- **What**: pick the product's embedding runtime and precision; §6.7 left "q8 default" as a
+  recommendation and the enhancement unscheduled — this section supersedes both lines.
+- **How**: q4 is an OFFICIAL export dtype (measured files: model 174 MB + vision 109 MB +
+  audio 189 MB = **473 MB** full set; q4f16 426 MB; fp32 2,929 MB). Reran the audio-rank
+  battery and image band probe at q4, plus warm timing/RSS for both precisions (6-core dev
+  CPU, transformers.js in-process).
+- **Result (q4 vs q8)**:
+
+| measure                       | q4                                   | q8             | verdict                                                           |
+| ----------------------------- | ------------------------------------ | -------------- | ----------------------------------------------------------------- |
+| text embed                    | **0.13 s**                           | 0.48 s         | 3.7× — brings the E2 <100 ms gate within reach on faster hardware |
+| image embed                   | 7.1 s                                | 8.9 s          | dtype-insensitive (encoder conv dominates)                        |
+| audio 19 s seg                | 3.85 s                               | 5.08 s         | dtype-insensitive                                                 |
+| RSS (3 encoders)              | **1,112 MB**                         | ~1,600 MB      |                                                                   |
+| audio own-text rank (4 clips) | **4/4 rank-1** (.836/.774/.734/.727) | 4/4 rank-1     | ordering survives q4                                              |
+| image band re/crop/other      | .991/.944/.635                       | .989/.948/.649 | ordering survives; abs drift ≤.02                                 |
+
+- Export's own warning — q4 worst-case cos-to-fp32 .975 (audio worst) — is real but lands
+  only on flag-only consumers (§6.5: media θ is a proposal generator; text θ_dup is
+  proposal-only too), never on ranking paths.
+- Distribution facts pinned in-session: HF resolve-URL is commit-immutable; per-file
+  sha256 == registry `x-linked-etag` (verified); dev-box cache yields the full lock
+  (7 q4/lock files, sizes+hashes) — **no self-hosted asset pipeline needed**.
+- **Decisions (owner, 2026-10-14)**:
+  1. Embedding is a **built-in product capability**: in-process (transformers.js + ONNX
+     export), no external serving step required; external GGUF/HTTP providers remain valid
+     overrides (and the interactive/throughput path for media on GPU).
+  2. **dtype = q4** (full set 473 MB) as product default; q8 documented as quality-first
+     profile alternative (a lockfile dtype change = new model_id = re-embed, per §4.15).
+  3. **Distribution = lockfile + boot provisioning (BLOCKING), universal**: npm ships a few-KB
+     lock {repo, revision-pin, files[], sha256[], dtype}; at boot the engine uses
+     pre-provisioned `WEA_MODEL_DIR` if present, else downloads once — **the boot BLOCKS on
+     provisioning and the CLI prints per-file download progress** (owner ruling 2026-10-14;
+     atomic temp-file+rename, sha256-verified, idempotent) — same rule single-node or 1000
+     replicas; pre-provisioning is an optimization, never a mode switch (a STRICT flag was
+     considered and REJECTED: replicas are identical builds, so download-if-absent is already
+     correct and ban adds nothing).
+  4. Provisioning attempt fails (offline first boot / checksum mismatch) ⇒ after the blocking
+     attempt boot continues with embed caps OFF + admin prompt; every other product behavior
+     unaffected (enrichment-dependency stance holds).
+- **DDL**: `llm_models` gains `engine (embedded|remote)`, `precision`, `model_revision`
+  (001 edited; no live users ⇒ big-bang migration script at the `ai-feature`→`dev` deploy).
+- **Consequence**: AI_FEATURE_PLAN §4.2/§4.12/§4.15/§4.20/§4.23/§5 updated (built-in
+  embed role, blocking provisioning, engine+precision+revision in the model-profile identity);
+  spec-level contracts go to llmPresets/llmAdapter next; provisioning CLI + lock generation
+  become PLAN task **T1.0** recorded in **§17** (new section, owner ruling). Pending
+  measurements: q4 TEXT θ_dup band re-check, text-only interactive latency on target
+  hardware, q4 audio long-file pooling drift (§6.5 rows were q8-GPU measured).

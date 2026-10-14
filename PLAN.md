@@ -146,10 +146,18 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 
 ### P1 — Embeddings + semantic search
 
+- T1.0 Embedded embedding engine (owner decision 2026-10-14, PoC addendum §6.8 / AI_FEATURE_PLAN
+  §4.2+§5): `model.lock.json` (repo/revision/files+sha256/dtype=q4) + `provision.js`
+  (boot-BLOCKING, CLI per-file progress log, atomic, `WEA_MODEL_DIR` pre-seed respected,
+  no ban-mode) + `clients/embedded-onnx` (transformers.js in-process, media via processor
+  objects) + local positive-control probe + `llm_models.engine/precision/model_revision`
+  (DDL 001 edited here; live/prod DB moves by the BIG-BANG script at the §6 merge/deploy —
+  owner is the sole user, no compat path) + caps-off-on-failure path (§4.12).
 - T1.1 LLM adapter (T2-hot: per-call config resolution, re-probe on change, restart-free
   §4.2) + budgets/breaker + startup probe + preset manifest & preset×capability probe-matrix
   verification (declared≠probed ⇒ capability off + admin warning, §4.23) + wizard optional
-  skippable AI step storing DB rows (§4.23.5).
+  skippable AI step storing DB rows (§4.23.5) — embed role covered by T1.0 (built-in;
+  wizard/step surface = chat/vision/asr + provisioning status card).
 - T1.2 AI repos (`llm_models`,`embeddings`,`embeddings_chunk`,`ai_features`,`ai_jobs`,
   `ai_usage_daily` — tables already shipped in the T0.2 full-schema DDL) +
   restart-survival test.
@@ -211,8 +219,12 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 
 - T4.1 admin AI tab (pipeline/cost/governance/models, impact-preview tuning, settings
   journal subscription) (§4.15).
-- T4.2 media ladder **V0(ffprobe)→V2(VLM captions→text space)→V3(ASR TRANSCRIPTION ONLY)**
-  behind capability flags; V1 image-embedding RETIRED (single text space, §4.21); ASR scope
+- T4.2 media ladder per §4.21 (revised 2026-10-08/14): **V0(ffprobe) + V1(image/video
+  direct-embed) + V3(audio direct-embed + conditional ASR)** on the built-in q4 engine
+  (batch-class on CPU; external GGUF+GPU server is the throughput override) + **V2(VLM
+  captions)** as display/arbiter material and the media-caps-absent fallback — behind
+  capability flags; V1
+  image-embedding REVIVED 2026-10-08 (PoC §6) — the old RETIRED note is withdrawn; ASR scope
   freeze: transcript + probe meta only — no genre/desc (E13), escape-prompt mandatory,
   `media_kind=music` transcript excluded from content scoring; frames/transients never
   persisted; image near-dup = caption-space distance (weaker vs reencode — accepted).
@@ -259,7 +271,8 @@ aiJobsStore, embeddingsStore, embeddingsChunkStore, aiTagStore}.md`; services
 `.../services/{collectionsService,aiJobService,evolutionService,collectionShareService,
 searchService}.md`; infrastructure
 `.../infrastructure/{llmAdapter,llmPresets,vectorStore}.md` (+ budget-chain section in
-llmAdapter.md) + `maintenanceScheduler.md` update; client
+llmAdapter.md; embedded provider contract + `model.lock.json` schema + provisioning/
+failure-path in llmPresets.md/llmAdapter.md — T1.0 docs step) + `maintenanceScheduler.md` update; client
 per-component/service specs (`docs/spec/client/services/collectionsRepository.md`, hooks,
 components). Updates: `api.md`, `ARCHITECTURE.md` (§1.0 domain tree, §1.2 infra table),
 `shared-contracts.md` (code blocks + enums + response-casing note per §6),
@@ -891,3 +904,33 @@ by omission: `thetaLo` (→ AI_FEATURE_PLAN §10 **Q11 — owner: percentile re-
 margin-rule vs 0.92-restricted; blocks T1.8 on EG2**) and text-space tier rerun (rides T1.x
 evolution calibration, §4.9). Remaining carry-forward: interleaved fusion, native
 `video_embed` `-ub` infra call, 100k-doc media backfill cost (rides T1.4/Q9 sizing study).
+
+## 17. Built-in embedding engine — q4, boot-blocking provisioning (owner decision 2026-10-14, branch `feature/embed-builtin-q4-docs`)
+
+Owner rulings (verbatim, 2026-10-14, following the PoC §6.6/§6.7/§6.8 probes):
+
+1. **Embedding is an inherent product capability** — no separate model-serving step is
+   required. The product embeds the engine in-process (`@huggingface/transformers` + the
+   official `onnx-community/embeddinggemma-2-ONNX` export, **dtype q4**, 473 MB full
+   multimodal set, RSS ~1.1 GB measured). External llama.cpp/HTTP servers remain valid
+   overrides (and the interactive/GPU-throughput path for media). npm distribution stays
+   light: a checked-in **`model.lock.json`** (repo + pinned revision `daa72c51…` + per-file
+   sha256 + dtype), not model bytes ("just fix it" — incl. the llm_models DDL columns).
+2. **Provisioning is BOOT-BLOCKING with a CLI progress log** (per-file), atomic and
+   checksum-verified; `WEA_MODEL_DIR` pre-seed skips download (multi-instance optimization,
+   never a mode); failed attempt ⇒ boot continues, embed caps OFF + admin reason. One
+   universal rule regardless of replica count — the STRICT/ban mode considered earlier is
+   REJECTED (identical-build replicas make download-if-absent already correct).
+3. **Migration posture: big-bang.** Owner is the sole user of every DB; at the
+   `ai-feature`→`dev` deploy a dedicated **big-bang migration script** rewrites the live DB
+   (001 was edited directly for `media_direct` [§16] and `llm_models.engine/precision/
+model_revision` [this section]; checksum-recovery per §6 DDL policy is owner-side).
+   No ALTER chain, no compatibility path.
+4. **PLAN bookkeeping as NEW items** (owner: "신규 항목으로"): task **T1.0** added to P1,
+   this §17 ledger section, PoC **§6.8**, AI_FEATURE_PLAN §4.2/§4.12/§4.15/§4.20/§4.23.5/§5
+   - §10 **Q12**; specs llmPresets (embedded default row + lock schema + scenarios) and
+     llmAdapter (provision.js/embedded client/provisioning error class) updated same PR.
+
+Open measurements (rides §10 Q12 / §16 runbook): q4 text θ_dup + baseline-spread re-check,
+target-hardware query-embed latency verdict, q4 long-audio pooling drift. Q11 (θ_lo)
+remains independently open.

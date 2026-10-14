@@ -52,7 +52,7 @@ Target-contract spec.
  },
  profile: { // model profile — release artifact
  dim, chPerTok, // chars→token safety factor
- edgeCos: { tight, mid, loose }, // kNN tier edges (thetaLo field removed with §4.18 dissolution)
+ edgeCos: { tight, mid, loose }, // kNN tier edges
  throughputDocsMin, calibrated: false, // provenance flag (always false in-product)
  // server-shape flags — probe-verified contract properties (llmAdapter.md §2.4).
  // Two DISTINCT silent-failure classes, never conflate:
@@ -199,8 +199,8 @@ Expectations are advisory; probes (§2.4) gate each sub-capability.
       (expected set is advisory, probe is authority)
 - [ ] Embed manifest rows carry ONLY embeddinggemma-2 (grep: no other embed model slug);
       bge-m3/other-model embed support absent from manifest, types, presets.js and fixtures
-- [ ] Tag layer has NO vector surface: no `tag_embeddings`/`tag_parents` consumers, no
-      θ_tag/θ_lo constants exist anywhere (grep; §4.18 dissolved 2026-10-16)
+- [ ] Tag layer has no vector surface: no `tag_embeddings`/`tag_parents` consumers, no
+      θ_tag/θ_lo constants anywhere (grep)
 - [ ] Conformance gate fixture: a 768-dim DIFFERENT model served behind an
       "embeddinggemma-2"-ALIASED endpoint (fixture) ⇒ dim check passes, conformance fails ⇒
       embed role OFF + `nonConformingEndpoint`; assert no code path consults the endpoint's

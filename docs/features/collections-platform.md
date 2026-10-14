@@ -96,7 +96,7 @@ Manual membership is stored; removing a member never trashes the file. Derived m
 the definition (path/tag/like/date/size predicates, optionally seed or centroid similarity) with no
 stored rows; a soft view-count boost moves only borderline members and ordering, under
 enter-above/leave-below hysteresis. Tag predicates match by folded string equality in every
-state (§4.18 dissolved 2026-10-16 — vector tag matching retired). Exclusions ("Exclude") block derived adds;
+state (§4.18). Exclusions ("Exclude") block derived adds;
 excluding is a touch, hence auto-pins (§4.9), and its rate is an admin quality metric, never an
 archive trigger.
 
@@ -376,15 +376,15 @@ sentence-or-less files skip similarity near-dup and use the hash path. Dismiss i
 unaccepted expire with retention; accepting is checked → trash as one undoable command — the
 checkbox _is_ the confirmation.
 
-### 4.18 Tags: description only (vocabulary machinery dissolved 2026-10-16)
+### 4.18 Tags: description only
 
 LLM tags are words that describe a file — display chips and naming/adjudication material.
-No institution: no merge (never was), no parent hints, no vector predicates, no
-materialization of LLM tags. Read-time case/whitespace/Unicode folding remains a pure
-function for counts/display; `ai_tag_raw` holds ONLY derived local facets
-(`mime:`/`ext:`/`month:`/`path:`), matched by folded string equality. Evidence trail:
-PoC §6.5/§6.9 (absolute θ unusable on EG2 bands; the error lives in the string layer,
-owned by derivedTags/parse.nl, not cosine).
+There is no vocabulary institution: no merge, no parent hints, no vector tag matching, no
+materialization of LLM tags. Read-time case/whitespace/Unicode folding is a pure function
+for counts/display; `ai_tag_raw` holds ONLY derived local facets (`mime:`/`ext:`/`month:`/
+`path:`), matched by folded string equality (§3.2). The semantic-expansion need lives in
+document/media-vector collections (§4.5/§4.6), never in tag fuzzy. (Measurements: PoC
+§6.5/§6.9.)
 
 ### 4.19 Chat-model roles
 

@@ -6,7 +6,7 @@ Target-contract spec (`docs/features/collections-platform.md` §4.9 silent evolu
 
 | Item       | Description                                                                                                                                                                                                                                                                               |
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role       | Silent evolution of `origin='system'` collections ONLY (silent evolution never touches `user                                                                                                                                                                                              | seed | search` origins): triggers/debounce, the six passes (create / split / archive / purge / merge-candidates / auto-pin-reconcile), the retired tag-vocabulary pass (§2.10), and merge-SUGGESTION writing.                                                                                                                                                                                                                                                                                                  |
+| Role       | Silent evolution of `origin='system'` collections ONLY (silent evolution never touches `user                                                                                                                                                                                              | seed | search` origins): triggers/debounce, the six passes (create / split / archive / purge / merge-candidates / auto-pin-reconcile), and merge-SUGGESTION writing. No nightly tag pass exists (§2.10).                                                                                                                                                                                                                                                                                                       |
 | Act stance | System acts silently; every act is journaled via `commitChange` with `actor='system'` — the undo journal replaces any proposal inbox; every act carries an inverse. The ONLY proposal output is merge candidates — never an inbox; the UI safety valve is undo + the merge-proposal card. |
 | Boundaries | Never touches `origin='user                                                                                                                                                                                                                                                               | seed | search'`rows for create/split/archive/purge (they get ordering gravity only). Never writes`collection_grants`/visibility. Executes OFF request paths and OFF upload commits (batch-end/nightly only). Embedding/analysis MATH is call-free by construction (centroids are means of stored vectors; seeds are references to existing vectors — no provider call ever computes evolution math); the only provider use is the `merge-arbiter` advisory (chat, nightly, ≤1 call/user/day aggregate budget). |
 
@@ -162,14 +162,11 @@ for user|seed|search, which silent evolution never archives); (b) never downgrad
 rows (the pin itself is journal-less, additive and invisible — pinned collections are exempt from auto-archive/purge forever; `pinned_by='auto'` shows a subtle chip so users can unpin). Reads/views/likes
 deliberately do NOT count as touches (activity gravity covers them).
 
-### 2.10 Nightly tag-vocabulary pass — RETIRED (2026-10-16)
+### 2.10 No nightly tag pass (numbering kept)
 
-The §4.18 dissolution removes this pass entirely. **What is gone**: the orthographic-
-materialization and parent-hint steps are gone (no `ai_tag_raw` write, no `tag_parents`,
-no θ_lo, no `tag_embeddings`). **What remains**:
-`ai_tag_raw` written ONLY by derivedTagsService at commit points (derived facets);
-`tagVocabulary.fold()` as a read-time PURE function for naming/arbiter display; NO nightly
-tag pass exists.
+Evolution performs NO tag work: no materialization, no normalization pass, no hints, no
+vector cache (AI_FEATURE_PLAN §4.18). `ai_tag_raw` has exactly one writer —
+derivedTagsService at commit points; the definition engine reads it string-equality only.
 
 ### 2.11 Centroid maintenance
 
@@ -228,9 +225,9 @@ driven by backfill completion). `deleteCentroids` on purge/merge loser.
 - [ ] Auto-pin reconcile: each touch type (per §2.9) pins a system row (`pinned_by='auto'`,
       no journal row for the pin); read/view/like touches do NOT pin; user-origin rows
       keep NULL; nightly reconcile clears any illegal non-system auto-pin
-- [ ] Tag pass is GONE: evolution writes nothing to `ai_tag_raw`/`tag_parents`
-      (grep: no ai_tag_raw parent writes; the only derived-facet writer is
-      derivedTagsService; `tag_parents` table unreferenced pending T1.0b purge)
+- [ ] No tag pass: evolution writes nothing to `ai_tag_raw` (the only derived-facet writer is
+      derivedTagsService); no `tag_parents`/`tag_embeddings` reference exists in any
+      evolution code path (grep)
 - [ ] Every act journaled `actor='system'` (undoable via digest/feed ≤24h — actions
       feed), zero toast-side effects, `admin_reports(kind='night_eval')` written
 - [ ] Kill switches: global pause stops ALL acts but leaves suggestions/rendering intact;

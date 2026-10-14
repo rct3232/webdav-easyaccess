@@ -275,10 +275,14 @@ infrastructure specs live under `docs/spec/server/`.
 
 ## 8. Docs gate (per phase, before code — AGENTS §2.1)
 
-**State-only rule (restated; recurs since 2026-10-14):** `docs/spec/**` carries decided/
-implemented STATE only — dated rulings, rationale, retracted proposals, and "why we changed"
-narratives live ONLY in AI_FEATURE_PLAN (design authority) and this ledger / PoC addenda
-(AGENTS §2.1.5, AI_FEATURE_PLAN §12 preamble).
+**State-only rule (restated; recurs since 2026-10-14):** `docs/spec/**` and
+`docs/features/**` carry decided/implemented STATE only — dated rulings, rationale,
+retracted proposals, and "why we changed" narratives live ONLY in AI_FEATURE_PLAN (design
+authority) and this ledger / PoC addenda (AGENTS §2.1.5, AI_FEATURE_PLAN §12 preamble).
+Mechanical sweep for spec-file review: reject `2026-1[01]-dd`, `dissolv`, `retir`,
+`withdraw`, `supersed`, `initially proposed`, `purge state`, `pending T1`, `evidence
+trail`, `owner`-attributions in prose (false positives like "translated"/"rendered" are
+judgeable by eye; the patterns are the net, not the verdict).
 
 New: `docs/features/collections-platform.md`; routes `docs/spec/server/routes/{collections,
 search,actions}.md`; stores `.../store/{collectionsStore,fileLikesStore,actionJournalStore,

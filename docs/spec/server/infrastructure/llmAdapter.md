@@ -39,11 +39,14 @@ Target-contract spec.
   the resolver reads DB → default and **ignores env** — a `.env`-provided `LLM_*` value is
   never effective, and the DB `settings` row is the single config surface (wizard
   and admin editor both write rows).
-  **Embed-role presence (2026-10-14):** with `LLM_EMBED_*` unset, the resolver resolves the
+  **Embed-role presence:** with `LLM_EMBED_*` unset, the resolver resolves the
   **built-in `embedded` provider** (lockfile shipped = present; boot provisioning per §2.1/
   [llmPresets](llmPresets.md) §2.3), so embed candidacy needs no config; an admin-set remote
-  embed triple OVERRIDES the built-in (one active embed model). `engine`/`precision`/
-  `model_revision` land on the `llm_models` row (identity, §4.20/§4.15).
+  embed triple OVERRIDES the built-in (one active embed model) but activates only after the
+  §2.4 **conformance gate** (EG2 model pin — endpoint names are untrusted metadata).
+  `engine` lands on the `llm_models` row (identity); `precision`/`model_revision` are
+  best-effort annotations (embedded: from the lock; remote: NULL unless verifiable —
+  §4.20/§4.15).
 - **Client cache keyed by the resolved-config SIGNATURE**
   (`sha256(base_url∥model∥api_key∥dialect)`): rebuild on change — no full teardown.
   `getRoleClient(role)` → client | `null` (role unconfigured ⇒ null ⇒ capability degrades,
@@ -66,7 +69,7 @@ Target-contract spec.
 | `chat(messages, {schema?, maxTokens?, reasoning?})` | JSON-schema-forced where supported; `reasoning` defaults OFF (§2.7); returns `{json, text, usage, truncated}`                                                                                                                                                                                          |
 | `visionCaption(frames[], {prompt})`                 | V2 path ONLY from worker context                                                                                                                                                                                                                                                                       |
 | `asrTranscribe(audioBuffer, {escapePrompt: true})`  | escape-prompt is part of the fixed template — callers cannot omit it.                                                                                                                                                                                                                                  |
-| `probeLlm()`                                        | suite (§2.4); `runProbe(target='llm')` registration in `backendProbe.js:263` + `POST /api/admin/config/test` target `llm` + `/api/setup/test` target `llm` (wizard)                                                                                                                                    |
+| `probeLlm()`                                        | suite (§2.4; **includes the remote-embed conformance gate** — activation of an external embed override depends on it); `runProbe(target='llm')` registration in `backendProbe.js:263` + `POST /api/admin/config/test` target `llm` + `/api/setup/test` target `llm` (wizard)                           |
 | `breakerState(role)` / `budgetStatus()`             | admin card inputs: `ok \| budget_paused \| breaker_open(cooldown_left)` + `ai_usage_daily` rows                                                                                                                                                                                                        |
 | `syncModelRegistry()`                               | upsert `llm_models` rows from resolved configs + probe results (`dim`, `max_input_chars`, `chunk_budget`, `batch_size`, `reasoning`, `enabled`) — the registry is the adapter's persisted view, never hand-edited except `reasoning` (experiment switch)                                               |
 
@@ -84,6 +87,13 @@ capability claims:
   endpoints). Text is sent with the profile's task prefixes. When the profile declares
   `pooling`, `/props` (llama family) is read: server pooling ≠ profile pooling ⇒ `text_embed`
   OFF with reason — pooling is SPACE-shaping (same weights, different space, zero errors).
+  **CONFORMANCE (external embed only — EG2 model pin):** the fixed reference-kit strings are
+  embedded and the **median cos to the canonical vectors ≥ calibrated threshold** (release
+  artifact, [llmPresets](llmPresets.md) §2.2; negatives measured on same-dim model twins).
+  Fail (or wrong dim) ⇒ the WHOLE embed role OFF with `nonConformingEndpoint`, admin card
+  shows the measured median; partial activation (text-ok/media-off) only for endpoints that
+  pass conformance and then fail a media probe. Built-in rows skip this gate (lockfile
+  checksum IS the identity).
 - `image_embed` / `audio_embed` / `video_embed`: probes need POSITIVE CONTROLS
   in the profile `requestShape` — known failure mode: a multimodal-DECLARING endpoint
   silently ignores wrongly-shaped media and returns a TEXT vector with HTTP 200.
@@ -124,7 +134,7 @@ surface; regular users see absent affordances, not disabled ones.
 
 Daily caps: per-role `LLM_DAILY_CALL_CAP` / `LLM_DAILY_TOKEN_CAP` (0 = unlimited) →
 budget breaker PAUSES the role (surface in admin; jobs park upstream, aiJobService §2.3).
-**Embedded provider budget mapping (2026-10-14):** steps 1–2 are config-only (no metadata
+**Embedded provider budget mapping:** steps 1–2 are config-only (no metadata
 GETs exist) — `max_input_chars` comes from the lockfile profile (step 3; model window 8,192,
 server ub wall N/A, in-process memory governs batch size); the step-4 limiter stays armed
 (OOM/refusal class ⇒ halve chunk window). Media segment ladder (§2.6) applies unchanged.
@@ -162,14 +172,14 @@ plan assumption. Reasoning-EFFORT tiers are exposed ONLY where probing finds sup
 
 ### 2.8 Error taxonomy (every provider error classified before surfacing)
 
-| Class                     | Examples                                                              | Handling                                                                                                                                                                                                                       |
-| ------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `length`                  | 400 token/input-too-long, context-overflow messages                   | §2.5 step-4 halving + `degraded` flag + histogram counter; NEVER fails a job (ladder degrades)                                                                                                                                 |
-| `transport`               | timeout, ECONNRESET, 5xx, DNS                                         | retry-within-job, consecutive-failure breaker (§2.5), surfaced to caller as degrade signal (services choose their fallback; request paths never 5xx on this)                                                                   |
-| `rate`                    | 429                                                                   | `ai_usage_daily.failed_429` counter, short backoff, breaker-relevant                                                                                                                                                           |
-| `schema`                  | malformed JSON from chat roles                                        | surfaced as pipeline failure → job `markFailed` (retry)                                                                                                                                                                        |
-| `config`                  | 401/404 model-not-found                                               | role marked probe_failed(reason), admin card CTA; jobs park (role treated as not-candidate)                                                                                                                                    |
-| `provisioning` (embedded) | no network first boot, checksum mismatch, disk full, partial download | boot's blocking attempt logs the failure; **embed caps OFF** + admin card (reason + retry action), product boots; atomic staging ⇒ a partial file is never consumed; one retry per boot, admin "re-provision" = manual trigger |
+| Class                     | Examples                                                                                                                             | Handling                                                                                                                                                                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `length`                  | 400 token/input-too-long, context-overflow messages                                                                                  | §2.5 step-4 halving + `degraded` flag + histogram counter; NEVER fails a job (ladder degrades)                                                                                                                                 |
+| `transport`               | timeout, ECONNRESET, 5xx, DNS                                                                                                        | retry-within-job, consecutive-failure breaker (§2.5), surfaced to caller as degrade signal (services choose their fallback; request paths never 5xx on this)                                                                   |
+| `rate`                    | 429                                                                                                                                  | `ai_usage_daily.failed_429` counter, short backoff, breaker-relevant                                                                                                                                                           |
+| `schema`                  | malformed JSON from chat roles                                                                                                       | surfaced as pipeline failure → job `markFailed` (retry)                                                                                                                                                                        |
+| `config`                  | 401/404 model-not-found, **non-conforming model at an external embed endpoint** (wrong dim, or reference-kit median below threshold) | role marked probe_failed(reason incl. `nonConformingEndpoint`), admin card CTA; jobs park (role treated as not-candidate); a save-time verify failure prevents the override from being stored at all (llmPresets §2.5)         |
+| `provisioning` (embedded) | no network first boot, checksum mismatch, disk full, partial download                                                                | boot's blocking attempt logs the failure; **embed caps OFF** + admin card (reason + retry action), product boots; atomic staging ⇒ a partial file is never consumed; one retry per boot, admin "re-provision" = manual trigger |
 
 ### 2.9 Usage counting
 
@@ -214,8 +224,11 @@ kill switch family).
       land checksum-verified, probe passes, embed caps ON; corrupt one byte (fixture) ⇒
       `provisioning` failure path ⇒ caps OFF + reason, server still starts; pre-seeded dir ⇒
       zero fetch calls (network stub asserts no requests); `LLM_EMBED_*` remote triple set ⇒
-      embedded provider replaced (override), only one embed model active, engine/precision/
-      model_revision on the registry row
+      embedded provider replaced (override) ONLY after probe + conformance pass — a
+      same-dim wrong-model remote (embeddinggemma-1 twin fixture, alias-renamed to
+      "embeddinggemma-2") must be rejected (`nonConformingEndpoint`, built-in untouched —
+      rejection asserts the endpoint's self-declared name is never consulted); only one
+      embed model active; engine + precision/revision annotations on the registry row
 - [ ] Media-embed probe against the fake server that SILENTLY DROPS media fields (returns
       the text vector, HTTP 200 — reproduces the known silent media-drop failure mode):
       positive-control probe must fail it ⇒ media capability OFF + fallback V2/V0, while

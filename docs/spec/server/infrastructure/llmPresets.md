@@ -4,11 +4,11 @@ Target-contract spec.
 
 ## 1. Overview
 
-| Item            | Description                                                                                                                                                                                                                                                                        |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role            | The provider/server-family PRESET MANIFEST: per-family declarations of EXPECTED capabilities + recommended budgets + per-model profile constants. Adding a provider = adding a manifest row; CORE CODE NEVER BRANCHES ON PROVIDER NAMES.                                           |
-| Authority split | Presets declare EXPECTED; [llmAdapter](llmAdapter.md) §2.4 probes decide ACTUAL. Declared-but-failing ⇒ capability OFF + admin warning card (declared vs probed).                                                                                                                  |
-| Provenance rule | Every numeric constant the AI passes (cos thresholds, ef_search, char/token factor) is a RELEASE ARTIFACT produced by the project on its dev-owned reference set. No runtime calibration, no dataset shipped to end users (measured corpus drift is the reserved re-open trigger). |
+| Item            | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role            | The provider/server-family PRESET MANIFEST: per-family declarations of EXPECTED capabilities + recommended budgets + per-model profile constants. **Embed is MODEL-PINNED (embeddinggemma-2 only): exactly two embed providers — `embedded` (built-in, lockfile-verified) and `external-endpoint` (any dialect serving EG2, ACTIVATION-GATED by reference conformance, §2.3).** Provider breadth + "adding a provider = adding a row" remain the rule for chat/vision/asr; CORE CODE NEVER BRANCHES ON PROVIDER NAMES. |
+| Authority split | Presets declare EXPECTED; [llmAdapter](llmAdapter.md) §2.4 probes decide ACTUAL. Declared-but-failing ⇒ capability OFF + admin warning card (declared vs probed).                                                                                                                                                                                                                                                                                                                                                      |
+| Provenance rule | Every numeric constant the AI passes (cos thresholds, ef_search, char/token factor) is a RELEASE ARTIFACT produced by the project on its dev-owned reference set. No runtime calibration, no dataset shipped to end users (measured corpus drift is the reserved re-open trigger).                                                                                                                                                                                                                                     |
 
 ---
 
@@ -36,6 +36,13 @@ Target-contract spec.
  dtype: 'q4' | 'q8' | 'fp16' | 'fp32',
  files: [{ path, sha256 }], // verified at boot; mismatch ⇒ provisioning fails ⇒ caps OFF
  provisionDirEnv: 'WEA_MODEL_DIR', // else download-at-boot (BLOCKING, CLI progress log)
+ },
+ conformance: { // family 'external-endpoint' (embed) ONLY — model-identity gate (llmAdapter.md §2.4)
+ referenceKit: { strings, vectorsSha }, // checked-in release artifact; N fixed inputs + canonical vectors
+ metric: 'median-cos', // aggregate statistic, never per-pair gating
+ threshold: 'RELEASE ARTIFACT', // set by calibration on the dev reference set (SETUP.md checklist); never assumed
+ // endpoint-reported NAMES are not identity evidence (freely aliasable) —
+ // identity = structural (dim) + behavioral (this gate)
  },
  endpoints: { // free metadata GETs for budget-chain step 2 (remote families only)
  models: '/v1/models', props: '/props' // per family
@@ -74,42 +81,34 @@ Rows are FROZEN; the admin UI renders from the manifest; probe results persist t
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | family/engine   | embedded — no base_url, no external server; the product ships with embed capability turned on                                          |
 | lock.repo       | `onnx-community/embeddinggemma-2-ONNX`                                                                                                 |
-| lock.revision   | pinned commit (immutable resolve-URL; the 2026-10-14 pin is `daa72c51…`) — upgrading the model = new lockfile PR → new model_id        |
+| lock.revision   | pinned commit (immutable resolve-URL; current pin `daa72c51…`) — upgrading the model = new lockfile PR → new model_id                  |
 | lock.dtype      | **q4** (default, 473 MB full set); q8 available as a quality-first profile alternative (dtype change = model change = re-embed, §4.15) |
 | caps (expected) | text/image/audio/video embed true — verified by the local boot probe (llmAdapter.md §2.4), not assumed                                 |
-| profile.numbers | dim 768, chPerTok 1.5, θ_dup 0.955, edgeCos provisional {0.86,0.80,0.72} — q4 text band re-check + q4 audio-drift open (Q12)           |
+| profile.numbers | dim 768, chPerTok 1.5, θ_dup 0.955, edgeCos provisional {0.86,0.80,0.72} — q4 text-band re-check open (release runbook)                |
 | provisioning    | boot-blocking, CLI per-file progress log, sha256-verified, atomic; `WEA_MODEL_DIR` pre-seed skips download                             |
 | offline result  | provisioning attempt fails → embed caps OFF + admin prompt; product still boots (enrichment-dependency)                                |
-| latency         | text 0.13 s / image 7 s / audio-seg 3.85 s on 6-core dev CPU (NOT target-hardware promise — §4.2 E2 gate verdict is per-deployment)    |
+| latency         | text 0.13 s / image 7 s / audio-seg 3.85 s (dev-box CPU); the E2 <100 ms verdict is per deployment hardware                            |
 
-External llama.cpp/HTTP rows below are **overrides**: configuring one replaces the built-in
-embed provider (one active embed model, §4.20); the built-in is the zero-config default.
+External embed rows below are **overrides** (one active embed model, §4.20). No embed model
+other than embeddinggemma-2 is supported; the manifest carries no other embed-model row.
+An external endpoint must pass the `conformance` gate (§2.2) before the remote row
+activates; dialect family only selects the transport.
 
-**`bge-m3` @ llama.cpp (embed):**
+**`embeddinggemma-2` @ external endpoint (llama.cpp ≥b11452; ollama/TEI/OpenAI-compat dialects same contract):**
 
-| Field            | Value                                                                                  |
-| ---------------- | -------------------------------------------------------------------------------------- |
-| modality         | TEXT ONLY — vision/audio expectations false                                            |
-| dim              | 1024                                                                                   |
-| budget profile   | llama.cpp ub-512 build profile (`maxInputCharsDefault` from the ub-512 context budget) |
-| chPerTok         | ≈1.7 chars/token (release constant)                                                    |
-| throughput       | ≈15k docs/min (local batch)                                                            |
-| degeneracy check | distinct samples → non-degenerate cosines                                              |
-
-**`embeddinggemma-2` @ llama.cpp ≥b11452 (embed, multimodal):**
-
-| Field             | Value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| modality          | text + image + audio + video (one shared space); expectations true, EACH sub-capability probe-gated (§2.4)                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| dim               | 768; MRL truncations 512/256 (128 text-only-degraded) — stored dim is a profile choice, renorm after truncation mandatory                                                                                                                                                                                                                                                                                                                                                                                                               |
-| requestShape      | `content-wrapper` only — top-level media fields are SILENTLY IGNORED by llama.cpp embed endpoints (HTTP 200 returns the text vector); catch requires the §2.4 positive controls                                                                                                                                                                                                                                                                                                                                                         |
-| textPrefixes      | query `task: search result \| query:`, doc `title: … \| text: …`; NONE on media; omission degrades quality silently                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| pooling           | mean — server flag mismatch silently reshapes the plain-text space; probe verifies via /props                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| dtype             | bf16/fp32 only — fp16 yields NaN/silent degradation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| mediaTokenCost    | image 280 (70–1120 soft budget) / video 140 per frame @1 fps / audio 25 per sec; window 8,192 shared                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| serving ub limits | `-ub 512` rejects >~20 s audio / multi-frame video → media segment ladder (llmAdapter.md §2.6)                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| profile numbers   | chPerTok ≈1.5 budgeted (mean 1.74, worst ko+digits class 1.50); throughput ≈6.1k docs/min sequential / ≈12.1k batch-8 (GPU serving); edgeCos tiers {0.86, 0.80, 0.72} PROVISIONAL (zero stock-contamination verified in image space; text-space rerun outstanding); θ_dup text **0.955** — media θ are FLAG-ONLY (image 0.94: same-event pairs reach 0.990; audio 0.969: noise-type pairs reach 0.9988); thetaLo **UNRESOLVED** — containment and sibling bands overlap in this space, the absolute-θ rule is not satisfied as designed |
-| query-embed class | passes <100 ms only at GPU serving; CPU serving does not meet the gate — the profile records the serving mode under which the gate was measured                                                                                                                                                                                                                                                                                                                                                                                         |
+| Field             | Value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| modality          | text + image + audio + video (one shared space); expectations true, EACH sub-capability probe-gated (§2.4)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| dim               | 768; MRL truncations 512/256 (128 text-only-degraded) — stored dim is a profile choice, renorm after truncation mandatory                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| requestShape      | `content-wrapper` only — top-level media fields are SILENTLY IGNORED by llama.cpp embed endpoints (HTTP 200 returns the text vector); catch requires the §2.4 positive controls                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| textPrefixes      | query `task: search result \| query:`, doc `title: … \| text: …`; NONE on media; omission degrades quality silently                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| pooling           | mean — server flag mismatch silently reshapes the plain-text space; probe verifies via /props                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| dtype             | bf16/fp32 only — fp16 yields NaN/silent degradation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| mediaTokenCost    | image 280 (70–1120 soft budget) / video 140 per frame @1 fps / audio 25 per sec; window 8,192 shared                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| serving ub limits | `-ub 512` rejects >~20 s audio / multi-frame video → media segment ladder (llmAdapter.md §2.6)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| profile numbers   | chPerTok ≈1.5 budgeted (mean 1.74, worst ko+digits class 1.50); throughput ≈6.1k docs/min sequential / ≈12.1k batch-8 (GPU serving); edgeCos tiers {0.86, 0.80, 0.72} PROVISIONAL (zero stock-contamination verified in image space; text-space rerun outstanding); θ_dup text **0.955** — media θ are FLAG-ONLY (image 0.94: same-event pairs reach 0.990; audio 0.969: noise-type pairs reach 0.9988); thetaLo **UNRESOLVED** — containment and sibling bands overlap in this space, so the absolute-θ parent-hint gate has no valid value; parent hints stay absent until re-anchoring is decided |
+| query-embed class | passes <100 ms only at GPU serving; CPU serving does not meet the gate — the profile records the serving mode under which the gate was measured                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| activation gate   | dim==768 (structural) + `conformance` reference kit (median-cos ≥ calibrated threshold, §2.2) — a same-dim DIFFERENT model (e.g. embeddinggemma-1: 768-d, text-only, different space) passes dim and must be caught here; endpoint self-naming is ignored. Fail ⇒ embed role OFF (`nonConformingEndpoint`), no partial state. In-EG2 precision drift is same-space variance and is NOT gated: θ constants are single-set per model; `precision`/`model_revision` are best-effort annotations, not gates                                                                                              |
 
 | Capability    | Verdict                                                                                                 |
 | ------------- | ------------------------------------------------------------------------------------------------------- |
@@ -128,8 +127,10 @@ embed provider (one active embed model, §4.20); the built-in is the zero-config
 | `enable_thinking`      | switch WORKS via `chat_template_kwargs`; default reasoning-off ships       |
 | reasoning effort tiers | UNSUPPORTED (probing finds none — params must not be sent)                 |
 
-**Ollama / OpenAI-compatible / TEI-class rows — RELEASE MEASUREMENT PENDING.**
-Expectations ship (from published docs), every PROFILE/BUDGET number is null-marked
+**Ollama / OpenAI-compatible / TEI-class CHAT-side rows — RELEASE MEASUREMENT PENDING.**
+Scope: matrix + pending mechanics apply to **chat/vision/asr roles only** —
+embed is model-pinned (embedded or external-EG2). Expectations ship (from published docs),
+every PROFILE/BUDGET number is null-marked
 `pending` and MUST be filled on the dev reference set before the row is offered in the
 picker (governing rule: a complete bundle or not offered). The per-row measurement
 checklist is a release-runbook concern, not product behavior (runbook: `docs/SETUP.md`,
@@ -152,6 +153,9 @@ feature-degradation matrix (manual
 collections, rules, dups-by-hash, name search) — no half-AI state exists. Distinct from
 DB vector capability: missing LLM capability REMOVES a feature; missing DB vector
 capability only degrades SPEED (fallback) — never both ways.
+**There is no embed fallback chain (model pin):** built-in provisioning failure ⇒ caps OFF;
+external conformance failure ⇒ embed role OFF with reason. Neither silently substitutes
+another model — the absence itself is the honest state (same stance as §4.23.2 media caps).
 
 **Media embed capabilities (`image_embed`/`audio_embed`/`video_embed`) are manifest
 members** — consumers are the media direct-embed pipeline (V1/V3).
@@ -159,10 +163,12 @@ Expectations are advisory; probes (§2.4) gate each sub-capability.
 
 ### 2.5 Preset consumption surfaces
 
-- Admin `/api/admin/config` editor: shows the **embedded engine as the default embed row**
-  (provisioning status: provisioned / download-progress / offline-failed→caps-OFF) and, below
-  it, override rows — picking an external embed server replaces the built-in (one active embed
-  model). Other roles: preset picker → fills role fields → per-role test
+- Admin `/api/admin/config` editor: **embed = two-way choice** — `Built-in (default)` with
+  its provisioning status card (provisioned / download-progress / offline-failed→caps-OFF),
+  or `External endpoint` (dialect + base-url/key/model + **[verify]**: probe incl. the
+  `conformance` gate must pass before the override saves; measured reference-kit median is
+  displayed on the card). One active embed model; clearing the override returns to built-in.
+  Other roles: preset picker → fills role fields → per-role test
   (`POST /api/admin/config/test` target `llm`); values stored as DB settings rows.
 - Setup wizard OPTIONAL skippable "AI" step — **chat/vision/asr only** (embed needs no setup:
   the built-in engine auto-provisions at boot, §4.2). preset picker → role checkboxes →
@@ -191,15 +197,20 @@ Expectations are advisory; probes (§2.4) gate each sub-capability.
 - [ ] Probe result overrides expectation in BOTH directions: declared-not-probed ⇒ off +
       warning; undeclared-but-probed ⇒ capability ON with an "undeclared" admin note
       (expected set is advisory, probe is authority)
-- [ ] `bge-m3` row values match this spec's table (dim 1024, chPerTok 1.7, ub-512
-      budget, text-only expectations) — drift between doc and code fails CI
-- [ ] `embeddinggemma-2` (llama.cpp) row: measured profile values shipped; the §4.18
-      parent-hints FEATURE stays absent while `thetaLo` is unresolved (Q11 owner decision —
+- [ ] Embed manifest rows carry ONLY embeddinggemma-2 (grep: no other embed model slug);
+      bge-m3/other-model embed support absent from manifest, types, presets.js and fixtures
+- [ ] `embeddinggemma-2` external row: measured profile values shipped; the §4.18
+      parent-hints FEATURE stays absent while `thetaLo` is unresolved (Q11 pending —
       the provider itself is offered; absent, not degraded)
+- [ ] Conformance gate fixture: a 768-dim DIFFERENT model served behind an
+      "embeddinggemma-2"-ALIASED endpoint (fixture) ⇒ dim check passes, conformance fails ⇒
+      embed role OFF + `nonConformingEndpoint`; assert no code path consults the endpoint's
+      self-declared name for identity
+- [ ] built-in lock dtype change ships as a new lock revision ⇒ new `llm_models` row
+      (model_id change, re-embed policy §4.2); remote endpoint precision stays annotation —
+      no precision-gate code path exists (grep)
 - [ ] `embedded` default row: lockfile parses (repo/revision/dtype/files[] with sha256);
       boot with EMPTY `WEA_MODEL_DIR` blocks provisioning with per-file progress logs and
       ends checksum-verified; pre-seeded dir ⇒ zero download attempts, zero network egress;
       one corrupted byte in one file ⇒ provisioning failure (atomic partial files never
       consumed) ⇒ embed caps OFF + admin reason, product boots
-- [ ] dtype is part of identity: switching lock dtype q4↔q8 yields a different
-      `llm_models` row (new model_id); no cross-precision vector comparison passes CI

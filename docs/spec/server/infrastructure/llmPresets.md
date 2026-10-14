@@ -27,10 +27,17 @@ Target-contract spec.
 ```js
 {
  id: 'llamacpp-bge-m3', // stable slug, admin picker value only
- family: 'llama.cpp' | 'ollama' | 'openai-compatible' | 'tei',
+ family: 'embedded' | 'llama.cpp' | 'ollama' | 'openai-compatible' | 'tei', // 'embedded' = in-process ONNX (the product default embed provider, no external server)
  roles: ['embed'|'chat'|'vision'|'asr'], // endpoints this row can serve
+ engine: 'embedded' | 'remote', // llm_models.engine source (embedded needs no base_url)
  expected: { text_embed, image_embed, audio_embed, video_embed, chat, vision_chat, asr }, // BOOLEAN expectations (§2.4 map); media embed caps are embed-role sub-capabilities, probed separately
- endpoints: { // free metadata GETs for budget-chain step 2
+ lock: { // family 'embedded' ONLY — the trust boundary replacing a server URL
+ repo, revision, // pinned HF commit (immutable resolve-URL)
+ dtype: 'q4' | 'q8' | 'fp16' | 'fp32',
+ files: [{ path, sha256 }], // verified at boot; mismatch ⇒ provisioning fails ⇒ caps OFF
+ provisionDirEnv: 'WEA_MODEL_DIR', // else download-at-boot (BLOCKING, CLI progress log)
+ },
+ endpoints: { // free metadata GETs for budget-chain step 2 (remote families only)
  models: '/v1/models', props: '/props' // per family
  },
  budgets: { // step-3 fallbacks of the budget chain (llmAdapter.md §2.5)
@@ -59,7 +66,24 @@ Target-contract spec.
 Rows are FROZEN; the admin UI renders from the manifest; probe results persist to
 `llm_models` + `backendHealth`, never back into the manifest.
 
-### 2.3 Manifest rows (bge-m3, embeddinggemma-2, gemma-4-12b-it)
+### 2.3 Manifest rows (embedded-EG2 [default], bge-m3, embeddinggemma-2, gemma-4-12b-it)
+
+**`embeddinggemma-2-onnx-q4` @ embedded (in-process, THE DEFAULT embed provider):**
+
+| Field           | Value                                                                                                                                  |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| family/engine   | embedded — no base_url, no external server; the product ships with embed capability turned on                                          |
+| lock.repo       | `onnx-community/embeddinggemma-2-ONNX`                                                                                                 |
+| lock.revision   | pinned commit (immutable resolve-URL; the 2026-10-14 pin is `daa72c51…`) — upgrading the model = new lockfile PR → new model_id        |
+| lock.dtype      | **q4** (default, 473 MB full set); q8 available as a quality-first profile alternative (dtype change = model change = re-embed, §4.15) |
+| caps (expected) | text/image/audio/video embed true — verified by the local boot probe (llmAdapter.md §2.4), not assumed                                 |
+| profile.numbers | dim 768, chPerTok 1.5, θ_dup 0.955, edgeCos provisional {0.86,0.80,0.72} — q4 text band re-check + q4 audio-drift open (Q12)           |
+| provisioning    | boot-blocking, CLI per-file progress log, sha256-verified, atomic; `WEA_MODEL_DIR` pre-seed skips download                             |
+| offline result  | provisioning attempt fails → embed caps OFF + admin prompt; product still boots (enrichment-dependency)                                |
+| latency         | text 0.13 s / image 7 s / audio-seg 3.85 s on 6-core dev CPU (NOT target-hardware promise — §4.2 E2 gate verdict is per-deployment)    |
+
+External llama.cpp/HTTP rows below are **overrides**: configuring one replaces the built-in
+embed provider (one active embed model, §4.20); the built-in is the zero-config default.
 
 **`bge-m3` @ llama.cpp (embed):**
 
@@ -135,12 +159,16 @@ Expectations are advisory; probes (§2.4) gate each sub-capability.
 
 ### 2.5 Preset consumption surfaces
 
-- Admin `/api/admin/config` editor: preset picker → fills role fields → per-role test
+- Admin `/api/admin/config` editor: shows the **embedded engine as the default embed row**
+  (provisioning status: provisioned / download-progress / offline-failed→caps-OFF) and, below
+  it, override rows — picking an external embed server replaces the built-in (one active embed
+  model). Other roles: preset picker → fills role fields → per-role test
   (`POST /api/admin/config/test` target `llm`); values stored as DB settings rows.
-- Setup wizard OPTIONAL skippable "AI" step: preset picker → role checkboxes →
+- Setup wizard OPTIONAL skippable "AI" step — **chat/vision/asr only** (embed needs no setup:
+  the built-in engine auto-provisions at boot, §4.2). preset picker → role checkboxes →
   base-url/key/model → per-role test (`/api/setup/test` target `llm`) — DB rows, NOT
   `.env`/envFileWriter (hot-apply rule): skipped step costs nothing, mid-install
-  config is restart-free.
+  config is restart-free. The step also shows the embedded-engine provisioning status card.
 - Capability matrix display (per-role probe chips) is SHARED by both surfaces.
 
 ## 3. Dependencies
@@ -165,5 +193,13 @@ Expectations are advisory; probes (§2.4) gate each sub-capability.
       (expected set is advisory, probe is authority)
 - [ ] `bge-m3` row values match this spec's table (dim 1024, chPerTok 1.7, ub-512
       budget, text-only expectations) — drift between doc and code fails CI
-- [ ] `embeddinggemma-2` row: measured profile values shipped; the row remains NOT OFFERED
-      in the picker while `thetaLo` is unresolved (complete-bundle rule)
+- [ ] `embeddinggemma-2` (llama.cpp) row: measured profile values shipped; the §4.18
+      parent-hints FEATURE stays absent while `thetaLo` is unresolved (Q11 owner decision —
+      the provider itself is offered; absent, not degraded)
+- [ ] `embedded` default row: lockfile parses (repo/revision/dtype/files[] with sha256);
+      boot with EMPTY `WEA_MODEL_DIR` blocks provisioning with per-file progress logs and
+      ends checksum-verified; pre-seeded dir ⇒ zero download attempts, zero network egress;
+      one corrupted byte in one file ⇒ provisioning failure (atomic partial files never
+      consumed) ⇒ embed caps OFF + admin reason, product boots
+- [ ] dtype is part of identity: switching lock dtype q4↔q8 yields a different
+      `llm_models` row (new model_id); no cross-precision vector comparison passes CI

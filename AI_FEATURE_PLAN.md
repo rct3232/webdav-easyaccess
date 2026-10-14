@@ -239,6 +239,22 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
   the probe MUST verify media consumption + server pooling shape (§4.23.2) — declared
   capabilities in `/v1/models` prove nothing (observed: multimodal declared, media silently
   dropped).
+- **Built-in embed engine (owner decision 2026-10-14, PoC §6.8)**: the `embed` role is a
+  product **inherent capability** — an in-process engine (transformers.js + pinned ONNX
+  export, **q4** default = 473 MB full multimodal set; RSS ~1.1 GB) needs NO external
+  serving step. Presence rule for embed therefore becomes "lockfile present = configured"
+  (config presence = role candidacy, unchanged in spirit); external llama.cpp/HTTP embed
+  servers remain valid provider overrides (and the GPU throughput path for media, since
+  in-process media embed is batch-class: ~7 s/image on CPU). Distribution: a few-KB npm
+  lockfile {repo, revision pin, files[]+sha256, dtype:'q4'}; at boot the engine uses a
+  pre-provisioned `WEA_MODEL_DIR` if present, else **auto-provisions — the boot BLOCKS on
+  provisioning and the CLI logs per-file download progress** (atomic temp-file+rename,
+  sha256-verified, idempotent; owner ruling 2026-10-14) — one universal rule for single node
+  or N replicas, no strict/ban mode (rejected: replicas are identical builds; pre-provisioning
+  is an optimization, not a switch). Provisioning attempt fails (offline first boot, checksum
+  mismatch) ⇒ boot continues with embed caps OFF + admin prompt; never a crash, never silent.
+  `llm_models` records the identity: `engine` (embedded|remote), `precision`, `model_revision`
+  — space key discipline (§4.20) reads them.
 - **No LLM call on request paths** except semantic-search query-embed (must be <100ms class
   model; results cached). Nightly evolution ≈ ≤1 chat call/user/day with aggregate-only
   input and 1 structured multi-output (create+split+merge candidates).
@@ -576,7 +592,10 @@ extract/parser; none =):
   parser, tag normalization pass.**
 - **embed**: + semantic search, seed, vector merges, near-dup, auto-create (clusters by
   vector), naming templates (system). **absent: chat-only (summaries/tags-from-content,
-  NL parse, llmNamer).**
+  NL parse, llmNamer).** (Since 2026-10-14 the embed column is the **built-in default** —
+  this column now describes the provisioning-pending/broken state only (offline first boot,
+  corrupt files, explicit external override); chat/vision/asr remain opt-in externals. §4.2
+  built-in engine.)
 - UI: `GET /api/settings/public` gains `ai:{embed:bool,chat:bool}` — derived live from the
   current probe state, flips without restart whenever LLM config changes (§4.2 hot
   reconfiguration) (precedent email_enabled
@@ -675,7 +694,8 @@ only — never file names/queries/contents of other users. **Constants provenanc
 (2026-09-16 decision, extended 2026-10-08): every numeric constant the AI passes (cos
 thresholds, ef_search, char/token safety factor, media token rates/window sizes) AND every
 server-shape flag (request format, `--pooling` expectation, task-prefix policy, MRL dim,
-quantization/dtype constraint) is a RELEASE ARTIFACT — measured by the project on a dev-owned
+quantization/dtype constraint, engine ∈ embedded|remote, lockfile revision) is a RELEASE
+ARTIFACT — measured by the project on a dev-owned
 reference set and shipped as per-model profile values; there is NO runtime calibration
 feature and NO dataset shipped to end users. Panel displays profile values +
 `calibrated:false`-style provenance; §9.1 keeps the re-open trigger (corpus drift).
@@ -888,7 +908,9 @@ only ever happens across a model migration, handled by backfill §4.2); with a m
 embed model, **cross-MODALITY cosine inside one `model_id` is legal and is the product's
 media-search basis** (§4.21) — the retired "cross-space machinery" remains retired: there is
 one space per model, media merely enters it directly now; `dim` fixed per
-model; TEXT canonical (§4.13); budgets/kill-switches per role like chat.
+model; TEXT canonical (§4.13); budgets/kill-switches per role like chat. Row-level identity
+additions (2026-10-14): `engine`/`precision`/`model_revision` — a dtype or lockfile-revision
+change is a model change (re-embed), never a silent space edit (§4.15 shape flags).
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/infrastructure/llmAdapter.md`, `docs/spec/server/infrastructure/vectorStore.md`, `docs/spec/server/services/aiJobService.md`
 
@@ -1094,12 +1116,17 @@ name search) — no half-AI state exists.
 
 ### 4.23.5 Surfaces
 
-(b)-decision 2026-09-17 — setup wizard gains one OPTIONAL, skippable "AI" step: preset
+(b)-decision 2026-09-17, amended 2026-10-14 — setup wizard gains one OPTIONAL, skippable
+"AI" step — **covering chat/vision/asr only: the embed role needs no setup (built-in engine,
+§4.2)**; preset
 picker → role checkboxes → base-url/key/model inputs → per-role test (`/api/setup/test`
 new target `llm`); values are stored as **DB settings rows** (NOT `.env`/envFileWriter —
 the hot-apply rule §4.2), so a skipped step costs nothing and a mid-install config is
-restart-free. Full config surface stays in admin (`/api/admin/config` + test + capability
-matrix); wizard is a shortcut to the same rows. SETUP.md documents preset table;
+restart-free. The step also surfaces the embedded-engine provisioning status card
+(progress at first boot / caps-off reason). Full config surface stays in admin
+(`/api/admin/config` + test + capability
+matrix, where an external embed server may be configured as an OVERRIDE replacing the
+built-in); wizard is a shortcut to the same rows. SETUP.md documents preset table;
 capability matrix display (per-role probe chips) shared by both surfaces.
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/infrastructure/llmPresets.md`, `docs/spec/server/routes/setup.md`, `docs/spec/client/pages/Setup.md`
@@ -1156,10 +1183,13 @@ expires_at)`
 JSONB, created_at)` — the startup fail-safe scan (`failsafe`) carries a
   `contentHashCompleteness` payload section (`{nullCount, checkedAt}`, T0.1 boot probe);
   row-level repair dispatches via `POST /api/admin/reports/:id/repair`.
-- `llm_models(id, role CHECK(embed|chat|vision|asr), provider, base_url_key, model_name,
+- `llm_models(id, role CHECK(embed|chat|vision|asr), provider,
+engine CHECK(embedded|remote) default 'remote', base_url_key, model_name,
+precision NULL, model_revision NULL,
 max_input_chars, chunk_budget, batch_size, reasoning CHECK(on|off) default 'off',
 enabled)` — reasoning is an experimental per-model switch only; all roles plan for off
-  (E5/E7b)
+  (E5/E7b); engine/precision/model_revision added 2026-10-14 for the built-in engine
+  identity (§4.20) — embedded rows carry base_url_key='' (no URL)
 - `embeddings(node_id PK→CASCADE, model_id→llm_models, dim, vector TEXT, source
 CHECK(fulltext|chunk_pool|head|metadata_only|media_direct), content_hash, updated_at)`
   (`media_direct` added 2026-10-08 for §4.20 E1-M; segment rows ride `embeddings_chunk`
@@ -1251,6 +1281,14 @@ percentile/rank re-anchoring, margin-based promotion, or accept 21%-recall θ_lo
 Quantization-cause hypothesis TESTED AND REJECTED (Q8_0 control re-run, 2026-10-08: class
 bands moved ≤0.008 vs Q4_K_XL, containment-P10/sibling-P90 gap persists at −0.096) — the
 compression is the model's space geometry, not the GGUF precision.
+Q12 (NEW, 2026-10-14): **built-in embed engine ships at q4 precision (PoC §6.8 owner
+decision)** — q4-specific profile re-checks outstanding: text θ_dup band +
+dynamic-baseline spread measured at q4 (0.955 derives from GGUF/ONNX-q8 class),
+target-hardware query-embed latency (0.13 s on 6-core dev box; gate verdict is per
+deployment hardware), q4 long-audio pooling drift. Provisioning is **boot-blocking with
+CLI progress log** (owner ruling); llm_models `engine/precision/model_revision` DDL
+additions ride the **big-bang migration at the `ai-feature`→`dev` deploy** (owner is the
+sole user — no compat path needed).
 New open questions get appended here before/at their named task.
 
 ## 12. P0 decision ledger (consolidated from contract specs, 2026-10-02)

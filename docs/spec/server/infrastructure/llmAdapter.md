@@ -17,8 +17,15 @@ Target-contract spec.
 ### 2.1 File Path
 
 - **Source:** `server/infrastructure/adapters/llm/index.js` (factory + per-call resolver)
-- **Peers:** `clients/` (Ollama / OpenAI-compatible / TEI-class dialects per preset),
+- **Peers:** `clients/` (Ollama / OpenAI-compatible / TEI-class dialects per preset;
+  **`embedded-onnx.js`** = in-process transformers.js client for the built-in provider,
+  incl. local positive-control probe fixtures),
   `probe.js` (suite), `budget.js` (chain + limiter + breaker),
+  **`provision.js`** (boot-blocking model provisioning for `engine='embedded'`: lockfile
+  parse → `WEA_MODEL_DIR` / data-dir detection → checksummed downloads with per-file CLI
+  progress logs, atomic temp-file+rename),
+  **`model.lock.json`** (checked-in release artifact: repo/revision/files+sha256/dtype —
+  identity, §4.15),
   `presets.js` ([llmPresets spec](llmPresets.md))
 - **Test file:** `server/infrastructure/adapters/llm/__tests__/llmAdapter.test.js`
   (+ fake-server E2E leg, in-process adapter injection)
@@ -32,6 +39,11 @@ Target-contract spec.
   the resolver reads DB → default and **ignores env** — a `.env`-provided `LLM_*` value is
   never effective, and the DB `settings` row is the single config surface (wizard
   and admin editor both write rows).
+  **Embed-role presence (2026-10-14):** with `LLM_EMBED_*` unset, the resolver resolves the
+  **built-in `embedded` provider** (lockfile shipped = present; boot provisioning per §2.1/
+  [llmPresets](llmPresets.md) §2.3), so embed candidacy needs no config; an admin-set remote
+  embed triple OVERRIDES the built-in (one active embed model). `engine`/`precision`/
+  `model_revision` land on the `llm_models` row (identity, §4.20/§4.15).
 - **Client cache keyed by the resolved-config SIGNATURE**
   (`sha256(base_url∥model∥api_key∥dialect)`): rebuild on change — no full teardown.
   `getRoleClient(role)` → client | `null` (role unconfigured ⇒ null ⇒ capability degrades,
@@ -61,9 +73,11 @@ Target-contract spec.
 ### 2.4 Probe suite (IN-DOMAIN samples — hard rule)
 
 Startup probe (symmetric to s3/webdav probes, `index.js:272-327`) is the INITIAL probe,
-not the only one (hot re-probes per §2.2). Every probe sample is real in-domain material;
-out-of-domain probes produce false negatives indistinguishable from false capability
-claims:
+not the only one (hot re-probes per §2.2). For `engine='embedded'` the startup sequence is
+**provision → probe** (boot blocks on provisioning, §2.1 `provision.js`; the same suite then
+runs against the in-process client — fixtures local, no HTTP). Every probe sample is real
+in-domain material; out-of-domain probes produce false negatives indistinguishable from false
+capability claims:
 
 - `embed`: real mixed-ko/en sentence set → verify non-empty, `dim` == profile, and
   NON-DEGENERACY (two distinct samples must not cosine ≥0.999 — catches constant-output
@@ -110,6 +124,10 @@ surface; regular users see absent affordances, not disabled ones.
 
 Daily caps: per-role `LLM_DAILY_CALL_CAP` / `LLM_DAILY_TOKEN_CAP` (0 = unlimited) →
 budget breaker PAUSES the role (surface in admin; jobs park upstream, aiJobService §2.3).
+**Embedded provider budget mapping (2026-10-14):** steps 1–2 are config-only (no metadata
+GETs exist) — `max_input_chars` comes from the lockfile profile (step 3; model window 8,192,
+server ub wall N/A, in-process memory governs batch size); the step-4 limiter stays armed
+(OOM/refusal class ⇒ halve chunk window). Media segment ladder (§2.6) applies unchanged.
 Circuit breaker (transport class): ≥5 consecutive transport failures ⇒ OPEN 300s, half-
 open probe on expiry (operational tunables, T2; not profile constants).
 
@@ -144,13 +162,14 @@ plan assumption. Reasoning-EFFORT tiers are exposed ONLY where probing finds sup
 
 ### 2.8 Error taxonomy (every provider error classified before surfacing)
 
-| Class       | Examples                                            | Handling                                                                                                                                                     |
-| ----------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `length`    | 400 token/input-too-long, context-overflow messages | §2.5 step-4 halving + `degraded` flag + histogram counter; NEVER fails a job (ladder degrades)                                                               |
-| `transport` | timeout, ECONNRESET, 5xx, DNS                       | retry-within-job, consecutive-failure breaker (§2.5), surfaced to caller as degrade signal (services choose their fallback; request paths never 5xx on this) |
-| `rate`      | 429                                                 | `ai_usage_daily.failed_429` counter, short backoff, breaker-relevant                                                                                         |
-| `schema`    | malformed JSON from chat roles                      | surfaced as pipeline failure → job `markFailed` (retry)                                                                                                      |
-| `config`    | 401/404 model-not-found                             | role marked probe_failed(reason), admin card CTA; jobs park (role treated as not-candidate)                                                                  |
+| Class                     | Examples                                                              | Handling                                                                                                                                                                                                                       |
+| ------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `length`                  | 400 token/input-too-long, context-overflow messages                   | §2.5 step-4 halving + `degraded` flag + histogram counter; NEVER fails a job (ladder degrades)                                                                                                                                 |
+| `transport`               | timeout, ECONNRESET, 5xx, DNS                                         | retry-within-job, consecutive-failure breaker (§2.5), surfaced to caller as degrade signal (services choose their fallback; request paths never 5xx on this)                                                                   |
+| `rate`                    | 429                                                                   | `ai_usage_daily.failed_429` counter, short backoff, breaker-relevant                                                                                                                                                           |
+| `schema`                  | malformed JSON from chat roles                                        | surfaced as pipeline failure → job `markFailed` (retry)                                                                                                                                                                        |
+| `config`                  | 401/404 model-not-found                                               | role marked probe_failed(reason), admin card CTA; jobs park (role treated as not-candidate)                                                                                                                                    |
+| `provisioning` (embedded) | no network first boot, checksum mismatch, disk full, partial download | boot's blocking attempt logs the failure; **embed caps OFF** + admin card (reason + retry action), product boots; atomic staging ⇒ a partial file is never consumed; one retry per boot, admin "re-provision" = manual trigger |
 
 ### 2.9 Usage counting
 
@@ -191,6 +210,12 @@ kill switch family).
       declared-vs-probed admin warning (a base64-as-text fixture reproduces the known
       failure mode); sine-tone audio sample NEVER used (test asserts the
       speech fixture is in the probe set)
+- [ ] Embedded boot sequence: empty model dir ⇒ boot blocks, progress lines emitted, files
+      land checksum-verified, probe passes, embed caps ON; corrupt one byte (fixture) ⇒
+      `provisioning` failure path ⇒ caps OFF + reason, server still starts; pre-seeded dir ⇒
+      zero fetch calls (network stub asserts no requests); `LLM_EMBED_*` remote triple set ⇒
+      embedded provider replaced (override), only one embed model active, engine/precision/
+      model_revision on the registry row
 - [ ] Media-embed probe against the fake server that SILENTLY DROPS media fields (returns
       the text vector, HTTP 200 — reproduces the known silent media-drop failure mode):
       positive-control probe must fail it ⇒ media capability OFF + fallback V2/V0, while

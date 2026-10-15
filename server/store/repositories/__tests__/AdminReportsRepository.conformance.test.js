@@ -129,3 +129,58 @@ describe('AdminReportsRepository conformance', () => {
     await expect(repo.updateReport(999999999, { status: 'ok' })).resolves.toBeNull();
   });
 });
+
+describe('AdminReportsRepository.deleteReportsOlderThan conformance', () => {
+  let dbCleanup;
+  let repo;
+
+  beforeAll(async () => {
+    const db = await createTestDatabase();
+    dbCleanup = db.cleanup;
+    repo = createAdminReportsRepository(storage.getExecutor());
+  });
+
+  afterAll(async () => {
+    await dbCleanup();
+  });
+
+  const DAY_MS = 86400000;
+  const daysAgo = (days) => new Date(Date.now() - days * DAY_MS).toISOString();
+
+  it('never throws on an empty table — returns { changes: 0 }', async () => {
+    await expect(repo.deleteReportsOlderThan(Date.now() - 30 * DAY_MS)).resolves.toEqual({
+      changes: 0,
+    });
+  });
+
+  it('deletes rows older than the cutoff and keeps the rest', async () => {
+    await repo.insertReport({ kind: 'gc', status: 'ok', payload: null, created_at: daysAgo(100) });
+    await repo.insertReport({
+      kind: 'cleanup',
+      status: 'ok',
+      payload: null,
+      created_at: daysAgo(40),
+    });
+    const fresh = await repo.insertReport({
+      kind: 'failsafe',
+      status: 'ok',
+      payload: null,
+      created_at: daysAgo(5),
+    });
+
+    await expect(repo.deleteReportsOlderThan(Date.now() - 30 * DAY_MS)).resolves.toEqual({
+      changes: 2,
+    });
+
+    const list = await repo.listReports();
+    expect(list).toHaveLength(1);
+    expect(list[0].id).toBe(fresh.id);
+    expect(list[0].kind).toBe('failsafe');
+  });
+
+  it('returns { changes: 0 } when nothing is older than the cutoff (idempotent)', async () => {
+    await expect(repo.deleteReportsOlderThan(Date.now() - 30 * DAY_MS)).resolves.toEqual({
+      changes: 0,
+    });
+  });
+});

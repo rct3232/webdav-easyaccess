@@ -302,6 +302,17 @@ describe('configRegistry', () => {
     });
   });
 
+  describe('admin_reports housekeeping constant (admin.md §2.2.6)', () => {
+    it('registers ADMIN_REPORTS_RETENTION_DAYS as T2 dbOnly, non-secret, default 30', () => {
+      const entry = getEntry('ADMIN_REPORTS_RETENTION_DAYS');
+      expect(entry).toBeDefined();
+      expect(entry.tier).toBe(TIER.T2);
+      expect(entry.dbOnly).toBe(true);
+      expect(entry.secret).toBe(false);
+      expect(entry.default).toBe(30);
+    });
+  });
+
   it('contains every env var read under server/ (inventory check)', () => {
     const keys = CONFIG_ENTRIES.map((entry) => entry.key);
     for (const key of [

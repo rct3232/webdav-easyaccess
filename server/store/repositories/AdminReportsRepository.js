@@ -21,6 +21,9 @@
  * @property {(id: number|string, patch: { payload?: Object, status?: string }) => Promise<Object|null>} updateReport
  *   Patches only the provided fields; returns the updated row, or null when
  *   the id does not exist.
+ * @property {(cutoffMs: number) => Promise<{ changes: number }>} deleteReportsOlderThan
+ *   Writer-side housekeeping (admin.md §2.2.6): deletes rows with
+ *   created_at < cutoff (ISO-mapped), idempotent, best-effort.
  *
  * @param {import('../../infrastructure/db/executor').DbExecutor} executor
  * @returns {AdminReportsRepository}

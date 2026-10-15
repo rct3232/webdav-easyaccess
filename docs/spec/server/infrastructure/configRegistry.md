@@ -197,6 +197,7 @@ defaults are kept in parity by test).
 | `AI_USAGE_EVENT_RETENTION_DAYS` | T2   | no     | `90`    | raw `usage_events` roll-off horizon (`0` = retention off)                |
 | `AI_NIGHTLY_ANCHOR_HOUR_UTC`    | T2   | no     | `3`     | nightly scheduler anchor hour (maintenanceScheduler §3.4)                |
 | `ARCHIVE_RETENTION_DAYS`        | T2   | no     | `30`    | purge horizon / tombstone lifetime (collectionsService §3, Q1)           |
+| `ADMIN_REPORTS_RETENTION_DAYS`  | T2   | no     | `30`    | `admin_reports` housekeeping horizon (writer-side prune; `0` = off)       |
 | `WEA_SKIP_ROLLUP_SCHEDULER`     | T2   | no     | —       | test seam, env-allowed (NOT dbOnly — same idiom as `WEA_SKIP_AI_WORKER`) |
 
 ---
@@ -220,3 +221,4 @@ defaults are kept in parity by test).
 - [ ] `registration_enabled` present, T2, non-secret, no default.
 - [ ] Every `LLM_*` key is T2 `dbOnly`; the four role API keys are `secret: true`; `WEA_SKIP_AI_WORKER` is T2 non-dbOnly (env-allowed test seam).
 - [ ] The §3.4 activity-constant keys (`AI_USAGE_W_*`, `AI_ACTIVITY_HALF_LIFE_DAYS`, `AI_USAGE_EVENT_RETENTION_DAYS`, `AI_NIGHTLY_ANCHOR_HOUR_UTC`, `ARCHIVE_RETENTION_DAYS`) are T2 `dbOnly` with the shipped defaults; `WEA_SKIP_ROLLUP_SCHEDULER` is T2 env-allowed (not dbOnly).
+- [ ] `ADMIN_REPORTS_RETENTION_DAYS` is registered T2 `dbOnly`, non-secret, default `30` (admin.md §2.2.6 writer-side housekeeping).

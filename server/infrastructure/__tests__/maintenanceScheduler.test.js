@@ -8,6 +8,7 @@ jest.mock('../../store/adminReportsStore', () => ({
   listReports: jest.fn(() => Promise.resolve([])),
   getReport: jest.fn(() => Promise.resolve(null)),
   updateReport: jest.fn(() => Promise.resolve(null)),
+  deleteReportsOlderThan: jest.fn(() => Promise.resolve({ changes: 0 })),
 }));
 
 let mockGetConfigSync;

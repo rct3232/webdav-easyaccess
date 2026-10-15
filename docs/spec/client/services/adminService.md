@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-| Item | Description                                                                           |
-| ---- | ------------------------------------------------------------------------------------- |
-| Role | Admin API: users (pending, list, approve, reject, delete, create), settings, cleanup. |
+| Item | Description                                                                                          |
+| ---- | ---------------------------------------------------------------------------------------------------- |
+| Role | Admin API: users (pending, list, approve, reject, delete, create), settings, cleanup, admin reports. |
 
 ---
 
@@ -17,20 +17,24 @@
 
 ### 2.2 Main Functions
 
-| Function             | Input                           | Return            | API called                                          |
-| -------------------- | ------------------------------- | ----------------- | --------------------------------------------------- |
-| getPendingUsers      | ()                              | Promise\<Array\>  | GET /api/admin/users/pending                        |
-| getUsers             | ()                              | Promise\<Array\>  | GET /api/admin/users                                |
-| getSettings          | ()                              | Promise\<Object\> | GET /api/admin/settings                             |
-| updateSettings       | (settings)                      | Promise\<void\>   | PUT /api/admin/settings                             |
-| approveUser          | (userId)                        | Promise\<void\>   | POST /api/admin/users/:id/approve                   |
-| rejectUser           | (userId)                        | Promise\<void\>   | POST /api/admin/users/:id/reject                    |
-| deleteUser           | (userId)                        | Promise\<void\>   | DELETE /api/admin/users/:id                         |
-| createUser           | ({ username, email, password }) | Promise\<void\>   | POST /api/admin/users                               |
-| cleanupOrphaned      | ()                              | Promise\<Object\> | POST /api/admin/cleanup/orphaned                    |
-| ensureHomeOwnerAdmin | ()                              | Promise\<Object\> | POST /api/admin/permissions/ensure-home-owner-admin |
+| Function             | Input                                    | Return            | API called                                          |
+| -------------------- | ---------------------------------------- | ----------------- | --------------------------------------------------- |
+| getPendingUsers      | ()                                       | Promise\<Array\>  | GET /api/admin/users/pending                        |
+| getUsers             | ()                                       | Promise\<Array\>  | GET /api/admin/users                                |
+| getSettings          | ()                                       | Promise\<Object\> | GET /api/admin/settings                             |
+| updateSettings       | (settings)                               | Promise\<void\>   | PUT /api/admin/settings                             |
+| approveUser          | (userId)                                 | Promise\<void\>   | POST /api/admin/users/:id/approve                   |
+| rejectUser           | (userId)                                 | Promise\<void\>   | POST /api/admin/users/:id/reject                    |
+| deleteUser           | (userId)                                 | Promise\<void\>   | DELETE /api/admin/users/:id                         |
+| createUser           | ({ username, email, password })          | Promise\<void\>   | POST /api/admin/users                               |
+| cleanupOrphaned      | ()                                       | Promise\<Object\> | POST /api/admin/cleanup/orphaned                    |
+| ensureHomeOwnerAdmin | ()                                       | Promise\<Object\> | POST /api/admin/permissions/ensure-home-owner-admin |
+| getAdminReports      | ()                                       | Promise\<Object\> | GET /api/admin/reports                              |
+| getAdminReport       | (id)                                     | Promise\<Object\> | GET /api/admin/reports/:id                          |
+| repairAdminReport    | (id, { action, nodeId?, repairAction? }) | Promise\<Object\> | POST /api/admin/reports/:id/repair                  |
 
 - All require admin JWT.
+- `getAdminReports()` / `getAdminReport(id)` / `repairAdminReport(id, { action, nodeId?, repairAction? })` are thin `apiClient` wrappers returning `response.data` (`{ reports }`, `{ report }`, `{ messageCode, report, result }` respectively); errors propagate like the sibling wrappers (server contract: `docs/spec/server/routes/admin.md` §2.2.6).
 
 ### 2.3 Error Handling
 
@@ -43,3 +47,4 @@
 - [ ] approve, reject, delete, create call correct endpoints
 - [ ] getSettings/updateSettings for settings tab
 - [ ] cleanupOrphaned, ensureHomeOwnerAdmin return results
+- [ ] getAdminReports, getAdminReport, repairAdminReport call the correct verbs/paths and return `response.data`

@@ -483,6 +483,55 @@
     "passwordMinLength": "At least 6 characters",
     "confirmPassword": "Confirm password",
     "advancedSettings": "Advanced settings",
+    "reports": {
+      "title": "Admin reports",
+      "refresh": "Refresh reports",
+      "empty": "No admin reports yet.",
+      "unknown": "n/a",
+      "expand": "Show details",
+      "collapse": "Hide details",
+      "kind": {
+        "gc": "GC",
+        "migration": "Migration",
+        "failsafe": "Fail-safe",
+        "night_eval": "Night evaluation",
+        "cleanup": "Cleanup"
+      },
+      "status": {
+        "ok": "OK",
+        "partial": "Partial"
+      },
+      "summary": {
+        "failsafe": "Scanned {{scanned}}, resolved {{resolved}}, manual review {{review}}, pending upload {{pending}}, missing content hashes {{nullCount}}.",
+        "gc": "GC removed {{blobs}} blob(s) / {{rows}} row(s) / {{keys}} key(s); {{purged}} node(s) purged.",
+        "gcFailed": "GC run failed: {{error}}",
+        "cleanup": "Cleanup: {{orphaned}} orphaned, {{pending}} pending-upload node(s) reported, {{errors}} error(s)."
+      },
+      "label": {
+        "manualReview": "Manual review",
+        "pendingUpload": "Pending upload",
+        "orphanedNodes": "Orphaned nodes",
+        "pendingUploadNodes": "Pending-upload nodes",
+        "nullCount": "Missing content hashes",
+        "checkedAt": "Checked at",
+        "backfilled": "Backfilled",
+        "tier1": "Tier 1",
+        "tier2": "Tier 2",
+        "tier3": "Tier 3",
+        "errors": "Errors"
+      },
+      "detail": {
+        "tier1": "orphaned {{orphaned}}, guarded {{guarded}}, deleted {{blobs}} blob(s) / {{rows}} row(s), pending {{pending}}",
+        "tier2": "scanned {{scanned}}, untracked {{untracked}}, deleted {{deleted}} key(s)",
+        "tier3": "purged {{purged}} node(s), deleted {{blobs}} blob(s) / {{rows}} row(s)"
+      },
+      "backfill": "Backfill content hashes",
+      "repairSync": "Repair sync",
+      "purge": "Permanently delete",
+      "purgeConfirmBody": "Permanently delete {{name}}? This cannot be undone.",
+      "loadFail": "Failed to load admin reports.",
+      "repairFail": "Repair action failed."
+    },
     "health": {
       "title": "Backend health",
       "fail": "FAIL",

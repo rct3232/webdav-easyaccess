@@ -478,6 +478,33 @@ describe('SystemSettingsContent', () => {
     expect(screen.getByText(/metadata migration/i)).toBeInTheDocument();
   });
 
+  it('mounts the Admin reports section between the config-sync row and the Advanced settings accordion without fetching on mount', async () => {
+    let listCalls = 0;
+    server.use(
+      http.get('/api/admin/reports', () => {
+        listCalls += 1;
+        return HttpResponse.json({ reports: [] });
+      })
+    );
+
+    // Zero-prop parent contract: rendered inside the page panel with no props consumed.
+    renderSystemSettingsContent();
+
+    const section = await screen.findByTestId('admin-reports-section');
+    expect(within(section).getByRole('button', { name: /refresh reports/i })).toBeInTheDocument();
+    expect(listCalls).toBe(0);
+
+    const syncRow = screen.getByText(/sync environment/i);
+    const accordionTitle = screen.getByText(/advanced settings/i);
+    // Block order: config-sync row → admin reports section → Advanced settings accordion.
+    expect(
+      syncRow.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      section.compareDocumentPosition(accordionTitle) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
   it('opens the sync preview and disables Apply when nothing is actionable', async () => {
     const user = userEvent.setup();
     server.use(

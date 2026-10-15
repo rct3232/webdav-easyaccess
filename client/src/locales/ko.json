@@ -483,6 +483,55 @@
     "passwordMinLength": "최소 6자 이상",
     "confirmPassword": "비밀번호 확인",
     "advancedSettings": "고급 설정",
+    "reports": {
+      "title": "관리자 보고서",
+      "refresh": "보고서 새로고침",
+      "empty": "관리자 보고서가 없습니다.",
+      "unknown": "알 수 없음",
+      "expand": "상세 보기",
+      "collapse": "상세 숨기기",
+      "kind": {
+        "gc": "GC",
+        "migration": "마이그레이션",
+        "failsafe": "안전장치",
+        "night_eval": "야간 평가",
+        "cleanup": "정리"
+      },
+      "status": {
+        "ok": "정상",
+        "partial": "부분"
+      },
+      "summary": {
+        "failsafe": "스캔 {{scanned}}건, 해결 {{resolved}}건, 수동 확인 {{review}}건, 업로드 대기 {{pending}}건, content hash 누락 {{nullCount}}건.",
+        "gc": "GC 정리: blob {{blobs}}개 / 행 {{rows}}개 / 키 {{keys}}개 삭제, 노드 {{purged}}개 영구 삭제.",
+        "gcFailed": "GC 실행 실패: {{error}}",
+        "cleanup": "정리: 고아 노드 {{orphaned}}건, 업로드 대기 노드 {{pending}}건 보고, 오류 {{errors}}건."
+      },
+      "label": {
+        "manualReview": "수동 확인",
+        "pendingUpload": "업로드 대기",
+        "orphanedNodes": "고아 노드",
+        "pendingUploadNodes": "업로드 대기 노드",
+        "nullCount": "content hash 누락",
+        "checkedAt": "확인 시각",
+        "backfilled": "백필 수",
+        "tier1": "티어 1",
+        "tier2": "티어 2",
+        "tier3": "티어 3",
+        "errors": "오류"
+      },
+      "detail": {
+        "tier1": "고아 {{orphaned}}, 보호 {{guarded}}, 삭제 blob {{blobs}}개 / 행 {{rows}}개, 대기 {{pending}}",
+        "tier2": "스캔 {{scanned}}, 미추적 {{untracked}}, 삭제 키 {{deleted}}개",
+        "tier3": "영구 삭제 노드 {{purged}}개, 삭제 blob {{blobs}}개 / 행 {{rows}}개"
+      },
+      "backfill": "content hash 백필",
+      "repairSync": "동기화 복구",
+      "purge": "영구 삭제",
+      "purgeConfirmBody": "{{name}}을(를) 영구 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
+      "loadFail": "관리자 보고서를 불러오지 못했습니다.",
+      "repairFail": "복구 작업에 실패했습니다."
+    },
     "health": {
       "title": "백엔드 상태",
       "fail": "장애",

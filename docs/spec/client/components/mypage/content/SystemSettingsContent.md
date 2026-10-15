@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item               | Description                                                                                                                                                                                                                                                                                                  |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Role               | System settings for admins: backend-health status card, registration toggle, show hidden files toggle, orphan data cleanup, permission cleanup, storage & metadata migration rows, ".env setup needed" banner, env→DB config sync, and the "Advanced settings" config accordion. Direct content. Admin only. |
-| Used in            | MyPageContentArea (when selectedCategory is 'admin-settings')                                                                                                                                                                                                                                                |
-| Related components | adminService, getShowHiddenFiles, setShowHiddenFiles (localStorage), SystemConfigEditor                                                                                                                                                                                                                      |
+| Item               | Description                                                                                                                                                                                                                                                                                                                               |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | System settings for admins: backend-health status card, registration toggle, show hidden files toggle, orphan data cleanup, permission cleanup, storage & metadata migration rows, ".env setup needed" banner, env→DB config sync, the "Admin reports" section, and the "Advanced settings" config accordion. Direct content. Admin only. |
+| Used in            | MyPageContentArea (when selectedCategory is 'admin-settings')                                                                                                                                                                                                                                                                             |
+| Related components | adminService, getShowHiddenFiles, setShowHiddenFiles (localStorage), SystemConfigEditor, AdminReportsContent                                                                                                                                                                                                                              |
 
 ---
 
@@ -23,7 +23,7 @@ None. `SystemSettingsContent` is a zero-prop component (`const SystemSettingsCon
 
 ### 2.3 Callback Signatures
 
-None at the page level. Feedback callbacks exist only on child components: `MigrationDialog` and `MetadataMigrationDialog` receive an `onMessage` handler (wired to `setMessage`), and `SystemConfigEditor` receives an `onSnackbar` handler (wired to the same page Snackbar).
+None at the page level. Feedback callbacks exist only on child components: `MigrationDialog` and `MetadataMigrationDialog` receive an `onMessage` handler (wired to `setMessage`), and `SystemConfigEditor` and `AdminReportsContent` receive an `onSnackbar` handler (wired to the same page Snackbar).
 
 ### 2.4 Dependencies
 
@@ -35,6 +35,7 @@ None at the page level. Feedback callbacks exist only on child components: `Migr
   1. on open it calls `adminService.getConfigSyncReport()` (`GET /api/admin/config/sync-report`) and shows the drift summary (keys to update / to add, or "nothing to sync");
   2. the "Apply" button (`admin.runConfigSync`) is disabled while the report loads, on a report error, when there is nothing actionable (`drift === 0 && envOnly === 0`), and while applying;
   3. on confirm it calls `adminService.syncConfigFromEnv()` (`POST /api/admin/config/sync-from-env`); success closes the dialog and shows the page Snackbar (`getServerMessageDisplay` → `serverMessages.admin.configSyncDone`). A failure keeps the dialog open, shows the error Snackbar and an in-dialog error Alert, and does NOT re-fetch the report — the Apply button stays disabled while the error is shown; the operator closes and reopens the dialog to retry (reopening re-fetches the report). Server contract: `docs/spec/server/routes/config.md`; feature: `docs/features/config-sync.md`. The action syncs the **running environment** (DB rows are not deleted and T0 keys are never written server-side).
+- **Admin reports section:** Between the env→DB config-sync row and the Advanced settings accordion, the page mounts `<AdminReportsContent onSnackbar={...} />` (`data-testid="admin-reports-section"`). The section owns its list refresh and row-level repairs end-to-end (contract: `AdminReportsContent.md`); `SystemSettingsContent` itself stays zero-prop and keeps the child on the shared page Snackbar.
 - **Advanced settings accordion:** Below the sync row, an MUI Accordion titled `admin.advancedSettings` renders `<SystemConfigEditor active={expanded} onSnackbar={...} />`. The config is fetched lazily on first expand (see `SystemConfigEditor.md`). The editor renders **two top-level sections**: Section A "Runtime settings" (editable) and Section B "Deploy-time configuration" (read-only summary of T0 + env-sourced keys; locale `admin.config.sectionTitlePlatform`).
 - **Migration rows:** A "Storage migration" action row (`admin.storageMigration`/`admin.storageMigrationDesc`, icon `admin.runMigration`) opens `MigrationDialog`, and a "Metadata migration" action row (`admin.metadataMigration`/`admin.metadataMigrationDesc`, icon `admin.runMetadataMigration`) opens `MetadataMigrationDialog`. Both sit above the env→DB sync row and report back through the page Snackbar (`onMessage`).
 - **".env setup needed" banner:** When the metadata backend of another environment already holds data (`metadataPresence.otherHasData`, from `getMigrationPresence` via `migrationService`), an Alert (`data-testid="env-setup-needed-banner"`, text `admin.envSetupNeededTitle`/`admin.envSetupNeededBody`) renders below the backend-health card; its action button (`admin.envSetupNeededAction`) opens the MetadataMigrationDialog.
@@ -60,6 +61,7 @@ None at the page level. Feedback callbacks exist only on child components: `Migr
 - `admin.metadataMigration`, `admin.metadataMigrationDesc`, `admin.runMetadataMigration` — metadata migration row
 - `admin.envSetupNeededTitle`, `admin.envSetupNeededBody`, `admin.envSetupNeededAction` — ".env setup needed" banner
 - `admin.configSyncFromEnv`, `admin.configSyncFromEnvDesc`, `admin.runConfigSync`, `admin.configSyncConfirmTitle`, `admin.configSyncConfirmScope`, `admin.configSyncPreviewLoading`, `admin.configSyncPreviewReportFail`, `admin.configSyncPreviewNoChanges`, `admin.configSyncPreviewChanges` (`{updated}`/`{added}`), `admin.configSyncPreviewUpdatedKeys` (`{keys}`), `admin.configSyncPreviewAddedKeys` (`{keys}`), `admin.configSyncApplyFail`, `admin.configSyncDone` — env→DB sync row + preview dialog
+- `admin.reports.*` — owned by the AdminReportsContent section (see `AdminReportsContent.md`)
 - `serverMessages.admin.configSyncDone` (server message code)
 
 ### 2.6 Conditional Rendering
@@ -71,6 +73,7 @@ None at the page level. Feedback callbacks exist only on child components: `Migr
 - Storage migration row (opens MigrationDialog) and metadata migration row (opens MetadataMigrationDialog).
 - ".env setup needed" banner renders below the backend-health card, only when `metadataPresence.otherHasData` is set.
 - Env→DB sync action row opens a preview dialog (report fetched on open); "Apply" gated on an actionable, error-free report.
+- Admin reports section between the sync row and the Advanced settings accordion (no fetch on mount; refresh-driven list with row-level repair actions).
 - Advanced settings Accordion (collapsed by default; config fetched on expand).
 - Backend-health card renders above the settings rows, only when its condition holds (a failing in-use backend).
 - Snackbar for feedback.
@@ -87,6 +90,7 @@ None at the page level. Feedback callbacks exist only on child components: `Migr
 - [x] Env→DB sync success shows the success Snackbar and closes the dialog; a failed apply keeps the dialog open, shows the error Snackbar and an in-dialog error Alert, and does NOT re-fetch the report (retry requires closing and reopening the dialog)
 - [x] Backend-health card renders only when an in-use backend is failing and lists only the failing in-use backends
 - [x] Advanced settings accordion fetches config lazily on expand
+- [x] Admin reports section (`admin-reports-section`) mounts between the env→DB sync row and the Advanced settings accordion, fed by the page Snackbar callback
 
 ### 2.8 Edge Cases
 

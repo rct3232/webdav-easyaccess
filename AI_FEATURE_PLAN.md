@@ -253,10 +253,11 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
   lockfile {repo, revision pin, files[]+sha256, dtype:'q4'}. **Provisioning is
   provider-triggered, not per-boot-unconditional** (owner ruling 2026-10-15, PLAN §22):
   it runs **BLOCKING at boot only for a CONFIGURED boot while the built-in is the active embed
-  provider** (no enabled remote embed override), and **immediately in place when that override
-  is cleared or on first launch** — built-in activation is restart-free like every other LLM
-  config (weights present ⇒ instant; absent ⇒ progress status card, role pending during the
-  download per §4.12; a first-launch boot serves the wizard WHILE provisioning runs — PLAN §22-5). A pre-provisioned `WEA_MODEL_DIR` ⇒ zero download attempts, zero network egress;
+  provider** (no enabled remote embed override), and **in place when setup completes or that
+  override is cleared** — built-in activation is restart-free like every other LLM config
+  (weights present ⇒ instant; absent ⇒ progress status card, role pending during the download
+  per §4.12). Setup mode itself fetches NO bytes and the wizard NEVER waits on provisioning —
+  the trigger fires on setup completion (PLAN §22-5). A pre-provisioned `WEA_MODEL_DIR` ⇒ zero download attempts, zero network egress;
   switching to remote NEVER deletes existing weights (triggers are idempotent — a
   re-trigger is a no-op). While a remote override is active, provisioning is DEFERRED and
   the absence is not a failure state (the role runs on the override). The attempt itself:
@@ -1154,9 +1155,9 @@ name search) — no half-AI state exists.
 picker → role checkboxes → base-url/key/model inputs → per-role test (`/api/setup/test`
 new target `llm`); values are stored as **DB settings rows** (NOT `.env`/envFileWriter —
 the hot-apply rule §4.2), so a skipped step costs nothing and a mid-install config is
-restart-free. The step also surfaces the embedded-engine provisioning status card
-(first launch: live download progress while the wizard is open — ready / caps-off reason on
-completion, PLAN §22-5). Full config surface stays in admin
+restart-free. The step also surfaces the embedded-engine provisioning status card — during
+the wizard it shows the waiting state ("begins when setup completes"); live per-file download
+progress and the ready / caps-off outcome arrive after completion (PLAN §22-5). Full config surface stays in admin
 (`/api/admin/config` + test + capability
 matrix, where an external embed server may be configured as an OVERRIDE replacing the
 built-in); wizard is a shortcut to the same rows. SETUP.md documents preset table;

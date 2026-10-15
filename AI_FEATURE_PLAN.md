@@ -246,8 +246,11 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
 - **Built-in embed engine (owner decision 2026-10-14, PoC §6.8)**: the `embed` role is a
   product **inherent capability** — an in-process engine (transformers.js + pinned ONNX
   export, **q4** default = 473 MB full multimodal set; RSS ~1.1 GB) needs NO external
-  serving step. Presence rule for embed therefore becomes "lockfile present = configured"
-  (config presence = role candidacy, unchanged in spirit); external llama.cpp/HTTP embed
+  serving step. Presence rule for embed therefore becomes "lockfile present + weights
+  provisioned (or an enabled, conformance-passed remote embed row) = configured" (config
+  presence = role candidacy, unchanged in spirit; while a built-in trigger is still
+  downloading, the role is NOT configured — consumers park, readiness shows as `preparing`,
+  §4.12); external llama.cpp/HTTP embed
   servers remain valid provider overrides (and the GPU throughput path for media, since
   in-process media embed is batch-class: ~7 s/image on CPU). Distribution: a few-KB npm
   lockfile {repo, revision pin, files[]+sha256, dtype:'q4'}. **Provisioning is
@@ -255,7 +258,7 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
   it runs **BLOCKING at boot only for a CONFIGURED boot while the built-in is the active embed
   provider** (no enabled remote embed override), and **in place when setup completes or that
   override is cleared** — built-in activation is restart-free like every other LLM config
-  (weights present ⇒ instant; absent ⇒ progress status card, role pending during the download
+  (weights present ⇒ instant; absent ⇒ progress status card, role in `preparing` during the download
   per §4.12). Setup mode itself fetches NO bytes and the wizard NEVER waits on provisioning —
   the trigger fires on setup completion (PLAN §22-5). A pre-provisioned `WEA_MODEL_DIR` ⇒ zero download attempts, zero network egress;
   switching to remote NEVER deletes existing weights (triggers are idempotent — a
@@ -609,16 +612,17 @@ extract/parser; none =):
 - **embed**: + semantic search, seed, vector merges, near-dup, auto-create (clusters by
   vector), naming templates (system). **absent: chat-only (summaries/tags-from-content,
   NL parse, llmNamer).** (Since 2026-10-14 the embed column is the **built-in default** —
-  this column now describes the provisioning-pending/broken state only (offline first boot,
-  corrupt files, external override rejected by conformance); chat/vision/asr remain
-  opt-in externals. §4.2 built-in engine.)
+  the column describes only the `preparing`/broken states: readiness shown as
+  `preparing(phase, progress)` while a trigger runs, broken = provisioning attempt failed
+  (offline, corrupt files) or an external override rejected by conformance; chat/vision/asr
+  remain opt-in externals. §4.2 built-in engine.)
 - UI: `GET /api/settings/public` gains `ai:{embed:bool,chat:bool}` — derived live from the
   current probe state, flips without restart whenever LLM config changes (§4.2 hot
   reconfiguration) (precedent email_enabled
   `settings.js:18-29`). **Regular users: absent, not disabled** (no gray AI affordances).
   **Admin: visible-disabled** — nav item + health-card row (`SystemSettingsContent.js:262-
-285` backend health card is the state's home) showing 4 states
-  `not_configured|probe_failed(reason)|partial|ok` per role with CTA into
+285` backend health card is the state's home) showing 5 states
+  `not_configured|preparing(phase,progress)|probe_failed(reason)|partial|ok` per role with CTA into
   `/api/admin/config` + `probeLlm` test. Unconfigured errors return
   `serverErrors.ai.notConfigured` (not 404). Partial config: no "unconfigured" filler —
   template names read as normal names (they are final), excerpted summary fields simply
@@ -1340,8 +1344,9 @@ ruling 2026-10-15: the <100 ms query-embed clause is DELETED from §4.2 — the
 per-hardware latency verdict item is dropped with it (latency/serving-mode numbers remain
 informational profile fields). Precision-specific
 θ re-calibration is WITHDRAWN: ±0.02 same-space drift is tolerated by owner ruling, θ
-constants are single-set per model. Provisioning stays **boot-blocking with CLI progress
-log**; llm_models `engine/precision/model_revision` DDL
+constants are single-set per model. Provisioning keeps **boot-blocking-with-CLI-progress
+trigger internals** (trigger SCOPE provider-triggered — PLAN §22); llm_models
+`engine/precision/model_revision` DDL
 additions ride the **big-bang migration at the `ai-feature`→`dev` deploy** (owner is the
 sole user — no compat path needed).
 New open questions get appended here before/at their named task.

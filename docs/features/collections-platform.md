@@ -154,10 +154,12 @@ the same point.
 
 ### 4.2 LLM configuration behavior
 
-Role-based clients (embed, chat, optional vision, ASR) are admin-configured and fully **hot**:
-changes apply without restart — unlike the boot-owned metadata and blob backends. No enable flag
-exists: role presence decides candidacy, probes decide
-truth (§4.23). On change, roles re-probe shortly (plus an admin test), health and public AI flags
+Chat, optional vision, and ASR clients are admin-configured and fully **hot**: changes apply
+without restart — unlike the boot-owned metadata and blob backends. The **embed role ships with
+a built-in provider by default** (in-process engine, pinned lockfile identity, weights
+provisioning per `llmPresets.md` §2.3 — no setup required, readiness shown as `preparing`);
+an external embed endpoint is an admin-only override, activation-gated by model conformance.
+No enable flag exists: role presence decides candidacy, probes decide truth (§4.23). On change, roles re-probe shortly (plus an admin test), health and public AI flags
 update live, workers adopt at the next job, query-embedding at the next request, and mid-switch
 failures degrade silently (§4.12), never as errors. Input limits come from the §4.3 chain, never
 probing calls; overlength degrades with a flag; daily caps pause a role, visible to admin. A model
@@ -316,7 +318,7 @@ content features, NL parsing, and LLM naming.
 
 For regular users an unavailable feature is **absent, not disabled** — no grayed-out AI affordances
 exist. For admins it is **visible-disabled**: a nav item plus a per-role health card
-(`not_configured | probe_failed (reason) | partial | ok`) with configuration and test entry points;
+(`not_configured | preparing (phase, progress) | probe_failed (reason) | partial | ok`) with configuration and test entry points;
 unconfigured endpoints answer "not configured", never a misleading 404. Partial configuration shows
 no filler — template names read as ordinary names and missing fields stay absent — and
 insufficiency is admin-visible only. Disambiguation: the admin **visible-disabled** shape applies to
@@ -491,10 +493,12 @@ The vector core behaves exactly as the no-LLM column; no half-AI state exists.
 
 ### 4.23.5 Surfaces
 
-The setup wizard gains one **optional, skippable AI step** (preset → roles →
+The setup wizard gains one **optional, skippable AI step** (preset → chat/vision/asr roles →
 endpoint/key/model → per-role test) storing ordinary database settings rows, never
 environment files — skipping costs nothing and configuration stays restart-free (§4.2);
-admin keeps the full surface, the wizard being a shortcut to the same rows.
+the embed role has NO wizard surface (the built-in engine needs no setup; the step shows its
+readiness card in the waiting state — zero bytes fetched until setup completes, per
+`llmPresets.md` §2.3); admin keeps the full surface, the wizard being a shortcut to the same rows.
 
 ---
 

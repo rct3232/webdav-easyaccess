@@ -117,9 +117,8 @@ change triggers a debounced re-probe of the affected role, so `backendHealth` an
 budget counters reset. **No restart, ever.** Contrast with the other config families: the
 metadata DB connection (T0) is boot-frozen by definition and the blob store (T1) needs a
 restart — the LLM is an enrichment dependency, so it is the only subsystem whose entire
-connection layer is hot. `.env`-provided `LLM_*` values remain legal (standard precedence) but
-relocate the rows to the read-only Section B (`source=env`), so the DB is
-the recommended surface; no `LLM_ENABLED` flag exists — role presence decides candidacy,
+connection layer is hot. `LLM_*` keys are **dbOnly**: `.env`-provided values are never
+effective, the DB `settings` row is the single config surface; no `LLM_ENABLED` flag exists — role presence decides candidacy,
 probes decide truth. The preset manifest (`infrastructure/adapters/llm/presets.js`) is a
 **release artifact declaring EXPECTED capabilities** (text_embed/chat/vision_chat/asr +
 recommended budgets) per provider family — the runtime **probe remains the final authority**
@@ -201,11 +200,13 @@ metadata DB by default; only T0 keys are written to `.env`.
   `current` block of `GET /api/setup/status` (effective env → DB → default, secret rows
   masked as `'****'`, never plaintext). There is no wizard-only direct-PG-read endpoint.
 - **Optional AI step (AI platform):** the wizard gains one OPTIONAL, skippable
-  "AI" step (preset picker → role checkboxes → base-url/key/model inputs → per-role test
+  "AI" step (preset picker → chat/vision/asr role checkboxes → base-url/key/model inputs → per-role test
   via the new `llm` target of `POST /api/setup/test`). Its values are written as **DB
   `settings` rows through the same `writeSettings` path as every other non-T0 key — never
   `.env`/`envFileWriter`** (the hot-apply rule: a mid-install config must be
-  restart-free). A skipped step costs nothing (the product boots in the None state); the
+  restart-free). A skipped step costs nothing (chat/vision/asr stay the None column; embed
+  ships via the built-in engine regardless — its weights provisioning fires only when setup
+  completes, never during the wizard — `llmPresets.md` §2.3); the
   full LLM config surface stays in admin (`/api/admin/config` + test), to which the wizard
   step is only a shortcut to the same rows.
 
@@ -222,7 +223,8 @@ metadata DB by default; only T0 keys are written to `.env`.
 
 - `setup_complete=false` → run in **setup mode** (wizard serves; reads/applies against the
   target DB directly).
-- `setup_complete=true` → load the T1 snapshot and boot normally.
+- `setup_complete=true` → load the T1 snapshot, run the embed provider decision + built-in
+  weights provisioning (`bootSequence.md` §2 step 8b; `llmPresets.md` §2.3), then boot normally.
 
 4. Mount app; T1 consumers read from the snapshot; T2 consumers use the lazy resolver
    (env → DB → default, TTL + invalidate-on-write).

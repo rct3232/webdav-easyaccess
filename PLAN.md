@@ -934,7 +934,7 @@ field removed from the profile schema entirely, see §19) and text-space tier re
 evolution calibration, §4.9). Remaining carry-forward: interleaved fusion, native
 `video_embed` `-ub` infra call, 100k-doc media backfill cost (rides T1.4/Q9 sizing study).
 
-## 17. Built-in embedding engine — q4, boot-blocking provisioning (owner decision 2026-10-14, branch `feature/embed-builtin-q4-docs`)
+## 17. Built-in embedding engine — q4, boot-BLOCKING provisioning (trigger scope amended — §22) (owner decision 2026-10-14, branch `feature/embed-builtin-q4-docs`)
 
 Owner rulings (verbatim, 2026-10-14, following the PoC §6.6/§6.7/§6.8 probes):
 
@@ -1077,8 +1077,8 @@ Encoded rules:
    override).
 2. **Clearing the remote override triggers provisioning immediately, in place** — built-in
    activation is restart-free like every other LLM config (T2/dbOnly hot rule, §4.2). Weights
-   present ⇒ instant; absent ⇒ status card with per-file progress, embed role pending during
-   the download (§4.12 provisioning-pending column), probe suite runs on completion.
+   present ⇒ instant; absent ⇒ status card with per-file progress, embed role in `preparing`
+   (§4.12), probe suite runs on completion.
 3. **Switching to remote NEVER deletes existing weights**; a pre-existing `WEA_MODEL_DIR`
    (pre-seeded or previously provisioned) ⇒ zero download attempts, zero network egress —
    every trigger is idempotent.
@@ -1091,14 +1091,35 @@ Encoded rules:
    clarification "내 의미는 wizard가 끝난뒤 모델을 받으라는거야"): a setup-mode boot makes NO
    provisioning attempt at all (no bytes fetched, no egress) and the wizard never waits on
    provisioning; the trigger fires when setup completes (exit of setup mode) and then follows
-   rule-2 semantics exactly — server serves, per-file progress card, embed role PENDING (§4.12
-   provisioning-pending column), `ai_jobs` embed rows accumulate at the §4.1 commit hooks
+   rule-2 semantics exactly — server serves, per-file progress card, embed role in `preparing`
+   (§4.12), `ai_jobs` embed rows accumulate at the §4.1 commit hooks
    (enqueue is provider-independent) and drain in order on provisioning completion.
    Boot-BLOCKING remains for a CONFIGURED boot missing weights (§17-2).
+6. **Role gating during the provisioning window (review finding D1, encoded in the sweep):**
+   the presence rule refines to "lockfile present + weights provisioned (or an enabled,
+   conformance-passed remote row) = configured". During an in-place run the built-in `embed`
+   role is NOT configured: consumers PARK (claim-exclusion, zero attempt inflation) and drain
+   in claim order once the role flips configured — never claim-and-fail. Encoded: llmAdapter
+   §2.2/§2.3 `roleConfigured`, aiJobService §2.3 step 4, AI_FEATURE_PLAN §4.2 presence rule.
+7. **Readiness-state vocabulary (review finding D2, owner directive 2026-10-15 — "provisioning
+   이라는 단어보단 전반적으로 널리 쓰일 수 있는 준비 진행중 단어"):** the non-terminal state is the
+   GENERIC `preparing` — `backendHealth` rows gain `preparing/phase/progress` fields, the admin
+   display becomes 5-state `not_configured | preparing(phase, progress) | probe_failed(reason) |
+partial | ok`. Provisioning is `phase='provisioning'`, its first producer; future preparation
+   surfaces (index rebuild, cache warm) reuse the state. `settings/public.ai` booleans and the
+   user-facing absent rule stay `ok`-derived (preparing ⇒ absent-not-disabled).
 
-Docs touched: AI_FEATURE_PLAN §4.2 (built-in-engine bullet rewritten; §4.23.5 wizard card
-reworded) · PLAN T1.0 row + §17 pointer · llmAdapter §2.1 `provision.js` peer / §2.2 embed
-presence / §2.4 provision→probe trigger wording / §5 `provisioning` error-path row ·
-llmPresets §2.2 schema comment, §2.3 embedded-row `provisioning` field, §2.5 clear-override
-
-- wizard sentences · SETUP embedded-row provisioning note.
+Docs touched: AI_FEATURE_PLAN §4.2 (built-in bullet + presence rule + §4.12 note + §4.23.5
+card + §10 Q12 tail scoped) · PLAN T1.0 row + §17 heading/pointer · llmAdapter §2.1 peer /
+§2.2 presence / §2.3 `roleConfigured` / §2.4 trigger list / §2.8 `provisioning` error row /
+§5 trigger-matrix verification · llmPresets §2.2 lock comments, §2.3 `provisioning` +
+`offline result` fields, §2.5 clear-override + wizard sentences, §4 scenario set ·
+backendHealth state shape + `report` API + 5-state AI display + verification ·
+routes/admin §3.2 health row · routes/setup + client pages/Setup: wizard scope
+**chat/vision/asr only** (embed needs no wizard surface; readiness card waiting state) ·
+client MyPage/useMyPageController/CollectionDashboard: 5-state chip ·
+features/collections-platform §4.2/§4.12/§4.23.5 · features/config-source-resolution
+(dbOnly correction, AI-step wording, boot-order trigger) · features/setup-wizard env-only
+first-run note · bootSequence §2 step 8b · TESTING_STRATEGY AI tiers (None-column fixture
+qualification + provisioning-trigger fixtures) · SETUP.md boot-frozen caveat +
+`WEA_MODEL_DIR` operator note. POC.md untouched (dated evidence trail).

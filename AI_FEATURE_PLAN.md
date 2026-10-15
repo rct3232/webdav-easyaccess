@@ -106,7 +106,7 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
     cached per user; negligible vs the cosine itself).
   - **Tag predicate = folded string equality over `ai_tag_raw` — and `ai_tag_raw` holds
     ONLY derived facets** (kind-prefixed `mime:`/`ext:`/`month:`/`path:`, §4.10). LLM tags
-    (`ai_features.tags`) never enter rules: descriptive material only (§4.18, dissolved
+    (`ai_enrichments.tags`) never enter rules: descriptive material only (§4.18, dissolved
     2026-10-16). The former vector-matched tag predicate (`θ_tag`, `tag_embeddings`) is
     RETIRED — semantic expansion lives in document/media-vector collections (§4.5/§4.6),
     never in tag-string fuzzy.
@@ -691,7 +691,7 @@ retry/abandon), cost ledger (`ai_usage_daily` per-role rollup; daily budget caps
 top-N), evolution governance (rule hit-rate, survival curves, merge-accept %, gate params
 with live impact counts + rollback via settings journal, tombstone-suppressed vs
 regenerated-anyway counters §4.9/Q1), model registry (model_id/dim per
-role, per-version embedding distribution, **three ai_features lineages — features/caption/
+role, per-version embedding distribution, **three ai_enrichments lineages — features/caption/
 asr model coverage filters for backfill scoping (Q6)** + media-embed coverage (which nodes
 carry `media_direct` vectors vs which fell back — V1/V3 rows, backfill scoping),
 backfill launcher with rate limit),
@@ -769,7 +769,7 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
 ### 4.18 Tags: descriptive words only — no vocabulary machinery (dissolved 2026-10-16)
 
 Owner ruling 2026-10-16 closes the last open thread (Q11) by DISSOLUTION. LLM tags
-(`ai_features.tags`) are **words that describe a file** — a display facet and text material,
+(`ai_enrichments.tags`) are **words that describe a file** — a display facet and text material,
 never a controlled vocabulary. Consumers, exhaustively: AI Info chips (P1, display-only —
 tag filters/search were never planned), `llmNamer` + `merge-arbiter` inputs (read as text),
 regeneration via `features_model_id`/`schema_version` lineage. Nothing else.
@@ -791,7 +791,7 @@ What this retires (all measured dead ends on EG2 — PoC §6.5/§6.9):
   function, zero state.
 
 The surviving principle from E6c unchanged: **nothing merges tags automatically**; raw
-`ai_features.tags` is never rewritten. Gray band = leave alone, forever.
+`ai_enrichments.tags` is never rewritten. Gray band = leave alone, forever.
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/store/aiTagStore.md`, `docs/spec/server/services/evolutionService.md`
 
@@ -810,13 +810,13 @@ intent is the PARSER's job — decompose to predicates+vector, not a list-patch 
 LLM rewriting of a live definition is unreviewable churn for marginal gain). KEPT (each
 does work rules can't):
 
-| Role                 | Decision it makes                                                                                                     | Why rules can't                                                                                                                                                                 |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `features.extract`   | tags/summary/category per file → ai_features display + naming/adjudication material (§4.18 — not rule or embed input) | core (already elsewhere)                                                                                                                                                        |
-| `parse.nl`           | user sentence → shared predicate grammar                                                                              | core (§4.6/T3.4)                                                                                                                                                                |
-| `name`               | templateNamer fallback when chat on                                                                                   | cosmetic but cheap, bounded                                                                                                                                                     |
-| `keeper-adjudicator` | which file of a near-dup group to keep (+reason)                                                                      | rules can rank by resolution/date but cannot weigh content meaning (caption/summary exist at this point); reason text rides along free                                          |
-| `merge-arbiter`      | borderline pairs (Jaccard in review band 0.55–0.7): merge candidate / keep separate / hierarchy-later                 | set math is by-design blind between "same theme twice" vs "theme + subset"; the card can show its verdict as a prefilled recommendation — final call stays with the user (§4.4) |
+| Role                 | Decision it makes                                                                                                        | Why rules can't                                                                                                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `features.extract`   | tags/summary/category per file → ai_enrichments display + naming/adjudication material (§4.18 — not rule or embed input) | core (already elsewhere)                                                                                                                                                        |
+| `parse.nl`           | user sentence → shared predicate grammar                                                                                 | core (§4.6/T3.4)                                                                                                                                                                |
+| `name`               | templateNamer fallback when chat on                                                                                      | cosmetic but cheap, bounded                                                                                                                                                     |
+| `keeper-adjudicator` | which file of a near-dup group to keep (+reason)                                                                         | rules can rank by resolution/date but cannot weigh content meaning (caption/summary exist at this point); reason text rides along free                                          |
+| `merge-arbiter`      | borderline pairs (Jaccard in review band 0.55–0.7): merge candidate / keep separate / hierarchy-later                    | set math is by-design blind between "same theme twice" vs "theme + subset"; the card can show its verdict as a prefilled recommendation — final call stays with the user (§4.4) |
 
 **Per-role mechanics (detailed):**
 
@@ -825,7 +825,7 @@ does work rules can't):
   captions/transcript per §4.3) clipped by the §4.3 ladder + filename/mime/path/date
   metadata line. Prompt = fixed template, output forced to JSON schema
   `{tags:[{tag,confidence}], summary, category}` ≤ small token budget. Written to
-  `ai_features`. Its value: display + the material the naming/adjudication roles read —
+  `ai_enrichments`. Its value: display + the material the naming/adjudication roles read —
   tags are descriptive words, never rule atoms or embed input (§4.18, 2026-10-16); since
   V1/V3 revival caption/transcript are likewise display + adjudicator material — media
   embeds directly, never routed through text as its embedding corpus (§4.21).
@@ -850,7 +850,7 @@ does work rules can't):
   schema-validated; collision/rename rules as §4.10. Failure ⇒ templateNamer (the swap is
   lossless by design).
 - **`keeper-adjudicator`** — nightly, per near-dup GROUP (input = that group only),
-  produced by the T1.7 vector clusters. Reads `ai_features` summaries/captions + ffprobe
+  produced by the T1.7 vector clusters. Reads `ai_enrichments` summaries/captions + ffprobe
   meta for each candidate (bounded group size ≤~10). Output: `keep_id` + per-file reason.
   Value vs rules: resolution/size/date ranking is exactly what rules CAN do — the
   adjudicator exists for content-meaning ties (which of two screenshots/frames of the same
@@ -949,7 +949,7 @@ enters it directly instead of through a generation hop. The pipeline:
   pooled/segment rows (`source='media_direct'`). Search-by-content, clustering, near-dup and
   seed-math then see the RAW media, not a generated description.
 - **V2 (needs `vision_chat`)**: uniform-stride frame sampling (≤4, local ffmpeg) → VLM
-  captions in Korean → `ai_features.caption`. Role changed 2026-10-08: caption is DISPLAY +
+  captions in Korean → `ai_enrichments.caption`. Role changed 2026-10-08: caption is DISPLAY +
   adjudicator/keeper material and the OCR/legibility channel — and the **media embedding
   FALLBACK when V1 capability is absent** (caption text → E1). With a media-capable embed
   model both run; captions no longer _are_ the media's searchable representation.
@@ -1070,7 +1070,7 @@ durable). Saved semantics = semantic-section portion only (name-match exclusion 
   generation (RAG) — requires chunk-level embeddings (`doc_chunks`, a new space decision),
   request-path generation (invariant 11 exception family), citation rendering, its own
   degradation column (RAG-off ⇒ file answers only).
-- Reserved now: `ai_features.schema_version`+model provenance, E-space discipline, chunking
+- Reserved now: `ai_enrichments.schema_version`+model provenance, E-space discipline, chunking
   would reuse §4.3 extraction pipeline. NOT in any phase task (§9.1).
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/routes/search.md`, `docs/spec/server/services/searchService.md`
@@ -1222,7 +1222,7 @@ CHECK(fulltext|chunk_pool|head|metadata_only|media_direct), content_hash, update
 - `embeddings_chunk(node_id→CASCADE, chunk_idx SMALLINT, vector TEXT, model_id→llm_models,
 updated_at, PK(node_id,chunk_idx))` — retained per §4.3; search scores max-over-chunks
   (§4.13 seam); derived-cache semantics: dropping rows loses only long-doc recall depth
-- `ai_features(node_id PK→CASCADE, features_model_id→llm_models, schema_version INT
+- `ai_enrichments(node_id PK→CASCADE, features_model_id→llm_models, schema_version INT
 default 1, tags JSONB, summary, caption, caption_model_id→llm_models, transcript,
 asr_model_id→llm_models, probe JSONB, truncated, media_kind, updated_at)` — Q6 decided:
   **separate lineage per producer family (LLM/VLM/ASR may point at the same model row)**;
@@ -1278,7 +1278,7 @@ A4 decision), **`ef_search=100` defaults** (E11: 0.74 external recall — 400 fi
 | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | Conversational UI / multi-turn routes / session table | §4.6 optional `result_ref`/`session_id` fields; §4.22 rules; opaque-string ref type                                  | user demand; or replay drift observed as real complaint (then: session-table swap stays internal)      |
 | RAG content-Q&A                                       | invariant 11 exception family; §4.3 extraction pipeline reusable                                                     | becomes a product decision with `doc_chunks` + new embedding-space decision (§4.21 discipline applies) |
-| Richer semantic fields (objects/scene/relations)      | `ai_features.schema_version` (v2 rows)                                                                               | vector-fallback success rate measurably poor on such queries                                           |
+| Richer semantic fields (objects/scene/relations)      | `ai_enrichments.schema_version` (v2 rows)                                                                            | vector-fallback success rate measurably poor on such queries                                           |
 | Runtime calibration (from release constants)          | profile fields exist (`llm_models.reasoning`, θ provenance §4.15); dev-owned reference set lives outside the product | measured corpus drift (dynamic-baseline alerts firing often) makes the procedure a product need        |
 
 ## 10. Open questions
@@ -1287,7 +1287,7 @@ None outstanding (2026-09-15). The 2026-09-29→10-02 P0 rulings (Path 1, Decisi
 cursor/dot, dashboard P0 scope, publish gate) are ledgered in §12. Q1–Q7 resolved and absorbed into their sections: Q1 tombstone
 fingerprint/lifetime (§4.9 pass 4, §4.15), Q2 initial-set publish (§4.5/§4.7), Q3 provider
 presets & completeness (§4.23), Q4 checkbox suggestions (§4.16/§4.17), Q5 admin-created
-collections → rejected (§9), Q6 per-family model lineage (§5 `ai_features`, T1.2 unblocked),
+collections → rejected (§9), Q6 per-family model lineage (§5 `ai_enrichments`, T1.2 unblocked),
 Q7 always-replay (§4.22/§9). Q8 (2026-09-15, PoC-driven) vector backend policy → A-plan:
 node:sqlite+sqlite-vec / pgvector≥0.7 native, JS fallback degrade never gate (§4.13).
 Q9 (RESOLVED 2026-09-16): multi-vector chunk retention ADOPTED via A1 (§4.3/§4.13);

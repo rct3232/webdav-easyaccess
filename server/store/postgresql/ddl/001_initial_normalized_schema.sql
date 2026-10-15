@@ -428,7 +428,7 @@ CREATE TABLE IF NOT EXISTS embeddings_chunk (
   PRIMARY KEY (node_id, chunk_idx)
 );
 
-CREATE TABLE IF NOT EXISTS ai_features (
+CREATE TABLE IF NOT EXISTS ai_enrichments (
   node_id BIGINT PRIMARY KEY REFERENCES file_nodes(id) ON DELETE CASCADE,
   features_model_id BIGINT DEFAULT NULL REFERENCES llm_models(id),
   schema_version INTEGER NOT NULL DEFAULT 1,

@@ -53,7 +53,7 @@ const EXPECTED_TABLES = [
   'ai_tag_raw',
   'embeddings',
   'embeddings_chunk',
-  'ai_features',
+  'ai_enrichments',
   'ai_jobs',
   'ai_usage_daily',
   'query_parses',

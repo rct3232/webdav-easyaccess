@@ -135,12 +135,12 @@ e.g. `LLM_EMBED_BASE_URL`). Operator-facing semantics (full contract:
   declared-but-failing capability is turned off with an admin warning card). Measured
   reference profiles from the project the pre-implementation study:
 
-| Family (preset)                                          | Verified on dev reference set                                                                                                                                                                                                                       | Status                                                     |
-| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| **embedded** (in-process ONNX EG2, default)              | **model-pinned embeddinggemma-2**; lockfile sha256 = identity, provider-triggered provisioning — blocking on configured boots, in-place (non-blocking) on setup completion / override clear; zero bytes fetched during the wizard (llmPresets §2.3) | product default (embed needs no config)                    |
-| external endpoint serving embeddinggemma-2               | **multimodal shared 768-d space** (text/image/audio probe-OK via `content`-wrapper + positive controls; `video_embed` gated on server batch limit; **EG2 conformance required — model name self-declared is ignored**)                              | measured profile value (θ_lo unresolved — llmPresets §2.3) |
-| llama.cpp serving Hana (gemma-4-12b)                     | **vision + audio**, verified in-domain with real photos/speech                                                                                                                                                                                      | measured profile value                                     |
-| other families (Ollama, OpenAI-compatible, TEI-class, …) | **chat/vision/asr only** (embed is model-pinned — no 768-d foreign model, no bge-m3); expected capability set declared in `infrastructure/adapters/llm/presets.js`                                                                                  | **release-measurement-pending** (chat roles)               |
+| Family (preset)                                          | Verified on dev reference set                                                                                                                                                                                                                                               | Status                                                     |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| **embedded** (in-process ONNX EG2, default)              | **model-pinned embeddinggemma-2**; lockfile sha256 = identity, provider-triggered provisioning — blocking on configured boots (the first boot after the wizard included), in-place (non-blocking) on override clear; zero bytes fetched during the wizard (llmPresets §2.3) | product default (embed needs no config)                    |
+| external endpoint serving embeddinggemma-2               | **multimodal shared 768-d space** (text/image/audio probe-OK via `content`-wrapper + positive controls; `video_embed` gated on server batch limit; **EG2 conformance required — model name self-declared is ignored**)                                                      | measured profile value (θ_lo unresolved — llmPresets §2.3) |
+| llama.cpp serving Hana (gemma-4-12b)                     | **vision + audio**, verified in-domain with real photos/speech                                                                                                                                                                                                              | measured profile value                                     |
+| other families (Ollama, OpenAI-compatible, TEI-class, …) | **chat/vision/asr only** (embed is model-pinned — no 768-d foreign model, no bge-m3); expected capability set declared in `infrastructure/adapters/llm/presets.js`                                                                                                          | **release-measurement-pending** (chat roles)               |
 
 > Embedding is **model-pinned to EmbeddingGemma 2**. There is no bge-m3 or
 > alternate-embed-model support and no embed fallback chain: built-in provisioning
@@ -182,8 +182,8 @@ feature):
   LLM config, budgets, thresholds, and model changes apply without restart. The one boot-path
   step is the built-in engine's model WEIGHTS (not config): a CONFIGURED boot missing them runs
   the blocking provisioning attempt before serving, and a failed attempt still boots with embed
-  caps OFF + admin reason (`llmPresets.md` §2.3; setup-completion and override-clear runs are
-  in-place and never block the server). Pre-seed `WEA_MODEL_DIR` (lockfile-pinned q4 set,
+  caps OFF + admin reason (`llmPresets.md` §2.3; override-clear runs are in-place and never
+  block the server; the first boot after the wizard uses the ordinary blocking boot posture). Pre-seed `WEA_MODEL_DIR` (lockfile-pinned q4 set,
   ~473 MB) or leave weights in the default data dir to skip the download entirely —
   presence ⇒ zero attempts, zero network egress (air-gapped installs).
 

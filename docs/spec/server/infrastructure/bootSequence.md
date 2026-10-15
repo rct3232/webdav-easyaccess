@@ -57,12 +57,11 @@ lets DB-sourced configuration take effect before require-time consts are capture
    `LLM_EMBED_*` rows (already primed at step 4). Remote embed override enabled ⇒ NO built-in
    trigger (role runs on the override; no caps-off signal for missing weights). Built-in active
    ⇒ weights check against `WEA_MODEL_DIR`/data dir: present ⇒ no-op (zero egress); missing ⇒
-   the attempt runs — on this CONFIGURED boot it is BLOCKING before listen with CLI per-file
-   progress (failed attempt: warn-only, embed caps OFF + admin reason, boot continues — the
-   runBoot catch must not fire), while the boot that exits setup mode fires the SAME attempt
-   IN PLACE (non-blocking; `ai.embed` row reports `preparing(phase='provisioning', progress)`,
-   embed consumers park until caps-ON). Setup mode (wizard up) ⇒ the step no-ops entirely —
-   zero bytes fetched while `setup_complete=false`.
+   the attempt runs — BLOCKING before listen with CLI per-file progress (failed attempt:
+   warn-only, embed caps OFF + admin reason, boot continues — the runBoot catch must not
+   fire). The boot that first leaves setup mode (post-restart) is an ordinary configured
+   boot: same posture, no special event or marker. Setup mode (wizard up) ⇒ the step no-ops
+   entirely — zero bytes fetched while `setup_complete=false`.
 9. FFmpeg init (best-effort, warn-only).
 10. Boot connection probes for the ACTIVE file backend only (warn-only):
     - WEA_FILE_STORAGE=webdav → utils/webdav `testConnection`; failure logs warn.

@@ -497,8 +497,8 @@ The setup wizard gains one **optional, skippable AI step** (preset → chat/visi
 endpoint/key/model → per-role test) storing ordinary database settings rows, never
 environment files — skipping costs nothing and configuration stays restart-free (§4.2);
 the embed role has NO wizard surface (the built-in engine needs no setup; the step shows its
-readiness card in the waiting state — zero bytes fetched until setup completes, per
-`llmPresets.md` §2.3); admin keeps the full surface, the wizard being a shortcut to the same rows.
+readiness card in the waiting state — zero bytes fetched during setup mode; provisioning runs
+on the first configured boot after the required restart, per `llmPresets.md` §2.3); admin keeps the full surface, the wizard being a shortcut to the same rows.
 
 ---
 

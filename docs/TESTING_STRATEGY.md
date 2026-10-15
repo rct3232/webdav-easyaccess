@@ -77,11 +77,11 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
   "never-a-render-dependency" invariant, verified by construction).
 - **Provisioning-trigger fixtures (`llmPresets.md` §4):** hermetic legs assert the
   provider-triggered postures — a setup-mode boot fetches ZERO model bytes (network stub);
-  the first configured boot after setup exit runs the attempt IN PLACE
-  (`preparing(phase='provisioning', progress)` readiness row; embed jobs park and drain in
-  order on caps-ON); a configured reboot with a wiped model dir uses the boot-blocking
-  posture; an enabled remote override defers with no caps-off signal; switching to remote
-  never deletes existing weights.
+  every configured boot missing weights — the first one after the wizard included, no
+  special event — uses the boot-blocking posture (failure warn-only, caps OFF + reason); an
+  override-clear trigger runs IN PLACE (`preparing(phase='provisioning', progress)` readiness
+  row; embed jobs park and drain in order on caps-ON); an enabled remote override defers with
+  no caps-off signal; switching to remote never deletes existing weights.
 - **Repository conformance additions:** the new repository twins (collections, fileLikes,
   actionJournal, aiJobs, embeddings, embeddingsChunk, aiTag) join the existing
   `*.conformance.test.js` L2 leg (sqlite default + `test:ci:pg:adapters` PG twin). Notable

@@ -149,8 +149,9 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 - T1.0 Embedded embedding engine (owner decision 2026-10-14, PoC addendum §6.8 / AI_FEATURE_PLAN
   §4.2+§5): `model.lock.json` (repo/revision/files+sha256/dtype=q4) + `provision.js`
   (**provider-triggered per §22**: boot-BLOCKING only for a CONFIGURED boot where the built-in
-  is the active embed provider; on SETUP COMPLETION and on remote-override clear the trigger
-  runs in place post-wizard, restart-free (embed pending, jobs queue drains); CLI per-file progress
+  is the active embed provider — the first boot after the wizard is ordinary boot processing
+  under the same posture; on remote-override clear the trigger
+  runs in place, restart-free (embed `preparing`, jobs queue drains); CLI per-file progress
   log, atomic; `WEA_MODEL_DIR`/existing weights ⇒ zero egress; switching to remote never
   deletes weights; no ban-mode) + `clients/embedded-onnx` (transformers.js in-process, media via processor
   objects) + local positive-control probe + `llm_models.engine/precision/model_revision`
@@ -1085,16 +1086,20 @@ Encoded rules:
 4. §17-2 stands for the trigger's INTERNALS (boot-blocking-with-progress-log, atomic,
    sha256, no strict/ban mode, one universal rule across replicas) — this ruling amends the
    trigger SCOPE only.
-5. **Setup mode never downloads and never blocks; the trigger fires on SETUP COMPLETION**
-   (owner ruling 2026-10-15, option (b), clarified same day — verbatim: "(b)로 진행해... 앱은
-   앱대로 실행하고, 모델은 모델대로 다운로드 하고, embed가 필요한 작업들은 pending 하고" and the
-   clarification "내 의미는 wizard가 끝난뒤 모델을 받으라는거야"): a setup-mode boot makes NO
-   provisioning attempt at all (no bytes fetched, no egress) and the wizard never waits on
-   provisioning; the trigger fires when setup completes (exit of setup mode) and then follows
-   rule-2 semantics exactly — server serves, per-file progress card, embed role in `preparing`
-   (§4.12), `ai_jobs` embed rows accumulate at the §4.1 commit hooks
-   (enqueue is provider-independent) and drain in order on provisioning completion.
-   Boot-BLOCKING remains for a CONFIGURED boot missing weights (§17-2).
+5. **Setup mode never downloads; the next CONFIGURED boot is ordinary processing** (owner
+   rulings 2026-10-15 — "(b)로 진행해... 앱은 앱대로 실행하고, 모델은 모델대로 다운로드 하고,
+   embed가 필요한 작업들은 pending 하고" → "내 의미는 wizard가 끝난뒤 모델을 받으라는거야" → final
+   simplification: "wizard 상태에서는 provisioning 안하고 재부팅 했을때는 그냥 일반적인 처리로
+   진행하면 되는거 아냐? ... 이게 구별이 필요한 문제야?"): a setup-mode boot makes NO
+   provisioning attempt (zero bytes, zero egress; the wizard never waits). Setup apply
+   requires a restart anyway, so wizard exit lands on a normal configured boot running the
+   rule-1 posture unchanged — the provider decision (remote-override row vs built-in) is the
+   ONLY discriminator: built-in selected + weights missing ⇒ blocking attempt with CLI
+   per-file progress (failure: warn + caps-off admin reason); remote enabled ⇒ skip (absence
+   is normal, no caps-off). No event hook, no marker — the "fire IN PLACE at setup
+   completion" framing is superseded, and the review finding D3 (posture discriminator)
+   dissolves. The runtime in-place trigger (rule 2) applies to override-clear only; rules
+   2/6 `preparing`/park/drain semantics hold for any attempt wherever it runs.
 6. **Role gating during the provisioning window (review finding D1, encoded in the sweep):**
    the presence rule refines to "lockfile present + weights provisioned (or an enabled,
    conformance-passed remote row) = configured". During an in-place run the built-in `embed`

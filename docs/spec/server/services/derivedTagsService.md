@@ -2,7 +2,7 @@
 
 Target-contract spec (LLM-free hygiene items — the module runs with zero LLM configured).
 Design owner sections: §2.3 (v1 tag set), §2.2 (fold step 1),
-`docs/spec/server/store/aiTagStore.md` §2.4.5 (storage surface).
+`docs/spec/server/store/aiTagStore.md` §2.3 (storage surface).
 
 ## 1. Overview
 
@@ -56,7 +56,7 @@ highest non-root segments); the sort is lexicographic over the folded values.
 | `backfillDerivedTagsForUser(userId)`                                       | `{ nodes, tagsWritten }` | Idempotent keyset-free full pass over the requester's OWN live subtree (`fileNodesStore.getUserRootNode` + `listSubtreeCacheRows`); ancestor chains resolved from the loaded rows; each node's derived set REPLACED. Returns counts. Re-run ⇒ same rows. |
 
 - Ownership of the whole `ai_tag_raw` row set per node: v1 the ONLY writer is this module
-  (aiTagStore §2.4.5 note).
+  (aiTagStore §2.3 `replaceRawTags`).
 - Directory nodes get NO derived tags (v1 set describes files); backfill skips them.
 - Month/path use `file_nodes.created_at` / node ancestry — never object storage state.
 

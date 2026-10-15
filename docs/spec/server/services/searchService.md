@@ -44,7 +44,7 @@ future layer's job) — sending it never changes the response.
    `semantic_unavailable_reason:"serverErrors.ai.notConfigured"`; done (name section
    intact, 200).
 4. **Query embed :** `llmAdapter.embedQuery(normalizedQuery)` — the ONLY request-path
-   AI call in the system; <100 ms-class model expectation; results cached —
+   AI call in the system; results cached —
    the cache IS the `query_parses` row: the `result_ref` replay signature is its PK
    (the normalized query is the primary key; no separate cache table); the ADDITIVE nullable column `vector TEXT` holds the serialized query
    embedding (model-keyed inside the signature's space component); the `predicates`

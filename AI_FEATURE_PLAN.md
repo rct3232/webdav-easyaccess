@@ -261,8 +261,8 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
   **conformance-gated** (EG2 pin: dim + reference-kit median, §4.23.2 — endpoint-declared
   names are untrusted metadata); `precision`/`model_revision` annotate what is verifiably known
   — space key discipline (§4.20) reads them.
-- **No LLM call on request paths** except semantic-search query-embed (must be <100ms class
-  model; results cached). Nightly evolution ≈ ≤1 chat call/user/day with aggregate-only
+- **No LLM call on request paths** except semantic-search query-embed (results cached).
+  Nightly evolution ≈ ≤1 chat call/user/day with aggregate-only
   input and 1 structured multi-output (create+split+merge candidates).
 - No auto-backfill on model change: `embeddings.model_id/version` + `dim` recorded; admin
   triggers re-embed backfill job (rate-limited). Existing vector math keeps working from DB
@@ -716,9 +716,8 @@ re-embeds everything on change; class (b) is caught by probe shape/positive-cont
 (§4.23.2), not by re-measuring θ.
 Embed-model adoption checklist (profile constants to measure before a model ships): text
 near-dup band (θ_dup), unrelated floor/dynamic baseline spread, image/audio/video near-dup
-bands, mutual-kNN tier edges, char/token factor, media chunk costs, query-embed latency class (CPU-served EG2
-measured ~3.8 s/sentence — fails the <100 ms §4.2 requirement; GPU 0.01 s passes — the
-profile records which serving mode was measured).**
+bands, mutual-kNN tier edges, char/token factor, media chunk costs — latency/serving-mode
+figures are recorded in the profile as informational fields, never ship gates).**
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/infrastructure/llmPresets.md`, `docs/spec/server/routes/admin.md (panel surface lands with T4.1 docs step)`
 
@@ -1313,8 +1312,10 @@ Q12 (REVISED 2026-10-14, same day — EG2 model pin supersedes the per-precision
 list): outstanding release items are ① calibrate the **conformance reference kit** threshold
 — positives: EG2 across {GGUF q8/q4_K_XL, ONNX q4/q8, fp16}; negatives: **embeddinggemma-1
 (768-d twin)** + one further 768-d foreign model; τ ships as a measured artifact (never a
-guess); ② per-deployment-hardware query-embed latency verdict (0.13 s on 6-core dev box);
-③ q4 long-audio pooling drift observed (informational only — no gate). Precision-specific
+guess); ② q4 long-audio pooling drift observed (informational only — no gate). Owner
+ruling 2026-10-15: the <100 ms query-embed clause is DELETED from §4.2 — the
+per-hardware latency verdict item is dropped with it (latency/serving-mode numbers remain
+informational profile fields). Precision-specific
 θ re-calibration is WITHDRAWN: ±0.02 same-space drift is tolerated by owner ruling, θ
 constants are single-set per model. Provisioning stays **boot-blocking with CLI progress
 log**; llm_models `engine/precision/model_revision` DDL

@@ -35,6 +35,7 @@ import { usePageHeader } from '../../../contexts/PageHeaderContext';
 import MigrationDialog from './MigrationDialog';
 import MetadataMigrationDialog from './MetadataMigrationDialog';
 import SystemConfigEditor from './SystemConfigEditor';
+import AdminReportsContent from './AdminReportsContent';
 
 const SystemSettingsContent = () => {
   const { t } = useTranslation();
@@ -437,6 +438,8 @@ const SystemSettingsContent = () => {
           {configSyncApplying ? <CircularProgress size={24} /> : <AutorenewIcon />}
         </IconButton>
       </Box>
+
+      <AdminReportsContent onSnackbar={(msg) => setMessage(msg)} />
 
       <Accordion
         expanded={advancedOpen}

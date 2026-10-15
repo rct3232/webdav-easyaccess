@@ -89,6 +89,21 @@ export const getAdminHealth = async () => {
   return response.data;
 };
 
+export const getAdminReports = async () => {
+  const response = await get('/admin/reports');
+  return response.data;
+};
+
+export const getAdminReport = async (id) => {
+  const response = await get(`/admin/reports/${id}`);
+  return response.data;
+};
+
+export const repairAdminReport = async (id, { action, nodeId, repairAction } = {}) => {
+  const response = await post(`/admin/reports/${id}/repair`, { action, nodeId, repairAction });
+  return response.data;
+};
+
 export const getPublicHealth = async () => {
   const response = await get('/health');
   return response.data;

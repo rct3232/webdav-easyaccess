@@ -160,9 +160,10 @@ feature):
       speech check
 - [ ] chPerTok measured on the mixed-text sample (1.7 is the llama.cpp-mixed reference,
       NOT assumed portable)
-- [ ] embed **conformance reference kit** calibration (§llmPresets 2.2 `conformance`):
-      positives EG2 × {GGUF q8/q4, ONNX q4/q8, fp16}, negatives embeddinggemma-1 twin +
-      one 768-d foreign model; τ ships measured, never assumed (Q12)
+- [x] embed **conformance reference kit** calibration (§llmPresets 2.2 `conformance`):
+      τ = 0.90 measured — positives EG2 × {GGUF q4_K_XL remote, ONNX q4 (canonical), ONNX q8,
+      ONNX fp16}, negatives embeddinggemma-1 twin + one 768-d foreign model (bge-base);
+      kit + record checked in at `server/infrastructure/adapters/llm/eg2-reference-kit.json`
 - [ ] probe kwarg map (which provider honors `chat_template_kwargs` vs `think` vs
       nothing) recorded; unsupported params confirmed ABSENT from emitted requests
 - [ ] declared-vs-probed mismatch injection: force-fail one probe ⇒ capability OFF +

@@ -1312,7 +1312,20 @@ Q12 (REVISED 2026-10-14, same day — EG2 model pin supersedes the per-precision
 list): outstanding release items are ① calibrate the **conformance reference kit** threshold
 — positives: EG2 across {GGUF q8/q4_K_XL, ONNX q4/q8, fp16}; negatives: **embeddinggemma-1
 (768-d twin)** + one further 768-d foreign model; τ ships as a measured artifact (never a
-guess); ② q4 long-audio pooling drift observed (informational only — no gate). Owner
+guess); ② q4 long-audio pooling drift observed (informational only — no gate). **Q12① DONE
+2026-10-15 (owner: run before P1)** — dev-box battery, canonical = built-in ONNX q4 text
+(doc-prefix `title: none | text:`, single-string, unit-norm): positives (median-cos vs
+canonical) ONNX q8 0.9857 / GGUF Q4_K_XL GPU llama.cpp 0.9855 / ONNX fp16 0.9858, worst pair
+0.967; negatives embeddinggemma-1 twin 0.033 / bge-base-en-v1.5 0.040, max pair 0.100 —
+clusters fully separable, no overlap. **τ = 0.90 shipped** — chosen over the 0.51 cluster
+midpoint for asymmetric failure cost (false-accept = silent corpus-space contamination;
+false-reject = visible, admin-correctable) and mid-band protection against EG2-family
+derivatives; margins ≥0.067 accept / ≥0.80 reject. Coverage note: GGUF-q8-server positive
+not measured (not served; moot under the single-θ pin ruling) — coverage = engine×precision
+bracket; the twin was tested via ONNX. ONNX fp16 measured non-degenerate in-process: the
+§4.2 fp16 caution is llama.cpp-compute-specific, not export-specific. Artifact:
+`server/infrastructure/adapters/llm/eg2-reference-kit.json` (24 strings + canonical vectors +
+sha + full record). Owner
 ruling 2026-10-15: the <100 ms query-embed clause is DELETED from §4.2 — the
 per-hardware latency verdict item is dropped with it (latency/serving-mode numbers remain
 informational profile fields). Precision-specific

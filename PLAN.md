@@ -1036,3 +1036,22 @@ Q12 "hardware latency" scope superseded here · specs (state-only wording): llmA
 field, searchService.md query-embed step. Effect on the P1 wave plan: Q12 runbook reduces to
 kit calibration ① + informational drift ②; T1.5 semantic search is no longer blocked on a
 hardware latency verdict.
+
+## 21. Q12 conformance reference-kit calibration run (owner directive 2026-10-15, branch `chore/q12-tau-calibration`)
+
+Owner directive (verbatim): "P1 실행 전에 τ 보정 그냥 지금 진행하자." — the §18-2 runbook item
+pulled forward ahead of P1 Wave A.
+
+Run evidence: dev box (6-core CPU) in-process transformers.js 4.3.1 harness reusing the PoC
+§6.7 seam (`/tmp/opencode/tjs`) + live GPU llama.cpp b11459 @10.0.0.106 (EG2 Q4_K_XL,
+`--pooling mean`). Kit = 24 strings (en/ko/digits/mixed); canonical = built-in ONNX q4 text,
+doc-prefix convention, single-string, unit-norm float32. Positives medians 0.9855–0.9858
+(worst pair 0.967) vs negatives 0.033/0.040 (max pair 0.100) — fully separable. **τ = 0.90**
+adopted over the 0.51 cluster midpoint (asymmetric failure cost + mid-band derivative
+protection). Full numbers + selection rationale: AI_FEATURE_PLAN §10 Q12 DONE record.
+
+Shipped artifacts: `server/infrastructure/adapters/llm/eg2-reference-kit.json` (checked-in
+release artifact — data only; `presets.js` lands with T1.1 and imports it), llmPresets §2.2
+(kit location)/§2.3 (activation gate carries the measured τ), SETUP runbook checklist item
+ticked. P1 effect: the T1.1 EG2 conformance gate now ships calibrated; Q12 reduces to the
+② informational-drift item only.

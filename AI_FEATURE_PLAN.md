@@ -255,12 +255,12 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
   in-process media embed is batch-class: ~7 s/image on CPU). Distribution: a few-KB npm
   lockfile {repo, revision pin, files[]+sha256, dtype:'q4'}. **Provisioning is
   provider-triggered, not per-boot-unconditional** (owner ruling 2026-10-15, PLAN §22):
-  it runs **BLOCKING at boot only for a CONFIGURED boot while the built-in is the active embed
-  provider** (no enabled remote embed override), and **in place when setup completes or that
+  it runs **BLOCKING at boot for a CONFIGURED boot while the built-in is the active embed
+  provider** (no enabled remote embed override) — the first boot after the setup wizard is
+  just such an ordinary boot, no special event (PLAN §22-5) — and **in place when a remote
   override is cleared** — built-in activation is restart-free like every other LLM config
   (weights present ⇒ instant; absent ⇒ progress status card, role in `preparing` during the download
-  per §4.12). Setup mode itself fetches NO bytes and the wizard NEVER waits on provisioning —
-  the trigger fires on setup completion (PLAN §22-5). A pre-provisioned `WEA_MODEL_DIR` ⇒ zero download attempts, zero network egress;
+  per §4.12). Setup mode itself fetches NO bytes and the wizard NEVER waits on provisioning. A pre-provisioned `WEA_MODEL_DIR` ⇒ zero download attempts, zero network egress;
   switching to remote NEVER deletes existing weights (triggers are idempotent — a
   re-trigger is a no-op). While a remote override is active, provisioning is DEFERRED and
   the absence is not a failure state (the role runs on the override). The attempt itself:
@@ -1160,8 +1160,9 @@ picker → role checkboxes → base-url/key/model inputs → per-role test (`/ap
 new target `llm`); values are stored as **DB settings rows** (NOT `.env`/envFileWriter —
 the hot-apply rule §4.2), so a skipped step costs nothing and a mid-install config is
 restart-free. The step also surfaces the embedded-engine provisioning status card — during
-the wizard it shows the waiting state ("begins when setup completes"); live per-file download
-progress and the ready / caps-off outcome arrive after completion (PLAN §22-5). Full config surface stays in admin
+the wizard it shows the waiting state ("begins at the next boot"); live per-file download
+progress and the ready / caps-off outcome belong to the first configured boot after the
+required restart (PLAN §22-5). Full config surface stays in admin
 (`/api/admin/config` + test + capability
 matrix, where an external embed server may be configured as an OVERRIDE replacing the
 built-in); wizard is a shortcut to the same rows. SETUP.md documents preset table;

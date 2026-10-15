@@ -178,7 +178,7 @@ The **embed role is absent from the wizard surface**: the built-in engine ships 
 product (needs no config), and a remote-embed override is an admin-only surface with a
 save-time conformance gate (`llmPresets.md` §2.5). The AI step also shows the embedded-engine
 readiness card in its waiting state (`preparing` never starts while setup mode is up — zero
-bytes fetched; provisioning fires on the exit of setup mode — `llmPresets.md` §2.3).
+bytes fetched; provisioning runs on the first configured boot after the wizard's required restart — `llmPresets.md` §2.3).
 
 Runs the per-role capability probe (`probeLlm` core, shared with
 `POST /api/admin/config/test` target `llm`) against the **submitted** values — an

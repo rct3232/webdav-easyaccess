@@ -24,7 +24,8 @@ Target-contract spec.
   **`provision.js`** (provider-triggered model provisioning for `engine='embedded'` — a
   blocking run at boot only for a CONFIGURED boot while the built-in is the active embed
   provider, and an immediate in-place, server-non-blocking run (embed role pending until
-  done) on FIRST LAUNCH or when a remote embed override is cleared (restart-free); deferred,
+  done) on SETUP COMPLETION (exit of setup mode — the wizard itself makes no download
+  attempt and never blocks on provisioning) or when a remote embed override is cleared (restart-free); deferred,
   with no trigger and no weight deletion, while the override is active — existing weights persist:
   lockfile
   parse → `WEA_MODEL_DIR` / data-dir detection → checksummed downloads with per-file CLI
@@ -84,7 +85,7 @@ Target-contract spec.
 Startup probe (symmetric to s3/webdav probes, `index.js:272-327`) is the INITIAL probe,
 not the only one (hot re-probes per §2.2). For `engine='embedded'` the sequence at every
 provisioning trigger — a configured boot with the built-in active (blocking), or an
-in-place post-app-up trigger on first launch / remote-override clear (server runs, role
+in-place trigger on setup completion / remote-override clear (server runs, role
 pending) — is
 **provision → probe** (blocking within a boot-path trigger, §2.1 `provision.js`; no embedded trigger
 fires while a remote override is active; the same suite then

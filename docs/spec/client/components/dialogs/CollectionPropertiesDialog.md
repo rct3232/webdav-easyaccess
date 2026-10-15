@@ -51,7 +51,7 @@ Target-contract spec.
 
 ### 2.6 FilePropertiesDialog extensions (collection context — cross-reference)
 
-- `Member of` chips and a per-FILE `AI Info` tab in the collection context are rendered by FilePropertiesDialog (`FilePropertiesDialog.md`), not this dialog: Info tab gains membership chips (`POST /collections/for-nodes` → collection names, click routes to that collection's member view); `AI Info` tab (file `tags/summary/caption` from `ai_enrichments`) renders only when features exist for the viewer's capability state — absent-not-disabled, and read-only tab subset when opened by a collection grantee who is not the file owner (member-row properties rule).
+- `Member of` chips and a per-FILE `AI Info` tab in the collection context are rendered by FilePropertiesDialog (`FilePropertiesDialog.md`), not this dialog: Info tab gains membership chips (`POST /collections/for-nodes` → collection names, click routes to that collection's member view); `AI Info` tab (file `tags/summary/caption` from `ai_enrichments`) renders only when enrichment data exists for the viewer's capability state — absent-not-disabled, and read-only tab subset when opened by a collection grantee who is not the file owner (member-row properties rule).
 
 ### 2.7 i18n Keys
 

@@ -145,7 +145,7 @@ async function clickDialogAddButton(
   await addUserResponse;
 }
 
-test.describe('mypage admin flows (E2E-ADMIN-001..008)', () => {
+test.describe('mypage admin flows (E2E-ADMIN-001..009)', () => {
   test('E2E-ADMIN-001: Redirects /admin to the admin MyPage category', async ({
     page,
     request,
@@ -455,5 +455,141 @@ test.describe('mypage admin flows (E2E-ADMIN-001..008)', () => {
     }
     await expect(folderTree).toBeVisible({ timeout: 20_000 });
     await expect(folderTree.getByRole('button', { name: /Shared/i })).toHaveCount(0);
+  });
+
+  test('E2E-ADMIN-009: The admin reports section renders persisted ops rows after manual refresh', async ({
+    page,
+    request,
+  }, testInfo) => {
+    const isMobile = isMobileProject(testInfo);
+    const suffix = getTestSuffix(testInfo);
+    await ensureApprovedUser(request, 'user1', suffix);
+
+    interface ReportRow {
+      id: number;
+      kind: string;
+      status: string;
+      payload: {
+        gc?: unknown;
+        errors?: unknown[];
+        orphanedNodes?: unknown[];
+        pendingUploadNodes?: unknown[];
+        contentHashCompleteness?: { nullCount?: unknown } | null;
+      } | null;
+      created_at: string;
+    }
+    // The file-level storageState already authenticates the admin session; this
+    // navigation lets the init-script copy the seeded token into sessionStorage
+    // before it is read below (see e2e/fixtures/authenticated.ts).
+    await page.goto('/mypage');
+    const adminToken = await getSessionToken(page);
+
+    const authHeaders = { Authorization: `Bearer ${adminToken}` };
+    const listReports = async (): Promise<ReportRow[]> => {
+      const res = await request.get('/api/admin/reports', { headers: authHeaders });
+      expect(res.ok()).toBeTruthy();
+      return (await res.json()).reports as ReportRow[];
+    };
+    const nullCountOf = (row: ReportRow): number => {
+      const section = row.payload?.contentHashCompleteness;
+      if (!section) return 0;
+      return Number.isFinite(section.nullCount as number) ? (section.nullCount as number) : 0;
+    };
+
+    // SHARED-STACK DISCIPLINE: one real persisted row via the API cleanup
+    // channel (same cycle the ADMIN-008 UI button drives); NO repair/backfill
+    // clicks — shared state is not mutated beyond the appended report row.
+    const before = await listReports();
+    const maxIdBefore = before.reduce((acc, row) => Math.max(acc, row.id), 0);
+    const cleanupRes = await request.post('/api/admin/cleanup/orphaned', {
+      headers: authHeaders,
+      data: {},
+    });
+    expect(cleanupRes.status()).toBe(200);
+    const cleanupBody = await cleanupRes.json();
+    expect(cleanupBody.results).toBeTruthy();
+
+    // The persisted row is the newest `kind='cleanup'` report (cleanupService
+    // persists the FULL result before responding; response body == stored
+    // payload — docs/spec/server/routes/admin.md).
+    const after = await listReports();
+    const newRows = after.filter((row) => row.kind === 'cleanup' && row.id > maxIdBefore);
+    expect(newRows.length).toBeGreaterThanOrEqual(1);
+    const newRow = newRows.reduce((a, b) => (a.id > b.id ? a : b));
+
+    await openMyPageCategory(page, isMobile, 'System settings');
+
+    const section = page.getByTestId('admin-reports-section');
+    await expect(section).toBeVisible();
+    // AdminReportsContent.md §2.4: zero data fetch on mount — the section is
+    // inert until the operator refreshes.
+    await expect(page.locator('[data-testid^="admin-reports-row-"]')).toHaveCount(0);
+
+    const firstFetch = page.waitForResponse(
+      (res) =>
+        res.request().method() === 'GET' &&
+        new URL(res.url()).pathname === '/api/admin/reports' &&
+        res.status() === 200,
+      { timeout: 15_000 }
+    );
+    await page.getByTestId('admin-reports-refresh').click();
+    await firstFetch;
+
+    const newRowRow = page.getByTestId(`admin-reports-row-${newRow.id}`);
+    await expect(newRowRow).toBeVisible();
+    // kind chip (admin.reports.kind.cleanup = "Cleanup") + status chip.
+    await expect(
+      newRowRow.locator('[class*="Chip-label"]').filter({ hasText: 'Cleanup' })
+    ).toBeVisible();
+    await expect(newRowRow.locator('[class*="Chip-label"]').first()).toBeVisible();
+
+    // Expand matrix mirrors the stored payload: `hasDetail` for a cleanup row
+    // ⇔ gc section ∨ node groups ∨ errors (AdminReportsContent.md §2.5).
+    // A successful shared-server cycle stores `gc` ⇒ the tier summary renders
+    // after expand (zero counts fine); zero-count tiers are honest renders.
+    const p = newRow.payload ?? {};
+    const hasDetail =
+      Boolean(p.gc) ||
+      (p.orphanedNodes ?? []).length > 0 ||
+      (p.pendingUploadNodes ?? []).length > 0 ||
+      (p.errors ?? []).length > 0;
+    const expand = page.getByTestId(`admin-reports-expand-${newRow.id}`);
+    if (hasDetail) {
+      await expect(expand).toBeVisible();
+      await expand.click();
+      if (p.gc) {
+        await expect(newRowRow.getByText(/Tier [123]/).first()).toBeVisible();
+      }
+    } else {
+      await expect(expand).toHaveCount(0);
+    }
+
+    // Refresh re-fetches cleanly (spinner→list), no error Alert.
+    const refetch = page.waitForResponse(
+      (res) =>
+        res.request().method() === 'GET' &&
+        new URL(res.url()).pathname === '/api/admin/reports' &&
+        res.status() === 200,
+      { timeout: 15_000 }
+    );
+    await page.getByTestId('admin-reports-refresh').click();
+    await refetch;
+    await expect(page.getByTestId('admin-reports-error')).toHaveCount(0);
+    await expect(newRowRow).toBeVisible();
+
+    // Backfill-button CONDITIONAL matrix (never a hard 0): the button renders
+    // iff a failsafe row carries contentHashCompleteness with finite
+    // nullCount > 0 (AdminReportsContent canBackfill). On a healthy shared
+    // server that set is empty; on a hash-backfill-pending server every such
+    // row shows its button — assert DOM ⇔ payload equivalence either way.
+    const expectedBackfillIds = (await listReports())
+      .filter((row) => row.kind === 'failsafe' && nullCountOf(row) > 0)
+      .map((row) => row.id);
+    await expect(page.locator('[data-testid^="admin-reports-backfill-"]')).toHaveCount(
+      expectedBackfillIds.length
+    );
+    for (const id of expectedBackfillIds) {
+      await expect(page.getByTestId(`admin-reports-backfill-${id}`)).toBeVisible();
+    }
   });
 });

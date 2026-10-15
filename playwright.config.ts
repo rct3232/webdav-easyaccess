@@ -92,7 +92,7 @@ const pushHermetic = (entries: HermeticEntry[]) => {
 // mobile (:5014) own distinct slots ⇒ standalone siblings, no dependency link.
 const collectionsSpecs: HermeticEntry[] = [
   {
-    // P0 collections lifecycle (E2E-COLLECTION-001..014) — scratch-hermetic
+    // P0 collections lifecycle (E2E-COLLECTION-001..014 + 018..020) — scratch-hermetic
     // on its own server (:5013) per the destructive-case policy: the suite
     // permanently deletes collections and rewrites the per-user undo-journal
     // chain, so it never runs against the shared :5002 pool. The spec boots
@@ -164,8 +164,8 @@ if (backendMode === 'webdav') {
     );
 
     // Additive, hermetic projects (setup-wizard / admin-config / migration /
-    // trash-admin); the collections legs are mode-agnostic and pushed below
-    // (`collectionsSpecs`).
+    // trash-admin / retrieval); the collections legs are mode-agnostic and
+    // pushed below (`collectionsSpecs`).
     // They spawn their own scratch servers and are isolated per suite (Option A
     // Phase 1): each suite owns ONE distinct scratch port slot
     // (`e2ePorts.scratch*` = base :5003 wizard, :5010 admin-config, :5011
@@ -224,6 +224,20 @@ if (backendMode === 'webdav') {
         spec: /trash-admin\.spec\.ts$/,
         use: desktopUse,
         baseURL: `http://localhost:${e2ePorts.scratchTrashAdmin}`,
+      },
+      {
+        // E2E-RETRIEVAL-001..007 — server-wide name search results mode
+        // (T0.11). Scratch-hermetic on its own server (:5015, same
+        // destructive-suite pattern as collections): own sqlite + webdav
+        // file backend, never the shared :5002 pool. WEBDAV HOST-MODE LEG
+        // DEFERRED (v1 = s3 runs only): the scratch server boots its own
+        // webdav backend unconditionally, so the s3 project already
+        // exercises real WebDAV wiring; enabling the entry in the webdav
+        // branch is a follow-up if the smoke matrix ever owns it.
+        name: 'retrieval-desktop',
+        spec: /retrieval\.spec\.ts$/,
+        use: desktopUse,
+        baseURL: `http://localhost:${e2ePorts.scratchRetrieval}`,
       },
     ];
     pushHermetic(hermeticSpecs);

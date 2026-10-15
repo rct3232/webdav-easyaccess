@@ -68,7 +68,9 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
   policy: **auto-evolution mutates user data, so AI suites are scratch-only, never run
   against the shared E2E server/database.**
 - **E2E ID ranges:** collection-lifecycle cases use `E2E-COLLECTION-NNN`, AI-behavior cases
-  use `E2E-AI-NNN`, third-person declarative titles per the naming convention above.
+  use `E2E-AI-NNN`, search/retrieval cases (server-wide name search + results-mode UI,
+  `e2e/retrieval.spec.ts`, scratch-hermetic `retrieval-desktop` project) use
+  `E2E-RETRIEVAL-NNN`, third-person declarative titles per the naming convention above.
   Minimum lifecycle chain: create→digest→archive→undo→restore→purge (CODING_STYLE.md Express Patterns gate).
 - **Degradation-matrix suite:** one suite per §4.12 capability column — `None` (no adapter
   configured at all; the built-in embed engine suppressed by fixture — absent lock/weights ⇒

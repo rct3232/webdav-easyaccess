@@ -26,7 +26,7 @@ import { rightClickItem } from './helpers/desktop-interactions';
 import { setCollectionSort } from './helpers/explorer-controls';
 
 /**
- * E2E-COLLECTION-001..014 — the P0 collections binding lifecycle
+ * E2E-COLLECTION-001..014 + 018..020 — the P0 collections binding lifecycle
  * (docs/E2E_COVERAGE_PLAN.md § "Collections platform lifecycle (hermetic)").
  *
  * Chain: create → add members → digest counts → archive → undo → restore →
@@ -76,6 +76,8 @@ interface CollectionRow {
   status: string;
   item_count?: number;
   last_visited_at?: string | null;
+  updated_at?: string | null;
+  name_locked?: boolean;
 }
 
 // Collections created by the running case (UI or API); afterEach purges them
@@ -642,6 +644,53 @@ test('E2E-COLLECTION-010: The toolbar sort button re-sorts the collections list 
   await setCollectionSort(page, 'name');
   await expect(cards.nth(0)).toContainText(nameA);
   await expect(cards.nth(1)).toContainText(nameZ);
+
+  // Updated switch (gap-coverage amendment): the `updated` sort is
+  // `c.updated_at DESC, id DESC` (collectionsStore.md §2.5). NOTE: adding a
+  // member bumps `last_member_change_at`, NOT `updated_at`
+  // (`repo.touchMemberChange`, store code-verified) — the updated_at bump
+  // that the sort reads comes from the journaled PUT /:id row update
+  // (routes/collections.md PUT: pinned/publishMode/name all SET
+  // updated_at=CURRENT_TIMESTAMP). The member add below stays as an
+  // additional real change to A; the PUT is what the `updated` sort keys on.
+  // Second-granular sqlite stamps ⇒ poll/re-issue until A strictly exceeds Z.
+  const rowA = await findCollectionByName(request, token, nameA);
+  const rowZ = await findCollectionByName(request, token, nameZ);
+  expect(rowA && rowZ).toBeTruthy();
+  const extraMember = await seedFile(request, token, base, testInfo, 'col010-extra');
+  await addItemsApi(request, token, rowA!.collection_id, [extraMember.nodeId]);
+  await expect
+    .poll(
+      async () => {
+        // Toggle publishMode so every re-issue is a real row UPDATE.
+        // GET /:id answers the collection row DIRECTLY (routes.js).
+        const current = await request.get(`/api/collections/${rowA!.collection_id}`, {
+          headers: auth(token),
+        });
+        const mode = (await current.json()).publish_mode === 'off' ? 'ask' : 'off';
+        await request.put(`/api/collections/${rowA!.collection_id}`, {
+          headers: auth(token),
+          data: { publishMode: mode },
+        });
+        const rows = await listCollections(request, token, 'mine,shared');
+        const a = rows.find((r) => r.collection_id === rowA!.collection_id);
+        const z = rows.find((r) => r.collection_id === rowZ!.collection_id);
+        return Boolean(a && z && a.updated_at && z.updated_at && a.updated_at > z.updated_at);
+      },
+      { timeout: 20_000, intervals: [500, 1000] }
+    )
+    .toBe(true);
+
+  await page.goto('/files/__collections__');
+  await setCollectionSort(page, 'updated');
+  await expect(cards.nth(0)).toContainText(nameA);
+  await expect(cards.nth(1)).toContainText(nameZ);
+
+  // Name switch again: the NAME order is untouched by the A-side update —
+  // the same [Aaa, Zzz] pin (proves `updated` did not leak into `name`).
+  await setCollectionSort(page, 'name');
+  await expect(cards.nth(0)).toContainText(nameA);
+  await expect(cards.nth(1)).toContainText(nameZ);
 });
 
 test('E2E-COLLECTION-011: members render the shared grid by default, the list toggle persists per-surface and double-click previews by nodeId', async ({
@@ -885,4 +934,145 @@ test('E2E-COLLECTION-014: Likes-first/Archive-last tiles navigate, archive view 
   await page.goto('/files/__collections__/liked');
   await expect(page.getByTestId('members-list')).toBeVisible();
   await expect(page.getByTestId('collection-tile-liked')).toHaveCount(0);
+});
+
+test('E2E-COLLECTION-018: Card menu rename updates the card and the sidebar row, locks the name and is undoable', async ({
+  page,
+  request,
+}, testInfo) => {
+  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
+  const file = await seedFile(request, token, base, testInfo, 'col018');
+  await gotoFilesPath(page, request, `/${base}`);
+  await expect(fileItem(page, file.path)).toBeVisible();
+
+  const name = buildName(testInfo, 'col018');
+  await uiCreateCollectionWithFile(page, file.path, name);
+  await expect(page.getByText(/Collection created/i)).toBeVisible();
+  const created = await findCollectionByName(request, token, name);
+  expect(created).toBeDefined();
+  const collectionId = created!.collection_id;
+
+  // Card menu → Rename → RenameDialog submit (FileManager handleCardAction
+  // 'rename' → collectionsApi.renameCollection → PUT /:id {name}).
+  await page.goto('/files/__collections__');
+  await openCardMenu(page, name, 'rename');
+  const renameDialog = page.getByRole('dialog');
+  await renameDialog.getByTestId('rename-name-input').fill('Q3 reports');
+  await renameDialog.getByTestId('rename-submit').click();
+
+  // Card shows the new name; PUT /:id with a `name` write sets
+  // name_locked=true (routes/collections.md PUT + store §2 renameCollection).
+  await expect(collectionCard(page, 'Q3 reports')).toBeVisible({ timeout: 10_000 });
+  await expect
+    .poll(
+      async () => {
+        const row = await findCollectionByName(request, token, 'Q3 reports');
+        return row?.name_locked === true && row.collection_id === collectionId;
+      },
+      { timeout: 15_000 }
+    )
+    .toBe(true);
+
+  // Sidebar row reflects the rename through the collections notifier — on the
+  // SAME page (the tree stays mounted under the collections overlay; the
+  // section is collapsed after a reload, expand it first). Same-page also
+  // keeps the 8 s undo-toast alive for the click below.
+  await page.getByTestId('collections-toggle').click();
+  await expect(page.getByTestId(`collection-row-${collectionId}`)).toContainText('Q3 reports');
+
+  // One journaled command ⇒ one undo toast ("Collection renamed",
+  // collections.undoRenamed); clicking Undo applies the inverse name.
+  await expect(page.getByText(/Collection renamed/i)).toBeVisible();
+  await expect(page.getByTestId('undo-toast-action')).toBeVisible();
+  await page.getByTestId('undo-toast-action').click();
+
+  await expect
+    .poll(async () => Boolean(await findCollectionByName(request, token, name)), {
+      timeout: 15_000,
+    })
+    .toBe(true);
+  await page.goto('/files/__collections__');
+  await expect(collectionCard(page, name)).toBeVisible();
+  await expect(collectionCard(page, 'Q3 reports')).toHaveCount(0);
+});
+
+test('E2E-COLLECTION-019: The properties dialog header toggles the viewer-scoped like and the surfaces share the state', async ({
+  page,
+  request,
+}, testInfo) => {
+  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
+  const file = await seedFile(request, token, base, testInfo, 'col019');
+  await gotoFilesPath(page, request, `/${base}`);
+  await expect(fileItem(page, file.path)).toBeVisible();
+
+  // Dialog-scoped like toggle (FilePropertiesDialog §3.3 header IconButton —
+  // aria-label Like/Unlike, not menu text).
+  await rightClickItem(page, file.path);
+  await page.getByTestId('file-action-properties').click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  const dialogLike = dialog.getByTestId('like-toggle');
+  await expect(dialogLike).toHaveAttribute('aria-label', 'Like');
+  await dialogLike.click();
+
+  await expect
+    .poll(async () => {
+      const res = await request.get('/api/file-likes', { headers: auth(token) });
+      const body = await res.json();
+      return (body.liked as number[]).includes(file.nodeId);
+    })
+    .toBe(true);
+
+  // Reopen the dialog: the header toggle reads the flipped (shared) state.
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await rightClickItem(page, file.path);
+  await page.getByTestId('file-action-properties').click();
+  await expect(page.getByRole('dialog').getByTestId('like-toggle')).toHaveAttribute(
+    'aria-label',
+    'Unlike'
+  );
+
+  // Context-menu row reads the same state (optimistic row merge + notifier):
+  // shared like state across surfaces, invariant 9 (viewer-scoped).
+  await page.keyboard.press('Escape');
+  await rightClickItem(page, file.path);
+  await expect(page.getByTestId('like-toggle')).toHaveText(/^unlike$/i);
+  await page.keyboard.press('Escape');
+});
+
+test('E2E-COLLECTION-020: The sidebar Archive node routes into the tile-free archive view with the Collections › Archive breadcrumb and the chip returns to the ordered active list', async ({
+  page,
+  request,
+}, testInfo) => {
+  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
+  const name = buildName(testInfo, 'col020');
+  const collectionId = await createCollectionApi(request, token, name);
+  await archiveCollectionApi(request, token, collectionId);
+
+  // Sidebar routing (CLICK, not goto): expand the section, hit the Archive
+  // node — FolderTree handleArchiveClick → /files/__collections__/__archive__.
+  await page.getByTestId('collections-toggle').click();
+  await expect(page.getByTestId('collections-archive-node')).toBeVisible();
+  await page.getByTestId('collections-archive-node').click();
+  await expect(page).toHaveURL(/\/files\/__collections__\/__archive__$/);
+
+  // Breadcrumb per locale (desktop runs the en bundle — same anchors as 014).
+  const crumb = page.getByTestId('breadcrumb');
+  await expect(crumb.getByText('Collections', { exact: true })).toBeVisible();
+  await expect(crumb.getByText('Archive', { exact: true })).toBeVisible();
+
+  // Archive view is tile-free (F3, 2026-10-01) and lists the archived card.
+  await expect(page.locator('[data-testid^="collection-tile-"]')).toHaveCount(0);
+  await expect(collectionCard(page, name)).toBeVisible();
+
+  // Collections crumb chip back → active list; M-2 tile order: Likes FIRST,
+  // Archive LAST (014 parity — order pinned via DOM position here).
+  await crumb.getByText('Collections', { exact: true }).click();
+  await expect(page).toHaveURL(/\/files\/__collections__$/);
+  await expect(page.getByTestId('collections-list-view')).toBeVisible();
+  const tiles = page.locator('[data-testid^="collection-tile-"]');
+  await expect(tiles).toHaveCount(2);
+  await expect(tiles.first()).toHaveAttribute('data-testid', 'collection-tile-liked');
+  await expect(tiles.last()).toHaveAttribute('data-testid', 'collection-tile-archive');
 });

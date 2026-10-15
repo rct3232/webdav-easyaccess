@@ -21,6 +21,9 @@
 ```js
 {
   status: 'ok' | 'fail' | 'unknown',   // 'unknown' until the first report
+  preparing: boolean,                  // non-terminal readiness: preparation in progress for this slot (§2.3)
+  phase: string | undefined,           // what is preparing ('provisioning', 'index-build', …) — admin display only
+  progress: string | undefined,        // short human-readable progress ("3/7 files") — admin display only
   code: 'unreachable' | 'auth' | 'missing_resource' | 'unknown' | undefined,
   reason: string | undefined,          // short diagnostic (≤200 chars), never user-facing
   hint: string | undefined,            // human hint (i18n key or short text) for admin surfaces
@@ -32,20 +35,22 @@
 
 ### 2.3 Public API
 
-| Export                | Signature                                                 | Description                                                                                                                                                                                                                                                                                                          |
-| --------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `createBackendHealth` | `() => { report, getHealth, reset, setOnTransition }`     | Factory (tests get an isolated instance; production uses the shared singleton).                                                                                                                                                                                                                                      |
-| `getHealth`           | `() => { postgresql, s3, webdav, 'ai.embed', 'ai.chat' }` | Snapshot for `GET /api/admin/health` (full) and `GET /api/health` (status strings only). AI role slots are keyed `ai.<role>` (`embed`/`chat`, feature doc `docs/features/collections-platform.md` §4.12) with the same state shape; `vision`/`asr` states are admin-surface-only additions and are not tracked here. |
-| `report`              | `(key, { ok, code?, reason?, hint? }) => void`            | Update state; `key` is a backend name or an `ai.<role>` slot. Fire the transition callback only when the status flips `ok`↔`fail`. `ok:true` clears `code/reason/hint`, resets `consecutiveFailures` to 0, keeps `lastCheckedAt`. Unknown keys are ignored silently (unchanged).                                     |
-| `reset`               | `() => void`                                              | Reset all tracked keys to `unknown` (boot + test hook).                                                                                                                                                                                                                                                              |
-| `setOnTransition`     | `(cb) => void`                                            | Register a callback for `OK→FAIL` / `FAIL→OK` transitions (terminal logging).                                                                                                                                                                                                                                        |
+| Export                | Signature                                                                     | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| --------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createBackendHealth` | `() => { report, getHealth, reset, setOnTransition }`                         | Factory (tests get an isolated instance; production uses the shared singleton).                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `getHealth`           | `() => { postgresql, s3, webdav, 'ai.embed', 'ai.chat' }`                     | Snapshot for `GET /api/admin/health` (full) and `GET /api/health` (status strings only). AI role slots are keyed `ai.<role>` (`embed`/`chat`, feature doc `docs/features/collections-platform.md` §4.12) with the same state shape; `vision`/`asr` states are admin-surface-only additions and are not tracked here.                                                                                                                                                                                |
+| `report`              | `(key, { ok, preparing?, phase?, progress?, code?, reason?, hint? }) => void` | Update state; `key` is a backend name or an `ai.<role>` slot. Fire the transition callback only when the status flips `ok`↔`fail` — entering/leaving `preparing` never fires it. `preparing:true` sets the non-terminal readiness state (clears `code/reason/hint`, keeps the underlying `status`); the next `ok:true`/`ok:false` report replaces it. `ok:true` clears `code/reason/hint`, resets `consecutiveFailures` to 0, keeps `lastCheckedAt`. Unknown keys are ignored silently (unchanged). |
+| `reset`               | `() => void`                                                                  | Reset all tracked keys to `unknown` (boot + test hook).                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `setOnTransition`     | `(cb) => void`                                                                | Register a callback for `OK→FAIL` / `FAIL→OK` transitions (terminal logging).                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 **AI role slots (`ai.embed`, `ai.chat`).** Same generic row shape; the adapter
 reports probe outcomes via the `probeLlm` slot (`backendProbe.registerProbeTarget('llm', …)`
-— `docs/spec/server/infrastructure/llmAdapter.md` §2.3) and the admin 4-state display
-(`not_configured | probe_failed(reason) | partial | ok`) maps the row at render time.
+— `docs/spec/server/infrastructure/llmAdapter.md` §2.3) and the admin 5-state display
+(`not_configured | preparing(phase, progress) | probe_failed(reason) | partial | ok`)
+maps the row at render time — `preparing` reads the row's readiness fields, not the status.
 `GET /api/settings/public` derives its `ai: { embed, chat }` booleans live from these rows
-(`status === 'ok'`, `docs/spec/server/routes/settings.md`). The public `/api/health`
+(`status === 'ok'`, `docs/spec/server/routes/settings.md`); a `preparing` row is not `ok`,
+so public flags stay `false` while preparation runs (absent-not-disabled holds). The public `/api/health`
 endpoint keeps reporting only the three backend statuses; the admin `/health` snapshot
 includes the AI rows additively.
 
@@ -83,3 +88,4 @@ Never logs steady-state reports.
 - [ ] `reset()` returns all tracked keys (backends + AI role slots) to `unknown`
 - [ ] `getHealth()` returns the three backends plus the `ai.embed`/`ai.chat` slots with no cross-contamination
 - [ ] an `ai.<role>` report never fires a transition for a backend row and vice versa
+- [ ] a `preparing:true` report sets the readiness state WITHOUT firing the transition callback and without touching `code/reason`; the next `ok:true`/`ok:false` report clears `preparing/phase/progress`; `settings/public` derivation reads `false` while `preparing` is set

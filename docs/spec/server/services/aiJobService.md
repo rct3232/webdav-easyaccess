@@ -80,11 +80,15 @@ Enqueue decision table (per node, at hook time):
    (rate-limited enrichment; `AI_WORKER_CONCURRENCY` T2 default 1).
 4. Before executing, check the role gate (order matters):
 
-- Role unconfigured (llmAdapter `roleConfigured()` false) ⇒ that kind's jobs stay
+- Role unconfigured (llmAdapter `roleConfigured()` false — including the built-in `embed`
+  role while its weights are still downloading or the attempt failed) ⇒ that kind's jobs stay
   QUEUED, unconsumed: the worker claims via an ADDITIVE filter option
   `aiJobsStore.claimNext({ excludeKinds })` (predicate-level exclusion; the existing
   zero-arg `claimNext()` contract of aiJobsStore §2.3 is unchanged). Queued kinds park
   with zero attempt inflation — "pause never destroys queued work silently" holds; backlog surfaces via `countByStatus`/`listFailed`.
+  The built-in `embed` role counts as unconfigured while its weights are still being
+  provisioned (the `preparing` readiness state) — parked embed jobs drain in claim order
+  once the trigger finishes and the role flips configured.
 - role budget breaker OPEN (per-role daily call/token cap hit) ⇒ same parking behavior;
   counters reset at day rollover; breaker state reported to the admin pipeline card.
 

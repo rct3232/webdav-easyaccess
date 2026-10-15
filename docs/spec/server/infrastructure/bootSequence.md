@@ -53,6 +53,16 @@ lets DB-sourced configuration take effect before require-time consts are capture
    failure recorded during boot must survive into the tracker so it is visible
    on the health card and the file-screen banner immediately after login. A
    post-probe reset would wipe it (surfaces would report `unknown` at boot).
+8b. Embed provider decision + built-in provisioning (llmPresets.md §2.3): read the resolver's
+   `LLM_EMBED_*` rows (already primed at step 4). Remote embed override enabled ⇒ NO built-in
+   trigger (role runs on the override; no caps-off signal for missing weights). Built-in active
+   ⇒ weights check against `WEA_MODEL_DIR`/data dir: present ⇒ no-op (zero egress); missing ⇒
+   the attempt runs — on this CONFIGURED boot it is BLOCKING before listen with CLI per-file
+   progress (failed attempt: warn-only, embed caps OFF + admin reason, boot continues — the
+   runBoot catch must not fire), while the boot that exits setup mode fires the SAME attempt
+   IN PLACE (non-blocking; `ai.embed` row reports `preparing(phase='provisioning', progress)`,
+   embed consumers park until caps-ON). Setup mode (wizard up) ⇒ the step no-ops entirely —
+   zero bytes fetched while `setup_complete=false`.
 9. FFmpeg init (best-effort, warn-only).
 10. Boot connection probes for the ACTIVE file backend only (warn-only):
     - WEA_FILE_STORAGE=webdav → utils/webdav `testConnection`; failure logs warn.

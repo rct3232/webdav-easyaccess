@@ -235,7 +235,9 @@ While the app is in setup mode (`setup_complete === false`) the HTTP listener is
 - A fully **env-only** first run is equivalent to option (3): pre-populate every key the
   completeness rules require (see §Setup completeness rules and `docs/SETUP.md`) in `.env` and
   boot — `setup_complete` is derived, so the app starts fully configured on the first boot and
-  binds all interfaces immediately (no wizard, no setup window).
+  binds all interfaces immediately (no wizard, no setup window). That first configured boot is
+  a CONFIGURED boot: if the built-in embed provider is missing its model weights, the
+  provisioning attempt runs blocking-before-listen (`docs/spec/server/infrastructure/llmPresets.md` §2.3).
 - The bind host is selected at `listen()` time from the boot-derived `setup_complete` state
   (`server/index.js`). A restart is the only transition: setup-incomplete boots are
   loopback-only; once `.env` makes the config complete, the next boot binds all interfaces

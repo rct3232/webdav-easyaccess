@@ -171,8 +171,14 @@ Public; **403 when already complete** (gate uses the same effective view as `/st
 - **`POST /api/setup/test` — fourth target shape:**
 
 ```jsonc
-{ "target": "llm", "role": "embed" | "chat" | "vision" | "asr", "baseUrl": "…", "apiKey": "…", "model": "…" }
+{ "target": "llm", "role": "chat" | "vision" | "asr", "baseUrl": "…", "apiKey": "…", "model": "…" }
 ```
+
+The **embed role is absent from the wizard surface**: the built-in engine ships with the
+product (needs no config), and a remote-embed override is an admin-only surface with a
+save-time conformance gate (`llmPresets.md` §2.5). The AI step also shows the embedded-engine
+readiness card in its waiting state (`preparing` never starts while setup mode is up — zero
+bytes fetched; provisioning fires on the exit of setup mode — `llmPresets.md` §2.3).
 
 Runs the per-role capability probe (`probeLlm` core, shared with
 `POST /api/admin/config/test` target `llm`) against the **submitted** values — an
@@ -181,8 +187,8 @@ failures use the same `{ ok:false, errorCode, message, reason? }` envelope —
 generic `serverErrors.setup.test.failed` with the probe detail in `reason`.
 
 - **`POST /api/setup/apply` — optional `llm` block:** the payload may carry
-  `"llm": { "embed": { "baseUrl": "…", "apiKey": "…", "model": "…" }, "chat": { … }, … }`
-  (only configured roles present). Apply upserts each triple into the connected DB
+  `"llm": { "chat": { "baseUrl": "…", "apiKey": "…", "model": "…" }, "vision": { … }, "asr": { … } }`
+  (only configured roles present; embed has no wizard block). Apply upserts each triple into the connected DB
   `settings` table as `LLM_*` keys via the same `writeSettings` path — **never**
   `envFileWriter` (hot-apply rule, config-source-resolution §LLM\_\* family). A masked
   `'****'` apiKey keeps the stored value (keep-existing). An absent/omitted `llm` block is

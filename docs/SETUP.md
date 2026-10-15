@@ -179,7 +179,13 @@ feature):
 - SQLite: the sqlite-vec loadable extension ships as a **binary bundled with the npm
   preset package** — no manual install.
 - **Nothing about AI config is boot-frozen** — unlike the metadata backend choice (T0),
-  LLM config, budgets, thresholds, and model changes apply without restart.
+  LLM config, budgets, thresholds, and model changes apply without restart. The one boot-path
+  step is the built-in engine's model WEIGHTS (not config): a CONFIGURED boot missing them runs
+  the blocking provisioning attempt before serving, and a failed attempt still boots with embed
+  caps OFF + admin reason (`llmPresets.md` §2.3; setup-completion and override-clear runs are
+  in-place and never block the server). Pre-seed `WEA_MODEL_DIR` (lockfile-pinned q4 set,
+  ~473 MB) or leave weights in the default data dir to skip the download entirely —
+  presence ⇒ zero attempts, zero network egress (air-gapped installs).
 
 ## 3. Metadata Storage Configuration
 

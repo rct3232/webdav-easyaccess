@@ -250,12 +250,20 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
   (config presence = role candidacy, unchanged in spirit); external llama.cpp/HTTP embed
   servers remain valid provider overrides (and the GPU throughput path for media, since
   in-process media embed is batch-class: ~7 s/image on CPU). Distribution: a few-KB npm
-  lockfile {repo, revision pin, files[]+sha256, dtype:'q4'}; at boot the engine uses a
-  pre-provisioned `WEA_MODEL_DIR` if present, else **auto-provisions — the boot BLOCKS on
-  provisioning and the CLI logs per-file download progress** (atomic temp-file+rename,
-  sha256-verified, idempotent; owner ruling 2026-10-14) — one universal rule for single node
-  or N replicas, no strict/ban mode (rejected: replicas are identical builds; pre-provisioning
-  is an optimization, not a switch). Provisioning attempt fails (offline first boot, checksum
+  lockfile {repo, revision pin, files[]+sha256, dtype:'q4'}. **Provisioning is
+  provider-triggered, not per-boot-unconditional** (owner ruling 2026-10-15, PLAN §22):
+  it runs **BLOCKING at boot only while the built-in is the active embed provider** (no
+  enabled remote embed override), and **immediately in place when that override is
+  cleared** — built-in activation is restart-free like every other LLM config (weights
+  present ⇒ instant; absent ⇒ progress status card, role pending during the download per
+  §4.12). A pre-provisioned `WEA_MODEL_DIR` ⇒ zero download attempts, zero network egress;
+  switching to remote NEVER deletes existing weights (triggers are idempotent — a
+  re-trigger is a no-op). While a remote override is active, provisioning is DEFERRED and
+  the absence is not a failure state (the role runs on the override). The attempt itself:
+  **auto-provisions with the CLI logging per-file download progress** (atomic
+  temp-file+rename, sha256-verified, idempotent) — one universal rule for single node or
+  N replicas, no strict/ban mode (rejected: replicas are identical builds; pre-provisioning
+  is an optimization, not a switch). Provisioning attempt fails (offline, checksum
   mismatch) ⇒ boot continues with embed caps OFF + admin prompt; never a crash, never silent.
   `llm_models` records the identity: `engine` (embedded|remote); remote activation is additionally
   **conformance-gated** (EG2 pin: dim + reference-kit median, §4.23.2 — endpoint-declared

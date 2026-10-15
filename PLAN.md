@@ -148,8 +148,10 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 
 - T1.0 Embedded embedding engine (owner decision 2026-10-14, PoC addendum §6.8 / AI_FEATURE_PLAN
   §4.2+§5): `model.lock.json` (repo/revision/files+sha256/dtype=q4) + `provision.js`
-  (boot-BLOCKING, CLI per-file progress log, atomic, `WEA_MODEL_DIR` pre-seed respected,
-  no ban-mode) + `clients/embedded-onnx` (transformers.js in-process, media via processor
+  (**provider-triggered per §22**: boot-BLOCKING only while the built-in is the active embed
+  provider; immediate + restart-free when a remote override is cleared; CLI per-file progress
+  log, atomic; `WEA_MODEL_DIR`/existing weights ⇒ zero egress; switching to remote never
+  deletes weights; no ban-mode) + `clients/embedded-onnx` (transformers.js in-process, media via processor
   objects) + local positive-control probe + `llm_models.engine/precision/model_revision`
   (DDL 001 edited here; live/prod DB moves by the BIG-BANG script at the §6 merge/deploy —
   owner is the sole user, no compat path) + caps-off-on-failure path (§4.12).
@@ -946,7 +948,9 @@ Owner rulings (verbatim, 2026-10-14, following the PoC §6.6/§6.7/§6.8 probes)
    checksum-verified; `WEA_MODEL_DIR` pre-seed skips download (multi-instance optimization,
    never a mode); failed attempt ⇒ boot continues, embed caps OFF + admin reason. One
    universal rule regardless of replica count — the STRICT/ban mode considered earlier is
-   REJECTED (identical-build replicas make download-if-absent already correct).
+   REJECTED (identical-build replicas make download-if-absent already correct). (Trigger
+   scope amended by owner ruling 2026-10-15 — §22: the blocking run is provider-triggered,
+   not unconditional per boot.)
 3. **Migration posture: big-bang.** Owner is the sole user of every DB; at the
    `ai-feature`→`dev` deploy a dedicated **big-bang migration script** rewrites the live DB
    (001 was edited directly for `media_direct` [§16] and `llm_models.engine/precision/
@@ -1055,3 +1059,32 @@ release artifact — data only; `presets.js` lands with T1.1 and imports it), ll
 (kit location)/§2.3 (activation gate carries the measured τ), SETUP runbook checklist item
 ticked. P1 effect: the T1.1 EG2 conformance gate now ships calibrated; Q12 reduces to the
 ② informational-drift item only.
+
+## 22. Provisioning is provider-triggered, hot on override clear (owner ruling 2026-10-15, branch `chore/provision-trigger-ruling`)
+
+Owner ruling (verbatim): "external embed row active 이면 provisioning 보류하도록해. 해제시 즉시
+provisioning 하고 해당 옵션 자체가 hot-load이므로 내장 임베더도 재기동없이 적용될 수 있도록 하자.
+(이후 external로 전환시에는 이미 provisioning 된 모델을 삭제하진 않음, WEA_MODEL_DIR에 이미 모델이
+있는 경우도 마찬가지)"
+
+Encoded rules:
+
+1. **Boot BLOCKING provisioning runs only while the built-in is the active embed provider**
+   (no enabled remote embed override row). Remote active ⇒ the trigger is DEFERRED and
+   absence of weights is the normal state — never a caps-off signal (the role runs on the
+   override).
+2. **Clearing the remote override triggers provisioning immediately, in place** — built-in
+   activation is restart-free like every other LLM config (T2/dbOnly hot rule, §4.2). Weights
+   present ⇒ instant; absent ⇒ status card with per-file progress, embed role pending during
+   the download (§4.12 provisioning-pending column), probe suite runs on completion.
+3. **Switching to remote NEVER deletes existing weights**; a pre-existing `WEA_MODEL_DIR`
+   (pre-seeded or previously provisioned) ⇒ zero download attempts, zero network egress —
+   every trigger is idempotent.
+4. §17-2 stands for the trigger's INTERNALS (boot-blocking-with-progress-log, atomic,
+   sha256, no strict/ban mode, one universal rule across replicas) — this ruling amends the
+   trigger SCOPE only.
+
+Docs touched: AI_FEATURE_PLAN §4.2 (built-in-engine bullet rewritten) · PLAN T1.0 row + §17
+pointer · llmAdapter §2.1 `provision.js` peer / §2.2 embed presence / §2.4 provision→probe
+trigger wording / §5 `provisioning` error-path row · llmPresets §2.2 schema comment, §2.3
+embedded-row `provisioning` field, §2.5 clear-override sentence.

@@ -35,7 +35,7 @@ Target-contract spec.
  repo, revision, // pinned HF commit (immutable resolve-URL)
  dtype: 'q4' | 'q8' | 'fp16' | 'fp32',
  files: [{ path, sha256 }], // verified at boot; mismatch ⇒ provisioning fails ⇒ caps OFF
- provisionDirEnv: 'WEA_MODEL_DIR', // else download-at-boot (BLOCKING, CLI progress log)
+ provisionDirEnv: 'WEA_MODEL_DIR', // else download at the provisioning trigger (BLOCKING within it, CLI progress log; deferred while a remote override is active)
  },
  conformance: { // family 'external-endpoint' (embed) ONLY — model-identity gate (llmAdapter.md §2.4)
  referenceKit: { strings, vectorsSha }, // checked-in release artifact: 24 fixed inputs + canonical
@@ -78,17 +78,17 @@ Rows are FROZEN; the admin UI renders from the manifest; probe results persist t
 
 **`embeddinggemma-2-onnx-q4` @ embedded (in-process, THE DEFAULT embed provider):**
 
-| Field           | Value                                                                                                                                  |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| family/engine   | embedded — no base_url, no external server; the product ships with embed capability turned on                                          |
-| lock.repo       | `onnx-community/embeddinggemma-2-ONNX`                                                                                                 |
-| lock.revision   | pinned commit (immutable resolve-URL; current pin `daa72c51…`) — upgrading the model = new lockfile PR → new model_id                  |
-| lock.dtype      | **q4** (default, 473 MB full set); q8 available as a quality-first profile alternative (dtype change = model change = re-embed, §4.15) |
-| caps (expected) | text/image/audio/video embed true — verified by the local boot probe (llmAdapter.md §2.4), not assumed                                 |
-| profile.numbers | dim 768, chPerTok 1.5, θ_dup 0.955, edgeCos provisional {0.86,0.80,0.72} — q4 text-band re-check open (release runbook)                |
-| provisioning    | boot-blocking, CLI per-file progress log, sha256-verified, atomic; `WEA_MODEL_DIR` pre-seed skips download                             |
-| offline result  | provisioning attempt fails → embed caps OFF + admin prompt; product still boots (enrichment-dependency)                                |
-| latency         | text 0.13 s / image 7 s / audio-seg 3.85 s (dev-box CPU); informational profile field — no ship gate                                   |
+| Field           | Value                                                                                                                                                                                                                                                                                                                                        |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| family/engine   | embedded — no base_url, no external server; the product ships with embed capability turned on                                                                                                                                                                                                                                                |
+| lock.repo       | `onnx-community/embeddinggemma-2-ONNX`                                                                                                                                                                                                                                                                                                       |
+| lock.revision   | pinned commit (immutable resolve-URL; current pin `daa72c51…`) — upgrading the model = new lockfile PR → new model_id                                                                                                                                                                                                                        |
+| lock.dtype      | **q4** (default, 473 MB full set); q8 available as a quality-first profile alternative (dtype change = model change = re-embed, §4.15)                                                                                                                                                                                                       |
+| caps (expected) | text/image/audio/video embed true — verified by the local boot probe (llmAdapter.md §2.4), not assumed                                                                                                                                                                                                                                       |
+| profile.numbers | dim 768, chPerTok 1.5, θ_dup 0.955, edgeCos provisional {0.86,0.80,0.72} — q4 text-band re-check open (release runbook)                                                                                                                                                                                                                      |
+| provisioning    | provider-triggered: blocking at boot while built-in is the active embed provider; immediate in-place run when a remote override is cleared (restart-free); deferred while remote is active — switching never deletes existing weights; CLI per-file progress log, sha256-verified, atomic; `WEA_MODEL_DIR` pre-seed ⇒ zero download attempts |
+| offline result  | provisioning attempt fails → embed caps OFF + admin prompt; product still boots (enrichment-dependency)                                                                                                                                                                                                                                      |
+| latency         | text 0.13 s / image 7 s / audio-seg 3.85 s (dev-box CPU); informational profile field — no ship gate                                                                                                                                                                                                                                         |
 
 External embed rows below are **overrides** (one active embed model, §4.20). No embed model
 other than embeddinggemma-2 is supported; the manifest carries no other embed-model row.
@@ -168,7 +168,9 @@ Expectations are advisory; probes (§2.4) gate each sub-capability.
   its provisioning status card (provisioned / download-progress / offline-failed→caps-OFF),
   or `External endpoint` (dialect + base-url/key/model + **[verify]**: probe incl. the
   `conformance` gate must pass before the override saves; measured reference-kit median is
-  displayed on the card). One active embed model; clearing the override returns to built-in.
+  displayed on the card). One active embed model; clearing the override returns to built-in —
+  weights present ⇒ instant, absent ⇒ provisioning runs in place with the status card,
+  restart-free.
   Other roles: preset picker → fills role fields → per-role test
   (`POST /api/admin/config/test` target `llm`); values stored as DB settings rows.
 - Setup wizard OPTIONAL skippable "AI" step — **chat/vision/asr only** (embed needs no setup:

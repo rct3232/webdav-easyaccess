@@ -148,8 +148,9 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 
 - T1.0 Embedded embedding engine (owner decision 2026-10-14, PoC addendum §6.8 / AI_FEATURE_PLAN
   §4.2+§5): `model.lock.json` (repo/revision/files+sha256/dtype=q4) + `provision.js`
-  (**provider-triggered per §22**: boot-BLOCKING only while the built-in is the active embed
-  provider; immediate + restart-free when a remote override is cleared; CLI per-file progress
+  (**provider-triggered per §22**: boot-BLOCKING only for a CONFIGURED boot where the built-in
+  is the active embed provider; on FIRST LAUNCH and on remote-override clear the trigger runs
+  in place post-app-up, restart-free (embed pending, jobs queue drains); CLI per-file progress
   log, atomic; `WEA_MODEL_DIR`/existing weights ⇒ zero egress; switching to remote never
   deletes weights; no ban-mode) + `clients/embedded-onnx` (transformers.js in-process, media via processor
   objects) + local positive-control probe + `llm_models.engine/precision/model_revision`
@@ -1069,8 +1070,9 @@ provisioning 하고 해당 옵션 자체가 hot-load이므로 내장 임베더�
 
 Encoded rules:
 
-1. **Boot BLOCKING provisioning runs only while the built-in is the active embed provider**
-   (no enabled remote embed override row). Remote active ⇒ the trigger is DEFERRED and
+1. **Boot BLOCKING provisioning runs only for a CONFIGURED boot while the built-in is the
+   active embed provider** (no enabled remote embed override row; a first-launch boot is
+   rule 5). Remote active ⇒ the trigger is DEFERRED and
    absence of weights is the normal state — never a caps-off signal (the role runs on the
    override).
 2. **Clearing the remote override triggers provisioning immediately, in place** — built-in
@@ -1083,8 +1085,19 @@ Encoded rules:
 4. §17-2 stands for the trigger's INTERNALS (boot-blocking-with-progress-log, atomic,
    sha256, no strict/ban mode, one universal rule across replicas) — this ruling amends the
    trigger SCOPE only.
+5. **First-launch boot does NOT block on provisioning** (owner follow-up ruling 2026-10-15,
+   option (b), verbatim: "(b)로 진행해... 앱이 뜬 이후라서 실행중 remote override를 해제했을때와
+   동일하게 처리하면 될거같아. 앱은 앱대로 실행하고, 모델은 모델대로 다운로드 하고, embed가 필요한
+   작업들은 pending 하고"): setup-mode boot starts the server regardless of weights; the
+   trigger fires immediately once the app is up and follows rule-2 semantics exactly —
+   server serves, per-file progress card, embed role PENDING (§4.12 provisioning-pending
+   column), `ai_jobs` embed rows accumulate at the §4.1 commit hooks (enqueue is
+   provider-independent) and drain in order on provisioning completion. Boot-BLOCKING
+   remains only for a CONFIGURED boot missing weights (§17-2).
 
-Docs touched: AI_FEATURE_PLAN §4.2 (built-in-engine bullet rewritten) · PLAN T1.0 row + §17
-pointer · llmAdapter §2.1 `provision.js` peer / §2.2 embed presence / §2.4 provision→probe
-trigger wording / §5 `provisioning` error-path row · llmPresets §2.2 schema comment, §2.3
-embedded-row `provisioning` field, §2.5 clear-override sentence.
+Docs touched: AI_FEATURE_PLAN §4.2 (built-in-engine bullet rewritten; §4.23.5 wizard card
+reworded) · PLAN T1.0 row + §17 pointer · llmAdapter §2.1 `provision.js` peer / §2.2 embed
+presence / §2.4 provision→probe trigger wording / §5 `provisioning` error-path row ·
+llmPresets §2.2 schema comment, §2.3 embedded-row `provisioning` field, §2.5 clear-override
+
+- wizard sentences · SETUP embedded-row provisioning note.

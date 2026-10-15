@@ -252,11 +252,11 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
   in-process media embed is batch-class: ~7 s/image on CPU). Distribution: a few-KB npm
   lockfile {repo, revision pin, files[]+sha256, dtype:'q4'}. **Provisioning is
   provider-triggered, not per-boot-unconditional** (owner ruling 2026-10-15, PLAN §22):
-  it runs **BLOCKING at boot only while the built-in is the active embed provider** (no
-  enabled remote embed override), and **immediately in place when that override is
-  cleared** — built-in activation is restart-free like every other LLM config (weights
-  present ⇒ instant; absent ⇒ progress status card, role pending during the download per
-  §4.12). A pre-provisioned `WEA_MODEL_DIR` ⇒ zero download attempts, zero network egress;
+  it runs **BLOCKING at boot only for a CONFIGURED boot while the built-in is the active embed
+  provider** (no enabled remote embed override), and **immediately in place when that override
+  is cleared or on first launch** — built-in activation is restart-free like every other LLM
+  config (weights present ⇒ instant; absent ⇒ progress status card, role pending during the
+  download per §4.12; a first-launch boot serves the wizard WHILE provisioning runs — PLAN §22-5). A pre-provisioned `WEA_MODEL_DIR` ⇒ zero download attempts, zero network egress;
   switching to remote NEVER deletes existing weights (triggers are idempotent — a
   re-trigger is a no-op). While a remote override is active, provisioning is DEFERRED and
   the absence is not a failure state (the role runs on the override). The attempt itself:
@@ -1155,7 +1155,8 @@ picker → role checkboxes → base-url/key/model inputs → per-role test (`/ap
 new target `llm`); values are stored as **DB settings rows** (NOT `.env`/envFileWriter —
 the hot-apply rule §4.2), so a skipped step costs nothing and a mid-install config is
 restart-free. The step also surfaces the embedded-engine provisioning status card
-(progress at first boot / caps-off reason). Full config surface stays in admin
+(first launch: live download progress while the wizard is open — ready / caps-off reason on
+completion, PLAN §22-5). Full config surface stays in admin
 (`/api/admin/config` + test + capability
 matrix, where an external embed server may be configured as an OVERRIDE replacing the
 built-in); wizard is a shortcut to the same rows. SETUP.md documents preset table;

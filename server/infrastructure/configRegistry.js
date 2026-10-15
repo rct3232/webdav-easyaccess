@@ -197,6 +197,13 @@ const CONFIG_ENTRIES = Object.freeze([
   },
   { key: 'AI_NIGHTLY_ANCHOR_HOUR_UTC', tier: TIER.T2, secret: false, default: 3, dbOnly: true },
   { key: 'ARCHIVE_RETENTION_DAYS', tier: TIER.T2, secret: false, default: 30, dbOnly: true },
+  {
+    key: 'ADMIN_REPORTS_RETENTION_DAYS',
+    tier: TIER.T2,
+    secret: false,
+    default: 30,
+    dbOnly: true,
+  },
   { key: 'WEA_SKIP_ROLLUP_SCHEDULER', tier: TIER.T2, secret: false },
 ]);
 

@@ -88,5 +88,16 @@ module.exports = function createPostgresAdminReportsRepository(executor, { mapRe
         throw mapDatabaseError(error);
       }
     },
+
+    async deleteReportsOlderThan(cutoffMs) {
+      try {
+        const result = await executor.run('DELETE FROM admin_reports WHERE created_at < $1', [
+          new Date(cutoffMs).toISOString(),
+        ]);
+        return { changes: result.changes };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
   };
 };

@@ -90,5 +90,17 @@ module.exports = function createSqliteAdminReportsRepository(executor, { mapRepo
         throw mapDatabaseError(error);
       }
     },
+
+    async deleteReportsOlderThan(cutoffMs) {
+      try {
+        const result = await executor.run(
+          'DELETE FROM admin_reports WHERE julianday(created_at) < julianday(?)',
+          [new Date(cutoffMs).toISOString()]
+        );
+        return { changes: result.changes };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
   };
 };

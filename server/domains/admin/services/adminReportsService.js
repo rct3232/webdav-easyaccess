@@ -6,6 +6,8 @@
  *
  * - constants + best-effort report-writer seam shared by the cleanup route,
  *   the scheduled GC cycle and the startup fail-safe scan;
+ * - writer-side housekeeping: after each successful insert the shared writer
+ *   best-effort deletes rows older than ADMIN_REPORTS_RETENTION_DAYS (§2.2.6);
  * - the boot completeness probe (`COUNT(*) WHERE content_hash IS NULL` →
  *   warn log + `contentHashCompleteness` section merged into the startup
  *   failsafe row by `runStartupFailSafeRecovery`);
@@ -47,6 +49,9 @@ const ADMIN_REPORT_STATUSES = Object.freeze({
   partial: 'partial',
 });
 
+/** Shipped default for ADMIN_REPORTS_RETENTION_DAYS (0 = retention off). */
+const DEFAULT_ADMIN_REPORTS_RETENTION_DAYS = 30;
+
 /** Test seam: any truthy value disables admin report persistence. */
 function shouldSkipAdminReports() {
   const skip = (process.env.WEA_SKIP_ADMIN_REPORTS || '').toLowerCase();
@@ -82,20 +87,67 @@ function resolveAdminReportsStore() {
 }
 
 /**
+ * Hot read of ADMIN_REPORTS_RETENTION_DAYS via the shared resolver
+ * (docs/spec/server/routes/admin.md §2.2.6). A non-numeric/negative value or
+ * any read failure falls back to the shipped default (0 = retention off).
+ * @returns {Promise<number>}
+ */
+async function resolveAdminReportsRetentionDays() {
+  try {
+    // Lazy require: no resolver/DB coupling at module load.
+    const { getSharedResolver } = require('../../../infrastructure/configResolver');
+    const raw = await getSharedResolver().getConfig('ADMIN_REPORTS_RETENTION_DAYS');
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_ADMIN_REPORTS_RETENTION_DAYS;
+  } catch {
+    return DEFAULT_ADMIN_REPORTS_RETENTION_DAYS;
+  }
+}
+
+/**
  * Factory. `insertReport` is the store seam — injected in tests; the shared
- * singleton resolves `store/adminReportsStore.js` (T0.8).
+ * singleton resolves `store/adminReportsStore.js` (T0.8). `pruneReports` is
+ * the §2.2.6 housekeeping seam: after each successful insert the writer
+ * best-effort deletes rows older than ADMIN_REPORTS_RETENTION_DAYS (a prune
+ * failure warn-logs only, never fails the write).
  *
  * @param {Object} [opts]
  * @param {(row: {kind, status, payload, created_at}) => Promise<Object>} [opts.insertReport]
+ * @param {(cutoffMs: number) => Promise<{ changes: number }>} [opts.pruneReports]
+ * @param {(() => number|string|Promise<number|string>)} [opts.resolveRetentionDays] - seam (tests)
  * @param {() => string} [opts.now] - ISO timestamp provider (tests)
  */
 function createAdminReportsWriter({
   insertReport = null,
+  pruneReports = null,
+  resolveRetentionDays = null,
   now = () => new Date().toISOString(),
 } = {}) {
   /**
+   * Best-effort housekeeping DELETE (§2.2.6). Never throws to the caller.
+   */
+  async function pruneOlderReports() {
+    try {
+      const raw = resolveRetentionDays
+        ? await resolveRetentionDays()
+        : await resolveAdminReportsRetentionDays();
+      const parsed = Number(raw);
+      const retentionDays =
+        Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_ADMIN_REPORTS_RETENTION_DAYS;
+      if (retentionDays === 0) return;
+      const writtenAt = Date.parse(now());
+      const cutoffMs =
+        (Number.isFinite(writtenAt) ? writtenAt : Date.now()) - retentionDays * 86400000;
+      await pruneReports(cutoffMs);
+    } catch (error) {
+      console.warn(`admin report pruning skipped: ${error.message}`);
+    }
+  }
+
+  /**
    * Persist one report row. Returns the insertReport result, or null when
    * skipped (seam / no store / write failure) — never throws to the caller.
+   * A persisted row triggers the §2.2.6 prune when the seam is wired.
    * @param {{ kind: string, status: string, payload?: Object }} spec
    */
   async function writeReport({ kind, status, payload } = {}) {
@@ -113,7 +165,11 @@ function createAdminReportsWriter({
     };
     try {
       const result = await store(row);
-      return result === undefined ? null : result;
+      const saved = result === undefined ? null : result;
+      if (saved && pruneReports) {
+        await pruneOlderReports();
+      }
+      return saved;
     } catch (error) {
       console.warn(`admin report persistence skipped: ${error.message}`);
       return null;
@@ -128,7 +184,9 @@ let sharedWriter = null;
 /** The process-wide writer, wired to the admin_reports store since T0.8. */
 function getAdminReportsWriter() {
   if (!sharedWriter) {
-    sharedWriter = createAdminReportsWriter();
+    sharedWriter = createAdminReportsWriter({
+      pruneReports: (cutoffMs) => resolveAdminReportsStore().deleteReportsOlderThan(cutoffMs),
+    });
   }
   return sharedWriter;
 }
@@ -427,6 +485,7 @@ module.exports = {
   ADMIN_REPORT_KINDS,
   ADMIN_REPORT_STATUSES,
   ADMIN_REPAIR_ACTIONS,
+  DEFAULT_ADMIN_REPORTS_RETENTION_DAYS,
   createAdminReportsWriter,
   getAdminReportsWriter,
   resolveAdminReportStatus,

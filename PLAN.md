@@ -1128,3 +1128,30 @@ features/collections-platform §4.2/§4.12/§4.23.5 · features/config-source-re
 first-run note · bootSequence §2 step 8b · TESTING_STRATEGY AI tiers (None-column fixture
 qualification + provisioning-trigger fixtures) · SETUP.md boot-frozen caveat +
 `WEA_MODEL_DIR` operator note. POC.md untouched (dated evidence trail).
+
+## 23. E2E gap coverage (test/e2e-gap-coverage, 2026-10-15)
+
+- `e2e/retrieval.spec.ts` NEW — E2E-RETRIEVAL-001..007: server-wide name search
+  results mode (T0.11 contract: typing=client-only two-stage rule, Enter→
+  `POST /api/search`, `/search/click {node_id}`, P0 `semantic_available:false`
+  ⇒ save button absent + chip-Save inert, chips in sessionStorage
+  `wea.recentSearchQueries` cleared on logout, trashed nodes never surface).
+  Scratch-hermetic `retrieval-desktop` project on the new `:5015` slot
+  (e2e-band.cjs `scratchRetrieval`, span comment 5002..5015; webdav host-mode
+  leg deferred per config comment); regular-user actor + operator perm-delete
+  fallback (collections pattern). Findings: chip Save MENU ITEM renders per
+  SearchBarResultsMode.md §2.7 but creates nothing at P0 (saveChipQuery bails
+  on `semantic_available !== true`) — asserted as zero-IO, not absence.
+- collections.spec.ts: +018 rename/lock/undo, +019 properties-dialog like
+  shared-state, +020 sidebar Archive-node routing + tile order; 010 amended
+  with the `updated` sort switch — NOTE: member add bumps
+  `last_member_change_at` ONLY (`repo.touchMemberChange`); the `updated_at`
+  bump the sort keys on comes from PUT /:id (poll-guarded, second-granular
+  sqlite stamps).
+- mypage-admin.spec.ts: +E2E-ADMIN-009 admin-reports on the SHARED stack —
+  real `POST /api/admin/cleanup/orphaned` persisted row, no-fetch-on-mount
+  contract (AdminReportsContent.md §2.4), payload-mirrored expand, backfill
+  ⇔ nullCount>0 matrix rule; NO repair clicks (shared state).
+- Docs: TESTING_STRATEGY E2E ID ranges + RETRIEVAL; E2E_COVERAGE_PLAN
+  inventory row + retrieval table + 018..020/010/ADMIN-009 rows;
+  TEST_GIT_GUIDE slot prose 5002..5015.

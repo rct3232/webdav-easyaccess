@@ -115,7 +115,7 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
   in `server/index.js`; host wiring of the new callbacks (Add-to-collection/like rows,
   MemberRowControls into T0.4's `onMemberAction('menu')` seam, fileLikes client repository);
   `GET /versions/download` + `open` signals intentionally not recorded (deferred); bulk batch
-  publish is P3; dialog AI tab (`ai_features`) P1 / member chips P3.
+  publish is P3; dialog AI tab (`ai_enrichments`) P1 / member chips P3.
 - T0.6 `usage_events` + nightly rollup in maintenanceScheduler (item accumulator `S_k` +
   `collections.activity_score` recompute) + item activity score fn (T2 constants: §3.4
   weights, H=30d).
@@ -167,7 +167,7 @@ upsertAutoParent references` across `server/` except the purge commit itself.
   consulted)** + wizard optional
   skippable AI step storing DB rows (§4.23.5) — embed role covered by T1.0 (built-in;
   wizard/step surface = chat/vision/asr + provisioning status card).
-- T1.2 AI repos (`llm_models`,`embeddings`,`embeddings_chunk`,`ai_features`,`ai_jobs`,
+- T1.2 AI repos (`llm_models`,`embeddings`,`embeddings_chunk`,`ai_enrichments`,`ai_jobs`,
   `ai_usage_daily` — tables already shipped in the T0.2 full-schema DDL) +
   restart-survival test.
 - T1.3 jobs worker (claim per dialect, backoff, lockManager, seam, hooks §4.1). Hooks §4.1
@@ -991,7 +991,7 @@ Owner record (2026-10-16, after the θ_tag/θ_lo/lifecycle review chain): "llm t
 없어보여. tag 필터, tag 검색등은 애초에 생각하지 않는 기능이니 정형화된 카테고리처럼 만들
 이유도 없어." Rulings:
 
-1. **LLM tags = description**: `ai_features.tags` (free words) is the ONLY storage;
+1. **LLM tags = description**: `ai_enrichments.tags` (free words) is the ONLY storage;
    consumers are exactly display (AI Info chips), llmNamer + merge-arbiter text material.
    No tag filters, no tag search, no vocabulary status.
 2. **Retired**: θ_tag vector predicate matching (§3.2), θ_lo + parent hints + `tag_parents`,

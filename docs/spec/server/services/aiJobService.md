@@ -121,23 +121,23 @@ on request paths. Input = extracted text clipped by the input-budget ladder + a
 filename/mime/path/date metadata line. Fixed prompt template; output FORCED to JSON
 schema `{tags:[{tag,confidence}], summary, category}`; ≤ small token budget; **reasoning
 OFF** (`enable_thinking:false` via chat_template_kwargs
-where supported — llmAdapter owns the kwarg). Written to `ai_features`
+where supported — llmAdapter owns the kwarg). Written to `ai_enrichments`
 (`features_model_id`, `schema_version:1`, `truncated` flag from the ladder). Schema-parse
 failure ⇒ `markFailed` (retried; provider flakiness is transient). Chat off ⇒ field
 stays empty; downstream runs on local tags + vectors (the LLM-free fallback keeps every other pipeline working).
 
 **`caption` (V2):** `vision_chat` role; local ffmpeg uniform-stride frame sampling
 (≤4 frames, transient — frames never persisted); VLM captions in Korean; writes
-`ai_features.caption` + `caption_model_id`; then CHAINS `enqueue(node,'embed',gen)`
+`ai_enrichments.caption` + `caption_model_id`; then CHAINS `enqueue(node,'embed',gen)`
 (caption text is the embedding corpus for media). No `image_embed` path exists — every modality enters the same text embedding space.
 
 **`asr` (V3 = TRANSCRIPTION ONLY):** `asr` role; audio
 tracks/files → conditional transcript. The escape-prompt is MANDATORY and non-editable:
 "if there is no actually audible speech, answer none". Output fields: `transcript` +
-`asr_model_id` + ffprobe metadata into `ai_features.probe` — **no** audio_desc/genre/mood/
+`asr_model_id` + ffprobe metadata into `ai_enrichments.probe` — **no** audio_desc/genre/mood/
 kind FIELDS ship in v1 (failure direction stays conservative — a missed transcript loses data, an invented genre poisons the index). Music detection is metadata-scoped
 (ffprobe tags/`media_kind`): vocal music transcripts store LYRICS in `transcript` and
-`ai_features.media_kind='music'` marks them EXCLUDED from document-content scoring —
+`ai_enrichments.media_kind='music'` marks them EXCLUDED from document-content scoring —
 every consumer of `transcript` (embed ladder input, features input, near-dup) filters
 `media_kind='music'` out of doc-content paths; the transcript remains for display/search
 in its own lane. Then chains `enqueue(node,'embed',gen)` (V0 metadata_only when the
@@ -151,7 +151,7 @@ job itself performs no provider calls.
 - The PROVIDER-TRAFFIC counters live in llmAdapter (its spec §5: `ai_usage_daily(day,
 role, calls, input_chars, cached, degraded, failed_429)` PK `(day,role)`); this service
   CONSUMES the breaker state (§2.3 step 4) and owns the job-visible flags:
-- `truncated` (overlength ladder entered — `ai_features.truncated`, embed `source` column
+- `truncated` (overlength ladder entered — `ai_enrichments.truncated`, embed `source` column
   for the vector side) and `degraded` (length-class halving active for the model,
   propagated from llmAdapter's limiter event) are persisted with the RESULT rows so the
   the admin degraded-input histogram and per-role ledger can be rebuilt from DB alone.
@@ -189,7 +189,7 @@ recoverable). The only user-facing code in this domain is thrown by llmAdapter c
 ## 4. Dependencies
 
 - `aiJobsStore` (queue), `embeddingsStore`, `embeddingsChunkStore`, `fileNodesStore`
-  (content_hash read), `ai_features` repository via the AI store set
+  (content_hash read), `ai_enrichments` repository via the AI store set
 - `infrastructure/adapters/llm` (role clients + breaker state), `blobStorageService`
   (`downloadBlob` content re-read), `vectorStore` seam (`upsert`)
 - local extractors: pdf/docx text utilities, ffmpeg/ffprobe (free)
@@ -213,11 +213,11 @@ recoverable). The only user-facing code in this domain is thrown by llmAdapter c
 - [ ] Overlength ladder: doc > budget → chunk-pool path stores ALL sampled chunk vectors + mean-renormalized pooled row; forced length-class error → `truncate-head` →
       `metadata_only` → finally `skipped`; job never FAILS on overlength; `truncated`/
       degraded flags observable on result rows
-- [ ] features: schema-invalid JSON → `markFailed` (retryable); valid → `ai_features`
+- [ ] features: schema-invalid JSON → `markFailed` (retryable); valid → `ai_enrichments`
       row with `features_model_id` + `schema_version=1`; reasoning kwarg present in the
       fake server's captured request (`chat_template_kwargs.enable_thinking=false`)
 - [ ] caption: ≤4 sampled frames, transient (assert nothing persisted); caption text
-      lands in `ai_features.caption` AND chains one `embed` enqueue
+      lands in `ai_enrichments.caption` AND chains one `embed` enqueue
 - [ ] asr: request carries the escape-prompt; `none` transcript ⇒ no transcript written,
       metadata_only embed still chains; music-tagged input ⇒ `media_kind='music'` and the
       embed/features inputs EXCLUDE the transcript

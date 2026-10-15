@@ -274,7 +274,7 @@ describe('AiTagRepository conformance', () => {
     ).rejects.toBeDefined();
   });
 
-  it('hint writes/deletes never touch ai_features.tags or ai_tag_raw (non-destructive)', async () => {
+  it('hint writes/deletes never touch ai_enrichments.tags or ai_tag_raw (non-destructive)', async () => {
     const node = await createTestFileNode({ name: `conf-nondesc-${Date.now()}.txt` });
     await replaceRaw(node.nodeId, ['conf-anchor-tag']);
 
@@ -284,7 +284,7 @@ describe('AiTagRepository conformance', () => {
     await repo.deleteParent(child);
 
     expect(await repo.listRawTags(node.nodeId)).toEqual(['conf-anchor-tag']);
-    const features = await dbQuery('SELECT COUNT(*) AS cnt FROM ai_features WHERE node_id = ?', [
+    const features = await dbQuery('SELECT COUNT(*) AS cnt FROM ai_enrichments WHERE node_id = ?', [
       Number(node.nodeId),
     ]);
     expect(Number(features.rows[0].cnt)).toBe(0);

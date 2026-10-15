@@ -113,7 +113,7 @@ Addendum per docs/features/collections-platform.md §3.3 (like entry points), §
 
 ### 3.3 `AI Info` tab — DISPLAY-ONLY
 
-- Tab present **only when the node's `ai_features` data exists** for the viewer's capability state — absent-not-disabled (regular-user rule); never a gray tab, never an empty tab.
+- Tab present **only when the node's `ai_enrichments` data exists** for the viewer's capability state — absent-not-disabled (regular-user rule); never a gray tab, never an empty tab.
 - Renders read-only: derived tags, summary, category, media probe facts (V0 ffprobe container/duration etc. when present), and `truncated`/degraded badges verbatim from the payload (display honesty; no client recomputation).
 - **Editing is out of scope** (future extension); the tab ships zero input affordances.
 - Grantee variant: opened from a collection member row by a non-owner ⇒ read-only tab subset (member-properties rule — no permissions/versions mutation paths).

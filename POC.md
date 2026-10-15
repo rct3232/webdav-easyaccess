@@ -199,7 +199,7 @@ because we fell into that trap and fixed it.
 
 ### 2.8 E5 — cheap, stable feature extraction, and the reasoning question
 
-- **What**: can a small local model produce structured `ai_features` (tags/summary/category)
+- **What**: can a small local model produce structured `ai_enrichments` (tags/summary/category)
   reliably and affordably; and does enabling "thinking mode" help?
 - **How**: fixed JSON-forced prompt, 1,117 documents (stratified across domains), temperature
   0, reasoning **off** (`chat_template_kwargs.enable_thinking=false`, works on this server).

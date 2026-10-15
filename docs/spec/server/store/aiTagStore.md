@@ -5,7 +5,7 @@
 | Item         | Description                                                                                                                                                                                                                                                                                                    |
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role         | Storage facade for `ai_tag_raw` — the one tag table that exists: materialized LOCAL DERIVED tags (kind-prefixed `mime:`/`ext:`/`month:`/`path:`), stored already-folded, consumed by rule predicates and templateNamer. No tag vector cache, no parent-hint table, no LLM-tag materialization surface (§4.18). |
-| Hard scope   | Three methods, one table. The orthographic fold is a read-time PURE FUNCTION owned by callers; this store normalizes nothing and ships nothing else. LLM tags (`ai_features.tags`) are never materialized here.                                                                                                |
+| Hard scope   | Three methods, one table. The orthographic fold is a read-time PURE FUNCTION owned by callers; this store normalizes nothing and ships nothing else. LLM tags (`ai_enrichments.tags`) are never materialized here.                                                                                             |
 | Out of scope | Tag COMPUTATION: derived tags by `domains/ai/derivedTags.js`/derivedTagsService; LLM tags by `features.extract` (aiJobService). No nightly vocabulary pass exists. The SQL surface for `ai_tag_raw` rides this store (persistence policy: no SQL outside repositories).                                        |
 | Design owner | `docs/features/collections-platform.md` §4.18, §3.2 (tag predicate = folded equality on derived facets), §4.10.                                                                                                                                                                                                |
 
@@ -27,7 +27,7 @@
 
 - Rows carry tags ALREADY folded by the caller; the store normalizes nothing.
 - Content: derived facets only (`mime:`, `ext:`, `month:`, `path:` kinds; kind-prefix ruling, §4.10).
-  LLM tags are never materialized here (§4.18: tags stay in `ai_features.tags`).
+  LLM tags are never materialized here (§4.18: tags stay in `ai_enrichments.tags`).
 - No `model_id` — strings and folding are model-independent by design.
 
 ### 2.3 Methods

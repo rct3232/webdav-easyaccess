@@ -279,10 +279,15 @@ infrastructure specs live under `docs/spec/server/`.
 `docs/features/**` carry decided/implemented STATE only — dated rulings, rationale,
 retracted proposals, and "why we changed" narratives live ONLY in AI_FEATURE_PLAN (design
 authority) and this ledger / PoC addenda (AGENTS §2.1.5, AI_FEATURE_PLAN §12 preamble).
-Mechanical sweep for spec-file review: reject `2026-1[01]-dd`, `dissolv`, `retir`,
-`withdraw`, `supersed`, `initially proposed`, `purge state`, `pending T1`, `evidence
-trail`, `owner`-attributions in prose (false positives like "translated"/"rendered" are
-judgeable by eye; the patterns are the net, not the verdict).
+Mechanical sweep — **codified** since 2026-10-15 as `server/__tests__/docsStatePurity.test.js`
+(runs inside `cd server && npm run test:ci`): rejects `2026-1[01]-dd`, `dissolv`, `retir`,
+`withdraw`, `supersed`, `initially proposed`, `purge state`, `pending T[0-9]`, task provenance
+(`T0.N`-style), `AI_FEATURE_PLAN`/`PLAN.md` pointers, `ruling`, rationale clauses,
+`owner`-attributions in prose, plus a §-citation resolver (qualified pointers must match a
+numbered heading in the named file; bare pointers must resolve against any repo heading).
+`(target)`/`out of scope`/`deliberate` markers are WARN-tier (printed, not failing) —
+target-contract notation, judged by eye. Provenance lifted out of specs lands in
+AI_FEATURE_PLAN §12.
 
 New: `docs/features/collections-platform.md`; routes `docs/spec/server/routes/{collections,
 search,actions}.md`; stores `.../store/{collectionsStore,fileLikesStore,actionJournalStore,

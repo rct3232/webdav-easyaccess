@@ -26,7 +26,7 @@
 ### 2.2 Table contract — `ai_tag_raw`
 
 - Rows carry tags ALREADY folded by the caller; the store normalizes nothing.
-- Content: derived facets only (`mime:`, `ext:`, `month:`, `path:` kinds; kind-prefix ruling, §4.10).
+- Content: derived facets only (`mime:`, `ext:`, `month:`, `path:` kinds; kind-prefix convention, §4.10).
   LLM tags are never materialized here (§4.18: tags stay in `ai_enrichments.tags`).
 - No `model_id` — strings and folding are model-independent by design.
 
@@ -41,8 +41,7 @@
 ### 2.4 Transaction boundaries & error contracts
 
 - Reads: `null` / `[]` for missing data.
-- Writes: one TX per `replaceRawTags`; no `lockManager`, no journal (derived state, re-derivable;
-  undo of enrichment would be theater).
+- Writes: one TX per `replaceRawTags`; no `lockManager`, no journal (derived state, re-derivable).
 - FK violation on `node_id` surfaces as a mapped error at the repository.
 
 ### 2.5 Dependencies

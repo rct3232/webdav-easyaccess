@@ -165,7 +165,7 @@ deliberately do NOT count as touches (activity gravity covers them).
 ### 2.10 No nightly tag pass (numbering kept)
 
 Evolution performs NO tag work: no materialization, no normalization pass, no hints, no
-vector cache (AI_FEATURE_PLAN §4.18). `ai_tag_raw` has exactly one writer —
+vector cache (§4.18). `ai_tag_raw` has exactly one writer —
 derivedTagsService at commit points; the definition engine reads it string-equality only.
 
 ### 2.11 Centroid maintenance

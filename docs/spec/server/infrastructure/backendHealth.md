@@ -40,7 +40,7 @@
 | `reset`               | `() => void`                                              | Reset all tracked keys to `unknown` (boot + test hook).                                                                                                                                                                                                                                                              |
 | `setOnTransition`     | `(cb) => void`                                            | Register a callback for `OK→FAIL` / `FAIL→OK` transitions (terminal logging).                                                                                                                                                                                                                                        |
 
-**AI role slots (`ai.embed`, `ai.chat`).** Same generic row shape; the adapter (T1.1)
+**AI role slots (`ai.embed`, `ai.chat`).** Same generic row shape; the adapter
 reports probe outcomes via the `probeLlm` slot (`backendProbe.registerProbeTarget('llm', …)`
 — `docs/spec/server/infrastructure/llmAdapter.md` §2.3) and the admin 4-state display
 (`not_configured | probe_failed(reason) | partial | ok`) maps the row at render time.

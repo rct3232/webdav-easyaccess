@@ -53,7 +53,7 @@ Enqueue decision table (per node, at hook time):
   retained).
 - **content_hash skip:** `embed` executor first runs the dedupe check
   (`embeddingsStore.get(node)`; same active `modelId` ∧ same `contentHash` ⇒
-  `markSkipped`, no provider call — embeddingsStore §2.4; determinism within a model version is what makes the `(content_hash, modelId)` skip sufficient). For
+  `markSkipped`, no provider call — embeddingsStore §2.4; a model version is deterministic, so the `(content_hash, modelId)` pair suffices as the skip key). For
   `features`/`caption`/`asr` the analogous skip is a prior `done` job of the same
   `(node, kind, generation)` whose stamped `content_hash` equals the current one
   (job-row comparison — those tables have no content_hash column; lineage
@@ -83,9 +83,8 @@ Enqueue decision table (per node, at hook time):
 - Role unconfigured (llmAdapter `roleConfigured()` false) ⇒ that kind's jobs stay
   QUEUED, unconsumed: the worker claims via an ADDITIVE filter option
   `aiJobsStore.claimNext({ excludeKinds })` (predicate-level exclusion; the existing
-  zero-arg `claimNext()` contract of aiJobsStore §2.3 is unchanged). This is how
-  "pause never destroys queued work silently" holds with
-  zero attempt inflation — backlog surfaces via `countByStatus`/`listFailed`.
+  zero-arg `claimNext()` contract of aiJobsStore §2.3 is unchanged). Queued kinds park
+  with zero attempt inflation — "pause never destroys queued work silently" holds; backlog surfaces via `countByStatus`/`listFailed`.
 - role budget breaker OPEN (per-role daily call/token cap hit) ⇒ same parking behavior;
   counters reset at day rollover; breaker state reported to the admin pipeline card.
 
@@ -135,7 +134,7 @@ stays empty; downstream runs on local tags + vectors (the LLM-free fallback keep
 tracks/files → conditional transcript. The escape-prompt is MANDATORY and non-editable:
 "if there is no actually audible speech, answer none". Output fields: `transcript` +
 `asr_model_id` + ffprobe metadata into `ai_enrichments.probe` — **no** audio_desc/genre/mood/
-kind FIELDS ship in v1 (failure direction stays conservative — a missed transcript loses data, an invented genre poisons the index). Music detection is metadata-scoped
+kind FIELDS ship in v1. Music detection is metadata-scoped
 (ffprobe tags/`media_kind`): vocal music transcripts store LYRICS in `transcript` and
 `ai_enrichments.media_kind='music'` marks them EXCLUDED from document-content scoring —
 every consumer of `transcript` (embed ladder input, features input, near-dup) filters

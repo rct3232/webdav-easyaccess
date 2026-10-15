@@ -1643,3 +1643,29 @@ from the FileGrid\* JSX bodies with the original suites kept UNCHANGED as regres
   tab belong to `FilePropertiesDialog` (member chips T3.6 / AI tab P1), not this dialog.
 - UndoToast's `type='success'` + 8 s timing are owned by its own spec; `useMessage.md` receives
   the matching row in the same PR (allocation: PLAN §8 docs gate).
+
+### 12.12 Spec state-purity gate & lifted narration (2026-10-15)
+
+- The PLAN §8 mechanical sweep is now CODIFIED: `server/__tests__/docsStatePurity.test.js`
+  (runs in `npm run test:ci`) — forbidden-pattern net over `docs/spec/**` + `docs/features/**`
+  plus a §-pointer resolver (qualified pointers must exist as numbered headings in the named
+  file; bare pointers must resolve somewhere); `(target)`/deferral/deliberate markers are
+  WARN-tier report-only (target-contract notation, not narration).
+- Narration lifted out of specs when the gate was first run (the provenance it carried):
+  - `useFolderTreeItemController`: the `path`/`name` props are the legacy string form
+    superseded by `node.nodeId` (kept as fallback).
+  - `fileNodesStore`: `listSubtreeCacheRows` = the T0.9 AI-hygiene bounded read;
+    `summarizeTrashedSubtree` = the T0.10 trash-hygiene card read.
+  - `backendHealth`: the AI role slots' probe surface landed with the T1.1 adapter.
+  - `aiTagStore`: the `mime:`/`ext:`/`month:`/`path:` kind-prefix vocabulary is the §4.10
+    ruling; `replaceRawTags` runs with NO journal because undoing re-derivable enrichment
+    would be theater.
+  - `aiJobService`: the `(content_hash, modelId)` skip is sufficient because a model version
+    is deterministic; `claimNext({ excludeKinds })` parks roles with zero attempt inflation
+    so "pause never destroys queued work silently" holds; ASR ships transcript+probe only —
+    conservative failure direction (a missed transcript loses data, an invented genre
+    poisons the index).
+  - `evolutionService`: tag-scope statement re-anchored to local §4.18 (design-doc name
+    pointer removed).
+  - `derivedTagsService`: stale `aiTagStore §2.4.5` pointers corrected to §2.3 (aiTagStore
+    was renumbered by the 2026-10-14 state-purity sweep).

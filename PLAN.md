@@ -911,7 +911,8 @@ Release-runbook obligation before shipping the model (§4.15 checklist / Q10): r
 the dev reference set — text near-dup θ_dup, unrelated-floor spread, image/audio/video
 near-dup bands, mutual-kNN tier edges (0.82/0.86/0.80/0.72 were caption-space measures),
 tag θ_lo/ortho band (measured in §6.5 — feature since dissolved, §19), char→token factor (1.7 was bge-m3), media token rates/segment windows,
-query-embed latency class (GPU passes <100 ms; CPU ~3.8 s/sentence fails). E3 recall@20
+query-embed latency profile (informational — the <100 ms class gate is deleted by the §20
+owner ruling 2026-10-15). E3 recall@20
 must be re-run with TRUE image queries (no captions) against the wedding ground-truth tree
 before the caption-path 0.829 baseline is replaced.
 
@@ -957,7 +958,8 @@ model_revision` [this section]; checksum-recovery per §6 DDL policy is owner-si
      llmAdapter (provision.js/embedded client/provisioning error class) updated same PR.
 
 Open measurements (rides §10 Q12 / §16 runbook): q4 text θ_dup + baseline-spread re-check,
-target-hardware query-embed latency verdict, q4 long-audio pooling drift. ~~Q11 (θ_lo)
+~~target-hardware query-embed latency verdict~~ (<100 ms clause deleted by owner ruling
+2026-10-15, §20), q4 long-audio pooling drift. ~~Q11 (θ_lo)
 remains independently open.~~ **[SUPERSEDED 2026-10-16: Q11 closed by DISSOLUTION — §19.]**
 
 ## 18. Embedding model pinned to EG2 (owner decision 2026-10-14, branch `feature/pin-eg2-conformance`)
@@ -1015,3 +1017,22 @@ Owner record (2026-10-16, after the θ_tag/θ_lo/lifecycle review chain): "llm t
    §4.19/§4.20/§4.23.3/§5/§10(Q11 closed)/§12.9; llmPresets (θ_lo field gone, map row, §4);
    specs: aiTagStore (derived-facet scope), collectionsService/evolutionService/searchService/
    derivedTagsService tag clauses; PoC §6.9; PLAN §7/§16 pointers above.
+
+## 20. Request-path latency clause removed (owner ruling 2026-10-15, branch `chore/remove-e2-latency-clause`)
+
+Owner ruling (verbatim, 2026-10-15, on the P1 risk briefing): "해당 조항은 필요없어. 삭제해." —
+the §4.2 clause "query-embed must be <100 ms class model" is DELETED; there is no interactive
+latency ship gate for the embed role. Kept unchanged: the request-path exception family
+(invariant 11), mandatory `query_parses` caching, kill-switch, honest no-LLM fallback
+(§4.6/§4.12) — CPU-served built-in query-embed is a legitimate (slower) state, profiled and
+displayed, never gated off. Latency/serving-mode figures remain INFORMATIONAL profile fields;
+PoC §6.7/§6.8 measurements stand as the evidence trail (untouched, historical).
+
+Sweep executed (this changeset): AI_FEATURE_PLAN §4.2 clause · §4.15 adoption-checklist item ·
+§10 Q12 latency-verdict item (renumbered, ruling dated inline) · PLAN §16 runbook item +
+§17 open-measurements entry (struck) · §18 ruling text kept as the dated record, its
+Q12 "hardware latency" scope superseded here · specs (state-only wording): llmAdapter.md
+`embedQuery` row, llmPresets.md embedded-row `latency` field + external-row `query-embed class`
+field, searchService.md query-embed step. Effect on the P1 wave plan: Q12 runbook reduces to
+kit calibration ① + informational drift ②; T1.5 semantic search is no longer blocked on a
+hardware latency verdict.

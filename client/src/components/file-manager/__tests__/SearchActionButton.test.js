@@ -5,7 +5,7 @@
  * @see docs/TESTING_STRATEGY.md
  */
 import React from 'react';
-import { screen, fireEvent } from '@testing-library/react';
+import { screen, fireEvent, within } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import SearchActionButton from '../SearchActionButton';
 
@@ -145,5 +145,37 @@ describe('SearchActionButton icon states (§2.6)', () => {
       <SearchActionButton {...baseProps} resultsModeActive searchQuery="refine" />
     );
     expect(screen.queryByTestId('search-action-glyph-add')).not.toBeInTheDocument();
+  });
+});
+
+// -- §2.6 composite legibility (overlay outside the cloud mass on a plate) ------
+
+describe('SearchActionButton composite plate (§2.6 legibility)', () => {
+  it('cloud+search composite renders the overlay on the contrast plate', () => {
+    renderWithProviders(<SearchActionButton {...baseProps} />);
+    const plate = screen.getByTestId('search-action-glyph-plate');
+    expect(plate).toBeInTheDocument();
+    expect(within(plate).getByTestId('search-action-glyph-search')).toBeInTheDocument();
+  });
+
+  it('cloud+wand composite renders the plate and keeps the mirror inside it', () => {
+    renderWithProviders(<SearchActionButton {...baseProps} llmConfigured />);
+    expect(screen.getByTestId('search-action-glyph-plate')).toBeInTheDocument();
+    expect(screen.getByTestId('search-action-glyph-wand')).toHaveStyle({
+      transform: 'scaleX(-1)',
+    });
+  });
+
+  it('results-empty composite plates the Add overlay too', () => {
+    renderWithProviders(<SearchActionButton {...baseProps} resultsModeActive searchQuery="" />);
+    expect(screen.getByTestId('search-action-glyph-plate')).toBeInTheDocument();
+    const addPlate = screen.getByTestId('search-action-glyph-add-plate');
+    expect(addPlate).toBeInTheDocument();
+    expect(within(addPlate).getByTestId('search-action-glyph-add')).toBeInTheDocument();
+  });
+
+  it('orbit (pending) variant renders no plate', () => {
+    renderWithProviders(<SearchActionButton {...baseProps} isPending />);
+    expect(screen.queryByTestId('search-action-glyph-plate')).not.toBeInTheDocument();
   });
 });

@@ -1,19 +1,14 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Fab, Box } from '@mui/material';
-import {
-  Search as SearchIcon,
-  AutoAwesome as AutoAwesomeIcon,
-  Add as AddIcon,
-  Cloud as CloudIcon,
-} from '@mui/icons-material';
+import { Search as SearchIcon, AutoAwesome as AutoAwesomeIcon } from '@mui/icons-material';
 import { FAB_GRADIENT_BACKGROUND_HOVER } from './fabGradient';
+import SearchGlyphIcon from './SearchGlyphIcon';
 
 const MOBILE_OFFSET = 16;
 const DESKTOP_OFFSET = 48;
 const BUTTON_SIZE = 56;
 const GLYPH_SIZE = 24;
-const OVERLAY_SIZE = 13;
 const ORBIT_RADIUS = 7;
 
 /**
@@ -70,35 +65,7 @@ const SearchActionButton = ({
       )}
     </Box>
   ) : (
-    <Box
-      component="span"
-      sx={{ position: 'relative', display: 'inline-flex', width: GLYPH_SIZE, height: GLYPH_SIZE }}
-    >
-      <CloudIcon data-testid="search-action-glyph-cloud" style={{ fontSize: GLYPH_SIZE }} />
-      {llmConfigured ? (
-        <AutoAwesomeIcon
-          data-testid="search-action-glyph-wand"
-          style={{
-            fontSize: OVERLAY_SIZE,
-            position: 'absolute',
-            left: 6,
-            top: 8,
-            transform: 'scaleX(-1)',
-          }}
-        />
-      ) : (
-        <SearchIcon
-          data-testid="search-action-glyph-search"
-          style={{ fontSize: OVERLAY_SIZE, position: 'absolute', left: 6, top: 8 }}
-        />
-      )}
-      {resultsEmpty && (
-        <AddIcon
-          data-testid="search-action-glyph-add"
-          style={{ fontSize: OVERLAY_SIZE, position: 'absolute', left: -4, top: 7 }}
-        />
-      )}
-    </Box>
+    <SearchGlyphIcon llmConfigured={llmConfigured} showAdd={resultsEmpty} />
   );
 
   return (

@@ -8,6 +8,25 @@ import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import FloatingSearchBar from '../FloatingSearchBar';
 
+// Records which hook each mounted effect callback registers with (pass-through
+// to the real react; no behavior change). Used by the layout-phase test below.
+jest.mock('react', () => {
+  const actual = jest.requireActual('react');
+  const registry = { layout: [], effect: [] };
+  global.FSB_HOOK_REGISTRY = registry;
+  return {
+    ...actual,
+    useLayoutEffect: (fn, deps) => {
+      registry.layout.push(fn);
+      return actual.useLayoutEffect(fn, deps);
+    },
+    useEffect: (fn, deps) => {
+      registry.effect.push(fn);
+      return actual.useEffect(fn, deps);
+    },
+  };
+});
+
 const defaultProps = {
   searchQuery: '',
   setSearchQuery: jest.fn(),
@@ -260,5 +279,47 @@ describe('FloatingSearchBar §2.5 (onExpandedChange morph truth)', () => {
     );
     fireEvent.focus(searchInput());
     expect(onExpandedChange.mock.calls.every(([value]) => value === false)).toBe(true);
+  });
+
+  // The host flips the FAB morph state from this signal and must receive it in
+  // the SAME commit as the focus paint (FloatingSearchBar.md §2.5 — layout
+  // phase). jsdom has no paint and React's act/scheduler flushes equalize any
+  // timing probe (verified empirically: a passive emit is observable at the
+  // same points as a layout one), so the documented mechanism itself is pinned:
+  // the emit effect must register via useLayoutEffect, never via useEffect.
+  it('registers the morph-truth emit effect in the layout phase (never passive)', () => {
+    const registry = global.FSB_HOOK_REGISTRY;
+    registry.layout.length = 0;
+    registry.effect.length = 0;
+
+    renderWithProviders(
+      <FloatingSearchBar {...defaultProps} onSubmitQuery={jest.fn()} onExpandedChange={jest.fn()} />
+    );
+
+    const isEmitFn = (fn) => fn.toString().includes('onExpandedChange(morphActive)');
+    expect(registry.layout.some(isEmitFn)).toBe(true);
+    expect(registry.effect.some(isEmitFn)).toBe(false);
+  });
+});
+
+// -- §2.7 native clear affordance suppression (single ✕) -----------------------
+
+describe('FloatingSearchBar §2.7 (native clear affordance)', () => {
+  const sheetText = () => {
+    const rules = [];
+    document.querySelectorAll('style').forEach((tag) => {
+      if (tag.textContent) rules.push(tag.textContent);
+      Array.from(tag.sheet && tag.sheet.cssRules ? tag.sheet.cssRules : []).forEach((rule) => {
+        rules.push(rule.cssText);
+      });
+    });
+    return rules.join('\n');
+  };
+
+  it('suppresses the browser-native search cancel button/decoration via the input selector', () => {
+    renderWithProviders(<FloatingSearchBar {...defaultProps} searchQuery="q" />);
+    expect(sheetText()).toContain('::-webkit-search-cancel-button');
+    expect(sheetText()).toContain('::-webkit-search-decoration');
+    expect(sheetText()).toMatch(/input::-webkit-search-cancel-button/);
   });
 });

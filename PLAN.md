@@ -1247,3 +1247,25 @@ qualification + provisioning-trigger fixtures) · SETUP.md boot-frozen caveat +
   (search lens / wand cluster), 1-decimal coordinate rounding. Gates: targeted
   108, full client 2064, eslint/prettier, docsStatePurity; no E2E change
   (final-states policy; orbit seam presence/absence preserved).
+
+## 26. E2E dual-platform convergence (owner-directed, 2026-10-16, branch `feature/sr8-e2e-format-convergence`)
+
+- Format audit remediation — ALL suites now follow the dual-platform standard:
+  - `registration-settings`: dedicated `s3-regset-desktop`/`-regset-mobile` chained pair
+    (removed from desktopSpecMatch; the global `registration_enabled` serializes across
+    the chain; ADMIN-007 uses the mypage drawer idiom).
+  - `core-flow.desktop` → `core-flow.shared`: EXP-009/010/011 + OVERLAY-008/010 moved dual
+    (mobile: detail-toggle-absence, tap-open, drawer tree, action-sheet delete).
+  - `trash-admin`: `-mobile` chained on the shared :5012 scratch; platform-flagged delete.
+  - `collections`: the standalone mobile twin (collections.mobile.spec.ts, :5014) RETIRED —
+    ONE dual file on the shared :5013 slot; 015..017 absorbed as reason-carrying desktop
+    skips; card-open tap/dblclick seam, shared `openFileActions` (context menu vs action
+    sheet), drawer tree navigation with the mypage-admin dispatch-retry idiom, MyPage
+    drawer entry, 018 mobile reorders the undo-toast arc inside its 8s window.
+  - `webdav-reconcile` stays smoke-only (backend contract, not a UI-platform surface).
+- CLIENT parity gap fixed by the conversion: the mobile FileActionSheet never received
+  `onAddToCollection` (T0.5 deferred wiring) — now wired via the shell-owned
+  `handleOpenAddToCollection` (viewport-centered anchor); FileActionSheet.md restated.
+- Gates: collections dual 40/40, trash-admin 2/2, regset 6/6, shared-stack dual 134+3
+  sanctioned skips; client 2064; eslint/prettier; docsStatePurity 3/3. Remaining
+  single-platform files are platform-OWNED interaction primitives only (DESKTOP-*/MOBILE-*).

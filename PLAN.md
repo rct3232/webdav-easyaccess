@@ -1217,3 +1217,13 @@ qualification + provisioning-trigger fixtures) · SETUP.md boot-frozen caveat +
   unmirrored AutoAwesome (C) with `search-zone-glyph-b/c` seams; specs restated.
   Gates: targeted 132 (incl. knockout/single-flight), full client 2057, eslint/prettier,
   docsStatePurity, retrieval dual E2E 42/42.
+- sr5 — `150896f` owner follow-ups: every search holds `pending` for at least one
+  full orbit cycle (`SEARCH_ORBIT_CYCLE_MS=1600`, single source shared by the
+  glyph animation and the commit hold — a fast response cannot skip the cycle);
+  a mid-window `exitResults` discards the late commit (sequence counter, guards
+  on own refs not the act-stale `modeRef`); the input field resets on every
+  results-mode exit AND on every successful commit (term hands off to the chip
+  strip — `onCommit` seam; restores original requirement 6). Specs/E2E plan
+  restated; retrieval helper waits out the hold window and re-summons the ✕ with
+  hold text when the field is empty; 013/018 assert the reset. Gates: full client
+  2059, eslint/prettier, docsStatePurity, retrieval dual E2E 42/42 (3.8m).

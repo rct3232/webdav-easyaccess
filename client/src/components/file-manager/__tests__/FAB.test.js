@@ -195,6 +195,35 @@ describe('FAB morphed visibility', () => {
     expect(style.pointerEvents).toBe('none');
   });
 
+  // jsdom does not cascade transform declarations, so the in-place shrink is
+  // asserted on the generated emotion rule for each element's own class:
+  // the disc carries transform, the SpeedDial root carries opacity only
+  // (E2E reads the root opacity seam).
+  it('scales the dial disc itself in place — no transform on the SpeedDial root', () => {
+    renderMorphable({ morphed: true });
+    const ruleTextFor = (el) => {
+      const cls = Array.from(el.classList).find((name) => name.startsWith('css-'));
+      const lines = [];
+      document.querySelectorAll('style').forEach((tag) => {
+        if (tag.textContent) lines.push(tag.textContent);
+        Array.from((tag.sheet && tag.sheet.cssRules) || []).forEach((rule) =>
+          lines.push(rule.cssText)
+        );
+      });
+      return lines.filter((line) => cls && line.includes(`.${cls} {`)).join('\n');
+    };
+    const root = screen.getByTestId('file-actions-speed-dial');
+    const disc = screen.getByTestId('file-actions-fab');
+    expect(ruleTextFor(root)).not.toContain('transform');
+    expect(ruleTextFor(root)).toContain('opacity 0.16s ease-in');
+    expect(ruleTextFor(root)).toContain('pointer-events: none');
+    expect(ruleTextFor(disc)).toMatch(/transform: scale\(0\.6\)/);
+    expect(ruleTextFor(disc)).toContain('transition: transform 0.16s ease-in');
+    // MUI pins pointer-events:auto on the SpeedDial fab — the morphed disc must
+    // override it to none or it swallows the ghost submit button's clicks.
+    expect(ruleTextFor(disc)).toContain('pointer-events: none');
+  });
+
   it('keeps its visibility self-report at true while morphed (the fab slot stays occupied)', () => {
     const onVisibilityChange = jest.fn();
     const { rerender } = renderWithProviders(

@@ -631,6 +631,12 @@ export const useFileManager = (user, options = {}) => {
     if (!locationKey) return undefined;
     if (prevLocationRef.current !== locationKey) {
       setFiles([]);
+      // Drop the permission-gated FAB synchronously with the location change —
+      // loadPermission below restores the real value. Read-only synthetic views
+      // (recent/shared/trash/collections) settle on the same `false` right after,
+      // and stale async answers are discarded by the permId guard, so this can
+      // never stomp a fresher value.
+      setHasWritePermission(false);
       prevLocationRef.current = locationKey;
     }
 

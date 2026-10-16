@@ -22,13 +22,27 @@ const fabGradientSx = {
 // is expanded the FAB stays MOUNTED and fades/scales out (instant out, delayed back-in
 // so the search button leads the reverse swap) instead of vanishing. It keeps the fab
 // slot occupied (self-report stays true) — only the search button covers the spot.
-const getMorphVisibilitySx = (morphed) => ({
+// Root level: opacity + hit-testing only (E2E reads the root opacity seam).
+const getMorphFadeSx = (morphed) => ({
   opacity: morphed ? 0 : 1,
+  pointerEvents: morphed ? 'none' : 'auto',
+  transition: morphed ? 'opacity 0.16s ease-in' : 'opacity 0.16s ease-out 0.14s',
+});
+
+// Disc level: the 56px circle scales about its own center (element-self origin —
+// mirrors the SearchActionButton fabSlotIn/fabSlotOut geometry; no px constants).
+// MUI pins pointer-events:auto on the SpeedDial fab, so the morphed disc must opt
+// out explicitly: scaled over the ghost submit button it would swallow its clicks.
+const getMorphScaleSx = (morphed) => ({
   transform: morphed ? 'scale(0.6)' : 'scale(1)',
   pointerEvents: morphed ? 'none' : 'auto',
-  transition: morphed
-    ? 'opacity 0.16s ease-in, transform 0.16s ease-in'
-    : 'opacity 0.16s ease-out 0.14s, transform 0.16s ease-out 0.14s',
+  transition: morphed ? 'transform 0.16s ease-in' : 'transform 0.16s ease-out 0.14s',
+});
+
+// The share-link Fab IS the disc: it carries both halves on itself.
+const getMorphVisibilitySx = (morphed) => ({
+  ...getMorphFadeSx(morphed),
+  ...getMorphScaleSx(morphed),
 });
 
 /**
@@ -150,7 +164,7 @@ const FAB = ({
         },
         // Account for iOS safe area
         paddingBottom: 'env(safe-area-inset-bottom)',
-        ...getMorphVisibilitySx(morphed),
+        ...getMorphFadeSx(morphed),
       }}
       icon={<SpeedDialIcon />}
       open={open}
@@ -161,6 +175,7 @@ const FAB = ({
         disabled: disabled,
         onClick: handleFabTriggerClick,
         tabIndex: -1, // 포커스를 받지 않도록 설정하여 Dialog 닫힘 후 포커스 이동 시 onOpen이 호출되는 것을 방지
+        sx: getMorphScaleSx(morphed),
       }}
     >
       {actions.map((action) => (

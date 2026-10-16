@@ -58,7 +58,7 @@
 - **Users without write permission:** the FAB is absent; the search button occupies the same spot on focus (`FAB.md` §2.6 self-hide).
 - **Button visual (ghost):** 2px border `#52c597` + frosted translucent fill matching the pill interior (`rgba(255,255,255,0.5)` + blur); hover = the original FAB gradient fill.
 - **Start-icon collapse/expand:** the pill's `SearchIcon` start adornment fades out on focus and the input area grows into that space (smooth width/opacity transition). On blur with empty text (and browse mode) the icon returns.
-- **Test seams:** `search-start-icon` (collapsing adornment box — width/opacity), `search-action-button` (the fab-slot button), `search-action-glyph-cloud|search|wand|add|orbit` (icon-state composition).
+- **Test seams:** `search-start-icon` (collapsing adornment box — width/opacity), `search-action-button` (the fab-slot button), `search-action-glyph-cloud|search|wand|add|orbit|plate` (icon-state composition; the composite is the shared `SearchGlyphIcon.js` component, also used by the Zone B results header).
 
 ### 2.6 Button icon states
 
@@ -71,9 +71,12 @@
 | results mode, input text empty, button click | no-op — the button keeps its enabled visual state and fires nothing                                                       |
 | results mode, input text non-empty, click    | chain submit (`onSubmitQuery`)                                                                                            |
 
+**Composite geometry:** the 13px overlay renders outside the cloud silhouette on a circular contrast plate (paper background, 1px secondary border) — shared component `SearchGlyphIcon.js`, also used by the Zone B results header. The wand's `scaleX(-1)` mirror applies to the overlay icon inside its plate; the results-empty `Add` overlay sits on its own plate at the cloud's left.
+
 ### 2.7 Submit and end-cluster
 
 - **No submit control inside the pill.** The 56px circle IS the submit action; Enter in the input also submits (`onSubmitQuery(current text)`).
+- **Native clear affordance suppressed:** the browser-native cancel button/decoration of the `type="search"` input is hidden via CSS; the custom ✕ is the single clear affordance.
 - **Typing unchanged:** every keystroke routes through `setSearchQuery` only — no server call.
 - **Close (✕) adornment:** rendered while text is non-empty. Pressing ✕ clears the text AND blurs the input (focus removed):
   - browse mode → collapse back to browse visuals (icon returns, FAB returns);

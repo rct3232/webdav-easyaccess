@@ -366,6 +366,34 @@ describe('FileManagerView search results mode (§3)', () => {
     expect(getComputedStyle(screen.getByTestId('search-zone-header-a')).position).toBe('sticky');
   });
 
+  it('zone B header renders the composite glyph on the contrast plate (shared component)', async () => {
+    const props = controlsWithSearch(createProps(), searchModel());
+    renderWithProviders(<FileManagerView {...props} />);
+
+    const headerB = await screen.findByTestId('search-zone-header-b');
+    expect(within(headerB).getByTestId('search-action-glyph-plate')).toBeInTheDocument();
+    expect(within(headerB).getByTestId('search-action-glyph-cloud')).toBeInTheDocument();
+  });
+
+  it('zone header content shares the rows edge line (no horizontal inset)', async () => {
+    const props = controlsWithSearch(createProps(), searchModel());
+    renderWithProviders(<FileManagerView {...props} />);
+
+    const headerA = await screen.findByTestId('search-zone-header-a');
+    expect(['', '0px']).toContain(getComputedStyle(headerA).paddingLeft);
+    expect(['', '0px']).toContain(getComputedStyle(headerA).paddingRight);
+  });
+
+  it('zone spacing is a grid gap between zones (no trailing margin after the last)', async () => {
+    const props = controlsWithSearch(createProps(), searchModel());
+    renderWithProviders(<FileManagerView {...props} />);
+
+    const headerB = await screen.findByTestId('search-zone-header-b');
+    const zoneB = headerB.parentElement;
+    expect(['', '0px']).toContain(getComputedStyle(zoneB).marginBottom);
+    expect(getComputedStyle(zoneB.parentElement).display).toBe('grid');
+  });
+
   it('zone C renders when its rows arrive (suggested results label)', async () => {
     const props = controlsWithSearch(
       createProps(),

@@ -82,6 +82,15 @@ function createDeferred() {
   return { promise, resolve, reject };
 }
 
+// Captures the REAL react-router navigate inside a mounted tree so a test can
+// change the URL (and thus locationKey) while the hook stays mounted.
+const { useNavigate: realUseNavigate } = jest.requireActual('react-router-dom');
+function LocationDriver({ driverRef }) {
+  const navigate = realUseNavigate();
+  driverRef.current = navigate;
+  return null;
+}
+
 async function renderAndResolveNormalLoad(urlPath = '', options = {}, overrides = {}) {
   const listDeferred = createDeferred();
   const accessDeferred = createDeferred();
@@ -446,6 +455,52 @@ describe('useFileManager', () => {
     const { result } = await renderAndResolveNormalLoad('node/2');
 
     expect(explorerGateway.getPathAccess).toHaveBeenCalled();
+    expect(result.current.hasWritePermission).toBe(true);
+  });
+
+  // Navigating away from a writable location must drop the permission-gated FAB
+  // in the SAME commit as the location change: without the synchronous reset the
+  // previous location's FAB keeps painting until the async getPathAccess lands.
+  // The URL is driven through the REAL router (the hook's useNavigate is mocked
+  // to a no-op, so setCurrentNodeId alone never changes locationKey here).
+  it('drops write permission synchronously on a location change and restores it once access resolves', async () => {
+    const driverRef = { current: null };
+    const wrapper = ({ children }) => (
+      <MemoryRouter initialEntries={['/files']}>
+        <Routes>
+          <Route
+            path="/files/*"
+            element={
+              <>
+                {children}
+                <LocationDriver driverRef={driverRef} />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+    const { result } = renderHook(() => useFileManager(mockUser), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    expect(result.current.hasWritePermission).toBe(true);
+
+    const accessDeferred = createDeferred();
+    explorerGateway.getPathAccess.mockReturnValueOnce(accessDeferred.promise);
+
+    act(() => {
+      driverRef.current('/files/node/5');
+    });
+
+    expect(result.current.hasWritePermission).toBe(false);
+
+    await act(async () => {
+      accessDeferred.resolve(defaultPathAccess);
+      await accessDeferred.promise;
+    });
+
     expect(result.current.hasWritePermission).toBe(true);
   });
   describe('trash hierarchical navigation (DEF-16 P9)', () => {

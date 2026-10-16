@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Box, TextField, InputAdornment, IconButton } from '@mui/material';
 import { Search as SearchIcon, Close as CloseIcon } from '@mui/icons-material';
@@ -71,7 +71,10 @@ const FloatingSearchBar = ({
   }, [morphActive]);
 
   const lastMorphRef = useRef(undefined);
-  useEffect(() => {
+  // Layout phase: the host's morphed state must flip in the SAME commit as the
+  // focus paint (a passive-effect emit leaves one frame of the solid FAB under
+  // the expanded pill).
+  useLayoutEffect(() => {
     if (lastMorphRef.current === morphActive) return;
     lastMorphRef.current = morphActive;
     if (onExpandedChange) onExpandedChange(morphActive);
@@ -137,6 +140,12 @@ const FloatingSearchBar = ({
                   backgroundColor: 'transparent',
                   '&::placeholder': {
                     opacity: 0.8,
+                  },
+                  // §2.7: the custom ✕ is the single clear affordance — the
+                  // browser-native search cancel button/decoration is suppressed.
+                  '&::-webkit-search-cancel-button, &::-webkit-search-decoration': {
+                    WebkitAppearance: 'none',
+                    display: 'none',
                   },
                 },
               },

@@ -15,11 +15,9 @@ import { alpha } from '@mui/material/styles';
 import {
   AutoAwesome as AutoAwesomeIcon,
   CheckCircle as CheckCircleIcon,
-  Cloud as CloudIcon,
   FolderOpen as FolderOpenIcon,
   KeyboardArrowDown as KeyboardArrowDownIcon,
   KeyboardArrowUp as KeyboardArrowUpIcon,
-  Search as SearchIcon,
 } from '@mui/icons-material';
 
 import {
@@ -56,20 +54,16 @@ import {
 import { FolderTree } from '../folder-tree';
 import CollectionsListView from './CollectionsListView';
 import SearchQueryChipBar from './SearchQueryChipBar';
+import SearchGlyphIcon from './SearchGlyphIcon';
 import { FileListSkeleton, FileGridSkeleton, FileDetailSkeleton } from './FileSkeletons';
 import { useInfiniteScroll } from '../../hooks/useInfiniteScroll';
 import { UndoToast } from '../feedback';
 
 // -- Search results-mode zones (FileManagerView.md §3) — presentational
 // composition only: rows, ordering, counts and callbacks all arrive prepared
-// on the `searchResults` model (pure-view rule).
-
-const ZoneGlyphCloudSearch = () => (
-  <Box sx={{ position: 'relative', display: 'inline-flex', width: 24, height: 24, flexShrink: 0 }}>
-    <CloudIcon style={{ fontSize: 24 }} />
-    <SearchIcon style={{ fontSize: 13, position: 'absolute', left: 6, top: 8 }} />
-  </Box>
-);
+// on the `searchResults` model (pure-view rule). The Zone B header icon is the
+// shared composite glyph (`SearchGlyphIcon`, single source with the fab-slot
+// submit button): overlay outside the cloud mass on a contrasting plate.
 
 const SearchZoneHeader = ({ zoneKey, icon, label, count, collapsed, onToggle }) => (
   <Box
@@ -82,7 +76,6 @@ const SearchZoneHeader = ({ zoneKey, icon, label, count, collapsed, onToggle }) 
       display: 'flex',
       alignItems: 'center',
       gap: 1,
-      px: 0.5,
       py: 0.5,
       cursor: 'pointer',
       backgroundColor: (theme) => alpha(theme.palette.background.paper, 0.7),
@@ -139,7 +132,7 @@ const SearchZone = ({
     zoneKey === 'a' ? (
       <FolderOpenIcon fontSize="small" sx={{ color: 'text.secondary', flexShrink: 0 }} />
     ) : zoneKey === 'b' ? (
-      <ZoneGlyphCloudSearch />
+      <SearchGlyphIcon />
     ) : (
       <AutoAwesomeIcon fontSize="small" sx={{ color: 'text.secondary', flexShrink: 0 }} />
     );
@@ -171,7 +164,7 @@ const SearchZone = ({
   };
 
   return (
-    <Box sx={{ mb: 2 }}>
+    <Box>
       <SearchZoneHeader
         zoneKey={zoneKey}
         icon={icon}
@@ -849,7 +842,7 @@ const FileManagerView = ({
               )}
 
               {searchSurfaceActive ? (
-                <Box>
+                <Box sx={{ display: 'grid', gap: 2 }}>
                   {zoneCounts.zoneA > 0 && (
                     <SearchZone
                       zoneKey="a"

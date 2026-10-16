@@ -15,29 +15,31 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/file-manager/FloatingSearchBar.js`
-- **Test file:** `client/src/components/file-manager/__tests__/FloatingSearchBar.test.js`
+- **Companion:** `client/src/components/file-manager/SearchActionButton.js` (the fab-slot ghost submit button rendered by this bar; shared FAB gradient fills live in `client/src/components/file-manager/fabGradient.js`)
+- **Test file:** `client/src/components/file-manager/__tests__/FloatingSearchBar.test.js` (+ `__tests__/SearchActionButton.test.js`)
 
 ### 2.2 Props
 
-| Name              | Type     | Required | Default                    | Description                                                                                                                                                                  |
-| ----------------- | -------- | -------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| searchQuery       | string   | Y        | -                          | Search input value (shared with the explorer session filter text)                                                                                                            |
-| setSearchQuery    | function | Y        | -                          | Set search query                                                                                                                                                             |
-| isMobile          | boolean  | Y        | -                          | Mobile layout (affects width)                                                                                                                                                |
-| placeholder       | string   | N        | t('nav.searchPlaceholder') | Placeholder text (i18n)                                                                                                                                                      |
-| fabVisible        | boolean  | N        | true                       | When false, search bar expands to occupy FAB space. In FileManager this mirrors actual FAB presence (FAB self-reports via `onVisibilityChange`), not an enumerated condition |
-| onSubmitQuery     | function | N        | -                          | `(query: string) => void` submit intent: the 56px search button click and Enter both invoke it. Absent ⇒ no server-wide search surface (share-link mode)                     |
-| resultsModeActive | boolean  | N        | false                      | Pure visual state: the search button stays mounted with the `Add` icon overlay, and blur no longer collapses. The bar renders; it never decides the mode.                    |
-| isPending         | boolean  | N        | false                      | A search submit is in flight: the button glyph runs the orbit animation (§2.5)                                                                                               |
-| llmConfigured     | boolean  | N        | false                      | AI-platform flag (settings/public flags surface, read through the existing client repository seam by the host): selects the button glyph composite (§2.5)                    |
+| Name              | Type     | Required | Default                    | Description                                                                                                                                                                                                                  |
+| ----------------- | -------- | -------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| searchQuery       | string   | Y        | -                          | Search input value (shared with the explorer session filter text)                                                                                                                                                            |
+| setSearchQuery    | function | Y        | -                          | Set search query                                                                                                                                                                                                             |
+| isMobile          | boolean  | Y        | -                          | Mobile layout (affects width)                                                                                                                                                                                                |
+| placeholder       | string   | N        | t('nav.searchPlaceholder') | Placeholder text (i18n)                                                                                                                                                                                                      |
+| fabVisible        | boolean  | N        | true                       | When false, search bar expands to occupy FAB space. In FileManager this mirrors actual FAB presence (FAB self-reports via `onVisibilityChange`), not an enumerated condition                                                 |
+| onSubmitQuery     | function | N        | -                          | `(query: string) => void` submit intent: the 56px search button click and Enter both invoke it. Absent ⇒ no server-wide search surface (share-link mode)                                                                     |
+| resultsModeActive | boolean  | N        | false                      | Pure visual state: the search button stays mounted with the `Add` icon overlay, and blur no longer collapses. The bar renders; it never decides the mode.                                                                    |
+| isPending         | boolean  | N        | false                      | A search submit is in flight: the button glyph runs the orbit animation (§2.5)                                                                                                                                               |
+| llmConfigured     | boolean  | N        | false                      | AI-platform flag (settings/public flags surface, read through the existing client repository seam by the host): selects the button glyph composite (§2.5)                                                                    |
+| onExpandedChange  | function | N        | -                          | `(isExpanded: boolean) => void` morph-truth signal for the host (drives the FAB controlled-mount swap): true while the fab slot is owned by the search button; always false when `onSubmitQuery` is absent (share-link mode) |
 
 ### 2.3 Callback Signatures
 
-| Callback       | When invoked                | Arguments    |
-| -------------- | --------------------------- | ------------ |
-| setSearchQuery | Input change                | (string)     |
-| onSubmitQuery  | Search-button click / Enter | (query text) |
-| onBlur         | Input blur (focus removed)  | -            |
+| Callback         | When invoked                                                    | Arguments             |
+| ---------------- | --------------------------------------------------------------- | --------------------- |
+| setSearchQuery   | Input change; `''` also from the ✕ press (the host exit signal) | (string)              |
+| onSubmitQuery    | Search-button click / Enter                                     | (query text)          |
+| onExpandedChange | Morph truth change (focus, results mode, text, submit surface)  | (isExpanded: boolean) |
 
 ### 2.4 Layout
 
@@ -51,11 +53,12 @@
 
 ### 2.5 FAB ↔ search-button morph
 
-- **Trigger:** input focus, or results mode active. On collapse (blur with empty text in browse mode, or §2.6 ✕ paths) the swap reverses.
-- **Swap mechanics:** the FAB element is replaced IN ITS EXACT spot by the search button — a 56px circle at the same position. The transition is a 2-phase fade/scale (FAB fades/scales out, button fades/scales in) and reverses on collapse. The FAB becomes controlled-mount: it stays mounted while it animates out instead of unmounting instantly (`FAB.js` mounts it through the morph).
+- **Trigger:** input focus, non-empty text, or results mode active — the component's `expanded` visual state. On collapse (blur with empty text in browse mode, or §2.7 ✕ paths) the swap reverses; collapse is gated on empty text AND browse mode.
+- **Swap mechanics:** the FAB element is replaced IN ITS EXACT spot by the search button — a 56px circle at the same position (`SearchActionButton.js`, rendered by this bar; the FAB receives its hide signal through the host via `onExpandedChange`). The transition is a 2-phase fade/scale (FAB fades/scales out, button fades/scales in) and reverses on collapse. The FAB becomes controlled-mount: it stays mounted while it animates out instead of unmounting instantly (`FAB.js` mounts it through the morph). The button only exists while the submit surface exists (`onSubmitQuery` present).
 - **Users without write permission:** the FAB is absent; the search button occupies the same spot on focus (`FAB.md` §2.6 self-hide).
 - **Button visual (ghost):** 2px border `#52c597` + frosted translucent fill matching the pill interior (`rgba(255,255,255,0.5)` + blur); hover = the original FAB gradient fill.
 - **Start-icon collapse/expand:** the pill's `SearchIcon` start adornment fades out on focus and the input area grows into that space (smooth width/opacity transition). On blur with empty text (and browse mode) the icon returns.
+- **Test seams:** `search-start-icon` (collapsing adornment box — width/opacity), `search-action-button` (the fab-slot button), `search-action-glyph-cloud|search|wand|add|orbit` (icon-state composition).
 
 ### 2.6 Button icon states
 

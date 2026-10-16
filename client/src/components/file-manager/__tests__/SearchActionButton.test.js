@@ -115,23 +115,27 @@ describe('SearchActionButton icon states (§2.6)', () => {
     expect(screen.queryByTestId('search-action-glyph-wand')).not.toBeInTheDocument();
   });
 
-  it('llmConfigured=true: composite cloud + mirrored wand-stars group', () => {
+  it('llmConfigured=true: composite cloud + mirrored wand-stars geometry', () => {
     renderWithProviders(<SearchActionButton {...baseProps} llmConfigured />);
     expect(screen.getByTestId('search-action-glyph-cloud')).toBeInTheDocument();
-    const wand = screen.getByTestId('search-action-glyph-wand');
-    expect(wand).toBeInTheDocument();
-    expect(wand.getAttribute('transform')).toContain('scale(-1,1)');
+    expect(screen.getByTestId('search-action-glyph-wand')).toBeInTheDocument();
+    const mirror = document.querySelector('[data-testid="search-glyph-geom"] g[transform]');
+    expect(mirror).not.toBeNull();
+    expect(mirror.getAttribute('transform')).toContain('scale(-1,1)');
   });
 
-  it('isPending: the composite stays intact and the orbit seam wraps the overlay', () => {
+  it('isPending: the composite stays intact and the SMIL pair mounts on the shared geometry', () => {
     renderWithProviders(<SearchActionButton {...baseProps} isPending />);
     expect(screen.getByTestId('search-action-glyph-orbit')).toBeInTheDocument();
     expect(screen.getByTestId('search-action-glyph-cloud')).toBeInTheDocument();
-    expect(
-      within(screen.getByTestId('search-action-glyph-orbit')).getByTestId(
-        'search-action-glyph-search'
-      )
-    ).toBeInTheDocument();
+    expect(screen.getByTestId('search-action-glyph-search')).toBeInTheDocument();
+    expect(document.querySelectorAll('animateTransform')).toHaveLength(2);
+  });
+
+  it('non-pending renders zero SMIL animations (static home composite)', () => {
+    renderWithProviders(<SearchActionButton {...baseProps} />);
+    expect(document.querySelectorAll('animateTransform')).toHaveLength(0);
+    expect(screen.queryByTestId('search-action-glyph-orbit')).not.toBeInTheDocument();
   });
 
   it('isPending + llmConfigured: the orbiting overlay is the wand variant', () => {
@@ -164,7 +168,6 @@ describe('SearchActionButton knockout composite (§2.6 geometry)', () => {
     const svg = screen.getByTestId('search-glyph');
     const mask = svg.querySelector('mask');
     expect(mask).not.toBeNull();
-    expect(mask.querySelectorAll('circle, line').length).toBeGreaterThanOrEqual(2);
     expect(mask.querySelector('rect')).toHaveAttribute('fill', '#fff');
   });
 
@@ -178,44 +181,55 @@ describe('SearchActionButton knockout composite (§2.6 geometry)', () => {
     renderWithProviders(<SearchActionButton {...baseProps} resultsModeActive searchQuery="" />);
     const mask = screen.getByTestId('search-glyph').querySelector('mask');
     expect(screen.getByTestId('search-action-glyph-add')).toBeInTheDocument();
-    expect(mask.querySelectorAll('line').length).toBeGreaterThanOrEqual(3);
+    expect(mask.querySelectorAll('line').length).toBeGreaterThanOrEqual(2);
   });
 
-  it('orbit (pending) variant keeps the cloud + mask composite', () => {
+  it('the visible line and the mask knockout reference the SAME geometry (single clock)', () => {
+    renderWithProviders(<SearchActionButton {...baseProps} />);
+    const hrefs = Array.from(document.querySelectorAll('[data-testid="search-glyph"] use')).map(
+      (use) => use.getAttribute('href')
+    );
+    expect(hrefs).toHaveLength(2);
+    expect(hrefs[0]).toBe(hrefs[1]);
+    expect(hrefs[0]).toMatch(/^#search-glyph-overlay-/);
+  });
+
+  it('orbit (pending) keeps the mask composite and mounts both SMIL animations indefinite', () => {
     renderWithProviders(<SearchActionButton {...baseProps} isPending />);
     expect(screen.getByTestId('search-glyph').querySelector('mask')).not.toBeNull();
     expect(screen.getByTestId('search-action-glyph-cloud')).toBeInTheDocument();
+    const anims = Array.from(document.querySelectorAll('animateTransform'));
+    expect(anims).toHaveLength(2);
+    anims.forEach((anim) => expect(anim.getAttribute('begin')).toBe('indefinite'));
+    expect(anims[0].getAttribute('to')).toContain('-360');
+    expect(anims[1].getAttribute('additive')).toBe('sum');
+    expect(anims[1].getAttribute('to')).toContain('360');
   });
 
-  it('pending orbit drives the mask knockout in lockstep with the overlay', () => {
+  it('the SMIL orbit center sits one radius left of the search home (3-oclock start)', () => {
     renderWithProviders(<SearchActionButton {...baseProps} isPending />);
-    const svg = screen.getByTestId('search-glyph');
-    expect(svg.querySelectorAll('.search-glyph-orbit-anim')).toHaveLength(2);
-    expect(
-      screen.getByTestId('search-action-glyph-orbit').classList.contains('search-glyph-orbit-anim')
-    ).toBe(true);
-    expect(svg.querySelector('mask .search-glyph-orbit-anim')).not.toBeNull();
+    const anims = Array.from(document.querySelectorAll('animateTransform'));
+    expect(anims[0].getAttribute('from')).toBe('0 12.9 6.4');
+    expect(anims[1].getAttribute('from')).toBe('0 17.4 6.4');
   });
 
-  it('non-pending renders a single static knockout group (no orbit class in the mask)', () => {
-    renderWithProviders(<SearchActionButton {...baseProps} />);
-    const svg = screen.getByTestId('search-glyph');
-    expect(svg.querySelectorAll('.search-glyph-orbit-anim')).toHaveLength(0);
+  it('the wand variant orbits around its own cluster center', () => {
+    renderWithProviders(<SearchActionButton {...baseProps} isPending llmConfigured />);
+    const anims = Array.from(document.querySelectorAll('animateTransform'));
+    expect(anims[0].getAttribute('from')).toBe('0 13.1 7.4');
+    expect(anims[1].getAttribute('from')).toBe('0 17.6 7.4');
   });
 
-  it('orbit keyframes start at the home 3-oclock point and run counter-clockwise', () => {
+  it('the svg overflows its viewBox for the top of the sweep', () => {
     renderWithProviders(<SearchActionButton {...baseProps} />);
     const css = Array.from(document.styleSheets)
       .flatMap((sheet) => Array.from(sheet.cssRules).map((rule) => rule.cssText))
       .join('\n')
       .replace(/\s+/g, '');
-    expect(css).toContain('translateX(-4.5px)');
-    expect(css).toContain('rotate(-360deg)');
-    expect(css).toContain('translateX(4.5px)');
     expect(css).toContain('overflow:visible');
   });
 
-  it('multiple instances get distinct mask ids', () => {
+  it('multiple instances get distinct geometry and mask ids', () => {
     renderWithProviders(
       <div>
         <SearchActionButton {...baseProps} visible />
@@ -226,7 +240,15 @@ describe('SearchActionButton knockout composite (§2.6 geometry)', () => {
       document.querySelectorAll('[data-testid="search-glyph"] mask'),
       (m) => m.id
     );
+    const geomHrefs = Array.from(
+      document.querySelectorAll('[data-testid="search-glyph"] use'),
+      (u) => u.getAttribute('href')
+    );
     expect(maskIds.length).toBeGreaterThanOrEqual(2);
     expect(new Set(maskIds).size).toBe(maskIds.length);
+    // Each instance renders its geometry TWICE (visible line + mask knockout)
+    // through the SAME href by design (single clock); instances differ.
+    expect(geomHrefs.length).toBe(2 * maskIds.length);
+    expect(new Set(geomHrefs).size).toBe(maskIds.length);
   });
 });

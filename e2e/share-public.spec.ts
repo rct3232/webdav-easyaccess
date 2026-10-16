@@ -229,4 +229,28 @@ test.describe('public share link', () => {
     expect(anonRes.ok()).toBeTruthy();
     expect((await anonRes.body()).equals(imageFixtureBuffer)).toBeTruthy();
   });
+
+  // Moved from the retrieval suite (former E2E-RETRIEVAL-019): the server-wide
+  // submit surface is an authenticated-explorer feature, and the DIRECTORY
+  // share is the surface where the bar would otherwise live.
+  test('E2E-SHARE-012: An anonymous share-link session cannot submit a server search', async ({
+    page,
+  }) => {
+    const searchPosts: string[] = [];
+    page.on('response', (res) => {
+      if (res.request().method() === 'POST' && new URL(res.url()).pathname === '/api/search') {
+        searchPosts.push(res.url());
+      }
+    });
+
+    // FloatingSearchBar §2.7: the bar never mounts for an anonymous visitor, so
+    // Enter/button cannot POST /api/search (gotoAsAnonymousShare performs the
+    // race-free context-level session reset — e2e/helpers/auth.ts).
+    await gotoAsAnonymousShare(page, fixtures.anonDir.token);
+    await expect(page.getByRole('searchbox')).toHaveCount(0);
+    await expect(page.getByTestId('search-action-button')).toHaveCount(0);
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(500);
+    expect(searchPosts, 'anonymous share visitors fire zero server searches').toEqual([]);
+  });
 });

@@ -82,14 +82,32 @@ const renderAdd = (strokeWidth) => (
 
 const ORBIT_ANIMATION = `searchGlyphOrbit ${SEARCH_ORBIT_CYCLE_MS}ms linear infinite`;
 
+// Orbit geometry: the overlay's HOME spot (where the static composite places
+// it) is the 3-o'clock point of the orbit circle, so the center sits R to its
+// left. The travel is counter-clockwise and the trailing counter-rotation
+// keeps the glyph upright; at 0% the glyph is exactly at home and each cycle
+// returns there. The mask knockout group carries the IDENTICAL transform so
+// the cut in the cloud travels with the line (the piercing reads throughout).
+const ORBIT_RADIUS = 4.5;
+const ORBIT_KEYFRAMES = {
+  '0%': {
+    transform: `translateX(${-ORBIT_RADIUS}px) rotate(0deg) translateX(${ORBIT_RADIUS}px) rotate(0deg)`,
+  },
+  '100%': {
+    transform: `translateX(${-ORBIT_RADIUS}px) rotate(-360deg) translateX(${ORBIT_RADIUS}px) rotate(360deg)`,
+  },
+};
+
 /**
  * SearchGlyphIcon — knockout-stroke composite: the filled Material cloud is
  * cut along the overlay's line geometry (SVG mask with clearance around every
  * stroke), and the stroke-style overlay renders on top — over cloud the line
  * sits inside its gap, over background it renders as a plain line. No plates.
  * Variants: search magnifier (llmConfigured=false) / mirrored wand-stars
- * (true); `showAdd` knocks a plus into the cloud's top-left; `orbit` moves the
- * overlay group along a small circle while the cloud stays still (pending).
+ * (true); `showAdd` knocks a plus into the cloud's top-left; `orbit` carries
+ * the overlay AND its knockout cut along a counter-clockwise circle that
+ * starts and ends at the overlay's home spot (the 3-o'clock point) while the
+ * cloud stays still — the piercing reads throughout the sweep (pending).
  * FloatingSearchBar.md §2.6.
  */
 const SearchGlyphIcon = ({ llmConfigured = false, showAdd = false, orbit = false }) => {
@@ -104,21 +122,20 @@ const SearchGlyphIcon = ({ llmConfigured = false, showAdd = false, orbit = false
       sx={{
         display: 'inline-block',
         flexShrink: 0,
+        overflow: 'visible',
         '& .search-glyph-orbit-anim': {
           transformBox: 'fill-box',
           transformOrigin: 'center',
           animation: ORBIT_ANIMATION,
         },
-        '@keyframes searchGlyphOrbit': {
-          '0%': { transform: 'rotate(0deg) translateY(-2.2px) rotate(0deg)' },
-          '100%': { transform: 'rotate(360deg) translateY(-2.2px) rotate(-360deg)' },
-        },
+        '@keyframes searchGlyphOrbit': ORBIT_KEYFRAMES,
       }}
     >
       <defs>
         <mask id={maskId}>
           <rect x="-4" y="-4" width="32" height="32" fill="#fff" />
           <g
+            className={orbit ? 'search-glyph-orbit-anim' : undefined}
             stroke="#000"
             strokeWidth={KNOCKOUT_WIDTH}
             strokeLinecap="round"
@@ -137,23 +154,28 @@ const SearchGlyphIcon = ({ llmConfigured = false, showAdd = false, orbit = false
                 <line key="handle" x1={HANDLE.x1} y1={HANDLE.y1} x2={HANDLE.x2} y2={HANDLE.y2} />,
               ]
             )}
-            {showAdd && (
-              <g>
-                <line
-                  x1={ADD_CENTER.cx}
-                  y1={ADD_CENTER.cy - ADD_CENTER.arm}
-                  x2={ADD_CENTER.cx}
-                  y2={ADD_CENTER.cy + ADD_CENTER.arm}
-                />
-                <line
-                  x1={ADD_CENTER.cx - ADD_CENTER.arm}
-                  y1={ADD_CENTER.cy}
-                  x2={ADD_CENTER.cx + ADD_CENTER.arm}
-                  y2={ADD_CENTER.cy}
-                />
-              </g>
-            )}
           </g>
+          {showAdd && (
+            <g
+              stroke="#000"
+              strokeWidth={KNOCKOUT_WIDTH}
+              strokeLinecap="round"
+              fill="none"
+            >
+              <line
+                x1={ADD_CENTER.cx}
+                y1={ADD_CENTER.cy - ADD_CENTER.arm}
+                x2={ADD_CENTER.cx}
+                y2={ADD_CENTER.cy + ADD_CENTER.arm}
+              />
+              <line
+                x1={ADD_CENTER.cx - ADD_CENTER.arm}
+                y1={ADD_CENTER.cy}
+                x2={ADD_CENTER.cx + ADD_CENTER.arm}
+                y2={ADD_CENTER.cy}
+              />
+            </g>
+          )}
         </mask>
       </defs>
       <path

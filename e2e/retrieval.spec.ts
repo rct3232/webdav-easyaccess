@@ -30,15 +30,18 @@ import {
 import { loginAndOpenUserWorkspace, seedFile } from './helpers/collectionsWorkspace';
 import { getSessionToken, gotoFilesPath, resolveNodeId } from './helpers/resolvePath';
 import { setSortMode } from './helpers/explorer-controls';
-import { gotoAsAnonymous } from './helpers/auth';
-import { createShareLink } from './helpers/shareLinks';
 import { purgeTrashedItemByName } from './helpers/trash';
 import { TEST_FILES } from './fixtures/test-data';
 
 /**
- * E2E-RETRIEVAL-001..021 — server-wide name search rendered INSIDE the explorer
+ * E2E-RETRIEVAL-001..011 — server-wide name search rendered INSIDE the explorer
  * surfaces: accordion zones + the breadcrumb-replacing query-chip bar (the
- * search UI rework — the standalone results overlay is gone).
+ * search UI rework — the standalone results overlay is gone). The family was
+ * CONSOLIDATED from 21 to 11 cases for runtime efficiency: the former 019
+ * (anonymous share-link) moved to `share-public.spec.ts` (E2E-SHARE-012) and
+ * the former 021 (browse-filter highlight) folded into the EXP-011 assertions
+ * of `core-flow.desktop.spec.ts`; the rest merged into the surviving cases
+ * listed in docs/E2E_COVERAGE_PLAN.md.
  *
  * Contract sources: docs/spec/server/routes/search.md (POST /api/search P0 name
  * branch — `name_matches[{node_id,name}]`, `semantic` ABSENT with
@@ -69,7 +72,7 @@ import { TEST_FILES } from './fixtures/test-data';
  *
  * IDENTITY (admin-operator pivot, PLAN §14): every case acts as a REGULAR USER
  * provisioned in `beforeAll`; the scratch admin stays OPERATOR-only
- * (provisioning + the perm-delete cleanup fallback). Case 016 seeds the
+ * (provisioning + the perm-delete cleanup fallback). Case 010 seeds the
  * read-only server row through a SECOND regular user granting the actor `read`
  * on a folder of their own (the internal-share permission engine —
  * POST /api/permissions/grant, the share-internal precedent).
@@ -83,17 +86,18 @@ import { TEST_FILES } from './fixtures/test-data';
  * §2.5).
  *
  * SCOPE NOTES:
- * - E2E-RETRIEVAL-016 gates the WRITE bulk actions: move/delete disable when a
+ * - E2E-RETRIEVAL-010 gates the WRITE bulk actions: move/delete disable when a
  *   read-only row is selected (`bulkWritePermission` — FileManagerControls.md
  *   §2); copy stays available by that contract (it reads the source and writes
  *   into a destination the user picks, so it is not source-write-gated).
- * - E2E-RETRIEVAL-017: FloatingSearchBar §2.6 rows 4–5 ("results mode + empty
- *   input ⇒ Add overlay + no-op click") describe the controlled component; in
- *   the integrated shell clearing the text IS the exit signal (§2.7), so that
- *   transient combination is unit-covered (SearchActionButton.test.js). The
- *   E2E asserts the observable end of the same contract: empty-text submit
- *   (button click AND Enter) fires ZERO POST /api/search and mounts no surface.
- * - E2E-RETRIEVAL-011 uses the two-point getBoundingClientRect sample (header
+ * - E2E-RETRIEVAL-003 also covers the empty-submit no-op contract (folded
+ *   former case): FloatingSearchBar §2.6 rows 4–5 describe the controlled
+ *   component ("results mode + empty input ⇒ Add overlay + no-op click"); in
+ *   the integrated shell clearing the text IS the exit signal (§2.7), so the
+ *   transient combination is unit-covered (SearchActionButton.test.js) and the
+ *   E2E asserts the observable end — empty-text submit (button click AND
+ *   Enter) fires ZERO additional POST /api/search.
+ * - E2E-RETRIEVAL-007 uses the two-point getBoundingClientRect sample (header
  *   pinned while its rows are in view; header leaves the pinned position once
  *   its zone bottom passes the container top). FLAKY-RISK: if it proves
  *   unstable across reruns, demote to the single pinned-sample observable.
@@ -488,18 +492,22 @@ test.afterEach(async ({ request }) => {
   await flushPrivateWorkspaceCleanups(request, operatorToken);
 });
 
-test('E2E-RETRIEVAL-001: Two result zones and the chip bar render while the breadcrumb row stays suppressed', async ({
+test('E2E-RETRIEVAL-001: Results render as accordion zones with honest headers, cross-zone dedup and committed highlights', async ({
   page,
   request,
 }, testInfo) => {
   const isMobile = isMobileProject(testInfo);
   const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
   const searchPosts = trackSearchPosts(page);
+  const metadataPosts = trackMetadataPosts(page);
 
-  // Seed pair: lowercase `alpha-…` in the CURRENT folder (Zone A + snapshot)
-  // and a capital `Alpha-One-…` nested under sub/deep (Zone B after dedup).
+  // Seed trio: a twice-cased `alpha-…` name in the CURRENT folder (Zone A and
+  // the committed-highlight target), a capital `Alpha-One-…` nested under
+  // sub/deep (Zone B after dedup), and an unmatched `beta` browse baseline.
   const alphaFile = await seedFile(request, token, base, testInfo, 'alpha');
   const parentNodeId = await resolveNodeId(request, token, `/${base}`);
+  const twiceName = `alpha-${Date.now()}-ALPHA.txt`;
+  const twiceId = await seedNamedFile(request, token, parentNodeId, twiceName);
   const deepId = await seedNestedFolder(request, token, parentNodeId, [
     buildName(testInfo, 'sub'),
     buildName(testInfo, 'deep'),
@@ -529,13 +537,22 @@ test('E2E-RETRIEVAL-001: Two result zones and the chip bar render while the brea
   await expect(zoneHeader(page, 'a')).toBeVisible();
   await expect(zoneHeader(page, 'b')).toBeVisible();
   await expect(zoneHeader(page, 'c')).toHaveCount(0);
-  // Snapshot counts: Zone A = the current-folder match, Zone B = the FULL name
-  // set (the deduped row still counts — the header is always honest).
+  // Header labels + snapshot counts: Zone A = the current folder path + its
+  // match count; Zone B = the All-results label + the FULL name-set count (the
+  // deduped rows still count — the header is always honest).
   await expect(zoneHeader(page, 'a')).toContainText(base.split('/').pop() as string);
-  expect(await zoneHeaderCount(page, 'a')).toBe('1');
-  expect(await zoneHeaderCount(page, 'b')).toBe('2');
+  expect(await zoneHeaderCount(page, 'a')).toBe('2');
+  expect(await zoneHeaderCount(page, 'b')).toBe('3');
   await expect(zoneHeader(page, 'b')).toContainText(/All results|전체 결과/);
-  await expect(rowNode(page, alphaFile.nodeId)).toBeVisible();
+
+  // Dedup: the same node id never appears in both zones — every row exactly
+  // once across the container.
+  const rowIds = await containerRowNodeIds(page);
+  expect(rowIds.length).toBe(new Set(rowIds).size);
+  expect(new Set(rowIds)).toEqual(
+    new Set([String(alphaFile.nodeId), String(twiceId), String(alphaOneId)])
+  );
+
   await expect(serverRow(page, alphaOneId)).toBeVisible();
   await expect(chips(page)).toHaveCount(1);
   await expect(chips(page)).toContainText('alpha');
@@ -543,47 +560,31 @@ test('E2E-RETRIEVAL-001: Two result zones and the chip bar render while the brea
   // The skeleton is the pending-only surface — gone once the response lands.
   await expect(page.getByTestId('search-zone-skeleton')).toHaveCount(0);
 
+  // Enrichment: the server row renders after POST /api/files/metadata merges
+  // the chunk — the size caption appears (suppressed while unenriched).
+  await expect
+    .poll(() => metadataPosts(), 'rows enrich through the metadata seam')
+    .toBeGreaterThan(0);
+  await expect(serverRow(page, alphaOneId)).toContainText(/\d+(\.\d+)? (B|KB|MB|GB)/);
+
+  // Committed-term highlight: the twice-cased name carries BOTH fragments as
+  // `search-highlight-range` marks while the row text stays the FULL verbatim
+  // name; no live marks exist without typed text.
+  const twiceRow = rowNode(page, twiceId);
+  await expect(twiceRow).toContainText(twiceName);
+  const highlights = twiceRow.getByTestId('search-highlight-range');
+  await expect(highlights).toHaveCount(2);
+  expect(await highlights.allTextContents()).toEqual(['alpha', 'ALPHA']);
+  await expect(twiceRow.getByTestId('filter-highlight-range')).toHaveCount(0);
+
   // Exit via the single chip returns the browse surfaces.
   await revealAndActivateChip(page, 0, 'exit', isMobile);
   await expect(chipBar(page)).toHaveCount(0);
   await expect(page.getByTestId('breadcrumb')).toBeVisible();
-  await searchBox(page).fill('');
   await expect(fileItem(page, betaFile.path)).toBeVisible();
 });
 
-test('E2E-RETRIEVAL-002: Result rows highlight every committed-term fragment inside the rendered name', async ({
-  page,
-  request,
-}, testInfo) => {
-  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
-
-  // The name carries the query fragment twice with different casing — the
-  // committed highlight is case-insensitive all-occurrence (searchHighlight),
-  // while the row text stays the FULL verbatim name.
-  const fileName = `alpha-${Date.now()}-ALPHA.txt`;
-  const nodeId = await seedNamedFile(
-    request,
-    token,
-    await resolveNodeId(request, token, `/${base}`),
-    fileName
-  );
-  await gotoFilesPath(page, request, `/${base}`);
-
-  await submitSearch(page, 'alpha');
-  const row = rowNode(page, nodeId);
-  await expect(row).toBeVisible();
-  await expect(row).toContainText(fileName);
-
-  const highlights = row.getByTestId('search-highlight-range');
-  await expect(highlights).toHaveCount(2);
-  expect(await highlights.allTextContents()).toEqual(['alpha', 'ALPHA']);
-  // Committed color only — no live-term marks exist without typed text.
-  await expect(row.getByTestId('filter-highlight-range')).toHaveCount(0);
-
-  await revealAndActivateChip(page, 0, 'exit', isMobileProject(testInfo));
-});
-
-test('E2E-RETRIEVAL-003: Opening a directory result row navigates, exits results mode, and records exactly one click', async ({
+test('E2E-RETRIEVAL-002: Result rows open — files preview over the mounted zones, directories navigate and exit', async ({
   page,
   request,
 }, testInfo) => {
@@ -591,15 +592,17 @@ test('E2E-RETRIEVAL-003: Opening a directory result row navigates, exits results
   const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
   const clicks = trackSearchClicks(page);
 
-  // Nested DIRECTORY match under sub/deep (+ one file inside) — the row-open
-  // dispatch (FileManager §7): a directory open records the click, navigates
-  // and EXITS results. Desktop reaches it with the browse-parity double click,
-  // mobile with a single tap.
+  // A nested DIRECTORY match (+ one file inside) and a current-folder FILE
+  // match under one query: the row-open dispatch (FileManager §7) sends files
+  // to the preview OVER the still-mounted zones and directories to navigation
+  // with a results-mode exit. Desktop reaches rows with the browse-parity
+  // double click, mobile with a single tap.
   const uniq = String(Date.now());
   const subName = `sub-${uniq}`;
   const deepName = `deep-${uniq}`;
   const folderName = `alpha-inside-${uniq}`;
   const innerName = `alpha-note-${uniq}.txt`;
+  const openName = `alpha-openme-${uniq}.txt`;
   const parentNodeId = await resolveNodeId(request, token, `/${base}`);
   const folderId = await seedNestedFolder(request, token, parentNodeId, [
     subName,
@@ -607,23 +610,35 @@ test('E2E-RETRIEVAL-003: Opening a directory result row navigates, exits results
     folderName,
   ]);
   await seedNamedFile(request, token, folderId, innerName);
+  const openId = await seedNamedFile(request, token, parentNodeId, openName);
   await seedFile(request, token, base, testInfo, 'beta');
   await gotoFilesPath(page, request, `/${base}`);
 
   await submitSearch(page, 'alpha');
   await expect(serverRow(page, folderId)).toBeVisible();
   await expect(serverRow(page, folderId)).toContainText(folderName);
+  await expect(rowNode(page, openId)).toBeVisible();
 
+  // FILE leg: the preview dialog opens OVER the still-mounted results surface
+  // (chip bar + zone header stay), and exactly one /search/click lands.
+  await openRow(page, rowNode(page, openId), isMobile);
+  await expect(page.getByTestId('file-preview-dialog')).toBeVisible();
+  await expect(chipBar(page)).toBeVisible();
+  await expect(zoneHeader(page, 'a')).toBeVisible();
+  await expect
+    .poll(() => clicks().filter((c) => c.body?.node_id === openId).length, { timeout: 10_000 })
+    .toBe(1);
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('file-preview-dialog')).toHaveCount(0);
+
+  // DIRECTORY leg: opening it records the click, navigates and EXITS results.
   await openRow(page, rowNode(page, folderId), isMobile);
-
-  // §3.4 list-entry-click signal: exactly ONE POST /api/search/click for that
-  // node_id (fire-and-forget, absorbed 204) — nothing recorded for other rows.
   await expect
     .poll(() => clicks().filter((c) => c.body?.node_id === folderId).length, { timeout: 10_000 })
     .toBe(1);
-  expect(clicks().filter((c) => c.body?.node_id !== folderId)).toEqual([]);
-
-  // The directory open EXITS results mode and navigates into the location.
+  expect(
+    clicks().filter((c) => c.body?.node_id !== openId && c.body?.node_id !== folderId)
+  ).toEqual([]);
   await expect(chipBar(page)).toHaveCount(0);
   await expect(page).toHaveURL(new RegExp(`/files/node/${folderId}$`));
   await expect(page.getByTestId('breadcrumb')).toBeVisible();
@@ -632,11 +647,12 @@ test('E2E-RETRIEVAL-003: Opening a directory result row navigates, exits results
   ).toBeVisible();
 });
 
-test('E2E-RETRIEVAL-004: Live typing hides no rows, promotes matches, and highlights them without a server call', async ({
+test('E2E-RETRIEVAL-003: Live typing hides no rows, promotes matches, and highlights them without a server call', async ({
   page,
   request,
 }, testInfo) => {
   const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
+  const isMobile = isMobileProject(testInfo);
   const searchPosts = trackSearchPosts(page);
 
   // Four current-folder matches (two carrying `deep`) + one nested `deep`
@@ -701,9 +717,30 @@ test('E2E-RETRIEVAL-004: Live typing hides no rows, promotes matches, and highli
   await expect(page.getByTestId('breadcrumb')).toBeVisible();
   expect(searchPosts()).toBe(1);
   await expect(fileItem(page, `/${base}/${names[0]}`)).toBeVisible();
-});
 
-test('E2E-RETRIEVAL-005: Recent queries persist in sessionStorage across searches and honor the cap and logout clear', async ({
+  // Empty-text submit is a no-op at every channel (folded former case): the
+  // ghost button keeps its enabled state, clicking it fires nothing, Enter
+  // fires nothing, and no results surface ever mounts. The transient
+  // "results + empty text" glyph state is unit-scoped (FloatingSearchBar §2.6).
+  await (isMobile ? searchBox(page).tap() : searchBox(page).click());
+  const button = page.getByTestId('search-action-button');
+  await expect(button).toBeVisible();
+  await expect(button).toBeEnabled();
+  await (isMobile ? button.tap() : button.click());
+  await page.waitForTimeout(500);
+  expect(searchPosts(), 'empty-text button submit never POSTs').toBe(1);
+  await expect(chipBar(page)).toHaveCount(0);
+  await expect(zoneHeader(page, 'a')).toHaveCount(0);
+
+  await searchBox(page).press('Enter');
+  await page.waitForTimeout(500);
+  expect(searchPosts(), 'empty-text Enter never POSTs').toBe(1);
+  await expect(chipBar(page)).toHaveCount(0);
+
+  await blurActive(page);
+  await expect(button).toHaveCount(0);
+});
+test('E2E-RETRIEVAL-004: Recent queries persist in sessionStorage across searches and honor the cap and logout clear', async ({
   page,
   request,
 }, testInfo) => {
@@ -765,7 +802,7 @@ test('E2E-RETRIEVAL-005: Recent queries persist in sessionStorage across searche
   expect(afterLogout).toBeNull();
 });
 
-test('E2E-RETRIEVAL-006: An unmatched query renders the honest no-results line without zone headers', async ({
+test('E2E-RETRIEVAL-005: Zero-result queries render the honest empty state and trashed nodes never surface', async ({
   page,
   request,
 }, testInfo) => {
@@ -773,6 +810,10 @@ test('E2E-RETRIEVAL-006: An unmatched query renders the honest no-results line w
   const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
 
   const betaFile = await seedFile(request, token, base, testInfo, 'beta');
+  // Unique-name file for the trash leg (searchNodesByName hides `deleted_at`
+  // rows; the suite never restores, only purges — restore-free per the plan).
+  const quarzFile = await seedFile(request, token, base, testInfo, 'quarz');
+  const quarzName = quarzFile.path.split('/').pop() as string;
   await gotoFilesPath(page, request, `/${base}`);
 
   // A unique token no node carries — the server still answers 200 with a
@@ -790,47 +831,32 @@ test('E2E-RETRIEVAL-006: An unmatched query renders the honest no-results line w
   );
 
   // ✕ exits results mode and restores the listing.
+  // ✕ exits results mode and restores the listing.
   await pressSearchClose(page, isMobile);
   await expect(chipBar(page)).toHaveCount(0);
   await expect(page.getByTestId('breadcrumb')).toBeVisible();
-  await searchBox(page).fill('');
   await expect(fileItem(page, betaFile.path)).toBeVisible();
-});
 
-test('E2E-RETRIEVAL-007: Trashed files never surface in search results', async ({
-  page,
-  request,
-}, testInfo) => {
-  const isMobile = isMobileProject(testInfo);
-  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
-
-  // Unique-name file (searchNodesByName hides `deleted_at` rows; the suite
-  // never restores, only purges — restore-free assertion per the plan).
-  const file = await seedFile(request, token, base, testInfo, 'quarz');
-  const fileName = file.path.split('/').pop() as string;
-  await gotoFilesPath(page, request, `/${base}`);
-
+  // Trash leg: submit a match, trash it through the canonical batch-delete
+  // channel, reload the folder (the session listing re-reads WITHOUT the
+  // trashed node), then re-submit: zero zone counts ⇒ no headers, the
+  // no-results line only, and no row for the trashed node anywhere.
   await submitSearch(page, 'quarz');
-  await expect(rowNode(page, file.nodeId)).toBeVisible();
-
-  // Canonical trash channel: batch-delete trashes the subtree (DEF-16 P2).
-  await apiTrashFile(request, token, file.nodeId);
-
-  // Reload the folder (the session listing re-reads WITHOUT the trashed node),
-  // then re-submit: zero zone counts ⇒ no zone headers, no-results line only.
+  await expect(rowNode(page, quarzFile.nodeId)).toBeVisible();
+  await apiTrashFile(request, token, quarzFile.nodeId);
   await gotoFilesPath(page, request, `/${base}`);
   await submitSearch(page, 'quarz');
   await expect(zoneHeader(page, 'a')).toHaveCount(0);
   await expect(zoneHeader(page, 'b')).toHaveCount(0);
   await expect(page.getByTestId('search-no-results')).toBeVisible();
-  await expect(rowNode(page, file.nodeId)).toHaveCount(0);
+  await expect(rowNode(page, quarzFile.nodeId)).toHaveCount(0);
 
   await pressSearchClose(page, isMobile);
   // Containment parity: purge the trashed file (no restore in the suite).
-  await purgeTrashedItemByName(request, token, fileName);
+  await purgeTrashedItemByName(request, token, quarzName);
 });
 
-test('E2E-RETRIEVAL-008: The FAB spot morphs to the ghost search button on focus and restores on blur-empty and close', async ({
+test('E2E-RETRIEVAL-006: The FAB spot morphs to the ghost search button on focus and restores on blur-empty and close', async ({
   page,
   request,
 }, testInfo) => {
@@ -875,115 +901,18 @@ test('E2E-RETRIEVAL-008: The FAB spot morphs to the ghost search button on focus
   await expect(searchBox(page)).toHaveValue('');
 });
 
-test('E2E-RETRIEVAL-009: Zone headers carry the folder path and All-results label with snapshot counts, and no node renders in two zones', async ({
-  page,
-  request,
-}, testInfo) => {
-  const isMobile = isMobileProject(testInfo);
-  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
-  const metadataPosts = trackMetadataPosts(page);
-
-  const parentNodeId = await resolveNodeId(request, token, `/${base}`);
-  const localId = await seedNamedFile(request, token, parentNodeId, `mirr-${Date.now()}-a.txt`);
-  const subId = await createFolderAt(request, token, parentNodeId, buildName(testInfo, 'sub'));
-  const nestedId = await seedNamedFile(request, token, subId, `mirr-${Date.now()}-b.txt`);
-  await gotoFilesPath(page, request, `/${base}`);
-
-  await submitSearch(page, 'mirr');
-
-  // Header labels: Zone A = the current folder path + its snapshot count;
-  // Zone B = the All-results label + the FULL name-set count (dedup keeps the
-  // snapshot honest: 2, while only the nested row displays).
-  await expect(zoneHeader(page, 'a')).toContainText(base.split('/').pop() as string);
-  expect(await zoneHeaderCount(page, 'a')).toBe('1');
-  await expect(zoneHeader(page, 'b')).toContainText(/All results|전체 결과/);
-  expect(await zoneHeaderCount(page, 'b')).toBe('2');
-
-  // Dedup: the same node id never appears in both zones — every row exactly
-  // once across the whole container, in zone order.
-  const rowIds = await containerRowNodeIds(page);
-  expect(rowIds.length).toBe(new Set(rowIds).size);
-  expect(rowIds).toEqual([String(localId), String(nestedId)]);
-
-  // Enrichment: the server row renders after POST /api/files/metadata merges
-  // the chunk — the size caption appears (suppressed while unenriched).
-  await expect
-    .poll(() => metadataPosts(), 'rows enrich through the metadata seam')
-    .toBeGreaterThan(0);
-  await expect(serverRow(page, nestedId)).toContainText(/\d+(\.\d+)? (B|KB|MB|GB)/);
-
-  await revealAndActivateChip(page, 0, 'exit', isMobile);
-});
-
-test('E2E-RETRIEVAL-010: Zone collapse state persists across folder navigation and reload under the per-surface key', async ({
+test('E2E-RETRIEVAL-007: Zone chrome — the collapse persists across navigation and the active header stays pinned', async ({
   page,
   request,
 }, testInfo) => {
   const isMobile = isMobileProject(testInfo);
   const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
 
-  const parentNodeId = await resolveNodeId(request, token, `/${base}`);
-  await seedNamedFile(request, token, parentNodeId, `collapx-${Date.now()}-a.txt`);
-  const subId = await createFolderAt(request, token, parentNodeId, buildName(testInfo, 'sub'));
-  const nestedId = await seedNamedFile(request, token, subId, `collapx-${Date.now()}-b.txt`);
-  await gotoFilesPath(page, request, `/${base}`);
-
-  await submitSearch(page, 'collapx');
-  await expect(serverRow(page, nestedId)).toBeVisible();
-
-  // Collapse Zone B via its toggle (Collapse final state: the rows unmount,
-  // the header stays with its honest count) — persisted under the dedicated
-  // localStorage key.
-  await page.getByTestId('search-zone-toggle-b').click();
-  await expect(zoneHeader(page, 'b')).toBeVisible();
-  await expect(serverRow(page, nestedId)).toHaveCount(0);
-  await expect
-    .poll(() => page.evaluate((key) => window.localStorage.getItem(key), ZONES_COLLAPSED_KEY))
-    .toContain('"b":true');
-
-  // Exit, folder-navigate through the tree (mobile: reopen the drawer first —
-  // the toggle itself is replaced mid-results), then re-enter the same search:
-  // the collapsed accordion comes back from localStorage.
-  await pressSearchClose(page, isMobile);
-  if (isMobile) {
-    await page.getByTestId('breadcrumb-folder-tree-toggle').click();
-  }
-  await navigateHomeViaTree(page);
-  await expect(page.getByTestId('breadcrumb')).toBeVisible();
-
-  await gotoFilesPath(page, request, `/${base}`);
-  await submitSearch(page, 'collapx');
-  await expect(zoneHeader(page, 'b')).toBeVisible();
-  await expect(serverRow(page, nestedId)).toHaveCount(0);
-
-  // The key survives a reload of the scratch session too.
-  await page.reload();
-  await gotoFilesPath(page, request, `/${base}`);
-  await submitSearch(page, 'collapx');
-  await expect(zoneHeader(page, 'b')).toBeVisible();
-  await expect(serverRow(page, nestedId)).toHaveCount(0);
-
-  // Re-expand restores the rows and clears the persisted flag.
-  await page.getByTestId('search-zone-toggle-b').click();
-  await expect(serverRow(page, nestedId)).toBeVisible();
-  const stored = await page.evaluate(
-    (key) => window.localStorage.getItem(key),
-    ZONES_COLLAPSED_KEY
-  );
-  expect(JSON.parse(stored as string)).not.toHaveProperty('b', true);
-
-  await revealAndActivateChip(page, 0, 'exit', isMobile);
-});
-
-test('E2E-RETRIEVAL-011: The zone header stays pinned at the scroll top while rows scroll under it', async ({
-  page,
-  request,
-}, testInfo) => {
-  const isMobile = isMobileProject(testInfo);
-  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
-
-  // Seed enough Zone A rows that Zone A alone overflows the viewport, plus a
-  // Zone B tail that keeps the push-up sample reachable at max scroll.
+  // Volume seed: 20 current-folder rows (Zone A alone overflows the viewport)
+  // + a sub folder with 26 rows — the Zone B tail must EXCEED the viewport
+  // height so the push-up sample is reachable at max scroll on the 390x844
+  // mobile viewport too (15 rows sat right at the boundary and flaked) — and
+  // it gives the accordion a nested row to hide.
   const uniq = String(Date.now());
   const parentNodeId = await resolveNodeId(request, token, `/${base}`);
   for (let i = 0; i < 20; i += 1) {
@@ -995,7 +924,8 @@ test('E2E-RETRIEVAL-011: The zone header stays pinned at the scroll top while ro
     );
   }
   const subId = await createFolderAt(request, token, parentNodeId, buildName(testInfo, 'sub'));
-  for (let i = 0; i < 15; i += 1) {
+  const nestedId = await seedNamedFile(request, token, subId, `stickq-z-${uniq}-mark.txt`);
+  for (let i = 0; i < 25; i += 1) {
     await seedNamedFile(
       request,
       token,
@@ -1008,9 +938,10 @@ test('E2E-RETRIEVAL-011: The zone header stays pinned at the scroll top while ro
   await submitSearch(page, 'stickq');
   await expect(zoneHeader(page, 'a')).toBeVisible();
   await expect(zoneHeader(page, 'b')).toBeVisible();
+  await expect(serverRow(page, nestedId)).toBeVisible();
 
-  // Two-point bounding-rect sample inside the single scroll container (no CSS
-  // style/animation assertions): while Zone A rows are still in view the
+  // STICKY (two-point bounding-rect sample inside the single scroll container,
+  // no CSS style/animation assertions): while Zone A rows are still in view the
   // header is pinned at the container top; once the Zone A bottom passes, the
   // header moves UP with its zone (push-up stacking) and Zone B pins.
   const samples = await page.evaluate(() => {
@@ -1056,10 +987,51 @@ test('E2E-RETRIEVAL-011: The zone header stays pinned at the scroll top while ro
     'header B pinned after the stack hand-over'
   ).toBeLessThanOrEqual(2);
 
+  // ACCORDION: collapse Zone B via its toggle (Collapse final state: the rows
+  // unmount, the header stays with its honest count) — persisted under the
+  // dedicated localStorage key.
+  await page.getByTestId('search-zone-toggle-b').click();
+  await expect(zoneHeader(page, 'b')).toBeVisible();
+  await expect(serverRow(page, nestedId)).toHaveCount(0);
+  await expect
+    .poll(() => page.evaluate((key) => window.localStorage.getItem(key), ZONES_COLLAPSED_KEY))
+    .toContain('"b":true');
+
+  // Exit, folder-navigate through the tree (mobile: reopen the drawer first —
+  // the toggle itself is replaced mid-results), then re-enter the same search:
+  // the collapsed accordion comes back from localStorage.
+  await pressSearchClose(page, isMobile);
+  if (isMobile) {
+    await page.getByTestId('breadcrumb-folder-tree-toggle').click();
+  }
+  await navigateHomeViaTree(page);
+  await expect(page.getByTestId('breadcrumb')).toBeVisible();
+
+  await gotoFilesPath(page, request, `/${base}`);
+  await submitSearch(page, 'stickq');
+  await expect(zoneHeader(page, 'b')).toBeVisible();
+  await expect(serverRow(page, nestedId)).toHaveCount(0);
+
+  // The key survives a reload of the scratch session too.
+  await page.reload();
+  await gotoFilesPath(page, request, `/${base}`);
+  await submitSearch(page, 'stickq');
+  await expect(zoneHeader(page, 'b')).toBeVisible();
+  await expect(serverRow(page, nestedId)).toHaveCount(0);
+
+  // Re-expand restores the rows and clears the persisted flag.
+  await page.getByTestId('search-zone-toggle-b').click();
+  await expect(serverRow(page, nestedId)).toBeVisible();
+  const stored = await page.evaluate(
+    (key) => window.localStorage.getItem(key),
+    ZONES_COLLAPSED_KEY
+  );
+  expect(JSON.parse(stored as string)).not.toHaveProperty('b', true);
+
   await revealAndActivateChip(page, 0, 'exit', isMobile);
 });
 
-test('E2E-RETRIEVAL-012: A two-step chained refine intersects results and chip undo restores the earlier snapshot with zero extra calls', async ({
+test('E2E-RETRIEVAL-008: The chip chain refines, reverts to snapshots, and every exit resets the input field', async ({
   page,
   request,
 }, testInfo) => {
@@ -1106,48 +1078,43 @@ test('E2E-RETRIEVAL-012: A two-step chained refine intersects results and chip u
   await page.waitForTimeout(500);
   expect(searchPosts(), 'undo never re-queries the server').toBe(2);
 
-  await searchBox(page).fill('');
-});
-
-test('E2E-RETRIEVAL-013: The single chip reveals Exit and leaving results mode restores the breadcrumb and FAB', async ({
-  page,
-  request,
-}, testInfo) => {
-  const isMobile = isMobileProject(testInfo);
-  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
-
-  const parentNodeId = await resolveNodeId(request, token, `/${base}`);
-  const bravoName = `bravo-${Date.now()}.txt`;
-  await seedNamedFile(request, token, parentNodeId, bravoName);
-  const distName = `dist-${Date.now()}.txt`;
-  await seedNamedFile(request, token, parentNodeId, distName);
-  await gotoFilesPath(page, request, `/${base}`);
-
-  await submitSearch(page, 'bravo');
-  await expect(chips(page)).toHaveCount(1);
-
-  // The single chip reveals `Exit` + close icon (hover on desktop, tap-to-reveal
-  // on mobile); activating it exits results mode entirely.
+  // SINGLE-CHIP EXIT: with the chain back at one step the chip reveals `Exit` +
+  // close icon (hover on desktop, tap-to-reveal on mobile); activating it exits
+  // results mode entirely — the breadcrumb and toolbar return and the input
+  // field is reset (browse starts unfiltered).
   await revealAndActivateChip(page, 0, 'exit', isMobile);
-
   await expect(chipBar(page)).toHaveCount(0);
   await expect(page.getByTestId('breadcrumb')).toBeVisible();
   await expect(page.getByTestId('file-manager-sort')).toBeVisible();
-  // Every results-mode exit resets the input field — browse starts unfiltered.
   await expect(searchBox(page)).toHaveValue('');
-  await expect(fileItem(page, `/${base}/${bravoName}`)).toBeVisible();
-  await expect(fileItem(page, `/${base}/${distName}`)).toBeVisible();
+  await expect(rowNode(page, oneId)).toBeVisible();
+  await expect(rowNode(page, twoId)).toBeVisible();
 
-  // Clearing the filter collapses the bar back to the browse visuals (fill
-  // re-focuses, so the blur is the collapse trigger): the ghost button
-  // unmounts and the FAB owns its slot again.
-  await searchBox(page).fill('');
-  await blurActive(page);
-  await expect(page.getByTestId('search-action-button')).toHaveCount(0);
-  await expect.poll(() => fabOpacity(page), 'FAB owns the slot again').toBe(1);
+  // NAVIGATION EXIT: re-enter results, then folder-navigate through the tree —
+  // mobile opens the drawer in browse first (the chip bar replaces the
+  // breadcrumb expand toggle mid-results; the open drawer survives). The zones
+  // unmount, the breadcrumb returns, the input resets and the sessionStorage
+  // recents survive the transition.
+  if (isMobile) {
+    await page.getByTestId('breadcrumb-folder-tree-toggle').click();
+  }
+  await submitSearch(page, 'alpha');
+  await expect(chipBar(page)).toBeVisible();
+  await expect(zoneHeader(page, 'a')).toBeVisible();
+  await navigateHomeViaTree(page);
+  await expect(chipBar(page)).toHaveCount(0);
+  await expect(zoneHeader(page, 'a')).toHaveCount(0);
+  await expect(page.getByTestId('breadcrumb')).toBeVisible();
+  await expect(searchBox(page)).toHaveValue('');
+  const stored = await page.evaluate(
+    (key) => window.sessionStorage.getItem(key),
+    RECENT_QUERIES_KEY
+  );
+  expect(stored).toBeTruthy();
+  expect((JSON.parse(stored as string) as { query: string }[])[0].query).toBe('alpha');
 });
 
-test('E2E-RETRIEVAL-014: The library-add button adds the FULL snapshot to an existing collection', async ({
+test('E2E-RETRIEVAL-009: The library-add button adds the FULL snapshot to an existing collection', async ({
   page,
   request,
 }, testInfo) => {
@@ -1207,40 +1174,7 @@ test('E2E-RETRIEVAL-014: The library-add button adds the FULL snapshot to an exi
   await revealAndActivateChip(page, 0, 'exit', isMobile);
 });
 
-test('E2E-RETRIEVAL-015: Opening a file result row previews with the zones still mounted and records the click', async ({
-  page,
-  request,
-}, testInfo) => {
-  const isMobile = isMobileProject(testInfo);
-  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
-  const clicks = trackSearchClicks(page);
-
-  const parentNodeId = await resolveNodeId(request, token, `/${base}`);
-  const openName = `openme-${Date.now()}.txt`;
-  const openId = await seedNamedFile(request, token, parentNodeId, openName);
-  await gotoFilesPath(page, request, `/${base}`);
-
-  await submitSearch(page, 'openme');
-  await expect(rowNode(page, openId)).toBeVisible();
-
-  await openRow(page, rowNode(page, openId), isMobile);
-
-  // FILE row: the preview dialog opens OVER the still-mounted results surface
-  // (chip bar + zone header stay), and exactly one /search/click lands.
-  await expect(page.getByTestId('file-preview-dialog')).toBeVisible();
-  await expect(chipBar(page)).toBeVisible();
-  await expect(zoneHeader(page, 'a')).toBeVisible();
-  await expect
-    .poll(() => clicks().filter((c) => c.body?.node_id === openId).length, { timeout: 10_000 })
-    .toBe(1);
-
-  await page.keyboard.press('Escape');
-  await expect(page.getByTestId('file-preview-dialog')).toHaveCount(0);
-
-  await revealAndActivateChip(page, 0, 'exit', isMobile);
-});
-
-test('E2E-RETRIEVAL-016: A read-only server row badges EditOff and disables the write bulk actions when selected', async ({
+test('E2E-RETRIEVAL-010: A read-only server row badges EditOff and disables the write bulk actions when selected', async ({
   page,
   request,
 }, testInfo) => {
@@ -1295,107 +1229,7 @@ test('E2E-RETRIEVAL-016: A read-only server row badges EditOff and disables the 
   await expect(page.getByTestId('bulk-action-move')).toBeHidden();
 });
 
-test('E2E-RETRIEVAL-017: The search submit with empty input does nothing', async ({
-  page,
-  request,
-}, testInfo) => {
-  const isMobile = isMobileProject(testInfo);
-  const { base } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
-  const searchPosts = trackSearchPosts(page);
-  await gotoFilesPath(page, request, `/${base}`);
-
-  // Empty-text submit is a no-op at every channel: the ghost button keeps its
-  // enabled state, clicking it fires nothing, Enter fires nothing, and no
-  // results surface ever mounts (see the 017 scope note in the file header
-  // for why the transient "results + empty text" glyph state is unit-scoped).
-  await (isMobile ? searchBox(page).tap() : searchBox(page).click());
-  const button = page.getByTestId('search-action-button');
-  await expect(button).toBeVisible();
-  await expect(button).toBeEnabled();
-  await (isMobile ? button.tap() : button.click());
-  await page.waitForTimeout(500);
-  expect(searchPosts(), 'empty-text button submit never POSTs').toBe(0);
-  await expect(chipBar(page)).toHaveCount(0);
-  await expect(zoneHeader(page, 'a')).toHaveCount(0);
-
-  await searchBox(page).press('Enter');
-  await page.waitForTimeout(500);
-  expect(searchPosts(), 'empty-text Enter never POSTs').toBe(0);
-  await expect(chipBar(page)).toHaveCount(0);
-
-  await blurActive(page);
-  await expect(button).toHaveCount(0);
-});
-
-test('E2E-RETRIEVAL-018: Sidebar folder navigation exits results mode and keeps the recent list', async ({
-  page,
-  request,
-}, testInfo) => {
-  const isMobile = isMobileProject(testInfo);
-  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
-
-  const parentNodeId = await resolveNodeId(request, token, `/${base}`);
-  await seedNamedFile(request, token, parentNodeId, `navx-${Date.now()}.txt`);
-  await gotoFilesPath(page, request, `/${base}`);
-
-  // Mobile: open the drawer tree BEFORE entering results mode (the chip bar
-  // replaces the breadcrumb expand toggle mid-results; the open drawer itself
-  // survives the transition).
-  if (isMobile) {
-    await page.getByTestId('breadcrumb-folder-tree-toggle').click();
-  }
-
-  await submitSearch(page, 'navx');
-  await expect(chipBar(page)).toBeVisible();
-  await expect(zoneHeader(page, 'a')).toBeVisible();
-
-  // Folder navigation while results mode is active EXITS it (shell §7
-  // exit-on-navigation): the zones unmount, the breadcrumb returns, the input
-  // field resets, and the sessionStorage recents survive the transition.
-  await navigateHomeViaTree(page);
-  await expect(chipBar(page)).toHaveCount(0);
-  await expect(zoneHeader(page, 'a')).toHaveCount(0);
-  await expect(page.getByTestId('breadcrumb')).toBeVisible();
-  await expect(searchBox(page)).toHaveValue('');
-  const stored = await page.evaluate(
-    (key) => window.sessionStorage.getItem(key),
-    RECENT_QUERIES_KEY
-  );
-  expect(stored).toBeTruthy();
-  expect((JSON.parse(stored as string) as { query: string }[])[0].query).toBe('navx');
-
-  await searchBox(page).fill('');
-});
-
-test('E2E-RETRIEVAL-019: An anonymous share-link session cannot submit a server search', async ({
-  page,
-  request,
-}, testInfo) => {
-  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
-  const searchPosts = trackSearchPosts(page);
-
-  const parentNodeId = await resolveNodeId(request, token, `/${base}`);
-  const fileName = `sharex-${Date.now()}.txt`;
-  await seedNamedFile(request, token, parentNodeId, fileName);
-  const link = await createShareLink(request, {
-    bearerToken: token,
-    filePath: `/${base}/${fileName}`,
-  });
-
-  // Anonymous share browsing: the server-wide submit surface is an
-  // authenticated-explorer feature (FloatingSearchBar §2.7) — the bar never
-  // mounts for an anonymous visitor, so Enter/button cannot POST /api/search.
-  // The shared gotoAsAnonymous helper performs the race-free context-level
-  // session reset (see e2e/helpers/auth.ts).
-  await gotoAsAnonymous(page, `/share/${link.token}`);
-  await expect(searchBox(page)).toHaveCount(0);
-  await expect(page.getByTestId('search-action-button')).toHaveCount(0);
-  await page.keyboard.press('Enter');
-  await page.waitForTimeout(500);
-  expect(searchPosts(), 'anonymous share visitors fire zero server searches').toBe(0);
-});
-
-test('E2E-RETRIEVAL-020: View-mode and sort toggles affect both zones and select-all spans zones', async ({
+test('E2E-RETRIEVAL-011: View-mode and sort toggles affect both zones and select-all spans zones', async ({
   page,
   request,
 }, testInfo) => {
@@ -1466,40 +1300,4 @@ test('E2E-RETRIEVAL-020: View-mode and sort toggles affect both zones and select
 
   await clickDeselectAll(page, isMobile);
   await revealAndActivateChip(page, 0, 'exit', isMobile);
-});
-
-test('E2E-RETRIEVAL-021: Browse-mode filtering keeps hiding non-matches and adds the live fragment highlight', async ({
-  page,
-  request,
-}, testInfo) => {
-  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
-
-  // No results session (EXP-011 path mirror): typing without submitting keeps
-  // the browse HIDING filter and adds the yellow live-term mark to the
-  // matched fragment inside each rendered name.
-  const uniq = String(Date.now());
-  const parentNodeId = await resolveNodeId(request, token, `/${base}`);
-  for (const suffix of ['a', 'b', 'c']) {
-    await seedNamedFile(request, token, parentNodeId, `quilt-${uniq}-${suffix}.txt`);
-  }
-  for (const suffix of ['x', 'y']) {
-    await seedNamedFile(request, token, parentNodeId, `zinep-${uniq}-${suffix}.txt`);
-  }
-  await gotoFilesPath(page, request, `/${base}`);
-
-  await searchBox(page).fill('quilt');
-  await page.waitForTimeout(400);
-  const visible = page.locator('[data-testid="explorer-container"] [data-file-path]');
-  await expect(visible).toHaveCount(3);
-  await expect(visible.filter({ hasNotText: /zinep/ })).toHaveCount(3);
-
-  const liveMarks = page.getByTestId('filter-highlight-range');
-  await expect(liveMarks).toHaveCount(3);
-  expect(new Set(await liveMarks.allTextContents())).toEqual(new Set(['quilt']));
-  // Nothing committed exists outside a results session.
-  await expect(page.getByTestId('search-highlight-range')).toHaveCount(0);
-  await expect(chipBar(page)).toHaveCount(0);
-
-  await searchBox(page).fill('');
-  await expect(visible).toHaveCount(5);
 });

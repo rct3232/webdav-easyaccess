@@ -105,6 +105,26 @@ describe('useSearchResults mode machine', () => {
     expect(result.current.mode).toBe('results');
   });
 
+  it('ignores resubmits while a submit is in flight (single-flight)', async () => {
+    const gateway = createGateway({
+      runSearch: jest.fn(() => new Promise(() => {})),
+    });
+    const { result } = renderSearchHook({ gateway });
+
+    act(() => {
+      result.current.submitSearch('movie');
+    });
+    act(() => {
+      result.current.submitSearch('movie again');
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(gateway.runSearch).toHaveBeenCalledTimes(1);
+    expect(result.current.mode).toBe('pending');
+  });
+
   it('submit from browse starts a new chain [term] with an intersect-name snapshot', async () => {
     const { result, gateway } = renderSearchHook();
 

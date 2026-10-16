@@ -163,6 +163,7 @@ export const useSearchResults = ({
 
   const submitSearch = useCallback(
     async (query) => {
+      if (modeRef.current === 'pending') return;
       const trimmed = String(query ?? '').trim();
       if (trimmed.length === 0) return;
       if (trimmed.length > QUERY_MAX_LENGTH) {

@@ -592,6 +592,100 @@ describe('POST /api/files/metadata', () => {
   it.skip('returns 200 with metadata when using X-Share-Token — requires Phase 5 shareLinkStore', async () => {
     // Share link creation requires shareLinkStore migration (Phase 5)
   });
+
+  it('flags own-root nodes with hasReadPermission and hasWritePermission true', async () => {
+    const res = await request(app)
+      .post('/api/files/metadata')
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ nodeIds: [testFileNodeId, homeNodeId] });
+
+    expect(res.status).toBe(200);
+    const fileRow = res.body.find((r) => r.nodeId === testFileNodeId);
+    expect(fileRow).toBeDefined();
+    expect(fileRow.hasReadPermission).toBe(true);
+    expect(fileRow.hasWritePermission).toBe(true);
+
+    const dirRow = res.body.find((r) => r.nodeId === homeNodeId);
+    expect(dirRow).toBeDefined();
+    expect(dirRow.hasReadPermission).toBe(true);
+    expect(dirRow.hasWritePermission).toBe(true);
+  });
+
+  it('flags a path-granted read-only node with hasReadPermission true and hasWritePermission false', async () => {
+    const { user, token } = await createAuthenticatedTestUser({
+      username: `meta-readonly-${Date.now()}`,
+    });
+    await grantTestPermissionByNodeId({
+      userId: user.id,
+      fileNodeId: homeNodeId,
+      permission: 'read',
+    });
+
+    const res = await request(app)
+      .post('/api/files/metadata')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeIds: [testFileNodeId] });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].nodeId).toBe(testFileNodeId);
+    expect(res.body[0].hasReadPermission).toBe(true);
+    expect(res.body[0].hasWritePermission).toBe(false);
+  });
+
+  it('omits nodes the caller cannot read (skip behavior unchanged)', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `meta-noaccess-${Date.now()}`,
+    });
+
+    const res = await request(app)
+      .post('/api/files/metadata')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeIds: [testFileNodeId, homeNodeId] });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it('mixed batch: own row true/true, granted read-only row true/false, unreadable row omitted', async () => {
+    const own = await createUserWithHomeNode({ username: `meta-mixed-${Date.now()}` });
+    await grantHomePermission({
+      userId: own.user.id,
+      homeNodeId: own.homeNodeId,
+      permission: 'write',
+    });
+    const ownFile = await fileNodeService.createFile(own.homeNodeId, 'own.txt');
+
+    const other = await createUserWithHomeNode({ username: `meta-mixed-other-${Date.now()}` });
+    await grantHomePermission({
+      userId: other.user.id,
+      homeNodeId: other.homeNodeId,
+      permission: 'write',
+    });
+    const otherFile = await fileNodeService.createFile(other.homeNodeId, 'other.txt');
+
+    await grantTestPermissionByNodeId({
+      userId: own.user.id,
+      fileNodeId: homeNodeId,
+      permission: 'read',
+    });
+
+    const res = await request(app)
+      .post('/api/files/metadata')
+      .set('Authorization', `Bearer ${own.token}`)
+      .send({ nodeIds: [ownFile.id, testFileNodeId, otherFile.id] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.map((r) => r.nodeId)).toEqual([ownFile.id, testFileNodeId]);
+
+    const ownRow = res.body.find((r) => r.nodeId === ownFile.id);
+    expect(ownRow.hasReadPermission).toBe(true);
+    expect(ownRow.hasWritePermission).toBe(true);
+
+    const sharedRow = res.body.find((r) => r.nodeId === testFileNodeId);
+    expect(sharedRow.hasReadPermission).toBe(true);
+    expect(sharedRow.hasWritePermission).toBe(false);
+  });
 });
 
 describe('POST /api/files/resolve-path', () => {

@@ -1209,3 +1209,11 @@ qualification + provisioning-trigger fixtures) · SETUP.md boot-frozen caveat +
   mirrored wand inside, Add plate left — SAB + zone-B header single-source);
   zone header px removed (row-edge alignment) + inter-zone gap via container grid.
   Gates: client 180/2055, eslint/prettier, docsStatePurity, retrieval dual 42/42.
+- sr4 — `f1824d3` glyph rework (owner visual ruling): plate composite replaced by a
+  single knockout SvgIcon (stroke magnifier/wand cut through the filled cloud via
+  `useId`-scoped SVG mask; no plates; per-line knockout on wand mirror fixed), pending
+  orbit keeps the composite and moves only the overlay group, `submitSearch`
+  single-flight guard kills the lone-glyph flicker; zone headers plain Cloud (B) /
+  unmirrored AutoAwesome (C) with `search-zone-glyph-b/c` seams; specs restated.
+  Gates: targeted 132 (incl. knockout/single-flight), full client 2057, eslint/prettier,
+  docsStatePurity, retrieval dual E2E 42/42.

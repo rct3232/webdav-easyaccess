@@ -2,11 +2,12 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Typography, Box, Avatar, CircularProgress, Tooltip } from '@mui/material';
 import { alpha } from '@mui/material/styles';
-import { MoreVert as MoreVertIcon } from '@mui/icons-material';
+import { MoreVert as MoreVertIcon, EditOff as EditOffIcon } from '@mui/icons-material';
 import { formatFileSize, formatDate } from '../../utils/format';
 import { renderProcessingIcon, getDropTargetStyles } from '../../utils/fileViewUtils';
 import { getFileIcon, getThumbnail } from '../../utils/fileIconUtils';
 import { pixelMiddleTruncate } from '../../utils/stringUtils';
+import HighlightedName from './HighlightedName';
 import MemberStateBadges from './MemberStateBadges';
 
 /**
@@ -52,6 +53,20 @@ const iconContainerStyles = {
   height: 40,
 };
 
+/**
+ * Read-only search-server-row badge (useSearchResults.md §2.3, FileListItem.md
+ * §2.6): plain 16px `EditOff` overlaid on the leading icon column corner —
+ * same overlay geometry family as the MemberStateBadges list variant.
+ */
+const searchReadOnlyBadgeStyles = {
+  position: 'absolute',
+  top: 2,
+  left: 2,
+  zIndex: 1,
+  display: 'flex',
+  gap: 0.5,
+};
+
 const contentStyles = {
   flex: 1,
   minWidth: 0,
@@ -85,6 +100,14 @@ const FileListItem = React.memo(
     // P-4 member-row slots (CollectionsListView §2.5): the member wire carries
     // no size, so the caption is suppressed; files never set the marker.
     const isSizelessMemberRow = file.isCollectionMember === true && file.size == null;
+    // Search-server-row size suppression (useSearchResults.md §2.3,
+    // FileListItem.md §2.6): un-enriched rows carry no size — same no-lie rule
+    // as the member slot; directories keep the folder label.
+    const isSizelessSearchRow =
+      file.isSearchServerRow === true && file.size == null && file.type !== 'directory';
+    const isReadOnlySearchRow =
+      file.isSearchServerRow === true && file.hasWritePermission === false;
+    const hasHighlights = Array.isArray(file.highlights) && file.highlights.length > 0;
     const [containerWidth, setContainerWidth] = React.useState(200);
     const containerRef = React.useRef(null);
 
@@ -120,6 +143,15 @@ const FileListItem = React.memo(
           {/* P-4 member-state badges (§11 follow-up 3): overlay on the leading
               icon column; file rows (fields absent) render nothing here. */}
           <MemberStateBadges file={file} variant="list" />
+          {isReadOnlySearchRow && (
+            <Box
+              sx={searchReadOnlyBadgeStyles}
+              data-testid={`search-readonly-badge-${file.nodeId}`}
+              aria-hidden="true"
+            >
+              <EditOffIcon style={{ fontSize: 16 }} />
+            </Box>
+          )}
         </Box>
         <Box sx={contentStyles} ref={containerRef}>
           {(() => {
@@ -129,7 +161,15 @@ const FileListItem = React.memo(
 
             const typography = (
               <Typography variant="body2" sx={{ overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                {truncatedName}
+                {hasHighlights ? (
+                  <HighlightedName
+                    name={originalName}
+                    display={truncatedName}
+                    highlights={file.highlights}
+                  />
+                ) : (
+                  truncatedName
+                )}
               </Typography>
             );
 
@@ -142,7 +182,7 @@ const FileListItem = React.memo(
             );
           })()}
           <Box sx={metaContainerStyles}>
-            {!isSizelessMemberRow && (
+            {!isSizelessMemberRow && !isSizelessSearchRow && (
               <Typography variant="caption" color="text.secondary">
                 {file.type === 'directory' ? t('actions.folder') : formatFileSize(file.size)}
               </Typography>
@@ -222,7 +262,18 @@ const FileListItem = React.memo(
       prevProps.file.published === nextProps.file.published &&
       prevProps.file.shared_excluded === nextProps.file.shared_excluded &&
       prevProps.file.state === nextProps.file.state &&
-      prevProps.file.liked === nextProps.file.liked
+      prevProps.file.liked === nextProps.file.liked &&
+      // Search-server-row slots (FileListItem.md §2.6): highlight/live-filter
+      // changes, enrichment (size) and permission flips must re-render rows
+      // whose name/path never change (known stale-row bug class, FileManager.js
+      // memo comment). `highlights` rides identity — the adapters re-map rows
+      // with fresh arrays on every change. Absent fields compare
+      // `undefined === undefined` — plain file rows are unaffected.
+      prevProps.file.highlights === nextProps.file.highlights &&
+      prevProps.file.hasWritePermission === nextProps.file.hasWritePermission &&
+      prevProps.file.hasReadPermission === nextProps.file.hasReadPermission &&
+      prevProps.file.isSearchServerRow === nextProps.file.isSearchServerRow &&
+      prevProps.file.size === nextProps.file.size
     );
   }
 );

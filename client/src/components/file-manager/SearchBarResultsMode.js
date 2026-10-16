@@ -19,7 +19,7 @@ import {
   Search as SearchIcon,
 } from '@mui/icons-material';
 
-import { applyHighlightRanges } from '../../utils/searchHighlight';
+import HighlightedName from './HighlightedName';
 
 /**
  * Results-mode header + two-section rendering for server-wide search
@@ -32,33 +32,6 @@ import { applyHighlightRanges } from '../../utils/searchHighlight';
  * section is empty or unavailable. Empty sections render nothing (no header,
  * no "0 results" block); both empty ⇒ a single searchNoResults line + chips.
  */
-
-function HighlightedName({ name, highlights }) {
-  const segments = applyHighlightRanges(name ?? '', highlights ?? []);
-  return (
-    <>
-      {segments.map((segment, index) =>
-        segment.highlighted ? (
-          <Box
-            key={index}
-            component="mark"
-            data-testid="search-highlight-range"
-            sx={{
-              backgroundColor: 'secondary.light',
-              color: 'inherit',
-              borderRadius: 0.5,
-              px: 0.25,
-            }}
-          >
-            {segment.text}
-          </Box>
-        ) : (
-          <React.Fragment key={index}>{segment.text}</React.Fragment>
-        )
-      )}
-    </>
-  );
-}
 
 const SearchBarResultsMode = ({
   query,

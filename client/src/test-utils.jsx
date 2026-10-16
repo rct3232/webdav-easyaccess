@@ -11,12 +11,14 @@ import { AuthProvider } from './contexts/AuthContext';
 import './i18n';
 
 // Mirrors the App.js theme tokens exercised by component tests (keep in sync —
-// M-5 `like` palette + SvgIcon `color="like"` variant contract test: AppTheme.test.js).
+// M-5 `like` + SEARCH REWORK §6 `highlight` palette + SvgIcon `color="like"`
+// variant contract test: AppTheme.test.js).
 const theme = createTheme({
   palette: {
     primary: { main: '#4167ba' },
     secondary: { main: '#52c597' },
     like: { main: '#FF3E55' },
+    highlight: { main: '#F7D154' },
   },
   components: {
     MuiSvgIcon: {

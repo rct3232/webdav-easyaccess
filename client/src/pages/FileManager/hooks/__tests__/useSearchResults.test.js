@@ -161,7 +161,8 @@ describe('useSearchResults sections + visibility rule', () => {
       {
         node_id: 11,
         name: 'Fun-MOVIE-notes.pdf',
-        highlights: [{ start: 4, end: 9 }],
+        // searchHighlight.md §2.2: ranges carry the color `kind`
+        highlights: [{ start: 4, end: 9, kind: 'committed' }],
       },
     ]);
     expect(result.current.semantic).toEqual([
@@ -208,7 +209,12 @@ describe('useSearchResults sections + visibility rule', () => {
     });
 
     expect(result.current.nameMatches).toEqual([
-      { node_id: 12, name: 'movie-night.jpg', highlights: [{ start: 0, end: 5 }] },
+      {
+        node_id: 12,
+        name: 'movie-night.jpg',
+        // searchHighlight.md §2.2: ranges carry the color `kind`
+        highlights: [{ start: 0, end: 5, kind: 'committed' }],
+      },
     ]);
     expect(result.current.counts.total).toBe(2); // server count — honesty rule
   });

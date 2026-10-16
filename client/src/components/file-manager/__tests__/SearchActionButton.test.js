@@ -187,6 +187,34 @@ describe('SearchActionButton knockout composite (§2.6 geometry)', () => {
     expect(screen.getByTestId('search-action-glyph-cloud')).toBeInTheDocument();
   });
 
+  it('pending orbit drives the mask knockout in lockstep with the overlay', () => {
+    renderWithProviders(<SearchActionButton {...baseProps} isPending />);
+    const svg = screen.getByTestId('search-glyph');
+    expect(svg.querySelectorAll('.search-glyph-orbit-anim')).toHaveLength(2);
+    expect(
+      screen.getByTestId('search-action-glyph-orbit').classList.contains('search-glyph-orbit-anim')
+    ).toBe(true);
+    expect(svg.querySelector('mask .search-glyph-orbit-anim')).not.toBeNull();
+  });
+
+  it('non-pending renders a single static knockout group (no orbit class in the mask)', () => {
+    renderWithProviders(<SearchActionButton {...baseProps} />);
+    const svg = screen.getByTestId('search-glyph');
+    expect(svg.querySelectorAll('.search-glyph-orbit-anim')).toHaveLength(0);
+  });
+
+  it('orbit keyframes start at the home 3-oclock point and run counter-clockwise', () => {
+    renderWithProviders(<SearchActionButton {...baseProps} />);
+    const css = Array.from(document.styleSheets)
+      .flatMap((sheet) => Array.from(sheet.cssRules).map((rule) => rule.cssText))
+      .join('\n')
+      .replace(/\s+/g, '');
+    expect(css).toContain('translateX(-4.5px)');
+    expect(css).toContain('rotate(-360deg)');
+    expect(css).toContain('translateX(4.5px)');
+    expect(css).toContain('overflow:visible');
+  });
+
   it('multiple instances get distinct mask ids', () => {
     renderWithProviders(
       <div>

@@ -311,6 +311,15 @@ test.describe('core flow (desktop)', () => {
     await expect(page.locator(`[data-file-path="/${base}/${folderAlpha}"]`)).not.toBeVisible();
     await expect(page.locator(`[data-file-path="/${base}/${folderGamma}"]`)).not.toBeVisible();
 
+    // 6b. The live filter term highlights the matched fragment inside the row
+    // name (yellow live marks; nothing committed exists outside a results
+    // session — browse-highlight contract folded in from the retrieval suite).
+    const betaRow = page.locator(`[data-file-path="/${base}/${folderBeta}"]`);
+    const liveMarks = betaRow.getByTestId('filter-highlight-range');
+    await expect(liveMarks).toHaveCount(1);
+    await expect(liveMarks).toHaveText(/beta/i);
+    await expect(page.getByTestId('search-highlight-range')).toHaveCount(0);
+
     // 7. Click clear button (X icon) to clear search
     const clearButton = page.locator('[aria-label="Close search"]');
     await expect(clearButton).toBeVisible();

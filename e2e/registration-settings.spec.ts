@@ -1,4 +1,4 @@
-import { type Page } from '@playwright/test';
+import { type Page, type TestInfo } from '@playwright/test';
 
 import { ensureApprovedUser, getTestSuffix, setRegistrationEnabled } from './helpers/auth';
 import { ADMIN_STATE, expect, test } from './fixtures/authenticated';
@@ -14,9 +14,24 @@ import { ADMIN_STATE, expect, test } from './fixtures/authenticated';
  */
 test.describe.configure({ mode: 'serial' });
 
-async function openMyPageCategoryDesktop(page: Page, category: 'System settings') {
-  const sidebar = page.locator('.MuiList-root').first();
-  await sidebar.getByRole('button', { name: new RegExp(category) }).click();
+function isMobileProject(testInfo: TestInfo): boolean {
+  return testInfo.project.name.endsWith('-mobile');
+}
+
+/** mypage category navigation — permanent sidebar (desktop) vs drawer (mobile),
+ * the openMyPageCategoryAndVerify idiom of mypage-admin.spec.ts. */
+async function openMyPageCategory(page: Page, isMobile: boolean, category: 'System settings') {
+  if (isMobile) {
+    const menuButton = page.locator('button[aria-label="My page"]');
+    const drawer = page.locator('.MuiDrawer-paper');
+    await menuButton.click();
+    await expect(drawer).toBeVisible();
+    await drawer.getByRole('button', { name: new RegExp(category) }).click();
+    await expect(drawer).not.toBeVisible();
+  } else {
+    const sidebar = page.locator('.MuiList-root').first();
+    await sidebar.getByRole('button', { name: new RegExp(category) }).click();
+  }
   await expect(page.getByRole('heading', { level: 6, name: new RegExp(category) })).toBeVisible();
 }
 
@@ -80,7 +95,7 @@ test.describe('registration setting admin UI (E2E-ADMIN-007)', () => {
     await ensureApprovedUser(request, 'user1', suffix);
 
     await page.goto('/mypage');
-    await openMyPageCategoryDesktop(page, 'System settings');
+    await openMyPageCategory(page, isMobileProject(testInfo), 'System settings');
 
     const registrationSwitch = page.getByRole('switch').first();
     await expect(registrationSwitch).toBeVisible();

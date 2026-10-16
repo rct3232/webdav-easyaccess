@@ -23,6 +23,7 @@ import { buildName, fileItem, flushPrivateWorkspaceCleanups } from './helpers/fi
 import { loginAndOpenUserWorkspace, seedFile } from './helpers/collectionsWorkspace';
 import { getSessionToken, gotoFilesPath, resolveNodeId } from './helpers/resolvePath';
 import { rightClickItem } from './helpers/desktop-interactions';
+import { closeActionSheet, openActionSheet } from './helpers/mobile-interactions';
 import { setCollectionSort } from './helpers/explorer-controls';
 
 /**
@@ -160,33 +161,93 @@ function collectionCard(page: Page, name: string) {
   return page.locator('[data-testid^="collection-card-"]').filter({ hasText: name });
 }
 
+function isMobileProject(testInfo: TestInfo): boolean {
+  return testInfo.project.name.endsWith('-mobile');
+}
+
+/** Platform action surface for a file row: desktop context menu / mobile action
+ * sheet — the sheet carries the SAME action testids (FileActionSheet parity:
+ * collection-add, like-toggle, file-action-*), so downstream testid clicks stay
+ * identical on both platforms. */
+async function openFileActions(page: Page, filePath: string, isMobile: boolean) {
+  if (isMobile) {
+    await openActionSheet(page, filePath);
+  } else {
+    await rightClickItem(page, filePath);
+  }
+}
+
+/** The collections tree lives in the permanent sidebar (desktop) or the drawer
+ * (mobile) — the drawer opens before any tree interaction on mobile. */
+async function openFolderTreeSection(page: Page, isMobile: boolean) {
+  if (isMobile) {
+    await page.getByTestId('breadcrumb-folder-tree-toggle').click();
+  }
+}
+
+/** WebKit mobile: the drawer's sibling overlay can intercept pointer events on
+ * tree rows even while they report visible/stable — the dispatch-retry idiom
+ * of mypage-admin (clickPendingUserCardButton) bypasses hit-testing; React
+ * onClick still fires through the bubbling synthetic event. */
+async function clickTreeItem(page: Page, isMobile: boolean, locator) {
+  if (isMobile) {
+    await locator.evaluate((el) => {
+      el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+  } else {
+    await locator.click();
+  }
+}
+
 async function openCardMenu(page: Page, name: string, action: string): Promise<void> {
   await expect(collectionCard(page, name)).toBeVisible({ timeout: 10_000 });
   await collectionCard(page, name).locator('[data-testid^="card-menu-button-"]').click();
   await page.getByTestId(`card-menu-option-${action}`).click();
 }
 
-/** File-parity open (P-3): double-click the card body (menu button sits top-right). */
-async function openCollectionCard(page: Page, name: string): Promise<void> {
+/** File-parity open (P-3): double-click the card body on desktop; mobile taps
+ * ONCE directly into the members view (the E2E-COLLECTION-015 contract — a
+ * second activation would land inside the members surface). The ⋮ menu button
+ * keeps its own (stopPropagation) click region top-right either way. */
+async function openCollectionCard(page: Page, name: string, isMobile: boolean): Promise<void> {
   const card = collectionCard(page, name);
   await expect(card).toBeVisible({ timeout: 10_000 });
-  // dblclick the tile corner: the media area hosts the click target while the
-  // ⋮ menu button keeps its own (stopPropagation) click region top-right.
-  await card.dblclick({ position: { x: 8, y: 8 } });
+  if (isMobile) {
+    await card.tap({ position: { x: 8, y: 8 } });
+  } else {
+    await card.dblclick({ position: { x: 8, y: 8 } });
+  }
 }
 
 /** File context menu → Add to collection → inline New collection (name + Enter). */
-async function uiCreateCollectionWithFile(page: Page, filePath: string, name: string) {
+async function uiCreateCollectionWithFile(
+  page: Page,
+  filePath: string,
+  name: string,
+  isMobile: boolean
+) {
   trackedCollections.push(name);
-  await rightClickItem(page, filePath);
+  await openFileActions(page, filePath, isMobile);
   await page.getByTestId('collection-add').click();
   await page.getByTestId('new-collection-row').click();
   await page.getByTestId('new-collection-input').fill(name);
   await page.keyboard.press('Enter');
+  if (isMobile) {
+    // The action closes the sheet and the inline-create closes the menu —
+    // force-clear any lingering modal stack before the case proceeds (the
+    // mobile WebKit modal ordering left the sheet backdrop intercepting).
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('file-action-rename')).toBeHidden();
+  }
 }
 
-async function uiAddToCollection(page: Page, filePath: string, collectionName: string) {
-  await rightClickItem(page, filePath);
+async function uiAddToCollection(
+  page: Page,
+  filePath: string,
+  collectionName: string,
+  isMobile: boolean
+) {
+  await openFileActions(page, filePath, isMobile);
   await page.getByTestId('collection-add').click();
   // F1 (2026-10-01): menu rows middle-truncate long names inside the fixed 280px paper —
   // the leading fragment (always ≥ the 12 chars used here for ASCII names) and the final
@@ -272,9 +333,12 @@ test.afterEach(async ({ page, request }) => {
 
 test('E2E-COLLECTION-001: Collections sidebar section expands to the archive node and routes to the collections list view', async ({
   page,
-}) => {
+}, testInfo) => {
   await loginWithCredentials(page, USER_CREDS.username, USER_CREDS.password);
   await page.goto('/files');
+  // The tree lives in the drawer on mobile — open it before the section
+  // assertions (the permanent sidebar hosts it on desktop).
+  await openFolderTreeSection(page, isMobileProject(testInfo));
 
   const section = page.getByTestId('collections-section');
   await expect(section).toBeVisible();
@@ -283,7 +347,11 @@ test('E2E-COLLECTION-001: Collections sidebar section expands to the archive nod
   await page.getByTestId('collections-toggle').click();
   await expect(page.getByTestId('collections-archive-node')).toBeVisible();
 
-  await section.getByText('Collections', { exact: true }).click();
+  await clickTreeItem(
+    page,
+    isMobileProject(testInfo),
+    section.getByText('Collections', { exact: true })
+  );
   await expect(page).toHaveURL(/__collections__/);
   await expect(page.getByTestId('collections-list-view')).toBeVisible();
   await expect(page.getByTestId('collections-list-region')).toBeVisible();
@@ -305,14 +373,14 @@ test('E2E-COLLECTION-002: Add-to-collection submenu creates a collection inline,
   await expect(fileItem(page, fileA.path)).toBeVisible();
 
   const name = buildName(testInfo, 'col');
-  await uiCreateCollectionWithFile(page, fileA.path, name);
+  await uiCreateCollectionWithFile(page, fileA.path, name, isMobileProject(testInfo));
 
   // One undo toast per command (spec §2.3): the create carries the pointer.
   await expect(page.getByText(/Collection created/i)).toBeVisible();
   await expect(page.getByTestId('undo-toast-action')).toBeVisible();
 
   await gotoFilesPath(page, request, `/${base}`);
-  await uiAddToCollection(page, fileB.path, name);
+  await uiAddToCollection(page, fileB.path, name, isMobileProject(testInfo));
   await expect(page.getByText(/Added to collection/i)).toBeVisible();
 
   await page.goto('/files/__collections__');
@@ -328,7 +396,7 @@ test('E2E-COLLECTION-002: Add-to-collection submenu creates a collection inline,
   expect(createdRow?.last_visited_at).toBeTruthy();
   await expect(page.getByTestId(`collection-new-dot-${createdRow?.collection_id}`)).toHaveCount(0);
 
-  await openCollectionCard(page, name);
+  await openCollectionCard(page, name, isMobileProject(testInfo));
   await expect(page.getByTestId('members-list')).toBeVisible();
   await expect(page.locator('[data-testid^="member-row-"]')).toHaveCount(2);
 });
@@ -344,7 +412,7 @@ test('E2E-COLLECTION-003: Re-opening a collection member view reports the digest
   await expect(fileItem(page, fileA.path)).toBeVisible();
 
   const name = buildName(testInfo, 'col');
-  await uiCreateCollectionWithFile(page, fileA.path, name);
+  await uiCreateCollectionWithFile(page, fileA.path, name, isMobileProject(testInfo));
   // The create toast proves the collection exists before the API follow-ups.
   await expect(page.getByTestId('undo-toast-action')).toBeVisible();
   const created = await findCollectionByName(request, token, name);
@@ -353,7 +421,7 @@ test('E2E-COLLECTION-003: Re-opening a collection member view reports the digest
 
   // First visit stores the client-side digest cursor for this collection.
   await page.goto('/files/__collections__');
-  await openCollectionCard(page, name);
+  await openCollectionCard(page, name, isMobileProject(testInfo));
   await expect(page.getByTestId('members-list')).toBeVisible();
   await expect(page.getByTestId('digest-banner')).toHaveCount(0);
 
@@ -364,7 +432,7 @@ test('E2E-COLLECTION-003: Re-opening a collection member view reports the digest
   await addItemsApi(request, token, collectionId, [fileB.nodeId]);
 
   await page.goto('/files/__collections__');
-  await openCollectionCard(page, name);
+  await openCollectionCard(page, name, isMobileProject(testInfo));
   await expect(page.getByTestId('digest-banner')).toContainText(/\+1\s*\/\s*-0/);
   // Admin-operator pivot (PLAN §14): the acting regular user OWNS the whole
   // workspace subtree through the home-root ADMIN closure grant — a member
@@ -482,12 +550,12 @@ test('E2E-COLLECTION-007: Like toggle from the file context menu persists the vi
   await gotoFilesPath(page, request, `/${base}`);
   await expect(fileItem(page, fileA.path)).toBeVisible();
 
-  await rightClickItem(page, fileA.path);
+  await openFileActions(page, fileA.path, isMobileProject(testInfo));
   await expect(page.getByTestId('like-toggle')).toHaveText(/^like$/i);
   await page.getByTestId('like-toggle').click();
 
   // Re-opened menu reflects the flipped state (optimistic + server truth).
-  await rightClickItem(page, fileA.path);
+  await openFileActions(page, fileA.path, isMobileProject(testInfo));
   await expect(page.getByTestId('like-toggle')).toHaveText(/^unlike$/i);
 
   await expect
@@ -512,7 +580,7 @@ test('E2E-COLLECTION-008: Member row menu excludes a file with undo and exposes 
   await addItemsApi(request, token, collectionId, [fileA.nodeId, fileB.nodeId]);
 
   await page.goto('/files/__collections__');
-  await openCollectionCard(page, name);
+  await openCollectionCard(page, name, isMobileProject(testInfo));
   const rowB = page.getByTestId(`member-row-${fileB.nodeId}`);
   await expect(rowB).toBeVisible();
   await expect(page.getByTestId(`member-row-${fileA.nodeId}`)).toBeVisible();
@@ -545,7 +613,7 @@ test('E2E-COLLECTION-008: Member row menu excludes a file with undo and exposes 
     .toBe(true);
 
   await page.goto('/files/__collections__');
-  await openCollectionCard(page, name);
+  await openCollectionCard(page, name, isMobileProject(testInfo));
   await expect(page.getByTestId(`member-row-${fileB.nodeId}`)).toBeVisible();
 });
 
@@ -559,7 +627,17 @@ test('E2E-COLLECTION-009: Storage dashboard renders the collection journal feed 
   await archiveCollectionApi(request, token, collectionId);
 
   await page.goto('/mypage');
-  await page.getByRole('button', { name: /^storage$/i }).click();
+  // MyPage category navigation: permanent sidebar (desktop) vs drawer (mobile)
+  // — the mypage-admin openMyPageCategoryAndVerify idiom.
+  if (isMobileProject(testInfo)) {
+    const drawer = page.locator('.MuiDrawer-paper');
+    await page.locator('button[aria-label="My page"]').click();
+    await expect(drawer).toBeVisible();
+    await drawer.getByRole('button', { name: /^storage$/i }).click();
+    await expect(drawer).not.toBeVisible();
+  } else {
+    await page.getByRole('button', { name: /^storage$/i }).click();
+  }
   await expect(page.getByTestId('collection-dashboard')).toBeVisible();
   await expect(page.getByText(/System changes/i)).toBeVisible();
 
@@ -596,9 +674,9 @@ test('E2E-COLLECTION-010: The toolbar sort button re-sorts the collections list 
   // so ORDER BY name (ASC) and created_at DESC, id DESC give opposite orders.
   const nameA = buildName(testInfo, 'col010-Aaa');
   const nameZ = buildName(testInfo, 'col010-Zzz');
-  await uiCreateCollectionWithFile(page, file.path, nameA);
+  await uiCreateCollectionWithFile(page, file.path, nameA, isMobileProject(testInfo));
   await expect(page.getByText(/Collection created/i)).toBeVisible();
-  await uiCreateCollectionWithFile(page, file.path, nameZ);
+  await uiCreateCollectionWithFile(page, file.path, nameZ, isMobileProject(testInfo));
 
   // Settle wait (flake fix, RCA 2026-10-02): Enter dispatches the async
   // create→addItems chain (`onCreateAndAdd`); a page.goto issued before the
@@ -708,7 +786,7 @@ test('E2E-COLLECTION-011: members render the shared grid by default, the list to
   await addItemsApi(request, token, collectionId, [fileA.nodeId]);
 
   await page.goto('/files/__collections__');
-  await openCollectionCard(page, name);
+  await openCollectionCard(page, name, isMobileProject(testInfo));
   await expect(page.getByTestId('members-list')).toBeVisible();
   const row = page.getByTestId(`member-row-${fileA.nodeId}`);
   await expect(row).toBeVisible();
@@ -734,7 +812,7 @@ test('E2E-COLLECTION-011: members render the shared grid by default, the list to
   // different key and stays untouched by the member dispatch).
   expect(await page.evaluate(() => window.localStorage.getItem('viewMode'))).not.toBe('detail');
   await page.goto('/files/__collections__');
-  await openCollectionCard(page, name);
+  await openCollectionCard(page, name, isMobileProject(testInfo));
   await expect(row.locator('.MuiCard-root')).toHaveCount(0);
 
   // Double-click → preview through the SHARED click machinery (nodeId
@@ -759,7 +837,7 @@ test('E2E-COLLECTION-012: the publish-all banner flips stored members through PU
   await addItemsApi(request, token, collectionId, [fileA.nodeId, fileB.nodeId]);
 
   await page.goto('/files/__collections__');
-  await openCollectionCard(page, name);
+  await openCollectionCard(page, name, isMobileProject(testInfo));
   await expect(page.getByTestId('members-list')).toBeVisible();
 
   await expect(page.getByTestId('publish-pending-banner')).toContainText(/2/);
@@ -813,15 +891,16 @@ test('E2E-COLLECTION-013: the sidebar Likes child row lists liked files through 
   // Like via the file context menu (same entry E2E-007 persists).
   await gotoFilesPath(page, request, `/${base}`);
   await expect(fileItem(page, fileA.path)).toBeVisible();
-  await rightClickItem(page, fileA.path);
+  await openFileActions(page, fileA.path, isMobileProject(testInfo));
   await expect(page.getByTestId('like-toggle')).toHaveText(/^like$/i);
   await page.getByTestId('like-toggle').click();
 
   // Open the Likes row through the SIDEBAR (Collections-section child, P-5
   // owner ruling — not a top-level virtual root).
+  await openFolderTreeSection(page, isMobileProject(testInfo));
   await page.getByTestId('collections-toggle').click();
   await expect(page.getByTestId('collections-liked-node')).toBeVisible();
-  await page.getByTestId('collections-liked-node').click();
+  await clickTreeItem(page, isMobileProject(testInfo), page.getByTestId('collections-liked-node'));
   await expect(page).toHaveURL(/__collections__\/liked/);
   await expect(page.getByTestId('members-list')).toBeVisible();
 
@@ -842,7 +921,7 @@ test('E2E-COLLECTION-013: the sidebar Likes child row lists liked files through 
   // Per-surface isolation: opening the MEMBERS surface keeps its own default
   // (grid) — the likes dispatch never bled into collectionMemberViewMode.
   await page.goto('/files/__collections__');
-  await openCollectionCard(page, collectionName);
+  await openCollectionCard(page, collectionName, isMobileProject(testInfo));
   const memberRow = page.getByTestId(`member-row-${fileA.nodeId}`);
   await expect(memberRow).toBeVisible();
   await expect(memberRow.locator('.MuiCard-root')).toBeVisible();
@@ -854,7 +933,8 @@ test('E2E-COLLECTION-013: the sidebar Likes child row lists liked files through 
 
   // Re-entering Likes via the sidebar row: the LIST mode persisted across the
   // reload (per-surface key, member-parity rows).
-  await page.getByTestId('collections-liked-node').click();
+  await openFolderTreeSection(page, isMobileProject(testInfo));
+  await clickTreeItem(page, isMobileProject(testInfo), page.getByTestId('collections-liked-node'));
   await expect(page.getByTestId('members-list')).toBeVisible();
   await expect(row).toBeVisible();
   await expect(row.locator('.MuiCard-root')).toHaveCount(0);
@@ -877,7 +957,14 @@ test('E2E-COLLECTION-013: the sidebar Likes child row lists liked files through 
       return (body.liked as number[]).includes(fileA.nodeId);
     })
     .toBe(false);
-  await expect(page.getByTestId(`collection-row-${collectionId}`)).toBeVisible();
+  // The sidebar row lives in the drawer on mobile (permanent sidebar on
+  // desktop) — open the drawer and re-expand the section if needed first.
+  await openFolderTreeSection(page, isMobileProject(testInfo));
+  const sidebarRow = page.getByTestId(`collection-row-${collectionId}`);
+  if (isMobileProject(testInfo) && !(await sidebarRow.isVisible())) {
+    await page.getByTestId('collections-toggle').click();
+  }
+  await expect(sidebarRow).toBeVisible();
   await expect
     .poll(async () => {
       const res = await request.get(`/api/collections/${collectionId}/items`, {
@@ -909,7 +996,7 @@ test('E2E-COLLECTION-014: Likes-first/Archive-last tiles navigate, archive view 
   await expect(archiveTile).toBeVisible();
 
   // Breadcrumb (M-9): opening the collection trails Collections › <name> (no Home).
-  await openCollectionCard(page, name);
+  await openCollectionCard(page, name, isMobileProject(testInfo));
   await expect(page.getByTestId('members-list')).toBeVisible();
   const crumb = page.getByTestId('breadcrumb');
   await expect(crumb.getByText('Collections', { exact: true })).toBeVisible();
@@ -946,7 +1033,7 @@ test('E2E-COLLECTION-018: Card menu rename updates the card and the sidebar row,
   await expect(fileItem(page, file.path)).toBeVisible();
 
   const name = buildName(testInfo, 'col018');
-  await uiCreateCollectionWithFile(page, file.path, name);
+  await uiCreateCollectionWithFile(page, file.path, name, isMobileProject(testInfo));
   await expect(page.getByText(/Collection created/i)).toBeVisible();
   const created = await findCollectionByName(request, token, name);
   expect(created).toBeDefined();
@@ -959,6 +1046,34 @@ test('E2E-COLLECTION-018: Card menu rename updates the card and the sidebar row,
   const renameDialog = page.getByRole('dialog');
   await renameDialog.getByTestId('rename-name-input').fill('Q3 reports');
   await renameDialog.getByTestId('rename-submit').click();
+
+  // One journaled command ⇒ one undo toast ("Collection renamed",
+  // collections.undoRenamed). MOBILE asserts the toast and clicks Undo
+  // IMMEDIATELY after the submit — the 8 s toast window cannot survive the
+  // slower mobile card/poll/drawer checks — and then verifies the post-undo
+  // state. Desktop keeps the rename-state checks while the toast is alive.
+  if (isMobileProject(testInfo)) {
+    await expect(page.getByText(/Collection renamed/i)).toBeVisible();
+    await expect(page.getByTestId('undo-toast-action')).toBeVisible();
+    await page.getByTestId('undo-toast-action').click();
+
+    await expect(collectionCard(page, name)).toBeVisible({ timeout: 10_000 });
+    await expect(collectionCard(page, 'Q3 reports')).toHaveCount(0);
+    await expect
+      .poll(async () => Boolean(await findCollectionByName(request, token, name)), {
+        timeout: 15_000,
+      })
+      .toBe(true);
+    // The sidebar row reflects the revert through the collections notifier.
+    await openFolderTreeSection(page, isMobileProject(testInfo));
+    await page.getByTestId('collections-toggle').click();
+    // The mobile tree row middle-truncates the long generated name — assert
+    // the stable leading fragment (the F1 back-length contract idiom).
+    await expect(page.getByTestId(`collection-row-${collectionId}`)).toContainText(
+      name.slice(0, 12)
+    );
+    return;
+  }
 
   // Card shows the new name; PUT /:id with a `name` write sets
   // name_locked=true (routes/collections.md PUT + store §2 renameCollection).
@@ -977,6 +1092,7 @@ test('E2E-COLLECTION-018: Card menu rename updates the card and the sidebar row,
   // SAME page (the tree stays mounted under the collections overlay; the
   // section is collapsed after a reload, expand it first). Same-page also
   // keeps the 8 s undo-toast alive for the click below.
+  await openFolderTreeSection(page, isMobileProject(testInfo));
   await page.getByTestId('collections-toggle').click();
   await expect(page.getByTestId(`collection-row-${collectionId}`)).toContainText('Q3 reports');
 
@@ -1007,7 +1123,7 @@ test('E2E-COLLECTION-019: The properties dialog header toggles the viewer-scoped
 
   // Dialog-scoped like toggle (FilePropertiesDialog §3.3 header IconButton —
   // aria-label Like/Unlike, not menu text).
-  await rightClickItem(page, file.path);
+  await openFileActions(page, file.path, isMobileProject(testInfo));
   await page.getByTestId('file-action-properties').click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
@@ -1026,7 +1142,7 @@ test('E2E-COLLECTION-019: The properties dialog header toggles the viewer-scoped
   // Reopen the dialog: the header toggle reads the flipped (shared) state.
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
-  await rightClickItem(page, file.path);
+  await openFileActions(page, file.path, isMobileProject(testInfo));
   await page.getByTestId('file-action-properties').click();
   await expect(page.getByRole('dialog').getByTestId('like-toggle')).toHaveAttribute(
     'aria-label',
@@ -1036,7 +1152,7 @@ test('E2E-COLLECTION-019: The properties dialog header toggles the viewer-scoped
   // Context-menu row reads the same state (optimistic row merge + notifier):
   // shared like state across surfaces, invariant 9 (viewer-scoped).
   await page.keyboard.press('Escape');
-  await rightClickItem(page, file.path);
+  await openFileActions(page, file.path, isMobileProject(testInfo));
   await expect(page.getByTestId('like-toggle')).toHaveText(/^unlike$/i);
   await page.keyboard.press('Escape');
 });
@@ -1052,9 +1168,14 @@ test('E2E-COLLECTION-020: The sidebar Archive node routes into the tile-free arc
 
   // Sidebar routing (CLICK, not goto): expand the section, hit the Archive
   // node — FolderTree handleArchiveClick → /files/__collections__/__archive__.
+  await openFolderTreeSection(page, isMobileProject(testInfo));
   await page.getByTestId('collections-toggle').click();
   await expect(page.getByTestId('collections-archive-node')).toBeVisible();
-  await page.getByTestId('collections-archive-node').click();
+  await clickTreeItem(
+    page,
+    isMobileProject(testInfo),
+    page.getByTestId('collections-archive-node')
+  );
   await expect(page).toHaveURL(/\/files\/__collections__\/__archive__$/);
 
   // Breadcrumb per locale (desktop runs the en bundle — same anchors as 014).
@@ -1075,4 +1196,134 @@ test('E2E-COLLECTION-020: The sidebar Archive node routes into the tile-free arc
   await expect(tiles).toHaveCount(2);
   await expect(tiles.first()).toHaveAttribute('data-testid', 'collection-tile-liked');
   await expect(tiles.last()).toHaveAttribute('data-testid', 'collection-tile-archive');
+});
+
+// -- Collections MOBILE-ONLY interplay (the former standalone twin
+// collections.mobile.spec.ts, absorbed into this dual-platform file at the
+// format convergence): these cases exercise surfaces that exist ONLY on the
+// mobile form factor (single-tap card open, the mobile detail-view
+// restriction, the FileActionSheet like surface), so they skip on the desktop
+// project with the reason-carrying skip idiom of E2E-BULK-006.
+
+async function setupCollectionWithMember(
+  page: Page,
+  request: APIRequestContext,
+  testInfo: TestInfo,
+  tag: string
+) {
+  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
+  const file = await seedFile(request, token, base, testInfo, tag);
+  const name = buildName(testInfo, tag);
+  const collectionId = await createCollectionApi(request, token, name);
+  await addItemsApi(request, token, collectionId, [file.nodeId]);
+  return { base, token, file, name, collectionId };
+}
+
+test('E2E-COLLECTION-015: mobile TAP opens a collection card directly into the members view (no double-tap) and the Collections crumb chip returns to the list', async ({
+  page,
+  request,
+}, testInfo) => {
+  test.skip(!isMobileProject(testInfo), 'E2E-COLLECTION-015 is mobile-only');
+  const { file, collectionId, name } = await setupCollectionWithMember(
+    page,
+    request,
+    testInfo,
+    'col015'
+  );
+
+  await page.goto('/files/__collections__');
+  const card = page.locator('[data-testid^="collection-card-"]').filter({ hasText: name });
+  await expect(card).toBeVisible({ timeout: 15_000 });
+
+  // Mobile click resolution (CollectionsListView §2.4 + spec "Mobile: tap
+  // opens directly"): ONE tap navigates — a second click would land INSIDE
+  // the members surface, so any dblclick-era behavior would break this.
+  await card.click();
+  await expect(page.getByTestId('members-list')).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/files/__collections__/collection/${collectionId}$`));
+  await expect(page.getByTestId(`member-row-${file.nodeId}`)).toBeVisible();
+
+  // Back to the collections list via the breadcrumb parent chip (M-9 trail:
+  // Collections › <name> — the chip is the mobile-side "back to sidebar").
+  const crumb = page.getByTestId('breadcrumb');
+  await expect(crumb.getByText('Collections', { exact: true })).toBeVisible();
+  await crumb.getByText('Collections', { exact: true }).click();
+  await expect(page.getByTestId('collections-list-view')).toBeVisible();
+  await expect(card).toBeVisible();
+});
+
+test('E2E-COLLECTION-016: members surface on mobile keeps the GRID default, hides the detail toggle and forces LIST when the persisted member key is detail (mobile restriction, unchanged per useExplorerSession.md)', async ({
+  page,
+  request,
+}, testInfo) => {
+  test.skip(!isMobileProject(testInfo), 'E2E-COLLECTION-016 is mobile-only');
+  const { file, name } = await setupCollectionWithMember(page, request, testInfo, 'col016');
+
+  await page.goto('/files/__collections__');
+  const card = page.locator('[data-testid^="collection-card-"]').filter({ hasText: name });
+  await expect(card).toBeVisible({ timeout: 15_000 });
+  await card.click();
+  await expect(page.getByTestId('members-list')).toBeVisible();
+
+  // The spec does NOT force grid→list on mobile: the P-4 default (grid)
+  // renders through FileGrid on mobile exactly as on desktop — a card shell
+  // exists inside the member row.
+  const row = page.getByTestId(`member-row-${file.nodeId}`);
+  await expect(row).toBeVisible();
+  await expect(row.locator('.MuiCard-root')).toBeVisible();
+
+  // Toolbar (FileManagerControls §2 "isMobile: no detail view"): list + grid
+  // toggles stay, the detail toggle is NOT rendered on mobile.
+  await expect(page.getByTestId('view-mode-list')).toBeVisible();
+  await expect(page.getByTestId('view-mode-grid')).toBeVisible();
+  await expect(page.getByTestId('view-mode-detail')).toHaveCount(0);
+
+  // The mobile detail→list restriction applies to the member key too
+  // (useExplorerSession.md): seed the persisted key as `detail`, reload the
+  // member route — the session hook falls back to LIST and persists the
+  // correction (FileList rows, no card shell).
+  await page.evaluate(() => window.localStorage.setItem('collectionMemberViewMode', 'detail'));
+  await page.reload();
+  await expect(page.getByTestId('members-list')).toBeVisible();
+  await expect(page.getByTestId(`member-row-${file.nodeId}`)).toBeVisible();
+  await expect(page.locator(`[data-testid="member-row-${file.nodeId}"] .MuiCard-root`)).toHaveCount(
+    0
+  );
+  await expect
+    .poll(() => page.evaluate(() => window.localStorage.getItem('collectionMemberViewMode')))
+    .toBe('list');
+});
+
+test('E2E-COLLECTION-017: file-side like via the mobile FileActionSheet flips optimistically and persists viewer-scoped (desktop 007 bottom-sheet parity)', async ({
+  page,
+  request,
+}, testInfo) => {
+  test.skip(!isMobileProject(testInfo), 'E2E-COLLECTION-017 is mobile-only');
+  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
+  const file = await seedFile(request, token, base, testInfo, 'col017');
+  await gotoFilesPath(page, request, `/${base}`);
+  await expect(page.locator(`[data-file-path="${file.path}"]`)).toBeVisible({ timeout: 15_000 });
+
+  // The mobile file action surface IS the bottom sheet (helpers seam parity
+  // with core-flow.mobile): ⋮ on the row opens FileActionSheet.
+  await openActionSheet(page, file.path);
+  await expect(page.getByTestId('like-toggle')).toHaveText(/^like$/i);
+  await page.getByTestId('like-toggle').click();
+
+  // Sheet closes on the action; a REOPEN shows the flipped label straight
+  // away — the optimistic client state (fileLikesRepository explicit set,
+  // fileLikes.md §2.4), before any list refresh.
+  await expect(page.getByTestId('file-action-rename')).toBeHidden();
+  await openActionSheet(page, file.path);
+  await expect(page.getByTestId('like-toggle')).toHaveText(/^unlike$/i);
+  await closeActionSheet(page);
+
+  // Server truth converges: the viewer-scoped like lists the node.
+  await expect
+    .poll(async () => {
+      const res = await request.get('/api/file-likes', { headers: auth(token) });
+      const body = await res.json();
+      return (body.liked as number[]).includes(file.nodeId);
+    })
+    .toBe(true);
 });

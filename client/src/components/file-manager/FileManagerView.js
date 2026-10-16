@@ -1390,6 +1390,20 @@ const FileManagerView = ({
             isTrashView ? undefined : isShareLinkMode ? undefined : handleActionSheetPreview
           }
           onToggleLike={likeToggleHandler}
+          onAddToCollection={
+            isShareLinkMode || isTrashView || !handleOpenAddToCollection
+              ? undefined
+              : (file) => {
+                  // The sheet closes before invoking (handleAction); the
+                  // shell-owned AddToCollectionMenu opens viewport-centered —
+                  // the mobile analogue of the context-menu-anchored desktop
+                  // flow (FileManager.md §7 host wiring).
+                  handleOpenAddToCollection(file, {
+                    mouseX: Math.max(16, window.innerWidth / 2 - 140),
+                    mouseY: Math.max(16, window.innerHeight / 2 - 120),
+                  });
+                }
+          }
           onProperties={
             isShareLinkMode
               ? undefined

@@ -46,7 +46,7 @@ const PORT_BASES = {
   scratchMigration: 5011,
   scratchTrashAdmin: 5012,
   scratchCollections: 5013,
-  scratchCollectionsMobile: 5014,
+  scratchCollectionsMobile: 5014, // reserved — former standalone mobile-twin slot (twin retired; slot kept to avoid band shifts)
   scratchRetrieval: 5015,
   webdav: 8090,
   pg: 5433,

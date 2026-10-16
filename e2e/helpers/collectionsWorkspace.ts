@@ -14,7 +14,7 @@ import type { ScratchUserCreds } from './scratchUser';
 
 /**
  * Shared workspace scaffolding for the hermetic collections suites
- * (`collections.spec.ts` desktop, `collections.mobile.spec.ts`). Hoisted from
+ * (`collections.spec.ts`, now the single dual-platform file). Hoisted from
  * the desktop spec (P0 closeout item 2) so the mobile twin provisions the
  * IDENTICAL regular-user world without duplicating the mechanics.
  */

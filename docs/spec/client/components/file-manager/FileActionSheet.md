@@ -89,7 +89,7 @@ Checklist for unit test writing:
 
 Mobile mirror of `FileContextMenu.md` §3 — same entry set, same phase, long-press/More-sheet surface (docs/features/collections-platform.md §3.2/§3.3; `AddToCollectionMenu.md`, `MemberRowControls.md`).
 
-- **New rows:** `Add to collection ▸` (optional callback `onAddToCollection(file)` → in-sheet `AddToCollectionMenu` submenu) and `Like` toggle (optional callback `onToggleLike(file)`, state from row data `file.liked` — viewer-scoped only). Rows follow the existing "callback provided ⇒ row renders" gating (§2.6); like does not sit above the delete divider.
+- **New rows:** `Add to collection` (optional callback `onAddToCollection(file)` — the sheet closes and the SHELL-OWNED `AddToCollectionMenu` opens viewport-centered, the mobile analogue of the context-menu-anchored desktop flow) and `Like` toggle (optional callback `onToggleLike(file)`, state from row data `file.liked` — viewer-scoped only). Rows follow the existing "callback provided ⇒ row renders" gating (§2.6); like does not sit above the delete divider.
 - **Member-list variant:** opened on a collection MEMBER row, the sheet renders exactly the `MemberRowControls.md` §2.3 set (exclude / publish / download / `Reveal original location` / properties / like); **move/copy/rename/delete rows are absent by rule** (collection is a view, not a workspace), enforced by the host withholding the callbacks — same snapshot invariant as desktop.
 - i18n (appends §2.5): `fileManager.addToCollection`, `fileManager.memberLike`/`fileManager.memberUnlike`.
 - E2E selector contract: `data-testid="collection-add"` / `data-testid="like-toggle"` identical to the desktop context menu.

@@ -1,5 +1,4 @@
 import { ADMIN_STATE, expect, test } from './fixtures/authenticated';
-import { openItemActions } from './helpers/explorer';
 import {
   buildName,
   createFolderViaUi,
@@ -8,7 +7,6 @@ import {
   openPrivateWorkspace,
   uploadFileViaUi,
 } from './helpers/files';
-import { switchViewMode, setSortMode } from './helpers/explorer-controls';
 import {
   doubleClickItem,
   ctrlClickItem,
@@ -16,7 +14,7 @@ import {
   clickEmptyArea,
   rightClickItem,
 } from './helpers/desktop-interactions';
-import { getSessionToken, gotoFilesPath, resolveNodeId } from './helpers/resolvePath';
+import { gotoFilesPath, resolveNodeId } from './helpers/resolvePath';
 
 async function createTestFolder(page: any, folderName: string) {
   await createFolderViaUi(page, folderName);
@@ -195,142 +193,6 @@ test.describe('core flow (desktop)', () => {
     await expect(page.locator('[aria-selected="true"]')).toHaveCount(0);
   });
 
-  test('E2E-EXP-009: View mode switch changes visible layout', async ({
-    page,
-    request,
-  }, testInfo) => {
-    // 1. Open the per-test workspace (logs in as admin and enters its base folder)
-    const base = await openPrivateWorkspace(page, request, testInfo);
-
-    // 2. Create a test folder inside the base folder
-    const folderName = buildName(testInfo, 'view-mode-folder');
-    await createTestFolder(page, folderName);
-
-    // 3. Reload the base folder listing
-    await gotoFilesPath(page, request, `/${base}`);
-    await expect(page.getByTestId('file-actions-fab')).toBeVisible();
-
-    // 4. Assert current layout (default is list) - check for folder item
-    await expect(page.locator(`[data-file-path="/${base}/${folderName}"]`)).toBeVisible();
-
-    // 5. Switch to grid mode
-    await switchViewMode(page, 'grid');
-
-    // 6. Assert grid layout is visible (Box with data-file-path containing MuiCard)
-    await expect(
-      page.locator(`[data-file-path="/${base}/${folderName}"] .MuiCard-root`)
-    ).toBeVisible();
-
-    // 7. Switch to detail mode
-    await switchViewMode(page, 'detail');
-
-    // 8. Assert detail layout is visible (table row with data-file-path)
-    await expect(
-      page.locator(`table.MuiTable-root tbody tr[data-file-path="/${base}/${folderName}"]`)
-    ).toBeVisible();
-
-    // 9. Switch back to list mode
-    await switchViewMode(page, 'list');
-
-    // 10. Assert list layout is visible again
-    await expect(page.locator(`[data-file-path="/${base}/${folderName}"]`)).toBeVisible();
-  });
-
-  test('E2E-EXP-010: Sort mode changes displayed order', async ({ page, request }, testInfo) => {
-    // 1. Open the per-test workspace (logs in as admin and enters its base folder)
-    const base = await openPrivateWorkspace(page, request, testInfo);
-
-    // 2. Create multiple test folders inside the base folder
-    const folder1 = buildName(testInfo, 'folder-aaa');
-    const folder2 = buildName(testInfo, 'folder-zzz');
-    const folder3 = buildName(testInfo, 'folder-mmm');
-
-    await createTestFolder(page, folder1);
-    await createTestFolder(page, folder2);
-    await createTestFolder(page, folder3);
-
-    // 3. Reload the base folder listing
-    await gotoFilesPath(page, request, `/${base}`);
-    await expect(page.getByTestId('file-actions-fab')).toBeVisible();
-
-    // 4. Get initial item order (name-asc by default)
-    const initialItems = await page.locator('[data-file-path]').allTextContents();
-
-    // 5. Set sort mode to name-desc
-    await setSortMode(page, 'name-desc');
-
-    // 6. Get sorted item order
-    const sortedItemsDesc = await page.locator('[data-file-path]').allTextContents();
-
-    // 7. Assert order changed (zzz should come before aaa)
-    const zzzIndex = sortedItemsDesc.findIndex((item) => item.includes('folder-zzz'));
-    const aaaIndex = sortedItemsDesc.findIndex((item) => item.includes('folder-aaa'));
-    expect(zzzIndex).toBeLessThan(aaaIndex);
-
-    // 8. Set sort mode to name-asc
-    await setSortMode(page, 'name-asc');
-
-    // 9. Get sorted item order
-    const sortedItemsAsc = await page.locator('[data-file-path]').allTextContents();
-
-    // 10. Assert order changed back (aaa should come before zzz)
-    const aaaIndexAsc = sortedItemsAsc.findIndex((item) => item.includes('folder-aaa'));
-    const zzzIndexAsc = sortedItemsAsc.findIndex((item) => item.includes('folder-zzz'));
-    expect(aaaIndexAsc).toBeLessThan(zzzIndexAsc);
-  });
-
-  test('E2E-EXP-011: Search filters current listing', async ({ page, request }, testInfo) => {
-    // 1. Open the per-test workspace (logs in as admin and enters its base folder)
-    const base = await openPrivateWorkspace(page, request, testInfo);
-
-    // 2. Create 3 test folders with distinct names inside the base folder
-    const folderAlpha = buildName(testInfo, 'alpha');
-    const folderBeta = buildName(testInfo, 'beta');
-    const folderGamma = buildName(testInfo, 'gamma');
-
-    await createTestFolder(page, folderAlpha);
-    await createTestFolder(page, folderBeta);
-    await createTestFolder(page, folderGamma);
-
-    // 3. Reload the base folder listing
-    await gotoFilesPath(page, request, `/${base}`);
-    await expect(page.getByTestId('file-actions-fab')).toBeVisible();
-
-    // 4. Verify all 3 folders are visible
-    await expect(page.locator(`[data-file-path="/${base}/${folderAlpha}"]`)).toBeVisible();
-    await expect(page.locator(`[data-file-path="/${base}/${folderBeta}"]`)).toBeVisible();
-    await expect(page.locator(`[data-file-path="/${base}/${folderGamma}"]`)).toBeVisible();
-
-    // 5. Fill searchbox with "beta"
-    const searchbox = page.getByRole('searchbox');
-    await expect(searchbox).toBeVisible();
-    await searchbox.fill('beta');
-
-    // 6. Assert only beta folder visible (search filters results)
-    await expect(page.locator(`[data-file-path="/${base}/${folderBeta}"]`)).toBeVisible();
-    await expect(page.locator(`[data-file-path="/${base}/${folderAlpha}"]`)).not.toBeVisible();
-    await expect(page.locator(`[data-file-path="/${base}/${folderGamma}"]`)).not.toBeVisible();
-
-    // 6b. The live filter term highlights the matched fragment inside the row
-    // name (yellow live marks; nothing committed exists outside a results
-    // session — browse-highlight contract folded in from the retrieval suite).
-    const betaRow = page.locator(`[data-file-path="/${base}/${folderBeta}"]`);
-    const liveMarks = betaRow.getByTestId('filter-highlight-range');
-    await expect(liveMarks).toHaveCount(1);
-    await expect(liveMarks).toHaveText(/beta/i);
-    await expect(page.getByTestId('search-highlight-range')).toHaveCount(0);
-
-    // 7. Click clear button (X icon) to clear search
-    const clearButton = page.locator('[aria-label="Close search"]');
-    await expect(clearButton).toBeVisible();
-    await clearButton.click();
-
-    // 8. Assert all folders visible again
-    await expect(page.locator(`[data-file-path="/${base}/${folderAlpha}"]`)).toBeVisible();
-    await expect(page.locator(`[data-file-path="/${base}/${folderBeta}"]`)).toBeVisible();
-    await expect(page.locator(`[data-file-path="/${base}/${folderGamma}"]`)).toBeVisible();
-  });
-
   test('E2E-DESKTOP-005: Context menu opens per-item actions', async ({
     page,
     request,
@@ -385,84 +247,5 @@ test.describe('core flow (desktop)', () => {
     const downloadBtn = page.getByTestId('bulk-action-download');
     await expect(downloadBtn).toBeVisible();
     await expect(downloadBtn).toBeEnabled();
-  });
-
-  test('E2E-OVERLAY-008: Approved user enters __recent__ and sees recent entries', async ({
-    page,
-    request,
-  }, testInfo) => {
-    // 1. Open the per-test workspace (logs in as admin and enters its base folder)
-    const base = await openPrivateWorkspace(page, request, testInfo);
-
-    // 2. Setup: Create a test file inside the base folder to generate a recent entry
-    const fileName = buildName(testInfo, 'recent-test-file') + '.txt';
-    await createTestFile(page, fileName);
-
-    // 2b. Open the file (double-click preview) so it is tracked as recent:
-    // recent tracking fires on file open/preview, not on creation or listing.
-    await doubleClickItem(page, `/${base}/${fileName}`);
-
-    // 3. Navigate to the file's parent directory to track it as recent
-    await gotoFilesPath(page, request, `/${base}`);
-    await expect(page.getByTestId('file-actions-fab')).toBeVisible();
-
-    // 4. Navigate directly to /files/__recent__ via URL
-    // This triggers the __recent__ view which loads recent files from the API
-    await page.goto('/files/__recent__');
-    await expect(page).toHaveURL(/\/files\/__recent__(?:\/.*)?$/);
-
-    // 5. Assertion: breadcrumb shows "Recent" label
-    const breadcrumbChips = page.locator('.MuiChip-root');
-    await expect(breadcrumbChips.first()).toContainText(/Recent/i);
-
-    // 6. Assertion: the folder tree shows the Recent section in expanded/active state
-    const folderTree = page.getByTestId('folder-tree');
-    await expect(folderTree).toBeVisible({ timeout: 20_000 });
-    const recentTreeButton = folderTree.getByRole('button', { name: /Recent/i }).first();
-    await expect(recentTreeButton).toBeVisible();
-
-    // 7. Assertion: a recent file entry is visible in the listing
-    // The opened file appears in the recent files list. Recent entries are
-    // keyed by nodeId and render `data-file-path` from display_path; wait for
-    // the recent list to load (it is fetched after navigation).
-    await expect(fileItem(page, `/${base}/${fileName}`)).toBeVisible({ timeout: 20_000 });
-  });
-
-  test('E2E-OVERLAY-010: Stale recent entry is removed after its file is deleted', async ({
-    page,
-    request,
-  }, testInfo) => {
-    // 1. Open the per-test workspace (logs in as admin and enters its base folder)
-    const base = await openPrivateWorkspace(page, request, testInfo);
-
-    // 2. Setup: create a file inside the base folder and open it (preview) so it is
-    // tracked as recent.
-    const fileName = buildName(testInfo, 'recent-stale-file') + '.txt';
-    await createTestFile(page, fileName);
-    await doubleClickItem(page, `/${base}/${fileName}`);
-
-    const bearerToken = await getSessionToken(page);
-    const nodeId = await resolveNodeId(request, bearerToken, `/${base}/${fileName}`);
-
-    // 3. Precondition: the recent entry is present.
-    await page.goto('/files/__recent__');
-    await expect(page).toHaveURL(/\/files\/__recent__(?:\/.*)?$/);
-    await expect(fileItem(page, `/${base}/${fileName}`)).toBeVisible({ timeout: 20_000 });
-
-    // 4. Make the entry stale: delete the underlying file.
-    await gotoFilesPath(page, request, `/${base}`);
-    await expect(page.getByTestId('file-actions-fab')).toBeVisible();
-    await openItemActions(page, `/${base}/${fileName}`);
-    await page.getByTestId('file-action-delete').click();
-    const confirmDialog = page.getByRole('dialog');
-    await expect(confirmDialog.getByTestId('confirm-dialog-confirm')).toBeVisible();
-    await confirmDialog.getByTestId('confirm-dialog-confirm').click();
-    await expect(fileItem(page, `/${base}/${fileName}`)).toHaveCount(0);
-
-    // 5. Absence after recovery: the stale entry no longer appears in `__recent__`.
-    await page.goto('/files/__recent__');
-    await expect(page).toHaveURL(/\/files\/__recent__(?:\/.*)?$/);
-    await expect(fileItem(page, `/${base}/${fileName}`)).toHaveCount(0, { timeout: 20_000 });
-    await expect(page.locator(`[data-file-node-id="${nodeId}"]`)).toHaveCount(0);
   });
 });

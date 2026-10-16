@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import http from 'node:http';
 
-import { expect, test } from '@playwright/test';
+import { expect, test, type TestInfo } from '@playwright/test';
 
 import { TEST_FILES } from './fixtures/test-data';
 import { e2ePorts, webdavBase } from './helpers/ports';
@@ -26,9 +26,16 @@ import {
 } from './helpers/files';
 import { deleteItemViaUi } from './helpers/trash';
 
+function isMobileProject(testInfo: TestInfo): boolean {
+  return testInfo.project.name.endsWith('-mobile');
+}
+
 /**
  * E2E-TRASH-007 — the GLOBAL destructive trash case ("Empty trash" purges
- * every trashed item for ALL users).
+ * every trashed item for ALL users). Dual-platform (format convergence): the
+ * mobile project re-boots the same :5012 scratch after the desktop leg (the
+ * whole world is per-boot fresh), so the global purge only ever affects its
+ * own isolated instance.
  *
  * Shared-pool ownership is NOT sufficient for this case: the worker pool is
  * global and `fullyParallel` interleaves tests across spec files, so while
@@ -133,8 +140,8 @@ test('E2E-TRASH-007: Empty trash purges all visible trashed items', async ({
   });
   await expect(fileItem(page, filePath)).toBeVisible();
 
-  // Trash via the UI desktop seam (this project is desktop-only).
-  await deleteItemViaUi(page, false, filePath);
+  // Trash via the platform UI seam (desktop context menu / mobile action sheet).
+  await deleteItemViaUi(page, isMobileProject(testInfo), filePath);
   await expect(fileItem(page, filePath)).toHaveCount(0);
 
   await page.goto('/files/__trash__');

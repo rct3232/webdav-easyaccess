@@ -24,9 +24,7 @@ const isQuiet = process.env.E2E_QUIET === '1';
 const sharedCoreSpec =
   'auth|share-public|core-flow\\.shared|mypage-user|share-internal|trash|versions';
 
-const desktopSpecMatch = new RegExp(
-  `(?:${sharedCoreSpec}|registration-settings|core-flow\\.desktop)\\.spec\\.ts$`
-);
+const desktopSpecMatch = new RegExp(`(?:${sharedCoreSpec}|core-flow\\.desktop)\\.spec\\.ts$`);
 const mobileSpecMatch = new RegExp(`(?:${sharedCoreSpec}|core-flow\\.mobile)\\.spec\\.ts$`);
 const adminSpecMatch = /mypage-admin\.spec\.ts$/;
 
@@ -104,15 +102,17 @@ const collectionsSpecs: HermeticEntry[] = [
     baseURL: `http://localhost:${e2ePorts.scratchCollections}`,
   },
   {
-    // P0 collections mobile leg (E2E-COLLECTION-015..017, P0 closeout):
-    // boots its own scratch server (:5014) — a distinct port slot means NO
-    // self-overlap with the desktop leg, so it needs no `dependencies`
-    // link (standalone sibling, hermetic-dechain rule).
+    // Collections mobile leg (format convergence): the SAME dual-platform
+    // file under the mobile project — it shares the ONE :5013 scratch slot
+    // with the desktop sibling, so the pushHermetic rule wires
+    // `dependencies: [collections-desktop]` (retrieval/admin-config shape).
+    // The former standalone twin (collections.mobile.spec.ts on :5014) is
+    // retired; its mobile-only interplay cases live in the shared file as
+    // reason-carrying desktop skips.
     name: 'collections-mobile',
-    spec: /collections\.mobile\.spec\.ts$/,
+    spec: /collections\.spec\.ts$/,
     use: mobileUse,
-    baseURL: `http://localhost:${e2ePorts.scratchCollectionsMobile}`,
-    standalone: true,
+    baseURL: `http://localhost:${e2ePorts.scratchCollections}`,
   },
 ];
 
@@ -160,7 +160,24 @@ if (backendMode === 'webdav') {
     projects.push(
       { name: `${backendMode}-admin-desktop`, testMatch: adminSpecMatch, use: desktopUse },
       { name: `${backendMode}-mobile`, testMatch: mobileSpecMatch, use: mobileUse },
-      { name: `${backendMode}-admin-mobile`, testMatch: adminSpecMatch, use: mobileUse }
+      { name: `${backendMode}-admin-mobile`, testMatch: adminSpecMatch, use: mobileUse },
+      // Registration-settings pair (format convergence): the `registration_enabled`
+      // value is ONE GLOBAL server setting that only this file may disable, so the
+      // two projects must never overlap — the mobile variant chains after the
+      // desktop one (every case restores the ambient default, so the chained run
+      // starts enabled). mypage-admin W5 shape: dedicated projects keep the
+      // global-value mutations out of the platform cores' concurrent workers.
+      {
+        name: `${backendMode}-regset-desktop`,
+        testMatch: /registration-settings\.spec\.ts$/,
+        use: desktopUse,
+      },
+      {
+        name: `${backendMode}-regset-mobile`,
+        testMatch: /registration-settings\.spec\.ts$/,
+        use: mobileUse,
+        dependencies: [`${backendMode}-regset-desktop`],
+      }
     );
 
     // Additive, hermetic projects (setup-wizard / admin-config / migration /
@@ -219,10 +236,19 @@ if (backendMode === 'webdav') {
       {
         // DEF-20: globally destructive trash case — scratch-hermetic on its
         // own server (:5012) so the "empty ALL trash" purge can never touch
-        // the shared pool's in-flight trash cases.
+        // the shared pool's in-flight trash cases. Dual-platform (format
+        // convergence): the mobile variant re-boots the same scratch after
+        // the desktop leg (dependency chain) — the purge only ever affects
+        // this isolated world, so the DEF-20 rationale is unaffected.
         name: 'trash-admin-desktop',
         spec: /trash-admin\.spec\.ts$/,
         use: desktopUse,
+        baseURL: `http://localhost:${e2ePorts.scratchTrashAdmin}`,
+      },
+      {
+        name: 'trash-admin-mobile',
+        spec: /trash-admin\.spec\.ts$/,
+        use: mobileUse,
         baseURL: `http://localhost:${e2ePorts.scratchTrashAdmin}`,
       },
       {

@@ -30,6 +30,7 @@ import {
 import { loginAndOpenUserWorkspace, seedFile } from './helpers/collectionsWorkspace';
 import { getSessionToken, gotoFilesPath, resolveNodeId } from './helpers/resolvePath';
 import { setSortMode } from './helpers/explorer-controls';
+import { gotoAsAnonymous } from './helpers/auth';
 import { createShareLink } from './helpers/shareLinks';
 import { purgeTrashedItemByName } from './helpers/trash';
 import { TEST_FILES } from './fixtures/test-data';
@@ -1374,16 +1375,9 @@ test('E2E-RETRIEVAL-019: An anonymous share-link session cannot submit a server 
   // Anonymous share browsing: the server-wide submit surface is an
   // authenticated-explorer feature (FloatingSearchBar §2.7) — the bar never
   // mounts for an anonymous visitor, so Enter/button cannot POST /api/search.
-  // (The anonymous switch is inlined rather than `gotoAsAnonymous`: clearing
-  // the session from `/` fires the app's /login redirect asynchronously,
-  // which intermittently aborts the follow-up navigation.)
-  await page.goto('/login');
-  await page.evaluate(() => {
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-  });
-  await page.context().clearCookies();
-  await page.goto(`/share/${link.token}`);
+  // The shared gotoAsAnonymous helper performs the race-free context-level
+  // session reset (see e2e/helpers/auth.ts).
+  await gotoAsAnonymous(page, `/share/${link.token}`);
   await expect(searchBox(page)).toHaveCount(0);
   await expect(page.getByTestId('search-action-button')).toHaveCount(0);
   await page.keyboard.press('Enter');

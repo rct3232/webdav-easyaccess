@@ -1238,3 +1238,12 @@ qualification + provisioning-trigger fixtures) · SETUP.md boot-frozen caveat +
   (mobile viewport boundary flake observed once). Gates: client 2062, docsStatePurity 3/3,
   retrieval 22/22 (3.1m), share-public 22/22 ×2 (one unrelated first-run SHARE-005 mobile
   flake did not recur), EXP-011 green.
+- sr7 — SMIL single-clock orbit (`feature/sr7-smil-orbit`): the CSS-mask knockout
+  followed the orbiting glyph in discrete steps (mask repaint cadence vs glyph
+  paint path); the overlay geometry is now defined once in <defs> and rendered
+  twice via <use> (visible line + mask knockout) sharing ONE SMIL timeline —
+  two additive animateTransform (orbit-center rotation, upright counter-spin),
+  begin=indefinite + beginElement() on pending mount, per-variant centers
+  (search lens / wand cluster), 1-decimal coordinate rounding. Gates: targeted
+  108, full client 2064, eslint/prettier, docsStatePurity; no E2E change
+  (final-states policy; orbit seam presence/absence preserved).

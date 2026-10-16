@@ -1363,6 +1363,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       onExit: searchApi.exitResults,
       onLibraryAdd: handleSearchLibraryAdd,
       onRowOpen: handleSearchRowOpen,
+      onZoneThumbnailsLoaded: searchApi.handleZoneThumbnailsLoaded,
     };
   }, [
     searchModeActive,

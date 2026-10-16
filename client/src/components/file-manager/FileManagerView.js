@@ -478,6 +478,13 @@ const FileManagerView = ({
     loading: false,
     onThumbnailsLoaded: handleThumbnailsLoaded,
   };
+  // Zone B/C rows are snapshot entries, not session rows — their lazy-load
+  // answers land on the zone-local merge in `useSearchResults` (view stays
+  // pure); Zone A rows ARE session rows and keep the session merge above.
+  const zoneServerRendererProps = {
+    ...zoneRendererProps,
+    onThumbnailsLoaded: searchResults?.onZoneThumbnailsLoaded ?? handleThumbnailsLoaded,
+  };
 
   return (
     <Box
@@ -866,7 +873,7 @@ const FileManagerView = ({
                       pending={searchPending}
                       collapsed={zonesCollapsed.b === true && !searchPending}
                       onToggle={() => searchResults.onToggleZone?.('b')}
-                      rendererProps={zoneRendererProps}
+                      rendererProps={zoneServerRendererProps}
                     />
                   )}
                   {zoneCounts.zoneC > 0 && (
@@ -879,7 +886,7 @@ const FileManagerView = ({
                       pending={searchPending}
                       collapsed={zonesCollapsed.c === true && !searchPending}
                       onToggle={() => searchResults.onToggleZone?.('c')}
-                      rendererProps={zoneRendererProps}
+                      rendererProps={zoneServerRendererProps}
                     />
                   )}
                   {zoneCounts.zoneA === 0 &&

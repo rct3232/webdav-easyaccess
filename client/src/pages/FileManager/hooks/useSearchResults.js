@@ -17,7 +17,8 @@ import * as recentQueriesStorage from '../../../services/recentQueriesStorage';
  * (Zone A = session rows in the snapshot set, Zone B = enriched server rows
  * deduped for display, Zone C = semantic snapshot rows), live-filter
  * promotion + dual-color highlights (rows are never hidden), server-row
- * metadata enrichment through the gateway seam, entry-click recording and
+ * metadata enrichment through the gateway seam, the zone-local thumbnail
+ * merge (`handleZoneThumbnailsLoaded`), entry-click recording and
  * recent-query persistence (sessionStorage adapter).
  */
 
@@ -58,9 +59,11 @@ function liveRanges(name, liveText) {
  * shape from the snapshot `{ node_id, name }` plus the enrichment fields once
  * the metadata chunk arrives. `hasWritePermission === false` (enriched) feeds
  * the read-only badge + bulk gate; the size caption stays suppressed while
- * `size == null` (`isSearchServerRow` rule in the row components).
+ * `size == null` (`isSearchServerRow` rule in the row components). The
+ * zone-merged `thumbnailUrl` (state map, survives re-derivation) applies only
+ * when the row carries no enrichment-supplied URL.
  */
-function toSearchRow(raw, meta, terms, liveText) {
+function toSearchRow(raw, meta, terms, liveText, thumbnailUrl) {
   const name = raw.name ?? '';
   const row = {
     nodeId: raw.node_id,
@@ -80,6 +83,7 @@ function toSearchRow(raw, meta, terms, liveText) {
     row.hasWritePermission = meta.hasWritePermission === true;
     if (meta.thumbnailUrl) row.thumbnailUrl = meta.thumbnailUrl;
   }
+  if (!row.thumbnailUrl && thumbnailUrl) row.thumbnailUrl = thumbnailUrl;
   return row;
 }
 
@@ -111,6 +115,7 @@ export const useSearchResults = ({
   const [mode, setMode] = useState('browse');
   const [chain, setChain] = useState([]);
   const [enrichment, setEnrichment] = useState(() => ({}));
+  const [zoneThumbnails, setZoneThumbnails] = useState(() => ({}));
   const [recentQueries, setRecentQueries] = useState(() =>
     recentQueriesStorage.loadRecentQueries()
   );
@@ -228,6 +233,7 @@ export const useSearchResults = ({
     setMode('browse');
     setChain([]);
     setEnrichment({});
+    setZoneThumbnails({});
     attemptedEnrichmentRef.current = new Set();
   }, []);
 
@@ -282,6 +288,26 @@ export const useSearchResults = ({
     };
   }, [gateway, enrichmentKey]);
 
+  // Zone-local thumbnail merge (member-surface precedent, useFileManager.md):
+  // the Zone B/C surface's `useThumbnailLazyLoad` instance answers with
+  // Map(nodeId → thumbnailUrl); entries land in this hook's state (never the
+  // session listing) and the row adapter applies them — state-held URLs
+  // survive every row re-derivation (enrichment, live filter, sort, chain).
+  const handleZoneThumbnailsLoaded = useCallback((thumbnailMap) => {
+    if (!(thumbnailMap instanceof Map) || thumbnailMap.size === 0) return;
+    setZoneThumbnails((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      thumbnailMap.forEach((thumbnailUrl, nodeId) => {
+        if (thumbnailUrl && next[nodeId] === undefined) {
+          next[nodeId] = thumbnailUrl;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
   const zoneARows = useMemo(() => {
     if (terms.length === 0) return [];
     const matched = (files ?? [])
@@ -303,17 +329,19 @@ export const useSearchResults = ({
     if (chain.length === 0) return [];
     const rows = currentSnapshot.zoneBRows
       .filter((raw) => !zoneAIds.has(raw.node_id))
-      .map((raw) => toSearchRow(raw, enrichment[raw.node_id], terms, liveText));
+      .map((raw) =>
+        toSearchRow(raw, enrichment[raw.node_id], terms, liveText, zoneThumbnails[raw.node_id])
+      );
     return orderZoneRows(rows, sortMode, liveText);
-  }, [chain, currentSnapshot, zoneAIds, enrichment, terms, liveText, sortMode]);
+  }, [chain, currentSnapshot, zoneAIds, enrichment, zoneThumbnails, terms, liveText, sortMode]);
 
   const zoneCRows = useMemo(() => {
     if (chain.length === 0) return [];
     const rows = currentSnapshot.zoneCRows.map((raw) =>
-      toSearchRow(raw, enrichment[raw.node_id], terms, liveText)
+      toSearchRow(raw, enrichment[raw.node_id], terms, liveText, zoneThumbnails[raw.node_id])
     );
     return orderZoneRows(rows, sortMode, liveText);
-  }, [chain, currentSnapshot, enrichment, terms, liveText, sortMode]);
+  }, [chain, currentSnapshot, enrichment, zoneThumbnails, terms, liveText, sortMode]);
 
   const zoneCounts = useMemo(
     () => ({
@@ -361,6 +389,7 @@ export const useSearchResults = ({
     undoToStep,
     exitResults,
     recordEntryClick,
+    handleZoneThumbnailsLoaded,
   };
 };
 

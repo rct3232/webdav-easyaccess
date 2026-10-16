@@ -1,4 +1,4 @@
-import React, { useId } from 'react';
+import React, { useId, useLayoutEffect, useRef } from 'react';
 import { SvgIcon } from '@mui/material';
 import { SEARCH_ORBIT_CYCLE_MS } from '../../constants/fileManager';
 
@@ -28,77 +28,21 @@ const WAND_SPARKLES = [
   sparklePath(22, 11.8, 1.1),
 ];
 const WAND_MIRROR_CENTER = 18.4;
+const WAND_SPIN_CENTER = { x: 17.6, y: 7.4 };
 
 // Add overlay (results-empty): left-CENTER of the cloud flank, 1.5x the
 // original plus arm (2.1 → 3.15) — a bigger plus knocked into the cloud body.
 const ADD_CENTER = { cx: 4.6, cy: 12, arm: 3.15 };
 
-const renderSearch = (strokeWidth) => (
-  <g
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={strokeWidth}
-    strokeLinecap="round"
-    data-testid={strokeWidth === STROKE_WIDTH ? 'search-action-glyph-search' : undefined}
-  >
-    <circle cx={LENS.cx} cy={LENS.cy} r={LENS.r} />
-    <line x1={HANDLE.x1} y1={HANDLE.y1} x2={HANDLE.x2} y2={HANDLE.y2} />
-  </g>
-);
-
-const renderWand = (strokeWidth) => (
-  <g
-    data-testid={strokeWidth === STROKE_WIDTH ? 'search-action-glyph-wand' : undefined}
-    transform={`translate(${WAND_MIRROR_CENTER * 2},0) scale(-1,1)`}
-  >
-    <g fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinejoin="round">
-      {WAND_SPARKLES.map((d) => (
-        <path key={d} d={d} />
-      ))}
-    </g>
-  </g>
-);
-
-const renderAdd = (strokeWidth) => (
-  <g
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={strokeWidth}
-    strokeLinecap="round"
-    data-testid={strokeWidth === STROKE_WIDTH ? 'search-action-glyph-add' : undefined}
-  >
-    <line
-      x1={ADD_CENTER.cx}
-      y1={ADD_CENTER.cy - ADD_CENTER.arm}
-      x2={ADD_CENTER.cx}
-      y2={ADD_CENTER.cy + ADD_CENTER.arm}
-    />
-    <line
-      x1={ADD_CENTER.cx - ADD_CENTER.arm}
-      y1={ADD_CENTER.cy}
-      x2={ADD_CENTER.cx + ADD_CENTER.arm}
-      y2={ADD_CENTER.cy}
-    />
-  </g>
-);
-
-const ORBIT_ANIMATION = `searchGlyphOrbit ${SEARCH_ORBIT_CYCLE_MS}ms linear infinite`;
-
-// Orbit geometry: the overlay's HOME spot (where the static composite places
-// it) is the 3-o'clock point of the orbit circle, so the center sits R to its
-// left. The travel is counter-clockwise and the trailing counter-rotation
-// keeps the glyph upright; at 0% the glyph is exactly at home and each cycle
-// returns there. The mask knockout group carries the IDENTICAL transform so
-// the cut in the cloud travels with the line (the piercing reads throughout).
+// Orbit geometry (FloatingSearchBar.md §2.6): the overlay's SPIN CENTER — the
+// point that sits at its home spot in the static composite — rides the orbit
+// circle as its 3-o'clock point, so the orbit center sits R to its left. The
+// travel is counter-clockwise and the additive counter-rotation keeps the
+// glyph upright; at 0% the glyph is exactly at home and every cycle returns
+// there.
 const ORBIT_RADIUS = 4.5;
-const ORBIT_KEYFRAMES = {
-  '0%': {
-    transform: `translateX(${-ORBIT_RADIUS}px) rotate(0deg) translateX(${ORBIT_RADIUS}px) rotate(0deg)`,
-  },
-  '100%': {
-    transform: `translateX(${-ORBIT_RADIUS}px) rotate(-360deg) translateX(${ORBIT_RADIUS}px) rotate(360deg)`,
-  },
-};
+/** One-decimal rounding keeps the SMIL center strings stable against float drift. */
+const r1 = (n) => Math.round(n * 10) / 10;
 
 /**
  * SearchGlyphIcon — knockout-stroke composite: the filled Material cloud is
@@ -106,15 +50,46 @@ const ORBIT_KEYFRAMES = {
  * stroke), and the stroke-style overlay renders on top — over cloud the line
  * sits inside its gap, over background it renders as a plain line. No plates.
  * Variants: search magnifier (llmConfigured=false) / mirrored wand-stars
- * (true); `showAdd` knocks a plus into the cloud's top-left; `orbit` carries
- * the overlay AND its knockout cut along a counter-clockwise circle that
- * starts and ends at the overlay's home spot (the 3-o'clock point) while the
- * cloud stays still — the piercing reads throughout the sweep (pending).
- * FloatingSearchBar.md §2.6.
+ * (true); `showAdd` knocks a plus into the cloud's left-center flank;
+ * `orbit` drives the traveling cut with a SINGLE SMIL clock — the overlay
+ * geometry is defined once in <defs> and rendered twice through <use>
+ * (visible line + mask knockout), so both instances share one animation
+ * timeline and the cut in the cloud travels with the line every frame
+ * (pending). FloatingSearchBar.md §2.6.
  */
 const SearchGlyphIcon = ({ llmConfigured = false, showAdd = false, orbit = false }) => {
-  const maskId = `search-glyph-cloud-${useId().replace(/[^a-zA-Z0-9-]/g, '')}`;
-  const overlay = llmConfigured ? renderWand(STROKE_WIDTH) : renderSearch(STROKE_WIDTH);
+  const uid = useId().replace(/[^a-zA-Z0-9-]/g, '');
+  const maskId = `search-glyph-cloud-${uid}`;
+  const geomId = `search-glyph-overlay-${uid}`;
+  const orbitAnimRef = useRef(null);
+  const spinAnimRef = useRef(null);
+
+  // SMIL begin="indefinite" + beginElement(): both animations start in the
+  // same tick when the orbit mounts, so the shared timeline begins exactly at
+  // the home position (a document-relative begin would start mid-phase).
+  useLayoutEffect(() => {
+    if (!orbit) return;
+    [orbitAnimRef.current, spinAnimRef.current].forEach((el) => {
+      if (el && typeof el.beginElement === 'function') el.beginElement();
+    });
+  }, [orbit]);
+
+  const spinCenterRaw = llmConfigured ? WAND_SPIN_CENTER : { x: LENS.cx, y: LENS.cy };
+  const spinCenter = { x: r1(spinCenterRaw.x), y: r1(spinCenterRaw.y) };
+  const orbitCenter = { x: r1(spinCenter.x - ORBIT_RADIUS), y: r1(spinCenter.y) };
+
+  const shapes = llmConfigured ? (
+    <g transform={`translate(${WAND_MIRROR_CENTER * 2},0) scale(-1,1)`}>
+      {WAND_SPARKLES.map((d) => (
+        <path key={d} d={d} />
+      ))}
+    </g>
+  ) : (
+    [
+      <circle key="lens" cx={LENS.cx} cy={LENS.cy} r={LENS.r} />,
+      <line key="handle" x1={HANDLE.x1} y1={HANDLE.y1} x2={HANDLE.x2} y2={HANDLE.y2} />,
+    ]
+  );
 
   return (
     <SvgIcon
@@ -125,38 +100,49 @@ const SearchGlyphIcon = ({ llmConfigured = false, showAdd = false, orbit = false
         display: 'inline-block',
         flexShrink: 0,
         overflow: 'visible',
-        '& .search-glyph-orbit-anim': {
-          transformBox: 'fill-box',
-          transformOrigin: 'center',
-          animation: ORBIT_ANIMATION,
-        },
-        '@keyframes searchGlyphOrbit': ORBIT_KEYFRAMES,
       }}
     >
       <defs>
+        <g
+          id={geomId}
+          data-testid="search-glyph-geom"
+          fill="none"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          {orbit && (
+            <>
+              <animateTransform
+                ref={orbitAnimRef}
+                data-testid="search-action-glyph-orbit"
+                attributeName="transform"
+                attributeType="XML"
+                type="rotate"
+                from={`0 ${orbitCenter.x} ${orbitCenter.y}`}
+                to={`-360 ${orbitCenter.x} ${orbitCenter.y}`}
+                dur={`${SEARCH_ORBIT_CYCLE_MS}ms`}
+                repeatCount="indefinite"
+                begin="indefinite"
+              />
+              <animateTransform
+                ref={spinAnimRef}
+                additive="sum"
+                attributeName="transform"
+                attributeType="XML"
+                type="rotate"
+                from={`0 ${spinCenter.x} ${spinCenter.y}`}
+                to={`360 ${spinCenter.x} ${spinCenter.y}`}
+                dur={`${SEARCH_ORBIT_CYCLE_MS}ms`}
+                repeatCount="indefinite"
+                begin="indefinite"
+              />
+            </>
+          )}
+          {shapes}
+        </g>
         <mask id={maskId}>
           <rect x="-4" y="-4" width="32" height="32" fill="#fff" />
-          <g
-            className={orbit ? 'search-glyph-orbit-anim' : undefined}
-            stroke="#000"
-            strokeWidth={KNOCKOUT_WIDTH}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            fill="none"
-          >
-            {llmConfigured ? (
-              <g transform={`translate(${WAND_MIRROR_CENTER * 2},0) scale(-1,1)`}>
-                {WAND_SPARKLES.map((d) => (
-                  <path key={d} d={d} />
-                ))}
-              </g>
-            ) : (
-              [
-                <circle key="lens" cx={LENS.cx} cy={LENS.cy} r={LENS.r} />,
-                <line key="handle" x1={HANDLE.x1} y1={HANDLE.y1} x2={HANDLE.x2} y2={HANDLE.y2} />,
-              ]
-            )}
-          </g>
+          <use href={`#${geomId}`} stroke="#000" strokeWidth={KNOCKOUT_WIDTH} />
           {showAdd && (
             <g stroke="#000" strokeWidth={KNOCKOUT_WIDTH} strokeLinecap="round" fill="none">
               <line
@@ -181,14 +167,34 @@ const SearchGlyphIcon = ({ llmConfigured = false, showAdd = false, orbit = false
         fill="currentColor"
         mask={`url(#${maskId})`}
       />
-      {orbit ? (
-        <g data-testid="search-action-glyph-orbit" className="search-glyph-orbit-anim">
-          {overlay}
+      <use
+        href={`#${geomId}`}
+        stroke="currentColor"
+        strokeWidth={STROKE_WIDTH}
+        data-testid={llmConfigured ? 'search-action-glyph-wand' : 'search-action-glyph-search'}
+      />
+      {showAdd && (
+        <g
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={STROKE_WIDTH}
+          strokeLinecap="round"
+          data-testid="search-action-glyph-add"
+        >
+          <line
+            x1={ADD_CENTER.cx}
+            y1={ADD_CENTER.cy - ADD_CENTER.arm}
+            x2={ADD_CENTER.cx}
+            y2={ADD_CENTER.cy + ADD_CENTER.arm}
+          />
+          <line
+            x1={ADD_CENTER.cx - ADD_CENTER.arm}
+            y1={ADD_CENTER.cy}
+            x2={ADD_CENTER.cx + ADD_CENTER.arm}
+            y2={ADD_CENTER.cy}
+          />
         </g>
-      ) : (
-        overlay
       )}
-      {showAdd && renderAdd(STROKE_WIDTH)}
     </SvgIcon>
   );
 };

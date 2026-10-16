@@ -20,6 +20,8 @@ import { resolvePath } from '../../services/fileService';
 import { normalizePath, getBasename, getParentPath } from '../../utils/pathUtils';
 import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
 import { getEntryKey, getCollectionEntryKey } from '../../utils/fileViewUtils';
+import { getSearchZonesCollapsed, setSearchZonesCollapsed } from '../../utils/localStorage';
+import { getPublicSettings } from '../../services/settingsService';
 
 import { useRecentFile } from './hooks/useRecentFile';
 import { useCollections } from './hooks/useCollections';
@@ -143,22 +145,18 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   // DEF-16 P9: trash view is a product overlay route of the explorer shell.
   const isTrashView = currentPath === '/__trash__';
 
-  // -- AI-platform search-results controller (T0.11; FileManager §7) ---------
-  // Mounted here (before the session) so the session's onSubmitQuery passthrough
-  // can delegate submits (D1). Save-from-results confirmation copy rides T1.5;
-  // the P0 wiring only calls the hook-owned save seams.
-  const searchApi = useSearchResults({
-    showError,
-    gateway: isShareLinkMode ? undefined : explorerGateway,
-    // Operator rule (PLAN §14 client half): save seam never offered to admin.
-    isAdmin: Boolean(user?.is_admin),
-    onUndoable: (undo) => {
-      showUndoToastRef.current?.({
-        actionId: undo?.action_id,
-        text: t('collections.undoCreated'),
-      });
-    },
-  });
+  // -- AI-platform search-results controller (FileManager §7) ---------------
+  // The results-mode machine (`useSearchResults`) consumes the session listing
+  // (`files`), `sortMode` and the shared input text (`liveText`), so it mounts
+  // right after `useExplorerSession`. The session's submit passthrough is a
+  // stable ref wrapper; `searchResultsActive` mirrors the hook mode (the zones
+  // replace the listing region while results render).
+  const submitSearchRef = useRef(null);
+  const handleSessionSubmitQuery = useCallback((query) => {
+    if (typeof submitSearchRef.current === 'function') submitSearchRef.current(query);
+  }, []);
+  const [searchResultsActive, setSearchResultsActive] = useState(false);
+
   const {
     sessionKey,
     files,
@@ -180,7 +178,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     loadMoreRef,
     hasMore,
     handleThumbnailsLoaded,
-    onSubmitQuery: submitSearch,
   } = useExplorerSession({
     currentNodeId,
     view: isTrashView
@@ -192,19 +189,85 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           : 'folder',
     files: filesFromHook,
     isMobile,
-    onSubmitQuery: isShareLinkMode ? undefined : searchApi.submitSearch,
+    searchResultsActive,
+    onSubmitQuery: isShareLinkMode ? undefined : handleSessionSubmitQuery,
   });
 
-  // Clearing the shared search text exits results mode (FloatingSearchBar §3.2:
-  // one ✕ clears the inline filter AND the results surface).
+  const searchApi = useSearchResults({
+    showError,
+    gateway: isShareLinkMode ? undefined : explorerGateway,
+    files,
+    sortMode,
+    liveText: searchQuery,
+  });
+  submitSearchRef.current = searchApi.submitSearch;
+
+  const searchModeActive =
+    !isShareLinkMode && (searchApi.mode === 'results' || searchApi.mode === 'pending');
+
+  useEffect(() => {
+    setSearchResultsActive(
+      !isShareLinkMode && (searchApi.mode === 'results' || searchApi.mode === 'pending')
+    );
+  }, [isShareLinkMode, searchApi.mode]);
+
+  const searchApiRef = useRef(searchApi);
+  searchApiRef.current = searchApi;
+
+  // Folder navigation while results mode is active EXITS results mode
+  // (useSearchResults.md §2.3 — the recent-query list survives).
+  useEffect(() => {
+    if (searchApiRef.current.mode !== 'browse') searchApiRef.current.exitResults();
+  }, [sessionKey]);
+
+  // Clearing the shared search text exits results mode (FloatingSearchBar §2.7:
+  // the ✕ press clears + blurs; the cleared text is the host exit signal).
   const handleSearchQueryChange = useCallback(
     (query) => {
       setSearchQuery(query);
-      if (!String(query ?? '').trim() && searchApi.mode === 'results') {
-        searchApi.exitResults();
+      if (!String(query ?? '').trim() && searchApiRef.current.mode !== 'browse') {
+        searchApiRef.current.exitResults();
       }
     },
-    [setSearchQuery, searchApi]
+    [setSearchQuery]
+  );
+
+  // Accordion zones collapsed state (FileManagerView.md §3) — persisted under
+  // the dedicated key through the preference-storage helper boundary.
+  const [zonesCollapsed, setZonesCollapsed] = useState(() => getSearchZonesCollapsed());
+  useEffect(() => {
+    setSearchZonesCollapsed(zonesCollapsed);
+  }, [zonesCollapsed]);
+  const handleToggleZone = useCallback((zoneKey) => {
+    setZonesCollapsed((prev) => ({ ...prev, [zoneKey]: !(prev[zoneKey] === true) }));
+  }, []);
+
+  // LLM capability flag for the search-button glyph composite (T0.7b surface:
+  // GET /settings/public `ai.embed` through the settingsService repository).
+  const [llmConfigured, setLlmConfigured] = useState(false);
+  useEffect(() => {
+    if (isShareLinkMode) return undefined;
+    let cancelled = false;
+    getPublicSettings()
+      .then((data) => {
+        if (!cancelled) setLlmConfigured(Boolean(data?.ai?.embed));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isShareLinkMode]);
+
+  // Union selection (FileManager.md §7): while a results surface is on screen
+  // the selection source is Zone A ++ Zone B displayed rows so select-all and
+  // the bulk read-only gate span the zones; otherwise the browse pass-through.
+  const selectionSortedSource = useMemo(
+    () => (searchModeActive ? [...searchApi.zoneARows, ...searchApi.zoneBRows] : sortedFiles),
+    [searchModeActive, searchApi.zoneARows, searchApi.zoneBRows, sortedFiles]
+  );
+  const selectionDisplaySource = useMemo(
+    () => (searchModeActive ? [...searchApi.zoneARows, ...searchApi.zoneBRows] : displayedFiles),
+    [searchModeActive, searchApi.zoneARows, searchApi.zoneBRows, displayedFiles]
   );
 
   const {
@@ -218,35 +281,35 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     enterSelectionMode,
     setSelectionMode,
     setSelectedFiles,
-  } = useSelection(displayedFiles, sortedFiles);
+  } = useSelection(selectionDisplaySource, selectionSortedSource);
 
   // key(entryKey)→file 인덱스: 선택 Set의 reverse-lookup을 O(1)로 수행 (선택 크기 × 파일 수의 find 중복 제거)
-  const sortedFilesByKey = useMemo(() => {
+  const selectionKeyIndex = useMemo(() => {
     const map = new Map();
-    for (const f of sortedFiles) {
+    for (const f of selectionSortedSource) {
       const key = getEntryKey(f);
       if (!map.has(key)) map.set(key, f);
     }
     return map;
-  }, [sortedFiles]);
+  }, [selectionSortedSource]);
 
   // 선택 모드에서 삭제/이동 버튼: 선택된 항목 모두 write 권한이 있어야 활성화
   const allSelectedHaveWrite = useMemo(() => {
     if (!selectionMode || selectedFiles.size === 0) return false;
     return Array.from(selectedFiles).every((key) => {
-      const f = sortedFilesByKey.get(key);
+      const f = selectionKeyIndex.get(key);
       return !!f && f.hasWritePermission === true;
     });
-  }, [selectionMode, selectedFiles, sortedFilesByKey]);
+  }, [selectionMode, selectedFiles, selectionKeyIndex]);
 
   // 선택된 항목 중 읽기 전용(hasWritePermission === false) 포함 여부
   const hasReadOnlyInSelection = useMemo(() => {
     if (!selectionMode || selectedFiles.size === 0) return false;
     return Array.from(selectedFiles).some((key) => {
-      const f = sortedFilesByKey.get(key);
+      const f = selectionKeyIndex.get(key);
       return !!f && f.hasWritePermission === false;
     });
-  }, [selectionMode, selectedFiles, sortedFilesByKey]);
+  }, [selectionMode, selectedFiles, selectionKeyIndex]);
 
   // 디렉토리 이동 시 선택 모드 해제
   useEffect(() => {
@@ -1210,17 +1273,32 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     handlePseudoTileNavigate,
   ]);
 
-  // -- T0.11 search-results model (FileManager §7): the shell prepares the
-  // results view-model; the view swaps regions off it. Rows open through the
-  // recordEntryClick seam (§3.4) and the metadata-enriched entry type
-  // (directory → navigate + exit; file → preview overlay).
+  // -- Search-results model (FileManager §7): the shell prepares the results
+  // view-model; the view swaps regions (chip bar + accordion zones). Row clicks
+  // keep browse parity (single click selects on desktop, selection mode
+  // toggles, double click / mobile tap opens): an opened row fires the
+  // recordEntryClick signal (§3.4) — DIRECTORY rows navigate + exit results,
+  // FILE rows preview while the zones stay mounted.
   const handleSearchRowOpen = useCallback(
-    async (row) => {
-      const nodeId = row?.node_id ?? row?.nodeId;
+    async (row, event, fileIndex) => {
+      const nodeId = row?.nodeId ?? row?.node_id;
       if (nodeId == null) return;
+      if (selectionMode) {
+        toggleFileSelection(row);
+        return;
+      }
+      const openIntent = isMobile || !event || event.detail >= 2;
+      if (!openIntent) {
+        const index =
+          typeof fileIndex === 'number'
+            ? fileIndex
+            : selectionSortedSource.findIndex((f) => getEntryKey(f) === getEntryKey(row));
+        handleFileClickSelection(row, event, index >= 0 ? index : 0);
+        return;
+      }
       searchApi.recordEntryClick(nodeId);
       let type = row.type;
-      if (!type) {
+      if (type == null) {
         const meta = await explorerGateway.loadNodesMetadata([nodeId]);
         type = meta?.[0]?.type ?? 'file';
       }
@@ -1231,45 +1309,68 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       }
       const entry = {
         nodeId,
-        name: row.name,
-        basename: row.name,
+        name: row.name ?? null,
+        basename: row.basename ?? row.name ?? null,
         type: 'file',
-        size: 0,
-        path: '',
+        size: row.size ?? 0,
+        path: row.path ?? '',
+        mime: row.mime ?? null,
+        lastmod: row.lastmod ?? null,
       };
       // The preview surface renders from the selected-file target (list-flow
       // parity) — prepare it before opening the dialog.
       setSelectedFile(entry);
       openPreviewDialog(entry);
     },
-    [searchApi, navigateToExplorerNode, openPreviewDialog, setSelectedFile]
+    [
+      searchApi,
+      selectionMode,
+      toggleFileSelection,
+      isMobile,
+      selectionSortedSource,
+      handleFileClickSelection,
+      navigateToExplorerNode,
+      openPreviewDialog,
+      setSelectedFile,
+    ]
   );
 
+  // Chip-bar LibraryAdd: the menu opens in its caller-provided nodeIds-set
+  // target mode (AddToCollectionMenu.md §2.2) with the FULL current snapshot —
+  // independent of the live filter text and of the zone paging.
+  const handleSearchLibraryAdd = useCallback((anchorEl) => {
+    setAddMenu({
+      targetNodes: [],
+      targetNodeIds: Array.from(searchApiRef.current.libraryAddTarget ?? []),
+      position: null,
+      anchorEl: anchorEl ?? null,
+    });
+  }, []);
+
   const searchResults = useMemo(() => {
-    if (isShareLinkMode || searchApi.mode !== 'results') return null;
+    if (!searchModeActive) return null;
     return {
       mode: searchApi.mode,
-      query: searchApi.submittedQuery ?? searchQuery,
-      counts: searchApi.counts,
-      sections: {
-        nameMatches: searchApi.nameMatches,
-        semantic: searchApi.semantic,
-      },
-      canSaveToCollection: searchApi.canSaveToCollection,
-      recentQueries: searchApi.recentQueries,
+      terms: searchApi.terms,
+      zoneARows: searchApi.zoneARows,
+      zoneBRows: searchApi.zoneBRows,
+      zoneCRows: searchApi.zoneCRows,
+      zoneCounts: searchApi.zoneCounts,
+      zonesCollapsed,
+      onToggleZone: handleToggleZone,
+      onRevertToStep: searchApi.undoToStep,
       onExit: searchApi.exitResults,
-      onFilterChange: searchApi.setFilterText,
-      onChipSelect: (chip) => {
-        if (chip?.query) {
-          setSearchQuery(chip.query);
-          searchApi.submitSearch(chip.query);
-        }
-      },
-      onSave: () => searchApi.saveResultsToCollection(searchApi.submittedQuery ?? ''),
-      onChipSave: (chip) => searchApi.saveChipQuery(chip),
+      onLibraryAdd: handleSearchLibraryAdd,
       onRowOpen: handleSearchRowOpen,
     };
-  }, [isShareLinkMode, searchApi, searchQuery, setSearchQuery, handleSearchRowOpen]);
+  }, [
+    searchModeActive,
+    searchApi,
+    zonesCollapsed,
+    handleToggleZone,
+    handleSearchLibraryAdd,
+    handleSearchRowOpen,
+  ]);
 
   const handleProductPathClick = useCallback(
     async (path, file) => {
@@ -1633,7 +1734,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       setSearchQuery: handleSearchQueryChange,
       // Share-link mode: server-wide search is an authenticated-explorer
       // feature — the bar stays typing-filter-only (FloatingSearchBar §3.2).
-      onSubmitQuery: isShareLinkMode ? undefined : submitSearch,
+      onSubmitQuery: isShareLinkMode ? undefined : handleSessionSubmitQuery,
+      llmConfigured,
     }),
     [
       currentPath,
@@ -1651,7 +1753,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       searchQuery,
       handleSearchQueryChange,
       isShareLinkMode,
-      submitSearch,
+      handleSessionSubmitQuery,
+      llmConfigured,
     ]
   );
 
@@ -2112,7 +2215,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         <AddToCollectionMenu
           open={Boolean(addMenu)}
           contextMenu={addMenu?.position ?? null}
+          anchorEl={addMenu?.anchorEl ?? null}
           targetNodes={addMenu?.targetNodes ?? []}
+          targetNodeIds={addMenu?.targetNodeIds ?? null}
           collections={writableCollections}
           seedItemVisible={false}
           onAdd={handleAddMenuAdd}

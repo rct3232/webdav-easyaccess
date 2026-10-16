@@ -246,3 +246,55 @@ describe('AddToCollectionMenu seed dialog (§4.5)', () => {
     expect(screen.getByTestId('seed-sample-skeleton')).toBeInTheDocument();
   });
 });
+
+describe('AddToCollectionMenu set-target mode (targetNodeIds)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    previewCollection.mockResolvedValue({ count: 0, sample: [], sample_truncated: false });
+  });
+
+  const setProps = (overrides = {}) => ({
+    ...defaultProps,
+    targetNodes: [],
+    targetNodeIds: new Set([5, 11, 12]),
+    membershipIds: [1],
+    ...overrides,
+  });
+
+  it('onAdd receives the FULL provided id set', () => {
+    const props = setProps();
+    renderWithProviders(<AddToCollectionMenu {...props} />);
+
+    fireEvent.click(screen.getByTestId('collection-option-1'));
+    expect(props.onAdd).toHaveBeenCalledWith(1, [5, 11, 12]);
+  });
+
+  it('inline create chains the FULL id set through onCreateAndAdd', () => {
+    const props = setProps();
+    renderWithProviders(<AddToCollectionMenu {...props} />);
+
+    fireEvent.click(screen.getByTestId('new-collection-row'));
+    fireEvent.change(screen.getByTestId('new-collection-input'), {
+      target: { value: 'Snapshot picks' },
+    });
+    fireEvent.keyDown(screen.getByTestId('new-collection-input'), { key: 'Enter' });
+
+    expect(props.onCreateAndAdd).toHaveBeenCalledWith('Snapshot picks', [5, 11, 12]);
+  });
+
+  it('the seed row is ABSENT in set mode even with seedItemVisible (no single-file seed)', () => {
+    renderWithProviders(
+      <AddToCollectionMenu {...setProps({ targetNodes: singleTarget })} seedItemVisible />
+    );
+
+    expect(screen.queryByTestId('seed-create-row')).not.toBeInTheDocument();
+  });
+
+  it('checkmarks reflect the set via membershipIds without extra network calls', () => {
+    renderWithProviders(<AddToCollectionMenu {...setProps()} />);
+
+    expect(screen.getByTestId('collection-checked-1')).toBeInTheDocument();
+    expect(screen.queryByTestId('collection-checked-2')).not.toBeInTheDocument();
+    expect(previewCollection).not.toHaveBeenCalled();
+  });
+});

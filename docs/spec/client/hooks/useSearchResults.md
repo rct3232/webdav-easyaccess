@@ -23,7 +23,7 @@
 | Name      | Type          | Required | Description                                                                                                                 |
 | --------- | ------------- | -------- | --------------------------------------------------------------------------------------------------------------------------- |
 | showError | function      | Y        | User-visible error feedback                                                                                                 |
-| gateway   | object        | N        | `explorerGateway` search/metadata seams: `runSearch`, `getEntriesMetadata` (chunked — §2.3 enrichment), `recordSearchClick` |
+| gateway   | object        | N        | `explorerGateway` search/metadata seams: `runSearch`, `loadNodesMetadata` (raw nodeIds, chunked ≤ 100/POST — §2.3 enrichment), `recordSearchClick` |
 | files     | Array<object> | Y        | Current-folder session listing rows — the Zone A membership source (`useExplorerSession.md` §3).                            |
 | sortMode  | string        | Y        | Session sort mode; applied to BOTH zones (§2.3 zone ordering).                                                              |
 | liveText  | string        | Y        | The shared search input text (session `searchQuery`) while results mode is active — drives live promotion/highlight only.   |
@@ -78,11 +78,11 @@ Semantic refinement plugs in as a NEW `op` supplying its own `applyStep` — the
 
 **Row click semantics:** FILE row → `recordEntryClick` + preview dialog while results stay mounted. DIRECTORY row → `recordEntryClick` + navigate + exit results (same path as the browse rule).
 
-**Enrichment.** Server rows arrive without `type`/`size`/`lastmod`/`mime`/permission flags (`routes/search.md` returns name data only). The hook enriches them through the gateway metadata seam: `POST /api/files/metadata` with rows chunked to ≤ 100 (the endpoint cap; the search section cap is 200), fired per chunk, merged by nodeId, missing rows tolerated. Rows render enriched progressively; the size caption stays suppressed until enriched (`FileListItem.md`, `FileGrid`/`FileDetail` row rules). The enriched row carries `hasReadPermission`/`hasWritePermission` for the read-only badge + bulk gating (`FileManager.md` §7).
+**Enrichment.** Server rows arrive without `type`/`size`/`lastmod`/`mime`/permission flags (`routes/search.md` returns name data only). The hook enriches them through the gateway metadata seam (`loadNodesMetadata`): `POST /api/files/metadata` with nodeIds chunked to ≤ 100 by the seam (the endpoint cap; the search section cap is 200), fired per chunk, merged by nodeId, missing rows tolerated. Rows render enriched progressively; the size caption stays suppressed until enriched (`FileListItem.md`, `FileGrid`/`FileDetail` row rules). The enriched row carries `hasReadPermission`/`hasWritePermission` for the read-only badge + bulk gating (`FileManager.md` §7).
 
 ### 2.4 Dependencies
 
-- **Must route IO through:** `explorerGateway` search seams (`runSearch`, `getEntriesMetadata`, `recordSearchClick`).
+- **Must route IO through:** `explorerGateway` search seams (`runSearch`, `loadNodesMetadata`, `recordSearchClick`).
 - **May use:** pure helpers only for filter/highlight math (`searchHighlight.js` — ranges are computed client-side, the server never returns markup offsets) and `sortFiles`.
 - **Must not use:** `fetch` or `sessionStorage` directly (recent-query persistence goes through the browser-storage adapter seam in the gateway layer, not this hook).
 

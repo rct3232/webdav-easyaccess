@@ -9,8 +9,18 @@ import {
   CircularProgress,
   AppBar,
   Toolbar,
+  IconButton,
 } from '@mui/material';
-import { CheckCircle as CheckCircleIcon } from '@mui/icons-material';
+import { alpha } from '@mui/material/styles';
+import {
+  AutoAwesome as AutoAwesomeIcon,
+  CheckCircle as CheckCircleIcon,
+  Cloud as CloudIcon,
+  FolderOpen as FolderOpenIcon,
+  KeyboardArrowDown as KeyboardArrowDownIcon,
+  KeyboardArrowUp as KeyboardArrowUpIcon,
+  Search as SearchIcon,
+} from '@mui/icons-material';
 
 import {
   FLOATING_BOTTOM_HEIGHT_MOBILE,
@@ -45,8 +55,149 @@ import {
 } from '../dialogs';
 import { FolderTree } from '../folder-tree';
 import CollectionsListView from './CollectionsListView';
-import SearchBarResultsMode from './SearchBarResultsMode';
+import SearchQueryChipBar from './SearchQueryChipBar';
+import { FileListSkeleton, FileGridSkeleton, FileDetailSkeleton } from './FileSkeletons';
+import { useInfiniteScroll } from '../../hooks/useInfiniteScroll';
 import { UndoToast } from '../feedback';
+
+// -- Search results-mode zones (FileManagerView.md §3) — presentational
+// composition only: rows, ordering, counts and callbacks all arrive prepared
+// on the `searchResults` model (pure-view rule).
+
+const ZoneGlyphCloudSearch = () => (
+  <Box sx={{ position: 'relative', display: 'inline-flex', width: 24, height: 24, flexShrink: 0 }}>
+    <CloudIcon style={{ fontSize: 24 }} />
+    <SearchIcon style={{ fontSize: 13, position: 'absolute', left: 6, top: 8 }} />
+  </Box>
+);
+
+const SearchZoneHeader = ({ zoneKey, icon, label, count, collapsed, onToggle }) => (
+  <Box
+    data-testid={`search-zone-header-${zoneKey}`}
+    onClick={onToggle}
+    sx={{
+      position: 'sticky',
+      top: 0,
+      zIndex: 5,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 1,
+      px: 0.5,
+      py: 0.5,
+      cursor: 'pointer',
+      backgroundColor: (theme) => alpha(theme.palette.background.paper, 0.7),
+      backdropFilter: 'blur(12px)',
+      WebkitBackdropFilter: 'blur(12px)',
+      borderBottom: '1px solid',
+      borderColor: 'divider',
+    }}
+  >
+    {icon}
+    <Typography variant="subtitle2" noWrap sx={{ minWidth: 0 }}>
+      {label}
+    </Typography>
+    <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>
+      {count}
+    </Typography>
+    <IconButton
+      data-testid={`search-zone-toggle-${zoneKey}`}
+      size="small"
+      onClick={(event) => {
+        event.stopPropagation();
+        onToggle();
+      }}
+      sx={{
+        ml: 'auto',
+        flexShrink: 0,
+        color: 'primary.main',
+        minWidth: 44,
+        minHeight: 44,
+      }}
+    >
+      {collapsed ? <KeyboardArrowDownIcon /> : <KeyboardArrowUpIcon />}
+    </IconButton>
+  </Box>
+);
+
+const SearchZone = ({
+  zoneKey,
+  label,
+  count,
+  rows,
+  viewMode,
+  collapsed,
+  pending = false,
+  onToggle,
+  rendererProps,
+}) => {
+  const { displayedFiles, loadMoreRef, hasMore } = useInfiniteScroll(rows, {
+    initialCount: 50,
+    incrementCount: 50,
+  });
+
+  const icon =
+    zoneKey === 'a' ? (
+      <FolderOpenIcon fontSize="small" sx={{ color: 'text.secondary', flexShrink: 0 }} />
+    ) : zoneKey === 'b' ? (
+      <ZoneGlyphCloudSearch />
+    ) : (
+      <AutoAwesomeIcon fontSize="small" sx={{ color: 'text.secondary', flexShrink: 0 }} />
+    );
+
+  const renderRows = () => {
+    if (pending) return <SearchZoneSkeleton viewMode={viewMode} />;
+    if (rows.length === 0) return null;
+    if (viewMode === VIEW_MODES.GRID) {
+      return (
+        <FileGrid
+          {...rendererProps}
+          files={displayedFiles}
+          loadMoreRef={loadMoreRef}
+          hasMore={hasMore}
+        />
+      );
+    }
+    if (viewMode === VIEW_MODES.DETAIL) {
+      return <FileDetail {...rendererProps} files={displayedFiles} />;
+    }
+    return (
+      <FileList
+        {...rendererProps}
+        files={displayedFiles}
+        loadMoreRef={loadMoreRef}
+        hasMore={hasMore}
+      />
+    );
+  };
+
+  return (
+    <Box sx={{ mb: 2 }}>
+      <SearchZoneHeader
+        zoneKey={zoneKey}
+        icon={icon}
+        label={label}
+        count={count}
+        collapsed={collapsed}
+        onToggle={onToggle}
+      />
+      <Collapse in={!collapsed} unmountOnExit>
+        {renderRows()}
+      </Collapse>
+    </Box>
+  );
+};
+
+const SearchZoneSkeleton = ({ viewMode }) => (
+  <Box data-testid="search-zone-skeleton">
+    {viewMode === VIEW_MODES.GRID ? (
+      <FileGridSkeleton count={4} />
+    ) : viewMode === VIEW_MODES.DETAIL ? (
+      <FileDetailSkeleton count={4} />
+    ) : (
+      <FileListSkeleton count={4} />
+    )}
+  </Box>
+);
 
 const FileManagerView = ({
   shareContext,
@@ -131,11 +282,18 @@ const FileManagerView = ({
     searchQuery,
     setSearchQuery,
     onSubmitQuery,
+    llmConfigured = false,
+    onSearchBarExpandedChange,
   } = controlsState;
   // AI-platform §3: results-mode surface — the shell prepares the model; the
-  // view only swaps regions (SearchBarResultsMode replaces the breadcrumb row
-  // and the listing region yields to the two-section rows).
+  // view swaps the breadcrumb row for the chip bar and hosts the accordion
+  // zones inside the listing (no separate overlay surface exists).
   const searchResultsMode = searchResults?.mode === 'results';
+  const searchPending = searchResults?.mode === 'pending';
+  const searchSurfaceActive = Boolean(searchResults) && (searchResultsMode || searchPending);
+  // FAB ↔ search-button morph truth (FloatingSearchBar §2.5 — the bar reports
+  // it; the FAB is controlled-mount through this boolean).
+  const [searchBarMorphed, setSearchBarMorphed] = useState(false);
   const isTrashView = trashMode === true || currentPath === '/__trash__';
   // P-2: the single toolbar sort button swaps its menu by surface — collections
   // list AND archive surfaces show the 5 server options (ephemeral), everything
@@ -294,6 +452,33 @@ const FileManagerView = ({
     textContent,
   } = refreshIndicator;
 
+  // §3 results-mode zones — view-ready rows/callbacks from the shell-prepared
+  // `searchResults` model; the view only pages (50+50 per zone) and swaps
+  // regions. Row identity/ordering/promotion are `useSearchResults`-owned.
+  const zoneARows = searchResults?.zoneARows ?? [];
+  const zoneBRows = searchResults?.zoneBRows ?? [];
+  const zoneCRows = searchResults?.zoneCRows ?? [];
+  const zoneCounts = searchResults?.zoneCounts ?? { zoneA: 0, zoneB: 0, zoneC: 0 };
+  const zonesCollapsed = searchResults?.zonesCollapsed ?? {};
+  const zoneRendererProps = {
+    processingMap,
+    onFileClick: searchResults?.onRowOpen,
+    onMoreClick: handleMoreClick,
+    showMoreButton: !selectionMode,
+    onLongPressSelect: handleLongPressSelect,
+    onContextMenu: handleViewContextMenu,
+    onFileDrop: handleFileDrop,
+    onDropPermissionDenied: handleDropPermissionDenied,
+    onDragStart: handleDragStartFromView,
+    onDragEnd: handleDragEndFromView,
+    internalDraggedNodeId: contentAreaDraggedNodeId,
+    selectionMode,
+    selectedFiles,
+    onFileCheck: handleFileCheck,
+    loading: false,
+    onThumbnailsLoaded: handleThumbnailsLoaded,
+  };
+
   return (
     <Box
       sx={{
@@ -400,19 +585,14 @@ const FileManagerView = ({
             position: 'relative',
           }}
         >
-          {searchResultsMode ? (
-            <SearchBarResultsMode
-              query={searchResults.query ?? ''}
-              counts={searchResults.counts}
-              sections={searchResults.sections}
-              canSaveToCollection={Boolean(searchResults.canSaveToCollection)}
-              onSave={searchResults.onSave}
+          {searchSurfaceActive ? (
+            <SearchQueryChipBar
+              terms={searchResults.terms ?? []}
+              isMobile={isMobile}
+              inExpandSlot={isMobile}
+              onRevertToStep={searchResults.onRevertToStep}
               onExit={searchResults.onExit}
-              recentQueries={searchResults.recentQueries ?? []}
-              onChipSelect={searchResults.onChipSelect}
-              onChipSave={searchResults.onChipSave}
-              onFilterChange={searchResults.onFilterChange}
-              onRowOpen={searchResults.onRowOpen}
+              onLibraryAdd={searchResults.onLibraryAdd}
             />
           ) : (
             <Breadcrumb
@@ -661,7 +841,64 @@ const FileManagerView = ({
                 </Box>
               )}
 
-              {searchResultsMode ? null : collectionsModel ? (
+              {searchSurfaceActive ? (
+                <Box>
+                  {zoneCounts.zoneA > 0 && (
+                    <SearchZone
+                      zoneKey="a"
+                      label={currentPath}
+                      count={zoneCounts.zoneA}
+                      rows={zoneARows}
+                      viewMode={viewMode}
+                      pending={searchPending}
+                      collapsed={zonesCollapsed.a === true && !searchPending}
+                      onToggle={() => searchResults.onToggleZone?.('a')}
+                      rendererProps={zoneRendererProps}
+                    />
+                  )}
+                  {zoneCounts.zoneB > 0 && (
+                    <SearchZone
+                      zoneKey="b"
+                      label={t('fileManager.searchZoneAllResults')}
+                      count={zoneCounts.zoneB}
+                      rows={zoneBRows}
+                      viewMode={viewMode}
+                      pending={searchPending}
+                      collapsed={zonesCollapsed.b === true && !searchPending}
+                      onToggle={() => searchResults.onToggleZone?.('b')}
+                      rendererProps={zoneRendererProps}
+                    />
+                  )}
+                  {zoneCounts.zoneC > 0 && (
+                    <SearchZone
+                      zoneKey="c"
+                      label={t('fileManager.searchZoneSuggestedResults')}
+                      count={zoneCounts.zoneC}
+                      rows={zoneCRows}
+                      viewMode={viewMode}
+                      pending={searchPending}
+                      collapsed={zonesCollapsed.c === true && !searchPending}
+                      onToggle={() => searchResults.onToggleZone?.('c')}
+                      rendererProps={zoneRendererProps}
+                    />
+                  )}
+                  {zoneCounts.zoneA === 0 &&
+                    zoneCounts.zoneB === 0 &&
+                    zoneCounts.zoneC === 0 &&
+                    (searchPending ? (
+                      <SearchZoneSkeleton viewMode={viewMode} />
+                    ) : (
+                      <Typography
+                        data-testid="search-no-results"
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ py: 1 }}
+                      >
+                        {t('fileManager.searchNoResults')}
+                      </Typography>
+                    ))}
+                </Box>
+              ) : collectionsModel ? (
                 /* AI-platform §3: __collections__ virtual node replaces the FileList
                    region (list cards / member rows) — no file-grid fallback. */
                 <CollectionsListView
@@ -1043,7 +1280,20 @@ const FileManagerView = ({
           setSearchQuery={setSearchQuery}
           isMobile={isMobile}
           fabVisible={fabPresent}
-          {...(onSubmitQuery ? { onSubmitQuery, resultsModeActive: searchResultsMode } : {})}
+          {...(onSubmitQuery
+            ? {
+                onSubmitQuery,
+                resultsModeActive: searchResultsMode || searchPending,
+                isPending: searchPending,
+                llmConfigured,
+                onExpandedChange: (isExpanded) => {
+                  setSearchBarMorphed(isExpanded);
+                  if (typeof onSearchBarExpandedChange === 'function') {
+                    onSearchBarExpandedChange(isExpanded);
+                  }
+                },
+              }
+            : {})}
         />
       )}
 
@@ -1057,6 +1307,7 @@ const FileManagerView = ({
             }}
             isMobile={isMobile}
             onVisibilityChange={setFabPresent}
+            morphed={searchBarMorphed}
           />
         ) : (
           <FAB
@@ -1065,6 +1316,7 @@ const FileManagerView = ({
             hasWritePermission={hasWritePermission}
             isMobile={isMobile}
             onVisibilityChange={setFabPresent}
+            morphed={searchBarMorphed}
           />
         ))}
 

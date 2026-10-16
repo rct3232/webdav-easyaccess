@@ -295,17 +295,45 @@ export const subscribeToFileLikes = (callback) => subscribeFileLikesChange(callb
 
 /**
  * Narrow metadata helper: `POST /api/files/metadata` for raw nodeIds (no
- * listing entries — search result rows carry no `type` until enriched;
- * routes/search.md §2.4.2). Absorbed to `[]` on failure.
+ * listing entries — search result rows carry no `type` until enrichment;
+ * routes/search.md §2.4.2). Chunks the ids at the endpoint's 100-row cap,
+ * fires each chunk, merges by nodeId and tolerates missing/failed chunks
+ * (rows the response omits simply stay unenriched). Absorbed to `[]` when
+ * every chunk fails.
  */
+const METADATA_CHUNK_LIMIT = 100;
+
 export const loadNodesMetadata = async (nodeIds = []) => {
-  try {
-    return await getFilesMetadata(nodeIds);
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error('[explorerGateway] Failed to load node metadata:', error);
+  const ids = Array.isArray(nodeIds) ? nodeIds.filter((nodeId) => nodeId != null) : [];
+  if (ids.length === 0) {
     return [];
   }
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += METADATA_CHUNK_LIMIT) {
+    chunks.push(ids.slice(i, i + METADATA_CHUNK_LIMIT));
+  }
+  const settled = await Promise.all(
+    chunks.map(async (chunk) => {
+      try {
+        return await getFilesMetadata(chunk);
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('[explorerGateway] Failed to load node metadata chunk:', error);
+        return [];
+      }
+    })
+  );
+  const merged = [];
+  const seen = new Set();
+  for (const rows of settled) {
+    for (const row of Array.isArray(rows) ? rows : []) {
+      if (row?.nodeId != null && !seen.has(row.nodeId)) {
+        seen.add(row.nodeId);
+        merged.push(row);
+      }
+    }
+  }
+  return merged;
 };
 
 /**

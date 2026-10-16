@@ -29,7 +29,9 @@ const WAND_SPARKLES = [
 ];
 const WAND_MIRROR_CENTER = 18.4;
 
-const ADD_CENTER = { cx: 5.2, cy: 6.6, arm: 2.1 };
+// Add overlay (results-empty): left-CENTER of the cloud flank, 1.5x the
+// original plus arm (2.1 → 3.15) — a bigger plus knocked into the cloud body.
+const ADD_CENTER = { cx: 4.6, cy: 12, arm: 3.15 };
 
 const renderSearch = (strokeWidth) => (
   <g

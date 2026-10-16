@@ -7,7 +7,7 @@ Target-contract spec.
 | Item               | Description                                                                                                                                                                                                                                                                                                                          |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Role               | File-side collection entry points in context menu / action sheet / bulk toolbar: `Add to collection` submenu (single + multi-select), inline `New collection` creation, and the seed dialog `Make a collection like this file` (embed-gated, absent-not-disabled). Membership copy (`Add to another collection`) reuses the submenu. |
-| Used in            | FileContextMenu, FileActionSheet, BulkActionToolbar (main listing AND collection member rows — one component state), via host controller wiring                                                                                                                                                                                      |
+| Used in            | FileContextMenu, FileActionSheet, BulkActionToolbar (main listing AND collection member rows — one component state), SearchQueryChipBar `LibraryAdd` (set-target mode), via host controller wiring                                                                                                                                   |
 | Related components | CollectionsListView, `useCollections`, useUndoToast, `POST /collections/for-nodes` chips                                                                                                                                                                                                                                             |
 
 ---
@@ -21,17 +21,18 @@ Target-contract spec.
 
 ### 2.2 Props
 
-| Name            | Type     | Required | Default | Description                                                                                                                             |
-| --------------- | -------- | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| open            | boolean  | Y        | -       | Menu/dialog visibility (host-controlled)                                                                                                |
-| targetNodes     | array    | Y        | -       | `{ nodeId, name }[]` — 1 (context) or N (multi-select); member rows pass the member's real node                                         |
-| collections     | array    | Y        | -       | Writable collections for the requester (own + `granted_role='editor'`), activity order                                                  |
-| membershipIds   | array    | N        | []      | `collection_id`s already containing ALL target nodes (for-nodes chip data ⇒ checkmark rows)                                             |
-| seedItemVisible | boolean  | N        | true    | `Make a collection like this file` shows for exactly ONE selected file AND `aiFlags.embed` — otherwise the row is ABSENT (not disabled) |
-| onAdd           | function | Y        | -       | `(collectionId, nodeIds) => void` → `POST /:id/items`                                                                                   |
-| onCreateAndAdd  | function | Y        | -       | `(name, nodeIds) => void` → `POST /collections` then add                                                                                |
-| onCreateSeed    | function | Y        | -       | `({ name, seedNodeId }) => void` → confirm-dialog submit (see §2.4)                                                                     |
-| onClose         | function | Y        | -       | Dismiss                                                                                                                                 |
+| Name            | Type     | Required | Default | Description                                                                                                                                                                                                                                                                                                                       |
+| --------------- | -------- | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| open            | boolean  | Y        | -       | Menu/dialog visibility (host-controlled)                                                                                                                                                                                                                                                                                          |
+| targetNodes     | array    | Y\*      | -       | `{ nodeId, name }[]` — 1 (context) or N (multi-select); member rows pass the member's real node. \*May be empty when `targetNodeIds` supplies the set target.                                                                                                                                                                     |
+| targetNodeIds   | Set      | N        | null    | **Caller-provided nodeIds-set target mode** (used by the results-mode chip bar `LibraryAdd` — `SearchQueryChipBar.md` §2.4): when present it IS the add-target set — every `onAdd`/`onCreateAndAdd` receives its ids; the seed row is absent (no single-file seed in set mode); `membershipIds` checkmarks reflect the whole set. |
+| collections     | array    | Y        | -       | Writable collections for the requester (own + `granted_role='editor'`), activity order                                                                                                                                                                                                                                            |
+| membershipIds   | array    | N        | []      | `collection_id`s already containing ALL target nodes (for-nodes chip data ⇒ checkmark rows)                                                                                                                                                                                                                                       |
+| seedItemVisible | boolean  | N        | true    | `Make a collection like this file` shows for exactly ONE selected file AND `aiFlags.embed` — otherwise the row is ABSENT (not disabled)                                                                                                                                                                                           |
+| onAdd           | function | Y        | -       | `(collectionId, nodeIds) => void` → `POST /:id/items`                                                                                                                                                                                                                                                                             |
+| onCreateAndAdd  | function | Y        | -       | `(name, nodeIds) => void` → `POST /collections` then add                                                                                                                                                                                                                                                                          |
+| onCreateSeed    | function | Y        | -       | `({ name, seedNodeId }) => void` → confirm-dialog submit (see §2.4)                                                                                                                                                                                                                                                               |
+| onClose         | function | Y        | -       | Dismiss                                                                                                                                                                                                                                                                                                                           |
 
 ### 2.3 Submenu Contract
 
@@ -50,6 +51,7 @@ Target-contract spec.
   (`16px Inter, Roboto, "Helvetica Neue", Arial, sans-serif`).
 - Terminal row `+ New collection…`: inline name field (validation via `validateFileName`/`validationMessage` precedent — same rules as folder names); Enter → `onCreateAndAdd`; server never errors on collision (silent suffix; the refreshed/returned `collection.name` is what toasts show).
 - Adding to a `system` collection is legal and triggers auto-pin SERVER-side — the client just refreshes; no client pin logic.
+- **Set-target mode (`targetNodeIds`):** the menu renders the same collection rows/checkmarks with the SET as the operation target — `membershipIds` reflects collections containing ALL set ids (for-nodes data computed by the host); `onAdd(collectionId, nodeIds)` / `onCreateAndAdd(name, nodeIds)` receive the full set; the seed row is absent (no single-file seed). This is the results-mode `LibraryAdd` contract (full current snapshot — `useSearchResults.md` §2.3).
 - Result feedback (host): `rejected_not_readable` entries ⇒ info toast `N excluded (not readable)`; success ⇒ undo toast from `undo.action_id`.
 
 ### 2.4 Seed Confirm Dialog
@@ -81,6 +83,7 @@ Target-contract spec.
 - [ ] Seed dialog shows preview + `plus N more` + the publish-approval line before enabling Create.
 - [ ] `membershipIds` rows render checkmarks without extra network calls.
 - [ ] Member-row invocation behaves identically to main-listing invocation (same component state).
+- [ ] Set-target mode: `onAdd`/`onCreateAndAdd` receive the FULL provided `targetNodeIds` set, the seed row is absent, and checkmarks reflect the set via `membershipIds` — no per-node name data is required.
 
 ### 2.8 Edge Cases
 

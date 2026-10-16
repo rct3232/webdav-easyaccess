@@ -80,6 +80,7 @@ Uses CSS Grid (responsive `gridTemplateColumns`), not MUI Grid:
   - each rendered card container keeps the stable `data-file-path` attribute so end-to-end tests can target a specific file/folder across view modes
   - no per-card `data-testid` is required when `data-file-path` is present
 - **Member-tile reuse (`CollectionsListView.md` §2.5):** the collection MEMBERS surface grid mode feeds file-shape rows through this component (hosted by `CollectionsListView`). Optional slots — absent on file rows (zero DOM delta): `file.rowTestId` → `FileGridItemContainer` card `data-testid`, `file.moreButtonTestId` → the tile More action `data-testid`; revoked member rows render disabled (`getFileItemState`) and their null `mime`/name keeps `useThumbnailLazyLoad` eligibility false (no thumbnail request); tiles carry no size (media + name only; member-state badges render via the `CardTile.cornerBadges` slot — `FileGridItem.md`).
+- **Search-server-row reuse (`useSearchResults.md` §2.3):** Zone B rows render through this component in results-mode grid view. Optional slots only (regular tiles byte-identical): `file.isSearchServerRow === true` → card container exposes `data-file-node-id` (dedup anchor — the same node never renders in both zones) and `file.rowTestId` (`server-search-row-<id>`) → `FileGridItemContainer` card `data-testid`; `file.highlights` → tile name ranges (`FileGridItem.md`); `file.hasWritePermission === false` → drag disabled + `EditOff` corner badge (`FileGridItem.md`). Tiles carry no size cell, so enrichment affects the thumbnail/name only.
 
 ### 2.8 Verification Scenarios
 
@@ -92,6 +93,7 @@ Checklist for unit test writing:
 - [ ] Drag-and-drop
 - [ ] loadMoreRef when hasMore
 - [ ] Selection mode does not require checkbox role UI; selection is card-interaction based
+- [ ] Search server tile (`isSearchServerRow`): `rowTestId` card `data-testid` + `data-file-node-id` present; regular tiles render unchanged.
 
 ### 2.9 Edge Cases
 

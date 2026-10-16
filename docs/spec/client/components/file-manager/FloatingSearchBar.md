@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item               | Description                                                                                                                                                                                                                         |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role               | Floating search bar positioned to the left of the FAB. Unified behavior for mobile and desktop: always visible, no toggle. Styled with AppBar/FAB-style layered radial + linear gradient outline, pill shape, matte light interior. |
-| Used in            | FileManager                                                                                                                                                                                                                         |
-| Related components | MUI TextField, InputAdornment, IconButton; FAB                                                                                                                                                                                      |
+| Item               | Description                                                                                                                                                                                                                                                                                           |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Floating search pill fixed to the left of the FAB. On focus (or while results mode is active) the FAB spot morphs into a 56px ghost search button that IS the submit action; the pill's start icon collapses into the input area. Unified behavior for mobile and desktop: always visible, no toggle. |
+| Used in            | FileManager                                                                                                                                                                                                                                                                                           |
+| Related components | FAB (morph partner — the FAB becomes controlled-mount), `useSearchResults` (mode state owner; this bar only emits intents), `SearchQueryChipBar` (results-mode companion surface), `MemberStateBadges.js` (icon-overlay precedent)                                                                    |
 
 ---
 
@@ -19,86 +19,105 @@
 
 ### 2.2 Props
 
-| Name           | Type     | Required | Default                    | Description                                                                                                                                                                  |
-| -------------- | -------- | -------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| searchQuery    | string   | Y        | -                          | Search input value                                                                                                                                                           |
-| setSearchQuery | function | Y        | -                          | Set search query                                                                                                                                                             |
-| isMobile       | boolean  | Y        | -                          | Mobile layout (affects width)                                                                                                                                                |
-| placeholder    | string   | N        | t('nav.searchPlaceholder') | Placeholder text (i18n)                                                                                                                                                      |
-| fabVisible     | boolean  | N        | true                       | When false, search bar expands to occupy FAB space. In FileManager this mirrors actual FAB presence (FAB self-reports via `onVisibilityChange`), not an enumerated condition |
+| Name              | Type     | Required | Default                    | Description                                                                                                                                                                  |
+| ----------------- | -------- | -------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| searchQuery       | string   | Y        | -                          | Search input value (shared with the explorer session filter text)                                                                                                            |
+| setSearchQuery    | function | Y        | -                          | Set search query                                                                                                                                                             |
+| isMobile          | boolean  | Y        | -                          | Mobile layout (affects width)                                                                                                                                                |
+| placeholder       | string   | N        | t('nav.searchPlaceholder') | Placeholder text (i18n)                                                                                                                                                      |
+| fabVisible        | boolean  | N        | true                       | When false, search bar expands to occupy FAB space. In FileManager this mirrors actual FAB presence (FAB self-reports via `onVisibilityChange`), not an enumerated condition |
+| onSubmitQuery     | function | N        | -                          | `(query: string) => void` submit intent: the 56px search button click and Enter both invoke it. Absent ⇒ no server-wide search surface (share-link mode)                     |
+| resultsModeActive | boolean  | N        | false                      | Pure visual state: the search button stays mounted with the `Add` icon overlay, and blur no longer collapses. The bar renders; it never decides the mode.                    |
+| isPending         | boolean  | N        | false                      | A search submit is in flight: the button glyph runs the orbit animation (§2.5)                                                                                               |
+| llmConfigured     | boolean  | N        | false                      | AI-platform flag (settings/public flags surface, read through the existing client repository seam by the host): selects the button glyph composite (§2.5)                    |
 
 ### 2.3 Callback Signatures
 
-| Callback       | When invoked | Arguments |
-| -------------- | ------------ | --------- |
-| setSearchQuery | Input change | (string)  |
+| Callback       | When invoked                | Arguments    |
+| -------------- | --------------------------- | ------------ |
+| setSearchQuery | Input change                | (string)     |
+| onSubmitQuery  | Search-button click / Enter | (query text) |
+| onBlur         | Input blur (focus removed)  | -            |
 
 ### 2.4 Layout
 
-- **Position:** `position: fixed`, bottom-aligned with FAB
-- **When fabVisible:** Desktop: `width: 300px`, `right: offset + FAB_SIZE + GAP` (116px); Mobile: `left: offset`, `right: offset + FAB_SIZE + GAP` (84px)
-- **When !fabVisible:** Search bar expands to occupy FAB space: `right: offset` (16px mobile, 48px desktop)
-- **Test seam:** outer container exposes `data-testid="floating-search-bar"` for visibility/expansion assertions.
+- **Position:** `position: fixed`, bottom-aligned with FAB; the pill itself stays in place through the whole morph.
+- **Widths/offsets (unchanged constants):** Desktop: `width: 300px`, `right: offset + FAB_SIZE + GAP` (116px); Mobile: `left: offset`, `right: offset + FAB_SIZE + GAP` (84px). Height 56.
+- **When !fabVisible:** search bar expands to occupy FAB space: `right: offset` (16px mobile, 48px desktop) with `transition: right 0.25s ease-out`.
 - **Bottom offset:** Same as FAB (16px mobile, 48px desktop)
 - **Z-index:** 1045 (below FAB 1050)
 - **Safe area:** `paddingBottom: env(safe-area-inset-bottom)` for iOS
+- **Test seam:** outer container exposes `data-testid="floating-search-bar"` for visibility/expansion assertions.
 
-### 2.5 Styling
+### 2.5 FAB ↔ search-button morph
 
-- **Expand/collapse:** `transition: right 0.25s ease-out` when fabVisible changes
+- **Trigger:** input focus, or results mode active. On collapse (blur with empty text in browse mode, or §2.6 ✕ paths) the swap reverses.
+- **Swap mechanics:** the FAB element is replaced IN ITS EXACT spot by the search button — a 56px circle at the same position. The transition is a 2-phase fade/scale (FAB fades/scales out, button fades/scales in) and reverses on collapse. The FAB becomes controlled-mount: it stays mounted while it animates out instead of unmounting instantly (`FAB.js` mounts it through the morph).
+- **Users without write permission:** the FAB is absent; the search button occupies the same spot on focus (`FAB.md` §2.6 self-hide).
+- **Button visual (ghost):** 2px border `#52c597` + frosted translucent fill matching the pill interior (`rgba(255,255,255,0.5)` + blur); hover = the original FAB gradient fill.
+- **Start-icon collapse/expand:** the pill's `SearchIcon` start adornment fades out on focus and the input area grows into that space (smooth width/opacity transition). On blur with empty text (and browse mode) the icon returns.
+
+### 2.6 Button icon states
+
+| State                                        | Glyph                                                                                                                     |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `llmConfigured=false`                        | composite cloud + search (icon-overlay precedent `MemberStateBadges.js:30-43`)                                            |
+| `llmConfigured=true`                         | composite cloud + mirrored (`scaleX(-1)`) wand-stars (MUI `AutoAwesome`)                                                  |
+| `isPending=true` (either flag)               | the glyph (search or wand) orbits along a circle — new `@keyframes`; no animation-state E2E assertions, final states only |
+| results mode, input text empty               | the same glyph with an `Add` icon overlaid at left                                                                        |
+| results mode, input text empty, button click | no-op — the button keeps its enabled visual state and fires nothing                                                       |
+| results mode, input text non-empty, click    | chain submit (`onSubmitQuery`)                                                                                            |
+
+### 2.7 Submit and end-cluster
+
+- **No submit control inside the pill.** The 56px circle IS the submit action; Enter in the input also submits (`onSubmitQuery(current text)`).
+- **Typing unchanged:** every keystroke routes through `setSearchQuery` only — no server call.
+- **Close (✕) adornment:** rendered while text is non-empty. Pressing ✕ clears the text AND blurs the input (focus removed):
+  - browse mode → collapse back to browse visuals (icon returns, FAB returns);
+  - results mode → the clear+blur exits results mode (the ✕ press is one of the host exit triggers — `useSearchResults.md` §2.3 `exitResults`) and returns to browse.
+- **Share-link mode:** `onSubmitQuery` is not passed and submit stays disabled (server-wide search is an authenticated-explorer feature; unauthenticated share visitors keep the disabled submit as today).
+- **Escape key:** no behavior (not required).
+
+### 2.8 Keyboard and touch behavior
+
+- Enter (desktop and mobile soft keyboard) submits through `onSubmitQuery`; it never blurs-and-submits anything else.
+- Blur fires only from focus loss; the bar does not decide mode transitions beyond emitting the clear (§2.7) — results-mode entry/exit lives in `useSearchResults`.
+- Touch: the 56px button is a standard IconButton target; no long-press semantics.
+
+### 2.9 Styling
+
 - **Outline:** AppBar/FAB-style layered radial + linear gradient border (same palette as FAB) via CSS mask (gradient only on border, interior cut out)
 - **Pill shape:** `borderRadius: 9999px`
 - **Interior:** Matte frosted glass `rgba(255,255,255,0.5)` with `backdrop-filter: blur(12px)`
 
-### 2.6 Dependencies
+### 2.10 Dependencies
 
-- **imports:** React, useTranslation, MUI TextField, InputAdornment, IconButton, Box; Search, Close icons
+- **imports:** React, useTranslation, MUI TextField, InputAdornment, IconButton, Box; Search, Close, Add, AutoAwesome, wand/cloud icons
 - **Reference implementation:** `client/src/components/file-manager/FloatingSearchBar.js`
 
-### 2.7 i18n Keys
+### 2.11 i18n Keys
 
 - `nav.searchPlaceholder` – search placeholder
 
-### 2.8 Verification Scenarios
-
-- [ ] Renders search input with placeholder
-- [ ] setSearchQuery called on input change
-- [ ] Clear button appears when searchQuery non-empty; clears on click
-- [ ] Desktop: fixed 300px width
-- [ ] Mobile: full width between left margin and FAB area
-
-### 2.9 Scroll Padding Coordination
+### 2.12 Scroll Padding Coordination
 
 - FileManager scroll container uses `padding-bottom` equal to floating area height (offset + FAB_SIZE) + safe-area when FloatingSearchBar is visible, so the last list item can scroll up above the search bar. See `FLOATING_BOTTOM_HEIGHT_MOBILE` / `FLOATING_BOTTOM_HEIGHT_DESKTOP` in `constants/fileManager.js`.
 
-### 2.10 Edge Cases
+### 2.13 Verification Scenarios
 
-- FAB hidden for any reason (selection mode, no write permission, read-only views such as recent/shared/trash, parent unmount): search bar expands to occupy FAB space (right: offset). The expansion is driven by the FAB's self-reported visibility, so it can never drift out of sync with the FAB.
+- [ ] Renders search input with placeholder; setSearchQuery called on input change with no fetch.
+- [ ] Focus morphs the FAB spot into the ghost search button (final states asserted, not the animation); blur-with-empty-text in browse mode restores the FAB.
+- [ ] Enter and the 56px button click each call `onSubmitQuery` once with the current value; typing alone never calls it.
+- [ ] Without `onSubmitQuery` (share link), button/Enter are inert/disabled.
+- [ ] `resultsModeActive` changes visuals only — no behavior branch reads it besides the mount/blur rules in §2.5/§2.7.
+- [ ] ✕ with non-empty text: clears text AND removes focus; in results mode it exits results mode (host effect).
+- [ ] Results mode + empty text: button shows the `Add` overlay and click is a no-op (no `onSubmitQuery` call).
+- [ ] `llmConfigured` switches the glyph composite; `isPending` switches it to the orbit variant.
+- [ ] Desktop: fixed 300px width; Mobile: full width between left margin and FAB area; `!fabVisible` expansion unchanged (`floating-search-bar` test seam).
+
+### 2.14 Edge Cases
+
+- FAB hidden for any reason (selection mode, no write permission, read-only views such as recent/shared/trash, parent unmount): search bar expands to occupy FAB space (right: offset); on focus the search button still renders in that same spot. The expansion is driven by the FAB's self-reported visibility, so it can never drift out of sync with the FAB.
 - Initial state in FileManager: `fabVisible` starts false (FAB not yet mounted); the bar animates back to the FAB-adjacent position when the FAB mounts.
-- Share link mode: shown whenever FileManager file list is visible
-
----
-
-## 3. AI-platform submit + results-mode props (AI platform)
-
-Addendum to §2.2/§2.3 per docs/features/collections-platform.md §4.6 (two-stage search) and `docs/spec/client/hooks/useSearchResults.md` (this bar only emits intents; results state lives in the hook).
-
-### 3.1 New optional props (join §2.2 table)
-
-| Name              | Type     | Required | Default | Description                                                                                                                                             |
-| ----------------- | -------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| onSubmitQuery     | function | N        | -       | Enter key and search-icon press call `(query: string) => void` — submits the server query (results mode). Absent ⇒ today's typing-filter-only behavior. |
-| resultsModeActive | boolean  | N        | false   | Pure visual state: submitted-query styling (search icon highlighted / results-mode tint). The bar renders; it never decides the mode.                   |
-
-### 3.2 Behavior contract
-
-- **Typing unchanged:** every keystroke still routes through `setSearchQuery` only — no server call (two-stage rule).
-- **Submit:** with `onSubmitQuery` provided, Enter and the end-adornment search icon invoke it with the current text; without it, Enter/icon are inert as today.
-- **Clear resets both modes:** ✕ keeps calling `setSearchQuery('')`; the empty query is the host's exit-results trigger (per `useSearchResults` mode rule), so one button clears the inline filter and (via the shell) the results surface. No extra prop.
-- Share-link mode: `onSubmitQuery` is not passed (server-wide search is an authenticated-explorer feature).
-
-### 3.3 Verification (appends §2.8)
-
-- [ ] (target) Enter calls `onSubmitQuery` once with the current value; typing alone never calls it.
-- [ ] (target) `resultsModeActive` changes styling only — no behavior branch reads it.
-- [ ] (target) Without `onSubmitQuery`, existing scenarios in §2.8 all still pass unchanged (backward compatibility).
+- Results mode + focus lost with text present: the button stays mounted with the `Add` overlay (collapse is gated on empty text AND browse mode).
+- Share link mode: shown whenever FileManager file list is visible.

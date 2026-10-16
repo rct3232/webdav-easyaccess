@@ -59,3 +59,20 @@ export const getSortMode = () => {
 export const setSortMode = (mode) => {
   localStorage.setItem('sortMode', mode);
 };
+
+// Search results accordion: collapsed zone ids per app surface (one dedicated
+// key; unset/invalid ⇒ no zone collapsed = A + B + C expanded defaults).
+export const getSearchZonesCollapsed = () => {
+  try {
+    const raw = localStorage.getItem('wea.searchZonesCollapsed');
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+export const setSearchZonesCollapsed = (collapsed) => {
+  localStorage.setItem('wea.searchZonesCollapsed', JSON.stringify(collapsed ?? {}));
+};

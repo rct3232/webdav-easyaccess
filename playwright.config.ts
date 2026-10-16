@@ -226,10 +226,11 @@ if (backendMode === 'webdav') {
         baseURL: `http://localhost:${e2ePorts.scratchTrashAdmin}`,
       },
       {
-        // E2E-RETRIEVAL-001..007 — server-wide name search results mode
-        // (T0.11). Scratch-hermetic on its own server (:5015, same
-        // destructive-suite pattern as collections): own sqlite + webdav
-        // file backend, never the shared :5002 pool. WEBDAV HOST-MODE LEG
+        // E2E-RETRIEVAL-001..021 — server-wide name search rendered inside
+        // the explorer surfaces (zones + chip bar). Scratch-hermetic on its
+        // own server (:5015, same destructive-suite pattern as collections):
+        // own sqlite + webdav file backend, never the shared :5002 pool.
+        // The serial file owns the scratch lifecycle. WEBDAV HOST-MODE LEG
         // DEFERRED (v1 = s3 runs only): the scratch server boots its own
         // webdav backend unconditionally, so the s3 project already
         // exercises real WebDAV wiring; enabling the entry in the webdav
@@ -237,6 +238,18 @@ if (backendMode === 'webdav') {
         name: 'retrieval-desktop',
         spec: /retrieval\.spec\.ts$/,
         use: desktopUse,
+        baseURL: `http://localhost:${e2ePorts.scratchRetrieval}`,
+      },
+      {
+        // The dual-platform leg of the same suite (WP-E): webkit + mobileUse
+        // with in-test isMobileProject branching. NOT standalone — it shares
+        // the ONE :5015 scratch slot with its desktop sibling, so the
+        // pushHermetic rule wires `dependencies: [retrieval-desktop]` (the
+        // desktop project boots+kills the server first, the mobile project
+        // then re-boots it on the same port — admin-config/migration shape).
+        name: 'retrieval-mobile',
+        spec: /retrieval\.spec\.ts$/,
+        use: mobileUse,
         baseURL: `http://localhost:${e2ePorts.scratchRetrieval}`,
       },
     ];

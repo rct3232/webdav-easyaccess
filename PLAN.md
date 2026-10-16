@@ -1155,3 +1155,37 @@ qualification + provisioning-trigger fixtures) · SETUP.md boot-frozen caveat +
 - Docs: TESTING_STRATEGY E2E ID ranges + RETRIEVAL; E2E_COVERAGE_PLAN
   inventory row + retrieval table + 018..020/010/ADMIN-009 rows;
   TEST_GIT_GUIDE slot prose 5002..5015.
+
+## 24. Search UI rework — zones, chip chain, morph (owner ruling 2026-10-16, chain `feature/search-ui-rework`)
+
+- Owner-adjudicated v4 brief: results render inside the real FileList/FileGrid/FileDetail
+  as accordion zones (A=current-folder matches w/ folder-path header, B=server name
+  matches 'All results' cloud+search header, C=semantic 'Suggested results' wand slot —
+  empty while P0), sticky frosted headers w/ counts + collapse toggle (`wea.searchZonesCollapsed`);
+  SearchBarResultsMode overlay DELETED. Breadcrumb row replaced by SearchQueryChipBar
+  (committed-chain chips, hover/tap-revealed Undo=revert-to-snapshot zero-IO; single chip
+  Exit; LibraryAdd = full-snapshot union → AddToCollectionMenu set-target mode). Chained
+  submits = intersect-name refinement behind the applyStep op seam (RAG-pluggable,
+  resultRef retained opaque). Live typing in results mode promotes+highlights, never
+  hides; browse-mode filter keeps hiding + gains yellow `palette.highlight` (#F7D154)
+  live highlight (dual-kind `searchHighlight`). FloatingSearchBar morph: start-icon
+  collapse, submit moved to the FAB-slot 56px ghost button (hover=FAB gradient fill;
+  composite cloud+search / cloud+mirrored-wand by `ai.embed` flag, orbit pending glyph,
+  Add overlay in results mode; controlled-mount FAB). Sidebar/folder navigation EXITS
+  results mode (owner ruling). Union selection + bulk read-only gating spans zones;
+  server rows get EditOff corner badge from NEW additive hasRead/hasWritePermission on
+  POST /api/files/metadata (permission engine shared with listing; no SQL — PG leg N/A
+  by path rule, diff-verified); metadata enrichment chunked ≤100 in the gateway.
+- Waves: docs(0b9e808) → S(d6c744d) ∥ A(dcec8ab) ∥ B(8b2ef04) → C(eeb68a1) → E2E test/sr-e2e
+  (d528057 + client fix 2461807 double-click-open guard order) → gates fix/sr-gates (3871c51).
+  Ledger-clobber incident: WP-C task commit overwrote PLAN.md with its working plan —
+  restored at ff0969a (d02c4f6); standing rule: task branches never edit PLAN.md.
+- Gates: client 180 suites/2033; server 131/2485(5 pre-existing skips); eslint+prettier
+  (7 pre-existing format-debt files untouched); E2E retrieval desktop+mobile 42/42 ×2
+  (011 sticky two-point assertion stable incl. push-up sample), collections 20/20, s3
+  shared stack 94/93+1skip — all first-attempt green.
+- Deferred/flagged (not blocking): Zone B thumbnails await a zone-local merge seam (icon
+  placeholders — "render defaults" accepted); save-from-results (semantic) affordance
+  intentionally removed, substrate kept for P1 T1.5; sortMode zone-ordering has unit gap
+  covered only by E2E 020; `gotoAsAnonymous` helper race structural (untripped in all
+  runs, report-only); `ai.embed` chosen for the wand glyph (one-line swap if owner wants chat).

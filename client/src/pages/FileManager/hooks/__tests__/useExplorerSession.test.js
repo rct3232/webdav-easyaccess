@@ -57,7 +57,7 @@ describe('useExplorerSession', () => {
     }));
   });
 
-  it('filters files by case-insensitive name matching', () => {
+  it('filters files by case-insensitive name matching and attaches live-highlight ranges', () => {
     const files = [
       { nodeId: 5, path: '/docs/Report.txt', basename: 'Report.txt' },
       { nodeId: 6, path: '/docs/photo.jpg', basename: 'photo.jpg' },
@@ -75,9 +75,94 @@ describe('useExplorerSession', () => {
       result.current.setSearchQuery('report');
     });
 
+    // §3 browse-mode filter: non-matching rows stay HIDDEN (unchanged hiding
+    // rule) and matching name fragments gain LIVE highlight ranges.
     expect(result.current.displayedFiles).toEqual([
-      { nodeId: 5, path: '/docs/Report.txt', basename: 'Report.txt' },
+      {
+        nodeId: 5,
+        path: '/docs/Report.txt',
+        basename: 'Report.txt',
+        highlights: [{ start: 0, end: 6, kind: 'live' }],
+      },
     ]);
+  });
+
+  describe('§3 browse-mode live highlight wiring', () => {
+    const files = [
+      { nodeId: 1, path: '/d/movie-a.mp4', basename: 'movie-a.mp4' },
+      { nodeId: 2, path: '/d/notes.txt', basename: 'notes.txt' },
+    ];
+
+    it('empty query leaves rows untouched (no highlights slot, same identity)', () => {
+      const { result } = renderHook(() =>
+        useExplorerSession({ currentNodeId: 5, files, initialSearchQuery: '   ' })
+      );
+
+      expect(result.current.filteredFiles).toBe(files);
+    });
+
+    it('matching rows carry kind:live ranges over every occurrence; non-matching rows stay hidden', () => {
+      const { result } = renderHook(() =>
+        useExplorerSession({ currentNodeId: 5, files, initialSearchQuery: 'a' })
+      );
+
+      // 'a' matches 'movie-a.mp4' (two occurrences: the 'a' inside 'movie-a'
+      // is one, 'mp4' none... lower 'movie-a.mp4' → 'a' at index 6 only) —
+      // observable outcome: exactly one live range.
+      const movie = result.current.filteredFiles.find((f) => f.nodeId === 1);
+      expect(movie.highlights).toEqual([{ start: 6, end: 7, kind: 'live' }]);
+      expect(result.current.filteredFiles.map((f) => f.nodeId)).toEqual([1]);
+    });
+
+    it('committed ranges on a row are preserved alongside the live ranges', () => {
+      const seeded = [
+        {
+          nodeId: 1,
+          basename: 'Movie-Night.mkv',
+          highlights: [{ start: 0, end: 5, kind: 'committed' }],
+        },
+      ];
+
+      const { result } = renderHook(() =>
+        useExplorerSession({ currentNodeId: 5, files: seeded, initialSearchQuery: 'night' })
+      );
+
+      expect(result.current.filteredFiles[0].highlights).toEqual([
+        { start: 0, end: 5, kind: 'committed' },
+        { start: 6, end: 11, kind: 'live' },
+      ]);
+    });
+
+    it('clearing the query drops the live ranges again', () => {
+      const single = [files[0]];
+
+      const { result } = renderHook(() =>
+        useExplorerSession({ currentNodeId: 5, files: single, initialSearchQuery: 'movie' })
+      );
+      expect(result.current.filteredFiles[0].highlights).toBeDefined();
+
+      act(() => {
+        result.current.setSearchQuery('');
+      });
+      expect(result.current.filteredFiles[0].highlights).toBeUndefined();
+    });
+
+    it('while searchResultsActive the hiding filter is NOT applied — all rows stay, matches carry live ranges (§3)', () => {
+      const { result } = renderHook(() =>
+        useExplorerSession({
+          currentNodeId: 5,
+          files,
+          initialSearchQuery: 'movie',
+          searchResultsActive: true,
+        })
+      );
+
+      expect(result.current.filteredFiles.map((f) => f.nodeId)).toEqual([1, 2]);
+      expect(result.current.filteredFiles[0].highlights).toEqual([
+        { start: 0, end: 5, kind: 'live' },
+      ]);
+      expect(result.current.filteredFiles[1].highlights).toBeUndefined();
+    });
   });
 
   it('changes sessionKey when currentNodeId changes so the shell can reset selection', () => {

@@ -25,6 +25,38 @@ function createFileService(options = {}) {
     ? createWebdavRemoteOps({ blobStore, fileStorageMode, fileNodeService })
     : null;
 
+  // Single per-node read/write resolution — the permission engine shared by
+  // listDirectoryWithPermissions and the nodeId batch entry point below
+  // (POST /api/files/metadata). Admin callers short-circuit to true/true with
+  // no queries; otherwise the check dispatches by node type exactly as the
+  // listing did (directory → checkFolderPermission, file → checkFilePermission,
+  // READ then WRITE). Callers own any filtering (share-scope exclusion in the
+  // listing, unreadable-row dropping in the metadata route) — this helper only
+  // resolves flags.
+  async function resolveNodePermissionFlags(userId, node, isAdmin) {
+    if (isAdmin) {
+      return { hasReadPermission: true, hasWritePermission: true };
+    }
+
+    const isDir = node.type === 'directory';
+    const check = isDir ? aclService.checkFolderPermission : aclService.checkFilePermission;
+    const hasReadPermission = await check(userId, node.id, PERMISSIONS.READ);
+    const hasWritePermission = await check(userId, node.id, PERMISSIONS.WRITE);
+    return { hasReadPermission, hasWritePermission };
+  }
+
+  // Batch facade of the listing permission engine: resolves read/write flags
+  // for an arbitrary set of { id, type } nodes for a principal.
+  // Returns Map<Number(nodeId), { hasReadPermission, hasWritePermission }>.
+  async function resolvePermissionsForNodes(userId, nodes, user) {
+    const isAdmin = user && aclService.isAdminUser(user);
+    const flagsByNodeId = new Map();
+    for (const node of nodes) {
+      flagsByNodeId.set(Number(node.id), await resolveNodePermissionFlags(userId, node, isAdmin));
+    }
+    return flagsByNodeId;
+  }
+
   async function listDirectoryWithPermissions(userId, parentNodeId, user) {
     const children = await fileNodeService.listDirectory(parentNodeId);
 
@@ -62,38 +94,11 @@ function createFileService(options = {}) {
 
     const results = [];
     for (const child of children) {
-      let hasReadPermission;
-      let hasWritePermission;
-
-      if (isAdmin) {
-        hasReadPermission = true;
-        hasWritePermission = true;
-      } else {
-        const isDir = child.type === 'directory';
-        if (isDir) {
-          hasReadPermission = await aclService.checkFolderPermission(
-            userId,
-            child.id,
-            PERMISSIONS.READ
-          );
-          hasWritePermission = await aclService.checkFolderPermission(
-            userId,
-            child.id,
-            PERMISSIONS.WRITE
-          );
-        } else {
-          hasReadPermission = await aclService.checkFilePermission(
-            userId,
-            child.id,
-            PERMISSIONS.READ
-          );
-          hasWritePermission = await aclService.checkFilePermission(
-            userId,
-            child.id,
-            PERMISSIONS.WRITE
-          );
-        }
-      }
+      const { hasReadPermission, hasWritePermission } = await resolveNodePermissionFlags(
+        userId,
+        child,
+        isAdmin
+      );
 
       // For SHARE principals only, exclude children the principal cannot read.
       // Share tokens must never disclose sibling/parent nodes outside the share
@@ -539,6 +544,7 @@ function createFileService(options = {}) {
 
   return {
     listDirectoryWithPermissions,
+    resolvePermissionsForNodes,
     downloadFile,
     uploadFile,
     renameNode,

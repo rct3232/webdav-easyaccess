@@ -213,9 +213,14 @@ honestly empty. No absolute stored floors exist anywhere.
 
 An empty semantic section hides `Save as collection` (saved collections are semantic content only;
 name matches never enter definitions); empty sections do not render. Results mode replaces the
-breadcrumb row (`🔍 "query" · N results [Save as collection][✕]`): typing re-filters loaded results,
-Enter re-queries, recent queries are saveable chips. Responses carry an opaque **result reference**
-(§4.22) and may receive one back — today ignored. Admin exclusion: `Save as collection`
+breadcrumb row with a query chip bar (committed chain terms, undo/exit reveal, `LibraryAdd`
+targets the full snapshot) and renders the results as accordion zones inside the explorer listing
+(contracts: `docs/spec/client/hooks/useSearchResults.md`, `docs/spec/client/components/file-manager/FileManagerView.md` §3,
+`docs/spec/client/components/file-manager/SearchQueryChipBar.md`): typing without submit promotes and
+highlights loaded rows live (never hides), another submit chains a refinement step. The
+`Save as collection` affordance is not rendered on the current results surface — the per-step snapshot
+plus opaque **result reference** (§4.22) is its reserved substrate, and responses may receive one back
+(today ignored). Admin exclusion: `Save as collection`
 is ABSENT for the ADMIN actor (search itself is unchanged for admins) — saving creates a collection
 and the collections surface is server-gated 403 for admin requesters (§3.2 operator rule).
 

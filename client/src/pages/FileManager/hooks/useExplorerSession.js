@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { VIEW_MODES } from '../../../constants/fileManager';
 import { sortFiles } from '../../../utils/fileUtils';
+import { computeHighlightRanges } from '../../../utils/searchHighlight';
 import {
   getSortMode,
   getViewMode,
@@ -15,12 +16,47 @@ import {
 } from '../../../utils/localStorage';
 import { useInfiniteScroll } from '../../../hooks/useInfiniteScroll';
 
+/**
+ * §3 browse-mode live highlight: attach 'live'-kind ranges for the (single)
+ * current query term to each MATCHING row, preserving any committed-kind
+ * ranges already on the row. Identity is kept when the result would be
+ * unchanged (no re-render churn through the row memo comparators). Pure
+ * derivation — no IO here (§2.5 stays absolute).
+ */
+function withLiveHighlights(files, liveTerm) {
+  const lowerTerm = liveTerm.toLowerCase();
+  return files.map((file) => {
+    const name = (file?.basename || file?.name || '').toLowerCase();
+    if (!name.includes(lowerTerm)) return file;
+    const liveRanges = computeHighlightRanges(
+      file?.basename || file?.name || '',
+      [liveTerm],
+      'live'
+    );
+    if (liveRanges.length === 0) return file;
+    const existing = Array.isArray(file.highlights) ? file.highlights : [];
+    const committed = existing.filter((range) => range?.kind !== 'live');
+    const merged = [...committed, ...liveRanges];
+    const unchanged =
+      merged.length === existing.length &&
+      merged.every(
+        (range, index) =>
+          range.start === existing[index].start &&
+          range.end === existing[index].end &&
+          range.kind === existing[index].kind
+      );
+    if (unchanged) return file;
+    return { ...file, highlights: merged };
+  });
+}
+
 export const useExplorerSession = ({
   currentNodeId,
   view = 'folder',
   files: filesFromListing,
   initialSearchQuery = '',
   isMobile = false,
+  searchResultsActive = false,
   onSubmitQuery,
 } = {}) => {
   const sessionKey = useMemo(() => {
@@ -95,11 +131,17 @@ export const useExplorerSession = ({
   const filteredFiles = useMemo(() => {
     const q = (searchQuery || '').trim().toLowerCase();
     if (!q) return files;
-    return files.filter((file) => {
-      const name = (file?.basename || file?.name || '').toLowerCase();
-      return name.includes(q);
-    });
-  }, [files, searchQuery]);
+    // §3: while results mode is active the hiding filter is NOT applied — the
+    // session listing is the Zone A source and `useSearchResults` decides
+    // membership. Matching rows always gain LIVE highlight ranges.
+    const visible = searchResultsActive
+      ? files
+      : files.filter((file) => {
+          const name = (file?.basename || file?.name || '').toLowerCase();
+          return name.includes(q);
+        });
+    return withLiveHighlights(visible, q);
+  }, [files, searchQuery, searchResultsActive]);
 
   const sortedFiles = useMemo(() => sortFiles(filteredFiles, sortMode), [filteredFiles, sortMode]);
 

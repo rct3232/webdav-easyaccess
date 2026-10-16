@@ -478,6 +478,108 @@ describe('listDirectoryWithPermissions', () => {
   });
 });
 
+// ── resolvePermissionsForNodes ─────────────────────────────────────
+// Batch entry of the directory-listing permission engine (POST /api/files/metadata
+// consumes it; the read/write resolution itself is shared with
+// listDirectoryWithPermissions — same checker dispatch per node type).
+
+describe('resolvePermissionsForNodes', () => {
+  function buildService(aclOverrides = {}) {
+    const aclService = createAclServiceMock(aclOverrides);
+    const service = createFileService({
+      fileNodeService: createFileNodeServiceMock({}),
+      blobStorageService: createBlobStorageServiceMock(),
+      uploadService: createMockUploadService(),
+      aclService,
+      ...createListingDeps(),
+      fileStorageMode: 's3',
+    });
+    return { service, aclService };
+  }
+
+  it('resolves per-node flags through the listing checkers (dir→folder, file→file, READ then WRITE)', async () => {
+    const { service, aclService } = buildService();
+
+    const flags = await service.resolvePermissionsForNodes(
+      1,
+      [
+        { id: 10, type: 'file' },
+        { id: 11, type: 'directory' },
+      ],
+      { id: 1 }
+    );
+
+    expect(flags.get(10)).toEqual({ hasReadPermission: true, hasWritePermission: true });
+    expect(flags.get(11)).toEqual({ hasReadPermission: true, hasWritePermission: true });
+    expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'read');
+    expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'write');
+    expect(aclService.checkFolderPermission).toHaveBeenCalledWith(1, 11, 'read');
+    expect(aclService.checkFolderPermission).toHaveBeenCalledWith(1, 11, 'write');
+  });
+
+  it('admin bypass: both flags true with no per-node permission queries', async () => {
+    const { service, aclService } = buildService({
+      isAdminUser: jest.fn().mockReturnValue(true),
+    });
+
+    const flags = await service.resolvePermissionsForNodes(1, [{ id: 10, type: 'file' }], {
+      id: 1,
+      is_admin: true,
+    });
+
+    expect(flags.get(10)).toEqual({ hasReadPermission: true, hasWritePermission: true });
+    expect(aclService.checkFilePermission).not.toHaveBeenCalled();
+    expect(aclService.checkFolderPermission).not.toHaveBeenCalled();
+  });
+
+  it('read-only grant surfaces read true / write false; unreadable node surfaces read false', async () => {
+    const { service } = buildService({
+      checkFilePermission: jest
+        .fn()
+        // node 10: read granted, write denied (path-inherited read-only)
+        .mockResolvedValueOnce(true)
+        .mockResolvedValueOnce(false)
+        // node 11: read denied
+        .mockResolvedValueOnce(false),
+    });
+
+    const flags = await service.resolvePermissionsForNodes(
+      1,
+      [
+        { id: 10, type: 'file' },
+        { id: 11, type: 'file' },
+      ],
+      { id: 1 }
+    );
+
+    expect(flags.get(10)).toEqual({ hasReadPermission: true, hasWritePermission: false });
+    expect(flags.get(11).hasReadPermission).toBe(false);
+  });
+
+  it('share principal: flags resolve via the token checks, mirroring the listing dispatch', async () => {
+    const { service, aclService } = buildService({
+      isSharePrincipal: jest.fn().mockReturnValue(true),
+    });
+
+    const flags = await service.resolvePermissionsForNodes(
+      'share:token',
+      [{ id: 10, type: 'file' }],
+      null
+    );
+
+    expect(flags.get(10)).toEqual({ hasReadPermission: true, hasWritePermission: true });
+    expect(aclService.checkFilePermission).toHaveBeenCalledWith('share:token', 10, 'read');
+  });
+
+  it('returns an empty map for an empty batch', async () => {
+    const { service } = buildService();
+
+    const flags = await service.resolvePermissionsForNodes(1, [], { id: 1 });
+
+    expect(flags.size).toBe(0);
+  });
+});
+
 // ── uploadFile — S3 mode ───────────────────────────────────────────
 
 describe('uploadFile — S3 mode', () => {

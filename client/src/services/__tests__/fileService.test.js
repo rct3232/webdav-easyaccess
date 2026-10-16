@@ -49,6 +49,28 @@ describe('fileService', () => {
       expect(result).toEqual([]);
       expect(post).not.toHaveBeenCalled();
     });
+
+    it('returns server rows verbatim including read/write permission flags', async () => {
+      post.mockResolvedValueOnce({
+        data: [
+          {
+            nodeId: 11,
+            name: 'a.txt',
+            type: 'file',
+            size: 3,
+            lastmod: null,
+            mime: 'text/plain',
+            hasReadPermission: true,
+            hasWritePermission: false,
+          },
+        ],
+      });
+
+      const result = await getFilesMetadata([11]);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({ hasReadPermission: true, hasWritePermission: false });
+    });
   });
 
   describe('getFileBlob', () => {

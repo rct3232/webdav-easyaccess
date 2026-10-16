@@ -372,19 +372,17 @@ describe('useSearchResults zone A + live promotion', () => {
 describe('useSearchResults enrichment', () => {
   it('routes snapshot row ids through the gateway metadata seam and merges by nodeId', async () => {
     const gateway = createGateway({
-      loadNodesMetadata: jest
-        .fn()
-        .mockResolvedValue([
-          {
-            nodeId: 11,
-            type: 'file',
-            size: 4096,
-            lastmod: '2026-01-01T00:00:00Z',
-            mime: 'application/pdf',
-            hasReadPermission: true,
-            hasWritePermission: false,
-          },
-        ]),
+      loadNodesMetadata: jest.fn().mockResolvedValue([
+        {
+          nodeId: 11,
+          type: 'file',
+          size: 4096,
+          lastmod: '2026-01-01T00:00:00Z',
+          mime: 'application/pdf',
+          hasReadPermission: true,
+          hasWritePermission: false,
+        },
+      ]),
     });
     const { result } = renderSearchHook({ gateway });
 

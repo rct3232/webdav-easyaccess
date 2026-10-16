@@ -278,62 +278,257 @@ describe('FileManagerView search results mode (§3)', () => {
     explorerGateway.subscribeToCollections.mockImplementation(() => jest.fn());
   });
 
+  const zoneARow = {
+    nodeId: 1,
+    path: '/docs/movie.txt',
+    name: 'movie.txt',
+    basename: 'movie.txt',
+    type: 'file',
+    size: 10,
+    highlights: [{ start: 0, end: 5, kind: 'committed' }],
+  };
+  const zoneBRow = {
+    nodeId: 11,
+    path: '',
+    name: 'movie.pdf',
+    basename: 'movie.pdf',
+    isSearchServerRow: true,
+    rowTestId: 'server-search-row-11',
+    highlights: [],
+  };
+
   const searchModel = (overrides = {}) => ({
     mode: 'results',
-    query: 'movie',
-    counts: { total: 1 },
-    sections: {
-      nameMatches: [{ node_id: 11, name: 'movie.pdf', highlights: [] }],
-      semantic: [],
-    },
-    canSaveToCollection: false,
-    recentQueries: [],
+    terms: ['movie'],
+    zoneARows: [zoneARow],
+    zoneBRows: [zoneBRow],
+    zoneCRows: [],
+    zoneCounts: { zoneA: 1, zoneB: 1, zoneC: 0 },
+    zonesCollapsed: {},
+    onToggleZone: jest.fn(),
+    onRevertToStep: jest.fn(),
     onExit: jest.fn(),
-    onFilterChange: jest.fn(),
-    onChipSelect: jest.fn(),
-    onChipSave: jest.fn(),
+    onLibraryAdd: jest.fn(),
     onRowOpen: jest.fn(),
     ...overrides,
   });
 
-  it('mounts SearchBarResultsMode in place of the breadcrumb row and suppresses the normal listing', async () => {
-    const props = createProps({ searchResults: searchModel() });
-    renderWithProviders(<FileManagerView {...props} />);
-
-    expect(await screen.findByTestId('search-results-mode')).toBeInTheDocument();
-    expect(screen.queryByTestId('breadcrumb')).not.toBeInTheDocument();
-    expect(screen.queryByText('a.txt')).not.toBeInTheDocument();
-  });
-
-  it('result-row activation dispatches the prepared model callback', async () => {
-    const onRowOpen = jest.fn();
-    const props = createProps({ searchResults: searchModel({ onRowOpen }) });
-    renderWithProviders(<FileManagerView {...props} />);
-
-    const row = await screen.findByTestId('search-result-row');
-    fireEvent.click(row);
-    expect(onRowOpen).toHaveBeenCalledWith(expect.objectContaining({ node_id: 11 }));
-  });
-
-  it('FloatingSearchBar receives the session submit passthrough (typed Enter submits)', async () => {
-    const base = createProps();
-    const onSubmitQuery = jest.fn();
-    const props = createProps({
-      explorerSession: {
-        ...base.explorerSession,
-        controlsState: {
-          ...base.explorerSession.controlsState,
-          searchQuery: 'movie',
-          onSubmitQuery,
-        },
+  const controlsWithSearch = (base, model, extraControls = {}) => ({
+    ...base,
+    explorerSession: {
+      ...base.explorerSession,
+      controlsState: {
+        ...base.explorerSession.controlsState,
+        onSubmitQuery: jest.fn(),
+        ...extraControls,
       },
+    },
+    searchResults: model,
+  });
+
+  it('results mode: the chip bar replaces the breadcrumb row and the accordion zones render inside the listing', async () => {
+    const base = createProps();
+    const props = controlsWithSearch(base, searchModel());
+    renderWithProviders(<FileManagerView {...props} />);
+
+    expect(await screen.findByTestId('search-chip-bar')).toBeInTheDocument();
+    expect(screen.queryByTestId('breadcrumb')).not.toBeInTheDocument();
+
+    expect(screen.getByTestId('search-zone-header-a')).toBeInTheDocument();
+    expect(screen.getByTestId('search-zone-header-b')).toBeInTheDocument();
+    expect(screen.queryByTestId('search-zone-header-c')).not.toBeInTheDocument();
+
+    const container = screen.getByTestId('explorer-container');
+    expect(container).toHaveTextContent('movie.txt');
+    expect(screen.getByTestId('server-search-row-11')).toBeInTheDocument();
+    // the normal listing region is suppressed while the zones are on screen
+    expect(screen.queryByText('a.txt')).not.toBeInTheDocument();
+
+    // header A shows the current path + counts; header B the EN label + count
+    expect(screen.getByTestId('search-zone-header-a')).toHaveTextContent('/docs');
+    expect(screen.getByTestId('search-zone-header-a')).toHaveTextContent('1');
+    expect(screen.getByTestId('search-zone-header-b')).toHaveTextContent('All results');
+    expect(screen.getByTestId('search-zone-header-b')).toHaveTextContent('1');
+  });
+
+  it('zone headers are sticky inside the scroll container', async () => {
+    const props = controlsWithSearch(createProps(), searchModel());
+    renderWithProviders(<FileManagerView {...props} />);
+
+    await screen.findByTestId('search-zone-header-a');
+    expect(getComputedStyle(screen.getByTestId('search-zone-header-a')).position).toBe('sticky');
+  });
+
+  it('zone C renders when its rows arrive (suggested results label)', async () => {
+    const props = controlsWithSearch(
+      createProps(),
+      searchModel({
+        zoneCRows: [
+          {
+            nodeId: 90,
+            path: '',
+            name: 'fantasy.jpg',
+            basename: 'fantasy.jpg',
+            isSearchServerRow: true,
+            rowTestId: 'server-search-row-90',
+            highlights: [],
+          },
+        ],
+        zoneCounts: { zoneA: 1, zoneB: 1, zoneC: 1 },
+      })
+    );
+    renderWithProviders(<FileManagerView {...props} />);
+
+    expect(await screen.findByTestId('search-zone-header-c')).toHaveTextContent(
+      'Suggested results'
+    );
+    expect(screen.getByTestId('server-search-row-90')).toBeInTheDocument();
+  });
+
+  it('toggle click collapses a zone through the host callback', async () => {
+    const model = searchModel();
+    const props = controlsWithSearch(createProps(), model);
+    renderWithProviders(<FileManagerView {...props} />);
+
+    fireEvent.click(await screen.findByTestId('search-zone-toggle-b'));
+    expect(model.onToggleZone).toHaveBeenCalledWith('b');
+  });
+
+  it('a collapsed zone keeps its header but hides its rows', async () => {
+    const props = controlsWithSearch(createProps(), searchModel({ zonesCollapsed: { b: true } }));
+    renderWithProviders(<FileManagerView {...props} />);
+
+    await screen.findByTestId('search-zone-header-b');
+    expect(screen.queryByTestId('server-search-row-11')).not.toBeInTheDocument();
+    expect(document.querySelector('[data-file-node-id="1"]')).toBeInTheDocument();
+  });
+  it('header click also toggles the zone', async () => {
+    const model = searchModel();
+    const props = controlsWithSearch(createProps(), model);
+    renderWithProviders(<FileManagerView {...props} />);
+
+    fireEvent.click(await screen.findByTestId('search-zone-header-a'));
+    expect(model.onToggleZone).toHaveBeenCalledWith('a');
+  });
+
+  it('row activation dispatches the model onRowOpen for both zones', async () => {
+    const model = searchModel();
+    const props = controlsWithSearch(createProps(), model);
+    renderWithProviders(<FileManagerView {...props} />);
+
+    fireEvent.click(await screen.findByTestId('server-search-row-11'));
+    expect(model.onRowOpen).toHaveBeenCalledWith(
+      expect.objectContaining({ nodeId: 11 }),
+      expect.anything(),
+      expect.any(Number)
+    );
+
+    const zoneAElement = await waitFor(() => {
+      const el = document.querySelector('[data-file-node-id="1"]');
+      expect(el).toBeInTheDocument();
+      return el;
     });
+    fireEvent.click(zoneAElement);
+    expect(model.onRowOpen).toHaveBeenCalledWith(
+      expect.objectContaining({ nodeId: 1 }),
+      expect.anything(),
+      expect.any(Number)
+    );
+  });
+
+  it('pending mode renders the viewMode skeleton with search-zone-skeleton instead of zone content', async () => {
+    const props = controlsWithSearch(
+      createProps(),
+      searchModel({ mode: 'pending', zoneCounts: { zoneA: 0, zoneB: 0, zoneC: 0 } })
+    );
+    renderWithProviders(<FileManagerView {...props} />);
+
+    expect(await screen.findByTestId('search-zone-skeleton')).toBeInTheDocument();
+    expect(screen.queryByTestId('server-search-row-11')).not.toBeInTheDocument();
+    // the chip bar stays mounted through pending
+    expect(screen.getByTestId('search-chip-bar')).toBeInTheDocument();
+  });
+
+  it('pending refinement keeps the previous chain zones with skeletons in place of content', async () => {
+    const props = controlsWithSearch(
+      createProps(),
+      searchModel({ mode: 'pending', zoneCounts: { zoneA: 1, zoneB: 1, zoneC: 0 } })
+    );
+    renderWithProviders(<FileManagerView {...props} />);
+
+    expect(await screen.findByTestId('search-zone-header-a')).toBeInTheDocument();
+    expect(screen.getByTestId('search-zone-header-b')).toBeInTheDocument();
+    expect(screen.getAllByTestId('search-zone-skeleton').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByTestId('server-search-row-11')).not.toBeInTheDocument();
+  });
+
+  it('zero rows across the zones renders no headers and a single searchNoResults line', async () => {
+    const props = controlsWithSearch(
+      createProps(),
+      searchModel({ zoneARows: [], zoneBRows: [], zoneCounts: { zoneA: 0, zoneB: 0, zoneC: 0 } })
+    );
+    renderWithProviders(<FileManagerView {...props} />);
+
+    await screen.findByTestId('search-no-results');
+    expect(screen.queryByTestId('search-zone-header-a')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('search-zone-header-b')).not.toBeInTheDocument();
+    expect(screen.getByText('No results found')).toBeInTheDocument();
+  });
+
+  it('each zone runs its own 50+50 infinite scroll (only the first slice renders)', async () => {
+    const manyRows = Array.from({ length: 60 }, (_, i) => ({
+      nodeId: 100 + i,
+      path: '',
+      name: `f${i}.txt`,
+      basename: `f${i}.txt`,
+      isSearchServerRow: true,
+      rowTestId: `server-search-row-${100 + i}`,
+      highlights: [],
+    }));
+    const props = controlsWithSearch(
+      createProps(),
+      searchModel({ zoneBRows: manyRows, zoneCounts: { zoneA: 1, zoneB: 60, zoneC: 0 } })
+    );
+    renderWithProviders(<FileManagerView {...props} />);
+
+    await screen.findByTestId('server-search-row-100');
+    expect(screen.getAllByTestId(/server-search-row-/)).toHaveLength(50);
+  });
+
+  it('grid viewMode renders the zones through the grid renderer', async () => {
+    const base = createProps();
+    const props = controlsWithSearch(base, searchModel(), {});
+    props.explorerSession = {
+      ...base.explorerSession,
+      controlsState: {
+        ...base.explorerSession.controlsState,
+        viewMode: 'grid',
+        onSubmitQuery: jest.fn(),
+      },
+      listingState: base.explorerSession.listingState,
+    };
+    renderWithProviders(<FileManagerView {...props} />);
+
+    expect(await screen.findByTestId('server-search-row-11')).toBeInTheDocument();
+  });
+
+  it('FloatingSearchBar gets the results-mode/pending flags and reports the morph to the FAB', async () => {
+    const onSearchBarExpandedChange = jest.fn();
+    const props = controlsWithSearch(
+      createProps(),
+      searchModel({ mode: 'pending', zoneARows: [], zoneBRows: [] }),
+      { onSearchBarExpandedChange }
+    );
     renderWithProviders(<FileManagerView {...props} />);
 
     const searchbox = await screen.findByRole('searchbox');
-    fireEvent.keyDown(searchbox, { key: 'Enter' });
+    fireEvent.change(searchbox, { target: { value: 'movie' } });
+    fireEvent.focus(searchbox);
+    expect(onSearchBarExpandedChange).toHaveBeenLastCalledWith(true);
 
-    expect(onSubmitQuery).toHaveBeenCalledWith('movie');
+    // the FAB stays mounted while the morph owns the slot (controlled-mount)
+    fireEvent.blur(searchbox);
+    expect(screen.queryByTestId('file-actions-speed-dial')).toBeInTheDocument();
   });
 
   it('with the model absent the breadcrumb+listing composition is unchanged (regression)', async () => {
@@ -342,7 +537,16 @@ describe('FileManagerView search results mode (§3)', () => {
 
     expect(await screen.findByTestId('breadcrumb')).toBeInTheDocument();
     expect(screen.getByText('a.txt')).toBeInTheDocument();
-    expect(screen.queryByTestId('search-results-mode')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('search-chip-bar')).not.toBeInTheDocument();
+  });
+
+  it('zone labels match BOTH locales exactly (i18n mirror)', () => {
+    const en = require('../../../locales/en.json');
+    const ko = require('../../../locales/ko.json');
+    expect(en.fileManager.searchZoneAllResults).toBe('All results');
+    expect(ko.fileManager.searchZoneAllResults).toBe('전체 결과');
+    expect(en.fileManager.searchZoneSuggestedResults).toBe('Suggested results');
+    expect(ko.fileManager.searchZoneSuggestedResults).toBe('추천 결과');
   });
 });
 

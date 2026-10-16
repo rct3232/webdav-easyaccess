@@ -611,6 +611,51 @@ describe('explorerGateway', () => {
       await expect(explorerGateway.loadNodesMetadata([11])).resolves.toEqual([]);
     });
 
+    it('loadNodesMetadata chunks nodeIds at <=100 per POST and merges by nodeId', async () => {
+      const ids = Array.from({ length: 250 }, (_, i) => i + 1);
+      getFilesMetadata
+        .mockResolvedValueOnce(ids.slice(0, 100).map((nodeId) => ({ nodeId, size: 1 })))
+        .mockResolvedValueOnce(ids.slice(100, 200).map((nodeId) => ({ nodeId, size: 2 })))
+        .mockResolvedValueOnce(ids.slice(200, 250).map((nodeId) => ({ nodeId, size: 3 })));
+
+      const rows = await explorerGateway.loadNodesMetadata(ids);
+
+      expect(getFilesMetadata).toHaveBeenCalledTimes(3);
+      expect(getFilesMetadata).toHaveBeenNthCalledWith(2, ids.slice(100, 200));
+      expect(rows).toHaveLength(250);
+    });
+
+    it('loadNodesMetadata tolerates a failed chunk and rows missing from responses', async () => {
+      const ids = Array.from({ length: 150 }, (_, i) => i + 1);
+      getFilesMetadata
+        .mockResolvedValueOnce(ids.slice(0, 100).map((nodeId) => ({ nodeId })))
+        .mockRejectedValueOnce(new Error('chunk boom'));
+
+      const rows = await explorerGateway.loadNodesMetadata(ids);
+
+      expect(rows).toHaveLength(100);
+      expect(rows.map((row) => row.nodeId)).toEqual(ids.slice(0, 100));
+    });
+
+    it('loadNodesMetadata passes permission flags through untouched (search enrichment seam)', async () => {
+      getFilesMetadata.mockResolvedValueOnce([
+        {
+          nodeId: 11,
+          type: 'file',
+          size: 20,
+          lastmod: null,
+          mime: 'text/plain',
+          hasReadPermission: true,
+          hasWritePermission: false,
+        },
+      ]);
+
+      const [row] = await explorerGateway.loadNodesMetadata([11]);
+
+      expect(row.hasReadPermission).toBe(true);
+      expect(row.hasWritePermission).toBe(false);
+    });
+
     it('loadNodeAncestors passes the ancestor chain through for reveal-original navigation', async () => {
       getAncestors.mockResolvedValueOnce({
         ancestors: [

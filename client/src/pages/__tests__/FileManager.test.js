@@ -87,8 +87,18 @@ jest.mock('../../components/file-manager', () => {
 jest.mock('../../components/folder-tree', () => {
   const React = require('react');
 
-  function MockFolderTree() {
-    return <div data-testid="mock-folder-tree" />;
+  function MockFolderTree({ onNodeClick }) {
+    return (
+      <div data-testid="mock-folder-tree">
+        <button
+          type="button"
+          data-testid="mock-folder-tree-recent"
+          onClick={() => onNodeClick?.('/__recent__')}
+        >
+          mock recent
+        </button>
+      </div>
+    );
   }
 
   return {
@@ -608,7 +618,10 @@ describe('FileManager', () => {
 
     await waitFor(
       () => {
-        expect(screen.getByText(/test\.txt/)).toBeInTheDocument();
+        // the live-highlight renderer splits matched names into segments —
+        // assert on the concatenated listing text, not a single text node
+        expect(document.body.textContent).toMatch(/test\.txt/);
+        expect(document.body.textContent).not.toMatch(/folder1|docs1/);
       },
       { timeout: 3000 }
     );
@@ -1936,10 +1949,11 @@ describe('FileManager', () => {
   });
 
   /**
-   * AI-platform shell wiring (wave-2): search results mode, like state,
-   * member-row menu.
+   * AI-platform shell wiring: search results mode (zones + chip bar), exit
+   * rules, union selection and the LibraryAdd full-snapshot target.
+   * @see docs/spec/client/pages/FileManager.md §7
    */
-  describe('search results shell (T0.11 wiring)', () => {
+  describe('search results shell (zones wiring)', () => {
     const searchResultsPayload = (rows, resultRef = 'sr1.abc') => ({
       name_matches: rows.map((r) => ({ node_id: r.node_id, name: r.name })),
       counts: { name: rows.length, semantic: 0, total: rows.length, name_truncated: false },
@@ -1948,45 +1962,91 @@ describe('FileManager', () => {
       semantic_unavailable_reason: 'serverErrors.ai.notConfigured',
     });
 
-    it('typing never submits; Enter swaps the breadcrumb row for the results surface', async () => {
+    const metadataHandler = (overrides = {}) =>
+      http.post('/api/files/metadata', async ({ request }) => {
+        const body = await request.json();
+        return HttpResponse.json(
+          (body.nodeIds || []).map((nodeId) => ({
+            nodeId,
+            name: overrides[nodeId]?.name ?? 'server-row.pdf',
+            type: overrides[nodeId]?.type ?? 'file',
+            size: overrides[nodeId]?.size ?? 5,
+            lastmod: null,
+            mime: 'application/pdf',
+            hasReadPermission: true,
+            hasWritePermission: false,
+          }))
+        );
+      });
+
+    const submitSearchText = async (value) => {
+      const searchbox = screen.getByRole('searchbox');
+      fireEvent.change(searchbox, { target: { value } });
+      fireEvent.keyDown(searchbox, { key: 'Enter' });
+    };
+
+    it('typing never POSTs; Enter submit renders the zones + chip bar with exactly one POST', async () => {
       const searchBodies = [];
       server.use(
         http.post('/api/search', async ({ request }) => {
           searchBodies.push(await request.json());
-          return HttpResponse.json(searchResultsPayload([{ node_id: 11, name: 'movie.pdf' }]));
-        }),
-        http.post('/api/files/metadata', async ({ request }) => {
-          const body = await request.json();
           return HttpResponse.json(
-            (body.nodeIds || []).map((nodeId) => ({
-              nodeId,
-              name: 'movie.pdf',
-              type: 'file',
-              size: 5,
-              lastmod: null,
-              mime: 'application/pdf',
-            }))
+            searchResultsPayload([
+              { node_id: 11, name: 'sub-test.pdf' },
+              { node_id: 1, name: 'test.txt' },
+            ])
           );
-        })
+        }),
+        metadataHandler()
       );
 
       await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
       await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
 
-      const searchbox = screen.getByRole('searchbox');
-      fireEvent.change(searchbox, { target: { value: 'movie' } });
-      expect(searchBodies).toHaveLength(0); // two-stage rule: typing never hits POST /api/search
+      fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'test' } });
+      expect(searchBodies).toHaveLength(0); // typing = client filter, never POST
 
-      fireEvent.keyDown(searchbox, { key: 'Enter' });
-      expect(await screen.findByTestId('search-results-mode')).toBeInTheDocument();
-      expect(searchBodies).toEqual([{ query: 'movie' }]);
+      fireEvent.keyDown(screen.getByRole('searchbox'), { key: 'Enter' });
+
+      expect(await screen.findByTestId('search-chip-bar')).toBeInTheDocument();
+      expect(searchBodies).toEqual([{ query: 'test' }]);
       expect(screen.queryByTestId('breadcrumb')).not.toBeInTheDocument();
-      expect(screen.getByTestId('search-result-row')).toBeInTheDocument();
-      // the normal listing region is suppressed while results are on screen
-      expect(screen.queryByText(/test\.txt/)).not.toBeInTheDocument();
+      expect(await screen.findByTestId('search-zone-header-a')).toBeInTheDocument();
+      expect(screen.getByTestId('search-zone-header-b')).toBeInTheDocument();
+      expect(screen.getByTestId('server-search-row-11')).toBeInTheDocument();
+      // Zone A = current-folder match; node 1 renders in Zone A only (dedup)
+      expect(document.querySelector('[data-file-node-id="1"]')).toBeInTheDocument();
+      expect(screen.queryByTestId('server-search-row-1')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('search-zone-header-c')).not.toBeInTheDocument();
     }, 15000);
 
-    it('result-row open fires recordEntryClick(node_id) and opens the enriched entry (file → preview)', async () => {
+    it('directory result-row open records the click, navigates and exits results mode', async () => {
+      const clickBodies = [];
+      server.use(
+        http.post('/api/search', () =>
+          HttpResponse.json(searchResultsPayload([{ node_id: 22, name: 'archive-docs' }]))
+        ),
+        http.post('/api/search/click', async ({ request }) => {
+          clickBodies.push(await request.json());
+          return new HttpResponse(null, { status: 204 });
+        }),
+        metadataHandler({ 22: { name: 'archive-docs', type: 'directory', size: null } })
+      );
+
+      await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+      await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
+
+      await submitSearchText('archive-docs');
+      const row = await screen.findByTestId('server-search-row-22');
+      await waitFor(() => expect(row.textContent).toMatch(/archive-docs/));
+      fireEvent.click(row, { detail: 2 });
+
+      await waitFor(() => expect(clickBodies).toEqual([{ node_id: 22 }]));
+      await waitFor(() => expect(screen.queryByTestId('search-chip-bar')).not.toBeInTheDocument());
+      expect(await screen.findByTestId('breadcrumb')).toBeInTheDocument();
+    }, 15000);
+
+    it('file result-row open previews while the zones stay mounted and the click is recorded', async () => {
       const clickBodies = [];
       server.use(
         http.post('/api/search', () =>
@@ -1996,91 +2056,158 @@ describe('FileManager', () => {
           clickBodies.push(await request.json());
           return new HttpResponse(null, { status: 204 });
         }),
-        http.post('/api/files/metadata', async ({ request }) => {
-          const body = await request.json();
-          return HttpResponse.json(
-            (body.nodeIds || []).map((nodeId) => ({
-              nodeId,
-              name: 'movie.pdf',
-              type: 'file',
-              size: 5,
-              lastmod: null,
-              mime: 'application/pdf',
-            }))
-          );
-        })
+        metadataHandler()
       );
 
       await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
       await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
 
-      const searchbox = screen.getByRole('searchbox');
-      fireEvent.change(searchbox, { target: { value: 'movie' } });
-      fireEvent.keyDown(searchbox, { key: 'Enter' });
-      const row = await screen.findByTestId('search-result-row');
-      fireEvent.click(row);
+      await submitSearchText('movie');
+      const row = await screen.findByTestId('server-search-row-11');
+      await waitFor(() => expect(row.textContent).toMatch(/movie\.pdf/));
+      fireEvent.click(row, { detail: 2 });
 
       await waitFor(() => expect(clickBodies).toEqual([{ node_id: 11 }]));
       expect(await screen.findByRole('dialog', { name: /file preview/i })).toBeInTheDocument();
-      // file open keeps results on screen (preview overlays the results surface)
-      expect(screen.getByTestId('search-results-mode')).toBeInTheDocument();
+      // preview overlays the results surface — the zones keep rendering
+      expect(screen.getByTestId('search-chip-bar')).toBeInTheDocument();
+      expect(screen.getByTestId('search-zone-header-b')).toBeInTheDocument();
     }, 15000);
 
-    it('directory result-row open navigates to the folder and exits results mode', async () => {
+    it('sidebar folder navigation while results render exits results mode', async () => {
       server.use(
         http.post('/api/search', () =>
-          HttpResponse.json(searchResultsPayload([{ node_id: 2, name: 'docs' }]))
+          HttpResponse.json(searchResultsPayload([{ node_id: 11, name: 'movie.pdf' }]))
         ),
-        http.post('/api/search/click', () => new HttpResponse(null, { status: 204 })),
-        http.post('/api/files/metadata', async ({ request }) => {
-          const body = await request.json();
-          return HttpResponse.json(
-            (body.nodeIds || []).map((nodeId) => ({
-              nodeId,
-              name: 'docs',
-              type: 'directory',
-              size: null,
-              lastmod: null,
-              mime: null,
-            }))
-          );
+        metadataHandler()
+      );
+
+      await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+      await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
+
+      await submitSearchText('movie');
+      expect(await screen.findByTestId('search-chip-bar')).toBeInTheDocument();
+
+      const treeRow = await screen.findByTestId('mock-folder-tree-recent');
+      fireEvent.click(treeRow);
+
+      await waitFor(() => expect(screen.queryByTestId('search-chip-bar')).not.toBeInTheDocument());
+      expect(await screen.findByTestId('breadcrumb')).toBeInTheDocument();
+    }, 15000);
+
+    it('select-all spans the zones (union selection source)', async () => {
+      server.use(
+        http.post('/api/search', () =>
+          HttpResponse.json(
+            searchResultsPayload([
+              { node_id: 11, name: 'sub-test.pdf' },
+              { node_id: 1, name: 'test.txt' },
+            ])
+          )
+        ),
+        metadataHandler()
+      );
+
+      await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+      await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
+
+      await submitSearchText('test');
+      // desktop single click on a zone row enters selection (browse parity)
+      const zoneBRow = await screen.findByTestId('server-search-row-11');
+      await waitFor(() => expect(zoneBRow.textContent).toMatch(/sub-test\.pdf/));
+      fireEvent.click(zoneBRow, { detail: 1 });
+
+      const selectAllButtons = await screen.findAllByRole('button', { name: /select all/i });
+      fireEvent.click(selectAllButtons[0]);
+
+      await waitFor(() => {
+        const zoneASelected = document
+          .querySelector('[data-file-node-id="1"]')
+          ?.getAttribute('aria-selected');
+        const zoneBSelected = screen
+          .getByTestId('server-search-row-11')
+          .getAttribute('aria-selected');
+        expect(zoneASelected).toBe('true');
+        expect(zoneBSelected).toBe('true');
+      });
+    }, 15000);
+
+    it('LibraryAdd adds the FULL snapshot (zone A ∪ zone B ids) through the member-add seam', async () => {
+      let itemsBody = null;
+      server.use(
+        http.post('/api/search', () =>
+          HttpResponse.json(
+            searchResultsPayload([
+              { node_id: 11, name: 'sub-test.pdf' },
+              { node_id: 1, name: 'test.txt' },
+            ])
+          )
+        ),
+        metadataHandler(),
+        http.get('/api/collections', () =>
+          HttpResponse.json({
+            collections: [
+              {
+                collection_id: 5,
+                name: 'Roadtrip',
+                item_count: 0,
+                origin: 'user',
+                status: 'active',
+                publish_mode: 'auto',
+                granted_role: null,
+                pinned: false,
+                pinned_by: null,
+                created_at: '2026-09-01T00:00:00Z',
+              },
+            ],
+          })
+        ),
+        http.get('/api/collections/merge-suggestions', () =>
+          HttpResponse.json({ suggestions: [] })
+        ),
+        http.post('/api/collections/5/items', async ({ request }) => {
+          itemsBody = await request.json();
+          return HttpResponse.json({
+            added: itemsBody.nodeIds ?? [],
+            already_members: [],
+            rejected_not_readable: [],
+            undo: { action_id: 91 },
+          });
         })
       );
 
       await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
       await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
 
-      const searchbox = screen.getByRole('searchbox');
-      fireEvent.change(searchbox, { target: { value: 'docs' } });
-      fireEvent.keyDown(searchbox, { key: 'Enter' });
-      fireEvent.click(await screen.findByTestId('search-result-row'));
+      await submitSearchText('test');
+      expect(await screen.findByTestId('server-search-row-11')).toBeInTheDocument();
 
-      await waitFor(() =>
-        expect(screen.queryByTestId('search-results-mode')).not.toBeInTheDocument()
-      );
-      expect(screen.getByTestId('breadcrumb')).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('search-library-add'));
+      fireEvent.click(await screen.findByTestId('collection-option-5'));
+
+      // full snapshot union: zone A ∪ zone B — node 1 is displayed in zone A
+      // but its deduped-out server row still counts in the snapshot
+      await waitFor(() => expect(itemsBody).not.toBeNull());
+      expect([...itemsBody.nodeIds].sort((a, b) => a - b)).toEqual([1, 11]);
     }, 15000);
 
     it('clearing the shared search text exits results mode (one ✕ clears both surfaces)', async () => {
       server.use(
         http.post('/api/search', () =>
           HttpResponse.json(searchResultsPayload([{ node_id: 11, name: 'movie.pdf' }]))
-        )
+        ),
+        metadataHandler()
       );
 
       await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
       await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
 
-      const searchbox = screen.getByRole('searchbox');
-      fireEvent.change(searchbox, { target: { value: 'movie' } });
-      fireEvent.keyDown(searchbox, { key: 'Enter' });
-      expect(await screen.findByTestId('search-results-mode')).toBeInTheDocument();
+      await submitSearchText('movie');
+      expect(await screen.findByTestId('search-chip-bar')).toBeInTheDocument();
 
       fireEvent.click(screen.getByLabelText('Close search'));
-      await waitFor(() =>
-        expect(screen.queryByTestId('search-results-mode')).not.toBeInTheDocument()
-      );
-      expect(screen.getByTestId('breadcrumb')).toBeInTheDocument();
+      await waitFor(() => expect(screen.queryByTestId('search-chip-bar')).not.toBeInTheDocument());
+      expect(await screen.findByTestId('breadcrumb')).toBeInTheDocument();
     }, 15000);
   });
 

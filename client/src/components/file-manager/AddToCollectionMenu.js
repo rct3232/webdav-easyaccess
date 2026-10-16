@@ -55,10 +55,15 @@ const MENU_NAME_FONT = '16px Inter, Roboto, "Helvetica Neue", Arial, sans-serif'
  * `Add to collection` submenu (single + multi-select), inline New collection,
  * and the §4.5 seed confirm dialog (absent-not-disabled via seedItemVisible).
  * Mutations stay host callbacks; the only IO is the dry seed preview.
+ * Set-target mode (`targetNodeIds`): the caller-provided node-id set IS the
+ * add target (results-mode chip bar `LibraryAdd` — full snapshot); every
+ * `onAdd`/`onCreateAndAdd` receives its ids, the seed row is absent, and
+ * `membershipIds` checkmarks reflect the whole set.
  */
 const AddToCollectionMenu = ({
   open,
   targetNodes,
+  targetNodeIds = null,
   collections,
   membershipIds = [],
   seedItemVisible = true,
@@ -70,7 +75,10 @@ const AddToCollectionMenu = ({
   contextMenu = null,
 }) => {
   const { t } = useTranslation();
-  const nodeIds = (targetNodes || []).map((node) => node.nodeId);
+  const setMode = targetNodeIds != null;
+  const nodeIds = setMode
+    ? Array.from(targetNodeIds)
+    : (targetNodes || []).map((node) => node.nodeId);
   const [creatingName, setCreatingName] = useState(null);
   const [createError, setCreateError] = useState(null);
   const [seedDialogOpen, setSeedDialogOpen] = useState(false);
@@ -175,7 +183,7 @@ const AddToCollectionMenu = ({
             )}
           </Box>
         )}
-        {seedItemVisible && (targetNodes || []).length === 1 && (
+        {seedItemVisible && !setMode && (targetNodes || []).length === 1 && (
           <MenuItem
             data-testid="seed-create-row"
             onClick={() => {

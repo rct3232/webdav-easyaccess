@@ -4,7 +4,7 @@
  * @see docs/TESTING_STRATEGY.md
  */
 import React from 'react';
-import { screen, fireEvent } from '@testing-library/react';
+import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import FloatingSearchBar from '../FloatingSearchBar';
 
@@ -14,6 +14,10 @@ const defaultProps = {
   isMobile: false,
 };
 
+const startAdornmentBox = () => screen.getByTestId('search-start-icon');
+const startAdornmentStyle = () => getComputedStyle(startAdornmentBox());
+const searchInput = () => screen.getByPlaceholderText(/search/i);
+
 describe('FloatingSearchBar', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -21,13 +25,13 @@ describe('FloatingSearchBar', () => {
 
   it('renders search input with placeholder', () => {
     renderWithProviders(<FloatingSearchBar {...defaultProps} />);
-    expect(screen.getByPlaceholderText(/search/i)).toBeInTheDocument();
+    expect(searchInput()).toBeInTheDocument();
   });
 
   it('calls setSearchQuery on input change', () => {
     const setSearchQuery = jest.fn();
     renderWithProviders(<FloatingSearchBar {...defaultProps} setSearchQuery={setSearchQuery} />);
-    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'test' } });
+    fireEvent.change(searchInput(), { target: { value: 'test' } });
     expect(setSearchQuery).toHaveBeenCalledWith('test');
   });
 
@@ -76,11 +80,49 @@ describe('FloatingSearchBar', () => {
   });
 });
 
-// -- §3 AI-platform submit + results-mode props -------------------------------
+// -- §2.5 start-icon collapse/expand ------------------------------------------
 
-describe('FloatingSearchBar §3 (submit + results-mode props)', () => {
-  it('without onSubmitQuery, existing scenarios pass unchanged (backward compat)', () => {
-    renderWithProviders(<FloatingSearchBar {...defaultProps} searchQuery="q" />);
+describe('FloatingSearchBar §2.5 (start-icon morph states)', () => {
+  it('start icon occupies its space in browse mode and fades out on focus', () => {
+    renderWithProviders(<FloatingSearchBar {...defaultProps} />);
+    expect(startAdornmentStyle().width).toBe('32px');
+    expect(startAdornmentStyle().opacity).toBe('1');
+
+    fireEvent.focus(searchInput());
+    expect(startAdornmentStyle().width).toBe('0px');
+    expect(startAdornmentStyle().opacity).toBe('0');
+  });
+
+  it('icon returns on blur with empty text in browse mode', () => {
+    renderWithProviders(<FloatingSearchBar {...defaultProps} />);
+    fireEvent.focus(searchInput());
+    fireEvent.blur(searchInput());
+    expect(startAdornmentStyle().width).toBe('32px');
+  });
+
+  it('collapse is gated on empty text AND browse mode: blur with text keeps it expanded', () => {
+    renderWithProviders(<FloatingSearchBar {...defaultProps} searchQuery="movie" />);
+    fireEvent.focus(searchInput());
+    fireEvent.blur(searchInput());
+    expect(startAdornmentStyle().width).toBe('0px');
+  });
+
+  it('resultsModeActive expands without focus (visual state only)', () => {
+    renderWithProviders(
+      <FloatingSearchBar {...defaultProps} onSubmitQuery={jest.fn()} resultsModeActive />
+    );
+    expect(startAdornmentStyle().width).toBe('0px');
+    expect(screen.getByTestId('search-action-button')).toBeInTheDocument();
+  });
+});
+
+// -- §2.7 submit and end cluster -------------------------------------------------
+
+describe('FloatingSearchBar §2.7 (submit intents, end cluster)', () => {
+  it('the pill has NO submit adornment even with onSubmitQuery', () => {
+    renderWithProviders(
+      <FloatingSearchBar {...defaultProps} searchQuery="movie" onSubmitQuery={jest.fn()} />
+    );
     expect(screen.queryByTestId('search-submit')).not.toBeInTheDocument();
   });
 
@@ -96,30 +138,25 @@ describe('FloatingSearchBar §3 (submit + results-mode props)', () => {
       />
     );
 
-    const input = screen.getByPlaceholderText(/search/i);
-    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.keyDown(searchInput(), { key: 'Enter' });
     expect(onSubmitQuery).toHaveBeenCalledTimes(1);
     expect(onSubmitQuery).toHaveBeenCalledWith('movie night');
 
-    fireEvent.change(input, { target: { value: 'movie nights' } });
+    fireEvent.change(searchInput(), { target: { value: 'movie nights' } });
     expect(setSearchQuery).toHaveBeenCalledWith('movie nights');
     expect(onSubmitQuery).toHaveBeenCalledTimes(1);
   });
 
-  it('the search-icon press calls onSubmitQuery with the current value', () => {
-    const onSubmitQuery = jest.fn();
-    renderWithProviders(
-      <FloatingSearchBar {...defaultProps} searchQuery="movie" onSubmitQuery={onSubmitQuery} />
-    );
-
-    fireEvent.click(screen.getByTestId('search-submit'));
-    expect(onSubmitQuery).toHaveBeenCalledTimes(1);
-    expect(onSubmitQuery).toHaveBeenCalledWith('movie');
+  it('Enter is inert without onSubmitQuery (share-link mode)', () => {
+    renderWithProviders(<FloatingSearchBar {...defaultProps} searchQuery="movie" />);
+    expect(() => {
+      fireEvent.keyDown(searchInput(), { key: 'Enter' });
+    }).not.toThrow();
   });
 
-  it('clear still routes through setSearchQuery("") in submit mode (host exits results)', () => {
-    const onSubmitQuery = jest.fn();
+  it('✕ clears the text AND removes focus (collapse signal to the host)', () => {
     const setSearchQuery = jest.fn();
+    const onSubmitQuery = jest.fn();
     renderWithProviders(
       <FloatingSearchBar
         {...defaultProps}
@@ -128,39 +165,100 @@ describe('FloatingSearchBar §3 (submit + results-mode props)', () => {
         onSubmitQuery={onSubmitQuery}
       />
     );
+    const input = searchInput();
+    fireEvent.focus(input);
 
     fireEvent.click(screen.getByRole('button', { name: /close|search close/i }));
+
     expect(setSearchQuery).toHaveBeenCalledWith('');
+    expect(document.activeElement).not.toBe(input);
     expect(onSubmitQuery).not.toHaveBeenCalled();
   });
 
-  it('resultsModeActive changes styling only — behavior stays identical', () => {
-    const onSubmitQuery = jest.fn();
+  it('without onSubmitQuery (share link) the fab-slot button never renders', () => {
+    renderWithProviders(<FloatingSearchBar {...defaultProps} searchQuery="movie" />);
+    expect(screen.queryByTestId('search-action-button')).not.toBeInTheDocument();
+  });
+});
 
-    const inactive = renderWithProviders(
+// -- §2.5 fab-slot search button mount ------------------------------------------
+
+describe('FloatingSearchBar §2.5 (fab-slot button mount)', () => {
+  it('focus mounts the search button; collapse unmounts it after the exit animation', async () => {
+    renderWithProviders(<FloatingSearchBar {...defaultProps} onSubmitQuery={jest.fn()} />);
+    expect(screen.queryByTestId('search-action-button')).not.toBeInTheDocument();
+
+    fireEvent.focus(searchInput());
+    expect(screen.getByTestId('search-action-button')).toBeInTheDocument();
+
+    fireEvent.blur(searchInput());
+    await waitFor(() => {
+      expect(screen.queryByTestId('search-action-button')).not.toBeInTheDocument();
+    });
+  });
+
+  it('passes isPending/llmConfigured through to the button glyph states', () => {
+    renderWithProviders(
       <FloatingSearchBar
         {...defaultProps}
-        searchQuery="movie"
-        onSubmitQuery={onSubmitQuery}
-        resultsModeActive={false}
-      />
-    );
-    const inactiveButton = inactive.container.querySelector('[data-testid="search-submit"]');
-    expect(inactiveButton.classList.contains('MuiIconButton-colorPrimary')).toBe(false);
-    inactive.unmount();
-
-    const active = renderWithProviders(
-      <FloatingSearchBar
-        {...defaultProps}
-        searchQuery="movie"
-        onSubmitQuery={onSubmitQuery}
+        onSubmitQuery={jest.fn()}
+        isPending
+        llmConfigured
         resultsModeActive
       />
     );
-    const activeButton = active.container.querySelector('[data-testid="search-submit"]');
-    expect(activeButton.classList.contains('MuiIconButton-colorPrimary')).toBe(true);
+    expect(screen.getByTestId('search-action-glyph-orbit')).toBeInTheDocument();
+    expect(screen.queryByTestId('search-action-glyph-cloud')).not.toBeInTheDocument();
+  });
+});
 
-    fireEvent.keyDown(screen.getByPlaceholderText(/search/i), { key: 'Enter' });
-    expect(onSubmitQuery).toHaveBeenCalledTimes(1);
+// -- morph truth signal for the host (FAB controlled-mount wiring) ----------------
+
+describe('FloatingSearchBar §2.5 (onExpandedChange morph truth)', () => {
+  it('emits the initial state, then tracks focus/blur with the empty-text gate', () => {
+    const onExpandedChange = jest.fn();
+    renderWithProviders(
+      <FloatingSearchBar
+        {...defaultProps}
+        onSubmitQuery={jest.fn()}
+        onExpandedChange={onExpandedChange}
+      />
+    );
+    expect(onExpandedChange).toHaveBeenLastCalledWith(false);
+
+    fireEvent.focus(searchInput());
+    expect(onExpandedChange).toHaveBeenLastCalledWith(true);
+
+    fireEvent.blur(searchInput());
+    expect(onExpandedChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('results mode keeps the truth at true across blur', () => {
+    const onExpandedChange = jest.fn();
+    renderWithProviders(
+      <FloatingSearchBar
+        {...defaultProps}
+        onSubmitQuery={jest.fn()}
+        resultsModeActive
+        onExpandedChange={onExpandedChange}
+      />
+    );
+    expect(onExpandedChange).toHaveBeenLastCalledWith(true);
+    fireEvent.focus(searchInput());
+    fireEvent.blur(searchInput());
+    expect(onExpandedChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it('without a submit surface (share link) it never reports expanded', () => {
+    const onExpandedChange = jest.fn();
+    renderWithProviders(
+      <FloatingSearchBar
+        {...defaultProps}
+        searchQuery="movie"
+        onExpandedChange={onExpandedChange}
+      />
+    );
+    fireEvent.focus(searchInput());
+    expect(onExpandedChange.mock.calls.every(([value]) => value === false)).toBe(true);
   });
 });

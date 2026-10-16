@@ -167,3 +167,102 @@ describe('FAB', () => {
     expect(onVisibilityChange).toHaveBeenCalledWith(true);
   });
 });
+
+// -- controlled-mount morph (search bar focus swap, FloatingSearchBar.md §2.5) ----
+
+describe('FAB morphed visibility', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  const renderMorphable = (props = {}) =>
+    renderWithProviders(
+      <FAB
+        onCreateFolder={jest.fn()}
+        onUpload={jest.fn()}
+        hasWritePermission
+        onVisibilityChange={jest.fn()}
+        {...props}
+      />
+    );
+
+  it('stays mounted while morphed but is visually/interactionally hidden', () => {
+    renderMorphable({ morphed: true });
+    const root = screen.getByTestId('file-actions-speed-dial');
+    expect(root).toBeInTheDocument();
+    const style = getComputedStyle(root);
+    expect(style.opacity).toBe('0');
+    expect(style.pointerEvents).toBe('none');
+  });
+
+  it('keeps its visibility self-report at true while morphed (the fab slot stays occupied)', () => {
+    const onVisibilityChange = jest.fn();
+    const { rerender } = renderWithProviders(
+      <FAB
+        onCreateFolder={jest.fn()}
+        onUpload={jest.fn()}
+        hasWritePermission
+        onVisibilityChange={onVisibilityChange}
+      />
+    );
+    rerender(
+      <FAB
+        onCreateFolder={jest.fn()}
+        onUpload={jest.fn()}
+        hasWritePermission
+        onVisibilityChange={onVisibilityChange}
+        morphed
+      />
+    );
+    expect(onVisibilityChange).toHaveBeenCalledWith(true);
+    expect(onVisibilityChange).not.toHaveBeenCalledWith(false);
+  });
+
+  it('still reports false when unmounted while morphed', () => {
+    const onVisibilityChange = jest.fn();
+    const { unmount } = renderWithProviders(
+      <FAB
+        onCreateFolder={jest.fn()}
+        onUpload={jest.fn()}
+        hasWritePermission
+        onVisibilityChange={onVisibilityChange}
+        morphed
+      />
+    );
+    unmount();
+    expect(onVisibilityChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('closes an open speed dial when the morph engages', () => {
+    const view = renderMorphable();
+    const fab = screen.getByRole('button', { name: /file actions/i });
+    fireEvent.click(fab);
+    expect(fab).toHaveAttribute('aria-expanded', 'true');
+
+    view.rerender(
+      <FAB
+        onCreateFolder={jest.fn()}
+        onUpload={jest.fn()}
+        hasWritePermission
+        onVisibilityChange={jest.fn()}
+        morphed
+      />
+    );
+    expect(screen.getByRole('button', { name: /file actions/i })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
+  });
+
+  it('applies the same hidden state to the share-link Fab', () => {
+    const { container } = renderWithProviders(
+      <FAB
+        shareLinkMode={{ user: null, onLoginClick: jest.fn(), onAddToSharedClick: jest.fn() }}
+        morphed
+      />
+    );
+    const shareFab = container.querySelector('[data-testid="share-link-fab"]');
+    expect(shareFab).toBeInTheDocument();
+    expect(getComputedStyle(shareFab).opacity).toBe('0');
+  });
+});

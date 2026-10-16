@@ -7,31 +7,37 @@ import {
   Login as LoginIcon,
   AddLink as AddLinkIcon,
 } from '@mui/icons-material';
+import { FAB_GRADIENT_BACKGROUND, FAB_GRADIENT_BACKGROUND_HOVER } from './fabGradient';
 
 const fabGradientSx = {
   width: 56,
   height: 56,
-  background: `
-    radial-gradient(ellipse 250px 150px at 0% 0%, #4167ba 0%, transparent 60%),
-    radial-gradient(ellipse 250px 150px at 50% 100%, #52c597 0%, transparent 60%),
-    radial-gradient(ellipse 300px 200px at 100% 15%, rgba(251, 229, 89, 0.6) 0%, transparent 40%),
-    linear-gradient(135deg, #4167ba, #52c597 85%, rgba(251, 229, 89, 0.5) 98%)
-  `.trim(),
+  background: FAB_GRADIENT_BACKGROUND,
   '&:hover': {
-    background: `
-      radial-gradient(ellipse 250px 150px at 0% 0%, #4167ba 0%, transparent 60%),
-      radial-gradient(ellipse 250px 150px at 50% 100%, #52c597 0%, transparent 60%),
-      radial-gradient(ellipse 180px 100px at 100% 30%, #fbe559 0%, transparent 50%),
-      linear-gradient(135deg, #4167ba, #52c597 80%, #fbe559 95%)
-    `.trim(),
+    background: FAB_GRADIENT_BACKGROUND_HOVER,
   },
 };
+
+// Controlled-mount morph visibility (FloatingSearchBar.md §2.5): while the search bar
+// is expanded the FAB stays MOUNTED and fades/scales out (instant out, delayed back-in
+// so the search button leads the reverse swap) instead of vanishing. It keeps the fab
+// slot occupied (self-report stays true) — only the search button covers the spot.
+const getMorphVisibilitySx = (morphed) => ({
+  opacity: morphed ? 0 : 1,
+  transform: morphed ? 'scale(0.6)' : 'scale(1)',
+  pointerEvents: morphed ? 'none' : 'auto',
+  transition: morphed
+    ? 'opacity 0.16s ease-in, transform 0.16s ease-in'
+    : 'opacity 0.16s ease-out 0.14s, transform 0.16s ease-out 0.14s',
+});
 
 /**
  * Floating Action Button with speed dial
  * Provides quick access to common actions.
  * shareLinkMode: { user, onLoginClick, onAddToSharedClick } — 공유 링크 모드일 때 단일 Fab (로그인/공유됨 추가)
  * onVisibilityChange: reports actual visibility (true while rendering, false on hide/unmount)
+ * morphed: controlled-mount swap signal — the search bar owns the fab slot right now;
+ * the FAB animates out but keeps mounting and keeps reporting visibility true.
  */
 const FAB = ({
   onUpload,
@@ -41,6 +47,7 @@ const FAB = ({
   shareLinkMode,
   isMobile = false,
   onVisibilityChange,
+  morphed = false,
 }) => {
   const [open, setOpen] = useState(false);
   const { t } = useTranslation();
@@ -73,6 +80,11 @@ const FAB = ({
     return () => onVisibilityChange(false);
   }, [isVisible, onVisibilityChange]);
 
+  // The morph owns the slot: never keep the dial expanded underneath it.
+  useEffect(() => {
+    if (morphed) setOpen(false);
+  }, [morphed]);
+
   if (shareLinkMode) {
     const { user, onLoginClick, onAddToSharedClick } = shareLinkMode;
     const isLoggedIn = !!user;
@@ -89,6 +101,7 @@ const FAB = ({
           zIndex: 1050,
           paddingBottom: 'env(safe-area-inset-bottom)',
           ...fabGradientSx,
+          ...getMorphVisibilitySx(morphed),
         }}
       >
         {isLoggedIn ? <AddLinkIcon /> : <LoginIcon />}
@@ -131,11 +144,13 @@ const FAB = ({
         position: 'fixed',
         bottom: offset,
         right: offset,
+        zIndex: 1050,
         '& .MuiFab-primary': {
           ...fabGradientSx,
         },
         // Account for iOS safe area
         paddingBottom: 'env(safe-area-inset-bottom)',
+        ...getMorphVisibilitySx(morphed),
       }}
       icon={<SpeedDialIcon />}
       open={open}

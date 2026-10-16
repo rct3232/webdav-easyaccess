@@ -437,6 +437,185 @@ describe('useSearchResults enrichment', () => {
   });
 });
 
+describe('useSearchResults zone thumbnail merge', () => {
+  it('zone B rows receive thumbnailUrl when the zone-local callback fires', async () => {
+    const { result } = renderSearchHook();
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    expect(result.current.zoneBRows.every((row) => row.thumbnailUrl === undefined)).toBe(true);
+
+    act(() => {
+      result.current.handleZoneThumbnailsLoaded(new Map([[11, '/api/thumbnails/11.webp']]));
+    });
+
+    expect(result.current.zoneBRows.find((row) => row.nodeId === 11).thumbnailUrl).toBe(
+      '/api/thumbnails/11.webp'
+    );
+    // rows outside the payload keep the icon placeholder state
+    expect(result.current.zoneBRows.find((row) => row.nodeId === 12).thumbnailUrl).toBeUndefined();
+  });
+
+  it('zone C rows receive thumbnailUrl through the same seam', async () => {
+    const gateway = createGateway({
+      runSearch: jest.fn().mockResolvedValue({
+        name_matches: [{ node_id: 11, name: 'movie.pdf' }],
+        semantic: [{ node_id: 90, name: 'fantasy.jpg', score: 0.71 }],
+        result_ref: 'sr1.y',
+        counts: { name: 1, semantic: 1, total: 2, name_truncated: false },
+        semantic_available: true,
+      }),
+    });
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    act(() => {
+      result.current.handleZoneThumbnailsLoaded(new Map([[90, '/api/thumbnails/90.webp']]));
+    });
+
+    expect(result.current.zoneCRows.map((row) => row.nodeId)).toEqual([90]);
+    expect(result.current.zoneCRows[0].thumbnailUrl).toBe('/api/thumbnails/90.webp');
+  });
+
+  it('merged thumbnails survive row re-derivation (live promotion and late enrichment)', async () => {
+    let resolveMeta;
+    const gateway = createGateway({
+      loadNodesMetadata: jest.fn(
+        () =>
+          new Promise((resolve) => {
+            resolveMeta = resolve;
+          })
+      ),
+    });
+    const { result, rerender } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    act(() => {
+      result.current.handleZoneThumbnailsLoaded(new Map([[12, '/api/thumbnails/12.webp']]));
+    });
+
+    rerender({
+      showError: jest.fn(),
+      gateway,
+      files: SESSION_FILES,
+      sortMode: 'name_asc',
+      liveText: 'night',
+    });
+    expect(result.current.zoneBRows[0].nodeId).toBe(12);
+    expect(result.current.zoneBRows[0].thumbnailUrl).toBe('/api/thumbnails/12.webp');
+
+    await act(async () => {
+      resolveMeta([
+        {
+          nodeId: 11,
+          type: 'file',
+          size: 1,
+          lastmod: null,
+          mime: 'application/pdf',
+          hasReadPermission: true,
+          hasWritePermission: true,
+        },
+      ]);
+    });
+    // enrichment re-derivation: 12 keeps its merged URL (and stays unenriched — missing row),
+    // 11 enriches without inventing a thumbnail
+    const row12 = result.current.zoneBRows.find((row) => row.nodeId === 12);
+    expect(row12.thumbnailUrl).toBe('/api/thumbnails/12.webp');
+    expect(row12.type).toBeUndefined();
+    const row11 = result.current.zoneBRows.find((row) => row.nodeId === 11);
+    expect(row11.thumbnailUrl).toBeUndefined();
+    expect(row11.size).toBe(1);
+  });
+
+  it('an enrichment-supplied thumbnailUrl takes precedence over a zone merge', async () => {
+    const gateway = createGateway({
+      loadNodesMetadata: jest.fn().mockResolvedValue([
+        {
+          nodeId: 11,
+          type: 'file',
+          size: 2,
+          lastmod: null,
+          mime: 'image/jpeg',
+          hasReadPermission: true,
+          hasWritePermission: true,
+          thumbnailUrl: '/api/thumbnails/from-meta.webp',
+        },
+      ]),
+    });
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    expect(result.current.zoneBRows.find((row) => row.nodeId === 11).thumbnailUrl).toBe(
+      '/api/thumbnails/from-meta.webp'
+    );
+
+    act(() => {
+      result.current.handleZoneThumbnailsLoaded(new Map([[11, '/api/thumbnails/late.webp']]));
+    });
+
+    expect(result.current.zoneBRows.find((row) => row.nodeId === 11).thumbnailUrl).toBe(
+      '/api/thumbnails/from-meta.webp'
+    );
+  });
+
+  it('non-Map and empty payloads are ignored without touching rows', async () => {
+    const { result } = renderSearchHook();
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    act(() => {
+      result.current.handleZoneThumbnailsLoaded([{ nodeId: 11, thumbnailUrl: '/x.webp' }]);
+      result.current.handleZoneThumbnailsLoaded(new Map());
+    });
+
+    expect(result.current.zoneBRows.every((row) => row.thumbnailUrl === undefined)).toBe(true);
+  });
+
+  it('the zone-local merge never touches zone A (session) rows', async () => {
+    const { result } = renderSearchHook();
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    // node 1 is a SESSION_FILES row (zone A) — zone merge must not leak into it
+    act(() => {
+      result.current.handleZoneThumbnailsLoaded(new Map([[1, '/api/thumbnails/1.webp']]));
+    });
+
+    expect(result.current.zoneARows.map((row) => row.nodeId)).toContain(1);
+    expect(result.current.zoneARows.every((row) => row.thumbnailUrl === undefined)).toBe(true);
+  });
+
+  it('exitResults clears merged zone thumbnails', async () => {
+    const { result } = renderSearchHook();
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    act(() => {
+      result.current.handleZoneThumbnailsLoaded(new Map([[11, '/api/thumbnails/11.webp']]));
+    });
+    act(() => {
+      result.current.exitResults();
+    });
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    expect(result.current.zoneBRows.find((row) => row.nodeId === 11).thumbnailUrl).toBeUndefined();
+  });
+});
+
 describe('useSearchResults exit + recents', () => {
   it('exitResults resets mode/chain/zones while the recents list survives', async () => {
     const { result } = renderSearchHook();

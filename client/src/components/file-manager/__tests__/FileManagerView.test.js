@@ -34,6 +34,13 @@ jest.mock('../../../services/explorerGateway', () => {
   return { __esModule: true, default: createExplorerGatewayMock() };
 });
 
+jest.mock('../../../hooks/useThumbnailLazyLoad', () => ({
+  __esModule: true,
+  useThumbnailLazyLoad: jest.fn(),
+}));
+
+import { useThumbnailLazyLoad } from '../../../hooks/useThumbnailLazyLoad';
+
 function createProps(overrides = {}) {
   const baseProps = {
     shareContext: {
@@ -547,6 +554,82 @@ describe('FileManagerView search results mode (§3)', () => {
     expect(ko.fileManager.searchZoneAllResults).toBe('전체 결과');
     expect(en.fileManager.searchZoneSuggestedResults).toBe('Suggested results');
     expect(ko.fileManager.searchZoneSuggestedResults).toBe('추천 결과');
+  });
+
+  it('zone B/C renderers receive the zone-local thumbnail merge callback', async () => {
+    const onZoneThumbnailsLoaded = jest.fn();
+    const props = controlsWithSearch(
+      createProps(),
+      searchModel({
+        onZoneThumbnailsLoaded,
+        zoneCRows: [
+          {
+            nodeId: 90,
+            path: '',
+            name: 'fantasy.jpg',
+            basename: 'fantasy.jpg',
+            isSearchServerRow: true,
+            rowTestId: 'server-search-row-90',
+            highlights: [],
+          },
+        ],
+        zoneCounts: { zoneA: 1, zoneB: 1, zoneC: 1 },
+      })
+    );
+    renderWithProviders(<FileManagerView {...props} />);
+    await screen.findByTestId('server-search-row-90');
+
+    const zoneBSetup = useThumbnailLazyLoad.mock.calls.find(([files]) =>
+      files.some((file) => file.nodeId === 11)
+    );
+    const zoneCSetup = useThumbnailLazyLoad.mock.calls.find(([files]) =>
+      files.some((file) => file.nodeId === 90)
+    );
+    expect(zoneBSetup[1]).toBe(onZoneThumbnailsLoaded);
+    expect(zoneCSetup[1]).toBe(onZoneThumbnailsLoaded);
+  });
+
+  it('zone A keeps the session thumbnail merge; browse listings are untouched', async () => {
+    const onZoneThumbnailsLoaded = jest.fn();
+    const props = controlsWithSearch(createProps(), searchModel({ onZoneThumbnailsLoaded }));
+    const sessionCb = props.explorerSession.listingState.handleThumbnailsLoaded;
+    renderWithProviders(<FileManagerView {...props} />);
+    await screen.findByTestId('server-search-row-11');
+
+    // the Zone A instance (session rows) still lands on the session merge
+    const zoneASetup = useThumbnailLazyLoad.mock.calls.find(
+      ([files]) =>
+        files.some((file) => file.nodeId === 1) && !files.some((file) => file.nodeId === 11)
+    );
+    expect(zoneASetup[1]).toBe(sessionCb);
+    expect(zoneASetup[1]).not.toBe(onZoneThumbnailsLoaded);
+
+    // browse composition: the plain listing instance keeps its own session callback
+    useThumbnailLazyLoad.mockClear();
+    const browseProps = createProps({ searchResults: null });
+    renderWithProviders(<FileManagerView {...browseProps} />);
+    await screen.findByText('a.txt');
+    const browseSetup = useThumbnailLazyLoad.mock.calls.find(([files]) =>
+      files.some((file) => file.nodeId === 1)
+    );
+    expect(browseSetup[1]).toBe(browseProps.explorerSession.listingState.handleThumbnailsLoaded);
+  });
+
+  it('a zone B row carrying a merged thumbnailUrl renders the image, not the icon placeholder', async () => {
+    const props = controlsWithSearch(
+      createProps(),
+      searchModel({
+        zoneBRows: [{ ...zoneBRow, mime: 'image/jpeg', thumbnailUrl: '/api/thumbnails/11.webp' }],
+      })
+    );
+    renderWithProviders(<FileManagerView {...props} />);
+
+    const row = await screen.findByTestId('server-search-row-11');
+    expect(row.querySelector('img')).toHaveAttribute('src', '/api/thumbnails/11.webp');
+    // unmerged rows keep the zero-delta icon placeholder (no image element)
+    const iconRow = document.querySelector('[data-file-node-id="1"]');
+    expect(iconRow).not.toBeNull();
+    expect(iconRow.querySelector('img')).toBeNull();
   });
 });
 

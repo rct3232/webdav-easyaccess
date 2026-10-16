@@ -2209,6 +2209,55 @@ describe('FileManager', () => {
       await waitFor(() => expect(screen.queryByTestId('search-chip-bar')).not.toBeInTheDocument());
       expect(await screen.findByTestId('breadcrumb')).toBeInTheDocument();
     }, 15000);
+
+    it('server rows lazy-load thumbnails into the zone-locally merged rows (avatar appears)', async () => {
+      const batchedNodeIds = [];
+      server.use(
+        http.post('/api/search', () =>
+          HttpResponse.json(searchResultsPayload([{ node_id: 11, name: 'movie.jpg' }]))
+        ),
+        metadataHandler({ 11: { name: 'movie.jpg' } }),
+        http.post('/api/thumbnails/batch', async ({ request }) => {
+          const body = await request.json();
+          batchedNodeIds.push(...(body.nodeIds || []));
+          return HttpResponse.json({
+            thumbnails: (body.nodeIds || []).map((nodeId) => ({
+              nodeId,
+              thumbnailUrl: `/api/thumbnails/${nodeId}.webp`,
+            })),
+          });
+        })
+      );
+
+      // auto-intersecting observer: the shared lazy-load mechanism reaches the
+      // debounced batch request without a real viewport (setupTests IO never fires)
+      const RealIO = global.IntersectionObserver;
+      global.IntersectionObserver = class AutoIntersectIO {
+        constructor(callback) {
+          this.callback = callback;
+        }
+        observe(el) {
+          setTimeout(() => this.callback([{ isIntersecting: true, target: el }], this), 0);
+        }
+        unobserve() {}
+        disconnect() {}
+      };
+      try {
+        await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+        await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
+
+        await submitSearchText('movie');
+        const row = await screen.findByTestId('server-search-row-11');
+
+        await waitFor(
+          () => expect(row.querySelector('img')).toHaveAttribute('src', '/api/thumbnails/11.webp'),
+          { timeout: 8000 }
+        );
+        expect(batchedNodeIds).toContain(11);
+      } finally {
+        global.IntersectionObserver = RealIO;
+      }
+    }, 20000);
   });
 
   describe('like state shell (T0.5 wiring)', () => {

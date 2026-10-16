@@ -20,13 +20,13 @@
 
 ### 2.2 Input Parameters
 
-| Name      | Type          | Required | Description                                                                                                                 |
-| --------- | ------------- | -------- | --------------------------------------------------------------------------------------------------------------------------- |
-| showError | function      | Y        | User-visible error feedback                                                                                                 |
+| Name      | Type          | Required | Description                                                                                                                                        |
+| --------- | ------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| showError | function      | Y        | User-visible error feedback                                                                                                                        |
 | gateway   | object        | N        | `explorerGateway` search/metadata seams: `runSearch`, `loadNodesMetadata` (raw nodeIds, chunked ≤ 100/POST — §2.3 enrichment), `recordSearchClick` |
-| files     | Array<object> | Y        | Current-folder session listing rows — the Zone A membership source (`useExplorerSession.md` §3).                            |
-| sortMode  | string        | Y        | Session sort mode; applied to BOTH zones (§2.3 zone ordering).                                                              |
-| liveText  | string        | Y        | The shared search input text (session `searchQuery`) while results mode is active — drives live promotion/highlight only.   |
+| files     | Array<object> | Y        | Current-folder session listing rows — the Zone A membership source (`useExplorerSession.md` §3).                                                   |
+| sortMode  | string        | Y        | Session sort mode; applied to BOTH zones (§2.3 zone ordering).                                                                                     |
+| liveText  | string        | Y        | The shared search input text (session `searchQuery`) while results mode is active — drives live promotion/highlight only.                          |
 
 ### 2.3 State Machine, Chain, and Return Value
 

@@ -6,7 +6,7 @@
  */
 import { theme } from '../App';
 
-describe('App theme — like color token (M-5)', () => {
+describe('App theme — palette color tokens (like M-5, highlight SEARCH REWORK §6)', () => {
   it('exposes palette.like with the like-pink main', () => {
     expect(theme.palette.like).toBeDefined();
     expect(theme.palette.like.main).toBe('#FF3E55');
@@ -14,5 +14,19 @@ describe('App theme — like color token (M-5)', () => {
 
   it('keeps the danger palette untouched (error ≠ like)', () => {
     expect(theme.palette.error.main).not.toBe(theme.palette.like.main);
+  });
+
+  // SEARCH REWORK §6 contract: `highlight` is the dedicated yellow token for
+  // the LIVE browse-filter highlight (kind:'live' ranges); committed/search
+  // ranges keep secondary.light (green).
+  it('exposes palette.highlight with the live-filter yellow main', () => {
+    expect(theme.palette.highlight).toBeDefined();
+    expect(theme.palette.highlight.main).toBe('#F7D154');
+  });
+
+  it('keeps the highlight token distinct from like, secondary and the derived committed-green light', () => {
+    expect(theme.palette.highlight.main).not.toBe(theme.palette.like.main);
+    expect(theme.palette.highlight.main).not.toBe(theme.palette.secondary.main);
+    expect(theme.palette.highlight.main).not.toBe(theme.palette.secondary.light);
   });
 });

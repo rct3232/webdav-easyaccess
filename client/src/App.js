@@ -38,6 +38,15 @@ export const theme = createTheme({
     like: {
       main: '#FF3E55',
     },
+    // SEARCH REWORK §6: `highlight` is the DEDICATED yellow palette token for
+    // the LIVE browse-filter highlight (kind:'live' ranges in
+    // utils/searchHighlight.js). Semantic split mirrors M-5 `like`: committed
+    // (search-server) highlight fragments keep `secondary.light` (green); the
+    // transient typing filter gets its own yellow so users read "what I just
+    // typed" ≠ "what the server matched".
+    highlight: {
+      main: '#F7D154',
+    },
   },
   components: {
     MuiSvgIcon: {

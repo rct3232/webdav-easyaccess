@@ -1,11 +1,13 @@
 import React from 'react';
 import { CardMedia, Typography, Box, Tooltip } from '@mui/material';
 import { alpha } from '@mui/material/styles';
-import { MoreVert as MoreVertIcon } from '@mui/icons-material';
+import { MoreVert as MoreVertIcon, EditOff as EditOffIcon } from '@mui/icons-material';
 import { getFileIconForGrid, getThumbnail } from '../../utils/fileIconUtils';
 import { pixelMiddleTruncate } from '../../utils/stringUtils';
 import CardTile from './CardTile';
+import HighlightedName from './HighlightedName';
 import MemberStateBadges, { hasMemberStateBadges } from './MemberStateBadges';
+import TileCornerBadge from './TileCornerBadge';
 
 /**
  * 더 버튼 오버레이 스타일
@@ -15,6 +17,18 @@ const moreButtonOverlayStyles = {
   top: 4,
   right: 4,
   zIndex: 1,
+};
+
+/**
+ * Badge + More cluster at the thumbnail TOP-RIGHT (FileGridItem.md §2.6
+ * search-server-row slots): the read-only `EditOff` plate sits beside the More
+ * action, More rightmost.
+ */
+const topRightClusterStyles = {
+  ...moreButtonOverlayStyles,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 0.5,
 };
 
 const cardMediaStyles = {
@@ -88,7 +102,20 @@ const FileGridItem = React.memo(
       getFileIconForGrid(file)
     );
 
-    const moreAction = showMoreButton ? (
+    // Search-server-row read-only badge (FileGridItem.md §2.6): `EditOff` on a
+    // `TileCornerBadge` plate at the thumbnail TOP-RIGHT, beside the More
+    // action (More rightmost). Regular tiles (fields absent) render none.
+    const isReadOnlySearchRow =
+      file.isSearchServerRow === true && file.hasWritePermission === false;
+    const hasHighlights = Array.isArray(file.highlights) && file.highlights.length > 0;
+
+    const readOnlyBadge = isReadOnlySearchRow ? (
+      <TileCornerBadge data-testid={`search-readonly-badge-${file.nodeId}`} aria-hidden="true">
+        <EditOffIcon style={{ fontSize: 16 }} />
+      </TileCornerBadge>
+    ) : null;
+
+    const buildMoreButton = (positioned) => (
       <Box
         component="button"
         type="button"
@@ -104,7 +131,7 @@ const FileGridItem = React.memo(
           onMoreClick?.(file, e);
         }}
         sx={{
-          ...moreButtonOverlayStyles,
+          ...(positioned ? moreButtonOverlayStyles : null),
           display: 'inline-flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -125,6 +152,15 @@ const FileGridItem = React.memo(
       >
         <MoreVertIcon fontSize="small" />
       </Box>
+    );
+
+    const moreAction = readOnlyBadge ? (
+      <Box sx={topRightClusterStyles}>
+        {readOnlyBadge}
+        {showMoreButton ? buildMoreButton(false) : null}
+      </Box>
+    ) : showMoreButton ? (
+      buildMoreButton(true)
     ) : null;
 
     const footer = (() => {
@@ -134,7 +170,15 @@ const FileGridItem = React.memo(
 
       const typography = (
         <Typography variant="body2" sx={buildTextStyles(isDropTarget)}>
-          {truncatedName}
+          {hasHighlights ? (
+            <HighlightedName
+              name={originalName}
+              display={truncatedName}
+              highlights={file.highlights}
+            />
+          ) : (
+            truncatedName
+          )}
         </Typography>
       );
 
@@ -189,7 +233,16 @@ const FileGridItem = React.memo(
       prevProps.file.published === nextProps.file.published &&
       prevProps.file.shared_excluded === nextProps.file.shared_excluded &&
       prevProps.file.state === nextProps.file.state &&
-      prevProps.file.liked === nextProps.file.liked
+      prevProps.file.liked === nextProps.file.liked &&
+      // Search-server-row slots (FileGridItem.md §2.6): highlight/permission
+      // flips and enrichment (size) must re-render tiles whose name/path never
+      // change; `highlights` rides array identity (adapters re-map rows).
+      // Undefined-safe — regular file tiles are unaffected.
+      prevProps.file.highlights === nextProps.file.highlights &&
+      prevProps.file.hasWritePermission === nextProps.file.hasWritePermission &&
+      prevProps.file.hasReadPermission === nextProps.file.hasReadPermission &&
+      prevProps.file.isSearchServerRow === nextProps.file.isSearchServerRow &&
+      prevProps.file.size === nextProps.file.size
     );
   }
 );

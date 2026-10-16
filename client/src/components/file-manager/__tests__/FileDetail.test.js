@@ -197,3 +197,75 @@ describe('FileDetail — member row slots (P-4)', () => {
     expect(screen.getByText(/1 KB|1\.00 KB/i)).toBeInTheDocument();
   });
 });
+
+describe('FileDetail — search-server-row slots', () => {
+  const searchRow = (overrides = {}) => ({
+    nodeId: 77003,
+    path: '',
+    basename: 'movie-notes.pdf',
+    type: 'file',
+    mime: 'application/pdf',
+    size: 2048,
+    lastmod: '2026-01-01T00:00:00Z',
+    isSearchServerRow: true,
+    hasWritePermission: false,
+    rowTestId: 'server-search-row-77003',
+    ...overrides,
+  });
+
+  it('TableRow carries rowTestId + data-file-node-id (forwarding verified, item 5)', () => {
+    renderWithProviders(<FileDetail {...defaultProps} files={[searchRow()]} />);
+    const row = screen.getByTestId('server-search-row-77003');
+    expect(row.tagName).toBe('TR');
+    expect(row.getAttribute('data-file-node-id')).toBe('77003');
+  });
+
+  it('renders the two-color highlight ranges in the name cell, Tooltip path intact', () => {
+    renderWithProviders(
+      <FileDetail
+        {...defaultProps}
+        files={[
+          searchRow({
+            highlights: [
+              { start: 0, end: 5, kind: 'committed' },
+              { start: 6, end: 11, kind: 'live' },
+            ],
+          }),
+        ]}
+      />
+    );
+    const row = screen.getByTestId('server-search-row-77003');
+    expect(within(row).getByTestId('search-highlight-range').textContent).toBe('movie');
+    expect(within(row).getByTestId('filter-highlight-range').textContent).toBe('notes');
+    expect(
+      getComputedStyle(within(row).getByTestId('filter-highlight-range')).backgroundColor
+    ).toBe('rgb(247, 209, 84)');
+  });
+
+  it('shows the EditOff badge when the search server row is read-only', () => {
+    renderWithProviders(<FileDetail {...defaultProps} files={[searchRow()]} />);
+    expect(
+      within(screen.getByTestId('server-search-row-77003')).getByTestId(
+        'search-readonly-badge-77003'
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('size cell shows - for un-enriched search rows and the real value after enrichment', () => {
+    const { rerender } = renderWithProviders(
+      <FileDetail {...defaultProps} files={[searchRow({ size: null })]} />
+    );
+    const row = screen.getByTestId('server-search-row-77003');
+    expect(within(row).queryByText(/0 B|KB/i)).not.toBeInTheDocument();
+
+    rerender(<FileDetail {...defaultProps} files={[searchRow({ size: 4096 })]} />);
+    expect(within(screen.getByTestId('server-search-row-77003')).getByText(/4\.00 KB|4 KB/));
+  });
+
+  it('plain file rows render zero search-slot DOM', () => {
+    const { container } = renderWithProviders(<FileDetail {...defaultProps} />);
+    expect(container.querySelector('[data-testid^="search-"]')).toBeNull();
+    expect(container.querySelectorAll('mark')).toHaveLength(0);
+    expect(screen.getByText('doc.pdf')).toBeInTheDocument();
+  });
+});

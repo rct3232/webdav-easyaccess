@@ -78,6 +78,7 @@
 - **No submit control inside the pill.** The 56px circle IS the submit action; Enter in the input also submits (`onSubmitQuery(current text)`).
 - **Native clear affordance suppressed:** the browser-native cancel button/decoration of the `type="search"` input is hidden via CSS; the custom ✕ is the single clear affordance.
 - **Typing unchanged:** every keystroke routes through `setSearchQuery` only — no server call.
+- **Input resets:** a successful commit clears the field (the term moves to the chip strip — `useSearchResults.md` §2.3 `onCommit`), and every results-mode exit resets it (shell exit seam). The field is therefore empty whenever results render or after leaving them.
 - **Close (✕) adornment:** rendered while text is non-empty. Pressing ✕ clears the text AND blurs the input (focus removed):
   - browse mode → collapse back to browse visuals (icon returns, FAB returns);
   - results mode → the clear+blur exits results mode (the ✕ press is one of the host exit triggers — `useSearchResults.md` §2.3 `exitResults`) and returns to browse.

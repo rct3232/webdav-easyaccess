@@ -6,6 +6,7 @@ import {
   matchesTerm,
 } from '../../../utils/searchHighlight';
 import { sortFiles } from '../../../utils/fileUtils';
+import { SEARCH_ORBIT_CYCLE_MS } from '../../../constants/fileManager';
 import * as recentQueriesStorage from '../../../services/recentQueriesStorage';
 
 /**
@@ -111,6 +112,8 @@ export const useSearchResults = ({
   files = [],
   sortMode = 'name_asc',
   liveText = '',
+  minPendingMs = SEARCH_ORBIT_CYCLE_MS,
+  onCommit = undefined,
 } = {}) => {
   const [mode, setMode] = useState('browse');
   const [chain, setChain] = useState([]);
@@ -132,6 +135,7 @@ export const useSearchResults = ({
   const modeRef = useRef(mode);
   modeRef.current = mode;
   const attemptedEnrichmentRef = useRef(new Set());
+  const submitSeqRef = useRef(0);
 
   const fail = useCallback((code) => {
     if (typeof showErrorRef.current === 'function') showErrorRef.current(code);
@@ -179,6 +183,8 @@ export const useSearchResults = ({
           ? previousChain[previousChain.length - 1].snapshot
           : null;
 
+      const seq = ++submitSeqRef.current;
+      const startedAt = Date.now();
       setMode('pending');
 
       let payload = null;
@@ -191,6 +197,7 @@ export const useSearchResults = ({
           },
         }
       );
+      if (submitSeqRef.current !== seq) return;
 
       if (payload === null || payload === undefined) {
         const code =
@@ -203,6 +210,10 @@ export const useSearchResults = ({
         return;
       }
 
+      const remaining = minPendingMs - (Date.now() - startedAt);
+      if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+      if (submitSeqRef.current !== seq) return;
+
       const snapshot = applyStep(prevSnapshot, payload, trimmed);
       const step = {
         term: trimmed,
@@ -212,6 +223,7 @@ export const useSearchResults = ({
       };
       setChain(prevSnapshot ? [...previousChain, step] : [step]);
       setMode('results');
+      if (typeof onCommit === 'function') onCommit(trimmed);
 
       setRecentQueries((prev) => {
         const next = upsertChip(prev, trimmed, payload.result_ref ?? undefined);
@@ -219,7 +231,7 @@ export const useSearchResults = ({
         return next;
       });
     },
-    [gateway, applyStep, fail]
+    [gateway, applyStep, fail, minPendingMs, onCommit]
   );
 
   // Pure client-side snapshot restore — no server call, no re-search.
@@ -231,6 +243,7 @@ export const useSearchResults = ({
   }, []);
 
   const exitResults = useCallback(() => {
+    submitSeqRef.current += 1;
     setMode('browse');
     setChain([]);
     setEnrichment({});

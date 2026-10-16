@@ -208,6 +208,12 @@ async function submitSearch(page: Page, query: string): Promise<void> {
   );
   await box.press('Enter');
   await response;
+  // Hold through the minimum pending window: the commit (and the input clear)
+  // lands only after one full orbit cycle; single-flight ignores further
+  // submits until then.
+  await expect(page.getByTestId('search-action-glyph-orbit')).toHaveCount(0, {
+    timeout: 15_000,
+  });
 }
 
 /** Seed one file directly under a parent node by explicit name; returns the id. */
@@ -333,9 +339,14 @@ async function revealAndActivateChip(
   }
 }
 
-/** ✕ clears the text AND blurs (the host exit signal in results mode). */
+/** ✕ clears the text AND blurs (the host exit signal in results mode). A commit
+ * clears the field, so with empty text the ✕ is not mounted — type hold text to
+ * bring it back; the ✕ press clears it again while exiting results mode. */
 async function pressSearchClose(page: Page, isMobile: boolean) {
   const close = page.getByRole('button', { name: /Close search|검색 닫기/i });
+  if (!(await close.count())) {
+    await searchBox(page).fill('exit-hold');
+  }
   if (isMobile) {
     await close.tap();
   } else {
@@ -1122,10 +1133,10 @@ test('E2E-RETRIEVAL-013: The single chip reveals Exit and leaving results mode r
   await expect(chipBar(page)).toHaveCount(0);
   await expect(page.getByTestId('breadcrumb')).toBeVisible();
   await expect(page.getByTestId('file-manager-sort')).toBeVisible();
-  // The live text is KEPT and re-applies as the browse hiding filter.
-  await expect(searchBox(page)).toHaveValue('bravo');
+  // Every results-mode exit resets the input field — browse starts unfiltered.
+  await expect(searchBox(page)).toHaveValue('');
   await expect(fileItem(page, `/${base}/${bravoName}`)).toBeVisible();
-  await expect(fileItem(page, `/${base}/${distName}`)).toHaveCount(0);
+  await expect(fileItem(page, `/${base}/${distName}`)).toBeVisible();
 
   // Clearing the filter collapses the bar back to the browse visuals (fill
   // re-focuses, so the blur is the collapse trigger): the ghost button
@@ -1339,14 +1350,13 @@ test('E2E-RETRIEVAL-018: Sidebar folder navigation exits results mode and keeps 
   await expect(zoneHeader(page, 'a')).toBeVisible();
 
   // Folder navigation while results mode is active EXITS it (shell §7
-  // exit-on-navigation): the zones unmount, the breadcrumb returns, the kept
-  // text re-applies as the browse filter, and the sessionStorage recents
-  // survive the transition.
+  // exit-on-navigation): the zones unmount, the breadcrumb returns, the input
+  // field resets, and the sessionStorage recents survive the transition.
   await navigateHomeViaTree(page);
   await expect(chipBar(page)).toHaveCount(0);
   await expect(zoneHeader(page, 'a')).toHaveCount(0);
   await expect(page.getByTestId('breadcrumb')).toBeVisible();
-  await expect(searchBox(page)).toHaveValue('navx');
+  await expect(searchBox(page)).toHaveValue('');
   const stored = await page.evaluate(
     (key) => window.sessionStorage.getItem(key),
     RECENT_QUERIES_KEY

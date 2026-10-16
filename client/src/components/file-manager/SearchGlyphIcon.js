@@ -156,12 +156,7 @@ const SearchGlyphIcon = ({ llmConfigured = false, showAdd = false, orbit = false
             )}
           </g>
           {showAdd && (
-            <g
-              stroke="#000"
-              strokeWidth={KNOCKOUT_WIDTH}
-              strokeLinecap="round"
-              fill="none"
-            >
+            <g stroke="#000" strokeWidth={KNOCKOUT_WIDTH} strokeLinecap="round" fill="none">
               <line
                 x1={ADD_CENTER.cx}
                 y1={ADD_CENTER.cy - ADD_CENTER.arm}

@@ -15,6 +15,7 @@ import { alpha } from '@mui/material/styles';
 import {
   AutoAwesome as AutoAwesomeIcon,
   CheckCircle as CheckCircleIcon,
+  Cloud as CloudIcon,
   FolderOpen as FolderOpenIcon,
   KeyboardArrowDown as KeyboardArrowDownIcon,
   KeyboardArrowUp as KeyboardArrowUpIcon,
@@ -54,16 +55,14 @@ import {
 import { FolderTree } from '../folder-tree';
 import CollectionsListView from './CollectionsListView';
 import SearchQueryChipBar from './SearchQueryChipBar';
-import SearchGlyphIcon from './SearchGlyphIcon';
 import { FileListSkeleton, FileGridSkeleton, FileDetailSkeleton } from './FileSkeletons';
 import { useInfiniteScroll } from '../../hooks/useInfiniteScroll';
 import { UndoToast } from '../feedback';
 
 // -- Search results-mode zones (FileManagerView.md §3) — presentational
 // composition only: rows, ordering, counts and callbacks all arrive prepared
-// on the `searchResults` model (pure-view rule). The Zone B header icon is the
-// shared composite glyph (`SearchGlyphIcon`, single source with the fab-slot
-// submit button): overlay outside the cloud mass on a contrasting plate.
+// on the `searchResults` model (pure-view rule). Zone headers carry plain
+// icons: A FolderOpen + path, B Cloud, C wand-stars (unmirrored).
 
 const SearchZoneHeader = ({ zoneKey, icon, label, count, collapsed, onToggle }) => (
   <Box
@@ -132,9 +131,17 @@ const SearchZone = ({
     zoneKey === 'a' ? (
       <FolderOpenIcon fontSize="small" sx={{ color: 'text.secondary', flexShrink: 0 }} />
     ) : zoneKey === 'b' ? (
-      <SearchGlyphIcon />
+      <CloudIcon
+        data-testid="search-zone-glyph-b"
+        fontSize="small"
+        sx={{ color: 'text.secondary', flexShrink: 0 }}
+      />
     ) : (
-      <AutoAwesomeIcon fontSize="small" sx={{ color: 'text.secondary', flexShrink: 0 }} />
+      <AutoAwesomeIcon
+        data-testid="search-zone-glyph-c"
+        fontSize="small"
+        sx={{ color: 'text.secondary', flexShrink: 0 }}
+      />
     );
 
   const renderRows = () => {

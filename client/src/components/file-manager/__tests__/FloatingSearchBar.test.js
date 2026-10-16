@@ -227,7 +227,8 @@ describe('FloatingSearchBar §2.5 (fab-slot button mount)', () => {
       />
     );
     expect(screen.getByTestId('search-action-glyph-orbit')).toBeInTheDocument();
-    expect(screen.queryByTestId('search-action-glyph-cloud')).not.toBeInTheDocument();
+    expect(screen.getByTestId('search-action-glyph-cloud')).toBeInTheDocument();
+    expect(screen.getByTestId('search-action-glyph-wand')).toBeInTheDocument();
   });
 });
 

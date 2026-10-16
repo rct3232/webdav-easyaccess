@@ -58,20 +58,20 @@
 - **Users without write permission:** the FAB is absent; the search button occupies the same spot on focus (`FAB.md` §2.6 self-hide).
 - **Button visual (ghost):** 2px border `#52c597` + frosted translucent fill matching the pill interior (`rgba(255,255,255,0.5)` + blur); hover = the original FAB gradient fill.
 - **Start-icon collapse/expand:** the pill's `SearchIcon` start adornment fades out on focus and the input area grows into that space (smooth width/opacity transition). On blur with empty text (and browse mode) the icon returns.
-- **Test seams:** `search-start-icon` (collapsing adornment box — width/opacity), `search-action-button` (the fab-slot button), `search-action-glyph-cloud|search|wand|add|orbit|plate` (icon-state composition; the composite is the shared `SearchGlyphIcon.js` component, also used by the Zone B results header).
+- **Test seams:** `search-start-icon` (collapsing adornment box — width/opacity), `search-action-button` (the fab-slot button), `search-glyph` (composite svg root), `search-action-glyph-cloud|search|wand|add|orbit` (composite parts — `SearchGlyphIcon.js`, the knockout-stroke shared component; the Zone B/C results headers use plain `Cloud`/`AutoAwesome` icons instead).
 
 ### 2.6 Button icon states
 
-| State                                        | Glyph                                                                                                                     |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `llmConfigured=false`                        | composite cloud + search (icon-overlay precedent `MemberStateBadges.js:30-43`)                                            |
-| `llmConfigured=true`                         | composite cloud + mirrored (`scaleX(-1)`) wand-stars (MUI `AutoAwesome`)                                                  |
-| `isPending=true` (either flag)               | the glyph (search or wand) orbits along a circle — new `@keyframes`; no animation-state E2E assertions, final states only |
-| results mode, input text empty               | the same glyph with an `Add` icon overlaid at left                                                                        |
-| results mode, input text empty, button click | no-op — the button keeps its enabled visual state and fires nothing                                                       |
-| results mode, input text non-empty, click    | chain submit (`onSubmitQuery`)                                                                                            |
+| State                                        | Glyph                                                                                                                                                                  |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `llmConfigured=false`                        | knockout composite: filled cloud cut along a STROKE-style magnifier (circle + handle) at the cloud's top-right                                                         |
+| `llmConfigured=true`                         | knockout composite: cloud cut along the mirrored wand-stars cluster (AutoAwesome sparkle geometry, `scaleX(-1)`)                                                       |
+| `isPending=true` (either flag)               | the composite stays intact while ONLY the overlay group orbits a small circle above the cloud — new `@keyframes`; no animation-state E2E assertions, final states only |
+| results mode, input text empty               | the same composite plus a stroke `Add` plus knocked into the cloud's top-left                                                                                          |
+| results mode, input text empty, button click | no-op — the button keeps its enabled visual state and fires nothing                                                                                                    |
+| results mode, input text non-empty, click    | chain submit (`onSubmitQuery`)                                                                                                                                         |
 
-**Composite geometry:** the 13px overlay renders outside the cloud silhouette on a circular contrast plate (paper background, 1px secondary border) — shared component `SearchGlyphIcon.js`, also used by the Zone B results header. The wand's `scaleX(-1)` mirror applies to the overlay icon inside its plate; the results-empty `Add` overlay sits on its own plate at the cloud's left.
+**Composite geometry:** one `SvgIcon` (viewBox 0 0 24 24): the filled cloud path carries an SVG `<mask>` whose black stroke geometry (overlay lines widened by clearance) cuts the cloud along the overlay's line shape; the overlay strokes render on top — over cloud the line sits inside its gap, over background it renders as a plain line. No plate circles, no outer ring on the magnifier. Each mounted instance generates its mask id from `useId` (button + headers never collide). Shared component `SearchGlyphIcon.js` (props `llmConfigured`, `showAdd`, `orbit`).
 
 ### 2.7 Submit and end-cluster
 
@@ -98,7 +98,7 @@
 
 ### 2.10 Dependencies
 
-- **imports:** React, useTranslation, MUI TextField, InputAdornment, IconButton, Box; Search, Close, Add, AutoAwesome, wand/cloud icons
+- **imports:** React, useTranslation, MUI TextField, InputAdornment, IconButton, Box; Search, Close; the submit-button glyph comes from `SearchActionButton`/`SearchGlyphIcon` (custom knockout SvgIcon).
 - **Reference implementation:** `client/src/components/file-manager/FloatingSearchBar.js`
 
 ### 2.11 i18n Keys
@@ -118,7 +118,7 @@
 - [ ] `resultsModeActive` changes visuals only — no behavior branch reads it besides the mount/blur rules in §2.5/§2.7.
 - [ ] ✕ with non-empty text: clears text AND removes focus; in results mode it exits results mode (host effect).
 - [ ] Results mode + empty text: button shows the `Add` overlay and click is a no-op (no `onSubmitQuery` call).
-- [ ] `llmConfigured` switches the glyph composite; `isPending` switches it to the orbit variant.
+- [ ] `llmConfigured` switches the overlay variant; `isPending` keeps the composite intact with the overlay orbiting (cloud testid present in both states).
 - [ ] Desktop: fixed 300px width; Mobile: full width between left margin and FAB area; `!fabVisible` expansion unchanged (`floating-search-bar` test seam).
 
 ### 2.14 Edge Cases

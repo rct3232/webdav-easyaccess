@@ -1,15 +1,12 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Fab, Box } from '@mui/material';
-import { Search as SearchIcon, AutoAwesome as AutoAwesomeIcon } from '@mui/icons-material';
+import { Fab } from '@mui/material';
 import { FAB_GRADIENT_BACKGROUND_HOVER } from './fabGradient';
 import SearchGlyphIcon from './SearchGlyphIcon';
 
 const MOBILE_OFFSET = 16;
 const DESKTOP_OFFSET = 48;
 const BUTTON_SIZE = 56;
-const GLYPH_SIZE = 24;
-const ORBIT_RADIUS = 7;
 
 /**
  * SearchActionButton — the 56px ghost submit button that occupies the FAB's exact
@@ -43,29 +40,8 @@ const SearchActionButton = ({
     onSubmitQuery(searchQuery);
   };
 
-  const glyph = isPending ? (
-    <Box
-      data-testid="search-action-glyph-orbit"
-      sx={{
-        display: 'inline-flex',
-        animation: 'searchGlyphOrbit 1.6s linear infinite',
-        '@keyframes searchGlyphOrbit': {
-          '0%': { transform: `rotate(0deg) translateX(${ORBIT_RADIUS}px) rotate(0deg)` },
-          '100%': { transform: `rotate(360deg) translateX(${ORBIT_RADIUS}px) rotate(-360deg)` },
-        },
-      }}
-    >
-      {llmConfigured ? (
-        <AutoAwesomeIcon
-          data-testid="search-action-glyph-wand"
-          style={{ fontSize: GLYPH_SIZE, transform: 'scaleX(-1)' }}
-        />
-      ) : (
-        <SearchIcon data-testid="search-action-glyph-search" style={{ fontSize: GLYPH_SIZE }} />
-      )}
-    </Box>
-  ) : (
-    <SearchGlyphIcon llmConfigured={llmConfigured} showAdd={resultsEmpty} />
+  const glyph = (
+    <SearchGlyphIcon llmConfigured={llmConfigured} showAdd={resultsEmpty} orbit={isPending} />
   );
 
   return (

@@ -366,13 +366,32 @@ describe('FileManagerView search results mode (§3)', () => {
     expect(getComputedStyle(screen.getByTestId('search-zone-header-a')).position).toBe('sticky');
   });
 
-  it('zone B header renders the composite glyph on the contrast plate (shared component)', async () => {
-    const props = controlsWithSearch(createProps(), searchModel());
+  it('zone headers carry plain icons: B cloud, C wand-stars (no composite)', async () => {
+    const props = controlsWithSearch(
+      createProps(),
+      searchModel({
+        zoneCRows: [
+          {
+            nodeId: 90,
+            path: '',
+            name: 'fantasy.jpg',
+            basename: 'fantasy.jpg',
+            isSearchServerRow: true,
+            rowTestId: 'server-search-row-90',
+            highlights: [],
+          },
+        ],
+        zoneCounts: { zoneA: 1, zoneB: 1, zoneC: 1 },
+      })
+    );
     renderWithProviders(<FileManagerView {...props} />);
 
     const headerB = await screen.findByTestId('search-zone-header-b');
-    expect(within(headerB).getByTestId('search-action-glyph-plate')).toBeInTheDocument();
-    expect(within(headerB).getByTestId('search-action-glyph-cloud')).toBeInTheDocument();
+    expect(within(headerB).getByTestId('search-zone-glyph-b')).toBeInTheDocument();
+    expect(within(headerB).queryByTestId('search-glyph')).not.toBeInTheDocument();
+    expect(within(headerB).queryByTestId('search-action-glyph-plate')).not.toBeInTheDocument();
+    const headerC = await screen.findByTestId('search-zone-header-c');
+    expect(within(headerC).getByTestId('search-zone-glyph-c')).toBeInTheDocument();
   });
 
   it('zone header content shares the rows edge line (no horizontal inset)', async () => {

@@ -107,28 +107,34 @@ describe('SearchActionButton click intents', () => {
 });
 
 describe('SearchActionButton icon states (§2.6)', () => {
-  it('llmConfigured=false: composite cloud + search overlay', () => {
+  it('llmConfigured=false: knockout composite cloud + stroke magnifier', () => {
     renderWithProviders(<SearchActionButton {...baseProps} />);
+    expect(screen.getByTestId('search-glyph')).toBeInTheDocument();
     expect(screen.getByTestId('search-action-glyph-cloud')).toBeInTheDocument();
     expect(screen.getByTestId('search-action-glyph-search')).toBeInTheDocument();
     expect(screen.queryByTestId('search-action-glyph-wand')).not.toBeInTheDocument();
   });
 
-  it('llmConfigured=true: composite cloud + mirrored wand-stars', () => {
+  it('llmConfigured=true: composite cloud + mirrored wand-stars group', () => {
     renderWithProviders(<SearchActionButton {...baseProps} llmConfigured />);
     expect(screen.getByTestId('search-action-glyph-cloud')).toBeInTheDocument();
-    expect(screen.getByTestId('search-action-glyph-wand')).toHaveStyle({
-      transform: 'scaleX(-1)',
-    });
+    const wand = screen.getByTestId('search-action-glyph-wand');
+    expect(wand).toBeInTheDocument();
+    expect(wand.getAttribute('transform')).toContain('scale(-1,1)');
   });
 
-  it('isPending: the glyph runs the orbit seam instead of the static composite', () => {
+  it('isPending: the composite stays intact and the orbit seam wraps the overlay', () => {
     renderWithProviders(<SearchActionButton {...baseProps} isPending />);
     expect(screen.getByTestId('search-action-glyph-orbit')).toBeInTheDocument();
-    expect(screen.queryByTestId('search-action-glyph-cloud')).not.toBeInTheDocument();
+    expect(screen.getByTestId('search-action-glyph-cloud')).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('search-action-glyph-orbit')).getByTestId(
+        'search-action-glyph-search'
+      )
+    ).toBeInTheDocument();
   });
 
-  it('isPending + llmConfigured: the orbiting glyph is the wand variant', () => {
+  it('isPending + llmConfigured: the orbiting overlay is the wand variant', () => {
     renderWithProviders(<SearchActionButton {...baseProps} isPending llmConfigured />);
     expect(screen.getByTestId('search-action-glyph-orbit')).toBeInTheDocument();
     expect(screen.getByTestId('search-action-glyph-wand')).toBeInTheDocument();
@@ -148,34 +154,51 @@ describe('SearchActionButton icon states (§2.6)', () => {
   });
 });
 
-// -- §2.6 composite legibility (overlay outside the cloud mass on a plate) ------
+// -- §2.6 knockout structure (cloud cut along the overlay lines, no plates) ----
 
-describe('SearchActionButton composite plate (§2.6 legibility)', () => {
-  it('cloud+search composite renders the overlay on the contrast plate', () => {
+describe('SearchActionButton knockout composite (§2.6 geometry)', () => {
+  it('the cloud path is masked and the mask carries the knockout strokes', () => {
     renderWithProviders(<SearchActionButton {...baseProps} />);
-    const plate = screen.getByTestId('search-action-glyph-plate');
-    expect(plate).toBeInTheDocument();
-    expect(within(plate).getByTestId('search-action-glyph-search')).toBeInTheDocument();
+    const cloud = screen.getByTestId('search-action-glyph-cloud');
+    expect(cloud.getAttribute('mask')).toMatch(/^url\(#search-glyph-cloud-/);
+    const svg = screen.getByTestId('search-glyph');
+    const mask = svg.querySelector('mask');
+    expect(mask).not.toBeNull();
+    expect(mask.querySelectorAll('circle, line').length).toBeGreaterThanOrEqual(2);
+    expect(mask.querySelector('rect')).toHaveAttribute('fill', '#fff');
   });
 
-  it('cloud+wand composite renders the plate and keeps the mirror inside it', () => {
-    renderWithProviders(<SearchActionButton {...baseProps} llmConfigured />);
-    expect(screen.getByTestId('search-action-glyph-plate')).toBeInTheDocument();
-    expect(screen.getByTestId('search-action-glyph-wand')).toHaveStyle({
-      transform: 'scaleX(-1)',
-    });
-  });
-
-  it('results-empty composite plates the Add overlay too', () => {
-    renderWithProviders(<SearchActionButton {...baseProps} resultsModeActive searchQuery="" />);
-    expect(screen.getByTestId('search-action-glyph-plate')).toBeInTheDocument();
-    const addPlate = screen.getByTestId('search-action-glyph-add-plate');
-    expect(addPlate).toBeInTheDocument();
-    expect(within(addPlate).getByTestId('search-action-glyph-add')).toBeInTheDocument();
-  });
-
-  it('orbit (pending) variant renders no plate', () => {
-    renderWithProviders(<SearchActionButton {...baseProps} isPending />);
+  it('no plate affordances remain in any state', () => {
+    renderWithProviders(<SearchActionButton {...baseProps} />);
     expect(screen.queryByTestId('search-action-glyph-plate')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('search-action-glyph-add-plate')).not.toBeInTheDocument();
+  });
+
+  it('results-empty composite knocks the Add plus through the cloud too', () => {
+    renderWithProviders(<SearchActionButton {...baseProps} resultsModeActive searchQuery="" />);
+    const mask = screen.getByTestId('search-glyph').querySelector('mask');
+    expect(screen.getByTestId('search-action-glyph-add')).toBeInTheDocument();
+    expect(mask.querySelectorAll('line').length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('orbit (pending) variant keeps the cloud + mask composite', () => {
+    renderWithProviders(<SearchActionButton {...baseProps} isPending />);
+    expect(screen.getByTestId('search-glyph').querySelector('mask')).not.toBeNull();
+    expect(screen.getByTestId('search-action-glyph-cloud')).toBeInTheDocument();
+  });
+
+  it('multiple instances get distinct mask ids', () => {
+    renderWithProviders(
+      <div>
+        <SearchActionButton {...baseProps} visible />
+        <SearchActionButton {...baseProps} searchQuery="other" />
+      </div>
+    );
+    const maskIds = Array.from(
+      document.querySelectorAll('[data-testid="search-glyph"] mask'),
+      (m) => m.id
+    );
+    expect(maskIds.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(maskIds).size).toBe(maskIds.length);
   });
 });

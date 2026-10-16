@@ -118,6 +118,23 @@ a user-created node.
 
 ---
 
+## Files Metadata Row
+
+Shared by the server response, the client metadata repository seam, and tests (`docs/spec/server/routes/files.md` §2.2; `api.md`). `POST /api/files/metadata` returns an array of rows:
+
+| Field                | Type           | Notes                                                                           |
+| -------------------- | -------------- | ------------------------------------------------------------------------------- |
+| `nodeId`             | number         | Camel casing is the files-domain legacy shape — unchanged by this contract      |
+| `name`, `type`       | string         | Node name / `file` \| `directory`                                               |
+| `size`, `mime`       | number \| null | From `filecache`; null for directories and cache-less rows                      |
+| `lastmod`            | string         | ISO timestamp (node `updatedAt`)                                                |
+| `hasReadPermission`  | boolean        | Additive; resolved with the directory-listing permission engine                 |
+| `hasWritePermission` | boolean        | Additive; same engine (admin bypass ⇒ both true; read-only grant ⇒ write false) |
+
+Rows for nodes the requester cannot READ are omitted (skip behavior unchanged). No new error codes: the endpoint keeps the existing validation failures (`files.sourceDestRequired`, `files.invalidPath`).
+
+---
+
 ## Path Rules
 
 - **Normalization:** Paths are normalized with `normalizePath` from `shared/pathUtils.js`: leading slash, no duplicate slashes, backslashes replaced by forward slashes, trailing slash removed unless the path is treated as a directory. Display paths are resolved server-side via the node graph; request payloads accept nodeId-based fields, not raw path strings.

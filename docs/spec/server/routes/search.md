@@ -157,7 +157,9 @@ absent, not the feature).
   scoring bound, not input validation.
 - Read-only search is served by `POST` (not GET) — keeps query strings out of access logs.
 - Search never returns `type`/`size` — the client fetches metadata via the existing
-  `POST /api/files/metadata` for rendering.
+  `POST /api/files/metadata` for rendering; that endpoint's rows additionally carry the
+  per-row `hasReadPermission`/`hasWritePermission` flags consumed by the results surface
+  (`routes/files.md` §2.2).
 
 ### 2.5 Related Documents
 

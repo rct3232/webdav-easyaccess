@@ -1,14 +1,12 @@
 # useSearchResults Spec
 
-Target-contract spec.
-
 ## 1. Overview
 
-| Item                     | Description                                                                                                                                                                                                                                                                           |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role                     | Search **results-mode** controller: distinguishes typing (client inline filter, unchanged) from Enter-submit (server `POST /api/search`), owns the two-section result state (`name_matches` + `semantic`), query chips, highlight ranges, and the save-to-collection visibility rule. |
-| Used by components/pages | `FileManager` page shell (results-mode overlay), `SearchBarResultsMode`, `FloatingSearchBar` (submit hook)                                                                                                                                                                            |
-| Does not own             | Listing inline filter outside results mode (`useExplorerSession`), collection creation IO (`useCollections`/gateway), toast/undo (`useUndoToast`), semantic scoring/dedup (server `search.md`)                                                                                        |
+| Item                     | Description                                                                                                                                                                                                                                                                                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role                     | Search **results-mode** controller: mode machine (`browse` / `pending` / `results`), the committed refinement chain with per-step snapshots, the three result zones (current-folder matches, server name matches, semantic), live-filter promotion semantics, metadata enrichment of server rows, entry-click recording, and recent-query persistence. |
+| Used by components/pages | `FileManager` page shell (owns the mounted surfaces); `FloatingSearchBar` (submit/clear intents), `SearchQueryChipBar` (chip strip + revert/exit), `FileManagerView` (accordion zones), `AddToCollectionMenu` (full-snapshot target)                                                                                                                   |
+| Does not own             | Browse-mode typing filter and highlight attachment (`useExplorerSession`), row rendering (`FileList`/`FileGrid`/`FileDetail` per `FileManagerView.md`), collection-write IO (`useCollections`/gateway), chip visuals (`SearchQueryChipBar`)                                                                                                            |
 
 ---
 
@@ -22,63 +20,104 @@ Target-contract spec.
 
 ### 2.2 Input Parameters
 
-| Name       | Type     | Required | Description                                                               |
-| ---------- | -------- | -------- | ------------------------------------------------------------------------- |
-| showError  | function | Y        | User-visible error feedback                                               |
-| gateway    | object   | N        | `runSearch` + `createCollection` seams (`explorerGateway` §2.6)           |
-| onUndoable | function | N        | Forwards save-to-collection `undo.action_id` to the undo-toast controller |
+| Name      | Type          | Required | Description                                                                                                                 |
+| --------- | ------------- | -------- | --------------------------------------------------------------------------------------------------------------------------- |
+| showError | function      | Y        | User-visible error feedback                                                                                                 |
+| gateway   | object        | N        | `explorerGateway` search/metadata seams: `runSearch`, `getEntriesMetadata` (chunked — §2.3 enrichment), `recordSearchClick` |
+| files     | Array<object> | Y        | Current-folder session listing rows — the Zone A membership source (`useExplorerSession.md` §3).                            |
+| sortMode  | string        | Y        | Session sort mode; applied to BOTH zones (§2.3 zone ordering).                                                              |
+| liveText  | string        | Y        | The shared search input text (session `searchQuery`) while results mode is active — drives live promotion/highlight only.   |
 
-### 2.3 Return Value / State
+### 2.3 State Machine, Chain, and Return Value
 
-| Key                     | Type                                       | Meaning                                                                                                                                                                      |
-| ----------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| mode                    | `'filter' \| 'results'`                    | `results` only after Enter/icon submit; ✕ or empty input returns `filter`                                                                                                    |
-| submittedQuery          | string \| null                             | The query that produced the loaded result set                                                                                                                                |
-| filterText              | string                                     | Typing while in `results`: re-filters the LOADED results inline (same substring rule as the listing filter); Enter re-queries                                                |
-| nameMatches             | Array<{ node_id, name, highlights }>       | Section 1 rows + client-side computed highlight ranges (pure helper `utils/searchHighlight.js`)                                                                              |
-| semantic                | Array<{ node_id, name, score }>            | Section 2 rows, already de-duplicated server-side; no highlights                                                                                                             |
-| counts / resultRef      | object / string                            | `counts` for the header `N results`; `result_ref` kept opaque (replay identity — the client never parses it)                                                                 |
-| displaySections         | `'both' \| 'name' \| 'semantic' \| 'none'` | Pure display rule: empty section is not rendered (no empty headers)                                                                                                          |
-| canSaveToCollection     | boolean                                    | **Visibility rule:** `semantic_available === true` AND `semantic.length > 0`; false ⇒ the `[Save as collection]` button is HIDDEN (absent, not disabled)                     |
-| recentQueries           | Array<{ id, query, resultRef? }>           | Chips of recent queries (max 8, newest first; `sessionStorage`, cleared on logout)                                                                                           |
-| submitSearch            | `(query) => Promise<void>`                 | Trims, guards 1–200 chars client-side (mirrors server 400s), calls `runSearch`, enters `results`                                                                             |
-| exitResults             | `() => void`                               | Clears result state, keeps filter text behavior normal                                                                                                                       |
-| saveResultsToCollection | `(name) => Promise<payload ∥ null>`        | Confirm dialog is host-rendered; creates `origin='search'` from the semantic snapshot only (flattening — name-match rows never enter the definition); success → `onUndoable` |
-| saveChipQuery           | `(chip) => Promise<void>`                  | `⋮ → save` on a chip: re-runs that query (always-replay) then enters the same save flow                                                                                      |
-| recordEntryClick        | `(nodeId) => Promise<boolean>`             | list-entry-click usage signal at result open: routes `gateway.recordSearchClick(nodeId)` — absorbed, never toasts. The shell wiring invokes it when a result row is opened.  |
+**Modes:** `browse` (typing = current-folder hiding filter, owned by `useExplorerSession`) → focusing the bar arms search → Enter / 56px-button submit → `pending` → response → `results`. Exiting results mode returns to `browse`: breadcrumb + FAB restored, the live input text is kept and applies as the browse filter per existing session semantics.
+
+**Exit triggers (all route through `exitResults`):** the single-chip `Exit` (`SearchQueryChipBar.md`), the `FloatingSearchBar` ✕ press while in results mode, opening a DIRECTORY result row (navigate + exit — §2.3 row clicks), and folder navigation from the sidebar/tree/breadcrumb while results mode is active (the shell calls `exitResults` on the navigation path; the sessionStorage recent-query list survives). Escape key: no behavior.
+
+**Chain model.** A search session is a chain of committed steps:
+
+```
+ChainStep = { term, op, snapshot: { zoneAIds: Set<nodeId>, zoneBRows: [], zoneCRows: [], resultRef }, inputTextAtCommit }
+```
+
+- `submitSearch(query)` from `browse` starts a NEW chain `[term]` with a fresh snapshot (the previous chain resets).
+- `submitSearch(term)` from `results` appends a chain step: `POST /api/search { query: term }` is sent and the snapshot is derived by the refiner (§2.3 chain seam) from the PREVIOUS snapshot + the response.
+- The name-chain op is `intersect-name`: step 1 takes the response's `name_matches` as `zoneBRows`; step k>1 sets `zoneBRows_k = ids(zoneBRows_{k-1}) ∩ name_matches(t_k)` rows. `zoneAIds_k` is recomputed client-side at every step: current-folder rows whose name contains ALL committed terms (case-insensitive substring).
+- `zoneCRows` carries the snapshot's semantic rows (empty when the server omits `semantic` — Zone C then renders nothing).
+- `resultRef` of each response is stored opaquely per step (the client never parses it).
+- Chip UI = committed chain terms; `inputTextAtCommit` preserves the input text of that step.
+
+**Chain-refiner seam (extension point).** All step derivation runs through ONE function inside the hook:
+
+```
+chainRefiner.applyStep(prevSnapshot, response, term) -> snapshot
+```
+
+Semantic refinement plugs in as a NEW `op` supplying its own `applyStep` — the chip strip, undo/revert, snapshot storage, and zone rendering are op-agnostic and unchanged by it. `resultRef` storage per step is the replay reservation a refining op consumes.
+
+**Return value:**
+
+| Key              | Type                                 | Meaning                                                                                                                                                                                                                                 |
+| ---------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| mode             | `'browse' \| 'pending' \| 'results'` | §2.3 machine. `pending` renders skeletons (`FileManagerView.md` §3)                                                                                                                                                                     |
+| chain            | `Array<ChainStep>`                   | Committed steps, oldest first — the chip bar's `terms` source                                                                                                                                                                           |
+| zoneAIds         | `Set<nodeId>`                        | Current snapshot's Zone A membership (all committed terms matched); the view selects the session rows by this set                                                                                                                       |
+| zoneBRows        | `Array<explorer entry>`              | Server name-match rows converted to explorer entries (adapter per `FileManagerView.md` §3), ENRICHED progressively via §2.3 enrichment, deduped for DISPLAY against `zoneAIds` (the snapshot keeps the full set), `highlights` attached |
+| zoneCRows        | `Array<explorer entry>`              | Semantic snapshot rows; empty while unavailable/empty (nothing renders)                                                                                                                                                                 |
+| zoneCounts       | `{ zoneA, zoneB, zoneC }`            | SNAPSHOT row counts (always honest — the live filter never hides). Zone B counts the full snapshot set (deduped-out rows included)                                                                                                      |
+| libraryAddTarget | `Set<nodeId>`                        | FULL current snapshot node-id set: `zoneAIds ∪ zoneBRows ids` (unique union), independent of live filter and paging                                                                                                                     |
+| recentQueries    | `Array<{ id, query }>`               | Recents list: max 8, newest first, `sessionStorage`, cleared on logout (unchanged persistence rules; the chip strip shows the COMMITTED CHAIN, not this list)                                                                           |
+| submitSearch     | `(query) => Promise<void>`           | Trims, guards 1–200 chars client-side (mirrors server 400s), runs the step (§2.3 chain model), enters/extends `results`                                                                                                                 |
+| undoToStep       | `(index) => void`                    | Revert the chain to the snapshot of step `index` — pure client-side snapshot restore, ZERO server calls; steps after it are discarded                                                                                                   |
+| exitResults      | `() => void`                         | Returns to `browse`; clears result state; keeps the input text (browse filter semantics unchanged)                                                                                                                                      |
+| recordEntryClick | `(nodeId) => Promise<boolean>`       | List-entry-click usage signal at row open: routes `gateway.recordSearchClick(nodeId)` — absorbed, never toasts                                                                                                                          |
+
+**Live filter (typing in `results` without submit).** Rows are NEVER hidden. A row whose name contains `liveText` (single-substring `includes`, case-insensitive) is promoted to the top of its zone and highlighted in the live color; committed-term ranges render in the committed color (`searchHighlight.md`).
+
+**Zone ordering.** Session `sortMode` applies to BOTH zones via `sortFiles`: with a live term the order is `[matches by sortMode] ++ [non-matches by sortMode]` within each zone; empty live text = pure `sortMode` order. Server rows date-sort on the ENRICHED `lastmod` (pre-enrichment the original order is kept).
+
+**Row click semantics:** FILE row → `recordEntryClick` + preview dialog while results stay mounted. DIRECTORY row → `recordEntryClick` + navigate + exit results (same path as the browse rule).
+
+**Enrichment.** Server rows arrive without `type`/`size`/`lastmod`/`mime`/permission flags (`routes/search.md` returns name data only). The hook enriches them through the gateway metadata seam: `POST /api/files/metadata` with rows chunked to ≤ 100 (the endpoint cap; the search section cap is 200), fired per chunk, merged by nodeId, missing rows tolerated. Rows render enriched progressively; the size caption stays suppressed until enriched (`FileListItem.md`, `FileGrid`/`FileDetail` row rules). The enriched row carries `hasReadPermission`/`hasWritePermission` for the read-only badge + bulk gating (`FileManager.md` §7).
 
 ### 2.4 Dependencies
 
-- **Must route IO through:** `explorerGateway` §2.6 (`runSearch`, `createCollection`, `recordSearchClick`).
-- **May use:** pure helpers only for filter/highlight math (`searchHighlight.js` — ranges are computed client-side, the server never returns markup offsets).
-- **Must not use:** `fetch`, `sessionStorage` directly (recent-query persistence goes through a tiny browser-storage adapter seam inside the gateway layer, not this hook).
+- **Must route IO through:** `explorerGateway` search seams (`runSearch`, `getEntriesMetadata`, `recordSearchClick`).
+- **May use:** pure helpers only for filter/highlight math (`searchHighlight.js` — ranges are computed client-side, the server never returns markup offsets) and `sortFiles`.
+- **Must not use:** `fetch` or `sessionStorage` directly (recent-query persistence goes through the browser-storage adapter seam in the gateway layer, not this hook).
 
 ### 2.5 Side Effects
 
-- Server call ONLY on submit (typing never calls the API — the two-stage rule: typing = client inline filter, submit = server query).
-- `usage_events(search_hit)` logging is a server side effect of the response; the client does nothing extra.
-- Results-mode entries/exits do not touch the explorer listing state (`useFileManager` unaffected).
+- Server calls: `POST /api/search` on submit only (typing never calls the API); `POST /api/files/metadata` per enrichment chunk after a response; `POST /api/search/click` on row open.
+- `usage_events(search_hit)` logging is a server side effect of the search response; the client does nothing extra for it.
+- Entering/exiting results mode does not touch the explorer listing state (`useFileManager` unaffected); the shared `searchQuery` text survives the transition.
 
 ### 2.6 Error Handling
 
-- `runSearch` → `null` (transport/5xx): `showError` (`serverErrors.search.fail`), stay in prior mode.
-- 400 cases are pre-guarded client-side; if still returned, map `serverErrors.search.queryRequired/queryTooLong` via error envelope.
-- `semantic_available:false` with `semantic_unavailable_reason` is a SUCCESS payload — render section 1 only, hide the save button; never an error toast (an unavailable section of a successful query is not an error).
+- `runSearch` → `null` (transport/5xx): `showError` (`serverErrors.search.fail`), stay in prior mode/chain with the previous snapshot intact.
+- 400 cases are pre-guarded client-side; if still returned, map `serverErrors.search.queryRequired/queryTooLong` via the error envelope.
+- `semantic_available:false` with `semantic_unavailable_reason` is a SUCCESS payload — Zone C stays empty (renders nothing); never an error toast (an absent section of a successful query is not an error).
+- Enrichment chunks that fail or return rows missing a nodeId: those rows stay unenriched (size suppressed); no toast, no blocking of the other rows.
 
 ### 2.7 Verification Scenarios
 
-- [ ] Typing never calls `runSearch`; Enter does.
-- [ ] Typing in results mode filters loaded rows inline; Enter re-queries.
-- [ ] `canSaveToCollection` false when semantic empty OR `semantic_available` false; true otherwise.
-- [ ] Highlight ranges appear only on `nameMatches` rows; semantic rows carry `score`, no highlights.
-- [ ] `exitResults` returns to `filter` mode and clears result state.
-- [ ] Save creates exactly one collection with the semantic-only definition payload; success triggers `onUndoable`.
+- [ ] Typing never calls `runSearch`; Enter/button submit does — from `browse` it starts chain `[term]`, from `results` it appends a step.
+- [ ] Step 2+ intersect: `zoneBRows` shrink to the intersection of the previous ids and the new response's name matches; ZERO client re-fetch of earlier terms.
+- [ ] `undoToStep(i)` restores step `i`'s snapshot and discards later steps with NO server call; `zoneAIds`/`zoneBRows`/`zoneCounts` all come back from the snapshot.
+- [ ] Live typing hides NO row; matched rows promote within each zone and carry live-highlight ranges; committed-term rows keep committed-color ranges.
+- [ ] `zoneCounts` are snapshot counts and never change while a live term is typed/cleared.
+- [ ] `libraryAddTarget` = union of `zoneAIds` and the FULL `zoneBRows` id set (deduped-out display rows included), unchanged by paging or live filter.
+- [ ] Enrichment batches rows into chunks of ≤ 100 through the gateway seam; rows merge by nodeId; a missing row leaves the row unenriched.
+- [ ] Every exit trigger calls `exitResults` and returns `mode === 'browse'` with the input text kept.
+- [ ] Folder navigation while in `results` exits results mode; the recent-query sessionStorage list survives.
 - [ ] `recordEntryClick` routes through the gateway seam exactly once per call and absorbs failures silently (no toast, no throw).
-- [ ] Absorbed search failure produces `showError` and leaves the previous result set intact.
+- [ ] Absorbed search failure produces `showError` and leaves the previous chain/snapshot intact.
+- [ ] Re-submitted identical query: no duplicate recent entry (normalized-query dedup).
 
 ### 2.8 Edge Cases
 
-- Dedup: a node in both server sections arrives only under `name_matches` (server contract) — client must not re-add it.
+- Dedup for display: a node in BOTH Zone A and Zone B renders only in Zone A (server sections are already deduped by `routes/search.md`; the client dedups Zone A against Zone B display, never the snapshot).
 - `counts.name_truncated:true` / `semantic_capped_segments:true`: render as-is, no client warnings (display honesty).
-- Identical query re-submitted: chip not duplicated (normalized query dedup).
-- Operator rule (admin is a pure operator): `canSaveToCollection` gains the `!is_admin` term (input from the shell's `user.is_admin`) — the save seam is hidden / never invoked for admin (`saveResultsToCollection`/`saveChipQuery` return `null` without a create call).
+- Chain after `intersect-name` empties `zoneBRows`: the chain still commits the step (honest empty Zone B + Zone A recomputed); empty overall result renders the no-results line (`fileManager.searchNoResults`) without zone headers.
+- A refining `op` (new `chainRefiner` implementation) receives the same inputs; nothing in the hook reads `op` outside the refiner dispatch.
+- Trashed nodes never appear (server contract — the visible-row query hides `deleted_at` rows).

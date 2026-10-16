@@ -1189,3 +1189,23 @@ qualification + provisioning-trigger fixtures) · SETUP.md boot-frozen caveat +
   intentionally removed, substrate kept for P1 T1.5; sortMode zone-ordering has unit gap
   covered only by E2E 020; `gotoAsAnonymous` helper race structural (untripped in all
   runs, report-only); `ai.embed` chosen for the wand glyph (one-line swap if owner wants chat).
+
+## 25. Search rework follow-ups (sr2+sr3, owner-directed 2026-10-16)
+
+- sr2 — `3773312` zone thumbnails: nodeId→url state map in useSearchResults merged
+  zone-locally (member idiom; survives re-derivation/undo aliasing), Zone B end-to-end,
+  Zone C seam unit-covered; full client 180/2044. `488d90b` gotoAsAnonymous root fix:
+  context-level clearCookies + one-shot addInitScript storage wipe (no live-document
+  clear ⇒ no 401-redirect race); retrieval 019 inline workaround retired; auth ×3,
+  share-public ×3, retrieval 42/42 — 0 flake. sortMode unit gap kept as-is (owner).
+- sr3 — `f3f2e56` five visual defects (owner-approved list): native search-cancel
+  suppressed (single ✕, role=searchbox kept); writable→read-only location change
+  resets hasWritePermission synchronously + morph emit moved to useLayoutEffect
+  (FAB flash gone; reset proven safe against synthetic views via permId guard);
+  FAB scale moved to the disc element (in-place shrink, no px constants, root keeps
+  opacity seam — disc gained pointer-events:none, found via E2E-017 where the
+  self-scaled invisible disc had swallowed the ghost button's clicks); composite
+  glyph extracted to SearchGlyphIcon (overlay outside the cloud on a contrast plate,
+  mirrored wand inside, Add plate left — SAB + zone-B header single-source);
+  zone header px removed (row-edge alignment) + inter-zone gap via container grid.
+  Gates: client 180/2055, eslint/prettier, docsStatePurity, retrieval dual 42/42.

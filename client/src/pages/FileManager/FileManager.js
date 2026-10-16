@@ -1283,7 +1283,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     async (row, event, fileIndex) => {
       const nodeId = row?.nodeId ?? row?.node_id;
       if (nodeId == null) return;
-      if (selectionMode) {
+      const desktopDouble = !isMobile && event && event.detail >= 2;
+      if (selectionMode && !desktopDouble) {
         toggleFileSelection(row);
         return;
       }

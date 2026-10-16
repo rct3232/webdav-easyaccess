@@ -1227,3 +1227,14 @@ qualification + provisioning-trigger fixtures) · SETUP.md boot-frozen caveat +
   restated; retrieval helper waits out the hold window and re-summons the ✕ with
   hold text when the field is empty; 013/018 assert the reset. Gates: full client
   2059, eslint/prettier, docsStatePurity, retrieval dual E2E 42/42 (3.8m).
+- sr6 — `279d4c4` orbit-knockout lockstep + retrieval consolidation (owner rulings): the
+  pending orbit now carries its own knockout cut — the mask group shares the overlay's
+  animation class (same-mount lockstep, single-sourced geometry), keyframes
+  `translateX(-R) rotate(-t) translateX(R) rotate(t)` (R=4.5u, counter-clockwise, home
+  at the 3-o'clock point, upright glyph, svg overflow visible); Add knockout split static.
+  retrieval E2E consolidated 21 → 11 (002/009→001, 015→002, 017→003, 007→005, 010+011→007,
+  012/013/018→008; 019 → E2E-SHARE-012 in share-public; 021 → EXP-011 assertions; IDs
+  renumbered, old IDs retired in E2E_COVERAGE_PLAN). Sticky-case Zone B volume 15 → 26
+  (mobile viewport boundary flake observed once). Gates: client 2062, docsStatePurity 3/3,
+  retrieval 22/22 (3.1m), share-public 22/22 ×2 (one unrelated first-run SHARE-005 mobile
+  flake did not recur), EXP-011 green.

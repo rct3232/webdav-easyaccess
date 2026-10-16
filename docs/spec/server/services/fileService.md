@@ -21,6 +21,7 @@
 function createFileService({ fileNodeService, blobStorageService, uploadService, aclService, fileStorageMode, permissionStore, ownerNodeResolver, blobStore, fileNodesStore }) {
   return {
     listDirectoryWithPermissions(userId, parentNodeId, user),
+    resolvePermissionsForNodes(userId, nodes, user),
     uploadFile(userId, parentNodeId, name, buffer, mimeType, user, onConflict),
     downloadFile(fileNodeId, userId, user),
     renameNode(nodeId, newName, userId, user),
@@ -97,6 +98,27 @@ Children the principal cannot read (`hasReadPermission === false`) are **exclude
 5. Map each remaining child into the response shape above.
 
 **DB operations:** Single SELECT via listDirectory (file_nodes + filecache LEFT JOIN). Permission checks are separate async queries per item unless admin bypass applies. The admin-capability step adds `getUserRootNode` + one closure check (owner detection) and one `getUserPermissions` query per listing.
+
+---
+
+#### `resolvePermissionsForNodes(userId, nodes, user)`
+
+Batch entry of the directory-listing permission engine. Resolves effective read/write flags for an arbitrary set of already-loaded `{ id, type }` nodes, sharing the exact per-node resolution used by `listDirectoryWithPermissions` (one internal helper — no duplicated check dispatch).
+
+| Param  | Type             | Required | Description                                                                                           |
+| ------ | ---------------- | -------- | ----------------------------------------------------------------------------------------------------- |
+| userId | number \| string | yes      | Principal ID (user ID or `share:`-prefixed share-token principal)                                     |
+| nodes  | array            | yes      | `{ id, type }` node objects; `type === 'directory'` selects the folder checker, else the file checker |
+| user   | object \| null   | yes      | Full user object with `is_admin` flag for admin bypass; null/absent (share principals) disables it    |
+
+**Returns:** `Map<number, { hasReadPermission: boolean, hasWritePermission: boolean }>` keyed by `Number(node.id)`.
+
+Resolution rules (identical to the listing's per-child READ/WRITE enumeration):
+
+- Admin caller → both flags `true` immediately, no acl queries.
+- Otherwise: directory nodes via `aclService.checkFolderPermission`, file nodes via `aclService.checkFilePermission`, evaluated with `PERMISSIONS.READ` then `PERMISSIONS.WRITE`.
+
+The resolver returns flags only — it performs no filtering. Disclosure decisions belong to the caller: `POST /api/files/metadata` omits rows whose `hasReadPermission` is `false`; `listDirectoryWithPermissions` excludes unreadable children for share principals only.
 
 ---
 
@@ -340,6 +362,14 @@ Creates a copy of a source file in the destination directory. Copy semantics dif
 - [ ] Admin bypass: all items return hasRead=true, hasWrite=true without querying aclService per item
 - [ ] Returns empty array for leaf directory with no children
 - [ ] Throws 404-style error when parentNodeId does not exist or is a file node
+
+#### resolvePermissionsForNodes
+
+- [ ] Per-node dispatch matches the listing: directory → `checkFolderPermission`, file → `checkFilePermission`, READ then WRITE
+- [ ] Admin caller: both flags true with no per-node acl queries
+- [ ] Read-only grant surfaces `{ hasReadPermission: true, hasWritePermission: false }`; unreadable node surfaces `hasReadPermission: false`
+- [ ] Share principal resolves through the token-backed checks (no admin bypass with null user)
+- [ ] Empty batch returns an empty Map; keys are `Number(node.id)`
 
 #### uploadFile — S3 mode
 

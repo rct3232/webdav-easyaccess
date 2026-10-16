@@ -28,6 +28,12 @@ export const COLLECTION_SORT_OPTIONS = ['activity', 'name', 'created', 'updated'
 export const FLOATING_BOTTOM_HEIGHT_MOBILE = 72; // 16 + 56
 export const FLOATING_BOTTOM_HEIGHT_DESKTOP = 104; // 48 + 56
 
+// One full rotation of the pending search-glyph orbit. The submit pipeline
+// holds `pending` for at least this long after a successful response
+// (useSearchResults.md §2.3), and SearchGlyphIcon uses the same value for
+// the animation duration.
+export const SEARCH_ORBIT_CYCLE_MS = 1600;
+
 export const PREVIEWABLE_EXTENSIONS = [
   ...IMAGE_EXTENSIONS,
   ...VIDEO_EXTENSIONS,

@@ -57,9 +57,10 @@ function renderSearchHook({
   files = SESSION_FILES,
   sortMode = 'name_asc',
   liveText = '',
+  minPendingMs = 0,
 } = {}) {
   const utils = renderHook((props) => useSearchResults(props), {
-    initialProps: { showError, gateway, files, sortMode, liveText },
+    initialProps: { showError, gateway, files, sortMode, liveText, minPendingMs },
   });
   return { ...utils, gateway, showError };
 }
@@ -123,6 +124,48 @@ describe('useSearchResults mode machine', () => {
 
     expect(gateway.runSearch).toHaveBeenCalledTimes(1);
     expect(result.current.mode).toBe('pending');
+  });
+
+  it('holds pending for at least one orbit cycle after a fast response', async () => {
+    const { result } = renderSearchHook({ minPendingMs: 180 });
+
+    act(() => {
+      result.current.submitSearch('movie');
+    });
+    expect(result.current.mode).toBe('pending');
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(result.current.mode).toBe('pending');
+    expect(result.current.chain).toHaveLength(0);
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 220));
+    });
+    expect(result.current.mode).toBe('results');
+    expect(result.current.chain).toHaveLength(1);
+  });
+
+  it('exitResults during the minimum window discards the late commit', async () => {
+    const { result } = renderSearchHook({ minPendingMs: 200 });
+
+    act(() => {
+      result.current.submitSearch('movie');
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    act(() => {
+      result.current.exitResults();
+    });
+    expect(result.current.mode).toBe('browse');
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 260));
+    });
+    expect(result.current.mode).toBe('browse');
+    expect(result.current.chain).toHaveLength(0);
   });
 
   it('submit from browse starts a new chain [term] with an intersect-name snapshot', async () => {

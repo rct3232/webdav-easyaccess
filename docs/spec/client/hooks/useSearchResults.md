@@ -20,17 +20,19 @@
 
 ### 2.2 Input Parameters
 
-| Name      | Type          | Required | Description                                                                                                                                        |
-| --------- | ------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| showError | function      | Y        | User-visible error feedback                                                                                                                        |
-| gateway   | object        | N        | `explorerGateway` search/metadata seams: `runSearch`, `loadNodesMetadata` (raw nodeIds, chunked ≤ 100/POST — §2.3 enrichment), `recordSearchClick` |
-| files     | Array<object> | Y        | Current-folder session listing rows — the Zone A membership source (`useExplorerSession.md` §3).                                                   |
-| sortMode  | string        | Y        | Session sort mode; applied to BOTH zones (§2.3 zone ordering).                                                                                     |
-| liveText  | string        | Y        | The shared search input text (session `searchQuery`) while results mode is active — drives live promotion/highlight only.                          |
+| Name         | Type                   | Required | Description                                                                                                                                        |
+| ------------ | ---------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| showError    | function               | Y        | User-visible error feedback                                                                                                                        |
+| gateway      | object                 | N        | `explorerGateway` search/metadata seams: `runSearch`, `loadNodesMetadata` (raw nodeIds, chunked ≤ 100/POST — §2.3 enrichment), `recordSearchClick` |
+| files        | Array<object>          | Y        | Current-folder session listing rows — the Zone A membership source (`useExplorerSession.md` §3).                                                   |
+| sortMode     | string                 | Y        | Session sort mode; applied to BOTH zones (§2.3 zone ordering).                                                                                     |
+| liveText     | string                 | Y        | The shared search input text (session `searchQuery`) while results mode is active — drives live promotion/highlight only.                          |
+| minPendingMs | number                 | N        | SEARCH_ORBIT_CYCLE_MS                                                                                                                              | Minimum time `pending` is held after a successful response before the chain commit applies.                                         |
+| onCommit     | (term: string) => void | N        | —                                                                                                                                                  | Host callback invoked right after a successful chain commit (the shell clears the shared input; bypasses the ✕-clear exit trigger). |
 
 ### 2.3 State Machine, Chain, and Return Value
 
-**Modes:** `browse` (typing = current-folder hiding filter, owned by `useExplorerSession`) → focusing the bar arms search → Enter / 56px-button submit → `pending` → response → `results`. Exiting results mode returns to `browse`: breadcrumb + FAB restored, the live input text is kept and applies as the browse filter per existing session semantics.
+**Modes:** `browse` (typing = current-folder hiding filter, owned by `useExplorerSession`) → focusing the bar arms search → Enter / 56px-button submit → `pending` → response → `results`. Exiting results mode returns to `browse`: breadcrumb + FAB restored and the shared input field is RESET (empty, no browse filter). A successful commit hands the term to the chip strip and clears the shared input (`onCommit`). `pending` holds for at least one full orbit cycle (`SEARCH_ORBIT_CYCLE_MS`, `constants/fileManager.js`) after the response lands — the results commit cannot arrive before the glyph animation completes a cycle. A late commit invalidated by an exit during that window (sequence counter) is discarded.
 
 **Exit triggers (all route through `exitResults`):** the single-chip `Exit` (`SearchQueryChipBar.md`), the `FloatingSearchBar` ✕ press while in results mode, opening a DIRECTORY result row (navigate + exit — §2.3 row clicks), and folder navigation from the sidebar/tree/breadcrumb while results mode is active (the shell calls `exitResults` on the navigation path; the sessionStorage recent-query list survives). Escape key: no behavior.
 
@@ -69,7 +71,7 @@ Semantic refinement plugs in as a NEW `op` supplying its own `applyStep` — the
 | recentQueries              | `Array<{ id, query }>`                              | Recents list: max 8, newest first, `sessionStorage`, cleared on logout (unchanged persistence rules; the chip strip shows the COMMITTED CHAIN, not this list)                                                                                                                                                                    |
 | submitSearch               | `(query) => Promise<void>`                          | Trims, guards 1–200 chars client-side (mirrors server 400s), runs the step (§2.3 chain model), enters/extends `results`                                                                                                                                                                                                          |
 | undoToStep                 | `(index) => void`                                   | Revert the chain to the snapshot of step `index` — pure client-side snapshot restore, ZERO server calls; steps after it are discarded                                                                                                                                                                                            |
-| exitResults                | `() => void`                                        | Returns to `browse`; clears result state; keeps the input text (browse filter semantics unchanged)                                                                                                                                                                                                                               |
+| exitResults                | `() => void`                                        | Returns to `browse`; clears result state; invalidates any in-flight minimum-window commit (sequence counter). The host exit seam pairs it with a shared-input reset.                                                                                                                                                             |
 | recordEntryClick           | `(nodeId) => Promise<boolean>`                      | List-entry-click usage signal at row open: routes `gateway.recordSearchClick(nodeId)` — absorbed, never toasts                                                                                                                                                                                                                   |
 | handleZoneThumbnailsLoaded | `(thumbnailMap: Map<nodeId, thumbnailUrl>) => void` | Zone-local thumbnail merge — the `onThumbnailsLoaded` seam of the Zone B/C renderers' shared `useThumbnailLazyLoad` instance. Merges into hook state keyed by nodeId (the map never overwrites its own entries); the row adapter applies it to `zoneBRows`/`zoneCRows`, so URLs survive row re-derivation (§2.3 zone thumbnails) |
 
@@ -93,7 +95,7 @@ Semantic refinement plugs in as a NEW `op` supplying its own `applyStep` — the
 
 - Server calls: `POST /api/search` on submit only (typing never calls the API); `POST /api/files/metadata` per enrichment chunk after a response; `POST /api/search/click` on row open.
 - `usage_events(search_hit)` logging is a server side effect of the search response; the client does nothing extra for it.
-- Entering/exiting results mode does not touch the explorer listing state (`useFileManager` unaffected); the shared `searchQuery` text survives the transition.
+- Entering/exiting results mode does not touch the explorer listing state (`useFileManager` unaffected); the shared `searchQuery` text is cleared on commit and on exit (input reset), never on transitions that keep results mounted.
 
 ### 2.6 Error Handling
 
@@ -112,8 +114,9 @@ Semantic refinement plugs in as a NEW `op` supplying its own `applyStep` — the
 - [ ] `libraryAddTarget` = union of `zoneAIds` and the FULL `zoneBRows` id set (deduped-out display rows included), unchanged by paging or live filter.
 - [ ] Enrichment batches rows into chunks of ≤ 100 through the gateway seam; rows merge by nodeId; a missing row leaves the row unenriched.
 - [ ] `handleZoneThumbnailsLoaded` with a `Map(nodeId → thumbnailUrl)` attaches the URL to the matching Zone B/C rows; merged URLs survive re-derivation (live filter, later enrichment, chain steps); the map never overwrites its own entries and an enrichment-supplied `thumbnailUrl` wins in the row; non-Map/empty payloads are ignored; Zone A rows keep session-merge thumbnails; `exitResults` clears the map.
-- [ ] Every exit trigger calls `exitResults` and returns `mode === 'browse'` with the input text kept.
-- [ ] Folder navigation while in `results` exits results mode; the recent-query sessionStorage list survives.
+- [ ] Every exit trigger calls `exitResults` and returns `mode === 'browse'`; the shared input field is reset by the shell exit seam.
+- [ ] Folder navigation while in `results` exits results mode; the recent-query sessionStorage list survives; the input field is empty afterwards.
+- [ ] A fast response still holds `pending` for at least `minPendingMs` before committing; `exitResults` during that window discards the late commit (mode stays `browse`, chain empty).
 - [ ] `recordEntryClick` routes through the gateway seam exactly once per call and absorbs failures silently (no toast, no throw).
 - [ ] Absorbed search failure produces `showError` and leaves the previous chain/snapshot intact.
 - [ ] Re-submitted identical query: no duplicate recent entry (normalized-query dedup).

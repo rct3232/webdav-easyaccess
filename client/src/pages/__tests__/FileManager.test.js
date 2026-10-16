@@ -23,6 +23,11 @@ import FileManager from '../FileManager';
 import { notifyRecentFilesChange } from '../../services/recentFilesNotifier';
 import { notifyCollectionsChange } from '../../services/collectionsNotifier';
 
+jest.mock('../../constants/fileManager', () => ({
+  ...jest.requireActual('../../constants/fileManager'),
+  SEARCH_ORBIT_CYCLE_MS: 0,
+}));
+
 jest.mock('../../components/dialogs/FilePreviewDialog', () => ({
   __esModule: true,
   default: function MockFilePreviewDialog({ open, file, onClose }) {
@@ -2010,6 +2015,8 @@ describe('FileManager', () => {
 
       expect(await screen.findByTestId('search-chip-bar')).toBeInTheDocument();
       expect(searchBodies).toEqual([{ query: 'test' }]);
+      // the commit hands the term to the chip strip — the input field is cleared
+      expect(screen.getByRole('searchbox')).toHaveValue('');
       expect(screen.queryByTestId('breadcrumb')).not.toBeInTheDocument();
       expect(await screen.findByTestId('search-zone-header-a')).toBeInTheDocument();
       expect(screen.getByTestId('search-zone-header-b')).toBeInTheDocument();
@@ -2044,6 +2051,7 @@ describe('FileManager', () => {
       await waitFor(() => expect(clickBodies).toEqual([{ node_id: 22 }]));
       await waitFor(() => expect(screen.queryByTestId('search-chip-bar')).not.toBeInTheDocument());
       expect(await screen.findByTestId('breadcrumb')).toBeInTheDocument();
+      expect(screen.getByRole('searchbox')).toHaveValue('');
     }, 15000);
 
     it('file result-row open previews while the zones stay mounted and the click is recorded', async () => {
@@ -2093,6 +2101,7 @@ describe('FileManager', () => {
 
       await waitFor(() => expect(screen.queryByTestId('search-chip-bar')).not.toBeInTheDocument());
       expect(await screen.findByTestId('breadcrumb')).toBeInTheDocument();
+      expect(screen.getByRole('searchbox')).toHaveValue('');
     }, 15000);
 
     it('select-all spans the zones (union selection source)', async () => {
@@ -2204,10 +2213,14 @@ describe('FileManager', () => {
 
       await submitSearchText('movie');
       expect(await screen.findByTestId('search-chip-bar')).toBeInTheDocument();
+      // the commit cleared the field; live typing puts text back
+      expect(screen.getByRole('searchbox')).toHaveValue('');
+      fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'live' } });
 
       fireEvent.click(screen.getByLabelText('Close search'));
       await waitFor(() => expect(screen.queryByTestId('search-chip-bar')).not.toBeInTheDocument());
       expect(await screen.findByTestId('breadcrumb')).toBeInTheDocument();
+      expect(screen.getByRole('searchbox')).toHaveValue('');
     }, 15000);
 
     it('server rows lazy-load thumbnails into the zone-locally merged rows (avatar appears)', async () => {

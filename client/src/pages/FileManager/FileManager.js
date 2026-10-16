@@ -193,12 +193,19 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     onSubmitQuery: isShareLinkMode ? undefined : handleSessionSubmitQuery,
   });
 
+  // A successful commit hands the term to the chip strip, so the shared input
+  // field is cleared (useSearchResults.md §2.3).
+  const handleSearchCommitted = useCallback(() => {
+    setSearchQuery('');
+  }, [setSearchQuery]);
+
   const searchApi = useSearchResults({
     showError,
     gateway: isShareLinkMode ? undefined : explorerGateway,
     files,
     sortMode,
     liveText: searchQuery,
+    onCommit: handleSearchCommitted,
   });
   submitSearchRef.current = searchApi.submitSearch;
 
@@ -214,11 +221,18 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const searchApiRef = useRef(searchApi);
   searchApiRef.current = searchApi;
 
+  // Every results-mode exit resets the shared input field (useSearchResults.md
+  // §2.3): exitResults + clear the pill text so browse mode starts unfiltered.
+  const exitSearchAndResetInput = useCallback(() => {
+    searchApiRef.current.exitResults();
+    setSearchQuery('');
+  }, [setSearchQuery]);
+
   // Folder navigation while results mode is active EXITS results mode
   // (useSearchResults.md §2.3 — the recent-query list survives).
   useEffect(() => {
-    if (searchApiRef.current.mode !== 'browse') searchApiRef.current.exitResults();
-  }, [sessionKey]);
+    if (searchApiRef.current.mode !== 'browse') exitSearchAndResetInput();
+  }, [sessionKey, exitSearchAndResetInput]);
 
   // Clearing the shared search text exits results mode (FloatingSearchBar §2.7:
   // the ✕ press clears + blurs; the cleared text is the host exit signal).
@@ -1304,7 +1318,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         type = meta?.[0]?.type ?? 'file';
       }
       if (type === 'directory') {
-        searchApi.exitResults();
+        exitSearchAndResetInput();
         navigateToExplorerNode(nodeId);
         return;
       }
@@ -1333,6 +1347,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       navigateToExplorerNode,
       openPreviewDialog,
       setSelectedFile,
+      exitSearchAndResetInput,
     ]
   );
 
@@ -1360,7 +1375,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       zonesCollapsed,
       onToggleZone: handleToggleZone,
       onRevertToStep: searchApi.undoToStep,
-      onExit: searchApi.exitResults,
+      onExit: exitSearchAndResetInput,
       onLibraryAdd: handleSearchLibraryAdd,
       onRowOpen: handleSearchRowOpen,
       onZoneThumbnailsLoaded: searchApi.handleZoneThumbnailsLoaded,
@@ -1372,6 +1387,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     handleToggleZone,
     handleSearchLibraryAdd,
     handleSearchRowOpen,
+    exitSearchAndResetInput,
   ]);
 
   const handleProductPathClick = useCallback(

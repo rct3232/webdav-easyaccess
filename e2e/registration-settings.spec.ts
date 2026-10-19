@@ -6,9 +6,10 @@ import { ADMIN_STATE, expect, test } from './fixtures/authenticated';
 /**
  * Registration-setting cases (DEF-11/dechain C1). The `registration_enabled`
  * setting is a single GLOBAL server value; these are the ONLY cases allowed to
- * write it DISABLED, so they run in exactly ONE project (desktop; see
- * `desktopSpecMatch` in playwright.config.ts) and serially, with every flip
- * restored. The rest of the suite treats registration as ambient-enabled:
+ * write it DISABLED, so they run in exactly ONE project (desktop; see the
+ * dedicated `-regset-desktop`/`-regset-mobile` pair in playwright.config.ts)
+ * and serially, with every flip restored. The rest of the suite treats
+ * registration as ambient-enabled:
  * `ensurePendingUser` self-heals a racing disable, and `mypage-admin` 005/006
  * user rows are unique per run.
  */

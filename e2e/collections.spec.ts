@@ -1048,11 +1048,27 @@ test('E2E-COLLECTION-018: Card menu rename updates the card and the sidebar row,
   await renameDialog.getByTestId('rename-submit').click();
 
   // One journaled command ⇒ one undo toast ("Collection renamed",
-  // collections.undoRenamed). MOBILE asserts the toast and clicks Undo
-  // IMMEDIATELY after the submit — the 8 s toast window cannot survive the
-  // slower mobile card/poll/drawer checks — and then verifies the post-undo
-  // state. Desktop keeps the rename-state checks while the toast is alive.
+  // collections.undoRenamed). BOTH platforms verify the same rename-effect
+  // contracts BEFORE the undo click — the renamed card and the server-side
+  // name lock (`PUT /:id` with a `name` write sets name_locked=true,
+  // routes/collections.md PUT + store §2 renameCollection) — because those
+  // checks are cheap (one UI await + one API poll). The sidebar reflection
+  // differs by timing only, not by contract: desktop asserts the row showing
+  // the NEW name pre-undo (sidebar stays mounted — drawer-free), while mobile
+  // cannot reliably open the WebKit drawer inside the 8 s toast window and
+  // instead asserts the row showing the RESTORED name after the undo. Both
+  // platforms therefore verify the reflection, each at its stable moment.
   if (isMobileProject(testInfo)) {
+    await expect(collectionCard(page, 'Q3 reports')).toBeVisible({ timeout: 10_000 });
+    await expect
+      .poll(
+        async () => {
+          const row = await findCollectionByName(request, token, 'Q3 reports');
+          return row?.name_locked === true && row.collection_id === collectionId;
+        },
+        { timeout: 15_000 }
+      )
+      .toBe(true);
     await expect(page.getByText(/Collection renamed/i)).toBeVisible();
     await expect(page.getByTestId('undo-toast-action')).toBeVisible();
     await page.getByTestId('undo-toast-action').click();
@@ -1107,6 +1123,10 @@ test('E2E-COLLECTION-018: Card menu rename updates the card and the sidebar row,
       timeout: 15_000,
     })
     .toBe(true);
+  // The sidebar row reflects the inverse through the collections notifier
+  // (the mobile arc asserts the same restoration moment via the row's
+  // restored-name fragment below).
+  await expect(page.getByTestId(`collection-row-${collectionId}`)).not.toContainText('Q3 reports');
   await page.goto('/files/__collections__');
   await expect(collectionCard(page, name)).toBeVisible();
   await expect(collectionCard(page, 'Q3 reports')).toHaveCount(0);

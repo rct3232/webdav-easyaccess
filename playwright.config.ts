@@ -149,6 +149,24 @@ if (backendMode === 'webdav') {
       testMatch: mobileSpecMatch,
       use: mobileUse,
     });
+    // Registration-settings pair (runs in BOTH core and full mode): the
+    // `registration_enabled` value is ONE GLOBAL server setting that only
+    // this file may disable, so the two projects must never overlap — the
+    // mobile variant chains after the desktop one (every case restores the
+    // ambient default, so the chained run starts enabled).
+    projects.push(
+      {
+        name: `${backendMode}-regset-desktop`,
+        testMatch: /registration-settings\.spec\.ts$/,
+        use: desktopUse,
+      },
+      {
+        name: `${backendMode}-regset-mobile`,
+        testMatch: /registration-settings\.spec\.ts$/,
+        use: mobileUse,
+        dependencies: [`${backendMode}-regset-desktop`],
+      }
+    );
   } else {
     // Suite projects are INDEPENDENT siblings (hermetic-dechain, 2026-09-11):
     // no per-project TRUNCATE resets and no ordering dependencies — ordering

@@ -1268,4 +1268,19 @@ qualification + provisioning-trigger fixtures) · SETUP.md boot-frozen caveat +
   `handleOpenAddToCollection` (viewport-centered anchor); FileActionSheet.md restated.
 - Gates: collections dual 40/40, trash-admin 2/2, regset 6/6, shared-stack dual 134+3
   sanctioned skips; client 2064; eslint/prettier; docsStatePurity 3/3. Remaining
-  single-platform files are platform-OWNED interaction primitives only (DESKTOP-*/MOBILE-*).
+  single-platform files are platform-OWNED interaction primitives only (DESKTOP-_/MOBILE-_).
+- 018 contract parity follow-up (2026-10-19, branch `test/col018-mobile-parity`,
+  merge `f82d7d7`): the convergence audit surfaced two residuals. (1) the regset
+  dedicated pair is registered in the non-core config branch only, so
+  `E2E_CORE=1` no longer runs E2E-AUTH-009/010 + E2E-ADMIN-007 (reported to the
+  owner, acknowledged as-understood, no action requested — open residual;
+  W5 mypage-admin shape). (2) case 018's mobile arc verified only
+  the undo result. Owner ruling: same-role UI surfaces must pass the SAME
+  verification level — the mobile arc now asserts the renamed card +
+  `name_locked=true` poll pre-undo (desktop order, ~1 s — stable inside the 8 s
+  toast window), desktop gains the post-undo sidebar not-contains check; the
+  sidebar-reflect contract is verified on both platforms with timing-only
+  adaptation (desktop pre-undo 'Q3 reports' / mobile post-undo restored
+  fragment). E2E_COVERAGE_PLAN row 018 restated. Gates: targeted 018 both
+  projects green (5.2 s mobile), full dual collections 37+3 = 40/40 equivalent,
+  prettier, docsStatePurity 3/3.

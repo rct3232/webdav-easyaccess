@@ -1284,3 +1284,47 @@ qualification + provisioning-trigger fixtures) · SETUP.md boot-frozen caveat +
   fragment). E2E_COVERAGE_PLAN row 018 restated. Gates: targeted 018 both
   projects green (5.2 s mobile), full dual collections 37+3 = 40/40 equivalent,
   prettier, docsStatePurity 3/3.
+
+## 27. P1 execution waves (owner-adjudicated 2026-10-20; execution ledger — overlay; §7 task rows unchanged)
+
+Base: `ai-feature` @ `d9e6c3d` (regset fix merged; dev contains ZERO unique commits —
+dev ⊆ ai-feature, verified — so no dev sync is needed). TDD per unit
+(docs → RED → GREEN → gates → merge into `ai-feature`); task branches never edit
+PLAN.md (§24 standing rule). Unit sizes: S ≤1d, M ≈2–3d, L ≈4d+. Split principle:
+single-owner files (DDL/manifests) are touched by exactly one unit per wave; every unit
+keeps its own worktree branch (`wt-*` idiom) and targeted-gate evidence in the ledger.
+
+| Wave | Units (parallel)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Deps                               | RED-first targets                                                                                                                                                                                                                                                                   |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A    | A1 (T1.2a) repos `llm_models`/`ai_jobs`/`ai_usage_daily` + restart-survival (M) ∥ A2 (T1.2b) repos `embeddings`/`embeddings_chunk`/`ai_enrichments` (M) ∥ A3 (T1.0a) `model.lock.json`+`provision.js`+embedded client+`preparing` producer (L) ∥ A4 (T1.0b) dead tag-surface purge (S) ∥ A5 (T1.4a) `vectorMath`+extractors+`TextVectorJs` oracle (M) → A6 (T1.4b-pg) pgvector adapter (M) ∥ A7 (T1.4b-vec0) vec0 adapter+ACL helper (M)                                                                   | none (roots; A6/A7 after A5)       | A3: posture scenarios ×5 (setup-mode zero-egress / remote-active defer / override-clear in-place / `WEA_MODEL_DIR` idempotent / sha256-fail caps-off); A4: aiTagStore §2.6 grep assertions flipped to absence; A5: exact≡oracle; A6/A7: recall@50≥0.99 @ef400 held-out queries only |
+| B    | B1 (T1.1a) `presets.js`+probe matrix ∥ B2 (T1.1b) adapter core (per-call resolution, `roleConfigured`, budget chain, breaker, usage) → B3 (T1.1c) wizard AI step (chat/vision/asr) + 5-state admin display ∥ B4 (T1.3a) worker core (`claimNext({excludeKinds})` — aiJobsStore.md §2.3 gains the row at this docs step; backoff; park&drain) → B5 (T1.3b) embed pipelines (chunk-pool ladder → embeddings/embeddings_chunk) ∥ B6 (T1.3c) §4.1 hooks ×4 + `content_hash` write-side (register (b) absorbed) | A; B3←B1,B2; B5←B4+A2+A5; B6←B4+A1 | B1: declared≠probed ⇒ capability off+warning, τ=0.90 kit + dim==768; B2: hot re-probe restart-free, breaker 5-fail→OPEN 300s; B4: excludeKinds park (zero attempt inflation), backoff `min(30s·2ⁿ,30min)`; B6: 4 seam enqueues + hash population                                    |
+| C    | C1 (T1.5a) query-embed + `query_parses` cache + response shape + honest degrade → C2 (T1.5b) scorer (segment-AND min, max-over-chunks, dynamic baseline gate) → C3 (T1.5c) client zone C activation ∥ C4 (T1.7) vector near-dup + dashboard feed                                                                                                                                                                                                                                                           | B                                  | `sr1.` result_ref signature; absent vs honestly-empty distinction; per-query dynamic baseline gate; dedup vs name section; cap 50                                                                                                                                                   |
+| D    | D1 (T1.6) seed collections (preview+confirm+`llmNamer` swap) ∥ D2 (T1.9a) media capability probes+positive controls → D3 (T1.9b) media embed pipelines (audio `min(ub/25 s,327s)` windows / 1 fps frame sampling / image single / `media_direct`) → D4 (T1.9c) V2 caption fallback + backfill scope                                                                                                                                                                                                        | B (+C4 corpus)                     | formulas cited, never a literal "19 s"; D2: content-wrapper shape / re-encode band / base64-as-text diverges / pooling match                                                                                                                                                        |
+
+Exit gate: orchestrator `server/index.js` integration + full server/client `test:ci` +
+`test:ci:pg:adapters` + CI grep-gates (zero `CacheAdapter|operationProgress` in
+`domains/(collections|ai)/**` + tag-purge absence) + docsStatePurity; the
+`ai-feature`→`dev` merge stays a single event after ALL §7 phases.
+
+### Owner rulings recorded (2026-10-20 — full text in AI_FEATURE_PLAN §12.13)
+
+- **E2E-AI-001 → C1** ("(1)한건만 만들기"): one hermetic semantic-search case, scratch `:5016`,
+  `WEA_MODEL_DIR` pre-seed. TESTING_STRATEGY updated; spec rows land with the C1 docs step.
+- **Built-in video direct-embed** ("내장모델에서도 영상 임베딩 가능하도록 해"): embedded provider
+  substitutes the model window (8,192) for the server `ub`; video = local ffmpeg 1 fps sampling,
+  ≤ window/140 frames/segment, image-processor path. Encoded §4.3/§4.20/§4.21 + llmAdapter
+  §2.5/§2.6. `-ub ≥2048` = external throughput override only (no longer a blocker for D3).
+- **Unified admin re-embed action** ("UI/UX 표면 기준으로는 같은 동작"): initial-coverage backfill =
+  model-change full re-embed = ONE admin-launched rate-limited action. Mostly already law;
+  made explicit in §4.2/§4.15/§4.21, aiJobService §2.4, routes/admin §3.2. D4 backfill scope =
+  admin-manual trigger, no auto bulk enqueue.
+- **tagVocabulary.js — KEEP** (audited NOW per owner, not at execution): exports only `foldTag`
+  (pure string fold); `derivedTags.js` + collections tag-atom provider (string-equality,
+  §19-3-surviving) call it. A4 trims only the stale header line; purge surface = aiTagStore
+  §2.3/§2.4 (11 methods → 3) + repo twins + DDL rows (001:389/397 → big-bang script) + test
+  scenarios (exports 14→3; no-normalization pin re-homed onto `replaceRawTags`).
+- **δ_base posture — analysis delivered, owner confirmation pending**: δ_base is NOT a banned
+  absolute θ — it is the margin above the per-query MEASURED spread (the PoC-prescribed relative
+  gate); floors move 0.471→0.729 across models/poolings while spreads stay flat (.037–.054);
+  PoC directional δ≈.06–.10. Recommendation: keep release-measured δ_base (EG2 profile), light
+  calibration in C2's docs step. C2 entry condition carries this calibration.

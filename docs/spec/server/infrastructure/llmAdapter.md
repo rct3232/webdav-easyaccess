@@ -152,7 +152,11 @@ budget breaker PAUSES the role (surface in admin; jobs park upstream, aiJobServi
 **Embedded provider budget mapping:** steps 1–2 are config-only (no metadata
 GETs exist) — `max_input_chars` comes from the lockfile profile (step 3; model window 8,192,
 server ub wall N/A, in-process memory governs batch size); the step-4 limiter stays armed
-(OOM/refusal class ⇒ halve chunk window). Media segment ladder (§2.6) applies unchanged.
+(OOM/refusal class ⇒ halve chunk window). Media segment ladder (§2.6) applies unchanged —
+for the embedded provider the ladder's budget input is the model window (8,192) itself:
+audio windows `min(window/25 s, 327 s)`, video frame-sampled locally (ffmpeg, 1 fps) to
+≤ window/140 frames per segment through the image-processor path, image single; there is
+no server `ub` wall to consult (in-process memory governs batching).
 Circuit breaker (transport class): ≥5 consecutive transport failures ⇒ OPEN 300s, half-
 open probe on expiry (operational tunables, T2; not profile constants).
 
@@ -169,7 +173,8 @@ the profile, used to convert `max_input_chars` budgeting (per-profile value; on 
 it ships null+pending until release measurement). MEDIA segment ladder: media never
 degrades to head-truncation; instead, per profile `mediaTokenCost` × server budget
 (budget chain §2.5): audio → fixed windows (`min(ub/25 s, 327 s)` model cap), video →
-frame-sampling to fit, image → single-item always; every segment vector returned
+frame-sampling to fit (embedded provider: local ffmpeg 1 fps sampling, cap = window/140,
+image-processor path — no server wall), image → single-item always; every segment vector returned
 (`embeddings_chunk` rows) + mean+renormalized pooled row; segment windows are chunking-
 profile params — changing them re-embeds the media (chunking-profile rule, §2.6).
 `source='media_direct'`.

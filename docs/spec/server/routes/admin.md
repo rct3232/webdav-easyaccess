@@ -253,6 +253,11 @@ All P0 route rows have landed and moved to §2.2.6.
 - **(P0)** **`probeLlm` slot registration (plumbing only; the `target: 'llm'` route acceptance itself is the P1 row below):** `server/infrastructure/backendProbe.js` exposes `registerProbeTarget(target, handler)` + the reserved `PROBE_TARGET_LLM = 'llm'` slot. Registered handlers win over the built-in targets; an unregistered reserved slot keeps the existing 400 `serverErrors.setup.testFailed` "Unsupported target" behavior. The LLM probe suite (`llmAdapter.md` §2.3 `probeLlm()`) registers without editing `backendProbe.js`; probe outcomes land in the `ai.<role>` tracker rows (`backendHealth.md`).
 - **(P1)** `POST /config/test` accepts `target: 'llm'` with per-role pending values; outcome recorded to the backend-health tracker via the `probeLlm` slot (registered P0) and rendered as **per-role probe chips** by the admin config UI. Probe failure ≠ save failure (test-only endpoint semantics unchanged).
 - **(P1)** `GET /health` (`backends` snapshot) gains tracker rows: **`vectorOps: 'native' | 'fallback_js'`** — a **performance warning only, never an AI-feature gate** (fallback keeps every feature on) — and **`ai.<role>` probe states** (`embed`/`chat`: `not_configured | preparing(phase, progress) | probe_failed(reason) | partial | ok`; hot re-probe on config change). Consumed by the health card and the AI governance panel (P4); never exposed on the public health/`settings/public` surface beyond the existing `ai:{embed,chat}` booleans.
+- **(P1)** Unified re-embed/backfill admin action: ONE admin-launched, rate-limited driver
+  job (aiJobService.md §2.4 `backfill`) covers both the initial coverage pass over an
+  existing corpus and a post-model-change full re-embed — a single UI/UX surface; no
+  automatic bulk enqueue exists in either case. Route/panel placement lands with the AI
+  governance panel.
 
 ### 3.3 Verification (appends §2.7)
 

@@ -1323,8 +1323,13 @@ Exit gate: orchestrator `server/index.js` integration + full server/client `test
   §19-3-surviving) call it. A4 trims only the stale header line; purge surface = aiTagStore
   §2.3/§2.4 (11 methods → 3) + repo twins + DDL rows (001:389/397 → big-bang script) + test
   scenarios (exports 14→3; no-normalization pin re-homed onto `replaceRawTags`).
-- **δ_base posture — analysis delivered, owner confirmation pending**: δ_base is NOT a banned
-  absolute θ — it is the margin above the per-query MEASURED spread (the PoC-prescribed relative
-  gate); floors move 0.471→0.729 across models/poolings while spreads stay flat (.037–.054);
-  PoC directional δ≈.06–.10. Recommendation: keep release-measured δ_base (EG2 profile), light
-  calibration in C2's docs step. C2 entry condition carries this calibration.
+- **δ_base — MEASURED 2026-10-20 (POC §6.10, owner pull-forward "바닥 측정을 지금")**: built-in
+  q4 harness (Q12-kit positive control median-cos 1.000000), reference corpus 1,304 docs — junk
+  margin ceiling .073 < **δ_base = 0.08** < real-single floor .083 (at 0.08: 100% junk rejected,
+  100% real-single accepted; band .075–.085). llmPresets embedded row updated; the C2 calibration
+  entry condition is SATISFIED. Implementation rule for C2 (from the run): the baseline sample
+  must EXCLUDE the candidate set (unrestricted samples contain the true top-1 in 36.8% of draws).
+  OPEN owner item (same run): the specced gate composes MIN-across-segments on BOTH sides, which
+  pulls composite-query margins inside the junk band (.033–.066 vs .031–.073) — no δ separates
+  them; proposed amendment = PER-SEGMENT baseline gate (each segment clears its own spread +
+  δ_base; ranking stays min-across-segments). searchService §2.3 amendment follows the ruling.

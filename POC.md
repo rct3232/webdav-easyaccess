@@ -631,3 +631,50 @@ E3-validated). Derived local facets (`mime:`/`ext:`/`month:`/`path:` in `ai_tag_
 survive unchanged — folded string-equality predicates, no embedding, model-invariant.
 Q11 closes by removal; E6c's "nothing merges automatically" becomes a permanent law rather
 than a pipeline step. Record: AI_FEATURE_PLAN §4.18/§3.2, PLAN §19.
+
+### 6.10 Dynamic-baseline floor calibration — δ_base (2026-10-20)
+
+Owner pull-forward of the PLAN §27 C2 calibration item ("바닥 측정을 지금"). Harness rebuilt per
+§6.7/Q12: in-process transformers.js 4.3.1, EG2 ONNX **q4**, mean pooling (attention-mask
+weighted), unit-norm float32, profile prefixes (doc `title: … | text: …`, query
+`task: search result | query:`); revision resolved to the full pin
+`daa72c51243991dfcaf9f9137d2c573d8f7790c0`. Artifacts: `/tmp/opencode/delta-base/results.json`
+(per-query raw: top1, score stats, 25× sample spreads/margins, contamination counts).
+
+**Positive control**: the run embeds the Q12 reference kit's 24 strings and reproduces the stored
+canonical vectors at median-cos **1.000000** (max abs diff 2.98e-8 = float32 epsilon) — the
+harness is arithmetic-identical to the shipped space.
+
+Corpus: q10/text units subset — 1,304 docs (all units of the 4 smallest topics + a seeded 1,200
+sample; article titles joined). Queries: 16 real single-segment (ko/en), 6 real multi-segment
+(2–3 segments), 10 junk (keyboard mash / hex / digits / gibberish / emoji). Baseline per query:
+K=25 seeded random 500-doc samples; `spread` = max over sample docs of the per-doc score
+(multi-segment: per-doc = MIN across segments, per searchService §2.3 step 6); primary variant
+EXCLUDES the full-corpus top-50 from the sample — unrestricted samples contained the true top-1
+in 36.8% of draws, pinning margins to ~0 (an implementation rule the C2 scorer must encode:
+sample the corpus minus the candidate set).
+
+Results (margin = top1_full − spread):
+
+| Query class     | P5   | P10  | median | min–max         |
+| --------------- | ---- | ---- | ------ | --------------- |
+| real single-seg | .094 | .114 | .179   | .083 – .264     |
+| real multi-seg  | .036 | .039 | .050   | .033 – .066     |
+| junk            | .032 | .032 | .055   | .031 – **.073** |
+
+Junk score distributions are FLAT (std .019–.026, P50 .55–.61) exactly as the gate assumes.
+
+Gate simulation: δ=0.06 → 60% junk rejected (40% leak); **δ=0.08 → 100% junk rejected AND 100%
+of real single-segment accepted**; δ=0.10 → real-single losses begin (.084/.097 margins fail).
+
+**Adopted: δ_base = 0.08** (band .075–.085) — junk margin ceiling .073 < δ < real-single floor
+.083. llmPresets embedded-row `profile.numbers` updated.
+
+**OPEN design finding (owner pending)**: the specced gate composes MIN-across-segments on BOTH
+sides (top candidate AND baseline sample), which compresses composite-query margins into the junk
+band (real-multi .033–.066 vs junk .031–.073) — NO δ separates them; segment-AND composite
+queries would return honestly-empty at every junk-safe δ. Proposed amendment: PER-SEGMENT gate
+(each segment must individually clear its own sample spread + δ_base; candidates still ranked by
+min-across-segments) — preserves the AND semantics, each junk segment fails alone, and real
+segments carry single-segment margins (.083+). Decision: PLAN §27; the searchService §2.3
+amendment follows the ruling.

@@ -147,7 +147,9 @@ in its own lane. Then chains `enqueue(node,'embed',gen)` (V0 metadata_only when 
 transcript is `none`).
 **`backfill`:** admin-launched driver job (rate-limited; never auto-fires on model change): seeds `enqueueMany`
 per generation-bump and monitors progress via `countByModel`/`countByStatus`; the backfill
-job itself performs no provider calls.
+job itself performs no provider calls. The SAME admin-launched action serves the initial
+coverage pass (first embedding sweep over an existing corpus) and a model-change full
+re-embed — one UI/UX surface, no distinct flow, no automatic bulk enqueue in either case.
 
 ### 2.5 Budget breaker, usage counting, degraded flags
 

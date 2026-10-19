@@ -277,7 +277,10 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
   Nightly evolution ≈ ≤1 chat call/user/day with aggregate-only
   input and 1 structured multi-output (create+split+merge candidates).
 - No auto-backfill on model change: `embeddings.model_id/version` + `dim` recorded; admin
-  triggers re-embed backfill job (rate-limited). Existing vector math keeps working from DB
+  triggers re-embed backfill job (rate-limited). The admin-launched re-embed and the
+  initial-coverage backfill (first embedding pass over an existing corpus) are THE SAME
+  admin action — one UI/UX surface, no automatic bulk enqueue in either case (2026-10-20).
+  Existing vector math keeps working from DB
   data after un-configuring an LLM; only NEW enrichment stops (queue backlog visible in
   admin). This is deliberate: enrichment dependency, not runtime dependency.
 
@@ -315,7 +318,11 @@ model window 8,192 shared). Server-side physical batch limits cut through these:
 512` llama.cpp build 500s above ~20 s of audio / rejects multi-frame video (measured: 60 s
 audio → HTTP 500, 60 s video → 5,922 tok rejected), and long audio exceeds the window
 regardless (≈327 s cap). The ladder therefore mirrors §4.3 text chunking: fixed windows
-(audio ≤ ub/25 s segments; video sampled to ≤ ub/140 frames; image always single) → embed
+(audio ≤ ub/25 s segments; video sampled to ≤ ub/140 frames; image always single; for the
+EMBEDDED provider `ub` substitutes with the model window 8,192 — video is locally
+frame-sampled via ffmpeg at 1 fps to ≤ window/140 frames per segment and runs the
+image-processor path — owner ruling 2026-10-20: the built-in engine embeds VIDEO too; the
+external `-ub` figure is a serving-side throughput override, never a capability gate) → embed
 each segment → store every segment vector (`embeddings_chunk` rows, same profile-key rule —
 **media sampling params are part of the chunking profile: changing fps/window segments
 means re-embed**) → mean+renormalize pooled row; scoring max-over-segments (same E12
@@ -707,7 +714,8 @@ regenerated-anyway counters §4.9/Q1), model registry (model_id/dim per
 role, per-version embedding distribution, **three ai_enrichments lineages — features/caption/
 asr model coverage filters for backfill scoping (Q6)** + media-embed coverage (which nodes
 carry `media_direct` vectors vs which fell back — V1/V3 rows, backfill scoping),
-backfill launcher with rate limit),
+backfill launcher with rate limit — the ONE admin action serving both the initial coverage
+pass and a model-change full re-embed, §4.2),
 degraded-input histogram (overlength stats), kill switches (§4.9). Privacy boundary:
 aggregates and ids
 only — never file names/queries/contents of other users. **Constants provenance
@@ -920,7 +928,8 @@ with §4.18):
   audio bytes go to the SAME embed role, no prefix, producing vectors in the model's one
   shared multimodal space (EG2 probe: wedding video ↔ event photos 0.78–0.79; audio ↔
   transcript summary 0.79–0.85; cross-modal ranking correct on the probe battery). Requires
-  probe-verified media capability (§4.23); sampling/chunking per the §4.3 media ladder;
+  probe-verified media capability (§4.23); sampling/chunking per the §4.3 media ladder
+  (embedded provider: window-derived video frame cap — no server `ub` required);
   `source='media_direct'`. When the active embed model lacks media capability, the V2
   caption→E1 fallback of §4.21 applies — never a mixed-space read (§4.21 model-change rule).
 - **No calls**: collection centroids = weighted means of stored vectors; seed definitions =
@@ -958,7 +967,9 @@ enters it directly instead of through a generation hop. The pipeline:
   probe JSONB — works with zero LLM.
 - **V1 (revived; needs embed role with probe-verified media capability)**: images → direct
   embed (single image, ≤ vision token budget); audio/video → §4.3 media ladder segments +
-  pooled/segment rows (`source='media_direct'`). Search-by-content, clustering, near-dup and
+  pooled/segment rows (`source='media_direct'`) — on the embedded provider video rides the
+  same direct path via local ffmpeg frame sampling to the window-derived frame cap (§4.3
+  built-in clause). Search-by-content, clustering, near-dup and
   seed-math then see the RAW media, not a generated description.
 - **V2 (needs `vision_chat`)**: uniform-stride frame sampling (≤4, local ffmpeg) → VLM
   captions in Korean → `ai_enrichments.caption`. Role changed 2026-10-08: caption is DISPLAY +
@@ -983,6 +994,7 @@ enters it directly instead of through a generation hop. The pipeline:
 - Model change → backfill re-projection in one space (§4.2) covering MEDIA rows too (media
   files without captions become newly embeddable; media-capable→text-only swap must re-project
   media rows back through V2 or drop them — backfill scoping via media-embed coverage, §4.15).
+  Initial-coverage backfill and model-change re-embed are ONE admin-launched action (§4.2).
 
 `LLM_MEDIA_PATH` stays deleted; media selection is capability-driven: media-capable embed →
 V1, else vision_chat → V2 captions feeding E1, else V0.
@@ -1699,3 +1711,39 @@ from the FileGrid\* JSX bodies with the original suites kept UNCHANGED as regres
     pointer removed).
   - `derivedTagsService`: stale `aiTagStore §2.4.5` pointers corrected to §2.3 (aiTagStore
     was renumbered by the 2026-10-14 state-purity sweep).
+
+### 12.13 P1 open-item rulings (2026-10-20)
+
+- **E2E-AI-001 assigned** (owner: "(1)한건만 만들기"): the first AI E2E case is the
+  semantic-search zone C end-to-end on the built-in engine — hermetic scratch project
+  `:5016`, `WEA_MODEL_DIR` pre-seed (zero download). Recorded in TESTING_STRATEGY AI tiers;
+  spec rows land with the C1 docs step.
+- **Built-in video direct-embed** (verbatim: "embedding 기본은 내장 모델로 처리하는거야.
+  내장모델에서도 영상 임베딩 가능하도록 해"): the embedded provider runs the media ladder
+  with the model window (8,192) substituting the server `-ub` — video = local ffmpeg 1 fps
+  sampling to ≤ window/140 frames per segment through the image-processor path. Encoded
+  §4.3/§4.20/§4.21 + llmAdapter §2.5/§2.6. The `-ub ≥2048` infra call (§16 carry-forward)
+  stays an external-server throughput override only.
+- **Unified admin re-embed action** (verbatim: "기존 파일은 관리자가 수동 실행하는 방향으로
+  가자. 모델 정보가 달라져 전량 재embed 해야할때도 관리자가 수동으로 처리하도록 하고, 이 동작은
+  UI/UX 표면 기준으로는 같은 동작으로 규정하도록해"): initial-coverage backfill and
+  post-model-change full re-embed are THE SAME admin-launched, rate-limited action — one
+  UI/UX surface. Mostly already law (§4.2/§4.15/aiJobService §2.4/embeddingsStore §2.5);
+  unification made explicit there + routes/admin §3.2.
+- **tagVocabulary.js disposition — KEEP** (caller audit 2026-10-20): the file exports only
+  `foldTag` (pure NFKC/whitespace/lowercase fold, zero vector/vocabulary surface); callers =
+  `domains/ai/derivedTags.js` (surviving ai_tag_raw pipeline, spec-mandated fold) and
+  `domains/collections/service.js` tag-atom provider (string-equality rule predicate —
+  survives §19-3). Only stale content = the header comment mentioning `tag_embeddings`
+  writers — trimmed in T1.0b. T1.0b purge surface enumerated: aiTagStore §2.3/§2.4 blocks
+  (11 facade methods → 3), AiTagRepository twins' dead methods, DDL rows (001:389/397 →
+  big-bang script), conformance/test scenarios (exports array 14→3; the no-normalization
+  pin needs a new vehicle on `replaceRawTags`); no production caller of
+  `getTagVectors`/`upsertAutoParent`/`tag_embeddings` exists outside tests (verified).
+- **δ_base posture — analysis delivered, owner confirmation pending**: the absolute-θ ban
+  (PoC §2.5/§6.5) targets STORED floors — the unrelated floor moved 0.471→0.729 across
+  models/poolings while per-query sample spread stayed flat (.037–.054). δ_base is the
+  margin ABOVE the per-query measured spread (the PoC-prescribed relative gate itself),
+  with directional measurements δ≈.06–.10 (§6.5, n=5). Recommendation: keep a
+  release-measured δ_base in the EG2 profile; light calibration run folded into the C2
+  docs step (Q12-harness reuse).

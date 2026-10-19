@@ -71,6 +71,9 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
   use `E2E-AI-NNN`, search/retrieval cases (server-wide name search + results-mode UI,
   `e2e/retrieval.spec.ts`, scratch-hermetic `retrieval-desktop` project) use
   `E2E-RETRIEVAL-NNN`, third-person declarative titles per the naming convention above.
+  `E2E-AI-001` is the semantic-search zone C case: hermetic scratch project on `:5016`,
+  built-in embed engine with `WEA_MODEL_DIR` pre-seeded weights (zero download), zone C
+  end-to-end over `POST /api/search` with `semantic_available: true`.
   Minimum lifecycle chain: create→digest→archive→undo→restore→purge (CODING_STYLE.md Express Patterns gate).
 - **Degradation-matrix suite:** one suite per §4.12 capability column — `None` (no adapter
   configured at all; the built-in embed engine suppressed by fixture — absent lock/weights ⇒

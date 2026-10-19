@@ -264,7 +264,7 @@ infrastructure specs live under `docs/spec/server/`.
 - T0.7b/T0.8 `docs/spec/`routes/admin.md, routes/config.md (unchanged surface), infrastructure/backendHealth.md, components/SystemConfigEditor.md
 - T0.9 `docs/spec/`store/aiTagStore.md, services/collectionsService.md (rule evaluation)
 - T0.10 `docs/spec/`components/mypage/content/CollectionDashboard.md, hooks/useMyPageController.md, pages/MyPage.md
-- T0.11/T1.5 `docs/spec/`routes/search.md, services/searchService.md, components/file-manager/SearchBarResultsMode.md, hooks/{useSearchResults,useExplorerSession}.md, components/file-manager/FloatingSearchBar.md
+- T0.11/T1.5 `docs/spec/`routes/search.md, services/searchService.md, components/file-manager/SearchQueryChipBar.md, hooks/{useSearchResults,useExplorerSession}.md, components/file-manager/FloatingSearchBar.md
 - T0.12 `docs/spec/`store/{storage,executor}.md (target sections)
 - T1.1/T1.4 `docs/spec/`infrastructure/{llmAdapter,llmPresets,vectorStore}.md
 - T1.2 `docs/spec/`store/{embeddingsStore,embeddingsChunkStore,aiJobsStore}.md

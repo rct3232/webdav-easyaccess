@@ -403,7 +403,7 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
   accept `result_ref` (ignored when absent → same behavior as today). MVP emits only;
   interpretation is the future conversational layer's job.
 
-Contract specs (binding, MUST read before implementing this section): `docs/spec/server/routes/search.md`, `docs/spec/server/services/searchService.md`, `docs/spec/client/components/file-manager/SearchBarResultsMode.md`, `docs/spec/client/hooks/useSearchResults.md`, `docs/spec/client/hooks/useExplorerSession.md`, `docs/spec/client/components/file-manager/FloatingSearchBar.md`
+Contract specs (binding, MUST read before implementing this section): `docs/spec/server/routes/search.md`, `docs/spec/server/services/searchService.md`, `docs/spec/client/components/file-manager/SearchQueryChipBar.md`, `docs/spec/client/hooks/useSearchResults.md`, `docs/spec/client/hooks/useExplorerSession.md`, `docs/spec/client/components/file-manager/FloatingSearchBar.md`
 
 ### 4.7 Collection sharing (live)
 

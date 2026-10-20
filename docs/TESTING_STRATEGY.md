@@ -88,7 +88,7 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
   row; embed jobs park and drain in order on caps-ON); an enabled remote override defers with
   no caps-off signal; switching to remote never deletes existing weights.
 - **Repository conformance additions:** the new repository twins (collections, fileLikes,
-  actionJournal, aiJobs, embeddings, embeddingsChunk, aiTag) join the existing
+  actionJournal, aiJobs, llmModels, aiUsageDaily, embeddings, embeddingsChunk, aiTag) join the existing
   `*.conformance.test.js` L2 leg (sqlite default + `test:ci:pg:adapters` PG twin). Notable
   contract cases: `ai_jobs` **claim race** (one runner wins per `(node_id, kind,
 generation)`, backoff/retry parity), embeddings/chunks upsert + FK-cascade parity,

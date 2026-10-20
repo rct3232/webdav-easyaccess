@@ -159,7 +159,7 @@ describe('provision lock loading + weight-presence detection (unit seams)', () =
     expect(lock.files.length).toBeGreaterThanOrEqual(10);
   });
 
-  it('weightsPresent(dir, lock) verifies every file by size + sha256', () => {
+  it('weightsPresent(dir, lock) verifies every file by size + sha256', async () => {
     const tmp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'wea-lock-'));
     try {
       const small = [
@@ -170,19 +170,19 @@ describe('provision lock loading + weight-presence detection (unit seams)', () =
           size: 2,
         },
       ];
-      expect(provision.weightsPresent(tmp, { files: small })).toBe(false);
+      await expect(provision.weightsPresent(tmp, { files: small })).resolves.toBe(false);
 
       fs.writeFileSync(path.join(tmp, 'a.bin'), 'aaa');
       fs.mkdirSync(path.join(tmp, 'sub'));
       fs.writeFileSync(path.join(tmp, 'sub/b.bin'), 'bb');
-      expect(provision.weightsPresent(tmp, { files: small })).toBe(true);
+      await expect(provision.weightsPresent(tmp, { files: small })).resolves.toBe(true);
 
       // Wrong size (truncated download) ⇒ not present.
       fs.writeFileSync(path.join(tmp, 'sub/b.bin'), 'b');
-      expect(provision.weightsPresent(tmp, { files: small })).toBe(false);
+      await expect(provision.weightsPresent(tmp, { files: small })).resolves.toBe(false);
       // Wrong content (sha mismatch) ⇒ not present.
       fs.writeFileSync(path.join(tmp, 'sub/b.bin'), 'zz');
-      expect(provision.weightsPresent(tmp, { files: small })).toBe(false);
+      await expect(provision.weightsPresent(tmp, { files: small })).resolves.toBe(false);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

@@ -32,7 +32,7 @@
 | -------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `listByNode`   | (nodeId, { modelId }?) => Promise\<row[]\>                                | All chunks of one node in `chunk_idx` ASC order; optional `modelId` filter (space-key read filter, same rule as the pooled store).                   |
 | `get`          | (nodeId, chunkIdx) => Promise\<row \| null\>                              | Single chunk read.                                                                                                                                    |
-| `replaceChunks`| (nodeId, modelId, chunks: Array\<{ chunkIdx, vector }\>) => Promise\<{ inserted }\> | ONE TX: DELETE ALL of the node's rows (any space — the new set owns the node) + INSERT the given set. Re-chunking replaces wholesale; no partial updates. |
+| `replaceChunks`| (nodeId, modelId, chunks: Array\<{ chunkIdx, vector }\>) => Promise\<{ inserted }\> | ONE TX: DELETE the node's rows for the incoming `model_id` (that space's set for the node) + INSERT the given set. A cross-space write landing on an existing `(node_id, chunk_idx)` position claims it via the PK upsert (newer space wins); rows of OTHER models at non-colliding indices are untouched — a node may briefly hold rows in two spaces mid-backfill (readers filter by `model_id`). Re-chunking within one model replaces that model's whole set; no partial updates. |
 | `deleteByNode` | (nodeId) => Promise\<{ changes }\>                                        | Explicit drop (content change, retirement). Missing rows → `changes: 0`.                                                                              |
 | `deleteByModel`| (modelId) => Promise\<{ changes }\>                                       | Retire a whole embedding space (model migration backfill start).                                                                                      |
 | `countByNode`  | (nodeId, { modelId }?) => Promise\<number\>                               | Chunk count for one node (progress / ladder outcome).                                                                                                 |
@@ -41,7 +41,7 @@
 ### 2.4 Storage semantics & invariants
 
 - `node_id` is FK `→ file_nodes ON DELETE CASCADE`; purge removes the chunks; trash keeps them.
-- `(node_id, chunk_idx)` is the PK: replacing chunks is a wholesale DELETE+INSERT in one TX — partial chunk updates are forbidden (a half-written chunk set would break max-over-chunks determinism).
+- `(node_id, chunk_idx)` is the PK: replacing chunks is a wholesale DELETE+INSERT in one TX, scoped to the node's set in the incoming model space; a second-space write replaces the first at a shared position via the PK upsert (space-exclusive positions). Partial chunk updates are forbidden (a half-written chunk set would break max-over-chunks determinism).
 - Chunks inherit the pooled row's space: the caller (embed worker / vectorStore seam) resolves `modelId` upstream; the store persists it without an `llm_models` lookup.
 - The `vector` TEXT column round-trips bit-stably through serialize/parse (no lossy REAL/NUMERIC in tracked DDL).
 

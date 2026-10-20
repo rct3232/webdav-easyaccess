@@ -1067,3 +1067,31 @@ username`), while `openPrivateWorkspace` creates its case folder at the FILESYST
 - **Action taken**: pooled twins re-issued to use the `tx` handle inside `executor.transaction`
   and wrap every executor call in `try { … } catch (error) { throw mapDatabaseError(error); }`;
   pooled conformance suite re-run to 14/14 before commit.
+
+### 2026-10-21 — T1.2b chunk GREEN: committed replaceChunks semantics + deleteByModel RED setup mutually inconsistent (Case B — test error; earlier spec tightening was a misreading)
+
+- **Summary**: the sqlite leg failed only `deleteByModel retires the whole space` (expected
+  `changes` 2, received 1) while the space-keying scenario passed. The committed spec §2.3 row had
+  been "tightened" to an UNCONDITIONAL node-wide DELETE ("the new set owns the node"), but the
+  deleteByModel RED setup writes modelTwo at chunkIdx 0 — the same position as node a's modelOne
+  row — and expects BOTH modelOne rows to survive; under PK (node_id, chunk_idx) plus an
+  unconditional delete that is impossible (any cross-space write on node a wipes its modelOne row
+  ⇒ changes 1).
+- **Diagnosis**: PK is `(node_id, chunk_idx)` per DDL 001 §embeddings_chunk — at most one row per
+  (node, chunk) position regardless of model. The space-keying test's own comment ("a second space
+  write on the same chunk replaced the first") is satisfied by a PK upsert, NOT by an unconditional
+  wipe; the earlier unconditional-DELETE tightening was a misreading. Reconciling all three
+  scenarios (re-ladder same-model replace; space-keying collision; deleteByModel cross-space
+  coexistence) forces: DELETE scoped to the node's rows for the incoming `model_id` + INSERT …
+  ON CONFLICT (node_id, chunk_idx) DO UPDATE (newer space claims the position). Under that
+  semantic the RED setup is still wrong: a cross-space write at a COLLIDING index must claim the
+  position, so the deleteByModel setup's modelTwo write must land on a non-colliding index
+  (chunkIdx 1).
+- **Classification**: **Case B (Test Error)** — the RED test's setup misinterpreted the PK
+  invariant (expected 2 modelOne rows to survive a colliding second-space write; impossible under
+  PK (node_id, chunk_idx) per embeddingsChunkStore §2.4 and the space-keying scenario's own
+  comment). The earlier spec "tightening" to unconditional DELETE was part of the same misreading
+  and is corrected in the same docs commit.
+- **Action taken**: spec §2.3 `replaceChunks` row + §2.4 PK bullet re-stated to the reconciled
+  semantics; deleteByModel setup moved the modelTwo write to chunkIdx 1; both twins re-issued with
+  the space-scoped DELETE + PK upsert.

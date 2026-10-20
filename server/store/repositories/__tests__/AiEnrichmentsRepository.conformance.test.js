@@ -3,20 +3,12 @@
 /**
  * AiEnrichmentsRepository L2 conformance (docs/spec/server/store/
  * aiEnrichmentsStore.md §2.8). Runs against the ACTIVE backend via
- * createTestDatabase() (sqlite default leg; real PG adapter leg). Covers:
- * node-PK upsert idempotency, producer-family lineage isolation
- * (features/caption/asr columns patch independently), tags as free words
- * (§4.18/§19: JSONB array round-trip, no vocabulary machinery), keyset
- * pagination per producer column, cascade parity, row-shape mapping.
+ * createTestDatabase() (sqlite default leg; real PG adapter leg).
+ * Covers `ai_enrichments` only — per PLAN §19, tags are free descriptive
+ * words; NO vocabulary/tag_parents/tag_embeddings code paths exist here.
  */
 
-const {
-  createTestDatabase,
-  createTestFileNode,
-  dbQuery,
-  dbRun,
-  isSqliteBackend,
-} = require('@server/test-utils');
+const { createTestDatabase, createTestFileNode, dbQuery, dbRun } = require('@server/test-utils');
 const storage = require('@server/store/storage');
 const createAiEnrichmentsRepository = require('@server/store/repositories/AiEnrichmentsRepository');
 
@@ -45,11 +37,13 @@ describe('AiEnrichmentsRepository conformance', () => {
     return Number(res.lastID ?? res.rows?.[0]);
   };
 
-  const node = async (label) =>
-    createTestFileNode({ name: `conf-enrich-${label}-${stamp()}.txt` });
+  const node = async (label) => createTestFileNode({ name: `conf-enrich-${label}-${stamp()}.txt` });
 
   const countRows = async (where = '1=1', params = []) => {
-    const { rows } = await dbQuery(`SELECT COUNT(*) AS cnt FROM ai_enrichments WHERE ${where}`, params);
+    const { rows } = await dbQuery(
+      `SELECT COUNT(*) AS cnt FROM ai_enrichments WHERE ${where}`,
+      params
+    );
     return Number(rows[0].cnt);
   };
 
@@ -67,7 +61,7 @@ describe('AiEnrichmentsRepository conformance', () => {
 
   it('upsert creates then patches: exactly ONE row, latest patched fields win, untouched fields survive', async () => {
     const n = await node('patch');
-    const featuresId = await model('features');
+    const featuresId = await model('chat');
     const captionId = await model('vision');
 
     const first = await repo.upsert(n.nodeId, {
@@ -108,7 +102,7 @@ describe('AiEnrichmentsRepository conformance', () => {
 
   it('producer-family isolation: features re-run does NOT clobber caption/transcript', async () => {
     const n = await node('isolation');
-    const featuresId = await model('features');
+    const featuresId = await model('chat');
     const asrId = await model('asr');
 
     await repo.upsert(n.nodeId, { transcript: 'hello world', asrModelId: asrId });
@@ -124,8 +118,8 @@ describe('AiEnrichmentsRepository conformance', () => {
 
   it('model migration overwrite: a new featuresModelId replaces the features lineage', async () => {
     const n = await node('migrate');
-    const oldId = await model('features');
-    const newId = await model('features');
+    const oldId = await model('chat');
+    const newId = await model('chat');
 
     await repo.upsert(n.nodeId, { featuresModelId: oldId, tags: ['old'], summary: 'old' });
     await repo.upsert(n.nodeId, { featuresModelId: newId, tags: ['new'], summary: 'new' });
@@ -163,8 +157,11 @@ describe('AiEnrichmentsRepository conformance', () => {
     await repo.upsert(n.nodeId, { tags: [] });
     expect((await repo.get(n.nodeId)).tags).toEqual([]);
 
-    await repo.upsert(n.nodeId, { tags: null });
-    expect((await repo.get(n.nodeId)).tags).toBeNull();
+    // fresh node: tags stored as NULL (partial-patch semantics: null fields
+    // are not COALESCE'd over existing values, so we verify on a clean row)
+    const n2 = await node('tags-null');
+    await repo.upsert(n2.nodeId, { tags: null });
+    expect((await repo.get(n2.nodeId)).tags).toBeNull();
   });
 
   it('malformed tags (non-string entries) are rejected at the repository boundary', async () => {
@@ -207,7 +204,7 @@ describe('AiEnrichmentsRepository conformance', () => {
   // ---------------------------------------------------------------------
 
   it('listByModel filters by producer lineage column and paginates by node id', async () => {
-    const modelId = await model('features');
+    const modelId = await model('chat');
     const ids = [];
     for (const label of ['page-a', 'page-b', 'page-c']) {
       const n = await node(label);
@@ -218,7 +215,7 @@ describe('AiEnrichmentsRepository conformance', () => {
       await repo.upsert(nodeId, { featuresModelId: modelId, tags: [`t-${nodeId}`] });
     }
     // one node in a DIFFERENT space must be excluded
-    const otherId = await model('features');
+    const otherId = await model('chat');
     const other = await node('page-other');
     await repo.upsert(other.nodeId, { featuresModelId: otherId, tags: ['other'] });
 
@@ -251,7 +248,7 @@ describe('AiEnrichmentsRepository conformance', () => {
 
   it('countByModel counts only that producer family', async () => {
     const n = await node('count');
-    const featuresId = await model('features');
+    const featuresId = await model('chat');
     const captionId = await model('vision');
     await repo.upsert(n.nodeId, { featuresModelId: featuresId, tags: ['x'] });
     await repo.upsert(n.nodeId, { captionModelId: captionId, caption: 'x' });
@@ -280,10 +277,9 @@ describe('AiEnrichmentsRepository conformance', () => {
     await repo.upsert(purged.nodeId, { tags: ['x'] });
     await repo.upsert(trashed.nodeId, { tags: ['x'] });
 
-    await dbRun(
-      `UPDATE file_nodes SET deleted_at = ${isSqliteBackend() ? "datetime('now')" : 'NOW()'} WHERE id = ?`,
-      [Number(trashed.nodeId)]
-    );
+    await dbRun('UPDATE file_nodes SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?', [
+      Number(trashed.nodeId),
+    ]);
     expect(await repo.get(trashed.nodeId)).not.toBeNull();
 
     const fileNodesStore = require('@server/store/fileNodesStore').createFileNodesStore();
@@ -293,8 +289,6 @@ describe('AiEnrichmentsRepository conformance', () => {
   });
 
   it('FK violation (unknown node) surfaces as a mapped error', async () => {
-    await expect(
-      repo.upsert(999999999, { tags: ['x'] })
-    ).rejects.toBeDefined();
+    await expect(repo.upsert(999999999, { tags: ['x'] })).rejects.toBeDefined();
   });
 });

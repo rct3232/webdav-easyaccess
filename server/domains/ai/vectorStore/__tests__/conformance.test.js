@@ -246,7 +246,9 @@ function runExactEngineConformance({ createEngine, corpus, k = 10 }) {
     });
 
     it('zero-norm vectors score 0 (cosine has no direction)', async () => {
-      const zero = [{ nodeId: 1, chunkIdx: null, vector: serializeVector(new Array(dim).fill(0)), dim }];
+      const zero = [
+        { nodeId: 1, chunkIdx: null, vector: serializeVector(new Array(dim).fill(0)), dim },
+      ];
       const zeroEngine = createEngine({
         loadRows: () => zero.map((r) => ({ ...r })),
         upsertPooled: () => {},

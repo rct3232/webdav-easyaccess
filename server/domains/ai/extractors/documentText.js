@@ -11,8 +11,7 @@
 
 const zlib = require('zlib');
 
-const DOCX_MIME =
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 function codeError(code, message) {
   const err = new Error(message);
@@ -103,7 +102,7 @@ function decodeXmlEntities(s) {
   return s
     .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
     .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
-    .replace(/&(amp|lt|gt|quot|apos);/g, (m, name) => XML_ENTITIES[m]);
+    .replace(/&(amp|lt|gt|quot|apos);/g, (m) => XML_ENTITIES[m]);
 }
 
 function extractDocx(buffer) {

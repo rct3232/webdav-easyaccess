@@ -5,11 +5,11 @@ pure math/extractor modules and the exact-computation oracle behind the seam.
 
 ## 1. Overview
 
-| Item         | Description                                                                                                                                                                                                                                                                                                                                                     |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role         | Shared deterministic foundation for every vector computation: `vectorMath` (pure operations + the canonical TEXT codec), the local text extractors (bytes→text and the segmentation ladder), and `TextVectorJs` — the JsFallback engine of vectorStore.md §2.3 that doubles as the exact-computation reference for the conformance gate (vectorStore.md §2.6).       |
-| Determinism  | Every exported function is pure: same inputs ⇒ identical outputs, no side effects, no I/O, no `Date.now()`/`Math.random()`. Scores are 64-bit doubles; no fused/widened arithmetic beyond the operations defined here.                                                                                                                                           |
-| Canonicality | `embeddings.vector` / `embeddings_chunk.vector` TEXT columns remain the system of record (vectorStore.md §1). `vectorMath` owns the only sanctioned serialize/parse codec for that column.                                                                                                                                                                       |
+| Item         | Description                                                                                                                                                                                                                                                                                                                                                    |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role         | Shared deterministic foundation for every vector computation: `vectorMath` (pure operations + the canonical TEXT codec), the local text extractors (bytes→text and the segmentation ladder), and `TextVectorJs` — the JsFallback engine of vectorStore.md §2.3 that doubles as the exact-computation reference for the conformance gate (vectorStore.md §2.6). |
+| Determinism  | Every exported function is pure: same inputs ⇒ identical outputs, no side effects, no I/O, no `Date.now()`/`Math.random()`. Scores are 64-bit doubles; no fused/widened arithmetic beyond the operations defined here.                                                                                                                                         |
+| Canonicality | `embeddings.vector` / `embeddings_chunk.vector` TEXT columns remain the system of record (vectorStore.md §1). `vectorMath` owns the only sanctioned serialize/parse codec for that column.                                                                                                                                                                     |
 
 ## 2. vectorMath
 
@@ -20,16 +20,16 @@ pure math/extractor modules and the exact-computation oracle behind the seam.
 
 ### 2.2 Operations (exact public surface)
 
-| Function                          | Contract                                                                                                                                                                                                                   |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `serializeVector(vec)`            | TEXT form: elements joined by `,`, each via JS number stringification (shortest exact round-trip for doubles).                                                                                                             |
-| `parseVector(text, dim)`          | Reverse of `serializeVector`; `Number` per element; throws `dimMismatch` when the element count ≠ `dim`; throws `invalidVector` on any non-finite element.                                                                  |
-| `l2Norm(vec)`                     | `sqrt(Σ vᵢ²)`; empty vector ⇒ `0`.                                                                                                                                                                                          |
-| `dotProduct(a, b)`                | `Σ aᵢ·bᵢ`; throws `dimMismatch` on length mismatch.                                                                                                                                                                         |
-| `cosineSimilarity(a, b)`          | `dot(a,b) / (‖a‖·‖b‖)`; a zero-norm operand ⇒ `0` (no direction). Throws `dimMismatch` on length mismatch.                                                                                                                  |
-| `unitNormalize(vec)`              | `vec / ‖vec‖`; a zero-norm vector returns the zero vector unchanged (no division by zero).                                                                                                                                  |
-| `meanPool(vecs)`                  | Element-wise mean of the rows, then `unitNormalize` of the mean — the pooled-row rule (mean + renormalize, collections-platform.md §4.3). Throws `emptyVectors` on `[]`.                                                    |
-| `truncateAndRenormalize(vec, dim)` | MRL truncation: slice to the first `dim` elements, then `unitNormalize` — slicing breaks unit length, so renormalization is mandatory and query and corpus share the stored dim (vectorStore.md §2.6 accuracy contract). Throws `dimMismatch` when `dim` ≥ the source length.   |
+| Function                           | Contract                                                                                                                                                                                                                                                                      |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `serializeVector(vec)`             | TEXT form: elements joined by `,`, each via JS number stringification (shortest exact round-trip for doubles).                                                                                                                                                                |
+| `parseVector(text, dim)`           | Reverse of `serializeVector`; `Number` per element; throws `dimMismatch` when the element count ≠ `dim`; throws `invalidVector` on any non-finite element.                                                                                                                    |
+| `l2Norm(vec)`                      | `sqrt(Σ vᵢ²)`; empty vector ⇒ `0`.                                                                                                                                                                                                                                            |
+| `dotProduct(a, b)`                 | `Σ aᵢ·bᵢ`; throws `dimMismatch` on length mismatch.                                                                                                                                                                                                                           |
+| `cosineSimilarity(a, b)`           | `dot(a,b) / (‖a‖·‖b‖)`; a zero-norm operand ⇒ `0` (no direction). Throws `dimMismatch` on length mismatch.                                                                                                                                                                    |
+| `unitNormalize(vec)`               | `vec / ‖vec‖`; a zero-norm vector returns the zero vector unchanged (no division by zero).                                                                                                                                                                                    |
+| `meanPool(vecs)`                   | Element-wise mean of the rows, then `unitNormalize` of the mean — the pooled-row rule (mean + renormalize, collections-platform.md §4.3). Throws `emptyVectors` on `[]`.                                                                                                      |
+| `truncateAndRenormalize(vec, dim)` | MRL truncation: slice to the first `dim` elements, then `unitNormalize` — slicing breaks unit length, so renormalization is mandatory and query and corpus share the stored dim (vectorStore.md §2.6 accuracy contract). Throws `dimMismatch` when `dim` ≥ the source length. |
 
 ### 2.3 Error contract
 
@@ -49,10 +49,10 @@ Thrown errors carry a `code` property (`dimMismatch` | `invalidVector` | `emptyV
 persistence is injected; the engine holds no store imports of its own (unit-testable
 against in-memory doubles; the seam factory wires real stores — vectorStore.md §2.1).
 
-- `loadRows(modelId, userScope)` → `[{ nodeId, chunkIdx, vector, dim }]` (`chunkIdx:
-  null` marks the pooled row) — the canonical read executed per call; ACL scoping rides
-  the loader (fileNodesStore joins, vectorStore.md §2.2; `userScope: null` =
-  provider-global). The engine NEVER caches rows across calls (no-resident-state gate).
+- `loadRows(modelId, userScope)` → rows of `{ nodeId, chunkIdx, vector, dim }` where
+  `chunkIdx: null` marks the pooled row — the canonical read executed per call; ACL
+  scoping rides the loader (fileNodesStore joins, vectorStore.md §2.2; `userScope: null`
+  = provider-global). The engine NEVER caches rows across calls (no-resident-state gate).
 - `upsertPooled(row)` / `replaceChunks(nodeId, vectors)` — the two write halves, executed
   inside the injected `transaction(fn)` so pooled + chunk halves commit atomically
   (vectorStore.md §2.2).
@@ -97,8 +97,8 @@ math are cross-checked, not self-referential).
 
 ### 4.2 documentText (bytes → text)
 
-- `extractText({ buffer, mimeType })` → `{ text, extractor }` where `extractor ∈
-  'plain' | 'pdf' | 'docx'`.
+- `extractText({ buffer, mimeType })` → `{ text, extractor }` where `extractor` is one of
+  `'plain' | 'pdf' | 'docx'`.
 - `text/*` (and `application/json`) → UTF-8 decode (`plain`).
 - `application/pdf` → pdfjs-dist legacy build, text content of every page joined in page
   order (`pdf`). No OCR; image-only pages contribute nothing.

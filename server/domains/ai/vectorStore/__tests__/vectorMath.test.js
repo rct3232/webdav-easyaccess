@@ -30,7 +30,7 @@ describe('serializeVector / parseVector (TEXT codec)', () => {
       1e-300,
       1.7976931348623157e308,
       5e-324,
-      123.456789012345678,
+      123.45678901234568,
       -9876.54321,
     ];
     const parsed = parseVector(serializeVector(vec), vec.length);
@@ -54,9 +54,7 @@ describe('serializeVector / parseVector (TEXT codec)', () => {
   });
 
   it('parseVector rejects a wrong element count with dimMismatch', () => {
-    expect(() => parseVector('1,2,3', 4)).toThrow(
-      expect.objectContaining({ code: 'dimMismatch' })
-    );
+    expect(() => parseVector('1,2,3', 4)).toThrow(expect.objectContaining({ code: 'dimMismatch' }));
   });
 
   it('parseVector rejects non-finite elements with invalidVector', () => {

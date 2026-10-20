@@ -67,7 +67,10 @@ function createTextVectorJs({ modelId, loadRows, upsertPooled, replaceChunks, tr
     const [pooled, ...chunks] = vecs;
     await transaction(async () => {
       await upsertPooled({ nodeId, modelId, dim, vector: serializeVector(pooled) });
-      await replaceChunks(nodeId, chunks.map((v) => serializeVector(v)));
+      await replaceChunks(
+        nodeId,
+        chunks.map((v) => serializeVector(v))
+      );
     });
   }
 

@@ -62,7 +62,9 @@ future layer's job) — sending it never changes the response.
    MIN degenerates to the segment score (no special case).
 6. **Per-query dynamic baseline gate:** the SAME segment vectors are scored against a
    random ~500-doc sample of the requester's visible corpus (`BASELINE_SAMPLE_DOCS`,
-   default 500 — operational constant). `spread` = the sample's max min-across-segments
+   default 500 — operational constant) drawn EXCLUDING the candidate set (an unrestricted
+   sample contains the true top candidate often enough to pin the margin to zero).
+   `spread` = the sample's max min-across-segments
    score. Keep results only if top candidate score ≥ `spread + δ_base`; otherwise return
    the section HONESTLY EMPTY (an honestly empty section beats a wrong one on nonsense queries). `δ_base` ships in the model profile — release-measured value;
    there are NO absolute stored floors anywhere (absolute-θ gates are banned).

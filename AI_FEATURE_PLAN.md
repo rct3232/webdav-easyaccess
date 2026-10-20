@@ -1740,10 +1740,11 @@ from the FileGrid\* JSX bodies with the original suites kept UNCHANGED as regres
   big-bang script), conformance/test scenarios (exports array 14→3; the no-normalization
   pin needs a new vehicle on `replaceRawTags`); no production caller of
   `getTagVectors`/`upsertAutoParent`/`tag_embeddings` exists outside tests (verified).
-- **δ_base posture — analysis delivered, owner confirmation pending**: the absolute-θ ban
-  (PoC §2.5/§6.5) targets STORED floors — the unrelated floor moved 0.471→0.729 across
-  models/poolings while per-query sample spread stayed flat (.037–.054). δ_base is the
-  margin ABOVE the per-query measured spread (the PoC-prescribed relative gate itself),
-  with directional measurements δ≈.06–.10 (§6.5, n=5). Recommendation: keep a
-  release-measured δ_base in the EG2 profile; light calibration run folded into the C2
-  docs step (Q12-harness reuse).
+- **δ_base — measured and CLOSED (owner, 2026-10-20: "선택1로 하자")**: δ_base = **0.08** ships
+  in the EG2 profile (junk margin ceiling .073 < δ < real-single floor .083; POC §6.10 —
+  in-process q4 harness, Q12-kit positive control median-cos 1.000000, 1,304-doc reference
+  corpus). The per-segment AND gate amendment was measured and REFUTED (single-word segments
+  behave like junk: .030–.048); the best-segment variant measured 4/6 composites but was NOT
+  adopted — the specced COMPOSED gate stands and composite (multi-segment) queries may return
+  honestly-empty (accepted v1 behavior; the name section covers them). Implementation rule:
+  the baseline sample excludes the candidate set (searchService §2.3).

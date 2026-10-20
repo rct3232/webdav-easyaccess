@@ -670,11 +670,21 @@ of real single-segment accepted**; δ=0.10 → real-single losses begin (.084/.0
 **Adopted: δ_base = 0.08** (band .075–.085) — junk margin ceiling .073 < δ < real-single floor
 .083. llmPresets embedded-row `profile.numbers` updated.
 
-**OPEN design finding (owner pending)**: the specced gate composes MIN-across-segments on BOTH
-sides (top candidate AND baseline sample), which compresses composite-query margins into the junk
-band (real-multi .033–.066 vs junk .031–.073) — NO δ separates them; segment-AND composite
-queries would return honestly-empty at every junk-safe δ. Proposed amendment: PER-SEGMENT gate
-(each segment must individually clear its own sample spread + δ_base; candidates still ranked by
-min-across-segments) — preserves the AND semantics, each junk segment fails alone, and real
-segments carry single-segment margins (.083+). Decision: PLAN §27; the searchService §2.3
-amendment follows the ruling.
+**Follow-up run (same day)** — the per-segment gate proposal was measured on the same corpus,
+seeds and harness (52 segments; artifacts `/tmp/opencode/delta-base/perSegment.mjs`,
+`results.json.perSegment`). Result — REFUTED: single-word segments behave like junk
+("유럽" .030, "naval" .040, "galaxy" .054, vs junk segments .023–.061) because a generic
+one-word query matches many documents moderately (anisotropy), so its corpus top1 barely clears
+the sample best; the per-segment AND gate passes **0/6** composite queries at any junk-safe δ
+(junk still 10/10 rejected). A best-segment variant (max over segments ≥ its own spread + δ),
+simulated from the same data, recovers 4/6 composites at δ=0.08 (junk 10/10, singles 16/16) —
+but its two failures are generic single-word triples ("spiral galaxy million") and its junk
+ceiling (.076) sits only .004 under δ.
+
+**Decision (owner, 2026-10-20, "선택1로 하자")**: the specced COMPOSED gate stands unchanged.
+δ_base = 0.08 is the shipped profile value (llmPresets embedded row). Composite (multi-segment)
+queries may return honestly-empty under the gate — accepted v1 behavior; the name section covers
+them, and composite support can be revisited later against real usage. The one implementation
+rule the runs established — the baseline sample must EXCLUDE the candidate set (unrestricted
+sampling contained the true top-1 in 36.8% of draws, pinning margins to ~0) — is encoded in
+searchService §2.3 step 6. Record: PLAN §27, AI_FEATURE_PLAN §12.13.

@@ -1323,13 +1323,18 @@ Exit gate: orchestrator `server/index.js` integration + full server/client `test
   §19-3-surviving) call it. A4 trims only the stale header line; purge surface = aiTagStore
   §2.3/§2.4 (11 methods → 3) + repo twins + DDL rows (001:389/397 → big-bang script) + test
   scenarios (exports 14→3; no-normalization pin re-homed onto `replaceRawTags`).
-- **δ_base — MEASURED 2026-10-20 (POC §6.10, owner pull-forward "바닥 측정을 지금")**: built-in
-  q4 harness (Q12-kit positive control median-cos 1.000000), reference corpus 1,304 docs — junk
-  margin ceiling .073 < **δ_base = 0.08** < real-single floor .083 (at 0.08: 100% junk rejected,
-  100% real-single accepted; band .075–.085). llmPresets embedded row updated; the C2 calibration
-  entry condition is SATISFIED. Implementation rule for C2 (from the run): the baseline sample
-  must EXCLUDE the candidate set (unrestricted samples contain the true top-1 in 36.8% of draws).
-  OPEN owner item (same run): the specced gate composes MIN-across-segments on BOTH sides, which
-  pulls composite-query margins inside the junk band (.033–.066 vs .031–.073) — no δ separates
-  them; proposed amendment = PER-SEGMENT baseline gate (each segment clears its own spread +
-  δ_base; ranking stays min-across-segments). searchService §2.3 amendment follows the ruling.
+- **δ_base — CLOSED 2026-10-20 (owner: "선택1로 하자")**: the specced COMPOSED gate stands
+  unchanged. δ_base = **0.08** ships in the EG2 profile (junk margin ceiling .073 < δ <
+  real-single floor .083; at 0.08: 100% junk rejected, 100% real-single accepted; POC §6.10,
+  positive control = Q12-kit median-cos 1.000000). The per-segment AND amendment was measured
+  and REFUTED (single-word segments behave like junk — .030–.048 vs junk .023–.061; 0/6
+  composites pass); the best-segment variant measured 4/6 composites at δ=0.08 but was NOT
+  adopted. Composite (multi-segment) queries may return honestly-empty under the gate —
+  accepted v1 behavior, name section covers them; revisit only against real usage. The C2
+  implementation rule from the runs is encoded in searchService §2.3: the baseline sample
+  EXCLUDES the candidate set (36.8% contamination otherwise). The C2 calibration entry
+  condition is SATISFIED — no pending calibration remains.
+- **P1 open items: ALL CLOSED (2026-10-20 briefing session)** — E2E-AI-001 assigned (C1),
+  built-in video direct-embed ruled, unified admin re-embed action ruled, tagVocabulary
+  disposition resolved (KEEP), δ_base measured and gate design decided. **No blockers remain;
+  Wave A may start.**

@@ -17,6 +17,32 @@
 
 ## Entries
 
+### 2026-10-20 — T1.0a: transformers.js tokenizer load failed with `allowRemoteModels=false` (Case B, implementation adaptation — no spec violation)
+
+- **Summary**: during GREEN development of `clients/embedded-onnx.js`, loading the
+  tokenizer via `AutoTokenizer.from_pretrained(repo, { revision })` with
+  `allowLocalModels=false` + `allowRemoteModels=false` failed with
+  `Cannot read properties of undefined (reading 'tokenizer_class')`, even with the full
+  weight set present in the FS cache dir.
+- **Diagnosis (source-traced in transformers.js 4.3.1)**: `get_tokenizer_files()` calls
+  `get_file_metadata(modelId, 'tokenizer_config.json', {})` with EMPTY options — no
+  revision, no cache_dir. With revision defaulting to `main`, the FileCache key becomes
+  the UN-revisioned `repo/tokenizer_config.json` path, which does not exist in the
+  `cacheDir/repo/revision/file` layout the provisioner installs; with remote disabled,
+  the HEAD fallback is banned and metadata returns `exists:false` → the file list comes
+  back empty → `tokenizerConfig` is undefined. Allowing remote makes it work only because
+  the HEAD probe hits huggingface.co — a silent network egress that violates the
+  zero-egress posture (llmPresets §2.3 / llmAdapter §2.8).
+- **Classification**: **Case B (implementation adaptation, fixed in code)** — the spec
+  (llmAdapter §2.1 peers: "fixtures local, no HTTP"; zero-egress rule) is correct; the
+  initial loader design (repo id + revision via cache keys) misread the library contract.
+  The test was NOT at fault.
+- **Action taken**: `loadEngine` loads from the ABSOLUTE local revision directory
+  (`<modelDir>/<repo>/<revision>`) with `env.useFS=true`, `allowLocalModels=true`,
+  `allowRemoteModels=false` — direct disk reads, no cache-key layer, zero network.
+  Verified by the Q12 positive control: median-cos 1.000000 against
+  `eg2-reference-kit.json` (arithmetic-identical space).
+
 ### 2026-09-04 — E2E guarded writes 503 `setup.incomplete` on sqlite+webdav scratch boots (Case A)
 
 - **Summary**: 6 Playwright E2E failures (setup-wizard/admin-config/migration E2E-\*001,

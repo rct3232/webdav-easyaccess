@@ -30,6 +30,10 @@ describe('AiJobsRepository conformance', () => {
 
   const uniqueNode = async (name) => createTestFileNode({ name: name || `job-${Date.now()}-${(seq += 1)}.txt` });
 
+  // The suite shares one DB; tests that assert an EMPTY/fully-controlled queue
+  // wipe the table first (claimNext → null and reap-count assertions).
+  const clearJobs = () => dbRun('DELETE FROM ai_jobs');
+
   const backdateNextRetry = async (jobId) => {
     await dbRun('UPDATE ai_jobs SET next_retry_at = ? WHERE id = ?', [
       new Date(Date.now() - 60_000).toISOString(),
@@ -76,6 +80,7 @@ describe('AiJobsRepository conformance', () => {
   });
 
   it('claimNext on an empty queue → null', async () => {
+    await clearJobs();
     await expect(repo.claimNext()).resolves.toBeNull();
   });
 
@@ -96,6 +101,7 @@ describe('AiJobsRepository conformance', () => {
   });
 
   it('claimNext skips failed rows with a future next_retry_at and picks them once past it', async () => {
+    await clearJobs();
     const node = await uniqueNode();
     const job = await repo.enqueue(node.nodeId, 'features', 1);
     await repo.claimNext();
@@ -120,6 +126,7 @@ describe('AiJobsRepository conformance', () => {
   });
 
   it('markDone finishes a running job; finished rows are never re-claimable', async () => {
+    await clearJobs();
     const node = await uniqueNode();
     const job = await repo.enqueue(node.nodeId, 'asr', 1);
     await repo.claimNext();
@@ -135,6 +142,7 @@ describe('AiJobsRepository conformance', () => {
   });
 
   it('markFailed increments attempt and pushes next_retry_at per the doubling ladder (cap 30min)', async () => {
+    await clearJobs();
     const node = await uniqueNode();
     const job = await repo.enqueue(node.nodeId, 'embed', 1);
     await repo.claimNext();
@@ -166,6 +174,7 @@ describe('AiJobsRepository conformance', () => {
   });
 
   it('markFailed truncates last_error to ≤1KB', async () => {
+    await clearJobs();
     const node = await uniqueNode();
     const job = await repo.enqueue(node.nodeId, 'embed', 1);
     await repo.claimNext();
@@ -175,6 +184,7 @@ describe('AiJobsRepository conformance', () => {
   });
 
   it('markSkipped records the reason in last_error, finishes the row, never re-claims', async () => {
+    await clearJobs();
     const node = await uniqueNode();
     const job = await repo.enqueue(node.nodeId, 'embed', 1);
     await repo.claimNext();
@@ -190,6 +200,7 @@ describe('AiJobsRepository conformance', () => {
   });
 
   it('restart survival: a claimed-then-abandoned running row is reaped → failed, immediately re-claimable; a late markDone is a no-op', async () => {
+    await clearJobs();
     const node = await uniqueNode();
     const job = await repo.enqueue(node.nodeId, 'embed', 1, 'hash-restart');
     const claimed = await repo.claimNext();
@@ -237,28 +248,22 @@ describe('AiJobsRepository conformance', () => {
   });
 
   it('countByStatus totals match seeded fixtures of every status incl. skipped', async () => {
+    await clearJobs();
     const nodes = [];
     for (let i = 0; i < 5; i += 1) nodes.push(await uniqueNode());
-    await repo.enqueue(nodes[0].nodeId, 'embed', 1); // stays pending
-    await repo.enqueue(nodes[1].nodeId, 'embed', 1);
-    await repo.enqueue(nodes[2].nodeId, 'embed', 1);
-    await repo.enqueue(nodes[3].nodeId, 'embed', 1);
-    await repo.enqueue(nodes[4].nodeId, 'embed', 1);
+    const jobs = [];
+    for (const node of nodes) {
+      jobs.push(await repo.enqueue(node.nodeId, 'embed', 1));
+    }
 
-    await repo.claimNext(); // nodes[1] running
-    const runningId = (await repo.listByNode(nodes[1].nodeId))[0].id;
-
-    await repo.claimNext(); // nodes[2]
-    const doneId = (await repo.listByNode(nodes[2].nodeId))[0].id;
-    await repo.markDone(doneId);
-
-    await repo.claimNext(); // nodes[3]
-    const failedId = (await repo.listByNode(nodes[3].nodeId))[0].id;
-    await repo.markFailed(failedId, 'f');
-
-    await repo.claimNext(); // nodes[4]
-    const skippedId = (await repo.listByNode(nodes[4].nodeId))[0].id;
-    await repo.markSkipped(skippedId, 's');
+    // Claims run id-ASC: j0 stays running, j1..j3 reach terminal states, j4 pending.
+    const running = await repo.claimNext(); // j0
+    const c1 = await repo.claimNext(); // j1
+    await repo.markDone(c1.id);
+    const c2 = await repo.claimNext(); // j2
+    await repo.markFailed(c2.id, 'f');
+    const c3 = await repo.claimNext(); // j3
+    await repo.markSkipped(c3.id, 's');
 
     const counts = await repo.countByStatus();
     expect(counts).toMatchObject({
@@ -272,11 +277,12 @@ describe('AiJobsRepository conformance', () => {
     expect(counts.done).toBeGreaterThanOrEqual(1);
     expect(counts.failed).toBeGreaterThanOrEqual(1);
     expect(counts.skipped).toBeGreaterThanOrEqual(1);
+    expect(counts.pending).toBeGreaterThanOrEqual(1);
     const total = Number((await dbQuery('SELECT COUNT(*) AS cnt FROM ai_jobs')).rows[0].cnt);
     expect(counts.pending + counts.running + counts.done + counts.failed + counts.skipped).toBe(
       total
     );
-    expect(runningId).toBeTruthy();
+    expect(running.id).toBe(Number(jobs[0].id));
   });
 
   it('listFailed returns recent failed rows newest first and honors the limit', async () => {

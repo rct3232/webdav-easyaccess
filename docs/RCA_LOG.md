@@ -1005,3 +1005,23 @@ username`), while `openPrivateWorkspace` creates its case folder at the FILESYST
   `item_count: 1` before navigating (no assertion weakened; the order checks stay); the card
   locator now excludes `collection-card-fallback` (real card roots only). Surfaced by the
   webdav runs added in P0 closeout item 3.
+
+### 2026-10-21 — T1.2b conformance: `deleted_at = NOW()` failed on the sqlite leg (Case B)
+
+- **Summary**: during the EmbeddingsRepository L2 conformance RED→GREEN cycle, the
+  `dbRun('UPDATE file_nodes SET deleted_at = NOW() ...')` trash-seeding helper threw
+  `no such function: NOW` on the default sqlite backend (14/14 → 13 pass + 1 fail).
+- **Diagnosis**: test-utils translates `?` placeholders across dialects but does NOT
+  translate SQL functions; `NOW()` is PostgreSQL-only. The established in-repo precedent
+  (`CollectionsRepository.conformance.test.js` lines 178/767) seeds raw timestamps with
+  `isSqliteBackend() ? "datetime('now')" : 'NOW()'`. The repository code under test was
+  correct (13/14 assertions, including all dialect-parity cases, passed before the fix).
+- **Classification**: **Case B (Test Error)** — the test asserted a PG-only SQL function
+  inside a backend-agnostic helper, violating repository-contract.md §2.2 rule 6
+  ("L2 conformance suites run against real sqlite and real PostgreSQL ... they assert
+  behavior, not SQL text"). No spec clause permits non-portable SQL in shared tests, so
+  the incident is test-side by that clause.
+- **Action taken**: same-shape fix across the three new T1.2b conformance suites
+  (Embeddings, EmbeddingsChunk, AiEnrichments) — the trash-seed helper now branches
+  `isSqliteBackend() ? "datetime('now')" : 'NOW()'`. No production code changed;
+  EmbeddingsRepository suite 14/14 after the fix.

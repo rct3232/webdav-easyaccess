@@ -10,7 +10,13 @@
  * canonical TEXT vector codec round-trip.
  */
 
-const { createTestDatabase, createTestFileNode, dbQuery, dbRun } = require('@server/test-utils');
+const {
+  createTestDatabase,
+  createTestFileNode,
+  dbQuery,
+  dbRun,
+  isSqliteBackend,
+} = require('@server/test-utils');
 const storage = require('@server/store/storage');
 const createEmbeddingsRepository = require('@server/store/repositories/EmbeddingsRepository');
 
@@ -257,7 +263,10 @@ describe('EmbeddingsRepository conformance', () => {
     await upsert(purged.nodeId, modelId, VEC_A);
     await upsert(trashed.nodeId, modelId, VEC_A);
 
-    await dbRun('UPDATE file_nodes SET deleted_at = NOW() WHERE id = ?', [Number(trashed.nodeId)]);
+    await dbRun(
+      `UPDATE file_nodes SET deleted_at = ${isSqliteBackend() ? "datetime('now')" : 'NOW()'} WHERE id = ?`,
+      [Number(trashed.nodeId)]
+    );
     expect(await repo.get(trashed.nodeId)).not.toBeNull();
 
     const fileNodesStore = require('@server/store/fileNodesStore').createFileNodesStore();

@@ -10,7 +10,13 @@
  * pagination per producer column, cascade parity, row-shape mapping.
  */
 
-const { createTestDatabase, createTestFileNode, dbQuery, dbRun } = require('@server/test-utils');
+const {
+  createTestDatabase,
+  createTestFileNode,
+  dbQuery,
+  dbRun,
+  isSqliteBackend,
+} = require('@server/test-utils');
 const storage = require('@server/store/storage');
 const createAiEnrichmentsRepository = require('@server/store/repositories/AiEnrichmentsRepository');
 
@@ -274,7 +280,10 @@ describe('AiEnrichmentsRepository conformance', () => {
     await repo.upsert(purged.nodeId, { tags: ['x'] });
     await repo.upsert(trashed.nodeId, { tags: ['x'] });
 
-    await dbRun('UPDATE file_nodes SET deleted_at = NOW() WHERE id = ?', [Number(trashed.nodeId)]);
+    await dbRun(
+      `UPDATE file_nodes SET deleted_at = ${isSqliteBackend() ? "datetime('now')" : 'NOW()'} WHERE id = ?`,
+      [Number(trashed.nodeId)]
+    );
     expect(await repo.get(trashed.nodeId)).not.toBeNull();
 
     const fileNodesStore = require('@server/store/fileNodesStore').createFileNodesStore();

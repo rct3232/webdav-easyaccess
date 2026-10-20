@@ -10,7 +10,13 @@
  * parity, row-shape mapping, canonical TEXT codec round-trip.
  */
 
-const { createTestDatabase, createTestFileNode, dbQuery, dbRun } = require('@server/test-utils');
+const {
+  createTestDatabase,
+  createTestFileNode,
+  dbQuery,
+  dbRun,
+  isSqliteBackend,
+} = require('@server/test-utils');
 const storage = require('@server/store/storage');
 const createEmbeddingsChunkRepository = require('@server/store/repositories/EmbeddingsChunkRepository');
 
@@ -249,7 +255,10 @@ describe('EmbeddingsChunkRepository conformance', () => {
     await replace(purged.nodeId, modelId, [{ chunkIdx: 0, vector: VEC_A }]);
     await replace(trashed.nodeId, modelId, [{ chunkIdx: 0, vector: VEC_A }]);
 
-    await dbRun('UPDATE file_nodes SET deleted_at = NOW() WHERE id = ?', [Number(trashed.nodeId)]);
+    await dbRun(
+      `UPDATE file_nodes SET deleted_at = ${isSqliteBackend() ? "datetime('now')" : 'NOW()'} WHERE id = ?`,
+      [Number(trashed.nodeId)]
+    );
     expect(await repo.listByNode(trashed.nodeId)).toHaveLength(1);
 
     const fileNodesStore = require('@server/store/fileNodesStore').createFileNodesStore();

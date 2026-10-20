@@ -82,12 +82,12 @@ describe('chunkPool (the segmentation ladder)', () => {
 
   it('samples AFTER window fallback (windows count as chunks)', () => {
     const windows = 'z'.repeat(16); // 6 windows of 3
-    const text = `${windows}\n\nfinal.`;
+    const text = `${windows}\n\nend`;
     const result = chunkPool(text, { maxChunkChars: 3, chunkBudget: 3 });
     expect(result.sampled).toBe(true);
     expect(result.chunks.length).toBe(3);
     expect(result.chunks[0]).toBe('zzz');
-    expect(result.chunks[result.chunks.length - 1]).toBe('final.');
+    expect(result.chunks[result.chunks.length - 1]).toBe('end');
   });
 
   it('empty text yields no chunks', () => {

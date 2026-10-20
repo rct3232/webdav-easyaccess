@@ -56,7 +56,11 @@ describe('LlmModelsRepository conformance', () => {
     const first = await repo.upsertModel(EMBEDDED_SPEC);
     expect(Number(first.id)).toBeGreaterThan(0);
 
-    const second = await repo.upsertModel({ ...EMBEDDED_SPEC, maxInputChars: 9999, precision: 'q8' });
+    const second = await repo.upsertModel({
+      ...EMBEDDED_SPEC,
+      maxInputChars: 9999,
+      precision: 'q8',
+    });
     expect(Number(second.id)).toBe(Number(first.id));
 
     const { rows } = await dbQuery(
@@ -117,7 +121,9 @@ describe('LlmModelsRepository conformance', () => {
 
   it('missing/blank required identity fields → TypeError before SQL', async () => {
     await expect(repo.upsertModel({ ...REMOTE_CHAT_SPEC, role: '' })).rejects.toThrow(TypeError);
-    await expect(repo.upsertModel({ ...REMOTE_CHAT_SPEC, modelName: 42 })).rejects.toThrow(TypeError);
+    await expect(repo.upsertModel({ ...REMOTE_CHAT_SPEC, modelName: 42 })).rejects.toThrow(
+      TypeError
+    );
   });
 
   it('getActiveByRole: none → null; multiple enabled → highest id; disabled rows never returned', async () => {

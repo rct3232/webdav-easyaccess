@@ -31,9 +31,7 @@ function mapModelRow(row) {
         ? null
         : Number(row.max_input_chars),
     chunkBudget:
-      row.chunk_budget === null || row.chunk_budget === undefined
-        ? null
-        : Number(row.chunk_budget),
+      row.chunk_budget === null || row.chunk_budget === undefined ? null : Number(row.chunk_budget),
     batchSize:
       row.batch_size === null || row.batch_size === undefined ? null : Number(row.batch_size),
     reasoning: String(row.reasoning),

@@ -4,7 +4,7 @@
  * aiJobsStore facade — persistent AI enrichment queue
  * (docs/spec/server/store/aiJobsStore.md). Thin dialect dispatch over
  * AiJobsRepository (no SQL here, PLAN §6). Queue truth is `ai_jobs` only:
- * jobs survive restarts, the worker is stateless (no CacheAdapter state).
+ * jobs survive restarts, the worker is stateless (no in-memory state).
  */
 const storage = require('./storage');
 const createAiJobsRepository = require('./repositories/AiJobsRepository');

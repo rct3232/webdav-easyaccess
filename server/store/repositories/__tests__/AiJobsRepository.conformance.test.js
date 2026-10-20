@@ -28,7 +28,8 @@ describe('AiJobsRepository conformance', () => {
     await dbCleanup();
   });
 
-  const uniqueNode = async (name) => createTestFileNode({ name: name || `job-${Date.now()}-${(seq += 1)}.txt` });
+  const uniqueNode = async (name) =>
+    createTestFileNode({ name: name || `job-${Date.now()}-${(seq += 1)}.txt` });
 
   // The suite shares one DB; tests that assert an EMPTY/fully-controlled queue
   // wipe the table first (claimNext → null and reap-count assertions).
@@ -240,10 +241,9 @@ describe('AiJobsRepository conformance', () => {
     ]);
     expect(result.enqueued).toBe(2);
 
-    const { rows } = await dbQuery(
-      'SELECT COUNT(*) AS cnt FROM ai_jobs WHERE node_id = ?',
-      [Number(nodeB.nodeId)]
-    );
+    const { rows } = await dbQuery('SELECT COUNT(*) AS cnt FROM ai_jobs WHERE node_id = ?', [
+      Number(nodeB.nodeId),
+    ]);
     expect(Number(rows[0].cnt)).toBe(2);
   });
 

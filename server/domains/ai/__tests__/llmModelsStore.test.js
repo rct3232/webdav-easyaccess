@@ -76,8 +76,14 @@ describe('llmModelsStore facade', () => {
   });
 
   it('upsert with a NEW model_revision yields a NEW model_id (model-version key)', async () => {
-    const old = await llmModelsStore.upsertModel({ ...SPEC, modelRevision: `${SPEC.modelRevision}-a` });
-    const next = await llmModelsStore.upsertModel({ ...SPEC, modelRevision: `${SPEC.modelRevision}-b` });
+    const old = await llmModelsStore.upsertModel({
+      ...SPEC,
+      modelRevision: `${SPEC.modelRevision}-a`,
+    });
+    const next = await llmModelsStore.upsertModel({
+      ...SPEC,
+      modelRevision: `${SPEC.modelRevision}-b`,
+    });
     expect(Number(next.id)).not.toBe(Number(old.id));
   });
 });

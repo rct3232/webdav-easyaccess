@@ -1,12 +1,7 @@
 'use strict';
 
 const { mapDatabaseError } = require('../../../utils/errorHandler');
-const {
-  CLAIMABLE_PREDICATE,
-  backoffMs,
-  mapJobRow,
-  truncateError,
-} = require('../aiJobsShared');
+const { CLAIMABLE_PREDICATE, backoffMs, mapJobRow, truncateError } = require('../aiJobsShared');
 
 /**
  * postgres implementation of AiJobsRepository (`$n` placeholders). The claim
@@ -48,7 +43,12 @@ module.exports = function createPostgresAiJobsRepository(executor) {
               `INSERT INTO ai_jobs (node_id, kind, generation, content_hash)
                VALUES ($1, $2, $3, $4)
                ON CONFLICT (node_id, kind, generation) DO NOTHING`,
-              [Number(item.nodeId), String(item.kind), Number(item.generation), item.contentHash ?? null]
+              [
+                Number(item.nodeId),
+                String(item.kind),
+                Number(item.generation),
+                item.contentHash ?? null,
+              ]
             );
             enqueued += result.changes;
           }

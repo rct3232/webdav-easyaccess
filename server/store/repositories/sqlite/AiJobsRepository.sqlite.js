@@ -1,12 +1,7 @@
 'use strict';
 
 const { mapDatabaseError } = require('../../../utils/errorHandler');
-const {
-  CLAIMABLE_PREDICATE,
-  backoffMs,
-  mapJobRow,
-  truncateError,
-} = require('../aiJobsShared');
+const { CLAIMABLE_PREDICATE, backoffMs, mapJobRow, truncateError } = require('../aiJobsShared');
 
 /**
  * sqlite implementation of AiJobsRepository (`?` placeholders). The driver is
@@ -49,7 +44,12 @@ module.exports = function createSqliteAiJobsRepository(executor) {
               `INSERT INTO ai_jobs (node_id, kind, generation, content_hash)
                VALUES (?, ?, ?, ?)
                ON CONFLICT (node_id, kind, generation) DO NOTHING`,
-              [Number(item.nodeId), String(item.kind), Number(item.generation), item.contentHash ?? null]
+              [
+                Number(item.nodeId),
+                String(item.kind),
+                Number(item.generation),
+                item.contentHash ?? null,
+              ]
             );
             enqueued += result.changes;
           }

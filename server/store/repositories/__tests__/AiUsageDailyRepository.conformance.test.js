@@ -95,10 +95,9 @@ describe('AiUsageDailyRepository conformance', () => {
     await repo.recordUsage({ day: day(0), role, calls: 1 });
     await repo.recordUsage({ day: day(0), role, calls: 1 });
 
-    const { rows } = await dbQuery(
-      'SELECT COUNT(*) AS cnt FROM ai_usage_daily WHERE role = ?',
-      [role]
-    );
+    const { rows } = await dbQuery('SELECT COUNT(*) AS cnt FROM ai_usage_daily WHERE role = ?', [
+      role,
+    ]);
     expect(Number(rows[0].cnt)).toBe(1);
   });
 
@@ -140,16 +139,18 @@ describe('AiUsageDailyRepository conformance', () => {
   });
 
   it('negative or non-integer deltas → TypeError before SQL; non-string day/role → TypeError', async () => {
-    await expect(
-      repo.recordUsage({ day: day(0), role: 'embed', calls: -1 })
-    ).rejects.toThrow(TypeError);
-    await expect(
-      repo.recordUsage({ day: day(0), role: 'embed', inputChars: 1.5 })
-    ).rejects.toThrow(TypeError);
+    await expect(repo.recordUsage({ day: day(0), role: 'embed', calls: -1 })).rejects.toThrow(
+      TypeError
+    );
+    await expect(repo.recordUsage({ day: day(0), role: 'embed', inputChars: 1.5 })).rejects.toThrow(
+      TypeError
+    );
     await expect(repo.recordUsage({ day: 20260101, role: 'embed', calls: 1 })).rejects.toThrow(
       TypeError
     );
-    await expect(repo.recordUsage({ day: day(0), role: null, calls: 1 })).rejects.toThrow(TypeError);
+    await expect(repo.recordUsage({ day: day(0), role: null, calls: 1 })).rejects.toThrow(
+      TypeError
+    );
   });
 
   it('restart survival: a persisted row keeps accumulating after a fresh repository over the same DB', async () => {

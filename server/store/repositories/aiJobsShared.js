@@ -39,9 +39,7 @@ function mapJobRow(row) {
     lastError:
       row.last_error === null || row.last_error === undefined ? null : String(row.last_error),
     contentHash:
-      row.content_hash === null || row.content_hash === undefined
-        ? null
-        : String(row.content_hash),
+      row.content_hash === null || row.content_hash === undefined ? null : String(row.content_hash),
     createdAt: toIsoString(row.created_at),
     startedAt: toIsoString(row.started_at),
     finishedAt: toIsoString(row.finished_at),

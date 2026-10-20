@@ -1338,3 +1338,28 @@ Exit gate: orchestrator `server/index.js` integration + full server/client `test
   built-in video direct-embed ruled, unified admin re-embed action ruled, tagVocabulary
   disposition resolved (KEEP), δ_base measured and gate design decided. **No blockers remain;
   Wave A may start.**
+
+### Wave A execution log (2026-10-20 — orchestrator; base `aafabd2`)
+
+Base note: §27's stated base `d9e6c3d` was superseded by `aafabd2` (the δ_base option-1
+decision record merged after the ledger was written); all Wave A branches cut from
+`aafabd2`. Worktrees `wt-a1..wt-a5` (port-band / container discipline per §10 closure idiom).
+
+- **A4 (T1.0b) `[done]` — merged into `ai-feature` (orchestrator gate: full server
+  `test:ci` green before merge).** Branch `feature/p1-a4-tag-purge`, base `aafabd2`.
+  Commits: docs `0c29f1e` (aiTagStore.md §2.1 purge-state note — DDL DROPs belong to the
+  big-bang script; §2.6 grep scoped to runtime code with the 001 + DDL-parity exception;
+  maintenanceScheduler.md §3.3 dissolved nightly tag pass removed, §3.4→§3.3 renumber) →
+  RED `143116a` (exports 14→3 pin + §2.6 grep-absence; 13 offender hits observed against
+  pre-purge code) → refactor `525cdc5` (facade 14→3: `listRawTags`/`listNodeIdsByRawTag`/
+  `replaceRawTags`) → `3e8c54b` (repo twins + `aiTagShared.js` purged, −434 lines) →
+  docs `d996df6` (tagVocabulary.js stale header line ONLY — `foldTag`/exports untouched
+  per §27 ruling) → test `7a85167` (conformance purged to the `ai_tag_raw` leg; no-
+  normalization pin re-homed onto `replaceRawTags`). Gates: targeted 8 suites / 147 pass;
+  `domains/{collections,ai}` 10/202; full server `test:ci` 131 suites / 2464 pass (5 skip);
+  PG adapters leg 23 / 335 (reused the wt-pivot-srv e2e PG on :5433 — orchestrator aware).
+  Post-purge grep: `tag_embeddings|tag_parents|getTagVectors|upsertAutoParent` hits only in
+  the three DDL-parity enumeration tests + the test's own assertion file — zero runtime
+  references. `derivedTags.js`/`derivedTagsService.js`/`foldTag`/derived-facet machinery
+  untouched (verified by diff). DDL 001:389/397 still defines the tables per §19-5 — the
+  big-bang script owns the DROPs (orchestrator/big-bang scope, recorded in the spec).

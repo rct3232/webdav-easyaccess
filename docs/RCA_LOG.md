@@ -1057,3 +1057,28 @@ username`), while `openPrivateWorkspace` creates its case folder at the FILESYST
   roles with spec-faithful expected counters. Final targeted gates: repositories dir
   15/15 suites · 227/227, domains/ai 8/8 suites · 63/63, new-suites rerun 47/47,
   eslint --max-warnings=0 + prettier clean.
+### 2026-10-20 — A5 RED-test corrections during GREEN (three Case B test errors, no source violations)
+
+Task: `feature/p1-a5-vectormath` (T1.4a vectorMath/extractors/TextVectorJs oracle).
+
+1. **Conformance harness tx arity misread** — the RED harness asserted
+   `txCalls[0].length === 2` intending "the TX body contains both writes", but
+   `Function.length` is declared arity, not call count. The pooled/chunk write-content
+   assertions already prove both writes executed inside the single transaction; the
+   arity line was removed.
+2. **Synchronous engine calls in an async engine** — the harness called
+   `engine.neighbors/allVectors` without `await` while the injected-loader contract is
+   async (real stores are async per vectorStore.md §4). All legs awaited. The two
+   plain-decode documentText legs had the same flaw.
+3. **Fixture arithmetic errors** — (a) the hand-built multi-page PDF fixture dropped the
+   page dict's closing `>>` in a rewrite (pdfjs: "Page dictionary kid reference points to
+   wrong type of object"); the xref table was verified correct byte-for-byte before the
+   dict typo was found. (b) `chunkPool` "samples AFTER window fallback" leg expected a
+   6-char tail segment to survive unwindowed under `maxChunkChars: 3`; per the ladder it
+   windows too — fixture changed to a 3-char tail.
+
+- **Classification**: **Case B (Test Error)** in all three — no spec clause was violated
+  by the implementation; the implementation stayed within vectorMath.md §2/§3/§4 and
+  vectorStore.md §2.2/§2.3.
+- **Action taken**: tests corrected only; RED evidence stands (the RED commit failed on
+  module-not-found for all four suites, which is independent of these test bugs).

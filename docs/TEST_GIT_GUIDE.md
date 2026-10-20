@@ -56,6 +56,19 @@
 
 > Note: The MSW server (`setupServer`) is created in `client/src/setupTests.js` (see Test Configuration above); there is no separate `client/src/mocks/server.js`.
 
+### 4. Jest Node Runtime Flag
+
+```
+✓ server/package.json test scripts carry
+  NODE_OPTIONS='--max-old-space-size=8192 --experimental-vm-modules'
+```
+
+**Reason**: The jest process must allow dynamic `import()` of ESM-only packages —
+`pdfjs-dist` (legacy build, ESM-only) is loaded lazily by the server text extractor
+(`server/domains/ai/extractors/documentText.js`) and its tests. Without the flag jest
+fails with "A dynamic import callback was invoked without --experimental-vm-modules".
+The flag is additive for CommonJS suites and must not be removed from the scripts.
+
 ### 4. Test Documentation
 
 ```

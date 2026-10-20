@@ -91,46 +91,57 @@ const DOCX_XML =
   '</w:body></w:document>';
 
 function buildPdf(pageTexts) {
-  const objects = [];
-  const pageObjIds = [];
+  // Object layout: 1 catalog, 2 pages, 3 font, then per page: page obj + content obj.
+  const bodies = [];
   const nPages = pageTexts.length;
-  // object numbering: 1 catalog, 2 pages, then per page: page obj, content obj
-  let next = 3;
+  const kids = [];
   for (let i = 0; i < nPages; i++) {
-    const pageId = next++;
-    const contentId = next++;
-    pageObjIds.push({ pageId, contentId });
+    const pageId = 4 + i * 2;
+    const contentId = 5 + i * 2;
+    kids.push(`${pageId} 0 R`);
+    bodies[pageId] =
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents ${contentId} 0 R ` +
+      '/Resources << /Font << /F1 3 0 R >> >> >>';
     const stream = `BT /F1 12 Tf 72 720 Td (${pageTexts[i]}) Tj ET`;
-    objects[pageId] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents ${contentId} 0 R /Resources << /Font << /F1 ${next} 0 R >> >> >>`;
-    objects[contentId] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
+    bodies[contentId] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
   }
-  const fontId = next++;
-  objects[fontId] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
-  objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
-  objects[2] = `<< /Type /Pages /Kids [${pageObjIds
-    .map((p) => `${p.pageId} 0 R`)
-    .join(' ')}] /Count ${nPages} >>`;
+  bodies[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+  bodies[2] = `<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${nPages} >>`;
+  bodies[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
+
   let out = '%PDF-1.4\n';
-  for (let id = 1; id < objects.length; id++) {
-    if (!objects[id]) continue;
-    out += `${id} 0 obj ${objects[id]} endobj\n`;
+  const offsets = [];
+  for (let id = 1; id < bodies.length; id++) {
+    offsets[id] = out.length;
+    out += `${id} 0 obj\n${bodies[id]}\nendobj\n`;
   }
-  out += 'trailer << /Root 1 0 R >>\n%%EOF';
+  const xrefOffset = out.length;
+  const size = bodies.length; // highest object id + 1
+  out += `xref\n0 ${size}\n`;
+  out += '0000000000 65535 f \n';
+  for (let id = 1; id < size; id++) {
+    out += `${String(offsets[id]).padStart(10, '0')} 00000 n \n`;
+  }
+  out += `trailer << /Size ${size} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
   return Buffer.from(out, 'utf8');
 }
 
 // --- tests ---
 
 describe('extractText (bytes → text)', () => {
-  it('decodes text/* as UTF-8 plain', () => {
-    expect(extractText({ buffer: Buffer.from('résumé text', 'utf8'), mimeType: 'text/plain' })).toEqual({
+  it('decodes text/* as UTF-8 plain', async () => {
+    await expect(
+      extractText({ buffer: Buffer.from('résumé text', 'utf8'), mimeType: 'text/plain' })
+    ).resolves.toEqual({
       text: 'résumé text',
       extractor: 'plain',
     });
   });
 
-  it('decodes application/json as plain', () => {
-    expect(extractText({ buffer: Buffer.from('{"a":1}'), mimeType: 'application/json' })).toEqual({
+  it('decodes application/json as plain', async () => {
+    await expect(
+      extractText({ buffer: Buffer.from('{"a":1}'), mimeType: 'application/json' })
+    ).resolves.toEqual({
       text: '{"a":1}',
       extractor: 'plain',
     });
@@ -167,12 +178,12 @@ describe('extractText (bytes → text)', () => {
     expect(b).toEqual(a);
   });
 
-  it('rejects unextractable mimes with the typed skip code', () => {
-    expect(() =>
+  it('rejects unextractable mimes with the typed skip code', async () => {
+    await expect(
       extractText({ buffer: Buffer.from('BIN'), mimeType: 'application/octet-stream' })
-    ).toThrow(expect.objectContaining({ code: 'unextractableText' }));
-    expect(() => extractText({ buffer: Buffer.from('\x89PNG'), mimeType: 'image/png' })).toThrow(
-      expect.objectContaining({ code: 'unextractableText' })
-    );
+    ).rejects.toThrow(expect.objectContaining({ code: 'unextractableText' }));
+    await expect(
+      extractText({ buffer: Buffer.from('\x89PNG'), mimeType: 'image/png' })
+    ).rejects.toThrow(expect.objectContaining({ code: 'unextractableText' }));
   });
 });

@@ -224,7 +224,11 @@ describe('EmbeddingsChunkRepository conformance', () => {
     const b = await node('delmodel-b');
     await replace(a.nodeId, modelOne, [{ chunkIdx: 0, vector: VEC_A }]);
     await replace(b.nodeId, modelOne, [{ chunkIdx: 0, vector: VEC_A }]);
-    await replace(a.nodeId, modelTwo, [{ chunkIdx: 0, vector: VEC_A }]);
+    // modelTwo's write lands on a chunk index node a's modelOne rows don't
+    // occupy — PK (node_id, chunk_idx) is space-exclusive per position, so a
+    // cross-space write at a COLLIDING index would claim the position via the
+    // PK upsert (see the space-keying scenario above).
+    await replace(a.nodeId, modelTwo, [{ chunkIdx: 1, vector: VEC_A }]);
 
     const deleted = await repo.deleteByModel(modelOne);
     expect(deleted.changes).toBe(2);

@@ -61,22 +61,23 @@ Precedence invariant: env wins whenever set; DB is read only when the env var is
 
 ### T0 — `.env` only (metadata)
 
-| key                            | tier | secret  | default                                      |
-| ------------------------------ | ---- | ------- | -------------------------------------------- |
-| `WEA_SQLITE_PATH`              | T0   | no      | —                                            |
-| `WEA_DB_HOST`                  | T0   | no      | —                                            |
-| `WEA_DB_PORT`                  | T0   | no      | `5432`                                       |
-| `WEA_DB_DATABASE`              | T0   | no      | —                                            |
-| `WEA_DB_USER`                  | T0   | no      | —                                            |
-| `WEA_DB_PASSWORD`              | T0   | **yes** | —                                            |
-| `WEA_DB_SSL`                   | T0   | no      | `false`                                      |
-| `WEA_DB_MAX`                   | T0   | no      | `10`                                         |
-| `WEA_DB_IDLE_TIMEOUT_MS`       | T0   | no      | `30000`                                      |
-| `WEA_DB_CONNECTION_TIMEOUT_MS` | T0   | no      | `10000`                                      |
-| `WEA_DB_QUERY_TIMEOUT_MS`      | T0   | no      | `60000`                                      |
-| `NODE_ENV`                     | T0   | no      | —                                            |
-| `DOTENV_CONFIG_PATH`           | T0   | no      | —                                            |
-| `JWT_SECRET`                   | T0   | **yes** | — (none — unset → ephemeral per-boot random) |
+| key                            | tier | secret  | default                                                                                                                      |
+| ------------------------------ | ---- | ------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `WEA_SQLITE_PATH`              | T0   | no      | —                                                                                                                            |
+| `WEA_DB_HOST`                  | T0   | no      | —                                                                                                                            |
+| `WEA_DB_PORT`                  | T0   | no      | `5432`                                                                                                                       |
+| `WEA_DB_DATABASE`              | T0   | no      | —                                                                                                                            |
+| `WEA_DB_USER`                  | T0   | no      | —                                                                                                                            |
+| `WEA_DB_PASSWORD`              | T0   | **yes** | —                                                                                                                            |
+| `WEA_DB_SSL`                   | T0   | no      | `false`                                                                                                                      |
+| `WEA_DB_MAX`                   | T0   | no      | `10`                                                                                                                         |
+| `WEA_DB_IDLE_TIMEOUT_MS`       | T0   | no      | `30000`                                                                                                                      |
+| `WEA_DB_CONNECTION_TIMEOUT_MS` | T0   | no      | `10000`                                                                                                                      |
+| `WEA_DB_QUERY_TIMEOUT_MS`      | T0   | no      | `60000`                                                                                                                      |
+| `NODE_ENV`                     | T0   | no      | —                                                                                                                            |
+| `DOTENV_CONFIG_PATH`           | T0   | no      | —                                                                                                                            |
+| `JWT_SECRET`                   | T0   | **yes** | — (none — unset → ephemeral per-boot random)                                                                                 |
+| `WEA_MODEL_DIR`                | T0   | no      | — (unset → default data dir; built-in embed weights location, `llmPresets.md` §2.3 — optional operator pre-seed, not a mode) |
 
 ### File storage
 
@@ -197,7 +198,7 @@ defaults are kept in parity by test).
 | `AI_USAGE_EVENT_RETENTION_DAYS` | T2   | no     | `90`    | raw `usage_events` roll-off horizon (`0` = retention off)                |
 | `AI_NIGHTLY_ANCHOR_HOUR_UTC`    | T2   | no     | `3`     | nightly scheduler anchor hour (maintenanceScheduler §3.4)                |
 | `ARCHIVE_RETENTION_DAYS`        | T2   | no     | `30`    | purge horizon / tombstone lifetime (collectionsService §3, Q1)           |
-| `ADMIN_REPORTS_RETENTION_DAYS`  | T2   | no     | `30`    | `admin_reports` housekeeping horizon (writer-side prune; `0` = off)       |
+| `ADMIN_REPORTS_RETENTION_DAYS`  | T2   | no     | `30`    | `admin_reports` housekeeping horizon (writer-side prune; `0` = off)      |
 | `WEA_SKIP_ROLLUP_SCHEDULER`     | T2   | no     | —       | test seam, env-allowed (NOT dbOnly — same idiom as `WEA_SKIP_AI_WORKER`) |
 
 ---

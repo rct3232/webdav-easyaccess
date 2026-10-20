@@ -13,6 +13,14 @@ const TRACKED_KEYS = [...BACKENDS, ...AI_ROLE_KEYS];
 function initialState() {
   return {
     status: 'unknown',
+    // Generic non-terminal readiness state (backendHealth.md §2.2/§2.3): set by
+    // a `preparing:true` report, cleared by the next ok:true / ok:false report.
+    // `phase` names what is preparing ('provisioning', 'index-build', …);
+    // `progress` is a short human-readable string ("3/7 files"). Admin display
+    // only — the 5-state mapping reads these fields, not the status.
+    preparing: undefined,
+    phase: undefined,
+    progress: undefined,
     code: undefined,
     reason: undefined,
     hint: undefined,
@@ -51,11 +59,29 @@ function createBackendHealth() {
     }
   }
 
-  function report(key, { ok, code, reason, hint } = {}) {
+  function report(key, { ok, preparing, phase, progress, code, reason, hint } = {}) {
     if (!state.has(key)) return;
 
     const current = state.get(key);
     const now = Date.now();
+
+    // Non-terminal readiness update (backendHealth.md §2.3): a preparing report
+    // sets/clears the readiness fields and keeps the underlying status. It never
+    // fires the transition callback, never counts as a failure, and never
+    // touches code/reason/hint beyond clearing them (the row is mid-preparation,
+    // any earlier failure diagnosis is stale while preparation runs).
+    if (preparing) {
+      const next = snapshot(key);
+      next.preparing = true;
+      next.phase = phase;
+      next.progress = progress;
+      next.code = undefined;
+      next.reason = undefined;
+      next.hint = undefined;
+      next.lastCheckedAt = now;
+      state.set(key, next);
+      return;
+    }
 
     if (ok) {
       const from = current.status;
@@ -69,6 +95,11 @@ function createBackendHealth() {
 
     const from = current.status;
     const next = snapshot(key);
+    // A terminal report replaces the readiness state (§2.3): ok:false carries
+    // the outcome, so the preparation fields are cleared here.
+    next.preparing = undefined;
+    next.phase = undefined;
+    next.progress = undefined;
     next.status = 'fail';
     next.code = code;
     next.reason = reason;

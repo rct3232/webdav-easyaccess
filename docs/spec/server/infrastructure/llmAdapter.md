@@ -18,8 +18,12 @@ Target-contract spec.
 
 - **Source:** `server/infrastructure/adapters/llm/index.js` (factory + per-call resolver)
 - **Peers:** `clients/` (Ollama / OpenAI-compatible / TEI-class dialects per preset;
-  **`embedded-onnx.js`** = in-process transformers.js client for the built-in provider,
-  incl. local positive-control probe fixtures),
+  **`embedded-onnx.js`** = in-process transformers.js client for the built-in provider
+  (lazy `require` of `@huggingface/transformers`; dtype q4; **mean pooling, attention-mask
+  weighted** + L2 normalize — cls pooling mis-shapes the plain-text space silently; text
+  inputs carry the profile task prefixes; media via processor objects — the media path is
+  the V1/V3 pipeline's concern, the client exposes the primitives), incl. local
+  positive-control probe fixtures),
   `probe.js` (suite), `budget.js` (chain + limiter + breaker),
   **`provision.js`** (provider-triggered model provisioning for `engine='embedded'` — a
   blocking run at boot only for a CONFIGURED boot while the built-in is the active embed
@@ -31,8 +35,10 @@ Target-contract spec.
   lockfile
   parse → `WEA_MODEL_DIR` / data-dir detection → checksummed downloads with per-file CLI
   progress logs, atomic temp-file+rename),
-  **`model.lock.json`** (checked-in release artifact: repo/revision/files+sha256/dtype —
-  identity, §4.15),
+  **`model.lock.json`** (checked-in release artifact at
+  `server/infrastructure/adapters/llm/model.lock.json`:
+  repo/revision/files+sha256+size/dtype/dim/pooling —
+  identity, §4.15; NO model bytes in the repo),
   `presets.js` ([llmPresets spec](llmPresets.md))
 - **Test file:** `server/infrastructure/adapters/llm/__tests__/llmAdapter.test.js`
   (+ fake-server E2E leg, in-process adapter injection)

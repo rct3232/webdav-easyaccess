@@ -79,12 +79,17 @@ connection before the metadata DB exists.
 **T0 — `.env` only:** `WEA_SQLITE_PATH`, `WEA_DB_HOST`, `WEA_DB_PORT`,
 `WEA_DB_DATABASE`, `WEA_DB_USER`, `WEA_DB_PASSWORD`, `WEA_DB_SSL`, `WEA_DB_MAX`,
 `WEA_DB_IDLE_TIMEOUT_MS`, `WEA_DB_CONNECTION_TIMEOUT_MS`, `NODE_ENV`,
-`DOTENV_CONFIG_PATH`, `JWT_SECRET`.
+`DOTENV_CONFIG_PATH`, `JWT_SECRET`, `WEA_MODEL_DIR`.
 Rationale: the metadata DB cannot be reached before its own connection info exists.
 `JWT_SECRET` is the boot auth key: it stays `.env`-only and frozen at require time, but it
 is **optional** — when unset or empty the server generates an ephemeral random secret at boot
 for that process (a restart yields a new secret and invalidates all sessions). Multi-instance
 deployments must set one unified `JWT_SECRET` so every instance signs with the same secret.
+`WEA_MODEL_DIR` is an optional T0 **operator pre-seed path**: it selects the directory the
+built-in embed engine loads its weights from (provisioning per `llmPresets.md` §2.3). It is
+not an application setting (no admin/wizard surface, never stored in DB, no resolver read
+site) — a filesystem location like `WEA_SQLITE_PATH`. Present weights there make every
+provisioning trigger a no-op with zero network egress; unset selects the default data dir.
 
 **T1 — env → DB fallback, restart required (boot-frozen):** `PORT`, `WEA_FILE_STORAGE`,
 `S3_BUCKET`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (secret),

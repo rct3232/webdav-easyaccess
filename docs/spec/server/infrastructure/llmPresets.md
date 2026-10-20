@@ -31,10 +31,13 @@ Target-contract spec.
  roles: ['embed'|'chat'|'vision'|'asr'], // endpoints this row can serve
  engine: 'embedded' | 'remote', // llm_models.engine source (embedded needs no base_url)
  expected: { text_embed, image_embed, audio_embed, video_embed, chat, vision_chat, asr }, // BOOLEAN expectations (§2.4 map); media embed caps are embed-role sub-capabilities, probed separately
- lock: { // family 'embedded' ONLY — the trust boundary replacing a server URL
+ lock: { // family 'embedded' ONLY — the trust boundary replacing a server URL.
+ //   Checked in at `server/infrastructure/adapters/llm/model.lock.json` (the
+ //   provisioner reads it directly; this manifest entry mirrors its identity
+ //   fields). NO model bytes in the repo.
  repo, revision, // pinned HF commit (immutable resolve-URL)
  dtype: 'q4' | 'q8' | 'fp16' | 'fp32',
- files: [{ path, sha256 }], // verified at every provisioning trigger (never silently on setup-mode boots); mismatch ⇒ provisioning fails ⇒ caps OFF
+ files: [{ path, sha256, size }], // verified at every provisioning trigger (never silently on setup-mode boots); mismatch ⇒ provisioning fails ⇒ caps OFF
  provisionDirEnv: 'WEA_MODEL_DIR', // else download at the provisioning trigger (BLOCKING within a boot-path trigger, CLI progress log; deferred while a remote override is active or setup mode is up)
  },
  conformance: { // family 'external-endpoint' (embed) ONLY — model-identity gate (llmAdapter.md §2.4)
@@ -89,6 +92,19 @@ Rows are FROZEN; the admin UI renders from the manifest; probe results persist t
 | provisioning    | provider-triggered: BLOCKING on a CONFIGURED boot where built-in is the active embed provider — the first boot after the wizard is ordinary boot processing under the same posture (setup mode itself makes zero download attempts); IN-PLACE server-non-blocking run (role reports `preparing` until done) when a remote override is cleared (restart-free); deferred while remote is active — switching never deletes existing weights; CLI per-file progress log, sha256-verified, atomic; `WEA_MODEL_DIR` pre-seed ⇒ zero download attempts |
 | offline result  | provisioning attempt fails → embed caps OFF + admin prompt; the boot continues (configured-boot trigger) or the server keeps serving (in-place trigger) — enrichment-dependency, never a crash                                                                                                                                                                                                                                                                                                                                                  |
 | latency         | text 0.13 s / image 7 s / audio-seg 3.85 s (dev-box CPU); informational profile field — no ship gate                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+
+**Lock file (`model.lock.json`).** Shipped at
+`server/infrastructure/adapters/llm/model.lock.json` — the checked-in release artifact the
+provisioner parses (`repo` / `revision` / `dtype` / `files[] {path, sha256, size}` / `dim` /
+`pooling`). The revision is the immutable HF commit
+`daa72c51243991dfcaf9f9137d2c573d8f7790c0`; the file set is the q4 multimodal set (12
+files, ≈473 MB: 3 encoder `*_q4.onnx` graphs + their external-data `*_q4.onnx_data` shards
+
+- tokenizer/processor/config sidecars). Per-file sha256s were captured from the registry
+  `x-linked-etag` values at pin time (sha256 == registry etag, verified). Upgrading the model
+  = a new lock PR (new revision → new `llm_models` row → re-embed). The weights themselves
+  never enter the repo; they are provisioned into `WEA_MODEL_DIR` or the data dir at a
+  provisioning trigger.
 
 External embed rows below are **overrides** (one active embed model, §4.20). No embed model
 other than embeddinggemma-2 is supported; the manifest carries no other embed-model row.

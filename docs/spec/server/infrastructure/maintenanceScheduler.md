@@ -32,14 +32,14 @@ NOT this module — this module only schedules PERIODIC work.
 
 ## 3. Target additions
 
-Three planned scheduler functions per CODING*STYLE.md Express Patterns (`shouldSkip`/`resolveIntervalMs` seams,
+Two planned scheduler functions per CODING*STYLE.md Express Patterns (`shouldSkip`/`resolveIntervalMs` seams,
 no new module files) plus the evolution/nightly integration points. Existing §2 content
 is unchanged; new functions mirror its idioms (per-function `WEA_SKIP*\*` seam, DB-only
 interval resolution, log-never-throw).
 
 ### 3.1 `startUsageRollupScheduler({ usageService, ... })` — nightly rollup
 
-- Fires once per nightly anchor (§3.4). Chain: `usageService.rollupNodeActivity()`
+- Fires once per nightly anchor (§3.3). Chain: `usageService.rollupNodeActivity()`
   (`usage_events` → `node_activity` upserts, applying the item accumulator
   `score ← score·2^(−Δt/H) + Σ w_a` plus the count/`last_seen_at` columns), then
   `collectionsStore.recomputeActivityScores()` (Σ member item scores →
@@ -93,26 +93,13 @@ interval resolution, log-never-throw).
   `migrationService.js:330-348`).
 - Seam: `WEA_SKIP_EVOLUTION_SCHEDULER`.
 
-### 3.3 `startNightlyTagScheduler({ tagService })` — tag-normalization 3-step slot (P1)
-
-- Runs after the evolution slot in the same anchor (ordering matters: create-pass tag
-  predicates want fresh parent hints; arbiter wants normalized groups): orthographic
-  normalization materialization (`ai_tag_raw`), containment→parent auto rule
-  (`upsertAutoParent`, never overwriting admin rows), gray band untouched; then the
-  tag-embed batch (`aiTagStore.findTagsWithoutEmbedding` → embed → `upsertTagVectors`) for
-  new distinct vocabulary.
-- Embed role unconfigured ⇒ normalization + raw materialization still run (they are
-  LLM-free steps 1); the vector-matching/parent-cosine legs skip with a logged reason
-  (None column of the feature-degradation matrix: normalized string equality remains the search behavior).
-- Seam: `WEA_SKIP_TAG_SCHEDULER`.
-
-### 3.4 Nightly anchor resolution
+### 3.3 Nightly anchor resolution
 
 - `resolveNightlyTickCron()`-style helper mirroring `resolveIntervalMs`: interval fixed
-  at 24h; the anchor hour comes from `AI_NIGHTLY_ANCHOR_HOUR_UTC` (T2/dbOnly, default 3) — each of §3.1–§3.3 schedules `setTimeout` to the next anchor then re-arms
+  at 24h; the anchor hour comes from `AI_NIGHTLY_ANCHOR_HOUR_UTC` (T2/dbOnly, default 3) — each of §3.1–§3.2 schedules `setTimeout` to the next anchor then re-arms
   (drift-tolerant; a missed tick (sleeping laptop) runs at the next anchor, passes are
   idempotent re-scans so nothing is "wrong", only late).
-- All three functions return `null` (disabled) on seam or missing service, exactly like
+- Both functions return `null` (disabled) on seam or missing service, exactly like
   `startGcScheduler`.
 - Anchor math: `resolveAnchorHour()` reads the dbOnly key via the shared resolver
   sync seam (`getConfigSync`, GC precedent) and falls back to `3` for non-integer or
@@ -146,7 +133,5 @@ next to the existing ones, after migrationGate/init like the GC scheduler.
       upload-mode DB still gets exactly one FULL pass per day
 - [ ] Debounce vs nightly: a pass already running when the anchor fires
       no-ops on the lock (no interleaved double-journal of the same act)
-- [ ] Tag slot without embed role: normalization + `ai_tag_raw` update,
-      parent-hint/vector legs skipped with log, no throw into the scheduler
 - [ ] Anchor math: tick lands within the configured hour; a server restart
       across the anchor executes the pass at the NEXT anchor, never twice in one day

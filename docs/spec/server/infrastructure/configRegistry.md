@@ -195,9 +195,9 @@ defaults are kept in parity by test).
 | `AI_USAGE_W_LIKE`               | T2   | no     | `5`     | weight w_like                                                            |
 | `AI_ACTIVITY_HALF_LIFE_DAYS`    | T2   | no     | `30`    | item accumulator half-life H (§3.4)                                      |
 | `AI_USAGE_EVENT_RETENTION_DAYS` | T2   | no     | `90`    | raw `usage_events` roll-off horizon (`0` = retention off)                |
-| `AI_NIGHTLY_ANCHOR_HOUR_UTC`    | T2   | no     | `3`     | nightly scheduler anchor hour (maintenanceScheduler §3.4)                |
+| `AI_NIGHTLY_ANCHOR_HOUR_UTC`    | T2   | no     | `3`     | nightly scheduler anchor hour (maintenanceScheduler §3.3)                |
 | `ARCHIVE_RETENTION_DAYS`        | T2   | no     | `30`    | purge horizon / tombstone lifetime (collectionsService §3, Q1)           |
-| `ADMIN_REPORTS_RETENTION_DAYS`  | T2   | no     | `30`    | `admin_reports` housekeeping horizon (writer-side prune; `0` = off)       |
+| `ADMIN_REPORTS_RETENTION_DAYS`  | T2   | no     | `30`    | `admin_reports` housekeeping horizon (writer-side prune; `0` = off)      |
 | `WEA_SKIP_ROLLUP_SCHEDULER`     | T2   | no     | —       | test seam, env-allowed (NOT dbOnly — same idiom as `WEA_SKIP_AI_WORKER`) |
 
 ---

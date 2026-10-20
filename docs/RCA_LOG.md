@@ -1005,3 +1005,29 @@ username`), while `openPrivateWorkspace` creates its case folder at the FILESYST
   `item_count: 1` before navigating (no assertion weakened; the order checks stay); the card
   locator now excludes `collection-card-fallback` (real card roots only). Surfaced by the
   webdav runs added in P0 closeout item 3.
+
+### 2026-10-20 — T1.2a GREEN-phase failures on the new repository suites (Case B + in-dev Case A, both resolved same-branch)
+
+- **Summary**: during T1.2a GREEN (branch `feature/p1-a1-llm-repos`), two failure classes
+  appeared while converging the NEW suites (no pre-existing test regressed at any point):
+  (1) every `claimNext` call failed with `databaseQueryFailed`, raw cause
+  `near "%": syntax error`; (2) `aiUsageDailyStore` facade fixtures mis-predicted counters
+  (`calls` 1 vs expected 2; later 3 vs 4 — the second assertion was masking row reuse across
+  tests via the shared `role` fixture).
+- **Diagnosis**: (1) the shared claimable predicate `aiJobsShared.CLAIMABLE_PREDICATE` carries
+  TWO `%NEXT_RETRY%` markers (NULL branch + comparison branch); the twins substituted with
+  `String.replace`, which replaces only the FIRST occurrence — the `%` leaked into the SQL.
+  (2) The facade test's own fixture math was wrong, twice: the second `recordUsage` event
+  intentionally carries no `calls` delta ("columns move only on their events",
+  aiUsageDailyStore.md §2.3), so `calls` staying 1 IS the spec behavior; and the restart test
+  reused the test-1 role/day so the row legitimately accumulated across tests.
+- **Classification**: (1) implementation defect caught by the new RED tests before any
+  consumer existed — fixed in-code during GREEN (not a spec violation; aiJobsStore.md §2.4
+  predicates were honored once substituted correctly). (2) **Case B (Test Error)** — tests
+  mis-modeled the documented increment semantics and fixture isolation; no production code
+  changed for (2).
+- **Action taken**: `replaceAll` in both twins + a `clearJobs()` isolation helper for the
+  queue-empty/reap-count conformance scenarios; facade fixtures re-scoped to per-test unique
+  roles with spec-faithful expected counters. Final targeted gates: repositories dir
+  15/15 suites · 227/227, domains/ai 8/8 suites · 63/63, new-suites rerun 47/47,
+  eslint --max-warnings=0 + prettier clean.

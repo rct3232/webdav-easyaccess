@@ -1,8 +1,9 @@
 'use strict';
 
 /**
- * Shared data types and mapping for EmbeddingsRepository dialect twins
- * (docs/spec/server/store/embeddingsStore.md).
+ * Shared data types and mapping for EmbeddingsRepository + EmbeddingsChunkRepository
+ * dialect twins (docs/spec/server/store/embeddingsStore.md,
+ * docs/spec/server/store/embeddingsChunkStore.md).
  */
 
 /**
@@ -71,4 +72,21 @@ function deserializeVector(vectorText) {
   return parts.map((p) => Number(p));
 }
 
-module.exports = { mapEmbeddingsRow, serializeVector, deserializeVector };
+/**
+ * Maps a database row of `embeddings_chunk` to the domain `ChunkEmbeddingRow`
+ * shape (docs/spec/server/store/embeddingsChunkStore.md §2.2).
+ *
+ * @param {Object} row Raw DB row (snake_case columns).
+ * @returns {Object} Domain row (camelCase fields, vector as number[]).
+ */
+function mapChunkRow(row) {
+  return {
+    nodeId: Number(row.node_id),
+    chunkIdx: Number(row.chunk_idx),
+    modelId: Number(row.model_id),
+    vector: deserializeVector(row.vector),
+    updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : null,
+  };
+}
+
+module.exports = { mapEmbeddingsRow, mapChunkRow, serializeVector, deserializeVector };

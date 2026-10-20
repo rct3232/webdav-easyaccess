@@ -52,8 +52,9 @@ garbage; a model swap disables, it does not delete), any dim read/write (§1 dim
 
 ### 2.5 Error Contracts
 
-- Missing/blank `role`/`provider`/`modelName`/`baseUrlKey` (non-string) → TypeError before
-  SQL; CHECK violations (`role`/`engine`/`reasoning` enum) surface via `mapDatabaseError`.
+- Non-string `role`/`provider`/`modelName`/`baseUrlKey`, blank `role`/`provider`/`modelName`
+  → TypeError before SQL (`baseUrlKey` MAY be `''` — embedded rows carry no URL, §1);
+  CHECK violations (`role`/`engine`/`reasoning` enum) surface via `mapDatabaseError`.
 - Reads → `null` / `[]`; `setReasoning` on an unknown id → `{ changes: 0 }`.
 
 ### 2.6 Restart Survival

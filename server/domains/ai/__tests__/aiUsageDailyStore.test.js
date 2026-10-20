@@ -15,12 +15,12 @@ const day = () => new Date().toISOString().slice(0, 10);
 
 describe('aiUsageDailyStore facade', () => {
   let dbCleanup;
-  let role;
+  let seq = 0;
+  const uniqueRole = () => `facade-usage-${Date.now()}-${(seq += 1)}`;
 
   beforeAll(async () => {
     const db = await createTestDatabase();
     dbCleanup = db.cleanup;
-    role = `facade-usage-${Date.now()}`;
   });
 
   afterAll(async () => {
@@ -28,18 +28,22 @@ describe('aiUsageDailyStore facade', () => {
   });
 
   it('delegates recordUsage / getByDay / summarizeRange', async () => {
+    const role = uniqueRole();
     await aiUsageDailyStore.recordUsage({ day: day(), role, calls: 1, inputChars: 100 });
+    // A 429-only round-trip moves exactly its counter (columns move only on
+    // their events — calls/input_chars untouched by this event).
     await aiUsageDailyStore.recordUsage({ day: day(), role, failed429: 1 });
 
     const rows = await aiUsageDailyStore.getByDay(day());
     const row = rows.find((entry) => entry.role === role);
-    expect(row).toMatchObject({ day: day(), role, calls: 2, inputChars: 100, failed429: 1 });
+    expect(row).toMatchObject({ day: day(), role, calls: 1, inputChars: 100, failed429: 1 });
 
     const summary = await aiUsageDailyStore.summarizeRange({ fromDay: day(), toDay: day() });
     expect(summary.map((entry) => entry.role)).toContain(role);
   });
 
   it('restart survival: the persisted ledger row keeps accumulating after a close/reopen', async () => {
+    const role = uniqueRole();
     await aiUsageDailyStore.recordUsage({ day: day(), role, calls: 1, inputChars: 10 });
 
     if (isSqliteBackend()) {
@@ -51,12 +55,12 @@ describe('aiUsageDailyStore facade', () => {
     await aiUsageDailyStore.recordUsage({ day: day(), role, calls: 1, inputChars: 25, cached: 1 });
 
     const row = (await aiUsageDailyStore.getByDay(day())).find((entry) => entry.role === role);
-    expect(row).toMatchObject({ calls: 4, inputChars: 135, cached: 1 });
+    expect(row).toMatchObject({ calls: 2, inputChars: 35, cached: 1 });
   });
 
   it('rejects counter-decreasing deltas (TypeError through the facade)', async () => {
     await expect(
-      aiUsageDailyStore.recordUsage({ day: day(), role, calls: -5 })
+      aiUsageDailyStore.recordUsage({ day: day(), role: uniqueRole(), calls: -5 })
     ).rejects.toThrow(TypeError);
   });
 });

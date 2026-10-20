@@ -176,6 +176,7 @@ describe('EmbeddingsChunkRepository conformance', () => {
 
     const page2 = await repo.listAllByModel(modelId, {
       afterNodeId: page1[page1.length - 1].nodeId,
+      afterChunkIdx: page1[page1.length - 1].chunkIdx,
       limit: 3,
     });
     expect(page2.map((row) => [row.nodeId, row.chunkIdx])).toEqual([[ids[1], 1]]);

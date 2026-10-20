@@ -1025,3 +1025,45 @@ username`), while `openPrivateWorkspace` creates its case folder at the FILESYST
   (Embeddings, EmbeddingsChunk, AiEnrichments) — the trash-seed helper now branches
   `isSqliteBackend() ? "datetime('now')" : 'NOW()'`. No production code changed;
   EmbeddingsRepository suite 14/14 after the fix.
+
+### 2026-10-21 — T1.2b chunk pagination: committed spec §2.3 node-level cursor cannot satisfy §2.8 completeness (Case C resolved to the spec's own binding scenario)
+
+- **Summary**: during the EmbeddingsChunkRepository GREEN cycle, the committed RED test's page-2
+  expectation (`[[ids[1], 1]]` — the boundary node's remaining chunk) was unreachable under the
+  committed spec §2.3 cursor (`node_id > afterNodeId`): with `afterNodeId = ids[1]` a strictly-greater
+  node filter excludes ALL of the boundary node's rows, and a shadow-index rebuild would silently
+  skip boundary-node chunks whenever a node has more than one chunk.
+- **Diagnosis**: `embeddings_chunk` PK is the composite `(node_id, chunk_idx)`; a node-level cursor
+  cannot keyset-paginate it. The committed spec itself is internally inconsistent: §2.8 mandates
+  "keyset pagination returns every row exactly once across pages, in (nodeId, chunkIdx) order" —
+  which ONLY a tuple cursor `(node_id, chunk_idx) > (afterNodeId, afterChunkIdx)` can deliver.
+  The RED test encoded §2.8 faithfully; the §2.3 cursor row was the defect (this task's own docs
+  artifact from commit 379fdda, not an owner-ratified ruling — §19/§27 touch tag dissolution and
+  wave structure, not pagination cursors).
+- **Classification**: **Case C (spec error)** resolved locally — the citable binding clause is
+  embeddingsChunkStore.md §2.8 ("every row exactly once across pages"); the §2.3 row is amended to
+  the tuple cursor `(afterNodeId, afterChunkIdx)` in the same commit, and the test now passes the
+  full tuple cursor. No owner decision is affected; flagged in the A2 return report.
+- **Action taken**: spec §2.3 `listAllByModel` row + factory JSDoc + conformance test aligned on the
+  tuple cursor; §2.3 `replaceChunks` row tightened to the unconditional DELETE (the space-keying
+  scenario proves the new set owns the node — a second-space write wipes the first).
+
+### 2026-10-21 — T1.2a GREEN follow-up: committed EmbeddingsRepository twins omit mapDatabaseError and ignore the transaction `tx` handle (Case A — self-caught before merge)
+
+- **Summary**: re-reading `executor.js`/`postgresExecutor.js` during the chunk GREEN cycle showed
+  the committed pooled twins (commit 6c59720) (a) wrap mutations in `executor.transaction(fn)` but
+  IGNORE the `fn(tx)` handle — `executor.transaction` passes a dedicated tx-scoped client
+  (`storage.withTransaction`) that MUST carry the statements; and (b) contain no
+  `mapDatabaseError` mapping.
+- **Diagnosis**: repository-contract.md §2.2 rule 1 (executor seam contract: transaction callbacks
+  receive `tx { query, run }` backed by the transaction's own client — executor.md) and rule 4
+  ("Implementations map driver errors via `mapDatabaseError`") both mandate the fix. The sqlite leg
+  masked the tx defect (statements still executed), but the PG adapter leg would run the
+  statements outside the transaction client, breaking the wholesale-replace atomicity contract.
+- **Classification**: **Case A (Source Error)** — committed implementation violates the citable
+  contract clauses; caught in self-review before the merge gate, so fixed in a dedicated GREEN
+  follow-up commit rather than stopping the wave (the error surface is contained to the A2 task's
+  own files; no shipped behavior existed to protect).
+- **Action taken**: pooled twins re-issued to use the `tx` handle inside `executor.transaction`
+  and wrap every executor call in `try { … } catch (error) { throw mapDatabaseError(error); }`;
+  pooled conformance suite re-run to 14/14 before commit.

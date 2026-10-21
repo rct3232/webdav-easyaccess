@@ -1502,3 +1502,45 @@ decision record merged after the ledger was written); all Wave A branches cut fr
   Standing flag carried forward: `llm_models.dim` does not exist (B2's
   `syncModelRegistry` dim persistence needs an owner decision at the B2
   docs step).
+
+### Wave B execution log (2026-10-21 — orchestrator; base `efe649b`)
+
+First-tranche dispatch: B1/B2/B4 in parallel (independent subagents);
+B2's dim-persistence blocker resolved owner-side BEFORE B2 launched
+(`llm_models` gets NO dim column — runtime derivation from the model
+profile + per-row persistence on `embeddings.dim`/`embeddings_chunk.dim`).
+
+- **B1 (T1.1a) `[done]` — merged (`c1b3893`).** `presets.js` manifest +
+  probe-matrix authority rule (declared ≠ probed ⇒ capability off + admin
+  warning) + `evaluateConformance` EG2 activation gate (τ=0.90 kit +
+  dim==768; τ lives exclusively in `eg2-reference-kit.json` — no hardcoded
+  τ) + `kit()/findPreset/getPresetByFamilyRole` + llmPresets.md §2.2a.
+  RED module-absent → GREEN 31/31; docsStatePurity 3/3. B2 must consume
+  LLM_PRESETS/evaluateCapabilityMatrix/evaluateConformance.
+- **B2 (T1.1b) `[done]` — merged (`73da31d`; RCA_LOG both-sides-kept).**
+  llmAdapter core (per-call resolution, `roleConfigured`, budget chain,
+  breaker 5-fail→OPEN 300s, usage accounting) + T2 dbOnly breaker tunables
+  (`LLM_BREAKER_THRESHOLD`/`LLM_BREAKER_COOLDOWN_S`) registered in the
+  config registry + dim docs task resolved (§2.3 runtime derivation;
+  vectorStore.md minimal correction). RED module-absent → GREEN
+  llmAdapter 21/21; docsStatePurity 3/3. Seams: remote `createClient`
+  dialect, `probeRole` suite, `presetFor`/`fetchPublishedMetadata` (B1);
+  boot call site + admin "test" button (B3); `embedQuery` query_parses
+  cache (C1).
+- **B4 (T1.3a) `[done]` — merged (`ed96203`; clean with B2).** Worker
+  core: `claimNext({excludeKinds})` park&drain (zero attempt inflation;
+  shared `KIND_EXCLUSION_CLAUSE` + `buildClaimPredicate`; both twins
+  reworked, per-dialect placeholder discipline kept) + backoff ladder
+  `min(30s·2ⁿ, 30min)` verified (BASE 30_000 / MAX 1_800_000) +
+  aiJobsStore.md §2.3/§2.4 contract text. RED absent-support → GREEN
+  conformance 21/21 (sqlite leg), facade 3/3, docsStatePurity 3/3.
+  **Orchestrator PG leg verified**: `test:ci:pg:adapters` 29 suites /
+  418 pass — the PG twin mirrors the sqlite predicate exactly.
+- **Wave B remaining**: B3 (T1.1c wizard AI step ← B1+B2 satisfied),
+  B5 (T1.3b embed pipeline ← B4+A2+A5 satisfied), B6 (T1.3c hooks×4 +
+  `content_hash` write-side ← B4+A1 satisfied) — all three launched in
+  parallel on `feature/p1-b3-wizard-ai-step` / `feature/p1-b5-embed-pipeline` /
+  `feature/p1-b6-hooks-content-hash` (base `ed96203`), worktrees
+  wt-b3/wt-b5/wt-b6. RED-first targets per §27: B3 wizard rows + locale
+  mirror; B5 pipeline drain + restart survival; B6 hook registration +
+  content_hash population.

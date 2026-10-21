@@ -12,7 +12,10 @@ const { CLAIMABLE_PREDICATE, backoffMs, mapJobRow, truncateError } = require('..
  * @param {import('../../../infrastructure/db/executor').DbExecutor} executor
  */
 module.exports = function createSqliteAiJobsRepository(executor) {
-  const claimablePredicate = CLAIMABLE_PREDICATE.replaceAll('%NEXT_RETRY%', 'next_retry_at');
+  const claimablePredicate = CLAIMABLE_PREDICATE.replaceAll(
+    '%NEXT_RETRY%',
+    'next_retry_at'
+  ).replaceAll('%PARAM%', '?');
 
   return {
     dialect: 'sqlite',

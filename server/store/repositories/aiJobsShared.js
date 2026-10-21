@@ -53,7 +53,7 @@ function mapJobRow(row) {
  * twins may wrap it in julianday); the right placeholder binds an ISO instant.
  */
 const CLAIMABLE_PREDICATE =
-  "(status = 'pending' OR (status = 'failed' AND (%NEXT_RETRY% IS NULL OR %NEXT_RETRY% <= ?)))";
+  "(status = 'pending' OR (status = 'failed' AND (%NEXT_RETRY% IS NULL OR %NEXT_RETRY% <= %PARAM%)))";
 
 module.exports = {
   AI_JOB_RETRY_BASE_MS,

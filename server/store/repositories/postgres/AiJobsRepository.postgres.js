@@ -11,7 +11,10 @@ const { CLAIMABLE_PREDICATE, backoffMs, mapJobRow, truncateError } = require('..
  * @param {import('../../../infrastructure/db/executor').DbExecutor} executor
  */
 module.exports = function createPostgresAiJobsRepository(executor) {
-  const claimablePredicate = CLAIMABLE_PREDICATE.replaceAll('%NEXT_RETRY%', 'next_retry_at');
+  const claimablePredicate = CLAIMABLE_PREDICATE.replaceAll(
+    '%NEXT_RETRY%',
+    'next_retry_at'
+  ).replaceAll('%PARAM%', '$1');
 
   return {
     dialect: 'postgres',
@@ -25,8 +28,8 @@ module.exports = function createPostgresAiJobsRepository(executor) {
            RETURNING id`,
           [Number(nodeId), String(kind), Number(generation), contentHash ?? null]
         );
-        if (!result.rows || result.rows.length === 0) return null;
-        return { id: Number(result.rows[0].id) };
+        if (!result || result.changes === 0 || result.lastId === undefined) return null;
+        return { id: Number(result.lastId) };
       } catch (error) {
         throw mapDatabaseError(error);
       }

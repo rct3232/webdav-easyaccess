@@ -119,6 +119,31 @@ stride sample ≤ `LLM_CHUNK_BUDGET` (default 4) chunks → embed ALL sampled ch
   provider error mid-ladder degrades per §2.5, it never fails the job (overlength
   never fails a job).
 
+- **Vector-space writes and the seam:** the canonical pooled + chunk writes ride the
+  vectorStore seam `upsert(node, vecs[], dim, meta)` (`domains/ai/vectorStore/index.js`
+  factory — the engine is selected by the boot probe; a degraded JsFallback engine is a
+  legal sink, never a gate). `meta = { source, contentHash, generation }` stamps the
+  pooled row's `source`/`content_hash` through the factory's injected `upsertPooled` hook
+  (the merged engine contracts stay `(node, vecs[], dim)`-shaped); pooled half = the
+  mean+renormalized row, chunk half = the sampled chunks, ONE TX for both halves plus the
+  derived shadow sync (vectorStore.md §2.2 division of labor). The seam's dim is the
+  `embed()` RESULT's runtime dim compared against the node's PERSISTED pooled-row dim —
+  never `llm_models` (no dim column exists, llmModelsStore §1 dim note): a changed
+  runtime dim (model change) ⇒ the pipeline enqueues ONE shadow-rebuild driver —
+  `aiJobsStore.enqueue(nodeId, 'backfill', generation, 'shadow-rebuild:<nodeId>:<modelId>')`,
+  the A6/A7 `rebuildShadow` drop-rebuild path — before the fresh-space writes; the enqueue
+  dedupe makes re-detection on the next job idempotent (an enqueue failure is logged and
+  dropped, the next embed re-enqueues).
+- **Restart idempotence:** a job claimed but unfinished (process death) is re-armed by
+  `recoverStaleRunning` (§2.3 step 2) and re-executes; because the pooled upsert REPLACES
+  per node and `replaceChunks` deletes the incoming model space's set before insert, a
+  partially written node converges to the full fresh state on re-execution — the file is
+  embedded exactly once per generation end to end (no duplicate pooled rows, no
+  mixed-space scoring: canonical reads filter by the active `model_id`).
+- **Kind coverage:** the worker's claim filter keeps kinds without a landed executor
+  parked (`claimNext({ excludeKinds })` park&drain — zero attempt inflation) until their
+  own unit lands; claiming unexecutable work would inflate attempts on queued jobs.
+
 **`features` (`features.extract`):** chat role; runs ONLY inside this job — never
 on request paths. Input = extracted text clipped by the input-budget ladder + a
 filename/mime/path/date metadata line. Fixed prompt template; output FORCED to JSON
@@ -229,3 +254,17 @@ recoverable). The only user-facing code in this domain is thrown by llmAdapter c
 - [ ] `ai_usage_daily` row for `(today,'embed')` increments `calls`/`input_chars` after a
       worker-run embed; breaker opens at `LLM_DAILY_CALL_CAP` and the kind stops claiming
 - [ ] Grep: zero `CacheAdapter`/`operationProgress` imports in `domains/ai/**`
+- [ ] Vector-space write shape: after an embed job the node holds exactly ONE pooled row
+      (replacing any prior space) whose `model_id`/`dim` equal the runtime `embed()` result
+      and whose `source`/`content_hash` match the ladder outcome; `embeddings_chunk`
+      holds the sampled chunk set in the SAME model space (cross-space rows untouched at
+      non-colliding indices)
+- [ ] Stale-dim path: an `embed()` runtime dim ≠ the node's persisted pooled-row dim
+      enqueues ONE `backfill` driver (`shadow-rebuild:<nodeId>:<modelId>`); a re-run under
+      the same condition enqueues nothing new (dedupe); the fresh-space writes still land
+- [ ] Pipeline drain: `runPendingEmbedJobs` over seeded `embed`+`features` jobs drives ONLY
+      the `embed` job to `done` (the unknown kind stays parked with attempt 0 —
+      `claimNext({excludeKinds})`), leaving it claimable for its own unit later
+- [ ] Restart survival end-to-end: claim an embed job, abandon it (no
+      done/skip/fail), `recoverStaleRunning(0)` → re-claim → pipeline completes with the
+      SAME single pooled row (upsert-replace, exactly-once per generation)

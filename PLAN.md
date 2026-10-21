@@ -1614,3 +1614,19 @@ profile + per-row persistence on `embeddings.dim`/`embeddings_chunk.dim`).
   `ReferenceError` (JS `None`) and overlaps 4 of B6's files — salvage value
   realized (restore-hash pattern lives in the B6 remediation), safe to DROP.
   **Wave B complete pending the full-gate run (orchestrator).**
+- **Wave B exit gate — PASSED (2026-10-21, orchestrator)**: after merging B5
+  `0dc702c` → B6 `2283755` → B3 `6d62075` into `ai-feature` (PLAN.md row conflict
+  resolved append-only) and recording the audit ledger, the full orchestrator
+  gates ran on the merged tip (`f243b0e`): server `test:ci` **154 suites /
+  2755 pass (27 skip)** green; client `test:ci` **182 suites / 2079 pass** green
+  (2 net-new suites from B3's aiRoleState + SetupAiStep); `test:ci:pg:adapters`
+  **29 suites / 418 pass (1 skip)** green — covers the merged A2 twins, B4's
+  AiJobs predicate twins, and the embed-pipeline store fountains; CI grep-gates
+  clean (the one `CacheAdapter|operationProgress` hit is the documentary
+  invariant comment in `collections/service.js:11` — Wave A precedent; tag-purge
+  hits confined to the §2.6 assertion file itself + the 001 DDL-parity
+  enumeration test). **Stash `stash@{0}` DROPPED per audit recommendation** (the
+  restore-hash salvage pattern is realized in B6's remediation; the scaffolding
+  carried a latent JS-`None` ReferenceError and overlapped 4 B6 files). Wave
+  A + Wave B complete on `ai-feature`; Wave C (C1 query-embed → C2 scorer →
+  C3 client activation ∥ C4 near-dup) is the next entry.

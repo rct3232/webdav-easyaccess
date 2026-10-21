@@ -2120,7 +2120,14 @@ describe('copyFile — WebDAV mode', () => {
       headBlob:
         headBlob || jest.fn().mockResolvedValue({ contentLength: 7, contentType: 'text/plain' }),
     };
-    const fileNodesStore = { upsertCache: jest.fn().mockResolvedValue(true) };
+    const fileNodesStore = {
+      getCache: jest.fn().mockResolvedValue({
+        size: 7,
+        mime_type: 'text/plain',
+        content_hash: 'src-hash',
+      }),
+      upsertCache: jest.fn().mockResolvedValue(true),
+    };
     const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),
       checkFolderPermission: jest.fn().mockResolvedValue(true),
@@ -2138,7 +2145,7 @@ describe('copyFile — WebDAV mode', () => {
     return { fileNodeService, blobStore, blobStorageService, fileNodesStore, service };
   }
 
-  it('server-side COPY + listing mirror via headBlob/upsertCache; no download/PUT round-trip', async () => {
+  it('server-side COPY + listing mirror via headBlob/upsertCache; the SOURCE content_hash travels with the copy', async () => {
     const { fileNodeService, blobStore, blobStorageService, fileNodesStore, service } =
       makeCopyMocks();
 
@@ -2146,7 +2153,10 @@ describe('copyFile — WebDAV mode', () => {
 
     expect(fileNodeService.createFile).toHaveBeenCalledWith(20, 'copy.txt');
     expect(blobStore.copyBlob).toHaveBeenCalledWith('/user/src.txt', '/dest/copy.txt');
-    expect(fileNodesStore.upsertCache).toHaveBeenCalledWith(60, 7, 'text/plain', null);
+    // aiJobService.md §2.2: the copied blob is byte-identical — the copy
+    // reuses the SOURCE content_hash, it never recomputes it.
+    expect(fileNodesStore.getCache).toHaveBeenCalledWith(10);
+    expect(fileNodesStore.upsertCache).toHaveBeenCalledWith(60, 7, 'text/plain', 'src-hash');
     expect(blobStorageService.downloadBlob).not.toHaveBeenCalled();
     expect(blobStorageService.uploadToWebdav).not.toHaveBeenCalled();
     expect(result).toMatchObject({ sourceNodeId: 10, copiedNodeId: 60 });

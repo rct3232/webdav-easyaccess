@@ -27,7 +27,11 @@ services:
       retries: 5
 
   postgresql-e2e:
-    image: postgres:16
+    # pgvector/pgvector:pg16 = postgres:16 + the `vector` extension preloaded
+    # (pgvector 0.8.x). Capability-additive swap: plain-PG consumers see the
+    # same server; the vectorStore ANN leg (npm run test:ci:pg:vector) needs
+    # `CREATE EXTENSION vector`, which plain postgres:16 cannot provide.
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: webdav_e2e
       POSTGRES_USER: e2etest

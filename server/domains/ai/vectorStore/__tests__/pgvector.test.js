@@ -216,11 +216,14 @@ function createPgExecutor(pool, sqlLog) {
     async transaction(fn) {
       const client = await pool.connect();
       try {
+        record('BEGIN');
         await client.query('BEGIN');
         const out = await fn(clientExecutor(client));
         await client.query('COMMIT');
+        record('COMMIT');
         return out;
       } catch (err) {
+        record('ROLLBACK');
         try {
           await client.query('ROLLBACK');
         } catch {
@@ -325,9 +328,11 @@ suite('PgVector ANN leg (real pgvector)', () => {
       modelId: MODEL_ID,
       dim,
       executor,
-      loadRows: doubles.loadRows,
-      upsertPooled: doubles.upsertPooled,
-      replaceChunks: doubles.replaceChunks,
+      // late-bound: a test may swap doubles.* (e.g. forced failure) AFTER the
+      // adapter was created — the adapter must see the current hook
+      loadRows: (...args) => doubles.loadRows(...args),
+      upsertPooled: (...args) => doubles.upsertPooled(...args),
+      replaceChunks: (...args) => doubles.replaceChunks(...args),
       transaction: (fn) => executor.transaction(fn),
     });
 
@@ -367,7 +372,10 @@ suite('PgVector ANN leg (real pgvector)', () => {
       const outcome = await adapter.init();
       expect(outcome).toBe('rebuilt');
       expect(await shadowDim()).toBe(DIM); // back at the ACTIVE model dim
-      expect(await shadowRowCount()).toBe(0); // stale-space data never coexists
+      // §2.4: init() = drop-rebuild + REPOPULATE — the shadow is always a
+      // faithful derived artifact of the canonical TEXT rows; it is never left
+      // empty (stale-dim rows were destroyed, canonical rows are re-derived)
+      expect(await shadowRowCount()).toBe(functional.rows.length);
     });
 
     it('rebuildShadow() repopulates from canonical TEXT rows', async () => {
@@ -455,6 +463,79 @@ suite('PgVector ANN leg (real pgvector)', () => {
       }
     });
 
+    it('dedups node ids before k is cut', async () => {
+      const got = await adapter.neighbors(functional.queries[0].vec, 10, null);
+      const ids = got.map((r) => r.nodeId);
+      expect(new Set(ids).size).toBe(ids.length);
+    });
+
+    it('restricts ranking to the candidates set (Set and predicate agree)', async () => {
+      const visible = new Set(functional.rows.filter((_, i) => i % 2 === 0).map((r) => r.nodeId));
+      const pred = (id) => visible.has(id);
+      const q = functional.queries[1];
+      const viaSet = await adapter.neighbors(q.vec, 10, visible);
+      const viaPred = await adapter.neighbors(q.vec, 10, pred);
+      expect(viaPred).toEqual(viaSet);
+      for (const r of viaSet) expect(visible.has(r.nodeId)).toBe(true);
+      const want = oracleNeighbors(q.text, functional.rows, visible, 10);
+      expect(viaSet.map((r) => r.nodeId)).toEqual(want.map((r) => r.nodeId));
+    });
+
+    it('an invisible candidate NEVER appears even when it ranks top-1 (adaptive retry)', async () => {
+      // 13 visible nodes (every 3rd id) — more than k=10, so a full result IS
+      // reachable; but the query sits next to an INVISIBLE cluster-4 node, so
+      // the f=4 oversample (k=10 → 40 ANN rows ≈ that node's own cluster)
+      // surfaces far fewer than 10 visible nodes → the doubling retry must
+      // kick in and still return exactly 10 VISIBLE nodes.
+      const visible = new Set([...functional.vecByNode.keys()].filter((id) => id % 3 === 0));
+      expect(visible.size).toBeGreaterThanOrEqual(11); // 10 reachable + margin
+      const srcVec = functional.vecByNode.get(35).pooled; // cluster 4, invisible (35 % 3 = 2)
+      const q = unit(srcVec.map((x, i) => x + (i === 0 ? 0.05 : 0)));
+      sqlLog.length = 0;
+      const got = await adapter.neighbors(q, 10, visible);
+      expect(got.length).toBe(10);
+      for (const r of got) expect(visible.has(r.nodeId)).toBe(true);
+      // the retry really bit: ≥ 2 ANN rounds (one SET LOCAL per round)
+      const sets = sqlLog.filter((s) => s.startsWith('SET LOCAL hnsw.ef_search'));
+      expect(sets.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('returns a short list when fewer visible candidates exist than k', async () => {
+      const visible = new Set([1, 2, 3]);
+      const got = await adapter.neighbors(functional.queries[3].vec, 10, visible);
+      expect(got.length).toBe(3);
+    });
+
+    it('a query of a mismatched dim returns [] (space-key discipline)', async () => {
+      expect(await adapter.neighbors([1, 0], 5, null)).toEqual([]);
+    });
+
+    it('captures SET LOCAL hnsw.ef_search = 400 on every ANN query', async () => {
+      sqlLog.length = 0;
+      await adapter.neighbors(functional.queries[4].vec, 10, null);
+      const sets = sqlLog.filter((s) => s.startsWith('SET LOCAL hnsw.ef_search'));
+      expect(sets.length).toBeGreaterThanOrEqual(1);
+      for (const s of sets) expect(s).toBe(`SET LOCAL hnsw.ef_search = ${EF_SEARCH}`);
+    });
+
+    it('a cross-model_id shadow row is never returned (space key)', async () => {
+      // plant a row in a DIFFERENT model space, maximally close to the query
+      const q = functional.queries[5];
+      const srcNode = functional.sources[5];
+      const srcVec = functional.vecByNode.get(srcNode).pooled;
+      await pool.query(
+        `INSERT INTO ${SHADOW} (node_id, chunk_idx, model_id, vector) VALUES ($1, NULL, $2, $3::vector)`,
+        [999999, MODEL_ID + 1, `[${serializeVector(srcVec)}]`]
+      );
+      const got = await adapter.neighbors(q.vec, 50, null);
+      expect(got.map((r) => r.nodeId)).not.toContain(999999);
+      await pool.query(`DELETE FROM ${SHADOW} WHERE node_id = 999999`);
+    });
+
+    // Regression fixture: per-node MAX over chunks scoring. Placed LAST in this
+    // describe because it rebuilds the shared shadow table from its own fixture
+    // doubles — after it, the functional corpus shadow is explicitly restored
+    // so later suites never see the fixture-only artifact.
     it('scores per-node MAX over chunks (mid-section regression fixture)', async () => {
       const dim = DIM;
       const q = new Array(dim).fill(0);
@@ -483,64 +564,9 @@ suite('PgVector ANN leg (real pgvector)', () => {
       expect(got[0].score).toBeCloseTo(Math.SQRT1_2, 3);
     });
 
-    it('dedups node ids before k is cut', async () => {
-      const got = await adapter.neighbors(functional.queries[0].vec, 10, null);
-      const ids = got.map((r) => r.nodeId);
-      expect(new Set(ids).size).toBe(ids.length);
-    });
-
-    it('restricts ranking to the candidates set (Set and predicate agree)', async () => {
-      const visible = new Set(functional.rows.filter((_, i) => i % 2 === 0).map((r) => r.nodeId));
-      const pred = (id) => visible.has(id);
-      const q = functional.queries[1];
-      const viaSet = await adapter.neighbors(q.vec, 10, visible);
-      const viaPred = await adapter.neighbors(q.vec, 10, pred);
-      expect(viaPred).toEqual(viaSet);
-      for (const r of viaSet) expect(visible.has(r.nodeId)).toBe(true);
-      const want = oracleNeighbors(q.text, functional.rows, visible, 10);
-      expect(viaSet.map((r) => r.nodeId)).toEqual(want.map((r) => r.nodeId));
-    });
-
-    it('an invisible candidate NEVER appears even when it ranks top-1 (adaptive retry)', async () => {
-      // every 7th node visible: f=4 oversample (k=10 → 40 scanned) is NOT
-      // enough to surface 10 visible nodes → the doubling retry must kick in
-      const visible = new Set([...functional.vecByNode.keys()].filter((id) => id % 7 === 0));
-      const q = functional.queries[2];
-      const got = await adapter.neighbors(q.vec, 10, visible);
-      expect(got.length).toBe(10);
-      for (const r of got) expect(visible.has(r.nodeId)).toBe(true);
-    });
-
-    it('returns a short list when fewer visible candidates exist than k', async () => {
-      const visible = new Set([1, 2, 3]);
-      const got = await adapter.neighbors(functional.queries[3].vec, 10, visible);
-      expect(got.length).toBe(3);
-    });
-
-    it('a query of a mismatched dim returns [] (space-key discipline)', async () => {
-      expect(await adapter.neighbors([1, 0], 5, null)).toEqual([]);
-    });
-
-    it('captures SET LOCAL hnsw.ef_search = 400 on every ANN query', async () => {
-      sqlLog.length = 0;
-      await adapter.neighbors(functional.queries[4].vec, 10, null);
-      const sets = sqlLog.filter((s) => s.startsWith('SET LOCAL hnsw.ef_search'));
-      expect(sets.length).toBeGreaterThanOrEqual(1);
-      for (const s of sets) expect(s).toBe(`SET LOCAL hnsw.ef_search = ${EF_SEARCH}`);
-    });
-
-    it('a cross-model_id shadow row is never returned (space key)', async () => {
-      // plant a row in a DIFFERENT model space, maximally close to the query
-      const q = functional.queries[5];
-      const srcNode = functional.sources[5];
-      const srcVec = functional.vecByNode.get(srcNode).pooled;
-      await pool.query(
-        `INSERT INTO ${SHADOW} (node_id, chunk_idx, model_id, vector) VALUES ($1, NULL, $2, $3::vector)`,
-        [999999, MODEL_ID + 1, serializeVector(srcVec)]
-      );
-      const got = await adapter.neighbors(q.vec, 50, null);
-      expect(got.map((r) => r.nodeId)).not.toContain(999999);
-      await pool.query(`DELETE FROM ${SHADOW} WHERE node_id = 999999`);
+    it('restores the functional shadow after the fixture rebuild', async () => {
+      await adapter.rebuildShadow();
+      expect(await shadowRowCount()).toBe(functional.rows.length);
     });
   });
 
@@ -610,15 +636,17 @@ suite('PgVector ANN leg (real pgvector)', () => {
       const oracleTop50 = recall.queries.map((q) => oracleNeighbors(q.text, recall.rows, null, K));
       let hitsAt100 = 0;
       const client = await pool.connect();
+      let inTx = false;
       try {
         await client.query('BEGIN');
+        inTx = true;
         await client.query('SET LOCAL hnsw.ef_search = 100');
         for (let i = 0; i < recall.queries.length; i++) {
           const { rows } = await client.query(
             `SELECT node_id, 1 - (vector <=> $1::vector) AS score
              FROM ${SHADOW} WHERE model_id = $2
              ORDER BY vector <=> $1::vector LIMIT $3`,
-            [serializeVector(recall.queries[i].vec), MODEL_ID, K]
+            [`[${serializeVector(recall.queries[i].vec)}]`, MODEL_ID, K]
           );
           const gotIds = new Set(rows.map((r) => Number(r.node_id)));
           const byNode = new Set();
@@ -626,7 +654,10 @@ suite('PgVector ANN leg (real pgvector)', () => {
           for (const r of oracleTop50[i]) if (byNode.has(r.nodeId)) hitsAt100 += 1;
         }
         await client.query('COMMIT');
+        inTx = false;
       } finally {
+        // never release an aborted tx client back to the pool (poisons it)
+        if (inTx) await client.query('ROLLBACK');
         client.release();
       }
       const recallAt100 = hitsAt100 / (K * recall.queries.length);

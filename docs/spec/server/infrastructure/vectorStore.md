@@ -93,8 +93,8 @@ chunk_idx, model_id, embedding)`. Chunk rows carry into BOTH shadows.
   then `enableLoadExtension(true)` + `vec.load(db)`; `sqlite-vec@^0.1.9`.
 - Virtual table `vectorstore_shadow_vec0`:
   `CREATE VIRTUAL TABLE IF NOT EXISTS vectorstore_shadow_vec0 USING vec0(
-  embedding float[<dim>] distance_metric=cosine,
-  +node_id INTEGER, +chunk_idx INTEGER, +model_id INTEGER)` — aux `+` columns carry
+embedding float[<dim>] distance_metric=cosine,
++node_id INTEGER, +chunk_idx INTEGER, +model_id INTEGER)` — aux `+` columns carry
   the space key; `chunk_idx = -1` marks the pooled row, `0..n-1` the chunk rows
   (vec0 aux INTEGER columns reject NULL and reject f64 bindings — every integer binds
   as BigInt). The virtual table plus its shadow internals live OUTSIDE the tracked DDL

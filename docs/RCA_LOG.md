@@ -1057,6 +1057,7 @@ username`), while `openPrivateWorkspace` creates its case folder at the FILESYST
   roles with spec-faithful expected counters. Final targeted gates: repositories dir
   15/15 suites · 227/227, domains/ai 8/8 suites · 63/63, new-suites rerun 47/47,
   eslint --max-warnings=0 + prettier clean.
+
 ### 2026-10-20 — A5 RED-test corrections during GREEN (three Case B test errors, no source violations)
 
 Task: `feature/p1-a5-vectormath` (T1.4a vectorMath/extractors/TextVectorJs oracle).
@@ -1082,6 +1083,7 @@ Task: `feature/p1-a5-vectormath` (T1.4a vectorMath/extractors/TextVectorJs oracl
   vectorStore.md §2.2/§2.3.
 - **Action taken**: tests corrected only; RED evidence stands (the RED commit failed on
   module-not-found for all four suites, which is independent of these test bugs).
+
 ### 2026-10-21 — T1.2b conformance: `deleted_at = NOW()` failed on the sqlite leg (Case B)
 
 - **Summary**: during the EmbeddingsRepository L2 conformance RED→GREEN cycle, the
@@ -1171,3 +1173,25 @@ Task: `feature/p1-a5-vectormath` (T1.4a vectorMath/extractors/TextVectorJs oracl
 - **Action taken**: spec §2.3 `replaceChunks` row + §2.4 PK bullet re-stated to the reconciled
   semantics; deleteByModel setup moved the modelTwo write to chunkIdx 1; both twins re-issued with
   the space-scoped DELETE + PK upsert.
+
+### 2026-10-21 — T1.1b GREEN: three test-side defects in the new llmAdapter suite (Case B ×3 — test errors; no spec misreading)
+
+- **Summary**: first full GREEN run of `llmAdapter.test.js` came back 18/21. The three failures
+  were (1) usage input_chars expected 11 for `['hello','world']` (actual 10 — arithmetic slip in
+  the expectation), (2) the `makeModelsStore` fake's upsert UPDATE path crashed (`rows.get(key)`
+  returns the stored ROW object, not an id — the find-by-id lookup then read `[1]` of undefined),
+  (3) the override-clear fixture's `runProvision` pushed into `provision.params` while the object
+  is named `provisioner` — a ReferenceError the adapter's fire-and-forget `.catch` (per §2.8
+  `provisioning`: warn-only, never fatal) legitimately swallowed, so the trigger assertion saw an
+  empty array.
+- **Diagnosis**: all three are defects in the NEW test code itself — the production code needed
+  only one robustness guard (`lock.files?.length ?? 0` for fixture locks without a file list,
+  llmAdapter §2.1 progress reporting). No spec clause was misread; the adapter contract (hot
+  re-probe, breaker, budget chain, usage) was implemented as specced and needed no test relaxation.
+- **Classification**: **Case B (Test Error)** ×3 — expectation arithmetic, fake-store update-path
+  bug, fixture naming bug. Citable clauses: §2.9 counters move only on their events (the 10-char
+  expectation is the correct reading); llmModelsStore §2.3 upsert returns `{id}` on both paths
+  (the fake must mirror that); llmAdapter §2.1/§2.8 provisioning progress reporting shape.
+- **Action taken**: expectation corrected to 10; fake upsert fixed to `Object.assign(existing, …)`
+  / `return { id: existing.id }`; fixture renamed consistently to `provisioner.params`. Suite
+  re-run: 21/21 green.

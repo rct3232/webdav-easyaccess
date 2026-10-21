@@ -44,6 +44,7 @@ function createVersionsService({
   blobStore,
   fileStorageMode = 's3',
   aclService: injectedAclService,
+  aiJobsRepository,
 }) {
   const aclService = injectedAclService || require('../../permissions/services/aclService');
 
@@ -186,6 +187,18 @@ function createVersionsService({
       thumbnailService.invalidate(nodeId);
     } catch {
       /* best-effort */
+    }
+
+    // Post-commit enrichment hook (Seam 4: Restore).
+    // Failure isolation: the restore has already committed; a hook failure is
+    // best-effort and must never fail the user-facing restore.
+    try {
+      await aiJobsRepository.enqueue(nodeId, 'embed', 1, null);
+    } catch (error) {
+      console.error(
+        `[versionsService] failed to enqueue embed job for node ${nodeId} on restore:`,
+        error && error.message
+      );
     }
 
     return {

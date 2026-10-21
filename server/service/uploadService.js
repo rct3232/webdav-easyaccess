@@ -1,7 +1,17 @@
 'use strict';
 
+const crypto = require('crypto');
 const storage = require('../store/storage');
 const thumbnailService = require('../domains/thumbnails/services/thumbnailService');
+
+/**
+ * Deterministic, cheap content hash for the write path.
+ * Local crypto wrapper to avoid the utf8 coercion loss in server/utils/hash.js
+ * for binary buffers.
+ */
+function sha256Buffer(buffer) {
+  return crypto.createHash('sha256').update(buffer).digest('hex');
+}
 
 /**
  * Factory: create an upload orchestration service bound to one store + backend at creation time.
@@ -26,7 +36,13 @@ const thumbnailService = require('../domains/thumbnails/services/thumbnailServic
  * | overwrite  | S3 PUT/TX2 fails | Rolled back to pre-state: node active, prev active row reactivated, pending v_{k+1} row deleted (filecache re-asserted) | New blob deleted best-effort; last-good B_k kept | File remains downloadable as previous version; rollback failure -> pending_upload (scan/repair + GC, DEF-12/13) |
  * ────────────────────────────────────────────────────────────────
  */
-function createUploadService({ fileNodeService, blobStorageService, blobStore, fileNodesStore }) {
+function createUploadService({
+  fileNodeService,
+  blobStorageService,
+  blobStore,
+  fileNodesStore,
+  aiJobsRepository,
+}) {
   function withTx(callback) {
     const backend = storage.getBackend();
     if (backend === 'sqlite') {
@@ -85,7 +101,26 @@ function createUploadService({ fileNodeService, blobStorageService, blobStore, f
       throw error;
     }
 
-    return { nodeId, s3Key, size: buffer.length, mimeType };
+    // Post-commit enrichment hook (Seam 1: Upload) + content_hash write-side.
+    // Failure isolation: hash population and job enqueue must never fail the
+    // user-facing upload — both are best-effort after TX2 commit.
+    const contentHash = sha256Buffer(buffer);
+    try {
+      await fileNodesStore.upsertCache(nodeId, buffer.length, mimeType, contentHash);
+    } catch (_) {
+      /* best-effort — content_hash population is enrichment metadata */
+    }
+
+    try {
+      await aiJobsRepository.enqueue(nodeId, 'embed', 1, contentHash);
+    } catch (error) {
+      console.error(
+        `[uploadService] failed to enqueue embed job for node ${nodeId}:`,
+        error && error.message
+      );
+    }
+
+    return { nodeId, s3Key, size: buffer.length, mimeType, contentHash };
   }
 
   /* ------------------------------------------------------------------ */
@@ -186,7 +221,26 @@ function createUploadService({ fileNodeService, blobStorageService, blobStore, f
       /* best-effort */
     }
 
-    return { nodeId: fileNodeId, s3Key, size: buffer.length, mimeType };
+    // Post-commit enrichment hook (Seam 2: Modify) + content_hash write-side.
+    // Failure isolation: identical to upload — hash population and job enqueue
+    // are best-effort after TX2 commit and never fail the user-facing overwrite.
+    const contentHash = sha256Buffer(buffer);
+    try {
+      await fileNodesStore.upsertCache(fileNodeId, buffer.length, mimeType, contentHash);
+    } catch (_) {
+      /* best-effort — content_hash population is enrichment metadata */
+    }
+
+    try {
+      await aiJobsRepository.enqueue(fileNodeId, 'embed', 1, contentHash);
+    } catch (error) {
+      console.error(
+        `[uploadService] failed to enqueue embed job for node ${fileNodeId}:`,
+        error && error.message
+      );
+    }
+
+    return { nodeId: fileNodeId, s3Key, size: buffer.length, mimeType, contentHash };
   }
 
   /* ------------------------------------------------------------------ */

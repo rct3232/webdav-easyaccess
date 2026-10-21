@@ -21,6 +21,7 @@ function createFileService(options = {}) {
   const _fileNodesStore = options.fileNodesStore || null;
   const _conflictError = options.conflictError || conflictError;
   const _notFoundError = options.notFoundError || notFoundError;
+  const aiJobsRepository = options.aiJobsRepository;
   const remoteOps = blobStore
     ? createWebdavRemoteOps({ blobStore, fileStorageMode, fileNodeService })
     : null;
@@ -439,6 +440,19 @@ function createFileService(options = {}) {
     // fileNodeService.deleteNode (hard delete) stays reserved for the repair
     // channel, upload/copy rollback and the admin permanent-delete route.
     await fileNodeService.markSubtreeDeleted([nodeId, ...descendantIds]);
+
+    // Post-commit enrichment hook (Seam 3: Delete).
+    // Failure isolation: the soft-delete has already committed; a hook failure
+    // is best-effort and must never fail the user-facing deletion.
+    try {
+      await aiJobsRepository.enqueue(nodeId, 'delete', 1, null);
+    } catch (error) {
+      console.error(
+        `[fileService] failed to enqueue delete job for node ${nodeId}:`,
+        error && error.message
+      );
+    }
+
     return { deletedCount: descendantIds.length + 1 };
   }
 

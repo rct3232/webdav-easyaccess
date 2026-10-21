@@ -22,8 +22,10 @@ Target-contract spec.
   `vectorStore/TextVectorJs.js` (+ `vectorMath.js` pure cosine/mean helpers, unit-tested)
 - **Shared ACL helper:** `vectorStore/aclFilter.js` (oversample→filter→retry, §2.5)
 - **Tests:** `server/domains/ai/vectorStore/__tests__/vectorStore.test.js` + the
-  §2.6 conformance suite `conformance.test.js` (oracle + held-out recall legs, run per
-  active engine)
+  §2.6 conformance suite `conformance.test.js` (exact≡oracle harness
+  `runExactEngineConformance` — EXACT engines only) + the ANN leg
+  `pgvector.test.js` (PgVector recall@50 @ ef_search=400 over held-out queries;
+  real-PG, skips when the `vector` extension is unavailable).
 
 ### 2.2 Seam interface (exact)
 
@@ -62,7 +64,13 @@ through to JsFallback — falling through is a supported, shipping state.
 
 - PgVector: shadow table (adapter-internal name `vectorstore_shadow_pg` — the literal
   name is fixed for ops runbook references) —
-  columns `(node_id, chunk_idx NULLABLE, model_id, vector vector(dim))` + HNSW index;
+  columns `(node_id, chunk_idx NULLABLE, model_id, vector vector(dim))` + HNSW index
+  (`vector_cosine_ops`); `atttypmod` of the `vector` column carries the bound dim
+  (numeric `dim`, `-1` = untyped), so a stale-dim table is detected from the catalog and
+  the adapter drop-rebuilds (model change ⇒ rebuild; stale-space shadow data never
+  coexists). Extension availability is probed by `probePgVector(executor)` — exported by
+  the adapter for the boot factory: reads `pg_extension.extversion`, falls back to
+  `pg_available_extensions` for the install hint, and gates on ≥0.7 semver.
   sqlite:
   vec0 virtual table `vectorstore_shadow_vec0` with `(node_id INTEGER PK BigInt-bound,
 chunk_idx, model_id, embedding)`. Chunk rows carry into BOTH shadows.
@@ -88,6 +96,9 @@ chunk_idx, model_id, embedding)`. Chunk rows carry into BOTH shadows.
   shadow → SQL/JS filter to the visible set → if fewer than k survive, adaptive retry
   doubling the oversample (bounded rounds, then short list — correctness over padding).
   The helper is SHARED code and is also the valid pre-0.7 pg behavior.
+  Interim note (until the helper lands): `PgVector` implements the same
+  oversample→filter→adaptive-retry inline with the f=4 default so its ANN leg is
+  self-contained; consolidation into `aclFilter.js` must not change behavior.
 
 ### 2.6 Accuracy contract
 
@@ -98,6 +109,19 @@ chunk_idx, model_id, embedding)`. Chunk rows carry into BOTH shadows.
   **HELD-OUT (external) queries only** — self-queries are banned as grading input.
 - Cross-engine result-identity is NOT promised (ANN is approximate); the promise is
   the recall floor.
+- Suite layout (binding): `runExactEngineConformance` grades EXACT engines only
+  (bit-parity of scores is unreachable for a C-side ANN accumulation order — the ANN
+  engine is graded by the recall leg instead, never by the exact harness). The ANN leg
+  runs against real pgvector (0.8.x verified) with a deterministic clustered corpus and
+  HELD-OUT queries = noisy perturbations of corpus vectors (never byte-equal to a corpus
+  row; a self-query grading input fails the suite). It also captures the
+  `SET LOCAL hnsw.ef_search = 400` statement on every ANN query (knob-bites assertion)
+  and measures the ef=100 contrast for evidence only.
+- PG test leg: the recall leg needs a pgvector-enabled server
+  (`pgvector/pgvector:pg16`); against a plain `postgres:16` the real-PG describes SKIP
+  (extension probe fails ⇒ `describe.skip` with the reason). Run via
+  `npm run test:ci:pg:vector` (server/package.json) targeting the `WEA_TEST_PG_*`
+  namespace.
 - Reference corpus + query set are the dev-owned release artifact (shipped as
   profile values, `calibrated:false` provenance in admin; NOT shipped
   to end users).

@@ -1544,3 +1544,21 @@ profile + per-row persistence on `embeddings.dim`/`embeddings_chunk.dim`).
   wt-b3/wt-b5/wt-b6. RED-first targets per §27: B3 wizard rows + locale
   mirror; B5 pipeline drain + restart survival; B6 hook registration +
   content_hash population.
+- **B3/B5/B6 relaunch (2026-10-21, after interruption)**: the first
+  parallel launch died mid-flight — wt-b3/wt-b5/wt-b6 worktrees were
+  never created and the subagents left NO commits; the only residue was
+  unverified pre-RED scaffolding (commitHookRegistry/commitHooks +
+  embeddings stores + vectorStore/index.js + file-service hook wiring)
+  sitting uncommitted on the main checkout. Cleanup: scaffolding stashed
+  (`git stash push -u` — message "B5/B6 partial scaffolding from
+  interrupted session (pre-RED)") and the main checkout restored to
+  `ai-feature @ 0c6ad08`. Branch situation: `feature/p1-b6-hooks-content-hash`
+  existed from the dead session (pointing at `0c6ad08`) and was reused for
+  wt-b6; B3 got `feature/p1-b3-wizard-ai-step` and B5 got
+  `feature/p1-b5-embed-pipeline-work` (the old B5 branch name is occupied
+  by the main checkout of the prior session and was left in place).
+  All three worktrees were recreated on base `0c6ad08` and three fresh
+  RED-first subagents launched (sessions: B3 `ses_ea2f50c51ffe…`, B5
+  `ses_ea2f50c52ffe…`, B6 `ses_ea2f50c53ffe…`). B6's brief carries the
+  stash pointer as reference-only — the scaffolding must not be adopted
+  wholesale without a fresh RED cycle.

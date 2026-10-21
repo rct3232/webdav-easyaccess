@@ -313,6 +313,13 @@ function runExactEngineConformance({ createEngine, corpus, k = 10 }) {
 
 // --- A5 leg: the TextVectorJs engine itself under the harness ---
 
+// Exports for the native adapters' conformance legs (vectorMath.md §5): the
+// native suites require this file and drive the SAME runner + corpus builder
+// unchanged. Requiring this file from a test executes the A5 describe block —
+// harmless (its own legs re-run green alongside the requiring suite).
+
+module.exports = { runExactEngineConformance, buildCorpus };
+
 describe('TextVectorJs (JsFallback) conformance', () => {
   const corpus = buildCorpus({});
   runExactEngineConformance({

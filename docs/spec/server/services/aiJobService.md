@@ -24,14 +24,19 @@ Target-contract spec.
 ### 2.2 Enqueue hooks (content-commit seams)
 
 `onNodeContentCommitted(nodeId)` — called fire-and-forget AFTER the domain TX COMMITS
-(precedent: thumbnail invalidation `uploadService.js:181-187`) at exactly these points:
+(precedent: thumbnail invalidation `uploadService.js:≈204-209`) at exactly these points:
 
 | Seam                  | Anchor                                                     |
 | --------------------- | ---------------------------------------------------------- |
-| S3 upload             | `server/service/uploadService.js` TX2 return (≈:73-88)     |
-| WebDAV upload success | `server/domains/files/services/fileService.js` (≈:230-240) |
+| S3 upload             | `server/service/uploadService.js` TX2 return (≈:99-123)     |
+| WebDAV upload success | `server/domains/files/services/fileService.js` (≈:250-264) |
 | Copy                  | `fileService.copyFile` success                             |
 | Version restore       | `versionsService.restore` success                          |
+
+**Hook module (implemented):** `server/domains/ai/nodeContentHook.js` — owns the
+node lookup, the decision table below, and the per-kind enqueue; capability
+probes read the shared config resolver (`LLM_<ROLE>_BASE_URL` + `LLM_<ROLE>_MODEL`
+per role). There is NO delete seam.
 
 The same commit points populate `filecache.content_hash` (column exists, null today —
 `blobStorageService.js:66`); the hook receives the fresh hash.

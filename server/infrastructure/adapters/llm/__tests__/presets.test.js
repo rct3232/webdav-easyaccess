@@ -321,6 +321,57 @@ describe('conformance kit accessor (llmPresets §2.2a — τ=0.90 release artifa
   });
 });
 
+describe('evaluateConformance — EG2 activation gate (llmPresets §2.2a/§2.3, §4 fixture)', () => {
+  const { evaluateConformance, kit } = require('../presets');
+
+  it('kit canonical vectors re-fed as observed ⇒ pass (median 1.0, dim 768)', () => {
+    const result = evaluateConformance(kit().vectors);
+    expect(result).toMatchObject({
+      dimOk: true,
+      threshold: 0.9,
+      pass: true,
+      reason: null,
+    });
+    // identity re-feed: renormalization round-trip leaves median at 1 up to
+    // float rounding (f32/f64 noise ~1e-9) — exact `toBe(1)` would pin an
+    // implementation detail, not the §2.3 contract.
+    expect(result.median).toBeCloseTo(1, 6);
+  });
+
+  it('same-dim DIFFERENT model (embeddinggemma-1 negative) ⇒ nonConformingEndpoint', () => {
+    // Orthogonal-ish 768-dim unit vectors: dim check passes, median collapses
+    // to ~0 — the §4 aliased-endpoint truth table (dim alone is NOT identity).
+    const decoy = kit().strings.map((_, i) => {
+      const v = new Float32Array(768);
+      v[i % 768] = 1;
+      return v;
+    });
+    const result = evaluateConformance(decoy);
+    expect(result.dimOk).toBe(true);
+    expect(result.median).toBeLessThan(0.9);
+    expect(result.pass).toBe(false);
+    expect(result.reason).toBe('nonConformingEndpoint');
+  });
+
+  it('wrong dim (512 truncation) ⇒ wrongDim, median null, dim check ran FIRST', () => {
+    const truncated = kit().vectors.map((v) => v.slice(0, 512));
+    const result = evaluateConformance(truncated);
+    expect(result).toMatchObject({ dimOk: false, median: null, pass: false, reason: 'wrongDim' });
+  });
+
+  it('endpoint self-declared names are never consulted (signature carries vectors only)', () => {
+    expect(evaluateConformance.length).toBe(1);
+    const source = fs.readFileSync(path.join(__dirname, '..', 'presets.js'), 'utf8');
+    // No identity-by-name branch exists anywhere in the gate module.
+    expect(source).not.toMatch(/alias|self-declared|modelName\s*===/i);
+  });
+
+  it('vector count mismatch against the kit ⇒ wrongDim (incomplete observation set)', () => {
+    const short = kit().vectors.slice(0, 12);
+    expect(evaluateConformance(short).reason).toBe('wrongDim');
+  });
+});
+
 describe('grep gates (llmPresets §4 provider-neutrality + kit provenance)', () => {
   const ROOT = path.join(__dirname, '..');
 

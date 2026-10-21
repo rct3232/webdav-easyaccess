@@ -216,6 +216,58 @@ function kit() {
   return kitCache;
 }
 
+/**
+ * The §2.3 EG2 activation gate as a pure function over the kit
+ * (llmPresets §2.2a): structural (dim == 768) + behavioral (median cos to the
+ * canonical vectors ≥ kit threshold). `observedVectors` is the endpoint's
+ * vector set for kit().strings in the same order — endpoint-declared NAMES are
+ * never an input (identity is what the vectors DO, §4.23.2).
+ *
+ * The dim check runs BEFORE the median-cos comparison: a wrong-dim vector set
+ * can never produce a passing median (median is null on dim failure).
+ * Inputs are defensively renormalized before dotting (unit-norm contract).
+ */
+function evaluateConformance(observedVectors) {
+  const canonical = kit();
+  const observed = Array.isArray(observedVectors) ? observedVectors : [];
+
+  const dimOk =
+    observed.length === canonical.vectors.length &&
+    observed.every((v) => v instanceof Float32Array && v.length === 768);
+
+  if (!dimOk) {
+    return { dimOk: false, median: null, threshold: canonical.threshold, pass: false, reason: 'wrongDim' };
+  }
+
+  const renorm = (v) => {
+    let norm = 0;
+    for (let i = 0; i < v.length; i++) norm += v[i] * v[i];
+    norm = Math.sqrt(norm) || 1;
+    const out = new Float32Array(v.length);
+    for (let i = 0; i < v.length; i++) out[i] = v[i] / norm;
+    return out;
+  };
+
+  const cos = canonical.vectors.map((c, i) => {
+    const a = renorm(observed[i]);
+    const b = renorm(c);
+    let d = 0;
+    for (let j = 0; j < b.length; j++) d += a[j] * b[j];
+    return d;
+  });
+  const sorted = cos.slice().sort((x, y) => x - y);
+  const median = sorted[Math.floor(sorted.length / 2)];
+
+  const pass = median >= canonical.threshold;
+  return {
+    dimOk: true,
+    median,
+    threshold: canonical.threshold,
+    pass,
+    reason: pass ? null : 'nonConformingEndpoint',
+  };
+}
+
 module.exports = {
   LLM_PRESETS,
   findPreset,
@@ -223,4 +275,5 @@ module.exports = {
   expectedCapabilities,
   evaluateCapabilityMatrix,
   kit,
+  evaluateConformance,
 };

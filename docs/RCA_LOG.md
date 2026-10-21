@@ -1186,3 +1186,14 @@ Task: `feature/p1-a5-vectormath` (T1.4a vectorMath/extractors/TextVectorJs oracl
   assertions correct; the implementation needed no change.
 - **Action taken**: assertions scoped to embed rows; the ollama-chat lookup now asserts the
   pending-row ABSENCE (null) with the §2.3 clause cited in the test comment. Spec unchanged.
+
+### 2026-10-21 — T1.1a evaluateConformance GREEN: identity re-feed asserted exact median 1 (Case B — test error)
+
+- **Summary**: the canonical-vectors-re-fed scenario expected `median` toBe(1); received
+  1.000000001411478 — the gate renormalizes both sides before dotting (defensive unit-norm,
+  §2.2a), so an f32→f64 round-trip leaves the identity median at 1 + ~1e-9.
+- **Classification**: **Case B (Test Error)** — exact float equality on a normalization
+  round-trip pins an implementation detail, not the §2.3 contract (identity re-feed passes
+  with median ≈ 1). No spec change; the implementation's defensive renorm stays.
+- **Action taken**: assertion relaxed to `toBeCloseTo(1, 6)` with the float-noise rationale
+  recorded in the test comment.

@@ -196,6 +196,8 @@ describe('configRegistry', () => {
       'LLM_DAILY_CALL_CAP',
       'LLM_DAILY_TOKEN_CAP',
       'LLM_REPROBE_DEBOUNCE_S',
+      'LLM_BREAKER_THRESHOLD',
+      'LLM_BREAKER_COOLDOWN_S',
       'AI_SEMANTIC_SEARCH_ENABLED',
     ];
 
@@ -228,6 +230,8 @@ describe('configRegistry', () => {
       expect(getDefault('LLM_DAILY_CALL_CAP')).toBe(0);
       expect(getDefault('LLM_DAILY_TOKEN_CAP')).toBe(0);
       expect(getDefault('LLM_REPROBE_DEBOUNCE_S')).toBe(60);
+      expect(getDefault('LLM_BREAKER_THRESHOLD')).toBe(5);
+      expect(getDefault('LLM_BREAKER_COOLDOWN_S')).toBe(300);
       expect(getDefault('AI_SEMANTIC_SEARCH_ENABLED')).toBe(true);
       expect(getDefault('LLM_MAX_INPUT_CHARS')).toBeUndefined();
       expect(getDefault('LLM_EMBED_BASE_URL')).toBeUndefined();

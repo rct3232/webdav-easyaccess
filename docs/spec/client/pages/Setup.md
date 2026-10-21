@@ -88,6 +88,7 @@ Errors surface via `t(errorCode, params)` (existing error-display utility patter
 | Function       | Input                                                                  | Return                                          | API called              |
 | -------------- | ---------------------------------------------------------------------- | ----------------------------------------------- | ----------------------- |
 | getSetupStatus | `()`                                                                   | `Promise<{ setup_complete, missing, current }>` | `GET /api/setup/status` |
+| getLlmPresets  | `()`                                                                   | `Promise<{ presets: Array<{ id, family, roles, expected }> }>` | `GET /api/setup/llm-presets` |
 | testSetup      | `(target: 'postgresql' \| 's3' \| 'webdav' \| 'llm', payload: Object)` | `Promise<{ ok }>`                               | `POST /api/setup/test`  |
 | applySetup     | `(payload: Object)`                                                    | `Promise<{ restart_required }>`                 | `POST /api/setup/apply` |
 

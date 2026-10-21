@@ -224,6 +224,10 @@ Expectations are advisory; probes (§2.4) gate each sub-capability.
   (waiting state "begins at the next boot" during the wizard; live per-file progress and
   the ready/caps-off outcome on the first configured boot after the restart).
 - Capability matrix display (per-role probe chips) is SHARED by both surfaces.
+- The wizard preset picker consumes the manifest over the wire via
+  `GET /api/setup/llm-presets` (setup routes; chat/vision/asr-relevant rows only —
+  embed is not wizard-configurable). The admin editor renders from the same
+  manifest server-side; there is no second manifest copy on the client.
 
 ## 3. Dependencies
 

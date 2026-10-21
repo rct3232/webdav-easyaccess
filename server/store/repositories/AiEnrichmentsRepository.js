@@ -4,7 +4,7 @@
  * AiEnrichmentsRepository — domain interface over the `ai_enrichments` table
  * (docs/spec/server/store/aiEnrichmentsStore.md). Stores AI-derived
  * descriptive metadata per node. `tags` stores FREE descriptive words only
- * (PLAN §19 — no vocabulary/tag_parents/tag_embeddings code paths).
+ * (PLAN §19 — no tag hierarchy or vector artifact code paths).
  */
 
 /**

@@ -217,7 +217,7 @@ describe('EmbeddingsChunkRepository conformance', () => {
     expect(await repo.listByNode(n.nodeId)).toEqual([]);
   });
 
-  it('deleteByModel retires the whole space', async () => {
+  it('deleteSpace clears the whole space', async () => {
     const modelOne = await embedModel();
     const modelTwo = await embedModel();
     const a = await node('delmodel-a');
@@ -230,7 +230,7 @@ describe('EmbeddingsChunkRepository conformance', () => {
     // PK upsert (see the space-keying scenario above).
     await replace(a.nodeId, modelTwo, [{ chunkIdx: 1, vector: VEC_A }]);
 
-    const deleted = await repo.deleteByModel(modelOne);
+    const deleted = await repo.deleteSpace(modelOne);
     expect(deleted.changes).toBe(2);
     expect(await countRows('model_id = ?', [modelOne])).toBe(0);
     expect(await countRows('model_id = ?', [modelTwo])).toBe(1);

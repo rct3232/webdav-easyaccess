@@ -29,7 +29,7 @@
  *   Vectors are validated/serialized BEFORE the TX (never stored half-written).
  * @property {(nodeId: number) => Promise<{ changes: number }>} deleteByNode
  *   Missing rows → { changes: 0 }.
- * @property {(modelId: number) => Promise<{ changes: number }>} deleteByModel
+ * @property {(modelId: number) => Promise<{ changes: number }>} deleteSpace
  *   Retire a whole embedding space.
  * @property {(nodeId: number, opts?: { modelId?: number }) => Promise<number>} countByNode
  * @property {(modelId: number, opts?: { afterNodeId?: number, afterChunkIdx?: number, limit?: number }) => Promise<ChunkEmbeddingRow[]>} listAllByModel

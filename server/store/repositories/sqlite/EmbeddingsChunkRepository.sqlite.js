@@ -95,7 +95,7 @@ module.exports = function createSqliteEmbeddingsChunkRepository(executor) {
     }
   }
 
-  async function deleteByModel(modelId) {
+  async function deleteSpace(modelId) {
     try {
       const result = await executor.run('DELETE FROM embeddings_chunk WHERE model_id = ?', [
         Number(modelId),
@@ -155,7 +155,7 @@ module.exports = function createSqliteEmbeddingsChunkRepository(executor) {
     listByNode,
     replaceChunks,
     deleteByNode,
-    deleteByModel,
+    deleteSpace,
     countByNode,
     listAllByModel,
   };

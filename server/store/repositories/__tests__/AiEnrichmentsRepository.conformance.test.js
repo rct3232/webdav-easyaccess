@@ -5,7 +5,7 @@
  * aiEnrichmentsStore.md §2.8). Runs against the ACTIVE backend via
  * createTestDatabase() (sqlite default leg; real PG adapter leg).
  * Covers `ai_enrichments` only — per PLAN §19, tags are free descriptive
- * words; NO vocabulary/tag_parents/tag_embeddings code paths exist here.
+ * words; NO tag hierarchy or vector artifact code paths exist here.
  */
 
 const { createTestDatabase, createTestFileNode, dbQuery, dbRun } = require('@server/test-utils');

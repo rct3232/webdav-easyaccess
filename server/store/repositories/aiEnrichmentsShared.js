@@ -9,7 +9,7 @@
  *
  * CONSTRAINED (PLAN.md §19 — Tag Layer Dissolution):
  * `ai_enrichments.tags` stores *free descriptive words* ONLY.
- * - No `tag_parents`, `tag_embeddings`, or `tag_aliases` code paths are
+ * - No tag hierarchy, vector artifact, or tag alias code paths are
  *   permitted in this layer.
  * - No vocabulary normalization, no hierarchies. Tags are opaque strings.
  */

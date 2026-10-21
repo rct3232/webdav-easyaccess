@@ -34,7 +34,7 @@
 | `get`          | (nodeId, chunkIdx) => Promise\<row \| null\>                              | Single chunk read.                                                                                                                                    |
 | `replaceChunks`| (nodeId, modelId, chunks: Array\<{ chunkIdx, vector }\>) => Promise\<{ inserted }\> | ONE TX: DELETE the node's rows for the incoming `model_id` (that space's set for the node) + INSERT the given set. A cross-space write landing on an existing `(node_id, chunk_idx)` position claims it via the PK upsert (newer space wins); rows of OTHER models at non-colliding indices are untouched — a node may briefly hold rows in two spaces mid-backfill (readers filter by `model_id`). Re-chunking within one model replaces that model's whole set; no partial updates. |
 | `deleteByNode` | (nodeId) => Promise\<{ changes }\>                                        | Explicit drop (content change, retirement). Missing rows → `changes: 0`.                                                                              |
-| `deleteByModel`| (modelId) => Promise\<{ changes }\>                                       | Retire a whole embedding space (model migration backfill start).                                                                                      |
+| `deleteSpace` | (modelId) => Promise\<{ changes }\>                                                     | Remove a whole embedding space (model migration backfill start).                                                                                      |
 | `countByNode`  | (nodeId, { modelId }?) => Promise\<number\>                               | Chunk count for one node (progress / ladder outcome).                                                                                                 |
 | `listAllByModel`| (modelId, { afterNodeId?, afterChunkIdx?, limit? }?) => Promise\<row[]\>  | Tuple keyset cursor over the composite PK — rows strictly after `(afterNodeId, afterChunkIdx)` (afterChunkIdx defaults to -1: resume at that node's first row), `ORDER BY node_id, chunk_idx LIMIT n`, filtered to `model_id` — drives chunk-shadow-index rebuild. A node-level cursor cannot paginate the composite PK without skipping boundary-node chunks (§2.8 "every row exactly once"). |
 
@@ -64,7 +64,7 @@ One `executor.transaction` per call; no locks, no journal (derived AI state). Th
 - [ ] `listByNode` returns chunks in `chunk_idx` ASC order; `modelId` filter excludes other spaces
 - [ ] Chunk count for a re-chunked node matches the new ladder outcome (old count discarded)
 - [ ] `listAllByModel` keyset pagination returns every row exactly once across pages, in `(nodeId, chunkIdx)` order
-- [ ] `deleteByNode` removes all chunks; `deleteByModel` retires the whole space
+- [ ] `deleteByNode` removes all chunks; `deleteSpace` clears the whole space
 - [ ] Node purge cascades the rows; trashing does NOT
 - [ ] TEXT vector round-trips bit-stably through serialize/parse (float count == pooled `dim`)
 - [ ] L2 conformance (real sqlite + real PostgreSQL): PK upsert/replace parity, keyset pagination parity, cascade parity, row-shape mapping (number ids, ISO `updatedAt`)

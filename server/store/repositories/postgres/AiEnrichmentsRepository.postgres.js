@@ -3,7 +3,7 @@
 /**
  * Postgres twin of AiEnrichmentsRepository (docs/spec/server/store/
  * aiEnrichmentsStore.md). `ai_enrichments.tags` stores FREE descriptive
- * words only (PLAN §19 — no vocabulary/tag_parents/tag_embeddings code
+ * words only (PLAN §19 — no tag hierarchy or vector artifact code
  * paths). Every mutation runs in a storage transaction on the executor
  * seam; no dialect branching above the repository.
  */

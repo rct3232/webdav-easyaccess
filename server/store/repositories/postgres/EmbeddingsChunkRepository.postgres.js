@@ -93,7 +93,7 @@ module.exports = function createPostgresEmbeddingsChunkRepository(executor) {
     }
   }
 
-  async function deleteByModel(modelId) {
+  async function deleteSpace(modelId) {
     try {
       const result = await executor.run('DELETE FROM embeddings_chunk WHERE model_id = $1', [
         Number(modelId),
@@ -156,7 +156,7 @@ module.exports = function createPostgresEmbeddingsChunkRepository(executor) {
     listByNode,
     replaceChunks,
     deleteByNode,
-    deleteByModel,
+    deleteSpace,
     countByNode,
     listAllByModel,
   };

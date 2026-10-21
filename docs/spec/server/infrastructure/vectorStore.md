@@ -84,13 +84,41 @@ chunk_idx, model_id, embedding)`. Chunk rows carry into BOTH shadows.
   `backendHealth('vector').report` = fallback(degraded reason + hint
   `CREATE EXTENSION vector` ≥0.7 / sqlite-vec binary). Boot NEVER blocks.
 
+### 2.4a SqliteVec (vec0) adapter — physical layout
+
+- Extension loading: `new DatabaseSync(path, { allowExtension: true })` is REQUIRED
+  (`db.enableLoadExtension(true)` throws `ERR_INVALID_STATE` without the open option),
+  then `enableLoadExtension(true)` + `vec.load(db)`; `sqlite-vec@^0.1.9`.
+- Virtual table `vectorstore_shadow_vec0`:
+  `CREATE VIRTUAL TABLE IF NOT EXISTS vectorstore_shadow_vec0 USING vec0(
+  embedding float[<dim>] distance_metric=cosine,
+  +node_id INTEGER, +chunk_idx INTEGER, +model_id INTEGER)` — aux `+` columns carry
+  the space key; `chunk_idx = -1` marks the pooled row, `0..n-1` the chunk rows
+  (vec0 aux INTEGER columns reject NULL and reject f64 bindings — every integer binds
+  as BigInt). The virtual table plus its shadow internals live OUTSIDE the tracked DDL
+  chain (§2.4); `DROP TABLE vectorstore_shadow_vec0` removes the artifact completely.
+- Shadow rows are re-synced from canonical TEXT (`loadRows(modelId, null)`) whenever the
+  shadow is stale (absent, wrong dim, or its `user_version` stamp ≠ the canonical
+  generation counter) — same per-query freshness as JsFallback, no resident state.
+- KNN statement: `SELECT node_id, chunk_idx, distance FROM vectorstore_shadow_vec0
+WHERE embedding MATCH ? AND k = ?` (query vector JSON-stringified). Returned ids are
+  JS numbers; ids beyond `Number.MAX_SAFE_INTEGER` are rejected at INSERT with a
+  console.warn (sentinel skip — product ids are sequences far below 2^53; vec0 f64
+  returns cannot round-trip larger integers).
+- vec0 distances are FLOAT32 approximations of `1 − cosine`; the vec0 KNN ranks
+  CANDIDATES ONLY. Scores are recomputed in f64 via `vectorMath.cosineSimilarity` over
+  the canonical TEXT rows so `neighbors` output stays exact≡oracle (§2.6).
+- `neighbors` ACL enforcement uses the §2.5 `neighborsFiltered` helper (no join-KNN);
+  `userScope: null` loads the full model space and passes `candidates` through.
+
 ### 2.5 vec0 constraints & the ACL filter helper
 
 - Requires the **node:sqlite driver** (current `sqlite3` npm exposes no extension
   loading); migration confined to `db/sqliteExecutor.js`;
   **product Node floor ≥24** (node:sqlite experimental flag on v24 — tolerated, works).
 - vec0 integer PKs bind via **BigInt** (node:sqlite binds JS numbers as doubles —
-  silently corrupts vec0 keys otherwise).
+  silently corrupts vec0 keys otherwise). This extends to EVERY vec0 INTEGER aux column
+  (aux columns reject f64 bindings outright); vec0 SELECTs return ids as JS numbers.
 - vec0 + JOIN has a planner bug ⇒ NO join-KNN: ACL filtering uses
   `neighborsFiltered(vec, k, aclPredicate)`: oversample `k·f` (f default 4) from the
   shadow → SQL/JS filter to the visible set → if fewer than k survive, adaptive retry
@@ -105,6 +133,9 @@ chunk_idx, model_id, embedding)`. Chunk rows carry into BOTH shadows.
 - Conformance suite, per active engine:
 - EXACT engines (JsFallback, vec0-flat): results IDENTICAL to the JS oracle
   (`vectorMath` cosine over `allVectors`) — bit-parity of scores within fp tolerance.
+  For the vec0 adapter this is achieved by f64 score recomputation over canonical TEXT
+  rows (§2.4a): the vec0 f32 `distance` column ranks candidates only and is never
+  returned to callers.
 - ANN engine (pgvector HNSW ef_search=400): **recall@50 ≥ 0.99** graded with
   **HELD-OUT (external) queries only** — self-queries are banned as grading input.
 - Cross-engine result-identity is NOT promised (ANN is approximate); the promise is
@@ -156,10 +187,13 @@ model-profile constants, owned by the callers — never by this seam.
       list terminal case)
 - [ ] vec0: BigInt PK round-trip (id > 2^53 sentinel skipped with warning —
       product ids are sequences far below that; assert binding type is BigInt not double);
-      no JOIN-in-knn SQL in the adapter (grep the statements)
+      no JOIN-in-knn SQL in the adapter (grep the statements); every aux INTEGER column
+      binds as BigInt; shadow re-syncs from canonical TEXT when stale and a dropped-
+      shadow rebuild reproduces identical neighbor results (never-tracked-DDL rule §2.4)
 - [ ] Accuracy contract (§2.6): exact engines ≡ JS oracle on the reference set; pg ANN leg reports
       recall@50 ≥0.99 at ef_search=400 with held-out queries ONLY (self-query grading
-      makes the suite fail)
+      makes the suite fail); vec0 recall@50 ≥0.99 held-out (§2.4a — the vec0 KNN is a
+      candidate prefilter, recall measured end-to-end through the f64 rescoring path)
 - [ ] ef_search assertion: captured `SET LOCAL hnsw.ef_search=400` on every ANN query;
       removing the setting degrades the recall leg (proves the knob bites)
 - [ ] Shadow rebuild: drop derived artifacts → `rebuildShadow()` from canonical TEXT →

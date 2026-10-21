@@ -1582,3 +1582,35 @@ profile + per-row persistence on `embeddings.dim`/`embeddings_chunk.dim`).
   full server `test:ci` 2741 pass / 27 skip / 0 fail. Docs reconciled
   (§4.20 tag-embedding call site, §2.2 anchors, RCA_LOG). Awaiting merge
   orchestration (NOT merged to dev from the remediation session).
+- **B3/B5/B6 closure + Wave A/B similar-issue audit (2026-10-21 — orchestrator)**:
+  all three merged into `ai-feature` — **B5** `0dc702c` (B5 branch
+  `feature/p1-b5-embed-pipeline-work`; embed pipeline: facades + pipelines/embed.js
+  with park&drain drain, restart survival, stale-dim backfill driver, tx-bound
+  statement hooks), **B6** `2283755` (remediation per the block above — PLAN.md
+  conflict on the B6 rows resolved append-only, both sides kept), **B3** `6d62075`
+  (wizard AI step: docs `0c4a4c2` → RED `c00c6bf` → GREEN `cb6106c`; server
+  setup+llm 120/120, client 62/62; vision/asr probes return honest
+  `mediaProbePending` — positive-control samples are T1.9-owned; admin
+  config-editor test button UI rides P4).
+  **Wave A/B similar-issue audit** (independent read-only agent, B6 violation
+  classes as the checklist): Wave A spec docs (aiJobService.md / aiJobsStore.md
+  / DDL kind CHECK) internally consistent — B6's deviations were Case A by the
+  relaunched session, not downstream ambiguity; B1/B2/B4 merged work CLEAN (B4
+  twin conformance is real-store, no mocked-store pinning; B4's pending PG
+  leg now satisfied via B5's run: 29 suites / 418 pass incl. AiJobs twins);
+  B3/B5 in-flight work clean of all five similarity classes. Watch-items
+  recorded (tracked, not blocking): (1) Case C seeds — hook-arity wording
+  (aiJobService.md:26 `onNodeContentCommitted(nodeId)` vs :36-37 "receives the
+  fresh hash") and NULL `content_hash` skip semantics undefined at the §2.2
+  skip boundary (NULL hash ⇒ skip never matches ⇒ re-embed: cost leak, not a
+  correctness bug — owner ruling recommended); (2) `ai_jobs` kind enum has no
+  JS shared constant (DDL CHECK + spec prose only — add `AI_JOB_KIND` during
+  B5/B6 integration wiring); (3) sqlite twin `excludeKinds` empty-string
+  binding mismatch (latent, no current caller); (4) B5 §2.4 reuses
+  `content_hash` as a driver marker string (`shadow-rebuild:<nodeId>:<modelId>`)
+  — semantic overload review; (5) merge-order note — B5/B6 both converge on
+  `server/domains/ai` + `aiJobService.md` (merged B5→B6 here, resolved clean);
+  (6) stash `stash@{0}` (pre-RED B5/B6 scaffolding) contains a latent
+  `ReferenceError` (JS `None`) and overlaps 4 of B6's files — salvage value
+  realized (restore-hash pattern lives in the B6 remediation), safe to DROP.
+  **Wave B complete pending the full-gate run (orchestrator).**

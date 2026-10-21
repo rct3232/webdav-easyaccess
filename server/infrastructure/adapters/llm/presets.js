@@ -103,7 +103,11 @@ const LLM_PRESETS = deepFreeze([
     },
     endpoints: { models: '/v1/models', props: '/props' },
     budgets: { maxInputCharsDefault: 8192, chunkBudget: 4, batchSize: 8 },
-    profile: { ...EG2_PROFILE, requestShape: 'content-wrapper', textPrefixes: { ...EG2_PROFILE.textPrefixes } },
+    profile: {
+      ...EG2_PROFILE,
+      requestShape: 'content-wrapper',
+      textPrefixes: { ...EG2_PROFILE.textPrefixes },
+    },
     kwargs: { enableThinkingChatTemplateKwarg: false, reasoningEffort: false },
   },
   {
@@ -138,9 +142,7 @@ function findPreset(id) {
 
 /** First row of `family` serving `role`; no match ⇒ null. */
 function getPresetByFamilyRole(family, role) {
-  return (
-    LLM_PRESETS.find((row) => row.family === family && row.roles.includes(role)) || null
-  );
+  return LLM_PRESETS.find((row) => row.family === family && row.roles.includes(role)) || null;
 }
 
 const CAPABILITY_KEYS = [
@@ -236,7 +238,13 @@ function evaluateConformance(observedVectors) {
     observed.every((v) => v instanceof Float32Array && v.length === 768);
 
   if (!dimOk) {
-    return { dimOk: false, median: null, threshold: canonical.threshold, pass: false, reason: 'wrongDim' };
+    return {
+      dimOk: false,
+      median: null,
+      threshold: canonical.threshold,
+      pass: false,
+      reason: 'wrongDim',
+    };
   }
 
   const renorm = (v) => {

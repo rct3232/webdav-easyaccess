@@ -1057,6 +1057,7 @@ username`), while `openPrivateWorkspace` creates its case folder at the FILESYST
   roles with spec-faithful expected counters. Final targeted gates: repositories dir
   15/15 suites · 227/227, domains/ai 8/8 suites · 63/63, new-suites rerun 47/47,
   eslint --max-warnings=0 + prettier clean.
+
 ### 2026-10-20 — A5 RED-test corrections during GREEN (three Case B test errors, no source violations)
 
 Task: `feature/p1-a5-vectormath` (T1.4a vectorMath/extractors/TextVectorJs oracle).
@@ -1082,6 +1083,7 @@ Task: `feature/p1-a5-vectormath` (T1.4a vectorMath/extractors/TextVectorJs oracl
   vectorStore.md §2.2/§2.3.
 - **Action taken**: tests corrected only; RED evidence stands (the RED commit failed on
   module-not-found for all four suites, which is independent of these test bugs).
+
 ### 2026-10-21 — T1.2b conformance: `deleted_at = NOW()` failed on the sqlite leg (Case B)
 
 - **Summary**: during the EmbeddingsRepository L2 conformance RED→GREEN cycle, the

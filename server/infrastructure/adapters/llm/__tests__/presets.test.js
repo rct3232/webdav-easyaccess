@@ -70,9 +70,7 @@ describe('presets manifest (llmPresets §2.2/§2.2a/§2.3)', () => {
 
   it('embedded row: engine embedded, lock mirror matches model.lock.json identity', () => {
     const row = presets.find((r) => r.id === 'embeddinggemma-2-onnx-q4');
-    const lock = JSON.parse(
-      fs.readFileSync(path.join(__dirname, '..', 'model.lock.json'), 'utf8')
-    );
+    const lock = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'model.lock.json'), 'utf8'));
     expect(row.engine).toBe('embedded');
     expect(row.roles).toContain('embed');
     // The manifest mirrors the lockfile identity fields (§2.2 lock block) —
@@ -293,9 +291,7 @@ describe('conformance kit accessor (llmPresets §2.2a — τ=0.90 release artifa
     const k = kit();
     expect(k.strings).toHaveLength(24);
     expect(k.vectors).toHaveLength(24);
-    expect(k.vectorsSha).toBe(
-      'd369c3fcfabf86ef4e2178d3285001b5760ee0d4d4ce0508a91f9505d43f4a98'
-    );
+    expect(k.vectorsSha).toBe('d369c3fcfabf86ef4e2178d3285001b5760ee0d4d4ce0508a91f9505d43f4a98');
   });
 
   it('threshold τ = 0.90 comes FROM THE KIT FILE (grep: no hardcoded gate constant)', () => {

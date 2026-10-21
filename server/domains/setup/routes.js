@@ -13,6 +13,8 @@ const {
 } = require('../../infrastructure/backendProbe');
 const { computeSetupStatus } = require('../../infrastructure/setupStatus');
 const { getSharedResolver } = require('../../infrastructure/configResolver');
+const { ensureLlmProbeTarget } = require('../../infrastructure/adapters/llm/probe');
+const { wizardPresetRows } = require('./llmPresetsView');
 const { applySetup } = require('./setupCore');
 
 // Thin HTTP shell over the shared apply core: payload validation, env building,
@@ -47,11 +49,21 @@ router.get(
   })
 );
 
+// GET /api/setup/llm-presets — public static manifest projection for the
+// wizard preset picker (chat/vision/asr rows only; no probe results, §2.4a).
+router.get('/llm-presets', (req, res) => {
+  res.json({ presets: wizardPresetRows() });
+});
+
 // POST /api/setup/test — public; 403 setup.complete when already complete.
 router.post(
   '/test',
   requireSetupIncomplete,
   asyncHandler(async (req, res) => {
+    // The reserved 'llm' slot of runProbe is registered here (idempotent) so
+    // the wizard's per-role test shares the probeLlm core with the admin
+    // config/test target (llmAdapter.md §2.3).
+    ensureLlmProbeTarget();
     try {
       const body = req.body || {};
       const result = await runProbe(body.target, body);

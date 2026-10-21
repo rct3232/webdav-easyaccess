@@ -117,6 +117,9 @@ describe('Setup wizard', () => {
     expect(screen.getByLabelText(/server port/i)).toBeInTheDocument();
 
     await clickNext(user);
+    expect(screen.getByText('AI configuration (optional)')).toBeInTheDocument();
+
+    await clickNext(user);
     expect(screen.getByRole('button', { name: /apply & finish/i })).toBeInTheDocument();
   });
 
@@ -235,7 +238,8 @@ describe('Setup wizard', () => {
     await clickNext(user);
     await user.type(screen.getByLabelText(/admin password/i), 'admin123');
     await clickNext(user);
-    await clickNext(user);
+    await clickNext(user); // optional
+    await clickNext(user); // AI step (skipped)
     await user.click(screen.getByRole('button', { name: /apply & finish/i }));
 
     await waitFor(() => {
@@ -325,6 +329,7 @@ describe('Setup wizard', () => {
     await user.type(screen.getByLabelText(/admin password/i), 'admin123');
     await clickNext(user);
     await clickNext(user); // optional
+    await clickNext(user); // AI step (skipped — no llm block in the payload)
     await user.click(screen.getByRole('button', { name: /apply & finish/i }));
 
     await waitFor(() => {
@@ -368,6 +373,7 @@ describe('Setup wizard', () => {
     await user.type(screen.getByLabelText(/admin password/i), 'admin123');
     await clickNext(user);
     await clickNext(user); // optional
+    await clickNext(user); // AI step (skipped — no llm block in the payload)
     await user.click(screen.getByRole('button', { name: /apply & finish/i }));
 
     await waitFor(() => {
@@ -397,6 +403,7 @@ describe('Setup wizard', () => {
     await user.type(screen.getByLabelText(/jwt secret/i), 'an-operator-secret');
     await clickNext(user);
     await clickNext(user); // optional
+    await clickNext(user); // AI step (skipped — no llm block in the payload)
     await user.click(screen.getByRole('button', { name: /apply & finish/i }));
 
     await waitFor(() => {
@@ -444,6 +451,7 @@ describe('Setup wizard', () => {
     await user.type(screen.getByLabelText(/admin password/i), 'admin123');
     await clickNext(user);
     await clickNext(user); // optional
+    await clickNext(user); // AI step (skipped — no llm block in the payload)
     await user.click(screen.getByRole('button', { name: /apply & finish/i }));
 
     await waitFor(() => {

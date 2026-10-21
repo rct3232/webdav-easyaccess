@@ -36,6 +36,7 @@ import MigrationDialog from './MigrationDialog';
 import MetadataMigrationDialog from './MetadataMigrationDialog';
 import SystemConfigEditor from './SystemConfigEditor';
 import AdminReportsContent from './AdminReportsContent';
+import { mapAiRoleState } from '../../../utils/aiRoleState';
 
 const SystemSettingsContent = () => {
   const { t } = useTranslation();
@@ -252,6 +253,15 @@ const SystemSettingsContent = () => {
     ([name, health]) => health?.status === 'fail' && activeBackends.has(name)
   );
 
+  // AI role rows (T1.1c): every `ai.<role>` tracker row maps to the admin
+  // 5-state display (not_configured | preparing | probe_failed | partial | ok,
+  // llmAdapter.md §2.4). Admin visible-STATE — rendered whenever the snapshot
+  // carries AI rows, independently of the failing-backend condition.
+  const aiRoleEntries = Object.entries(backendHealth)
+    .filter(([key]) => key.startsWith('ai.'))
+    .map(([key, row]) => ({ key, role: key.slice(3), row, mapped: mapAiRoleState(row) }))
+    .filter((entry) => entry.mapped);
+
   const syncSummary = configSyncReport?.summary;
   const configSyncActionable = (syncSummary?.drift || 0) > 0 || (syncSummary?.envOnly || 0) > 0;
   const syncFindings = configSyncReport?.findings || [];
@@ -260,7 +270,7 @@ const SystemSettingsContent = () => {
 
   return (
     <Box>
-      {failedBackends.length > 0 && (
+      {(failedBackends.length > 0 || aiRoleEntries.length > 0) && (
         <Alert severity="warning" sx={{ mb: 3 }} data-testid="backend-health-card">
           <Typography variant="subtitle2">{t('admin.health.title')}</Typography>
           <Box component="ul" sx={{ mt: 1, mb: 0, pl: 3 }}>
@@ -282,6 +292,32 @@ const SystemSettingsContent = () => {
               </li>
             ))}
           </Box>
+          {aiRoleEntries.length > 0 && (
+            <Box sx={{ mt: failedBackends.length > 0 ? 1 : 0 }}>
+              <Typography variant="subtitle2">{t('admin.ai.title')}</Typography>
+              <Box component="ul" sx={{ mt: 1, mb: 0, pl: 3 }}>
+                {aiRoleEntries.map(({ key, role, row, mapped }) => {
+                  const detail =
+                    mapped.state === 'preparing'
+                      ? [mapped.phase, mapped.progress].filter(Boolean).join(', ')
+                      : mapped.state === 'probe_failed'
+                        ? mapped.reason
+                        : mapped.state === 'partial'
+                          ? t(row?.hint, { defaultValue: row?.hint })
+                          : '';
+                  return (
+                    <li key={key}>
+                      <Typography variant="body2">
+                        {t(`admin.ai.role.${role}`, { defaultValue: role })}:{' '}
+                        {t(`admin.aiState.${mapped.state}`)}
+                        {detail ? ` (${detail})` : ''}
+                      </Typography>
+                    </li>
+                  );
+                })}
+              </Box>
+            </Box>
+          )}
         </Alert>
       )}
       {metadataPresence?.otherHasData && (

@@ -55,7 +55,8 @@
       "fileStorage": "File storage",
       "adminJwt": "Admin & JWT",
       "optional": "Optional settings",
-      "apply": "Apply"
+      "apply": "Apply",
+      "ai": "AI (optional)"
     },
     "stepOf": "Step {{current}} of {{total}}",
     "back": "Back",
@@ -97,7 +98,29 @@
     "applying": "Applying...",
     "applyFail": "Failed to save the configuration.",
     "restartRequiredTitle": "Restart required",
-    "restartRequiredBody": "The configuration has been saved. Restart the server process to apply the new settings, then log in as admin."
+    "restartRequiredBody": "The configuration has been saved. Restart the server process to apply the new settings, then log in as admin.",
+    "ai": {
+      "title": "AI configuration (optional)",
+      "statusCard": {
+        "title": "Embedded model status",
+        "preparing": "Provisioning is scheduled for the next restart"
+      },
+      "presetTitle": "Preset",
+      "noPresets": "No presets available.",
+      "role": {
+        "chat": "Chat",
+        "vision": "Vision",
+        "asr": "ASR"
+      },
+      "baseUrl": "Base URL",
+      "apiKey": "API key",
+      "model": "Model",
+      "test": "Test",
+      "testing": "Testing…",
+      "probeOk": "Probe ok",
+      "probeFail": "Probe failed",
+      "roleIncomplete": "{{role}} configuration needs a base URL and a model."
+    }
   },
   "emailNotification": {
     "message": "Approval result will be sent to your email."
@@ -650,6 +673,20 @@
         "LLM_REPROBE_DEBOUNCE_S": "Re-probe debounce (s)",
         "AI_SEMANTIC_SEARCH_ENABLED": "Semantic search enabled"
       }
+    },
+    "ai": {
+      "title": "AI capabilities",
+      "role": {
+        "embed": "Embed",
+        "chat": "Chat"
+      }
+    },
+    "aiState": {
+      "not_configured": "Not configured",
+      "preparing": "Preparing",
+      "probe_failed": "Probe failed",
+      "partial": "Partial",
+      "ok": "OK"
     }
   },
   "migration": {
@@ -1277,5 +1314,8 @@
     "undoCreated": "Collection created",
     "undoAdded": "Added to collection",
     "undoExcluded": "Removed from collection"
+  },
+  "ai": {
+    "provisionFailed": "Model provisioning failed."
   }
 }

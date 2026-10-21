@@ -15,8 +15,6 @@
  * seam belongs to T1.1a (B1) — this suite injects fixtures for both.
  */
 
-const crypto = require('crypto');
-
 const { createLlmAdapter } = require('../index');
 const { resolveBudget, createLimiter } = require('../budget');
 
@@ -84,6 +82,8 @@ function makeResolver(initial = {}) {
 }
 
 /** Client factory seam: one fake client per signature, scripted outcomes. */
+const CLIENT_METHODS = ['embed', 'embedQuery', 'chat', 'visionCaption', 'asrTranscribe'];
+
 function makeClientFactory() {
   const created = [];
   return {
@@ -103,6 +103,9 @@ function makeClientFactory() {
           throw next.error;
         },
       };
+      for (const method of CLIENT_METHODS) {
+        client[method] = (...args) => client.__call(method, args);
+      }
       created.push(client);
       return client;
     },
@@ -131,7 +134,9 @@ function makeUsageStore() {
       return { changes: 1 };
     },
     async getByDay(day) {
-      return [...rows.values()].filter((r) => r.day === day).sort((a, b) => (a.role < b.role ? -1 : 1));
+      return [...rows.values()]
+        .filter((r) => r.day === day)
+        .sort((a, b) => (a.role < b.role ? -1 : 1));
     },
     async summarizeRange() {
       return [];
@@ -151,20 +156,19 @@ function makeModelsStore() {
     async upsertModel(spec) {
       this.specs.push(spec);
       const key = keyOf(spec);
-      let id = rows.get(key);
-      if (id) {
-        const row = [...rows.entries()].find(([, v]) => v.id === id)[1];
-        Object.assign(row, {
-          precision: spec.precision ?? row.precision,
-          maxInputChars: spec.maxInputChars ?? row.maxInputChars,
-          chunkBudget: spec.chunkBudget ?? row.chunkBudget,
-          batchSize: spec.batchSize ?? row.batchSize,
-          reasoning: spec.reasoning ?? row.reasoning,
-          enabled: spec.enabled ?? row.enabled,
+      const existing = rows.get(key);
+      if (existing) {
+        Object.assign(existing, {
+          precision: spec.precision ?? existing.precision,
+          maxInputChars: spec.maxInputChars ?? existing.maxInputChars,
+          chunkBudget: spec.chunkBudget ?? existing.chunkBudget,
+          batchSize: spec.batchSize ?? existing.batchSize,
+          reasoning: spec.reasoning ?? existing.reasoning,
+          enabled: spec.enabled ?? existing.enabled,
         });
-        return { id };
+        return { id: existing.id };
       }
-      id = nextId++;
+      const id = nextId++;
       rows.set(key, { id, ...spec });
       return { id };
     },
@@ -244,7 +248,17 @@ function buildAdapter(overrides = {}) {
     ...overrides.deps,
   };
   const adapter = createLlmAdapter(deps);
-  return { adapter, clock, timers, clients, usage, models, probeCalls, provisionCalls, healthReports };
+  return {
+    adapter,
+    clock,
+    timers,
+    clients,
+    usage,
+    models,
+    probeCalls,
+    provisionCalls,
+    healthReports,
+  };
 }
 
 // ── per-call resolution + hot re-probe (restart-free) ────────────────────────
@@ -304,7 +318,7 @@ describe('per-call config resolution + signature-keyed client cache', () => {
     const r = makeResolver({ ...REMOTE_EMBED });
     const provisioner = {
       runProvision: async (params) => {
-        provision.params.push(params);
+        provisioner.params.push(params);
         return { status: 'provisioned' };
       },
       params: [],
@@ -326,13 +340,13 @@ describe('per-call config resolution + signature-keyed client cache', () => {
     // Weights absent ⇒ in-place provisioning run, role reports preparing and
     // is NOT configured while it runs (consumers park — never claim-and-fail).
     await expect(adapter.roleConfigured('embed')).resolves.toBe(false);
-    expect(provision.params).toHaveLength(1);
-    expect(provision.params[0]).toMatchObject({ mode: 'in-place', remoteOverrideActive: false });
+    expect(provisioner.params).toHaveLength(1);
+    expect(provisioner.params[0]).toMatchObject({ mode: 'in-place', remoteOverrideActive: false });
     expect(healthReports.some((h) => h.key === 'ai.embed' && h.patch.preparing)).toBe(true);
 
     // The in-place run is server-non-blocking: resolveModelDir was used, the
     // call returned without waiting on weights appearing in a boot path.
-    expect(provision.params[0].modelDir).toBe('/fixtures/model-dir');
+    expect(provisioner.params[0].modelDir).toBe('/fixtures/model-dir');
   });
 
   it('embedded role with weights present is configured without any remote triple', async () => {
@@ -349,12 +363,12 @@ describe('circuit breaker — 5 consecutive transport failures ⇒ OPEN 300s', (
   function breakerFixture() {
     const r = makeResolver({ ...REMOTE_CHAT });
     const clients = makeClientFactory();
-    const { adapter, clock, timers } = buildAdapter({ resolver: r, clients });
+    const { adapter, clock } = buildAdapter({ resolver: r, clients });
     return { adapter, clock, clients, r };
   }
 
   it('5 consecutive transport failures ⇒ OPEN; further calls short-circuit without touching the client', async () => {
-    const { adapter, clients } = breakerFixture();
+    const { adapter } = breakerFixture();
     const client = await adapter.getRoleClient('chat');
     for (let i = 0; i < 5; i++) client.queue({ type: 'err', error: transportError() });
 
@@ -376,7 +390,7 @@ describe('circuit breaker — 5 consecutive transport failures ⇒ OPEN 300s', (
   });
 
   it('cooldown expiry ⇒ half-open: ONE probe call; failure re-opens with a fresh cooldown, success closes', async () => {
-    const { adapter, clock, clients } = breakerFixture();
+    const { adapter, clock } = breakerFixture();
     const client = await adapter.getRoleClient('chat');
     for (let i = 0; i < 5; i++) client.queue({ type: 'err', error: transportError() });
     for (let i = 0; i < 5; i++) {
@@ -409,7 +423,7 @@ describe('circuit breaker — 5 consecutive transport failures ⇒ OPEN 300s', (
   });
 
   it('a success resets the consecutive-failure count (4 fails + 1 success + 1 fail ≠ OPEN)', async () => {
-    const { adapter, clients } = breakerFixture();
+    const { adapter } = breakerFixture();
     const client = await adapter.getRoleClient('chat');
     for (let i = 0; i < 4; i++) client.queue({ type: 'err', error: transportError() });
     for (let i = 0; i < 4; i++) {
@@ -425,7 +439,7 @@ describe('circuit breaker — 5 consecutive transport failures ⇒ OPEN 300s', (
 
   it('a config change (signature change) resets the breaker', async () => {
     const r = makeResolver({ ...REMOTE_CHAT });
-    const { adapter, clients } = buildAdapter({ resolver: r });
+    const { adapter } = buildAdapter({ resolver: r });
     const client = await adapter.getRoleClient('chat');
     for (let i = 0; i < 5; i++) client.queue({ type: 'err', error: transportError() });
     for (let i = 0; i < 5; i++) {
@@ -442,26 +456,34 @@ describe('circuit breaker — 5 consecutive transport failures ⇒ OPEN 300s', (
 
 describe('budget chain (4 steps) + passive downward-only limiter', () => {
   it('order: admin cap beats published metadata beats preset default', () => {
-    expect(resolveBudget({ adminCap: 1000, publishedMetadata: 2000, presetDefault: 3000 })).toEqual({
-      maxInputChars: 1000,
-      source: 'admin',
-    });
-    expect(resolveBudget({ adminCap: null, publishedMetadata: 2000, presetDefault: 3000 })).toEqual({
-      maxInputChars: 2000,
-      source: 'metadata',
-    });
-    expect(resolveBudget({ adminCap: null, publishedMetadata: null, presetDefault: 3000 })).toEqual({
-      maxInputChars: 3000,
-      source: 'preset',
-    });
-    expect(resolveBudget({ adminCap: null, publishedMetadata: null, presetDefault: null })).toEqual({
-      maxInputChars: null,
-      source: 'limiter',
-    });
-    // Non-positive / non-numeric admin values never win.
-    expect(resolveBudget({ adminCap: 0, publishedMetadata: 2000, presetDefault: 3000 }).source).toBe(
-      'metadata'
+    expect(resolveBudget({ adminCap: 1000, publishedMetadata: 2000, presetDefault: 3000 })).toEqual(
+      {
+        maxInputChars: 1000,
+        source: 'admin',
+      }
     );
+    expect(resolveBudget({ adminCap: null, publishedMetadata: 2000, presetDefault: 3000 })).toEqual(
+      {
+        maxInputChars: 2000,
+        source: 'metadata',
+      }
+    );
+    expect(resolveBudget({ adminCap: null, publishedMetadata: null, presetDefault: 3000 })).toEqual(
+      {
+        maxInputChars: 3000,
+        source: 'preset',
+      }
+    );
+    expect(resolveBudget({ adminCap: null, publishedMetadata: null, presetDefault: null })).toEqual(
+      {
+        maxInputChars: null,
+        source: 'limiter',
+      }
+    );
+    // Non-positive / non-numeric admin values never win.
+    expect(
+      resolveBudget({ adminCap: 0, publishedMetadata: 2000, presetDefault: 3000 }).source
+    ).toBe('metadata');
   });
 
   it('the limiter halves on a length-class failure and NEVER raises on success', () => {
@@ -476,7 +498,7 @@ describe('budget chain (4 steps) + passive downward-only limiter', () => {
 
   it('a length-class embed failure halves the role budget from then on (downward-only)', async () => {
     const r = makeResolver({ ...REMOTE_EMBED });
-    const { adapter, clients } = buildAdapter({ resolver: r });
+    const { adapter } = buildAdapter({ resolver: r });
     const client = await adapter.getRoleClient('embed');
     const tooLong = new Error('input too long: 4096 tokens maximum');
     tooLong.status = 400;
@@ -501,12 +523,12 @@ describe('usage accounting — counters move only on their events', () => {
 
     await adapter.embed(['hello', 'world']);
     const day = new Date(clock.now()).toLocaleDateString('sv-SE');
-    expect(usage.rows.get(`${day}|embed`)).toMatchObject({ calls: 1, inputChars: 11 });
+    expect(usage.rows.get(`${day}|embed`)).toMatchObject({ calls: 1, inputChars: 10 });
   });
 
   it('a 429 bumps failed_429 (+calls); a transport failure bumps calls only', async () => {
     const r = makeResolver({ ...REMOTE_EMBED });
-    const { adapter, usage, clock, clients } = buildAdapter({ resolver: r });
+    const { adapter, usage, clock } = buildAdapter({ resolver: r });
     const client = await adapter.getRoleClient('embed');
     const e429 = new Error('rate limited');
     e429.status = 429;
@@ -528,7 +550,7 @@ describe('usage accounting — counters move only on their events', () => {
 describe('daily caps ⇒ budget_paused', () => {
   it('call cap reached ⇒ role paused, provider not invoked, no extra usage row', async () => {
     const r = makeResolver({ ...REMOTE_EMBED, LLM_DAILY_CALL_CAP: '2' });
-    const { adapter, usage, clock, clients } = buildAdapter({ resolver: r });
+    const { adapter, usage, clock } = buildAdapter({ resolver: r });
     const client = await adapter.getRoleClient('embed');
     client.queue({ type: 'ok', value: { vectors: [[1]], dim: 1 } });
     client.queue({ type: 'ok', value: { vectors: [[2]], dim: 1 } });
@@ -547,7 +569,7 @@ describe('daily caps ⇒ budget_paused', () => {
   it('token cap is enforced against the input_chars-derived token estimate', async () => {
     // LLM_DAILY_TOKEN_CAP=100 tokens; charsPerToken 1.7 ⇒ ~170 chars budget.
     const r = makeResolver({ ...REMOTE_EMBED, LLM_DAILY_TOKEN_CAP: '100' });
-    const { adapter, clients, clock } = buildAdapter({ resolver: r, deps: { charsPerToken: 1.7 } });
+    const { adapter } = buildAdapter({ resolver: r, deps: { charsPerToken: 1.7 } });
     const client = await adapter.getRoleClient('embed');
     client.queue({ type: 'ok', value: { vectors: [[1]], dim: 1 } });
 
@@ -615,7 +637,7 @@ describe('embed result shape', () => {
       budgets: { maxInputCharsDefault: 12288, chunkBudget: 4, batchSize: 8 },
       profile: { dim: 768, chPerTok: 1.5 },
     };
-    const { adapter, clients, models } = buildAdapter({
+    const { adapter, models } = buildAdapter({
       resolver: r,
       deps: { presetFor: () => preset },
     });
@@ -648,9 +670,9 @@ describe('error classification (§2.8)', () => {
     const t = transportError();
     expect(classifyLlmError(t).class).toBe('transport');
     expect(classifyLlmError({ status: 429, message: 'too many requests' }).class).toBe('rate');
-    expect(classifyLlmError({ status: 400, message: "tried to process 'x' with 9000 tokens" }).class).toBe(
-      'length'
-    );
+    expect(
+      classifyLlmError({ status: 400, message: "tried to process 'x' with 9000 tokens" }).class
+    ).toBe('length');
     expect(classifyLlmError({ status: 401, message: 'unauthorized' }).class).toBe('config');
     expect(classifyLlmError(new SyntaxError('Unexpected token < in JSON')).class).toBe('schema');
     // Pre-classified errors are honored (adapter-thrown).

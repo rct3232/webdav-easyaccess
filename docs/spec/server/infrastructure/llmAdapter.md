@@ -157,6 +157,10 @@ users); regular users see absent affordances, not disabled ones.
 
 Daily caps: per-role `LLM_DAILY_CALL_CAP` / `LLM_DAILY_TOKEN_CAP` (0 = unlimited) →
 budget breaker PAUSES the role (surface in admin; jobs park upstream, aiJobService §2.3).
+A paused role's calls fail FAST with a `budget`-class error — no provider round-trip,
+no usage row (counters move only on their events, aiUsageDailyStore §1). The TOKEN
+cap is enforced against the input_chars-derived token estimate (§2.6 char→token
+safety factor) — the ledger has no token column.
 **Embedded provider budget mapping:** steps 1–2 are config-only (no metadata
 GETs exist) — `max_input_chars` comes from the lockfile profile (step 3; model window 8,192,
 server ub wall N/A, in-process memory governs batch size); the step-4 limiter stays armed

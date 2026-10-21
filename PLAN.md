@@ -1363,3 +1363,78 @@ decision record merged after the ledger was written); all Wave A branches cut fr
   references. `derivedTags.js`/`derivedTagsService.js`/`foldTag`/derived-facet machinery
   untouched (verified by diff). DDL 001:389/397 still defines the tables per §19-5 — the
   big-bang script owns the DROPs (orchestrator/big-bang scope, recorded in the spec).
+- **A1 (T1.2a) `[done]` — merged into `ai-feature` (orchestrator merge `1a4f317`).**
+  Branch `feature/p1-a1-llm-repos`, base `aafabd2`. Scope: `llm_models`/`ai_jobs`/
+  `ai_usage_daily` repositories (interface + sqlite/pg twins + shared mappers +
+  `llmModelsStore`/`aiJobsStore`/`aiUsageDailyStore` facades) + restart-survival
+  (ai_jobs stale-running reap; ai_usage_daily DB-truth history; llm_models
+  identity-keyed idempotent upsert). New specs `llmModelsStore.md` +
+  `aiUsageDailyStore.md`; TESTING_STRATEGY conformance enumeration updated.
+  Gates: new suites 6/47 green; repositories dir 15/227; domains/ai 8/63;
+  eslint/prettier clean. RCA_LOG entries for GREEN-phase incidents (Case B:
+  `%NEXT_RETRY%` replaceAll in twins; facade fixture math).
+  **Orchestrator integration fix (`8c333d9`)**: docsStatePurity forbids
+  `AI_FEATURE_PLAN` pointers in scoped specs — the A1-added store specs cited
+  the design authority inline; reworded to spec-local references (server
+  docsStatePurity 3/3 green).
+  **Open flag for Wave B**: `llm_models.dim` column does not exist (llmAdapter
+  §2.3/vectorStore.md reference an absent column; resolved per DDL/§5 — no dim
+  in the repository); B2's `syncModelRegistry` dim persistence needs an owner
+  decision at the B2 docs step.
+- **A3 (T1.0a) `[done]` — merged into `ai-feature` (orchestrator merge `86598ba`).**
+  Branch `feature/p1-a3-provision`, base `aafabd2`. Scope:
+  `server/infrastructure/adapters/llm/{model.lock.json, provision.js,
+  clients/embedded-onnx.js}` + backendHealth `preparing/phase/progress`
+  producer + posture×7 & lock/preparing test suites + `@huggingface/transformers`
+  dep + docs (llmPresets/llmAdapter/configRegistry/config-source-resolution).
+  RED: 15 failing / 2 passing → GREEN: provision suites 17/17 (5 posture
+  scenarios: setup-mode zero-egress / remote-active defer / override-clear
+  in-place hot / `WEA_MODEL_DIR` idempotent / sha256-fail caps-off).
+  Positive control: median-cos 1.000000 vs `eg2-reference-kit.json`, dim 768.
+  Gates: infrastructure 28/463; admin+store 15/259 (3 pre-existing skip);
+  docsStatePurity 3/3. RCA: transformers.js tokenizer load with zero egress
+  (Case B — local-path loading + `useFS`).
+  **Orchestrator integration remains**: boot step 8b call site
+  (`server/index.js`) + override-clear trigger wiring (B2) — the provisioner
+  is ready for both call sites; `hint='ai.provisionFailed'` i18n mirror is
+  B3/admin-surface scope.
+- **A5 (T1.4a) `[done]` — merged into `ai-feature` (orchestrator merge `2a855d9`).**
+  Branch `feature/p1-a5-vectormath`, base `aafabd2`. Scope:
+  `server/domains/ai/vectorStore/{vectorMath, TextVectorJs}.js` +
+  `server/domains/ai/extractors/{documentText, textChunking}.js` +
+  conformance harness `runExactEngineConformance` (bit-parity exact≡oracle
+  across 12 held-out queries, `toBe` not tolerance) + `vectorMath.md` spec +
+  `--experimental-vm-modules` jest flag + `pdfjs-dist` server dep +
+  TEST_GIT_GUIDE §4 note. Gates: conformance 13/13 bit parity; local union
+  5/54; full server test:ci 135 suites / 2531 pass (baseline 131 + exactly
+  the 4 new suites / 46 tests — vm-modules flag safe repo-wide); PG leg N/A
+  (no repository/SQL/executor touched). vectorMath public surface for
+  A6/A7: `serializeVector`/`parseVector`/`dotProduct`/`l2Norm`/
+  `cosineSimilarity`/`unitNormalize`/`meanPool`/`truncateAndRenormalize`
+  (MRL §4.13c); A6/A7 reuse `runExactEngineConformance` unchanged.
+- **A2 (T1.2b) `[done]` — merged into `ai-feature` (orchestrator merge
+  `a9944d8`; RCA_LOG conflict resolved append-only, both sides kept).**
+  Branch `feature/p1-a2-vector-repos`, base `aafabd2`. Scope:
+  `EmbeddingsRepository`/`EmbeddingsChunkRepository`/`AiEnrichmentsRepository`
+  (interface + sqlite/pg twins + shared mappers) + tuple-keyset chunk cursor
+  (`(node_id, chunk_idx)` pagination — boundary-node chunks never skipped) +
+  chunk replace scoped to the incoming model space with PK upsert on
+  collision + specs `embeddingsChunkStore.md`/`aiEnrichmentsStore.md`.
+  Gates: conformance 3/3 suites 42/42 (sqlite leg); eslint/prettier clean.
+  **Orchestrator integration fixes (`c8ef6b9`)**: the A2-added files tripped
+  two pre-existing gates — (1) aiTagStore §2.6 purge-gate naive raw-string
+  match caught the dissolved-tag tokens inside A2's documentary comments
+  (A2 had flagged this exact risk in its report); rephrased the commentary to
+  descriptive equivalents in 4 source files + 1 conformance test; (2)
+  docsStatePurity caught `retirement-narration` in embeddingsChunkStore.md
+  §2.8; (3) `deleteByModel` in `EmbeddingsChunkRepository` collided with the
+  purge-gate's forbidden dead-method list — renamed to `deleteSpace` across
+  interface/twins/conformance/spec (§2.3/§2.4 reworded). Gates after fixes:
+  full server test:ci 146 suites / 2621 pass (5 skip) green; PG adapter leg
+  N/A for the fixes (comment/doc-only); A2's PG twins ride the orchestrator
+  pg:adapters run at the wave gate.
+- **Wave A remaining**: A6 (T1.4b-pg pgvector adapter) + A7 (T1.4b-vec0 vec0
+  adapter + ACL helper) — dependencies satisfied (A5 merged); both launched
+  in parallel on `feature/p1-a6-pgvector-adapter` / `feature/p1-a7-vec0-adapter`
+  (base `a9944d8`), worktrees wt-a6/wt-a7. RED-first targets: recall@50≥0.99
+  @ef400 held-out queries only; conformance harness reuse unchanged.

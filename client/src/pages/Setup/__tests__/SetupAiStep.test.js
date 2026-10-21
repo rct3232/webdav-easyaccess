@@ -91,8 +91,16 @@ const mockPresets = (presets) => {
   server.use(http.get('/api/setup/llm-presets', () => HttpResponse.json({ presets })));
 };
 
+// Intercept ONLY the llm probe target; other targets (the step-0 connection
+// test) keep the default handler behavior.
 const mockLlmProbe = (handler) => {
-  server.use(http.post('/api/setup/test', handler));
+  server.use(
+    http.post('/api/setup/test', async ({ request }) => {
+      const body = await request.json().catch(() => ({}));
+      if (body.target !== 'llm') return HttpResponse.json({ ok: true });
+      return handler({ request, body });
+    })
+  );
 };
 
 const navigateToAiStep = async (user) => {
@@ -101,8 +109,7 @@ const navigateToAiStep = async (user) => {
   await clickNext(user);
   await user.type(screen.getByLabelText(/admin password/i), 'admin123');
   await clickNext(user);
-  await clickNext(user); // optional
-  await clickNext(user); // AI step
+  await clickNext(user); // optional → AI step
 };
 
 describe('Setup wizard AI step (T1.1c)', () => {
@@ -147,17 +154,13 @@ describe('Setup wizard AI step (T1.1c)', () => {
     await waitForReady();
 
     await navigateToAiStep(user);
-    expect(screen.getByText(/chat/i)).toBeInTheDocument();
-    expect(screen.getByText(/vision/i)).toBeInTheDocument();
-    expect(screen.getByText(/asr/i)).toBeInTheDocument();
-
-    const chatRow = screen.getByTestId('ai-role-row-chat');
-    const visionRow = screen.getByTestId('ai-role-row-vision');
-    const asrRow = screen.getByTestId('ai-role-row-asr');
-
-    expect(within(chatRow).getByRole('button', { name: /test/i })).toBeInTheDocument();
-    expect(within(visionRow).getByRole('button', { name: /test/i })).toBeInTheDocument();
-    expect(within(asrRow).getByRole('button', { name: /test/i })).toBeInTheDocument();
+    // The readiness card copy contains "provisioning" — assert the role labels
+    // INSIDE their rows, never against the whole step.
+    for (const role of ['chat', 'vision', 'asr']) {
+      const row = screen.getByTestId(`ai-role-row-${role}`);
+      expect(within(row).getByText(new RegExp(role, 'i'))).toBeInTheDocument();
+      expect(within(row).getByRole('button', { name: /test/i })).toBeInTheDocument();
+    }
   });
 
   it('surfaces a passing probe result inline in the wizard', async () => {
@@ -168,6 +171,9 @@ describe('Setup wizard AI step (T1.1c)', () => {
 
     await navigateToAiStep(user);
     const chatRow = screen.getByTestId('ai-role-row-chat');
+    await user.click(within(chatRow).getByRole('checkbox')); // enable the role
+    await user.type(within(chatRow).getByLabelText(/base url/i), 'http://llm.local/v1');
+    await user.type(within(chatRow).getByLabelText(/model/i), 'gemma-4-12b-it');
     await user.click(within(chatRow).getByRole('button', { name: /test/i }));
 
     await waitFor(() => {
@@ -193,10 +199,15 @@ describe('Setup wizard AI step (T1.1c)', () => {
 
     await navigateToAiStep(user);
     const chatRow = screen.getByTestId('ai-role-row-chat');
+    await user.click(within(chatRow).getByRole('checkbox')); // enable the role
+    await user.type(within(chatRow).getByLabelText(/base url/i), 'http://llm.local/v1');
+    await user.type(within(chatRow).getByLabelText(/model/i), 'gemma-4-12b-it');
     await user.click(within(chatRow).getByRole('button', { name: /test/i }));
 
     await waitFor(() => {
-      expect(within(chatRow).getByText(/probe failed/i)).toBeInTheDocument();
+      // The primary text is the translated errorCode (docs/spec/client/pages/
+      // Setup.md §2.5 error display); the raw reason is the muted detail line.
+      expect(within(chatRow).getByText(/connection test failed/i)).toBeInTheDocument();
     });
     expect(within(chatRow).getByText(/model unreachable/i)).toBeInTheDocument();
   });
@@ -238,7 +249,7 @@ describe('Setup wizard AI step (T1.1c)', () => {
 
     await navigateToAiStep(user);
     const chatRow = screen.getByTestId('ai-role-row-chat');
-    await within(chatRow).getByRole('checkbox');
+    await user.click(within(chatRow).getByRole('checkbox')); // enable the role
     await user.type(within(chatRow).getByLabelText(/base url/i), 'http://llm.local/v1');
     await user.type(within(chatRow).getByLabelText(/api key/i), 'sk-test');
     await user.type(within(chatRow).getByLabelText(/model/i), 'gemma-4-12b-it');

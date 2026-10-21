@@ -236,5 +236,5 @@ Connection-test taxonomy codes are module-local i18n keys (same `ns.key` format;
 - [x] POST /apply with unknown keys / invalid payload → 400 with per-field errors
 - [x] Setup-mode guard: file-domain and admin-write routes → 503 `setup.incomplete` while incomplete; open again after completion
 - [x] Request logger does not leak apply body (bodies are never logged)
-- [ ] POST /test with `target: "llm"` probes the submitted per-role values and returns the pass/fail envelope; unknown role → 400
-- [ ] POST /apply with an `llm` block writes `LLM_*` rows to the DB `settings` table only (never `.env`); masked apiKey keeps the stored value; omitted block is a no-op and `setup_complete` never depends on AI presence
+- [x] POST /test with `target: "llm"` probes the submitted per-role values and returns the pass/fail envelope; unknown role → 400
+- [x] POST /apply with an `llm` block writes `LLM_*` rows to the DB `settings` table only (never `.env`); masked apiKey keeps the stored value; omitted block is a no-op and `setup_complete` never depends on AI presence

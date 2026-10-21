@@ -645,4 +645,58 @@ describe('SystemSettingsContent', () => {
     });
     expect(screen.getByRole('dialog', { name: /database sync/i })).toBeInTheDocument();
   });
+  it('renders the AI role 5-state rows in the health card whenever the snapshot carries ai.* rows', async () => {
+    server.use(
+      http.get('/api/admin/health', () =>
+        HttpResponse.json({
+          backends: {
+            postgresql: { status: 'ok' },
+            s3: { status: 'unknown' },
+            webdav: { status: 'ok' },
+            'ai.embed': {
+              status: 'unknown',
+              preparing: true,
+              phase: 'provisioning',
+              progress: '1/7 files',
+            },
+            'ai.chat': { status: 'fail', code: 'unknown', reason: 'probe: HTTP 401' },
+          },
+        })
+      )
+    );
+
+    renderSystemSettingsContent();
+
+    const card = await screen.findByTestId('backend-health-card');
+    expect(within(card).getByText(/ai capabilities/i)).toBeInTheDocument();
+    // preparing row: phase/progress detail, no backend failure needed for the card
+    expect(within(card).getByText(/embed: preparing/i)).toBeInTheDocument();
+    expect(within(card).getByText(/provisioning, 1\/7 files/i)).toBeInTheDocument();
+    // failing probe row: probe_failed + the raw reason diagnostic
+    expect(within(card).getByText(/chat: probe failed/i)).toBeInTheDocument();
+    expect(within(card).getByText(/probe: HTTP 401/i)).toBeInTheDocument();
+  });
+
+  it('maps an ok AI row to the ok state and a hint-bearing ok row to partial', async () => {
+    server.use(
+      http.get('/api/admin/health', () =>
+        HttpResponse.json({
+          backends: {
+            postgresql: { status: 'ok' },
+            s3: { status: 'unknown' },
+            webdav: { status: 'ok' },
+            'ai.embed': { status: 'ok' },
+            'ai.chat': { status: 'ok', hint: 'ai.provisionFailed' },
+          },
+        })
+      )
+    );
+
+    renderSystemSettingsContent();
+
+    const card = await screen.findByTestId('backend-health-card');
+    expect(within(card).getByText(/embed: ok/i)).toBeInTheDocument();
+    expect(within(card).getByText(/chat: partial/i)).toBeInTheDocument();
+    expect(within(card).getByText(/model provisioning failed/i)).toBeInTheDocument();
+  });
 });

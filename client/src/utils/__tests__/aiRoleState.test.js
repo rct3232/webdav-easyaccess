@@ -19,7 +19,12 @@ describe('mapAiRoleState', () => {
       reason: undefined,
     });
     expect(
-      mapAiRoleState({ status: 'unknown', preparing: true, phase: 'provisioning', progress: '3/7 files' })
+      mapAiRoleState({
+        status: 'unknown',
+        preparing: true,
+        phase: 'provisioning',
+        progress: '3/7 files',
+      })
     ).toEqual({
       state: 'preparing',
       phase: 'provisioning',

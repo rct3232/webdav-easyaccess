@@ -1324,7 +1324,7 @@ describeIfSqlite('setupCore (shared apply core)', () => {
 });
 
 describeIfSqlite('AI step contracts (T1.1c — docs/spec/server/routes/setup.md §2.4a)', () => {
-  const { registerProbeTarget, unregisterProbeTarget } = require('../../../infrastructure/backendProbe');
+  const { unregisterProbeTarget } = require('../../../infrastructure/backendProbe');
   const { getBackendHealth } = require('../../../infrastructure/backendHealth');
 
   // Minimal in-domain fake of an OpenAI-compatible chat endpoint: the probe
@@ -1447,20 +1447,22 @@ describeIfSqlite('AI step contracts (T1.1c — docs/spec/server/routes/setup.md 
     });
 
     it('writes only LLM_* DB settings rows (never .env), masked apiKey keeps the stored value', async () => {
-      const res = await request(app).post('/api/setup/apply').send({
-        file: {
-          backend: 's3',
-          bucket: 'b',
-          region: 'us-east-1',
-          accessKeyId: 'ak',
-          secretAccessKey: 'sk',
-        },
-        admin: { password: 'admin123' },
-        llm: {
-          chat: { baseUrl: fakeLlmBase, apiKey: '****', model: 'gemma-4-12b-it' },
-          vision: { baseUrl: 'http://v.local', apiKey: 'v-key', model: 'v-model' },
-        },
-      });
+      const res = await request(app)
+        .post('/api/setup/apply')
+        .send({
+          file: {
+            backend: 's3',
+            bucket: 'b',
+            region: 'us-east-1',
+            accessKeyId: 'ak',
+            secretAccessKey: 'sk',
+          },
+          admin: { password: 'admin123' },
+          llm: {
+            chat: { baseUrl: fakeLlmBase, apiKey: '****', model: 'gemma-4-12b-it' },
+            vision: { baseUrl: 'http://v.local', apiKey: 'v-key', model: 'v-model' },
+          },
+        });
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ restart_required: true });
@@ -1481,16 +1483,18 @@ describeIfSqlite('AI step contracts (T1.1c — docs/spec/server/routes/setup.md 
     });
 
     it('an omitted llm block is a no-op (skip = None-state product)', async () => {
-      const res = await request(app).post('/api/setup/apply').send({
-        file: {
-          backend: 's3',
-          bucket: 'b',
-          region: 'us-east-1',
-          accessKeyId: 'ak',
-          secretAccessKey: 'sk',
-        },
-        admin: { password: 'admin123' },
-      });
+      const res = await request(app)
+        .post('/api/setup/apply')
+        .send({
+          file: {
+            backend: 's3',
+            bucket: 'b',
+            region: 'us-east-1',
+            accessKeyId: 'ak',
+            secretAccessKey: 'sk',
+          },
+          admin: { password: 'admin123' },
+        });
 
       expect(res.status).toBe(200);
       const written = Object.fromEntries(settingsSetSpy.mock.calls.map(([k]) => [k, '']));
@@ -1498,17 +1502,19 @@ describeIfSqlite('AI step contracts (T1.1c — docs/spec/server/routes/setup.md 
     });
 
     it('unknown role or unknown key in the llm block → 400 invalid payload', async () => {
-      const res = await request(app).post('/api/setup/apply').send({
-        file: {
-          backend: 's3',
-          bucket: 'b',
-          region: 'us-east-1',
-          accessKeyId: 'ak',
-          secretAccessKey: 'sk',
-        },
-        admin: { password: 'admin123' },
-        llm: { embed: { baseUrl: 'x', apiKey: 'y', model: 'z' } },
-      });
+      const res = await request(app)
+        .post('/api/setup/apply')
+        .send({
+          file: {
+            backend: 's3',
+            bucket: 'b',
+            region: 'us-east-1',
+            accessKeyId: 'ak',
+            secretAccessKey: 'sk',
+          },
+          admin: { password: 'admin123' },
+          llm: { embed: { baseUrl: 'x', apiKey: 'y', model: 'z' } },
+        });
 
       expect(res.status).toBe(400);
       expect(res.body.fields).toMatchObject({ 'llm.embed': 'unknown' });

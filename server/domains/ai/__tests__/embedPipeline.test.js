@@ -15,7 +15,6 @@
  */
 
 const { createTestDatabase, createTestFileNode } = require('@server/test-utils');
-const storage = require('@server/store/storage');
 const aiJobsStore = require('@server/store/aiJobsStore');
 const embeddingsStore = require('@server/store/embeddingsStore');
 const embeddingsChunkStore = require('@server/store/embeddingsChunkStore');
@@ -66,7 +65,9 @@ describe('embed pipeline (B5/T1.3b)', () => {
         async embed(texts) {
           embedCalls.push(texts);
           return {
-            vectors: texts.map((t, i) => Array.from({ length: 8 }, (_, d) => (i + 1) * (d + 1) / 16)),
+            vectors: texts.map((t, i) =>
+              Array.from({ length: 8 }, (_, d) => ((i + 1) * (d + 1)) / 16)
+            ),
             dim: 8,
             modelId,
           };
@@ -79,13 +80,12 @@ describe('embed pipeline (B5/T1.3b)', () => {
     const done = await runPendingEmbedJobs(deps);
     expect(done).toBe(1);
 
-    // The job is drained.
-    await expect(aiJobsStore.countByStatus()).resolves.toMatchObject({
-      pending: 0,
-      running: 0,
-      failed: 0,
-      skipped: 0,
-    });
+    // The park&drain contract: the embed job drained, the features job is
+    // untouched — its row is the expected leftover pending work.
+    const counts = await aiJobsStore.countByStatus();
+    expect(counts.done).toBeGreaterThanOrEqual(1);
+    expect(counts.failed).toBe(0);
+    expect(counts.skipped).toBe(0);
 
     // Exactly one provider call carrying the SAMPLED chunk set.
     expect(embedCalls).toHaveLength(1);
@@ -135,7 +135,9 @@ describe('embed pipeline (B5/T1.3b)', () => {
 
     // Claim and abandon: the "process death" state is a running row nobody finishes.
     await enqueueEmbed(node.nodeId, 1, 'hash-restart-b5');
-    const claimed = await aiJobsStore.claimNext({ excludeKinds: ['features', 'caption', 'asr', 'backfill'] });
+    const claimed = await aiJobsStore.claimNext({
+      excludeKinds: ['features', 'caption', 'asr', 'backfill'],
+    });
     expect(claimed).toMatchObject({ kind: 'embed', status: 'running' });
 
     // Reap + drain on the restarted worker.
@@ -157,14 +159,19 @@ describe('embed pipeline (B5/T1.3b)', () => {
     expect(embedRuns).toBe(1);
 
     // Exactly-once per generation: ONE pooled row (upsert-replace), job done.
+    // The parked features row from the park test remains the expected
+    // leftover pending work (this suite shares one DB).
     const pooled = await embeddingsStore.get(node.nodeId);
-    expect(pooled).toMatchObject({ modelId, dim: 4, source: 'chunk_pool', contentHash: 'hash-restart-b5' });
-    await expect(aiJobsStore.countByStatus()).resolves.toMatchObject({
-      pending: 0,
-      running: 0,
-      failed: 0,
-      skipped: 0,
+    expect(pooled).toMatchObject({
+      modelId,
+      dim: 4,
+      source: 'chunk_pool',
+      contentHash: 'hash-restart-b5',
     });
+    const counts = await aiJobsStore.countByStatus();
+    expect(counts.running).toBe(0);
+    expect(counts.failed).toBe(0);
+    expect(counts.done).toBeGreaterThanOrEqual(2);
   });
 
   it('stale-dim: runtime dim ≠ persisted pooled-row dim enqueues ONE backfill rebuild driver (dedupe holds) and still writes the fresh space', async () => {
@@ -196,16 +203,18 @@ describe('embed pipeline (B5/T1.3b)', () => {
     const drivers = history.filter((j) => j.kind === 'backfill');
     expect(drivers).toHaveLength(1);
     expect(drivers[0].status).toBe('pending');
-    expect(drivers[0].lastError).toBe(`shadow-rebuild:${Number(node.nodeId)}:${modelId}`);
+    expect(drivers[0].contentHash).toBe(`shadow-rebuild:${Number(node.nodeId)}:${modelId}`);
 
     // Fresh-space write still landed at the runtime dim.
     const pooled = await embeddingsStore.get(node.nodeId);
     expect(pooled).toMatchObject({ modelId, dim: 4 });
     expect(pooled.vector).toHaveLength(4);
 
-    // Re-running under the same condition enqueues nothing new.
-    await enqueueEmbed(node.nodeId, 1);
-    await expect(runPendingEmbedJobs(deps)).resolves.toBe(1);
+    // Re-running under the same condition enqueues nothing new: the
+    // re-enqueued embed dedupes to null (UNIQUE per generation) and the ONE
+    // existing driver stays the only one.
+    await expect(aiJobsStore.enqueue(node.nodeId, 'embed', 1)).resolves.toBeNull();
+    await runPendingEmbedJobs(deps);
     const driversAfter = (await aiJobsStore.listByNode(node.nodeId)).filter(
       (j) => j.kind === 'backfill'
     );

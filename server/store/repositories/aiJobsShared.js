@@ -55,6 +55,40 @@ function mapJobRow(row) {
 const CLAIMABLE_PREDICATE =
   "(status = 'pending' OR (status = 'failed' AND (%NEXT_RETRY% IS NULL OR %NEXT_RETRY% <= %PARAM%)))";
 
+/**
+ * Predicate-level kind exclusion for `claimNext({ excludeKinds })`
+ * (park&drain — aiJobsStore §2.3): excluded kinds' rows stay parked with
+ * their status/attempt untouched (zero attempt inflation). Appended to
+ * CLAIMABLE_PREDICATE; `%KIND_SLOTS%` expands to one placeholder per
+ * excluded kind (dialect-resolved by the twins — never a literal `?` here,
+ * Wave A exit-gate defect c49dca4).
+ */
+const KIND_EXCLUSION_CLAUSE = ' AND kind NOT IN (%KIND_SLOTS%)';
+
+/**
+ * Builds the claim predicate for `claimNext`, optionally excluding kinds.
+ * @param {string[]} [excludeKinds] kinds to park (empty/undefined = no filter).
+ * @param {(index: number) => string} param placeholder factory — index 0
+ *   binds the base predicate's ISO instant, indexes 1..n the excluded kinds.
+ * @returns {string} dialect-resolved SQL predicate.
+ */
+function buildClaimPredicate(excludeKinds, param) {
+  const kinds = (Array.isArray(excludeKinds) ? excludeKinds : [])
+    .map(String)
+    .filter((k) => k.length > 0);
+  let sql = CLAIMABLE_PREDICATE.replaceAll('%NEXT_RETRY%', 'next_retry_at').replaceAll(
+    '%PARAM%',
+    param(0)
+  );
+  if (kinds.length > 0) {
+    sql += KIND_EXCLUSION_CLAUSE.replace(
+      '%KIND_SLOTS%',
+      kinds.map((_, i) => param(i + 1)).join(', ')
+    );
+  }
+  return sql;
+}
+
 module.exports = {
   AI_JOB_RETRY_BASE_MS,
   AI_JOB_RETRY_MAX_MS,
@@ -62,4 +96,6 @@ module.exports = {
   truncateError,
   mapJobRow,
   CLAIMABLE_PREDICATE,
+  KIND_EXCLUSION_CLAUSE,
+  buildClaimPredicate,
 };

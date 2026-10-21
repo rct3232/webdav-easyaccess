@@ -31,8 +31,8 @@ async function enqueueMany(items) {
   return getRepository().enqueueMany(items);
 }
 
-async function claimNext() {
-  return getRepository().claimNext();
+async function claimNext(opts) {
+  return getRepository().claimNext(opts);
 }
 
 async function markDone(jobId) {

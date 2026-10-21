@@ -77,6 +77,32 @@ Target-contract spec.
 Rows are FROZEN; the admin UI renders from the manifest; probe results persist to
 `llm_models` + `backendHealth`, never back into the manifest.
 
+### 2.2a Runtime surface of `presets.js`
+
+The module is static data + pure lookup/evaluation helpers — no DB, no network, no
+provider calls. Exports:
+
+| Export                                           | Contract                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `LLM_PRESETS`                                    | The frozen manifest rows (§2.2 schema), in declared order: the embedded-EG2 row, the external-EG2 row, the gemma-4-12b-it chat row. Freezing is deep (`Object.freeze` on rows and nested capability/profile objects) — a mutated row fails the probe-matrix suite and the picker render never mutates its source.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `findPreset(id)`                                 | Row lookup by stable slug; unknown id ⇒ `null` (picker shows nothing, no crash — §4).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `getPresetByFamilyRole(family, role)`            | First row whose `family` matches and whose `roles` include `role`; no match ⇒ `null`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `expectedCapabilities(preset)`                   | The row's `expected` object normalized to the seven §2.2 capability keys with boolean values (`true` = declared). Missing keys read as `false`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `evaluateCapabilityMatrix(preset, probeResults)` | The §2.4 authority rule as a pure function. `probeResults` maps capability keys → `{ pass: boolean }` (absent key = not probed = failing). Returns one entry per §2.2 capability key: `{ capability, declared, probed, enabled, note }` where `enabled = probed && pass` (probe is authority — §2.4); `note` is `null`, `'declared-not-probed'` (declared true, probe absent/false ⇒ OFF + admin warning card), `'undeclared-but-probed'` (declared false, probe passed ⇒ ON + "undeclared" admin note), or `'probe-failed'` (declared true, probe present and failing ⇒ OFF + admin warning card).                                                                                                                                                                                                                                                                                                                                       |
+| `kit`                                            | The checked-in conformance reference kit accessor: `kit()` reads `eg2-reference-kit.json` once (cached) and returns `{ strings, vectorsSha, threshold, vectors }` — canonical float32 vectors decoded from base64. **τ = 0.90 is read from the kit file, never hardcoded in gate code** (the calibration artifact is the single source of the threshold).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `evaluateConformance(observedVectors)`           | The §2.3 activation gate as a pure function over the kit: `observedVectors` is the endpoint's vector set for `kit().strings` (same order, one `Float32Array` per string; no endpoint names are ever passed — identity is structural + behavioral). Returns `{ dimOk, median, threshold, pass, reason }`: `dimOk` = every observed vector has length == 768 (profile dim) and every canonical vector is consumed; **the dim check runs BEFORE the median-cos comparison** — a wrong-dim set can never produce a passing median (on dim failure `median` is `null`); `median` = median cosine between paired observed/canonical vectors (unit-norm inputs; both sides renormalized defensively before dotting); `threshold` = `kit().threshold`; `pass = dimOk && median >= threshold`; `reason` ∈ `null` \| `'wrongDim'` \| `'nonConformingEndpoint'`. A same-dim DIFFERENT model passes `dimOk` and must fail here (§4 fixture scenario). |
+
+The `threshold` above is the τ=0.90 release artifact measured by the §21 Q12 run
+(median-cos; selection rationale lives in the kit's `calibration` block). Gate code
+consumes `kit().threshold`; changing τ is a kit-file PR, not a code change.
+
+**dim == 768 (structural identity).** The embed profile `dim` is 768 on both EG2 rows
+(embedded + external endpoint); the conformance gate and the embed probe verify the
+OBSERVED vector dim equals the PROFILE dim (768) — a mismatch is a structural identity
+failure ⇒ embed role OFF with `nonConformingEndpoint` (§2.3 activation gate). The dim
+check runs before the behavioral median-cos comparison; a wrong-dim vector set can
+never produce a passing median.
+
 ### 2.3 Manifest rows (embedded-EG2 [default], bge-m3, embeddinggemma-2, gemma-4-12b-it)
 
 **`embeddinggemma-2-onnx-q4` @ embedded (in-process, THE DEFAULT embed provider):**
@@ -219,6 +245,16 @@ Expectations are advisory; probes (§2.4) gate each sub-capability.
 - [ ] Probe result overrides expectation in BOTH directions: declared-not-probed ⇒ off +
       warning; undeclared-but-probed ⇒ capability ON with an "undeclared" admin note
       (expected set is advisory, probe is authority)
+- [ ] `evaluateCapabilityMatrix` is the pure authority rule: for every row the returned
+      `enabled` equals `probed && pass` regardless of `declared`; a declared-true
+      capability that was never probed (or failed) yields OFF with `note`
+      `declared-not-probed` / `probe-failed`; an undeclared-but-passing probe yields ON
+      with note `undeclared-but-probed`; `findPreset` of an unknown id returns `null`;
+      the manifest is deep-frozen (a mutation attempt leaves rows unchanged)
+- [ ] `kit()` returns the checked-in artifact: 24 strings + 24 base64 float32 vectors,
+      `vectorsSha` matching the file, and threshold τ = 0.90 read from the kit (no
+      threshold constant in gate code — grep); decoded canonical vectors are 768-dim
+      unit-norm float32 (dim == 768 structural gate input)
 - [ ] Embed manifest rows carry ONLY embeddinggemma-2 (grep: no other embed model slug);
       bge-m3/other-model embed support absent from manifest, types, presets.js and fixtures
 - [ ] Tag layer has no vector surface: no `tag_embeddings`/`tag_parents` consumers, no
@@ -227,6 +263,11 @@ Expectations are advisory; probes (§2.4) gate each sub-capability.
       "embeddinggemma-2"-ALIASED endpoint (fixture) ⇒ dim check passes, conformance fails ⇒
       embed role OFF + `nonConformingEndpoint`; assert no code path consults the endpoint's
       self-declared name for identity
+- [ ] `evaluateConformance` reproduces the calibration truth table without any model or
+      network: the kit's own canonical vectors re-fed as observed ⇒ pass (median 1.0, dim
+      768); the embeddinggemma-1 negative vectors ⇒ `nonConformingEndpoint` at the same dim;
+      a 512-dim truncation of the canonical set ⇒ `wrongDim` with `median` null; a name
+      argument is not part of the signature (grep)
 - [ ] built-in lock dtype change ships as a new lock revision ⇒ new `llm_models` row
       (model_id change, re-embed policy §4.2); remote endpoint precision stays annotation —
       no precision-gate code path exists (grep)

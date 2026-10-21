@@ -1057,6 +1057,7 @@ username`), while `openPrivateWorkspace` creates its case folder at the FILESYST
   roles with spec-faithful expected counters. Final targeted gates: repositories dir
   15/15 suites · 227/227, domains/ai 8/8 suites · 63/63, new-suites rerun 47/47,
   eslint --max-warnings=0 + prettier clean.
+
 ### 2026-10-20 — A5 RED-test corrections during GREEN (three Case B test errors, no source violations)
 
 Task: `feature/p1-a5-vectormath` (T1.4a vectorMath/extractors/TextVectorJs oracle).
@@ -1082,6 +1083,7 @@ Task: `feature/p1-a5-vectormath` (T1.4a vectorMath/extractors/TextVectorJs oracl
   vectorStore.md §2.2/§2.3.
 - **Action taken**: tests corrected only; RED evidence stands (the RED commit failed on
   module-not-found for all four suites, which is independent of these test bugs).
+
 ### 2026-10-21 — T1.2b conformance: `deleted_at = NOW()` failed on the sqlite leg (Case B)
 
 - **Summary**: during the EmbeddingsRepository L2 conformance RED→GREEN cycle, the
@@ -1171,3 +1173,29 @@ Task: `feature/p1-a5-vectormath` (T1.4a vectorMath/extractors/TextVectorJs oracl
 - **Action taken**: spec §2.3 `replaceChunks` row + §2.4 PK bullet re-stated to the reconciled
   semantics; deleteByModel setup moved the modelTwo write to chunkIdx 1; both twins re-issued with
   the space-scoped DELETE + PK upsert.
+
+### 2026-10-21 — T1.1a GREEN: three presets.test assertions over-reached the llmPresets contract (Case B — test error, ×3 in one suite)
+
+- **Summary**: after `presets.js` landed per llmPresets §2.2/§2.2a/§2.3, three tests failed
+  while the implementation matched the spec: (1) `profile.pooling` asserted `mean` on ALL rows —
+  pooling is SPACE-shaping and exists only on embed rows; the gemma chat row correctly carries
+  `null`; (2) `getPresetByFamilyRole('ollama','chat')` expected a row — §2.3 marks ollama/TEI
+  chat rows RELEASE-MEASUREMENT PENDING ("complete bundle or not offered"), so no such row ships
+  yet; (3) `requestShape` family-rule asserted on the chat row — requestShape is the EMBEDDINGS
+  body dialect (§2.2), meaningful on embed rows only.
+- **Classification**: **Case B (Test Error)** — each assertion generalized an embed-row rule to
+  rows where the spec field is undefined/null by design. No spec clause makes the original
+  assertions correct; the implementation needed no change.
+- **Action taken**: assertions scoped to embed rows; the ollama-chat lookup now asserts the
+  pending-row ABSENCE (null) with the §2.3 clause cited in the test comment. Spec unchanged.
+
+### 2026-10-21 — T1.1a evaluateConformance GREEN: identity re-feed asserted exact median 1 (Case B — test error)
+
+- **Summary**: the canonical-vectors-re-fed scenario expected `median` toBe(1); received
+  1.000000001411478 — the gate renormalizes both sides before dotting (defensive unit-norm,
+  §2.2a), so an f32→f64 round-trip leaves the identity median at 1 + ~1e-9.
+- **Classification**: **Case B (Test Error)** — exact float equality on a normalization
+  round-trip pins an implementation detail, not the §2.3 contract (identity re-feed passes
+  with median ≈ 1). No spec change; the implementation's defensive renorm stays.
+- **Action taken**: assertion relaxed to `toBeCloseTo(1, 6)` with the float-noise rationale
+  recorded in the test comment.

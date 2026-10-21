@@ -62,40 +62,8 @@ function closeDb(db) {
   }
 }
 
-// --- shared fake canonical store over the corpus (loader seam) --------------
-
-function makeStoreDoubles(corpus, { txMode = 'resolve' } = {}) {
-  const { rows, dim } = corpus;
-  const loadCalls = [];
-  const loadRows = (modelId, userScope) => {
-    loadCalls.push({ modelId, userScope });
-    return rows.map((r) => ({ ...r }));
-  };
-  const txCalls = [];
-  const transaction = (fn) => {
-    txCalls.push(fn);
-    return fn();
-  };
-  const pooledWrites = [];
-  const chunkWrites = [];
-  const upsertPooled = (row) => pooledWrites.push({ ...row });
-  const replaceChunks = (nodeId, vectors) => chunkWrites.push({ nodeId, vectors });
-  return {
-    dim,
-    loadCalls,
-    txCalls,
-    pooledWrites,
-    chunkWrites,
-    create: () =>
-      createSqliteVec({
-        modelId: 'model-under-test',
-        loadRows,
-        upsertPooled,
-        replaceChunks,
-        transaction,
-      }),
-  };
-}
+// (The exact-engine harness provides its own in-memory canonical doubles —
+// the SqliteVec legs inject the real node:sqlite handle alongside them.)
 
 // --- leg 1: the A5 exact-engine harness, unchanged ---------------------------
 
@@ -107,27 +75,22 @@ describe('SqliteVec (vec0) exact≡oracle conformance', () => {
     return;
   }
 
-  let db;
-  beforeAll(() => {
-    db = openScratchDb('conformance.db');
-  });
+  // The harness constructs the engine EAGERLY (conformance.test.js line 155
+  // runs at describe-registration, before beforeAll) — so the db handle must
+  // exist at registration time too; `openDb()` is called eagerly and
+  // afterAll closes it.
+  const db = openScratchDb('conformance.db');
   afterAll(() => {
     closeDb(db);
   });
 
   const corpus = buildCorpus({});
-  const doubles = makeStoreDoubles(corpus);
 
   // The harness drives `loadRows` per call (no-resident-state gate) — the adapter
   // re-syncs its shadow from those rows whenever they change. The doubles above
   // serve as the canonical store; the adapter's shadow lives in the scratch db.
   runExactEngineConformance({
-    createEngine: (deps) =>
-      createSqliteVec({
-        modelId: 'model-under-test',
-        db,
-        ...deps,
-      }),
+    createEngine: (deps) => createSqliteVec({ modelId: 'model-under-test', db, ...deps }),
     corpus,
   });
 });
@@ -281,16 +244,16 @@ describe('SqliteVec vec0 contract pins (vectorStore.md §2.4a/§2.5)', () => {
     }
   });
 
-  it('binds every INTEGER aux column as BigInt (no f64 aux corruption)', async () => {
-    // ids chosen to make a double binding visibly wrong is impractical at small
-    // scale — the pin is that upsert+neighbors succeed with aux values only
-    // representable through BigInt binding (vec0 rejects f64 aux binds outright,
-    // so any slip fails loudly here).
-    const bigId = 9007199254740000; // > 2^53 - 1000, needs BigInt precision
-    expect(Number.isInteger(bigId)).toBe(true);
+  it('binds every INTEGER aux column as BigInt and sentinel-skips unsafe ids', async () => {
+    // 2^53 + 1 is the first integer a double cannot represent — binding it as
+    // a JS number would silently corrupt the vec0 key (node:sqlite binds
+    // numbers as f64). The adapter must reject it at the shadow boundary with
+    // a warning, not silently round it.
+    const unsafeId = Number.MAX_SAFE_INTEGER + 1; // 2^53 (first unsafe integer)
+    expect(Number.isSafeInteger(unsafeId)).toBe(false);
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     const engine = makeEngine([
-      row(bigId, null, [1, 0, 0, 0, 0, 0, 0, 0]),
+      row(unsafeId, null, [1, 0, 0, 0, 0, 0, 0, 0]),
       row(1, null, [0, 1, 0, 0, 0, 0, 0, 0]),
     ]);
     const got = await engine.neighbors([1, 0, 0, 0, 0, 0, 0, 0], 10, null);
@@ -300,24 +263,27 @@ describe('SqliteVec vec0 contract pins (vectorStore.md §2.4a/§2.5)', () => {
     warn.mockRestore();
   });
 
-  it('rejects dims > 2048 (vec0 float[D] limit) with a clear error', () => {
+  it('rejects dims > 2048 (vec0 shadow cap) with a clear error on first query', async () => {
     const big = new Array(2049).fill(0);
     big[0] = 1;
-    expect(() => makeEngine([row(1, null, big)])).toThrow();
+    const engine = makeEngine([row(1, null, big)]);
+    await expect(engine.neighbors(new Array(2049).fill(0), 5, null)).rejects.toThrow();
   });
 
   it('re-syncs the shadow from canonical TEXT on every load change (never-tracked DDL)', async () => {
     const v1 = [1, 0, 0, 0, 0, 0, 0, 0];
     const v2 = [0, 1, 0, 0, 0, 0, 0, 0];
-    let current = [row(1, null, v1)];
-    const engine = makeEngine(current);
+    // The loader closes over the ARRAY OBJECT (mutated below), mirroring a
+    // canonical store whose contents change between calls.
+    const mutableRows = [row(1, null, v1)];
+    const engine = makeEngine(mutableRows);
     const got1 = await engine.neighbors(v2, 5, null);
     expect(got1.length).toBe(1);
     // canonical changed under the engine (job re-embed) → next call re-syncs
-    current = [row(1, null, v2), row(2, null, v1)];
+    mutableRows.length = 0;
+    mutableRows.push(row(1, null, v2), row(2, null, v1));
     const got2 = await engine.neighbors(v1, 5, null);
     expect(got2[0].nodeId).toBe(2); // fresh ranking, no stale shadow rows
-    // and the stale row (nodeId 1 with v1) no longer ranks above node 2
     expect(got2.map((r) => r.nodeId)).toContain(1);
   });
 
@@ -346,16 +312,30 @@ describe('SqliteVec vec0 contract pins (vectorStore.md §2.4a/§2.5)', () => {
     expect(chunkWrites).toEqual([{ nodeId: 42, vectors: [serializeVector(vec1)] }]);
   });
 
-  it('contains zero JOIN tokens in any KNN statement (no join-KNN, §2.5)', async () => {
+  it('contains zero JOIN tokens in its SQL (no join-KNN, §2.5)', async () => {
     const engine = makeEngine([
       row(1, null, [1, 0, 0, 0, 0, 0, 0, 0]),
       row(2, 0, [0, 1, 0, 0, 0, 0, 0, 0]),
     ]);
     await engine.neighbors([1, 0, 0, 0, 0, 0, 0, 0], 5, null);
-    // The adapter module source must not embed a JOIN in its SQL.
+    // Every SQL statement string in the adapter must be JOIN-free — the grep
+    // scopes to string literals so documentary comments don't false-positive.
     const src = fs.readFileSync(require.resolve('../SqliteVec'), 'utf8');
-    expect(src).not.toMatch(/\bJOIN\b/i);
-    expect(src).not.toMatch(/\bIN\s*\(\s*SELECT\b/i); // no subquery-filter KNN either
+    const stringLiterals = [];
+    const token = /'((?:[^'\\]|\\.)*)'|`((?:[^`\\]|\\.)*)`|"/g;
+    let m;
+    const srcNoComments = src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ');
+    while ((m = token.exec(srcNoComments)) !== null) {
+      stringLiterals.push(m[1] ?? m[2] ?? '');
+    }
+    const sqlLiterals = stringLiterals.filter((s) =>
+      /\bSELECT\b|\bINSERT\b|\bCREATE\b|\bDROP\b|\bDELETE\b/i.test(s)
+    );
+    expect(sqlLiterals.length).toBeGreaterThan(0);
+    for (const s of sqlLiterals) {
+      expect(s).not.toMatch(/\bJOIN\b/i);
+      expect(s).not.toMatch(/\bIN\s*\(\s*SELECT\b/i); // no subquery-filter KNN either
+    }
   });
 
   it('returns empty results on an empty corpus without error', async () => {

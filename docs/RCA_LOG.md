@@ -1220,3 +1220,47 @@ Task: `feature/p1-a5-vectormath` (T1.4a vectorMath/extractors/TextVectorJs oracl
 - **Action taken**: expectation corrected to 10; fake upsert fixed to `Object.assign(existing, …)`
   / `return { id: existing.id }`; fixture renamed consistently to `provisioner.params`. Suite
   re-run: 21/21 green.
+
+### 2026-10-21 — B6 audit: enrichment-hook spec violations (delete seam, missing seams, restore null hash, hardcoded kinds)
+
+- **Summary**: the B6 audit (binding spec: aiJobService.md §2.2) found the initial
+  hook implementation non-compliant on four points: (1) an erroneous DELETE seam —
+  `fileService.deleteNode` enqueued `enqueue(nodeId, 'delete', 1, null)` although §2.2
+  defines exactly four seams and the `ai_jobs.kind` CHECK constraint
+  (`001_initial_normalized_schema.sql:451`) has no `'delete'` kind, so every soft-delete
+  threw inside enqueue (swallowed, spurious error log); the mocked-repo tests actually
+  asserted the broken call; (2) version restore re-asserted the filecache with
+  `content_hash = null`, breaking the `(content_hash, modelId)` embed dedupe skip-key;
+  (3) two of the four seams were absent (WebDAV upload success, copy); (4) every seam
+  hardcoded kind `'embed'` instead of applying the §2.2 decision table.
+- **Diagnosis**: the first implementation treated the hook as a one-line enqueue call
+  per operation instead of the spec's `onNodeContentCommitted(nodeId)` abstraction with
+  a decision table; the test suite mocked `aiJobsRepository`, so the DDL kind
+  violation and the null restore hash were never observable. Spec docs were not re-read
+  against the implementation before the previous commit.
+- **Classification**: **Case A (Source Error)** — the implementation violated a binding
+  spec (aiJobService.md §2.2 seams/decision table/hash write-side; DDL kind CHECK).
+  Remediation is a code change; the spec is untouched semantically. Two pre-existing
+  test blocks pinned the spec-violating behavior (delete enqueue, restore null hash)
+  and one pinned the null-hash WebDAV copy mirror — those are **Case B (Test Error)**
+  corrections with citable clauses (§2.2 four seams; §2.2 hash write-side/reuse), updated
+  to the spec'd contract.
+- **Action taken**: (a) delete seam removed everywhere (zero `'delete'` enqueues);
+  (b) new hook module `server/domains/ai/nodeContentHook.js` — node lookup via
+  `fileNodesStore.getNode`, classification via the shared `getFileType` (+filecache
+  mimeType fallback), capability probes from the shared config resolver
+  (`LLM_{CHAT,VISION,ASR}_{BASE_URL,MODEL}`), decision table per §2.2 (text → embed
+  +features on chat-probe; image/video → caption on vision-probe else embed; audio →
+  asr on asr-probe else embed; directory → none; unknown → embed floor), never throws
+  (§2.6), per-kind failure isolation; (c) all four seams call it post-commit:
+  S3 upload/overwrite (`uploadService.js:99/212`), WebDAV upload success
+  (`fileService.js:250`), copy — source content_hash REUSED, not recomputed
+  (`fileService.js:532/576`), restore — content re-read via `blobStore.downloadBlob`
+  and hashed with the same `sha256Buffer` convention as the upload path
+  (`versionsService.js:219`, util extracted to `server/utils/contentHash.js`);
+  (d) hash write-side wired at every seam. Hook suite rewritten RED-first (module-missing
+  + 11 behavior failures observed) → GREEN 39/39; two pre-existing tests updated to the
+  spec'd contract; full server suite 2741 passed / 27 skipped / 0 failed. Decision note:
+  unknown-extension files classify as the embed floor only (no `features`) — §2.2 keys
+  `features` to the local-extractor class (pdf/docx/txt), and an unknown type is neither
+  text nor media.

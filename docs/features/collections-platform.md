@@ -420,10 +420,13 @@ experimental only.
 
 ### 4.20 Embedding-model roles
 
-The embed model answers "where", never "what" — all analytics are set math on its vectors. Three
-call sites, only the first file-proportional: **file embedding** (async; skipped on an identical
-content fingerprint within the same model version), **query embedding** (the system's only
-request-path AI call), **tag embedding** (batch, small vocabulary). No image/frame embedding exists
+The embed model answers "where", never "what" — all analytics are set math on its vectors. Two
+call sites today, only the first file-proportional: **file embedding** — fired fire-and-forget by
+the enrichment hook (`onNodeContentCommitted`) at the four content-commit seams (S3 upload,
+WebDAV upload, copy, version restore — §4.1; as-built in `server/domains/ai/nodeContentHook.js`),
+async and skipped on an identical content fingerprint within the same model version — and
+**query embedding** (the system's only request-path AI call). No tag-embedding call site exists
+(tag derivations run from stored features, no per-tag model calls). No image/frame embedding exists
 (§4.21); no calls at all for centroids or seeds — evolution math is call-free. The model
 is the space key: one active embedding model, cross-model comparison forbidden except across an
 admin-triggered migration; dimension fixed per model.

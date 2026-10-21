@@ -1438,3 +1438,67 @@ decision record merged after the ledger was written); all Wave A branches cut fr
   in parallel on `feature/p1-a6-pgvector-adapter` / `feature/p1-a7-vec0-adapter`
   (base `a9944d8`), worktrees wt-a6/wt-a7. RED-first targets: recall@50≥0.99
   @ef400 held-out queries only; conformance harness reuse unchanged.
+- **A6 (T1.4b-pg) `[done]` — merged into `ai-feature` (orchestrator merge
+  `2cac99e`).** Branch `feature/p1-a6-pgvector-adapter`, base `a9944d8`.
+  Scope: `server/domains/ai/vectorStore/PgVector.js` (canonical TEXT-row
+  truth + adapter-managed `pg_vector_shadow` sync, KNN re-ranking via `<=>`
+  with `SET LOCAL hnsw.ef_search = 400` fixed, `rebuildShadow` stale-dim
+  drop-rebuild) + docs-first vectorStore.md refinement + `test:ci:pg:vector`
+  script on its own :5434 port + E2E PG image swapped to
+  `pgvector/pgvector:pg16` + 22-test ANN-leg suite. RED: module-absent →
+  GREEN: 22/22 against a real pgvector/pg16 container (recall@50 = 1.0000
+  @ ef400 held-out; ef-contrast 0.4140 proves the SET LOCAL knob bites).
+  Shadow-table DDL owned by the adapter per §6 — never in the tracked chain.
+  Orchestrator gate re-run on the main checkout: 22/22 green; full server
+  test:ci 147 suites / 2621 pass (pgvector suite CI-skipped by design,
+  exercised via its dedicated script).
+- **A7 (T1.4b-vec0) `[done]` — merged into `ai-feature` (orchestrator merge
+  `dd17927`).** Branch `feature/p1-a7-vec0-adapter`, rebased onto
+  `ai-feature` @ `e37b2ae` before merge (A6 had landed in between; the
+  vectorStore.md/conformance-harness overlaps merged clean). First attempt
+  died commit-less on the sqlite-vec loading seam — the orchestrator
+  pre-verified the environment facts and re-injected them into the retry
+  brief (`allowExtension: true` DatabaseSync option, `+`-prefixed declared
+  aux PKs, f32-distance semantics). Scope: `SqliteVec.js` (vec0 virtual
+  table adapter-managed per §6; `+node_id/+chunk_idx/+model_id` aux PKs,
+  `chunk_idx=-1` pooled marker; `user_version` generation stamp keyed on
+  canonical row-count+dim; **f64 rescoring over canonical TEXT rows so
+  exact≡oracle bit-parity holds — vec0's f32 distance ranks candidates
+  only**); shared engine-agnostic `aclFilter.js` (oversample→rescore, no
+  join-KNN — A6's pg path may consume it unchanged); sqlite-vec dep;
+  vectorStore.md §2.4a/§2.5/§2.6/§5 vec0-scoped amendments. Gates: seam
+  suites 75 tests green (recall@50 = 1.0000 over 40 held-out queries);
+  full server test:ci 148 / 2666 on the branch. RCA: pdfjs-dist/@napi-rs
+  native-lib corruption in the worktree was environmental (orchestrator
+  verified md5 divergence on `skia.linux-x64-gnu.node`; fixed via npm ci —
+  no test altered).
+- **Wave A exit gate — PASSED (2026-10-21, orchestrator)**: after the A7
+  merge the orchestrator PG adapter leg surfaced 22 real defects in the
+  A1/A2 merged twins and ONE environment-stale failure class:
+  1. **AiJobs PG placeholder dialect (Case A)** — `CLAIMABLE_PREDICATE`
+     carried a literal sqlite `?`; the PG twin interpolated it verbatim ⇒
+     PG 42601 on every claim. Fixed with a `%PARAM%` slot resolved per
+     dialect (`?` sqlite / `$1` postgres) — commit `c49dca4`.
+  2. **AiJobs enqueue return shape (Case A)** — the PG twin read
+     `result.rows` but `postgresExecutor.run()` yields `{changes, lastId}`
+     ⇒ every enqueue resolved null on PG. Fixed to
+     `{ id: Number(result.lastId) }` — same commit.
+  3. **LlmModels stale-schema (environment)** — the shared e2e PG database
+     predated the §17 `engine/precision/model_revision` columns and its
+     `_schema_migrations` checksum matched the CURRENT file (the T1.0
+     editing of 001 happened BEFORE this DB was ever provisioned; the
+     stored checksum is of the edited file — the drift detector can never
+     catch columns missing on a table created by an even older DDL
+     generation). Resolved by dropping the schema and letting the leg
+     re-apply 001; columns verified present. No code change.
+  Final gates: server `test:ci` 148 suites / 2647 pass (27 skip) green;
+  client `test:ci` 180 suites / 2064 pass green; `test:ci:pg:adapters`
+  29 suites / 415 pass (1 skip) green; `test:ci:pg:vector` 22/22 green;
+  grep-gates clean (zero `CacheAdapter|operationProgress` in runtime code —
+  the one service.js hit is a documentary comment stating the invariant;
+  zero `tag_embeddings|tag_parents|getTagVectors|upsertAutoParent` outside
+  the DDL-parity enumeration tests); docsStatePurity green. **Wave A
+  complete: A1–A7 all merged. Wave B (B1–B6) may start.**
+  Standing flag carried forward: `llm_models.dim` does not exist (B2's
+  `syncModelRegistry` dim persistence needs an owner decision at the B2
+  docs step).

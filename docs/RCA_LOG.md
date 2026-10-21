@@ -1171,3 +1171,18 @@ Task: `feature/p1-a5-vectormath` (T1.4a vectorMath/extractors/TextVectorJs oracl
 - **Action taken**: spec §2.3 `replaceChunks` row + §2.4 PK bullet re-stated to the reconciled
   semantics; deleteByModel setup moved the modelTwo write to chunkIdx 1; both twins re-issued with
   the space-scoped DELETE + PK upsert.
+
+### 2026-10-21 — T1.1a GREEN: three presets.test assertions over-reached the llmPresets contract (Case B — test error, ×3 in one suite)
+
+- **Summary**: after `presets.js` landed per llmPresets §2.2/§2.2a/§2.3, three tests failed
+  while the implementation matched the spec: (1) `profile.pooling` asserted `mean` on ALL rows —
+  pooling is SPACE-shaping and exists only on embed rows; the gemma chat row correctly carries
+  `null`; (2) `getPresetByFamilyRole('ollama','chat')` expected a row — §2.3 marks ollama/TEI
+  chat rows RELEASE-MEASUREMENT PENDING ("complete bundle or not offered"), so no such row ships
+  yet; (3) `requestShape` family-rule asserted on the chat row — requestShape is the EMBEDDINGS
+  body dialect (§2.2), meaningful on embed rows only.
+- **Classification**: **Case B (Test Error)** — each assertion generalized an embed-row rule to
+  rows where the spec field is undefined/null by design. No spec clause makes the original
+  assertions correct; the implementation needed no change.
+- **Action taken**: assertions scoped to embed rows; the ollama-chat lookup now asserts the
+  pending-row ABSENCE (null) with the §2.3 clause cited in the test comment. Spec unchanged.

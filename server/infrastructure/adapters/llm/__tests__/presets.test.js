@@ -130,11 +130,19 @@ describe('presets manifest (llmPresets §2.2/§2.2a/§2.3)', () => {
       expect(row.budgets.chunkBudget).toBe(4);
       expect(row.budgets.batchSize).toBeGreaterThan(0);
       expect(row.profile.chPerTok).toBeGreaterThan(0);
-      expect(row.profile.pooling).toBe('mean');
+      if (row.roles.includes('embed')) {
+        // pooling is SPACE-shaping — declared only on embed rows (§2.2)
+        expect(row.profile.pooling).toBe('mean');
+      }
       expect(row.profile.dtype).not.toMatch(/fp16/);
-      expect(row.profile.requestShape).toEqual(
-        row.family === 'embedded' ? 'plain-input' : 'content-wrapper'
-      );
+      if (row.roles.includes('embed')) {
+        // requestShape is the EMBEDDINGS body dialect (§2.2) — meaningful on
+        // embed rows: embedded is in-process (plain), remote EG2 wraps media
+        // in the content-wrapper.
+        expect(row.profile.requestShape).toEqual(
+          row.family === 'embedded' ? 'plain-input' : 'content-wrapper'
+        );
+      }
       if (row.expected.image_embed || row.expected.audio_embed || row.expected.video_embed) {
         expect(row.profile.mediaTokenCost).toEqual({
           image: 280,
@@ -155,7 +163,9 @@ describe('presets manifest (llmPresets §2.2/§2.2a/§2.3)', () => {
     const { getPresetByFamilyRole } = require('../presets');
     expect(getPresetByFamilyRole('embedded', 'embed').id).toBe('embeddinggemma-2-onnx-q4');
     expect(getPresetByFamilyRole('llama.cpp', 'embed').id).toBe('embeddinggemma-2-external');
-    expect(getPresetByFamilyRole('ollama', 'chat').id).toBe('gemma-4-12b-it');
+    // ollama/tei chat rows are RELEASE-MEASUREMENT PENDING (§2.3) — they ship
+    // only once measured, so the manifest currently resolves no such row.
+    expect(getPresetByFamilyRole('ollama', 'chat')).toBeNull();
     expect(getPresetByFamilyRole('tei', 'embed')).toBeNull();
   });
 

@@ -26,9 +26,16 @@
 
 ### 2.2 Row shape
 
-`{ nodeId, modelId, dim, vector, source, contentHash, updatedAt }` — `vector` is TEXT:
-serialized floats (comma-separated, `dim`-checked at the repository boundary);
-`source ∈ fulltext | chunk_pool | head | metadata_only` (overlength-ladder outcome).
+`{ nodeId, modelId, dim, vector, source, contentHash, updatedAt }`.
+
+- **Stored representation:** `vector` is TEXT — comma-separated floats (`dim`-checked at
+  the repository boundary).
+- **Domain representation:** the repository maps the stored TEXT to a `number[]`
+  (`deserializeVector`) for all read paths (`get`, `getByNodeIds`, `listAll`); `upsert`
+  accepts either a `number[]` or a pre-serialized string (round-tripped via
+  `serializeVector`).
+- `source ∈ fulltext | chunk_pool | head | metadata_only | media_direct` (DDL CHECK enum,
+  overlength-ladder / media pipeline outcome).
 
 ### 2.3 Main Methods
 

@@ -2,12 +2,12 @@
 
 ## 1. Overview
 
-| Item           | Description                                                                                                                                                                                                                                                  |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Role           | Per-document chunk vectors — table `embeddings_chunk(node_id, chunk_idx, vector, model_id, updated_at)`, PK `(node_id, chunk_idx)`. Written by the `chunk-pool` overlength ladder; RETAINED (not discarded after pooling) — retrieval scores against chunks. |
-| Derived status | A rebuildable derived artifact: dropping rows loses only long-document recall depth and is healed by re-running the embed job. The canonical source of truth remains `embeddings.vector` + the extractor pipeline.                                           |
-| Scoring        | Max-over-chunks per-node neighbor scoring is **vectorStore's job** (`domains/ai/vectorStore/`) — this facade stores and returns rows; it never computes similarity.                                                                                          |
-| Design owner   | `docs/features/collections-platform.md` §4.3 (chunking ladder), §4.20 ("store every chunk vector").                                                                                                                                                          |
+| Item         | Description                                                                                                                                                                                                              |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role         | Chunked (segment-level) embedding rows per node — table `embeddings_chunk(node_id, chunk_idx, vector TEXT, model_id, updated_at)`. Holds long-document chunks so search can score max-over-chunks (§4.13 seam); the pooled `embeddings` row remains the ONE canonical vector for centroid/naming math. |
+| Space key    | `model_id` is the embedding-SPACE key (same rule as the pooled table): chunks from different `llm_models` rows are never comparable. Retained per §4.3 — dropping rows loses only long-doc recall depth (derived-cache semantics, rebuildable by re-chunking). |
+| Consumers    | vectorStore adapter (chunk-shadow-index rebuild), search max-over-chunks scoring, embed worker (chunk-pool ladder writes).                                                                                                                |
+| Design owner | `docs/features/collections-platform.md` §4.3 (retention), §4.13 (seam), §5 (DDL).                                                                                                                                                      |
 
 ---
 
@@ -20,76 +20,51 @@
 - **Implementations:** `server/store/repositories/{sqlite,postgres}/EmbeddingsChunkRepository.{sqlite,postgres}.js`
 - **Conformance (L2):** `server/store/repositories/__tests__/EmbeddingsChunkRepository.conformance.test.js`
 - **Facade test:** `server/domains/ai/__tests__/embeddingsChunkStore.test.js`
-- **DDL source of truth:** `server/store/postgresql/ddl/001_initial_normalized_schema.sql`. The vec0/pgvector
-  shadow carry chunk rows too, but as **never-tracked DDL** managed by vectorStore.
+- **DDL source of truth:** `server/store/postgresql/ddl/001_initial_normalized_schema.sql`. **Never** in tracked DDL: the pgvector shadow table / sqlite vec0 virtual table for chunks — those are created and managed by the vectorStore adapter only.
 
 ### 2.2 Row shape
 
-`{ nodeId, chunkIdx, vector, modelId, updatedAt }` — `chunkIdx` SMALLINT ≥ 0, dense from
-0 within a node's set; `vector` TEXT serialized floats, same codec as the pooled row
-(`embeddingsStore` §2.2).
+`{ nodeId, chunkIdx, vector, modelId, updatedAt }` — `vector` is TEXT (comma-separated floats, canonical pooled-embeddings codec), parsed to `number[]` at the repository boundary (float count read back as the chunk dim — chunks of one node/model share the pooled `dim`; no separate column). `chunk_idx` is 0-based SMALLINT.
 
 ### 2.3 Main Methods
 
-| Method          | Signature                                             | Description                                                                                                                                                                                                                                 |
-| --------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `replace`       | (nodeId, modelId, vectors) => Promise\<{ inserted }\> | REPLACE-ON-RECHUNK, one TX: `DELETE WHERE node_id=?` then bulk INSERT `chunk_idx = 0..n-1`. Changing chunk params (profile key) re-chunks fully — old-count leftovers are gone by construction. `vectors = []` deletes and inserts nothing. |
-| `list`          | (nodeId) => Promise\<chunkRow[]\>                     | All chunk rows of a node, `ORDER BY chunk_idx ASC`. Missing node → `[]`.                                                                                                                                                                    |
-| `listByNodeIds` | (nodeIds) => Promise\<chunkRow[]\>                    | Batch read for scoring passes (JsFallback per-query load; node ids dedup before k — vectorStore's contract).                                                                                                                                |
-| `count`         | (nodeId) => Promise\<number\>                         | Chunk count (drives the `chunk_pool` vs `head` ladder outcome bookkeeping).                                                                                                                                                                 |
-| `delete`        | (nodeId) => Promise\<{ changes }\>                    | Explicit drop (drop-and-rebuild path).                                                                                                                                                                                                      |
-| `deleteMany`    | (nodeIds) => Promise\<{ changes }\>                   | Batch drop in one TX (model-change teardown before backfill re-chunks).                                                                                                                                                                     |
+| Method         | Signature                                                                 | Description                                                                                                                                         |
+| -------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `listByNode`   | (nodeId, { modelId }?) => Promise\<row[]\>                                | All chunks of one node in `chunk_idx` ASC order; optional `modelId` filter (space-key read filter, same rule as the pooled store).                   |
+| `get`          | (nodeId, chunkIdx) => Promise\<row \| null\>                              | Single chunk read.                                                                                                                                    |
+| `replaceChunks`| (nodeId, modelId, chunks: Array\<{ chunkIdx, vector }\>) => Promise\<{ inserted }\> | ONE TX: DELETE the node's rows for the incoming `model_id` (that space's set for the node) + INSERT the given set. A cross-space write landing on an existing `(node_id, chunk_idx)` position claims it via the PK upsert (newer space wins); rows of OTHER models at non-colliding indices are untouched — a node may briefly hold rows in two spaces mid-backfill (readers filter by `model_id`). Re-chunking within one model replaces that model's whole set; no partial updates. |
+| `deleteByNode` | (nodeId) => Promise\<{ changes }\>                                        | Explicit drop (content change, retirement). Missing rows → `changes: 0`.                                                                              |
+| `deleteByModel`| (modelId) => Promise\<{ changes }\>                                       | Retire a whole embedding space (model migration backfill start).                                                                                      |
+| `countByNode`  | (nodeId, { modelId }?) => Promise\<number\>                               | Chunk count for one node (progress / ladder outcome).                                                                                                 |
+| `listAllByModel`| (modelId, { afterNodeId?, afterChunkIdx?, limit? }?) => Promise\<row[]\>  | Tuple keyset cursor over the composite PK — rows strictly after `(afterNodeId, afterChunkIdx)` (afterChunkIdx defaults to -1: resume at that node's first row), `ORDER BY node_id, chunk_idx LIMIT n`, filtered to `model_id` — drives chunk-shadow-index rebuild. A node-level cursor cannot paginate the composite PK without skipping boundary-node chunks (§2.8 "every row exactly once"). |
 
-No `upsert`-per-chunk method exists on purpose: a chunk set is only ever valid as a whole
-(the chunking profile is part of the model profile key — **mixed-chunk scoring is
-forbidden**), so `replace` is the only write.
+### 2.4 Storage semantics & invariants
 
-### 2.4 Storage semantics
+- `node_id` is FK `→ file_nodes ON DELETE CASCADE`; purge removes the chunks; trash keeps them.
+- `(node_id, chunk_idx)` is the PK: replacing chunks is a wholesale DELETE+INSERT in one TX, scoped to the node's set in the incoming model space; a second-space write replaces the first at a shared position via the PK upsert (space-exclusive positions). Partial chunk updates are forbidden (a half-written chunk set would break max-over-chunks determinism).
+- Chunks inherit the pooled row's space: the caller (embed worker / vectorStore seam) resolves `modelId` upstream; the store persists it without an `llm_models` lookup.
+- The `vector` TEXT column round-trips bit-stably through serialize/parse (no lossy REAL/NUMERIC in tracked DDL).
 
-- `node_id` FK `→ file_nodes ON DELETE CASCADE`: purge cascades chunk rows; trash does not.
-- `model_id` is the space key (same rule as pooled rows): a node's chunk set always
-  belongs to ONE model — `replace` stamps every inserted row with the given `modelId`;
-  no per-row model mixing (the API allows no partial writes — replace-only), so
-  readers may assume homogeneity per node.
-- `updated_at` refreshed on every `replace` (the delete+insert set shares one timestamp).
-- Retrieval note (pointer): `neighbors(vec, k, candidates)` scores per-node
-  **max-over-chunks** from these rows;
-  `allVectors`/shadow indexes INCLUDE chunk rows and dedup by node id. None of that math
-  lives here.
+### 2.5 Transaction boundaries
 
-### 2.5 Drop-and-rebuild derived semantics
+One `executor.transaction` per call; no locks, no journal (derived AI state). The vectorStore seam's `upsert(node, vecs[], dim)` calls the pooled write (embeddingsStore) and the chunk write HERE inside ITS own TX (vectorStore seam division of labor — one TX for both, not nested).
 
-- Losing rows (operator drop, failed shadow build, model retirement) is a performance
-  event, not a data-integrity event: the embed job for the node's current generation can
-  re-run and `replace` restores the set deterministically (same text, same profile ⇒ same
-  chunks).
-- On model change: teardown via `deleteMany` (or overwrite by `replace` per node during
-  backfill); stale-model chunk rows never coexist with new-model rows for the same node
-  after `replace`.
+### 2.6 Error contracts
 
-### 2.6 Transaction boundaries & error contracts
-
-- `replace`/`deleteMany`: one `executor.transaction` each; others single statements.
-- No locks, no journal (worker-side derived state).
-- Reads: `[]` / `0` for missing data. Writes: FK violation → mapped error; oversized
-  `chunk_idx` (> SMALLINT range) is impossible by construction (indices come from array
-  position).
+- Reads: missing → `null` / `[]`. Writes: `{ changes }` / `{ inserted }`; FK violation (unknown node) surfaces as a mapped error; malformed vector TEXT raises at the repository boundary (never stored half-written).
 
 ### 2.7 Dependencies
 
 - `storage.getExecutor()` + `EmbeddingsChunkRepository` (+ twins)
-- Callers: vectorStore adapter `upsert(node, vecs[], dim)` seam (chunk half), embed
-  worker (overlength ladder), backfill teardown.
+- Callers: vectorStore adapter (`domains/ai/vectorStore/`), embed worker (chunk-pool ladder), backfill service, search max-over-chunks read. No lockManager.
 
 ### 2.8 Verification Scenarios
 
-- [ ] `replace(node, m, [v0,v1,v2])` then `replace(node, m, [v0])` → exactly one row (`chunk_idx=0`); shrinking re-chunks leave no orphans
-- [ ] `replace` with `[]` removes all rows for the node (delete-only path)
-- [ ] `list` ordering is `chunk_idx` ascending and dense from 0
-- [ ] `listByNodeIds` dedups repeated node ids input, returns all rows of each node, and never mixes nodes
-- [ ] Rows for a purged node cascade away; trashed nodes keep theirs
-- [ ] Every row of a `replace` batch carries the same `modelId` and `updatedAt`
-- [ ] Double `replace` in one TX rollback (forced failure) leaves the previous set untouched (atomic swap)
-- [ ] Drop-and-rebuild: delete all chunks of a node, re-run the embed worker for its generation → byte-identical vector set restored (determinism check lives in the worker suite; store asserts re-insert fidelity)
-- [ ] L2 conformance (real sqlite + real PostgreSQL): PK `(node_id, chunk_idx)` conflict behavior (only reachable via `replace`'s internal bulk insert), CASCADE parity, SMALLINT binding parity, TEXT vector round-trip parity, `listByNodeIds` batch-in expansion on both dialects
-- [ ] Integration pointer: removing the vec0/pgvector shadow artifacts and rebuilding from `embeddings` + `embeddings_chunk` reads reproduces identical neighbor scores (vectorStore conformance owns the assertion)
+- [ ] `replaceChunks` for one node → old chunk rows fully replaced, `chunk_idx` order preserved
+- [ ] `listByNode` returns chunks in `chunk_idx` ASC order; `modelId` filter excludes other spaces
+- [ ] Chunk count for a re-chunked node matches the new ladder outcome (old count discarded)
+- [ ] `listAllByModel` keyset pagination returns every row exactly once across pages, in `(nodeId, chunkIdx)` order
+- [ ] `deleteByNode` removes all chunks; `deleteByModel` retires the whole space
+- [ ] Node purge cascades the rows; trashing does NOT
+- [ ] TEXT vector round-trips bit-stably through serialize/parse (float count == pooled `dim`)
+- [ ] L2 conformance (real sqlite + real PostgreSQL): PK upsert/replace parity, keyset pagination parity, cascade parity, row-shape mapping (number ids, ISO `updatedAt`)

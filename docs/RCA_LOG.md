@@ -1082,3 +1082,92 @@ Task: `feature/p1-a5-vectormath` (T1.4a vectorMath/extractors/TextVectorJs oracl
   vectorStore.md §2.2/§2.3.
 - **Action taken**: tests corrected only; RED evidence stands (the RED commit failed on
   module-not-found for all four suites, which is independent of these test bugs).
+### 2026-10-21 — T1.2b conformance: `deleted_at = NOW()` failed on the sqlite leg (Case B)
+
+- **Summary**: during the EmbeddingsRepository L2 conformance RED→GREEN cycle, the
+  `dbRun('UPDATE file_nodes SET deleted_at = NOW() ...')` trash-seeding helper threw
+  `no such function: NOW` on the default sqlite backend (14/14 → 13 pass + 1 fail).
+- **Diagnosis**: test-utils translates `?` placeholders across dialects but does NOT
+  translate SQL functions; `NOW()` is PostgreSQL-only. The established in-repo precedent
+  (`CollectionsRepository.conformance.test.js` lines 178/767) seeds raw timestamps with
+  `isSqliteBackend() ? "datetime('now')" : 'NOW()'`. The repository code under test was
+  correct (13/14 assertions, including all dialect-parity cases, passed before the fix).
+- **Classification**: **Case B (Test Error)** — the test asserted a PG-only SQL function
+  inside a backend-agnostic helper, violating repository-contract.md §2.2 rule 6
+  ("L2 conformance suites run against real sqlite and real PostgreSQL ... they assert
+  behavior, not SQL text"). No spec clause permits non-portable SQL in shared tests, so
+  the incident is test-side by that clause.
+- **Action taken**: same-shape fix across the three new T1.2b conformance suites
+  (Embeddings, EmbeddingsChunk, AiEnrichments) — the trash-seed helper now branches
+  `isSqliteBackend() ? "datetime('now')" : 'NOW()'`. No production code changed;
+  EmbeddingsRepository suite 14/14 after the fix.
+
+### 2026-10-21 — T1.2b chunk pagination: committed spec §2.3 node-level cursor cannot satisfy §2.8 completeness (Case C resolved to the spec's own binding scenario)
+
+- **Summary**: during the EmbeddingsChunkRepository GREEN cycle, the committed RED test's page-2
+  expectation (`[[ids[1], 1]]` — the boundary node's remaining chunk) was unreachable under the
+  committed spec §2.3 cursor (`node_id > afterNodeId`): with `afterNodeId = ids[1]` a strictly-greater
+  node filter excludes ALL of the boundary node's rows, and a shadow-index rebuild would silently
+  skip boundary-node chunks whenever a node has more than one chunk.
+- **Diagnosis**: `embeddings_chunk` PK is the composite `(node_id, chunk_idx)`; a node-level cursor
+  cannot keyset-paginate it. The committed spec itself is internally inconsistent: §2.8 mandates
+  "keyset pagination returns every row exactly once across pages, in (nodeId, chunkIdx) order" —
+  which ONLY a tuple cursor `(node_id, chunk_idx) > (afterNodeId, afterChunkIdx)` can deliver.
+  The RED test encoded §2.8 faithfully; the §2.3 cursor row was the defect (this task's own docs
+  artifact from commit 379fdda, not an owner-ratified ruling — §19/§27 touch tag dissolution and
+  wave structure, not pagination cursors).
+- **Classification**: **Case C (spec error)** resolved locally — the citable binding clause is
+  embeddingsChunkStore.md §2.8 ("every row exactly once across pages"); the §2.3 row is amended to
+  the tuple cursor `(afterNodeId, afterChunkIdx)` in the same commit, and the test now passes the
+  full tuple cursor. No owner decision is affected; flagged in the A2 return report.
+- **Action taken**: spec §2.3 `listAllByModel` row + factory JSDoc + conformance test aligned on the
+  tuple cursor; §2.3 `replaceChunks` row tightened to the unconditional DELETE (the space-keying
+  scenario proves the new set owns the node — a second-space write wipes the first).
+
+### 2026-10-21 — T1.2a GREEN follow-up: committed EmbeddingsRepository twins omit mapDatabaseError and ignore the transaction `tx` handle (Case A — self-caught before merge)
+
+- **Summary**: re-reading `executor.js`/`postgresExecutor.js` during the chunk GREEN cycle showed
+  the committed pooled twins (commit 6c59720) (a) wrap mutations in `executor.transaction(fn)` but
+  IGNORE the `fn(tx)` handle — `executor.transaction` passes a dedicated tx-scoped client
+  (`storage.withTransaction`) that MUST carry the statements; and (b) contain no
+  `mapDatabaseError` mapping.
+- **Diagnosis**: repository-contract.md §2.2 rule 1 (executor seam contract: transaction callbacks
+  receive `tx { query, run }` backed by the transaction's own client — executor.md) and rule 4
+  ("Implementations map driver errors via `mapDatabaseError`") both mandate the fix. The sqlite leg
+  masked the tx defect (statements still executed), but the PG adapter leg would run the
+  statements outside the transaction client, breaking the wholesale-replace atomicity contract.
+- **Classification**: **Case A (Source Error)** — committed implementation violates the citable
+  contract clauses; caught in self-review before the merge gate, so fixed in a dedicated GREEN
+  follow-up commit rather than stopping the wave (the error surface is contained to the A2 task's
+  own files; no shipped behavior existed to protect).
+- **Action taken**: pooled twins re-issued to use the `tx` handle inside `executor.transaction`
+  and wrap every executor call in `try { … } catch (error) { throw mapDatabaseError(error); }`;
+  pooled conformance suite re-run to 14/14 before commit.
+
+### 2026-10-21 — T1.2b chunk GREEN: committed replaceChunks semantics + deleteByModel RED setup mutually inconsistent (Case B — test error; earlier spec tightening was a misreading)
+
+- **Summary**: the sqlite leg failed only `deleteByModel retires the whole space` (expected
+  `changes` 2, received 1) while the space-keying scenario passed. The committed spec §2.3 row had
+  been "tightened" to an UNCONDITIONAL node-wide DELETE ("the new set owns the node"), but the
+  deleteByModel RED setup writes modelTwo at chunkIdx 0 — the same position as node a's modelOne
+  row — and expects BOTH modelOne rows to survive; under PK (node_id, chunk_idx) plus an
+  unconditional delete that is impossible (any cross-space write on node a wipes its modelOne row
+  ⇒ changes 1).
+- **Diagnosis**: PK is `(node_id, chunk_idx)` per DDL 001 §embeddings_chunk — at most one row per
+  (node, chunk) position regardless of model. The space-keying test's own comment ("a second space
+  write on the same chunk replaced the first") is satisfied by a PK upsert, NOT by an unconditional
+  wipe; the earlier unconditional-DELETE tightening was a misreading. Reconciling all three
+  scenarios (re-ladder same-model replace; space-keying collision; deleteByModel cross-space
+  coexistence) forces: DELETE scoped to the node's rows for the incoming `model_id` + INSERT …
+  ON CONFLICT (node_id, chunk_idx) DO UPDATE (newer space claims the position). Under that
+  semantic the RED setup is still wrong: a cross-space write at a COLLIDING index must claim the
+  position, so the deleteByModel setup's modelTwo write must land on a non-colliding index
+  (chunkIdx 1).
+- **Classification**: **Case B (Test Error)** — the RED test's setup misinterpreted the PK
+  invariant (expected 2 modelOne rows to survive a colliding second-space write; impossible under
+  PK (node_id, chunk_idx) per embeddingsChunkStore §2.4 and the space-keying scenario's own
+  comment). The earlier spec "tightening" to unconditional DELETE was part of the same misreading
+  and is corrected in the same docs commit.
+- **Action taken**: spec §2.3 `replaceChunks` row + §2.4 PK bullet re-stated to the reconciled
+  semantics; deleteByModel setup moved the modelTwo write to chunkIdx 1; both twins re-issued with
+  the space-scoped DELETE + PK upsert.

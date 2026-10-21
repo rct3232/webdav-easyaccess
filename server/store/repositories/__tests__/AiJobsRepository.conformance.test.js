@@ -117,6 +117,70 @@ describe('AiJobsRepository conformance', () => {
     expect(claimed.id).toBe(Number(job.id));
   });
 
+  it('claimNext({ excludeKinds }) parks the listed kinds entirely (zero attempt inflation) and drains once the filter is removed', async () => {
+    await clearJobs();
+    const nodeA = await uniqueNode();
+    const nodeB = await uniqueNode();
+    const parkedJob = await repo.enqueue(nodeA.nodeId, 'embed', 1);
+
+    // The excluded kind is fully parked: no claimable row.
+    await expect(repo.claimNext({ excludeKinds: ['embed'] })).resolves.toBeNull();
+
+    const drainJob = await repo.enqueue(nodeB.nodeId, 'features', 1);
+    const claimed = await repo.claimNext({ excludeKinds: ['embed'] });
+    expect(claimed).not.toBeNull();
+    expect(claimed.id).toBe(Number(drainJob.id));
+    expect(claimed.kind).toBe('features');
+
+    // Park&drain: the parked kind's rows are untouched — no status flip,
+    // no attempt inflation, no started_at.
+    const parkedRow = await readRow(parkedJob.id);
+    expect(parkedRow.status).toBe('pending');
+    expect(parkedRow.attempt).toBe(0);
+    expect(parkedRow.started_at).toBeNull();
+
+    // Removing the filter drains the parked kind in id ASC order.
+    const drained = await repo.claimNext();
+    expect(drained).not.toBeNull();
+    expect(drained.id).toBe(Number(parkedJob.id));
+    expect(drained.kind).toBe('embed');
+  });
+
+  it('claimNext({ excludeKinds }) also parks due failed rows of the excluded kind (same untouched row)', async () => {
+    await clearJobs();
+    const node = await uniqueNode();
+    const failedJob = await repo.enqueue(node.nodeId, 'embed', 1);
+    const claimed = await repo.claimNext();
+    expect(claimed).not.toBeNull();
+    expect(claimed.id).toBe(Number(failedJob.id));
+    await repo.markFailed(claimed.id, 'transient');
+
+    // Due again only after backoff; park it via the filter and read the row.
+    await backdateNextRetry(failedJob.id);
+    const parked = await repo.claimNext({ excludeKinds: ['embed'] });
+    expect(parked).toBeNull();
+    const row = await readRow(failedJob.id);
+    expect(row.status).toBe('failed');
+    expect(row.attempt).toBe(1);
+
+    // Draining claims it immediately.
+    const drained = await repo.claimNext();
+    expect(drained).not.toBeNull();
+    expect(drained.id).toBe(Number(failedJob.id));
+    expect(drained.attempt).toBe(1);
+  });
+
+  it('claimNext({ excludeKinds: [] }) restores the exact zero-arg contract', async () => {
+    await clearJobs();
+    const node = await uniqueNode();
+    const job = await repo.enqueue(node.nodeId, 'embed', 1);
+    const withEmptyFilter = await repo.claimNext({ excludeKinds: [] });
+    expect(withEmptyFilter).not.toBeNull();
+    expect(withEmptyFilter.id).toBe(Number(job.id));
+    const row = await readRow(job.id);
+    expect(row.status).toBe('running');
+  });
+
   it('markDone / markFailed / markSkipped on a non-running row → { changes: 0 }', async () => {
     const node = await uniqueNode();
     const job = await repo.enqueue(node.nodeId, 'caption', 1);

@@ -1,7 +1,7 @@
 'use strict';
 
 const { mapDatabaseError } = require('../../../utils/errorHandler');
-const { CLAIMABLE_PREDICATE, backoffMs, mapJobRow, truncateError } = require('../aiJobsShared');
+const { buildClaimPredicate, backoffMs, mapJobRow, truncateError } = require('../aiJobsShared');
 
 /**
  * sqlite implementation of AiJobsRepository (`?` placeholders). The driver is
@@ -12,11 +12,6 @@ const { CLAIMABLE_PREDICATE, backoffMs, mapJobRow, truncateError } = require('..
  * @param {import('../../../infrastructure/db/executor').DbExecutor} executor
  */
 module.exports = function createSqliteAiJobsRepository(executor) {
-  const claimablePredicate = CLAIMABLE_PREDICATE.replaceAll(
-    '%NEXT_RETRY%',
-    'next_retry_at'
-  ).replaceAll('%PARAM%', '?');
-
   return {
     dialect: 'sqlite',
 
@@ -63,18 +58,22 @@ module.exports = function createSqliteAiJobsRepository(executor) {
       }
     },
 
-    async claimNext() {
+    async claimNext(opts = {}) {
+      const excludeKinds = (Array.isArray(opts.excludeKinds) ? opts.excludeKinds : []).map(String);
       try {
+        const now = new Date().toISOString();
+        // sqlite `?` are positional: started_at first, then the predicate's
+        // ISO instant, then one slot per excluded kind (§2.4 + §2.3 filter).
         const result = await executor.run(
           `UPDATE ai_jobs SET status = 'running', started_at = ?
            WHERE id = (
              SELECT id FROM ai_jobs
-             WHERE ${claimablePredicate}
+             WHERE ${buildClaimPredicate(excludeKinds, () => '?')}
              ORDER BY id
              LIMIT 1
            )
            RETURNING *`,
-          [new Date().toISOString(), new Date().toISOString()]
+          [now, now, ...excludeKinds]
         );
         if (!result.rows || result.rows.length === 0) return null;
         return mapJobRow(result.rows[0]);

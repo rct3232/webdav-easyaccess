@@ -30,9 +30,12 @@
  *   already present (the dedupe-skip contract).
  * @property {(items: Array<{nodeId, kind, generation, contentHash?}>) => Promise<{enqueued: number}>} enqueueMany
  *   One TX, per-item ON CONFLICT DO NOTHING — backfill seeding.
- * @property {() => Promise<AiJob|null>} claimNext
+ * @property {(opts?: { excludeKinds?: string[] }) => Promise<AiJob|null>} claimNext
  *   Atomically move the oldest claimable row to `running` (started_at=now);
  *   `null` when nothing is claimable — never throws on "nothing to do".
+ *   `opts.excludeKinds` is a predicate-level filter: rows of the listed kinds
+ *   stay parked (status and attempt untouched — zero attempt inflation) and
+ *   drain in claim order once the filter is removed.
  * @property {(jobId) => Promise<{changes: number}>} markDone
  *   `running → done`, finished_at=now; guarded on status='running'.
  * @property {(jobId, error) => Promise<{changes: number}>} markFailed

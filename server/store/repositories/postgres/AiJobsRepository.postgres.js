@@ -1,7 +1,7 @@
 'use strict';
 
 const { mapDatabaseError } = require('../../../utils/errorHandler');
-const { CLAIMABLE_PREDICATE, backoffMs, mapJobRow, truncateError } = require('../aiJobsShared');
+const { buildClaimPredicate, backoffMs, mapJobRow, truncateError } = require('../aiJobsShared');
 
 /**
  * postgres implementation of AiJobsRepository (`$n` placeholders). The claim
@@ -11,11 +11,6 @@ const { CLAIMABLE_PREDICATE, backoffMs, mapJobRow, truncateError } = require('..
  * @param {import('../../../infrastructure/db/executor').DbExecutor} executor
  */
 module.exports = function createPostgresAiJobsRepository(executor) {
-  const claimablePredicate = CLAIMABLE_PREDICATE.replaceAll(
-    '%NEXT_RETRY%',
-    'next_retry_at'
-  ).replaceAll('%PARAM%', '$1');
-
   return {
     dialect: 'postgres',
 
@@ -62,17 +57,20 @@ module.exports = function createPostgresAiJobsRepository(executor) {
       }
     },
 
-    async claimNext() {
+    async claimNext(opts = {}) {
+      const excludeKinds = (Array.isArray(opts.excludeKinds) ? opts.excludeKinds : []).map(String);
       try {
         return await executor.transaction(async (tx) => {
           const now = new Date().toISOString();
+          // postgres `$n` are indexed per predicate position: $1 = ISO
+          // instant, $2..$n = excluded kinds (§2.4 + §2.3 filter).
           const locked = await tx.query(
             `SELECT id FROM ai_jobs
-             WHERE ${claimablePredicate}
+             WHERE ${buildClaimPredicate(excludeKinds, (index) => `$${index + 1}`)}
              ORDER BY id
              LIMIT 1
              FOR UPDATE SKIP LOCKED`,
-            [now]
+            [now, ...excludeKinds]
           );
           if (locked.rows.length === 0) return null;
           const claimed = await tx.run(

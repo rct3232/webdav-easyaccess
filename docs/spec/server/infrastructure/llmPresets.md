@@ -90,6 +90,7 @@ provider calls. Exports:
 | `expectedCapabilities(preset)`          | The row's `expected` object normalized to the seven §2.2 capability keys with boolean values (`true` = declared). Missing keys read as `false`.                                                                                |
 | `evaluateCapabilityMatrix(preset, probeResults)` | The §2.4 authority rule as a pure function. `probeResults` maps capability keys → `{ pass: boolean }` (absent key = not probed = failing). Returns one entry per §2.2 capability key: `{ capability, declared, probed, enabled, note }` where `enabled = probed && pass` (probe is authority — §2.4); `note` is `null`, `'declared-not-probed'` (declared true, probe absent/false ⇒ OFF + admin warning card), `'undeclared-but-probed'` (declared false, probe passed ⇒ ON + "undeclared" admin note), or `'probe-failed'` (declared true, probe present and failing ⇒ OFF + admin warning card). |
 | `kit`                                   | The checked-in conformance reference kit accessor: `kit()` reads `eg2-reference-kit.json` once (cached) and returns `{ strings, vectorsSha, threshold, vectors }` — canonical float32 vectors decoded from base64. **τ = 0.90 is read from the kit file, never hardcoded in gate code** (the calibration artifact is the single source of the threshold). |
+| `evaluateConformance(observedVectors)`  | The §2.3 activation gate as a pure function over the kit: `observedVectors` is the endpoint's vector set for `kit().strings` (same order, one `Float32Array` per string; no endpoint names are ever passed — identity is structural + behavioral). Returns `{ dimOk, median, threshold, pass, reason }`: `dimOk` = every observed vector has length == 768 (profile dim) and every canonical vector is consumed; **the dim check runs BEFORE the median-cos comparison** — a wrong-dim set can never produce a passing median (on dim failure `median` is `null`); `median` = median cosine between paired observed/canonical vectors (unit-norm inputs; both sides renormalized defensively before dotting); `threshold` = `kit().threshold`; `pass = dimOk && median >= threshold`; `reason` ∈ `null` \| `'wrongDim'` \| `'nonConformingEndpoint'`. A same-dim DIFFERENT model passes `dimOk` and must fail here (§4 fixture scenario). |
 
 The `threshold` above is the τ=0.90 release artifact measured by the §21 Q12 run
 (median-cos; selection rationale lives in the kit's `calibration` block). Gate code
@@ -262,6 +263,11 @@ Expectations are advisory; probes (§2.4) gate each sub-capability.
       "embeddinggemma-2"-ALIASED endpoint (fixture) ⇒ dim check passes, conformance fails ⇒
       embed role OFF + `nonConformingEndpoint`; assert no code path consults the endpoint's
       self-declared name for identity
+- [ ] `evaluateConformance` reproduces the calibration truth table without any model or
+      network: the kit's own canonical vectors re-fed as observed ⇒ pass (median 1.0, dim
+      768); the embeddinggemma-1 negative vectors ⇒ `nonConformingEndpoint` at the same dim;
+      a 512-dim truncation of the canonical set ⇒ `wrongDim` with `median` null; a name
+      argument is not part of the signature (grep)
 - [ ] built-in lock dtype change ships as a new lock revision ⇒ new `llm_models` row
       (model_id change, re-embed policy §4.2); remote endpoint precision stays annotation —
       no precision-gate code path exists (grep)

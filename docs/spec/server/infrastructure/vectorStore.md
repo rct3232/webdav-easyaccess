@@ -78,7 +78,9 @@ chunk_idx, model_id, embedding)`. Chunk rows carry into BOTH shadows.
   trigger); dropped-and-rebuilt idempotently from `embeddingsStore.listAll(modelId)` +
   `embeddingsChunkStore.listByNodeIds` — conformance asserts a rebuilt shadow reproduces
   identical neighbor results to the pre-drop run (embeddingsStore §2.9 pointer).
-- The HNSW shadow dim is bound to the ACTIVE model (`llm_models.dim`): model change ⇒
+- The HNSW shadow dim is bound to the ACTIVE model's RUNTIME dim (derived from the
+  model profile — `llm_models` has no dim column (DDL 001); dim persistence lives
+  per-row on `embeddings.dim`): model change ⇒
   rebuild derived index; stale-model shadow data never coexists (drop-first).
 - Absent/unloadable extension at boot ⇒ factory returns `TextVectorJs`, logs once,
   `backendHealth('vector').report` = fallback(degraded reason + hint

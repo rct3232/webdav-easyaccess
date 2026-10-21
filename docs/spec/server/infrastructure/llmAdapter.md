@@ -69,15 +69,17 @@ Target-contract spec.
   manual trigger) → `backendHealth` rows update → `settings/public` `ai:{embed,chat}`
   flags flip live (email_enabled precedent `settings.js:18-29`). Running enrichment
   workers adopt the new config at the NEXT job; query-embed adopts at the next request
-  (mid-switch failure degrades — never surfaces as error); budget breakers and
-  daily counters RESET on reconfig.
+  (mid-switch failure degrades — never surfaces as error); budget breakers RESET
+  on reconfig. Usage HISTORY is DB truth and is NEVER reset by a reconfig
+  (§2.9; aiUsageDailyStore §1 — no store code path resets, zeroes, or
+  aggregates-away history; a day rollover is a new PK row).
 
 ### 2.3 Public API
 
 | Export                                              | Contract                                                                                                                                                                                                                                                                                                                                                                                   |
 | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `roleConfigured(role)`                              | `true` iff the role resolves to a LIVE provider: remote ⇒ non-empty `{base_url, model}`; the built-in embed role ⇒ lockfile present AND weights provisioned. During an in-place provisioning run the role is NOT configured — consumers park their work (never claim-and-fail); readiness surfaces as the `preparing` state (§2.4). Presence, not probe — probes gate CAPABILITY, see §2.4 |
-| `embed(texts[])`                                    | batch per provider `batch_size` (llm_models row); returns `{vectors[][], dim, modelId, degraded?}`; pooled/chunk callers (worker) decide the ladder; applies the profile's `requestShape` + TEXT prefixes (§2.6)                                                                                                                                                                           |
+| `embed(texts[])`                                    | batch per provider `batch_size` (llm_models row); returns `{vectors[][], dim, modelId, degraded?}` — `dim` is RUNTIME-DERIVED from the active model's profile (embedded: the lockfile `dim`; remote: the preset profile). `llm_models` has NO dim column and never will (DDL 001 is closed) — dim persistence lives ON THE EMBEDDING ROWS themselves (`embeddings.dim` / `embeddings_chunk.dim` are `NOT NULL` per row — history is self-describing); stale-dim detection compares this runtime dim against the per-row dim of the canonical rows, never against `llm_models`; pooled/chunk callers (worker) decide the ladder; applies the profile's `requestShape` + TEXT prefixes (§2.6)                                                                                                                                                                           |
 | `embedMedia(buffers[], {mediaType})`                | V1/V3 direct media embed: image/audio/video bytes → same embed role, NO text prefix, profile `requestShape` (media rides the `content`-wrapper); oversized media enters the §2.6 MEDIA segment ladder; returns `{vectors[][], dim, modelId, degraded?}`                                                                                                                                    |
 | `embedQuery(query)`                                 | Request-path wrapper (query embed): `query_parses` signature-cache read/write first, kill-switch respected, timeout ⇒ throw `transport` (caller degrades to empty section); applies the profile's query prefix; the profile records serving-mode latency as an informational field                                                                                                         |
 | `chat(messages, {schema?, maxTokens?, reasoning?})` | JSON-schema-forced where supported; `reasoning` defaults OFF (§2.7); returns `{json, text, usage, truncated}`                                                                                                                                                                                                                                                                              |
@@ -85,7 +87,7 @@ Target-contract spec.
 | `asrTranscribe(audioBuffer, {escapePrompt: true})`  | escape-prompt is part of the fixed template — callers cannot omit it.                                                                                                                                                                                                                                                                                                                      |
 | `probeLlm()`                                        | suite (§2.4; **includes the remote-embed conformance gate** — activation of an external embed override depends on it); `runProbe(target='llm')` registration in `backendProbe.js:263` + `POST /api/admin/config/test` target `llm` + `/api/setup/test` target `llm` (wizard)                                                                                                               |
 | `breakerState(role)` / `budgetStatus()`             | admin card inputs: `ok \| budget_paused \| breaker_open(cooldown_left)` + `ai_usage_daily` rows                                                                                                                                                                                                                                                                                            |
-| `syncModelRegistry()`                               | upsert `llm_models` rows from resolved configs + probe results (`dim`, `max_input_chars`, `chunk_budget`, `batch_size`, `reasoning`, `enabled`) — the registry is the adapter's persisted view, never hand-edited except `reasoning` (experiment switch)                                                                                                                                   |
+| `syncModelRegistry()`                               | upsert `llm_models` rows from resolved configs + probe results (`max_input_chars`, `chunk_budget`, `batch_size`, `reasoning`, `enabled`) — there is NO `dim` column on `llm_models` and none will be added (DDL 001 is closed): the ACTIVE model's dim is runtime-derived from the model profile (llmModelsStore §1 dim note) and persisted per-row on the embeddings rows — the registry is the adapter's persisted view, never hand-edited except `reasoning` (experiment switch)                                                                                                                                   |
 
 ### 2.4 Probe suite (IN-DOMAIN samples — hard rule)
 
@@ -164,7 +166,8 @@ audio windows `min(window/25 s, 327 s)`, video frame-sampled locally (ffmpeg, 1 
 ≤ window/140 frames per segment through the image-processor path, image single; there is
 no server `ub` wall to consult (in-process memory governs batching).
 Circuit breaker (transport class): ≥5 consecutive transport failures ⇒ OPEN 300s, half-
-open probe on expiry (operational tunables, T2; not profile constants).
+open probe on expiry (operational tunables `LLM_BREAKER_THRESHOLD` (5) /
+`LLM_BREAKER_COOLDOWN_S` (300) — T2, §3; not profile constants).
 
 ### 2.6 Overlength executor (ladder lives HERE, jobs consume its flags)
 
@@ -218,7 +221,8 @@ Every provider round-trip (including cached-hit accounting) upserts
 
 `LLM_{EMBED,CHAT,VISION,ASR}_{BASE_URL,API_KEY,MODEL}`, `LLM_MAX_INPUT_CHARS`,
 `LLM_CHUNK_BUDGET` (4), `LLM_OVERLENGTH_POLICY` (`chunk-pool`), `LLM_DAILY_CALL_CAP`/
-`LLM_DAILY_TOKEN_CAP` (0), `LLM_REPROBE_DEBOUNCE_S` (60), breaker tunables (§2.5),
+`LLM_DAILY_TOKEN_CAP` (0), `LLM_REPROBE_DEBOUNCE_S` (60), `LLM_BREAKER_THRESHOLD` (5),
+`LLM_BREAKER_COOLDOWN_S` (300) (§2.5 breaker tunables),
 `AI_SEMANTIC_SEARCH_ENABLED` (consumed by searchService, listed here as the query-embed
 kill switch family).
 

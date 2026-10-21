@@ -157,27 +157,29 @@ decide truth; there is no `LLM_ENABLED` flag. API keys are `secret: true`
 keys are registered now so the admin config surface (editor + `GET/PUT /api/admin/config`)
 can manage them from day one.
 
-| key                          | tier | secret  | default         | notes                                                    |
-| ---------------------------- | ---- | ------- | --------------- | -------------------------------------------------------- |
-| `LLM_EMBED_BASE_URL`         | T2   | no      | —               | embed role connection triplet (`dbOnly`)                 |
-| `LLM_EMBED_API_KEY`          | T2   | **yes** | —               |                                                          |
-| `LLM_EMBED_MODEL`            | T2   | no      | —               |                                                          |
-| `LLM_CHAT_BASE_URL`          | T2   | no      | —               | chat role triplet                                        |
-| `LLM_CHAT_API_KEY`           | T2   | **yes** | —               |                                                          |
-| `LLM_CHAT_MODEL`             | T2   | no      | —               |                                                          |
-| `LLM_VISION_BASE_URL`        | T2   | no      | —               | vision role triplet                                      |
-| `LLM_VISION_API_KEY`         | T2   | **yes** | —               |                                                          |
-| `LLM_VISION_MODEL`           | T2   | no      | —               |                                                          |
-| `LLM_ASR_BASE_URL`           | T2   | no      | —               | ASR role triplet                                         |
-| `LLM_ASR_API_KEY`            | T2   | **yes** | —               |                                                          |
-| `LLM_ASR_MODEL`              | T2   | no      | —               |                                                          |
-| `LLM_MAX_INPUT_CHARS`        | T2   | no      | —               | budget chain step 1 (admin cap beats published metadata) |
-| `LLM_CHUNK_BUDGET`           | T2   | no      | `4`             | uniform-stride sample cap (overlength ladder)            |
-| `LLM_OVERLENGTH_POLICY`      | T2   | no      | `'chunk-pool'`  | ladder entry point selector (`llmAdapter.md` §2.6)       |
-| `LLM_DAILY_CALL_CAP`         | T2   | no      | `0` (unlimited) | per-role daily call cap (§2.5)                           |
-| `LLM_DAILY_TOKEN_CAP`        | T2   | no      | `0` (unlimited) | per-role daily token cap                                 |
-| `LLM_REPROBE_DEBOUNCE_S`     | T2   | no      | `60`            | hot re-probe debounce on config signature change (§2.2)  |
-| `AI_SEMANTIC_SEARCH_ENABLED` | T2   | no      | `true`          | query-embed kill switch (`searchService` consumer)       |
+| key                          | tier | secret  | default         | notes                                                                           |
+| ---------------------------- | ---- | ------- | --------------- | ------------------------------------------------------------------------------- |
+| `LLM_EMBED_BASE_URL`         | T2   | no      | —               | embed role connection triplet (`dbOnly`)                                        |
+| `LLM_EMBED_API_KEY`          | T2   | **yes** | —               |                                                                                 |
+| `LLM_EMBED_MODEL`            | T2   | no      | —               |                                                                                 |
+| `LLM_CHAT_BASE_URL`          | T2   | no      | —               | chat role triplet                                                               |
+| `LLM_CHAT_API_KEY`           | T2   | **yes** | —               |                                                                                 |
+| `LLM_CHAT_MODEL`             | T2   | no      | —               |                                                                                 |
+| `LLM_VISION_BASE_URL`        | T2   | no      | —               | vision role triplet                                                             |
+| `LLM_VISION_API_KEY`         | T2   | **yes** | —               |                                                                                 |
+| `LLM_VISION_MODEL`           | T2   | no      | —               |                                                                                 |
+| `LLM_ASR_BASE_URL`           | T2   | no      | —               | ASR role triplet                                                                |
+| `LLM_ASR_API_KEY`            | T2   | **yes** | —               |                                                                                 |
+| `LLM_ASR_MODEL`              | T2   | no      | —               |                                                                                 |
+| `LLM_MAX_INPUT_CHARS`        | T2   | no      | —               | budget chain step 1 (admin cap beats published metadata)                        |
+| `LLM_CHUNK_BUDGET`           | T2   | no      | `4`             | uniform-stride sample cap (overlength ladder)                                   |
+| `LLM_OVERLENGTH_POLICY`      | T2   | no      | `'chunk-pool'`  | ladder entry point selector (`llmAdapter.md` §2.6)                              |
+| `LLM_DAILY_CALL_CAP`         | T2   | no      | `0` (unlimited) | per-role daily call cap (§2.5)                                                  |
+| `LLM_DAILY_TOKEN_CAP`        | T2   | no      | `0` (unlimited) | per-role daily token cap                                                        |
+| `LLM_REPROBE_DEBOUNCE_S`     | T2   | no      | `60`            | hot re-probe debounce on config signature change (§2.2)                         |
+| `LLM_BREAKER_THRESHOLD`      | T2   | no      | `5`             | consecutive-failure count that OPENs the circuit breaker (`llmAdapter.md` §2.5) |
+| `LLM_BREAKER_COOLDOWN_S`     | T2   | no      | `300`           | breaker OPEN cooldown before the half-open probe (`llmAdapter.md` §2.5)         |
+| `AI_SEMANTIC_SEARCH_ENABLED` | T2   | no      | `true`          | query-embed kill switch (`searchService` consumer)                              |
 
 ### Activity constants (T2 `dbOnly` — §3.4 product constants)
 

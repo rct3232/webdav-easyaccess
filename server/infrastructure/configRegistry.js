@@ -165,6 +165,8 @@ const CONFIG_ENTRIES = Object.freeze([
   { key: 'LLM_DAILY_CALL_CAP', tier: TIER.T2, secret: false, default: 0, dbOnly: true },
   { key: 'LLM_DAILY_TOKEN_CAP', tier: TIER.T2, secret: false, default: 0, dbOnly: true },
   { key: 'LLM_REPROBE_DEBOUNCE_S', tier: TIER.T2, secret: false, default: 60, dbOnly: true },
+  { key: 'LLM_BREAKER_THRESHOLD', tier: TIER.T2, secret: false, default: 5, dbOnly: true },
+  { key: 'LLM_BREAKER_COOLDOWN_S', tier: TIER.T2, secret: false, default: 300, dbOnly: true },
   { key: 'AI_SEMANTIC_SEARCH_ENABLED', tier: TIER.T2, secret: false, default: true, dbOnly: true },
 
   // ── Search knobs (T0.11 — searchService.md §3; T2 hot/dbOnly) ───────────

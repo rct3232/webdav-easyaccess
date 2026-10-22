@@ -30,6 +30,7 @@ import { useUndoToast } from '../../hooks/useUndoToast';
 import { getServerErrorDisplay } from '../../utils/errorUtils';
 import MemberRowControls from '../../components/file-manager/MemberRowControls';
 import AddToCollectionMenu from '../../components/file-manager/AddToCollectionMenu';
+import SearchSaveDialog from '../../components/file-manager/SearchSaveDialog';
 import { ConfirmDialog, RenameDialog } from '../../components/dialogs';
 import { useFileManagerDialogs } from './hooks/useFileManagerDialogs';
 import { useTrashOperations } from './hooks/useTrashOperations';
@@ -1363,10 +1364,24 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     });
   }, []);
 
-  // Chip-bar save affordance (§2.6 boundary): the hook's saveFromResults
-  // carries the gate; a real create surfaces the standard create undo toast.
-  // Absorbed failures resolve null inside the hook (no toast, no undo).
-  const handleSearchSave = useCallback(async () => {
+  // Chip-bar save affordance (§2.6 boundary): the chip click opens the
+  // host-owned CONFIRM dialog (invariant 5 — the dialog IS the batch
+  // approval; the seed-dialog idiom). The create fires on CONFIRM through
+  // the hook's saveFromResults; a real create surfaces the standard create
+  // undo toast. Absorbed failures resolve null inside the hook (no toast,
+  // no undo).
+  const [searchSaveDialog, setSearchSaveDialog] = useState(null); // { term, rows }
+
+  const handleSearchSave = useCallback(() => {
+    const api = searchApiRef.current;
+    if (!api) return;
+    const term = Array.isArray(api.terms) ? api.terms[api.terms.length - 1] : null;
+    if (!term) return;
+    setSearchSaveDialog({ term, rows: Array.isArray(api.zoneCRows) ? api.zoneCRows : [] });
+  }, []);
+
+  const handleSearchSaveConfirm = useCallback(async () => {
+    setSearchSaveDialog(null);
     const created = await searchApiRef.current.saveFromResults();
     if (!created) return;
     handleUndoable(created, 'collections.undoCreated');
@@ -2260,6 +2275,13 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           onClose={closeAddMenu}
         />
       )}
+      <SearchSaveDialog
+        open={searchSaveDialog != null}
+        term={searchSaveDialog?.term ?? ''}
+        rows={searchSaveDialog?.rows ?? []}
+        onClose={() => setSearchSaveDialog(null)}
+        onConfirm={handleSearchSaveConfirm}
+      />
       {isCollectionsOverlay && (
         <>
           <RenameDialog

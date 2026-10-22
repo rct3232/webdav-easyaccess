@@ -1308,3 +1308,26 @@ Task: `feature/p1-a5-vectormath` (T1.4a vectorMath/extractors/TextVectorJs oracl
   section-absent assertions hold again. Residual: other hermetic suites that also
   assume the unconfigured stack may need the same pin if their premises ever touch the
   semantic section (none do today).
+
+## 2026-10-22 — gcService tier-3 purge-order flake under second-granularity deleted_at (C5 gate run)
+
+- **Symptom**: `gcService.test.js` "collects per-node purge failures without aborting the
+  cycle" failed on a full `test:ci` run: `purgeNode` was called `[ok-b, fail-a]` instead of
+  the asserted `[fail-a, ok-b]`.
+- **Diagnosis**: `FileNodeRepository.getTopmostTrashedNodes` orders
+  `deleted_at DESC, fn.name` and `markSubtreeDeleted` stamps `deleted_at` with
+  `datetime('now')` (SECOND granularity, sqlite). The test asserts seed order, which holds
+  only while both roots share the same `deleted_at` second (the `fn.name` ASC tie-break
+  resolves `fail-a < ok-b`). When the two seed calls straddle a second boundary the
+  strictly-newer root sorts FIRST under DESC and the asserted order flips — a pure
+  test-arrangement nondeterminism. The C5 branch touches no GC/trash path
+  (`git diff 0200f9e --stat`: collections domain + client + e2e only).
+- **Classification**: **Case B (Test-arrangement Error)** — the assertion encodes seed
+  order while the citable ordering contract is `deleted_at DESC` (trash purge parity:
+  newest trashed first). Spec docs are unaffected.
+- **Fix**: the test pins the second seed one second into the past
+  (`UPDATE file_nodes SET deleted_at = datetime('now', '-1 seconds')`), making the asserted
+  call order deterministic under the real DESC contract; no production change, no
+  assertion weakened.
+- **Verification**: targeted suite green; full `test:ci` re-run green (counts in the C5
+  report).

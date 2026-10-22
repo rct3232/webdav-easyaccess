@@ -420,7 +420,9 @@
     "seedMore": "외 {{count}}개",
     "seedPublishNotice": "이 컬렉션을 공유하면 위 전체 집합(추가 파일 포함)이 일괄 공개 대상으로 승인됩니다.",
     "seedCreateConfirm": "컬렉션 만들기",
-    "seedPublishFailed": "미리보기를 불러오지 못했습니다. 다시 시도해 주세요."
+    "seedPublishFailed": "미리보기를 불러오지 못했습니다. 다시 시도해 주세요.",
+    "searchSaveTitle": "검색 결과를 컬렉션으로 저장",
+    "searchSaveConfirm": "컬렉션 저장"
   },
   "admin": {
     "users": "사용자",

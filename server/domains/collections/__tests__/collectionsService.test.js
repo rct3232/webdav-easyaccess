@@ -550,6 +550,153 @@ describe('collectionsService createSeedCollection gate', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Search save leg (§2.2 createSearchCollection + §2.2.1 dispatch): the
+// flattened semantic-execution snapshot creates a search-origin collection
+// whose initial batch materializes published=true.
+// ---------------------------------------------------------------------------
+
+describe('collectionsService createSearchCollection (search save leg)', () => {
+  it('creates a search-origin collection from the flattened snapshot; the initial batch lands published=true', async () => {
+    const ctx = await setupServiceUser('searchcreate');
+
+    const { collection, undo, rejected_not_readable } =
+      await collectionsService.createSearchCollection(ctx.user.id, {
+        name: 'banana harvest festival',
+        semantic: { resultRef: 'sr1.abc0123456789ef', predicates: [], nodeIds: [ctx.beach.id] },
+      });
+
+    expect(collection).toMatchObject({ name: 'banana harvest festival', origin: 'search' });
+    // §2.7 flattening: the stored definition is the SNAPSHOT (result_ref
+    // reference + predicate set) — replay chains and name-match ids never
+    // enter it.
+    expect(collection.definition).toEqual({
+      kind: 'search',
+      result_ref: 'sr1.abc0123456789ef',
+      predicates: [],
+    });
+    expect(rejected_not_readable).toEqual([]);
+    expect(undo.actionId).toBeGreaterThan(0);
+
+    // the semantic member materialized as the initial batch, published=true
+    const items = await collectionsStore.listStoredItems(collection.id);
+    expect(items).toHaveLength(1);
+    expect(items[0].nodeId).toBe(ctx.beach.id);
+    expect(items[0].published).toBe(true);
+  });
+
+  it('reports unreadable ids in rejected_not_readable and adds only the readable rest', async () => {
+    const ctx = await setupServiceUser('searchread');
+    const stranger = await createUserWithRoot('svc-searchother');
+    const secret = await fileNodeService.createFile(stranger.root.id, 'secret.txt');
+
+    const { collection, rejected_not_readable } = await collectionsService.createSearchCollection(
+      ctx.user.id,
+      {
+        name: 'Mixed',
+        semantic: {
+          resultRef: 'sr1.abc0123456789ef',
+          predicates: [],
+          nodeIds: [ctx.beach.id, secret.id],
+        },
+      }
+    );
+
+    expect(rejected_not_readable).toEqual([secret.id]);
+    const items = await collectionsStore.listStoredItems(collection.id);
+    expect(items).toHaveLength(1);
+    expect(items[0].nodeId).toBe(ctx.beach.id);
+  });
+
+  it('rejects an empty semantic member set honestly (emptyNodeIds)', async () => {
+    const ctx = await setupServiceUser('searchempty');
+    await expect(
+      collectionsService.createSearchCollection(ctx.user.id, {
+        name: 'Empty',
+        semantic: { resultRef: 'sr1.abc0123456789ef', predicates: [], nodeIds: [] },
+      })
+    ).rejects.toMatchObject({ message: 'emptyNodeIds' });
+  });
+
+  it('rejects malformed snapshots with invalidDefinition (resultRef, predicates, shape)', async () => {
+    const ctx = await setupServiceUser('searchmalformed');
+    await expect(
+      collectionsService.createSearchCollection(ctx.user.id, {
+        name: 'Bad ref',
+        semantic: { predicates: [], nodeIds: [ctx.beach.id] },
+      })
+    ).rejects.toMatchObject({ message: 'invalidDefinition' });
+    await expect(
+      collectionsService.createSearchCollection(ctx.user.id, {
+        name: 'Bad predicates',
+        semantic: { resultRef: 'sr1.abc0123456789ef', predicates: null, nodeIds: [ctx.beach.id] },
+      })
+    ).rejects.toMatchObject({ message: 'invalidDefinition' });
+    // P1 reserves the predicate set: only the empty set is accepted.
+    await expect(
+      collectionsService.createSearchCollection(ctx.user.id, {
+        name: 'Nonempty predicates',
+        semantic: {
+          resultRef: 'sr1.abc0123456789ef',
+          predicates: [{ type: 'tag' }],
+          nodeIds: [ctx.beach.id],
+        },
+      })
+    ).rejects.toMatchObject({ message: 'invalidDefinition' });
+    await expect(
+      collectionsService.createSearchCollection(ctx.user.id, {
+        name: 'Missing ids',
+        semantic: { resultRef: 'sr1.abc0123456789ef', predicates: [] },
+      })
+    ).rejects.toMatchObject({ message: 'invalidDefinition' });
+  });
+
+  it('journals the create + initial batch as two commands; the undo pointer is the create command', async () => {
+    const ctx = await setupServiceUser('searchjournal');
+
+    const { collection, undo } = await collectionsService.createSearchCollection(ctx.user.id, {
+      name: 'Journaled',
+      semantic: { resultRef: 'sr1.abc0123456789ef', predicates: [], nodeIds: [ctx.beach.id] },
+    });
+
+    const journal = await dbQuery(
+      'SELECT id, action, subject FROM action_journal WHERE subject = ? ORDER BY id ASC',
+      [`collection:${collection.id}`]
+    );
+    expect(journal.rows.map((row) => row.action)).toEqual(['create', 'add-items']);
+    expect(undo.actionId).toBe(journal.rows[0].id);
+  });
+
+  it('undo of the returned pointer removes the collection together with the initial batch', async () => {
+    const ctx = await setupServiceUser('searchundo');
+    const { collection, undo } = await collectionsService.createSearchCollection(ctx.user.id, {
+      name: 'Undoable',
+      semantic: { resultRef: 'sr1.abc0123456789ef', predicates: [], nodeIds: [ctx.beach.id] },
+    });
+
+    const actionsService = require('@server/domains/actions/service');
+    await actionsService.undoAction(ctx.user.id, undo.actionId, { confirmCascade: true });
+
+    expect(await collectionsStore.getCollection(collection.id)).toBeNull();
+    expect(await collectionsStore.listStoredItems(collection.id)).toHaveLength(0);
+  });
+
+  it('requires a valid name like the manual arm (nameRequired / invalidName)', async () => {
+    const ctx = await setupServiceUser('searchname');
+    await expect(
+      collectionsService.createSearchCollection(ctx.user.id, {
+        semantic: { resultRef: 'sr1.abc0123456789ef', predicates: [], nodeIds: [ctx.beach.id] },
+      })
+    ).rejects.toMatchObject({ message: 'nameRequired' });
+    await expect(
+      collectionsService.createSearchCollection(ctx.user.id, {
+        name: '.wea-hidden',
+        semantic: { resultRef: 'sr1.abc0123456789ef', predicates: [], nodeIds: [ctx.beach.id] },
+      })
+    ).rejects.toMatchObject({ message: 'invalidName' });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // T0.9 — cosine-free rule evaluation: tag atoms resolve against ai_tag_raw
 // (folded string equality), like/path atoms stay live, upload-hook seam.
 // ---------------------------------------------------------------------------

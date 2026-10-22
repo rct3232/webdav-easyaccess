@@ -227,6 +227,7 @@ test('E2E-AI-001: a semantic search returns an uploaded document no name matches
   expect(Array.isArray(first.semantic)).toBe(true);
   expect(first.semantic_unavailable_reason).toBeUndefined();
   expect(first.result_ref).toMatch(/^sr1\.[0-9a-f]{16}$/);
+  const resultRef = first.result_ref as string;
   expect(first.counts).toMatchObject({ semantic_capped_segments: false });
 
   const nameIds = (first.name_matches as Array<{ node_id: number }>).map((row) => row.node_id);
@@ -299,4 +300,68 @@ test('E2E-AI-001: a semantic search returns an uploaded document no name matches
     /Suggested results|추천 결과/
   );
   await expect(page.getByTestId(`server-search-row-${nodeId}`)).toBeVisible();
+
+  // SAVE LEG (collectionsService.md §2.2 createSearchCollection via the
+  // `{ name, semantic }` POST /api/collections dispatch): the chip-bar Save
+  // opens the host-owned CONFIRM dialog with the member preview; the dialog
+  // IS the batch approval, and confirming creates the search-origin
+  // collection whose initial batch contains the semantic member
+  // (published=true — §2.7 initial-batch rule).
+  await expect(page.getByTestId('search-chip-save')).toBeVisible();
+  await page.getByTestId('search-chip-save').click();
+  await expect(page.getByTestId('search-save-dialog')).toBeVisible();
+  await expect(page.getByTestId('search-save-publish-notice')).toBeVisible();
+  // the member preview carries the semantic member's name (the document
+  // body phrase name-matched nothing, so Zone C is the only source); the
+  // tile middle-truncates long names — assert the leading fragment
+  await expect(page.getByTestId('search-save-sample-grid')).toContainText('quarterly-summary');
+
+  const createReply = page.waitForResponse(
+    (res) =>
+      res.request().method() === 'POST' && new URL(res.url()).pathname === '/api/collections',
+    { timeout: 30_000 }
+  );
+  await page.getByTestId('search-save-confirm').click();
+  const createResponse = await createReply;
+  expect(createResponse.status()).toBe(201);
+  const createdBody = (await createResponse.json()) as {
+    collection: {
+      collection_id: number;
+      origin: string;
+      definition: { kind: string; result_ref: string };
+    };
+    rejected_not_readable: number[];
+  };
+  expect(createdBody.collection.origin).toBe('search');
+  // the stored definition is the flattened snapshot carrying the run's
+  // result_ref reference (replay chains are never persisted — §2.7)
+  expect(createdBody.collection.definition).toMatchObject({
+    kind: 'search',
+    result_ref: resultRef,
+  });
+  expect(createdBody.rejected_not_readable).toEqual([]);
+
+  // Server truth: the collection contains exactly the semantic member, and
+  // the initial batch is published.
+  const savedItems = await request.get(
+    `/api/collections/${createdBody.collection.collection_id}/items`,
+    { headers: auth(userToken) }
+  );
+  expect(savedItems.status()).toBe(200);
+  const savedBody = (await savedItems.json()) as {
+    items: Array<{ node_id: number; published: boolean }>;
+  };
+  expect(savedBody.items).toHaveLength(1);
+  expect(savedBody.items[0]).toMatchObject({ node_id: nodeId, published: true });
+
+  // The collection appears in the collections surface, containing the
+  // semantic member.
+  await page.goto('/files/__collections__');
+  const savedCard = page
+    .locator('[data-testid^="collection-card-"]')
+    .filter({ hasText: SEMANTIC_PHRASE });
+  await expect(savedCard).toBeVisible({ timeout: 15_000 });
+  await savedCard.dblclick({ position: { x: 8, y: 8 } });
+  await expect(page.getByTestId('members-list')).toBeVisible();
+  await expect(page.getByTestId(`member-row-${nodeId}`)).toBeVisible();
 });

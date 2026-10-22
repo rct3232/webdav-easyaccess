@@ -2200,7 +2200,7 @@ describe('FileManager', () => {
       expect([...itemsBody.nodeIds].sort((a, b) => a - b)).toEqual([1, 11]);
     }, 15000);
 
-    it('chip Save creates the search-origin collection through the create seam (§2.6 boundary)', async () => {
+    it('chip Save opens the confirm dialog; confirming creates the search-origin collection (§2.6 boundary)', async () => {
       let createBody = null;
       server.use(
         http.post('/api/search', () =>
@@ -2239,10 +2239,20 @@ describe('FileManager', () => {
       await submitSearchText('test');
       expect(await screen.findByTestId('server-search-row-90')).toBeInTheDocument();
 
+      // Invariant 5: the dialog IS the batch approval — the chip click opens
+      // the member preview first, the create fires on CONFIRM only.
       fireEvent.click(screen.getByTestId('search-chip-save'));
+      expect(await screen.findByTestId('search-save-dialog')).toBeInTheDocument();
+      expect(screen.getByTestId('search-save-publish-notice')).toBeInTheDocument();
+      expect(createBody).toBeNull();
+
+      fireEvent.click(screen.getByTestId('search-save-confirm'));
 
       await waitFor(() => expect(createBody).not.toBeNull());
-      expect(createBody).toEqual({ name: 'test', origin: 'search', resultRef: 'sr1.abc' });
+      expect(createBody).toEqual({
+        name: 'test',
+        semantic: { resultRef: 'sr1.abc', predicates: [], nodeIds: [90] },
+      });
       // one create command, one undo toast (spec §2.7)
       expect(await screen.findByTestId('undo-toast-action')).toBeInTheDocument();
     }, 15000);

@@ -891,8 +891,15 @@ describe('useSearchResults zone C activation (T1.5c)', () => {
       saved = await result.current.saveFromResults();
     });
 
+    // The reconciled `{ name, semantic }` dispatch arm (routes/collections.md
+    // §2.4): the wire name `semantic` carries the flattened snapshot — the
+    // result reference, the reserved predicate set, and the semantic-section
+    // member ids.
     expect(gateway.createCollection).toHaveBeenCalledWith(
-      { name: 'movie', origin: 'search', resultRef: 'sr1.z' },
+      {
+        name: 'movie',
+        semantic: { resultRef: 'sr1.z', predicates: [], nodeIds: [91, 90, 92] },
+      },
       expect.anything()
     );
     expect(saved).toEqual(created);

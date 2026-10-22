@@ -50,7 +50,7 @@
 
 - **Placement:** icon button at the right edge of the chip strip, before `LibraryAdd`; same 44px square / corner-radius idiom as `LibraryAdd`, `BookmarkAdd` icon, aria-label `fileManager.searchSaveCollection`.
 - **Visibility:** rendered only when `onSave` is provided (absent-not-disabled — never rendered grayed). The save GATE is host-owned (`useSearchResults.md` §2.3): `semantic_available:true` AND a non-empty semantic section (`routes/search.md` §2.4 field rules), plus the admin operator withhold — unavailable or empty ⇒ the host passes no callback ⇒ the button is absent.
-- **Action:** click calls `onSave()` with no arguments and no other emission.
+- **Action:** click calls `onSave()` with no arguments and no other emission. The host flow behind `onSave` is the §2.6 CONFIRM dialog (member preview — count + semantic rows' names — plus the batch-publish copy; the seed-dialog idiom in `useSearchResults.md` §2.3): the create request fires on CONFIRM, never from the chip click alone.
 
 ### 2.5 Callback Signatures
 

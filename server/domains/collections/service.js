@@ -520,6 +520,72 @@ async function createSeedCollection(userId, { name, seedNodeId } = {}) {
   throw serviceError('aiNotConfigured');
 }
 
+/**
+ * Search save leg (§2.2 row + §2.2.1 `{ name, semantic }` dispatch): the
+ * client supplies the flattened semantic-execution snapshot — `resultRef`
+ * (the run's result_ref, stored as the centroid REFERENCE; searchService.md
+ * §2.4 replay rule), the reserved predicate set, and the semantic-section
+ * member ids. No embed role is required: the snapshot is flattened and the
+ * stored definition is never evaluated at create time (§2.7 — replay chains
+ * are never persisted). Readability is classified per id with the §2.4 rule:
+ * readable ids join the initial batch (published=true explicit — the dialog
+ * IS the batch approval), unreadable ids land in `rejected_not_readable`.
+ */
+async function createSearchCollection(userId, { name, semantic } = {}) {
+  if (typeof name !== 'string' || name.trim().length === 0) throw serviceError('nameRequired');
+  if (validateFileName(name)) throw serviceError('invalidName');
+  if (!semantic || typeof semantic !== 'object' || Array.isArray(semantic)) {
+    throw serviceError('invalidDefinition');
+  }
+  const { resultRef, predicates, nodeIds } = semantic;
+  if (typeof resultRef !== 'string' || resultRef.trim().length === 0) {
+    throw serviceError('invalidDefinition');
+  }
+  // P1 reserves the predicate set: only the empty set is accepted.
+  if (!Array.isArray(predicates) || predicates.length > 0) {
+    throw serviceError('invalidDefinition');
+  }
+  if (!Array.isArray(nodeIds)) throw serviceError('invalidDefinition');
+  const parsed = parseNodeIds(nodeIds);
+
+  const addable = [];
+  const rejectedNotReadable = [];
+  for (const nodeId of parsed) {
+    if (await canReadNode(userId, nodeId)) {
+      addable.push(nodeId);
+    } else {
+      rejectedNotReadable.push(nodeId);
+    }
+  }
+
+  const finalName = await resolveCollectionName(userId, name.trim());
+  const created = await collectionsStore.createCollection(
+    {
+      ownerId: userId,
+      name: finalName,
+      origin: 'search',
+      definition: { kind: 'search', result_ref: resultRef, predicates: [] },
+    },
+    { actor: userId }
+  );
+  // Initial batch (§2.7): `published` is passed explicitly — store defaults
+  // are never relied on.
+  if (addable.length > 0) {
+    await collectionsStore.addItems(
+      created.id,
+      addable,
+      userId,
+      { published: true },
+      { actor: userId }
+    );
+  }
+  return {
+    collection: created,
+    undo: { actionId: created.actionId },
+    rejected_not_readable: rejectedNotReadable,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Update / lifecycle
 // ---------------------------------------------------------------------------
@@ -1205,6 +1271,7 @@ module.exports = {
   listCollections,
   createCollection,
   createSeedCollection,
+  createSearchCollection,
   updateCollection,
   archiveCollection,
   restoreCollection,

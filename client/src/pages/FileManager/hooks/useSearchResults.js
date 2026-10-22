@@ -429,9 +429,17 @@ export const useSearchResults = ({
     const term = chainRef.current[chainRef.current.length - 1]?.term;
     if (!term) return null;
     if (!gateway || typeof gateway.createCollection !== 'function') return null;
+    // The reconciled `{ name, semantic }` dispatch arm (routes/collections.md
+    // §2.4): the wire name `semantic` carries the flattened snapshot — the
+    // run's result reference (stored centroid reference, searchService.md
+    // §2.4), the reserved predicate set, and the semantic-section member ids.
+    const nodeIds = snapshot.zoneCRows.map((row) => row.node_id).filter((id) => id != null);
     try {
       return await gateway.createCollection(
-        { name: String(term), origin: 'search', resultRef: snapshot.resultRef },
+        {
+          name: String(term),
+          semantic: { resultRef: snapshot.resultRef, predicates: [], nodeIds },
+        },
         { onError: () => {} }
       );
     } catch {

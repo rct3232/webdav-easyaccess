@@ -1727,3 +1727,65 @@ worktrees/branches removed; E2E-AI-001 pre-seed located at
   session residue, superseded wording) was discarded before the merge — the
   committed branch version is authoritative. **Remaining**: C3 (client zone C,
   in flight) + Wave C exit gate.
+- **C3 (T1.5c) `[done]` — merged (`0200f9e`).** Branch
+  `feature/p1-c3-zone-c`, base `57c0dee` (worktree wt-c3). Commits: docs
+  `2f5fc25` → feat `ac5228d` → fix `3cd0da6`. RED captured as a run, not a
+  standalone commit (disclosed): 12 failing across 3 suites (zone C score
+  order, span-zones union, save bail matrix, chip gating). Scope: zone C
+  activation in the real FileList/FileGrid (delivered score order — no client
+  re-sort; zone header count + collapse persistence; union selection + bulk
+  read-only gating spans zones; EditOff badges; zone-local thumbnail map
+  idiom), chip-bar Save affordance live per the §2.6 gate, `ai` E2E case
+  gains the zone-C UI leg. E2E incident fixed root-cause (RCA-logged): the
+  shared-stack webServer boot provisioned EG2 weights into the checkout-
+  shared `data/modelos`, leaking the semantic leg into the "unconfigured"
+  retrieval scratch — the retrieval scratch `beforeAll` now pins
+  `AI_SEMANTIC_SEARCH_ENABLED=false` via the documented admin config API
+  (gate-off emits the identical omit shape per searchService §2.3 step 3).
+  Gates: client 182 suites / 2095 pass; docsStatePurity 3/3; eslint/prettier
+  clean; retrieval dual 22/22; ai case ×2 green. Follow-up surfaced (became
+  C5): the §2.6 save server dispatch was unshipped — the live affordance
+  created a user-origin member-less collection indistinguishable from a real
+  save (the exact C3 report finding).
+- **C5 (T1.5 search-origin save leg — added plan-gap unit) `[done]` — merged
+  (`ad047b3`).** Branch `feature/p1-c5-search-save-leg`, base `0200f9e`
+  (worktree wt-c5). Commits: RED `8c2e1ec` (10 server failures — route
+  dispatched `{name, semantic}` to manual: 201 with `origin:'user'`, empty
+  members; client payload mismatch + dialog-absent) → feat `741b502` → test
+  `96fc42d` (pre-existing gcService flake pinned Case B — second-granularity
+  `deleted_at DESC` straddle; RCA-logged). Scope: POST /api/collections third
+  dispatch arm `{ name, semantic: { resultRef, predicates: [], nodeIds } }` →
+  `createSearchCollection` (origin='search'; stored definition snapshot
+  `{kind:'search', result_ref, predicates}` — the result_ref IS the centroid
+  reference per searchService §2.4 replay rule, replay chains never
+  persisted; no embed gate — flattened snapshot; initial batch via addItems
+  mechanics with `published:true` explicit; `rejected_not_readable` additive
+  key — never 4xx-silent; `emptyNodeIds`/`invalidDefinition` errors; two
+  journaled commands, undo pointer = the create command with tip-undo
+  cascade); client `SearchSaveDialog` (confirm = the batch approval per
+  invariant 5, member preview, en/ko keys) + payload reconciliation.
+  Disclosed minimal readings: additive `rejected_not_readable` on the
+  `{collection, undo}` row; non-empty `predicates` rejected at P1 (reserved
+  set); all-unreadable batch creates an empty search collection (§2.4
+  partial-success precedent). Gates: server 158 suites / 2832 pass; client
+  183 suites / 2098 pass; docsStatePurity 3/3; eslint/prettier clean; ai E2E
+  ×2 green incl. the save leg (dialog → 201 → collection with the semantic
+  member published:true → card opens with the member row); retrieval dual
+  22/22.
+- **Wave C exit gate — PASSED (2026-10-22, orchestrator; tip `ad047b3`)**:
+  server `test:ci` **158 suites / 2832 pass (27 skip)**; client `test:ci`
+  **183 suites / 2098 pass**; `test:ci:pg:adapters` **30 suites / 426 pass
+  (1 skip)**; `test:ci:pg:vector` **22/22**; E2E `ai-desktop` ×2 consecutive
+  green (58.2 s / 37.5 s incl. the save leg) + `retrieval` dual **22/22**
+  (3.2 m); grep-gates clean (the one `CacheAdapter|operationProgress` hit is
+  the documentary invariant comment in `collections/service.js:11` — Wave A
+  precedent; tag-purge tokens confined to the DDL-parity enumeration tests +
+  the §2.6 assertion file); docsStatePurity green (in-suite). Worktrees
+  wt-c1..wt-c5 + all C branches removed. **Wave C complete: C1–C5 all
+  merged.** T1.5 is fully shipped (semantic search end-to-end incl. the
+  search-origin save). Remaining in P1: **Wave D** (D1 seed collections
+  preview + confirm + `llmNamer` swap ∥ D2 media capability probes + positive
+  controls → D3 media embed pipelines → D4 V2 caption fallback + backfill
+  scope). NOTE for D1: `createSeedCollection` exists (T0.3, embed-gate entry)
+  but the seed leg's confirm-dialog surface can reuse C5's
+  `SearchSaveDialog` copy constants — extraction deferred (minimal change).

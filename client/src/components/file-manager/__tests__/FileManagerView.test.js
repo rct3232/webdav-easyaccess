@@ -366,6 +366,23 @@ describe('FileManagerView search results mode (§3)', () => {
     expect(getComputedStyle(screen.getByTestId('search-zone-header-a')).position).toBe('sticky');
   });
 
+  it('chip bar forwards the save affordance (T1.5c): click dispatches model onSave', async () => {
+    const onSave = jest.fn();
+    const props = controlsWithSearch(createProps(), searchModel({ onSave }));
+    renderWithProviders(<FileManagerView {...props} />);
+
+    fireEvent.click(await screen.findByTestId('search-chip-save'));
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
+
+  it('without model onSave the save affordance stays absent (withhold idiom)', async () => {
+    const props = controlsWithSearch(createProps(), searchModel());
+    renderWithProviders(<FileManagerView {...props} />);
+
+    await screen.findByTestId('search-chip-bar');
+    expect(screen.queryByTestId('search-chip-save')).not.toBeInTheDocument();
+  });
+
   it('zone headers carry plain icons: B cloud, C wand-stars (no composite)', async () => {
     const props = controlsWithSearch(
       createProps(),

@@ -537,6 +537,10 @@ test('E2E-RETRIEVAL-001: Results render as accordion zones with honest headers, 
   await expect(zoneHeader(page, 'a')).toBeVisible();
   await expect(zoneHeader(page, 'b')).toBeVisible();
   await expect(zoneHeader(page, 'c')).toHaveCount(0);
+  // The save affordance follows the §2.4 field-rule gate (routes/search.md):
+  // with the semantic section unavailable the chip-bar Save button is ABSENT
+  // from the DOM (hidden, never disabled).
+  await expect(page.getByTestId('search-chip-save')).toHaveCount(0);
   // Header labels + snapshot counts: Zone A = the current folder path + its
   // match count; Zone B = the All-results label + the FULL name-set count (the
   // deduped rows still count — the header is always honest).

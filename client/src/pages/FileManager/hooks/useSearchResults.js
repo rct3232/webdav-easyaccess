@@ -16,18 +16,25 @@ import * as recentQueriesStorage from '../../../services/recentQueriesStorage';
  * one `applyStep(prevSnapshot, response, term)` seam without touching chip /
  * undo / snapshot mechanics), zone composition for the accordion listing
  * (Zone A = session rows in the snapshot set, Zone B = enriched server rows
- * deduped for display, Zone C = semantic snapshot rows), live-filter
- * promotion + dual-color highlights (rows are never hidden), server-row
- * metadata enrichment through the gateway seam, the zone-local thumbnail
- * merge (`handleZoneThumbnailsLoaded`), entry-click recording and
- * recent-query persistence (sessionStorage adapter).
+ * deduped for display, Zone C = semantic snapshot rows in the server's
+ * delivered score order), live-filter promotion + dual-color highlights
+ * (rows are never hidden), server-row metadata enrichment through the
+ * gateway seam, the zone-local thumbnail merge (`handleZoneThumbnailsLoaded`),
+ * the §2.6 save-to-collection save flow (`saveFromResults`), entry-click
+ * recording and recent-query persistence (sessionStorage adapter).
  */
 
 const QUERY_MAX_LENGTH = 200;
 const MAX_RECENT_QUERIES = 8;
 const INTERSECT_NAME_OP = 'intersect-name';
 
-const EMPTY_SNAPSHOT = { zoneAIds: new Set(), zoneBRows: [], zoneCRows: [], resultRef: null };
+const EMPTY_SNAPSHOT = {
+  zoneAIds: new Set(),
+  zoneBRows: [],
+  zoneCRows: [],
+  semanticAvailable: false,
+  resultRef: null,
+};
 
 function rowName(row) {
   return row?.basename || row?.name || '';
@@ -89,21 +96,31 @@ function toSearchRow(raw, meta, terms, liveText, thumbnailUrl) {
 }
 
 /**
- * Zone ordering (useSearchResults.md §2.3): session `sortMode` via `sortFiles`
- * with the live split — `[matches by sortMode] ++ [non-matches by sortMode]`;
- * empty live text = pure sortMode order. Unenriched server rows sort on a null
- * `lastmod`, which `sortFiles` keeps in original (stable) order.
+ * Live-promotion split (useSearchResults.md §2.3): rows whose name contains
+ * the live term move to the top with their relative order preserved — rows
+ * are never hidden. Zone C uses this WITHOUT `sortFiles`: its order is the
+ * server's delivered score order (routes/search.md §2.4), never re-sorted.
  */
-function orderZoneRows(rows, sortMode, liveText) {
-  const sorted = sortFiles(rows, sortMode);
+function promoteMatches(rows, liveText) {
   const term = String(liveText ?? '').trim();
-  if (!term) return sorted;
+  if (!term) return rows;
   const promoted = [];
   const rest = [];
-  for (const row of sorted) {
+  for (const row of rows) {
     (matchesTerm(rowName(row), term) ? promoted : rest).push(row);
   }
   return [...promoted, ...rest];
+}
+
+/**
+ * Zone A/B ordering (useSearchResults.md §2.3): session `sortMode` via
+ * `sortFiles` with the live split — `[matches by sortMode] ++
+ * [non-matches by sortMode]`; empty live text = pure sortMode order.
+ * Unenriched server rows sort on a null `lastmod`, which `sortFiles` keeps
+ * in original (stable) order.
+ */
+function orderZoneRows(rows, sortMode, liveText) {
+  return promoteMatches(sortFiles(rows, sortMode), liveText);
 }
 
 export const useSearchResults = ({
@@ -160,9 +177,18 @@ export const useSearchResults = ({
     } else {
       zoneBRows = nameMatches;
     }
-    const zoneCRows =
-      semanticRows.length > 0 ? semanticRows : prevSnapshot ? prevSnapshot.zoneCRows : [];
-    return { zoneAIds, zoneBRows, zoneCRows, resultRef: response.result_ref ?? null };
+    // The snapshot's semantic section IS the response's `semantic` array in the
+    // server's delivered order (routes/search.md §2.4 — omitted key on the
+    // `semantic_available:false` degrade ⇒ empty Zone C; an honestly empty leg
+    // keeps `semanticAvailable` true with zero rows).
+    const zoneCRows = semanticRows;
+    return {
+      zoneAIds,
+      zoneBRows,
+      zoneCRows,
+      semanticAvailable: response.semantic_available === true,
+      resultRef: response.result_ref ?? null,
+    };
   }, []);
 
   const submitSearch = useCallback(
@@ -349,13 +375,19 @@ export const useSearchResults = ({
     return orderZoneRows(rows, sortMode, liveText);
   }, [chain, currentSnapshot, zoneAIds, enrichment, zoneThumbnails, terms, liveText, sortMode]);
 
+  // Zone C (T1.5c): server rows in the DELIVERED score order — no `sortFiles`
+  // (an enrichment arrival or a sortMode change must never scramble the score
+  // ordering); only the zone-generic live promotion applies. Display dedups
+  // against zone A (the §2.8 dedup-for-display rule, Zone B pattern).
   const zoneCRows = useMemo(() => {
     if (chain.length === 0) return [];
-    const rows = currentSnapshot.zoneCRows.map((raw) =>
-      toSearchRow(raw, enrichment[raw.node_id], terms, liveText, zoneThumbnails[raw.node_id])
-    );
-    return orderZoneRows(rows, sortMode, liveText);
-  }, [chain, currentSnapshot, enrichment, zoneThumbnails, terms, liveText, sortMode]);
+    const rows = currentSnapshot.zoneCRows
+      .filter((raw) => !zoneAIds.has(raw.node_id))
+      .map((raw) =>
+        toSearchRow(raw, enrichment[raw.node_id], terms, liveText, zoneThumbnails[raw.node_id])
+      );
+    return promoteMatches(rows, liveText);
+  }, [chain, currentSnapshot, zoneAIds, enrichment, zoneThumbnails, terms, liveText]);
 
   const zoneCounts = useMemo(
     () => ({
@@ -371,9 +403,41 @@ export const useSearchResults = ({
       new Set([
         ...zoneAIds,
         ...currentSnapshot.zoneBRows.map((row) => row.node_id).filter((id) => id != null),
+        ...currentSnapshot.zoneCRows.map((row) => row.node_id).filter((id) => id != null),
       ]),
     [zoneAIds, currentSnapshot]
   );
+
+  // §2.6 save-gate input: the current snapshot's `semantic_available` flag
+  // (`routes/search.md` §2.4). The shell combines it with the Zone C count
+  // and the admin operator withhold to pass (or withhold) the chip bar's
+  // save callback.
+  const semanticAvailable = chain.length > 0 ? currentSnapshot.semanticAvailable === true : false;
+
+  // §2.6 save-to-collection boundary (searchService.md §2.6): create the
+  // search-origin collection from the CURRENT snapshot's flattened semantic
+  // section through the gateway `createCollection` seam. The §4.10 name
+  // template for search origin is the query text verbatim (the committed
+  // term that produced the snapshot). Bails (null, zero calls) on any gate
+  // miss; mutation failures absorb through the seam and resolve `null`.
+  const saveFromResults = useCallback(async () => {
+    const snapshot =
+      chainRef.current.length > 0 ? chainRef.current[chainRef.current.length - 1].snapshot : null;
+    if (!snapshot || snapshot.semanticAvailable !== true) return null;
+    if (!Array.isArray(snapshot.zoneCRows) || snapshot.zoneCRows.length === 0) return null;
+    if (!snapshot.resultRef) return null;
+    const term = chainRef.current[chainRef.current.length - 1]?.term;
+    if (!term) return null;
+    if (!gateway || typeof gateway.createCollection !== 'function') return null;
+    try {
+      return await gateway.createCollection(
+        { name: String(term), origin: 'search', resultRef: snapshot.resultRef },
+        { onError: () => {} }
+      );
+    } catch {
+      return null;
+    }
+  }, [gateway]);
 
   const recordEntryClick = useCallback(
     async (nodeId) => {
@@ -397,9 +461,11 @@ export const useSearchResults = ({
     zoneBRows,
     zoneCRows,
     zoneCounts,
+    semanticAvailable,
     libraryAddTarget,
     recentQueries,
     submitSearch,
+    saveFromResults,
     undoToStep,
     exitResults,
     recordEntryClick,

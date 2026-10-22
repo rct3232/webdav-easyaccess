@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Box, Chip, IconButton, Typography } from '@mui/material';
 import {
+  BookmarkAdd as BookmarkAddIcon,
   ChevronRight as ChevronRightIcon,
   Close as CloseIcon,
   LibraryAdd as LibraryAddIcon,
@@ -14,10 +15,12 @@ import { pixelMiddleTruncate } from '../../utils/stringUtils';
  * row while search results are active (docs/spec/client/components/
  * file-manager/SearchQueryChipBar.md): one breadcrumb-styled chip per committed
  * chain term (oldest→newest), hover/tap-revealed `Undo` per non-current chip,
- * `Exit` on the single chip, and a `LibraryAdd` button (desktop strip right edge,
- * mobile expand-toggle slot) targeting the FULL current snapshot. IO-free:
- * renders from props and emits host intents only — revert/exit are snapshot
- * operations decided by `useSearchResults`.
+ * `Exit` on the single chip, the save affordance (`Save as collection`, §2.4a —
+ * rendered only when the host passes `onSave`, which encodes the §2.6 gate)
+ * and a `LibraryAdd` button (desktop strip right edge, mobile expand-toggle
+ * slot) targeting the FULL current snapshot. IO-free: renders from props and
+ * emits host intents only — revert/exit are snapshot operations decided by
+ * `useSearchResults`.
  */
 
 const CHIP_NAME_BUDGET_PX = 140;
@@ -32,6 +35,7 @@ const SearchQueryChipBar = ({
   onRevertToStep,
   onExit,
   onLibraryAdd,
+  onSave,
 }) => {
   const { t } = useTranslation();
   const [hoveredIndex, setHoveredIndex] = useState(null);
@@ -142,6 +146,24 @@ const SearchQueryChipBar = ({
         ))}
       </Box>
 
+      {onSave && (
+        <IconButton
+          data-testid="search-chip-save"
+          aria-label={t('fileManager.searchSaveCollection')}
+          onClick={() => onSave()}
+          sx={{
+            mr: 0.5,
+            flexShrink: 0,
+            width: 44,
+            height: 44,
+            borderRadius: '16px',
+            color: 'primary.main',
+            backgroundColor: (theme) => theme.palette.action.hover,
+          }}
+        >
+          <BookmarkAddIcon fontSize="small" />
+        </IconButton>
+      )}
       <IconButton
         data-testid="search-library-add"
         aria-label={t('fileManager.searchLibraryAdd')}

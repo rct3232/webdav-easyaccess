@@ -738,6 +738,230 @@ describe('useSearchResults exit + recents', () => {
   });
 });
 
+describe('useSearchResults zone C activation (T1.5c)', () => {
+  // Server score order (score desc, node_id asc) deliberately reversed
+  // against every sortMode ordering: names sort alpha-desc while scores
+  // descend — a client re-sort would scramble the delivered order.
+  const SEMANTIC_RESPONSE = {
+    name_matches: [{ node_id: 11, name: 'movie.pdf' }],
+    semantic: [
+      { node_id: 91, name: 'zeta.jpg', score: 0.9 },
+      { node_id: 90, name: 'alpha.jpg', score: 0.8 },
+      { node_id: 92, name: 'mid.jpg', score: 0.7 },
+    ],
+    result_ref: 'sr1.z',
+    counts: {
+      name: 1,
+      semantic: 3,
+      total: 4,
+      name_truncated: false,
+      semantic_capped_segments: false,
+    },
+    semantic_available: true,
+  };
+
+  const createGateway = (overrides = {}) => ({
+    runSearch: jest.fn().mockResolvedValue(SEMANTIC_RESPONSE),
+    loadNodesMetadata: jest.fn().mockResolvedValue([]),
+    recordSearchClick: jest.fn().mockResolvedValue(true),
+    ...overrides,
+  });
+
+  it('zone C rows keep the delivered score order under any sortMode (no client re-sort)', async () => {
+    const { result } = renderSearchHook({ gateway: createGateway(), sortMode: 'name_asc' });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    expect(result.current.zoneCRows.map((row) => row.nodeId)).toEqual([91, 90, 92]);
+    expect(result.current.zoneCounts.zoneC).toBe(3);
+  });
+
+  it('a node displayed in zone A is deduped out of zone C display but keeps the snapshot count', async () => {
+    const gateway = createGateway({
+      runSearch: jest.fn().mockResolvedValue({
+        ...SEMANTIC_RESPONSE,
+        semantic: [
+          { node_id: 2, name: 'notes-movie.txt', score: 0.95 },
+          { node_id: 91, name: 'zeta.jpg', score: 0.9 },
+        ],
+        counts: {
+          name: 1,
+          semantic: 2,
+          total: 3,
+          name_truncated: false,
+          semantic_capped_segments: false,
+        },
+      }),
+    });
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    expect(result.current.zoneARows.map((row) => row.nodeId)).toContain(2);
+    expect(result.current.zoneCRows.map((row) => row.nodeId)).toEqual([91]);
+    expect(result.current.zoneCounts.zoneC).toBe(2);
+  });
+
+  it('libraryAddTarget spans zones: the union includes the zone C snapshot ids', async () => {
+    const { result } = renderSearchHook({ gateway: createGateway() });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    expect(Array.from(result.current.libraryAddTarget).sort((a, b) => a - b)).toEqual([
+      1, 2, 11, 90, 91, 92,
+    ]);
+  });
+
+  it('the current snapshot reports semanticAvailable from the response flag', async () => {
+    const { result } = renderSearchHook({ gateway: createGateway() });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    expect(result.current.semanticAvailable).toBe(true);
+  });
+
+  it('a refinement step replaces the semantic snapshot with the fresh section (omitted ⇒ empty + unavailable)', async () => {
+    const gateway = createGateway({
+      runSearch: jest
+        .fn()
+        .mockResolvedValueOnce(SEMANTIC_RESPONSE)
+        .mockResolvedValueOnce({
+          name_matches: [{ node_id: 11, name: 'movie.pdf' }],
+          result_ref: 'sr1.step2',
+          counts: { name: 1, semantic: 0, total: 1, name_truncated: false },
+          semantic_available: false,
+        }),
+    });
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    await act(async () => {
+      await result.current.submitSearch('pdf');
+    });
+
+    expect(result.current.zoneCRows).toEqual([]);
+    expect(result.current.zoneCounts.zoneC).toBe(0);
+    expect(result.current.semanticAvailable).toBe(false);
+  });
+
+  it('an honestly empty semantic leg keeps semanticAvailable true with zero rows', async () => {
+    const gateway = createGateway({
+      runSearch: jest.fn().mockResolvedValue({
+        ...SEMANTIC_RESPONSE,
+        semantic: [],
+        counts: {
+          name: 1,
+          semantic: 0,
+          total: 1,
+          name_truncated: false,
+          semantic_capped_segments: false,
+        },
+      }),
+    });
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    expect(result.current.zoneCRows).toEqual([]);
+    expect(result.current.zoneCounts.zoneC).toBe(0);
+    expect(result.current.semanticAvailable).toBe(true);
+  });
+
+  it('saveFromResults creates the search-origin collection through the create seam', async () => {
+    const created = { collection: { collection_id: 5 }, undo: { action_id: 77 } };
+    const gateway = createGateway({ createCollection: jest.fn().mockResolvedValue(created) });
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    let saved;
+    await act(async () => {
+      saved = await result.current.saveFromResults();
+    });
+
+    expect(gateway.createCollection).toHaveBeenCalledWith(
+      { name: 'movie', origin: 'search', resultRef: 'sr1.z' },
+      expect.anything()
+    );
+    expect(saved).toEqual(created);
+  });
+
+  it('saveFromResults bails (null, no create call) when the semantic section is unavailable or empty', async () => {
+    const unavailable = createGateway({
+      createCollection: jest.fn(),
+      runSearch: jest.fn().mockResolvedValue(SEARCH_RESPONSE),
+    });
+    const unavailableResult = renderSearchHook({ gateway: unavailable }).result;
+    await act(async () => {
+      await unavailableResult.current.submitSearch('movie');
+    });
+    let saved;
+    await act(async () => {
+      saved = await unavailableResult.current.saveFromResults();
+    });
+    expect(saved).toBeNull();
+    expect(unavailable.createCollection).not.toHaveBeenCalled();
+
+    const empty = createGateway({
+      createCollection: jest.fn(),
+      runSearch: jest.fn().mockResolvedValue({
+        ...SEMANTIC_RESPONSE,
+        semantic: [],
+        counts: {
+          name: 1,
+          semantic: 0,
+          total: 1,
+          name_truncated: false,
+          semantic_capped_segments: false,
+        },
+      }),
+    });
+    const emptyResult = renderSearchHook({ gateway: empty }).result;
+    await act(async () => {
+      await emptyResult.current.submitSearch('movie');
+    });
+    await act(async () => {
+      saved = await emptyResult.current.saveFromResults();
+    });
+    expect(saved).toBeNull();
+    expect(empty.createCollection).not.toHaveBeenCalled();
+  });
+
+  it('saveFromResults bails without a resultRef (nothing to replay)', async () => {
+    const gateway = createGateway({
+      createCollection: jest.fn(),
+      runSearch: jest.fn().mockResolvedValue({
+        ...SEMANTIC_RESPONSE,
+        result_ref: undefined,
+      }),
+    });
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    let saved;
+    await act(async () => {
+      saved = await result.current.saveFromResults();
+    });
+
+    expect(saved).toBeNull();
+    expect(gateway.createCollection).not.toHaveBeenCalled();
+  });
+});
+
 describe('useSearchResults entry-click recording', () => {
   it('routes once through the gateway seam and absorbs failures silently', async () => {
     const gateway = createGateway();

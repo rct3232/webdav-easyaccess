@@ -469,6 +469,20 @@ test.beforeAll(async ({ request }) => {
   spawned = spawnScratchServer(scratch, SCRATCH_PORT);
   await waitForScratchHealth(spawned, SCRATCH_PORT);
   operatorToken = await loginScratchAdmin(request, ADMIN_PASSWORD);
+  // This suite verifies the HONEST-DEGRADE stack: the semantic section
+  // ABSENT (`semantic_available:false` + `semantic_unavailable_reason`).
+  // The embed engine is a built-in DEFAULT provider, so in a checkout whose
+  // shared model dir holds provisioned weights a plain scratch boot would
+  // run the semantic leg and the section-absent premises below would not
+  // hold. `AI_SEMANTIC_SEARCH_ENABLED` is the documented T2 kill switch
+  // (configRegistry — dbOnly, env ignored): set through the admin config
+  // API it pins the gate-off path, which emits the IDENTICAL wire shape to
+  // the unconfigured role (searchService.md §2.3 step 3, §2.5).
+  const killSwitchRes = await request.put('/api/admin/config', {
+    headers: auth(operatorToken),
+    data: { values: { AI_SEMANTIC_SEARCH_ENABLED: 'false' } },
+  });
+  expect(killSwitchRes.ok()).toBeTruthy();
   await ensureScratchRegularUser(request, operatorToken, USER_CREDS);
   await ensureScratchRegularUser(request, operatorToken, OWNER_CREDS);
 });

@@ -218,9 +218,12 @@ targets the full snapshot) and renders the results as accordion zones inside the
 (contracts: `docs/spec/client/hooks/useSearchResults.md`, `docs/spec/client/components/file-manager/FileManagerView.md` §3,
 `docs/spec/client/components/file-manager/SearchQueryChipBar.md`): typing without submit promotes and
 highlights loaded rows live (never hides), another submit chains a refinement step. The
-`Save as collection` affordance is not rendered on the current results surface — the per-step snapshot
-plus opaque **result reference** (§4.22) is its reserved substrate, and responses may receive one back
-(today ignored). Admin exclusion: `Save as collection`
+`Save as collection` affordance renders on the results surface when the gate passes
+(`semantic_available:true` AND a non-empty semantic section, non-admin actor); the click opens the
+host-owned confirm dialog (member preview + batch-publish copy) and confirming creates the
+search-origin collection from the flattened semantic snapshot — `{ name, semantic: { resultRef,
+predicates: [], nodeIds } }` through `POST /api/collections` (the initial set is created published —
+the dialog IS the batch approval). Admin exclusion: `Save as collection`
 is ABSENT for the ADMIN actor (search itself is unchanged for admins) — saving creates a collection
 and the collections surface is server-gated 403 for admin requesters (§3.2 operator rule).
 

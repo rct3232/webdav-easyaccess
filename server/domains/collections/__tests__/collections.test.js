@@ -1034,6 +1034,102 @@ describe('preview endpoints', () => {
 });
 
 // ---------------------------------------------------------------------------
+// POST / search save leg ({ name, semantic } dispatch — collectionsService
+// §2.2.1, routes §2.4): the flattened semantic-execution snapshot creates a
+// search-origin collection whose readable ids materialize as the initial
+// batch published=true.
+// ---------------------------------------------------------------------------
+
+describe('POST / search save leg ({ name, semantic } dispatch)', () => {
+  it('creates a search-origin collection from the semantic snapshot; the initial batch lands published=true', async () => {
+    const ctx = await createUserWithRoot('search-route');
+    const file = await fileNodeService.createFile(ctx.root.id, 'beach.jpg');
+
+    const res = await request(app)
+      .post('/api/collections')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({
+        name: 'banana harvest festival',
+        semantic: { resultRef: 'sr1.abc0123456789ef', predicates: [], nodeIds: [file.id] },
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.collection.origin).toBe('search');
+    // §2.7 flattening: the stored definition is the SNAPSHOT (result_ref
+    // reference + predicate set) — replay chains never persist.
+    expect(res.body.collection.definition).toEqual({
+      kind: 'search',
+      result_ref: 'sr1.abc0123456789ef',
+      predicates: [],
+    });
+    expect(res.body.undo.action_id).toBeGreaterThan(0);
+    expect(res.body.rejected_not_readable).toEqual([]);
+
+    const items = await request(app)
+      .get(`/api/collections/${res.body.collection.collection_id}/items`)
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(items.status).toBe(200);
+    expect(items.body.items).toHaveLength(1);
+    expect(items.body.items[0]).toMatchObject({ node_id: file.id, published: true });
+  });
+
+  it('reports unreadable semantic ids in rejected_not_readable and never adds them', async () => {
+    const ctx = await createUserWithRoot('search-route-read');
+    const stranger = await createUserWithRoot('search-route-stranger');
+    const secret = await fileNodeService.createFile(stranger.root.id, 'secret.txt');
+    const file = await fileNodeService.createFile(ctx.root.id, 'beach.jpg');
+
+    const res = await request(app)
+      .post('/api/collections')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({
+        name: 'Mixed',
+        semantic: {
+          resultRef: 'sr1.abc0123456789ef',
+          predicates: [],
+          nodeIds: [file.id, secret.id],
+        },
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.rejected_not_readable).toEqual([secret.id]);
+
+    const items = await request(app)
+      .get(`/api/collections/${res.body.collection.collection_id}/items`)
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(items.body.items.map((row) => row.node_id)).toEqual([file.id]);
+  });
+
+  it('rejects an empty semantic member set and a malformed snapshot (never a silent user-origin create)', async () => {
+    const ctx = await createUserWithRoot('search-route-bad');
+
+    const empty = await request(app)
+      .post('/api/collections')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({
+        name: 'Empty',
+        semantic: { resultRef: 'sr1.abc0123456789ef', predicates: [], nodeIds: [] },
+      });
+    expect(empty.status).toBe(400);
+    expect(empty.body.errorCode).toBe(codes().collections.emptyNodeIds);
+
+    const malformed = await request(app)
+      .post('/api/collections')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ name: 'Bad', semantic: { predicates: [], nodeIds: [1] } });
+    expect(malformed.status).toBe(400);
+    expect(malformed.body.errorCode).toBe(codes().collections.invalidDefinition);
+  });
+
+  it('keeps the manual dispatch shape unchanged ({ name } still creates origin user, no rejected key)', async () => {
+    const ctx = await createUserWithRoot('search-route-manual');
+    const res = await createCollectionViaApi(ctx.token, { name: 'Manual col' });
+    expect(res.status).toBe(201);
+    expect(res.body.collection.origin).toBe('user');
+    expect(res.body.collection.definition).toBeNull();
+    expect(res.body.rejected_not_readable).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Merge lifecycle
 // ---------------------------------------------------------------------------
 

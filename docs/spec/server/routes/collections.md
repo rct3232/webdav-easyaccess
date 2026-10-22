@@ -37,7 +37,7 @@ with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 | ------ | -------------------- | ----- | ----------------------------------------------------------------------------------------- |
 | GET    | `/`                  | Token | List collections (sort, include filters).                                                 |
 | GET    | `/:id`               | Token | Single collection (owner definition; grantee `granted_role`; ungranted → 404 masquerade). |
-| POST   | `/`                  | Token | Create manual (`origin='user'`) collection.                                               |
+| POST   | `/`                  | Token | Create — body-shape dispatch: `{ name }` manual (`origin='user'`), `{ name, seedNodeId }` seed (`origin='seed'`), `{ name, semantic }` search (`origin='search'`). |                                               |
 | PUT    | `/:id`               | Token | Update name / pin / publish_mode.                                                         |
 | POST   | `/:id/archive`       | Token | Archive (manual; confirm dialog is client-side).                                          |
 | POST   | `/:id/restore`       | Token | Restore an archived collection.                                                           |
@@ -157,13 +157,33 @@ Field rules:
   200: `{ "collections": [ <collection>, … ] }` — the full list, no pagination.
   **`GET /` rows carry the requester-scoped `last_visited_at`** (see field rules); one
   batched cursor read (`listDigestCursorMap(userId)`) serves the whole list — no per-row query.
-- **POST /:** Body `{ name }`. Creates `origin='user'`, `status='active'`,
-  `publish_mode='ask'` (default). Name collision never errors: a trash-restore-style
-  suffix counter is applied server-side. Create SEEDS the requester's digest cursor
-  (`collection_digest_cursors.last_visited_at = created_at`, inside the same journaled
-  mutation TX), so a self-created collection never renders the
-  sidebar `new` dot. 201: `{ "collection": <collection>,
-"undo": { "action_id": 990 } }`.
+- **POST /:** Body-shape dispatch (one create endpoint, additive body fields):
+  - `{ name }` — manual. Creates `origin='user'`, `status='active'`,
+    `publish_mode='ask'` (default). Name collision never errors: a trash-restore-style
+    suffix counter is applied server-side. Create SEEDS the requester's digest cursor
+    (`collection_digest_cursors.last_visited_at = created_at`, inside the same journaled
+    mutation TX), so a self-created collection never renders the
+    sidebar `new` dot. 201: `{ "collection": <collection>, "undo": { "action_id": 990 } }`.
+  - `{ name, seedNodeId }` — seed (`origin='seed'`, embed-gate; `ai.notConfigured` 409
+    without the `embed` role). Same cursor seeding and collision rule.
+  - `{ name, semantic }` — search save leg (`origin='search'`):
+    `semantic = { resultRef, predicates, nodeIds }` — the flattened semantic-execution
+    snapshot of the saved search run (`searchService.md` §2.4/§2.6): `resultRef` is the
+    run's `result_ref` signature (stored as the centroid REFERENCE — replay re-runs the
+    signature under current ACL; replay chains are never persisted), `predicates` is the
+    run's predicate set (`[]` at P1 — reserved), `nodeIds` are the semantic-section
+    member ids (1–200, else 400 `collections.emptyNodeIds`). Name-match results are
+    structurally absent from the payload. The stored definition is the snapshot
+    `{ "kind": "search", "result_ref": …, "predicates": […] }`. Malformed `semantic`
+    (missing/non-string `resultRef`, non-array or non-empty-at-P1 `predicates`,
+    missing `nodeIds` array) → 400 `collections.invalidDefinition`. Readable ids
+    materialize as the initial batch `published=true` (the confirm dialog IS the batch
+    approval — `collectionsService.md` §2.7); ids the requester cannot read are NOT added
+    and are reported in the response's `rejected_not_readable` (never silently dropped).
+    201: `{ "collection": <collection>, "undo": { "action_id": 990 },
+    "rejected_not_readable": [90299] }` — the search arm carries the additive
+    `rejected_not_readable` key (empty array when every id was readable); the manual and
+    seed arms omit it.
 - **PUT /:id:** Body any of `{ name?, pinned?, publishMode? }` (publishMode ∈
   `ask|off|auto`). A user `name` write sets `name_locked=true`. `pinned:true` sets
   `pinned_by='user'`; `pinned:false` unpins (eligible for auto-archive again). Owner-only.
@@ -403,10 +423,10 @@ suggestion row (a suggestion state transition is opportunistic).
 | 400  | `serverErrors.collections.invalidInclude`        | Unknown token in `include`.                                                                                                                                                                                                   |
 | 400  | `serverErrors.collections.invalidPublishMode`    | Bad `publishMode`.                                                                                                                                                                                                            |
 | 400  | `serverErrors.collections.invalidRole`           | Grant role outside `viewer\|editor`.                                                                                                                                                                                          |
-| 400  | `serverErrors.collections.emptyNodeIds`          | Missing/empty/over-cap `nodeIds`.                                                                                                                                                                                             |
+| 400  | `serverErrors.collections.emptyNodeIds`          | Missing/empty/over-cap `nodeIds` (item routes and the `{ name, semantic }` create arm).                                                                                                                                 |
 | 400  | `serverErrors.collections.previewTargetRequired` | 0 or 2 of `seedNodeId`/`definition`.                                                                                                                                                                                          |
 | 400  | `serverErrors.collections.mergeSameCollection`   | `:id == :other`.                                                                                                                                                                                                              |
-| 400  | `serverErrors.collections.invalidDefinition`     | Malformed `definition` payload (unknown kind / predicate type / bad atom).                                                                                                                                                    |
+| 400  | `serverErrors.collections.invalidDefinition`     | Malformed `definition` payload (unknown kind / predicate type / bad atom); malformed `semantic` create payload on the `{ name, semantic }` arm (missing/non-string `resultRef`, non-array or non-empty-at-P1 `predicates`, missing `nodeIds` array). |
 | 403  | `serverErrors.collections.forbidden`             | Non-owner mutation; viewer writes; editor removing what they did not add. ALSO the admin-operator gate: EVERY endpoint for an ADMIN requester (`requireNonAdmin`) and `POST /:id/grants` with an ADMIN grantee (service ban). |
 | 404  | `serverErrors.collections.notFound`              | Unknown id, or no access at all (read = 404 masquerade — ungranted reads do not disclose existence).                                                                                                                          |
 | 404  | `serverErrors.collections.granteeNotFound`       | Unknown user on grant.                                                                                                                                                                                                        |

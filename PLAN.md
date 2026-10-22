@@ -1703,3 +1703,27 @@ worktrees/branches removed; E2E-AI-001 pre-seed located at
   `test:ci:pg:vector` **22/22** — all green. C1/C4 worktrees + branches
   removed. **Remaining**: C2 (scorer, in flight), C3 (client zone C), Wave C
   exit gate (E2E re-run on the merged tip + grep-gates + ledger).
+- **C2 (T1.5b) `[done]` — merged (`57c0dee`).** Branch
+  `feature/p1-c2-semantic-scorer`, base `2bc31e1` (worktree wt-c2 with
+  symlinked node_modules — disk at 93%). Commits: docs `acf34aa` → feat
+  `be6fc4c` (RED disclosed: the suite was already green at commit time — the
+  first session died uncommitted; no standalone RED commit exists, disclosed
+  not manufactured). Scope: `server/domains/ai/semanticScorer.js` — the §2.5a
+  seam: per-segment `vectorStore.neighbors(segVec, k=50)` → per-node
+  max-over-chunks cosine → MIN across segments (single-segment degenerates);
+  per-query dynamic baseline gate — baseline sample from
+  `sampleVisibleNodeIds` EXCLUDING the candidate set, spread = sample's max
+  min-across-segments, keep only `top ≥ spread + δ_base`, miss ⇒ honestly
+  empty; `EG2_PROFILE.deltaBase: 0.08` added (margin read from the profile,
+  never hardcoded; llmPresets schema row updated); new
+  `FileNodeRepository.listVisibleFileNodeIds(userId)` twins (+conformance +
+  facade) as the ACL-anchored candidate seam; `SCORING_LANDED` flipped in
+  `e2e/ai.spec.ts` — owner-ruling assertion active. Gates: targeted
+  scorer+search+FileNode conformance 107/5 green; full server test:ci
+  **158 suites / 2821 pass**; docsStatePurity 3/3; eslint/prettier clean;
+  E2E AI case ×2 consecutive green (34.2 s / 33.9 s). **Merge gates (tip
+  `57c0dee`)**: `test:ci:pg:adapters` **30 suites / 426 pass** incl. the new
+  twins. A stale main-checkout draft of the C2 docs/presets edits (first
+  session residue, superseded wording) was discarded before the merge — the
+  committed branch version is authoritative. **Remaining**: C3 (client zone C,
+  in flight) + Wave C exit gate.

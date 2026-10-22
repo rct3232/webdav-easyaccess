@@ -531,7 +531,19 @@ function createLlmAdapter(deps = {}) {
         (before.modelRevision ?? null) === (spec.modelRevision ?? null);
       const { id } = await modelsStore().upsertModel(spec);
       modelIds.set(role, id);
-      if (!sameIdentity) rows += 1;
+      if (!sameIdentity) {
+        rows += 1;
+        // An embed model identity change invalidates the boot-frozen vector
+        // engine (space key + runtime dim); the next init() rebuilds the
+        // derived artifact at the new dim (vectorStore.md §2.1/§2.4).
+        if (role === 'embed') {
+          try {
+            require('../../../domains/ai/vectorStoreRuntime').resetVectorStore();
+          } catch {
+            /* vector seam not loaded in this process — nothing to reset */
+          }
+        }
+      }
     }
     return { rows };
   }

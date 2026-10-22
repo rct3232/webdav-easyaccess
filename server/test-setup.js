@@ -32,7 +32,7 @@ for (const key of DB_IDENTITY_KEYS) process.env[key] = '';
 // name so a mistyped value cannot point a test run at a real DB.
 const TEST_PG_DATABASE_KEYS = ['WEA_TEST_PG_HOST', 'WEA_TEST_PG_PORT', 'WEA_TEST_PG_USER'];
 if (process.env.WEA_TEST_PG_DATABASE) {
-  const allowlisted = ['webdav_test', 'webdav_e2e'];
+  const allowlisted = ['webdav_test', 'webdav_vector_test', 'webdav_e2e'];
   if (!allowlisted.includes(process.env.WEA_TEST_PG_DATABASE)) {
     throw new Error(
       `Refusing real-PG test run: WEA_TEST_PG_DATABASE="${process.env.WEA_TEST_PG_DATABASE}" is not an ` +

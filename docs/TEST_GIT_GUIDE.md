@@ -238,6 +238,32 @@ Intentionally NOT isolated (per-run, not per-machine): Docker image pulls (daemo
 dedup is safe), `e2e-data/`/`test-results/`/`client/build` (already per-checkout), and
 Playwright browsers (shared read-only cache under `~/.cache`).
 
+## Real-PostgreSQL Legs
+
+Both real-PG legs reuse the compose `postgresql-e2e` service (pgvector/pgvector:pg16,
+host port 5433). Start it once:
+
+```bash
+docker compose -f docker-compose.e2e.yml up -d postgresql-e2e
+```
+
+Adapter conformance leg (`webdav_test`):
+
+```bash
+cd server && npm run test:ci:pg:adapters
+```
+
+ANN/vector leg (`webdav_vector_test`, separate database so both legs share one server):
+
+```bash
+cd server && npm run test:ci:pg:vector
+```
+
+Override the host port with `WEA_TEST_PG_PORT` (default `5433`). Both legs
+self-provision their disposable database when it is missing (the compose user has
+`CREATEDB`). If the server is unreachable the vector suite fails with the compose
+start command in the error message.
+
 ## Recommended Git Workflow
 
 ### 1. New Feature Development

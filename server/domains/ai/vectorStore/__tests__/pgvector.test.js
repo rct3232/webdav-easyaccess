@@ -13,10 +13,13 @@
 //     NO ef knob — §3: fixed in code, never the library default 100),
 //   - shadow lifecycle: init/rebuild/dim-change (never tracked DDL, §2.4).
 //
-// Runs against real pgvector ≥0.7 (pgvector/pgvector:pg16). The suite is
-// SKIPPED unless the WEA_TEST_PG_* namespace points at a server; a server
-// without the `vector` extension FAILS the suite with the operator hint
-// (deliberate: the pg:vector leg is opt-in via `npm run test:ci:pg:vector`).
+// Runs against real pgvector ≥0.7 (pgvector/pgvector:pg16 in
+// docker-compose.e2e.yml). The suite is SKIPPED unless the WEA_TEST_PG_*
+// namespace points at a server; a server without the `vector` extension FAILS
+// the suite with the operator hint (deliberate: the pg:vector leg is opt-in via
+// `npm run test:ci:pg:vector`). The harness self-provisions its own disposable
+// database (`webdav_vector_test`) on the compose server so it never collides
+// with the adapter leg's `webdav_test`.
 
 const { Pool } = require('pg');
 const { createPgVector } = require('../PgVector');
@@ -249,6 +252,49 @@ const TEST_PG_KEYS = [
 const pgEnvPresent = TEST_PG_KEYS.some((key) => !!process.env[key]);
 const suite = pgEnvPresent ? describe : describe.skip;
 
+const PG_CONFIG = {
+  host: process.env.WEA_TEST_PG_HOST || '127.0.0.1',
+  port: Number(process.env.WEA_TEST_PG_PORT || 5433),
+  user: process.env.WEA_TEST_PG_USER || 'e2etest',
+  password: process.env.WEA_TEST_PG_PASSWORD || 'e2etest',
+};
+const TEST_DB = process.env.WEA_TEST_PG_DATABASE || 'webdav_test';
+
+const UNREACHABLE_HINT =
+  `PostgreSQL is unreachable at ${PG_CONFIG.host}:${PG_CONFIG.port}. Start the compose ` +
+  'server first: docker compose -f docker-compose.e2e.yml up -d postgresql-e2e ' +
+  '(pgvector/pgvector:pg16 on host port 5433), then re-run: ' +
+  'cd server && npm run test:ci:pg:vector';
+
+// Self-provision the disposable vector database (the compose server only
+// creates `webdav_e2e`; the e2e user has CREATEDB). Keeps the adapter leg's
+// `webdav_test` untouched so the two PG legs can share one server.
+async function ensureTestDatabase() {
+  let probe;
+  try {
+    probe = new Pool({ ...PG_CONFIG, database: 'postgres' });
+    const res = await probe.query('SELECT 1 FROM pg_database WHERE datname = $1', [TEST_DB]);
+    if (res.rows.length === 0) {
+      // CREATE DATABASE cannot use bound parameters; quote defensively.
+      const safeName = TEST_DB.replace(/[^A-Za-z0-9_]/g, '');
+      if (safeName !== TEST_DB || safeName.length === 0) {
+        throw new Error(`refusing to create test database with unsafe name: ${TEST_DB}`);
+      }
+      await probe.query(`CREATE DATABASE ${safeName}`);
+    }
+  } catch (err) {
+    const unreachable = /ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNRESET/.test(
+      `${err.code || ''} ${err.message || ''}`
+    );
+    throw new Error(
+      `pgvector test-database setup failed for "${TEST_DB}": ${err.message}` +
+        (unreachable ? ` — ${UNREACHABLE_HINT}` : '')
+    );
+  } finally {
+    if (probe) await probe.end();
+  }
+}
+
 suite('PgVector ANN leg (real pgvector)', () => {
   const MODEL_ID = 4242;
   const DIM = 64;
@@ -292,13 +338,8 @@ suite('PgVector ANN leg (real pgvector)', () => {
   };
 
   beforeAll(async () => {
-    pool = new Pool({
-      host: process.env.WEA_TEST_PG_HOST || '127.0.0.1',
-      port: Number(process.env.WEA_TEST_PG_PORT || 5433),
-      user: process.env.WEA_TEST_PG_USER || 'e2etest',
-      password: process.env.WEA_TEST_PG_PASSWORD || 'e2etest',
-      database: process.env.WEA_TEST_PG_DATABASE || 'webdav_test',
-    });
+    await ensureTestDatabase();
+    pool = new Pool({ ...PG_CONFIG, database: TEST_DB });
     await pool.query('SELECT 1');
     const ext = await pool.query(`SELECT extversion FROM pg_extension WHERE extname = 'vector'`);
     if (ext.rows.length === 0) {
@@ -310,7 +351,8 @@ suite('PgVector ANN leg (real pgvector)', () => {
     if (version.rows.length === 0) {
       throw new Error(
         'PgVector ANN leg needs pgvector ≥ 0.7: the target PG has no `vector` extension. ' +
-          'Run against pgvector/pgvector:pg16 (dev: port 5434 container) via npm run test:ci:pg:vector.'
+          'Run against the compose server (pgvector/pgvector:pg16 on host port 5433) via ' +
+          'npm run test:ci:pg:vector.'
       );
     }
     await pool.query(`DROP TABLE IF EXISTS ${SHADOW}`);

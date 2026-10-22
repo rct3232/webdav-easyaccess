@@ -63,10 +63,10 @@ future layer's job) — sending it never changes the response.
      (`provisioner.loadLock()`); otherwise the empty string. When the embed call
      reports a DIFFERENT model id than the resolved identity (mid-switch) ⇒ degrade
      honestly (below).
-   Segments reuse the SAME cached path with their own normalized segment text
-   (§2.3 step 5); the ≤3 cap flag is set from the segment count regardless of the
-   scoring outcome. On ANY provider failure/timeout/mid-switch error ⇒ degrade
-   honestly: empty semantic section
+     Segments reuse the SAME cached path with their own normalized segment text
+     (§2.3 step 5); the ≤3 cap flag is set from the segment count regardless of the
+     scoring outcome. On ANY provider failure/timeout/mid-switch error ⇒ degrade
+     honestly: empty semantic section
 
 - `semantic_available:true` retained (config IS present) but `counts.semantic:0` —
   never a 5xx (a mid-switch config failure degrades honestly, never surfaces as error).

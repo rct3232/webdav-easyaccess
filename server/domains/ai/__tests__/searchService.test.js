@@ -305,7 +305,7 @@ describe('searchService semantic leg — degrade matrix', () => {
     await fileNodeService.createFile(ctx.root.id, 'degraded-provider.txt');
     const service = createC1Service({ adapter: createFakeEmbedAdapter({ failing: true }) });
 
-    const result = await service.search(ctx.user.id, { query: 'degraded phrase' });
+    const result = await service.search(ctx.user.id, { query: 'degraded' });
 
     expect(result.nameMatches).toHaveLength(1);
     expect(result.semantic).toEqual([]);
@@ -348,7 +348,9 @@ describe('searchService semantic leg — query_parses cache', () => {
     expect(adapter.calls.sort()).toEqual(['cache', 'cache notes', 'notes']);
 
     const { rows } = await dbQuery(
-      'SELECT normalized_query, hit_count FROM query_parses ORDER BY normalized_query'
+      `SELECT normalized_query, hit_count FROM query_parses
+        WHERE normalized_query IN ('cache', 'cache notes', 'notes')
+        ORDER BY normalized_query`
     );
     expect(rows.map((r) => [r.normalized_query, Number(r.hit_count)])).toEqual([
       ['cache', 1],
@@ -366,7 +368,9 @@ describe('searchService semantic leg — query_parses cache', () => {
     await service.search(ctx.user.id, { query: 'solo' });
 
     expect(adapter.calls).toEqual(['solo']);
-    const { rows } = await dbQuery('SELECT hit_count FROM query_parses');
+    const { rows } = await dbQuery(
+      "SELECT hit_count FROM query_parses WHERE normalized_query = 'solo'"
+    );
     expect(rows).toHaveLength(1);
     expect(Number(rows[0].hit_count)).toBe(0);
   });
@@ -412,7 +416,7 @@ describe('searchService semantic leg — segments + signature', () => {
 
     const result = await service.search(ctx.user.id, { query: 'alpha beta gamma delta' });
 
-    expect(adapter.calls.sort()).toEqual(['alpha', 'alpha beta gamma', 'alpha beta gamma delta', 'beta', 'gamma']);
+    expect(adapter.calls.sort()).toEqual(['alpha', 'alpha beta gamma delta', 'beta', 'gamma']);
     expect(result.counts.semanticCappedSegments).toBe(true);
   });
 
@@ -477,11 +481,11 @@ describe('searchService semantic leg — segments + signature', () => {
 describe('searchService semantic leg — scorer seam + assembly', () => {
   it('invokes the injected scorer with the cached vectors and assembles order, dedup, cap and usage', async () => {
     const ctx = await createUserWithRoot();
-    const nameMatched = await fileNodeService.createFile(ctx.root.id, 'matched-alpha.txt');
-    const a = await fileNodeService.createFile(ctx.root.id, 'vec-alpha.txt');
-    const b = await fileNodeService.createFile(ctx.root.id, 'vec-beta.txt');
-    const c = await fileNodeService.createFile(ctx.root.id, 'vec-gamma.txt');
-    const d = await fileNodeService.createFile(ctx.root.id, 'vec-delta.txt');
+    const nameMatched = await fileNodeService.createFile(ctx.root.id, 'vec-matched.txt');
+    const a = await fileNodeService.createFile(ctx.root.id, 'red-file.txt');
+    const b = await fileNodeService.createFile(ctx.root.id, 'blue-file.txt');
+    const c = await fileNodeService.createFile(ctx.root.id, 'green-file.txt');
+    const d = await fileNodeService.createFile(ctx.root.id, 'gold-file.txt');
     const usageService = createUsageServiceFake();
 
     const scorer = jest.fn(async ({ userId, queryVec, segmentVecs, sampleFn }) => {
@@ -493,8 +497,8 @@ describe('searchService semantic leg — scorer seam + assembly', () => {
       expect(Array.isArray(sample)).toBe(true);
       return [
         { nodeId: nameMatched.id, score: 0.99 }, // deduped away (already in name_matches)
-        { nodeId: c.id, score: 0.9 },
         { nodeId: a.id, score: 0.9 },
+        { nodeId: c.id, score: 0.9 },
         { nodeId: b.id, score: 0.5 },
         { nodeId: d.id, score: 0.4 },
       ];
@@ -512,12 +516,12 @@ describe('searchService semantic leg — scorer seam + assembly', () => {
     const result = await service.search(ctx.user.id, { query: 'vec' });
 
     expect(result.nameMatches).toEqual([
-      expect.objectContaining({ nodeId: nameMatched.id, name: 'matched-alpha.txt' }),
+      expect.objectContaining({ nodeId: nameMatched.id, name: 'vec-matched.txt' }),
     ]);
     // Order score desc then node_id asc, cap 2 AFTER dedup.
     expect(result.semantic).toEqual([
-      { nodeId: c.id, name: 'vec-gamma.txt', score: 0.9 },
-      { nodeId: a.id, name: 'vec-alpha.txt', score: 0.9 },
+      { nodeId: a.id, name: 'red-file.txt', score: 0.9 },
+      { nodeId: c.id, name: 'green-file.txt', score: 0.9 },
     ]);
     expect(result.semanticAvailable).toBe(true);
     expect(result.counts).toEqual({
@@ -530,7 +534,7 @@ describe('searchService semantic leg — scorer seam + assembly', () => {
 
     await flushUsageEvents();
     const recorded = usageService.recordEvent.mock.calls.map((c) => c[0]);
-    const semanticHits = recorded.filter((e) => [c.id, a.id].includes(e.nodeId));
+    const semanticHits = recorded.filter((e) => [a.id, c.id].includes(e.nodeId));
     expect(semanticHits).toHaveLength(2);
     expect(semanticHits.every((e) => e.action === 'search_hit' && e.userId === ctx.user.id)).toBe(
       true

@@ -176,11 +176,14 @@ const CONFIG_ENTRIES = Object.freeze([
   { key: 'LLM_BREAKER_COOLDOWN_S', tier: TIER.T2, secret: false, default: 300, dbOnly: true },
   { key: 'AI_SEMANTIC_SEARCH_ENABLED', tier: TIER.T2, secret: false, default: true, dbOnly: true },
 
-  // ── Search knobs (T0.11 — searchService.md §3; T2 hot/dbOnly) ───────────
+  // ── Search knobs (searchService.md §3; T2 hot/dbOnly) ───────────────────
   // Name-section hard cap (the §2.4 `counts.name_truncated` flag flips when
-  // the cap cuts the set). The semantic-leg caps (SEARCH_SEMANTIC_LIMIT,
-  // BASELINE_SAMPLE_DOCS) join the registry with the T1.5 semantic branch.
+  // the cap cuts the set). The semantic-leg caps ride the T1.5 semantic
+  // branch: SEARCH_SEMANTIC_LIMIT caps the deduped semantic display and
+  // BASELINE_SAMPLE_DOCS sizes the per-query dynamic-baseline sample.
   { key: 'SEARCH_NAME_LIMIT', tier: TIER.T2, secret: false, default: 200, dbOnly: true },
+  { key: 'SEARCH_SEMANTIC_LIMIT', tier: TIER.T2, secret: false, default: 50, dbOnly: true },
+  { key: 'BASELINE_SAMPLE_DOCS', tier: TIER.T2, secret: false, default: 500, dbOnly: true },
 
   // ── Activity constants (§3.4 — T2 dbOnly product constants; PLAN §6) ────
   // T0.6 usage/activity rollup: weights + half-life feed the nightly item

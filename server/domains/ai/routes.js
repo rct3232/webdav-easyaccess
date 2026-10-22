@@ -23,15 +23,33 @@ function handleServiceError(error) {
 function serializeSearch(result) {
   return {
     name_matches: result.nameMatches.map((row) => ({ node_id: row.nodeId, name: row.name })),
+    // The `semantic` key and the `semantic_capped_segments` flag are present
+    // exactly when the embed leg ran — an honestly EMPTY leg returns
+    // `"semantic": []`; the gate-off degrade OMITS both (routes/search.md
+    // §2.4 — absent and honestly empty are distinct wire states).
+    ...(result.semantic
+      ? {
+          semantic: result.semantic.map((row) => ({
+            node_id: row.nodeId,
+            name: row.name,
+            score: row.score,
+          })),
+        }
+      : {}),
     result_ref: result.resultRef,
     counts: {
       name: result.counts.name,
       semantic: result.counts.semantic,
       total: result.counts.total,
       name_truncated: result.counts.nameTruncated,
+      ...(result.counts.semanticCappedSegments !== undefined
+        ? { semantic_capped_segments: result.counts.semanticCappedSegments }
+        : {}),
     },
     semantic_available: result.semanticAvailable,
-    semantic_unavailable_reason: result.semanticUnavailableReason,
+    ...(result.semanticUnavailableReason !== undefined
+      ? { semantic_unavailable_reason: result.semanticUnavailableReason }
+      : {}),
   };
 }
 

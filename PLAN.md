@@ -2027,3 +2027,40 @@ the merged tip:
   a valid CHECK value for T4.1). Any future driver-key column is a big-bang decision (§17-3).
 - D2/D3 remain gated on C6/C7; D1 may start immediately.
 - The audit itself changed documentation only; no product code was touched.
+
+### 28.8 Execution log (2026-10-22) — P1 closure + Wave D landed
+
+All remediation units and Wave D are merged on `ai-feature`; no DDL change was made.
+Commits: C6 `c063fad`, C7 `6a6d577`, C8 `1d213f7`, C9 `84c8662`, D1 `e687488`,
+D2 `665832d`, D3 `5cf5adc`, D4 `3ea16c7`, style sweep `6343c6e`.
+
+| Unit | Status   | Landed scope                                                                                                                                                                                                     |
+| ---- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C6   | `[done]` | vectorStore factory + runtime singleton; search/near-dup reader wiring; embed-pipeline writer hooks (canonical + PgVector shadow in ONE TX); `vector`/`vectorOps` health; model-OR-dim backfill driver condition |
+| C7   | `[done]` | EG2 conformance gate at remote-embed activation (signature-cached); `probeState` effective capabilities; `AI_JOB_KIND`; normalized `excludeKinds` binding; timeout-race test                                     |
+| C8   | `[done]` | Zone C in selection/select-all/bulk read-only gating; `listVisibleFileNodeIds` conformance (sqlite + PG); hot `BASELINE_SAMPLE_DOCS`; client/search docs reconciled                                              |
+| C9   | `[done]` | English provisioning surface; `test:ci:pg:vector` on the compose PG with its own database; tag-helper docs; embed/chat-only health wording                                                                       |
+| D1   | `[done]` | live seed preview via `vectorStore.neighbors` (ACL-scoped, degraded missing-embedding path); `createSeedCollection` with `seed_vector` definition + `published:true` batch; `templateNamer`/`llmNamer`           |
+| D2   | `[done]` | OpenAI-compatible remote client (embed/chat/vision/asr/media); embedded processor media path; positive-control media probes (photo/re-encode/base64-text/audio/video); vision/asr real fixtures                  |
+| D3   | `[done]` | caption + asr pipelines; `media_direct` ladder, V2 caption/transcript fallback, V0 `metadata_only`; `aiEnrichmentsStore`; drain of embed/caption/asr                                                             |
+| D4   | `[done]` | shared media fallback-corpus rule; media coverage classification + deterministic admin re-embed scope (no auto enqueue; T4.1 owns the action)                                                                    |
+
+**Gates (merged tip):** server `jest --ci` **169 suites / 2956 tests pass (28 skipped), 1
+pre-existing failure** (`domains/admin/routes/__tests__/reports.test.js` cleanup-row parity
+— reproduced unchanged on base `39e6cfc`); client **183 / 2102 pass**; `test:ci:pg:adapters`
+**30 / 432 pass (1 skip)**; `test:ci:pg:vector` **22 / 22** (compose pgvector); embedded
+multimodal smoke **1 / 1** (image near-dup 0.9506, audio 0.7393, video 0.8447); E2E
+`ai-desktop` **1 / 1 pass** (1.8 m); docsStatePurity green in-suite; eslint clean;
+prettier clean. `retrieval-desktop` E2E did not reach the app assertions: the scratch stack
+(port-band PG `:5453` / S3) failed to bind/boot in this environment (`ECONNRESET` on login,
+PG connections terminated at teardown) — not reproduced as a product failure; rerun in a
+clean band is required.
+
+**Deviations / residual ownership:** `backfill` execution and the admin re-embed launcher
+remain T4.1 (the kind stays parked, no orphan enqueues); `planMediaBackfill` intentionally
+plans only `missing ∪ stale_space`, not same-model probe flips; `metadata_only` writes one
+segment row in addition to the pooled row; seed θ ships as `0.62` from the routes example
+until a release measurement replaces it; the remote dialect client is OpenAI-compatible
+(llama.cpp presets) — Ollama/other dialect presets are not shipped; media E2E/degradation
+matrix remains T4.3. The pre-existing admin-reports parity failure and the retrieval
+scratch-stack boot issue are recorded here, not fixed by this wave.

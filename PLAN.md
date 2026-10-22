@@ -1726,7 +1726,11 @@ worktrees/branches removed; E2E-AI-001 pre-seed located at
   twins. A stale main-checkout draft of the C2 docs/presets edits (first
   session residue, superseded wording) was discarded before the merge — the
   committed branch version is authoritative. **Remaining**: C3 (client zone C,
-  in flight) + Wave C exit gate.
+  in flight) + Wave C exit gate. **Ledger correction (2026-10-22, §28 C-2):**
+  the "twins (+conformance + facade)" claim holds for the facade and twins but
+  NOT for conformance — no `listVisibleFileNodeIds` conformance case exists
+  (only a mock in `semanticScorer.test.js`); remediation is tracked in
+  §28.3.5 (C8).
 - **C3 (T1.5c) `[done]` — merged (`0200f9e`).** Branch
   `feature/p1-c3-zone-c`, base `57c0dee` (worktree wt-c3). Commits: docs
   `2f5fc25` → feat `ac5228d` → fix `3cd0da6`. RED captured as a run, not a
@@ -1746,7 +1750,10 @@ worktrees/branches removed; E2E-AI-001 pre-seed located at
   clean; retrieval dual 22/22; ai case ×2 green. Follow-up surfaced (became
   C5): the §2.6 save server dispatch was unshipped — the live affordance
   created a user-origin member-less collection indistinguishable from a real
-  save (the exact C3 report finding).
+  save (the exact C3 report finding). **Ledger correction (2026-10-22, §28
+  C-1):** the "union selection + bulk read-only gating spans zones" claim is
+  false as shipped — `FileManager.js:279-286` unions Zone A+B only; remediation
+  is tracked in §28.2.3 (C8).
 - **C5 (T1.5 search-origin save leg — added plan-gap unit) `[done]` — merged
   (`ad047b3`).** Branch `feature/p1-c5-search-save-leg`, base `0200f9e`
   (worktree wt-c5). Commits: RED `8c2e1ec` (10 server failures — route
@@ -1789,3 +1796,234 @@ worktrees/branches removed; E2E-AI-001 pre-seed located at
   scope). NOTE for D1: `createSeedCollection` exists (T0.3, embed-gate entry)
   but the seed leg's confirm-dialog surface can reuse C5's
   `SearchSaveDialog` copy constants — extraction deferred (minimal change).
+
+## 28. Wave C audit remediation (2026-10-22) — gap ledger (orchestrator)
+
+> Audit base: `ai-feature` @ `d7d3b01` (Wave C exit tip). Gates re-run on the main
+> checkout: server `test:ci` 158 suites / 2832 pass (27 skip); client `test:ci`
+> 183 / 2098; `test:ci:pg:adapters` 30 / 426 (1 skip); `test:ci:pg:vector` 22/22;
+> docsStatePurity 3/3. **Verdict:** Wave C is merged and gate-green, but P1 is NOT
+> complete. The audit found **three P0 integration defects** (native vector seam
+> unwired, remote-embed conformance gate unenforced, Zone C excluded from
+> selection/bulk gating), **seven P1 closure items**, and **eight P2/P3 cleanups**.
+> This section is the binding remediation ledger; work units are C6–C9 (below).
+> Task branches never edit this file — the orchestrator owns these rows.
+>
+> Severity: **P0** = must close before Wave D D2/D3 (correctness, contract, or
+> dependency blocker); **P1** = belongs in the P1 closure batch; **P2** = assigned to a
+> named later unit; **P3** = documentation/hygiene. Effort: S ≤0.5d, M 1–2d, L 3d+.
+
+### 28.1 Gap inventory
+
+**Wave A**
+
+| ID  | Sev | Gap                                                                                                                                                                                                                                                                                                                                  | Evidence                                                                                                                                                                                                                           | Remediation                                                                                      | Placement |
+| --- | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | --------- |
+| A-1 | P0  | Native vector engines unreachable in production; read AND write paths bypass the `vectorStore` seam; `vectorOps` health row absent. Canonical TEXT writes stay bit-equivalent — the bypassed artifacts are the adapter-managed shadow index and the §2.2 one-TX contract (performance + contract defect, not a current result error) | `vectorStore/index.js` missing (`vectorStore.md:20` names it); `semanticScorer.js:85-86` + `nearDupFinderService.js:123-124` default to `TextVectorJs`; `pipelines/embed.js:81` falls back to direct hooks; no `vectorOps` in code | C6: factory + runtime singleton + reader/writer wiring + health row (28.2.1)                     | C6 / M    |
+| A-2 | P3  | `aiTagShared.js` still exists although the Wave A log says "purged"                                                                                                                                                                                                                                                                  | 667 B file required by `sqlite/AiTagRepository.sqlite.js:4` and `postgres/AiTagRepository.postgres.js:4`                                                                                                                           | Keep the helper, correct the Wave A wording + `aiTagStore.md §2.1` File Paths (28.4)             | C9 / S    |
+| A-3 | P2  | `aiEnrichmentsStore.md §2.1` promises a facade + test file that do not exist                                                                                                                                                                                                                                                         | `server/store/aiEnrichmentsStore.js` and `__tests__/aiEnrichmentsStore.test.js` absent                                                                                                                                             | T4.1 docs step: add the facade (T4.1 coverage filters need it) or strike the claim (28.4)        | T4.1 / S  |
+| A-4 | P1  | `test:ci:pg:vector` hardcodes :5434 while compose exposes :5433; no CI/runbook entry                                                                                                                                                                                                                                                 | `server/package.json:14`; `docker-compose.e2e.yml:40`; no CI config in repo                                                                                                                                                        | C9: reuse the 5433 server with a separate `webdav_vector_test` DB + TEST_GIT_GUIDE line (28.3.1) | C9 / S    |
+| A-5 | P1  | `provision.js` ships Portuguese error strings, CLI logs and comments                                                                                                                                                                                                                                                                 | `provision.js:43,139,140,168,172,212,221`; `clients/embedded-onnx.js` comments                                                                                                                                                     | C9: translate to English (AGENTS language rule) (28.3.2)                                         | C9 / S    |
+| A-6 | P2  | Spec/code drift around the vector seam and conformance harness                                                                                                                                                                                                                                                                       | `vectorMath.md §5` signature; `vectorStore.md §2.5` interim note; `PgVector` inline ACL duplicate                                                                                                                                  | C6 docs step + T2.2 docs step (28.4)                                                             | C6 / S–M  |
+
+**Wave B**
+
+| ID  | Sev | Gap                                                                                                                                      | Evidence                                                                                                                             | Remediation                                                                                               | Placement   |
+| --- | --- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- | ----------- |
+| B-1 | P0  | Probed-capability authority + EG2 conformance gate are pure functions with zero production callers; remote embed activation is not gated | `presets.js:180,235`; no callers outside tests; `llmAdapter.md:91` claims the probe suite runs the gate; `roleConfigured` ignores it | C7: probe cache + conformance in `roleConfigured`/`probeLlm` + `effectiveCapabilities` for hooks (28.2.2) | C7 / M      |
+| B-2 | P2  | Budget-chain step 2 (published metadata) never injects                                                                                   | `adapters/llm/index.js:123` seam; `server/index.js:353-358` does not inject                                                          | T4.1: fetch `/v1/models` / `/props` / `/api/show`, TTL-cache, inject (28.4)                               | T4.1 / S–M  |
+| B-3 | P3  | vision/asr readiness rows never render                                                                                                   | `backendHealth.js:9` tracks `ai.embed`/`ai.chat`; `backendHealth.md:41` states vision/asr are deliberately not tracked               | **By design**; clarify T1.1c wording, no code change (28.4)                                               | C9 / S      |
+| B-4 | P1  | `backfill` jobs are enqueued but unexecutable forever; the driver condition misses real model changes; `content_hash` is overloaded      | `pipelines/embed.js:34` (`backfill` in `UNEXECUTABLE_KINDS`), `:188` (`existing.modelId === modelId`), `:190-195` marker             | C6: fix the condition + dedupe; defer the executor to T4.1 (unified re-embed) (28.3.3)                    | C6/T4.1 / M |
+| B-5 | P1  | Audit watch-items unresolved: no `AI_JOB_KIND`, `excludeKinds` empty-string bind mismatch, `content_hash` overload                       | `shared/constants.js` lacks the enum; `aiJobsShared.js:76-78` filters but twins bind the raw array (`sqlite:76`, `postgres:73`)      | C7: shared constant + filtered binding + tests; overload resolved by B-4 (28.3.4)                         | C7 / S      |
+| B-6 | P2  | No direct tests for boot step 8b / `llmBootWiring` / job-timeout race                                                                    | `server/index.js:297-341`; `llmBootWiring.js` suite absent; `embedPipeline.test.js` has no timeout case                              | C7 timeout test; T4.3 boot/e2e coverage (28.4)                                                            | C7/T4.3 / M |
+
+**Wave C**
+
+| ID  | Sev | Gap                                                                                                                             | Evidence                                                                                                                             | Remediation                                                                   | Placement   |
+| --- | --- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- | ----------- |
+| C-1 | P0  | Zone C rows are excluded from selection, select-all and bulk read-only/write gating                                             | `FileManager.js:279-286` unions A+B only; `FileManagerView.md:127` requires A+B+C; `FileManager.md:259-261` contradicts it           | C8: include `zoneCRows` (dedupe by entry key) + reconcile both specs (28.2.3) | C8 / S      |
+| C-2 | P1  | `FileNodeRepository.listVisibleFileNodeIds` has twins + facade but no conformance coverage                                      | Only `semanticScorer.test.js:28` mocks it; `FileNodeRepository.conformance.test.js` lacks the case; `searchService.md §2.5` omits it | C8: conformance block (sqlite + PG) + spec row (28.3.5)                       | C8 / S      |
+| C-3 | P1  | `BASELINE_SAMPLE_DOCS` is registered but never consumed                                                                         | `configRegistry.js:186`; `semanticScorer.js:57,172` hard-uses 500                                                                    | C8: per-call `configResolver` read inside `score()` (T2-hot) (28.3.6)         | C8 / S      |
+| C-4 | P3  | Save dialog has no total member count — only a "+N more" overflow counter above the 12-tile cap (nothing renders under the cap) | `SearchSaveDialog.js:39-86`; `SearchQueryChipBar.md:53`/`useSearchResults.md:72` promise "count + names"                             | D1 docs step: add the count or align the spec (28.4)                          | D1 / S      |
+| C-5 | P3  | No `query_parses` store spec                                                                                                    | Contract lives only inside `searchService.md`                                                                                        | T3.4 docs step: add `docs/spec/server/store/queryParsesStore.md` (28.4)       | T3.4 / S    |
+| C-6 | P1  | Client/search/E2E docs drift and contradiction                                                                                  | `FileManager.md` vs `FileManagerView.md`; `searchService.md:183`; `E2E_COVERAGE_PLAN.md:401`; PLAN's `ai` vs real `ai-desktop`       | C8 + T4.3: reconcile in the same PRs that touch those files (28.3.7)          | C8/T4.3 / S |
+
+### 28.2 P0 remediation detail (must land before Wave D D2/D3)
+
+#### 28.2.1 A-1 — vectorStore seam factory and full wiring (C6)
+
+- **New seam:** `server/domains/ai/vectorStore/index.js`
+  `createVectorStore({ executor, modelId, health, loadRows, hooks })` selects, in order:
+  PG `probePgVector(executor)` → `PgVector`; sqlite `getSqliteConnection()` + `sqlite-vec`
+  load → `SqliteVec`; otherwise `TextVectorJs`. Returns the §2.2 interface
+  `{ upsert, neighbors, allVectors, impl }` plus the pipeline write hooks
+  `{ upsertPooled, replaceChunks, transaction }`. `rebuildShadow(modelId)` is exposed for
+  C6/T4.1 callers.
+- **Runtime singleton:** `server/domains/ai/vectorStoreRuntime.js` with
+  `getVectorStore()` / `resetVectorStore()` (the `llmAdapterRuntime` idiom); boot creates it
+  after the DB probe, active-model changes reset it (stale-dim rebuild lives in the adapter
+  `init()`: `atttypmod` for PG, `user_version` for vec0).
+- **Readers:** `searchService.js` passes
+  `engineFactory: (modelId, loadRows) => getVectorStore()` to `createSemanticScorer`;
+  `dashboard/service.js` does the same for near-dup.
+- **Writer:** `createEmbedPipeline` receives `vectorStore: getVectorStore().hooks` so the
+  pooled + chunk + shadow halves commit in ONE TX. The current direct-SQL fallback stays
+  for tests/capability-absent paths only.
+- **Scope note:** the direct SQL hooks are bit-equivalent to the repository twins for the
+  canonical `embeddings`/`embeddings_chunk` rows (verified against
+  `sqlite/EmbeddingsRepository.sqlite.js:35-45`), so today's results are correct. The
+  defect is the unmaintained adapter-managed shadow index, the §2.2 one-TX contract, and
+  the O(n) fallback; P0 is justified because D3 media writes must consume the seam and a
+  native reader wired without the writer would return stale shadow results.
+- **Health:** add `'vector'` to `backendHealth.js` `TRACKED_KEYS`; report
+  `{ ok, reason, hint }` on degrade (`CREATE EXTENSION vector` ≥0.7 / sqlite-vec binary).
+  `GET /api/admin/health` maps it to `vectorOps: 'native' | 'fallback_js'`
+  (`routes/admin.md:255` — a P1 target).
+- **RED targets:** factory selection matrix (pg/sqlite/fallback), health row, reader
+  injection, writer hook invocation + single-TX assertion, `vectorOps` wire shape.
+- **Exit:** with pgvector installed the semantic path uses `PgVector`; with the extension
+  absent it degrades to `TextVectorJs` and reports `fallback_js`; no feature is gated off.
+
+#### 28.2.2 B-1 — probed-capability authority at runtime (C7)
+
+- **Probe cache:** adapter-level `Map<configSignature, { capabilities, conformance }>`,
+  invalidated by `observeRole` on signature change (re-probe debounce already exists).
+- **EG2 conformance gate:** for `engine='remote'` `probeLlm('embed')` runs the checked-in
+  `eg2-reference-kit.json` strings through the endpoint and calls `evaluateConformance`;
+  pass ⇒ `configured`; fail ⇒ `ai.embed` `probe_failed` with `reason='nonConformingEndpoint'`
+  and consumers park. Embedded rows stay exempt (lockfile sha256 is identity). Cache the
+  verdict by signature — one activation pass, not per call.
+- **Capability matrix:** `evaluateCapabilityMatrix(preset, probeResults)` feeds
+  `effectiveCapabilities` for chat/vision/asr; `nodeContentHook`'s decision table and media
+  gates read effective capabilities (declared ≠ probed ⇒ capability OFF + `ai.<role>`
+  warning `hint`).
+- **i18n:** `serverErrors.ai.nonConformingEndpoint` + en/ko mirrors.
+- **RED targets:** same-space remote ⇒ configured; same-dim foreign space ⇒ probe_failed +
+  job park; config change ⇒ exactly one re-probe; declared-but-failed capability ⇒ off +
+  warning; built-in EG2 unchanged.
+- **Exit:** no remote embed can be active without a passing conformance verdict; wizard and
+  admin surfaces show the same effective capability set.
+
+#### 28.2.3 C-1 — Zone C in selection and bulk gating (C8)
+
+- Build one zone union helper in `FileManager.js`:
+  `[...zoneARows, ...zoneBRows, ...zoneCRows]`, deduped by `getEntryKey` (a node may appear
+  in name and semantic zones), and use it for both `selectionSortedSource` and
+  `selectionDisplaySource`; `selectionKeyIndex` then covers C automatically.
+- **RED targets:** select a writable Zone C row ⇒ bulk move/delete enabled; select a
+  read-only Zone C row ⇒ read-only gate/banner fires; select-all includes C; A/C duplicate
+  counts once.
+- **Docs:** `FileManager.md:259-261` → A ++ B ++ C (single source with
+  `FileManagerView.md:127`).
+- **Exit:** bulk operations and permission gating behave identically across all three zones.
+
+### 28.3 P1 closure remediation detail
+
+#### 28.3.1 A-4 — pg:vector runnable everywhere
+
+Reuse the existing pgvector container on `:5433` with a separate database
+(`webdav_vector_test`) instead of a second container/port. Parameterize
+`test:ci:pg:vector` (`WEA_TEST_PG_PORT=${WEA_TEST_PG_PORT:-5433}`,
+`WEA_TEST_PG_DATABASE=webdav_vector_test`), document the one-line command in
+`docs/TEST_GIT_GUIDE.md`, and add a preflight that fails with the compose instruction when
+the port is closed. Add the stage to the operator pipeline (Jenkins) at the next runbook
+touch.
+
+#### 28.3.2 A-5 — English-only provisioning surface
+
+Translate all `provision.js` / `embedded-onnx.js` logs, errors and comments to English
+(e.g. `invalid model.lock.json…`, `[provisioning] Downloading …`, `1/12 files`). Verify with
+a grep for the Portuguese tokens (0 hits) plus the provision suites.
+
+#### 28.3.3 B-4 — backfill driver correctness, executor deferred to T4.1
+
+- Fix the enqueue condition to `existing.modelId !== modelId || existing.dim !== dim`.
+- Keep `backfill` parked (`UNEXECUTABLE_KINDS`) until T4.1; record T4.1 as the executor
+  owner (unified admin re-embed: initial coverage + model-change full re-embed, §4.15).
+- Do not add a DDL column. If the `content_hash` marker must stay, document it as an opaque
+  driver key and ensure job dedupe never compares it against a file hash. Preferred: drop
+  the per-node driver once T4.1's admin action + factory `init()` rebuild own the path.
+- RED: model change enqueues one deduped driver; stale-dim rebuild runs through the C6
+  factory; no orphan `pending` backfill rows after a re-embed.
+
+#### 28.3.4 B-5 — watch-items
+
+- Add `AI_JOB_KIND` to `shared/constants.js` (`EMBED|FEATURES|CAPTION|ASR|BACKFILL`) and
+  replace literals in `pipelines/embed.js` / `nodeContentHook.js`; add a DDL-parity test
+  mirroring the `USAGE_ACTION` precedent.
+- Normalize `excludeKinds` once (`(opts.excludeKinds || []).filter(Boolean)`) and bind the
+  normalized array in BOTH twins; add a conformance case with `['', 'caption', null]`.
+- `content_hash` overload: resolved by §28.3.3.
+
+#### 28.3.5 C-2 — `listVisibleFileNodeIds` conformance
+
+Add a conformance block to `FileNodeRepository.conformance.test.js`: own-root node, path
+grant, point grant, foreign/denied node, trashed node; assert exact set equality. Add the
+method to `searchService.md §2.5`. Run `test:ci:pg:adapters` for the PG twin.
+
+#### 28.3.6 C-3 — `BASELINE_SAMPLE_DOCS` consumption
+
+Give `createSemanticScorer` a `configResolver` seam and resolve
+`BASELINE_SAMPLE_DOCS` per `score()` call (numeric parse, fallback 500) so the T2/dbOnly
+knob is hot. `searchService` passes its resolver into the default scorer. RED: change the
+config value → the next search samples the new cap without restart.
+
+#### 28.3.7 C-6 — documentation reconciliation
+
+In the same PRs that touch the files: `FileManager.md` zone union (C-1),
+`searchService.md:183` default-scorer wording, `searchService.md §2.5` repository row
+(C-2), `E2E_COVERAGE_PLAN.md:401` AI-case state (Zone C + save legs, scoring active),
+PLAN C1 project name `ai` → `ai-desktop`. Add these files to the §7.1 task-spec map where
+missing.
+
+### 28.4 P2/P3 assignments (named owner required; no orphan items)
+
+| ID  | Assignment                                                                                                                                                                                                          |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A-2 | C9 docs: keep `aiTagShared.js`, fix the Wave A wording and `aiTagStore.md §2.1` File Paths.                                                                                                                         |
+| A-3 | T4.1 docs step: add `aiEnrichmentsStore` facade + test (T4.1 coverage filters) or strike the spec claim; sync `TESTING_STRATEGY.md:91`.                                                                             |
+| A-6 | C6 docs step (vectorMath signature, ACL interim note) + T2.2 docs step (seam usage); optional PgVector → `aclFilter` consolidation.                                                                                 |
+| B-2 | T4.1: `createPublishedMetadataFetcher` (free GETs, TTL cache) injected into the adapter; or spec step 2 as deferred.                                                                                                |
+| B-3 | **No code change.** `backendHealth.md:41` is authoritative (embed/chat only). Reword T1.1c to "5-state display for tracked roles"; wizard keeps per-role probe rows.                                                |
+| B-6 | C7 adds the timeout-race test; T4.3 adds boot step 8b / `llmBootWiring` e2e coverage.                                                                                                                               |
+| C-4 | D1 docs step: add the TOTAL member count to `SearchSaveDialog` (the "+N more" overflow counter is not a total and is absent under the 12-tile cap) or align the host specs; optionally add a dedicated dialog spec. |
+| C-5 | T3.4 docs step: add `docs/spec/server/store/queryParsesStore.md` (+ TESTING_STRATEGY conformance enumeration).                                                                                                      |
+
+### 28.5 Closure waves (execution ledger)
+
+| Unit | Branch (from `ai-feature`) | Scope                                                                                                         | Deps      | RED-first targets                                                                                                     | Effort |
+| ---- | -------------------------- | ------------------------------------------------------------------------------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------- | ------ |
+| C6   | `fix/p1-c6-vector-seam`    | A-1, A-6, B-4(1) — factory, runtime singleton, reader/writer wiring, `vector`/`vectorOps` health, driver fix  | A5–A7, C2 | selection matrix pg/sqlite/fallback; reader injection; writer hook + single TX; `vectorOps` wire; model-change driver | M      |
+| C7   | `fix/p1-c7-llm-gates`      | B-1, B-5, B-6(timeout) — conformance gate, probe cache, effective capabilities, `AI_JOB_KIND`, `excludeKinds` | B1, B2    | same-space vs same-dim foreign; probe-failed park; one re-probe per change; matrix off+warning; binding conformance   | M      |
+| C8   | `fix/p1-c8-search-zone-c`  | C-1, C-2, C-3, C-6 — Zone C selection/bulk, repo conformance, config knob, client/search docs                 | C1–C5     | Zone C select/select-all/bulk/read-only; repo ACL set equality; hot baseline change; spec reconciliation              | S–M    |
+| C9   | `chore/p1-c9-hygiene`      | A-2, A-4, A-5, B-3(docs) — English surface, pg:vector runbook, tag-helper wording, 5-state wording            | none      | Portuguese grep 0; pg:vector green from a clean checkout; docsStatePurity                                             | S      |
+
+**Order:** C6 ∥ C7 ∥ C8 ∥ C9 after the audit; merge C6 and C7 **before** Wave D D2/D3
+(D2 media probes consume effective capabilities; D3 media writes consume the seam).
+C8 and C9 may merge any time. Wave D D1 is independent of C6/C7.
+
+### 28.6 P1 exit-gate redefinition (supersedes the §27 Wave C exit claim)
+
+Wave C's suite counts stand, but P1 closes only when ALL of the following are observed on
+the merged tip:
+
+1. `npm run test:ci` (server + client), `test:ci:pg:adapters`, `test:ci:pg:vector` green.
+2. pgvector environment reports `vectorOps='native'` and semantic/near-dup go through the
+   native engine; extension-absent environment reports `fallback_js` with a hint and no
+   feature gate.
+3. A same-dim, foreign-space remote embed endpoint is rejected at activation
+   (`probe_failed`) and its consumers park; a conforming endpoint activates without restart.
+4. Zone C rows participate in select-all, bulk operations and read-only gating.
+5. `AI_JOB_KIND` + `excludeKinds` binding tests green; no orphan `pending` backfill rows.
+6. `docsStatePurity` green; `FileManager.md` / `FileManagerView.md` / `searchService.md` /
+   `E2E_COVERAGE_PLAN.md` reconciled; no PLAN-cited spec promises an absent file.
+7. E2E `ai-desktop` + `retrieval` dual green on the remediation tip.
+
+### 28.7 Standing notes
+
+- Task branches never edit PLAN.md (§24); only the orchestrator records C-6..C-9 outcomes
+  here.
+- No DDL change is required by this remediation (job kinds stay in 001; `backfill` remains
+  a valid CHECK value for T4.1). Any future driver-key column is a big-bang decision (§17-3).
+- D2/D3 remain gated on C6/C7; D1 may start immediately.
+- The audit itself changed documentation only; no product code was touched.

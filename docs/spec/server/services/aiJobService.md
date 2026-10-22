@@ -23,8 +23,10 @@ Target-contract spec.
 
 ### 2.2 Enqueue hooks (content-commit seams)
 
-`onNodeContentCommitted(nodeId)` — called fire-and-forget AFTER the domain TX COMMITS
-(precedent: thumbnail invalidation `uploadService.js:≈204-209`) at exactly these points:
+`onNodeContentCommitted(nodeId, contentHash)` — called fire-and-forget AFTER the domain
+TX COMMITS (precedent: thumbnail invalidation `uploadService.js:≈204-209`) at exactly
+these points. `contentHash` is the freshly computed write-side hash; it may be `null`
+(restore re-read failure degrades to null — `versionsService.js:≈189-222`):
 
 | Seam                  | Anchor                                                     |
 | --------------------- | ---------------------------------------------------------- |
@@ -38,8 +40,12 @@ node lookup, the decision table below, and the per-kind enqueue; capability
 probes read the shared config resolver (`LLM_<ROLE>_BASE_URL` + `LLM_<ROLE>_MODEL`
 per role). There is NO delete seam.
 
-The same commit points populate `filecache.content_hash` (column exists, null today —
-`blobStorageService.js:66`); the hook receives the fresh hash.
+The same commit points populate `filecache.content_hash` (best-effort write, same
+convention as `server/utils/contentHash.js`); the hook receives the fresh hash. A null
+hash there means "hash unavailable" — restore re-read failure, a swallowed best-effort
+write, or legacy pre-hook rows (healed by the admin backfill,
+`adminReportsService.js:≈294-370`) — never "empty file": 0-byte content still hashes
+to a deterministic digest (`e3b0c44…`).
 
 Enqueue decision table (per node, at hook time):
 
@@ -58,7 +64,13 @@ Enqueue decision table (per node, at hook time):
   retained).
 - **content_hash skip:** `embed` executor first runs the dedupe check
   (`embeddingsStore.get(node)`; same active `modelId` ∧ same `contentHash` ⇒
-  `markSkipped`, no provider call — embeddingsStore §2.4; a model version is deterministic, so the `(content_hash, modelId)` pair suffices as the skip key). For
+  `markSkipped`, no provider call — embeddingsStore §2.4; a model version is deterministic, so the `(content_hash, modelId)` pair suffices as the skip key).
+  **NULL never skips:** the skip fires only when BOTH the
+  job's `content_hash` and the stored row's are non-null and equal — a null on either
+  side ⇒ the embed executes. NULL means "hash unavailable" (never "empty file" —
+  0-byte content still hashes deterministically), so never-skip is intentional: a
+  re-embed is a bounded cost leak that self-heals, because the pipeline's write
+  re-stamps the pooled row's hash. For
   `features`/`caption`/`asr` the analogous skip is a prior `done` job of the same
   `(node, kind, generation)` whose stamped `content_hash` equals the current one
   (job-row comparison — those tables have no content_hash column; lineage

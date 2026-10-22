@@ -1740,6 +1740,16 @@ from the FileGrid\* JSX bodies with the original suites kept UNCHANGED as regres
   big-bang script), conformance/test scenarios (exports array 14→3; the no-normalization
   pin needs a new vehicle on `replaceRawTags`); no production caller of
   `getTagVectors`/`upsertAutoParent`/`tag_embeddings` exists outside tests (verified).
+- **NULL-hash embed skip semantics** (audit watch-item resolved 2026-10-20, owner):
+  the `embed` executor's content-hash skip fires ONLY when both the job's
+  `content_hash` and the stored row's are non-null AND equal — NULL on either side
+  means "hash unavailable" (restore re-read failure, swallowed best-effort write, or
+  legacy pre-hook rows healed by the admin backfill), never "empty file" (0-byte
+  content still hashes deterministically), so NULL never skips. A NULL-forced
+  re-embed is an accepted, bounded, self-healing cost leak: the pipeline's write
+  re-stamps the pooled row's hash. Encoded in aiJobService §2.2 (hook signature
+  `onNodeContentCommitted(nodeId, contentHash)` — resolves the audit Case C seeds:
+  hook arity + NULL skip boundary).
 - **δ_base — measured and CLOSED (owner, 2026-10-20: "선택1로 하자")**: δ_base = **0.08** ships
   in the EG2 profile (junk margin ceiling .073 < δ < real-single floor .083; POC §6.10 —
   in-process q4 harness, Q12-kit positive control median-cos 1.000000, 1,304-doc reference

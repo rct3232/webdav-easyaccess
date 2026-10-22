@@ -76,9 +76,10 @@ function classifiedError(errorClass, reason, message) {
 }
 
 /**
- * The default dialect factory: the built-in embedded engine only. Remote
- * dialect clients land with the preset manifest (T1.1a) — until then a
- * remote resolution here is a config-class failure, never a silent fallthrough.
+ * The default dialect factory: the built-in embedded engine (in-process ONNX)
+ * and the remote OpenAI-compatible dialect (llama.cpp / OpenAI-compatible
+ * presets). Remote media rides the profile `requestShape`; text prefixes and
+ * pooling are profile properties, never provider-name branches.
  */
 function defaultCreateClient(spec) {
   if (spec.engine === 'embedded') {
@@ -103,12 +104,37 @@ function defaultCreateClient(spec) {
         const vector = await onnx.embedQuery(text, { modelDir, lock });
         return { vectors: [vector], dim: vector.length };
       },
+      async embedMedia(buffers, opts = {}) {
+        const vectors = await onnx.embedMedia(buffers, {
+          mediaType: opts.mediaType,
+          modelDir,
+          lock,
+        });
+        return { vectors, dim: vectors[0] ? vectors[0].length : lock.dim };
+      },
+      async embedWrappedText(text) {
+        const vector = await onnx.embedControlText(text, { modelDir, lock });
+        return { vectors: [vector], dim: vector.length };
+      },
     };
+  }
+  if (spec.engine === 'remote') {
+    // Lazy require: no network/dialect module work at construction time.
+    // eslint-disable-next-line global-require
+    const { createOpenAiCompatibleClient } = require('./clients/openai-compatible');
+    return createOpenAiCompatibleClient({
+      baseUrl: spec.baseUrl,
+      apiKey: spec.apiKey,
+      model: spec.model,
+      profile: spec.preset?.profile ?? null,
+      kwargs: spec.preset?.kwargs ?? null,
+      fetchImpl: spec.fetchImpl ?? null,
+    });
   }
   throw classifiedError(
     'config',
     'no_client_dialect',
-    `no client dialect for engine '${spec.engine}' (remote dialects land with the preset manifest, T1.1a)`
+    `no client dialect for engine '${spec.engine}'`
   );
 }
 
@@ -296,35 +322,92 @@ function createLlmAdapter(deps = {}) {
   // ── probe authority: conformance gate + effective capabilities (§2.4) ────
 
   /**
-   * Publish one role's effective capability: `evaluateCapabilityMatrix` is the
+   * Publish a role's effective capabilities: `evaluateCapabilityMatrix` is the
    * authority rule (declared ≠ probed ⇒ OFF), and `probeState` is what the
-   * enrichment hook reads. Declared-but-failed also lands an `ai.<role>`
-   * warning hint for the admin card.
+   * enrichment hook reads. The embed role publishes its text + media
+   * sub-capabilities together so a failed media probe can switch ONLY that
+   * capability OFF. Declared-but-failed also lands an `ai.<role>` warning hint
+   * for the admin card.
+   *
+   * @param {string} role
+   * @param {object} probeResults capability key → { pass, reason? }
    */
-  async function publishRoleCapability(role, outcome) {
+  async function publishRoleCapabilities(role, probeResults) {
     const { evaluateCapabilityMatrix } = require('./presets');
     const capability = CAPABILITY_BY_ROLE[role];
     if (!capability) return null;
 
     const preset = await Promise.resolve(presetFor(role));
-    const matrix = evaluateCapabilityMatrix(preset, {
-      [capability]: { pass: outcome.ok === true },
-    });
-    const row = matrix.find((entry) => entry.capability === capability);
-    const stored = probeState.setRoleCapability(role, {
-      ...row,
-      reason: outcome.reason ?? null,
-    });
+    const matrix = evaluateCapabilityMatrix(preset, probeResults || {});
+    const stored = probeState.setRoleCapabilities(role, matrix);
+    const primary = stored.find((entry) => entry.capability === capability) || null;
 
-    if (stored && stored.note === 'probe-failed' && role !== 'embed' && health) {
+    const failed = stored.find((entry) => entry.note === 'probe-failed');
+    if (failed && role !== 'embed' && health) {
       health.report(`ai.${role}`, {
         ok: false,
         code: 'probe_failed',
-        ...(outcome.reason ? { reason: String(outcome.reason).slice(0, 120) } : {}),
+        ...(failed.reason ? { reason: String(failed.reason).slice(0, 120) } : {}),
         hint: 'serverErrors.ai.providerProbeFailed',
       });
     }
-    return stored;
+    return primary;
+  }
+
+  /** Back-compat single-capability publisher (chat/vision/asr + embed text). */
+  async function publishRoleCapability(role, outcome) {
+    const capability = CAPABILITY_BY_ROLE[role];
+    if (!capability) return null;
+    return publishRoleCapabilities(role, {
+      [capability]: { pass: outcome.ok === true, reason: outcome.reason ?? null },
+    });
+  }
+
+  /**
+   * Run the §2.4 media positive controls against the active embed client and
+   * cache the verdict per resolved-config signature (one activation pass per
+   * signature, never per call). Text is published independently, so a media
+   * failure never blocks `text_embed`.
+   */
+  async function mediaVerdict(resolved) {
+    const signature = signatureOf(resolved);
+    const cached = probeCache.get(signature);
+    if (cached && cached.media) return cached.media;
+
+    const { entry } = await observeRole('embed');
+    const client = entry && entry.client;
+    let media = null;
+    if (client && typeof client.embedMedia === 'function') {
+      let captionImage = null;
+      try {
+        const visionConfig = await resolveRoleConfig('vision');
+        if (visionConfig.engine) {
+          const visionObservation = await observeRole('vision');
+          const visionClient = visionObservation.entry && visionObservation.entry.client;
+          if (visionClient && typeof visionClient.visionCaption === 'function') {
+            captionImage = (frames) =>
+              visionClient.visionCaption(frames, {
+                prompt: 'Describe the main content of this photo in English.',
+              });
+          }
+        }
+      } catch {
+        /* optional cross-check: caption sanity is advisory */
+      }
+      // Lazy require: probe fixtures are read only during a probe.
+      // eslint-disable-next-line global-require
+      const { runEmbedMediaProbes } = require('./mediaProbe');
+      media = await runEmbedMediaProbes({
+        embed: (...args) => client.embed(...args),
+        embedMedia: (...args) => client.embedMedia(...args),
+        ...(typeof client.embedWrappedText === 'function'
+          ? { embedWrappedText: (...args) => client.embedWrappedText(...args) }
+          : {}),
+        ...(captionImage ? { captionImage } : {}),
+      });
+    }
+    probeCache.set(signature, { ...(cached || {}), media });
+    return media;
   }
 
   /**
@@ -370,7 +453,12 @@ function createLlmAdapter(deps = {}) {
           hint: 'serverErrors.ai.nonConformingEndpoint',
         });
       }
-      await publishRoleCapability('embed', { ok: false, reason: 'transport' });
+      await publishRoleCapabilities('embed', {
+        text_embed: { pass: false, reason: 'transport' },
+        image_embed: { pass: false, reason: 'text_embed_off' },
+        audio_embed: { pass: false, reason: 'text_embed_off' },
+        video_embed: { pass: false, reason: 'text_embed_off' },
+      });
       return verdict;
     }
 
@@ -387,10 +475,17 @@ function createLlmAdapter(deps = {}) {
         });
       }
     }
-    await publishRoleCapability('embed', {
-      ok: verdict.pass === true,
-      reason: verdict.pass ? null : verdict.reason || 'nonConformingEndpoint',
-    });
+    if (verdict.pass) {
+      await publishRoleCapability('embed', { ok: true, reason: null });
+    } else {
+      const reason = verdict.reason || 'nonConformingEndpoint';
+      await publishRoleCapabilities('embed', {
+        text_embed: { pass: false, reason },
+        image_embed: { pass: false, reason: 'text_embed_off' },
+        audio_embed: { pass: false, reason: 'text_embed_off' },
+        video_embed: { pass: false, reason: 'text_embed_off' },
+      });
+    }
     return verdict;
   }
 
@@ -406,21 +501,48 @@ function createLlmAdapter(deps = {}) {
       const resolved = await resolveRoleConfig('embed');
       if (resolved.engine === 'remote') {
         const verdict = await conformanceVerdict(resolved);
+        if (!verdict.pass) {
+          return {
+            ok: false,
+            role,
+            reason: verdict.reason || 'nonConformingEndpoint',
+            median: verdict.median,
+            threshold: verdict.threshold,
+          };
+        }
+        const media = await mediaVerdict(resolved);
+        if (media) {
+          await publishRoleCapabilities('embed', { text_embed: { pass: true }, ...media });
+        } else {
+          await publishRoleCapability('embed', { ok: true, reason: null });
+        }
         return {
-          ok: verdict.pass === true,
+          ok: true,
           role,
-          reason: verdict.pass ? null : verdict.reason || 'nonConformingEndpoint',
+          reason: null,
           median: verdict.median,
           threshold: verdict.threshold,
+          ...(media ? { media } : {}),
         };
       }
       if (provisioning) return { ok: false, role, reason: 'preparing' };
       const present = await embeddedPresent();
-      await publishRoleCapability('embed', {
-        ok: present,
-        reason: present ? null : 'notProvisioned',
-      });
-      return { ok: present, role, reason: present ? null : 'notProvisioned', exempt: true };
+      if (!present) {
+        await publishRoleCapabilities('embed', {
+          text_embed: { pass: false, reason: 'notProvisioned' },
+          image_embed: { pass: false, reason: 'notProvisioned' },
+          audio_embed: { pass: false, reason: 'notProvisioned' },
+          video_embed: { pass: false, reason: 'notProvisioned' },
+        });
+        return { ok: false, role, reason: 'notProvisioned', exempt: true };
+      }
+      const media = await mediaVerdict(resolved);
+      if (media) {
+        await publishRoleCapabilities('embed', { text_embed: { pass: true }, ...media });
+      } else {
+        await publishRoleCapability('embed', { ok: true, reason: null });
+      }
+      return { ok: true, role, reason: null, exempt: true, ...(media ? { media } : {}) };
     }
 
     const resolved = await resolveRoleConfig(role);
@@ -490,7 +612,11 @@ function createLlmAdapter(deps = {}) {
         // First observation of a configured role (or rebuilt after a null
         // entry): build the client without reset/probe side effects.
         const preset = await Promise.resolve(presetFor(role));
-        const client = await createClient({ ...resolved, preset });
+        const client = await createClient({
+          ...resolved,
+          preset,
+          ...(fetchImpl ? { fetchImpl } : {}),
+        });
         clients.set(role, { signature, client, spec: resolved });
       }
       lastSignature.set(role, signature);
@@ -517,7 +643,11 @@ function createLlmAdapter(deps = {}) {
 
     if (resolved.engine) {
       const preset = await Promise.resolve(presetFor(role));
-      const client = await createClient({ ...resolved, preset });
+      const client = await createClient({
+        ...resolved,
+        preset,
+        ...(fetchImpl ? { fetchImpl } : {}),
+      });
       clients.set(role, { signature, client, spec: resolved });
     } else {
       clients.delete(role);
@@ -693,6 +823,25 @@ function createLlmAdapter(deps = {}) {
     };
   }
 
+  /**
+   * V1/V3 direct media embed (§2.3 `embedMedia`): same embed role, media
+   * carries NO text prefix, usage accounting mirrors `embed`.
+   */
+  async function embedMedia(buffers, opts = {}) {
+    const inputChars = (buffers || []).reduce(
+      (n, buffer) => n + ((buffer && buffer.length) || 0),
+      0
+    );
+    const result = await invokeRole('embed', 'embedMedia', [buffers, opts], { inputChars });
+    const preset = await Promise.resolve(presetFor('embed'));
+    return {
+      vectors: result.vectors ?? [],
+      dim: result.dim ?? preset?.profile?.dim ?? null,
+      modelId: modelIds.get('embed') ?? null,
+      ...(result.degraded ? { degraded: true } : {}),
+    };
+  }
+
   async function embedQuery(query) {
     const result = await invokeRole('embed', 'embedQuery', [query], {
       inputChars: String(query ?? '').length,
@@ -786,6 +935,7 @@ function createLlmAdapter(deps = {}) {
     probeConfiguredRoles,
     getEffectiveCapabilities: () => probeState.getEffectiveCapabilities(),
     embed,
+    embedMedia,
     embedQuery,
     chat,
     visionCaption,

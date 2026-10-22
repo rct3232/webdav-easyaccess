@@ -576,5 +576,49 @@ describe('GET /api/admin/health', () => {
     expect(res.body.backends.webdav.status).toBe('fail');
     expect(res.body.backends.webdav.code).toBe('unreachable');
     expect(res.body.backends.webdav.consecutiveFailures).toBe(3);
+    // No vector row in the mocked snapshot ⇒ the wire value is the fallback.
+    expect(res.body.vectorOps).toBe('fallback_js');
+  });
+
+  it('exposes vectorOps=native when the vector row reports a native selection', async () => {
+    mockHealth.getHealth.mockReturnValue({
+      postgresql: { status: 'ok' },
+      s3: { status: 'unknown' },
+      webdav: { status: 'unknown' },
+      vector: { status: 'ok', code: undefined, reason: undefined, hint: undefined },
+    });
+
+    const res = await request(app)
+      .get('/api/admin/health')
+      .set('Authorization', `Bearer ${buildToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.vectorOps).toBe('native');
+    // Other rows are unchanged by the vector addition.
+    expect(res.body.backends.postgresql.status).toBe('ok');
+  });
+
+  it('exposes vectorOps=fallback_js with the degraded hint on a vector failure row', async () => {
+    mockHealth.getHealth.mockReturnValue({
+      postgresql: { status: 'ok' },
+      s3: { status: 'unknown' },
+      webdav: { status: 'unknown' },
+      vector: {
+        status: 'fail',
+        reason: 'pgvectorUnavailable',
+        hint: 'CREATE EXTENSION vector (pgvector ≥ 0.7 required)',
+      },
+    });
+
+    const res = await request(app)
+      .get('/api/admin/health')
+      .set('Authorization', `Bearer ${buildToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.vectorOps).toBe('fallback_js');
+    expect(res.body.backends.vector).toMatchObject({
+      status: 'fail',
+      hint: 'CREATE EXTENSION vector (pgvector ≥ 0.7 required)',
+    });
   });
 });

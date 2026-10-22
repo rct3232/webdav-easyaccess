@@ -5,7 +5,9 @@
 const { createTestDatabase, createAuthenticatedTestUser, dbQuery } = require('@server/test-utils');
 const { createFileNodeService } = require('@server/service/fileNodeService');
 const { createFileNodesStore } = require('@server/store/fileNodesStore');
+const llmModelsStore = require('@server/store/llmModelsStore');
 const { createSearchService } = require('../searchService');
+const { initVectorStore, resetVectorStore, getVectorStore } = require('../vectorStoreRuntime');
 
 let dbCleanup;
 let fileNodeService;
@@ -578,5 +580,64 @@ describe('searchService semantic leg — scorer seam + assembly', () => {
     expect(result.semantic).toEqual([]);
     expect(result.semanticAvailable).toBe(true);
     expect(result.counts.semantic).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C6: the production scorer reads the boot-selected vectorStore engine
+// ---------------------------------------------------------------------------
+
+describe('searchService default scorer — vectorStore engine factory', () => {
+  afterEach(() => {
+    resetVectorStore();
+  });
+
+  it('passes the runtime engine factory into the default scorer and uses its neighbors', async () => {
+    const ctx = await createUserWithRoot();
+    const file = await fileNodeService.createFile(ctx.root.id, 'engine-wired.txt');
+
+    const { id: modelId } = await llmModelsStore.upsertModel({
+      role: 'embed',
+      provider: 'embedded',
+      engine: 'embedded',
+      baseUrlKey: '',
+      modelName: 'embeddinggemma-2-ONNX',
+      modelRevision: `rev-c6-search-${Date.now()}-${Math.random()}`,
+      precision: 'q4',
+      maxInputChars: 8192,
+      chunkBudget: 4,
+      batchSize: 8,
+    });
+
+    const engine = {
+      neighbors: jest.fn(async () => [{ nodeId: Number(file.id), score: 0.9 }]),
+      allVectors: jest.fn(async () => []),
+      upsert: jest.fn(),
+      rebuildShadow: jest.fn(),
+    };
+    const createStore = jest.fn(async () => engine);
+    const store = await initVectorStore({
+      llmModelsStore,
+      createStore,
+    });
+
+    expect(store).toBe(engine);
+    expect(getVectorStore()).toBe(engine);
+    expect(createStore).toHaveBeenCalledWith(
+      expect.objectContaining({ modelId: Number(modelId), dim: 768 })
+    );
+
+    const service = createSearchService({
+      usageService: createUsageServiceFake(),
+      // The adapter identity must match the registry row or the space-identity
+      // guard degrades the leg (mid-switch protection).
+      llmAdapter: createFakeEmbedAdapter({ modelId: Number(modelId), dim: 768 }),
+      llmModelsStore,
+    });
+    const result = await service.search(ctx.user.id, { query: 'unmatchable phrase' });
+
+    expect(engine.neighbors).toHaveBeenCalled();
+    expect(result.semanticAvailable).toBe(true);
+    expect(result.semantic.map((row) => row.nodeId)).toContain(Number(file.id));
   });
 });

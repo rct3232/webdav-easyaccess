@@ -19,6 +19,8 @@ const aiJobsStore = require('@server/store/aiJobsStore');
 const embeddingsStore = require('@server/store/embeddingsStore');
 const embeddingsChunkStore = require('@server/store/embeddingsChunkStore');
 const llmModelsStore = require('@server/store/llmModelsStore');
+const storage = require('@server/store/storage');
+const { createVectorStore } = require('../vectorStore');
 const { runPendingEmbedJobs } = require('../pipelines/embed');
 
 async function makeEmbedModel() {
@@ -249,5 +251,125 @@ describe('embed pipeline (B5/T1.3b)', () => {
     await expect(aiJobsStore.countByStatus()).resolves.toMatchObject({ skipped: 1 });
     const pooled = await embeddingsStore.get(node.nodeId);
     expect(pooled.contentHash).toBe('same-hash'); // untouched
+  });
+
+  it('uses the injected seam hooks: canonical halves + shadow sync in ONE transaction', async () => {
+    const node = await uniqueNode();
+    const modelId = await makeEmbedModel();
+    const executor = storage.getExecutor();
+
+    // Spy on the executor transaction so we can prove the shadow sync ran on
+    // the SAME handle as the canonical writes (§2.2 one-TX contract).
+    const originalTx = executor.transaction.bind(executor);
+    const txHandles = [];
+    const txSpy = jest.spyOn(executor, 'transaction').mockImplementation((fn) =>
+      originalTx(async (tx) => {
+        txHandles.push(tx);
+        return fn(tx);
+      })
+    );
+
+    const shadowCalls = [];
+    const engine = {
+      init: jest.fn().mockResolvedValue('ok'),
+      neighbors: jest.fn(),
+      allVectors: jest.fn(),
+      rebuildShadow: jest.fn(),
+      syncShadow: jest.fn(async (tx, nodeId, pooledText, chunkTexts) => {
+        shadowCalls.push({ tx, nodeId, pooledText, chunkTexts });
+      }),
+    };
+    const store = await createVectorStore({
+      executor,
+      modelId,
+      dim: 8,
+      health: { report: jest.fn() },
+      loadRows: async () => [],
+      sqliteDb: { marker: 'sqlite' },
+      probeSqlite: () => ({ available: true, reason: null, hint: null }),
+      createSqlite: () => engine,
+    });
+
+    try {
+      const seamHooks = {
+        transaction: jest.fn((...args) => store.hooks.transaction(...args)),
+        upsertPooled: jest.fn((...args) => store.hooks.upsertPooled(...args)),
+        replaceChunks: jest.fn((...args) => store.hooks.replaceChunks(...args)),
+      };
+
+      await enqueueEmbed(node.nodeId, 1);
+      const done = await runPendingEmbedJobs({
+        readText: async () => 'one paragraph\n\ntwo paragraph',
+        adapter: {
+          async embed(texts) {
+            return {
+              vectors: texts.map((t, i) => new Array(8).fill((i + 1) / 8)),
+              dim: 8,
+              modelId,
+            };
+          },
+        },
+        activeModelId: async () => modelId,
+        vectorStore: seamHooks,
+      });
+      expect(seamHooks.transaction).toHaveBeenCalledTimes(1);
+      expect(seamHooks.upsertPooled).toHaveBeenCalledTimes(1);
+      expect(seamHooks.replaceChunks).toHaveBeenCalledTimes(1);
+      expect(done).toBe(1);
+    } finally {
+      txSpy.mockRestore();
+    }
+
+    // Canonical halves landed …
+    const pooled = await embeddingsStore.get(node.nodeId);
+    expect(pooled).toMatchObject({ modelId, dim: 8, source: 'chunk_pool' });
+    expect(await embeddingsChunkStore.listByNode(node.nodeId, { modelId })).toHaveLength(2);
+
+    // … and the derived shadow sync rode the SAME tx handle (one transaction).
+    expect(txHandles).toHaveLength(1);
+    expect(shadowCalls).toHaveLength(1);
+    expect(shadowCalls[0].tx).toBe(txHandles[0]);
+    expect(shadowCalls[0].nodeId).toBe(Number(node.nodeId));
+    expect(String(shadowCalls[0].pooledText).split(',')).toHaveLength(8);
+    expect(shadowCalls[0].chunkTexts).toHaveLength(2);
+  });
+
+  it('model change: persisted row in another model space enqueues ONE deduped backfill driver', async () => {
+    const node = await uniqueNode();
+    const oldModelId = await makeEmbedModel();
+    const modelId = await makeEmbedModel();
+
+    // Same dim, DIFFERENT model space — the driver condition must catch the
+    // model change, not only a dim change (PLAN §28.3.3 B-4).
+    await embeddingsStore.upsert(node.nodeId, {
+      modelId: oldModelId,
+      dim: 4,
+      vector: new Array(4).fill(0.25),
+      source: 'chunk_pool',
+      contentHash: 'old-model-hash',
+    });
+
+    await enqueueEmbed(node.nodeId, 1);
+    await expect(
+      runPendingEmbedJobs({
+        readText: async () => 'space moved',
+        adapter: {
+          async embed(texts) {
+            return { vectors: texts.map(() => new Array(4).fill(0.5)), dim: 4, modelId };
+          },
+        },
+        activeModelId: async () => modelId,
+      })
+    ).resolves.toBe(1);
+
+    const drivers = (await aiJobsStore.listByNode(node.nodeId)).filter(
+      (j) => j.kind === 'backfill'
+    );
+    expect(drivers).toHaveLength(1);
+    expect(drivers[0].contentHash).toBe(`shadow-rebuild:${Number(node.nodeId)}:${modelId}`);
+    expect(drivers[0].status).toBe('pending'); // executor parked until T4.1
+
+    const pooled = await embeddingsStore.get(node.nodeId);
+    expect(pooled).toMatchObject({ modelId, dim: 4 });
   });
 });

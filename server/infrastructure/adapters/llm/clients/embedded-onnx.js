@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Cliente embedded ONNX (T1.0a — llmAdapter.md §2.1 peers, llmPresets.md §2.3).
+ * Embedded ONNX client (T1.0a — llmAdapter.md §2.1 peers, llmPresets.md §2.3).
  *
  * In-process transformers.js client for the built-in embed provider. Lazy
  * require of `@huggingface/transformers` so unit tests and boot paths without
@@ -21,7 +21,7 @@ let transformers = null;
 
 function getTransformers() {
   if (!transformers) {
-    // Lazy require: evita carregar onnxruntime-node quando o engine não é usado.
+    // Lazy require: avoids loading onnxruntime-node when the engine is unused.
     transformers = require('@huggingface/transformers');
   }
   return transformers;

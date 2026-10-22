@@ -137,6 +137,42 @@ describe('CollectionDashboard — hygiene cards', () => {
     expect(gateway.acceptFileSuggestions).not.toHaveBeenCalled();
   });
 
+  it('renders the near-dup card line + near_dup checklist rows when the payload carries them', async () => {
+    const gateway = makeGateway({
+      getFileSuggestions: jest.fn().mockResolvedValue({
+        duplicates: { group_count: 1, duplicate_count: 2, reclaimable_bytes: 2048 },
+        near_duplicates: { group_count: 1, duplicate_count: 2 },
+        suggestions: [
+          suggestionRow(),
+          suggestionRow({
+            node_id: 90321,
+            kind: 'near_dup',
+            path: '/testuser/docs/report v2.pdf',
+            size_bytes: 1048576,
+            reason: { kind: 'near_dup', keep_node_id: 90320 },
+          }),
+        ],
+        trash: {
+          item_count: 0,
+          total_bytes: 0,
+          oldest_deleted_at: null,
+          retention_days: 30,
+        },
+      }),
+    });
+
+    renderDashboard({ gateway });
+
+    const dupCard = await screen.findByRole('button', { name: /exact duplicates/i });
+    expect(dupCard).toHaveTextContent(/near-duplicates/i); // §4.16 exact/near dups card
+    // near_dup rows render generically in the checklist with the mapped label
+    expect((await screen.findAllByText(/report v2\.pdf/i)).length).toBeGreaterThan(0);
+    // /near duplicate/i (no hyphen) matches only the checklist row label — the
+    // card caption says "Near-duplicates"
+    expect(screen.getAllByText(/near duplicate/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId('suggestion-checkbox')).toHaveLength(2);
+  });
+
   it('retention 0 renders the no-automatic-purge note instead of a countdown', async () => {
     const gateway = makeGateway({
       getFileSuggestions: jest.fn().mockResolvedValue({

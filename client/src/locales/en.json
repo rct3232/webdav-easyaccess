@@ -841,6 +841,7 @@
     "storage": "Storage",
     "hygieneDuplicates": "Exact duplicates",
     "hygieneDuplicatesMeta": "{{groups}} groups · {{files}} files · {{size}} reclaimable",
+    "hygieneNearDuplicatesMeta": "Near-duplicates: {{groups}} groups · {{files}} files",
     "hygieneTrash": "Trash",
     "hygieneTrashMeta": "{{count}} items · {{size}}",
     "trashRetention": "purged in ~{{days}}d",
@@ -884,7 +885,8 @@
     "suggestionsEmpty": "Nothing to clean up.",
     "suggestionsExpiryNote": "Unaccepted suggestions are kept until expiry.",
     "suggestionsReason": {
-      "ExactDup": "Exact duplicate"
+      "ExactDup": "Exact duplicate",
+      "NearDup": "Near duplicate"
     },
     "suggestionsTrashed": "Moved {{count}} items to Trash",
     "capacityTitle": "Storage over time"

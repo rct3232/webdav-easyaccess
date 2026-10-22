@@ -20,6 +20,7 @@ const dashboardService = require('@server/domains/dashboard/service');
 const llmModelsStore = require('@server/store/llmModelsStore');
 const embeddingsStore = require('@server/store/embeddingsStore');
 const presets = require('@server/infrastructure/adapters/llm/presets');
+const { initVectorStore, resetVectorStore } = require('@server/domains/ai/vectorStoreRuntime');
 
 let fileNodeService;
 let dbCleanup;
@@ -356,5 +357,48 @@ describe('getDashboardSummary — vector near-dup feed (nearDupFinderService.md)
 
     expect(summary.nearDuplicates).toBeUndefined();
     expect(summary.suggestions.every((row) => row.kind === 'exact_dup')).toBe(true);
+  });
+
+  it('near-dup scoring uses the boot-selected vectorStore engine (C6 factory)', async () => {
+    const { user, homeId } = await storageUser('nearengine');
+    const a = await addFile(homeId, 'engine-a.txt', { hash: `nd-ea-${Date.now()}` });
+    const b = await addFile(homeId, 'engine-b.txt', { hash: `nd-eb-${Date.now()}` });
+
+    const modelId = await activateEmbedModel();
+    await embeddingsStore.upsert(Number(a.nodeId), {
+      modelId,
+      dim: 4,
+      vector: [1, 0, 0, 0],
+      source: 'fulltext',
+      contentHash: null,
+    });
+    await embeddingsStore.upsert(Number(b.nodeId), {
+      modelId,
+      dim: 4,
+      vector: nearPairVector(THETA + 0.001),
+      source: 'fulltext',
+      contentHash: null,
+    });
+
+    const engine = {
+      neighbors: jest.fn(async () => []),
+      allVectors: jest.fn(async () => []),
+      upsert: jest.fn(),
+      rebuildShadow: jest.fn(),
+    };
+    const store = await initVectorStore({
+      llmModelsStore,
+      createStore: jest.fn(async () => engine),
+    });
+    expect(store).toBe(engine);
+
+    try {
+      const summary = await dashboardService.getDashboardSummary(user.id);
+
+      expect(engine.neighbors).toHaveBeenCalledTimes(2); // one query per candidate
+      expect(summary.nearDuplicates).toEqual({ groupCount: 0, duplicateCount: 0 });
+    } finally {
+      resetVectorStore();
+    }
   });
 });

@@ -35,6 +35,7 @@
 const crypto = require('crypto');
 
 const { createSemanticScorer } = require('./semanticScorer');
+const { getVectorStoreOrFallback } = require('./vectorStoreRuntime');
 
 const QUERY_MAX_LENGTH = 200;
 const DEFAULT_NAME_LIMIT = 200;
@@ -107,6 +108,9 @@ function createSearchService(opts = {}) {
         configResolver: {
           getConfig: (key) => resolveConfigResolver().getConfig(key),
         },
+        // C6: the production scorer reads the boot-selected vectorStore engine
+        // (native when available, JsFallback otherwise — vectorStore.md §2.3).
+        engineFactory: (modelId, loadRows) => getVectorStoreOrFallback(modelId, loadRows),
       });
 
   function resolveFileNodesStore() {

@@ -194,7 +194,11 @@ function getSqliteConnection() {
   // of surfacing lazily on the first statement. Log (parity with the sqlite3
   // npm driver) and rethrow so callers map the failure via mapDatabaseError.
   try {
-    sqliteDb = new DatabaseSync(dbPath);
+    // allowExtension at OPEN is required by node:sqlite for the vectorStore
+    // seam's vec0 adapter (vectorStore.md §2.4a): enableLoadExtension() throws
+    // ERR_INVALID_STATE on a handle opened without it. Merely permitting the
+    // load has no effect until an extension is explicitly loaded.
+    sqliteDb = new DatabaseSync(dbPath, { allowExtension: true });
   } catch (error) {
     console.error('Failed to open SQLite database:', error.message);
     throw error;

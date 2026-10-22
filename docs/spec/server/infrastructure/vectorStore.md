@@ -18,6 +18,8 @@ Target-contract spec.
 ### 2.1 File Paths
 
 - **Seam:** `server/domains/ai/vectorStore/index.js` (factory by boot probe)
+- **Runtime singleton:** `server/domains/ai/vectorStoreRuntime.js`
+  (`initVectorStore()` / `getVectorStore()` / `resetVectorStore()`, boot-initialized)
 - **Impls:** `vectorStore/PgVector.js`, `vectorStore/SqliteVec.js`,
   `vectorStore/TextVectorJs.js` (+ `vectorMath.js` pure cosine/mean helpers, unit-tested)
 - **Shared ACL helper:** `vectorStore/aclFilter.js` (oversample→filter→retry, §2.5)
@@ -26,6 +28,35 @@ Target-contract spec.
   `runExactEngineConformance` — EXACT engines only) + the ANN leg
   `pgvector.test.js` (PgVector recall@50 @ ef_search=400 over held-out queries;
   real-PG, skips when the `vector` extension is unavailable).
+
+**Factory behavior (implemented).** `createVectorStore({ executor, modelId, dim,
+health, loadRows, hooks, sqliteDb })` probes at boot and selects in order:
+PostgreSQL ∧ `probePgVector(executor)` ok ⇒ `PgVector`; sqlite ∧ sqlite-vec vec0
+loadable ⇒ `SqliteVec`; otherwise `TextVectorJs`. `probeVectorCapability()` exposes
+the probe alone and `createVectorStoreForBoot()` is the never-throwing boot helper.
+The factory returns `{ impl: 'native'|'fallback_js', engine, upsert, neighbors,
+allVectors, rebuildShadow, hooks }`:
+
+- `upsert(nodeId, vecs, dim)` — `vecs[0]` pooled, `vecs.slice(1)` chunk vectors;
+  canonical halves + shadow sync in ONE transaction (§2.2).
+- `hooks` — the embed pipeline's tx-first write shape
+  `{ transaction, upsertPooled, replaceChunks }`; the canonical `embeddings` /
+  `embeddings_chunk` statements run on the caller's tx handle and PgVector's
+  shadow sync runs on the SAME handle. SqliteVec keeps its lazy vec0 re-sync and
+  JsFallback has no shadow — both are no-ops in the hook.
+- Selection/degrade reports `backendHealth.report('vector', { ok, reason, hint })`;
+  `GET /api/admin/health` maps the row to `vectorOps: 'native' | 'fallback_js'`.
+  A native choice also runs the adapter bring-up (`PgVector.init()`).
+
+**Runtime singleton behavior.** `initVectorStore()` derives the active embed
+model from `llmModelsStore.getActiveByRole('embed')` and the runtime `dim` from the
+manifest profile (`getPresetByFamilyRole(model.provider, 'embed').profile.dim` —
+`llm_models` has no dim column), resolves `storage.getExecutor()` /
+`storage.getSqliteConnection()`, and installs the factory result. Readers
+(`searchService` default scorer, dashboard near-dup) call
+`getVectorStoreOrFallback(modelId, loadRows)`; no active model or no init ⇒ the
+JsFallback. An active-model change resets the singleton and re-runs the adapter's
+stale-dim bring-up (§2.4).
 
 ### 2.2 Seam interface (exact)
 
@@ -125,10 +156,13 @@ WHERE embedding MATCH ? AND k = ?` (query vector JSON-stringified). Returned ids
   `neighborsFiltered(vec, k, aclPredicate)`: oversample `k·f` (f default 4) from the
   shadow → SQL/JS filter to the visible set → if fewer than k survive, adaptive retry
   doubling the oversample (bounded rounds, then short list — correctness over padding).
-  The helper is SHARED code and is also the valid pre-0.7 pg behavior.
-  Interim note (until the helper lands): `PgVector` implements the same
-  oversample→filter→adaptive-retry inline with the f=4 default so its ANN leg is
-  self-contained; consolidation into `aclFilter.js` must not change behavior.
+  The helper is SHARED code and also the valid pre-0.7 pg behavior.
+  Current wiring: `SqliteVec` consumes `aclFilter.neighborsFiltered` directly;
+  `PgVector` keeps an inline implementation of the SAME
+  oversample→filter→adaptive-retry discipline (f=4 default, bounded doubling
+  rounds, short-list terminal) so its ANN leg stays self-contained and exact≡oracle
+  independent of the helper. Consolidating PgVector onto `aclFilter.js` is an
+  optional cleanup and MUST NOT change its filter/retry behavior.
 
 ### 2.6 Accuracy contract
 

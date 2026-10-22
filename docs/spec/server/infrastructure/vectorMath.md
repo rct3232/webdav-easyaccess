@@ -123,8 +123,11 @@ math are cross-checked, not self-referential).
 ## 5. Conformance harness
 
 `server/domains/ai/vectorStore/__tests__/conformance.test.js` exports
-`runExactEngineConformance({ engine, loadRows })` so the native adapters pin their
-engines with the SAME legs (vectorStore.md §2.6):
+`runExactEngineConformance({ createEngine, corpus, k = 10 })` — `createEngine(deps)`
+constructs the engine under test with the harness-provided canonical doubles
+(`{ loadRows, upsertPooled, replaceChunks, transaction }`), `corpus` is a
+`buildCorpus({...})` fixture, `k` the neighbor cut — so the native adapters pin
+their engines with the SAME legs (vectorStore.md §2.6):
 
 - deterministic fixture corpus (seeded xorshift PRNG — never `Math.random`) serialized
   through the canonical codec;

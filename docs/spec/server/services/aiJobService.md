@@ -30,7 +30,7 @@ these points. `contentHash` is the freshly computed write-side hash; it may be `
 
 | Seam                  | Anchor                                                     |
 | --------------------- | ---------------------------------------------------------- |
-| S3 upload             | `server/service/uploadService.js` TX2 return (≈:99-123)     |
+| S3 upload             | `server/service/uploadService.js` TX2 return (≈:99-123)    |
 | WebDAV upload success | `server/domains/files/services/fileService.js` (≈:250-264) |
 | Copy                  | `fileService.copyFile` success                             |
 | Version restore       | `versionsService.restore` success                          |
@@ -137,20 +137,32 @@ stride sample ≤ `LLM_CHUNK_BUDGET` (default 4) chunks → embed ALL sampled ch
   never fails a job).
 
 - **Vector-space writes and the seam:** the canonical pooled + chunk writes ride the
-  vectorStore seam `upsert(node, vecs[], dim, meta)` (`domains/ai/vectorStore/index.js`
+  vectorStore seam `upsert(node, vecs[], dim)` and its pipeline `hooks`
+  (`domains/ai/vectorStore/index.js`
   factory — the engine is selected by the boot probe; a degraded JsFallback engine is a
   legal sink, never a gate). `meta = { source, contentHash, generation }` stamps the
   pooled row's `source`/`content_hash` through the factory's injected `upsertPooled` hook
   (the merged engine contracts stay `(node, vecs[], dim)`-shaped); pooled half = the
   mean+renormalized row, chunk half = the sampled chunks, ONE TX for both halves plus the
-  derived shadow sync (vectorStore.md §2.2 division of labor). The seam's dim is the
-  `embed()` RESULT's runtime dim compared against the node's PERSISTED pooled-row dim —
-  never `llm_models` (no dim column exists, llmModelsStore §1 dim note): a changed
-  runtime dim (model change) ⇒ the pipeline enqueues ONE shadow-rebuild driver —
-  `aiJobsStore.enqueue(nodeId, 'backfill', generation, 'shadow-rebuild:<nodeId>:<modelId>')`,
-  the A6/A7 `rebuildShadow` drop-rebuild path — before the fresh-space writes; the enqueue
-  dedupe makes re-detection on the next job idempotent (an enqueue failure is logged and
-  dropped, the next embed re-enqueues).
+  derived shadow sync (vectorStore.md §2.2 division of labor). Production passes the
+  seam's `hooks` (`{ transaction, upsertPooled, replaceChunks }`), so the canonical
+  pooled + chunk rows and the adapter-managed shadow commit in ONE TX; the direct-SQL
+  hook pair remains only as the test / capability-absent fallback. The seam's dim is the
+  `embed()` RESULT's runtime dim compared against the node's PERSISTED pooled-row
+  identity — never `llm_models` (no dim column exists, llmModelsStore §1 dim note): the
+  driver condition is `existing.modelId !== modelId || existing.dim !== dim`, i.e. a
+  model change OR a runtime-dim change ⇒ the pipeline enqueues ONE deduped driver —
+  `aiJobsStore.enqueue(nodeId, 'backfill', generation, 'shadow-rebuild:<nodeId>:<modelId>')`
+  — before the fresh-space writes. The `content_hash` slot on that row is an OPAQUE
+  driver key (never compared against a file hash; job dedupe uses the
+  `(node_id, kind, generation)` UNIQUE). Enqueue failures are logged and dropped; the
+  next embed re-enqueues.
+- **Backfill ownership:** the `backfill` executor is not implemented and the kind stays
+  PARKED (`pipelines/embed.js` `UNEXECUTABLE_KINDS`). The unified admin re-embed
+  (initial coverage + model-change full re-embed) owns the executor, and the factory
+  `init()`/`rebuildShadow()` owns the derived-index rebuild path. No DDL column is added
+  for the driver; once the admin action + factory rebuild own the flow, the per-node
+  driver row can be dropped.
 - **Restart idempotence:** a job claimed but unfinished (process death) is re-armed by
   `recoverStaleRunning` (§2.3 step 2) and re-executes; because the pooled upsert REPLACES
   per node and `replaceChunks` deletes the incoming model space's set before insert, a

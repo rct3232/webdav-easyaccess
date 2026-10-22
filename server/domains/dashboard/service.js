@@ -10,7 +10,8 @@
  */
 const { createFileNodesStore } = require('../../store/fileNodesStore');
 const dupFinderService = require('../ai/dupFinderService');
-const { getNearDupFinderService } = require('../ai/nearDupFinderService');
+const { createNearDupFinderService } = require('../ai/nearDupFinderService');
+const { getVectorStoreOrFallback } = require('../ai/vectorStoreRuntime');
 const ownerNodeResolver = require('../permissions/policy/ownerNodeResolver');
 const { getSharedResolver } = require('../../infrastructure/configResolver');
 const { getComposition } = require('../../service/composition');
@@ -66,7 +67,11 @@ async function getDashboardSummary(userId) {
   // §4.17 vector variant — nearDupFinderService owns hash-first precedence,
   // θ_dup (profile) and the group cap; absence is `available: false` and the
   // whole block is omitted (never an error — §4.12).
-  const near = await getNearDupFinderService().findNearDuplicateGroups(userId);
+  const near = await createNearDupFinderService({
+    // C6: near-dup scoring reads the boot-selected vectorStore engine
+    // (native when available, JsFallback otherwise — vectorStore.md §2.3).
+    engineFactory: (modelId, loadRows) => getVectorStoreOrFallback(modelId, loadRows),
+  }).findNearDuplicateGroups(userId);
   if (near.available) {
     // eslint-disable-next-line no-restricted-syntax
     for (const group of near.groups) {

@@ -365,6 +365,22 @@ async function runBoot() {
     } catch (err) {
       console.warn('⚠ LLM adapter init failed — AI roles stay unconfigured:', err.message);
     }
+
+    // C6 (vectorStore.md §2.1): select the vector engine after the registry
+    // exists (the active embed model keys the space + runtime dim). Absent
+    // capability degrades to the JsFallback with a `vector` health row and a
+    // hint — boot NEVER blocks and no feature is gated off.
+    try {
+      const { initVectorStore } = require('./domains/ai/vectorStoreRuntime');
+      const store = await initVectorStore({ health: getBackendHealth() });
+      if (store) {
+        console.log(`✓ Vector engine: ${store.engine} (${store.impl})`);
+      } else {
+        console.log('Vector engine: no active embed model — JsFallback on demand');
+      }
+    } catch (err) {
+      console.warn('⚠ Vector store init failed — JsFallback on demand:', err.message);
+    }
   }
 
   // Test WebDAV connection on startup — only when WebDAV is the active file

@@ -162,6 +162,7 @@ describe('createBackendHealth', () => {
       'ai.embed',
       'postgresql',
       's3',
+      'vector',
       'webdav',
     ]);
 
@@ -188,6 +189,7 @@ describe('createBackendHealth', () => {
       'ai.embed',
       'postgresql',
       's3',
+      'vector',
       'webdav',
     ]);
     expect(transitions).toHaveLength(0);

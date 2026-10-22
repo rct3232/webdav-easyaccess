@@ -219,29 +219,39 @@ function createPgVector({
         nodeId,
         chunks.map((v) => serializeVector(v))
       );
-      // shadow sync: replace this node's derived rows to match the canonical write
-      await tx.run(`DELETE FROM ${SHADOW_TABLE} WHERE node_id = $1 AND model_id = $2`, [
+      await syncShadow(
+        tx,
         nodeId,
-        modelId,
-      ]);
-      const rows = [
-        [nodeId, null, modelId, toVectorLiteral(serializeVector(pooled))],
-        ...chunks.map((v, chunkIdx) => [
-          nodeId,
-          chunkIdx,
-          modelId,
-          toVectorLiteral(serializeVector(v)),
-        ]),
-      ];
-      const placeholders = rows
-        .map((_, r) => `($${r * 4 + 1}, $${r * 4 + 2}, $${r * 4 + 3}, $${r * 4 + 4}::vector)`)
-        .join(', ');
-      await tx.run(
-        `INSERT INTO ${SHADOW_TABLE} (node_id, chunk_idx, model_id, vector)
-         VALUES ${placeholders}`,
-        rows.flat()
+        serializeVector(pooled),
+        chunks.map((v) => serializeVector(v))
       );
     });
+  }
+
+  /**
+   * Tx-bound shadow sync of ONE node's derived rows (canonical comma TEXT in,
+   * `pgvector` literals out). Exposed so the seam factory's pipeline write
+   * hooks can sync the shadow on the SAME tx handle as the canonical halves
+   * without opening a nested transaction (vectorStore.md §2.2).
+   */
+  async function syncShadow(tx, nodeId, pooledText, chunkTexts) {
+    if (!tx) throw new Error('PgVector.syncShadow requires a transaction handle');
+    await tx.run(`DELETE FROM ${SHADOW_TABLE} WHERE node_id = $1 AND model_id = $2`, [
+      nodeId,
+      modelId,
+    ]);
+    const rows = [
+      [nodeId, null, modelId, toVectorLiteral(pooledText)],
+      ...chunkTexts.map((text, chunkIdx) => [nodeId, chunkIdx, modelId, toVectorLiteral(text)]),
+    ];
+    const placeholders = rows
+      .map((_, r) => `($${r * 4 + 1}, $${r * 4 + 2}, $${r * 4 + 3}, $${r * 4 + 4}::vector)`)
+      .join(', ');
+    await tx.run(
+      `INSERT INTO ${SHADOW_TABLE} (node_id, chunk_idx, model_id, vector)
+       VALUES ${placeholders}`,
+      rows.flat()
+    );
   }
 
   function isVisible(nodeId, candidates) {
@@ -313,7 +323,7 @@ function createPgVector({
     }
   }
 
-  return { allVectors, neighbors, upsert, rebuildShadow, init };
+  return { allVectors, neighbors, upsert, syncShadow, rebuildShadow, init };
 }
 
 module.exports = { createPgVector, probePgVector };

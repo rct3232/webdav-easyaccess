@@ -7,8 +7,8 @@
  * Scope within B5: the TEXT file path of the `embed` kind — content-hash
  * dedupe skip → chunk-pool ladder → llmAdapter.embed → canonical
  * pooled/chunk writes through the vectorStore seam's injected write hooks →
- * markDone; a runtime dim ≠ the node's persisted pooled-row dim enqueues ONE
- * deduped backfill shadow-rebuild driver (llmAdapter §2.3 stale-dim rule:
+ * markDone; a runtime model/dim ≠ the node's persisted pooled-row identity
+ * enqueues ONE deduped backfill shadow-rebuild driver (llmAdapter §2.3 stale-dim rule:
  * the comparison is against the per-row `embeddings.dim`, never
  * `llm_models`). The overlength ladder tail (truncate-head → metadata_only
  * → skip), media/segment paths, and the full worker loop belong to later
@@ -181,11 +181,13 @@ function createEmbedPipeline(deps = {}) {
       throw new Error('embed adapter returned a malformed vector batch');
     }
 
-    // llmAdapter §2.3 stale-dim rule: compare the RUNTIME dim against the
-    // node's PERSISTED per-row dim — never llm_models (no dim column).
-    // Mismatch ⇒ ONE deduped backfill shadow-rebuild driver; the enqueue
-    // failure is logged and dropped (the next embed re-enqueues).
-    if (existing && existing.modelId === modelId && existing.dim !== dim) {
+    // llmAdapter §2.3 stale-dim rule + aiJobService §2.4 driver condition:
+    // compare the RUNTIME model+dim against the node's PERSISTED per-row
+    // values — never llm_models (no dim column). A model change OR a dim
+    // change ⇒ ONE deduped backfill shadow-rebuild driver; the enqueue
+    // failure is logged and dropped (the next embed re-enqueues). The
+    // `backfill` executor itself is parked until T4.1 (UNEXECUTABLE_KINDS).
+    if (existing && (existing.modelId !== modelId || existing.dim !== dim)) {
       try {
         await ctx.jobs.enqueue(
           nodeId,

@@ -240,7 +240,12 @@ router.post(
 // Admin health snapshot: full per-backend tracker state (code/hint/lastChecked).
 // Stateless token-claim admin check (no DB read) so it works during a DB outage.
 router.get('/health', authenticateToken, isAdminFromToken, (req, res) => {
-  res.json({ backends: getBackendHealth().getHealth() });
+  const backends = getBackendHealth().getHealth();
+  // vectorStore seam wire value (vectorStore.md §1, routes/admin.md §2.7):
+  // native when the boot probe selected a native adapter, fallback_js
+  // otherwise (the JS fallback is a performance warning, never a feature gate).
+  const vectorOps = backends.vector && backends.vector.status === 'ok' ? 'native' : 'fallback_js';
+  res.json({ backends, vectorOps });
 });
 
 // Env↔DB config-sync report (read-only). The env source is the running process

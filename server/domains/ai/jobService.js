@@ -108,11 +108,16 @@ function createAiJobService(deps = {}) {
     const { runPendingEmbedJobs } = embedPipeline();
     const jobTimeoutMs =
       deps.jobTimeoutMs ?? (await configNumber('AI_JOB_TIMEOUT_MS', DEFAULT_JOB_TIMEOUT_MS));
+    // C6 writer wiring: the boot-selected vectorStore exposes the tx-first
+    // write hooks (canonical halves + derived shadow in ONE TX). Absent store
+    // (no active model / probe not run) ⇒ the pipeline's direct-SQL fallback.
+    const vectorStore = deps.vectorStore || require('./vectorStoreRuntime').getVectorStore();
     try {
       await runPendingEmbedJobs({
         adapter,
         readText: deps.readText || readNodeText,
         jobTimeoutMs,
+        ...(vectorStore && vectorStore.hooks ? { vectorStore: vectorStore.hooks } : {}),
         // §2.3 step 6: the ACTIVE embed model id gates the claim — resolved
         // per pass through the registry facade (boot syncModelRegistry rows
         // it); null ⇒ the pass drains nothing (nothing to score against).

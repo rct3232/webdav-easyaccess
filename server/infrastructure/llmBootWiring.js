@@ -35,9 +35,11 @@ function createBootPresetFor(resolver) {
 }
 
 /** Per-role re-probe (§2.2 debounced trigger): resolve the role's remote
- * triple and run the probe suite. Embed is NOT a probe target (probe.js
- * scope discipline — the built-in engine is covered by the conformance
- * path, not the probe surface); unconfigured remote roles are skipped. */
+ * triple and run the probe suite. The embed role is owned by the adapter's
+ * activation gate (conformance over the checked-in EG2 kit, llmAdapter §2.4),
+ * so this seam delegates to the installed adapter — the wizard probe surface
+ * stays chat/vision/asr-only (probe.js scope discipline); unconfigured remote
+ * roles are skipped. */
 function createBootProbeRole(resolver) {
   const ROLE_KEYS = {
     chat: ['LLM_CHAT_BASE_URL', 'LLM_CHAT_API_KEY', 'LLM_CHAT_MODEL'],
@@ -45,6 +47,14 @@ function createBootProbeRole(resolver) {
     asr: ['LLM_ASR_BASE_URL', 'LLM_ASR_API_KEY', 'LLM_ASR_MODEL'],
   };
   return async ({ role }) => {
+    if (role === 'embed') {
+      const { getLlmAdapter } = require('./llmAdapterRuntime');
+      const adapter = getLlmAdapter();
+      if (!adapter || typeof adapter.probeRole !== 'function') {
+        return { ok: false, role, reason: 'adapter not installed' };
+      }
+      return adapter.probeRole('embed');
+    }
     const keys = ROLE_KEYS[role];
     if (!keys) return { ok: false, role, reason: 'no remote probe surface' };
     const [baseUrl, apiKey, model] = await Promise.all(keys.map((key) => resolver.getConfig(key)));

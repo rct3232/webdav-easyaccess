@@ -10,14 +10,22 @@
  * `ai_usage_daily` and the model-registry sync.
  *
  * Seams (injected, defaulting to the real modules):
- *   - `createClient`  — dialect client factory (remote dialects land with the
- *     preset manifest, T1.1a; the default here serves the built-in embedded
- *     engine only).
- *   - `probeRole`     — the probe suite hook (T1.1a); the adapter owns the
- *     debounced re-probe TRIGGER, the suite itself is the probe owner's.
- *   - `provisioner`   — the T1.0a provision module (in-place run on an
- *     override clear).
- *   - `presetFor`     — preset-manifest row seam (T1.1a) for budgets/profile.
+ *   - `createClient`  — dialect client factory (the default here serves the
+ *     built-in embedded engine only).
+ *   - `probeRole`     — the probe suite hook; the adapter owns the debounced
+ *     re-probe TRIGGER, the suite itself is the probe owner's.
+ *   - `provisioner`   — the provision module (in-place run on an override
+ *     clear).
+ *   - `presetFor`     — preset-manifest row seam for budgets/profile and the
+ *     capability matrix.
+ *   - `fetchImpl`     — transport seam for the remote-embed conformance probe
+ *     (defaults to the global fetch; tests inject a fake endpoint).
+ *
+ * Activation gates (llmAdapter.md §2.4): a remote `embed` role is configured
+ * only when the checked-in EG2 reference kit passes `evaluateConformance`
+ * against the endpoint — the verdict is cached by config signature. Every
+ * probe outcome feeds `evaluateCapabilityMatrix`, whose effective set is
+ * published to `probeState` for the enrichment hook and admin surfaces.
  *
  * No module-level singletons: `createLlmAdapter(deps)` is constructed once by
  * the boot wiring and handed to its consumers.
@@ -26,8 +34,17 @@
 const crypto = require('crypto');
 
 const { classifyLlmError, createBreaker, createLimiter, resolveBudget } = require('./budget');
+const probeState = require('./probeState');
 
 const ROLES = ['embed', 'chat', 'vision', 'asr'];
+
+/** Server role → the matrix capability key it toggles. */
+const CAPABILITY_BY_ROLE = {
+  embed: 'text_embed',
+  chat: 'chat',
+  vision: 'vision_chat',
+  asr: 'asr',
+};
 
 const ROLE_KEYS = {
   embed: ['LLM_EMBED_BASE_URL', 'LLM_EMBED_API_KEY', 'LLM_EMBED_MODEL'],
@@ -99,13 +116,14 @@ function defaultCreateClient(spec) {
  * @param {object} deps
  * @param {{getConfig: Function}} deps.configResolver  per-call T2 resolver
  * @param {Function} [deps.createClient]              ({role,engine,baseUrl,apiKey,model,preset}) => client
- * @param {Function} [deps.probeRole]                 async ({role}) => probe outcome (T1.1a suite)
+ * @param {Function} [deps.probeRole]                 async ({role}) => probe outcome (probe suite)
  * @param {object}   [deps.provisioner]               {runProvision, weightsPresent, loadLock, resolveModelDir}
  * @param {object}   [deps.llmModelsStore]            registry facade (default: server/store/llmModelsStore)
  * @param {object}   [deps.aiUsageDailyStore]         ledger facade (default: server/store/aiUsageDailyStore)
  * @param {object}   [deps.health]                    backendHealth-like {report(key, patch)}
  * @param {Function} [deps.presetFor]                 (role) => manifest row fragment | null (T1.1a)
  * @param {Function} [deps.fetchPublishedMetadata]    async (role, resolved) => number|null (budget step 2)
+ * @param {Function} [deps.fetchImpl]                 fetch seam for the remote-embed conformance probe
  * @param {object}   [deps.clock]                     {now()}
  * @param {object}   [deps.timers]                    {setTimeout, clearTimeout}
  * @param {number}   [deps.charsPerToken]             §2.6 safety factor for the token-cap estimate
@@ -114,13 +132,14 @@ function createLlmAdapter(deps = {}) {
   const {
     configResolver,
     createClient = defaultCreateClient,
-    probeRole = null,
+    probeRole: probeSuite = null,
     provisioner = require('./provision'),
     llmModelsStore = null,
     aiUsageDailyStore = null,
     health = null,
     presetFor = () => null,
     fetchPublishedMetadata = null,
+    fetchImpl = null,
     clock = { now: () => Date.now() },
     timers = {
       setTimeout: (fn, ms) => setTimeout(fn, ms),
@@ -167,6 +186,12 @@ function createLlmAdapter(deps = {}) {
   const modelIds = new Map(); // role → llm_models.id (set by syncModelRegistry)
   const reprobeTimers = new Map(); // role → timer id
   let provisioning = false; // embed in-place provisioning in flight
+
+  // Probe/conformance verdicts keyed by the RESOLVED config signature (§2.2):
+  // one activation pass per signature — never per call — invalidated by
+  // observeRole when the signature changes.
+  const probeCache = new Map(); // signature → { conformance }
+  const conformanceSignature = new Map(); // role → signature of the cached verdict
 
   async function numCap(key) {
     const raw = await configResolver.getConfig(key);
@@ -261,12 +286,190 @@ function createLlmAdapter(deps = {}) {
       role,
       timers.setTimeout(() => {
         reprobeTimers.delete(role);
-        if (!probeRole) return;
-        Promise.resolve(probeRole({ role })).catch(() => {
+        Promise.resolve(probeRoleNow(role)).catch(() => {
           /* probe failures are the probe layer's surface (backendHealth) */
         });
       }, tunables.reprobeDebounceS * 1000)
     );
+  }
+
+  // ── probe authority: conformance gate + effective capabilities (§2.4) ────
+
+  /**
+   * Publish one role's effective capability: `evaluateCapabilityMatrix` is the
+   * authority rule (declared ≠ probed ⇒ OFF), and `probeState` is what the
+   * enrichment hook reads. Declared-but-failed also lands an `ai.<role>`
+   * warning hint for the admin card.
+   */
+  async function publishRoleCapability(role, outcome) {
+    const { evaluateCapabilityMatrix } = require('./presets');
+    const capability = CAPABILITY_BY_ROLE[role];
+    if (!capability) return null;
+
+    const preset = await Promise.resolve(presetFor(role));
+    const matrix = evaluateCapabilityMatrix(preset, {
+      [capability]: { pass: outcome.ok === true },
+    });
+    const row = matrix.find((entry) => entry.capability === capability);
+    const stored = probeState.setRoleCapability(role, {
+      ...row,
+      reason: outcome.reason ?? null,
+    });
+
+    if (stored && stored.note === 'probe-failed' && role !== 'embed' && health) {
+      health.report(`ai.${role}`, {
+        ok: false,
+        code: 'probe_failed',
+        ...(outcome.reason ? { reason: String(outcome.reason).slice(0, 120) } : {}),
+        hint: 'serverErrors.ai.providerProbeFailed',
+      });
+    }
+    return stored;
+  }
+
+  /**
+   * The §2.4 EG2 activation gate for a remote embed endpoint: embed the
+   * checked-in reference-kit strings through the endpoint and compare the
+   * observed space to the canonical vectors (`evaluateConformance`). The
+   * verdict is cached by config signature; a transport fault is NOT an
+   * identity verdict and is retried on the next activation/debounced pass.
+   */
+  async function conformanceVerdict(resolved) {
+    const signature = signatureOf(resolved);
+    const previous = conformanceSignature.get('embed');
+    if (previous && previous !== signature) probeCache.delete(previous);
+    conformanceSignature.set('embed', signature);
+
+    const cached = probeCache.get(signature);
+    if (cached && cached.conformance) return cached.conformance;
+
+    let verdict;
+    try {
+      // Lazy require: presets/probe are leaf modules; no boot-time cost.
+      const { probeEmbedConformance } = require('./probe');
+      verdict = await probeEmbedConformance({
+        baseUrl: resolved.baseUrl,
+        apiKey: resolved.apiKey,
+        model: resolved.model,
+        ...(fetchImpl ? { fetchImpl } : {}),
+      });
+    } catch (err) {
+      verdict = {
+        dimOk: false,
+        median: null,
+        threshold: null,
+        pass: false,
+        reason: 'transport',
+        error: err && err.message ? err.message : String(err),
+      };
+      if (health) {
+        health.report('ai.embed', {
+          ok: false,
+          code: 'probe_failed',
+          reason: 'transport',
+          hint: 'serverErrors.ai.nonConformingEndpoint',
+        });
+      }
+      await publishRoleCapability('embed', { ok: false, reason: 'transport' });
+      return verdict;
+    }
+
+    probeCache.set(signature, { ...(cached || {}), conformance: verdict });
+    if (health) {
+      if (verdict.pass) {
+        health.report('ai.embed', { ok: true });
+      } else {
+        health.report('ai.embed', {
+          ok: false,
+          code: 'probe_failed',
+          reason: verdict.reason || 'nonConformingEndpoint',
+          hint: 'serverErrors.ai.nonConformingEndpoint',
+        });
+      }
+    }
+    await publishRoleCapability('embed', {
+      ok: verdict.pass === true,
+      reason: verdict.pass ? null : verdict.reason || 'nonConformingEndpoint',
+    });
+    return verdict;
+  }
+
+  /**
+   * The probe suite entry point per role. Embed is the activation gate owner
+   * (conformance, HTTP to the endpoint); chat/vision/asr delegate to the
+   * injected suite and publish the resulting effective capability.
+   */
+  async function probeRoleNow(role) {
+    if (!ROLES.includes(role)) return { ok: false, role, reason: 'unknown role' };
+
+    if (role === 'embed') {
+      const resolved = await resolveRoleConfig('embed');
+      if (resolved.engine === 'remote') {
+        const verdict = await conformanceVerdict(resolved);
+        return {
+          ok: verdict.pass === true,
+          role,
+          reason: verdict.pass ? null : verdict.reason || 'nonConformingEndpoint',
+          median: verdict.median,
+          threshold: verdict.threshold,
+        };
+      }
+      if (provisioning) return { ok: false, role, reason: 'preparing' };
+      const present = await embeddedPresent();
+      await publishRoleCapability('embed', {
+        ok: present,
+        reason: present ? null : 'notProvisioned',
+      });
+      return { ok: present, role, reason: present ? null : 'notProvisioned', exempt: true };
+    }
+
+    const resolved = await resolveRoleConfig(role);
+    if (!resolved.engine) return { ok: false, role, reason: 'unconfigured' };
+
+    let outcome;
+    if (probeSuite) {
+      try {
+        outcome = (await probeSuite({ role })) || {
+          ok: false,
+          role,
+          reason: 'probe failed',
+        };
+      } catch (err) {
+        outcome = {
+          ok: false,
+          role,
+          reason: (err && (err.reason || err.message)) || 'probe failed',
+        };
+      }
+    } else {
+      // No suite installed: declared-but-unprobed ⇒ capability OFF (honest).
+      outcome = { ok: false, role, reason: 'no probe suite' };
+    }
+    await publishRoleCapability(role, outcome);
+    return outcome;
+  }
+
+  /**
+   * Boot/initial probe (llmAdapter.md §2.4 — the startup probe is the INITIAL
+   * probe): every CONFIGURED role runs once. Unconfigured roles are skipped
+   * (capability OFF, no warning). Failures never throw.
+   */
+  async function probeConfiguredRoles() {
+    const outcomes = {};
+    for (const role of ROLES) {
+      const resolved = await resolveRoleConfig(role);
+      if (!resolved.engine) continue;
+      try {
+        outcomes[role] = await probeRoleNow(role);
+      } catch (err) {
+        outcomes[role] = {
+          ok: false,
+          role,
+          reason: (err && (err.reason || err.message)) || 'probe failed',
+        };
+      }
+    }
+    return outcomes;
   }
 
   /**
@@ -296,9 +499,12 @@ function createLlmAdapter(deps = {}) {
 
     // Signature change — §2.2: budget breakers reset on reconfig (usage
     // history is DB truth and is never touched); the limiter's per-model
-    // budget resets with it.
+    // budget resets with it. Probe/conformance verdicts of the previous
+    // signature are dropped: the next activation pass re-probes exactly once.
     breaker.reset(role);
     limiter.reset(role);
+    const previousSignature = lastSignature.get(role);
+    if (previousSignature) probeCache.delete(previousSignature);
 
     if (
       role === 'embed' &&
@@ -315,6 +521,8 @@ function createLlmAdapter(deps = {}) {
       clients.set(role, { signature, client, spec: resolved });
     } else {
       clients.delete(role);
+      // An unconfigured role carries no capability and no probe warning.
+      probeState.clearRoleCapability(role);
     }
     await scheduleReprobe(role);
     lastSignature.set(role, signature);
@@ -322,6 +530,24 @@ function createLlmAdapter(deps = {}) {
   }
 
   async function roleConfigured(role) {
+    if (role === 'embed') {
+      const resolved = await resolveRoleConfig('embed');
+      if (resolved.engine === 'remote') {
+        // §2.4 activation gate: the conformance verdict decides, never the
+        // presence of the config triple alone.
+        const verdict = await conformanceVerdict(resolved);
+        if (!verdict.pass) return false;
+        try {
+          // Prime the client cache/readiness bookkeeping; a dialect factory
+          // failure is a call-path config error, not an activation verdict.
+          await observeRole('embed');
+        } catch (err) {
+          /* role stays gate-configured; the call path degrades honestly */
+        }
+        return true;
+      }
+    }
+
     const { resolved } = await observeRole(role);
     if (resolved.engine === 'remote') return true;
     if (resolved.engine === 'embedded') {
@@ -332,9 +558,14 @@ function createLlmAdapter(deps = {}) {
   }
 
   async function getRoleClient(role) {
-    const { entry } = await observeRole(role);
+    const { resolved, entry } = await observeRole(role);
     if (!entry) return null;
     if (entry.spec.engine === 'embedded' && !(await embeddedPresent())) return null;
+    if (role === 'embed' && resolved.engine === 'remote') {
+      // Fail closed: no embed call may leave a non-conforming endpoint.
+      const verdict = await conformanceVerdict(resolved);
+      if (!verdict.pass) return null;
+    }
     return entry.client;
   }
 
@@ -539,6 +770,9 @@ function createLlmAdapter(deps = {}) {
   return {
     roleConfigured,
     getRoleClient,
+    probeRole: probeRoleNow,
+    probeConfiguredRoles,
+    getEffectiveCapabilities: () => probeState.getEffectiveCapabilities(),
     embed,
     embedQuery,
     chat,

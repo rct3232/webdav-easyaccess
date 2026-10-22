@@ -109,6 +109,7 @@ describe('SERVER_ERROR_CODES ↔ client locale mirror (collections + ai domains)
   it('ai exposes the shared-contracts key set', () => {
     expect(Object.keys(SERVER_ERROR_CODES.ai).sort()).toEqual([
       'budgetExceeded',
+      'nonConformingEndpoint',
       'notConfigured',
       'providerProbeFailed',
     ]);

@@ -206,6 +206,12 @@ near-dup block to its absent state (§4.12).
 **There is no embed fallback chain (model pin):** built-in provisioning failure ⇒ caps OFF;
 external conformance failure ⇒ embed role OFF with reason. Neither silently substitutes
 another model — the absence itself is the honest state (same stance as §4.23.2 media caps).
+**Gate enforcement point:** the llmAdapter activation path runs the conformance probe
+(`probeEmbedConformance`) for a remote embed triple and caches the verdict by resolved-config
+signature; a failed verdict keeps the remote row OFF (`ai.embed`
+`probe_failed`/`nonConformingEndpoint`) with no partial state, and
+`evaluateCapabilityMatrix` publishes the effective capability set that consumers read
+(llmAdapter §2.4).
 
 **Media embed capabilities (`image_embed`/`audio_embed`/`video_embed`) are manifest
 members** — consumers are the media direct-embed pipeline (V1/V3).

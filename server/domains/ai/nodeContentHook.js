@@ -1,5 +1,6 @@
 'use strict';
 
+const { AI_JOB_KIND } = require('@webdav-easyaccess/shared/constants');
 const { getFileType } = require('@webdav-easyaccess/shared/fileTypes');
 
 /**
@@ -26,36 +27,25 @@ const { getFileType } = require('@webdav-easyaccess/shared/fileTypes');
  *    seam received (the same commit points populate filecache.content_hash;
  *    the (content_hash, modelId) pair is the embed dedupe skip-key).
  *
- * Capability probes read the same LLM_* config the llmAdapter resolves per
- * role (the shared config resolver — the codebase's config source, cf.
- * collectionsService embedRoleConfigured): a role counts as probed on when
- * its base URL AND model are set. The probe is injectable for tests.
+ * Capability gates read the EFFECTIVE capability set published by the
+ * llmAdapter's probe authority (llmAdapter.md §2.4 — `evaluateCapabilityMatrix`
+ * output via `probeState`), never raw config presence: a declared role that was
+ * never probed or whose probe failed is OFF (media falls back to the embed
+ * floor). The probe is injectable for tests.
  *
  * Error surface (§2.6): public enqueue functions throw nothing to callers —
  * the hook is post-commit fire-and-forget; failures are logged and the next
  * hook/backfill heals (enqueue idempotency makes loss recoverable).
  */
 
-/** Per-role config keys — mirrors infrastructure/adapters/llm ROLE_KEYS
- * (BASE_URL + MODEL decide "remote configured"; vision/asr/chat have no
- * embedded engine, so the pair suffices). */
-const ROLE_PROBE_KEYS = {
-  chat: ['LLM_CHAT_BASE_URL', 'LLM_CHAT_MODEL'],
-  vision: ['LLM_VISION_BASE_URL', 'LLM_VISION_MODEL'],
-  asr: ['LLM_ASR_BASE_URL', 'LLM_ASR_MODEL'],
-};
-
-/** Default capability probe — the shared config resolver (dbOnly group). */
+/** Default capability probe — the adapter-published effective capability set
+ * (declared ≠ probed ⇒ OFF). */
 function defaultCapabilityProbe() {
   return async (role) => {
-    const keys = ROLE_PROBE_KEYS[role];
-    if (!keys) return false;
-    // Lazy require: the resolver is a process-wide singleton; requiring it at
-    // module scope would couple every importer to boot order.
-    const { getSharedResolver } = require('../../infrastructure/configResolver');
-    const resolver = getSharedResolver();
-    const [baseUrl, model] = await Promise.all(keys.map((key) => resolver.getConfig(key)));
-    return Boolean(String(baseUrl || '').trim()) && Boolean(String(model || '').trim());
+    // Lazy require: probeState is process-wide state written by boot wiring;
+    // requiring it at module scope would couple every importer to boot order.
+    const { isRoleEnabled } = require('../../infrastructure/adapters/llm/probeState');
+    return isRoleEnabled(role);
   };
 }
 
@@ -119,17 +109,17 @@ function createNodeContentHook({
 
     const classified = classifyNode(node);
     if (classified === 'text') {
-      const kinds = ['embed'];
-      if (await probe('chat')) kinds.push('features');
+      const kinds = [AI_JOB_KIND.EMBED];
+      if (await probe('chat')) kinds.push(AI_JOB_KIND.FEATURES);
       return kinds;
     }
     if (classified === 'visual') {
-      return (await probe('vision')) ? ['caption'] : ['embed'];
+      return (await probe('vision')) ? [AI_JOB_KIND.CAPTION] : [AI_JOB_KIND.EMBED];
     }
     if (classified === 'audio') {
-      return (await probe('asr')) ? ['asr'] : ['embed'];
+      return (await probe('asr')) ? [AI_JOB_KIND.ASR] : [AI_JOB_KIND.EMBED];
     }
-    return ['embed'];
+    return [AI_JOB_KIND.EMBED];
   }
 
   /**

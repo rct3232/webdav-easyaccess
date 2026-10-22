@@ -18,8 +18,10 @@
  *   media probes with positive controls are owned by T1.9; until those
  *   samples ship, those roles probe-fail honestly (`mediaProbePending`) and
  *   the capability stays OFF — never a fake pass.
- * - The embed role is NOT a probe target here: the built-in engine is covered
- *   by the boot/embed conformance path (T1.0/T1.1a), not the wizard surface.
+ * - The embed role is NOT a wizard/admin-test target (the built-in engine needs
+ *   no config). The EXTERNAL embed override is still gated by this suite:
+ *   `probeEmbedConformance` runs the checked-in EG2 reference kit through the
+ *   endpoint at activation (llmAdapter roleConfigured) and on re-probe.
  *
  * Probe outcomes land in the `ai.<role>` backend-health tracker rows
  * (backendHealth.md §2.3) — per-role isolation, admin 5-state surface.
@@ -35,9 +37,11 @@ const {
   registerProbeTarget,
 } = require('../../backendProbe');
 const { getBackendHealth } = require('../../backendHealth');
+const { evaluateConformance, findPreset, kit } = require('./presets');
 
 // The wizard/admin-test probe surface: embed is deliberately absent (built-in
-// engine needs no config; docs/spec/server/routes/setup.md §2.4a).
+// engine needs no config; docs/spec/server/routes/setup.md §2.4a). The remote
+// embed override is gated by `probeEmbedConformance` at activation instead.
 const PROBE_ROLES = ['chat', 'vision', 'asr'];
 
 // In-domain chat sample (§2.4): tag extraction from one real sentence.
@@ -95,6 +99,78 @@ async function probeChatEndpoint({ baseUrl, apiKey, model }) {
       toShortReason('chat probe: response is not schema-valid JSON')
     );
   }
+}
+
+/** Document prefix of the external EG2 row (the kit is calibrated in the
+ * profile's document space — the probe must embed the same texts). */
+function defaultDocumentPrefix() {
+  const row = findPreset('embeddinggemma-2-external');
+  return (
+    (row && row.profile && row.profile.textPrefixes && row.profile.textPrefixes.document) || ''
+  );
+}
+
+/**
+ * The remote-embed conformance probe (llmAdapter.md §2.3/§2.4 — the activation
+ * gate for an external embed override). This is the probe SUITE's embed leg:
+ * the wizard/admin-test `probeLlm` surface stays chat/vision/asr-only, while
+ * the adapter's `probeRole('embed')` / `roleConfigured('embed')` paths consume
+ * this function.
+ *
+ * Sends the checked-in `eg2-reference-kit.json` strings through the endpoint's
+ * OpenAI-compatible embeddings route (document prefixes applied) and applies
+ * `evaluateConformance`: structural (dim) + behavioural (median cos ≥ kit τ).
+ * Identity is what the vectors DO — the endpoint's self-declared model name is
+ * never an input. Throws the classified probe error on transport/HTTP failure;
+ * returns the verdict otherwise (`pass:false` = endpoint rejected at activation).
+ *
+ * @param {object} params
+ * @param {string} params.baseUrl
+ * @param {string} [params.apiKey]
+ * @param {string} params.model
+ * @param {string} [params.prefix] document prefix override (tests/other profiles)
+ * @param {Function} [params.fetchImpl] transport seam (defaults to global fetch)
+ * @returns {Promise<{dimOk: boolean, median: number|null, threshold: number, pass: boolean, reason: string|null}>}
+ */
+async function probeEmbedConformance({ baseUrl, apiKey, model, prefix, fetchImpl } = {}) {
+  const reference = kit();
+  const documentPrefix = prefix === undefined ? defaultDocumentPrefix() : prefix;
+  const inputs = reference.strings.map((text) => `${documentPrefix}${text}`);
+  const url = `${String(baseUrl).replace(/\/+$/, '')}/embeddings`;
+  const doFetch = typeof fetchImpl === 'function' ? fetchImpl : fetch;
+
+  // A wedged endpoint must not hold the activation pass open indefinitely.
+  const signal =
+    typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+      ? AbortSignal.timeout(30_000)
+      : undefined;
+
+  const response = await doFetch(url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...(isSet(apiKey) ? { authorization: `Bearer ${apiKey}` } : {}),
+    },
+    body: JSON.stringify({ model, input: inputs }),
+    ...(signal ? { signal } : {}),
+  });
+  if (!response.ok) {
+    throw probeError(
+      SETUP_TEST_FAILED_CODE,
+      HTTP_STATUS.BAD_REQUEST,
+      'Conformance probe failed',
+      toShortReason(`embed probe HTTP ${response.status}`)
+    );
+  }
+  const payload = await response.json();
+  const rows = Array.isArray(payload && payload.data) ? payload.data.slice() : [];
+  // OpenAI-compatible responses may arrive out of order: index restores the
+  // kit's input order before the pairwise cosine comparison.
+  rows.sort((a, b) => Number((a && a.index) ?? 0) - Number((b && b.index) ?? 0));
+  const observed = rows.map((row) =>
+    row && Array.isArray(row.embedding) ? Float32Array.from(row.embedding) : null
+  );
+  return evaluateConformance(observed);
 }
 
 /**
@@ -168,4 +244,4 @@ function ensureLlmProbeTarget() {
   registerProbeTarget(PROBE_TARGET_LLM, probeLlm);
 }
 
-module.exports = { ensureLlmProbeTarget, probeLlm, PROBE_ROLES };
+module.exports = { ensureLlmProbeTarget, probeLlm, probeEmbedConformance, PROBE_ROLES };

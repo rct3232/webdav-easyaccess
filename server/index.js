@@ -357,6 +357,25 @@ async function runBoot() {
         probeRole: createBootProbeRole(resolver),
       });
       const { rows } = await llmAdapter.syncModelRegistry();
+      // Initial capability probe (llmAdapter §2.4 — the startup probe is the
+      // INITIAL probe; boot step 8b). Configured roles are probed once; the
+      // effective set drives the enrichment hook (declared ≠ probed ⇒ OFF).
+      // A remote embed override is activated only when its EG2 conformance
+      // verdict passes. Fire-and-forget: provider latency never delays listen;
+      // warn-only on failure and the next activation/debounced pass retries.
+      llmAdapter
+        .probeConfiguredRoles()
+        .then((outcomes) => {
+          const failed = Object.entries(outcomes)
+            .filter(([, outcome]) => !outcome.ok)
+            .map(([role, outcome]) => `${role} (${outcome.reason || 'probe failed'})`);
+          if (failed.length > 0) {
+            console.warn(`⚠ AI capability probe failed: ${failed.join(', ')}`);
+          }
+        })
+        .catch((err) => {
+          console.warn('⚠ AI capability probe error — capabilities stay OFF:', err.message);
+        });
       console.log(
         rows > 0
           ? `✓ LLM model registry synced (${rows} changed)`

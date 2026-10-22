@@ -229,6 +229,7 @@ const SERVER_ERROR_CODES = {
     notConfigured: P('serverErrors.ai', 'notConfigured'),
     budgetExceeded: P('serverErrors.ai', 'budgetExceeded'),
     providerProbeFailed: P('serverErrors.ai', 'providerProbeFailed'),
+    nonConformingEndpoint: P('serverErrors.ai', 'nonConformingEndpoint'),
   },
   search: {
     queryRequired: P('serverErrors.search', 'queryRequired'),

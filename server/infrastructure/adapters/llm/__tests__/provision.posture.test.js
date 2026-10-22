@@ -336,4 +336,44 @@ describe('built-in embed provisioning postures (T1.0a)', () => {
       }
     });
   });
+
+  describe('posture 6 — production default fetcher', () => {
+    it('a no-fetcher trigger downloads through the default HF fetcher and provisions', async () => {
+      const h = makeHarness();
+      const origin = new Map(
+        h.lock.files.map((f) => [f.path, fs.readFileSync(path.join(h.tmp, f.path))])
+      );
+      const spy = jest.spyOn(global, 'fetch').mockImplementation(async (url) => {
+        // https://huggingface.co/<repo>/resolve/<revision>/<path>
+        const rest = String(url).split('/resolve/')[1].split('/').slice(1).join('/');
+        const buf = origin.get(rest);
+        if (!buf) throw new Error(`unexpected fetch url: ${url}`);
+        return {
+          ok: true,
+          status: 200,
+          arrayBuffer: async () =>
+            buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
+        };
+      });
+      try {
+        const result = await provision.runProvision({
+          setupComplete: true,
+          remoteOverrideActive: false,
+          modelDir: h.modelDir,
+          lock: h.lock,
+          health: h.health,
+          logger: h.logger,
+        });
+        expect(result.status).toBe('provisioned');
+        expect(spy).toHaveBeenCalledTimes(h.lock.files.length);
+        const weightsRoot = path.join(h.modelDir, h.lock.repo, h.lock.revision);
+        for (const f of h.lock.files) {
+          expect(fs.existsSync(path.join(weightsRoot, f.path))).toBe(true);
+        }
+      } finally {
+        spy.mockRestore();
+        h.cleanup();
+      }
+    });
+  });
 });

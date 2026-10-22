@@ -101,11 +101,33 @@ function defaultLogger() {
 }
 
 /**
+ * Default production fetcher: the pinned Hugging Face revision endpoint
+ * (`https://huggingface.co/<repo>/resolve/<revision>/<path>`). The `fetcher`
+ * runProvision param stays the test seam (fake buffers, sha256-corruption
+ * cases); production boot/in-place triggers resolve through this one, so a
+ * missing weights dir can actually complete the blocking attempt instead of
+ * failing with a null dereference.
+ */
+function defaultFetcher() {
+  return {
+    async fetchBuffer(repo, revision, filePath) {
+      const url = `https://huggingface.co/${repo}/resolve/${revision}/${filePath}`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`HF fetch ${response.status} for ${filePath}`);
+      }
+      return Buffer.from(await response.arrayBuffer());
+    },
+  };
+}
+
+/**
  * Runs one provisioning attempt: downloads each lock file into an atomic
  * staging dir (temp file + rename into the final tree only after sha256
  * verification), with per-file CLI progress.
  */
 async function provisionWeights({ modelDir, lock, fetcher, logger, corruptFile = null }) {
+  const download = fetcher || defaultFetcher();
   fs.mkdirSync(modelDir, { recursive: true });
   const root = weightsRoot(modelDir, lock);
   const stagingDir = fs.mkdtempSync(path.join(path.dirname(modelDir), '.staging-'));
@@ -117,7 +139,7 @@ async function provisionWeights({ modelDir, lock, fetcher, logger, corruptFile =
       const progress = `${i}/${total} arquivos`;
       logger.log(`[provisionamento] Baixando ${file.path} (${progress})`);
 
-      let buffer = await fetcher.fetchBuffer(lock.repo, lock.revision, file.path);
+      let buffer = await download.fetchBuffer(lock.repo, lock.revision, file.path);
       if (corruptFile === file.path) {
         buffer = Buffer.from(buffer);
         buffer[0] = buffer[0] ^ 0xff;

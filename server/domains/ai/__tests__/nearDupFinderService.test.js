@@ -30,7 +30,10 @@ function axisPair(i, t) {
   return [a, b];
 }
 
-function fileRow(nodeId, { hash = null, size = 100, name = `f${nodeId}`, parentId = ROOT.id, type = 'file' } = {}) {
+function fileRow(
+  nodeId,
+  { hash = null, size = 100, name = `f${nodeId}`, parentId = ROOT.id, type = 'file' } = {}
+) {
   return { nodeId, parentId, name, type, contentHash: hash, size };
 }
 
@@ -45,7 +48,13 @@ function embeddingRow(nodeId, vec) {
   };
 }
 
-function makeFinder({ subtreeRows = [], embeddings = [], model = MODEL, presetsModule, engineFactory } = {}) {
+function makeFinder({
+  subtreeRows = [],
+  embeddings = [],
+  model = MODEL,
+  presetsModule,
+  engineFactory,
+} = {}) {
   return createNearDupFinderService({
     fileNodesStore: {
       getUserRootNode: jest.fn().mockResolvedValue(ROOT),
@@ -65,8 +74,18 @@ describe('nearDupFinderService.findNearDuplicateGroups — threshold band (θ fr
     const [hi1, hi2] = axisPair(0, THETA + 0.0005);
     const [lo1, lo2] = axisPair(2, THETA - 0.0005);
     const finder = makeFinder({
-      subtreeRows: [fileRow(11, { hash: 'h-a' }), fileRow(12, { hash: 'h-b' }), fileRow(13, { hash: 'h-c' }), fileRow(14, { hash: 'h-d' })],
-      embeddings: [embeddingRow(11, hi1), embeddingRow(12, hi2), embeddingRow(13, lo1), embeddingRow(14, lo2)],
+      subtreeRows: [
+        fileRow(11, { hash: 'h-a' }),
+        fileRow(12, { hash: 'h-b' }),
+        fileRow(13, { hash: 'h-c' }),
+        fileRow(14, { hash: 'h-d' }),
+      ],
+      embeddings: [
+        embeddingRow(11, hi1),
+        embeddingRow(12, hi2),
+        embeddingRow(13, lo1),
+        embeddingRow(14, lo2),
+      ],
     });
 
     const result = await finder.findNearDuplicateGroups(42);
@@ -90,7 +109,12 @@ describe('nearDupFinderService.findNearDuplicateGroups — threshold band (θ fr
         fileRow(23, { hash: 'h-3', size: 10 }),
         fileRow(24, { hash: 'h-4', size: 10 }),
       ],
-      embeddings: [embeddingRow(21, v1), embeddingRow(22, v2), embeddingRow(23, w1), embeddingRow(24, w2)],
+      embeddings: [
+        embeddingRow(21, v1),
+        embeddingRow(22, v2),
+        embeddingRow(23, w1),
+        embeddingRow(24, w2),
+      ],
     });
 
     const result = await finder.findNearDuplicateGroups(42);
@@ -107,7 +131,11 @@ describe('nearDupFinderService.findNearDuplicateGroups — threshold band (θ fr
   it('keeps groups of ≥3 with a single keep and unioned transitive members', async () => {
     const [base, near] = axisPair(0, THETA + 0.001);
     const finder = makeFinder({
-      subtreeRows: [fileRow(31, { hash: 'h-1' }), fileRow(32, { hash: 'h-2' }), fileRow(33, { hash: 'h-3' })],
+      subtreeRows: [
+        fileRow(31, { hash: 'h-1' }),
+        fileRow(32, { hash: 'h-2' }),
+        fileRow(33, { hash: 'h-3' }),
+      ],
       // 31~32 above θ, 32~33 above θ (same axis construction reused) ⇒ one group of 3
       embeddings: [embeddingRow(31, base), embeddingRow(32, near), embeddingRow(33, base)],
     });
@@ -125,7 +153,11 @@ describe('nearDupFinderService — hash-first precedence', () => {
     const vec = axisPair(0, 1)[0];
     const [similar] = axisPair(0, THETA + 0.001); // would pair with 21 were it not a hash twin
     const finder = makeFinder({
-      subtreeRows: [fileRow(21, { hash: 'same' }), fileRow(22, { hash: 'same' }), fileRow(23, { hash: 'other' })],
+      subtreeRows: [
+        fileRow(21, { hash: 'same' }),
+        fileRow(22, { hash: 'same' }),
+        fileRow(23, { hash: 'other' }),
+      ],
       embeddings: [embeddingRow(21, vec), embeddingRow(22, vec), embeddingRow(23, similar)],
     });
 
@@ -191,8 +223,16 @@ describe('nearDupFinderService — ACL scoping + self-exclusion', () => {
   it('queries carry the self id and non-candidates in the ENGINE-side predicate (§2.2 seam)', async () => {
     const calls = [];
     const finder = makeFinder({
-      subtreeRows: [fileRow(61, { hash: 'h-1' }), fileRow(62, { hash: 'h-2' }), fileRow(63, { hash: 'h-3' })],
-      embeddings: [embeddingRow(61, axisPair(0, 1)[0]), embeddingRow(62, axisPair(0, 1)[0]), embeddingRow(63, axisPair(2, 1)[0])],
+      subtreeRows: [
+        fileRow(61, { hash: 'h-1' }),
+        fileRow(62, { hash: 'h-2' }),
+        fileRow(63, { hash: 'h-3' }),
+      ],
+      embeddings: [
+        embeddingRow(61, axisPair(0, 1)[0]),
+        embeddingRow(62, axisPair(0, 1)[0]),
+        embeddingRow(63, axisPair(2, 1)[0]),
+      ],
       engineFactory: (modelId, loadRows) => ({
         neighbors: jest.fn(async (queryVec, k, candidates) => {
           calls.push({ modelId, loadRows, k, candidates });
@@ -235,11 +275,20 @@ describe('nearDupFinderService — honest degrade (§4.12 absence is data)', () 
       },
     ],
     ['empty canonical set', { embeddings: [] }],
-    ['single pooled row', { subtreeRows: [fileRow(71, { hash: 'h' })], embeddings: [embeddingRow(71, axisPair(0, 1)[0])] }],
+    [
+      'single pooled row',
+      {
+        subtreeRows: [fileRow(71, { hash: 'h' })],
+        embeddings: [embeddingRow(71, axisPair(0, 1)[0])],
+      },
+    ],
   ])('%s ⇒ available:false, zeros, no throw', async (_name, opts) => {
     const finder = makeFinder({
       subtreeRows: opts.subtreeRows ?? [fileRow(11, { hash: 'h-a' }), fileRow(12, { hash: 'h-b' })],
-      embeddings: opts.embeddings ?? [embeddingRow(11, axisPair(0, 1)[0]), embeddingRow(12, axisPair(0, 1)[0])],
+      embeddings: opts.embeddings ?? [
+        embeddingRow(11, axisPair(0, 1)[0]),
+        embeddingRow(12, axisPair(0, 1)[0]),
+      ],
       model: 'model' in opts ? opts.model : MODEL,
       presetsModule: opts.presetsModule,
     });
@@ -284,7 +333,10 @@ describe('nearDupFinderService — operational cap + idempotence', () => {
     for (let g = 0; g < totalGroups; g += 1) {
       const base = g * 2 + 1;
       const [v1, v2] = axisPair(2 * g, THETA + 0.001); // disjoint axis pair per group
-      subtreeRows.push(fileRow(base, { hash: `h-${base}` }), fileRow(base + 1, { hash: `h-${base + 1}` }));
+      subtreeRows.push(
+        fileRow(base, { hash: `h-${base}` }),
+        fileRow(base + 1, { hash: `h-${base + 1}` })
+      );
       embeddings.push(embeddingRow(base, v1), embeddingRow(base + 1, v2));
     }
     const finder = makeFinder({ subtreeRows, embeddings });

@@ -1,10 +1,10 @@
 'use strict';
 
 /**
- * Provisionador do built-in embed engine (T1.0a — llmAdapter.md §2.1,
+ * Built-in embed engine provisioner (T1.0a — llmAdapter.md §2.1,
  * llmPresets.md §2.2/§2.3, bootSequence.md §2 step 8b).
  *
- * Posturas (provider-triggered, PLAN §22):
+ * Postures (provider-triggered, PLAN §22):
  *  - Setup mode (setup_complete=false) ⇒ NO attempt: zero bytes, zero egress.
  *  - Configured boot + built-in active ⇒ BLOCKING attempt before listen, with
  *    per-file CLI progress, atomic staging, sha256 verification; failure ⇒
@@ -40,14 +40,14 @@ function loadLock(lockPath = LOCK_PATH) {
   const raw = fs.readFileSync(lockPath, 'utf8');
   const lock = JSON.parse(raw);
   if (!lock.repo || !lock.revision || !lock.dtype) {
-    throw new Error('model.lock.json inválido: campos obrigatórios ausentes (repo/revision/dtype)');
+    throw new Error('invalid model.lock.json: missing required fields (repo/revision/dtype)');
   }
   if (!Array.isArray(lock.files) || lock.files.length === 0) {
-    throw new Error('model.lock.json inválido: lista de files vazia');
+    throw new Error('invalid model.lock.json: empty files list');
   }
   for (const f of lock.files) {
     if (!f.path || !/^[0-9a-f]{64}$/.test(f.sha256 || '') || !f.size) {
-      throw new Error(`model.lock.json inválido: entrada de arquivo incompleta (${f.path || '?'})`);
+      throw new Error(`invalid model.lock.json: incomplete file entry (${f.path || '?'})`);
     }
   }
   return lock;
@@ -91,7 +91,7 @@ async function weightsPresent(dir, lock) {
   return true;
 }
 
-/* eslint-disable no-console -- provisionamento emite progresso CLI no boot (idioma de server/index.js) */
+/* eslint-disable no-console -- provisioning emits CLI progress at boot (same style as server/index.js) */
 function defaultLogger() {
   return {
     log: (...args) => console.log(...args),
@@ -136,8 +136,8 @@ async function provisionWeights({ modelDir, lock, fetcher, logger, corruptFile =
   try {
     for (let i = 0; i < total; i++) {
       const file = lock.files[i];
-      const progress = `${i}/${total} arquivos`;
-      logger.log(`[provisionamento] Baixando ${file.path} (${progress})`);
+      const progress = `${i}/${total} files`;
+      logger.log(`[provisioning] Downloading ${file.path} (${progress})`);
 
       let buffer = await download.fetchBuffer(lock.repo, lock.revision, file.path);
       if (corruptFile === file.path) {
@@ -148,12 +148,12 @@ async function provisionWeights({ modelDir, lock, fetcher, logger, corruptFile =
       const hash = crypto.createHash('sha256').update(buffer).digest('hex');
       if (hash !== file.sha256) {
         throw new Error(
-          `sha256 mismatch em ${file.path} (esperado ${file.sha256}, obtido ${hash})`
+          `sha256 mismatch in ${file.path} (expected ${file.sha256}, got ${hash})`
         );
       }
       if (buffer.length !== file.size) {
         throw new Error(
-          `tamanho divergente em ${file.path} (esperado ${file.size}, obtido ${buffer.length})`
+          `size mismatch in ${file.path} (expected ${file.size}, got ${buffer.length})`
         );
       }
 
@@ -164,12 +164,10 @@ async function provisionWeights({ modelDir, lock, fetcher, logger, corruptFile =
       fs.mkdirSync(path.dirname(finalPath), { recursive: true });
       fs.renameSync(tmpFile, finalPath);
     }
-    logger.log(
-      `[provisionamento] Concluído: ${total}/${total} arquivos verificados em ${modelDir}`
-    );
+    logger.log(`[provisioning] Completed: ${total}/${total} files verified in ${modelDir}`);
     return { ok: true };
   } catch (err) {
-    logger.error(`[provisionamento] Falha: ${err.message}`);
+    logger.error(`[provisioning] Failed: ${err.message}`);
     return { ok: false, reason: err.message };
   } finally {
     fs.rmSync(stagingDir, { recursive: true, force: true });
@@ -209,7 +207,7 @@ async function runProvision(params = {}) {
   // Posture 1 (PLAN §22-5): setup mode never downloads — zero bytes, zero egress.
   if (!setupComplete) {
     logger.log(
-      '[provisionamento] Setup mode: provisionamento não iniciado (aguarda o próximo boot configurado).'
+      '[provisioning] Setup mode: provisioning not started (waits for the next configured boot).'
     );
     return { status: 'skipped-setup' };
   }
@@ -218,7 +216,7 @@ async function runProvision(params = {}) {
   // never a caps-off signal. Weights are never deleted.
   if (remoteOverrideActive) {
     logger.log(
-      '[provisionamento] Override remoto de embed ativo: provisionamento embutido diferido.'
+      '[provisioning] Remote embed override active: built-in provisioning deferred.'
     );
     return { status: 'skipped-remote' };
   }
@@ -228,7 +226,7 @@ async function runProvision(params = {}) {
 
   // Posture 4 (PLAN §22-3): pre-existing weights ⇒ idempotent no-op, zero egress.
   if (await weightsPresent(dir, lock)) {
-    logger.log(`[provisionamento] Pesos já presentes em ${dir} — nenhum download necessário.`);
+    logger.log(`[provisioning] Weights already present in ${dir} — no download needed.`);
     if (health) health.report(key, { ok: true });
     return { status: 'present' };
   }
@@ -239,7 +237,7 @@ async function runProvision(params = {}) {
     health.report(key, {
       preparing: true,
       phase: 'provisioning',
-      progress: `0/${lock.files.length} arquivos`,
+      progress: `0/${lock.files.length} files`,
     });
   }
 
@@ -249,7 +247,7 @@ async function runProvision(params = {}) {
     // Posture 5 / llmAdapter §2.8 `provisioning` class: warn-only, boot
     // continues / server keeps serving; embed caps OFF + admin reason.
     logger.warn(
-      `[provisionamento] Falha no provisionamento: ${outcome.reason} — embed permanece OFF (caps-off).`
+      `[provisioning] Provisioning failed: ${outcome.reason} — embed stays OFF (caps-off).`
     );
     if (health) {
       health.report(key, {

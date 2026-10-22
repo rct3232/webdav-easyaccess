@@ -3,13 +3,16 @@
 /**
  * AI jobs worker (docs/spec/server/services/aiJobService.md §2.3).
  *
- * Concurrency 1 per process. The loop gates the drain pass on the embed
- * role (llmAdapter `roleConfigured` — includes the built-in role while its
- * weights provision): an unconfigured role parks the pass so queued jobs
- * drain in claim order once the role flips configured — never
- * claim-and-fail, zero attempt inflation. Kinds without a landed executor
- * stay parked via the pipeline's additive `claimNext({ excludeKinds })`
- * filter (pipelines/embed.js UNEXECUTABLE_KINDS).
+ * Concurrency 1 per process. ONE drain pass runs every landed kind pipeline
+ * (`embed`, `caption`, `asr`), each behind its own ROLE gate (llmAdapter
+ * `roleConfigured` — includes the built-in embed role while its weights
+ * provision): an unconfigured role parks only its pipeline, so its queued
+ * jobs stay queued in claim order and drain once the role flips configured —
+ * never claim-and-fail, zero attempt inflation. Every pipeline also passes an
+ * additive `claimNext({ excludeKinds })` filter naming every OTHER kind
+ * (pipelines/*.js), so the three drains sharing this pass can never
+ * double-claim and kinds without a landed executor (`features`, `backfill`)
+ * stay parked.
  *
  * All knobs are T2 hot (configRegistry: AI_WORKER_POLL_MS, AI_JOB_STALE_MS,
  * AI_JOB_TIMEOUT_MS, AI_WORKER_CONCURRENCY — the shipped defaults are the
@@ -21,6 +24,10 @@
 const DEFAULT_POLL_MS = 5000;
 const DEFAULT_STALE_MS = 900000;
 const DEFAULT_JOB_TIMEOUT_MS = 120000;
+
+/** Built-in embed model window in tokens — the media ladder budget input for
+ * `engine='embedded'` (llmAdapter §2.5/§2.6; in-process, no server `ub`). */
+const EMBEDDED_WINDOW_TOKENS = 8192;
 
 /** Numeric T2 knob read through the shared resolver; falls back to the
  * spec default when the resolver is absent (early boot / tests). */
@@ -62,25 +69,75 @@ function createAiJobService(deps = {}) {
   function embedPipeline() {
     return deps.embedPipeline || require('./pipelines/embed');
   }
+  function captionPipeline() {
+    return deps.captionPipeline || require('./pipelines/caption');
+  }
+  function asrPipeline() {
+    return deps.asrPipeline || require('./pipelines/asr');
+  }
+
+  function fileNodes() {
+    return deps.fileNodesStore || require('../../store/fileNodesStore').createFileNodesStore();
+  }
+
+  function blobStorage() {
+    if (deps.blobStorageService) return deps.blobStorageService;
+    const { getComposition } = require('../../service/composition');
+    return getComposition().blobStorageService;
+  }
+
+  function llmModels() {
+    return deps.llmModelsStore || require('../../store/llmModelsStore');
+  }
+
+  async function activeRoleModelId(role) {
+    const row = await llmModels().getActiveByRole(role);
+    return row && row.id != null ? Number(row.id) : null;
+  }
+
+  /**
+   * The media ladder's budget input (llmAdapter §2.6): embedded ⇒ the model
+   * window; remote ⇒ the profile budget chain result. Token costs come from
+   * the active embed preset profile.
+   */
+  async function mediaProfileForEmbed() {
+    const { getPresetByFamilyRole } = require('../../infrastructure/adapters/llm/presets');
+    const row = await llmModels().getActiveByRole('embed');
+    const preset = row ? getPresetByFamilyRole(row.provider, 'embed') : null;
+    const profile = (preset && preset.profile) || null;
+    const budgetTokens =
+      Number(row && row.maxInputChars) ||
+      Number(preset && preset.budgets && preset.budgets.maxInputCharsDefault) ||
+      EMBEDDED_WINDOW_TOKENS;
+    return {
+      engine: (row && row.engine) || 'embedded',
+      windowTokens: EMBEDDED_WINDOW_TOKENS,
+      budgetTokens,
+      mediaTokenCost: (profile && profile.mediaTokenCost) || {
+        image: 280,
+        videoFrame: 140,
+        audioPerSec: 25,
+      },
+    };
+  }
+
+  function capabilityProbe() {
+    return (
+      deps.capabilityEnabled ||
+      ((capability) =>
+        require('../../infrastructure/adapters/llm/probeState').isCapabilityEnabled(capability))
+    );
+  }
 
   /** Node bytes → locally extracted document text (§2.4 embed input).
-   * Media / non-document mimes resolve to null ⇒ the pipeline's
-   * `unextractable_text` skip; extractor code errors propagate (§2.3
-   * step 5 typed skips / failures). */
+   * Media / non-document mimes resolve to null ⇒ the pipeline's media branch
+   * or its `unextractable_text` skip; extractor code errors propagate. */
   async function readNodeText(nodeId) {
-    const fileNodesStore =
-      deps.fileNodesStore || require('../../store/fileNodesStore').createFileNodesStore();
-    const { extractText } = require('./extractors/documentText');
-    const blobStorageService =
-      deps.blobStorageService ||
-      (() => {
-        const { getComposition } = require('../../service/composition');
-        return getComposition().blobStorageService;
-      })();
-    const node = await fileNodesStore.getNode(nodeId);
+    const node = await fileNodes().getNode(nodeId);
     if (!node) return null;
-    const buffer = await blobStorageService.downloadBlob(nodeId);
+    const buffer = await blobStorage().downloadBlob(nodeId);
     if (!buffer) return null;
+    const { extractText } = require('./extractors/documentText');
     try {
       const extracted = await extractText({ buffer, mimeType: node.mimeType });
       return extracted && typeof extracted.text === 'string' ? extracted.text : null;
@@ -90,45 +147,121 @@ function createAiJobService(deps = {}) {
     }
   }
 
+  /** Node lookup for media classification + the V0 metadata corpus. */
+  async function readNodeMeta(nodeId) {
+    return fileNodes().getNode(nodeId);
+  }
+
+  /** Display path for the V0 metadata string — best-effort and only read on
+   * the media metadata_only path (a missing ancestry row never fails a job). */
+  async function nodeDisplayPath(node) {
+    try {
+      const { getComposition } = require('../../service/composition');
+      return await getComposition().fileNodeService.getNodePath(node.id);
+    } catch {
+      return null;
+    }
+  }
+
+  async function readNodeBlob(nodeId) {
+    return blobStorage().downloadBlob(nodeId);
+  }
+
+  /**
+   * §2.3 step 4 role gate (order matters): unconfigured ⇒ that pipeline
+   * parks, its jobs stay QUEUED unconsumed. A gate read failure parks too.
+   */
+  async function roleGate(adapter, role) {
+    try {
+      return (await adapter.roleConfigured(role)) === true;
+    } catch (err) {
+      log.warn(`[aiWorker] ${role} role gate read failed — parking:`, err?.message ?? err);
+      return false;
+    }
+  }
+
+  async function jobTimeout() {
+    return deps.jobTimeoutMs ?? (await configNumber('AI_JOB_TIMEOUT_MS', DEFAULT_JOB_TIMEOUT_MS));
+  }
+
   async function drainPass() {
     const adapter = adapterRef();
     if (!adapter || typeof adapter.roleConfigured !== 'function') return; // pre-init ⇒ park
 
-    // §2.3 step 4 role gate (order matters): unconfigured ⇒ the pass parks,
-    // queued jobs stay QUEUED unconsumed.
-    let configured = false;
-    try {
-      configured = await adapter.roleConfigured('embed');
-    } catch (err) {
-      log.warn('[aiWorker] embed role gate read failed — parking this pass:', err?.message ?? err);
-      return;
-    }
-    if (!configured) return;
+    // §2.3 step 4 role gates, one per pipeline role (order matters).
+    const gates = {
+      embed: await roleGate(adapter, 'embed'),
+      vision: await roleGate(adapter, 'vision'),
+      asr: await roleGate(adapter, 'asr'),
+    };
+    if (!gates.embed && !gates.vision && !gates.asr) return;
 
-    const { runPendingEmbedJobs } = embedPipeline();
-    const jobTimeoutMs =
-      deps.jobTimeoutMs ?? (await configNumber('AI_JOB_TIMEOUT_MS', DEFAULT_JOB_TIMEOUT_MS));
-    // C6 writer wiring: the boot-selected vectorStore exposes the tx-first
-    // write hooks (canonical halves + derived shadow in ONE TX). Absent store
-    // (no active model / probe not run) ⇒ the pipeline's direct-SQL fallback.
-    const vectorStore = deps.vectorStore || require('./vectorStoreRuntime').getVectorStore();
-    try {
-      await runPendingEmbedJobs({
-        adapter,
-        readText: deps.readText || readNodeText,
-        jobTimeoutMs,
-        ...(vectorStore && vectorStore.hooks ? { vectorStore: vectorStore.hooks } : {}),
-        // §2.3 step 6: the ACTIVE embed model id gates the claim — resolved
-        // per pass through the registry facade (boot syncModelRegistry rows
-        // it); null ⇒ the pass drains nothing (nothing to score against).
-        activeModelId: async () => {
-          const llmModelsStore = deps.llmModelsStore || require('../../store/llmModelsStore');
-          const row = await llmModelsStore.getActiveByRole('embed');
-          return row && row.id != null ? Number(row.id) : null;
-        },
-      });
-    } catch (err) {
-      log.error('[aiWorker] embed drain pass failed:', err?.message ?? err);
+    const jobTimeoutMs = await jobTimeout();
+
+    if (gates.embed) {
+      const { runPendingEmbedJobs } = embedPipeline();
+      // C6 writer wiring: the boot-selected vectorStore exposes the tx-first
+      // write hooks (canonical halves + derived shadow in ONE TX). Absent store
+      // (no active model / probe not run) ⇒ the pipeline's direct-SQL fallback.
+      const vectorStore = deps.vectorStore || require('./vectorStoreRuntime').getVectorStore();
+      try {
+        await runPendingEmbedJobs({
+          adapter,
+          readText: deps.readText || readNodeText,
+          readNode: deps.readNode || readNodeMeta,
+          readBlob: deps.readBlob || readNodeBlob,
+          resolvePath: deps.resolvePath || nodeDisplayPath,
+          capabilityEnabled: capabilityProbe(),
+          mediaProfile: deps.mediaProfile || mediaProfileForEmbed,
+          ...(deps.aiEnrichmentsStore ? { aiEnrichmentsStore: deps.aiEnrichmentsStore } : {}),
+          ...(deps.sampleFrames ? { sampleFrames: deps.sampleFrames } : {}),
+          ...(deps.decodeAudio ? { decodeAudio: deps.decodeAudio } : {}),
+          jobTimeoutMs,
+          ...(vectorStore && vectorStore.hooks ? { vectorStore: vectorStore.hooks } : {}),
+          // §2.3 step 6: the ACTIVE embed model id gates the claim — resolved
+          // per pass through the registry facade (boot syncModelRegistry rows
+          // it); null ⇒ the pass drains nothing (nothing to score against).
+          activeModelId: async () => activeRoleModelId('embed'),
+        });
+      } catch (err) {
+        log.error('[aiWorker] embed drain pass failed:', err?.message ?? err);
+      }
+    }
+
+    if (gates.vision) {
+      const { runPendingCaptionJobs } = captionPipeline();
+      try {
+        await runPendingCaptionJobs({
+          adapter,
+          readNode: deps.readNode || readNodeMeta,
+          readBlob: deps.readBlob || readNodeBlob,
+          visionModelId: async () => activeRoleModelId('vision'),
+          capabilityEnabled: capabilityProbe(),
+          ...(deps.aiEnrichmentsStore ? { aiEnrichmentsStore: deps.aiEnrichmentsStore } : {}),
+          ...(deps.sampleFrames ? { sampleFrames: deps.sampleFrames } : {}),
+          jobTimeoutMs,
+        });
+      } catch (err) {
+        log.error('[aiWorker] caption drain pass failed:', err?.message ?? err);
+      }
+    }
+
+    if (gates.asr) {
+      const { runPendingAsrJobs } = asrPipeline();
+      try {
+        await runPendingAsrJobs({
+          adapter,
+          readNode: deps.readNode || readNodeMeta,
+          readBlob: deps.readBlob || readNodeBlob,
+          asrModelId: async () => activeRoleModelId('asr'),
+          capabilityEnabled: capabilityProbe(),
+          ...(deps.aiEnrichmentsStore ? { aiEnrichmentsStore: deps.aiEnrichmentsStore } : {}),
+          ...(deps.probe ? { probe: deps.probe } : {}),
+          jobTimeoutMs,
+        });
+      } catch (err) {
+        log.error('[aiWorker] asr drain pass failed:', err?.message ?? err);
+      }
     }
   }
 

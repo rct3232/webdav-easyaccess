@@ -17,9 +17,14 @@ Target-contract spec.
 ### 2.1 File Path
 
 - **Source:** `server/domains/ai/jobService.js` (enqueue API + worker loop)
-- **Pipelines:** `server/domains/ai/pipelines/{embed,features,caption,asr}.js` (pure per-
-  kind executors, unit-testable with a fake llmAdapter — adapter injection seam)
-- **Test file:** `server/domains/ai/__tests__/aiJobService.test.js`
+- **Pipelines:** `server/domains/ai/pipelines/{embed,caption,asr}.js` (pure per-
+  kind executors, unit-testable with a fake llmAdapter — adapter injection seam) and
+  `pipelines/pipelineRunner.js` (shared claim/timeout/failure mechanics)
+- **Media helpers:** `server/domains/ai/media/mediaSampling.js` (ffprobe metadata,
+  frame sampling, audio decode/windowing, ladder arithmetic, metadata-scoped
+  `media_kind`)
+- **Test files:** `server/domains/ai/__tests__/{jobService,embedPipeline,embedMediaPipeline,captionPipeline,asrPipeline,mediaDrainIntegration}.test.js`,
+  `server/domains/ai/media/__tests__/mediaSampling.test.js`
 
 ### 2.2 Enqueue hooks (content-commit seams)
 
@@ -99,7 +104,9 @@ Enqueue decision table (per node, at hook time):
 3. Loop: `claimNext()` (oldest claimable — `pending` or `failed` past `next_retry_at`);
    `null` ⇒ idle-sleep `AI_WORKER_POLL_MS` (default 5000, T2). Concurrency 1 per process
    (rate-limited enrichment; `AI_WORKER_CONCURRENCY` T2 default 1).
-4. Before executing, check the role gate (order matters):
+4. Before executing, check the role gate of EVERY pipeline (embed → role `embed`,
+   caption → role `vision`, asr → role `asr`); one pass drains all pipelines whose role
+   is configured, each with its own claim filter (order matters):
 
 - Role unconfigured (llmAdapter `roleConfigured()` false — including the built-in `embed`
   role while its weights are still downloading or the attempt failed) ⇒ that kind's jobs stay
@@ -161,6 +168,27 @@ stride sample ≤ `LLM_CHUNK_BUDGET` (default 4) chunks → embed ALL sampled ch
   driver key (never compared against a file hash; job dedupe uses the
   `(node_id, kind, generation)` UNIQUE). Enqueue failures are logged and dropped; the
   next embed re-enqueues.
+- **Media branch (image/video/audio):** the pipeline resolves the node type/mime first
+  (`shared/fileTypes` extension, mime fallback) and enters the media ladder instead of
+  the document ladder. The per-modality capability (`image_embed`/`video_embed`/
+  `audio_embed`) comes from the published probe matrix:
+  - capability ON ⇒ `llmAdapter.embedMedia(segments, { mediaType })` over the sampled
+    segment set — image single item, audio fixed `audioWindows` (`min(budget/25 s, 327 s)`)
+    encoded as mono 16 kHz WAV, video locally frame-sampled at 1 fps with a uniform
+    stride down to `budget/mediaTokenCost.videoFrame` frames (embedded provider: the model
+    window; remote: the profile budget). Every segment vector becomes an
+    `embeddings_chunk` row and the mean+renormalized pooled row is stamped
+    `source='media_direct'`, ONE TX. Video frames ride the image media path (the sampled
+    frame set IS the segment set); media never head-truncates.
+  - capability OFF, `ai_enrichments.caption` (visual) or `transcript` (audio, EXCLUDING
+    rows with `media_kind='music'`) present ⇒ that text is the corpus through the same
+    chunk-pool ladder, pooled `source='chunk_pool'` (the V2 fallback).
+  - no corpus ⇒ the V0 metadata string (name/mime/path/date), pooled
+    `source='metadata_only'`; the metadata string also carries its single segment row so
+    max-over-segments scoring sees the node.
+  - Media IO is transient: bytes are read through `blobStorageService.downloadBlob`,
+    frames/windows live in a per-call `os.tmpdir()` workspace removed before the job
+    returns, and nothing is persisted except the vectors.
 - **Backfill ownership:** the `backfill` executor is not implemented and the kind stays
   PARKED (`pipelines/embed.js` `UNEXECUTABLE_KINDS`). The unified admin re-embed
   (initial coverage + model-change full re-embed) owns the executor, and the factory
@@ -173,9 +201,10 @@ stride sample ≤ `LLM_CHUNK_BUDGET` (default 4) chunks → embed ALL sampled ch
   partially written node converges to the full fresh state on re-execution — the file is
   embedded exactly once per generation end to end (no duplicate pooled rows, no
   mixed-space scoring: canonical reads filter by the active `model_id`).
-- **Kind coverage:** the worker's claim filter keeps kinds without a landed executor
-  parked (`claimNext({ excludeKinds })` park&drain — zero attempt inflation) until their
-  own unit lands; claiming unexecutable work would inflate attempts on queued jobs.
+- **Kind coverage:** `embed`, `caption` and `asr` have executors; `features` and
+  `backfill` stay PARKED (`UNEXECUTABLE_KINDS`) through `claimNext({ excludeKinds })`
+  park&drain — zero attempt inflation. Each pipeline's exclusion set names every OTHER
+  kind, so the three drains sharing one worker pass can never double-claim.
 
 **`features` (`features.extract`):** chat role; runs ONLY inside this job — never
 on request paths. Input = extracted text clipped by the input-budget ladder + a
@@ -187,12 +216,16 @@ where supported — llmAdapter owns the kwarg). Written to `ai_enrichments`
 failure ⇒ `markFailed` (retried; provider flakiness is transient). Chat off ⇒ field
 stays empty; downstream runs on local tags + vectors (the LLM-free fallback keeps every other pipeline working).
 
-**`caption` (V2):** `vision_chat` role; local ffmpeg uniform-stride frame sampling
-(≤4 frames, transient — frames never persisted); VLM captions in Korean; writes
-`ai_enrichments.caption` + `caption_model_id`; then CHAINS `enqueue(node,'embed',gen)`
-(caption text is the embedding corpus for media). No `image_embed` path exists — every modality enters the same text embedding space.
+**`caption` (V2):** `vision_chat` role (`adapter.roleConfigured('vision')`); local ffmpeg
+uniform-stride frame sampling (video ≤4 frames, image raw single, transient — frames
+never persisted); VLM captions in Korean; writes `ai_enrichments.caption` +
+`caption_model_id`; then CHAINS `enqueue(node,'embed',gen)` with the job's content hash
+(caption text is the media's embed corpus on the V2 fallback path). A claimed caption job
+whose effective `vision_chat` capability is OFF is a typed `capability_absent` skip — the
+hook's decision table already falls back to plain `embed` for that node.
 
-**`asr` (V3 = TRANSCRIPTION ONLY):** `asr` role; audio
+**`asr` (V3 = TRANSCRIPTION ONLY):** `asr` role (`adapter.roleConfigured('asr')`; a
+claimed job with the effective capability OFF is a `capability_absent` skip); audio
 tracks/files → conditional transcript. The escape-prompt is MANDATORY and non-editable:
 "if there is no actually audible speech, answer none". Output fields: `transcript` +
 `asr_model_id` + ffprobe metadata into `ai_enrichments.probe` — **no** audio_desc/genre/mood/

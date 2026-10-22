@@ -56,6 +56,8 @@ describe('aiJobService worker (§2.3)', () => {
       aiJobsStore: { recoverStaleRunning: reap },
       adapter: fakeAdapter(),
       embedPipeline: { runPendingEmbedJobs: jest.fn() },
+      captionPipeline: { runPendingCaptionJobs: jest.fn() },
+      asrPipeline: { runPendingAsrJobs: jest.fn() },
     });
     const outcome = await svc.startAiWorker();
     expect(outcome).toEqual({ started: false, reason: 'WEA_SKIP_AI_WORKER' });
@@ -73,6 +75,8 @@ describe('aiJobService worker (§2.3)', () => {
       aiJobsStore: { recoverStaleRunning: reap },
       adapter: fakeAdapter(),
       embedPipeline: { runPendingEmbedJobs: jest.fn() },
+      captionPipeline: { runPendingCaptionJobs: jest.fn() },
+      asrPipeline: { runPendingAsrJobs: jest.fn() },
     });
     await svc.startAiWorker();
     expect(reap).toHaveBeenCalledWith(1234);
@@ -89,6 +93,8 @@ describe('aiJobService worker (§2.3)', () => {
       aiJobsStore: { recoverStaleRunning: async () => ({ changes: 0 }) },
       adapter: fakeAdapter(),
       embedPipeline: { runPendingEmbedJobs: jest.fn() },
+      captionPipeline: { runPendingCaptionJobs: jest.fn() },
+      asrPipeline: { runPendingAsrJobs: jest.fn() },
     });
     await svc.startAiWorker();
     await svc.startAiWorker();
@@ -100,6 +106,8 @@ describe('aiJobService worker (§2.3)', () => {
     const svc = createAiJobService({
       adapter: null,
       embedPipeline: { runPendingEmbedJobs: runPipeline },
+      captionPipeline: { runPendingCaptionJobs: jest.fn(async () => 0) },
+      asrPipeline: { runPendingAsrJobs: jest.fn(async () => 0) },
     });
     await svc.drainPass();
     expect(runPipeline).not.toHaveBeenCalled();
@@ -111,10 +119,60 @@ describe('aiJobService worker (§2.3)', () => {
     const svc = createAiJobService({
       adapter,
       embedPipeline: { runPendingEmbedJobs: runPipeline },
+      captionPipeline: { runPendingCaptionJobs: jest.fn(async () => 0) },
+      asrPipeline: { runPendingAsrJobs: jest.fn(async () => 0) },
     });
     await svc.drainPass();
     expect(adapter.roleConfigured).toHaveBeenCalledWith('embed');
     expect(runPipeline).not.toHaveBeenCalled();
+  });
+
+  test('drainPass runs embed + caption + asr behind per-role gates in one pass', async () => {
+    const runEmbed = jest.fn(async () => 1);
+    const runCaption = jest.fn(async () => 1);
+    const runAsr = jest.fn(async () => 1);
+    const adapter = fakeAdapter();
+    const svc = createAiJobService({
+      adapter,
+      llmModelsStore: {
+        getActiveByRole: async (role) => (role === 'embed' ? { id: 7 } : { id: 8 }),
+      },
+      embedPipeline: { runPendingEmbedJobs: runEmbed },
+      captionPipeline: { runPendingCaptionJobs: runCaption },
+      asrPipeline: { runPendingAsrJobs: runAsr },
+    });
+    await svc.drainPass();
+    expect(adapter.roleConfigured.mock.calls.map(([role]) => role)).toEqual([
+      'embed',
+      'vision',
+      'asr',
+    ]);
+    expect(runEmbed).toHaveBeenCalledTimes(1);
+    expect(runCaption).toHaveBeenCalledTimes(1);
+    expect(runAsr).toHaveBeenCalledTimes(1);
+    // Per-role model lineage is resolved at the claim of each pipeline.
+    await expect(runCaption.mock.calls[0][0].visionModelId()).resolves.toBe(8);
+    await expect(runAsr.mock.calls[0][0].asrModelId()).resolves.toBe(8);
+  });
+
+  test('drainPass parks caption and asr independently when their roles are off', async () => {
+    const runEmbed = jest.fn(async () => 0);
+    const runCaption = jest.fn(async () => 0);
+    const runAsr = jest.fn(async () => 0);
+    const adapter = fakeAdapter({
+      roleConfigured: jest.fn(async (role) => role === 'asr'),
+    });
+    const svc = createAiJobService({
+      adapter,
+      llmModelsStore: { getActiveByRole: async () => null },
+      embedPipeline: { runPendingEmbedJobs: runEmbed },
+      captionPipeline: { runPendingCaptionJobs: runCaption },
+      asrPipeline: { runPendingAsrJobs: runAsr },
+    });
+    await svc.drainPass();
+    expect(runEmbed).not.toHaveBeenCalled();
+    expect(runCaption).not.toHaveBeenCalled();
+    expect(runAsr).toHaveBeenCalledTimes(1);
   });
 
   test('drainPass with a configured role drives the pipeline (adapter + readText + timeout)', async () => {
@@ -127,6 +185,8 @@ describe('aiJobService worker (§2.3)', () => {
       jobTimeoutMs: 4500,
       llmModelsStore: { getActiveByRole: async () => ({ id: 42 }) },
       embedPipeline: { runPendingEmbedJobs: runPipeline },
+      captionPipeline: { runPendingCaptionJobs: jest.fn(async () => 0) },
+      asrPipeline: { runPendingAsrJobs: jest.fn(async () => 0) },
     });
     await svc.drainPass();
     expect(runPipeline).toHaveBeenCalledTimes(1);
@@ -145,6 +205,8 @@ describe('aiJobService worker (§2.3)', () => {
       adapter: fakeAdapter(),
       llmModelsStore: { getActiveByRole: async () => null },
       embedPipeline: { runPendingEmbedJobs: runPipeline },
+      captionPipeline: { runPendingCaptionJobs: jest.fn(async () => 0) },
+      asrPipeline: { runPendingAsrJobs: jest.fn(async () => 0) },
     });
     await svc.drainPass();
     const call = runPipeline.mock.calls[0][0];
@@ -163,6 +225,8 @@ describe('aiJobService worker (§2.3)', () => {
       aiJobsStore: { recoverStaleRunning: async () => ({ changes: 0 }) },
       adapter: fakeAdapter(),
       embedPipeline: { runPendingEmbedJobs: runPipeline },
+      captionPipeline: { runPendingCaptionJobs: jest.fn(async () => 0) },
+      asrPipeline: { runPendingAsrJobs: jest.fn(async () => 0) },
     });
     await svc.startAiWorker();
     const first = timers.lastTimer();
@@ -180,6 +244,8 @@ describe('aiJobService worker (§2.3)', () => {
       aiJobsStore: { recoverStaleRunning: async () => ({ changes: 0 }) },
       adapter: fakeAdapter(),
       embedPipeline: { runPendingEmbedJobs: jest.fn(async () => 0) },
+      captionPipeline: { runPendingCaptionJobs: jest.fn(async () => 0) },
+      asrPipeline: { runPendingAsrJobs: jest.fn(async () => 0) },
     });
     await svc.startAiWorker();
     const first = timers.lastTimer();
@@ -209,6 +275,8 @@ describe('aiJobService worker (§2.3)', () => {
     const svc2 = createAiJobService({
       adapter: fakeAdapter(),
       embedPipeline: { runPendingEmbedJobs: runPipeline },
+      captionPipeline: { runPendingCaptionJobs: jest.fn(async () => 0) },
+      asrPipeline: { runPendingAsrJobs: jest.fn(async () => 0) },
       fileNodesStore: { getNode: async (id) => nodes[id] ?? null },
       blobStorageService: { downloadBlob: async (id) => blobs[id] ?? null },
     });

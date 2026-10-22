@@ -22,8 +22,12 @@ const { createFileNodesStore } = require('../../store/fileNodesStore');
 const { validateFileName } = require('@webdav-easyaccess/shared/validation');
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const aiTagStore = require('../../store/aiTagStore');
+const embeddingsStore = require('../../store/embeddingsStore');
+const aiJobsStore = require('../../store/aiJobsStore');
 const { foldTag } = require('../ai/tagVocabulary');
+const { parseVector } = require('../ai/vectorStore/vectorMath');
 const definitionEngine = require('./definitionEngine');
+const { createNamer } = require('./namingService');
 const wire = require('./wire');
 
 // Constants with later-task owners (§3.1/§3.4): SIMILAR_MODEL_ID is a
@@ -36,8 +40,34 @@ const VALID_PUBLISH_MODES = ['ask', 'off', 'auto'];
 const VALID_GRANT_ROLES = ['viewer', 'editor'];
 const MAX_NODE_IDS = 200;
 const PREVIEW_SAMPLE_CAP = 12;
+const SEED_NEIGHBORS_K = 200;
+/**
+ * Seed-vector admission threshold stored ON a seed collection definition at
+ * create time (collectionsService.md §2.7; 0.62 = the routes-spec example).
+ * Ownership: the constant is the CREATE-TIME default written into
+ * `definition.theta`; read-time admission policy (θ_in/θ_out hysteresis) is
+ * owned by the active model profile (§2.3), never by this service.
+ */
+const SEED_VECTOR_THETA = 0.62;
 const SIMILAR_MODEL_ID = 0;
 const SIMILAR_CLUSTER_COSINE = 0.7;
+
+// Runtime seams (boot singletons / lazy requires); unit tests swap them so the
+// DB-backed suite can exercise both the configured and the absent capability
+// without booting an LLM. `undefined` = resolve the production default.
+const runtimeSeams = {
+  llmAdapter: undefined,
+  vectorStoreFactory: undefined,
+};
+
+function __setRuntimeSeamsForTests(seams = {}) {
+  Object.assign(runtimeSeams, seams);
+}
+
+function __resetRuntimeSeamsForTests() {
+  runtimeSeams.llmAdapter = undefined;
+  runtimeSeams.vectorStoreFactory = undefined;
+}
 
 const REMOVAL_JOURNAL_ACTIONS = new Set(['remove-item', 'remove-items', 'exclude']);
 
@@ -71,16 +101,37 @@ async function resolveCollectionName(ownerId, baseName) {
 }
 
 /**
- * Embed-role presence gate: resolves the LLM_EMBED_* config keys (dbOnly
- * registry group from T0.7b) per call — hot per §6. Swapped in place for
- * `infrastructure/adapters/llm` roleConfigured('embed') at T1.1.
+ * The installed llmAdapter, or null before boot. `roleConfigured('embed')` is
+ * the presence gate; pre-boot (no adapter) keeps the legacy config-key check.
  */
+function resolveLlmAdapter() {
+  if (runtimeSeams.llmAdapter !== undefined) return runtimeSeams.llmAdapter;
+  const { getLlmAdapter } = require('../../infrastructure/llmAdapterRuntime');
+  return getLlmAdapter();
+}
+
 async function embedRoleConfigured() {
+  const adapter = resolveLlmAdapter();
+  if (adapter && typeof adapter.roleConfigured === 'function') {
+    try {
+      return Boolean(await adapter.roleConfigured('embed'));
+    } catch (error) {
+      return false;
+    }
+  }
+  // Pre-boot fallback: resolve the LLM_EMBED_* config keys (dbOnly registry
+  // group) per call — hot per §6.
   const { getSharedResolver } = require('../../infrastructure/configResolver');
   const resolver = getSharedResolver();
   const baseUrl = await resolver.getConfig('LLM_EMBED_BASE_URL');
   const model = await resolver.getConfig('LLM_EMBED_MODEL');
   return Boolean(String(baseUrl || '').trim()) && Boolean(String(model || '').trim());
+}
+
+/** Vector-store seam: the boot singleton, else the JsFallback (§2.3). */
+function resolveVectorStoreFactory() {
+  if (runtimeSeams.vectorStoreFactory !== undefined) return runtimeSeams.vectorStoreFactory;
+  return require('../ai/vectorStoreRuntime').getVectorStoreOrFallback;
 }
 
 // ---------------------------------------------------------------------------
@@ -506,18 +557,65 @@ async function createCollection(userId, { name } = {}) {
 }
 
 /**
- * Seed creation requires the embed role (§2.7). At T0.3 the embed role is
- * resolved from config; vector candidate evaluation attaches with the T1.4
- * vectorStore seam and the T1.6 seed-confirm flow (§2.2.1 as-built note).
+ * Seed creation (§2.7): embed-role gate, seed-vector definition with the
+ * documented θ default, and the confirmed preview ids as the initial batch
+ * (`published=true` — the dialog IS the batch approval). Candidate
+ * computation is shared with `preview({ seedNodeId })`; a missing embedding
+ * yields an EMPTY collection with the definition (never a refusal). A blank
+ * request name is filled by the §2.10 naming service.
  */
 async function createSeedCollection(userId, { name, seedNodeId } = {}) {
-  if (typeof name !== 'string' || name.trim().length === 0) throw serviceError('nameRequired');
-  if (validateFileName(name)) throw serviceError('invalidName');
-  if (!toFiniteId(seedNodeId)) throw serviceError('previewTargetRequired');
+  const parsedSeedId = toFiniteId(seedNodeId);
+  if (!parsedSeedId) throw serviceError('previewTargetRequired');
+  const providedName = typeof name === 'string' ? name.trim() : '';
+  if (providedName && validateFileName(providedName)) throw serviceError('invalidName');
   if (!(await embedRoleConfigured())) throw serviceError('aiNotConfigured');
-  // Embed configured but no vector seam yet (T1.4): a seed collection has no
-  // membership basis — refuse with the capability conflict, not a partial row.
-  throw serviceError('aiNotConfigured');
+
+  const seedPreview = await evaluateSeedPreview(userId, parsedSeedId);
+  const baseName = providedName || (await generateSeedName(parsedSeedId));
+  const finalName = await resolveCollectionName(userId, baseName);
+
+  const created = await collectionsStore.createCollection(
+    {
+      ownerId: userId,
+      name: finalName,
+      origin: 'seed',
+      definition: {
+        kind: 'seed_vector',
+        seed_ref: parsedSeedId,
+        theta: SEED_VECTOR_THETA,
+      },
+    },
+    { actor: userId }
+  );
+  // Initial batch (§2.7): `published` is passed explicitly — store defaults
+  // are never relied on. Empty preview ⇒ the collection is created empty.
+  if (seedPreview.ids.length > 0) {
+    await collectionsStore.addItems(
+      created.id,
+      seedPreview.ids,
+      userId,
+      { published: true },
+      { actor: userId }
+    );
+  }
+  return { collection: created, undo: { actionId: created.actionId } };
+}
+
+/** §2.10 seed name when the request omits one (the client normally sends it). */
+async function generateSeedName(seedNodeId) {
+  const node = await createFileNodesStore().getNode(seedNodeId);
+  const adapter = resolveLlmAdapter();
+  let chatConfigured = false;
+  if (adapter && typeof adapter.roleConfigured === 'function') {
+    try {
+      chatConfigured = Boolean(await adapter.roleConfigured('chat'));
+    } catch (error) {
+      chatConfigured = false;
+    }
+  }
+  const namer = createNamer({ llmAdapter: adapter, chatConfigured });
+  return namer({ kind: 'seed', seedName: node ? node.name : 'Seed' });
 }
 
 /**
@@ -961,19 +1059,77 @@ async function preview(userId, target = {}) {
   if (hasSeed === hasDefinition) throw serviceError('previewTargetRequired');
 
   if (hasSeed) {
-    const seedNodeId = Number(target.seedNodeId);
-    if (!Number.isInteger(seedNodeId) || seedNodeId <= 0) {
-      throw serviceError('previewTargetRequired');
-    }
+    const seedNodeId = toFiniteId(target.seedNodeId);
+    if (!seedNodeId) throw serviceError('previewTargetRequired');
     if (!(await embedRoleConfigured())) throw serviceError('aiNotConfigured');
-    // Missing pooled embedding: the preview never blocks on enrichment (§2.7).
-    // The embeddingsStore read is wired at T1.2; until then the seed vector is
-    // missing and the dialog degrades to an empty result.
-    return { ...EMPTY_PREVIEW, degraded: true };
+    const result = await evaluateSeedPreview(userId, seedNodeId);
+    return {
+      count: result.count,
+      sample: result.sample,
+      sample_truncated: result.sample_truncated,
+      ...(result.degraded && { degraded: true }),
+    };
   }
 
   const parsed = definitionEngine.parseDefinition(target.definition);
   return runDefinitionPreview(userId, parsed);
+}
+
+/**
+ * The ONE seed-candidate computation shared by preview and creation (§2.7):
+ * the seed's pooled embedding vs the requester-visible corpus through the
+ * vectorStore seam (`neighbors`, k=200). The seed is excluded from its own
+ * candidate set BEFORE the top-K cut. Missing pooled embedding ⇒ the
+ * degraded empty shape and a fire-and-forget idempotent embed job for files
+ * (preview never blocks on enrichment).
+ *
+ * @returns {Promise<{ ids: number[], count: number, sample: Array<{nodeId:number,name:string|null}>, sample_truncated: boolean, degraded?: boolean }>}
+ */
+async function evaluateSeedPreview(userId, seedNodeId) {
+  const pooled = await embeddingsStore.get(seedNodeId);
+  if (!pooled) {
+    await enqueueSeedEmbeddingJob(seedNodeId);
+    return { ...EMPTY_PREVIEW, ids: [], degraded: true };
+  }
+
+  const seedVec = parseVector(pooled.vector, Number(pooled.dim));
+  const fileNodesStore = createFileNodesStore();
+  const visibleIds = new Set(await fileNodesStore.listVisibleFileNodeIds(userId));
+  visibleIds.delete(seedNodeId);
+
+  const modelId = Number(pooled.modelId);
+  const { createLoadRows } = require('../ai/vectorStoreRuntime');
+  const vectorStore = resolveVectorStoreFactory()(
+    modelId,
+    createLoadRows({ modelId })
+  );
+  const ranked = await vectorStore.neighbors(seedVec, SEED_NEIGHBORS_K, visibleIds);
+  const ids = (ranked || [])
+    .map((row) => Number(row.nodeId))
+    .filter((nodeId) => Number.isInteger(nodeId) && nodeId !== seedNodeId);
+
+  const sample = [];
+  for (const nodeId of ids.slice(0, PREVIEW_SAMPLE_CAP)) {
+    const node = await fileNodesStore.getNode(nodeId);
+    sample.push({ nodeId, name: node ? node.name : null });
+  }
+  return {
+    ids,
+    count: ids.length,
+    sample,
+    sample_truncated: ids.length > PREVIEW_SAMPLE_CAP,
+  };
+}
+
+/** Fire-and-forget, idempotent enrichment for a file seed (§2.7). */
+async function enqueueSeedEmbeddingJob(seedNodeId) {
+  try {
+    const node = await createFileNodesStore().getNode(seedNodeId);
+    if (!node || node.type !== 'file') return;
+    await aiJobsStore.enqueue(seedNodeId, 'embed', 1, null);
+  } catch (error) {
+    // Enrichment absence must never block the preview; the backfill heals it.
+  }
 }
 
 async function previewCollection(userId, collectionId) {
@@ -1293,4 +1449,7 @@ module.exports = {
   revokeCollectionAccess,
   revokeOwnGrant,
   fingerprintDefinition: definitionEngine.fingerprintDefinition,
+  SEED_VECTOR_THETA,
+  __setRuntimeSeamsForTests,
+  __resetRuntimeSeamsForTests,
 };

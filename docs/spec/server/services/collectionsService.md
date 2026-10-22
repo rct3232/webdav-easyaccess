@@ -18,7 +18,7 @@ Target-contract spec.
 ### 2.1 File Path
 
 - **Source:** `server/domains/collections/service.js`
-- **Helpers:** `server/domains/collections/definitionEngine.js` (pure evaluation core — see §2.3), `server/domains/collections/templateNamer.js` (§2.9)
+- **Helpers:** `server/domains/collections/definitionEngine.js` (pure evaluation core — see §2.3), `server/domains/collections/namingService.js` (§2.10)
 - **Test file:** `server/domains/collections/__tests__/collectionsService.test.js`
   (unit) + domain route suite `__tests__/collections.test.js` (integration)
 
@@ -79,13 +79,16 @@ The create and the initial batch are two journaled commands; the returned
 `undo` pointer is the CREATE command (its tip undo deletes the collection together
 with the just-added batch). No embed role is required: the snapshot is flattened —
 the stored definition is never evaluated at create time.
-`createSeedCollection` implements the embed presence gate (throws `aiNotConfigured`);
-vector candidate evaluation for seed definitions rides the §2.3 vector-membership
-contract once the vectorStore seam is live. Seed preview with the embed role present but
-no pooled embedding for the seed node resolves through the §2.7 missing-embedding branch
-(`count: 0`, `degraded: true`). The embed-role presence check resolves the
-`LLM_EMBED_*` config keys per call until `infrastructure/adapters/llm`
-`roleConfigured('embed')` exists.
+`createSeedCollection` implements the embed presence gate (throws `aiNotConfigured`)
+and evaluates the seed's candidate set through the §2.3 vector-membership
+contract (`vectorStore.neighbors`). Seed preview and creation share one internal
+computation, so the created initial batch is exactly the preview set. Seed
+preview with the embed role present but no pooled embedding for the seed node
+resolves through the §2.7 missing-embedding branch (`count: 0`, `degraded: true`)
+and enqueues an idempotent `embed` job when the seed is a file. The embed-role
+presence check reads `infrastructure/adapters/llm` `roleConfigured('embed')`
+once the adapter is installed; before boot it falls back to the `LLM_EMBED_*`
+config keys.
 
 ### 2.3 Definition engine (derived membership)
 
@@ -218,13 +221,27 @@ input `nodeIds`; every requested node gets an entry (possibly `collection_ids: [
 ### 2.7 Preview, seed/search creation, publish-batch copy rule
 
 - `preview({ definition })`: rule dry-count — LLM-free (works with zero config).
-- `preview({ seedNodeId })`: requires the embed role (llmAdapter presence, else
+- `preview({ seedNodeId })`: requires the embed role (`llmAdapter
+  .roleConfigured('embed')`; pre-boot fallback `LLM_EMBED_*`, else
   `aiNotConfigured` → route 409). Seed vector = that node's pooled embedding
-  (`embeddingsStore.get`); missing embedding → enqueue-eligible note and the preview runs
-  against the metadata_only row when present, else empty sample with `count: 0` +
-  `degraded: true` (preview never blocks on enrichment — an unembedded seed has no basis).
-  Cosine via `vectorStore.neighbors(seedVec, k=200+, visibleIds)`, partial top-K;
-  `sample` capped at 12, `count` exact (within the cap), `sample_truncated = count>12`.
+  (`embeddingsStore.get`, parsed with `vectorMath.parseVector`); missing
+  embedding → an idempotent `embed` job is enqueued for a file seed and the
+  preview returns empty `count: 0` + `degraded: true` (preview never blocks on
+  enrichment — an unembedded seed has no basis). Candidates are the requester's
+  `fileNodesStore.listVisibleFileNodeIds` set with the seed itself removed
+  BEFORE the top-K cut; cosine via
+  `vectorStore.neighbors(seedVec, k=200, visibleIds)`, partial top-K;
+  `sample` capped at 12, `count` exact within the cap, `sample_truncated =
+  count>12`. `degraded` appears only in the missing-embedding case.
+- Seed creation reuses the SAME candidate computation as the preview: the
+  definition is `{kind:'seed_vector', seed_ref: seedNodeId, theta:
+  SEED_VECTOR_THETA}` (`SEED_VECTOR_THETA = 0.62`, a documented create-time
+  constant owned by the service; read-time θ_in/θ_out admission policy stays
+  with the active model profile, §2.3), and the preview ids materialize as the
+  initial batch `published=true`. A missing embedding still creates the
+  collection with the definition and zero members. A blank request name is
+  filled by `templateNamer`/`llmNamer` (§2.10); a supplied name is used
+  verbatim.
 - Confirm-dialog copy obligation: the dialog states that the ENTIRE initial set
   (preview + `plus N more`) is publish-approved as a batch if/when the collection is shared.
 - Initial-batch publish rule: the members materialized by the CONFIRMED initial
@@ -290,11 +307,14 @@ collectionId)` removes the grantee's row for that collection. A re-grant after a
 
 ### 2.10 Naming (templateNamer first, llmNamer swap)
 
-- `templateNamer` (this domain, deterministic, ko/en locale strings) is DEFAULT and FINAL:
+- `templateNamer` (`namingService.js`, this domain, deterministic, ko/en locale
+  strings) is DEFAULT and FINAL:
   search → query text verbatim; seed → `{seedFileName} and similar files`; system cluster →
   top-2 local derived tags `{tag1} · {tag2} photos`; split → `{parentName} · {diffTag}`;
-  fallback `Auto collection N` (system-origin only). `llmNamer` (ai domain) replaces it for
-  NEW creations only while chat is configured; failure ⇒ templateNamer (lossless swap).
+  fallback `Auto collection N` (system-origin only). `createNamer({ llmAdapter,
+  chatConfigured, invokeLlm })` wraps the template: `llmNamer` replaces it for
+  NEW creations only while chat is configured; any failure (unconfigured role,
+  provider error, empty output) ⇒ templateNamer (lossless swap).
   Existing names are never renamed (`name_locked` respected; template output is final — no post-hoc rename jobs).
 - Service-side name writes (rename) always lock; auto-generated names do not lock.
 

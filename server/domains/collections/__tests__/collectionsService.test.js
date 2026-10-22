@@ -6,6 +6,8 @@ const collectionsService = require('../service');
 const collectionsStore = require('@server/store/collectionsStore');
 const fileLikesStore = require('@server/store/fileLikesStore');
 const aiTagStore = require('@server/store/aiTagStore');
+const embeddingsStore = require('@server/store/embeddingsStore');
+const llmModelsStore = require('@server/store/llmModelsStore');
 const composition = require('@server/service/composition');
 const { createFileNodesStore } = require('@server/store/fileNodesStore');
 const { createFileNodeService } = require('@server/service/fileNodeService');
@@ -548,6 +550,212 @@ describe('collectionsService createSeedCollection gate', () => {
     ).rejects.toMatchObject({ message: 'aiNotConfigured', status: 409 });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Seed preview / creation (§2.7) — the vector seam is live: pooled embedding
+// of the seed vs the requester-visible corpus, seed excluded, initial batch
+// published=true.
+// ---------------------------------------------------------------------------
+
+function embedConfiguredAdapter() {
+  return {
+    roleConfigured: jest.fn(async (role) => role === 'embed'),
+  };
+}
+
+async function ensureEmbedModel(tag) {
+  const unique = `${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const { id } = await llmModelsStore.upsertModel({
+    role: 'embed',
+    provider: 'embedded',
+    engine: 'embedded',
+    baseUrlKey: '',
+    modelName: unique,
+    modelRevision: null,
+    precision: 'q4',
+    maxInputChars: 8192,
+    chunkBudget: 4,
+    batchSize: 8,
+    enabled: true,
+  });
+  return Number(id);
+}
+
+async function embedNode(nodeId, modelId, vector) {
+  await embeddingsStore.upsert(Number(nodeId), {
+    modelId,
+    dim: vector.length,
+    vector,
+    source: 'fulltext',
+    contentHash: `seed-${nodeId}-${Date.now()}`,
+  });
+}
+
+describe('collectionsService seed preview (§2.7)', () => {
+  afterEach(() => {
+    collectionsService.__resetRuntimeSeamsForTests();
+  });
+
+  it('degrades to an empty preview when the seed has no pooled embedding', async () => {
+    collectionsService.__setRuntimeSeamsForTests({ llmAdapter: embedConfiguredAdapter() });
+    const ctx = await setupServiceUser('seedmissing');
+
+    const result = await collectionsService.preview(ctx.user.id, { seedNodeId: ctx.beach.id });
+    expect(result).toEqual({
+      count: 0,
+      sample: [],
+      sample_truncated: false,
+      degraded: true,
+    });
+  });
+
+  it('ranks visible candidates, excludes the seed and other users, and names the sample', async () => {
+    const adapter = embedConfiguredAdapter();
+    collectionsService.__setRuntimeSeamsForTests({ llmAdapter: adapter });
+    const ctx = await setupServiceUser('seedrank');
+    const other = await setupServiceUser('seedrank-other');
+    const modelId = await ensureEmbedModel('seedrank');
+
+    const near = await fileNodeService.createFile(ctx.root.id, 'near.jpg');
+    const far = await fileNodeService.createFile(ctx.root.id, 'far.jpg');
+    await embedNode(ctx.beach.id, modelId, [1, 0, 0, 0]);
+    await embedNode(near.id, modelId, [0.99, 0.1, 0, 0]);
+    await embedNode(far.id, modelId, [0, 1, 0, 0]);
+    // Same vector but NOT readable by the requester — the ACL set must drop it.
+    await embedNode(other.stay.id, modelId, [1, 0, 0, 0]);
+
+    const result = await collectionsService.preview(ctx.user.id, { seedNodeId: ctx.beach.id });
+    expect(result.count).toBe(2);
+    expect(result.sample_truncated).toBe(false);
+    expect(result.degraded).toBeUndefined();
+    expect(result.sample.map((row) => row.nodeId)).toEqual([near.id, far.id]);
+    expect(result.sample[0]).toEqual({ nodeId: near.id, name: 'near.jpg' });
+    expect(result.sample.some((row) => row.nodeId === ctx.beach.id)).toBe(false);
+    expect(result.sample.some((row) => row.nodeId === other.stay.id)).toBe(false);
+  });
+
+  it('passes the visible ACL set and k=200 to the vectorStore seam', async () => {
+    collectionsService.__setRuntimeSeamsForTests({ llmAdapter: embedConfiguredAdapter() });
+    const ctx = await setupServiceUser('seedacl');
+    const modelId = await ensureEmbedModel('seedacl');
+    await embedNode(ctx.beach.id, modelId, [1, 0, 0, 0]);
+
+    const neighbors = jest.fn(async () => [
+      { nodeId: ctx.beach.id, score: 1 },
+      { nodeId: ctx.stay.id, score: 0.9 },
+    ]);
+    collectionsService.__setRuntimeSeamsForTests({
+      vectorStoreFactory: () => ({ neighbors }),
+    });
+
+    const result = await collectionsService.preview(ctx.user.id, { seedNodeId: ctx.beach.id });
+    expect(result.count).toBe(1);
+    expect(result.sample).toEqual([{ nodeId: ctx.stay.id, name: 'stay.jpg' }]);
+
+    expect(neighbors).toHaveBeenCalledTimes(1);
+    const [seedVec, k, candidates] = neighbors.mock.calls[0];
+    expect(seedVec).toEqual([1, 0, 0, 0]);
+    expect(k).toBe(200);
+    expect(candidates).toBeInstanceOf(Set);
+    expect(candidates.has(ctx.stay.id)).toBe(true);
+    expect(candidates.has(ctx.beach.id)).toBe(false);
+  });
+
+  it('caps the sample at 12 and flags truncation', async () => {
+    collectionsService.__setRuntimeSeamsForTests({ llmAdapter: embedConfiguredAdapter() });
+    const ctx = await setupServiceUser('seedcap');
+    const modelId = await ensureEmbedModel('seedcap');
+    await embedNode(ctx.beach.id, modelId, [1, 0, 0, 0]);
+    for (let i = 0; i < 15; i += 1) {
+      const file = await fileNodeService.createFile(ctx.root.id, `cap-${i}.jpg`);
+      await embedNode(file.id, modelId, [1, i / 100, 0, 0]);
+    }
+
+    const result = await collectionsService.preview(ctx.user.id, { seedNodeId: ctx.beach.id });
+    expect(result.count).toBe(15);
+    expect(result.sample).toHaveLength(12);
+    expect(result.sample_truncated).toBe(true);
+  });
+});
+
+describe('collectionsService createSeedCollection (§2.7)', () => {
+  afterEach(() => {
+    collectionsService.__resetRuntimeSeamsForTests();
+  });
+
+  it('stores the seed definition (θ=0.62) and materializes the preview batch published=true', async () => {
+    collectionsService.__setRuntimeSeamsForTests({ llmAdapter: embedConfiguredAdapter() });
+    const ctx = await setupServiceUser('seedcreate');
+    const modelId = await ensureEmbedModel('seedcreate');
+    const near = await fileNodeService.createFile(ctx.root.id, 'near.jpg');
+    await embedNode(ctx.beach.id, modelId, [1, 0, 0, 0]);
+    await embedNode(near.id, modelId, [0.99, 0.1, 0, 0]);
+
+    const preview = await collectionsService.preview(ctx.user.id, {
+      seedNodeId: ctx.beach.id,
+    });
+    const { collection, undo } = await collectionsService.createSeedCollection(ctx.user.id, {
+      name: 'Beach-like',
+      seedNodeId: ctx.beach.id,
+    });
+
+    expect(collection).toMatchObject({ name: 'Beach-like', origin: 'seed', status: 'active' });
+    expect(collection.definition).toEqual({
+      kind: 'seed_vector',
+      seed_ref: ctx.beach.id,
+      theta: 0.62,
+    });
+    expect(undo.actionId).toBeGreaterThan(0);
+
+    const items = await dbQuery(
+      'SELECT node_id, published FROM collection_items WHERE collection_id = ? ORDER BY node_id',
+      [collection.id]
+    );
+    expect(items.rows.map((row) => Number(row.node_id))).toEqual([near.id]);
+    expect(Number(items.rows[0].published)).toBe(1);
+    expect(items.rows).toHaveLength(preview.count);
+
+    // Creator cursor seeded inside the create TX (no sidebar new dot).
+    const cursor = await dbQuery(
+      'SELECT last_visited_at FROM collection_digest_cursors WHERE collection_id = ? AND user_id = ?',
+      [collection.id, ctx.user.id]
+    );
+    expect(cursor.rows).toHaveLength(1);
+    expect(cursor.rows[0].last_visited_at).toBeTruthy();
+  });
+
+  it('still creates the collection with the definition when the seed has no embedding', async () => {
+    collectionsService.__setRuntimeSeamsForTests({ llmAdapter: embedConfiguredAdapter() });
+    const ctx = await setupServiceUser('seedcreateempty');
+
+    const { collection } = await collectionsService.createSeedCollection(ctx.user.id, {
+      name: 'Empty seed',
+      seedNodeId: ctx.beach.id,
+    });
+    expect(collection.origin).toBe('seed');
+    expect(collection.definition).toEqual({
+      kind: 'seed_vector',
+      seed_ref: ctx.beach.id,
+      theta: 0.62,
+    });
+    const count = await dbQuery(
+      'SELECT COUNT(*) AS n FROM collection_items WHERE collection_id = ?',
+      [collection.id]
+    );
+    expect(Number(count.rows[0].n)).toBe(0);
+  });
+
+  it('fills a blank request name through the naming service', async () => {
+    collectionsService.__setRuntimeSeamsForTests({ llmAdapter: embedConfiguredAdapter() });
+    const ctx = await setupServiceUser('seedname');
+
+    const { collection } = await collectionsService.createSeedCollection(ctx.user.id, {
+      seedNodeId: ctx.beach.id,
+    });
+    expect(collection.name).toBe('beach.jpg and similar files');
+  });
+});
+
 
 // ---------------------------------------------------------------------------
 // Search save leg (§2.2 createSearchCollection + §2.2.1 dispatch): the

@@ -22,8 +22,10 @@ Target-contract spec.
   `pipelines/pipelineRunner.js` (shared claim/timeout/failure mechanics)
 - **Media helpers:** `server/domains/ai/media/mediaSampling.js` (ffprobe metadata,
   frame sampling, audio decode/windowing, ladder arithmetic, metadata-scoped
-  `media_kind`)
-- **Test files:** `server/domains/ai/__tests__/{jobService,embedPipeline,embedMediaPipeline,captionPipeline,asrPipeline,mediaDrainIntegration}.test.js`,
+  `media_kind`) and `server/domains/ai/media/mediaBackfillScope.js` (media node
+  classification, the shared caption/transcript corpus rule, coverage
+  classification and the admin re-embed plan)
+- **Test files:** `server/domains/ai/__tests__/{jobService,embedPipeline,embedMediaPipeline,captionPipeline,asrPipeline,mediaDrainIntegration,mediaBackfillScope}.test.js`,
   `server/domains/ai/media/__tests__/mediaSampling.test.js`
 
 ### 2.2 Enqueue hooks (content-commit seams)
@@ -182,19 +184,54 @@ stride sample ≤ `LLM_CHUNK_BUDGET` (default 4) chunks → embed ALL sampled ch
     frame set IS the segment set); media never head-truncates.
   - capability OFF, `ai_enrichments.caption` (visual) or `transcript` (audio, EXCLUDING
     rows with `media_kind='music'`) present ⇒ that text is the corpus through the same
-    chunk-pool ladder, pooled `source='chunk_pool'` (the V2 fallback).
+    chunk-pool ladder, pooled `source='chunk_pool'` (the V2 fallback). The selection rule
+    is ONE helper (`mediaBackfillScope.mediaFallbackCorpus`), shared by the pipeline and
+    the coverage classification below: image/video take `caption`, audio takes
+    `transcript`, and a `media_kind='music'` row NEVER yields a corpus (its lyrics stay
+    display/search-only).
   - no corpus ⇒ the V0 metadata string (name/mime/path/date), pooled
     `source='metadata_only'`; the metadata string also carries its single segment row so
     max-over-segments scoring sees the node.
   - Media IO is transient: bytes are read through `blobStorageService.downloadBlob`,
     frames/windows live in a per-call `os.tmpdir()` workspace removed before the job
     returns, and nothing is persisted except the vectors.
+- **Media coverage & backfill scope (`media/mediaBackfillScope.js`):** read-only module
+  behind the admin media-embed coverage card and its re-embed action. Node membership is
+  `classifyMediaNode(node)` (shared `fileTypes` extension first, stored `filecache` mime as
+  the fallback — the same rule the pipeline uses, so pipeline and coverage never
+  disagree). `buildMediaBackfillScope` takes `userId` (omitted ⇒ the admin view),
+  `modelId`, `fileNodesStore`, `embeddingsStore`, `aiEnrichmentsStore` and
+  `capabilityEnabled`: it enumerates the live node rows of the scope (requester = own-root
+  subtree; no `userId` = every live root subtree), then performs ONE bulk pooled read and
+  ONE bulk enrichment read over the scoped media ids (id-batched, no per-node reads) and
+  classifies each node into exactly one coverage state: `media_direct` (current-space row
+  with `source='media_direct'`, the direct multimodal embed), `caption_fallback`
+  (current-space text-ladder row on image/video, the V2 caption corpus),
+  `transcript_fallback` (current-space text-ladder row on audio, the V3 transcript corpus),
+  `metadata_only` (current-space row with `source='metadata_only'`, the V0 floor),
+  `missing` (no pooled row at all — initial-coverage candidate), `stale_space` (pooled row
+  exists under ANOTHER `model_id` — the model-change re-projection candidate).
+  Return shape: `totals` (`media`, `embedded`, `missing`, `stale`), `bySource`,
+  `byMediaKind`, `byCapability`, `byCorpus`, `missingIds`, `staleIds`, `sampleMissing`,
+  `sampleStale`. `bySource` carries all six states and sums to `totals.media`;
+  `byMediaKind` splits media/embedded/missing/stale per modality; `byCapability` counts
+  nodes whose modality capability (`image_embed`/`video_embed`/`audio_embed`) is probed ON
+  vs OFF; `byCorpus` counts the nodes whose V2/V3 fallback corpus is currently available
+  (`caption`/`transcript`/`none` — the same helper as the pipeline, so a music transcript
+  counts as `none`). `missingIds`/`staleIds` are complete and id-ascending;
+  `sampleMissing`/`sampleStale` are their bounded prefixes (default 20) so the preview is
+  deterministic across calls. `planMediaBackfill` takes `scope` and `limit` and returns the
+  node-id list an admin action would re-embed — `missing ∪ stale_space`, id-ascending,
+  capped by `limit` — and enqueues nothing: the admin action and its rate limit own the
+  enqueue.
 - **Backfill ownership:** the `backfill` executor is not implemented and the kind stays
   PARKED (`pipelines/embed.js` `UNEXECUTABLE_KINDS`). The unified admin re-embed
   (initial coverage + model-change full re-embed) owns the executor, and the factory
-  `init()`/`rebuildShadow()` owns the derived-index rebuild path. No DDL column is added
-  for the driver; once the admin action + factory rebuild own the flow, the per-node
-  driver row can be dropped.
+  `init()`/`rebuildShadow()` owns the derived-index rebuild path. Its media half is the
+  `planMediaBackfill` list above (`missing` for the initial coverage pass, `stale_space`
+  for the model-change re-projection); a model change enqueues nothing by itself. No DDL
+  column is added for the driver; once the admin action + factory rebuild own the flow,
+  the per-node driver row can be dropped.
 - **Restart idempotence:** a job claimed but unfinished (process death) is re-armed by
   `recoverStaleRunning` (§2.3 step 2) and re-executes; because the pooled upsert REPLACES
   per node and `replaceChunks` deletes the incoming model space's set before insert, a
@@ -254,6 +291,11 @@ role, calls, input_chars, cached, degraded, failed_429)` PK `(day,role)`); this 
 - A role hitting its daily cap pauses that KIND's execution (jobs park — §2.3); the
   admin pipeline card shows `queue depth, 24h fail/429 rates, breaker states` from
   `countByStatus`/`listFailed` + `ai_usage_daily`.
+- Media-embed coverage is DERIVED ON READ, never persisted: `buildMediaBackfillScope`
+  recomputes the six-state split from the canonical node/pooled/enrichment rows on every
+  call, so the admin card and the re-embed plan always describe the current space — a
+  completed re-embed simply reports the rows under their new ladder source, with no
+  bookkeeping table to reconcile.
 - Kill switches (pause semantics — a pause never destroys queued work silently): pausing enrichment (role/worker level) never destroys
   queued work — `pending`/`failed` rows are untouched; the only sanctioned terminal
   non-success states are `skipped` (data-driven) and admin-abandon (out of v1 API).
@@ -317,6 +359,16 @@ recoverable). The only user-facing code in this domain is thrown by llmAdapter c
 - [ ] asr: request carries the escape-prompt; `none` transcript ⇒ no transcript written,
       metadata_only embed still chains; music-tagged input ⇒ `media_kind='music'` and the
       embed/features inputs EXCLUDE the transcript
+- [ ] Media fallback matrix: with the modality capability OFF, an image caption and a video
+      caption both become the `chunk_pool` corpus, an audio transcript becomes the
+      `chunk_pool` corpus, a `media_kind='music'` transcript never enters a corpus (the node
+      falls to `metadata_only`), a long caption is uniform-stride sampled (never
+      head-truncated), and a capability ON wins over a present caption (`media_direct`)
+- [ ] Media coverage scope: the six-state split matches the rows present (`bySource` sums to
+      `totals.media`), a requester scope sees only their own root subtree while the
+      no-`userId` admin scope sees every root, samples are the id-ascending bounded prefixes
+      and repeated calls are identical; `planMediaBackfill` returns `missing ∪ stale_space`
+      id-ascending (capped by `limit`) and enqueues NO job
 - [ ] `ai_usage_daily` row for `(today,'embed')` increments `calls`/`input_chars` after a
       worker-run embed; breaker opens at `LLM_DAILY_CALL_CAP` and the kind stops claiming
 - [ ] Grep: zero `CacheAdapter`/`operationProgress` imports in `domains/ai/**`

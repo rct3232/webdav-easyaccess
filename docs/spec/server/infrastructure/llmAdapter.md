@@ -34,7 +34,10 @@ Target-contract spec.
   with no trigger and no weight deletion, while the override is active — existing weights persist:
   lockfile
   parse → `WEA_MODEL_DIR` / data-dir detection → checksummed downloads with per-file CLI
-  progress logs, atomic temp-file+rename),
+  progress logs, atomic temp-file+rename — the weights tree layout is
+  `<modelDir>/<repo>/<revision>/<file.path>` (the HF snapshot layout the ONNX
+  client reads directly from disk; a lock WITHOUT repo/revision — test
+  fixtures — falls back to the flat `<modelDir>/<file.path>` form),
   **`model.lock.json`** (checked-in release artifact at
   `server/infrastructure/adapters/llm/model.lock.json`:
   repo/revision/files+sha256+size/dtype/dim/pooling —

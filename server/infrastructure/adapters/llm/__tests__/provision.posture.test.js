@@ -187,9 +187,11 @@ describe('built-in embed provisioning postures (T1.0a)', () => {
 
         expect(result.status).toBe('provisioned');
         expect(h.fetchLog.length).toBe(h.lock.files.length);
-        // All files installed and checksum-verified.
+        // All files installed and checksum-verified — under the nested
+        // weights root the ONNX client reads (`<modelDir>/<repo>/<revision>`).
+        const weightsRoot = path.join(h.modelDir, h.lock.repo, h.lock.revision);
         for (const f of h.lock.files) {
-          expect(fs.existsSync(path.join(h.modelDir, f.path))).toBe(true);
+          expect(fs.existsSync(path.join(weightsRoot, f.path))).toBe(true);
         }
         // The in-place run reported the generic preparing state with the
         // provisioning phase while running, and resolved it at the end.
@@ -327,7 +329,8 @@ describe('built-in embed provisioning postures (T1.0a)', () => {
         // The corrupt file failed verification, so nothing of it is installed;
         // the successfully-verified earlier files MAY be present (idempotent
         // resumption), but the corrupt one must be absent.
-        expect(fs.existsSync(path.join(h.modelDir, 'onnx/model_q4.onnx_data'))).toBe(false);
+        const weightsRoot = path.join(h.modelDir, h.lock.repo, h.lock.revision);
+        expect(fs.existsSync(path.join(weightsRoot, 'onnx/model_q4.onnx_data'))).toBe(false);
       } finally {
         h.cleanup();
       }

@@ -34,6 +34,8 @@
 
 const crypto = require('crypto');
 
+const { createSemanticScorer } = require('./semanticScorer');
+
 const QUERY_MAX_LENGTH = 200;
 const DEFAULT_NAME_LIMIT = 200;
 const DEFAULT_SEMANTIC_LIMIT = 50;
@@ -74,7 +76,9 @@ const SIGNATURE_SPACE = 'v1|model:';
  *   identity fallback (default: the llm provision module).
  * @param {Function} [opts.semanticScorer] - the §2.5a scoring seam
  *   `({ userId, queryVec, segmentVecs, sampleFn }) => [{ nodeId, score }]`;
- *   default: none (the semantic section is honestly empty).
+ *   default: the production scorer (`./semanticScorer` — C2). Inject a
+ *   non-function (tests) to disable the seam ⇒ the semantic section is
+ *   honestly empty.
  */
 function createSearchService(opts = {}) {
   const { fileNodesStore, usageService, configResolver, semanticScorer } = opts;
@@ -89,6 +93,12 @@ function createSearchService(opts = {}) {
   const hasInjectedProvisioner = 'provisioner' in opts;
   const injectedProvisioner = opts.provisioner;
   const hasScorer = 'semanticScorer' in opts;
+  // C2: the production scorer is the DEFAULT when no seam is injected. An
+  // explicitly-injected non-function (tests disable the seam) still means
+  // "no scoring seam" — the C1 honest-empty contract is preserved.
+  const scorer = hasScorer
+    ? semanticScorer
+    : createSemanticScorer({ fileNodesStore, llmModelsStore: injectedModels });
 
   function resolveFileNodesStore() {
     if (fileNodesStore) return fileNodesStore;
@@ -349,9 +359,9 @@ function createSearchService(opts = {}) {
       for (const text of segmentTexts) segmentVecs.push(await embedCached(text));
 
       let scored = [];
-      if (hasScorer && typeof semanticScorer === 'function') {
+      if (typeof scorer === 'function') {
         scored = sanitizeScoredRows(
-          await semanticScorer({
+          await scorer({
             userId,
             queryVec,
             segmentVecs,

@@ -833,6 +833,53 @@ module.exports = function createPostgresFileNodeRepository(executor) {
     },
 
     /**
+     * All live node ids visible to the requester (searchService §2.5a scorer
+     * seam — the ACL anchoring set). Same visibility rule as
+     * sampleVisibleNodeIds/searchNodesByName; no sampling, no limit.
+     */
+    async listVisibleFileNodeIds(userId) {
+      try {
+        const root = await this.getUserRootNode(userId);
+        const rootId = root ? Number(root.id) : null;
+
+        let paramIndex = 0;
+        const next = () => `$${(paramIndex += 1)}`;
+        const params = [];
+        const arms = [];
+        if (rootId != null) {
+          const rootEq = next();
+          const rootAnc = next();
+          params.push(rootId, rootId);
+          arms.push(
+            `(fn.id = ${rootEq} OR EXISTS (SELECT 1 FROM node_ancestors oa WHERE oa.ancestor_id = ${rootAnc} AND oa.descendant_id = fn.id))`
+          );
+        }
+        const pathGrant = next();
+        params.push(Number(userId));
+        arms.push(
+          `EXISTS (SELECT 1 FROM permissions_user_paths p WHERE p.user_id = ${pathGrant} AND (p.file_node_id = fn.id OR EXISTS (SELECT 1 FROM node_ancestors pa WHERE pa.ancestor_id = p.file_node_id AND pa.descendant_id = fn.id)))`
+        );
+        const fileGrant = next();
+        params.push(Number(userId));
+        arms.push(
+          `EXISTS (SELECT 1 FROM permissions_user_files f WHERE f.user_id = ${fileGrant} AND f.file_node_id = fn.id)`
+        );
+
+        const { rows } = await executor.query(
+          `SELECT fn.id
+             FROM file_nodes fn
+            WHERE fn.deleted_at IS NULL
+              AND (${arms.join(' OR ')})
+            ORDER BY fn.id`,
+          params
+        );
+        return rows.map((row) => Number(row.id));
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    /**
      * Random sample of at most n requester-visible live node ids
      * (searchService §2.5 — per-query dynamic-baseline corpus sample, P1).
      * Same visibility rule as searchNodesByName.

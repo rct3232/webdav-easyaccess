@@ -833,6 +833,47 @@ module.exports = function createSqliteFileNodeRepository(executor) {
     },
 
     /**
+     * All live node ids visible to the requester (searchService §2.5a scorer
+     * seam — the ACL anchoring set). Same visibility rule as
+     * sampleVisibleNodeIds/searchNodesByName; no sampling, no limit.
+     */
+    async listVisibleFileNodeIds(userId) {
+      try {
+        const root = await this.getUserRootNode(userId);
+        const rootId = root ? Number(root.id) : null;
+
+        const params = [];
+        const arms = [];
+        if (rootId != null) {
+          arms.push(
+            '(fn.id = ? OR EXISTS (SELECT 1 FROM node_ancestors oa WHERE oa.ancestor_id = ? AND oa.descendant_id = fn.id))'
+          );
+          params.push(rootId, rootId);
+        }
+        arms.push(
+          'EXISTS (SELECT 1 FROM permissions_user_paths p WHERE p.user_id = ? AND (p.file_node_id = fn.id OR EXISTS (SELECT 1 FROM node_ancestors pa WHERE pa.ancestor_id = p.file_node_id AND pa.descendant_id = fn.id)))'
+        );
+        params.push(Number(userId));
+        arms.push(
+          'EXISTS (SELECT 1 FROM permissions_user_files f WHERE f.user_id = ? AND f.file_node_id = fn.id)'
+        );
+        params.push(Number(userId));
+
+        const { rows } = await executor.query(
+          `SELECT fn.id
+             FROM file_nodes fn
+            WHERE fn.deleted_at IS NULL
+              AND (${arms.join(' OR ')})
+            ORDER BY fn.id`,
+          params
+        );
+        return rows.map((row) => Number(row.id));
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    /**
      * Random sample of at most n requester-visible live node ids
      * (searchService §2.5 — per-query dynamic-baseline corpus sample, P1).
      * Same visibility rule as searchNodesByName.

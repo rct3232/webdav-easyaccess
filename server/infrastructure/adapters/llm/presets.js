@@ -30,6 +30,7 @@ const EG2_PROFILE = {
   dim: 768,
   chPerTok: 1.5,
   thetaDup: 0.955,
+  deltaBase: 0.08,
   edgeCos: { tight: 0.86, mid: 0.8, loose: 0.72 },
   throughputDocsMin: null,
   calibrated: false,

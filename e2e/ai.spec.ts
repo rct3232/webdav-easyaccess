@@ -87,7 +87,7 @@ const WEA_MODEL_DIR = MODEL_DIR_ROOT;
  * this together with that landing (the staged block below then polls the
  * semantic section until the uploaded document appears).
  */
-const SCORING_LANDED = false;
+const SCORING_LANDED = true;
 
 /** Document body deliberately shares NO token with the uploaded file NAME. */
 const DOC_NAME_BASIS = `quarterly-summary-${Date.now()}.txt`;

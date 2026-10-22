@@ -69,6 +69,10 @@
  *   requester can read (own-root subtree ∪ path-granted subtrees ∪ point
  *   grants), `lower(name) LIKE lower('%q%')` whole-string containment,
  *   ordered `name` asc then `node_id` asc, capped by `opts.limit`.
+ * @property {(userId: number) => Promise<number[]>} listVisibleFileNodeIds
+ *   All live node ids visible to the requester (searchService §2.5a scorer
+ *   seam — the ACL anchoring set). Same visibility rule as
+ *   sampleVisibleNodeIds/searchNodesByName; no sampling, no limit.
  * @property {(userId: number, n: number) => Promise<number[]>} sampleVisibleNodeIds
  *   Random sample of at most n requester-visible live node ids (searchService
  *   §2.5 — per-query dynamic-baseline corpus sample, P1).

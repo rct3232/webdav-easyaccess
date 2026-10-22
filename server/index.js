@@ -349,12 +349,17 @@ async function runBoot() {
       const {
         createBootPresetFor,
         createBootProbeRole,
+        createPublishedMetadataFetcher,
       } = require('./infrastructure/llmBootWiring');
+      const bootPresetFor = createBootPresetFor(resolver);
       const llmAdapter = initLlmAdapter({
         configResolver: resolver,
         health: getBackendHealth(),
-        presetFor: createBootPresetFor(resolver),
+        presetFor: bootPresetFor,
         probeRole: createBootProbeRole(resolver),
+        fetchPublishedMetadata: createPublishedMetadataFetcher(resolver, {
+          presetFor: bootPresetFor,
+        }),
       });
       const { rows } = await llmAdapter.syncModelRegistry();
       // Initial capability probe (llmAdapter §2.4 — the startup probe is the

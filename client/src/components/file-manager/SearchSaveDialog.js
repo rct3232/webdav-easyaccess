@@ -36,8 +36,9 @@ const SearchSaveDialog = ({ open, term, rows, onClose, onConfirm }) => {
 
   if (!open) return null;
 
+  const totalCount = (rows || []).length;
   const sample = (rows || []).slice(0, SAMPLE_TILE_CAP);
-  const moreCount = Math.max((rows || []).length - sample.length, 0);
+  const moreCount = Math.max(totalCount - sample.length, 0);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -50,6 +51,14 @@ const SearchSaveDialog = ({ open, term, rows, onClose, onConfirm }) => {
             {term}
           </Typography>
         )}
+        <Typography
+          data-testid="search-save-member-count"
+          variant="body2"
+          color="text.secondary"
+          sx={{ mb: 1 }}
+        >
+          {t('dialogs.searchSaveMemberCount', { count: totalCount })}
+        </Typography>
         <Box
           data-testid="search-save-sample-grid"
           sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1 }}

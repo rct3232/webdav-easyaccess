@@ -422,6 +422,7 @@
     "seedCreateConfirm": "컬렉션 만들기",
     "seedPublishFailed": "미리보기를 불러오지 못했습니다. 다시 시도해 주세요.",
     "searchSaveTitle": "검색 결과를 컬렉션으로 저장",
+    "searchSaveMemberCount": "이 컬렉션에 파일 {{count}}개",
     "searchSaveConfirm": "컬렉션 저장"
   },
   "admin": {

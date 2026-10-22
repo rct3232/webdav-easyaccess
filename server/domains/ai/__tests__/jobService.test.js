@@ -155,6 +155,40 @@ describe('aiJobService worker (§2.3)', () => {
     await expect(runAsr.mock.calls[0][0].asrModelId()).resolves.toBe(8);
   });
 
+  test('drainPass runs the backfill drain behind the embed gate when a vectorStore is installed', async () => {
+    const runBackfill = jest.fn(async () => 1);
+    const vectorStore = { rebuildShadow: jest.fn() };
+    const svc = createAiJobService({
+      adapter: fakeAdapter(),
+      vectorStore,
+      jobTimeoutMs: 2500,
+      embedPipeline: { runPendingEmbedJobs: jest.fn(async () => 0) },
+      backfillPipeline: { runPendingBackfillJobs: runBackfill },
+      captionPipeline: { runPendingCaptionJobs: jest.fn(async () => 0) },
+      asrPipeline: { runPendingAsrJobs: jest.fn(async () => 0) },
+    });
+    await svc.drainPass();
+    expect(runBackfill).toHaveBeenCalledTimes(1);
+    expect(runBackfill.mock.calls[0][0]).toMatchObject({
+      vectorStore,
+      jobTimeoutMs: 2500,
+    });
+  });
+
+  test('drainPass parks backfill when no vectorStore is installed', async () => {
+    const runBackfill = jest.fn(async () => 0);
+    const svc = createAiJobService({
+      adapter: fakeAdapter(),
+      vectorStore: null,
+      embedPipeline: { runPendingEmbedJobs: jest.fn(async () => 0) },
+      backfillPipeline: { runPendingBackfillJobs: runBackfill },
+      captionPipeline: { runPendingCaptionJobs: jest.fn(async () => 0) },
+      asrPipeline: { runPendingAsrJobs: jest.fn(async () => 0) },
+    });
+    await svc.drainPass();
+    expect(runBackfill).not.toHaveBeenCalled();
+  });
+
   test('drainPass parks caption and asr independently when their roles are off', async () => {
     const runEmbed = jest.fn(async () => 0);
     const runCaption = jest.fn(async () => 0);

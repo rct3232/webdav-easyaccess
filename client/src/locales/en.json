@@ -422,6 +422,7 @@
     "seedCreateConfirm": "Create collection",
     "seedPreviewFailed": "Preview failed. Try again.",
     "searchSaveTitle": "Save results as a collection",
+    "searchSaveMemberCount": "{{count}} files in this collection",
     "searchSaveConfirm": "Save collection"
   },
   "admin": {

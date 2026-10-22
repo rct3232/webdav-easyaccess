@@ -18,12 +18,15 @@ function mapQueryParseRow(row) {
     }
   }
   if (!Array.isArray(predicates)) predicates = [];
+  // Boundary normalization (§6 — SQL → domain objects): the driver timestamp
+  // (pg Date / sqlite TEXT) maps to an ISO string in BOTH twins.
+  const createdAt = row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at ?? null;
   return {
     normalizedQuery: String(row.normalized_query),
     predicates,
     vector: row.vector ?? null,
     hitCount: Number(row.hit_count ?? 0),
-    createdAt: row.created_at,
+    createdAt,
   };
 }
 

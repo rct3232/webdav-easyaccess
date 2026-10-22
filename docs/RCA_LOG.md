@@ -1264,3 +1264,20 @@ Task: `feature/p1-a5-vectormath` (T1.4a vectorMath/extractors/TextVectorJs oracl
   unknown-extension files classify as the embed floor only (no `features`) — §2.2 keys
   `features` to the local-extractor class (pdf/docx/txt), and an unknown type is neither
   text nor media.
+
+## 2026-10-22 — QueryParsesRepository PG leg defects (Wave C orchestrator merge gate)
+
+- **Symptom**: `test:ci:pg:adapters` failed the QueryParsesRepository conformance suite —
+  (1) `row.createdAt` was a `Date` object instead of an ISO string, (2) the raw-row
+  `created_at` overwrite assertion compared two distinct `Date` objects with `toBe`.
+- **Diagnosis**: (1) the shared mapper passed `created_at` through raw — sqlite returns
+  TEXT (accidentally string), postgres returns a driver `Date`; the boundary-normalization
+  rule (§6 SQL→domain mapping) was applied to `predicates` but not to the timestamp.
+  (2) the conformance test asserted object identity on a dialect-representation-sensitive
+  raw column — unpassable on PG by construction.
+- **Classification**: (1) **Case A (Source Error)** — mapper fix in
+  `queryParsesShared.js` (Date → ISO string in both twins). (2) **Case B (Test Error)** —
+  the clause is instant equality, not object identity; the assertion now compares
+  `new Date(...).getTime()` with a comment stating the dialect rule.
+- **Verification**: `test:ci:pg:adapters` 30 suites / 426 pass green; sqlite conformance
+  leg green; no API-shape change (ISO string was already the sqlite-observed contract).

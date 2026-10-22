@@ -84,7 +84,9 @@ describe('QueryParsesRepository conformance', () => {
     const after = await readRow('overwrite me');
     expect(after.vector).toBe(second);
     expect(Number(after.hit_count)).toBe(Number(before.hit_count));
-    expect(after.created_at).toBe(before.created_at);
+    // Raw-row timestamps are dialect-representation-sensitive (pg Date vs
+    // sqlite TEXT): compare INSTANTS, not object identity.
+    expect(new Date(after.created_at).getTime()).toBe(new Date(before.created_at).getTime());
 
     const mapped = await repo.get('overwrite me');
     expect(mapped.vector).toBe(second);

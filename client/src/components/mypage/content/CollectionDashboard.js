@@ -203,6 +203,7 @@ const CollectionDashboard = ({ user, onNavigate, onUndo, onMessage, gateway }) =
   );
 
   const duplicates = dashboard?.duplicates;
+  const nearDuplicates = dashboard?.near_duplicates;
   const trash = dashboard?.trash;
   const suggestions = useMemo(
     () => (Array.isArray(dashboard?.suggestions) ? dashboard.suggestions : []),
@@ -229,7 +230,10 @@ const CollectionDashboard = ({ user, onNavigate, onUndo, onMessage, gateway }) =
   const grantedEntries = Object.entries(grants).filter(([, rows]) => rows.length > 0);
   const showCards =
     duplicates &&
-    (duplicates.group_count > 0 || (trash && trash.item_count > 0) || suggestions.length > 0);
+    (duplicates.group_count > 0 ||
+      (nearDuplicates && nearDuplicates.group_count > 0) ||
+      (trash && trash.item_count > 0) ||
+      suggestions.length > 0);
 
   if (!user) return null;
 
@@ -237,7 +241,8 @@ const CollectionDashboard = ({ user, onNavigate, onUndo, onMessage, gateway }) =
     <Box data-testid="collection-dashboard" sx={{ pb: 4 }}>
       {showCards ? (
         <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 3 }}>
-          {duplicates && duplicates.group_count > 0 ? (
+          {duplicates &&
+          (duplicates.group_count > 0 || (nearDuplicates && nearDuplicates.group_count > 0)) ? (
             <Card sx={{ flex: 1, minWidth: 160 }}>
               <CardActionArea
                 aria-label={t('mypage.hygieneDuplicates')}
@@ -252,6 +257,14 @@ const CollectionDashboard = ({ user, onNavigate, onUndo, onMessage, gateway }) =
                       size: formatFileSize(duplicates.reclaimable_bytes),
                     })}
                   </Typography>
+                  {nearDuplicates && nearDuplicates.group_count > 0 ? (
+                    <Typography variant="caption" color="text.secondary">
+                      {t('mypage.hygieneNearDuplicatesMeta', {
+                        groups: nearDuplicates.group_count,
+                        files: nearDuplicates.duplicate_count,
+                      })}
+                    </Typography>
+                  ) : null}
                 </Box>
               </CardActionArea>
             </Card>

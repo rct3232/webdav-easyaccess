@@ -377,8 +377,11 @@ section never renders for admins (§3.2 operator rule).
 
 Always **proposals** (they mutate files), shown as row chips and in the §4.16 checklist. Rule
 variant (LLM-free): temp patterns, stale screenshots, old installers, exact duplicates by content
-fingerprint **first** (cosine-1.0 detection is redundant). Vector variant: keeper among
-near-duplicate groups at **0.97** (edit variants sit just above, unrelated far below), plus "30 days unopened, low score"; **short-document exception** —
+fingerprint **first** (cosine-1.0 detection is redundant). Vector variant: near-duplicate groups
+at the ACTIVE embed model's profile `θ_dup` (EG2 reference set 0.955 —
+`docs/spec/server/infrastructure/llmPresets.md` §2.3; hash-twin members are excluded from the
+vector pass entirely), with keeper selection ("30 days unopened, low score") among the grouped
+members; **short-document exception** —
 sentence-or-less files skip similarity near-dup and use the hash path. Dismiss is per row;
 unaccepted expire with retention; accepting is checked → trash as one undoable command — the
 checkbox _is_ the confirmation.

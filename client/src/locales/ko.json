@@ -841,6 +841,7 @@
     "storage": "스토리지",
     "hygieneDuplicates": "완전 중복 파일",
     "hygieneDuplicatesMeta": "그룹 {{groups}}개 · 파일 {{files}}개 · {{size}} 정리 가능",
+    "hygieneNearDuplicatesMeta": "유사 중복: 그룹 {{groups}}개 · 파일 {{files}}개",
     "hygieneTrash": "휴지통",
     "hygieneTrashMeta": "{{count}}개 항목 · {{size}}",
     "trashRetention": "약 {{days}}일 후 영구 삭제",
@@ -884,7 +885,8 @@
     "suggestionsEmpty": "정리할 항목이 없습니다.",
     "suggestionsExpiryNote": "수용하지 않은 제안은 만료 시까지 보관됩니다.",
     "suggestionsReason": {
-      "ExactDup": "완전 중복"
+      "ExactDup": "완전 중복",
+      "NearDup": "유사 중복"
     },
     "suggestionsTrashed": "휴지통으로 {{count}}개 항목 이동",
     "capacityTitle": "저장소 추이"

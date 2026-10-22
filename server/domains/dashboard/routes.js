@@ -28,6 +28,16 @@ function serializeSummary(result) {
       duplicate_count: result.duplicates.duplicateCount,
       reclaimable_bytes: result.duplicates.reclaimableBytes,
     },
+    // vector near-dup block: present ONLY when the leg is available
+    // (nearDupFinderService degrade — absent section, never an error)
+    ...(result.nearDuplicates
+      ? {
+          near_duplicates: {
+            group_count: result.nearDuplicates.groupCount,
+            duplicate_count: result.nearDuplicates.duplicateCount,
+          },
+        }
+      : {}),
     suggestions: result.suggestions.map(serializeSuggestion),
     trash: {
       item_count: result.trash.itemCount,

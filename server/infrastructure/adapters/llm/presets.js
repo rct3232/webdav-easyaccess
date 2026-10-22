@@ -29,6 +29,7 @@ const KIT_PATH = path.join(__dirname, 'eg2-reference-kit.json');
 const EG2_PROFILE = {
   dim: 768,
   chPerTok: 1.5,
+  thetaDup: 0.955,
   edgeCos: { tight: 0.86, mid: 0.8, loose: 0.72 },
   throughputDocsMin: null,
   calibrated: false,
@@ -121,6 +122,7 @@ const LLM_PRESETS = deepFreeze([
     profile: {
       dim: null,
       chPerTok: 1.7,
+      thetaDup: null,
       edgeCos: { tight: null, mid: null, loose: null },
       throughputDocsMin: null,
       calibrated: false,

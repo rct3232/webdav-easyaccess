@@ -56,6 +56,7 @@ Target-contract spec.
  },
  profile: { // model profile — release artifact
  dim, chPerTok, // chars→token safety factor
+ thetaDup, // near-dup grouping threshold (§4.17 vector variant); consumers read it HERE, never hardcode it
  edgeCos: { tight, mid, loose }, // kNN tier edges
  throughputDocsMin, calibrated: false, // provenance flag (always false in-product)
  // server-shape flags — probe-verified contract properties (llmAdapter.md §2.4).
@@ -196,6 +197,11 @@ feature-degradation matrix (manual
 collections, rules, dups-by-hash, name search) — no half-AI state exists. Distinct from
 DB vector capability: missing LLM capability REMOVES a feature; missing DB vector
 capability only degrades SPEED (fallback) — never both ways.
+
+**`profile.thetaDup` consumption rule:** the near-dup finder reads θ_dup from the ACTIVE
+embed model's resolved profile row (`nearDupFinderService.md` §2.2) — no call site
+hardcodes the threshold; a profile without a finite `thetaDup` degrades the vector
+near-dup block to its absent state (§4.12).
 **There is no embed fallback chain (model pin):** built-in provisioning failure ⇒ caps OFF;
 external conformance failure ⇒ embed role OFF with reason. Neither silently substitutes
 another model — the absence itself is the honest state (same stance as §4.23.2 media caps).

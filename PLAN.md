@@ -2092,3 +2092,26 @@ eslint/prettier clean on the changed surface.
 backfill action (the executor now exists); T4.3 media hermetic E2E + degradation matrix;
 the pre-existing admin-reports test failure; the retrieval scratch-stack boot issue
 (`:5453` / S3 bind) noted in §28.8.
+
+### 28.10 Admin-reports retention moved to the maintenance scheduler (2026-10-23)
+
+The last pre-existing gate failure was root-caused to the **write path**: every
+successful `admin_reports` insert ran a retention DELETE, so the cleanup parity test's
+old fixture row (and, in production, arbitrary historical rows) could be removed by an
+unrelated report write. The fix is structural, not an assertion tweak:
+
+- **Writer is append-only.** `createAdminReportsWriter` no longer accepts/executes a
+  prune seam; `writeReport` only inserts.
+- **Retention is a maintenance job.** `runAdminReportsRetention` (bounded
+  `ADMIN_REPORTS_RETENTION_BATCH`=1000 batches, `admin-reports-retention` lock,
+  `retention_off`/`locked` skips, hot `ADMIN_REPORTS_RETENTION_DAYS`) +
+  `startAdminReportsRetentionScheduler` (`ADMIN_REPORTS_RETENTION_INTERVAL_MS`=24h,
+  `WEA_SKIP_ADMIN_REPORTS_RETENTION`). Boot runs one pass; the timer covers steady state.
+- **Repository:** `deleteReportsOlderThan(cutoff, { limit })` on both twins + facade
+  (sqlite/PG conformance includes the bounded batch).
+- **Docs:** admin.md §2.2.6, maintenanceScheduler.md §3.4, configRegistry rows.
+
+Gates on the merged tip: server `jest --ci` **173 suites / 2977 tests pass (28 skipped),
+0 failed** (the previously failing `reports.test.js` cleanup parity now passes with the
+original assertion); PG `AdminReportsRepository.conformance` **12/12**; docsStatePurity
+3/3; prettier/eslint clean. Client is unchanged by this refactor.

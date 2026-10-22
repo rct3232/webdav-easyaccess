@@ -43,16 +43,35 @@ future layer's job) — sending it never changes the response.
    switch) — false ⇒ response omits `semantic`, `semantic_available:false`,
    `semantic_unavailable_reason:"serverErrors.ai.notConfigured"`; done (name section
    intact, 200).
-4. **Query embed :** `llmAdapter.embedQuery(normalizedQuery)` — the ONLY request-path
-   AI call in the system; results cached —
-   the cache IS the `query_parses` row: the `result_ref` replay signature is its PK
-   (the normalized query is the primary key; no separate cache table); the ADDITIVE nullable column `vector TEXT` holds the serialized query
-   embedding (model-keyed inside the signature's space component); the `predicates`
-   column is reserved for NL-parse output. DDL ships in `001_initial_normalized_schema.sql`. On ANY
-   provider failure/timeout/mid-switch error ⇒ degrade honestly: empty semantic section
+4. **Query embed :** `llmAdapter.embedQuery(text)` — the ONLY request-path AI call in
+   the system. The `query_parses` cache is OWNED BY THIS LEG (the adapter call is the
+   raw provider embed — llmAdapter.md §2.2): get-or-embed keyed by the NORMALIZED
+   TEXT — `query_parses.normalized_query` IS the primary key (no separate cache
+   table; the `result_ref` signature is derivable from the row, not its key). DDL
+   ships in `001_initial_normalized_schema.sql`. Row contract:
+   - `vector TEXT` holds a JSON envelope `{ space, dim, v }` — the serialized query
+     embedding plus the E-space identity (§2.4) it was produced in. A row is a cache
+     HIT only when the envelope parses AND its `space` equals the CURRENT space
+     identity; any other shape or model ⇒ MISS: re-embed and overwrite `vector`
+     (`hit_count` is not incremented by a write).
+   - Cache HIT ⇒ `hit_count` incremented by 1, the stored vector reused, ZERO
+     provider calls.
+   - `predicates` is RESERVED for NL-parse output — this stage always stores `[]`.
+   - Space identity resolution is deterministic and provider-call-free: the ACTIVE
+     embed registry row id (`llmModelsStore.getActiveByRole('embed')`) when present;
+     otherwise the embedded lock identity `repo@revision`
+     (`provisioner.loadLock()`); otherwise the empty string. When the embed call
+     reports a DIFFERENT model id than the resolved identity (mid-switch) ⇒ degrade
+     honestly (below).
+   Segments reuse the SAME cached path with their own normalized segment text
+   (§2.3 step 5); the ≤3 cap flag is set from the segment count regardless of the
+   scoring outcome. On ANY provider failure/timeout/mid-switch error ⇒ degrade
+   honestly: empty semantic section
 
 - `semantic_available:true` retained (config IS present) but `counts.semantic:0` —
   never a 5xx (a mid-switch config failure degrades honestly, never surfaces as error).
+  A failed cache READ/WRITE degrades the same way (the cache is an optimization, not
+  a correctness dependency).
 
 5. **Segment-AND:** split the ORIGINAL query on whitespace; ≤3 segments (more ⇒ first 3
    used + `counts.semantic_capped_segments:true`). Each segment is embedded through the
@@ -68,11 +87,16 @@ future layer's job) — sending it never changes the response.
    score. Keep results only if top candidate score ≥ `spread + δ_base`; otherwise return
    the section HONESTLY EMPTY (an honestly empty section beats a wrong one on nonsense queries). `δ_base` ships in the model profile — release-measured value;
    there are NO absolute stored floors anywhere (absolute-θ gates are banned).
-7. **Assembly + dedup:** `semantic` ordered score desc then `node_id` asc, cap 50;
+7. **Assembly + dedup:** `semantic` ordered score desc then `node_id` asc, cap 50
+   (`SEARCH_SEMANTIC_LIMIT`);
    entries already present in `name_matches` are REMOVED from `semantic` display;
    `counts.total` = post-dedup displayed rows. Section order in the response is fixed
    (name first) — "no results in section 1 → show only section 2" is a pure client
-   display rule on the returned arrays.
+   display rule on the returned arrays. Wire presence rules (routes/search.md §2.4):
+   the `semantic` key and the `semantic_capped_segments` flag are present whenever
+   the gate let the leg run (an honestly EMPTY leg returns `"semantic": []` — absence
+   and honest emptiness are distinct wire states); the gate kept the leg off ⇒ both
+   are omitted with the §2.3 step-3 degrade shape.
 8. **Usage logging:** one `usage_events` row `action='search_hit'` per RETURNED node
    (both sections; low-frequency endpoints only — never directory listings, the write-amplification guard) — fire-and-forget post-response.
 
@@ -86,14 +110,18 @@ future layer's job) — sending it never changes the response.
   serialize `""` and are reserved-additive for future conversational deltas); `vector-query` = the
   embedded query text (normalized) or `""` when the semantic leg did not run; `space` =
   `v1|model:{embedModelId}` (the E-space key — a model change MUST change the signature,
-  replay in a new space is meaningless); `sort` = the stable section-order+caps version.
+  replay in a new space is meaningless). The model component follows the §2.3 step-4
+  identity chain (registry row id, else the `repo@revision` lock fallback, else empty);
+  when the leg did NOT run the whole space stays the P0 empty-model form `v1|model:`
+  (deterministic and replay-stable); `sort` = the stable section-order+caps version.
 - Determinism: same inputs ⇒ same `result_ref` (no timestamps, no random seeds — the
   baseline sample is execution noise and deliberately NOT signature material; replay
   re-samples). **Replay is the contract:** the reference resolves by RE-RUNNING the
   signature under CURRENT ACL at future execution time (stored id-snapshot variants:
   rejected — a frozen id list would keep past-ACL-revoked or purged nodes addressable); an "of those…" follow-up =
   `rerun(sig) ∩ new-execution`. Cost is bounded by the vectorStore candidate caps.
-- The signature doubles as the `query_parses` cache key (no separate table).
+- The signature doubles as the `query_parses` cache row's space material (the row's
+  primary key is the normalized query text — §2.3 step 4).
   "those photos" pronominal binding, delta semantics, `$ref` intersections: FUTURE
   conversational layer (utterance-merge rules) — this service only guarantees the emitted string is
   replay-derivable from its own content.
@@ -106,6 +134,35 @@ future layer's job) — sending it never changes the response.
 | `FileNodeRepository.sampleVisibleNodeIds(userId, n)`           | same                                                 | baseline corpus sample               |
 | `vectorStore.neighbors(vec, k, candidates)`                    | [vectorStore](../infrastructure/vectorStore.md) §2.3 | max-over-chunks per-segment scoring  |
 | `query_parses` repository                                      | `docs/features/collections-platform.md` §5           | signature-keyed embed/parse cache    |
+
+### 2.5a The semantic scoring seam (steps 5–6 behind one boundary)
+
+The scoring leg is ONE injectable factory option:
+
+```
+semanticScorer({ userId, queryVec, segmentVecs, sampleFn })
+  → Array<{ nodeId, score }>   // score float 0–1
+```
+
+- `userId` — the requester; the ACL anchor. The scorer scopes EVERY vector
+  operation to the requester's visible set (the `vectorStore.neighbors`
+  `candidates` argument / the engine's userScope resolution) — a node the
+  requester cannot read never reaches a score.
+- `queryVec` — the cached full-query embedding (§2.3 step 4).
+- `segmentVecs` — the ≤3 cached segment embeddings, positional (MIN-across-
+  segments input; single-segment queries keep the degenerate form).
+- `sampleFn(n)` — async; a random sample of at most `n` requester-visible live
+  node ids (`FileNodeRepository.sampleVisibleNodeIds`) — the dynamic-baseline
+  input; excluding the candidate set is the scorer's job (the baseline sample
+  must not contain the true top candidate).
+- The scorer OWNS the baseline gate: the `δ_base` margin over the sample's
+  spread comes from the model profile; an ungated result is a spec violation.
+- The service consumes the returned rows unchanged through steps 7–8 (order,
+  dedup, cap, usage logging) — it never rescores.
+
+No scorer injected ⇒ the leg cannot score: the semantic section is returned
+HONESTLY EMPTY (`semantic_available:true`, `counts.semantic:0`) whenever the
+§2.3 step-3 gate passed. Scores are never fabricated anywhere on this path.
 
 ### 2.6 Save-to-collection boundary
 
@@ -173,7 +230,14 @@ vectorStore invariant break) — provider failure is a DEGRADATION, not a `fail`
       signature; model id change flips the `space` component (signature changes); request
       `result_ref` accepted and provably ignored (same shape, fresh signature)
 - [ ] Same query twice: second call served from `query_parses` signature cache (fake
-      adapter call count = 1)
+      adapter call count = 1), and the cache row's `hit_count` grew by exactly 1
+- [ ] embed configured with no scoring seam ⇒ 200, `semantic` key PRESENT but empty
+      (`[]`), `semantic_available:true`, `semantic_capped_segments` present — the
+      absent-vs-honestly-empty distinction is observable on the wire
+- [ ] Cache-row envelope from a different space (model change) ⇒ MISS: re-embed,
+      `vector` overwritten, provider called again
+- [ ] Provider failure with the role configured ⇒ `semantic` present-but-empty,
+      `semantic_available:true`, name section + `counts.total` unchanged, NO 5xx
 - [ ] `usage_events` `search_hit` rows: exactly one per returned node, none for
       deduplicated-away or truncated rows
 - [ ] Response fields snake_case; scores 0–1 rounded 2-dec; empty query 400, >200 chars 400

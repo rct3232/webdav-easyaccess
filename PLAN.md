@@ -1294,12 +1294,12 @@ PLAN.md (§24 standing rule). Unit sizes: S ≤1d, M ≈2–3d, L ≈4d+. Split 
 single-owner files (DDL/manifests) are touched by exactly one unit per wave; every unit
 keeps its own worktree branch (`wt-*` idiom) and targeted-gate evidence in the ledger.
 
-| Wave | Units (parallel)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Deps                               | RED-first targets                                                                                                                                                                                                                                                                   |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A    | A1 (T1.2a) repos `llm_models`/`ai_jobs`/`ai_usage_daily` + restart-survival (M) ∥ A2 (T1.2b) repos `embeddings`/`embeddings_chunk`/`ai_enrichments` (M) ∥ A3 (T1.0a) `model.lock.json`+`provision.js`+embedded client+`preparing` producer (L) ∥ A4 (T1.0b) dead tag-surface purge (S) ∥ A5 (T1.4a) `vectorMath`+extractors+`TextVectorJs` oracle (M) → A6 (T1.4b-pg) pgvector adapter (M) ∥ A7 (T1.4b-vec0) vec0 adapter+ACL helper (M)                                                                   | none (roots; A6/A7 after A5)       | A3: posture scenarios ×5 (setup-mode zero-egress / remote-active defer / override-clear in-place / `WEA_MODEL_DIR` idempotent / sha256-fail caps-off); A4: aiTagStore §2.6 grep assertions flipped to absence; A5: exact≡oracle; A6/A7: recall@50≥0.99 @ef400 held-out queries only |
+| Wave | Units (parallel)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Deps                               | RED-first targets                                                                                                                                                                                                                                                                                                                                          |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A    | A1 (T1.2a) repos `llm_models`/`ai_jobs`/`ai_usage_daily` + restart-survival (M) ∥ A2 (T1.2b) repos `embeddings`/`embeddings_chunk`/`ai_enrichments` (M) ∥ A3 (T1.0a) `model.lock.json`+`provision.js`+embedded client+`preparing` producer (L) ∥ A4 (T1.0b) dead tag-surface purge (S) ∥ A5 (T1.4a) `vectorMath`+extractors+`TextVectorJs` oracle (M) → A6 (T1.4b-pg) pgvector adapter (M) ∥ A7 (T1.4b-vec0) vec0 adapter+ACL helper (M)                                                                   | none (roots; A6/A7 after A5)       | A3: posture scenarios ×5 (setup-mode zero-egress / remote-active defer / override-clear in-place / `WEA_MODEL_DIR` idempotent / sha256-fail caps-off); A4: aiTagStore §2.6 grep assertions flipped to absence; A5: exact≡oracle; A6/A7: recall@50≥0.99 @ef400 held-out queries only                                                                        |
 | B    | B1 (T1.1a) `presets.js`+probe matrix ∥ B2 (T1.1b) adapter core (per-call resolution, `roleConfigured`, budget chain, breaker, usage) → B3 (T1.1c) wizard AI step (chat/vision/asr) + 5-state admin display ∥ B4 (T1.3a) worker core (`claimNext({excludeKinds})` — aiJobsStore.md §2.3 gains the row at this docs step; backoff; park&drain) → B5 (T1.3b) embed pipelines (chunk-pool ladder → embeddings/embeddings_chunk) ∥ B6 (T1.3c) §4.1 hooks ×4 + `content_hash` write-side (register (b) absorbed) | A; B3←B1,B2; B5←B4+A2+A5; B6←B4+A1 | B1: declared≠probed ⇒ capability off+warning, τ=0.90 kit + dim==768; B2: hot re-probe restart-free, breaker 5-fail→OPEN 300s; B4: excludeKinds park (zero attempt inflation), backoff `min(30s·2ⁿ,30min)`; B6: 4 seam enqueues + hash population — **audit-remediated**: exactly 4 seams, decision table hook, restore re-hash (see Wave B remaining note) |
-| C    | C1 (T1.5a) query-embed + `query_parses` cache + response shape + honest degrade → C2 (T1.5b) scorer (segment-AND min, max-over-chunks, dynamic baseline gate) → C3 (T1.5c) client zone C activation ∥ C4 (T1.7) vector near-dup + dashboard feed                                                                                                                                                                                                                                                           | B                                  | `sr1.` result_ref signature; absent vs honestly-empty distinction; per-query dynamic baseline gate; dedup vs name section; cap 50                                                                                                                                                   |
-| D    | D1 (T1.6) seed collections (preview+confirm+`llmNamer` swap) ∥ D2 (T1.9a) media capability probes+positive controls → D3 (T1.9b) media embed pipelines (audio `min(ub/25 s,327s)` windows / 1 fps frame sampling / image single / `media_direct`) → D4 (T1.9c) V2 caption fallback + backfill scope                                                                                                                                                                                                        | B (+C4 corpus)                     | formulas cited, never a literal "19 s"; D2: content-wrapper shape / re-encode band / base64-as-text diverges / pooling match                                                                                                                                                        |
+| C    | C1 (T1.5a) query-embed + `query_parses` cache + response shape + honest degrade → C2 (T1.5b) scorer (segment-AND min, max-over-chunks, dynamic baseline gate) → C3 (T1.5c) client zone C activation ∥ C4 (T1.7) vector near-dup + dashboard feed                                                                                                                                                                                                                                                           | B                                  | `sr1.` result_ref signature; absent vs honestly-empty distinction; per-query dynamic baseline gate; dedup vs name section; cap 50                                                                                                                                                                                                                          |
+| D    | D1 (T1.6) seed collections (preview+confirm+`llmNamer` swap) ∥ D2 (T1.9a) media capability probes+positive controls → D3 (T1.9b) media embed pipelines (audio `min(ub/25 s,327s)` windows / 1 fps frame sampling / image single / `media_direct`) → D4 (T1.9c) V2 caption fallback + backfill scope                                                                                                                                                                                                        | B (+C4 corpus)                     | formulas cited, never a literal "19 s"; D2: content-wrapper shape / re-encode band / base64-as-text diverges / pooling match                                                                                                                                                                                                                               |
 
 Exit gate: orchestrator `server/index.js` integration + full server/client `test:ci` +
 `test:ci:pg:adapters` + CI grep-gates (zero `CacheAdapter|operationProgress` in
@@ -1384,7 +1384,7 @@ decision record merged after the ledger was written); all Wave A branches cut fr
 - **A3 (T1.0a) `[done]` — merged into `ai-feature` (orchestrator merge `86598ba`).**
   Branch `feature/p1-a3-provision`, base `aafabd2`. Scope:
   `server/infrastructure/adapters/llm/{model.lock.json, provision.js,
-  clients/embedded-onnx.js}` + backendHealth `preparing/phase/progress`
+clients/embedded-onnx.js}` + backendHealth `preparing/phase/progress`
   producer + posture×7 & lock/preparing test suites + `@huggingface/transformers`
   dep + docs (llmPresets/llmAdapter/configRegistry/config-source-resolution).
   RED: 15 failing / 2 passing → GREEN: provision suites 17/17 (5 posture
@@ -1491,17 +1491,17 @@ decision record merged after the ledger was written); all Wave A branches cut fr
      catch columns missing on a table created by an even older DDL
      generation). Resolved by dropping the schema and letting the leg
      re-apply 001; columns verified present. No code change.
-  Final gates: server `test:ci` 148 suites / 2647 pass (27 skip) green;
-  client `test:ci` 180 suites / 2064 pass green; `test:ci:pg:adapters`
-  29 suites / 415 pass (1 skip) green; `test:ci:pg:vector` 22/22 green;
-  grep-gates clean (zero `CacheAdapter|operationProgress` in runtime code —
-  the one service.js hit is a documentary comment stating the invariant;
-  zero `tag_embeddings|tag_parents|getTagVectors|upsertAutoParent` outside
-  the DDL-parity enumeration tests); docsStatePurity green. **Wave A
-  complete: A1–A7 all merged. Wave B (B1–B6) may start.**
-  Standing flag carried forward: `llm_models.dim` does not exist (B2's
-  `syncModelRegistry` dim persistence needs an owner decision at the B2
-  docs step).
+     Final gates: server `test:ci` 148 suites / 2647 pass (27 skip) green;
+     client `test:ci` 180 suites / 2064 pass green; `test:ci:pg:adapters`
+     29 suites / 415 pass (1 skip) green; `test:ci:pg:vector` 22/22 green;
+     grep-gates clean (zero `CacheAdapter|operationProgress` in runtime code —
+     the one service.js hit is a documentary comment stating the invariant;
+     zero `tag_embeddings|tag_parents|getTagVectors|upsertAutoParent` outside
+     the DDL-parity enumeration tests); docsStatePurity green. **Wave A
+     complete: A1–A7 all merged. Wave B (B1–B6) may start.**
+     Standing flag carried forward: `llm_models.dim` does not exist (B2's
+     `syncModelRegistry` dim persistence needs an owner decision at the B2
+     docs step).
 
 ### Wave B execution log (2026-10-21 — orchestrator; base `efe649b`)
 
@@ -1630,3 +1630,76 @@ profile + per-row persistence on `embeddings.dim`/`embeddings_chunk.dim`).
   carried a latent JS-`None` ReferenceError and overlapped 4 B6 files). Wave
   A + Wave B complete on `ai-feature`; Wave C (C1 query-embed → C2 scorer →
   C3 client activation ∥ C4 near-dup) is the next entry.
+
+### Wave C execution log (2026-10-22 — orchestrator)
+
+Pre-wave orchestrator integration (base commit `9ae8189`, full server test:ci
+155 suites / 2766 pass green before dispatch): Wave B left three specced boot
+call sites unwired — (a) bootSequence §2 step 8b provisioning in
+`server/index.js` (setup-mode zero-egress / remote-override defer / built-in
+blocking attempt with warn-only caps-off failure); (b) the llmAdapter runtime
+singleton `server/infrastructure/llmAdapterRuntime.js` (`getLlmAdapter()`,
+getMigrationGate idiom) + boot wiring of `presetFor`/`probeRole` seams
+(`server/infrastructure/llmBootWiring.js`) + `syncModelRegistry()`; (c) the
+aiJobService §2.3 worker loop `server/domains/ai/jobService.js`
+(`startAiWorker`/`stopAiWorker`, WEA_SKIP_AI_WORKER seam, stale reap, role-gate
+parking, hot T2 poll interval, production `readNodeText` =
+blobStorageService.downloadBlob + documentText.extractText with
+unextractableText ⇒ null skip) + the §2.3 step 5 per-job wall clock
+(AI_JOB_TIMEOUT_MS race in pipelines/embed.js; late markDone stays a
+{changes:0} no-op) + T2 keys AI_WORKER_POLL_MS/AI_WORKER_CONCURRENCY/
+AI_JOB_STALE_MS/AI_JOB_TIMEOUT_MS registered (+ configRegistry.md rows). Also
+`5e5a3f6`: the uncommitted aiJobService.md draft landed state-only (hook
+signature `onNodeContentCommitted(nodeId, contentHash)`; NULL-hash never-skip
+rule; provenance in AI_FEATURE_PLAN §12.13). Worktree hygiene: Wave B
+worktrees/branches removed; E2E-AI-001 pre-seed located at
+`/tmp/opencode/delta-base/models` (482MB, lock revision `daa72c51…`).
+
+- **C1 (T1.5a) `[done]` — merged (`f655416`).** Branch
+  `feature/p1-c1-query-embed`, base `9ae8189`. Commits: docs `5b8f906` → RED
+  `2611422` (13 failing + QueryParses conformance module-absent) → feat
+  `9e16044` → fix `e46620e` (provisioner installs/verifies the nested
+  `<modelDir>/<repo>/<revision>` tree the ONNX client reads + E2E-AI-001
+  scratch wiring on :5016) → `805c68c` (worker drain wiring: activeModelId +
+  fileNodesStore factory + adapter typed-vector normalization). Scope:
+  query_parses get-or-embed cache (QueryParsesRepository interface + sqlite/pg
+  twins + conformance + facade; JSON envelope vector `{space, dim, v}`;
+  hit_count on cache hits only; predicates reserved `[]`), honest degrade
+  matrix (gate-off ⇒ `semantic` omitted + `semantic_unavailable_reason`; the
+  leg ran ⇒ `semantic_available:true` retained even on provider failure —
+  absent vs honestly-empty distinction), scorer seam §2.5a
+  (`semanticScorer({userId, queryVec, segmentVecs, sampleFn})` — scoring leg
+  C2-owned, no scorer ⇒ honestly empty), assembly/dedup/cap
+  (SEARCH_SEMANTIC_LIMIT 50), result_ref `sr1.` space-identity chain
+  (registry row id → repo@revision lock fallback), search_hit logging for
+  semantic returned nodes, registry keys SEARCH_SEMANTIC_LIMIT/
+  BASELINE_SAMPLE_DOCS. E2E-AI-001 (`e2e/ai.spec.ts`, `ai` project on :5016,
+  WEA_MODEL_DIR pre-seed): green ×2 consecutively (first search 5.0 s real
+  EG2 embeds, replay 0.8 s cache hits). Gates: server test:ci 156 suites /
+  2792 pass; eslint/prettier clean; docsStatePurity 3/3. C1 fixes landed
+  en-route (B-owner review welcome): provisioner flat-tree vs nested-tree
+  mismatch; worker never claimed (activeModelId missing); readNodeText store
+  factory; the pre-seed dir was missing 4 small lock files (fetched from the
+  pinned revision; all 13 sha256-verify).
+- **C4 (T1.7) `[done]` — merged (`1deeadd`).** Branch `feature/p1-c4-near-dup`,
+  base `9ae8189`, files disjoint from C1 (clean merges both). Commits: docs
+  `a160cb3` → RED `298ab0c` → feat `f9a6804` → refactor `8e64a00` → style
+  `764b5f8` → dashboard render `a02c1e5` → prettier sweep `af9d4d0`. Scope:
+  `server/domains/ai/nearDupFinderService.js` (vector near-dup over canonical
+  pooled embeddings; θ_dup read from `presets.profile.thetaDup` — field added
+  to EG2_PROFILE per the llmPresets numbers row; hash-first precedence — exact
+  content_hash dups never surface; union-find components; keep rule = smallest
+  node id; ACL-scoped; honest degrade with no embeddings) + dashboard feed
+  (GET /api/dashboard near-dup block + CollectionDashboard render). Gates:
+  server test:ci 156 suites / 2804 pass; client 182 suites / 2080 pass;
+  eslint/prettier clean; docsStatePurity 3/3.
+- **Orchestrator merge-gate fixes**: `33ed33c` provisioner default HF fetcher
+  (boot/in-place triggers without a fetcher could never complete the download
+  — posture 6 test added, 8/8); `985b476`+`2bc31e1` query_parses boundary
+  timestamp normalization (pg Date → ISO string in both twins) + conformance
+  instant-compare (Case B; RCA-logged 2026-10-22). **Merge gates (tip
+  `2bc31e1`)**: server test:ci **157 suites / 2812 pass**; client test:ci
+  **182 suites / 2080 pass**; `test:ci:pg:adapters` **30 suites / 426 pass**;
+  `test:ci:pg:vector` **22/22** — all green. C1/C4 worktrees + branches
+  removed. **Remaining**: C2 (scorer, in flight), C3 (client zone C), Wave C
+  exit gate (E2E re-run on the merged tip + grep-gates + ledger).

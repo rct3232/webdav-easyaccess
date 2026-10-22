@@ -2064,3 +2064,31 @@ until a release measurement replaces it; the remote dialect client is OpenAI-com
 (llama.cpp presets) — Ollama/other dialect presets are not shipped; media E2E/degradation
 matrix remains T4.3. The pre-existing admin-reports parity failure and the retrieval
 scratch-stack boot issue are recorded here, not fixed by this wave.
+
+### 28.9 Residual closure (2026-10-22) — C10
+
+The P2/P3 audit items still assigned to later units were pulled forward and closed on
+`fix/p1-c10-residuals` (merge `edc3ac8`):
+
+- **B-2** published-metadata budget step 2 — `createPublishedMetadataFetcher` in
+  `llmBootWiring.js` (free `/v1/models`, `/props`, Ollama `/api/show`; TTL cache;
+  errors ⇒ null), injected at boot.
+- **B-4** backfill executor — `pipelines/backfill.js` (`rebuildShadow()` per claimed
+  driver, no provider calls/enqueues, failure ⇒ backoff), drained behind the embed gate
+  only when a vectorStore is installed; `features` remains the only parked kind.
+- **B-6** boot wiring tests — `llmBootWiring.test.js` (preset/probe delegation + metadata
+  fetcher GET paths/cache/error handling).
+- **C-4** save-dialog total member count (`search-save-member-count`, en/ko) alongside the
+  existing overflow counter.
+- **C-5** `docs/spec/server/store/queryParsesStore.md` + searchService/TESTING_STRATEGY links.
+
+**Final gates (tip `edc3ac8`):** server `jest --ci` **171 suites / 2974 pass (28 skipped),
+1 pre-existing failure** (`reports.test.js` cleanup-row parity, reproduced on base);
+client **183 / 2102**; `test:ci:pg:adapters` **30 / 432 (1 skip)**; `test:ci:pg:vector`
+**22 / 22**; E2E `ai-desktop` **1 / 1** (1.8 m, rerun after C10); docsStatePurity green;
+eslint/prettier clean on the changed surface.
+
+**Still outside this wave (unchanged ownership):** T4.1 admin launcher/rate limit for the
+backfill action (the executor now exists); T4.3 media hermetic E2E + degradation matrix;
+the pre-existing admin-reports test failure; the retrieval scratch-stack boot issue
+(`:5453` / S3 bind) noted in §28.8.

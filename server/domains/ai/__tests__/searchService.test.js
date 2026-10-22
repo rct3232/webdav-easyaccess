@@ -327,6 +327,26 @@ describe('searchService semantic leg — degrade matrix', () => {
     expect(result.semantic).toEqual([]);
     expect(result.semanticAvailable).toBe(true);
   });
+
+  it('typed-array adapter vectors (Float32Array) are normalized into the cache envelope', async () => {
+    const ctx = await createUserWithRoot();
+    await fileNodeService.createFile(ctx.root.id, 'typed-vec.txt');
+    const f32 = new Float32Array([1, 0, 0, 0]);
+    const adapter = {
+      roleConfigured: async (role) => role === 'embed',
+      embedQuery: async () => ({ vectors: [f32], dim: 4, modelId: 7 }),
+    };
+    const service = createC1Service({ adapter });
+
+    const result = await service.search(ctx.user.id, { query: 'typed' });
+
+    expect(result.semanticAvailable).toBe(true);
+    const { rows } = await dbQuery('SELECT vector FROM query_parses WHERE normalized_query = ?', [
+      'typed',
+    ]);
+    const envelope = JSON.parse(rows[0].vector);
+    expect(envelope.v).toEqual([1, 0, 0, 0]);
+  });
 });
 
 // ---------------------------------------------------------------------------

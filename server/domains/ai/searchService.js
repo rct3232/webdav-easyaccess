@@ -78,6 +78,7 @@ const SIGNATURE_SPACE = 'v1|model:';
  */
 function createSearchService(opts = {}) {
   const { fileNodesStore, usageService, configResolver, semanticScorer } = opts;
+  const log = opts.log || { warn: console.warn.bind(console) };
 
   const hasInjectedAdapter = 'llmAdapter' in opts;
   const injectedAdapter = opts.llmAdapter;
@@ -264,8 +265,12 @@ function createSearchService(opts = {}) {
     }
 
     const result = await adapter.embedQuery(text);
-    const vector = result && Array.isArray(result.vectors) ? result.vectors[0] : null;
-    if (!Array.isArray(vector) || vector.length === 0) {
+    // The adapter may hand back typed vectors (Float32Array) — normalize to a
+    // plain finite-number array here: it is the cache-envelope wire shape AND
+    // the scorer seam's input contract.
+    const raw = result && result.vectors && result.vectors[0];
+    const vector = raw ? Array.from(raw, Number) : [];
+    if (vector.length === 0 || !vector.every((x) => Number.isFinite(x))) {
       throw new Error('embed adapter returned no query vector');
     }
     if (registryId != null && result.modelId != null && Number(result.modelId) !== registryId) {
@@ -359,9 +364,11 @@ function createSearchService(opts = {}) {
         );
       }
       return { ran: true, cappedSegments, scored, space };
-    } catch {
+    } catch (err) {
       // §2.3 step 4 degrade: provider failure / timeout / mid-switch /
-      // scorer failure ⇒ honestly empty section on a 200.
+      // scorer failure ⇒ honestly empty section on a 200. The cause is
+      // logged server-side — a silent degrade is unobservable.
+      log.warn(`[searchService] semantic leg degraded: ${err?.message ?? err}`);
       return { ran: true, cappedSegments, scored: [], space };
     }
   }

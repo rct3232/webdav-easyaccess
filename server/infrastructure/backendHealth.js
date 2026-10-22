@@ -8,7 +8,12 @@ const BACKENDS = ['postgresql', 's3', 'webdav'];
 // `ai: { embed, chat }` flags from these rows (settings.md §2.4).
 const AI_ROLE_KEYS = ['ai.embed', 'ai.chat'];
 
-const TRACKED_KEYS = [...BACKENDS, ...AI_ROLE_KEYS];
+// Vector-engine row (vectorStore.md §1/§2.4): the seam factory reports the
+// boot selection here — ok ⇒ native adapter, fail ⇒ JsFallback degraded with
+// an install hint. A performance warning, never a feature gate.
+const VECTOR_KEY = 'vector';
+
+const TRACKED_KEYS = [...BACKENDS, ...AI_ROLE_KEYS, VECTOR_KEY];
 
 function initialState() {
   return {

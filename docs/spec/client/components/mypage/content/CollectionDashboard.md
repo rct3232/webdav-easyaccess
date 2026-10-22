@@ -32,7 +32,7 @@ Target-contract spec (`docs/features/collections-platform.md` §4.11 (feed surfa
 
 ### 2.3 Blocks (render order = contract)
 
-1. **Hygiene cards** — exact/near dups count + reclaimable GB; trash size + retention countdown (`TRASH_RETENTION_DAYS`); cleanup suggestions count. Each card is a DEEP LINK to the context where the action happens (dup finder view / `/files/__trash__` / SuggestionsChecklist scroll target) — pull-overview, not action center. Counts via gateway seams; zero/absent data block renders nothing (absent-not-disabled).
+1. **Hygiene cards** — exact/near dups count + reclaimable GB; trash size + retention countdown (`TRASH_RETENTION_DAYS`); cleanup suggestions count. Each card is a DEEP LINK to the context where the action happens (dup finder view / `/files/__trash__` / SuggestionsChecklist scroll target) — pull-overview, not action center. Counts via gateway seams; zero/absent data block renders nothing (absent-not-disabled). The duplicates card carries the near-dup line when the payload's `near_duplicates` block is present with `group_count > 0` (`mypage.hygieneNearDuplicatesMeta` — same deep-link target; near-dup rows ride the suggestions list).
 2. **System-changes feed (journal)** — `GET /api/actions` rows (30d, `snake_case` verbatim): `subject_label` + `action` → i18n label map (`mypage.journalAction.${action}`), `actor: "system"` → `auto` tag, `created_at` formatted. Per row: `undo_available` + `is_tip` → undo button; non-tip → cascade-confirm dialog with `params.laterChanges` count then re-post; `not recoverable` badge for report-only rows (permanent delete/empty-trash parity contract); `status:'undone'` → strikethrough label, no action. `payload` never fetched/needed (feed contract).
 3. **My-collections status** — counts (active/archived), grants received/granted (revoke inline = `DELETE /:id/grants`, instant), recent merge/archive facts from the feed subset with undo (same row renderer).
 4. **Suggestions** — `SuggestionsChecklist` block (its spec owns the accept protocol).
@@ -41,8 +41,11 @@ Target-contract spec (`docs/features/collections-platform.md` §4.11 (feed surfa
 #### 2.3.1 Data seams
 
 - Hygiene cards + Suggestions block read the ONE gateway seam `getFileSuggestions()`
-  (`GET /api/dashboard` — `collectionsRepository.md` §2.3): `duplicates` feeds the dup card,
-  `suggestions` feeds both the suggestions-count card and the `SuggestionsChecklist`,
+  (`GET /api/dashboard` — `collectionsRepository.md` §2.3): `duplicates` feeds the dup card
+  (+ the `near_duplicates` near-dup line when present), `suggestions` feeds both the
+  suggestions-count card and the `SuggestionsChecklist` (exact-dup AND `near_dup` rows — the
+  row shape is kind-generic, so near-dup rows render with no component change; the reason
+  label maps `mypage.suggestionsReason.NearDup`),
   `trash` feeds the trash card (size + countdown from `oldest_deleted_at` +
   `retention_days`; `retention_days === 0` renders "no automatic purge"). The journal feed
   uses `getActions({ domain: 'collection' })`; collections status uses `loadCollections` +
@@ -75,7 +78,7 @@ Target-contract spec (`docs/features/collections-platform.md` §4.11 (feed surfa
 
 ### 2.6 i18n Keys
 
-- `mypage.storage`, `mypage.adminAiOps`, `mypage.journal*` (title/labels/action map/undone), `mypage.hygiene*` (cards), `mypage.capacityTitle`, `mypage.collectionsStatus*`, `mypage.grantsReceived`/`grantsGranted`/`revoke`, `permissions.editor`/`permissions.viewer` (received-grant role chip — localized, never the raw enum)
+- `mypage.storage`, `mypage.adminAiOps`, `mypage.journal*` (title/labels/action map/undone), `mypage.hygiene*` (cards, incl. `mypage.hygieneNearDuplicatesMeta`), `mypage.capacityTitle`, `mypage.collectionsStatus*`, `mypage.grantsReceived`/`grantsGranted`/`revoke`, `mypage.suggestionsReason.ExactDup`/`NearDup`, `permissions.editor`/`permissions.viewer` (received-grant role chip — localized, never the raw enum)
 
 ### 2.7 Verification Scenarios
 

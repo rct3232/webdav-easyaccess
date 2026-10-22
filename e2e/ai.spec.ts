@@ -14,6 +14,8 @@ import {
   writeScratchEnv,
 } from './helpers/setupScratch';
 import { e2ePorts, webdavBase } from './helpers/ports';
+import { loginWithCredentials } from './helpers/auth';
+import { gotoFilesPath } from './helpers/resolvePath';
 import {
   ensureScratchRegularUser,
   loginScratchAdmin,
@@ -200,6 +202,7 @@ test.afterEach(async ({ request }) => {
 });
 
 test('E2E-AI-001: a semantic search returns an uploaded document no name matches and reports the section available', async ({
+  page,
   request,
 }) => {
   // Upload the text document; the write-side hook enqueues its embed job.
@@ -275,4 +278,25 @@ test('E2E-AI-001: a semantic search returns an uploaded document no name matches
       })
       .toBe(nodeId);
   }
+
+  // ZONE C UI (the results surface): the committed search renders the
+  // semantic section as the suggested-results accordion zone — the
+  // semantically matched document appears there although no name contains
+  // the phrase (FileManagerView.md §3; the phrase was chosen to name-match
+  // nothing, so Zone A/Zone B stay empty and only Zone C renders).
+  await loginWithCredentials(page, USER_CREDS.username, USER_CREDS.password);
+  await gotoFilesPath(page, request, `/${USER_CREDS.username}`);
+  const uiSearchBox = page.getByRole('searchbox');
+  const uiSearchReply = page.waitForResponse(
+    (res) => res.request().method() === 'POST' && new URL(res.url()).pathname === '/api/search',
+    { timeout: 90_000 }
+  );
+  await uiSearchBox.fill(SEMANTIC_PHRASE);
+  await uiSearchBox.press('Enter');
+  await uiSearchReply;
+  await expect(page.getByTestId('search-zone-header-c')).toBeVisible();
+  await expect(page.getByTestId('search-zone-header-c')).toContainText(
+    /Suggested results|추천 결과/
+  );
+  await expect(page.getByTestId(`server-search-row-${nodeId}`)).toBeVisible();
 });

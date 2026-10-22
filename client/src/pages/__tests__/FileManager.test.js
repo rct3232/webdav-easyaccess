@@ -2200,6 +2200,69 @@ describe('FileManager', () => {
       expect([...itemsBody.nodeIds].sort((a, b) => a - b)).toEqual([1, 11]);
     }, 15000);
 
+    it('chip Save creates the search-origin collection through the create seam (§2.6 boundary)', async () => {
+      let createBody = null;
+      server.use(
+        http.post('/api/search', () =>
+          HttpResponse.json({
+            name_matches: [{ node_id: 11, name: 'sub-test.pdf' }],
+            semantic: [{ node_id: 90, name: 'semantic-match.jpg', score: 0.9 }],
+            counts: {
+              name: 1,
+              semantic: 1,
+              total: 2,
+              name_truncated: false,
+              semantic_capped_segments: false,
+            },
+            result_ref: 'sr1.abc',
+            semantic_available: true,
+          })
+        ),
+        metadataHandler(),
+        http.post('/api/collections', async ({ request }) => {
+          createBody = await request.json();
+          return HttpResponse.json({
+            collection: {
+              collection_id: 7,
+              name: 'test',
+              origin: 'search',
+              status: 'active',
+            },
+            undo: { action_id: 92 },
+          });
+        })
+      );
+
+      await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+      await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
+
+      await submitSearchText('test');
+      expect(await screen.findByTestId('server-search-row-90')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('search-chip-save'));
+
+      await waitFor(() => expect(createBody).not.toBeNull());
+      expect(createBody).toEqual({ name: 'test', origin: 'search', resultRef: 'sr1.abc' });
+      // one create command, one undo toast (spec §2.7)
+      expect(await screen.findByTestId('undo-toast-action')).toBeInTheDocument();
+    }, 15000);
+
+    it('the save affordance stays absent on the degraded stack (semantic unavailable)', async () => {
+      server.use(
+        http.post('/api/search', () =>
+          HttpResponse.json(searchResultsPayload([{ node_id: 11, name: 'sub-test.pdf' }]))
+        ),
+        metadataHandler()
+      );
+
+      await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+      await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
+
+      await submitSearchText('test');
+      expect(await screen.findByTestId('server-search-row-11')).toBeInTheDocument();
+      expect(screen.queryByTestId('search-chip-save')).not.toBeInTheDocument();
+    }, 15000);
+
     it('clearing the shared search text exits results mode (one ✕ clears both surfaces)', async () => {
       server.use(
         http.post('/api/search', () =>

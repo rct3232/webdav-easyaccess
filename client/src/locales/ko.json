@@ -160,6 +160,7 @@
     "searchChipUndo": "돌아가기",
     "searchChipExit": "종료",
     "searchLibraryAdd": "결과를 컬렉션에 추가",
+    "searchSaveCollection": "컬렉션으로 저장",
     "createFolder": "폴더 생성",
     "uploadFile": "파일 업로드",
     "sort": "정렬",

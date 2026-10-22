@@ -1363,8 +1363,21 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     });
   }, []);
 
+  // Chip-bar save affordance (§2.6 boundary): the hook's saveFromResults
+  // carries the gate; a real create surfaces the standard create undo toast.
+  // Absorbed failures resolve null inside the hook (no toast, no undo).
+  const handleSearchSave = useCallback(async () => {
+    const created = await searchApiRef.current.saveFromResults();
+    if (!created) return;
+    handleUndoable(created, 'collections.undoCreated');
+  }, [handleUndoable]);
+
   const searchResults = useMemo(() => {
     if (!searchModeActive) return null;
+    // Save-affordance gate (routes/search.md §2.4 field rules): the button
+    // renders only for an available, non-empty semantic section, and the
+    // admin operator rule withholds the callback entirely.
+    const canSaveResults = searchApi.semanticAvailable === true && searchApi.zoneCounts.zoneC > 0;
     return {
       mode: searchApi.mode,
       terms: searchApi.terms,
@@ -1377,6 +1390,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       onRevertToStep: searchApi.undoToStep,
       onExit: exitSearchAndResetInput,
       onLibraryAdd: handleSearchLibraryAdd,
+      onSave: canSaveResults && !user?.is_admin ? handleSearchSave : undefined,
       onRowOpen: handleSearchRowOpen,
       onZoneThumbnailsLoaded: searchApi.handleZoneThumbnailsLoaded,
     };
@@ -1386,8 +1400,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     zonesCollapsed,
     handleToggleZone,
     handleSearchLibraryAdd,
+    handleSearchSave,
     handleSearchRowOpen,
     exitSearchAndResetInput,
+    user,
   ]);
 
   const handleProductPathClick = useCallback(

@@ -3,7 +3,7 @@
  * @see docs/spec/client/components/file-manager/SearchQueryChipBar.md
  */
 import React from 'react';
-import { fireEvent, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen } from '@testing-library/react';
 
 import { renderWithProviders } from '../../../test-utils';
 import SearchQueryChipBar from '../SearchQueryChipBar';
@@ -50,6 +50,25 @@ describe('SearchQueryChipBar rendering', () => {
     renderBar({ isMobile: true, inExpandSlot: true });
 
     expect(screen.getByTestId('search-library-add')).toBeInTheDocument();
+  });
+});
+
+describe('SearchQueryChipBar save affordance (T1.5c)', () => {
+  it('renders the save button only when onSave is provided (withhold idiom)', () => {
+    renderBar({ onSave: jest.fn() });
+    expect(screen.getByTestId('search-chip-save')).toHaveAccessibleName('Save as collection');
+    cleanup();
+
+    renderBar();
+    expect(screen.queryByTestId('search-chip-save')).not.toBeInTheDocument();
+  });
+
+  it('save button click emits onSave (and nothing else)', () => {
+    const onSave = jest.fn();
+    renderBar({ onSave });
+
+    fireEvent.click(screen.getByTestId('search-chip-save'));
+    expect(onSave).toHaveBeenCalledTimes(1);
   });
 });
 

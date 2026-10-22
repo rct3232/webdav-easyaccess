@@ -600,6 +600,7 @@ const FileManagerView = ({
               onRevertToStep={searchResults.onRevertToStep}
               onExit={searchResults.onExit}
               onLibraryAdd={searchResults.onLibraryAdd}
+              onSave={searchResults.onSave}
             />
           ) : (
             <Breadcrumb

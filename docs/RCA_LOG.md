@@ -1282,3 +1282,29 @@ Task: `feature/p1-a5-vectormath` (T1.4a vectorMath/extractors/TextVectorJs oracl
   `new Date(...).getTime()` with a comment stating the dialect rule.
 - **Verification**: `test:ci:pg:adapters` 30 suites / 426 pass green; sqlite conformance
   leg green; no API-shape change (ISO string was already the sqlite-observed contract).
+
+## 2026-10-22 — retrieval E2E unconfigured-stack premise broken by shared embed weights (C3 gate run)
+
+- **Symptom**: `E2E-RETRIEVAL-005` (desktop) failed at the post-trash re-submit: the
+  `search-no-results` line never rendered because the "Suggested results" zone appeared
+  with count 1 (the remaining visible file scored above the dynamic baseline on a
+  one-document corpus, where the excluding sample is empty and the gate is vacuous).
+- **Diagnosis**: the retrieval scratch was authored against the UNCONFIGURED stack
+  (`semantic_available:false` ⇒ Zone C never renders). The embed engine is a built-in
+  DEFAULT provider (config-free role candidacy), so the first boot of the shared-stack
+  webServer in this checkout provisioned the EG2 weights into the checkout-shared
+  `data/modelos` (`resolveModelDir` default) — every later scratch boot in the same
+  checkout then resolved the SAME weights tree, ran the semantic leg, and the suite's
+  section-absent premises no longer described the environment. No client/server source
+  was wrong: the wire behavior matched `routes/search.md` §2.4 (leg ran ⇒ key present).
+- **Classification**: **Case B (Test-arrangement Error)** — the suite's stack pin was
+  implicit (weights absent) and became invalid; the citable clauses are
+  `searchService.md` §2.3 step 3 (the `AI_SEMANTIC_SEARCH_ENABLED` kill switch emits the
+  IDENTICAL omit shape to the unconfigured role) and §2.5 ("kill switch off ⇒ identical
+  shape"). The fix pins the documented T2 dbOnly kill switch through the admin config
+  API in the retrieval scratch `beforeAll` — hermetic (no network), per-scratch, no
+  server code change, zero assertions weakened.
+- **Verification**: retrieval dual re-run green (counts in the C3 ledger row); the
+  section-absent assertions hold again. Residual: other hermetic suites that also
+  assume the unconfigured stack may need the same pin if their premises ever touch the
+  semantic section (none do today).

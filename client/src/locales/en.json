@@ -160,6 +160,7 @@
     "searchChipUndo": "Undo",
     "searchChipExit": "Exit",
     "searchLibraryAdd": "Add results to collection",
+    "searchSaveCollection": "Save as collection",
     "createFolder": "Create folder",
     "uploadFile": "Upload file",
     "sort": "Sort",

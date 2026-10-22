@@ -1199,6 +1199,7 @@ Task: `feature/p1-a5-vectormath` (T1.4a vectorMath/extractors/TextVectorJs oracl
   with median ≈ 1). No spec change; the implementation's defensive renorm stays.
 - **Action taken**: assertion relaxed to `toBeCloseTo(1, 6)` with the float-noise rationale
   recorded in the test comment.
+
 ### 2026-10-21 — T1.1b GREEN: three test-side defects in the new llmAdapter suite (Case B ×3 — test errors; no spec misreading)
 
 - **Summary**: first full GREEN run of `llmAdapter.test.js` came back 18/21. The three failures
@@ -1259,11 +1260,11 @@ Task: `feature/p1-a5-vectormath` (T1.4a vectorMath/extractors/TextVectorJs oracl
   and hashed with the same `sha256Buffer` convention as the upload path
   (`versionsService.js:219`, util extracted to `server/utils/contentHash.js`);
   (d) hash write-side wired at every seam. Hook suite rewritten RED-first (module-missing
-  + 11 behavior failures observed) → GREEN 39/39; two pre-existing tests updated to the
-  spec'd contract; full server suite 2741 passed / 27 skipped / 0 failed. Decision note:
-  unknown-extension files classify as the embed floor only (no `features`) — §2.2 keys
-  `features` to the local-extractor class (pdf/docx/txt), and an unknown type is neither
-  text nor media.
+  - 11 behavior failures observed) → GREEN 39/39; two pre-existing tests updated to the
+    spec'd contract; full server suite 2741 passed / 27 skipped / 0 failed. Decision note:
+    unknown-extension files classify as the embed floor only (no `features`) — §2.2 keys
+    `features` to the local-extractor class (pdf/docx/txt), and an unknown type is neither
+    text nor media.
 
 ## 2026-10-22 — QueryParsesRepository PG leg defects (Wave C orchestrator merge gate)
 

@@ -165,8 +165,26 @@ describe('nearDupFinderService — ACL scoping + self-exclusion', () => {
 
     const result = await finder.findNearDuplicateGroups(42);
 
+    // only ONE visible canonical row exists ⇒ the vector leg degrades
+    // (available:false) — and node 999 appears nowhere
+    expect(result).toEqual(EMPTY);
+    expect(JSON.stringify(result.groups)).not.toContain('999');
+  });
+
+  it('a stranger node never joins a group of visible nodes (candidate filtering)', async () => {
+    const [v1, v2] = axisPair(0, THETA + 0.001);
+    const vec = axisPair(0, 1)[0];
+    const finder = makeFinder({
+      subtreeRows: [fileRow(52, { hash: 'h-1' }), fileRow(53, { hash: 'h-2' })],
+      // stranger node 999 is identical to 52 — but not visible to the requester
+      embeddings: [embeddingRow(52, v1), embeddingRow(53, v2), embeddingRow(999, vec)],
+    });
+
+    const result = await finder.findNearDuplicateGroups(42);
+
     expect(result.available).toBe(true);
-    expect(result.groupCount).toBe(0);
+    expect(result.groupCount).toBe(1); // 52~53 only
+    expect(result.groups[0].nodeIds).toEqual([52, 53]);
     expect(JSON.stringify(result.groups)).not.toContain('999');
   });
 

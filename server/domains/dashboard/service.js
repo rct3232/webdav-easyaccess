@@ -10,6 +10,7 @@
  */
 const { createFileNodesStore } = require('../../store/fileNodesStore');
 const dupFinderService = require('../ai/dupFinderService');
+const { getNearDupFinderService } = require('../ai/nearDupFinderService');
 const ownerNodeResolver = require('../permissions/policy/ownerNodeResolver');
 const { getSharedResolver } = require('../../infrastructure/configResolver');
 const { getComposition } = require('../../service/composition');
@@ -43,7 +44,8 @@ async function getDashboardSummary(userId) {
   const store = createFileNodesStore();
   const root = await store.getUserRootNode(Number(userId));
 
-  // One dup pass feeds both cards and the checklist (route §2.4.2 decision).
+  // One dup pass feeds both cards and the checklist (route §2.4.2 decision);
+  // the vector near-dup pass appends `near_dup` rows of the same shape.
   const dups = await dupFinderService.findExactDuplicateGroups(userId);
   const suggestions = [];
   // eslint-disable-next-line no-restricted-syntax
@@ -61,6 +63,27 @@ async function getDashboardSummary(userId) {
     });
   }
 
+  // §4.17 vector variant — nearDupFinderService owns hash-first precedence,
+  // θ_dup (profile) and the group cap; absence is `available: false` and the
+  // whole block is omitted (never an error — §4.12).
+  const near = await getNearDupFinderService().findNearDuplicateGroups(userId);
+  if (near.available) {
+    // eslint-disable-next-line no-restricted-syntax
+    for (const group of near.groups) {
+      // keep rule: smallest node id survives (exact-dup precedent)
+      const keepNodeId = group.nodeIds[0];
+      group.nodeIds.slice(1).forEach((nodeId, index) => {
+        suggestions.push({
+          nodeId,
+          kind: 'near_dup',
+          path: group.filePaths[index + 1] ?? null,
+          sizeBytes: group.sizeBytes[index + 1],
+          reason: { kind: 'near_dup', keepNodeId },
+        });
+      });
+    }
+  }
+
   const trash = root
     ? await store.summarizeTrashedSubtree(root.id)
     : { itemCount: 0, totalBytes: 0, oldestDeletedAt: null };
@@ -71,6 +94,14 @@ async function getDashboardSummary(userId) {
       duplicateCount: dups.duplicateCount,
       reclaimableBytes: dups.reclaimableBytes,
     },
+    ...(near.available
+      ? {
+          nearDuplicates: {
+            groupCount: near.groupCount,
+            duplicateCount: near.duplicateCount,
+          },
+        }
+      : {}),
     suggestions,
     trash: { ...trash, retentionDays: await resolveTrashRetentionDays() },
   };

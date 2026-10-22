@@ -21,6 +21,17 @@ const ROLE_CAPABILITY = Object.freeze({
   asr: 'asr',
 });
 
+/**
+ * Capabilities published together per role. The embed role owns the four
+ * embedding sub-capabilities (media probes toggle only their own row).
+ */
+const ROLE_CAPABILITIES = Object.freeze({
+  embed: ['text_embed', 'image_embed', 'audio_embed', 'video_embed'],
+  chat: ['chat'],
+  vision: ['vision_chat'],
+  asr: ['asr'],
+});
+
 const CAPABILITIES = Object.freeze([
   'text_embed',
   'image_embed',
@@ -69,8 +80,14 @@ function setRoleCapability(role, matrixRow) {
   };
   entries.set(capability, entry);
 
+  setWarning(role, capability, entry);
+  return entry;
+}
+
+function setWarning(role, capability, entry) {
+  const key = `${role}:${capability}`;
   if (entry.declared && !entry.enabled) {
-    warnings.set(role, {
+    warnings.set(key, {
       role,
       capability,
       code: 'probe_failed',
@@ -78,17 +95,55 @@ function setRoleCapability(role, matrixRow) {
       hint: 'serverErrors.ai.providerProbeFailed',
     });
   } else {
-    warnings.delete(role);
+    warnings.delete(key);
   }
-  return entry;
 }
 
-/** A role became unconfigured: its capability is OFF with no probe warning. */
+/**
+ * Publish a whole role's capability rows (embed = text + the three media
+ * sub-capabilities). Rows absent from `rows` are NOT silently kept: the roles'
+ * capability set is replaced, so a probe pass that no longer includes a media
+ * capability leaves it OFF.
+ *
+ * @param {'embed'|'chat'|'vision'|'asr'} role
+ * @param {Array<object>} rows `evaluateCapabilityMatrix` entries (+ optional reason)
+ * @returns {object[]} stored entries
+ */
+function setRoleCapabilities(role, rows) {
+  const owned = ROLE_CAPABILITIES[role];
+  if (!owned) return [];
+  const byCapability = new Map((rows || []).map((row) => [row.capability, row]));
+  const stored = [];
+  for (const capability of owned) {
+    const row = byCapability.get(capability);
+    if (!row) {
+      // Not probed in this pass: OFF, and a declared expectation warns.
+      const empty = emptyEntry(capability);
+      entries.set(capability, { ...empty, role });
+      setWarning(role, capability, empty);
+      continue;
+    }
+    const entry = {
+      ...emptyEntry(capability),
+      ...row,
+      capability,
+      role,
+      reason: row.reason ?? null,
+    };
+    entries.set(capability, entry);
+    setWarning(role, capability, entry);
+    stored.push(entry);
+  }
+  return stored;
+}
+
+/** A role became unconfigured: its capabilities are OFF with no probe warning. */
 function clearRoleCapability(role) {
-  const capability = ROLE_CAPABILITY[role];
-  if (!capability) return;
-  entries.set(capability, emptyEntry(capability));
-  warnings.delete(role);
+  const owned = ROLE_CAPABILITIES[role] || [];
+  for (const capability of owned) {
+    entries.set(capability, emptyEntry(capability));
+    warnings.delete(`${role}:${capability}`);
+  }
 }
 
 function isCapabilityEnabled(capability) {
@@ -129,8 +184,10 @@ function reset() {
 
 module.exports = {
   ROLE_CAPABILITY,
+  ROLE_CAPABILITIES,
   CAPABILITIES,
   setRoleCapability,
+  setRoleCapabilities,
   clearRoleCapability,
   isCapabilityEnabled,
   isRoleEnabled,

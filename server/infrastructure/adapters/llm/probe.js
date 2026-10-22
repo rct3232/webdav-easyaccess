@@ -14,10 +14,10 @@
  *   probe sends one real sentence and passes only when the answer is
  *   schema-valid JSON (instruction-following echo).
  * - Synthetic media probes are BANNED (sine/noise/synthetic-photo probes
- *   cannot distinguish false negatives from false claims). The vision/asr
- *   media probes with positive controls are owned by T1.9; until those
- *   samples ship, those roles probe-fail honestly (`mediaProbePending`) and
- *   the capability stays OFF — never a fake pass.
+ *   cannot distinguish false negatives from false claims). Vision/asr run the
+ *   real-fixture positive controls in `mediaProbe.js`; a transport fault stays
+ *   an honest `transport` failure and the capability stays OFF — never a fake
+ *   pass.
  * - The embed role is NOT a wizard/admin-test target (the built-in engine needs
  *   no config). The EXTERNAL embed override is still gated by this suite:
  *   `probeEmbedConformance` runs the checked-in EG2 reference kit through the
@@ -38,6 +38,8 @@ const {
 } = require('../../backendProbe');
 const { getBackendHealth } = require('../../backendHealth');
 const { evaluateConformance, findPreset, kit } = require('./presets');
+const { runVisionProbe, runAsrProbe } = require('./mediaProbe');
+const { createOpenAiCompatibleClient } = require('./clients/openai-compatible');
 
 // The wizard/admin-test probe surface: embed is deliberately absent (built-in
 // engine needs no config; docs/spec/server/routes/setup.md §2.4a). The remote
@@ -97,6 +99,55 @@ async function probeChatEndpoint({ baseUrl, apiKey, model }) {
       HTTP_STATUS.BAD_REQUEST,
       'Connection test failed',
       toShortReason('chat probe: response is not schema-valid JSON')
+    );
+  }
+}
+
+/**
+ * Media role probes (§2.4, T1.9): real in-domain fixtures through the same
+ * OpenAI-compatible client the runtime uses. Positive controls and transport
+ * isolation live in mediaProbe.js; a transport fault keeps the honest
+ * `transport` failure (never a cached identity/activation verdict).
+ */
+function mediaClient({ baseUrl, apiKey, model, fetchImpl }) {
+  const row = findPreset('gemma-4-12b-it');
+  return createOpenAiCompatibleClient({
+    baseUrl,
+    apiKey,
+    model,
+    profile: row ? row.profile : null,
+    kwargs: row ? row.kwargs : null,
+    ...(fetchImpl ? { fetchImpl } : {}),
+  });
+}
+
+async function probeVisionEndpoint({ baseUrl, apiKey, model, fetchImpl }) {
+  const client = mediaClient({ baseUrl, apiKey, model, fetchImpl });
+  const result = await runVisionProbe({
+    visionCaption: (...args) => client.visionCaption(...args),
+    chat: (...args) => client.chat(...args),
+  });
+  if (!result.pass) {
+    throw probeError(
+      SETUP_TEST_FAILED_CODE,
+      HTTP_STATUS.BAD_REQUEST,
+      'Connection test failed',
+      toShortReason(result.reason || 'vision probe failed')
+    );
+  }
+}
+
+async function probeAsrEndpoint({ baseUrl, apiKey, model, fetchImpl }) {
+  const client = mediaClient({ baseUrl, apiKey, model, fetchImpl });
+  const result = await runAsrProbe({
+    asrTranscribe: (...args) => client.asrTranscribe(...args),
+  });
+  if (!result.pass) {
+    throw probeError(
+      SETUP_TEST_FAILED_CODE,
+      HTTP_STATUS.BAD_REQUEST,
+      'Connection test failed',
+      toShortReason(result.reason || 'asr probe failed')
     );
   }
 }
@@ -180,7 +231,7 @@ async function probeEmbedConformance({ baseUrl, apiKey, model, prefix, fetchImpl
  * Every terminal outcome is reported to the `ai.<role>` tracker row.
  */
 async function probeLlm(body) {
-  const { role, baseUrl, apiKey, model } = body || {};
+  const { role, baseUrl, apiKey, model, fetchImpl } = body || {};
   const healthKey = PROBE_ROLES.includes(role) ? `ai.${role}` : null;
 
   if (!healthKey) {
@@ -201,15 +252,10 @@ async function probeLlm(body) {
   try {
     if (role === 'chat') {
       await probeChatEndpoint({ baseUrl, apiKey, model });
+    } else if (role === 'vision') {
+      await probeVisionEndpoint({ baseUrl, apiKey, model, fetchImpl });
     } else {
-      // vision/asr: real in-domain media samples are T1.9-owned (positive
-      // controls per §4.23.2). Synthetic probes are banned — fail honestly.
-      throw probeError(
-        SETUP_TEST_FAILED_CODE,
-        HTTP_STATUS.BAD_REQUEST,
-        'Connection test failed',
-        'mediaProbePending'
-      );
+      await probeAsrEndpoint({ baseUrl, apiKey, model, fetchImpl });
     }
     getBackendHealth().report(healthKey, { ok: true });
     return { ok: true, role, reason: null };

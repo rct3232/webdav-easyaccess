@@ -17,6 +17,9 @@ const { createFileNodesStore } = require('@server/store/fileNodesStore');
 const { createFileNodeService } = require('@server/service/fileNodeService');
 const composition = require('@server/service/composition');
 const dashboardService = require('@server/domains/dashboard/service');
+const llmModelsStore = require('@server/store/llmModelsStore');
+const embeddingsStore = require('@server/store/embeddingsStore');
+const presets = require('@server/infrastructure/adapters/llm/presets');
 
 let fileNodeService;
 let dbCleanup;
@@ -250,5 +253,108 @@ describe('acceptSuggestions', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe('getDashboardSummary — vector near-dup feed (nearDupFinderService.md)', () => {
+  const THETA = presets.getPresetByFamilyRole('embedded', 'embed').profile.thetaDup;
+
+  afterEach(async () => {
+    await dbQuery('DELETE FROM embeddings', []);
+    await dbQuery("DELETE FROM llm_models WHERE role = 'embed'", []);
+  });
+
+  async function activateEmbedModel() {
+    const { id } = await llmModelsStore.upsertModel({
+      role: 'embed',
+      provider: 'embedded',
+      engine: 'embedded',
+      baseUrlKey: '',
+      modelName: 'embeddinggemma-2-ONNX',
+      modelRevision: null,
+      precision: 'q4',
+      maxInputChars: 8192,
+      chunkBudget: 4,
+      batchSize: 8,
+      enabled: true,
+    });
+    return id;
+  }
+
+  function nearPairVector(t) {
+    return [t, Math.sqrt(1 - t * t), 0, 0];
+  }
+
+  it('appends near_duplicates + near_dup rows; hash twins stay exact-only; exact rows first', async () => {
+    const { user, homeId } = await storageUser('neardup');
+    const a = await addFile(homeId, 'near-a.txt', { hash: `nd-a-${Date.now()}`, size: 100 });
+    const b = await addFile(homeId, 'near-b.txt', { hash: `nd-b-${Date.now()}`, size: 140 });
+    const twinHash = `nd-twin-${Date.now()}`;
+    const c = await addFile(homeId, 'twin-c.txt', { hash: twinHash, size: 50 });
+    const d = await addFile(homeId, 'twin-d.txt', { hash: twinHash, size: 50 });
+
+    const modelId = await activateEmbedModel();
+    await embeddingsStore.upsert(Number(a.nodeId), {
+      modelId,
+      dim: 4,
+      vector: [1, 0, 0, 0],
+      source: 'fulltext',
+      contentHash: null,
+    });
+    await embeddingsStore.upsert(Number(b.nodeId), {
+      modelId,
+      dim: 4,
+      vector: nearPairVector(THETA + 0.001),
+      source: 'fulltext',
+      contentHash: null,
+    });
+    // hash twins with identical vectors: cosine 1.0 — hash-first keeps them OUT
+    await embeddingsStore.upsert(Number(c.nodeId), {
+      modelId,
+      dim: 4,
+      vector: [0, 0, 1, 0],
+      source: 'fulltext',
+      contentHash: null,
+    });
+    await embeddingsStore.upsert(Number(d.nodeId), {
+      modelId,
+      dim: 4,
+      vector: [0, 0, 1, 0],
+      source: 'fulltext',
+      contentHash: null,
+    });
+
+    const summary = await dashboardService.getDashboardSummary(user.id);
+
+    expect(summary.nearDuplicates).toEqual({ groupCount: 1, duplicateCount: 2 });
+    const nearRows = summary.suggestions.filter((row) => row.kind === 'near_dup');
+    expect(nearRows).toHaveLength(1);
+    const keepId = Math.min(Number(a.nodeId), Number(b.nodeId));
+    const memberId = Math.max(Number(a.nodeId), Number(b.nodeId));
+    expect(nearRows[0]).toEqual({
+      nodeId: memberId,
+      kind: 'near_dup',
+      path: expect.any(String),
+      sizeBytes: memberId === Number(b.nodeId) ? 140 : 100,
+      reason: { kind: 'near_dup', keepNodeId: keepId },
+    });
+    // exact rows first, near rows after; twins appear ONLY as exact_dup
+    const kinds = summary.suggestions.map((row) => row.kind);
+    expect(kinds.indexOf('exact_dup')).toBeLessThan(kinds.indexOf('near_dup'));
+    const twinRows = summary.suggestions.filter((row) =>
+      [Number(c.nodeId), Number(d.nodeId)].includes(row.nodeId)
+    );
+    expect(twinRows).toHaveLength(1);
+    expect(twinRows[0].kind).toBe('exact_dup');
+  });
+
+  it('no active embed model ⇒ no nearDuplicates key, no near rows (absent section)', async () => {
+    const { user, homeId } = await storageUser('nearabsent');
+    await addFile(homeId, 'solo.txt', { hash: `nd-solo-${Date.now()}` });
+
+    const summary = await dashboardService.getDashboardSummary(user.id);
+
+    expect(summary.nearDuplicates).toBeUndefined();
+    expect(summary.suggestions.every((row) => row.kind === 'exact_dup')).toBe(true);
   });
 });

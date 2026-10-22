@@ -291,3 +291,83 @@ describe('admin operator gate (dashboard 403 for admin requesters)', () => {
     expect(journalAfter).toBe(journalBefore);
   });
 });
+
+describe('GET /api/dashboard — vector near-dup block', () => {
+  const llmModelsStore = require('@server/store/llmModelsStore');
+  const embeddingsStore = require('@server/store/embeddingsStore');
+  const presets = require('@server/infrastructure/adapters/llm/presets');
+
+  const THETA = presets.getPresetByFamilyRole('embedded', 'embed').profile.thetaDup;
+
+  afterEach(async () => {
+    await dbQuery('DELETE FROM embeddings', []);
+    await dbQuery("DELETE FROM llm_models WHERE role = 'embed'", []);
+  });
+
+  async function activateEmbedModel() {
+    const { id } = await llmModelsStore.upsertModel({
+      role: 'embed',
+      provider: 'embedded',
+      engine: 'embedded',
+      baseUrlKey: '',
+      modelName: 'embeddinggemma-2-ONNX',
+      modelRevision: null,
+      precision: 'q4',
+      maxInputChars: 8192,
+      chunkBudget: 4,
+      batchSize: 8,
+      enabled: true,
+    });
+    return id;
+  }
+
+  it('serializes near_duplicates + near_dup rows snake_case (θ from the profile)', async () => {
+    const { user, token, homeId } = await storageUser('neardup');
+    void user;
+    const a = await addFile(homeId, 'near-a.txt', { hash: `rt-nd-a-${Date.now()}`, size: 100 });
+    const b = await addFile(homeId, 'near-b.txt', { hash: `rt-nd-b-${Date.now()}`, size: 140 });
+
+    const modelId = await activateEmbedModel();
+    const t = THETA + 0.001;
+    await embeddingsStore.upsert(Number(a.nodeId), {
+      modelId,
+      dim: 4,
+      vector: [1, 0, 0, 0],
+      source: 'fulltext',
+      contentHash: null,
+    });
+    await embeddingsStore.upsert(Number(b.nodeId), {
+      modelId,
+      dim: 4,
+      vector: [t, Math.sqrt(1 - t * t), 0, 0],
+      source: 'fulltext',
+      contentHash: null,
+    });
+
+    const res = await request(app).get('/api/dashboard').set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.near_duplicates).toEqual({ group_count: 1, duplicate_count: 2 });
+    const nearRows = res.body.suggestions.filter((row) => row.kind === 'near_dup');
+    expect(nearRows).toHaveLength(1);
+    const keepId = Math.min(Number(a.nodeId), Number(b.nodeId));
+    const memberId = Math.max(Number(a.nodeId), Number(b.nodeId));
+    expect(nearRows[0]).toEqual({
+      node_id: memberId,
+      kind: 'near_dup',
+      path: expect.stringContaining('/'),
+      size_bytes: memberId === Number(b.nodeId) ? 140 : 100,
+      reason: { kind: 'near_dup', keep_node_id: keepId },
+    });
+    for (const key of Object.keys(res.body)) expect(key).not.toMatch(/[A-Z]/);
+  });
+
+  it('omits the near_duplicates key entirely when no embed model is active', async () => {
+    const { token, homeId } = await storageUser('nearoff');
+    await addFile(homeId, 'solo.txt', { hash: `rt-nd-off-${Date.now()}` });
+
+    const res = await request(app).get('/api/dashboard').set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body).not.toHaveProperty('near_duplicates');
+    expect(res.body.suggestions.every((row) => row.kind === 'exact_dup')).toBe(true);
+  });
+});

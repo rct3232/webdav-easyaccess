@@ -1,7 +1,13 @@
 'use strict';
 
 const { mapDatabaseError } = require('../../../utils/errorHandler');
-const { buildClaimPredicate, backoffMs, mapJobRow, truncateError } = require('../aiJobsShared');
+const {
+  buildClaimPredicate,
+  backoffMs,
+  mapJobRow,
+  normalizeExcludeKinds,
+  truncateError,
+} = require('../aiJobsShared');
 
 /**
  * postgres implementation of AiJobsRepository (`$n` placeholders). The claim
@@ -58,7 +64,9 @@ module.exports = function createPostgresAiJobsRepository(executor) {
     },
 
     async claimNext(opts = {}) {
-      const excludeKinds = (Array.isArray(opts.excludeKinds) ? opts.excludeKinds : []).map(String);
+      // Normalized ONCE: the same array feeds the placeholder slots and the
+      // bound parameters — never the raw caller input (slot/value desync).
+      const excludeKinds = normalizeExcludeKinds(opts.excludeKinds);
       try {
         return await executor.transaction(async (tx) => {
           const now = new Date().toISOString();

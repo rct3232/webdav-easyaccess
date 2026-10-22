@@ -27,11 +27,17 @@
  * (CODING_STYLE.md gate).
  */
 
+const { AI_JOB_KIND } = require('@webdav-easyaccess/shared/constants');
 const { meanPool, serializeVector } = require('../vectorStore/vectorMath');
 const { chunkPool } = require('../extractors/textChunking');
 
-/** Kinds the B5 pipeline cannot execute yet — parked via claimNext (§2.3). */
-const UNEXECUTABLE_KINDS = ['features', 'caption', 'asr', 'backfill'];
+/** Kinds without a landed executor yet — parked via claimNext (§2.3). */
+const UNEXECUTABLE_KINDS = [
+  AI_JOB_KIND.FEATURES,
+  AI_JOB_KIND.CAPTION,
+  AI_JOB_KIND.ASR,
+  AI_JOB_KIND.BACKFILL,
+];
 
 /**
  * @param {Object} deps
@@ -189,7 +195,7 @@ function createEmbedPipeline(deps = {}) {
       try {
         await ctx.jobs.enqueue(
           nodeId,
-          'backfill',
+          AI_JOB_KIND.BACKFILL,
           generation,
           `shadow-rebuild:${nodeId}:${modelId}`
         );
@@ -284,7 +290,7 @@ function createEmbedPipeline(deps = {}) {
     for (;;) {
       const job = await jobs.claimNext({ excludeKinds: UNEXECUTABLE_KINDS });
       if (!job) break;
-      if (job.kind !== 'embed') continue; // filter-parity guard, never execute
+      if (job.kind !== AI_JOB_KIND.EMBED) continue; // filter-parity guard, never execute
       try {
         const outcome = await runEmbedJobGuarded(job, ctx);
         if (outcome !== 'failed') terminal += 1;

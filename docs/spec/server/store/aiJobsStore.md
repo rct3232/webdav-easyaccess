@@ -25,8 +25,12 @@
 ### 2.2 Row shape
 
 `{ id, nodeId, kind, generation, status, attempt, nextRetryAt, lastError, contentHash,
-createdAt, startedAt, finishedAt }` — `kind ∈ embed | features | caption | asr | backfill`;
-`status ∈ pending | running | done | failed | skipped` (TEXT+CHECK).
+createdAt, startedAt, finishedAt }` — `kind ∈ AI_JOB_KIND.ALL` (`shared/constants.js`:
+`embed | features | caption | asr | backfill`; the DDL CHECK is the persistence source of
+truth, pinned by a parity test); `status ∈ pending | running | done | failed | skipped`
+(TEXT+CHECK). `claimNext({ excludeKinds })` normalizes the list ONCE (non-empty strings)
+and binds that same array — the predicate placeholders and bound values can never
+desynchronize.
 
 ### 2.3 Main Methods
 

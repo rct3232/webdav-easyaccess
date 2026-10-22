@@ -81,6 +81,7 @@ AI-platform enums (same file, same `ALL`/`isValid` shape as the existing status 
 | `LLM_ROLE`          | LLM adapter role                                                 | `embed`, `chat`, `vision`, `asr`                                                                                                  |
 | `SUGGESTION_STATE`  | Merge-suggestion state (`collection_merge_suggestions`)          | `pending`, `merged`, `dismissed`, `rejected` — the `file_suggestions` state enum is owned by its the corresponding docs step spec |
 | `USAGE_ACTION`      | `usage_events.action`                                            | `open`, `download`, `preview`, `search_hit`, `like`                                                                               |
+| `AI_JOB_KIND`       | `ai_jobs.kind`                                                   | `embed`, `features`, `caption`, `asr`, `backfill` — mirrors the DDL CHECK (parity-tested)                                         |
 
 Use these constants instead of magic strings so client and server stay in sync.
 

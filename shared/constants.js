@@ -77,6 +77,21 @@ const USAGE_ACTION = {
   ALL: ['open', 'download', 'preview', 'search_hit', 'like'],
 };
 
+/**
+ * `ai_jobs.kind` CHECK enum — the runtime source for every enqueue site and
+ * the park&drain `claimNext({ excludeKinds })` filter. The DDL CHECK in
+ * `001_initial_normalized_schema.sql` is the persistence source of truth; the
+ * pair is pinned by a parity test (a new kind is a DDL edit + this row).
+ */
+const AI_JOB_KIND = {
+  EMBED: 'embed',
+  FEATURES: 'features',
+  CAPTION: 'caption',
+  ASR: 'asr',
+  BACKFILL: 'backfill',
+  ALL: ['embed', 'features', 'caption', 'asr', 'backfill'],
+};
+
 module.exports = {
   PERMISSIONS,
   HTTP_STATUS,
@@ -87,4 +102,5 @@ module.exports = {
   AUDIO_EXTENSIONS,
   TEXT_EXTENSIONS,
   USAGE_ACTION,
+  AI_JOB_KIND,
 };

@@ -1,7 +1,13 @@
 'use strict';
 
 const { mapDatabaseError } = require('../../../utils/errorHandler');
-const { buildClaimPredicate, backoffMs, mapJobRow, truncateError } = require('../aiJobsShared');
+const {
+  buildClaimPredicate,
+  backoffMs,
+  mapJobRow,
+  normalizeExcludeKinds,
+  truncateError,
+} = require('../aiJobsShared');
 
 /**
  * sqlite implementation of AiJobsRepository (`?` placeholders). The driver is
@@ -59,7 +65,9 @@ module.exports = function createSqliteAiJobsRepository(executor) {
     },
 
     async claimNext(opts = {}) {
-      const excludeKinds = (Array.isArray(opts.excludeKinds) ? opts.excludeKinds : []).map(String);
+      // Normalized ONCE: the same array feeds the placeholder slots and the
+      // bound parameters — never the raw caller input (slot/value desync).
+      const excludeKinds = normalizeExcludeKinds(opts.excludeKinds);
       try {
         const now = new Date().toISOString();
         // sqlite `?` are positional: started_at first, then the predicate's

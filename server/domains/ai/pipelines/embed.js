@@ -37,24 +37,21 @@
  */
 
 const { AI_JOB_KIND } = require('@webdav-easyaccess/shared/constants');
-const { getFileType } = require('@webdav-easyaccess/shared/fileTypes');
 const { meanPool, serializeVector } = require('../vectorStore/vectorMath');
 const { chunkPool } = require('../extractors/textChunking');
 const { drainKind } = require('./pipelineRunner');
 const mediaSampling = require('../media/mediaSampling');
+const {
+  MEDIA_CAPABILITY,
+  classifyMediaNode,
+  mediaFallbackCorpus,
+} = require('../media/mediaBackfillScope');
 
 /** Kinds without a landed executor — parked via claimNext (§2.3). */
 const UNEXECUTABLE_KINDS = [AI_JOB_KIND.FEATURES, AI_JOB_KIND.BACKFILL];
 
 /** Every kind except the pipeline's own: predicate-level park (§2.3). */
 const NON_EMBED_KINDS = AI_JOB_KIND.ALL.filter((kind) => kind !== AI_JOB_KIND.EMBED);
-
-/** Media ladder capability per modality (llmAdapter §2.4 sub-capabilities). */
-const MEDIA_CAPABILITY = Object.freeze({
-  image: 'image_embed',
-  video: 'video_embed',
-  audio: 'audio_embed',
-});
 
 /** Profile fallback when no media profile is injected (EG2 release values). */
 const DEFAULT_MEDIA_PROFILE = Object.freeze({
@@ -63,17 +60,6 @@ const DEFAULT_MEDIA_PROFILE = Object.freeze({
   budgetTokens: 8192,
   mediaTokenCost: { image: 280, videoFrame: 140, audioPerSec: 25 },
 });
-
-function mediaKindOf(node) {
-  if (!node) return null;
-  const fileType = getFileType(String(node.name || ''));
-  if (fileType === 'image' || fileType === 'video' || fileType === 'audio') return fileType;
-  const mime = String(node.mimeType || '').toLowerCase();
-  if (mime.startsWith('image/')) return 'image';
-  if (mime.startsWith('video/')) return 'video';
-  if (mime.startsWith('audio/')) return 'audio';
-  return null;
-}
 
 /** V0 floor corpus: name/mime/path/date — same text space, weak hits kept. */
 async function metadataText(node, ctx) {
@@ -288,17 +274,15 @@ function createEmbedPipeline(deps = {}) {
     return persistVectors(job, ctx, { vectors, dim, source: 'chunk_pool' });
   }
 
-  /** Media corpus for the capability-OFF fallback (V2 caption / V3 transcript). */
+  /**
+   * Media corpus for the capability-OFF fallback (V2 caption / V3 transcript).
+   * The selection rule itself is centralized in `mediaFallbackCorpus`
+   * (music rows never enter a document-content corpus).
+   */
   async function mediaFallbackText(nodeId, mediaKind, ctx) {
     const row = await ctx.enrichments.get(nodeId);
-    if (!row) return null;
-    if (mediaKind === 'audio') {
-      // Music rows store lyrics in `transcript`; document-content scoring
-      // excludes them (aiJobService §2.4 asr rule).
-      if (row.mediaKind === 'music') return null;
-      return typeof row.transcript === 'string' ? row.transcript : null;
-    }
-    return typeof row.caption === 'string' ? row.caption : null;
+    const corpus = mediaFallbackCorpus(mediaKind, row);
+    return corpus ? corpus.text : null;
   }
 
   /**
@@ -401,7 +385,7 @@ function createEmbedPipeline(deps = {}) {
     const jobCtx = { ...ctx, existing };
 
     const node = ctx.readNode ? await ctx.readNode(nodeId) : null;
-    const mediaKind = mediaKindOf(node);
+    const mediaKind = classifyMediaNode(node);
     if (mediaKind) {
       if (typeof ctx.adapter.embedMedia !== 'function') {
         throw new Error('embed role does not expose media embedding');

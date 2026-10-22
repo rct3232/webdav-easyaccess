@@ -269,6 +269,118 @@ describe('embed pipeline media branch', () => {
     expect(state.pooled[0].source).toBe('metadata_only');
   });
 
+  it('capability OFF + video caption ⇒ caption is the embed corpus (V2 fallback, chunk_pool)', async () => {
+    const node = await enqueueMediaNode(`media-video-fallback-${Date.now()}.mp4`);
+    const modelId = await makeEmbedModel();
+    const embed = jest.fn(async (texts) => ({
+      vectors: vectorsFor(texts.length),
+      dim: 4,
+      modelId,
+    }));
+    const embedMedia = jest.fn();
+    const { hooks, state } = fakeHooks();
+
+    const done = await pipeline.runPendingEmbedJobs({
+      adapter: { embed, embedMedia },
+      activeModelId: async () => modelId,
+      readNode: async () => ({ name: node.name, mimeType: 'video/mp4', type: 'file' }),
+      readBlob: async () => Buffer.from('video-bytes'),
+      capabilityEnabled: () => false,
+      aiEnrichmentsStore: { get: async () => ({ caption: '공원을 걷는 사람들' }) },
+      vectorStore: hooks,
+    });
+    expect(done).toBe(1);
+
+    expect(embedMedia).not.toHaveBeenCalled();
+    expect(embed).toHaveBeenCalledWith(['공원을 걷는 사람들']);
+    expect(state.pooled[0].source).toBe('chunk_pool');
+  });
+
+  it('capability OFF + audio transcript (non-music) ⇒ transcript is the embed corpus', async () => {
+    const node = await enqueueMediaNode(`media-transcript-${Date.now()}.m4a`);
+    const modelId = await makeEmbedModel();
+    const embed = jest.fn(async (texts) => ({
+      vectors: vectorsFor(texts.length),
+      dim: 4,
+      modelId,
+    }));
+    const embedMedia = jest.fn();
+    const { hooks, state } = fakeHooks();
+
+    const done = await pipeline.runPendingEmbedJobs({
+      adapter: { embed, embedMedia },
+      activeModelId: async () => modelId,
+      readNode: async () => ({ name: node.name, mimeType: 'audio/mp4', type: 'file' }),
+      readBlob: async () => Buffer.from('m4a-bytes'),
+      capabilityEnabled: () => false,
+      aiEnrichmentsStore: { get: async () => ({ transcript: '회의 녹음 전사', mediaKind: null }) },
+      vectorStore: hooks,
+    });
+    expect(done).toBe(1);
+
+    expect(embedMedia).not.toHaveBeenCalled();
+    expect(embed).toHaveBeenCalledWith(['회의 녹음 전사']);
+    expect(state.pooled[0].source).toBe('chunk_pool');
+  });
+
+  it('capability OFF + very long caption ⇒ sampled chunk pool, never head truncation on media', async () => {
+    const node = await enqueueMediaNode(`media-long-caption-${Date.now()}.png`);
+    const modelId = await makeEmbedModel();
+    const longCaption = Array.from({ length: 40 }, (_, i) => `장면 설명 ${i + 1}`).join('\n\n');
+    const embed = jest.fn(async (texts) => ({
+      vectors: vectorsFor(texts.length),
+      dim: 4,
+      modelId,
+    }));
+    const { hooks, state } = fakeHooks();
+
+    const done = await pipeline.runPendingEmbedJobs({
+      adapter: { embed, embedMedia: jest.fn() },
+      activeModelId: async () => modelId,
+      readNode: async () => ({ name: node.name, mimeType: 'image/png', type: 'file' }),
+      readBlob: async () => Buffer.from('png-bytes'),
+      capabilityEnabled: () => false,
+      aiEnrichmentsStore: { get: async () => ({ caption: longCaption }) },
+      chunkBudget: 4,
+      vectorStore: hooks,
+    });
+    expect(done).toBe(1);
+
+    // 40 paragraphs → uniform-stride sample of exactly 4, first and last kept.
+    const [texts] = embed.mock.calls[0];
+    expect(texts).toHaveLength(4);
+    expect(texts[0]).toBe('장면 설명 1');
+    expect(texts[3]).toBe('장면 설명 40');
+    expect(state.chunks[0].vectorTexts).toHaveLength(4);
+    expect(state.pooled[0].source).toBe('chunk_pool');
+    expect(state.pooled[0].source).not.toBe('head');
+  });
+
+  it('capability ON + caption present ⇒ direct media embed wins over the V2 fallback', async () => {
+    const node = await enqueueMediaNode(`media-direct-over-caption-${Date.now()}.mp4`);
+    const modelId = await makeEmbedModel();
+    const frames = [Buffer.from('f1')];
+    const embedMedia = jest.fn(async () => ({ vectors: vectorsFor(1), dim: 4, modelId }));
+    const embed = jest.fn();
+    const { hooks, state } = fakeHooks();
+
+    const done = await pipeline.runPendingEmbedJobs({
+      adapter: { embed, embedMedia },
+      activeModelId: async () => modelId,
+      readNode: async () => ({ name: node.name, mimeType: 'video/mp4', type: 'file' }),
+      readBlob: async () => Buffer.from('video-bytes'),
+      sampleFrames: async () => frames,
+      capabilityEnabled: (capability) => capability === 'video_embed',
+      aiEnrichmentsStore: { get: async () => ({ caption: '공원을 걷는 사람들' }) },
+      vectorStore: hooks,
+    });
+    expect(done).toBe(1);
+
+    expect(embed).not.toHaveBeenCalled();
+    expect(embedMedia).toHaveBeenCalledTimes(1);
+    expect(state.pooled[0].source).toBe('media_direct');
+  });
+
   it('non-media text nodes keep the document pipeline (caption/asr are media-only)', async () => {
     const node = await enqueueMediaNode(`media-text-${Date.now()}.txt`);
     const modelId = await makeEmbedModel();

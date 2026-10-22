@@ -195,19 +195,22 @@ surface) — NOT AI-profile numbers. The same defaults live in
 `server/infrastructure/usage/activityScore.js` (single semantic source; registry
 defaults are kept in parity by test).
 
-| key                             | tier | secret | default | notes                                                                    |
-| ------------------------------- | ---- | ------ | ------- | ------------------------------------------------------------------------ |
-| `AI_USAGE_W_OPEN`               | T2   | no     | `1`     | `usage_events` weight w_open (§3.4)                                      |
-| `AI_USAGE_W_PREVIEW`            | T2   | no     | `2`     | weight w_preview                                                         |
-| `AI_USAGE_W_DOWNLOAD`           | T2   | no     | `3`     | weight w_download                                                        |
-| `AI_USAGE_W_SEARCH_HIT`         | T2   | no     | `1`     | weight w_search_hit                                                      |
-| `AI_USAGE_W_LIKE`               | T2   | no     | `5`     | weight w_like                                                            |
-| `AI_ACTIVITY_HALF_LIFE_DAYS`    | T2   | no     | `30`    | item accumulator half-life H (§3.4)                                      |
-| `AI_USAGE_EVENT_RETENTION_DAYS` | T2   | no     | `90`    | raw `usage_events` roll-off horizon (`0` = retention off)                |
-| `AI_NIGHTLY_ANCHOR_HOUR_UTC`    | T2   | no     | `3`     | nightly scheduler anchor hour (maintenanceScheduler §3.3)                |
-| `ARCHIVE_RETENTION_DAYS`        | T2   | no     | `30`    | purge horizon / tombstone lifetime (collectionsService §3, Q1)           |
-| `ADMIN_REPORTS_RETENTION_DAYS`  | T2   | no     | `30`    | `admin_reports` housekeeping horizon (writer-side prune; `0` = off)      |
-| `WEA_SKIP_ROLLUP_SCHEDULER`     | T2   | no     | —       | test seam, env-allowed (NOT dbOnly — same idiom as `WEA_SKIP_AI_WORKER`) |
+| key                                   | tier | secret | default    | notes                                                                    |
+| ------------------------------------- | ---- | ------ | ---------- | ------------------------------------------------------------------------ |
+| `AI_USAGE_W_OPEN`                     | T2   | no     | `1`        | `usage_events` weight w_open (§3.4)                                      |
+| `AI_USAGE_W_PREVIEW`                  | T2   | no     | `2`        | weight w_preview                                                         |
+| `AI_USAGE_W_DOWNLOAD`                 | T2   | no     | `3`        | weight w_download                                                        |
+| `AI_USAGE_W_SEARCH_HIT`               | T2   | no     | `1`        | weight w_search_hit                                                      |
+| `AI_USAGE_W_LIKE`                     | T2   | no     | `5`        | weight w_like                                                            |
+| `AI_ACTIVITY_HALF_LIFE_DAYS`          | T2   | no     | `30`       | item accumulator half-life H (§3.4)                                      |
+| `AI_USAGE_EVENT_RETENTION_DAYS`       | T2   | no     | `90`       | raw `usage_events` roll-off horizon (`0` = retention off)                |
+| `AI_NIGHTLY_ANCHOR_HOUR_UTC`          | T2   | no     | `3`        | nightly scheduler anchor hour (maintenanceScheduler §3.3)                |
+| `ARCHIVE_RETENTION_DAYS`              | T2   | no     | `30`       | purge horizon / tombstone lifetime (collectionsService §3, Q1)           |
+| `ADMIN_REPORTS_RETENTION_DAYS`        | T2   | no     | `30`       | `admin_reports` retention horizon (scheduled prune; `0` = off)           |
+| `ADMIN_REPORTS_RETENTION_INTERVAL_MS` | T2   | no     | `86400000` | retention scheduler interval (`0` = disabled)                            |
+| `ADMIN_REPORTS_RETENTION_BATCH`       | T2   | no     | `1000`     | bounded delete batch size per retention pass                             |
+| `WEA_SKIP_ROLLUP_SCHEDULER`           | T2   | no     | —          | test seam, env-allowed (NOT dbOnly — same idiom as `WEA_SKIP_AI_WORKER`) |
+| `WEA_SKIP_ADMIN_REPORTS_RETENTION`    | T2   | no     | —          | retention scheduler test seam, env-allowed                               |
 
 ---
 
@@ -230,4 +233,4 @@ defaults are kept in parity by test).
 - [ ] `registration_enabled` present, T2, non-secret, no default.
 - [ ] Every `LLM_*` key is T2 `dbOnly`; the four role API keys are `secret: true`; `WEA_SKIP_AI_WORKER` is T2 non-dbOnly (env-allowed test seam).
 - [ ] The §3.4 activity-constant keys (`AI_USAGE_W_*`, `AI_ACTIVITY_HALF_LIFE_DAYS`, `AI_USAGE_EVENT_RETENTION_DAYS`, `AI_NIGHTLY_ANCHOR_HOUR_UTC`, `ARCHIVE_RETENTION_DAYS`) are T2 `dbOnly` with the shipped defaults; `WEA_SKIP_ROLLUP_SCHEDULER` is T2 env-allowed (not dbOnly).
-- [ ] `ADMIN_REPORTS_RETENTION_DAYS` is registered T2 `dbOnly`, non-secret, default `30` (admin.md §2.2.6 writer-side housekeeping).
+- [ ] `ADMIN_REPORTS_RETENTION_DAYS` / `..._INTERVAL_MS` / `..._BATCH` are registered T2 `dbOnly`, non-secret, defaults `30` / `86400000` / `1000` (admin.md §2.2.6 scheduled retention); `WEA_SKIP_ADMIN_REPORTS_RETENTION` is the env-allowed test seam.

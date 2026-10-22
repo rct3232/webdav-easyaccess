@@ -41,8 +41,8 @@ async function updateReport(id, patch) {
   return getRepository().updateReport(id, patch);
 }
 
-async function deleteReportsOlderThan(cutoffMs) {
-  return getRepository().deleteReportsOlderThan(cutoffMs);
+async function deleteReportsOlderThan(cutoffMs, opts) {
+  return getRepository().deleteReportsOlderThan(cutoffMs, opts);
 }
 
 module.exports = {

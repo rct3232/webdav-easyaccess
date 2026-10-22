@@ -500,6 +500,8 @@ async function runBoot() {
             runStartupFailSafeRecovery,
             startGcScheduler,
             startUsageRollupScheduler,
+            runAdminReportsRetention,
+            startAdminReportsRetentionScheduler,
           } = require('./infrastructure/maintenanceScheduler');
           const { getUsageService } = require('./infrastructure/usageService');
           const composition = getComposition();
@@ -508,6 +510,16 @@ async function runBoot() {
             .catch((err) => console.error('Fail-safe recovery on startup failed:', err));
           startGcScheduler({ gcService: composition.gcService });
           startUsageRollupScheduler({ usageService: getUsageService() });
+          runAdminReportsRetention()
+            .then((r) => {
+              if (r && r.deleted > 0) {
+                console.log(`✓ Admin-reports retention pruned ${r.deleted} row(s)`);
+              }
+            })
+            .catch((err) =>
+              console.error('Admin-reports retention on startup failed:', err.message)
+            );
+          startAdminReportsRetentionScheduler();
           if (computeSetupStatus(process.env).setup_complete) {
             const { startAiWorker } = require('./domains/ai/jobService');
             startAiWorker()

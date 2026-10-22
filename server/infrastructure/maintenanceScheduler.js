@@ -26,6 +26,10 @@
 /* eslint-disable no-console -- startup status reporting */
 
 const DAY_MS = 86400000;
+const DEFAULT_RETENTION_INTERVAL_MS = DAY_MS;
+const DEFAULT_RETENTION_BATCH = 1000;
+const RETENTION_LOCK_NAME = 'admin-reports-retention';
+const RETENTION_LOCK_TTL_MS = 30 * 60 * 1000;
 
 function shouldSkip() {
   const skip = (process.env.WEA_SKIP_GC_SCHEDULER || '').toLowerCase();
@@ -291,6 +295,130 @@ function startUsageRollupScheduler({ usageService, collectionsStore, actionJourn
   return timer;
 }
 
+// ── Admin-reports retention (§2.2.6 / admin.md §2.2.6) ─────────────────────
+
+function shouldSkipAdminReportsRetention() {
+  const skip = (process.env.WEA_SKIP_ADMIN_REPORTS_RETENTION || '').toLowerCase();
+  return ['1', 'true', 'yes', 'on'].includes(skip);
+}
+
+function resolveAdminReportsRetentionIntervalMs() {
+  const { getSharedResolver } = require('./configResolver');
+  const raw = Number(getSharedResolver().getConfigSync('ADMIN_REPORTS_RETENTION_INTERVAL_MS'));
+  if (!Number.isFinite(raw)) return DEFAULT_RETENTION_INTERVAL_MS;
+  return raw > 0 ? raw : 0;
+}
+
+function resolveAdminReportsRetentionBatch() {
+  const { getSharedResolver } = require('./configResolver');
+  const raw = Number(getSharedResolver().getConfigSync('ADMIN_REPORTS_RETENTION_BATCH'));
+  return Number.isInteger(raw) && raw > 0 ? raw : DEFAULT_RETENTION_BATCH;
+}
+
+/**
+ * ONE retention pass: delete rows older than ADMIN_REPORTS_RETENTION_DAYS in
+ * bounded batches under the cross-replica lock. Append-only writers never call
+ * this. Returns `{ deleted, cutoffMs }` or `{ deleted: 0, skipped }` when the
+ * policy is off or another replica holds the lock. Throws on DB failures (the
+ * scheduler/boot caller logs and retries next interval).
+ *
+ * @param {Object} [opts]
+ * @param {Object} [opts.store] admin_reports store facade
+ * @param {() => number} [opts.now] epoch-ms clock seam
+ * @param {number} [opts.retentionDays] override (tests); default hot config
+ * @param {number} [opts.batchSize] override (tests); default hot config
+ * @param {Object} [opts.lockManager] lock seam (tests)
+ * @param {Object} [opts.log] logger seam
+ * @returns {Promise<{deleted: number, cutoffMs?: number, skipped?: string}>}
+ */
+async function runAdminReportsRetention({
+  store,
+  now = Date.now,
+  retentionDays,
+  batchSize,
+  lockManager,
+  log,
+} = {}) {
+  const logger = log || console;
+  const days =
+    retentionDays === undefined
+      ? await require('../domains/admin/services/adminReportsService').resolveAdminReportsRetentionDays()
+      : Number(retentionDays);
+  if (!Number.isFinite(days) || days <= 0) return { deleted: 0, skipped: 'retention_off' };
+
+  const batch =
+    Number.isInteger(Number(batchSize)) && Number(batchSize) > 0
+      ? Number(batchSize)
+      : resolveAdminReportsRetentionBatch();
+  const clock = Number(now());
+  const cutoffMs = (Number.isFinite(clock) ? clock : Date.now()) - days * DAY_MS;
+  const reportsStore = store || require('../store/adminReportsStore');
+
+  const locks = lockManager || require('./lockManager');
+  let lock = null;
+  try {
+    try {
+      lock = await locks.acquireLock(RETENTION_LOCK_NAME, {
+        ttlMs: RETENTION_LOCK_TTL_MS,
+        waitMs: 0,
+      });
+    } catch (err) {
+      if (err && err.code === 'LOCK_TIMEOUT') return { deleted: 0, skipped: 'locked' };
+      throw err;
+    }
+
+    let deleted = 0;
+    for (;;) {
+      const result = await reportsStore.deleteReportsOlderThan(cutoffMs, { limit: batch });
+      const changes = Number(result && result.changes) || 0;
+      deleted += changes;
+      if (changes < batch) break;
+    }
+    if (deleted > 0 && typeof logger.log === 'function') {
+      logger.log(`[admin-reports-retention] deleted ${deleted} row(s)`);
+    }
+    return { deleted, cutoffMs };
+  } finally {
+    if (lock && typeof lock.release === 'function') await lock.release();
+  }
+}
+
+/**
+ * Periodic retention schedule. `null` under the skip seam or interval 0.
+ * Re-arms with the hot interval at fire time; failures log and retry.
+ */
+function startAdminReportsRetentionScheduler({
+  store,
+  now,
+  retentionDays,
+  batchSize,
+  lockManager,
+  log,
+  intervalMs,
+} = {}) {
+  if (shouldSkipAdminReportsRetention()) return null;
+  const resolveInterval = () =>
+    intervalMs !== undefined && Number.isFinite(Number(intervalMs))
+      ? Number(intervalMs)
+      : resolveAdminReportsRetentionIntervalMs();
+  const initial = resolveInterval();
+  if (!initial || initial <= 0) return null;
+
+  let timer = null;
+  const tick = async () => {
+    try {
+      await runAdminReportsRetention({ store, now, retentionDays, batchSize, lockManager, log });
+    } catch (err) {
+      console.error('Scheduled admin-reports retention failed:', err.message);
+    } finally {
+      const next = resolveInterval();
+      if (next > 0) timer = setTimeout(tick, next);
+    }
+  };
+  timer = setTimeout(tick, initial);
+  return timer;
+}
+
 module.exports = {
   startGcScheduler,
   runStartupFailSafeRecovery,
@@ -300,4 +428,9 @@ module.exports = {
   resolveAnchorHour,
   resolveNightlyDelayMs,
   startUsageRollupScheduler,
+  shouldSkipAdminReportsRetention,
+  resolveAdminReportsRetentionIntervalMs,
+  resolveAdminReportsRetentionBatch,
+  runAdminReportsRetention,
+  startAdminReportsRetentionScheduler,
 };

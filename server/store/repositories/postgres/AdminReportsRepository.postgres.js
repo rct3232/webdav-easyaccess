@@ -89,11 +89,21 @@ module.exports = function createPostgresAdminReportsRepository(executor, { mapRe
       }
     },
 
-    async deleteReportsOlderThan(cutoffMs) {
+    async deleteReportsOlderThan(cutoffMs, opts = {}) {
+      const limit = Number(opts && opts.limit);
+      const bounded = Number.isInteger(limit) && limit > 0;
       try {
-        const result = await executor.run('DELETE FROM admin_reports WHERE created_at < $1', [
-          new Date(cutoffMs).toISOString(),
-        ]);
+        const sql = bounded
+          ? `DELETE FROM admin_reports WHERE id IN (
+               SELECT id FROM admin_reports
+                WHERE created_at < $1
+                ORDER BY id
+                LIMIT $2
+             )`
+          : 'DELETE FROM admin_reports WHERE created_at < $1';
+        const params = [new Date(cutoffMs).toISOString()];
+        if (bounded) params.push(limit);
+        const result = await executor.run(sql, params);
         return { changes: result.changes };
       } catch (error) {
         throw mapDatabaseError(error);

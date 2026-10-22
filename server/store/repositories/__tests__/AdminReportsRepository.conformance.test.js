@@ -178,6 +178,25 @@ describe('AdminReportsRepository.deleteReportsOlderThan conformance', () => {
     expect(list[0].kind).toBe('failsafe');
   });
 
+  it('deletes only one bounded batch when a limit is provided', async () => {
+    await repo.insertReport({ kind: 'gc', status: 'ok', payload: null, created_at: daysAgo(70) });
+    await repo.insertReport({ kind: 'gc', status: 'ok', payload: null, created_at: daysAgo(71) });
+    await repo.insertReport({ kind: 'gc', status: 'ok', payload: null, created_at: daysAgo(72) });
+
+    await expect(
+      repo.deleteReportsOlderThan(Date.now() - 30 * DAY_MS, { limit: 2 })
+    ).resolves.toEqual({ changes: 2 });
+
+    const oldLeft = (await repo.listReports()).filter(
+      (row) => Date.parse(row.createdAt) < Date.now() - 30 * DAY_MS
+    );
+    expect(oldLeft).toHaveLength(1);
+
+    await expect(
+      repo.deleteReportsOlderThan(Date.now() - 30 * DAY_MS, { limit: 10 })
+    ).resolves.toEqual({ changes: 1 });
+  });
+
   it('returns { changes: 0 } when nothing is older than the cutoff (idempotent)', async () => {
     await expect(repo.deleteReportsOlderThan(Date.now() - 30 * DAY_MS)).resolves.toEqual({
       changes: 0,

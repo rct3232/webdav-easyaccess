@@ -68,7 +68,8 @@ function createAiJobService(deps = {}) {
    * `unextractable_text` skip; extractor code errors propagate (§2.3
    * step 5 typed skips / failures). */
   async function readNodeText(nodeId) {
-    const fileNodesStore = deps.fileNodesStore || require('../../store/fileNodesStore');
+    const fileNodesStore =
+      deps.fileNodesStore || require('../../store/fileNodesStore').createFileNodesStore();
     const { extractText } = require('./extractors/documentText');
     const blobStorageService =
       deps.blobStorageService ||
@@ -112,6 +113,14 @@ function createAiJobService(deps = {}) {
         adapter,
         readText: deps.readText || readNodeText,
         jobTimeoutMs,
+        // §2.3 step 6: the ACTIVE embed model id gates the claim — resolved
+        // per pass through the registry facade (boot syncModelRegistry rows
+        // it); null ⇒ the pass drains nothing (nothing to score against).
+        activeModelId: async () => {
+          const llmModelsStore = deps.llmModelsStore || require('../../store/llmModelsStore');
+          const row = await llmModelsStore.getActiveByRole('embed');
+          return row && row.id != null ? Number(row.id) : null;
+        },
       });
     } catch (err) {
       log.error('[aiWorker] embed drain pass failed:', err?.message ?? err);

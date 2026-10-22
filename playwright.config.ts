@@ -296,6 +296,19 @@ if (backendMode === 'webdav') {
         use: mobileUse,
         baseURL: `http://localhost:${e2ePorts.scratchRetrieval}`,
       },
+      {
+        // E2E-AI-001 — semantic search over the embed-enabled engine
+        // (routes/search.md §2.4). Scratch-hermetic on its OWN server
+        // (:5016, own sqlite + webdav file backend, never the shared :5002
+        // pool); the spec boots the scratch with `WEA_MODEL_DIR` pointing at
+        // the pre-seeded EG2 weights directory so boot provisioning is a
+        // zero-download no-op and the embed role is configured at boot.
+        // Standalone sibling (own slot — no shared-port dependency chain).
+        name: 'ai-desktop',
+        spec: /ai\.spec\.ts$/,
+        use: desktopUse,
+        baseURL: `http://localhost:${e2ePorts.scratchAi}`,
+      },
     ];
     pushHermetic(hermeticSpecs);
     pushHermetic(collectionsSpecs);

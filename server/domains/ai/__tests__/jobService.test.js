@@ -125,6 +125,7 @@ describe('aiJobService worker (§2.3)', () => {
       adapter,
       readText,
       jobTimeoutMs: 4500,
+      llmModelsStore: { getActiveByRole: async () => ({ id: 42 }) },
       embedPipeline: { runPendingEmbedJobs: runPipeline },
     });
     await svc.drainPass();
@@ -133,6 +134,21 @@ describe('aiJobService worker (§2.3)', () => {
     expect(call.adapter).toBe(adapter);
     expect(call.readText).toBe(readText);
     expect(call.jobTimeoutMs).toBe(4500);
+    // §2.3 step 6: the ACTIVE embed model id resolves per pass through the
+    // registry facade — the pipeline's claim gate (a null id drains nothing).
+    await expect(call.activeModelId()).resolves.toBe(42);
+  });
+
+  test('the activeModelId seam resolves null when no registry row exists', async () => {
+    const runPipeline = jest.fn(async () => 0);
+    const svc = createAiJobService({
+      adapter: fakeAdapter(),
+      llmModelsStore: { getActiveByRole: async () => null },
+      embedPipeline: { runPendingEmbedJobs: runPipeline },
+    });
+    await svc.drainPass();
+    const call = runPipeline.mock.calls[0][0];
+    await expect(call.activeModelId()).resolves.toBeNull();
   });
 
   test('a drainPass throw is contained (the loop keeps scheduling)', async () => {

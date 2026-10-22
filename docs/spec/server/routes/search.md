@@ -100,6 +100,30 @@ it as a black box.
 }
 ```
 
+200 response when the embed leg ran but scored NOTHING (provider failure degrade,
+baseline-gated empty, or the scoring seam not wired): the `semantic` key is PRESENT
+with an EMPTY array and `semantic_available` stays `true` — absence and honest
+emptiness are distinct wire states:
+
+```json
+{
+  "name_matches": [],
+  "semantic": [],
+  "result_ref": "sr1.44de0c9a3f7b1028",
+  "counts": {
+    "name": 0,
+    "semantic": 0,
+    "total": 0,
+    "name_truncated": false,
+    "semantic_capped_segments": false
+  },
+  "semantic_available": true
+}
+```
+
+The `semantic` key and the `semantic_capped_segments` flag are present exactly when
+the embed leg ran; the §2.4.1 gate-off degrade (below) omits both.
+
 200 response when the `embed` role is absent (name section still works): the
 `semantic` key is **omitted**, and the degradation is reported as data, not as an
 HTTP error:
@@ -180,6 +204,9 @@ absent, not the feature).
 - [ ] Request `result_ref` is accepted and ignored (same response shape, fresh signature)
 - [ ] embed role absent → 200, `semantic` key omitted,
       `semantic_unavailable_reason: "serverErrors.ai.notConfigured"`, name section intact
+- [ ] embed configured, zero scored rows → 200, `semantic: []` PRESENT,
+      `semantic_available:true` — the honest-empty shape is never conflated with the
+      omit shape, and `semantic_capped_segments` is present in both leg-ran responses
 - [ ] Dynamic baseline: nonsense/low-similarity query returns an honestly EMPTY semantic
       section (not a majority-class dump)
 - [ ] Segment-AND: a composite query scores MIN across ≤3 segments; a 4-word query sets

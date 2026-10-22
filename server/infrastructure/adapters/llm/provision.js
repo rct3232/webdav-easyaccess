@@ -26,6 +26,16 @@ const { getDataDir } = require('../../../utils/paths');
 
 const LOCK_PATH = path.join(__dirname, 'model.lock.json');
 
+/**
+ * Weights tree root: `<modelDir>/<repo>/<revision>` — the HF snapshot layout
+ * the ONNX client reads directly from disk (embedded-onnx `loadEngine`).
+ * A lock WITHOUT repo/revision (test fixtures) falls back to the flat
+ * `<modelDir>` form.
+ */
+function weightsRoot(modelDir, lock) {
+  return lock.repo && lock.revision ? path.join(modelDir, lock.repo, lock.revision) : modelDir;
+}
+
 function loadLock(lockPath = LOCK_PATH) {
   const raw = fs.readFileSync(lockPath, 'utf8');
   const lock = JSON.parse(raw);
@@ -68,9 +78,10 @@ function sha256File(filePath) {
  * Missing/truncated/corrupted files ⇒ false (weights not usable).
  */
 async function weightsPresent(dir, lock) {
-  if (!fs.existsSync(dir)) return false;
+  const root = weightsRoot(dir, lock);
+  if (!fs.existsSync(root)) return false;
   for (const f of lock.files) {
-    const filePath = path.join(dir, f.path);
+    const filePath = path.join(root, f.path);
     if (!fs.existsSync(filePath)) return false;
     const stat = fs.statSync(filePath);
     if (stat.size !== f.size) return false;
@@ -96,6 +107,7 @@ function defaultLogger() {
  */
 async function provisionWeights({ modelDir, lock, fetcher, logger, corruptFile = null }) {
   fs.mkdirSync(modelDir, { recursive: true });
+  const root = weightsRoot(modelDir, lock);
   const stagingDir = fs.mkdtempSync(path.join(path.dirname(modelDir), '.staging-'));
   const total = lock.files.length;
 
@@ -126,7 +138,7 @@ async function provisionWeights({ modelDir, lock, fetcher, logger, corruptFile =
       // atomic: write to staging temp file, then rename into the final tree
       const tmpFile = path.join(stagingDir, `${i}.tmp`);
       fs.writeFileSync(tmpFile, buffer);
-      const finalPath = path.join(modelDir, file.path);
+      const finalPath = path.join(root, file.path);
       fs.mkdirSync(path.dirname(finalPath), { recursive: true });
       fs.renameSync(tmpFile, finalPath);
     }

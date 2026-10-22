@@ -129,13 +129,13 @@ future layer's job) — sending it never changes the response.
 
 ### 2.5 Repository / seam additions
 
-| Addition                                                       | Owner spec                                           | Purpose                                     |
-| -------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------- |
-| `FileNodeRepository.searchNodesByName(userId, query, {limit})` | FileNodeRepository twins (+conformance)              | ACL-scoped `lower LIKE` name section        |
-| `FileNodeRepository.sampleVisibleNodeIds(userId, n)`           | same                                                 | baseline corpus sample                      |
-| `FileNodeRepository.listVisibleFileNodeIds(userId)`            | same                                                 | ACL anchoring set (scorer scores inside it) |
-| `vectorStore.neighbors(vec, k, candidates)`                    | [vectorStore](../infrastructure/vectorStore.md) §2.3 | max-over-chunks per-segment scoring         |
-| `query_parses` repository                                      | `docs/features/collections-platform.md` §5           | signature-keyed embed/parse cache           |
+| Addition                                                       | Owner spec                                            | Purpose                                     |
+| -------------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------- |
+| `FileNodeRepository.searchNodesByName(userId, query, {limit})` | FileNodeRepository twins (+conformance)               | ACL-scoped `lower LIKE` name section        |
+| `FileNodeRepository.sampleVisibleNodeIds(userId, n)`           | same                                                  | baseline corpus sample                      |
+| `FileNodeRepository.listVisibleFileNodeIds(userId)`            | same                                                  | ACL anchoring set (scorer scores inside it) |
+| `vectorStore.neighbors(vec, k, candidates)`                    | [vectorStore](../infrastructure/vectorStore.md) §2.3  | max-over-chunks per-segment scoring         |
+| `query_parses` repository                                      | [queryParsesStore](../store/queryParsesStore.md) §2.2 | signature-keyed embed/parse cache           |
 
 ### 2.5a The semantic scoring seam (steps 5–6 behind one boundary)
 

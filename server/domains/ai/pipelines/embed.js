@@ -48,7 +48,7 @@ const {
 } = require('../media/mediaBackfillScope');
 
 /** Kinds without a landed executor — parked via claimNext (§2.3). */
-const UNEXECUTABLE_KINDS = [AI_JOB_KIND.FEATURES, AI_JOB_KIND.BACKFILL];
+const UNEXECUTABLE_KINDS = [AI_JOB_KIND.FEATURES];
 
 /** Every kind except the pipeline's own: predicate-level park (§2.3). */
 const NON_EMBED_KINDS = AI_JOB_KIND.ALL.filter((kind) => kind !== AI_JOB_KIND.EMBED);

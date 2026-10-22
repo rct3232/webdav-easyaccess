@@ -34,6 +34,7 @@ describe('SearchSaveDialog (search save confirm, §2.6)', () => {
 
     expect(await screen.findByTestId('search-save-dialog')).toBeInTheDocument();
     expect(screen.getByText('alpha.jpg')).toBeInTheDocument();
+    expect(screen.getByTestId('search-save-member-count')).toHaveTextContent('3 files');
     expect(screen.getByTestId('search-save-publish-notice')).toBeInTheDocument();
   });
 
@@ -67,6 +68,7 @@ describe('SearchSaveDialog (search save confirm, §2.6)', () => {
     renderWithProviders(
       <SearchSaveDialog open term="x" rows={many} onClose={jest.fn()} onConfirm={jest.fn()} />
     );
+    expect(screen.getByTestId('search-save-member-count')).toHaveTextContent('14 files');
     expect(screen.getByTestId('search-save-more-counter')).toBeInTheDocument();
   });
 });

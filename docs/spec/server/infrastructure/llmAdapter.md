@@ -191,7 +191,9 @@ users); regular users see absent affordances, not disabled ones.
 
 1. admin-set `LLM_MAX_INPUT_CHARS` (T2) wins;
 2. else PUBLISHED capability metadata — free GETs only: `/v1/models` (n_ctx / OpenAI
-   `max_input_tokens`), llama.cpp `/props`, ollama `/api/show`;
+   `max_input_tokens`), llama.cpp `/props`, ollama `/api/show`. Boot injects the
+   `fetchPublishedMetadata` seam (`createPublishedMetadataFetcher`): result cached by
+   config signature for a short TTL; transport/HTTP/parse failure ⇒ `null` (step 3);
 3. else the preset manifest's RELEASE-MEASURED default (e.g. llama.cpp ub-512 profile;
    OpenAI-embed 8,191) — release artifacts per the constants-provenance rule;
 4. else (and thereafter always) the PASSIVE, DOWNWARD-ONLY limiter: a real request that

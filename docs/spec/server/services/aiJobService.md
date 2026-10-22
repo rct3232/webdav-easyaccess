@@ -17,8 +17,9 @@ Target-contract spec.
 ### 2.1 File Path
 
 - **Source:** `server/domains/ai/jobService.js` (enqueue API + worker loop)
-- **Pipelines:** `server/domains/ai/pipelines/{embed,caption,asr}.js` (pure per-
-  kind executors, unit-testable with a fake llmAdapter — adapter injection seam) and
+- **Pipelines:** `server/domains/ai/pipelines/{embed,caption,asr,backfill}.js` (pure per-
+  kind executors, unit-testable with a fake llmAdapter — adapter injection seam; `backfill`
+  takes the vectorStore seam and performs no provider call) and
   `pipelines/pipelineRunner.js` (shared claim/timeout/failure mechanics)
 - **Media helpers:** `server/domains/ai/media/mediaSampling.js` (ffprobe metadata,
   frame sampling, audio decode/windowing, ladder arithmetic, metadata-scoped
@@ -224,24 +225,28 @@ stride sample ≤ `LLM_CHUNK_BUDGET` (default 4) chunks → embed ALL sampled ch
   node-id list an admin action would re-embed — `missing ∪ stale_space`, id-ascending,
   capped by `limit` — and enqueues nothing: the admin action and its rate limit own the
   enqueue.
-- **Backfill ownership:** the `backfill` executor is not implemented and the kind stays
-  PARKED (`pipelines/embed.js` `UNEXECUTABLE_KINDS`). The unified admin re-embed
-  (initial coverage + model-change full re-embed) owns the executor, and the factory
-  `init()`/`rebuildShadow()` owns the derived-index rebuild path. Its media half is the
-  `planMediaBackfill` list above (`missing` for the initial coverage pass, `stale_space`
-  for the model-change re-projection); a model change enqueues nothing by itself. No DDL
-  column is added for the driver; once the admin action + factory rebuild own the flow,
-  the per-node driver row can be dropped.
+- **Backfill executor:** `pipelines/backfill.js` executes a claimed `backfill` row by
+  calling the active vectorStore `rebuildShadow()` ONCE, then `markDone`. It performs NO
+  provider calls, writes no canonical row and enqueues nothing; a rebuild throw goes
+  through the shared drain catch (`markFailed` + store backoff), and a re-run after
+  success finds no claimable row. The drain rides the embed role gate in
+  `jobService.drainPass` and additionally requires the installed vectorStore seam —
+  absent (no active embed model / pre-boot) ⇒ the rows park untouched. The job remains
+  admin-launched and rate-limited: the unified re-embed action (initial coverage +
+  model-change full re-embed) owns generation bumps and seed enqueues, and a model
+  change enqueues nothing by itself. Its media half is the `planMediaBackfill` list above
+  (`missing` for the initial coverage pass, `stale_space` for the model-change
+  re-projection). No DDL column is added for the driver.
 - **Restart idempotence:** a job claimed but unfinished (process death) is re-armed by
   `recoverStaleRunning` (§2.3 step 2) and re-executes; because the pooled upsert REPLACES
   per node and `replaceChunks` deletes the incoming model space's set before insert, a
   partially written node converges to the full fresh state on re-execution — the file is
   embedded exactly once per generation end to end (no duplicate pooled rows, no
   mixed-space scoring: canonical reads filter by the active `model_id`).
-- **Kind coverage:** `embed`, `caption` and `asr` have executors; `features` and
-  `backfill` stay PARKED (`UNEXECUTABLE_KINDS`) through `claimNext({ excludeKinds })`
-  park&drain — zero attempt inflation. Each pipeline's exclusion set names every OTHER
-  kind, so the three drains sharing one worker pass can never double-claim.
+- **Kind coverage:** `embed`, `caption`, `asr` and `backfill` have executors; `features`
+  stays PARKED (`UNEXECUTABLE_KINDS`) through `claimNext({ excludeKinds })` park&drain —
+  zero attempt inflation. Each pipeline's exclusion set names every OTHER kind, so the
+  drains sharing one worker pass can never double-claim.
 
 **`features` (`features.extract`):** chat role; runs ONLY inside this job — never
 on request paths. Input = extracted text clipped by the input-budget ladder + a

@@ -4,15 +4,16 @@
  * AI jobs worker (docs/spec/server/services/aiJobService.md §2.3).
  *
  * Concurrency 1 per process. ONE drain pass runs every landed kind pipeline
- * (`embed`, `caption`, `asr`), each behind its own ROLE gate (llmAdapter
- * `roleConfigured` — includes the built-in embed role while its weights
- * provision): an unconfigured role parks only its pipeline, so its queued
- * jobs stay queued in claim order and drain once the role flips configured —
- * never claim-and-fail, zero attempt inflation. Every pipeline also passes an
- * additive `claimNext({ excludeKinds })` filter naming every OTHER kind
- * (pipelines/*.js), so the three drains sharing this pass can never
- * double-claim and kinds without a landed executor (`features`, `backfill`)
- * stay parked.
+ * (`embed`, `caption`, `asr`, `backfill`), each behind its own ROLE gate
+ * (llmAdapter `roleConfigured` — includes the built-in embed role while its
+ * weights provision): an unconfigured role parks only its pipeline, so its
+ * queued jobs stay queued in claim order and drain once the role flips
+ * configured — never claim-and-fail, zero attempt inflation. Every pipeline
+ * also passes an additive `claimNext({ excludeKinds })` filter naming every
+ * OTHER kind (pipelines/*.js), so the drains sharing this pass can never
+ * double-claim and kinds without a landed executor (`features`) stay parked.
+ * The `backfill` drain additionally requires the installed vectorStore seam
+ * (the shadow-rebuild target); absent, its rows park with the embed gate.
  *
  * All knobs are T2 hot (configRegistry: AI_WORKER_POLL_MS, AI_JOB_STALE_MS,
  * AI_JOB_TIMEOUT_MS, AI_WORKER_CONCURRENCY — the shipped defaults are the
@@ -74,6 +75,9 @@ function createAiJobService(deps = {}) {
   }
   function asrPipeline() {
     return deps.asrPipeline || require('./pipelines/asr');
+  }
+  function backfillPipeline() {
+    return deps.backfillPipeline || require('./pipelines/backfill');
   }
 
   function fileNodes() {
@@ -203,7 +207,10 @@ function createAiJobService(deps = {}) {
       // C6 writer wiring: the boot-selected vectorStore exposes the tx-first
       // write hooks (canonical halves + derived shadow in ONE TX). Absent store
       // (no active model / probe not run) ⇒ the pipeline's direct-SQL fallback.
-      const vectorStore = deps.vectorStore || require('./vectorStoreRuntime').getVectorStore();
+      const vectorStore =
+        deps.vectorStore !== undefined
+          ? deps.vectorStore
+          : require('./vectorStoreRuntime').getVectorStore();
       try {
         await runPendingEmbedJobs({
           adapter,
@@ -225,6 +232,22 @@ function createAiJobService(deps = {}) {
         });
       } catch (err) {
         log.error('[aiWorker] embed drain pass failed:', err?.message ?? err);
+      }
+
+      // `backfill` = derived-index rebuild driver (no provider calls). Same
+      // embed gate; no installed vectorStore ⇒ the rows park untouched.
+      if (vectorStore) {
+        const { runPendingBackfillJobs } = backfillPipeline();
+        try {
+          await runPendingBackfillJobs({
+            vectorStore,
+            jobTimeoutMs,
+            ...(deps.aiJobsStore ? { aiJobsStore: deps.aiJobsStore } : {}),
+            ...(deps.log ? { log: deps.log } : {}),
+          });
+        } catch (err) {
+          log.error('[aiWorker] backfill drain pass failed:', err?.message ?? err);
+        }
       }
     }
 

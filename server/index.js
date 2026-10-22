@@ -193,7 +193,11 @@ app.use('/api/recent-files', setupModeGuardInstance, require('./domains/recentFi
 app.use('/api/collections', setupModeGuardInstance, require('./domains/collections/routes'));
 app.use('/api/actions', setupModeGuardInstance, require('./domains/actions/routes'));
 app.use('/api/search', setupModeGuardInstance, require('./domains/ai/routes'));
-app.use('/api/file-likes', setupModeGuardInstance, require('./domains/collections/fileLikesRoutes'));
+app.use(
+  '/api/file-likes',
+  setupModeGuardInstance,
+  require('./domains/collections/fileLikesRoutes')
+);
 app.use('/api/dashboard', setupModeGuardInstance, require('./domains/dashboard/routes'));
 
 app.use('/api', require('./infrastructure/healthRoutes'));
@@ -289,6 +293,79 @@ async function runBoot() {
       );
     else console.log(`[backend-health] ${backend}: ${from} → OK`);
   });
+
+  // 8b. Embed provider decision + built-in provisioning (bootSequence §2 step
+  // 8b, llmPresets §2.3): setup mode makes NO attempt (zero bytes, zero
+  // egress — the wizard never waits); a remote embed override active ⇒
+  // deferred, weights absence is the normal state; built-in active with
+  // weights present ⇒ idempotent no-op (zero egress); missing ⇒ the attempt
+  // runs BLOCKING before listen with CLI progress (failed attempt: warn-only,
+  // embed caps OFF + admin reason, boot continues — the runBoot catch must
+  // not fire).
+  if (bootStatus.setup_complete) {
+    try {
+      const provisioner = require('./infrastructure/adapters/llm/provision');
+      const [embedBaseUrl, embedModel] = await Promise.all([
+        resolver.getConfig('LLM_EMBED_BASE_URL'),
+        resolver.getConfig('LLM_EMBED_MODEL'),
+      ]);
+      const remoteOverrideActive =
+        String(embedBaseUrl ?? '').trim() !== '' && String(embedModel ?? '').trim() !== '';
+      if (remoteOverrideActive) {
+        console.log('Remote embed override active — built-in provisioning deferred');
+      } else {
+        const lock = provisioner.loadLock();
+        const modelDir = provisioner.resolveModelDir();
+        if (await provisioner.weightsPresent(modelDir, lock)) {
+          console.log('✓ Embed model weights present (built-in, zero egress)');
+        } else {
+          console.log('Built-in embed engine: weights missing — provisioning (blocking)…');
+          const outcome = await provisioner.runProvision({
+            setupComplete: true,
+            remoteOverrideActive: false,
+            modelDir,
+            lock,
+            health: getBackendHealth(),
+          });
+          if (outcome.status === 'failed') {
+            console.warn(`⚠ Embed provisioning failed (${outcome.reason}) — embed caps OFF`);
+          } else {
+            console.log(`✓ Embed provisioning: ${outcome.status}`);
+          }
+        }
+      }
+    } catch (err) {
+      // Posture 5 (llmAdapter §2.8 `provisioning`): warn-only, boot
+      // continues, embed caps OFF + admin reason.
+      console.warn('⚠ Embed provisioning error — embed caps OFF:', err.message);
+    }
+
+    // Adapter construction + registry sync (llmAdapter §2.2/§2.3): ONE
+    // instance installed for every consumer (worker, search, hooks). A
+    // failure leaves no adapter installed — consumers park, roles read
+    // unconfigured, AI surfaces degrade honestly.
+    try {
+      const { initLlmAdapter } = require('./infrastructure/llmAdapterRuntime');
+      const {
+        createBootPresetFor,
+        createBootProbeRole,
+      } = require('./infrastructure/llmBootWiring');
+      const llmAdapter = initLlmAdapter({
+        configResolver: resolver,
+        health: getBackendHealth(),
+        presetFor: createBootPresetFor(resolver),
+        probeRole: createBootProbeRole(resolver),
+      });
+      const { rows } = await llmAdapter.syncModelRegistry();
+      console.log(
+        rows > 0
+          ? `✓ LLM model registry synced (${rows} changed)`
+          : '✓ LLM model registry up to date'
+      );
+    } catch (err) {
+      console.warn('⚠ LLM adapter init failed — AI roles stay unconfigured:', err.message);
+    }
+  }
 
   // Test WebDAV connection on startup — only when WebDAV is the active file
   // backend. Probing an unused backend would record a false health alert (D3).
@@ -391,6 +468,14 @@ async function runBoot() {
             .catch((err) => console.error('Fail-safe recovery on startup failed:', err));
           startGcScheduler({ gcService: composition.gcService });
           startUsageRollupScheduler({ usageService: getUsageService() });
+          if (computeSetupStatus(process.env).setup_complete) {
+            const { startAiWorker } = require('./domains/ai/jobService');
+            startAiWorker()
+              .then((r) => {
+                if (r.started) console.log('✓ AI jobs worker started');
+              })
+              .catch((err) => console.error('AI worker start failed:', err));
+          }
         } catch (err) {
           const { setup_complete } = computeSetupStatus(process.env);
           if (!setup_complete) {

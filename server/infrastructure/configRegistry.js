@@ -134,6 +134,13 @@ const CONFIG_ENTRIES = Object.freeze([
   // T1.3 AI jobs worker test seam (aiJobService spec §2) — same idiom as
   // WEA_SKIP_BULK_WORKER: T2, env-allowed so test setup can set it directly.
   { key: 'WEA_SKIP_AI_WORKER', tier: TIER.T2, secret: false },
+  // AI jobs worker knobs (aiJobService.md §3 — T2 dbOnly, hot; the worker
+  // reads them per iteration). AI_WORKER_CONCURRENCY's shipped default is 1
+  // and the worker loop implements single-concurrency only.
+  { key: 'AI_WORKER_POLL_MS', tier: TIER.T2, secret: false, default: 5000, dbOnly: true },
+  { key: 'AI_WORKER_CONCURRENCY', tier: TIER.T2, secret: false, default: 1, dbOnly: true },
+  { key: 'AI_JOB_STALE_MS', tier: TIER.T2, secret: false, default: 900000, dbOnly: true },
+  { key: 'AI_JOB_TIMEOUT_MS', tier: TIER.T2, secret: false, default: 120000, dbOnly: true },
 
   // ── AI / LLM (T2 dbOnly — fully hot; PLAN §6) ──────────────────────────
   // Per-call resolver, re-probe on change, no restart (llmAdapter §1/§2).

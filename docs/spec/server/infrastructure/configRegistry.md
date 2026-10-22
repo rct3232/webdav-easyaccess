@@ -180,6 +180,10 @@ can manage them from day one.
 | `LLM_BREAKER_THRESHOLD`      | T2   | no      | `5`             | consecutive-failure count that OPENs the circuit breaker (`llmAdapter.md` §2.5) |
 | `LLM_BREAKER_COOLDOWN_S`     | T2   | no      | `300`           | breaker OPEN cooldown before the half-open probe (`llmAdapter.md` §2.5)         |
 | `AI_SEMANTIC_SEARCH_ENABLED` | T2   | no      | `true`          | query-embed kill switch (`searchService` consumer)                              |
+| `AI_WORKER_POLL_MS`          | T2   | no      | `5000`          | AI jobs worker idle claim poll (`aiJobService.md` §2.3)                         |
+| `AI_WORKER_CONCURRENCY`      | T2   | no      | `1`             | per-process parallel jobs (the worker loop implements single-concurrency)       |
+| `AI_JOB_STALE_MS`            | T2   | no      | `900000`        | `recoverStaleRunning` reap cutoff                                               |
+| `AI_JOB_TIMEOUT_MS`          | T2   | no      | `120000`        | per-job wall clock (§2.3 step 5)                                                |
 
 ### Activity constants (T2 `dbOnly` — §3.4 product constants)
 

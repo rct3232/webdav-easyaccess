@@ -225,6 +225,31 @@ function createEmbedPipeline(deps = {}) {
   }
 
   /**
+   * §2.3 step 5 per-job wall clock (AI_JOB_TIMEOUT_MS, default 120000).
+   * On timeout the rejection hits the drain loop's catch ⇒ markFailed ⇒
+   * backoff; the underlying execution continues and its late markDone is a
+   * {changes:0} no-op (§2.3 step 6 — never resurrects).
+   */
+  async function runEmbedJobGuarded(job, ctx) {
+    const timeoutMs = Number(ctx.jobTimeoutMs) > 0 ? Number(ctx.jobTimeoutMs) : 0;
+    if (!timeoutMs) return runEmbedJob(job, ctx);
+    let timer = null;
+    try {
+      return await Promise.race([
+        runEmbedJob(job, ctx),
+        new Promise((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`embed job ${job.id} timed out after ${timeoutMs}ms`)),
+            timeoutMs
+          );
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  /**
    * Drain entry point: reap stale claims once, then park&drain every
    * claimable `embed` job this pass. Returns the terminal count.
    */
@@ -252,6 +277,7 @@ function createEmbedPipeline(deps = {}) {
       maxChunkChars: Number.isFinite(Number(merged.maxChunkChars))
         ? Number(merged.maxChunkChars)
         : 2000,
+      jobTimeoutMs: Number(merged.jobTimeoutMs) || 0,
     };
 
     let terminal = 0;
@@ -260,7 +286,7 @@ function createEmbedPipeline(deps = {}) {
       if (!job) break;
       if (job.kind !== 'embed') continue; // filter-parity guard, never execute
       try {
-        const outcome = await runEmbedJob(job, ctx);
+        const outcome = await runEmbedJobGuarded(job, ctx);
         if (outcome !== 'failed') terminal += 1;
       } catch (error) {
         // §2.3 step 5: any throw ⇒ markFailed ⇒ backoff ladder; a reap race

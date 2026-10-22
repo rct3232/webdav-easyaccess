@@ -20,6 +20,24 @@ const { createFileNodeService } = require('../../../service/fileNodeService');
 const { createFileNodesStore } = require('../../../store/fileNodesStore');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
+// The route's searchService resolves the llmAdapter through the runtime
+// singleton lazily per request — the mock lets the semantic-leg describe
+// install a configured fake adapter (and drop it again).
+jest.mock('../../../infrastructure/llmAdapterRuntime', () => {
+  let mockCurrent = null;
+  return {
+    initLlmAdapter: jest.fn(),
+    resetLlmAdapter: jest.fn(() => {
+      mockCurrent = null;
+    }),
+    getLlmAdapter: () => mockCurrent,
+    __setMockAdapter: (adapter) => {
+      mockCurrent = adapter;
+    },
+  };
+});
+const llmRuntime = require('../../../infrastructure/llmAdapterRuntime');
+
 let app;
 let dbCleanup;
 let fileNodeService;
@@ -425,5 +443,57 @@ describe('wire contract invariants', () => {
     } finally {
       process.env.JEST_WORKER_ID = prevWorker;
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/search — the embed leg ran (honest-empty vs omit wire states)
+// ---------------------------------------------------------------------------
+
+describe('POST /api/search embed-configured wire states', () => {
+  afterEach(() => {
+    llmRuntime.__setMockAdapter(null);
+  });
+
+  function createRouteFakeAdapter() {
+    return {
+      roleConfigured: async (role) => role === 'embed',
+      embedQuery: async () => ({ vectors: [[1, 0, 0, 0]], dim: 4, modelId: null }),
+    };
+  }
+
+  it('embed configured ⇒ the semantic key is PRESENT (honest empty) and semantic_capped_segments ships', async () => {
+    llmRuntime.__setMockAdapter(createRouteFakeAdapter());
+    const ctx = await createUserWithRoot('c1route');
+    await fileNodeService.createFile(ctx.root.id, 'route-honest.txt');
+
+    const res = await request(app)
+      .post('/api/search')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ query: 'honest route' });
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.semantic)).toBe(true);
+    expect(res.body.semantic).toEqual([]);
+    expect(res.body.semantic_available).toBe(true);
+    expect(res.body.semantic_unavailable_reason).toBeUndefined();
+    expect(res.body.counts.semantic_capped_segments).toBe(false);
+    expect(res.body.result_ref).toMatch(/^sr1\.[0-9a-f]{16}$/);
+  });
+
+  it('embed absent on the SAME surface ⇒ the semantic key is OMITTED (absent ≠ honestly empty)', async () => {
+    const ctx = await createUserWithRoot('c1route-absent');
+    await fileNodeService.createFile(ctx.root.id, 'route-absent.txt');
+
+    const res = await request(app)
+      .post('/api/search')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ query: 'absent route' });
+
+    expect(res.status).toBe(200);
+    expect('semantic' in res.body).toBe(false);
+    expect('semantic_capped_segments' in res.body.counts).toBe(false);
+    expect(res.body.semantic_available).toBe(false);
+    expect(res.body.semantic_unavailable_reason).toBe(SERVER_ERROR_CODES.ai.notConfigured);
   });
 });

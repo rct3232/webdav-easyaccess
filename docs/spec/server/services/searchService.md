@@ -70,8 +70,9 @@ future layer's job) — sending it never changes the response.
 
 - `semantic_available:true` retained (config IS present) but `counts.semantic:0` —
   never a 5xx (a mid-switch config failure degrades honestly, never surfaces as error).
-  A failed cache READ/WRITE degrades the same way (the cache is an optimization, not
-  a correctness dependency).
+  A failed cache READ is treated as a MISS and a failed cache WRITE is dropped — the
+  cache is an optimization, never a correctness dependency (the provider embed still
+  serves the leg).
 
 5. **Segment-AND:** split the ORIGINAL query on whitespace; ≤3 segments (more ⇒ first 3
    used + `counts.semantic_capped_segments:true`). Each segment is embedded through the

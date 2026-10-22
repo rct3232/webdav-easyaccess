@@ -315,6 +315,23 @@ describe('configRegistry', () => {
       expect(entry.secret).toBe(false);
       expect(entry.default).toBe(30);
     });
+
+    it('registers the retention interval and batch knobs as T2 dbOnly defaults', () => {
+      expect(getEntry('ADMIN_REPORTS_RETENTION_INTERVAL_MS')).toMatchObject({
+        tier: TIER.T2,
+        dbOnly: true,
+        default: 86400000,
+      });
+      expect(getEntry('ADMIN_REPORTS_RETENTION_BATCH')).toMatchObject({
+        tier: TIER.T2,
+        dbOnly: true,
+        default: 1000,
+      });
+      expect(getEntry('WEA_SKIP_ADMIN_REPORTS_RETENTION')).toMatchObject({
+        tier: TIER.T2,
+        secret: false,
+      });
+    });
   });
 
   it('contains every env var read under server/ (inventory check)', () => {

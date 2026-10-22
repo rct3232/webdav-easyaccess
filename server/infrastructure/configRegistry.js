@@ -216,6 +216,21 @@ const CONFIG_ENTRIES = Object.freeze([
     default: 30,
     dbOnly: true,
   },
+  {
+    key: 'ADMIN_REPORTS_RETENTION_INTERVAL_MS',
+    tier: TIER.T2,
+    secret: false,
+    default: 86400000,
+    dbOnly: true,
+  },
+  {
+    key: 'ADMIN_REPORTS_RETENTION_BATCH',
+    tier: TIER.T2,
+    secret: false,
+    default: 1000,
+    dbOnly: true,
+  },
+  { key: 'WEA_SKIP_ADMIN_REPORTS_RETENTION', tier: TIER.T2, secret: false },
   { key: 'WEA_SKIP_ROLLUP_SCHEDULER', tier: TIER.T2, secret: false },
 ]);
 

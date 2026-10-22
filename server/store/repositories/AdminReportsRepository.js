@@ -21,9 +21,10 @@
  * @property {(id: number|string, patch: { payload?: Object, status?: string }) => Promise<Object|null>} updateReport
  *   Patches only the provided fields; returns the updated row, or null when
  *   the id does not exist.
- * @property {(cutoffMs: number) => Promise<{ changes: number }>} deleteReportsOlderThan
- *   Writer-side housekeeping (admin.md §2.2.6): deletes rows with
- *   created_at < cutoff (ISO-mapped), idempotent, best-effort.
+ * @property {(cutoffMs: number, opts?: { limit?: number }) => Promise<{ changes: number }>} deleteReportsOlderThan
+ *   Scheduled retention (admin.md §2.2.6 / maintenanceScheduler §3.4): deletes
+ *   rows with created_at < cutoff (ISO-mapped), oldest id first; `limit` bounds
+ *   one batch (the job loops until fewer than `limit` rows remain). Idempotent.
  *
  * @param {import('../../infrastructure/db/executor').DbExecutor} executor
  * @returns {AdminReportsRepository}

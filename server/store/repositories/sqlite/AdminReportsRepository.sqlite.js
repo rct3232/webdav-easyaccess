@@ -91,12 +91,21 @@ module.exports = function createSqliteAdminReportsRepository(executor, { mapRepo
       }
     },
 
-    async deleteReportsOlderThan(cutoffMs) {
+    async deleteReportsOlderThan(cutoffMs, opts = {}) {
+      const limit = Number(opts && opts.limit);
+      const bounded = Number.isInteger(limit) && limit > 0;
       try {
-        const result = await executor.run(
-          'DELETE FROM admin_reports WHERE julianday(created_at) < julianday(?)',
-          [new Date(cutoffMs).toISOString()]
-        );
+        const sql = bounded
+          ? `DELETE FROM admin_reports WHERE id IN (
+               SELECT id FROM admin_reports
+                WHERE julianday(created_at) < julianday(?)
+                ORDER BY id
+                LIMIT ?
+             )`
+          : 'DELETE FROM admin_reports WHERE julianday(created_at) < julianday(?)';
+        const params = [new Date(cutoffMs).toISOString()];
+        if (bounded) params.push(limit);
+        const result = await executor.run(sql, params);
         return { changes: result.changes };
       } catch (error) {
         throw mapDatabaseError(error);

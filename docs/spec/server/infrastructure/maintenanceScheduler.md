@@ -111,10 +111,31 @@ interval resolution, log-never-throw).
   FIRST pending timer; re-arms replace it internally (fire-and-forget boot wiring never
   cancels; tests use fake timers + `jest.clearAllTimers()`).
 
+### 3.4 Admin-reports retention (append-only writer + scheduled prune)
+
+- **Writer contract:** `createAdminReportsWriter()` only appends; it has no
+  `pruneReports` seam and performs no DELETE. Retention is a maintenance concern.
+- `runAdminReportsRetention({ store?, now?, retentionDays?, batchSize?, lockManager? })`
+  is the ONE retention core: resolve `ADMIN_REPORTS_RETENTION_DAYS` (T2/dbOnly, default
+  30, `0` = off) at call time; delete rows with `created_at < now − retentionDays` in
+  bounded batches (`ADMIN_REPORTS_RETENTION_BATCH`, T2/dbOnly, default 1000) until fewer
+  than one batch remains; return `{ deleted, cutoffMs }`. It holds the
+  `admin-reports-retention` lock (`lockManager.acquireLock`, TTL 30 min, `waitMs: 0`);
+  a held lock ⇒ `{ skipped: 'locked' }`. Failures reject to the caller (the scheduler
+  logs; boot logs) — the job never writes an `admin_reports` row (no recursion).
+- `startAdminReportsRetentionScheduler({ ...same seams })` returns `null` under
+  `WEA_SKIP_ADMIN_REPORTS_RETENTION` or when
+  `ADMIN_REPORTS_RETENTION_INTERVAL_MS` (T2/dbOnly, default 86400000, `0` = disabled) is
+  non-positive; otherwise it re-arms a `setTimeout` at the resolved interval (hot read
+  per arm), logs failures and never throws out of the timer.
+- Boot runs `runAdminReportsRetention()` once (fire-and-forget) next to the other
+  startup hooks so long-downtime deployments converge immediately; the periodic timer
+  covers the steady state. Both call sites are gated by the same skip seam.
+
 ### 3.5 Unchanged
 
 `startGcScheduler`, `runStartupFailSafeRecovery`, `shouldSkip`, `resolveIntervalMs` keep
-their §2 contracts verbatim; boot wiring (`server/index.js`) gains the three new calls
+their §2 contracts verbatim; boot wiring (`server/index.js`) gains the new scheduler calls
 next to the existing ones, after migrationGate/init like the GC scheduler.
 
 ## 4. Verification Scenarios
@@ -123,6 +144,10 @@ next to the existing ones, after migrationGate/init like the GC scheduler.
       startup fail-safe scan report-only, errors swallowed to `{error}`
 - [ ] Each new scheduler returns null under its `WEA_SKIP_*` seam and with the
       injected service absent — same shape as GC
+- [ ] Retention: the writer never deletes; `runAdminReportsRetention` deletes
+      `now − ADMIN_REPORTS_RETENTION_DAYS` rows in `..._BATCH` chunks under the
+      `admin-reports-retention` lock, returns `retention_off`/`locked` skips, and
+      the scheduler re-arms at `..._INTERVAL_MS` (0 = disabled)
 - [ ] Rollup order: events rolled BEFORE the 90d roll-off deletes; a forced
       rollup failure aborts the roll-off (journal-expire/tombstone-purge legs skipped too,
       retried next anchor)

@@ -35,7 +35,6 @@ const {
   backfillContentHashes,
 } = require('../adminReportsService');
 const adminReportsStore = require('../../../../store/adminReportsStore');
-const configResolver = require('../../../../infrastructure/configResolver');
 const { sha256HexLower } = require('../../../../utils/hash');
 
 function savedEnv(name) {
@@ -171,179 +170,25 @@ describe('createAdminReportsWriter', () => {
   });
 });
 
-describe('createAdminReportsWriter — writer-side pruning (admin.md §2.2.6)', () => {
-  const NOW_ISO = '2026-10-15T00:00:00.000Z';
-  const DAY_MS = 86400000;
-
-  it('prunes with the resolved-horizon cutoff after a successful write', async () => {
-    const pruneReports = jest.fn(() => Promise.resolve({ changes: 0 }));
-    const writer = createAdminReportsWriter({
-      insertReport: jest.fn(() => Promise.resolve({ id: 1 })),
-      pruneReports,
-      resolveRetentionDays: () => Promise.resolve(30),
-      now: () => NOW_ISO,
-    });
-
-    await writer.writeReport({ kind: ADMIN_REPORT_KINDS.gc, status: 'ok', payload: {} });
-    expect(pruneReports).toHaveBeenCalledWith(Date.parse(NOW_ISO) - 30 * DAY_MS);
-  });
-
-  it('skips pruning when retention resolves to 0 (off)', async () => {
-    const pruneReports = jest.fn();
-    const writer = createAdminReportsWriter({
-      insertReport: jest.fn(() => Promise.resolve({ id: 1 })),
-      pruneReports,
-      resolveRetentionDays: () => 0,
-      now: () => NOW_ISO,
-    });
-
-    await writer.writeReport({ kind: ADMIN_REPORT_KINDS.gc, status: 'ok', payload: {} });
-    expect(pruneReports).not.toHaveBeenCalled();
-  });
-
-  it('never prunes when the write did not persist a row (throw, undefined, skipped)', async () => {
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    try {
-      const pruning = jest.fn();
-      const throwingWriter = createAdminReportsWriter({
-        insertReport: jest.fn(() => Promise.reject(new Error('nope'))),
-        pruneReports: pruning,
-        resolveRetentionDays: () => 30,
-      });
-      await expect(
-        throwingWriter.writeReport({ kind: ADMIN_REPORT_KINDS.gc, status: 'ok', payload: {} })
-      ).resolves.toBeNull();
-      expect(pruning).not.toHaveBeenCalled();
-
-      const undefinedWriter = createAdminReportsWriter({
-        insertReport: jest.fn(() => Promise.resolve(undefined)),
-        pruneReports: pruning,
-        resolveRetentionDays: () => 30,
-      });
-      await expect(
-        undefinedWriter.writeReport({ kind: ADMIN_REPORT_KINDS.gc, status: 'ok', payload: {} })
-      ).resolves.toBeNull();
-      expect(pruning).not.toHaveBeenCalled();
-
-      const restore = savedEnv('WEA_SKIP_ADMIN_REPORTS');
-      process.env.WEA_SKIP_ADMIN_REPORTS = '1';
-      try {
-        const skippedWriter = createAdminReportsWriter({
-          insertReport: jest.fn(() => Promise.resolve({ id: 9 })),
-          pruneReports: pruning,
-          resolveRetentionDays: () => 30,
-        });
-        await expect(
-          skippedWriter.writeReport({ kind: ADMIN_REPORT_KINDS.gc, status: 'ok', payload: {} })
-        ).resolves.toBeNull();
-        expect(pruning).not.toHaveBeenCalled();
-      } finally {
-        restore();
-      }
-    } finally {
-      warnSpy.mockRestore();
-    }
-  });
-
-  it('still resolves the row when pruning throws (warn-only)', async () => {
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    try {
-      const writer = createAdminReportsWriter({
-        insertReport: jest.fn(() => Promise.resolve({ id: 1 })),
-        pruneReports: jest.fn(() => Promise.reject(new Error('prune db gone'))),
-        resolveRetentionDays: () => 30,
-        now: () => NOW_ISO,
-      });
-
-      await expect(
-        writer.writeReport({ kind: ADMIN_REPORT_KINDS.cleanup, status: 'ok', payload: {} })
-      ).resolves.toMatchObject({ id: 1 });
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('admin report pruning skipped'));
-    } finally {
-      warnSpy.mockRestore();
-    }
-  });
-
-  it('does not prune through the store when the pruneReports seam is omitted (legacy usage)', async () => {
+describe('createAdminReportsWriter — append-only', () => {
+  it('never prunes on a successful write', async () => {
     adminReportsStore.deleteReportsOlderThan.mockClear();
     const writer = createAdminReportsWriter({
-      insertReport: jest.fn(() => Promise.resolve({ id: 2 })),
+      insertReport: jest.fn(() => Promise.resolve({ id: 1 })),
     });
 
     await expect(
-      writer.writeReport({ kind: ADMIN_REPORT_KINDS.cleanup, status: 'ok', payload: {} })
-    ).resolves.toMatchObject({ id: 2 });
+      writer.writeReport({ kind: ADMIN_REPORT_KINDS.gc, status: 'ok', payload: {} })
+    ).resolves.toMatchObject({ id: 1 });
     expect(adminReportsStore.deleteReportsOlderThan).not.toHaveBeenCalled();
   });
-});
 
-describe('createAdminReportsWriter — default retention resolver (shared resolver hot read)', () => {
-  const NOW_ISO = '2026-10-15T00:00:00.000Z';
-  const DAY_MS = 86400000;
-  let resolver;
-
-  beforeEach(() => {
-    resolver = { getConfig: jest.fn(() => Promise.resolve('45')) };
-    configResolver.getSharedResolver.mockReturnValue(resolver);
-  });
-
-  afterEach(() => {
-    configResolver.getSharedResolver.mockRestore();
-  });
-
-  it('reads ADMIN_REPORTS_RETENTION_DAYS via the shared resolver (string value coerced)', async () => {
-    const pruneReports = jest.fn(() => Promise.resolve({ changes: 1 }));
-    const writer = createAdminReportsWriter({
-      insertReport: jest.fn(() => Promise.resolve({ id: 4 })),
-      pruneReports,
-      now: () => NOW_ISO,
-    });
-
-    await writer.writeReport({ kind: ADMIN_REPORT_KINDS.gc, status: 'ok', payload: {} });
-    expect(resolver.getConfig).toHaveBeenCalledWith('ADMIN_REPORTS_RETENTION_DAYS');
-    expect(pruneReports).toHaveBeenCalledWith(Date.parse(NOW_ISO) - 45 * DAY_MS);
-  });
-
-  it('falls back to the shipped default when the config read rejects', async () => {
-    resolver.getConfig.mockImplementation(() => Promise.reject(new Error('db down')));
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    try {
-      const pruneReports = jest.fn(() => Promise.resolve({ changes: 0 }));
-      const writer = createAdminReportsWriter({
-        insertReport: jest.fn(() => Promise.resolve({ id: 5 })),
-        pruneReports,
-        now: () => NOW_ISO,
-      });
-
-      await writer.writeReport({ kind: ADMIN_REPORT_KINDS.gc, status: 'ok', payload: {} });
-      expect(pruneReports).toHaveBeenCalledWith(Date.parse(NOW_ISO) - 30 * DAY_MS);
-      expect(warnSpy).not.toHaveBeenCalled();
-    } finally {
-      warnSpy.mockRestore();
-    }
-  });
-});
-
-describe('getAdminReportsWriter (shared singleton)', () => {
-  it('returns the same writer instance and routes writes through the admin_reports store (T0.8)', async () => {
-    const writer = getAdminReportsWriter();
-    expect(getAdminReportsWriter()).toBe(writer);
-
-    await writer.writeReport({ kind: ADMIN_REPORT_KINDS.gc, status: 'ok', payload: {} });
-    expect(adminReportsStore.insertReport).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'gc', status: 'ok', payload: {} })
-    );
-  });
-
-  it('wires writer-side pruning through the store after a successful write (§2.2.6)', async () => {
+  it('keeps the shared writer append-only (retention belongs to maintenanceScheduler)', async () => {
     adminReportsStore.deleteReportsOlderThan.mockClear();
     const writer = getAdminReportsWriter();
 
     await writer.writeReport({ kind: ADMIN_REPORT_KINDS.cleanup, status: 'ok', payload: {} });
-    expect(adminReportsStore.deleteReportsOlderThan).toHaveBeenCalledTimes(1);
-    const cutoffMs = adminReportsStore.deleteReportsOlderThan.mock.calls[0][0];
-    const expected = Date.now() - DEFAULT_ADMIN_REPORTS_RETENTION_DAYS * 86400000;
-    expect(Math.abs(cutoffMs - expected)).toBeLessThan(5000);
+    expect(adminReportsStore.deleteReportsOlderThan).not.toHaveBeenCalled();
   });
 });
 

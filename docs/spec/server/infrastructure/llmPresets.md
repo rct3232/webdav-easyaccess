@@ -57,6 +57,7 @@ Target-contract spec.
  profile: { // model profile — release artifact
  dim, chPerTok, // chars→token safety factor
  thetaDup, // near-dup grouping threshold (§4.17 vector variant); consumers read it HERE, never hardcode it
+ deltaBase, // semantic search baseline margin (§4.17 vector variant); consumers read it HERE, never hardcode it
  edgeCos: { tight, mid, loose }, // kNN tier edges
  throughputDocsMin, calibrated: false, // provenance flag (always false in-product)
  // server-shape flags — probe-verified contract properties (llmAdapter.md §2.4).

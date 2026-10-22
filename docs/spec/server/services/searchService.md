@@ -138,7 +138,11 @@ future layer's job) — sending it never changes the response.
 
 ### 2.5a The semantic scoring seam (steps 5–6 behind one boundary)
 
-The scoring leg is ONE injectable factory option:
+The scoring leg is ONE injectable factory option. The production default binds
+`TextVectorJs` (the JsFallback engine, `vectorStore` §2.3) through the scorer's
+`engineFactory` seam; the engineFactory seam is the production swap point for
+the boot-frozen engine factory (`vectorStore` §2.3) — ANN adapters ride the
+SAME `neighbors(vec, k, candidates)` contract when that factory lands.
 
 ```
 semanticScorer({ userId, queryVec, segmentVecs, sampleFn })
@@ -156,8 +160,23 @@ semanticScorer({ userId, queryVec, segmentVecs, sampleFn })
   node ids (`FileNodeRepository.sampleVisibleNodeIds`) — the dynamic-baseline
   input; excluding the candidate set is the scorer's job (the baseline sample
   must not contain the true top candidate).
-- The scorer OWNS the baseline gate: the `δ_base` margin over the sample's
-  spread comes from the model profile; an ungated result is a spec violation.
+- **Scoring rule (binding):** for EVERY segment vector, the scorer requests
+  `vectorStore.neighbors(segVec, 50, candidates)` over the requester's visible
+  set (a node the requester cannot read never enters the candidate list — ACL
+  anchoring rides the `candidates` seam, never post-filtering). Per node, the
+  engine returns the **max-over-chunks** cosine (chunk rows rank the node; a
+  chunkless node falls back to its pooled row, the §2.2 seam contract). The
+  document score is the **MIN across segments** (segment-AND: a document must
+  score ≥δ in EVERY segment — a one-segment match never lands).
+- **Dynamic baseline gate:** the SAME segment vectors are scored against the
+  `sampleFn(BASELINE_SAMPLE_DOCS)` sample (default 500) drawn EXCLUDING the
+  candidate set (a sample containing a candidate would contaminate the
+  baseline). `spread` = the sample's max min-across-segments score. Keep results
+  only if the top candidate score ≥ `spread + δ_base` (the model profile's
+  `deltaBase` — read at gate time, never hardcoded); otherwise the section is
+  returned HONESTLY EMPTY (an honestly empty section beats a wrong one on
+  nonsense queries). The scorer owns the gate: an ungated result is a spec
+  violation.
 - The service consumes the returned rows unchanged through steps 7–8 (order,
   dedup, cap, usage logging) — it never rescores.
 

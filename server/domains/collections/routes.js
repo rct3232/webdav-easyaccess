@@ -142,12 +142,19 @@ router.post(
       let result;
       if (body.seedNodeId !== undefined && body.seedNodeId !== null) {
         result = await collectionsService.createSeedCollection(req.user.full.id, body);
+      } else if (body.semantic !== undefined && body.semantic !== null) {
+        // Search save leg (collectionsService.md §2.2.1): the `{ name,
+        // semantic }` dispatch arm — the response adds `rejected_not_readable`.
+        result = await collectionsService.createSearchCollection(req.user.full.id, body);
       } else {
         result = await collectionsService.createCollection(req.user.full.id, body);
       }
       res.status(201).json({
         collection: wire.serializeCollection(result.collection, { includeDefinition: true }),
         undo: { action_id: result.undo.actionId },
+        ...(Array.isArray(result.rejected_not_readable) && {
+          rejected_not_readable: result.rejected_not_readable,
+        }),
       });
     } catch (e) {
       throw handleServiceError(e);

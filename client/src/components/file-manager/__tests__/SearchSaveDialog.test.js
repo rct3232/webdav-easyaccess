@@ -6,7 +6,7 @@
  * @see docs/spec/client/components/file-manager/SearchQueryChipBar.md §2.4a
  */
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import SearchSaveDialog from '../SearchSaveDialog';
 
@@ -37,27 +37,36 @@ describe('SearchSaveDialog (search save confirm, §2.6)', () => {
     expect(screen.getByTestId('search-save-publish-notice')).toBeInTheDocument();
   });
 
-  it('confirms with the committed term; cancel closes without confirming', async () => {
+  it('confirm fires onConfirm alone (the host closes the dialog); cancel closes', async () => {
     const onConfirm = jest.fn();
     const onClose = jest.fn();
     renderDialog({ onConfirm, onClose });
 
     fireEvent.click(screen.getByTestId('search-save-confirm'));
     await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1));
-    expect(onClose).toHaveBeenCalled();
+    // the host owns the close (FileManager closes in its confirm handler)
+    expect(onClose).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByText('Cancel'));
-    expect(onClose).toHaveBeenCalledTimes(2);
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('renders plus N more when the preview is capped and stays closed when open=false', () => {
     const many = Array.from({ length: 14 }, (_, i) => ({ node_id: 100 + i, name: `f${i}.jpg` }));
     renderWithProviders(
-      <SearchSaveDialog open={false} term="x" rows={many} onClose={jest.fn()} onConfirm={jest.fn()} />
+      <SearchSaveDialog
+        open={false}
+        term="x"
+        rows={many}
+        onClose={jest.fn()}
+        onConfirm={jest.fn()}
+      />
     );
     expect(screen.queryByTestId('search-save-dialog')).not.toBeInTheDocument();
 
-    renderWithProviders(<SearchSaveDialog term="x" rows={many} onClose={jest.fn()} onConfirm={jest.fn()} />);
+    renderWithProviders(
+      <SearchSaveDialog open term="x" rows={many} onClose={jest.fn()} onConfirm={jest.fn()} />
+    );
     expect(screen.getByTestId('search-save-more-counter')).toBeInTheDocument();
   });
 });

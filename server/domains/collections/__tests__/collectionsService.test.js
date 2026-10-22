@@ -635,7 +635,11 @@ describe('collectionsService createSearchCollection (search save leg)', () => {
     await expect(
       collectionsService.createSearchCollection(ctx.user.id, {
         name: 'Nonempty predicates',
-        semantic: { resultRef: 'sr1.abc0123456789ef', predicates: [{ type: 'tag' }], nodeIds: [ctx.beach.id] },
+        semantic: {
+          resultRef: 'sr1.abc0123456789ef',
+          predicates: [{ type: 'tag' }],
+          nodeIds: [ctx.beach.id],
+        },
       })
     ).rejects.toMatchObject({ message: 'invalidDefinition' });
     await expect(
@@ -655,7 +659,7 @@ describe('collectionsService createSearchCollection (search save leg)', () => {
     });
 
     const journal = await dbQuery(
-      'SELECT action, subject FROM action_journal WHERE subject = ? ORDER BY id ASC',
+      'SELECT id, action, subject FROM action_journal WHERE subject = ? ORDER BY id ASC',
       [`collection:${collection.id}`]
     );
     expect(journal.rows.map((row) => row.action)).toEqual(['create', 'add-items']);
@@ -669,8 +673,8 @@ describe('collectionsService createSearchCollection (search save leg)', () => {
       semantic: { resultRef: 'sr1.abc0123456789ef', predicates: [], nodeIds: [ctx.beach.id] },
     });
 
-    const { undoAction } = require('@server/store/actionJournalStore');
-    await undoAction(undo.actionId, { cascade: true });
+    const actionsService = require('@server/domains/actions/service');
+    await actionsService.undoAction(ctx.user.id, undo.actionId, { confirmCascade: true });
 
     expect(await collectionsStore.getCollection(collection.id)).toBeNull();
     expect(await collectionsStore.listStoredItems(collection.id)).toHaveLength(0);

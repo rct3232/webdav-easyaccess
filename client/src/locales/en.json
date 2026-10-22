@@ -420,7 +420,9 @@
     "seedMore": "plus {{count}} more",
     "seedPublishNotice": "If this collection is shared, every file in the set above (including the additional files) is approved for publishing as a batch.",
     "seedCreateConfirm": "Create collection",
-    "seedPreviewFailed": "Preview failed. Try again."
+    "seedPreviewFailed": "Preview failed. Try again.",
+    "searchSaveTitle": "Save results as a collection",
+    "searchSaveConfirm": "Save collection"
   },
   "admin": {
     "users": "Users",

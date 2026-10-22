@@ -17,13 +17,21 @@ Target-contract spec.
 ### 2.1 File Path
 
 - **Source:** `server/infrastructure/adapters/llm/index.js` (factory + per-call resolver)
-- **Peers:** `clients/` (Ollama / OpenAI-compatible / TEI-class dialects per preset;
-  **`embedded-onnx.js`** = in-process transformers.js client for the built-in provider
-  (lazy `require` of `@huggingface/transformers`; dtype q4; **mean pooling, attention-mask
-  weighted** + L2 normalize — cls pooling mis-shapes the plain-text space silently; text
-  inputs carry the profile task prefixes; media via processor objects — the media path is
-  the V1/V3 pipeline's concern, the client exposes the primitives), incl. local
-  positive-control probe fixtures),
+- **Peers:** `clients/` (**`openai-compatible.js`** = llama.cpp/OpenAI-compatible
+  remote dialect used by every remote preset: text embed/query with profile task
+  prefixes, media through the profile `requestShape` (`content-wrapper` media parts,
+  data URLs, no prefix), chat with reasoning-off by default, vision data-URL image
+  parts, multipart ASR with the fixed escape prompt, every failure classified before
+  surfacing; **`embedded-onnx.js`** = in-process transformers.js client for the
+  built-in provider (lazy `require` of `@huggingface/transformers`; dtype q4;
+  **mean pooling, attention-mask weighted** + L2 normalize — cls pooling mis-shapes
+  the plain-text space silently; text inputs carry the profile task prefixes;
+  `embedMedia` runs `AutoProcessor` + `AutoModel`: image via `RawImage`, audio as
+  mono 16 kHz `Float32Array` (WAV decoded in-process, compressed input normalized by
+  ffmpeg), video as 1 fps sampled `RawImage[]`; media carries no prefix and returns
+  the model's L2-normalized `sentence_embedding`), incl. local positive-control
+  probe fixtures),
+  **`mediaProbe.js`** (media/vision/asr positive controls + fixture access),
   `probe.js` (suite), `budget.js` (chain + limiter + breaker),
   **`provision.js`** (provider-triggered model provisioning for `engine='embedded'` — a
   blocking run at boot only for a CONFIGURED boot while the built-in is the active embed
@@ -43,8 +51,12 @@ Target-contract spec.
   repo/revision/files+sha256+size/dtype/dim/pooling —
   identity, §4.15; NO model bytes in the repo),
   `presets.js` ([llmPresets spec](llmPresets.md))
-- **Test file:** `server/infrastructure/adapters/llm/__tests__/llmAdapter.test.js`
-  (+ fake-server E2E leg, in-process adapter injection)
+- **Test files:** `server/infrastructure/adapters/llm/__tests__/llmAdapter.test.js`
+  (+ fake-server E2E leg, in-process adapter injection),
+  `openai-compatible.test.js` (remote dialect request shapes),
+  `mediaProbe.test.js` (media-drop / correctly-shaped fake endpoints, vision/asr
+  positive controls), `embedded-onnx.multimodal.test.js` (real-weights smoke,
+  skipped unless enabled).
 
 ### 2.2 Per-call config resolution + signature-keyed client cache
 
@@ -88,7 +100,7 @@ Target-contract spec.
 | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `roleConfigured(role)`                              | `true` iff the role resolves to a LIVE provider: remote ⇒ non-empty `{base_url, model}` AND, for the embed role, a PASSING §2.4 conformance verdict (the endpoint identity gate — a non-conforming endpoint is `false` and reports `ai.embed` `probe_failed`/`nonConformingEndpoint`); the built-in embed role ⇒ lockfile present AND weights provisioned and is exempt from conformance (lockfile checksum IS the identity). During an in-place provisioning run the role is NOT configured — consumers park their work (never claim-and-fail); readiness surfaces as the `preparing` state (§2.4). For chat/vision/asr presence is not a capability claim — the probe matrix is, see §2.4 |
 | `embed(texts[])`                                    | batch per provider `batch_size` (llm_models row); returns `{vectors[][], dim, modelId, degraded?}` — `dim` is RUNTIME-DERIVED from the active model's profile (embedded: the lockfile `dim`; remote: the preset profile). `llm_models` has NO dim column and never will (DDL 001 is closed) — dim persistence lives ON THE EMBEDDING ROWS themselves (`embeddings.dim` / `embeddings_chunk.dim` are `NOT NULL` per row — history is self-describing); stale-dim detection compares this runtime dim against the per-row dim of the canonical rows, never against `llm_models`; pooled/chunk callers (worker) decide the ladder; applies the profile's `requestShape` + TEXT prefixes (§2.6) |
-| `embedMedia(buffers[], {mediaType})`                | V1/V3 direct media embed: image/audio/video bytes → same embed role, NO text prefix, profile `requestShape` (media rides the `content`-wrapper); oversized media enters the §2.6 MEDIA segment ladder; returns `{vectors[][], dim, modelId, degraded?}`                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `embedMedia(buffers[], {mediaType})`                | V1/V3 direct media embed: image/audio/video bytes → same embed role, NO text prefix, usage accounting like `embed`; remote sends one `content`-wrapper item per buffer with a base64 data URL (`image/jpeg\|png`, `audio/wav`, `video/mp4`), embedded sends `AutoProcessor` media objects. Oversized media enters the §2.6 MEDIA segment ladder; returns `{vectors[][], dim, modelId, degraded?}`. Each media sub-capability (`image_embed`/`audio_embed`/`video_embed`) is probe-gated independently (§2.4)                                                                                                                                                                                |
 | `embedQuery(query)`                                 | Request-path wrapper (query embed): the `query_parses` cache read/write is owned by the CONSUMING search leg (`searchService.md` §2.3 step 4 — get-or-embed keyed by the normalized text); this call is the raw provider embed and respects the caller's kill-switch decision; applies the profile's query prefix; timeout ⇒ throw `transport` (caller degrades to empty section); the profile records serving-mode latency as an informational field                                                                                                                                                                                                                                       |
 | `chat(messages, {schema?, maxTokens?, reasoning?})` | JSON-schema-forced where supported; `reasoning` defaults OFF (§2.7); returns `{json, text, usage, truncated}`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `visionCaption(frames[], {prompt})`                 | V2 path ONLY from worker context                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -131,24 +143,32 @@ capability claims:
   `reason=nonConformingEndpoint|wrongDim`; the `probeRole('embed')` outcome carries the
   measured median/threshold for the admin card. A rejected endpoint yields no role client:
   `roleConfigured('embed')` is `false` and callers park.
-- `image_embed` / `audio_embed` / `video_embed`: probes need POSITIVE CONTROLS
-  in the profile `requestShape` — known failure mode: a multimodal-DECLARING endpoint
-  silently ignores wrongly-shaped media and returns a TEXT vector with HTTP 200.
-  Pass requires ALL of: (a) in-domain photo vs its
-  re-encode cosine ≥ profile media near-dup floor; (b) the same bytes as base64 TEXT
-  diverge (proves pixels were consumed — an INPUT-shaping failure, not a space change); (c) when
-  `vision_chat` is also configured, image↔its-caption > image↔unrelated text. Audio:
-  real-speech clip vs noise clip must yield DISTINCT vectors; sine/noise-only probes
-  remain BANNED as pass criteria. A failed media probe switches ONLY that sub-capability
-  (media falls back to the caption→E1 or metadata path), it never blocks `text_embed`.
+- `image_embed` / `audio_embed` / `video_embed`: probes run `mediaProbe.js` with
+  POSITIVE CONTROLS in the profile `requestShape` — known failure mode: a
+  multimodal-DECLARING endpoint silently ignores wrongly-shaped media and returns a TEXT
+  vector with HTTP 200. The suite ships real fixtures (`__tests__/fixtures`: a real
+  photo, its re-encode, a real ALSA speech clip at 16 kHz mono, a 1 fps clip).
+  Image pass requires ALL of: (a) in-domain photo vs its re-encode cosine ≥ 0.94
+  (media near-dup flag floor); (b) the same bytes as base64 TEXT diverge
+  (cos < 0.90 — proves pixels were consumed, an INPUT-shaping failure, not a space
+  change); (b2) a text-only control through the same wrapper diverges (cos < 0.99 —
+  an endpoint that drops the media part returns the text vector); (c) when
+  `vision_chat` is also configured, image↔its-caption > image↔unrelated text.
+  Audio: a real-speech clip vs a deterministic noise clip must yield DISTINCT
+  vectors (cos < 0.85); sine/noise-only probes remain BANNED as pass criteria.
+  Video: a 1 fps frame-sampled video must land in the image space
+  (cos ≥ 0.75) and fails when the image positive controls fail. A failed media probe
+  switches ONLY that sub-capability OFF (media falls back to the caption→E1 or metadata
+  path), it never blocks `text_embed`; each verdict is cached per config signature and
+  published through `probeState`/`evaluateCapabilityMatrix`.
 - `chat`: instruction-following JSON echo on an in-domain prompt (tag extraction from one
   real sentence) → schema validity is the pass criterion.
-- `vision_chat`: a REAL PHOTO sample → non-trivial caption. Known failure mode: an
-  endpoint that embeds base64 images AS TEXT must be caught — pass additionally requires
-  the caption to reference visual content (deterministic check: differs from the same
-  request with the image removed beyond a length floor).
-- `asr`: a REAL SPEECH clip → transcript overlapping expected words. Sine/noise probes
-  are BANNED.
+- `vision_chat`: the real photo fixture → non-trivial caption (length floor ≥ 12
+  normalized chars). Known failure mode: an endpoint that embeds base64 images AS TEXT
+  must be caught — the caption must differ from the same request with the image removed.
+- `asr`: the real ALSA speech fixture → transcript overlapping `front`/`center`
+  (case/punctuation normalized); the request carries the fixed escape prompt. Sine/noise
+  probes are BANNED. Transport faults remain honest `transport` failures.
 
 Result matrix = probe-verified ∩ configured roles ⇒ runtime capability flags. The matrix
 is computed by `evaluateCapabilityMatrix(preset, probeResults)` and published to

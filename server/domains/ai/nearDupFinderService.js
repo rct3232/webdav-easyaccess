@@ -34,12 +34,9 @@ const { createTextVectorJs } = require('./vectorStore/TextVectorJs');
 /** Operational cap of returned near-dup groups (routes/dashboard.md §2.4). */
 const MAX_NEAR_DUP_GROUPS = 50;
 
-const EMPTY_RESULT = Object.freeze({
-  available: false,
-  groups: [],
-  groupCount: 0,
-  duplicateCount: 0,
-});
+function emptyResult() {
+  return { available: false, groups: [], groupCount: 0, duplicateCount: 0 };
+}
 
 function buildDisplayPath(node, byId) {
   const segments = [];
@@ -134,15 +131,15 @@ function createNearDupFinderService({
    */
   async function findNearDuplicateGroups(userId) {
     const model = await resolveModelsStore().getActiveByRole('embed');
-    if (!model) return { ...EMPTY_RESULT };
+    if (!model) return emptyResult();
 
     const profile = resolvePresets().getPresetByFamilyRole(model.provider, 'embed')?.profile;
     const thetaDup = Number(profile?.thetaDup);
-    if (!Number.isFinite(thetaDup)) return { ...EMPTY_RESULT };
+    if (!Number.isFinite(thetaDup)) return emptyResult();
 
     const store = resolveFileNodesStore();
     const root = await store.getUserRootNode(Number(userId));
-    if (!root) return { ...EMPTY_RESULT };
+    if (!root) return emptyResult();
 
     const rows = await store.listSubtreeCacheRows(root.id);
     const byId = new Map(rows.map((row) => [Number(row.nodeId), row]));
@@ -174,7 +171,7 @@ function createNearDupFinderService({
     const canonicalRows = (await resolveEmbeddingsStore().listAll(model.id)).filter((row) =>
       candidates.has(Number(row.nodeId))
     );
-    if (canonicalRows.length < 2) return { ...EMPTY_RESULT };
+    if (canonicalRows.length < 2) return emptyResult();
 
     // Canonical TEXT loader for the engine (pooled rows only — chunkIdx null;
     // max-over-chunks degenerates to the pooled score by construction).

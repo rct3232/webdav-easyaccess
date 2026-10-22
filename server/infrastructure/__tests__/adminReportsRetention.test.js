@@ -78,6 +78,24 @@ describe('runAdminReportsRetention', () => {
     expect(locks.released).toEqual(['admin-reports-retention']);
   });
 
+  it('resolves the hot retention horizon from the service when not overridden', async () => {
+    const service = require('../../domains/admin/services/adminReportsService');
+    const spy = jest.spyOn(service, 'resolveAdminReportsRetentionDays').mockResolvedValue(30);
+    const store = fakeStore([old(1, 40), fresh(2)]);
+    try {
+      const result = await runAdminReportsRetention({
+        store,
+        now: () => NOW,
+        batchSize: 10,
+        lockManager: fakeLock(),
+      });
+      expect(spy).toHaveBeenCalled();
+      expect(result).toMatchObject({ deleted: 1, cutoffMs: NOW - 30 * DAY_MS });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('is a no-op when the retention horizon is 0 (off)', async () => {
     const store = fakeStore([old(1, 400)]);
     const result = await runAdminReportsRetention({

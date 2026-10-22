@@ -454,6 +454,7 @@ module.exports = {
   ADMIN_REPORT_STATUSES,
   ADMIN_REPAIR_ACTIONS,
   DEFAULT_ADMIN_REPORTS_RETENTION_DAYS,
+  resolveAdminReportsRetentionDays,
   createAdminReportsWriter,
   getAdminReportsWriter,
   resolveAdminReportStatus,

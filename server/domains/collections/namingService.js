@@ -38,9 +38,7 @@ function cleanText(value) {
  * @returns {string}
  */
 function templateNamer({ kind, query, seedName, tags, parentName, diffTag, index } = {}) {
-  const tagList = (Array.isArray(tags) ? tags : [])
-    .map(cleanText)
-    .filter((tag) => tag !== null);
+  const tagList = (Array.isArray(tags) ? tags : []).map(cleanText).filter((tag) => tag !== null);
 
   if (kind === 'search') {
     return cleanText(query) ?? `${AUTO_NAME_PREFIX} ${Number(index) || 1}`;

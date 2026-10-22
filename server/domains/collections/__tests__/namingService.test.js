@@ -25,9 +25,9 @@ describe('templateNamer', () => {
   });
 
   it('uses parent · diffTag for a split', () => {
-    expect(
-      templateNamer({ kind: 'split', parentName: 'Travel', diffTag: 'month:2026-02' })
-    ).toBe('Travel · month:2026-02');
+    expect(templateNamer({ kind: 'split', parentName: 'Travel', diffTag: 'month:2026-02' })).toBe(
+      'Travel · month:2026-02'
+    );
   });
 
   it('falls back to Auto collection N for an untaggable system cluster', () => {

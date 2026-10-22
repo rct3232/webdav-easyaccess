@@ -147,9 +147,7 @@ async function provisionWeights({ modelDir, lock, fetcher, logger, corruptFile =
 
       const hash = crypto.createHash('sha256').update(buffer).digest('hex');
       if (hash !== file.sha256) {
-        throw new Error(
-          `sha256 mismatch in ${file.path} (expected ${file.sha256}, got ${hash})`
-        );
+        throw new Error(`sha256 mismatch in ${file.path} (expected ${file.sha256}, got ${hash})`);
       }
       if (buffer.length !== file.size) {
         throw new Error(
@@ -215,9 +213,7 @@ async function runProvision(params = {}) {
   // Posture 2 (PLAN §22-1): remote override active ⇒ deferred, absence is normal,
   // never a caps-off signal. Weights are never deleted.
   if (remoteOverrideActive) {
-    logger.log(
-      '[provisioning] Remote embed override active: built-in provisioning deferred.'
-    );
+    logger.log('[provisioning] Remote embed override active: built-in provisioning deferred.');
     return { status: 'skipped-remote' };
   }
 

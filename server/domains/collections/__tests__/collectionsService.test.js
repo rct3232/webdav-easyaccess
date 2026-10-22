@@ -756,7 +756,6 @@ describe('collectionsService createSeedCollection (§2.7)', () => {
   });
 });
 
-
 // ---------------------------------------------------------------------------
 // Search save leg (§2.2 createSearchCollection + §2.2.1 dispatch): the
 // flattened semantic-execution snapshot creates a search-origin collection

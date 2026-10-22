@@ -48,7 +48,8 @@ if (process.env.WEA_TEST_PG_DATABASE) {
 // precedes createTestDatabase()'s per-suite WEA_SQLITE_PATH must never land in
 // the repo's default `data/webdav.db`. Point the unset default at a unique
 // per-worker temp file (createTestDatabase overwrites this per suite anyway).
-process.env.WEA_SQLITE_PATH = process.env.WEA_SQLITE_PATH || `/tmp/wea-test-default-${process.pid}.db`;
+process.env.WEA_SQLITE_PATH =
+  process.env.WEA_SQLITE_PATH || `/tmp/wea-test-default-${process.pid}.db`;
 
 // node-postgres returns BIGINT (int8) as strings by default. SQLite returns
 // numbers, and tests assert numeric values (counts, ids). Normalize int8 →

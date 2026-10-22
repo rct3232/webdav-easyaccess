@@ -1099,10 +1099,7 @@ async function evaluateSeedPreview(userId, seedNodeId) {
 
   const modelId = Number(pooled.modelId);
   const { createLoadRows } = require('../ai/vectorStoreRuntime');
-  const vectorStore = resolveVectorStoreFactory()(
-    modelId,
-    createLoadRows({ modelId })
-  );
+  const vectorStore = resolveVectorStoreFactory()(modelId, createLoadRows({ modelId }));
   const ranked = await vectorStore.neighbors(seedVec, SEED_NEIGHBORS_K, visibleIds);
   const ids = (ranked || [])
     .map((row) => Number(row.nodeId))

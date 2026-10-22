@@ -66,6 +66,20 @@ const CLAIMABLE_PREDICATE =
 const KIND_EXCLUSION_CLAUSE = ' AND kind NOT IN (%KIND_SLOTS%)';
 
 /**
+ * The ONE normalization both twins must use: the SQL placeholder slots are
+ * built from this array and the bound parameters must be the SAME array —
+ * binding the raw caller input desynchronizes slots from values whenever the
+ * input carries empty/undefined entries (`['', 'caption', null]`).
+ * @param {string[]} [excludeKinds]
+ * @returns {string[]} non-empty kinds, in caller order.
+ */
+function normalizeExcludeKinds(excludeKinds) {
+  return (Array.isArray(excludeKinds) ? excludeKinds : [])
+    .map((kind) => (kind === undefined || kind === null ? '' : String(kind).trim()))
+    .filter(Boolean);
+}
+
+/**
  * Builds the claim predicate for `claimNext`, optionally excluding kinds.
  * @param {string[]} [excludeKinds] kinds to park (empty/undefined = no filter).
  * @param {(index: number) => string} param placeholder factory — index 0
@@ -73,9 +87,7 @@ const KIND_EXCLUSION_CLAUSE = ' AND kind NOT IN (%KIND_SLOTS%)';
  * @returns {string} dialect-resolved SQL predicate.
  */
 function buildClaimPredicate(excludeKinds, param) {
-  const kinds = (Array.isArray(excludeKinds) ? excludeKinds : [])
-    .map(String)
-    .filter((k) => k.length > 0);
+  const kinds = normalizeExcludeKinds(excludeKinds);
   let sql = CLAIMABLE_PREDICATE.replaceAll('%NEXT_RETRY%', 'next_retry_at').replaceAll(
     '%PARAM%',
     param(0)
@@ -95,6 +107,7 @@ module.exports = {
   backoffMs,
   truncateError,
   mapJobRow,
+  normalizeExcludeKinds,
   CLAIMABLE_PREDICATE,
   KIND_EXCLUSION_CLAUSE,
   buildClaimPredicate,

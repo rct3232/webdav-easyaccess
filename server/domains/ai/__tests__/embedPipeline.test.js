@@ -372,4 +372,63 @@ describe('embed pipeline (B5/T1.3b)', () => {
     const pooled = await embeddingsStore.get(node.nodeId);
     expect(pooled).toMatchObject({ modelId, dim: 4 });
   });
+
+  it('per-job timeout: AI_JOB_TIMEOUT_MS fails the job and a late markDone is a no-op (never resurrects)', async () => {
+    const node = await uniqueNode();
+    const modelId = await makeEmbedModel();
+
+    // The provider call hangs until the test releases it — the timeout race is
+    // the ONLY way this job can reach a terminal state.
+    let releaseLate;
+    let lateStarted = false;
+    const neverResolves = new Promise((resolve) => {
+      releaseLate = resolve;
+    });
+
+    const deps = {
+      readText: async () => 'slow text',
+      adapter: {
+        async embed(texts) {
+          lateStarted = true;
+          await neverResolves;
+          return { vectors: texts.map(() => new Array(4).fill(0.5)), dim: 4, modelId };
+        },
+      },
+      activeModelId: async () => modelId,
+      jobTimeoutMs: 150,
+    };
+
+    const enqueued = await aiJobsStore.enqueue(node.nodeId, 'embed', 1, 'hash-timeout');
+    expect(enqueued).not.toBeNull();
+
+    const drain = runPendingEmbedJobs(deps);
+    for (let i = 0; i < 100 && !lateStarted; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 2));
+    }
+    expect(lateStarted).toBe(true);
+
+    // The wall-clock guard rejects; the drain marks the claimed row failed
+    // (backoff armed). A failed job is not counted as a terminal success.
+    await expect(drain).resolves.toBe(0);
+
+    const failed = await aiJobsStore.getById(enqueued.id);
+    expect(failed).toMatchObject({ status: 'failed', attempt: 1, finishedAt: null });
+    expect(failed.lastError).toContain('timed out');
+    expect(failed.nextRetryAt).not.toBeNull();
+
+    // Release the late execution: it keeps running and finishes its writes,
+    // but `markDone` is guarded on status='running' ⇒ {changes:0} no-op.
+    releaseLate({});
+    let latePooled = await embeddingsStore.get(node.nodeId);
+    for (let i = 0; i < 100 && !latePooled; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      latePooled = await embeddingsStore.get(node.nodeId);
+    }
+    expect(latePooled).toMatchObject({ modelId, dim: 4 });
+
+    await expect(aiJobsStore.markDone(enqueued.id)).resolves.toEqual({ changes: 0 });
+    const afterLateWrite = await aiJobsStore.getById(enqueued.id);
+    expect(afterLateWrite).toMatchObject({ status: 'failed', attempt: 1, finishedAt: null });
+    expect(afterLateWrite.lastError).toContain('timed out');
+  });
 });

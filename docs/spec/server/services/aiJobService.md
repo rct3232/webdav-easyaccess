@@ -36,9 +36,13 @@ these points. `contentHash` is the freshly computed write-side hash; it may be `
 | Version restore       | `versionsService.restore` success                          |
 
 **Hook module (implemented):** `server/domains/ai/nodeContentHook.js` — owns the
-node lookup, the decision table below, and the per-kind enqueue; capability
-probes read the shared config resolver (`LLM_<ROLE>_BASE_URL` + `LLM_<ROLE>_MODEL`
-per role). There is NO delete seam.
+node lookup, the decision table below, and the per-kind enqueue. Capability gates
+read the EFFECTIVE capability set published by the llmAdapter probe matrix
+([llmAdapter](../infrastructure/llmAdapter.md) §2.4 — `probeState`), never raw
+`LLM_*` config presence: a declared-but-unprobed or declared-but-failed role is
+OFF and its media falls back to the `embed` floor. There is NO delete seam.
+Job kinds are the `AI_JOB_KIND` values (`shared/constants.js`; the
+`ai_jobs.kind` DDL CHECK is the persistence source of truth).
 
 The same commit points populate `filecache.content_hash` (best-effort write, same
 convention as `server/utils/contentHash.js`); the hook receives the fresh hash. A null
@@ -51,7 +55,7 @@ Enqueue decision table (per node, at hook time):
 
 | Node kind / config state                               | Kinds enqueued                                                                                           |
 | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| text/document (pdf/docx/txt — local extractor applies) | `embed`, `features` (chat role present)                                                                  |
+| text/document (pdf/docx/txt — local extractor applies) | `embed`, `features` (`chat` capability probed ON)                                                        |
 | image / video, `vision_chat` probed on                 | `caption` (on completion the caption pipeline chains `embed`)                                            |
 | audio, `asr` probed on                                 | `asr` (on completion chains `embed`)                                                                     |
 | media, capability absent                               | `embed` immediately (V0 `metadata_only` path — name/mime/path/date string, the zero-LLM floor for media) |

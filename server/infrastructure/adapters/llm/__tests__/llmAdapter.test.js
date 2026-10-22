@@ -17,6 +17,8 @@
 
 const { createLlmAdapter } = require('../index');
 const { resolveBudget, createLimiter } = require('../budget');
+const { kit } = require('../presets');
+const probeState = require('../probeState');
 
 // ── test seams ───────────────────────────────────────────────────────────────
 
@@ -194,6 +196,54 @@ function transportError(msg = 'connection reset') {
   return err;
 }
 
+/**
+ * Fake remote endpoint for the EG2 conformance probe (the adapter's HTTP
+ * transport seam). `mode`:
+ *   - 'conforming' — echoes the kit's canonical vectors ⇒ median cos 1.0;
+ *   - 'foreign'    — same 768 dim, negated canonical vectors ⇒ median cos −1
+ *                    (a same-dim DIFFERENT space — the gate must reject it);
+ *   - 'wrongDim'   — 512-dim vectors ⇒ structural failure before the cosine.
+ */
+function makeConformanceEndpoint(initialMode = 'conforming') {
+  const canonical = kit().vectors;
+  const calls = [];
+  let mode = initialMode;
+
+  const fetchImpl = async (url, init) => {
+    const body = JSON.parse(init.body);
+    calls.push({ url, body, headers: init.headers });
+    let vectors;
+    if (mode === 'foreign') {
+      vectors = canonical.map((v) => Array.from(v, (x) => -x));
+    } else if (mode === 'wrongDim') {
+      vectors = canonical.map(() => new Array(512).fill(0.1));
+    } else {
+      vectors = canonical.map((v) => Array.from(v));
+    }
+    return {
+      ok: true,
+      status: 200,
+      async json() {
+        // Deliberately reversed: the probe must restore the kit input order
+        // through the response `index`, never rely on arrival order.
+        return {
+          data: vectors.map((embedding, index) => ({ index, embedding })).reverse(),
+        };
+      },
+    };
+  };
+
+  return {
+    fetchImpl,
+    calls,
+    setMode(next) {
+      mode = next;
+    },
+  };
+}
+
+const flushAsync = () => new Promise((resolve) => setImmediate(resolve));
+
 const REMOTE_EMBED = {
   LLM_EMBED_BASE_URL: 'http://llama.local:8080',
   LLM_EMBED_MODEL: 'embeddinggemma-2',
@@ -245,6 +295,10 @@ function buildAdapter(overrides = {}) {
     presetFor: () => null,
     clock,
     timers,
+    // Hermetic default transport: a CONFORMING endpoint, so a remote embed
+    // fixture activates without real HTTP. Conformance-specific tests inject
+    // their own `makeConformanceEndpoint` mode.
+    fetchImpl: makeConformanceEndpoint('conforming').fetchImpl,
     ...overrides.deps,
   };
   const adapter = createLlmAdapter(deps);
@@ -295,6 +349,7 @@ describe('per-call config resolution + signature-keyed client cache', () => {
     expect(probeCalls).toHaveLength(0);
     clock.advance(60_000);
     timers.fireDue();
+    await flushAsync();
     expect(probeCalls).toEqual([{ role: 'chat' }]);
   });
 
@@ -311,6 +366,7 @@ describe('per-call config resolution + signature-keyed client cache', () => {
 
     clock.advance(60_000);
     timers.fireDue();
+    await flushAsync();
     expect(probeCalls).toHaveLength(1);
   });
 
@@ -684,5 +740,205 @@ describe('error classification (§2.8)', () => {
   it('unclassified unknown errors default to transport (breaker-relevant, conservative)', () => {
     expect(classifyLlmError(new Error('weird')).class).toBe('transport');
     expect(classifyLlmError({ status: 500, message: 'boom' }).class).toBe('transport');
+  });
+});
+
+// ── EG2 conformance activation gate + effective capabilities (§2.2/§2.4) ─────
+
+describe('remote-embed EG2 conformance activation gate', () => {
+  beforeEach(() => probeState.reset());
+
+  it('same-space endpoint ⇒ configured; the kit runs ONCE per signature (no per-call probe)', async () => {
+    const endpoint = makeConformanceEndpoint('conforming');
+    const r = makeResolver({ ...REMOTE_EMBED });
+    const { adapter, healthReports } = buildAdapter({
+      resolver: r,
+      deps: { fetchImpl: endpoint.fetchImpl },
+    });
+
+    await expect(adapter.roleConfigured('embed')).resolves.toBe(true);
+
+    expect(endpoint.calls).toHaveLength(1);
+    expect(endpoint.calls[0].url).toBe('http://llama.local:8080/embeddings');
+    expect(endpoint.calls[0].body.model).toBe('embeddinggemma-2');
+    // The kit strings are sent in the profile's DOCUMENT space (the calibrated
+    // space), one input per reference string.
+    expect(endpoint.calls[0].body.input).toHaveLength(24);
+    expect(endpoint.calls[0].body.input[0]).toBe(`title: none | text:${kit().strings[0]}`);
+    expect(endpoint.calls[0].headers.authorization).toBe('Bearer sk-test');
+    expect(healthReports.some((h) => h.key === 'ai.embed' && h.patch.ok === true)).toBe(true);
+    expect(adapter.getEffectiveCapabilities().embed).toBe(true);
+
+    // Cached by the resolved-config signature: repeated activation and the
+    // call path reuse the verdict — never another provider round-trip.
+    await expect(adapter.roleConfigured('embed')).resolves.toBe(true);
+    await expect(adapter.getRoleClient('embed')).resolves.not.toBeNull();
+    await expect(adapter.probeRole('embed')).resolves.toMatchObject({ ok: true });
+    expect(endpoint.calls).toHaveLength(1);
+  });
+
+  it('same-dim FOREIGN space ⇒ configured false, ai.embed probe_failed/nonConformingEndpoint, capability OFF', async () => {
+    const endpoint = makeConformanceEndpoint('foreign');
+    const r = makeResolver({ ...REMOTE_EMBED });
+    const { adapter, healthReports } = buildAdapter({
+      resolver: r,
+      deps: { fetchImpl: endpoint.fetchImpl },
+    });
+
+    await expect(adapter.roleConfigured('embed')).resolves.toBe(false);
+    // Fail closed on the call path too: the adapter never hands out a client
+    // for a rejected endpoint (consumers park).
+    await expect(adapter.getRoleClient('embed')).resolves.toBeNull();
+    await expect(adapter.embed(['hello'])).rejects.toMatchObject({
+      class: 'config',
+      reason: 'not_configured',
+    });
+
+    const failure = healthReports.find((h) => h.key === 'ai.embed' && h.patch.ok === false);
+    expect(failure.patch).toMatchObject({
+      code: 'probe_failed',
+      reason: 'nonConformingEndpoint',
+      hint: 'serverErrors.ai.nonConformingEndpoint',
+    });
+    expect(adapter.getEffectiveCapabilities().embed).toBe(false);
+    expect(endpoint.calls).toHaveLength(1);
+  });
+
+  it('wrong-dim endpoint ⇒ configured false with the structural reason', async () => {
+    const endpoint = makeConformanceEndpoint('wrongDim');
+    const r = makeResolver({ ...REMOTE_EMBED });
+    const { adapter, healthReports } = buildAdapter({
+      resolver: r,
+      deps: { fetchImpl: endpoint.fetchImpl },
+    });
+
+    await expect(adapter.roleConfigured('embed')).resolves.toBe(false);
+    const failure = healthReports.find((h) => h.key === 'ai.embed' && h.patch.ok === false);
+    expect(failure.patch).toMatchObject({ code: 'probe_failed', reason: 'wrongDim' });
+  });
+
+  it('exactly ONE re-probe per config change (a new signature invalidates the cached verdict)', async () => {
+    const endpoint = makeConformanceEndpoint('conforming');
+    const r = makeResolver({ ...REMOTE_EMBED });
+    const { adapter, timers, clock } = buildAdapter({
+      resolver: r,
+      deps: { fetchImpl: endpoint.fetchImpl },
+    });
+
+    await expect(adapter.roleConfigured('embed')).resolves.toBe(true);
+    expect(endpoint.calls).toHaveLength(1);
+
+    // The endpoint changes identity together with the config signature: the
+    // new signature is probed exactly once and the verdict flips.
+    endpoint.setMode('foreign');
+    await r.set('LLM_EMBED_MODEL', 'embeddinggemma-2-v2');
+    await expect(adapter.roleConfigured('embed')).resolves.toBe(false);
+    expect(endpoint.calls).toHaveLength(2);
+
+    // Repeat activation on the same signature: cached, no extra round-trip.
+    await expect(adapter.roleConfigured('embed')).resolves.toBe(false);
+    expect(endpoint.calls).toHaveLength(2);
+
+    // The debounced re-probe rides the same cached verdict.
+    clock.advance(60_000);
+    timers.fireDue();
+    await flushAsync();
+    expect(endpoint.calls).toHaveLength(2);
+  });
+
+  it('the built-in embedded engine is exempt: configured with zero conformance calls', async () => {
+    const endpoint = makeConformanceEndpoint('foreign');
+    const { adapter } = buildAdapter({ deps: { fetchImpl: endpoint.fetchImpl } });
+
+    await expect(adapter.roleConfigured('embed')).resolves.toBe(true);
+    await expect(adapter.getRoleClient('embed')).resolves.not.toBeNull();
+    expect(endpoint.calls).toHaveLength(0);
+  });
+});
+
+describe('capability matrix runtime authority (declared ≠ probed)', () => {
+  beforeEach(() => probeState.reset());
+
+  it('a declared chat role whose probe fails ⇒ chat capability OFF + ai.chat warning hint', async () => {
+    const r = makeResolver({ ...REMOTE_CHAT });
+    const preset = {
+      id: 'gemma-4-12b-it',
+      expected: { chat: true, vision_chat: true, asr: true },
+    };
+    const { adapter, healthReports } = buildAdapter({
+      resolver: r,
+      deps: {
+        presetFor: () => preset,
+        probeRole: async ({ role }) => ({ ok: false, role, reason: 'schema: not JSON' }),
+      },
+    });
+
+    await expect(adapter.probeRole('chat')).resolves.toMatchObject({ ok: false });
+
+    expect(adapter.getEffectiveCapabilities().chat).toBe(false);
+    const warning = probeState.listWarnings().find((w) => w.role === 'chat');
+    expect(warning).toMatchObject({
+      capability: 'chat',
+      code: 'probe_failed',
+      hint: 'serverErrors.ai.providerProbeFailed',
+    });
+    const failure = healthReports.find((h) => h.key === 'ai.chat' && h.patch.ok === false);
+    expect(failure.patch).toMatchObject({ code: 'probe_failed' });
+  });
+
+  it('a passing probe turns the capability ON (undeclared-but-probed is authority too)', async () => {
+    const r = makeResolver({ ...REMOTE_CHAT });
+    const preset = {
+      id: 'gemma-4-12b-it',
+      expected: { chat: true, vision_chat: true, asr: true },
+    };
+    const { adapter } = buildAdapter({
+      resolver: r,
+      deps: {
+        presetFor: () => preset,
+        probeRole: async ({ role }) => ({ ok: true, role, reason: null }),
+      },
+    });
+
+    await expect(adapter.probeRole('chat')).resolves.toMatchObject({ ok: true });
+    expect(adapter.getEffectiveCapabilities().chat).toBe(true);
+    expect(probeState.listWarnings().find((w) => w.role === 'chat')).toBeUndefined();
+  });
+
+  it('probeConfiguredRoles probes configured roles only and publishes each outcome', async () => {
+    const r = makeResolver({ ...REMOTE_CHAT });
+    const probed = [];
+    const { adapter } = buildAdapter({
+      resolver: r,
+      deps: {
+        presetFor: (role) => ({ expected: { [role === 'chat' ? 'chat' : role]: true } }),
+        probeRole: async ({ role }) => {
+          probed.push(role);
+          return {
+            ok: role === 'chat',
+            role,
+            reason: role === 'chat' ? null : 'mediaProbePending',
+          };
+        },
+      },
+    });
+
+    const outcomes = await adapter.probeConfiguredRoles();
+    expect(probed).toEqual(['chat']); // embed/vision/asr resolve no config here
+    expect(outcomes.chat).toMatchObject({ ok: true });
+    expect(adapter.getEffectiveCapabilities()).toMatchObject({
+      embed: expect.any(Boolean),
+      chat: true,
+      vision: expect.any(Boolean),
+      asr: expect.any(Boolean),
+    });
+  });
+
+  it('an unconfigured role carries no capability (no probe, no warning)', async () => {
+    const { adapter } = buildAdapter();
+    const outcomes = await adapter.probeConfiguredRoles();
+    expect(outcomes.chat).toBeUndefined();
+    expect(adapter.getEffectiveCapabilities().chat).toBe(false);
+    expect(probeState.listWarnings()).toHaveLength(0);
   });
 });

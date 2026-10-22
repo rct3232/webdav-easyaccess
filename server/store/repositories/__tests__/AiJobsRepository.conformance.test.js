@@ -9,6 +9,10 @@
  * node-purge cascade.
  */
 
+const fs = require('fs');
+const path = require('path');
+
+const { AI_JOB_KIND } = require('@webdav-easyaccess/shared/constants');
 const { createTestDatabase, createTestFileNode, dbQuery, dbRun } = require('@server/test-utils');
 const storage = require('@server/store/storage');
 const createAiJobsRepository = require('@server/store/repositories/AiJobsRepository');
@@ -168,6 +172,26 @@ describe('AiJobsRepository conformance', () => {
     expect(drained).not.toBeNull();
     expect(drained.id).toBe(Number(failedJob.id));
     expect(drained.attempt).toBe(1);
+  });
+
+  it('claimNext({ excludeKinds }) normalizes ONCE: empty/undefined entries never desync placeholders from bound values', async () => {
+    await clearJobs();
+    const embedNode = await uniqueNode();
+    const captionNode = await uniqueNode();
+    const embed = await repo.enqueue(embedNode.nodeId, AI_JOB_KIND.EMBED, 1);
+    const caption = await repo.enqueue(captionNode.nodeId, AI_JOB_KIND.CAPTION, 1);
+
+    // Normalized to ['caption'] for BOTH the predicate slots and the bound
+    // parameters — the caption row parks, the embed row drains.
+    const first = await repo.claimNext({ excludeKinds: ['', AI_JOB_KIND.CAPTION, null] });
+    expect(first).not.toBeNull();
+    expect(Number(first.id)).toBe(Number(embed.id));
+    expect((await readRow(caption.id)).status).toBe('pending');
+    expect((await readRow(caption.id)).attempt).toBe(0);
+
+    // Same normalization with the filter removed: the parked row drains.
+    const second = await repo.claimNext({ excludeKinds: [] });
+    expect(Number(second.id)).toBe(Number(caption.id));
   });
 
   it('claimNext({ excludeKinds: [] }) restores the exact zero-arg contract', async () => {
@@ -411,5 +435,31 @@ describe('AiJobsRepository conformance', () => {
       Number(job.id),
     ]);
     expect(Number(rows[0].cnt)).toBe(0);
+  });
+});
+
+describe('AI_JOB_KIND ↔ ai_jobs DDL parity', () => {
+  const DDL_PATH = path.join(
+    __dirname,
+    '../../../store/postgresql/ddl/001_initial_normalized_schema.sql'
+  );
+
+  function ddlKindEnum() {
+    const ddl = fs.readFileSync(DDL_PATH, 'utf8');
+    const table = ddl.match(/CREATE TABLE IF NOT EXISTS ai_jobs \(([\s\S]*?)\n\);/);
+    expect(table).not.toBeNull();
+    const check = table[1].match(/kind TEXT NOT NULL CHECK \(kind IN \(([^)]*)\)\)/);
+    expect(check).not.toBeNull();
+    return [...check[1].matchAll(/'([^']+)'/g)].map((match) => match[1]);
+  }
+
+  it('AI_JOB_KIND.ALL is exactly the ai_jobs.kind CHECK enum', () => {
+    expect(new Set(ddlKindEnum())).toEqual(new Set(AI_JOB_KIND.ALL));
+  });
+
+  it('every named kind constant is listed in ALL (no constant outside the enum)', () => {
+    const named = Object.values(AI_JOB_KIND).filter((value) => typeof value === 'string');
+    expect(named).toHaveLength(AI_JOB_KIND.ALL.length);
+    for (const kind of named) expect(AI_JOB_KIND.ALL).toContain(kind);
   });
 });

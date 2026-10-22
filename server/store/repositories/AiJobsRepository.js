@@ -12,7 +12,8 @@
  * @typedef {Object} AiJob
  * @property {number} id
  * @property {number} nodeId
- * @property {'embed'|'features'|'caption'|'asr'|'backfill'} kind
+ * @property {string} kind one of `AI_JOB_KIND.ALL` (`shared/constants.js`);
+ *   the `ai_jobs.kind` DDL CHECK is the persistence source of truth
  * @property {number} generation
  * @property {'pending'|'running'|'done'|'failed'|'skipped'} status
  * @property {number} attempt

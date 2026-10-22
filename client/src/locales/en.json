@@ -1052,7 +1052,8 @@
     "ai": {
       "notConfigured": "The AI feature is not configured. Please contact the administrator.",
       "budgetExceeded": "Today's AI usage budget is exhausted. Please try again tomorrow.",
-      "providerProbeFailed": "The AI provider probe failed. Check the AI configuration."
+      "providerProbeFailed": "The AI provider probe failed. Check the AI configuration.",
+      "nonConformingEndpoint": "The embedding endpoint fails the reference conformance check. Activate a conforming model or use the built-in engine."
     },
     "actions": {
       "invalidDomain": "Unknown undo-journal domain filter.",

@@ -5,6 +5,8 @@
 const { createTestDatabase, createAuthenticatedTestUser, dbQuery } = require('@server/test-utils');
 const { createFileNodeService } = require('@server/service/fileNodeService');
 const { createFileNodesStore } = require('@server/store/fileNodesStore');
+const llmModelsStore = require('@server/store/llmModelsStore');
+const embeddingsStore = require('@server/store/embeddingsStore');
 const { createSearchService } = require('../searchService');
 
 let dbCleanup;
@@ -578,5 +580,77 @@ describe('searchService semantic leg — scorer seam + assembly', () => {
     expect(result.semantic).toEqual([]);
     expect(result.semanticAvailable).toBe(true);
     expect(result.counts.semantic).toBe(0);
+  });
+});
+
+describe('searchService semantic leg — production scorer BASELINE_SAMPLE_DOCS', () => {
+  it('applies a changed config value to the NEXT search without a restart', async () => {
+    const ctx = await createUserWithRoot();
+    const doc = await fileNodeService.createFile(
+      ctx.root.id,
+      `hot-baseline-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.txt`
+    );
+    const config = { BASELINE_SAMPLE_DOCS: '3' };
+
+    const { id: modelId } = await llmModelsStore.upsertModel({
+      role: 'embed',
+      provider: 'embedded',
+      engine: 'embedded',
+      baseUrlKey: '',
+      modelName: 'embeddinggemma-2-ONNX',
+      modelRevision: null,
+      precision: 'q4',
+      maxInputChars: 8192,
+      chunkBudget: 4,
+      batchSize: 8,
+      enabled: true,
+    });
+    await embeddingsStore.upsert(Number(doc.id), {
+      modelId: Number(modelId),
+      dim: 4,
+      vector: [1, 0, 0, 0],
+      source: 'head',
+      contentHash: `hot-baseline-${Date.now()}`,
+    });
+
+    // The default (production) scorer is constructed once; only the config
+    // value changes between the two searches. The sample cap is observed
+    // through the store seam the service hands to the scorer.
+    const realStore = createFileNodesStore();
+    const sampleCaps = [];
+    const fileNodesStore = {
+      ...realStore,
+      sampleVisibleNodeIds: jest.fn(async (userId, n) => {
+        sampleCaps.push(Number(n));
+        return realStore.sampleVisibleNodeIds(userId, n);
+      }),
+    };
+
+    try {
+      const service = createSearchService({
+        usageService: createUsageServiceFake(),
+        configResolver: {
+          getConfig: async (key) =>
+            key === 'BASELINE_SAMPLE_DOCS' ? config.BASELINE_SAMPLE_DOCS : undefined,
+        },
+        llmAdapter: createFakeEmbedAdapter({ modelId: Number(modelId), dim: 4 }),
+        llmModelsStore,
+        fileNodesStore,
+      });
+
+      const first = await service.search(ctx.user.id, { query: 'hot baseline alpha' });
+      expect(first.semanticAvailable).toBe(true);
+      expect(first.counts.semantic).toBe(1);
+
+      config.BASELINE_SAMPLE_DOCS = '9';
+      const second = await service.search(ctx.user.id, { query: 'hot baseline beta' });
+      expect(second.semanticAvailable).toBe(true);
+      expect(second.counts.semantic).toBe(1);
+
+      expect(sampleCaps).toEqual([3, 9]);
+    } finally {
+      await dbQuery('DELETE FROM embeddings', []);
+      await dbQuery("DELETE FROM llm_models WHERE role = 'embed'", []);
+    }
   });
 });

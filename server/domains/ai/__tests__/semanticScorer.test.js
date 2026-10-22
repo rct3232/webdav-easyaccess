@@ -61,6 +61,63 @@ describe('semanticScorer — absence and degrade paths', () => {
   });
 });
 
+describe('semanticScorer — BASELINE_SAMPLE_DOCS config seam', () => {
+  function makeEngineFactory(candidateIds) {
+    return () => ({
+      neighbors: jest.fn(async (segVec, k, candidates) =>
+        [...candidates]
+          .filter((id) => candidateIds.includes(id))
+          .map((id) => ({ nodeId: id, score: 0.9 }))
+          .slice(0, k)
+      ),
+    });
+  }
+
+  it('resolves the baseline sample cap on EVERY score() call (hot config, no restart)', async () => {
+    const config = { BASELINE_SAMPLE_DOCS: '7' };
+    const caps = [];
+    const score = createSemanticScorer({
+      llmModelsStore: makeFakeModelsStore(),
+      presets: makeFakePresets(),
+      fileNodesStore: makeFakeFileNodesStore([10]),
+      engineFactory: makeEngineFactory([10]),
+      configResolver: {
+        getConfig: jest.fn(async (key) =>
+          key === 'BASELINE_SAMPLE_DOCS' ? config.BASELINE_SAMPLE_DOCS : undefined
+        ),
+      },
+    });
+    const sampleFn = async (n) => {
+      caps.push(n);
+      return [];
+    };
+
+    await score({ userId: USER, segmentVecs: [[1]], sampleFn });
+    config.BASELINE_SAMPLE_DOCS = 13;
+    await score({ userId: USER, segmentVecs: [[1]], sampleFn });
+
+    expect(caps).toEqual([7, 13]);
+  });
+
+  it('falls back to 500 when the configured value is missing or non-numeric', async () => {
+    const caps = [];
+    const score = createSemanticScorer({
+      llmModelsStore: makeFakeModelsStore(),
+      presets: makeFakePresets(),
+      fileNodesStore: makeFakeFileNodesStore([10]),
+      engineFactory: makeEngineFactory([10]),
+      configResolver: { getConfig: async () => 'not-a-number' },
+    });
+    const sampleFn = async (n) => {
+      caps.push(n);
+      return [];
+    };
+
+    await score({ userId: USER, segmentVecs: [[1]], sampleFn });
+    expect(caps).toEqual([500]);
+  });
+});
+
 describe('semanticScorer — scoring engine (TextVectorJs oracle + injected engineFactory)', () => {
   it('MIN-across-segments: doc score = min over the segment scores (segment-AND)', async () => {
     // Candidate A: seg1=0.9, seg2=0.5 → min 0.5

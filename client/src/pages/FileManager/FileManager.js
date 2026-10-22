@@ -274,15 +274,29 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   }, [isShareLinkMode]);
 
   // Union selection (FileManager.md §7): while a results surface is on screen
-  // the selection source is Zone A ++ Zone B displayed rows so select-all and
-  // the bulk read-only gate span the zones; otherwise the browse pass-through.
+  // the selection source is Zone A ++ Zone B ++ Zone C displayed rows so
+  // select-all and the bulk read-only gate span the zones; otherwise the
+  // browse pass-through. Deduped by entry key (keep first occurrence) — a node
+  // may appear in more than one zone (A + C) and must count once.
+  const searchSelectionRows = useMemo(() => {
+    if (!searchModeActive) return null;
+    const seen = new Set();
+    const rows = [];
+    for (const row of [...searchApi.zoneARows, ...searchApi.zoneBRows, ...searchApi.zoneCRows]) {
+      const key = getEntryKey(row);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push(row);
+    }
+    return rows;
+  }, [searchModeActive, searchApi.zoneARows, searchApi.zoneBRows, searchApi.zoneCRows]);
   const selectionSortedSource = useMemo(
-    () => (searchModeActive ? [...searchApi.zoneARows, ...searchApi.zoneBRows] : sortedFiles),
-    [searchModeActive, searchApi.zoneARows, searchApi.zoneBRows, sortedFiles]
+    () => searchSelectionRows ?? sortedFiles,
+    [searchSelectionRows, sortedFiles]
   );
   const selectionDisplaySource = useMemo(
-    () => (searchModeActive ? [...searchApi.zoneARows, ...searchApi.zoneBRows] : displayedFiles),
-    [searchModeActive, searchApi.zoneARows, searchApi.zoneBRows, displayedFiles]
+    () => searchSelectionRows ?? displayedFiles,
+    [searchSelectionRows, displayedFiles]
   );
 
   const {

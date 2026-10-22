@@ -1168,4 +1168,99 @@ describe('FileNodeRepository conformance', () => {
       expect(otherSample.some((id) => Number(id) === hiddenSibling.id)).toBe(false);
     });
   });
+
+  describe('listVisibleFileNodeIds (searchService §2.5a ACL anchoring set)', () => {
+    let ownerId;
+    let otherId;
+    let ownerRoot;
+    let ownChild;
+    let grantedFolder;
+    let grantedInside;
+    let pointGranted;
+    let deniedSibling;
+    let trashedNode;
+
+    async function addClosure(parentId, childId) {
+      const rows = [{ ancestorId: Number(childId), descendantId: Number(childId), depth: 0 }];
+      if (parentId != null) {
+        const seen = new Set([Number(childId)]);
+        for (const entry of await repo.getAncestorChain(parentId)) {
+          const ancestorId = Number(entry.ancestorId);
+          if (seen.has(ancestorId)) continue;
+          seen.add(ancestorId);
+          rows.push({ ancestorId, descendantId: Number(childId), depth: Number(entry.depth) + 1 });
+        }
+      }
+      await repo.insertAncestorRows(rows);
+    }
+
+    beforeAll(async () => {
+      const User = require('@server/models/User');
+      const suffix = uniqueName('fnvisible');
+      const owner = await User.create(`${suffix}-own`, `${suffix}-own@conf.test`, 'pw', false);
+      const other = await User.create(`${suffix}-oth`, `${suffix}-oth@conf.test`, 'pw', false);
+      ownerId = owner.id;
+      otherId = other.id;
+
+      ownerRoot = await repo.createNode(null, `${suffix}-own`, 'directory');
+      await addClosure(null, ownerRoot.id);
+      ownChild = await repo.createNode(ownerRoot.id, `${suffix}-own-child.txt`, 'file');
+      await addClosure(ownerRoot.id, ownChild.id);
+      grantedFolder = await repo.createNode(ownerRoot.id, `${suffix}-granted-folder`, 'directory');
+      await addClosure(ownerRoot.id, grantedFolder.id);
+      grantedInside = await repo.createNode(
+        grantedFolder.id,
+        `${suffix}-granted-inside.txt`,
+        'file'
+      );
+      await addClosure(grantedFolder.id, grantedInside.id);
+      pointGranted = await repo.createNode(ownerRoot.id, `${suffix}-point-granted.txt`, 'file');
+      await addClosure(ownerRoot.id, pointGranted.id);
+      deniedSibling = await repo.createNode(ownerRoot.id, `${suffix}-denied.txt`, 'file');
+      await addClosure(ownerRoot.id, deniedSibling.id);
+      trashedNode = await repo.createNode(ownerRoot.id, `${suffix}-trashed.txt`, 'file');
+      await addClosure(ownerRoot.id, trashedNode.id);
+
+      await dbRun(
+        'INSERT INTO permissions_user_paths (user_id, file_node_id, permission) VALUES (?, ?, ?)',
+        [Number(otherId), Number(grantedFolder.id), 'read']
+      );
+      await dbRun(
+        'INSERT INTO permissions_user_paths (user_id, file_node_id, permission) VALUES (?, ?, ?)',
+        [Number(otherId), Number(pointGranted.id), 'read']
+      );
+      await repo.markSubtreeDeleted([trashedNode.id]);
+    });
+
+    it("returns EXACTLY the owner's live own-root subtree (id ascending)", async () => {
+      const ids = await repo.listVisibleFileNodeIds(ownerId);
+      const expected = [
+        ownerRoot.id,
+        ownChild.id,
+        grantedFolder.id,
+        grantedInside.id,
+        pointGranted.id,
+        deniedSibling.id,
+      ].sort((a, b) => a - b);
+      expect(ids).toEqual(expected);
+      expect(ids).not.toContain(trashedNode.id);
+    });
+
+    it('returns EXACTLY the granted path subtree + point grant for a foreign requester', async () => {
+      const ids = await repo.listVisibleFileNodeIds(otherId);
+      expect(ids).toEqual(
+        [grantedFolder.id, grantedInside.id, pointGranted.id].sort((a, b) => a - b)
+      );
+      expect(ids).not.toContain(deniedSibling.id);
+      expect(ids).not.toContain(ownerRoot.id);
+      expect(ids).not.toContain(trashedNode.id);
+    });
+
+    it('returns an empty set for a requester with no root and no grants', async () => {
+      const User = require('@server/models/User');
+      const suffix = uniqueName('fnvisible-stranger');
+      const stranger = await User.create(`${suffix}`, `${suffix}@conf.test`, 'pw', false);
+      await expect(repo.listVisibleFileNodeIds(stranger.id)).resolves.toEqual([]);
+    });
+  });
 });

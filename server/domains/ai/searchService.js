@@ -98,7 +98,16 @@ function createSearchService(opts = {}) {
   // "no scoring seam" — the C1 honest-empty contract is preserved.
   const scorer = hasScorer
     ? semanticScorer
-    : createSemanticScorer({ fileNodesStore, llmModelsStore: injectedModels });
+    : createSemanticScorer({
+        fileNodesStore,
+        llmModelsStore: injectedModels,
+        // Lazy facade: the service resolver may be the shared singleton
+        // resolved after construction. The scorer reads BASELINE_SAMPLE_DOCS
+        // per score() call so an operator change is hot.
+        configResolver: {
+          getConfig: (key) => resolveConfigResolver().getConfig(key),
+        },
+      });
 
   function resolveFileNodesStore() {
     if (fileNodesStore) return fileNodesStore;

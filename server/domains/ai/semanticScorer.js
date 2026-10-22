@@ -43,8 +43,12 @@ const DEFAULT_BASELINE_SAMPLE_DOCS = 500;
  *   (default: infrastructure/adapters/llm/presets).
  * @param {(modelId: number, loadRows: Function) => Object} [opts.engineFactory]
  *   - vectorStore seam factory (default: TextVectorJs bound to the model id).
+ * @param {Object} [opts.configResolver] - seam exposing getConfig(key);
+ *   `BASELINE_SAMPLE_DOCS` is read per `score()` call so the T2/dbOnly knob is
+ *   hot. Absent seam ⇒ the factory fallback applies.
  * @param {number} [opts.kPerSegment] - per-segment candidate cut cap (default 50).
- * @param {number} [opts.baselineSampleDocs] - baseline sample size (default 500).
+ * @param {number} [opts.baselineSampleDocs] - baseline sample size fallback
+ *   when the config value is missing/non-numeric (default 500).
  */
 function createSemanticScorer({
   fileNodesStore,
@@ -53,6 +57,7 @@ function createSemanticScorer({
   llmModelsStore: modelsStore,
   presets: presetsModule,
   engineFactory,
+  configResolver,
   kPerSegment = DEFAULT_K_PER_SEGMENT,
   baselineSampleDocs = DEFAULT_BASELINE_SAMPLE_DOCS,
 } = {}) {
@@ -84,6 +89,27 @@ function createSemanticScorer({
   function resolveEngine(modelId, loadRows) {
     if (engineFactory) return engineFactory(modelId, loadRows);
     return createTextVectorJs({ modelId, loadRows });
+  }
+
+  /**
+   * Per-call `BASELINE_SAMPLE_DOCS` read (searchService.md §3): the T2/dbOnly
+   * value is hot — an operator change applies to the next score() without a
+   * restart. Missing/non-numeric/≤0 config falls back to the factory default
+   * (500).
+   */
+  async function resolveBaselineSampleDocs() {
+    if (!configResolver || typeof configResolver.getConfig !== 'function') {
+      return baselineSampleDocs;
+    }
+    let raw;
+    try {
+      raw = await configResolver.getConfig('BASELINE_SAMPLE_DOCS');
+    } catch {
+      return baselineSampleDocs;
+    }
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value <= 0) return baselineSampleDocs;
+    return Math.floor(value);
   }
 
   /**
@@ -169,7 +195,7 @@ function createSemanticScorer({
     // ⇒ the gate cannot pass honestly ⇒ return [] (§2.5a: never ungated).
     let sampleIds = [];
     try {
-      const raw = await sampleFn(baselineSampleDocs);
+      const raw = await sampleFn(await resolveBaselineSampleDocs());
       sampleIds = (Array.isArray(raw) ? raw : [])
         .map(Number)
         .filter((id) => Number.isFinite(id) && !candidateIds.has(id) && visibleSet.has(id));

@@ -1978,11 +1978,29 @@ describe('FileManager', () => {
             size: overrides[nodeId]?.size ?? 5,
             lastmod: null,
             mime: 'application/pdf',
-            hasReadPermission: true,
-            hasWritePermission: false,
+            hasReadPermission: overrides[nodeId]?.hasReadPermission ?? true,
+            hasWritePermission: overrides[nodeId]?.hasWritePermission ?? false,
           }))
         );
       });
+
+    const semanticResultsPayload = (nameMatches, semanticRows) => ({
+      name_matches: nameMatches.map((r) => ({ node_id: r.node_id, name: r.name })),
+      semantic: semanticRows.map((r) => ({
+        node_id: r.node_id,
+        name: r.name,
+        score: r.score ?? 0.9,
+      })),
+      counts: {
+        name: nameMatches.length,
+        semantic: semanticRows.length,
+        total: nameMatches.length + semanticRows.length,
+        name_truncated: false,
+        semantic_capped_segments: false,
+      },
+      result_ref: 'sr1.abc',
+      semantic_available: true,
+    });
 
     const submitSearchText = async (value) => {
       const searchbox = screen.getByRole('searchbox');
@@ -2139,6 +2157,139 @@ describe('FileManager', () => {
         expect(zoneASelected).toBe('true');
         expect(zoneBSelected).toBe('true');
       });
+    }, 15000);
+
+    it('a writable Zone C row joins the union: selecting it enables the write bulk actions', async () => {
+      server.use(
+        http.post('/api/search', () =>
+          HttpResponse.json(
+            semanticResultsPayload(
+              [{ node_id: 11, name: 'sub-test.pdf' }],
+              [{ node_id: 90, name: 'semantic-match.jpg' }]
+            )
+          )
+        ),
+        metadataHandler({ 90: { name: 'semantic-match.jpg', hasWritePermission: true } })
+      );
+
+      await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+      await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
+
+      await submitSearchText('test');
+      const zoneCRow = await screen.findByTestId('server-search-row-90');
+      await waitFor(() => expect(zoneCRow.textContent).toMatch(/semantic-match\.jpg/));
+      fireEvent.click(zoneCRow, { detail: 1 });
+
+      expect(await screen.findByTestId('bulk-action-move')).not.toBeDisabled();
+      expect(screen.getByTestId('bulk-action-delete')).not.toBeDisabled();
+      expect(screen.queryByText('Selection includes read-only files')).not.toBeInTheDocument();
+      expect(screen.getByText('1 selected')).toBeInTheDocument();
+    }, 15000);
+
+    it('a read-only Zone C row trips the read-only gate (banner + disabled write actions)', async () => {
+      server.use(
+        http.post('/api/search', () =>
+          HttpResponse.json(
+            semanticResultsPayload(
+              [{ node_id: 11, name: 'sub-test.pdf' }],
+              [{ node_id: 90, name: 'semantic-match.jpg' }]
+            )
+          )
+        ),
+        metadataHandler({ 90: { name: 'semantic-match.jpg', hasWritePermission: false } })
+      );
+
+      await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+      await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
+
+      await submitSearchText('test');
+      const zoneCRow = await screen.findByTestId('server-search-row-90');
+      await waitFor(() => expect(zoneCRow.textContent).toMatch(/semantic-match\.jpg/));
+      fireEvent.click(zoneCRow, { detail: 1 });
+
+      expect(await screen.findByText('Selection includes read-only files')).toBeInTheDocument();
+      expect(screen.getByTestId('bulk-action-move')).toBeDisabled();
+      expect(screen.getByTestId('bulk-action-delete')).toBeDisabled();
+    }, 15000);
+
+    it('select-all spans Zone C as well (A ++ B ++ C union)', async () => {
+      server.use(
+        http.post('/api/search', () =>
+          HttpResponse.json(
+            semanticResultsPayload(
+              [{ node_id: 11, name: 'sub-test.pdf' }],
+              [{ node_id: 90, name: 'semantic-match.jpg' }]
+            )
+          )
+        ),
+        metadataHandler({
+          11: { name: 'sub-test.pdf', hasWritePermission: true },
+          90: { name: 'semantic-match.jpg', hasWritePermission: true },
+        })
+      );
+
+      await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+      await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
+
+      await submitSearchText('test');
+      const zoneBRow = await screen.findByTestId('server-search-row-11');
+      await waitFor(() => expect(zoneBRow.textContent).toMatch(/sub-test\.pdf/));
+      const zoneCRow = screen.getByTestId('server-search-row-90');
+      await waitFor(() => expect(zoneCRow.textContent).toMatch(/semantic-match\.jpg/));
+      fireEvent.click(zoneBRow, { detail: 1 });
+
+      const selectAllButtons = await screen.findAllByRole('button', { name: /select all/i });
+      fireEvent.click(selectAllButtons[0]);
+
+      await waitFor(() => {
+        expect(
+          document.querySelector('[data-file-node-id="1"]')?.getAttribute('aria-selected')
+        ).toBe('true');
+        expect(screen.getByTestId('server-search-row-11')).toHaveAttribute('aria-selected', 'true');
+        expect(screen.getByTestId('server-search-row-90')).toHaveAttribute('aria-selected', 'true');
+      });
+      expect(screen.getByText('3 selected')).toBeInTheDocument();
+      expect(screen.getByTestId('bulk-action-move')).not.toBeDisabled();
+    }, 15000);
+
+    it('a node present in both Zone A and Zone C counts once in the selection union', async () => {
+      server.use(
+        http.post('/api/search', () =>
+          HttpResponse.json(
+            semanticResultsPayload(
+              [
+                { node_id: 11, name: 'sub-test.pdf' },
+                { node_id: 1, name: 'test.txt' },
+              ],
+              [
+                { node_id: 1, name: 'test.txt' },
+                { node_id: 90, name: 'semantic-match.jpg' },
+              ]
+            )
+          )
+        ),
+        metadataHandler({
+          11: { name: 'sub-test.pdf', hasWritePermission: true },
+          1: { name: 'test.txt', hasWritePermission: true },
+          90: { name: 'semantic-match.jpg', hasWritePermission: true },
+        })
+      );
+
+      await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+      await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
+
+      await submitSearchText('test');
+      const zoneBRow = await screen.findByTestId('server-search-row-11');
+      await waitFor(() => expect(zoneBRow.textContent).toMatch(/sub-test\.pdf/));
+      fireEvent.click(zoneBRow, { detail: 1 });
+
+      const selectAllButtons = await screen.findAllByRole('button', { name: /select all/i });
+      fireEvent.click(selectAllButtons[0]);
+
+      // Zone A {1, 11} ∪ Zone C {1, 90} = three entries — the A/C duplicate
+      // (node 1) is counted once, not twice.
+      expect(await screen.findByText('3 selected')).toBeInTheDocument();
+      expect(screen.getByTestId('bulk-action-move')).not.toBeDisabled();
     }, 15000);
 
     it('LibraryAdd adds the FULL snapshot (zone A ∪ zone B ids) through the member-add seam', async () => {

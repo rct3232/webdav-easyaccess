@@ -129,12 +129,13 @@ future layer's job) — sending it never changes the response.
 
 ### 2.5 Repository / seam additions
 
-| Addition                                                       | Owner spec                                           | Purpose                              |
-| -------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------ |
-| `FileNodeRepository.searchNodesByName(userId, query, {limit})` | FileNodeRepository twins (+conformance)              | ACL-scoped `lower LIKE` name section |
-| `FileNodeRepository.sampleVisibleNodeIds(userId, n)`           | same                                                 | baseline corpus sample               |
-| `vectorStore.neighbors(vec, k, candidates)`                    | [vectorStore](../infrastructure/vectorStore.md) §2.3 | max-over-chunks per-segment scoring  |
-| `query_parses` repository                                      | `docs/features/collections-platform.md` §5           | signature-keyed embed/parse cache    |
+| Addition                                                       | Owner spec                                           | Purpose                                     |
+| -------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------- |
+| `FileNodeRepository.searchNodesByName(userId, query, {limit})` | FileNodeRepository twins (+conformance)              | ACL-scoped `lower LIKE` name section        |
+| `FileNodeRepository.sampleVisibleNodeIds(userId, n)`           | same                                                 | baseline corpus sample                      |
+| `FileNodeRepository.listVisibleFileNodeIds(userId)`            | same                                                 | ACL anchoring set (scorer scores inside it) |
+| `vectorStore.neighbors(vec, k, candidates)`                    | [vectorStore](../infrastructure/vectorStore.md) §2.3 | max-over-chunks per-segment scoring         |
+| `query_parses` repository                                      | `docs/features/collections-platform.md` §5           | signature-keyed embed/parse cache           |
 
 ### 2.5a The semantic scoring seam (steps 5–6 behind one boundary)
 
@@ -169,7 +170,9 @@ semanticScorer({ userId, queryVec, segmentVecs, sampleFn })
   document score is the **MIN across segments** (segment-AND: a document must
   score ≥δ in EVERY segment — a one-segment match never lands).
 - **Dynamic baseline gate:** the SAME segment vectors are scored against the
-  `sampleFn(BASELINE_SAMPLE_DOCS)` sample (default 500) drawn EXCLUDING the
+  `sampleFn(BASELINE_SAMPLE_DOCS)` sample — the cap is resolved per `score()`
+  call through the scorer's `configResolver` seam (default 500, hot for the
+  next search) — drawn EXCLUDING the
   candidate set (a sample containing a candidate would contaminate the
   baseline). `spread` = the sample's max min-across-segments score. Keep results
   only if the top candidate score ≥ `spread + δ_base` (the model profile's
@@ -180,9 +183,11 @@ semanticScorer({ userId, queryVec, segmentVecs, sampleFn })
 - The service consumes the returned rows unchanged through steps 7–8 (order,
   dedup, cap, usage logging) — it never rescores.
 
-No scorer injected ⇒ the leg cannot score: the semantic section is returned
-HONESTLY EMPTY (`semantic_available:true`, `counts.semantic:0`) whenever the
-§2.3 step-3 gate passed. Scores are never fabricated anywhere on this path.
+The PRODUCTION scorer is the default when no seam is injected — the service
+constructs it with its own stores and `configResolver`. An explicitly injected
+non-function disables scoring: the semantic section is then returned HONESTLY
+EMPTY (`semantic_available:true`, `counts.semantic:0`) whenever the §2.3
+step-3 gate passed. Scores are never fabricated anywhere on this path.
 
 ### 2.6 Save-to-collection boundary
 
@@ -213,7 +218,7 @@ vectorStore invariant break) — provider failure is a DEGRADATION, not a `fail`
 | `AI_SEMANTIC_SEARCH_ENABLED` | `true`  | query-embed kill switch (mandatory part of the request-path LLM exception: cache + kill-switch + no-LLM fallback) |
 | `SEARCH_NAME_LIMIT`          | `200`   | name-section hard cap                                                                                             |
 | `SEARCH_SEMANTIC_LIMIT`      | `50`    | semantic-section cap                                                                                              |
-| `BASELINE_SAMPLE_DOCS`       | `500`   | dynamic-baseline sample size                                                                                      |
+| `BASELINE_SAMPLE_DOCS`       | `500`   | dynamic-baseline sample size (read per `score()` call — hot)                                                      |
 | segment cap                  | `3`     | scoring bound (limit, not input validation)                                                                       |
 
 `δ_base` and per-segment k are per-model profile values — release-measured

@@ -233,7 +233,9 @@ frame-sampling to fit (embedded provider: local ffmpeg 1 fps sampling, cap = win
 image-processor path — no server wall), image → single-item always; every segment vector returned
 (`embeddings_chunk` rows) + mean+renormalized pooled row; segment windows are chunking-
 profile params — changing them re-embeds the media (chunking-profile rule, §2.6).
-`source='media_direct'`.
+`source='media_direct'`. The worker performs the video sampling itself (1 fps, uniform
+stride to the frame cap) and calls `embedMedia(frames[], { mediaType:'image' })` — one
+segment vector per frame; `mediaType:'video'` remains available for a whole-file item.
 Retrieval note (ownership):
 the adapter only produces vectors; max-over-chunks SCORING is vectorStore's rule.
 

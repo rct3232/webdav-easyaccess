@@ -1,26 +1,35 @@
 'use strict';
 
 /**
- * embed pipeline — the B5 (T1.3b) per-job executor of the AI worker
+ * embed pipeline — the per-job executor of the `embed` kind
  * (docs/spec/server/services/aiJobService.md §2.4, §2.3).
  *
- * Scope within B5: the TEXT file path of the `embed` kind — content-hash
- * dedupe skip → chunk-pool ladder → llmAdapter.embed → canonical
- * pooled/chunk writes through the vectorStore seam's injected write hooks →
- * markDone; a runtime model/dim ≠ the node's persisted pooled-row identity
- * enqueues ONE deduped backfill shadow-rebuild driver (llmAdapter §2.3 stale-dim rule:
- * the comparison is against the per-row `embeddings.dim`, never
- * `llm_models`). The overlength ladder tail (truncate-head → metadata_only
- * → skip), media/segment paths, and the full worker loop belong to later
- * units; the ladder head here is the merged A5 `chunkPool`.
+ * Two input families share one output contract (pooled row + segment rows in
+ * ONE tx through the vectorStore seam's injected write hooks):
  *
- * IO is injected (adapter / readText / store hooks) so the drain function
- * `runPendingEmbedJobs(deps)` is hermetically testable — zero HTTP, zero
- * blob reads. All writes ride ONE transaction per job through
- * `deps.transaction` (vectorStore.md §2.2 division of labor: pooled half,
- * chunk half and shadow sync share the TX; the hook pair mirrors the
- * repository twins' statements so a degraded JsFallback engine stays a
- * legal sink).
+ *   - TEXT documents: content-hash dedupe skip → chunk-pool ladder →
+ *     `llmAdapter.embed` → pooled `source='chunk_pool'`.
+ *   - MEDIA (image/video/audio), media ladder from llmAdapter §2.6:
+ *       capability ON  → `embedMedia` over the sampled segments (image single,
+ *                        audio fixed windows, video uniform-stride frames) →
+ *                        every segment vector + mean+renormalized pooled row,
+ *                        `source='media_direct'`;
+ *       capability OFF → the V2 corpus (caption for visual, transcript for
+ *                        audio with `media_kind='music'` excluded) through the
+ *                        text ladder (`chunk_pool`);
+ *       no corpus      → the V0 metadata string (name/mime/path/date) →
+ *                        `source='metadata_only'`.
+ *     Media never head-truncates; the media ladder only segments.
+ *
+ * A runtime model/dim ≠ the node's persisted pooled-row identity enqueues ONE
+ * deduped backfill shadow-rebuild driver (llmAdapter §2.3 stale-dim rule: the
+ * comparison is against the per-row `embeddings.dim`, never `llm_models`).
+ *
+ * IO is injected (adapter / readText / readNode / readBlob / enrichments /
+ * media helpers) so the drain function `runPendingEmbedJobs(deps)` is
+ * hermetically testable — zero HTTP, zero blob reads when stubbed. All writes
+ * ride ONE transaction per job through `deps.transaction` (vectorStore.md
+ * §2.2 division of labor).
  *
  * All pipeline state is DB-backed (the `ai_jobs` queue + canonical
  * embedding rows) — no in-memory AI state anywhere in this domain
@@ -28,28 +37,83 @@
  */
 
 const { AI_JOB_KIND } = require('@webdav-easyaccess/shared/constants');
+const { getFileType } = require('@webdav-easyaccess/shared/fileTypes');
 const { meanPool, serializeVector } = require('../vectorStore/vectorMath');
 const { chunkPool } = require('../extractors/textChunking');
+const { drainKind } = require('./pipelineRunner');
+const mediaSampling = require('../media/mediaSampling');
 
-/** Kinds without a landed executor yet — parked via claimNext (§2.3). */
-const UNEXECUTABLE_KINDS = [
-  AI_JOB_KIND.FEATURES,
-  AI_JOB_KIND.CAPTION,
-  AI_JOB_KIND.ASR,
-  AI_JOB_KIND.BACKFILL,
-];
+/** Kinds without a landed executor — parked via claimNext (§2.3). */
+const UNEXECUTABLE_KINDS = [AI_JOB_KIND.FEATURES, AI_JOB_KIND.BACKFILL];
+
+/** Every kind except the pipeline's own: predicate-level park (§2.3). */
+const NON_EMBED_KINDS = AI_JOB_KIND.ALL.filter((kind) => kind !== AI_JOB_KIND.EMBED);
+
+/** Media ladder capability per modality (llmAdapter §2.4 sub-capabilities). */
+const MEDIA_CAPABILITY = Object.freeze({
+  image: 'image_embed',
+  video: 'video_embed',
+  audio: 'audio_embed',
+});
+
+/** Profile fallback when no media profile is injected (EG2 release values). */
+const DEFAULT_MEDIA_PROFILE = Object.freeze({
+  engine: 'embedded',
+  windowTokens: 8192,
+  budgetTokens: 8192,
+  mediaTokenCost: { image: 280, videoFrame: 140, audioPerSec: 25 },
+});
+
+function mediaKindOf(node) {
+  if (!node) return null;
+  const fileType = getFileType(String(node.name || ''));
+  if (fileType === 'image' || fileType === 'video' || fileType === 'audio') return fileType;
+  const mime = String(node.mimeType || '').toLowerCase();
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('video/')) return 'video';
+  if (mime.startsWith('audio/')) return 'audio';
+  return null;
+}
+
+/** V0 floor corpus: name/mime/path/date — same text space, weak hits kept. */
+async function metadataText(node, ctx) {
+  let path = node.path;
+  if (!path && typeof ctx.resolvePath === 'function') {
+    try {
+      path = await ctx.resolvePath(node);
+    } catch {
+      path = null;
+    }
+  }
+  return [node.name, node.mimeType, path, node.createdAt]
+    .filter((part) => part !== undefined && part !== null && part !== '')
+    .map(String)
+    .join(' | ');
+}
 
 /**
  * @param {Object} deps
  * @param {Object} [deps.aiJobsStore] queue facade (default: server/store/aiJobsStore)
  * @param {Object} [deps.embeddingsStore] pooled facade (default: server/store/embeddingsStore)
- * @param {Object} [deps.embeddingsChunkStore] chunk facade (default: server/store/embeddingsChunkStore)
+ * @param {Object} [deps.aiEnrichmentsStore] caption/transcript corpus reader
  * @param {(modelId: number) => Promise<number|null>} [deps.activeModelId] the ACTIVE
  *   embed `llm_models.id` (llmModelsStore.getActiveByRole('embed'))
- * @param {Object} [deps.adapter] llmAdapter seam exposing `embed(texts[])` →
- *   `{ vectors[][], dim, modelId, degraded? }`
+ * @param {Object} [deps.adapter] llmAdapter seam exposing `embed(texts[])` and
+ *   `embedMedia(buffers[], { mediaType })`
  * @param {(nodeId: number) => Promise<string|null>} [deps.readText] locally extracted
- *   document text (blobStorageService.downloadBlob + documentText.extractText at wiring)
+ *   document text
+ * @param {(nodeId: number) => Promise<Object|null>} [deps.readNode] node lookup
+ *   (name/mimeType/type/path — media classification + V0 corpus)
+ * @param {(nodeId: number) => Promise<Buffer|null>} [deps.readBlob] node bytes
+ *   (media sampling; transient)
+ * @param {(node: Object) => Promise<string|null>} [deps.resolvePath] display path
+ *   for the V0 metadata string (read only on the metadata_only path)
+ * @param {(capability: string) => boolean} [deps.capabilityEnabled] published
+ *   probe matrix (default: llmAdapter probeState)
+ * @param {Function} [deps.mediaProfile] async () => { engine, windowTokens,
+ *   budgetTokens, mediaTokenCost } — the media ladder budget input
+ * @param {Function} [deps.sampleFrames] video frame sampler seam
+ * @param {Function} [deps.decodeAudio] audio→mono 16 kHz seam
  * @param {number} [deps.chunkBudget] sampled-chunk cap (LLM_CHUNK_BUDGET, default 4)
  * @param {number} [deps.maxChunkChars] paragraph/heading ladder window (§4.3)
  * @param {Object} [deps.vectorStore] seam hooks `{ upsertPooled, replaceChunks, transaction }`
@@ -65,10 +129,28 @@ function createEmbedPipeline(deps = {}) {
   function pooledStore() {
     return deps.embeddingsStore || require('../../../store/embeddingsStore');
   }
-  function chunkStore() {
-    return deps.embeddingsChunkStore || require('../../../store/embeddingsChunkStore');
+
+  function enrichmentsStore() {
+    return deps.aiEnrichmentsStore || require('../../../store/aiEnrichmentsStore');
   }
-  void chunkStore; // wired by the vectorStore factory at boot; kept for the seam contract
+
+  function nodesStore() {
+    return deps.fileNodesStore || require('../../../store/fileNodesStore').createFileNodesStore();
+  }
+
+  function blobStore() {
+    if (deps.blobStorageService) return deps.blobStorageService;
+    const { getComposition } = require('../../../service/composition');
+    return getComposition().blobStorageService;
+  }
+
+  function capabilityProbe() {
+    return (
+      deps.capabilityEnabled ||
+      ((capability) =>
+        require('../../../infrastructure/adapters/llm/probeState').isCapabilityEnabled(capability))
+    );
+  }
 
   function log() {
     return deps.log || { warn: console.warn.bind(console) };
@@ -134,14 +216,168 @@ function createEmbedPipeline(deps = {}) {
     };
   }
 
+  /** Validate a provider batch against the input count; returns `{vectors, dim}`. */
+  function readProviderResult(result, expectedCount) {
+    const vectors = Array.isArray(result?.vectors) ? result.vectors : [];
+    const dim = Number(result?.dim);
+    if (vectors.length !== expectedCount || !Number.isFinite(dim) || dim <= 0) {
+      throw new Error('embed adapter returned a malformed vector batch');
+    }
+    return { vectors, dim };
+  }
+
+  /**
+   * Stale-space driver (llmAdapter §2.3 + aiJobService §2.4): compare the
+   * runtime model+dim against the node's PERSISTED per-row values. Failures
+   * are logged and dropped — the next embed re-enqueues.
+   */
+  async function maybeEnqueueShadowRebuild(job, ctx, dim) {
+    if (!ctx.existing) return;
+    if (ctx.existing.modelId === ctx.modelId && ctx.existing.dim === dim) return;
+    const nodeId = Number(job.nodeId);
+    try {
+      await ctx.jobs.enqueue(
+        nodeId,
+        AI_JOB_KIND.BACKFILL,
+        Number(job.generation),
+        `shadow-rebuild:${nodeId}:${ctx.modelId}`
+      );
+    } catch (error) {
+      log().warn(`[embedPipeline] shadow-rebuild enqueue failed for node ${nodeId}: ${error}`);
+    }
+  }
+
+  /**
+   * The single canonical write: pooled half = mean+renormalize, chunk half =
+   * every segment vector, ONE TX (vectorStore.md §2.2).
+   */
+  async function persistVectors(job, ctx, { vectors, dim, source }) {
+    const nodeId = Number(job.nodeId);
+    await maybeEnqueueShadowRebuild(job, ctx, dim);
+    const pooledVec = meanPool(vectors);
+    await ctx.hooks.transaction(async (tx) => {
+      await ctx.hooks.upsertPooled(tx, {
+        nodeId,
+        modelId: ctx.modelId,
+        dim,
+        vector: serializeVector(pooledVec),
+        source,
+        contentHash: job.contentHash ?? null,
+      });
+      await ctx.hooks.replaceChunks(
+        tx,
+        nodeId,
+        ctx.modelId,
+        vectors.map((vector) => serializeVector(vector))
+      );
+    });
+    await ctx.jobs.markDone(job.id);
+    return 'done';
+  }
+
+  /** §2.4 text ladder head: chunk-pool over one corpus string. */
+  async function embedTextCorpus(job, ctx, text) {
+    if (typeof text !== 'string' || text.length === 0) return null;
+    const { chunks } = chunkPool(text, {
+      maxChunkChars: ctx.maxChunkChars,
+      chunkBudget: ctx.chunkBudget,
+    });
+    if (chunks.length === 0) return null;
+    const result = await ctx.adapter.embed(chunks);
+    const { vectors, dim } = readProviderResult(result, chunks.length);
+    return persistVectors(job, ctx, { vectors, dim, source: 'chunk_pool' });
+  }
+
+  /** Media corpus for the capability-OFF fallback (V2 caption / V3 transcript). */
+  async function mediaFallbackText(nodeId, mediaKind, ctx) {
+    const row = await ctx.enrichments.get(nodeId);
+    if (!row) return null;
+    if (mediaKind === 'audio') {
+      // Music rows store lyrics in `transcript`; document-content scoring
+      // excludes them (aiJobService §2.4 asr rule).
+      if (row.mediaKind === 'music') return null;
+      return typeof row.transcript === 'string' ? row.transcript : null;
+    }
+    return typeof row.caption === 'string' ? row.caption : null;
+  }
+
+  /**
+   * Media ladder segment set (llmAdapter §2.6): image single, audio fixed
+   * windows, video uniform-stride frames. Video frames ride the image media
+   * path (the frame set IS the video segment set).
+   */
+  async function buildMediaSegments(buffer, mediaKind, node, ctx) {
+    const profile = { ...DEFAULT_MEDIA_PROFILE, ...(await ctx.mediaProfile()) };
+    const mediaTokenCost = profile.mediaTokenCost || DEFAULT_MEDIA_PROFILE.mediaTokenCost;
+    const budgetTokens =
+      profile.engine === 'embedded'
+        ? Number(profile.windowTokens) || DEFAULT_MEDIA_PROFILE.windowTokens
+        : Number(profile.budgetTokens) || DEFAULT_MEDIA_PROFILE.budgetTokens;
+
+    if (mediaKind === 'image') {
+      return { buffers: [buffer], mediaType: 'image' };
+    }
+    if (mediaKind === 'audio') {
+      const samples = await ctx.decodeAudio(buffer, { mimeType: node.mimeType });
+      const windowSec = mediaSampling.audioWindowSec({ budgetTokens, mediaTokenCost });
+      const windows = mediaSampling.audioWindows(samples, { windowSec });
+      return {
+        buffers: windows
+          .filter((window) => window.length > 0)
+          .map((window) => mediaSampling.encodeWavMono16k(window)),
+        mediaType: 'audio',
+      };
+    }
+    const maxFrames = mediaSampling.videoFrameCap({ budgetTokens, mediaTokenCost });
+    const frames = await ctx.sampleFrames(buffer, {
+      maxFrames,
+      mimeType: node.mimeType,
+    });
+    return { buffers: frames, mediaType: 'image' };
+  }
+
+  async function runMediaEmbed(job, ctx, node, mediaKind) {
+    const nodeId = Number(job.nodeId);
+    const buffer = await ctx.readBlob(nodeId);
+    if (!buffer || buffer.length === 0) {
+      await ctx.jobs.markSkipped(job.id, 'missing_content');
+      return 'skipped';
+    }
+
+    if (ctx.capabilityEnabled(MEDIA_CAPABILITY[mediaKind])) {
+      const segments = await buildMediaSegments(buffer, mediaKind, node, ctx);
+      const buffers = segments.buffers.filter((item) => item && item.length > 0);
+      if (buffers.length === 0) {
+        await ctx.jobs.markSkipped(job.id, 'no_media_segments');
+        return 'skipped';
+      }
+      const result = await ctx.adapter.embedMedia(buffers, {
+        mediaType: segments.mediaType,
+      });
+      const { vectors, dim } = readProviderResult(result, buffers.length);
+      return persistVectors(job, ctx, { vectors, dim, source: 'media_direct' });
+    }
+
+    const corpus = await mediaFallbackText(nodeId, mediaKind, ctx);
+    if (corpus) {
+      const done = await embedTextCorpus(job, ctx, corpus);
+      if (done) return done;
+    }
+
+    // V0 floor: the metadata string is always available and always searchable
+    // in the same text space (weak hits preserved).
+    const text = await metadataText(node, ctx);
+    const result = await ctx.adapter.embed([text]);
+    const { vectors, dim } = readProviderResult(result, 1);
+    return persistVectors(job, ctx, { vectors, dim, source: 'metadata_only' });
+  }
+
   /**
    * One embed job, terminal state included. Returns the outcome string for
    * the drain counter: 'done' | 'skipped' | 'failed'.
    */
   async function runEmbedJob(job, ctx) {
-    const { modelId, adapter, readText, hooks } = ctx;
     const nodeId = Number(job.nodeId);
-    const generation = Number(job.generation);
     const contentHash = job.contentHash ?? null;
 
     // §2.2 content_hash skip: same active model + same hash ⇒ no provider
@@ -149,7 +385,7 @@ function createEmbedPipeline(deps = {}) {
     const existing = await ctx.pooled.get(nodeId);
     if (
       existing &&
-      existing.modelId === modelId &&
+      existing.modelId === ctx.modelId &&
       contentHash &&
       existing.contentHash === contentHash
     ) {
@@ -158,103 +394,33 @@ function createEmbedPipeline(deps = {}) {
     }
 
     // §2.3 step 4 (role gate): no live adapter ⇒ park (never claim-and-fail).
-    if (!adapter || typeof adapter.embed !== 'function') {
+    if (!ctx.adapter || typeof ctx.adapter.embed !== 'function') {
       throw new Error('embed role is not configured');
     }
 
-    const text = await readText(nodeId);
+    const jobCtx = { ...ctx, existing };
+
+    const node = ctx.readNode ? await ctx.readNode(nodeId) : null;
+    const mediaKind = mediaKindOf(node);
+    if (mediaKind) {
+      if (typeof ctx.adapter.embedMedia !== 'function') {
+        throw new Error('embed role does not expose media embedding');
+      }
+      return runMediaEmbed(job, jobCtx, node, mediaKind);
+    }
+
+    const text = await ctx.readText(nodeId);
     if (typeof text !== 'string' || text.length === 0) {
       await ctx.jobs.markSkipped(job.id, 'unextractable_text');
       return 'skipped';
     }
 
-    // §2.4 ladder head: chunk-pool (budget VALUES caller-supplied, A5).
-    const { chunks } = chunkPool(text, {
-      maxChunkChars: ctx.maxChunkChars,
-      chunkBudget: ctx.chunkBudget,
-    });
-    if (chunks.length === 0) {
+    const done = await embedTextCorpus(job, jobCtx, text);
+    if (!done) {
       await ctx.jobs.markSkipped(job.id, 'unextractable_text');
       return 'skipped';
     }
-
-    // §2.3 step 7: config resolves per claim — the adapter call IS the claim's
-    // resolution; a transport failure here is a retryable job failure.
-    const result = await adapter.embed(chunks);
-    const vectors = Array.isArray(result?.vectors) ? result.vectors : [];
-    const dim = Number(result?.dim);
-    if (vectors.length !== chunks.length || !Number.isFinite(dim) || dim <= 0) {
-      throw new Error('embed adapter returned a malformed vector batch');
-    }
-
-    // llmAdapter §2.3 stale-dim rule + aiJobService §2.4 driver condition:
-    // compare the RUNTIME model+dim against the node's PERSISTED per-row
-    // values — never llm_models (no dim column). A model change OR a dim
-    // change ⇒ ONE deduped backfill shadow-rebuild driver; the enqueue
-    // failure is logged and dropped (the next embed re-enqueues). The
-    // `backfill` executor itself is parked until T4.1 (UNEXECUTABLE_KINDS).
-    if (existing && (existing.modelId !== modelId || existing.dim !== dim)) {
-      try {
-        await ctx.jobs.enqueue(
-          nodeId,
-          AI_JOB_KIND.BACKFILL,
-          generation,
-          `shadow-rebuild:${nodeId}:${modelId}`
-        );
-      } catch (error) {
-        log().warn(`[embedPipeline] shadow-rebuild enqueue failed for node ${nodeId}: ${error}`);
-      }
-    }
-
-    // Vector-space writes: pooled half = mean+renormalize, chunk half = the
-    // sampled set, ONE TX (vectorStore.md §2.2 division of labor). The hooks
-    // run the repositories' statements on the tx handle (nested
-    // executor.transaction deadlocks on the serialized sqlite queue).
-    const pooledVec = meanPool(vectors);
-    await hooks.transaction(async (tx) => {
-      await hooks.upsertPooled(tx, {
-        nodeId,
-        modelId,
-        dim,
-        vector: serializeVector(pooledVec),
-        source: 'chunk_pool',
-        contentHash,
-      });
-      await hooks.replaceChunks(
-        tx,
-        nodeId,
-        modelId,
-        vectors.map((v) => serializeVector(v))
-      );
-    });
-
-    await ctx.jobs.markDone(job.id);
-    return 'done';
-  }
-
-  /**
-   * §2.3 step 5 per-job wall clock (AI_JOB_TIMEOUT_MS, default 120000).
-   * On timeout the rejection hits the drain loop's catch ⇒ markFailed ⇒
-   * backoff; the underlying execution continues and its late markDone is a
-   * {changes:0} no-op (§2.3 step 6 — never resurrects).
-   */
-  async function runEmbedJobGuarded(job, ctx) {
-    const timeoutMs = Number(ctx.jobTimeoutMs) > 0 ? Number(ctx.jobTimeoutMs) : 0;
-    if (!timeoutMs) return runEmbedJob(job, ctx);
-    let timer = null;
-    try {
-      return await Promise.race([
-        runEmbedJob(job, ctx),
-        new Promise((_, reject) => {
-          timer = setTimeout(
-            () => reject(new Error(`embed job ${job.id} timed out after ${timeoutMs}ms`)),
-            timeoutMs
-          );
-        }),
-      ]);
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
+    return done;
   }
 
   /**
@@ -279,8 +445,19 @@ function createEmbedPipeline(deps = {}) {
       pooled,
       adapter,
       hooks,
-      readText: merged.readText,
       modelId,
+      existing: null,
+      readText: merged.readText,
+      readNode: merged.readNode || ((nodeId) => nodesStore().getNode(nodeId)),
+      readBlob: merged.readBlob || ((nodeId) => blobStore().downloadBlob(nodeId)),
+      resolvePath: merged.resolvePath,
+      enrichments: merged.aiEnrichmentsStore || enrichmentsStore(),
+      capabilityEnabled: merged.capabilityEnabled || capabilityProbe(),
+      mediaProfile: merged.mediaProfile || (async () => DEFAULT_MEDIA_PROFILE),
+      sampleFrames:
+        merged.sampleFrames || ((buffer, opts) => mediaSampling.sampleVideoFrames(buffer, opts)),
+      decodeAudio:
+        merged.decodeAudio || ((buffer, opts) => mediaSampling.decodeAudioToMono16k(buffer, opts)),
       chunkBudget: Number.isFinite(Number(merged.chunkBudget)) ? Number(merged.chunkBudget) : 4,
       maxChunkChars: Number.isFinite(Number(merged.maxChunkChars))
         ? Number(merged.maxChunkChars)
@@ -288,26 +465,14 @@ function createEmbedPipeline(deps = {}) {
       jobTimeoutMs: Number(merged.jobTimeoutMs) || 0,
     };
 
-    let terminal = 0;
-    for (;;) {
-      const job = await jobs.claimNext({ excludeKinds: UNEXECUTABLE_KINDS });
-      if (!job) break;
-      if (job.kind !== AI_JOB_KIND.EMBED) continue; // filter-parity guard, never execute
-      try {
-        const outcome = await runEmbedJobGuarded(job, ctx);
-        if (outcome !== 'failed') terminal += 1;
-      } catch (error) {
-        // §2.3 step 5: any throw ⇒ markFailed ⇒ backoff ladder; a reap race
-        // surfaces as { changes: 0 } (late-writer logs+drops, never resurrects).
-        const flipped = await jobs.markFailed(job.id, error?.message ?? String(error));
-        if (flipped.changes === 0) {
-          log().warn(
-            `[embedPipeline] late write on job ${job.id} dropped (${error?.message ?? error})`
-          );
-        }
-      }
-    }
-    return terminal;
+    return drainKind({
+      jobs,
+      kind: AI_JOB_KIND.EMBED,
+      excludeKinds: merged.excludeKinds || NON_EMBED_KINDS,
+      jobTimeoutMs: ctx.jobTimeoutMs,
+      log: log(),
+      execute: (job) => runEmbedJob(job, ctx),
+    });
   }
 
   return { runEmbedJob, runPendingEmbedJobs, UNEXECUTABLE_KINDS };

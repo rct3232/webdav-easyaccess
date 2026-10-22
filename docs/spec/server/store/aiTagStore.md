@@ -18,6 +18,7 @@
 - **Source:** `server/store/aiTagStore.js` (facade, no SQL)
 - **Interface + factory:** `server/store/repositories/AiTagRepository.js`
 - **Implementations:** `server/store/repositories/{sqlite,postgres}/AiTagRepository.{sqlite,postgres}.js`
+- **Shared SQL helper:** `server/store/repositories/aiTagShared.js` (table/fragment constants used by both twins)
 - **Conformance (L2):** `server/store/repositories/__tests__/AiTagRepository.conformance.test.js`
 - **Facade test:** `server/domains/ai/__tests__/aiTagStore.test.js`
 - **DDL source of truth:** `server/store/postgresql/ddl/001_initial_normalized_schema.sql` — the table is

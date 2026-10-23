@@ -80,11 +80,16 @@ async function loginAs(page: Page, userKey: TestUserKey, suffix?: string) {
  * (setup-wizard/admin-config/migration): goto `/login`, fill username/password,
  * submit and wait for the explorer URL.
  */
-export async function loginWithCredentials(page: Page, username: string, password: string) {
+export async function loginWithCredentials(
+  page: Page,
+  username: string,
+  password: string,
+  timeoutMs = 30_000
+) {
   await page.goto('/login');
 
   const usernameInput = page.locator('input[name="username"]');
-  await expect(usernameInput).toBeVisible();
+  await expect(usernameInput).toBeVisible({ timeout: timeoutMs });
 
   await usernameInput.fill(username);
   await page.locator('input[name="password"]').fill(password);

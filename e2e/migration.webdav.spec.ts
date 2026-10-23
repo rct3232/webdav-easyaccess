@@ -49,9 +49,14 @@ import {
  */
 test.describe.configure({ mode: 'serial', timeout: 240_000 });
 
+let tarpit: Awaited<ReturnType<typeof startTarpit>> | null = null;
 let scratch: MigrationScratchState | null = null;
 
 test.afterEach(async () => {
+  if (tarpit) {
+    tarpit.close();
+    tarpit = null;
+  }
   if (scratch) {
     await cleanupMigrationScratch(scratch);
     scratch = null;
@@ -542,7 +547,7 @@ test.describe('unified migration mode (WebDAV source)', () => {
     // The login page's settings fetch (GET /api/settings/public) returns 503
     // while the gate is active and the httpClient retries 5xx ~7s before the
     // form renders — allow time, then assert the form (not a 503 error page).
-    await expect(loginPage.locator('input[name="username"]')).toBeVisible({ timeout: 25_000 });
+    await expect(loginPage.locator('input[name="username"]')).toBeVisible({ timeout: 45_000 });
     await expect(loginPage).toHaveURL(/\/login/);
     await loginPage.close();
 

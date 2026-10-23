@@ -149,7 +149,7 @@ Rules:
 - Project names are group-scoped. Default/core use `s3-desktop`, `s3-mobile`, `s3-admin-*`, `s3-regset-*`, `s3-collections-*`, `s3-retrieval-*`, `s3-ai-desktop`, `s3-trash-admin-*`, `s3-admin-config-*`, `s3-setup-wizard-*`, and `s3-migration-*`. WebDAV uses `webdav-smoke-desktop` plus `webdav-setup-wizard-*`, `webdav-migration-*`, and `webdav-admin-config-*`.
 - Desktop and mobile projects own separate scratch slots (for example `s3-collections-desktop` and `s3-collections-mobile`); there is no dependency chain and no shared scratch port. Every slot shifts with the checkout's port band.
 - Scratch servers are process isolation for boot configuration, global settings, the metadata DB, and restart. The project-scoped scratch directory, S3 bucket, PG database, and WebDAV subtree isolate blobs only.
-- The WebDAV-only case set is `E2E-WEBDAV-SETUP-001..003`, `E2E-WEBDAV-MIG-001..006`, `E2E-WEBDAV-ADMINCFG-001..005`, and `E2E-WEBDAV-RECON-001`, plus the platform cases selected by the `webdav-smoke-desktop` EXP/SHARE/OVERLAY/TRASH/RECON grep.
+- The WebDAV-only case set is `E2E-WEBDAV-SETUP-001..003`, `E2E-WEBDAV-MIG-001..006`, `E2E-WEBDAV-ADMINCFG-001..005`, and `E2E-WEBDAV-RECON-001`, plus the platform cases selected by the `webdav-smoke-desktop` EXP/SHARE/OVERLAY/TRASH/WEBDAV-RECON grep.
 
 ## ID Migration (S3-First Restructure)
 
@@ -670,7 +670,7 @@ Use the following staged order when expanding browser coverage:
 - The WebDAV-only case set is `E2E-WEBDAV-SETUP-001..003`,
   `E2E-WEBDAV-MIG-001..006`, `E2E-WEBDAV-ADMINCFG-001..005`, and
   `E2E-WEBDAV-RECON-001`, plus the platform cases selected by the
-  `webdav-smoke-desktop` EXP/SHARE/OVERLAY/TRASH/RECON grep.
+  `webdav-smoke-desktop` EXP/SHARE/OVERLAY/TRASH/WEBDAV-RECON grep.
 
 Practical rule:
 

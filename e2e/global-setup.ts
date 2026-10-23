@@ -300,6 +300,26 @@ export default async function globalSetup() {
     } catch {
       /* volume absent */
     }
+  } else {
+    // A crashed prior WebDAV run may have left the container running in this
+    // band. Default/core must not keep that resource alive.
+    try {
+      execFileSync(
+        'docker',
+        [
+          'compose',
+          '-p',
+          composeProject,
+          '-f',
+          path.join(rootDir, 'docker-compose.e2e.yml'),
+          'stop',
+          'webdav-test',
+        ],
+        { cwd: rootDir, stdio: 'ignore' }
+      );
+    } catch {
+      /* not running / absent */
+    }
   }
 
   console.log(`Ensuring the E2E Docker stack is up (${backendMode} mode)...`);

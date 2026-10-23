@@ -2115,3 +2115,35 @@ Gates on the merged tip: server `jest --ci` **173 suites / 2977 tests pass (28 s
 0 failed** (the previously failing `reports.test.js` cleanup parity now passes with the
 original assertion); PG `AdminReportsRepository.conformance` **12/12**; docsStatePurity
 3/3; prettier/eslint clean. Client is unchanged by this refactor.
+
+### 28.11 E2E infrastructure isolation + WebDAV directory hardening (2026-10-23)
+
+The remaining "environment" failure was traced to four interacting causes, not one:
+
+1. **Duplicate MKCOL socket hang** — `ensureDirectoryExists` blindly re-issued MKCOL
+   for every path segment; bytemark drops the socket on duplicate MKCOL of recently
+   created deep collections (the surfaced 500 reason was `socket hang up`).
+2. **Scratch WebDAV root sharing** — suites created `/setup-e2e/<caseId>` but seeded
+   the ROOT URL into the scratch DB, so users/files landed outside their case subtree.
+3. **Compose/bind staleness** — one fixed compose project + host bind mount let
+   containers/DAV locks survive across bands/runs.
+4. **Fixed 5 s assumptions** — cold production-build static assets and WebDAV
+   operations exceeded the login/row-visibility timeout.
+
+Fixes merged (`b7dc218`, merge `4270230`):
+
+- Existence-first directory creation in BOTH `server/utils/webdav.js` and the
+  blobstore adapter (`client.exists` before MKCOL) — a product-level robustness fix.
+- One scratch contract: `scratchWebdavUrl(caseId)` + `prepareScratchWebdav` (create +
+  PROPFIND-verify + seed the SAME case-scoped URL); all scratch suites migrated; the
+  root default is gone. `WEBDAV_UPSTREAM_URL` follows the same case root.
+- Per-band compose project (`-p webdav-easyaccess-<offset>`) in every compose call and
+  a per-band named `webdav_data` volume; global setup resets only the WebDAV volume.
+- Fail-fast E2E: `expectOk` surfaces status+body, child exit logs code/signal + stderr
+  tail, bounded `buildName` slug, test-only 65 s keep-alive, global expect timeout 15 s.
+- TEST_GIT_GUIDE updated (per-band project/volume + case-root contract).
+
+Gates on the merged tip: `retrieval-desktop` + `retrieval-mobile` **22/22** (5.9 m);
+`collections-desktop` **17/17**; `ai-desktop` **1/1**; full server **173 suites /
+2978 pass (28 skipped), 0 failed**; prettier clean. Client code is unchanged by this
+infra wave.

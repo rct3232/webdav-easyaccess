@@ -1147,8 +1147,13 @@ test('E2E-S3-COLLECTION-018: Card menu rename updates the card and the sidebar r
     .toBe(true);
   // The sidebar row reflects the inverse through the collections notifier
   // (the mobile arc asserts the same restoration moment via the row's
-  // restored-name fragment below).
-  await expect(page.getByTestId(`collection-row-${collectionId}`)).not.toContainText('Q3 reports');
+  // restored-name fragment below). The undo refresh can remount/collapse the
+  // tree, so re-open it when the row is temporarily absent.
+  const restoredRow = page.getByTestId(`collection-row-${collectionId}`);
+  if (!(await restoredRow.isVisible().catch(() => false))) {
+    await page.getByTestId('collections-toggle').click();
+  }
+  await expect(restoredRow).not.toContainText('Q3 reports');
   await page.goto('/files/__collections__');
   await expect(collectionCard(page, name)).toBeVisible();
   await expect(collectionCard(page, 'Q3 reports')).toHaveCount(0);

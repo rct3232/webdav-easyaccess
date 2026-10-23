@@ -4,15 +4,15 @@ import { APIRequestContext, expect, Page, test, TestInfo } from '@playwright/tes
 
 import {
   ensureClientBuild,
-  ensureWebdavSubtree,
+  prepareScratchWebdav,
   killScratch,
   scratchDirFor,
-  seedWebdavSettings,
+  scratchWebdavUrl,
   spawnScratchServer,
   waitForScratchHealth,
   writeScratchEnv,
 } from './helpers/setupScratch';
-import { e2ePorts, webdavBase } from './helpers/ports';
+import { e2ePorts } from './helpers/ports';
 import {
   ensureScratchRegularUser,
   loginScratchAdmin,
@@ -103,7 +103,6 @@ import { TEST_FILES } from './fixtures/test-data';
  *   unstable across reruns, demote to the single pinned-sample observable.
  */
 const SCRATCH_PORT = e2ePorts.scratchRetrieval;
-const WEBDAV_BASE = webdavBase;
 const CASE_ID = 'retrieval';
 /** Scratch boot identity (ADMIN_DEFAULT_PASSWORD) — OPERATOR duties only. */
 const ADMIN_PASSWORD = 'RetrievalE2e!123';
@@ -459,12 +458,11 @@ test.beforeAll(async ({ request }) => {
   writeScratchEnv(scratch, {
     PORT: String(SCRATCH_PORT),
     WEA_FILE_STORAGE: 'webdav',
-    WEBDAV_UPSTREAM_URL: WEBDAV_BASE,
+    WEBDAV_UPSTREAM_URL: scratchWebdavUrl(CASE_ID),
     JWT_SECRET: 'retrieval-e2e-jwt-secret',
     ADMIN_DEFAULT_PASSWORD: ADMIN_PASSWORD,
   });
-  await seedWebdavSettings(scratch);
-  await ensureWebdavSubtree(CASE_ID);
+  await prepareScratchWebdav(scratch, CASE_ID);
   ensureClientBuild();
   spawned = spawnScratchServer(scratch, SCRATCH_PORT);
   await waitForScratchHealth(spawned, SCRATCH_PORT);

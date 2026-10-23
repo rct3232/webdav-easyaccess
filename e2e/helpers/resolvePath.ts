@@ -1,4 +1,5 @@
 import { APIRequestContext, expect, Page } from '@playwright/test';
+import { expectOk } from './http';
 
 /**
  * Resolve a server-side absolute path to a nodeId via `POST /api/files/resolve-path`.
@@ -15,7 +16,7 @@ export async function resolveNodeId(
     data: { path },
   });
 
-  expect(res.ok()).toBeTruthy();
+  await expectOk(res, `files/resolve-path ${path}`);
   const body = await res.json();
   return body.nodeId as number;
 }

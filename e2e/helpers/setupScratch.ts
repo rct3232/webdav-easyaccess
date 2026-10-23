@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 
 import { expect, type Page } from '@playwright/test';
 
-import { e2ePorts, webdavBase } from './ports';
+import { composeProject, e2ePorts, webdavBase } from './ports';
 
 /**
  * Hermetic scratch-instance helpers for the first-run setup-wizard
@@ -150,8 +150,21 @@ export function spawnScratchServer(
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
+  const stderrTail: string[] = [];
   child.stdout?.on('data', (d: Buffer) => process.stdout.write(`[setup-scratch:${port}] ${d}`));
-  child.stderr?.on('data', (d: Buffer) => process.stderr.write(`[setup-scratch:${port}] ${d}`));
+  child.stderr?.on('data', (d: Buffer) => {
+    const text = String(d);
+    stderrTail.push(text);
+    if (stderrTail.length > 40) stderrTail.shift();
+    process.stderr.write(`[setup-scratch:${port}] ${text}`);
+  });
+  child.on('exit', (code, signal) => {
+    // Normal teardown is SIGKILL; only surface abnormal exits with the tail.
+    if (code === 0 || signal === 'SIGKILL') return;
+    console.error(
+      `[setup-scratch:${port}] exited code=${code} signal=${signal}\n${stderrTail.join('')}`
+    );
+  });
 
   return child;
 }
@@ -360,7 +373,8 @@ export function execScratchSqlite(dbPath: string, sql: string): Promise<void> {
  * stored as plaintext and read back directly by the server. Defaults `url` to
  * the shared WEBDAV_BASE.
  */
-export async function seedWebdavSettings(scratchDir: string, url = WEBDAV_BASE): Promise<void> {
+export async function seedWebdavSettings(scratchDir: string, url: string): Promise<void> {
+  if (!url) throw new Error('seedWebdavSettings requires the case-scoped WebDAV URL');
   const dbPath = path.join(scratchDir, 'webdav.db');
   await execScratchSqlite(
     dbPath,
@@ -382,6 +396,23 @@ export async function seedWebdavSettings(scratchDir: string, url = WEBDAV_BASE):
       `INSERT OR REPLACE INTO settings (key, value) VALUES ('${key}', '${value}')`
     );
   }
+}
+
+/** THE scratch WebDAV root contract: every case owns `/setup-e2e/<caseId>`. */
+export function scratchWebdavUrl(caseId: string): string {
+  return `${WEBDAV_BASE}/setup-e2e/${caseId}`;
+}
+
+/**
+ * Prepare the case-scoped WebDAV root BEFORE the scratch server boots and seed
+ * the SAME URL into the scratch DB. Server URL, upstream URL, subtree creation
+ * and the physical user homes all derive from this one value.
+ */
+export async function prepareScratchWebdav(scratchDir: string, caseId: string): Promise<string> {
+  const url = scratchWebdavUrl(caseId);
+  await ensureWebdavSubtree(caseId);
+  await seedWebdavSettings(scratchDir, url);
+  return url;
 }
 
 /**
@@ -408,6 +439,36 @@ export async function ensureWebdavSubtree(caseId: string): Promise<void> {
     current += `/${segment}`;
     await mkcol(`${WEBDAV_BASE}${current}`);
   }
+  // MKCOL 409/405 is tolerated as "already exists" by mkcol(); verify the
+  // final collection is actually reachable so a bad parent surfaces HERE, not
+  // as a 500 in the first folders/create request.
+  await assertCollection(`${WEBDAV_BASE}${current}/`);
+}
+
+/** PROPFIND Depth:0 assertion for a prepared scratch collection. */
+function assertCollection(url: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      url,
+      {
+        method: 'PROPFIND',
+        headers: { Authorization: `Basic ${WEBDAV_AUTH}`, Depth: '0' },
+        timeout: 5000,
+      },
+      (res) => {
+        res.resume();
+        const status = res.statusCode || 0;
+        if (status === 200 || status === 207) resolve();
+        else reject(new Error(`scratch WebDAV collection ${url} is not reachable (${status})`));
+      }
+    );
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error(`scratch WebDAV collection ${url} PROPFIND timed out`));
+    });
+    req.on('error', reject);
+    req.end();
+  });
 }
 
 /** Restore the webdav dav root (compose-restart the webdav-test service when PROPFIND / is not 200/207). */
@@ -417,7 +478,15 @@ async function ensureWebdavRootReady(): Promise<void> {
   console.log('[setup-scratch] webdav dav root missing — compose restart webdav-test...');
   execFileSync(
     'docker',
-    ['compose', '-f', path.join(rootDir, 'docker-compose.e2e.yml'), 'restart', 'webdav-test'],
+    [
+      'compose',
+      '-p',
+      composeProject,
+      '-f',
+      path.join(rootDir, 'docker-compose.e2e.yml'),
+      'restart',
+      'webdav-test',
+    ],
     { cwd: rootDir, stdio: 'inherit' }
   );
 

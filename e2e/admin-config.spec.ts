@@ -7,12 +7,12 @@ import { e2ePorts, webdavBase } from './helpers/ports';
 
 import {
   ensureClientBuild,
-  ensureWebdavSubtree,
+  prepareScratchWebdav,
   killScratch,
   openSystemSettings,
   queryScratchSqlite,
   scratchDirFor,
-  seedWebdavSettings,
+  scratchWebdavUrl,
   spawnScratchServer,
   waitForScratchHealth,
   writeScratchEnv,
@@ -126,20 +126,16 @@ test.beforeEach(async () => {
     // Metadata backend stays sqlite by default: no WEA_DB_* identity keys are
     // written, so presence-based selection boots the scratch sqlite store.
     // WebDAV connection keys are deliberately NOT in the .env: they are seeded
-    // into the sqlite DB (see seedWebdavSettings) so the editor rows are
+    // into the sqlite DB (see prepareScratchWebdav) so the editor rows are
     // DB-sourced/editable and the D1 save-gating tests can exercise them.
-    WEBDAV_UPSTREAM_URL: WEBDAV_BASE,
+    WEBDAV_UPSTREAM_URL: scratchWebdavUrl(CASE_ID),
     JWT_SECRET: 'admin-config-e2e-jwt-secret',
     ADMIN_DEFAULT_PASSWORD: ADMIN_PASSWORD,
   });
-  await seedWebdavSettings(scratch);
-  // global-setup wipes the webdav container's DAV root (bind mount) and
-  // restarts the container in both modes, so the root is already restored here.
-  // ensureWebdavSubtree still MKCOLs this case's subtree (and self-heals if the
-  // container is still settling) so the scratch boot probe succeeds (no
-  // spurious backend-health card) and the success-path tests (007) and
-  // "nothing failing" (011) can run.
-  await ensureWebdavSubtree(CASE_ID);
+  await prepareScratchWebdav(scratch, CASE_ID);
+  // prepareScratchWebdav creates this case's `/setup-e2e/<caseId>` subtree,
+  // verifies it with PROPFIND and seeds the SAME case-scoped URL into the
+  // scratch DB, so the scratch boot probe sees a reachable WebDAV root.
   ensureClientBuild();
   spawned = spawnScratchServer(scratch, SCRATCH_PORT);
   await waitForScratchHealth(spawned!, SCRATCH_PORT);

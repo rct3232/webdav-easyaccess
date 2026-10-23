@@ -4,11 +4,20 @@ import path from 'node:path';
 import { APIRequestContext, expect, Page, TestInfo } from '@playwright/test';
 
 import { openFabAction } from './explorer';
+import { expectOk } from './http';
 import { getSessionToken, gotoFilesPath, resolvePathOrNull } from './resolvePath';
 
 export function buildName(testInfo: TestInfo, prefix: string, extension = '') {
   const projectSlug = testInfo.project.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
-  const titleSlug = testInfo.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+  // WebDAV-backed scratch suites nest these names 3-4 levels deep; the full
+  // Playwright title makes each component ~180 chars and bytemark drops the
+  // connection on duplicate MKCOL of such long paths. Keep a short, readable
+  // title slug (the timestamp preserves uniqueness).
+  const titleSlug = testInfo.title
+    .replace(/[^a-z0-9]+/gi, '-')
+    .toLowerCase()
+    .slice(0, 48)
+    .replace(/-+$/, '');
   return `${prefix}-${projectSlug}-${titleSlug}-${Date.now()}${extension}`;
 }
 
@@ -222,7 +231,7 @@ export async function createFolderAt(
     headers: { Authorization: `Bearer ${token}` },
     data: { parentNodeId, name },
   });
-  expect(res.ok()).toBeTruthy();
+  await expectOk(res, 'folders/create');
   const body = await res.json();
   return body.nodeId as number;
 }
@@ -243,7 +252,7 @@ export async function uploadFileAt(
       onConflict: 'overwrite',
     },
   });
-  expect(res.ok()).toBeTruthy();
+  await expectOk(res, 'files/upload');
   const body = await res.json();
   return body.nodeId as number;
 }

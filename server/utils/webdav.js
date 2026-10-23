@@ -680,6 +680,16 @@ async function ensureDirectoryExists(directoryPath) {
   for (const segment of segments) {
     currentPath = currentPath ? `${currentPath}/${segment}` : `/${segment}`;
     const requestPath = getRequestPath(currentPath);
+    // Skip existing collections instead of re-issuing MKCOL: some WebDAV
+    // servers (bytemark included) drop the socket on duplicate MKCOL of a
+    // recently created deep collection. The existence probe is cheap.
+    let alreadyThere = false;
+    try {
+      alreadyThere = await client.exists(requestPath);
+    } catch {
+      alreadyThere = false;
+    }
+    if (alreadyThere) continue;
     try {
       await client.createDirectory(requestPath);
     } catch (error) {

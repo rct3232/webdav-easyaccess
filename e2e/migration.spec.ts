@@ -13,14 +13,14 @@ import {
   createScratchPgDb,
   dropScratchPgDb,
   ensureClientBuild,
-  ensureWebdavSubtree,
+  prepareScratchWebdav,
   execScratchSqlite,
   killScratch,
   openSystemSettings,
   queryScratchPg,
   queryScratchSqlite,
   scratchDirFor,
-  seedWebdavSettings,
+  scratchWebdavUrl,
   spawnScratchServer,
   waitForScratchHealth,
   writeScratchEnv,
@@ -164,7 +164,7 @@ async function bootScratch(testInfo: TestInfo, opts: BootOptions): Promise<void>
     PORT: String(SCRATCH_PORT),
     NODE_ENV: 'test',
     WEA_FILE_STORAGE: 'webdav',
-    WEBDAV_UPSTREAM_URL: WEBDAV_BASE,
+    WEBDAV_UPSTREAM_URL: scratchWebdavUrl(`migration/${opts.caseId}`),
     JWT_SECRET,
     ADMIN_DEFAULT_PASSWORD: ADMIN_PASSWORD,
     ...opts.extraEnv,
@@ -172,8 +172,7 @@ async function bootScratch(testInfo: TestInfo, opts: BootOptions): Promise<void>
   writeScratchEnv(scratch, env);
 
   if (opts.withWebdav) {
-    await ensureWebdavSubtree(`migration/${opts.caseId}`);
-    await seedWebdavSettings(scratch, `${WEBDAV_BASE}/setup-e2e/migration/${opts.caseId}`);
+    await prepareScratchWebdav(scratch, `migration/${opts.caseId}`);
   }
   if (pgDb) {
     // Drop-then-create so a leftover DB from a crashed previous run (whose

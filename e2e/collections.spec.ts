@@ -4,15 +4,15 @@ import { APIRequestContext, expect, Page, TestInfo, test } from '@playwright/tes
 
 import {
   ensureClientBuild,
-  ensureWebdavSubtree,
+  prepareScratchWebdav,
   killScratch,
   scratchDirFor,
-  seedWebdavSettings,
+  scratchWebdavUrl,
   spawnScratchServer,
   waitForScratchHealth,
   writeScratchEnv,
 } from './helpers/setupScratch';
-import { e2ePorts, webdavBase } from './helpers/ports';
+import { e2ePorts } from './helpers/ports';
 import { loginWithCredentials } from './helpers/auth';
 import {
   ensureScratchRegularUser,
@@ -58,7 +58,6 @@ import { setCollectionSort } from './helpers/explorer-controls';
  * (`flushPrivateWorkspaceCleanups`).
  */
 const SCRATCH_PORT = e2ePorts.scratchCollections;
-const WEBDAV_BASE = webdavBase;
 const CASE_ID = 'collections';
 /** Scratch boot identity (ADMIN_DEFAULT_PASSWORD) — OPERATOR duties only since the pivot (PLAN §14). */
 const ADMIN_PASSWORD = 'CollectionsE2e!123';
@@ -273,12 +272,11 @@ test.beforeAll(async ({ request }) => {
   writeScratchEnv(scratch, {
     PORT: String(SCRATCH_PORT),
     WEA_FILE_STORAGE: 'webdav',
-    WEBDAV_UPSTREAM_URL: WEBDAV_BASE,
+    WEBDAV_UPSTREAM_URL: scratchWebdavUrl(CASE_ID),
     JWT_SECRET: 'collections-e2e-jwt-secret',
     ADMIN_DEFAULT_PASSWORD: ADMIN_PASSWORD,
   });
-  await seedWebdavSettings(scratch);
-  await ensureWebdavSubtree(CASE_ID);
+  await prepareScratchWebdav(scratch, CASE_ID);
   ensureClientBuild();
   spawned = spawnScratchServer(scratch, SCRATCH_PORT);
   await waitForScratchHealth(spawned, SCRATCH_PORT);

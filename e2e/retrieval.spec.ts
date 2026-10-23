@@ -592,7 +592,9 @@ test('E2E-S3-RETRIEVAL-001: Results render as accordion zones with honest header
   await expect
     .poll(() => metadataPosts(), 'rows enrich through the metadata seam')
     .toBeGreaterThan(0);
-  await expect(serverRow(page, alphaOneId)).toContainText(/\d+(\.\d+)? (B|KB|MB|GB)/);
+  const enrichedRow = serverRow(page, alphaOneId);
+  await enrichedRow.scrollIntoViewIfNeeded();
+  await expect(enrichedRow).toContainText(/\d+(\.\d+)? (B|KB|MB|GB)/);
 
   // Committed-term highlight: the twice-cased name carries BOTH fragments as
   // `search-highlight-range` marks while the row text stays the FULL verbatim

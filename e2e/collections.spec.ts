@@ -93,10 +93,24 @@ async function listCollections(
   token: string,
   include = 'mine,shared,archived'
 ): Promise<CollectionRow[]> {
-  const res = await request.get(`/api/collections?include=${include}`, { headers: auth(token) });
-  expect(res.ok()).toBeTruthy();
-  const body = await res.json();
-  return body.collections as CollectionRow[];
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const res = await request.get(`/api/collections?include=${include}`, {
+        headers: auth(token),
+      });
+      expect(res.ok()).toBeTruthy();
+      const body = await res.json();
+      return body.collections as CollectionRow[];
+    } catch (error) {
+      lastError = error;
+      if (!/ECONNRESET|socket hang up|ECONNREFUSED|EPIPE/i.test(String(error?.message || ''))) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+  throw lastError;
 }
 
 async function findCollectionByName(

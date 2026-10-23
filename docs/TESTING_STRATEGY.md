@@ -61,19 +61,21 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
   fails the test.
 - **Hermetic scratch projects:** each destructive AI E2E suite (evolution passes, merge
   execution, archive/purge lifecycles) gets its **own scratch server project** following the
-  setup-wizard/trash precedent (base slots `:5003`, `:5012`) — next free scratch slots are
-  band-based offsets from **`:5013+`** resolved through `e2e/helpers/ports.ts` (each
-  checkout's whole port set shifts together; see docs/TEST_GIT_GUIDE.md "Parallel E2E runs"), own
-  env file, own sqlite/PG scratch DB, per-case cleanup. This extends the destructive-case
-  policy: **auto-evolution mutates user data, so AI suites are scratch-only, never run
-  against the shared E2E server/database.**
-- **E2E ID ranges:** collection-lifecycle cases use `E2E-COLLECTION-NNN`, AI-behavior cases
-  use `E2E-AI-NNN`, search/retrieval cases (server-wide name search + results-mode UI,
-  `e2e/retrieval.spec.ts`, scratch-hermetic `retrieval-desktop` project) use
-  `E2E-RETRIEVAL-NNN`, third-person declarative titles per the naming convention above.
-  `E2E-AI-001` is the semantic-search zone C case: hermetic scratch project on `:5016`,
-  built-in embed engine with `WEA_MODEL_DIR` pre-seeded weights (zero download), zone C
-  end-to-end over `POST /api/search` with `semantic_available: true`.
+  setup-wizard/trash precedent. Scratch slots are project-scoped in the `:5003`–`:5020`
+  range, with separate desktop and mobile slots resolved through `e2e/helpers/ports.ts`
+  (each checkout's whole port set shifts together; see docs/TEST_GIT_GUIDE.md "Parallel E2E
+  runs"), own env file, own sqlite/PG scratch DB, per-case cleanup. This extends the
+  destructive-case policy: **auto-evolution mutates user data, so AI suites are scratch-only,
+  never run against the shared E2E server/database.** Scratch servers are process isolation
+  for boot config, global settings, DB, and restart; the project-scoped cwd, bucket, and
+  WebDAV subtree only isolate blobs.
+- **E2E ID ranges:** collection-lifecycle cases use `E2E-S3-COLLECTION-NNN`, AI-behavior
+  cases use `E2E-S3-AI-NNN`, search/retrieval cases (server-wide name search + results-mode
+  UI, `e2e/retrieval.spec.ts`, scratch-hermetic `s3-retrieval-desktop`/`s3-retrieval-mobile`
+  projects) use `E2E-S3-RETRIEVAL-NNN`, third-person declarative titles per the naming
+  convention above. `E2E-S3-AI-001` is the semantic-search zone C case: hermetic S3 scratch
+  project on `:5016`, built-in embed engine with `WEA_MODEL_DIR` pre-seeded weights (zero
+  download), zone C end-to-end over `POST /api/search` with `semantic_available: true`.
   Minimum lifecycle chain: create→digest→archive→undo→restore→purge (CODING_STYLE.md Express Patterns gate).
 - **Degradation-matrix suite:** one suite per §4.12 capability column — `None` (no adapter
   configured at all; the built-in embed engine suppressed by fixture — absent lock/weights ⇒
@@ -280,6 +282,7 @@ Anchors for the pattern — not an exhaustive matrix.
 
 ## E2E flow policy
 
+- S3 is the default backend. Default and core projects must not start a WebDAV container; only the WebDAV job starts one shared bytemark, and it runs only backend-specific cases plus the intentional platform smoke grep.
 - Keep platform-owned interaction coverage split when the UI surface differs, but allow a shared spec file for platform-agnostic core flows that exercise the same user-visible path on both desktop and mobile projects.
 - Shared E2E helpers and shared flow specs may contain only platform-agnostic preparation, selectors, and assertions:
 - authentication/login setup
@@ -295,22 +298,24 @@ Anchors for the pattern — not an exhaustive matrix.
 
 Apply uniformly to every spec in `e2e/`:
 
-- **Case title format**: `E2E-<DOMAIN>-NNN: <third-person present declarative description>`.
+- **Case title format**: platform cases use `E2E-<DOMAIN>-NNN: <third-person present declarative description>`. They are unambiguously S3, and the WebDAV smoke deliberately reuses their IDs.
+- **Backend-qualified IDs**: backend-specific hermetic cases use `E2E-S3-<DOMAIN>-NNN` or `E2E-WEBDAV-<DOMAIN>-NNN`. Split files restart numbering at `001`. Retired IDs are never reused and are mapped in [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md).
 - Sentence case; declarative statement form (no imperative commands like `Approve pending signup`, no `[Px]` priority prefixes, no literal backticks, no emojis, no `snake_case` identifiers in the title).
-- Scenario labels for hermetic suites stay as a parenthetical between the ID and the colon, normalized: setup wizard `(Case N, both modes|s3 mode only)`, migration `(Flow <label>)`.
+- Scenario labels for hermetic suites stay as a parenthetical between the ID and the colon, normalized: setup wizard `(Case N, s3|webdav)`, migration `(Flow <label>)`.
 - IDs should be declared in numeric order within each file. Exception: a serial suite whose execution order is load-bearing (e.g. migration job-state sequences) keeps its execution order.
-- Every `test()` carries an ID. Setup-only infrastructure tests use a documented `E2E-SETUP-NNN` slot.
-- **Suite title format**: lowercase sentence case. Platform-owned suites append `(desktop)` or `(mobile)`. Hermetic families append their ID range, e.g. `first-run setup wizard (E2E-SETUP-001..004)`.
+- Every `test()` carries an ID. Setup-only infrastructure tests use a documented, non-retired ID slot.
+- **Suite title format**: lowercase sentence case. Platform-owned suites append `(desktop)` or `(mobile)`. Hermetic families append their ID range, e.g. `first-run setup wizard (E2E-S3-SETUP-001)` or `(E2E-WEBDAV-SETUP-001..003)`.
 - **Serialization**: use `test.describe.configure({ mode: 'serial' })` (never the anonymous `test.describe.serial`). Suites that mutate shared per-project DB state are serial. Prefer parallel-safe cases (assertion-context containment); serial is required only when a suite mutates shared per-project DB state or depends on prior cases.
 - **Skips**: every `test.skip`/`test.fixme` carries a reason string. Platform ownership goes in `testMatch`/project assignment, not inline project skips (exception above).
-- **Filename style**: `<name>.<platform>.spec.ts` dot suffix for platform files (`core-flow.shared`, `core-flow.desktop`, `core-flow.mobile`). No hyphen-prefix platform files.
+- **Filename style**: `<name>.<platform>.spec.ts` dot suffix for platform files (`core-flow.shared`, `core-flow.desktop`, `core-flow.mobile`). Backend splits use `<name>.s3.spec.ts` / `<name>.webdav.spec.ts` (`admin-config`, `setup-wizard`, `migration`) and may share a `<name>.helpers.ts`. No hyphen-prefix platform files.
 - For E2E setup phases, create prerequisite folders/files through stable API endpoints (e.g. folder create + multipart upload) when those operations are not the behavior under test. Exercise the UI creation/upload flow when that user-facing flow is itself under test. This keeps unrelated setup out of timing-sensitive UI seams such as SpeedDial open/transition states.
 - When using Playwright `APIRequestContext` for setup or cleanup, pass URL query strings with `params`, not `query`, so contract-required request parameters actually reach the server.
-- **Hermetic scratch projects (setup wizard):** the first-run setup spec runs in dedicated `setup-wizard-desktop` / `setup-wizard-mobile` Playwright projects that never reuse the shared `.env.e2e` boot state. Each test spawns its own scratch server instance on `:5003` (own env file via `DOTENV_CONFIG_PATH`, own sqlite path, own scratch PG DB) and supervises its own process lifecycle, because restart is the behavior under test. The spec is serial within the describe and cleans up per case in `afterEach` (kill the scratch child, remove the scratch dir, drop the scratch PG database). Keep these projects additive — do not fold them into the mode-prefixed project matrix.
-- **Per-run seed + hermetic cases (no inter-project chains):** the shared E2E database is seeded ONCE per invocation by `global-setup.ts`. Projects (`desktop`, `mobile`, `admin-*`, hermetic) are INDEPENDENT siblings and may run concurrently — Playwright `dependencies` must NOT be used to order suite projects, because dependency projects run in full regardless of the test filter, so any partial run cascades the whole chain (measured 2026-09-11: selecting one spec pulled 88 tests/10 files vs 10/1 de-chained).
+- **Hermetic scratch projects (setup wizard, admin config, migration):** the split specs run in dedicated projects that never reuse the shared `.env.e2e` boot state: `s3-setup-wizard-*`, `s3-admin-config-*`, and `s3-migration-*` in the default S3 group; `webdav-setup-wizard-*`, `webdav-admin-config-*`, and `webdav-migration-*` in the WebDAV job. Each test spawns its own scratch server instance on the project's scratch slot (wizard `:5003`/`:5004`; admin config `:5010`/`:5017`; migration `:5011`/`:5018`; desktop and mobile use separate slots) with its own env file via `DOTENV_CONFIG_PATH`, own sqlite path, and own scratch PG DB (`webdav_e2e_setup_<project>` for the wizard). Restart is the behavior under test for the wizard; each split supervises its own process lifecycle, is serial within the describe, and cleans up per case in `afterEach` (kill the scratch child, remove the scratch dir, drop the scratch PG database). Keep these projects additive — no Playwright `dependencies`; the worker count is the only concurrency throttle.
+- **Per-run seed + hermetic cases (no inter-project chains):** the shared E2E database is seeded ONCE per invocation by `global-setup.ts`. Projects (`s3-*`, `webdav-*`, and their scratch siblings) are INDEPENDENT siblings and may run concurrently — Playwright `dependencies` must NOT be used to order suite projects, because dependency projects run in full regardless of the test filter, so any partial run cascades the whole chain (measured 2026-09-11: selecting one spec pulled 88 tests/10 files vs 10/1 de-chained).
+- **Workers are the only concurrency throttle:** CI supplies the worker count; there is no E2E slot/resource-lock pool and no fixed worker assumption. Scratch servers are limited by the worker count (at most `workers` exist at once), not by an E2E slot pool. There is no per-project WebDAV container.
 - Isolation therefore comes from CASE HERMETICITY, not from ordering: every case creates/asserts only its own data (assertion-context containment) and cleans up in `afterEach`; nothing may leave root-level or global residue.
 - **Global-state mutations are restored in-test**: a case that flips a shared setting (e.g. `registration_enabled`) must restore the prior value at the end (save → mutate → assert → restore) so concurrent suites never observe the flipped window.
-- **Globally destructive cases run SCRATCH-HERMETIC, not merely project-owned**: file-level `testMatch` ownership is NOT sufficient because the worker pool is shared and `fullyParallel` interleaves tests across spec files — a global purge on the shared server races any other project's in-flight cases (this was the webdav-smoke flake, TRASH-007 vs TRASH-001/003). Such cases get their own scratch server project (e.g. `trash-admin-desktop` on :5012); they are excluded from the shared-mode smokes.
+- **Globally destructive cases run SCRATCH-HERMETIC, not merely project-owned**: file-level `testMatch` ownership is NOT sufficient because the worker pool is shared and `fullyParallel` interleaves tests across spec files — a global purge on the shared server races any other project's in-flight cases (this was the webdav-smoke flake, `E2E-S3-TRASHADMIN-001` vs `E2E-TRASH-001`/`E2E-TRASH-003`). Such cases get their own scratch server project (e.g. `s3-trash-admin-desktop` on `:5012`, mobile on `:5019`); they are excluded from the shared-mode smokes.
 - Case-scoped names must be unique per RUN and per PROJECT (include the project slug and a timestamp — `buildName`/`getTestSuffix`/explicit `Date.now()`), because the same spec now executes in sibling projects concurrently.
 - **Retries must be self-healing: derived user identity is unique per ATTEMPT.** A deterministic `getTestSuffix` makes retries structurally incapable of passing for any case that permanently mutates the derived user's state (e.g. `E2E-MYPAGE-005` changes the password): the retry's `ensureApprovedUser` finds the user already exists (`400 usernameTaken`) and then logs in with the pre-mutation password (`401`) — measured 2026-09-13, CI build #47, where one transient render blip + `--max-failures=1` hard-stopped 55 cases because retries could not recover. `getTestSuffix` therefore appends `_r<retry>` when `testInfo.retry > 0` (first-attempt identities are unchanged; `testInfo.retry` is constant within an attempt, so every helper call in one attempt resolves to the same user). Consequence rule: failed attempts leave residue (their users/requests persist), so no case may assert an exact count on a listing that other attempts can also write to — filter by the case's own identifiers instead.
 - The 50-item root-render cap cannot bite: root-level accumulation was eliminated by containment (the historical `00-project-setup` re-truncate between projects is retired — do NOT reintroduce suite→suite dependencies to mask a hermeticity bug; fix the case).

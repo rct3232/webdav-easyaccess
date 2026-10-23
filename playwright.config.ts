@@ -316,6 +316,10 @@ if (backendMode === 'webdav') {
 }
 
 export default defineConfig({
+  // Production-build static assets and WebDAV-backed scratch stacks can take
+  // >5 s on a cold CI/worktree disk; 15 s keeps assertions observable without
+  // changing what they assert.
+  expect: { timeout: 15_000 },
   testDir: './e2e',
   testMatch: /.*\.spec\.ts$/,
   fullyParallel: true,

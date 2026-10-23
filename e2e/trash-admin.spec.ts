@@ -4,13 +4,13 @@ import http from 'node:http';
 import { expect, test, type TestInfo } from '@playwright/test';
 
 import { TEST_FILES } from './fixtures/test-data';
-import { e2ePorts, webdavBase } from './helpers/ports';
+import { e2ePorts } from './helpers/ports';
 import {
   ensureClientBuild,
-  ensureWebdavSubtree,
+  prepareScratchWebdav,
   killScratch,
   scratchDirFor,
-  seedWebdavSettings,
+  scratchWebdavUrl,
   spawnScratchServer,
   waitForScratchHealth,
   writeScratchEnv,
@@ -49,7 +49,6 @@ function isMobileProject(testInfo: TestInfo): boolean {
  * global purge can only ever affect its own world. Requires docker infra.
  */
 const SCRATCH_PORT = e2ePorts.scratchTrashAdmin;
-const WEBDAV_BASE = webdavBase;
 const WEBDAV_AUTH = Buffer.from('e2etest:e2etest123').toString('base64');
 const CASE_ID = 'trash-admin';
 const ADMIN_PASSWORD = 'TrashAdminE2e!123';
@@ -97,12 +96,11 @@ test.beforeEach(async () => {
   writeScratchEnv(scratch, {
     PORT: String(SCRATCH_PORT),
     WEA_FILE_STORAGE: 'webdav',
-    WEBDAV_UPSTREAM_URL: WEBDAV_BASE,
+    WEBDAV_UPSTREAM_URL: scratchWebdavUrl(CASE_ID),
     JWT_SECRET: 'trash-admin-e2e-jwt-secret',
     ADMIN_DEFAULT_PASSWORD: ADMIN_PASSWORD,
   });
-  await seedWebdavSettings(scratch);
-  await ensureWebdavSubtree(CASE_ID);
+  await prepareScratchWebdav(scratch, CASE_ID);
   ensureClientBuild();
   spawned = spawnScratchServer(scratch, SCRATCH_PORT);
   await waitForScratchHealth(spawned!, SCRATCH_PORT);

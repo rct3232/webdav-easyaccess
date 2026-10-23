@@ -22,6 +22,7 @@ const bandLib = require('../../scripts/lib/e2e-band.cjs') as {
   ensureBand: (rootDir: string) => number;
   effectivePorts: (rootDir: string) => Record<string, number>;
   readPersistedOffset: (rootDir: string) => number | null;
+  composeProjectName: (offset: number) => string;
 };
 
 bandLib.ensureBand(rootDir);
@@ -48,6 +49,11 @@ export interface E2EPorts {
 export const e2ePorts = bandLib.effectivePorts(rootDir) as unknown as E2EPorts;
 
 export const bandOffset: number = bandLib.readPersistedOffset(rootDir) ?? 0;
+export const composeProject: string = (
+  bandLib as unknown as {
+    composeProjectName: (offset: number) => string;
+  }
+).composeProjectName(bandOffset);
 
 export const apiOrigin = `http://127.0.0.1:${e2ePorts.api}`;
 export const appOrigin = `http://localhost:${e2ePorts.client}`;

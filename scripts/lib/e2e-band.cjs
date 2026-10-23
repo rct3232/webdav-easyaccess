@@ -332,12 +332,18 @@ function ensureBand(rootDir) {
   );
 }
 
+/** Compose project per band: containers/volumes never cross bands. */
+function composeProjectName(offset) {
+  return `webdav-easyaccess-${Number(offset) || 0}`;
+}
+
 module.exports = {
   PORT_BASES,
   BAND_STEP,
   portsForOffset,
   readPersistedOffset,
   effectivePorts,
+  composeProjectName,
   ensureBand,
   writeRuntimeEnv,
   releaseBandLock,

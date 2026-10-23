@@ -2,7 +2,7 @@ import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { cleanDir } from './helpers/seedDb';
-import { s3Endpoint } from './helpers/ports';
+import { composeProject, s3Endpoint } from './helpers/ports';
 
 const rootDir = process.cwd();
 const composeFile = path.join(rootDir, 'docker-compose.e2e.yml');
@@ -37,10 +37,14 @@ function resolveComposeCommand() {
 
 function runCompose(args: string[]) {
   const compose = resolveComposeCommand();
-  execFileSync(compose.command, [...compose.args, '-f', composeFile, ...args], {
-    cwd: rootDir,
-    stdio: 'inherit',
-  });
+  execFileSync(
+    compose.command,
+    [...compose.args, '-p', composeProject, '-f', composeFile, ...args],
+    {
+      cwd: rootDir,
+      stdio: 'inherit',
+    }
+  );
 }
 
 export default async function globalTeardown() {

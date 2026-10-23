@@ -38,7 +38,12 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
-const { ensureBand, effectivePorts, writeRuntimeEnv } = require('./lib/e2e-band.cjs');
+const {
+  ensureBand,
+  effectivePorts,
+  writeRuntimeEnv,
+  composeProjectName,
+} = require('./lib/e2e-band.cjs');
 
 const ROOT_DIR = process.cwd();
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -84,6 +89,7 @@ const compose = resolveComposeCommand();
 // `e2e:server*` (DOTENV_CONFIG_PATH) boots the app on this checkout's band.
 const bandOffset = ensureBand(ROOT_DIR);
 const bandPorts = effectivePorts(ROOT_DIR);
+const composeProject = composeProjectName(bandOffset);
 writeRuntimeEnv(ROOT_DIR, bandPorts);
 console.log(
   `[e2e-wait-healthy] Port band offset ${bandOffset}: ` +
@@ -104,11 +110,15 @@ function composePortsEnv() {
 
 function runUp() {
   console.log('[e2e-wait-healthy] Bringing the E2E Docker stack up (idempotent)...');
-  const result = spawnSync(compose.command, [...compose.args, '-f', COMPOSE_FILE, 'up', '-d'], {
-    cwd: ROOT_DIR,
-    env: composePortsEnv(),
-    stdio: 'inherit',
-  });
+  const result = spawnSync(
+    compose.command,
+    [...compose.args, '-p', composeProject, '-f', COMPOSE_FILE, 'up', '-d'],
+    {
+      cwd: ROOT_DIR,
+      env: composePortsEnv(),
+      stdio: 'inherit',
+    }
+  );
   if (result.status !== 0) {
     console.error('[e2e-wait-healthy] `docker compose up -d` failed.');
     process.exit(result.status || 1);
@@ -118,7 +128,7 @@ function runUp() {
 function getContainerList() {
   const result = spawnSync(
     compose.command,
-    [...compose.args, '-f', COMPOSE_FILE, 'ps', '--format', 'json'],
+    [...compose.args, '-p', composeProject, '-f', COMPOSE_FILE, 'ps', '--format', 'json'],
     { cwd: ROOT_DIR, encoding: 'utf8' }
   );
   if (result.status !== 0) return [];

@@ -5,15 +5,15 @@ import { DatabaseSync } from 'node:sqlite';
 import { APIRequestContext, expect, test } from '@playwright/test';
 
 import {
-  ensureWebdavSubtree,
+  prepareScratchWebdav,
   killScratch,
   scratchDirFor,
-  seedWebdavSettings,
+  scratchWebdavUrl,
   spawnScratchServer,
   waitForScratchHealth,
   writeScratchEnv,
 } from './helpers/setupScratch';
-import { e2ePorts, webdavBase } from './helpers/ports';
+import { e2ePorts } from './helpers/ports';
 import { loginWithCredentials } from './helpers/auth';
 import { gotoFilesPath } from './helpers/resolvePath';
 import {
@@ -171,13 +171,12 @@ test.beforeAll(async ({ request }) => {
   writeScratchEnv(scratch, {
     PORT: String(SCRATCH_PORT),
     WEA_FILE_STORAGE: 'webdav',
-    WEBDAV_UPSTREAM_URL: webdavBase,
+    WEBDAV_UPSTREAM_URL: scratchWebdavUrl(CASE_ID),
     JWT_SECRET: 'ai-e2e-jwt-secret',
     ADMIN_DEFAULT_PASSWORD: ADMIN_PASSWORD,
     WEA_MODEL_DIR,
   });
-  await seedWebdavSettings(scratch);
-  await ensureWebdavSubtree(CASE_ID);
+  await prepareScratchWebdav(scratch, CASE_ID);
   spawned = spawnScratchServer(scratch, SCRATCH_PORT);
   await waitForScratchHealth(spawned, SCRATCH_PORT);
   operatorToken = await loginScratchAdmin(request, ADMIN_PASSWORD);

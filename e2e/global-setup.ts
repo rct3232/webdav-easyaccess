@@ -4,7 +4,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { cleanDir, runSeedDb } from './helpers/seedDb';
-import { apiOrigin, appOrigin, s3Endpoint, webdavBase } from './helpers/ports';
+import { apiOrigin, appOrigin, composeProject, s3Endpoint, webdavBase } from './helpers/ports';
 import { TEST_USERS } from './fixtures/test-data';
 
 const rootDir = process.cwd();
@@ -260,7 +260,6 @@ export default async function globalSetup() {
   cleanDir('playwright-report');
   cleanDir('e2e-data');
   cleanDir('data/e2e-metadata');
-  cleanDir('data/webdav');
   fs.mkdirSync(path.join(rootDir, 'e2e-data'), { recursive: true });
 
   // The `e2e:server` webServer command provisions the Docker stack before the
@@ -269,6 +268,36 @@ export default async function globalSetup() {
   // reuses a previously started server and skips the webServer command. It
   // must NOT tear the stack down — `down -v` would wipe the Postgres volume
   // out from under the already-running app server (unhandled `pg.Pool` error).
+  // Per-band WebDAV named volume: a crashed prior run must never leak a stale
+  // DAV root (locks, partial trees) into this one. The volume is recreated by
+  // the stack-up below; PG is left untouched (the webServer may already use it).
+  try {
+    execFileSync(
+      'docker',
+      [
+        'compose',
+        '-p',
+        composeProject,
+        '-f',
+        path.join(rootDir, 'docker-compose.e2e.yml'),
+        'rm',
+        '-sf',
+        'webdav-test',
+      ],
+      { cwd: rootDir, stdio: 'ignore' }
+    );
+  } catch {
+    /* first run / already absent */
+  }
+  try {
+    execFileSync('docker', ['volume', 'rm', '-f', `${composeProject}_webdav_data`], {
+      cwd: rootDir,
+      stdio: 'ignore',
+    });
+  } catch {
+    /* volume absent */
+  }
+
   console.log(`Ensuring the E2E Docker stack is up (${backendMode} mode)...`);
   execFileSync(process.execPath, [path.join(rootDir, 'scripts', 'e2e-wait-healthy.mjs')], {
     cwd: rootDir,
@@ -287,7 +316,15 @@ export default async function globalSetup() {
   console.log('Recreating the WebDAV DAV root (compose restart webdav-test)...');
   execFileSync(
     'docker',
-    ['compose', '-f', path.join(rootDir, 'docker-compose.e2e.yml'), 'restart', 'webdav-test'],
+    [
+      'compose',
+      '-p',
+      composeProject,
+      '-f',
+      path.join(rootDir, 'docker-compose.e2e.yml'),
+      'restart',
+      'webdav-test',
+    ],
     { cwd: rootDir, stdio: 'inherit' }
   );
 

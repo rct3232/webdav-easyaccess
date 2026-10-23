@@ -479,7 +479,7 @@ async function runBoot() {
     // (reverse proxies keep working).
     const listenHost = resolveListenHost(bootStatus.setup_complete);
     const listenArgs = listenHost ? [port, listenHost] : [port];
-    app.listen(...listenArgs, () => {
+    const server = app.listen(...listenArgs, () => {
       if (listenHost) {
         console.log(`Server is running on ${listenHost}:${port} (setup mode — loopback only)`);
       } else {
@@ -538,6 +538,10 @@ async function runBoot() {
         }
       });
     });
+    // Keep-alive must outlive E2E helper gaps; the 5 s default makes the
+    // Playwright APIRequestContext reuse a socket the server already closed
+    // (ECONNRESET on an otherwise healthy request). Test-only.
+    if (process.env.NODE_ENV === 'test') server.keepAliveTimeout = 65_000;
   }
 }
 

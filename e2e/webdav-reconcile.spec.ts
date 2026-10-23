@@ -12,7 +12,7 @@ import {
   uploadFileAt,
 } from './helpers/files';
 import { getSessionToken, resolveNodeId } from './helpers/resolvePath';
-import { e2ePorts } from './helpers/ports';
+import { composeProject, e2ePorts } from './helpers/ports';
 
 /**
  * E2E-RECON-001 — DEF-18 WebDAV Tier 2 reconciliation, API level.
@@ -87,6 +87,8 @@ function backdateInContainer(containerPath: string): void {
     'docker',
     [
       'compose',
+      '-p',
+      composeProject,
       '-f',
       path.join(process.cwd(), 'docker-compose.e2e.yml'),
       'exec',

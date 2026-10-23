@@ -169,6 +169,13 @@ test.describe('unified migration mode (S3 backend)', () => {
     const dbPath = path.join(scratch.scratch, 'webdav.db');
 
     const token = await loginToken(baseURL, request);
+    // S3 scratch keeps the storage config in env, so the scratch settings table
+    // would otherwise be empty; the env-cutover banner is defined by non-active
+    // metadata presence (settings rows), so seed one app-owned row for this case.
+    await execScratchSqlite(
+      dbPath,
+      "INSERT OR REPLACE INTO settings (key, value) VALUES ('E2E_MIGRATION_MARKER', '1')"
+    );
     const folderName = `migration-d2-${Date.now()}`;
     const folderId = await createAdminFolder(baseURL, request, token, folderName);
     await uploadAdminFile(baseURL, request, token, folderId, 'd2-file.txt');
@@ -270,6 +277,15 @@ test.describe('unified migration mode (S3 backend)', () => {
     // ".env setup needed" banner visible after the cutover (the metadata
     // backend is presence-selected, so a sqlite-active boot cannot carry the
     // WEA_DB_* identity keys needed to reach the PG target).
+    console.log(
+      'MIG-D2 source settings before restart',
+      (await queryScratchSqlite<{ cnt: number }>(dbPath, 'SELECT COUNT(*) AS cnt FROM settings'))[0]
+        .cnt,
+      'file',
+      dbPath,
+      'exists',
+      (await import('node:fs')).existsSync(dbPath)
+    );
     await restartMigrationScratch(scratch, {
       WEA_DB_HOST: PG_HOST,
       WEA_DB_PORT: PG_PORT,
@@ -277,6 +293,12 @@ test.describe('unified migration mode (S3 backend)', () => {
       WEA_DB_USER: PG_USER,
       WEA_DB_PASSWORD: PG_PASSWORD,
     });
+    console.log(
+      'MIG-D2 scratch dir after restart',
+      scratch.scratch,
+      'sqlite exists',
+      (await import('node:fs')).existsSync(path.join(scratch.scratch, 'webdav.db'))
+    );
 
     await loginAsAdminUi(page);
     await openSystemSettings(page);

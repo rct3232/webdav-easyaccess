@@ -176,6 +176,8 @@ export async function bootMigrationScratch(
       NODE_ENV: 'test',
       JWT_SECRET,
       ADMIN_DEFAULT_PASSWORD: ADMIN_PASSWORD,
+      // Weak CI can take >5s to open a PG connection under parallel load.
+      WEA_DB_CONNECTION_TIMEOUT_MS: '30000',
     };
 
     if (opts.backend === 'webdav') {

@@ -140,7 +140,7 @@ function resolvePgConfig(pg) {
     database: String(pg.database),
     user: String(pg.user),
     password: String(pg.password),
-    connectionTimeoutMillis: 5000,
+    connectionTimeoutMillis: Number(process.env.WEA_DB_CONNECTION_TIMEOUT_MS) || 5000,
     ssl: pg.ssl ? { rejectUnauthorized: false } : false,
   };
 }

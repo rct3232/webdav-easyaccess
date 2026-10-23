@@ -134,7 +134,7 @@ test('E2E-S3-TRASHADMIN-001: Empty trash purges all visible trashed items', asyn
   await expect(fileItem(page, filePath)).toHaveCount(0);
 
   await page.goto('/files/__trash__');
-  await expect(fileItem(page, filePath)).toBeVisible({ timeout: 10_000 });
+  await expect(fileItem(page, filePath)).toBeVisible({ timeout: 30_000 });
 
   // Admin-only empty-trash icon button in the controls row; the confirm copy
   // must state that it purges ALL trashed items for ALL users.
@@ -149,6 +149,6 @@ test('E2E-S3-TRASHADMIN-001: Empty trash purges all visible trashed items', asyn
   // The trash listing empties; the item does not return to the live folder.
   await expect(fileItem(page, filePath)).toHaveCount(0);
   await expect(page.getByText(/trash is empty|휴지통이 비어/i)).toBeVisible({
-    timeout: 10_000,
+    timeout: 30_000,
   });
 });

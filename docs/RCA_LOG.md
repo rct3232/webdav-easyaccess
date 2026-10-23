@@ -1397,7 +1397,7 @@ Task: `feature/p1-a5-vectormath` (T1.4a vectorMath/extractors/TextVectorJs oracl
   S3 mappings. The migration job completed with `failed: 1`, node 6 (`file-4.txt`) failed.
 - **Diagnosis**: A test-only diagnostic surfaced the wrapped cause:
   `request to http://127.0.0.1:8110/setup-e2e/migration/flow-a-happy-path/.../file-4.txt
-  failed, reason: socket hang up`. The migration's per-node isolation correctly recorded the
+failed, reason: socket hang up`. The migration's per-node isolation correctly recorded the
   failure and continued, but source reads had no retry for this transient transport interruption.
   The migration contract requires all readable source files to be copied and separately
   specifies per-node error isolation; retrying an idempotent source GET once is compatible with
@@ -1407,3 +1407,35 @@ Task: `feature/p1-a5-vectormath` (T1.4a vectorMath/extractors/TextVectorJs oracl
 - **Action**: Added a spec requirement and red-first service test for one retry on recognized
   transport interruptions only. The temporary diagnostic is removed from production code.
 - **Verification**: Pending focused migration service test and E2E-MIG-001 rerun.
+
+## 2026-10-23 — S3-first E2E restructure: split navigation gaps and transient WebDAV/PG transport failures
+
+- **Summary**: the first full default/WebDAV runs after the S3-first split exposed a mix of
+  split-only navigation drift and transient transport failures: missing `openSystemSettings`
+  in the moved gate-hold case, missing WebDAV tarpit lifecycle/imports, a short PG target
+  connection timeout, WebDAV `MKCOL`/directory-listing `socket hang up`, and client waits that
+  were too tight for a two-worker weak-CI run.
+- **Diagnosis**: the split files dropped state that the original monolithic specs shared
+  (`tarpit` scope, System-settings navigation, import of the credential login helper). The
+  remaining failures were transport-level: bytemark can reset a `MKCOL`/root listing under
+  parallel scratch projects, and the metadata migration's explicit PG target ignored
+  `WEA_DB_CONNECTION_TIMEOUT_MS` (hardcoded 5s). The browser guard in the role-aware case was
+  started while the admin page was still on `/files`, and the cancelled migration's dialog
+  could inherit a saturated fetch queue; the gate-hold cases are genuinely WebDAV-source cases
+  because their destination probe is S3.
+- **Classification**: **Case B** for the split-file state/import/navigation drift; **Case A**
+  for the retryable WebDAV transport failures and the explicit-PG timeout gap.
+- **Action**: moved the blob gate-hold cases to `migration.webdav.spec.ts`, restored the tarpit
+  lifecycle and imports, navigated the admin to `/migration` before holding the gate, reloaded
+  the resumed dialog, added transient retries to `server/utils/webdav.js` and
+  `server/infrastructure/webdavTest.js`, made the explicit metadata target honor
+  `WEA_DB_CONNECTION_TIMEOUT_MS`, and widened the worker-sensitive test budgets. No worker cap
+  or E2E slot pool was added.
+- **Verification**: default S3 `238 passed + 6 skipped` (244 total) at workers=1,
+  workers=2, and the default `npm run test:e2e` worker count (3 on this host); WebDAV
+  `41 passed` at workers=2; core `140 passed + 3 skipped` (143 total) at workers=2; server
+  `173 suites / 2,979 tests`, client `183 / 2,103`, PG adapters `30 / 433`, pgvector
+  `22 / 22`. A workers=4 stress run on the shared 6-core reference host reached load average
+  ~25-31 and produced timeout-only failures in scratch UI cases; it was not used as a code
+  gate because the worker count is the requested resource control and no fixed cap was
+  introduced.

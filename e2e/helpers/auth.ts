@@ -84,7 +84,7 @@ export async function loginWithCredentials(
   page: Page,
   username: string,
   password: string,
-  timeoutMs = 30_000
+  timeoutMs = 60_000
 ) {
   await page.goto('/login');
 

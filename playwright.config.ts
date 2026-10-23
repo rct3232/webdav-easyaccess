@@ -259,8 +259,10 @@ if (webdavGroup) {
 export default defineConfig({
   // Scratch suites boot a server and can take longer than a pure UI case.
   // Assertions remain bounded by expect.timeout below.
-  timeout: 90_000,
-  expect: { timeout: 30_000 },
+  // Weak CI can run several scratch servers + browsers per worker. These are
+  // per-case safety budgets, not a concurrency cap; workers remain the throttle.
+  timeout: 180_000,
+  expect: { timeout: 60_000 },
   testDir: './e2e',
   testMatch: /.*\.spec\.ts$/,
   fullyParallel: true,

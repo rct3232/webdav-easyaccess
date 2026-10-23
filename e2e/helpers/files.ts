@@ -300,11 +300,21 @@ export async function waitForBulkJobToComplete(
   token: string,
   jobId: string
 ): Promise<BulkJobSnapshot> {
-  const deadline = Date.now() + 30000;
+  const deadline = Date.now() + 120_000;
   for (;;) {
-    const res = await request.get(`/api/files/bulk-operation/${jobId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    let res;
+    try {
+      res = await request.get(`/api/files/bulk-operation/${jobId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (error) {
+      if (!/ECONNRESET|socket hang up|ECONNREFUSED|EPIPE/i.test(String(error?.message || ''))) {
+        throw error;
+      }
+      if (Date.now() > deadline) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      continue;
+    }
     expect(res.ok()).toBeTruthy();
     const job = (await res.json()) as BulkJobSnapshot;
     if (['completed', 'failed', 'cancelled'].includes(job.status)) {

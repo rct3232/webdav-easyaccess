@@ -109,7 +109,7 @@ test('E2E-S3-TRASHADMIN-001: Empty trash purges all visible trashed items', asyn
   page,
   request,
 }, testInfo) => {
-  test.setTimeout(90_000);
+  test.setTimeout(180_000);
   await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
 
   const base = await openPrivateWorkspace(page, request, testInfo);
@@ -144,11 +144,17 @@ test('E2E-S3-TRASHADMIN-001: Empty trash purges all visible trashed items', asyn
 
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText(/all users|모든 사용자/i);
+  const emptyResponsePromise = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/files/trash/empty') && response.request().method() === 'POST',
+    { timeout: 60_000 }
+  );
   await dialog.getByTestId('confirm-dialog-confirm').click();
+  expect((await emptyResponsePromise).ok()).toBeTruthy();
 
   // The trash listing empties; the item does not return to the live folder.
-  await expect(fileItem(page, filePath)).toHaveCount(0);
+  await expect(fileItem(page, filePath)).toHaveCount(0, { timeout: 60_000 });
   await expect(page.getByText(/trash is empty|휴지통이 비어/i)).toBeVisible({
-    timeout: 30_000,
+    timeout: 60_000,
   });
 });

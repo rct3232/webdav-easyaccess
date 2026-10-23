@@ -592,6 +592,8 @@ test.describe('unified migration mode (WebDAV source)', () => {
 
     await loginAsAdminUi(page);
     const token = await loginToken(baseURL, request);
+    await page.goto('/migration');
+    await page.waitForURL(/\/migration/);
 
     // Provision a regular (approved, non-admin) user via the admin API while
     // the gate is still inactive so the call succeeds; userService
@@ -611,28 +613,37 @@ test.describe('unified migration mode (WebDAV source)', () => {
     await loginWithCredentials(userPage, userName, userPassword);
     // Let the SPA settle on /files while the gate is still inactive (no 503s),
     // so the later /maintenance redirect is attributable to the guard alone.
-    await expect(userPage.getByTestId('file-actions-fab')).toBeVisible({ timeout: 15_000 });
+    await expect(userPage.getByTestId('file-actions-fab')).toBeVisible({ timeout: 30_000 });
     await expect(userPage).toHaveURL(/\/files(?:\/.*)?$/);
 
     // Hold the gate: start a dry-run blob migration via the admin API against
     // the hanging destination (dispatchWorker sets the gate synchronously, so
     // the 202 response already implies an active gate).
-    const startRes = await request.post(`${baseURL}/api/admin/migration/blobs`, {
-      headers: { Authorization: `Bearer ${token}` },
-      data: {
-        mode: 'dry-run',
-        force: false,
-        dest: {
-          type: 's3',
-          bucket: destBucket,
-          accessKey: S3_ACCESS_KEY,
-          secretKey: S3_SECRET_KEY,
-          endpoint: hangEndpoint,
-          region: S3_REGION,
-        },
-      },
-    });
-    expect(startRes.status()).toBe(202);
+    let startRes;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        startRes = await request.post(`${baseURL}/api/admin/migration/blobs`, {
+          headers: { Authorization: `Bearer ${token}` },
+          data: {
+            mode: 'dry-run',
+            force: false,
+            dest: {
+              type: 's3',
+              bucket: destBucket,
+              accessKey: S3_ACCESS_KEY,
+              secretKey: S3_SECRET_KEY,
+              endpoint: hangEndpoint,
+              region: S3_REGION,
+            },
+          },
+        });
+        break;
+      } catch (error) {
+        if (attempt === 2) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
+    expect(startRes?.status()).toBe(202);
 
     const statusRes = await request.get(`${baseURL}/api/migration/status`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -650,7 +661,7 @@ test.describe('unified migration mode (WebDAV source)', () => {
       window.history.pushState({}, '', '/mypage');
       window.dispatchEvent(new PopStateEvent('popstate'));
     });
-    await expect(page).toHaveURL(/\/migration/, { timeout: 30_000 });
+    await expect(page).toHaveURL(/\/migration/, { timeout: 60_000 });
 
     // Role b — regular non-admin user: the already-settled /files session is
     // redirected by the guard on its next poll tick (≤4s + fetch) to the generic

@@ -9,6 +9,8 @@ import { TEST_USERS } from './fixtures/test-data';
 
 const rootDir = process.cwd();
 const backendMode = process.env.E2E_BACKEND_MODE || 's3';
+const e2eGroup = process.env.E2E_GROUP || 'default';
+const needsWebdav = e2eGroup === 'webdav' || backendMode === 'webdav';
 
 // E2E API server and client origin mirror `playwright.config.ts` webServer /
 // baseURL and resolve through this checkout's port band (e2e/helpers/ports).
@@ -271,31 +273,33 @@ export default async function globalSetup() {
   // Per-band WebDAV named volume: a crashed prior run must never leak a stale
   // DAV root (locks, partial trees) into this one. The volume is recreated by
   // the stack-up below; PG is left untouched (the webServer may already use it).
-  try {
-    execFileSync(
-      'docker',
-      [
-        'compose',
-        '-p',
-        composeProject,
-        '-f',
-        path.join(rootDir, 'docker-compose.e2e.yml'),
-        'rm',
-        '-sf',
-        'webdav-test',
-      ],
-      { cwd: rootDir, stdio: 'ignore' }
-    );
-  } catch {
-    /* first run / already absent */
-  }
-  try {
-    execFileSync('docker', ['volume', 'rm', '-f', `${composeProject}_webdav_data`], {
-      cwd: rootDir,
-      stdio: 'ignore',
-    });
-  } catch {
-    /* volume absent */
+  if (needsWebdav) {
+    try {
+      execFileSync(
+        'docker',
+        [
+          'compose',
+          '-p',
+          composeProject,
+          '-f',
+          path.join(rootDir, 'docker-compose.e2e.yml'),
+          'rm',
+          '-sf',
+          'webdav-test',
+        ],
+        { cwd: rootDir, stdio: 'ignore' }
+      );
+    } catch {
+      /* first run / already absent */
+    }
+    try {
+      execFileSync('docker', ['volume', 'rm', '-f', `${composeProject}_webdav_data`], {
+        cwd: rootDir,
+        stdio: 'ignore',
+      });
+    } catch {
+      /* volume absent */
+    }
   }
 
   console.log(`Ensuring the E2E Docker stack is up (${backendMode} mode)...`);
@@ -304,29 +308,24 @@ export default async function globalSetup() {
     stdio: 'inherit',
   });
 
-  // `cleanDir('data/webdav')` above deletes the host bind-mount source while
-  // the bytemark container is running, which empties `/var/lib/dav` inside the
-  // container (Apache then 403s every DAV method — MKCOL, PUT, DELETE).
-  // Restart the container so its entrypoint re-creates `/var/lib/dav/data`.
-  // This runs in BOTH modes: the s3-mode run also hosts the hermetic
-  // setup-wizard / admin-config / migration suites, whose scratch servers boot
-  // a webdav-mode file backend against this container's subtree. Restarting
-  // once up-front removes the mid-run lazy restarts the scratch helpers used
-  // to perform in s3 mode.
-  console.log('Recreating the WebDAV DAV root (compose restart webdav-test)...');
-  execFileSync(
-    'docker',
-    [
-      'compose',
-      '-p',
-      composeProject,
-      '-f',
-      path.join(rootDir, 'docker-compose.e2e.yml'),
-      'restart',
-      'webdav-test',
-    ],
-    { cwd: rootDir, stdio: 'inherit' }
-  );
+  // Reset the WebDAV DAV root only for the WebDAV group. The default/core
+  // S3 gate must not start or touch the bytemark container.
+  if (needsWebdav) {
+    console.log('Recreating the WebDAV DAV root (compose restart webdav-test)...');
+    execFileSync(
+      'docker',
+      [
+        'compose',
+        '-p',
+        composeProject,
+        '-f',
+        path.join(rootDir, 'docker-compose.e2e.yml'),
+        'restart',
+        'webdav-test',
+      ],
+      { cwd: rootDir, stdio: 'inherit' }
+    );
+  }
 
   // MinIO runs in both modes and both the webdav-mode app (some blob writes)
   // and the migration E2E target the S3 buckets, so the buckets must exist in
@@ -347,9 +346,10 @@ export default async function globalSetup() {
   seedPostgresql();
 
   // The restart above briefly drops the container; wait until the DAV root is
-  // reachable again so no later suite (webdav mode or the hermetic scratch
-  // suites in s3 mode) has to perform a lazy mid-run restart.
-  await waitForWebdav(60_000);
+  // reachable again for the WebDAV group.
+  if (needsWebdav) {
+    await waitForWebdav(60_000);
+  }
 
   // Last step: the DB seed above guarantees admin exists (ADMIN_DEFAULT_PASSWORD
   // = 'admin', see `e2e/fixtures/test-data.ts`), so a login now yields the

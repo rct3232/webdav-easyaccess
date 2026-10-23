@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import http from 'node:http';
 
 import { expect, test, type TestInfo } from '@playwright/test';
 
@@ -7,10 +6,11 @@ import { TEST_FILES } from './fixtures/test-data';
 import { e2ePorts } from './helpers/ports';
 import {
   ensureClientBuild,
-  prepareScratchWebdav,
   killScratch,
+  prepareScratchS3,
+  s3ScratchEnv,
   scratchDirFor,
-  scratchWebdavUrl,
+  scratchRuntimeEnv,
   spawnScratchServer,
   waitForScratchHealth,
   writeScratchEnv,
@@ -33,79 +33,61 @@ function isMobileProject(testInfo: TestInfo): boolean {
 }
 
 /**
- * E2E-TRASH-007 — the GLOBAL destructive trash case ("Empty trash" purges
- * every trashed item for ALL users). Dual-platform (format convergence): the
- * mobile project re-boots the same :5012 scratch after the desktop leg (the
- * whole world is per-boot fresh), so the global purge only ever affects its
- * own isolated instance.
+ * E2E-S3-TRASHADMIN-001 — the GLOBAL destructive trash case ("Empty trash"
+ * purges every trashed item for ALL users). Scratch-hermetic: each Playwright
+ * project boots its own server (desktop :5012 / mobile :5019, own sqlite, own
+ * project-scoped S3 bucket) and the global purge can only ever affect its own
+ * isolated world. Desktop and mobile are independent siblings — no shared
+ * scratch port, no dependency edge.
  *
  * Shared-pool ownership is NOT sufficient for this case: the worker pool is
  * global and `fullyParallel` interleaves tests across spec files, so while
- * TRASH-007 purges, a trash case in trash.spec.ts (same admin user, same
- * shared :5002 server) loses its just-trashed item mid-assertion — this was
- * the deterministic DEF-20 flake in the webdav smoke (and a latent race in
- * the s3 desktop project, masked by CI retries).
+ * E2E-S3-TRASHADMIN-001 purges, a trash case in trash.spec.ts (same admin
+ * user, same shared :5002 server) loses its just-trashed item mid-assertion —
+ * this was the deterministic DEF-20 flake (and a latent race in the s3
+ * desktop project, masked by CI retries).
  *
- * The case is therefore SCRATCH-HERMETIC like admin-config/migration: it
- * boots its own server on :5012 (own sqlite, fresh DB per run) and the
- * global purge can only ever affect its own world. Requires docker infra.
+ * The case is therefore SCRATCH-HERMETIC like admin-config/migration: it boots
+ * its own server per test (own sqlite, fresh DB per run) and the global purge
+ * can only ever affect its own world. Requires docker infra.
  */
-const SCRATCH_PORT = e2ePorts.scratchTrashAdmin;
-const WEBDAV_AUTH = Buffer.from('e2etest:e2etest123').toString('base64');
 const CASE_ID = 'trash-admin';
 const ADMIN_PASSWORD = 'TrashAdminE2e!123';
 
 const textFixtureBuffer = readTestFileFixture(TEST_FILES.smallText);
 
-// The scratch harness binds a fixed port (:5012), so the whole file must run
-// in one worker. Same convention as admin-config.spec.ts.
+// The scratch harness owns one port per project, so the whole file must run in
+// one worker per project. Same convention as admin-config.spec.ts.
 test.describe.configure({ mode: 'serial' });
-
-function deleteWebdavPath(davPath: string): Promise<void> {
-  return new Promise((resolve) => {
-    const req = http.request(
-      {
-        hostname: '127.0.0.1',
-        port: e2ePorts.webdav,
-        path: davPath,
-        method: 'DELETE',
-        headers: { Authorization: `Basic ${WEBDAV_AUTH}` },
-      },
-      (res) => {
-        res.resume();
-        res.on('end', () => resolve());
-      }
-    );
-    req.on('error', () => resolve());
-    req.end();
-  });
-}
 
 let scratch: string;
 let spawned: ReturnType<typeof spawnScratchServer> | null = null;
 
-test.beforeAll(async () => {
-  // Remote trash namespace is shared across scratch boots (fresh sqlite
-  // restarts nodeIds, so a stale /.wea-trash/<id> collection would trip the
-  // destination-exists guard of the case's trash MOVE). Start clean.
-  await deleteWebdavPath('/.wea-trash/');
-});
-
-test.beforeEach(async () => {
-  scratch = scratchDirFor(CASE_ID);
+test.beforeEach(async ({}, testInfo) => {
+  const projectName = testInfo.project.name;
+  // Independent desktop/mobile worlds: each project owns its port slot, its
+  // scratch directory and its S3 bucket — never a shared scratch server.
+  const port = isMobileProject(testInfo)
+    ? e2ePorts.scratchTrashAdminMobile
+    : e2ePorts.scratchTrashAdmin;
+  scratch = scratchDirFor(CASE_ID, projectName);
   fs.rmSync(scratch, { recursive: true, force: true });
   fs.mkdirSync(scratch, { recursive: true });
+  // S3 is the product's default backend; prepareScratchS3 ensures the
+  // project-scoped bucket exists and empties it for a deterministic run (the
+  // trash namespace lives in the fresh scratch DB, so there is nothing
+  // WebDAV-side to clear).
+  const bucket = await prepareScratchS3(projectName);
   writeScratchEnv(scratch, {
-    PORT: String(SCRATCH_PORT),
-    WEA_FILE_STORAGE: 'webdav',
-    WEBDAV_UPSTREAM_URL: scratchWebdavUrl(CASE_ID),
+    PORT: String(port),
+    ...s3ScratchEnv(bucket),
+    ...scratchRuntimeEnv(),
     JWT_SECRET: 'trash-admin-e2e-jwt-secret',
     ADMIN_DEFAULT_PASSWORD: ADMIN_PASSWORD,
   });
-  await prepareScratchWebdav(scratch, CASE_ID);
   ensureClientBuild();
-  spawned = spawnScratchServer(scratch, SCRATCH_PORT);
-  await waitForScratchHealth(spawned!, SCRATCH_PORT);
+  spawned = spawnScratchServer(scratch, port);
+  await waitForScratchHealth(spawned, port);
 });
 
 test.afterEach(async ({ request }) => {
@@ -123,7 +105,7 @@ test.afterEach(async ({ request }) => {
   }
 });
 
-test('E2E-TRASH-007: Empty trash purges all visible trashed items', async ({
+test('E2E-S3-TRASHADMIN-001: Empty trash purges all visible trashed items', async ({
   page,
   request,
 }, testInfo) => {

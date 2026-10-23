@@ -4,10 +4,11 @@ import { APIRequestContext, expect, Page, TestInfo, test } from '@playwright/tes
 
 import {
   ensureClientBuild,
-  prepareScratchWebdav,
   killScratch,
+  prepareScratchS3,
+  s3ScratchEnv,
   scratchDirFor,
-  scratchWebdavUrl,
+  scratchRuntimeEnv,
   spawnScratchServer,
   waitForScratchHealth,
   writeScratchEnv,
@@ -27,7 +28,7 @@ import { closeActionSheet, openActionSheet } from './helpers/mobile-interactions
 import { setCollectionSort } from './helpers/explorer-controls';
 
 /**
- * E2E-COLLECTION-001..014 + 018..020 — the P0 collections binding lifecycle
+ * E2E-S3-COLLECTION-001..014 + 018..020 — the P0 collections binding lifecycle
  * (docs/E2E_COVERAGE_PLAN.md § "Collections platform lifecycle (hermetic)").
  *
  * Chain: create → add members → digest counts → archive → undo → restore →
@@ -43,10 +44,12 @@ import { setCollectionSort } from './helpers/explorer-controls';
  * SCRATCH-HERMETIC per the destructive-case policy (docs/TESTING_STRATEGY.md):
  * the suite permanently deletes collections, exercises per-subject undo-journal
  * tip semantics and renders the regular user's MyPage Storage dashboard, so it
- * boots its OWN server on :5013 (own sqlite, webdav file backend) and never
- * touches the shared :5002 pool. One scratch server serves the whole (serial,
- * desktop-only) file — restart is not a behavior under test here. No AI
- * surfaces are expected (`semantic_available:false`): P0 only.
+ * boots its OWN server per Playwright project (desktop :5013 / mobile :5014,
+ * own sqlite, project-scoped S3 bucket) and never touches the shared :5002
+ * pool. One scratch server serves the whole (serial) file per project —
+ * restart is not a behavior under test here. No AI surfaces are expected
+ * (`semantic_available:false`) and the scratch server runs with
+ * `WEA_SKIP_AI_WORKER=1`: P0 only.
  *
  * IDENTITY (admin-operator pivot, PLAN §14): every case authenticates as a
  * REGULAR USER provisioned by `beforeAll` (`ensureScratchRegularUser` — admin
@@ -57,7 +60,6 @@ import { setCollectionSort } from './helpers/explorer-controls';
  * user provisioning and the perm-delete folder-purge fallback
  * (`flushPrivateWorkspaceCleanups`).
  */
-const SCRATCH_PORT = e2ePorts.scratchCollections;
 const CASE_ID = 'collections';
 /** Scratch boot identity (ADMIN_DEFAULT_PASSWORD) — OPERATOR duties only since the pivot (PLAN §14). */
 const ADMIN_PASSWORD = 'CollectionsE2e!123';
@@ -205,7 +207,7 @@ async function openCardMenu(page: Page, name: string, action: string): Promise<v
 }
 
 /** File-parity open (P-3): double-click the card body on desktop; mobile taps
- * ONCE directly into the members view (the E2E-COLLECTION-015 contract — a
+ * ONCE directly into the members view (the E2E-S3-COLLECTION-015 contract — a
  * second activation would land inside the members surface). The ⋮ menu button
  * keeps its own (stopPropagation) click region top-right either way. */
 async function openCollectionCard(page: Page, name: string, isMobile: boolean): Promise<void> {
@@ -265,21 +267,29 @@ let spawned: ReturnType<typeof spawnScratchServer> | null = null;
 /** Scratch admin bearer — OPERATOR duties only after boot: provisioning (beforeAll) + perm-delete fallback (afterEach). */
 let operatorToken = '';
 
-test.beforeAll(async ({ request }) => {
-  scratch = scratchDirFor(CASE_ID);
+test.beforeAll(async ({ request }, testInfo) => {
+  const projectName = testInfo.project.name;
+  // Independent desktop/mobile worlds: each project owns its port slot, its
+  // scratch directory and its S3 bucket — never a shared scratch server.
+  const port = isMobileProject(testInfo)
+    ? e2ePorts.scratchCollectionsMobile
+    : e2ePorts.scratchCollections;
+  scratch = scratchDirFor(CASE_ID, projectName);
   fs.rmSync(scratch, { recursive: true, force: true });
   fs.mkdirSync(scratch, { recursive: true });
+  // S3 is the product's default backend; prepareScratchS3 ensures the
+  // project-scoped bucket exists and empties it for a deterministic run.
+  const bucket = await prepareScratchS3(projectName);
   writeScratchEnv(scratch, {
-    PORT: String(SCRATCH_PORT),
-    WEA_FILE_STORAGE: 'webdav',
-    WEBDAV_UPSTREAM_URL: scratchWebdavUrl(CASE_ID),
+    PORT: String(port),
+    ...s3ScratchEnv(bucket),
+    ...scratchRuntimeEnv(),
     JWT_SECRET: 'collections-e2e-jwt-secret',
     ADMIN_DEFAULT_PASSWORD: ADMIN_PASSWORD,
   });
-  await prepareScratchWebdav(scratch, CASE_ID);
   ensureClientBuild();
-  spawned = spawnScratchServer(scratch, SCRATCH_PORT);
-  await waitForScratchHealth(spawned, SCRATCH_PORT);
+  spawned = spawnScratchServer(scratch, port);
+  await waitForScratchHealth(spawned, port);
   // Admin-operator pivot (PLAN §14): the lifecycle ACTOR is a regular user,
   // provisioned through the bootstrapped admin (which also creates + grants
   // the `/<username>` home node). The admin token stays for OPERATOR calls.
@@ -329,7 +339,7 @@ test.afterEach(async ({ page, request }) => {
   await flushPrivateWorkspaceCleanups(request, operatorToken);
 });
 
-test('E2E-COLLECTION-001: Collections sidebar section expands to the archive node and routes to the collections list view', async ({
+test('E2E-S3-COLLECTION-001: Collections sidebar section expands to the archive node and routes to the collections list view', async ({
   page,
 }, testInfo) => {
   await loginWithCredentials(page, USER_CREDS.username, USER_CREDS.password);
@@ -357,7 +367,7 @@ test('E2E-COLLECTION-001: Collections sidebar section expands to the archive nod
   await expect(page.getByTestId('file-manager-sort')).toBeVisible();
 });
 
-test('E2E-COLLECTION-002: Add-to-collection submenu creates a collection inline, adds a second file through the collection row and the member view lists them', async ({
+test('E2E-S3-COLLECTION-002: Add-to-collection submenu creates a collection inline, adds a second file through the collection row and the member view lists them', async ({
   page,
   request,
 }, testInfo) => {
@@ -399,7 +409,7 @@ test('E2E-COLLECTION-002: Add-to-collection submenu creates a collection inline,
   await expect(page.locator('[data-testid^="member-row-"]')).toHaveCount(2);
 });
 
-test('E2E-COLLECTION-003: Re-opening a collection member view reports the digest of members added since the last visit', async ({
+test('E2E-S3-COLLECTION-003: Re-opening a collection member view reports the digest of members added since the last visit', async ({
   page,
   request,
 }, testInfo) => {
@@ -441,7 +451,7 @@ test('E2E-COLLECTION-003: Re-opening a collection member view reports the digest
   await expect(page.getByTestId(`member-publish-pending-badge-${fileB.nodeId}`)).toBeVisible();
 });
 
-test('E2E-COLLECTION-004: Card menu archive moves the collection into the archive view and restore returns it to the active list', async ({
+test('E2E-S3-COLLECTION-004: Card menu archive moves the collection into the archive view and restore returns it to the active list', async ({
   page,
   request,
 }, testInfo) => {
@@ -477,7 +487,7 @@ test('E2E-COLLECTION-004: Card menu archive moves the collection into the archiv
   await expect(collectionCard(page, name)).toBeVisible();
 });
 
-test('E2E-COLLECTION-005: Undo toast reverses a collection archive', async ({
+test('E2E-S3-COLLECTION-005: Undo toast reverses a collection archive', async ({
   page,
   request,
 }, testInfo) => {
@@ -500,7 +510,7 @@ test('E2E-COLLECTION-005: Undo toast reverses a collection archive', async ({
   await expect(collectionCard(page, name)).toBeVisible();
 });
 
-test('E2E-COLLECTION-006: Permanent delete is offered only in the archive view and purges the collection after two confirmations', async ({
+test('E2E-S3-COLLECTION-006: Permanent delete is offered only in the archive view and purges the collection after two confirmations', async ({
   page,
   request,
 }, testInfo) => {
@@ -539,7 +549,7 @@ test('E2E-COLLECTION-006: Permanent delete is offered only in the archive view a
   trackedCollections.splice(trackedCollections.indexOf(name), 1);
 });
 
-test('E2E-COLLECTION-007: Like toggle from the file context menu persists the viewer-scoped like', async ({
+test('E2E-S3-COLLECTION-007: Like toggle from the file context menu persists the viewer-scoped like', async ({
   page,
   request,
 }, testInfo) => {
@@ -565,7 +575,7 @@ test('E2E-COLLECTION-007: Like toggle from the file context menu persists the vi
     .toBe(true);
 });
 
-test('E2E-COLLECTION-008: Member row menu excludes a file with undo and exposes no file-mutating entries', async ({
+test('E2E-S3-COLLECTION-008: Member row menu excludes a file with undo and exposes no file-mutating entries', async ({
   page,
   request,
 }, testInfo) => {
@@ -615,7 +625,7 @@ test('E2E-COLLECTION-008: Member row menu excludes a file with undo and exposes 
   await expect(page.getByTestId(`member-row-${fileB.nodeId}`)).toBeVisible();
 });
 
-test('E2E-COLLECTION-009: Storage dashboard renders the collection journal feed and feed undo restores an archived collection', async ({
+test('E2E-S3-COLLECTION-009: Storage dashboard renders the collection journal feed and feed undo restores an archived collection', async ({
   page,
   request,
 }, testInfo) => {
@@ -659,7 +669,7 @@ test('E2E-COLLECTION-009: Storage dashboard renders the collection journal feed 
   await expect(page.getByTestId('suggestion-checkbox')).toHaveCount(0);
 });
 
-test('E2E-COLLECTION-010: The toolbar sort button re-sorts the collections list by created (newest-first) and name (ASC)', async ({
+test('E2E-S3-COLLECTION-010: The toolbar sort button re-sorts the collections list by created (newest-first) and name (ASC)', async ({
   page,
   request,
 }, testInfo) => {
@@ -769,7 +779,7 @@ test('E2E-COLLECTION-010: The toolbar sort button re-sorts the collections list 
   await expect(cards.nth(1)).toContainText(nameZ);
 });
 
-test('E2E-COLLECTION-011: members render the shared grid by default, the list toggle persists per-surface and double-click previews by nodeId', async ({
+test('E2E-S3-COLLECTION-011: members render the shared grid by default, the list toggle persists per-surface and double-click previews by nodeId', async ({
   page,
   request,
 }, testInfo) => {
@@ -821,7 +831,7 @@ test('E2E-COLLECTION-011: members render the shared grid by default, the list to
   await expect(preview).toContainText(nameHead);
 });
 
-test('E2E-COLLECTION-012: the publish-all banner flips stored members through PUT /:id/items/publish and the owner per-row publish menu is reachable', async ({
+test('E2E-S3-COLLECTION-012: the publish-all banner flips stored members through PUT /:id/items/publish and the owner per-row publish menu is reachable', async ({
   page,
   request,
 }, testInfo) => {
@@ -874,7 +884,7 @@ test('E2E-COLLECTION-012: the publish-all banner flips stored members through PU
     .toBe(0);
 });
 
-test('E2E-COLLECTION-013: the sidebar Likes child row lists liked files through the member machinery, persists its own view key, and unlike drops the row live without touching collections', async ({
+test('E2E-S3-COLLECTION-013: the sidebar Likes child row lists liked files through the member machinery, persists its own view key, and unlike drops the row live without touching collections', async ({
   page,
   request,
 }, testInfo) => {
@@ -886,7 +896,7 @@ test('E2E-COLLECTION-013: the sidebar Likes child row lists liked files through 
   const collectionId = await createCollectionApi(request, token, collectionName);
   await addItemsApi(request, token, collectionId, [fileA.nodeId]);
 
-  // Like via the file context menu (same entry E2E-007 persists).
+  // Like via the file context menu (same entry E2E-S3-COLLECTION-007 persists).
   await gotoFilesPath(page, request, `/${base}`);
   await expect(fileItem(page, fileA.path)).toBeVisible();
   await openFileActions(page, fileA.path, isMobileProject(testInfo));
@@ -974,7 +984,7 @@ test('E2E-COLLECTION-013: the sidebar Likes child row lists liked files through 
     .toBe(true);
 });
 
-test('E2E-COLLECTION-014: Likes-first/Archive-last tiles navigate, archive view shows no tiles under Collections › Archive crumb, collection opens as Collections › <name>', async ({
+test('E2E-S3-COLLECTION-014: Likes-first/Archive-last tiles navigate, archive view shows no tiles under Collections › Archive crumb, collection opens as Collections › <name>', async ({
   page,
   request,
 }, testInfo) => {
@@ -1021,7 +1031,7 @@ test('E2E-COLLECTION-014: Likes-first/Archive-last tiles navigate, archive view 
   await expect(page.getByTestId('collection-tile-liked')).toHaveCount(0);
 });
 
-test('E2E-COLLECTION-018: Card menu rename updates the card and the sidebar row, locks the name and is undoable', async ({
+test('E2E-S3-COLLECTION-018: Card menu rename updates the card and the sidebar row, locks the name and is undoable', async ({
   page,
   request,
 }, testInfo) => {
@@ -1130,7 +1140,7 @@ test('E2E-COLLECTION-018: Card menu rename updates the card and the sidebar row,
   await expect(collectionCard(page, 'Q3 reports')).toHaveCount(0);
 });
 
-test('E2E-COLLECTION-019: The properties dialog header toggles the viewer-scoped like and the surfaces share the state', async ({
+test('E2E-S3-COLLECTION-019: The properties dialog header toggles the viewer-scoped like and the surfaces share the state', async ({
   page,
   request,
 }, testInfo) => {
@@ -1175,7 +1185,7 @@ test('E2E-COLLECTION-019: The properties dialog header toggles the viewer-scoped
   await page.keyboard.press('Escape');
 });
 
-test('E2E-COLLECTION-020: The sidebar Archive node routes into the tile-free archive view with the Collections › Archive breadcrumb and the chip returns to the ordered active list', async ({
+test('E2E-S3-COLLECTION-020: The sidebar Archive node routes into the tile-free archive view with the Collections › Archive breadcrumb and the chip returns to the ordered active list', async ({
   page,
   request,
 }, testInfo) => {
@@ -1237,11 +1247,11 @@ async function setupCollectionWithMember(
   return { base, token, file, name, collectionId };
 }
 
-test('E2E-COLLECTION-015: mobile TAP opens a collection card directly into the members view (no double-tap) and the Collections crumb chip returns to the list', async ({
+test('E2E-S3-COLLECTION-015: mobile TAP opens a collection card directly into the members view (no double-tap) and the Collections crumb chip returns to the list', async ({
   page,
   request,
 }, testInfo) => {
-  test.skip(!isMobileProject(testInfo), 'E2E-COLLECTION-015 is mobile-only');
+  test.skip(!isMobileProject(testInfo), 'E2E-S3-COLLECTION-015 is mobile-only');
   const { file, collectionId, name } = await setupCollectionWithMember(
     page,
     request,
@@ -1270,11 +1280,11 @@ test('E2E-COLLECTION-015: mobile TAP opens a collection card directly into the m
   await expect(card).toBeVisible();
 });
 
-test('E2E-COLLECTION-016: members surface on mobile keeps the GRID default, hides the detail toggle and forces LIST when the persisted member key is detail (mobile restriction, unchanged per useExplorerSession.md)', async ({
+test('E2E-S3-COLLECTION-016: members surface on mobile keeps the GRID default, hides the detail toggle and forces LIST when the persisted member key is detail (mobile restriction, unchanged per useExplorerSession.md)', async ({
   page,
   request,
 }, testInfo) => {
-  test.skip(!isMobileProject(testInfo), 'E2E-COLLECTION-016 is mobile-only');
+  test.skip(!isMobileProject(testInfo), 'E2E-S3-COLLECTION-016 is mobile-only');
   const { file, name } = await setupCollectionWithMember(page, request, testInfo, 'col016');
 
   await page.goto('/files/__collections__');
@@ -1312,11 +1322,11 @@ test('E2E-COLLECTION-016: members surface on mobile keeps the GRID default, hide
     .toBe('list');
 });
 
-test('E2E-COLLECTION-017: file-side like via the mobile FileActionSheet flips optimistically and persists viewer-scoped (desktop 007 bottom-sheet parity)', async ({
+test('E2E-S3-COLLECTION-017: file-side like via the mobile FileActionSheet flips optimistically and persists viewer-scoped (desktop E2E-S3-COLLECTION-007 bottom-sheet parity)', async ({
   page,
   request,
 }, testInfo) => {
-  test.skip(!isMobileProject(testInfo), 'E2E-COLLECTION-017 is mobile-only');
+  test.skip(!isMobileProject(testInfo), 'E2E-S3-COLLECTION-017 is mobile-only');
   const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
   const file = await seedFile(request, token, base, testInfo, 'col017');
   await gotoFilesPath(page, request, `/${base}`);

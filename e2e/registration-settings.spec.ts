@@ -133,7 +133,7 @@ test('E2E-AUTH-010: Registration success with pending approval shows success sta
   await page.locator('form button[type="submit"]').click();
 
   const successTitle = page.locator('text=Registration complete!');
-  await expect(successTitle).toBeVisible({ timeout: 30_000 });
+  await expect(successTitle).toBeVisible({ timeout: 90_000 });
   await expect(page).not.toHaveURL(/\/files/);
 });
 

@@ -647,6 +647,7 @@
         "EMAIL_FROM_NAME": "보내는 사람 이름",
         "GC_INTERVAL_MS": "GC 간격 (ms)",
         "GC_ORPHAN_TTL_DAYS": "고아 데이터 보관 기간 (일)",
+        "GC_VERSION_TTL_DAYS": "버전 보관 기간 (일)",
         "REFRESH_TOKEN_EXPIRES_IN_DAYS": "리프레시 토큰 만료 (일)",
         "USER_CACHE_TTL_MS": "사용자 캐시 TTL (ms)",
         "PERMISSION_CACHE_TTL_MS": "권한 캐시 TTL (ms)",

@@ -249,13 +249,22 @@ async function fillS3Dest(
   if (dest.region) await dialog.getByLabel(/^Region/).fill(dest.region);
 }
 
-async function startBlobMigrationFromDialog(page: Page, mode: 'dry-run' | 'apply'): Promise<void> {
+async function startBlobMigrationFromDialog(page: Page, mode: 'dry-run' | 'apply'): Promise<string> {
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('radio', { name: mode === 'apply' ? 'Apply' : 'Dry run' }).check();
+  const startResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/admin/migration/blobs') &&
+      response.request().method() === 'POST'
+  );
   await Promise.all([
     page.waitForURL(/\/migration(?:\/|$)/),
     dialog.getByRole('button', { name: 'Start', exact: true }).click(),
   ]);
+  const response = await startResponse;
+  expect(response.status()).toBe(202);
+  const body = (await response.json()) as { jobId: string };
+  return body.jobId;
 }
 
 async function openMetadataMigrationDialog(page: Page): Promise<void> {
@@ -544,7 +553,7 @@ test.describe('unified migration mode (E2E-MIG-001..009)', () => {
       endpoint: S3_ENDPOINT,
       region: S3_REGION,
     });
-    await startBlobMigrationFromDialog(page, 'apply');
+    const applyJobId = await startBlobMigrationFromDialog(page, 'apply');
     await expect(page).toHaveURL(/\/migration/);
     const applyObserved = await observeMigration(page);
     const applyBody = await waitForTerminalModal(page);
@@ -554,6 +563,10 @@ test.describe('unified migration mode (E2E-MIG-001..009)', () => {
     expect(applyBody).toContain('was saved to the server settings');
     expect(applyBody).toContain('S3_BUCKET');
     expect(applyBody).not.toContain('Update them in .env manually');
+
+    const applyJob = await pollJobStatus(request, token, applyJobId, ['completed', 'failed']);
+    expect(applyJob.status).toBe('completed');
+    expect(applyJob.results).toMatchObject({ failed: 0, errors: [] });
 
     // Post-migration state (the fix's new behavior): every uploaded webdav file
     // now has an s3/active object_map row, sync_status='active', and its blob

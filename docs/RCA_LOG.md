@@ -1331,3 +1331,79 @@ Task: `feature/p1-a5-vectormath` (T1.4a vectorMath/extractors/TextVectorJs oracl
   assertion weakened.
 - **Verification**: targeted suite green; full `test:ci` re-run green (counts in the C5
   report).
+
+## 2026-10-23 — Trash pagination assertion is order-dependent in full server CI run
+
+- **Symptom**: full `server npm run test:ci` had one failure in `trash.test.js` A22:
+  `visibleIds[0]` equaled the first-created `ids[0]`. The same trash route test file passed
+  all 15 tests when run alone immediately afterward.
+- **Diagnosis**: `GET /api/files/trash` promises pagination over visible rows, not an order
+  matching fixture creation order (`docs/spec/server/routes/files.md` §2.2 route list and the
+  Trash routes contract at lines 72-78). The handler slices the repository-provided order
+  (`server/domains/files/routes/trash.js:98-137`); the SQLite repository sorts by
+  `deleted_at DESC, name` (`FileNodeRepository.sqlite.js:115-125`). A22 asserts that offset 1
+  skips the first _created_ fixture (`trash.test.js:273-284`), which is not guaranteed when
+  the fixture's deletion timestamps/order differ. Full-suite timing exposed that unsupported
+  assumption; isolated green is consistent with an order-sensitive test, not proof of a
+  product regression.
+- **Classification**: **Case B (Test Error)** — fixture creation order is asserted instead of
+  the documented pagination contract. This failure is unrelated to the current client/E2E
+  edits; no server source was changed.
+- **Action / verification**: corrected A22 to request an unpaginated baseline and compare the
+  paginated rows to `baseline.items.slice(offset, offset + limit)`, preserving assertions for
+  limit and pre-pagination total without pinning sort order. Focused trash route suite passed
+  15/15; subsequent full server CI passed 173 suites (28 skipped), 2 suites skipped by CI
+  selection, 0 failures.
+
+## 2026-10-23 — Admin config connection probe retries an expected WebDAV failure
+
+- **Symptom**: E2E-ADMINCFG-006 remained in `Testing...` and hit the 30-second test timeout;
+  access logs showed repeated `POST /api/admin/config/test` responses with status 500 for the
+  deliberately unreachable WebDAV endpoint.
+- **Diagnosis**: `webdavTestConnection` classifies an unreachable endpoint as
+  `serverErrors.api.webdavTestFailed` with status 500. The admin config route returns that
+  non-2xx probe result. `httpClient` retries all 5xx responses up to three times with
+  exponential backoff, while `adminService.testConfig` had not set a request-specific retry
+  count. A user-triggered connection probe is an expected check of pending external settings;
+  repeating the same probe delays the error state without changing its outcome. Server route
+  spec allows non-2xx probe failures and does not require retry.
+- **Classification**: **Case B (client call-site policy gap)** — the generic transport contract
+  remains intact, but this intentional probe should opt out of automatic retries.
+- **Action**: updated the `adminService`/`httpClient` contracts and set `maxRetries: 0` only on
+  `testConfig`; added service and transport assertions. No server response behavior changed.
+- **Verification**: adminService/httpClient focused tests passed 36/36; full admin-config
+  desktop passed 11 cases including E2E-ADMINCFG-006; mobile dependency-chain run passed 22/22.
+  Client CI passed 183 suites / 2,103 tests and server CI passed 173 suites / 2,978 tests
+  (28 skipped). Trash-admin desktop/mobile passed 2/2 on a serial rerun. The first parallel
+  client CI attempt had 11 timeout failures while server CI and E2E were competing for host
+  resources; the serial client run was green. The first trash-admin attempt failed before the
+  seeded item rendered, but did not reproduce serially. No product-code change was made for
+  these transient, load-sensitive failures.
+
+## 2026-10-23 — Setup wizard E2E omitted the optional AI step
+
+- **Symptom**: Full S3 E2E timed out after 240 seconds waiting for “Apply & finish”; the
+  page snapshot was still on “AI configuration (optional)” with a visible “Next” button.
+- **Diagnosis**: The setup contract specifies the optional AI step before Apply and says the
+  step is skippable (`docs/spec/client/pages/Setup.md` §2.5). `driveWizard()` advanced through
+  file, admin, and optional settings, then incorrectly expected Apply without advancing past AI.
+- **Classification**: **Case B (E2E flow omitted a documented step)**.
+- **Action**: Updated the driver to click Next on the optional AI step before expecting Apply.
+- **Verification**: Pending isolated E2E-SETUP-001 and full S3 E2E rerun.
+
+## 2026-10-23 — WebDAV→S3 migration drops a node after a transient source socket hang-up
+
+- **Symptom**: E2E-MIG-001 uploaded eight WebDAV-native files but only seven received active
+  S3 mappings. The migration job completed with `failed: 1`, node 6 (`file-4.txt`) failed.
+- **Diagnosis**: A test-only diagnostic surfaced the wrapped cause:
+  `request to http://127.0.0.1:8110/setup-e2e/migration/flow-a-happy-path/.../file-4.txt
+  failed, reason: socket hang up`. The migration's per-node isolation correctly recorded the
+  failure and continued, but source reads had no retry for this transient transport interruption.
+  The migration contract requires all readable source files to be copied and separately
+  specifies per-node error isolation; retrying an idempotent source GET once is compatible with
+  both behaviors.
+- **Classification**: **Case A (implementation reliability gap)** — a transient source read
+  interruption leaves an otherwise recoverable node unmigrated on a happy-path run.
+- **Action**: Added a spec requirement and red-first service test for one retry on recognized
+  transport interruptions only. The temporary diagnostic is removed from production code.
+- **Verification**: Pending focused migration service test and E2E-MIG-001 rerun.

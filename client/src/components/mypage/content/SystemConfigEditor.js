@@ -246,6 +246,11 @@ const CONFIG_DISPLAY_META = {
     group: 'runtime',
     inputType: 'number',
   },
+  GC_VERSION_TTL_DAYS: {
+    labelKey: 'admin.config.key.GC_VERSION_TTL_DAYS',
+    group: 'runtime',
+    inputType: 'number',
+  },
   REFRESH_TOKEN_EXPIRES_IN_DAYS: {
     labelKey: 'admin.config.key.REFRESH_TOKEN_EXPIRES_IN_DAYS',
     group: 'runtime',

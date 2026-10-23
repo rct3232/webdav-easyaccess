@@ -2147,3 +2147,48 @@ Gates on the merged tip: `retrieval-desktop` + `retrieval-mobile` **22/22** (5.9
 `collections-desktop` **17/17**; `ai-desktop` **1/1**; full server **173 suites /
 2978 pass (28 skipped), 0 failed**; prettier clean. Client code is unchanged by this
 infra wave.
+
+### 28.12 Admin config + trash-admin E2E follow-up (2026-10-23)
+
+| Task | Objective | Inputs | Expected outputs | Verification | Dependencies |
+| --- | --- | --- | --- | --- | --- |
+| 28.12a | Expose registered `GC_VERSION_TTL_DAYS` as an editable Runtime number field | config registry + SystemConfigEditor contract | Spec, UI metadata/locale, unit and E2E pins agree | targeted client tests + admin-config-desktop | none |
+| 28.12b | Remove unrelated UI upload setup from global-trash test | `uploadFileAt` precedent in `E2E-TRASH-003` | API-seeded fixture; trash/purge behavior remains UI-tested | trash-admin desktop/mobile E2E | none |
+
+Both tasks are independent; docs precede tests and implementation. Follow-up diagnosis confirmed
+that UI delete returns after the async job is accepted, not completed; E2E-TRASH-007 now captures
+the UI-triggered 202 response and polls its job through the existing `waitForBulkJobToComplete`
+helper before asserting list/trash state. The case timeout is 90 seconds because scratch boot and
+UI interactions together exceeded the generic 30-second limit. E2E-ADMINCFG-004 now treats the
+UI-triggered config PUT response (200) as save completion, does not retry on a missing Snackbar,
+and has a 90-second case timeout for its five save cycles. The A22 server test compares offset
+results against the actual unpaginated response order instead of fixture creation order.
+
+Verification: client CI 183 suites / 2102 passed; server CI 173 suites / 2978 passed (28
+skipped; 2 suites skipped by selection); trash-admin desktop + mobile both passed; admin-config
+desktop E2E-ADMINCFG-001/002/004 passed in a full-run attempt, and 004/005/008 passed again in a
+targeted run. The full admin-config project still stopped at unrelated E2E-ADMINCFG-006: its
+negative connection probe returned HTTP 500 twice, and the test timed out while waiting for the
+UI to leave “Testing...”.
+
+### 28.13 E2E-ADMINCFG-006 connection-probe retry diagnosis
+
+| Task | Objective | Inputs | Expected outputs | Verification | Dependencies |
+| --- | --- | --- | --- | --- | --- |
+| 28.13a | Stop retrying an intentional failed admin connection probe | config probe contract + shared HTTP retry behavior | `testConfig` sends one request; normal retry policy remains unchanged | adminService/httpClient unit tests + ADMINCFG-006 | none |
+| 28.13b | Validate the repaired surface and repository regression gates | 28.13a implementation | All affected admin E2E, client/server CI, related trash E2E green | serial E2E runs + `npm run test:ci` in client/server | 28.13a |
+
+Verified hypothesis: `/api/admin/config/test` reports an unreachable WebDAV probe as HTTP 500;
+the generic transport retries all 5xx, so the UI remains in `testing` while repeat probes run.
+The API contract permits a non-2xx probe failure without prescribing status, and the HTTP
+transport already supports request-scoped `maxRetries`; use that seam for this probe only.
+Implementation applied: adminService spec now defines a single-attempt connection probe;
+`testConfig` passes `maxRetries: 0`, with unit assertions for call policy and transport behavior.
+Focused tests passed (adminService/httpClient: 36/36). The complete admin-config desktop
+project passed (11 passed); ADMINCFG-006 passed in the project run and in the earlier isolated
+check. The mobile project had one transient loading-state failure on its first attempt and then
+passed its complete dependency-chain run (22/22). Trash-admin's first concurrent run failed
+before the seeded item rendered; the serial desktop/mobile rerun passed (2/2). Server CI passed
+173 suites / 2,978 tests (28 skipped). Client CI initially had 11 test timeouts while competing
+with server/E2E workloads, then passed serially: 183 suites / 2,103 tests. No implementation
+failure remained reproducible. `git diff --check` was clean; changes remain uncommitted.

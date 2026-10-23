@@ -138,7 +138,7 @@ async function clickNext(page: Page): Promise<void> {
 }
 
 /**
- * Drive the wizard end-to-end in the browser (file → admin → optional → apply)
+ * Drive the wizard end-to-end in the browser (file → admin → optional → AI → apply)
  * and land on the "Restart required" screen. Preconditions: boot 1 healthy on
  * :5003 in setup mode with the metadata DB already connected via the pre-boot
  * scratch `.env` (D6/D7); webdav subtree (webdav cases) and scratch PG DB (pg
@@ -177,7 +177,10 @@ async function driveWizard(page: Page, config: CaseConfig): Promise<void> {
   // Step 2 — optional settings (leave wizard defaults; PORT prefilled)
   await clickNext(page);
 
-  // Step 3 — apply
+  // Step 3 — AI is optional and skippable; advance without configuring a role.
+  await clickNext(page);
+
+  // Step 4 — apply
   await page.getByRole('button', { name: 'Apply & finish' }).click();
   await expect(page.getByText('Restart required')).toBeVisible();
 }

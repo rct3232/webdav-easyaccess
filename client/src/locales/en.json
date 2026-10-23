@@ -647,6 +647,7 @@
         "EMAIL_FROM_NAME": "Sender name",
         "GC_INTERVAL_MS": "GC interval (ms)",
         "GC_ORPHAN_TTL_DAYS": "Orphan TTL (days)",
+        "GC_VERSION_TTL_DAYS": "Version TTL (days)",
         "REFRESH_TOKEN_EXPIRES_IN_DAYS": "Refresh token expiry (days)",
         "USER_CACHE_TTL_MS": "User cache TTL (ms)",
         "PERMISSION_CACHE_TTL_MS": "Permission cache TTL (ms)",

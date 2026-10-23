@@ -270,24 +270,33 @@ describe('GET /api/files/trash', () => {
       await trashNode(owner, folder.id);
     }
 
+    const baseline = await request(app)
+      .get('/api/files/trash')
+      .query({ limit: 50, offset: 0 })
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(baseline.status).toBe(200);
+    expect(baseline.body.total).toBeGreaterThanOrEqual(3);
+    const baselineIds = baseline.body.items.map((i) => i.nodeId);
+    expect(baselineIds).toEqual(expect.arrayContaining(ids));
+
     const page = await request(app)
       .get('/api/files/trash')
       .query({ limit: 2, offset: 1 })
       .set('Authorization', `Bearer ${owner.token}`);
     expect(page.status).toBe(200);
-    expect(page.body.total).toBeGreaterThanOrEqual(3);
+    expect(page.body.total).toBe(baseline.body.total);
     expect(page.body.items).toHaveLength(2);
     const visibleIds = page.body.items.map((i) => i.nodeId);
-    for (const id of visibleIds) {
-      expect(ids).toContain(id);
-    }
-    expect(visibleIds[0]).not.toBe(ids[0]); // offset skipped the first item
+    expect(visibleIds).toEqual(baselineIds.slice(1, 3));
 
     const single = await request(app)
       .get('/api/files/trash')
-      .query({ limit: 1 })
+      .query({ limit: 1, offset: 0 })
       .set('Authorization', `Bearer ${owner.token}`);
+    expect(single.status).toBe(200);
     expect(single.body.items).toHaveLength(1);
+    expect(single.body.total).toBe(baseline.body.total);
+    expect(single.body.items[0].nodeId).toBe(baselineIds[0]);
   });
 
   it('A22: the root listing shows only TOPMOST trashed rows; nested children are reachable via parentId navigation', async () => {

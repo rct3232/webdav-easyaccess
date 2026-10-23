@@ -22,9 +22,11 @@ import {
   flushPrivateWorkspaceCleanups,
   openPrivateWorkspace,
   readTestFileFixture,
-  uploadFileViaUi,
+  uploadFileAt,
+  waitForBulkJobToComplete,
 } from './helpers/files';
 import { deleteItemViaUi } from './helpers/trash';
+import { getSessionToken, gotoFilesPath, resolveNodeId } from './helpers/resolvePath';
 
 function isMobileProject(testInfo: TestInfo): boolean {
   return testInfo.project.name.endsWith('-mobile');
@@ -125,21 +127,28 @@ test('E2E-TRASH-007: Empty trash purges all visible trashed items', async ({
   page,
   request,
 }, testInfo) => {
+  test.setTimeout(90_000);
   await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
 
   const base = await openPrivateWorkspace(page, request, testInfo);
   const fileName = buildName(testInfo, 'trash-empty-item', '.txt');
   const filePath = `/${base}/${fileName}`;
-
-  await uploadFileViaUi(page, {
-    fileName,
-    mimeType: 'text/plain',
-    buffer: textFixtureBuffer,
-  });
+  const token = await getSessionToken(page);
+  const folderNodeId = await resolveNodeId(request, token, `/${base}`);
+  await uploadFileAt(request, token, folderNodeId, fileName, 'text/plain', textFixtureBuffer);
+  await gotoFilesPath(page, request, `/${base}`);
   await expect(fileItem(page, filePath)).toBeVisible();
 
   // Trash via the platform UI seam (desktop context menu / mobile action sheet).
+  const deleteResponsePromise = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/files/batch-delete') && response.request().method() === 'POST'
+  );
   await deleteItemViaUi(page, isMobileProject(testInfo), filePath);
+  const deleteResponse = await deleteResponsePromise;
+  expect(deleteResponse.status()).toBe(202);
+  const { jobId } = await deleteResponse.json();
+  await waitForBulkJobToComplete(request, token, String(jobId));
   await expect(fileItem(page, filePath)).toHaveCount(0);
 
   await page.goto('/files/__trash__');

@@ -29,12 +29,14 @@
 | createUser           | ({ username, email, password })          | Promise\<void\>   | POST /api/admin/users                               |
 | cleanupOrphaned      | ()                                       | Promise\<Object\> | POST /api/admin/cleanup/orphaned                    |
 | ensureHomeOwnerAdmin | ()                                       | Promise\<Object\> | POST /api/admin/permissions/ensure-home-owner-admin |
+| testConfig           | (target, values)                         | Promise\<Object\> | POST /api/admin/config/test                         |
 | getAdminReports      | ()                                       | Promise\<Object\> | GET /api/admin/reports                              |
 | getAdminReport       | (id)                                     | Promise\<Object\> | GET /api/admin/reports/:id                          |
 | repairAdminReport    | (id, { action, nodeId?, repairAction? }) | Promise\<Object\> | POST /api/admin/reports/:id/repair                  |
 
 - All require admin JWT.
 - `getAdminReports()` / `getAdminReport(id)` / `repairAdminReport(id, { action, nodeId?, repairAction? })` are thin `apiClient` wrappers returning `response.data` (`{ reports }`, `{ report }`, `{ messageCode, report, result }` respectively); errors propagate like the sibling wrappers (server contract: `docs/spec/server/routes/admin.md` §2.2.6).
+- `testConfig(target, values)` submits one connection probe and returns `response.data`; it sets `maxRetries: 0` because retrying an intentional external-connectivity failure does not improve the pending config and delays the editor's error state. The standard API client retry policy remains unchanged for other calls.
 
 ### 2.3 Error Handling
 
@@ -46,5 +48,6 @@
 - [ ] getUsers, getPendingUsers return arrays
 - [ ] approve, reject, delete, create call correct endpoints
 - [ ] getSettings/updateSettings for settings tab
+- [ ] testConfig sends exactly one POST probe with `maxRetries: 0`, returns data, and normalizes failure details
 - [ ] cleanupOrphaned, ensureHomeOwnerAdmin return results
 - [ ] getAdminReports, getAdminReport, repairAdminReport call the correct verbs/paths and return `response.data`

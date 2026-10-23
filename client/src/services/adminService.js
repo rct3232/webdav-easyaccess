@@ -72,7 +72,7 @@ export const ensureHomeOwnerAdmin = async () => {
 
 export const testConfig = async (target, values) => {
   try {
-    const response = await post('/admin/config/test', { target, ...values });
+    const response = await post('/admin/config/test', { target, ...values }, { maxRetries: 0 });
     return response.data;
   } catch (err) {
     const data = err?.response?.data;

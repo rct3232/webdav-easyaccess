@@ -180,9 +180,9 @@ async function putConfig(
   expect(res.ok()).toBeTruthy();
 }
 
-// On narrow (mobile) viewports the transient success Snackbar (bottom-center)
-// overlays the Save button, so a plain click is intercepted. Force-click Save
-// and then dismiss the Snackbar so the next interaction is never blocked.
+// Use the UI-triggered PUT as the success signal; the editor clears dirty state
+// on success, so Save becoming disabled is expected. Dismiss a transient
+// Snackbar when present so it cannot intercept the next save action.
 async function saveConfig(page: Page): Promise<void> {
   const save = page.getByTestId('config-save');
   const snackbar = page.locator('.MuiSnackbar-root');
@@ -191,23 +191,17 @@ async function saveConfig(page: Page): Promise<void> {
   // otherwise handleSave reads a stale (empty) dirtyKeys and no-ops.
   await expect(save).toBeEnabled();
 
-  const clickAndExpectSnackbar = async (): Promise<void> => {
-    await save.click({ force: true });
-    await expect(snackbar).toBeVisible({ timeout: 4000 });
-  };
-
-  try {
-    await clickAndExpectSnackbar();
-  } catch {
-    // The force-click can land on a just-disabled button (React re-renders
-    // after the fill), which suppresses the click entirely and sends no PUT.
-    // The dirty state is still pending, so retry once.
-    await expect(save).toBeEnabled();
-    await clickAndExpectSnackbar();
-  }
+  const putResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'PUT' &&
+      new URL(response.url()).pathname === '/api/admin/config'
+  );
+  await save.click();
+  const response = await putResponse;
+  expect(response.status(), 'config save PUT status').toBe(200);
 
   const close = snackbar.locator('[aria-label="Close"]');
-  if ((await close.count()) > 0) {
+  if ((await snackbar.isVisible().catch(() => false)) && (await close.count()) > 0) {
     await close.click({ force: true });
     await expect(snackbar)
       .toBeHidden({ timeout: 3000 })
@@ -239,18 +233,35 @@ test.describe('admin config editor (advanced settings)', () => {
     // Section A (editable): T1/T2 rows whose effective source is not env render
     // a config-input-* field. Section B (deploy-time read-only): env/T0 rows are
     // platform-config-row-* summaries that never render an editable input.
+    const inputStates = await page
+      .locator('[data-testid^="config-input-"]')
+      .evaluateAll((inputs) =>
+        Object.fromEntries(
+          inputs.map((input) => [input.dataset.testid, { disabled: input.disabled }])
+        )
+      );
+    const platformRows = new Set(
+      await page
+        .locator('[data-testid^="platform-config-row-"]')
+        .evaluateAll((rows) => rows.map((row) => row.dataset.testid))
+    );
+    const secretToggles = new Set(
+      await page
+        .locator('[data-testid^="config-secret-toggle-"]')
+        .evaluateAll((toggles) => toggles.map((toggle) => toggle.dataset.testid))
+    );
     let envRows = 0;
     for (const [key, entry] of Object.entries(config)) {
-      const input = page.getByTestId(`config-input-${key}`);
-      const platformRow = page.getByTestId(`platform-config-row-${key}`);
-      const hasInput = (await input.count()) > 0;
-      const hasPlatformRow = (await platformRow.count()) > 0;
+      const input = inputStates[`config-input-${key}`];
+      const hasInput = Boolean(input);
+      const hasPlatformRow = platformRows.has(`platform-config-row-${key}`);
       if (!hasInput && !hasPlatformRow) continue; // not displayed in the editor
 
-      if (isLocked(entry)) {
-        // Section B — env/T0 rows are read-only platform summaries.
-        await expect(input, `platform row ${key} must not render an input`).toHaveCount(0);
-        await expect(platformRow, `platform row ${key}`).toHaveCount(1);
+      if (isLocked(entry) || hasPlatformRow) {
+        // Section B — env/T0 rows and keys without editable display metadata
+        // are read-only platform summaries.
+        expect(input, `platform row ${key} must not render an input`).toBeUndefined();
+        expect(hasPlatformRow, `platform row ${key}`).toBe(true);
         if (entry.source === 'env') envRows += 1;
         continue;
       }
@@ -259,13 +270,12 @@ test.describe('admin config editor (advanced settings)', () => {
       if (entry.secret) {
         // The masked display is always read-only; the "set new value" toggle is
         // the edit affordance for editable secrets.
-        await expect(input, `masked display ${key}`).toBeDisabled();
-        await expect(
-          page.getByTestId(`config-secret-toggle-${key}`),
-          `editable secret ${key}`
-        ).toBeVisible();
+        expect(input.disabled, `masked display ${key}`).toBe(true);
+        expect(secretToggles.has(`config-secret-toggle-${key}`), `editable secret ${key}`).toBe(
+          true
+        );
       } else {
-        await expect(input, `editable ${key}`).toBeEnabled();
+        expect(input.disabled, `editable ${key}`).toBe(false);
       }
     }
 
@@ -321,6 +331,7 @@ test.describe('admin config editor (advanced settings)', () => {
     page,
     request,
   }) => {
+    test.setTimeout(90_000);
     await putConfig(request, { EMAIL_PASSWORD: 'initial-secret' });
 
     await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
@@ -375,6 +386,7 @@ test.describe('admin config editor (advanced settings)', () => {
     page,
     request,
   }) => {
+    test.setTimeout(90_000);
     await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
     await openAdvancedSettings(page);
 

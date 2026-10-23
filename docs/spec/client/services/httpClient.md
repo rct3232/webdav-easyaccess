@@ -35,6 +35,7 @@
 - `responseType` (`'json'` default or `'blob'`)
 - `onDownloadProgress` (function): optional progress callback for `'blob'` streaming
 - `maxRetries` (number, default `3`)
+- A per-request `maxRetries: 0` disables retries for that request without changing the shared default.
 
 ### 2.3 Error Handling
 
@@ -73,3 +74,4 @@ The transport throws structured errors:
 - [ ] Network failures throw with `error.code = 'ERR_NETWORK'`.
 - [ ] 5xx responses retry with exponential backoff; after exhaustion, the last error is thrown with `error.response` preserved.
 - [ ] 4xx responses do not retry; `error.response` is available.
+- [ ] `maxRetries: 0` sends one attempt for a retryable 5xx response and throws that response error.

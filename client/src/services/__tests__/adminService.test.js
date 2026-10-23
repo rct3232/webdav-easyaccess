@@ -244,11 +244,15 @@ describe('adminService', () => {
         WEBDAV_USERNAME: 'user',
       });
 
-      expect(post).toHaveBeenCalledWith('/admin/config/test', {
-        target: 'webdav',
-        WEBDAV_URL: 'https://example.com/webdav',
-        WEBDAV_USERNAME: 'user',
-      });
+      expect(post).toHaveBeenCalledWith(
+        '/admin/config/test',
+        {
+          target: 'webdav',
+          WEBDAV_URL: 'https://example.com/webdav',
+          WEBDAV_USERNAME: 'user',
+        },
+        { maxRetries: 0 }
+      );
       expect(result).toEqual(resultData);
     });
 

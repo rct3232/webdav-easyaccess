@@ -23,6 +23,8 @@ import {
   openBlobMigrationDialog,
   pollJobStatus,
   pollJobStatusUntil,
+  tarpitEndpoint,
+  startTarpit,
   startBlobMigrationFromDialog,
   uploadAdminFile,
   waitForGateInactive,
@@ -486,5 +488,191 @@ test.describe('unified migration mode (WebDAV source)', () => {
     expect(modalBody).toContain('S3_BUCKET');
     expect(modalBody).toContain('Update them in .env manually');
     expect(modalBody).not.toContain('was saved to the server settings');
+  });
+
+  test('E2E-WEBDAV-MIG-005 (Flow C): Gate hold — app-guard force-redirect, /login allow-list, 409 on second start', async ({
+    page,
+    request,
+  }, testInfo) => {
+    const caseId = 'flow-c-gate-hold';
+    scratch = await bootMigrationScratch(testInfo, { caseId, backend: 'webdav' });
+    const { baseURL, destBucket } = scratch;
+
+    // A deterministic active gate: a real migration whose destination probe hangs
+    // on a local tarpit (accepts connections, never replies). The worker stays in
+    // probeDestination, so the gate stays active for the whole case.
+    tarpit = await startTarpit();
+    const hangEndpoint = tarpitEndpoint(tarpit);
+
+    await loginAsAdminUi(page);
+    await openSystemSettings(page);
+    await openBlobMigrationDialog(page);
+    await fillS3Dest(page, {
+      bucket: destBucket,
+      accessKey: S3_ACCESS_KEY,
+      secretKey: S3_SECRET_KEY,
+      endpoint: hangEndpoint,
+      region: S3_REGION,
+    });
+    await startBlobMigrationFromDialog(page, 'dry-run');
+    await expect(page).toHaveURL(/\/migration/);
+
+    // Precondition: the gate is genuinely active (job stuck on the probe).
+    const token = await loginToken(baseURL, request);
+    const statusRes = await request.get(`${baseURL}/api/migration/status`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const gateState = (await statusRes.json()) as { active?: boolean; jobId?: string };
+    expect(gateState.active).toBe(true);
+    expect(gateState.jobId).toBeDefined();
+
+    // A8: navigating to another route in the SPA → app-guard force-redirects back
+    // to /migration (client-side navigation keeps the session; a full reload of a
+    // PrivateRoute would 503 getMe and race a /login redirect instead).
+    await page.evaluate(() => {
+      window.history.pushState({}, '', '/mypage');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    await page.waitForURL(/\/migration/, { timeout: 15_000 });
+
+    // A9: a fresh tab's /login still loads (allow-list) and renders the form —
+    // not a 503 error page.
+    const loginPage = await page.context().newPage();
+    await loginPage.goto('/login');
+    // The login page's settings fetch (GET /api/settings/public) returns 503
+    // while the gate is active and the httpClient retries 5xx ~7s before the
+    // form renders — allow time, then assert the form (not a 503 error page).
+    await expect(loginPage.locator('input[name="username"]')).toBeVisible({ timeout: 25_000 });
+    await expect(loginPage).toHaveURL(/\/login/);
+    await loginPage.close();
+
+    // B7: a second blob start while a job is in flight → 409.
+    const second = await request.post(`${baseURL}/api/admin/migration/blobs`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: {
+        mode: 'dry-run',
+        force: false,
+        dest: {
+          type: 's3',
+          bucket: destBucket,
+          accessKey: S3_ACCESS_KEY,
+          secretKey: S3_SECRET_KEY,
+          endpoint: hangEndpoint,
+          region: S3_REGION,
+        },
+      },
+    });
+    expect(second.status()).toBe(409);
+  });
+
+  test('E2E-WEBDAV-MIG-006 (Flow F): Role-aware gate hold — an authenticated admin stays on /migration while a regular user and an anonymous visitor are routed to the public /maintenance page', async ({
+    page,
+    browser,
+    request,
+  }, testInfo) => {
+    const caseId = 'flow-f-role-aware-gate';
+    scratch = await bootMigrationScratch(testInfo, { caseId, backend: 'webdav' });
+    const { baseURL, destBucket } = scratch;
+
+    // Flow C gate-hold pattern: a real blob migration whose destination probe
+    // hangs on a local tarpit (accepts connections, never replies) keeps the
+    // worker in probeDestination and the gate active for the whole case.
+    tarpit = await startTarpit();
+    const hangEndpoint = tarpitEndpoint(tarpit);
+
+    await loginAsAdminUi(page);
+    const token = await loginToken(baseURL, request);
+
+    // Provision a regular (approved, non-admin) user via the admin API while
+    // the gate is still inactive so the call succeeds; userService
+    // auto-provisions the user's home node + grant. The user session runs in
+    // its own browser context so the per-context sessionStorage tokens never
+    // leak between the admin and the user roles.
+    const userName = `flow-f-user-${Date.now()}`;
+    const userPassword = 'FlowFUserE2e!123';
+    const createUser = await request.post(`${baseURL}/api/admin/users`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { username: userName, email: `${userName}@e2e.local`, password: userPassword },
+    });
+    expect(createUser.status()).toBe(201);
+
+    const userContext = await browser.newContext({ baseURL });
+    const userPage = await userContext.newPage();
+    await loginWithCredentials(userPage, userName, userPassword);
+    // Let the SPA settle on /files while the gate is still inactive (no 503s),
+    // so the later /maintenance redirect is attributable to the guard alone.
+    await expect(userPage.getByTestId('file-actions-fab')).toBeVisible({ timeout: 15_000 });
+    await expect(userPage).toHaveURL(/\/files(?:\/.*)?$/);
+
+    // Hold the gate: start a dry-run blob migration via the admin API against
+    // the hanging destination (dispatchWorker sets the gate synchronously, so
+    // the 202 response already implies an active gate).
+    const startRes = await request.post(`${baseURL}/api/admin/migration/blobs`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: {
+        mode: 'dry-run',
+        force: false,
+        dest: {
+          type: 's3',
+          bucket: destBucket,
+          accessKey: S3_ACCESS_KEY,
+          secretKey: S3_SECRET_KEY,
+          endpoint: hangEndpoint,
+          region: S3_REGION,
+        },
+      },
+    });
+    expect(startRes.status()).toBe(202);
+
+    const statusRes = await request.get(`${baseURL}/api/migration/status`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(statusRes.ok()).toBeTruthy();
+    const gateState = (await statusRes.json()) as { active?: boolean; jobId?: string };
+    expect(gateState.active).toBe(true);
+    expect(gateState.jobId).toBeDefined();
+
+    // Role a — authenticated admin: a client-side (history API) navigation away
+    // from /migration is force-redirected back by the role-aware guard. A full
+    // reload during a held gate would 503 GET /api/users/me and log the session
+    // out, so only the pushState + popstate idiom is safe here.
+    await page.evaluate(() => {
+      window.history.pushState({}, '', '/mypage');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    await expect(page).toHaveURL(/\/migration/, { timeout: 15_000 });
+
+    // Role b — regular non-admin user: the already-settled /files session is
+    // redirected by the guard on its next poll tick (≤4s + fetch) to the generic
+    // public /maintenance page, never to /migration.
+    await expect(userPage).toHaveURL(/\/maintenance/, { timeout: 15_000 });
+    await expect(
+      userPage.getByRole('heading', { name: 'System maintenance in progress' })
+    ).toBeVisible();
+    // An authenticated regular session gets a plain "Log out" link (nothing else
+    // to do on this screen) — not an operator sign-in action.
+    await expect(userPage.getByRole('link', { name: 'Log out' })).toBeVisible();
+    expect(userPage.url()).not.toMatch(/\/migration/);
+    // Anti-regression: the maintenance screen exposes NO migration operational
+    // copy (no job/type/counter text) — only the generic title/body/sign-out.
+    await expect(userPage.getByRole('heading', { name: /^Migration$/ })).toHaveCount(0);
+    await expect(userPage.getByText('Migration overview')).toHaveCount(0);
+    await expect(userPage.getByText(/copied\s+\d+/)).toHaveCount(0);
+    await userContext.close();
+
+    // Role c — anonymous visitor: a fresh context with no storage state hits the
+    // public, non-exempt /migration route directly and is redirected to the
+    // public /maintenance page (which renders no operational metadata either).
+    const anonContext = await browser.newContext({ baseURL });
+    const anonPage = await anonContext.newPage();
+    await anonPage.goto('/migration');
+    await expect(anonPage).toHaveURL(/\/maintenance/, { timeout: 15_000 });
+    await expect(
+      anonPage.getByRole('heading', { name: 'System maintenance in progress' })
+    ).toBeVisible();
+    // Anonymous visitors have no session to log out of, so no action is shown.
+    await expect(anonPage.getByRole('link', { name: 'Log out' })).toHaveCount(0);
+    await expect(anonPage.getByRole('heading', { name: /^Migration$/ })).toHaveCount(0);
+    await anonContext.close();
   });
 });

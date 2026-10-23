@@ -167,15 +167,15 @@ mobile-only cases in the shared file.
 
 | Old           | New                  |
 | ------------- | -------------------- |
-| `E2E-MIG-003` | `E2E-S3-MIG-001`     |
-| `E2E-MIG-009` | `E2E-S3-MIG-002`     |
-| `E2E-MIG-004` | `E2E-S3-MIG-003`     |
-| `E2E-MIG-005` | `E2E-S3-MIG-004`     |
-| `E2E-MIG-007` | `E2E-S3-MIG-005`     |
+| `E2E-MIG-004` | `E2E-S3-MIG-001`     |
+| `E2E-MIG-005` | `E2E-S3-MIG-002`     |
+| `E2E-MIG-007` | `E2E-S3-MIG-003`     |
 | `E2E-MIG-001` | `E2E-WEBDAV-MIG-001` |
 | `E2E-MIG-002` | `E2E-WEBDAV-MIG-002` |
 | `E2E-MIG-008` | `E2E-WEBDAV-MIG-003` |
 | `E2E-MIG-006` | `E2E-WEBDAV-MIG-004` |
+| `E2E-MIG-003` | `E2E-WEBDAV-MIG-005` |
+| `E2E-MIG-009` | `E2E-WEBDAV-MIG-006` |
 
 ## 7. File and project layout
 

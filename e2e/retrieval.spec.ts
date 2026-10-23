@@ -542,7 +542,9 @@ test('E2E-S3-RETRIEVAL-001: Results render as accordion zones with honest header
   // the bar; no results surface mounts before the submit.
   await searchBox(page).fill('al');
   await searchBox(page).pressSequentially('pha');
-  await page.waitForTimeout(500);
+  // Let the search-bar orbit/pending hold complete before submitting; a press
+  // during the single-flight window is intentionally ignored by the UI.
+  await page.waitForTimeout(2_000);
   expect(searchPosts(), 'typing must never hit the server').toBe(0);
   await expect(chipBar(page)).toHaveCount(0);
   await expect(zoneHeader(page, 'a')).toHaveCount(0);

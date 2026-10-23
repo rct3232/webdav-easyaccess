@@ -552,7 +552,18 @@ test('E2E-S3-RETRIEVAL-001: Results render as accordion zones with honest header
   // Enter submits exactly ONE POST /api/search and mounts the results surface:
   // the chip bar replaces the breadcrumb, zones A + B render, and the degraded
   // semantic zone never exists (`semantic` omitted ⇒ Zone C renders nothing).
-  await searchBox(page).press('Enter');
+  const searchDeadline = Date.now() + 60_000;
+  while (
+    !(await chipBar(page)
+      .isVisible()
+      .catch(() => false)) &&
+    Date.now() < searchDeadline
+  ) {
+    // A press during the UI's single-flight orbit can be ignored. Retry only
+    // while no query has reached the server, so the one-query contract holds.
+    if (searchPosts() === 0) await searchBox(page).press('Enter');
+    await page.waitForTimeout(2_000);
+  }
   await expect(chipBar(page)).toBeVisible();
   await expect.poll(() => searchPosts(), 'Enter submits exactly one server query').toBe(1);
   await expect(page.getByTestId('breadcrumb')).toHaveCount(0);

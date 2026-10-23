@@ -39,8 +39,8 @@ any Playwright worker count.
 - `npm run test:e2e:core` is a fast subset of the default gate.
 - `npm run test:e2e:webdav` is a separate backend-specific job. CI may run it
   in parallel with the default gate.
-- Worker count is supplied by CI. The suite layout must work with 1, 2, 4, or
-  more workers without a second cap.
+- Worker count is supplied by CI. The suite layout accepts 1, 2, 4, or more
+  workers without a second cap; CI sizes it to the host's CPU/RAM.
 
 ## 4. Resource model
 
@@ -269,8 +269,8 @@ WebDAV root.
 3. R7 integrates the new files/projects after R3-R6.
 4. R8 can run alongside R3-R6 for coverage/ID docs, then finalize after R7.
 5. R9 applies resource flags/compose cleanup.
-6. R10 runs the full matrix at workers 1, 2, and 4 (and a higher count when
-   the CI capacity allows).
+6. R10 runs the full matrix at workers 1, 2, and the host's default worker
+   count; a 4+ worker stress is capacity validation, not a fixed gate.
 7. R11 finalizes formatting and audits retired IDs.
 
 ## 11. Verification gates

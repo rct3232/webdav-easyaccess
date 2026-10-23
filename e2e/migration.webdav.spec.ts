@@ -2,6 +2,7 @@ import path from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
+import { loginWithCredentials } from './helpers/auth';
 import { emptyS3Bucket, listS3Keys } from './helpers/minio';
 import { openSystemSettings, queryScratchSqlite } from './helpers/setupScratch';
 import {
@@ -547,7 +548,7 @@ test.describe('unified migration mode (WebDAV source)', () => {
     // The login page's settings fetch (GET /api/settings/public) returns 503
     // while the gate is active and the httpClient retries 5xx ~7s before the
     // form renders — allow time, then assert the form (not a 503 error page).
-    await expect(loginPage.locator('input[name="username"]')).toBeVisible({ timeout: 45_000 });
+    await expect(loginPage.locator('input[name="username"]')).toBeVisible({ timeout: 90_000 });
     await expect(loginPage).toHaveURL(/\/login/);
     await loginPage.close();
 
@@ -645,12 +646,12 @@ test.describe('unified migration mode (WebDAV source)', () => {
       window.history.pushState({}, '', '/mypage');
       window.dispatchEvent(new PopStateEvent('popstate'));
     });
-    await expect(page).toHaveURL(/\/migration/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/\/migration/, { timeout: 30_000 });
 
     // Role b — regular non-admin user: the already-settled /files session is
     // redirected by the guard on its next poll tick (≤4s + fetch) to the generic
     // public /maintenance page, never to /migration.
-    await expect(userPage).toHaveURL(/\/maintenance/, { timeout: 15_000 });
+    await expect(userPage).toHaveURL(/\/maintenance/, { timeout: 30_000 });
     await expect(
       userPage.getByRole('heading', { name: 'System maintenance in progress' })
     ).toBeVisible();

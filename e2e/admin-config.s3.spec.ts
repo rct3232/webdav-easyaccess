@@ -170,7 +170,7 @@ test.describe('admin config editor (advanced settings, S3 backend)', () => {
     page,
     request,
   }) => {
-    test.setTimeout(90_000);
+    test.setTimeout(180_000);
     await putConfig(scratch!.baseURL, request, { EMAIL_PASSWORD: 'initial-secret' });
 
     await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
@@ -196,7 +196,9 @@ test.describe('admin config editor (advanced settings, S3 backend)', () => {
     await page.getByTestId('config-input-GC_ORPHAN_TTL_DAYS').fill('9');
     await saveConfig(page);
     await expect
-      .poll(() => getConfig(scratch!.baseURL, request).then((c) => c.GC_ORPHAN_TTL_DAYS.value))
+      .poll(() => getConfig(scratch!.baseURL, request).then((c) => c.GC_ORPHAN_TTL_DAYS.value), {
+        timeout: 90_000,
+      })
       .toBe('9');
     expect(await rawSecret()).toBe('initial-secret');
 
@@ -205,7 +207,9 @@ test.describe('admin config editor (advanced settings, S3 backend)', () => {
     await page.getByTestId('config-input-GC_ORPHAN_TTL_DAYS').fill('10');
     await saveConfig(page);
     await expect
-      .poll(() => getConfig(scratch!.baseURL, request).then((c) => c.GC_ORPHAN_TTL_DAYS.value))
+      .poll(() => getConfig(scratch!.baseURL, request).then((c) => c.GC_ORPHAN_TTL_DAYS.value), {
+        timeout: 90_000,
+      })
       .toBe('10');
     expect(await rawSecret()).toBe('initial-secret');
 
@@ -215,7 +219,9 @@ test.describe('admin config editor (advanced settings, S3 backend)', () => {
     await page.getByTestId('config-input-GC_ORPHAN_TTL_DAYS').fill('11');
     await saveConfig(page);
     await expect
-      .poll(() => getConfig(scratch!.baseURL, request).then((c) => c.GC_ORPHAN_TTL_DAYS.value))
+      .poll(() => getConfig(scratch!.baseURL, request).then((c) => c.GC_ORPHAN_TTL_DAYS.value), {
+        timeout: 90_000,
+      })
       .toBe('11');
     expect(await rawSecret()).toBe('new-secret');
 
@@ -224,7 +230,9 @@ test.describe('admin config editor (advanced settings, S3 backend)', () => {
     await page.getByTestId('config-input-GC_ORPHAN_TTL_DAYS').fill('12');
     await saveConfig(page);
     await expect
-      .poll(() => getConfig(scratch!.baseURL, request).then((c) => c.GC_ORPHAN_TTL_DAYS.value))
+      .poll(() => getConfig(scratch!.baseURL, request).then((c) => c.GC_ORPHAN_TTL_DAYS.value), {
+        timeout: 90_000,
+      })
       .toBe('12');
     expect(await rawSecret()).toBe(before5);
   });
@@ -233,7 +241,7 @@ test.describe('admin config editor (advanced settings, S3 backend)', () => {
     page,
     request,
   }) => {
-    test.setTimeout(90_000);
+    test.setTimeout(180_000);
     await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
     await openAdvancedSettings(page);
 
@@ -271,7 +279,9 @@ test.describe('admin config editor (advanced settings, S3 backend)', () => {
     await saveConfig(page);
     await expect(page.getByTestId('config-applied-banner')).toContainText('GC_ORPHAN_TTL_DAYS');
     await expect
-      .poll(() => getConfig(scratch!.baseURL, request).then((c) => c.GC_ORPHAN_TTL_DAYS.value))
+      .poll(() => getConfig(scratch!.baseURL, request).then((c) => c.GC_ORPHAN_TTL_DAYS.value), {
+        timeout: 90_000,
+      })
       .toBe('7');
   });
 

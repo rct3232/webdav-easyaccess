@@ -66,6 +66,7 @@ segment from root to deepest, tolerating already-existing collections.
 - **Already-exists tolerance:** `405 Method Not Allowed`, `301/302/303` redirects, or error
   messages matching `already exists`/`method not allowed` are treated as success. A `409`
   is disambiguated with a `client.exists()` probe before being treated as a real failure.
+- **Transient transport retry:** a MKCOL whose transport fails with `socket hang up`, `ECONNRESET`, `ECONNREFUSED`, `EPIPE`, or `ETIMEDOUT` is retried up to three attempts (50 ms, 150 ms backoff) before `createDirFailed` is surfaced. HTTP status responses (405/409/etc.) are not retried.
 - **Callers:** `WebdavFileStoreAdapter.createDirectory` (and thus `WebdavBlobStore.createDirectory`,
   used by `blobStorageService.createDirectoryWebdav`), and the
   streamed move/copy fallbacks. The tolerance makes these callers' existing

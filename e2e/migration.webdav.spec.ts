@@ -263,6 +263,10 @@ test.describe('unified migration mode (WebDAV source)', () => {
     // A7: resume — rerun apply; already-migrated nodes are skipped.
     await page.getByRole('dialog').getByRole('button', { name: 'Go to settings' }).click();
     await page.waitForURL(/\/mypage/);
+    // Reload so the resumed dialog does not inherit the cancelled job's
+    // long-lived browser connections/fetch queue (seen as a stuck "Loading
+    // migration info..." under the full parallel WebDAV job).
+    await page.reload();
     await assertOnSystemSettings(page);
     await openBlobMigrationDialog(page);
     await fillS3Dest(page, {

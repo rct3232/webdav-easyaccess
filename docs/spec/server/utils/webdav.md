@@ -37,11 +37,11 @@
 
 #### Re-exported functions (defined elsewhere, re-exported from webdav.js for backward compatibility)
 
-| Function       | Actual location                       | Description                                                                |
-| -------------- | ------------------------------------- | -------------------------------------------------------------------------- |
-| testConnection | `server/infrastructure/webdavTest.js` | Test WebDAV connectivity (creates ephemeral client, probes root directory) |
-| isImageFile    | `server/utils/fileTypes.js`           | Check if filename has an image extension via shared `getFileType()`        |
-| isVideoFile    | `server/utils/fileTypes.js`           | Check if filename has a video extension via shared `getFileType()`         |
+| Function       | Actual location                       | Description                                                                                                                         |
+| -------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| testConnection | `server/infrastructure/webdavTest.js` | Test WebDAV connectivity (creates ephemeral client, probes root directory; transient transport failures retry up to three attempts) |
+| isImageFile    | `server/utils/fileTypes.js`           | Check if filename has an image extension via shared `getFileType()`                                                                 |
+| isVideoFile    | `server/utils/fileTypes.js`           | Check if filename has a video extension via shared `getFileType()`                                                                  |
 
 ### 2.2.1 FileStoreAdapter Abstraction Layer
 

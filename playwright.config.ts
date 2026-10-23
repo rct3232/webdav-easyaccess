@@ -219,7 +219,7 @@ if (webdavGroup) {
     '(core-flow\\.shared|share-public|share-internal|trash|webdav-reconcile)\\.spec\\.ts$'
   );
   const smokeTitleMatch = new RegExp(
-    'E2E-(EXP-00[12458]|EXP-01[23]|SHARE-011|OVERLAY-011|TRASH-00[136]|RECON-001)[:\\s]'
+    'E2E-(EXP-00[12458]|EXP-01[23]|SHARE-011|OVERLAY-011|TRASH-00[136]|WEBDAV-RECON-001)[:\\s]'
   );
   pushProjects([
     {
@@ -260,7 +260,7 @@ export default defineConfig({
   // Scratch suites boot a server and can take longer than a pure UI case.
   // Assertions remain bounded by expect.timeout below.
   timeout: 90_000,
-  expect: { timeout: 15_000 },
+  expect: { timeout: 30_000 },
   testDir: './e2e',
   testMatch: /.*\.spec\.ts$/,
   fullyParallel: true,

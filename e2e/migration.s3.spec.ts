@@ -105,6 +105,7 @@ test.describe('unified migration mode (S3 backend)', () => {
     const hangEndpoint = tarpitEndpoint(tarpit);
 
     await loginAsAdminUi(page);
+    await openSystemSettings(page);
     await openBlobMigrationDialog(page);
     await fillS3Dest(page, {
       bucket: destBucket,

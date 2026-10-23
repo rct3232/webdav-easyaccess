@@ -15,7 +15,7 @@ import { getSessionToken, resolveNodeId } from './helpers/resolvePath';
 import { composeProject, e2ePorts } from './helpers/ports';
 
 /**
- * E2E-RECON-001 — DEF-18 WebDAV Tier 2 reconciliation, API level.
+ * E2E-WEBDAV-RECON-001 — DEF-18 WebDAV Tier 2 reconciliation, API level.
  *
  * Rationale (non-destructiveness, not deletion): GC Tier 2 only ages entries
  * into candidacy after GC_ORPHAN_TTL_DAYS (floor 1 day, S2), and every
@@ -109,7 +109,7 @@ test.afterEach(async ({ request }) => {
   await flushPrivateWorkspaceCleanups(request);
 });
 
-test('E2E-RECON-001: webdav Tier 2 reconciles without destructive surprises', async ({
+test('E2E-WEBDAV-RECON-001: webdav Tier 2 reconciles without destructive surprises', async ({
   page,
   request,
 }, testInfo) => {

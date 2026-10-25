@@ -57,7 +57,6 @@ test.beforeAll(async ({}, testInfo) => {
     ADMIN_DEFAULT_PASSWORD: 'admin',
     ...s3ScratchEnv(bucket),
     ...scratchRuntimeEnv({
-      AI_SEMANTIC_SEARCH_ENABLED: 'false',
       WEA_SKIP_GC_SCHEDULER: '1',
     }),
   });

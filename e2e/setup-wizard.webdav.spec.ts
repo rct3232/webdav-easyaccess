@@ -6,6 +6,7 @@ import { expect, test } from '@playwright/test';
 
 import { loginWithCredentials } from './helpers/auth';
 import { queryScratchPg } from './helpers/setupScratch';
+import { skipWhenUnavailable } from './helpers/skipPolicy';
 import {
   PG_HOST,
   PG_PASSWORD,
@@ -81,7 +82,7 @@ test('E2E-WEBDAV-SETUP-002 (Case 3): Postgresql + webdav seeds scratch PG, not s
   page,
   request,
 }, testInfo) => {
-  test.skip(
+  skipWhenUnavailable(
     !(await isPgReachable()),
     'E2E-WEBDAV-SETUP-002 requires reachable scratch PostgreSQL (:5433)'
   );

@@ -10,12 +10,12 @@ import { composeProject, e2ePorts, s3Endpoint, webdavBase } from './ports';
 import { emptyS3Bucket, ensureS3BucketExists } from './minio';
 
 /**
- * Hermetic scratch-instance helpers for the first-run setup-wizard
- * (`setup-wizard.spec.ts`), admin-config (`admin-config.spec.ts`) and migration
- * (`migration.spec.ts`) E2E specs. The shared E2E
- * infrastructure (`:5002` server, `:3000` client, `webdav_e2e` PG database) is
- * unusable for these specs because they spawn and supervise their own scratch
- * instance — in the wizard case restart is the behavior under test.
+ * Hermetic scratch-instance helpers for the backend-split E2E suites
+ * (`*.s3.spec.ts` / `*.webdav.spec.ts`). These suites cannot use the shared E2E
+ * infrastructure (the band's API/client servers and the shared `webdav_e2e` PG
+ * database) because each one spawns and supervises its own scratch instance
+ * with its own metadata store and file backend; in the wizard case restart is
+ * the behavior under test.
  *
  * Every helper here is scratch-owned: own `.env` via `DOTENV_CONFIG_PATH`, own
  * sqlite path, own scratch PG database (`webdav_e2e_setup`, separate from the

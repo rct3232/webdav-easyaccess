@@ -23,6 +23,7 @@ import {
 } from './helpers/scratchUser';
 import { flushPrivateWorkspaceCleanups, uploadFileAt } from './helpers/files';
 import { resolveNodeId } from './helpers/resolvePath';
+import { skipWhenUnavailable } from './helpers/skipPolicy';
 
 /**
  * E2E-S3-AI-001 — semantic search over the embed-enabled engine
@@ -160,7 +161,7 @@ let userToken = '';
 let homeNodeId = 0;
 
 test.beforeAll(async ({ request }, testInfo) => {
-  test.skip(
+  skipWhenUnavailable(
     !fs.existsSync(
       path.join(WEA_MODEL_DIR, modelLock.repo, modelLock.revision, 'onnx', 'model_q4.onnx')
     ),

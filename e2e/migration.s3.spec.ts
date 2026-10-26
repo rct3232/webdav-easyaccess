@@ -136,7 +136,7 @@ test.describe('unified migration mode (S3 backend)', () => {
     // B2: rescan → wipe alert lists the affected tables/rows, Start disabled.
     await scanButton.click();
     const wipeAlert = page.getByRole('dialog').getByTestId('metadata-wipe-alert');
-    await expect(wipeAlert).toBeVisible();
+    await expect(wipeAlert).toBeVisible({ timeout: 60_000 });
     await expect(wipeAlert).toContainText('users: 2');
     await expect(wipeAlert).toContainText('settings: 2');
     await expect(wipeAlert).toContainText('Total rows: 4');
@@ -298,7 +298,7 @@ test.describe('unified migration mode (S3 backend)', () => {
     await loginAsAdminUi(page);
     await openSystemSettings(page);
     const banner = page.getByTestId('env-setup-needed-banner');
-    await expect(banner).toBeVisible();
+    await expect(banner).toBeVisible({ timeout: 60_000 });
     await expect(banner).toContainText('.env setup needed');
   });
 

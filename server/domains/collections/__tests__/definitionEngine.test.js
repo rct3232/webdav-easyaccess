@@ -117,6 +117,55 @@ describe('definitionEngine vector membership', () => {
     expect(admitted.size).toBe(0);
   });
 
+  it('keepMissing keeps an existing member without a pooled vector and never adds a non-member', async () => {
+    const vector = {
+      scoreFor: async (nodeId) => (Number(nodeId) === 3 ? null : 0.9),
+      thetaIn: 0.66,
+      thetaOut: 0.58,
+      previousMembers: new Set([3]),
+      keepMissing: true,
+    };
+
+    const admitted = await engine.evaluateDefinition({
+      definition: seedDefinition,
+      candidateNodes: nodes.slice(1),
+      nodesById,
+      providers: providers(),
+      vector,
+    });
+
+    // 2 is a scored non-member above theta_in; 3 is a previous member whose
+    // vector is missing (enrichment gap) — kept. The reverse case (3 not a
+    // previous member) admits nothing for it.
+    expect(admitted.get(2)).toContain('similar');
+    expect(admitted.get(3)).toContain('similar');
+
+    const withoutPrevious = await engine.evaluateDefinition({
+      definition: seedDefinition,
+      candidateNodes: [nodes[2]],
+      nodesById,
+      providers: providers(),
+      vector: { ...vector, previousMembers: new Set() },
+    });
+    expect(withoutPrevious.size).toBe(0);
+  });
+
+  it('without keepMissing a missing pooled vector drops the candidate (upload-hook parity)', async () => {
+    const admitted = await engine.evaluateDefinition({
+      definition: seedDefinition,
+      candidateNodes: [nodes[2]],
+      nodesById,
+      providers: providers(),
+      vector: {
+        scoreFor: async () => null,
+        thetaIn: 0.66,
+        thetaOut: 0.58,
+        previousMembers: new Set([3]),
+      },
+    });
+    expect(admitted.size).toBe(0);
+  });
+
   it('computes cosine similarity and rejects dimension/value mismatches', () => {
     expect(engine.cosineSimilarity([1, 0], [1, 0])).toBe(1);
     expect(engine.cosineSimilarity([1, 0], [0, 1])).toBe(0);

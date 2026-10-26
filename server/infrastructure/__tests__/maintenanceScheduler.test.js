@@ -34,6 +34,7 @@ const {
   resolveAnchorHour,
   resolveNightlyDelayMs,
   startUsageRollupScheduler,
+  startEvolutionScheduler,
 } = require('../maintenanceScheduler');
 
 function setIntervalValue(value) {
@@ -612,6 +613,108 @@ describe('maintenanceScheduler', () => {
       await jest.advanceTimersByTimeAsync(DAY); // next anchor (24h later)
       expect(fakes.usageService.rollupNodeActivity).toHaveBeenCalledTimes(2);
       expect(timer).not.toBeNull();
+    });
+  });
+
+  describe('startEvolutionScheduler (§3.2 nightly backbone)', () => {
+    const DAY = 86400000;
+    // 2026-09-22T02:00:00Z — one hour before the default 03:00 anchor.
+    const JUST_BEFORE_ANCHOR = Date.UTC(2026, 8, 22, 2, 0, 0);
+
+    function scheduleEvolution(evolutionService, config = {}) {
+      mockGetConfigSync = (key) => (key === 'AI_NIGHTLY_ANCHOR_HOUR_UTC' ? '3' : config[key]);
+      delete process.env.WEA_SKIP_EVOLUTION_SCHEDULER;
+      jest.useFakeTimers();
+      jest.setSystemTime(JUST_BEFORE_ANCHOR);
+      return startEvolutionScheduler({ evolutionService });
+    }
+
+    afterEach(() => {
+      jest.clearAllTimers();
+      jest.useRealTimers();
+      delete process.env.WEA_SKIP_EVOLUTION_SCHEDULER;
+      mockGetConfigSync = undefined;
+    });
+
+    const serviceFake = () => ({
+      runEvolutionPass: jest.fn(async () => ({ perUser: [], report: null })),
+    });
+
+    it('returns null under the WEA_SKIP_EVOLUTION_SCHEDULER seam', () => {
+      const prev = process.env.WEA_SKIP_EVOLUTION_SCHEDULER;
+      process.env.WEA_SKIP_EVOLUTION_SCHEDULER = '1';
+      try {
+        expect(startEvolutionScheduler({ evolutionService: serviceFake() })).toBeNull();
+      } finally {
+        if (prev === undefined) delete process.env.WEA_SKIP_EVOLUTION_SCHEDULER;
+        else process.env.WEA_SKIP_EVOLUTION_SCHEDULER = prev;
+      }
+    });
+
+    it('returns null when the evolution service is missing', () => {
+      expect(startEvolutionScheduler({})).toBeNull();
+    });
+
+    it('runs ONE full pass per nightly anchor and re-arms for the next day', async () => {
+      const fake = serviceFake();
+      const timer = scheduleEvolution(fake);
+      expect(timer).not.toBeNull();
+
+      await jest.advanceTimersByTimeAsync(3600000);
+      expect(fake.runEvolutionPass).toHaveBeenCalledTimes(1);
+      expect(fake.runEvolutionPass).toHaveBeenCalledWith({ passes: 'full' });
+
+      await jest.advanceTimersByTimeAsync(DAY);
+      expect(fake.runEvolutionPass).toHaveBeenCalledTimes(2);
+    });
+
+    it('AI_EVOLUTION_ENABLED=false at fire time performs zero acts and still re-arms', async () => {
+      const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+      const fake = serviceFake();
+      scheduleEvolution(fake, { AI_EVOLUTION_ENABLED: 'false' });
+
+      await jest.advanceTimersByTimeAsync(3600000);
+      expect(fake.runEvolutionPass).not.toHaveBeenCalled();
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('AI_EVOLUTION_ENABLED=false'));
+
+      // config flips back on → the next anchor runs the pass
+      await jest.advanceTimersByTimeAsync(DAY);
+      expect(logSpy).toHaveBeenCalledTimes(2);
+      logSpy.mockRestore();
+    });
+
+    it('AI_EVOLUTION_NIGHTLY_ENABLED=false pauses the slot', async () => {
+      const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+      const fake = serviceFake();
+      scheduleEvolution(fake, { AI_EVOLUTION_NIGHTLY_ENABLED: 'false' });
+
+      await jest.advanceTimersByTimeAsync(3600000);
+      expect(fake.runEvolutionPass).not.toHaveBeenCalled();
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('AI_EVOLUTION_NIGHTLY_ENABLED=false')
+      );
+      logSpy.mockRestore();
+    });
+
+    it('a failing pass is logged and never throws out of the tick', async () => {
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const fake = {
+        runEvolutionPass: jest.fn(async () => {
+          throw new Error('evolution exploded');
+        }),
+      };
+      scheduleEvolution(fake);
+
+      await expect(jest.advanceTimersByTimeAsync(3600000)).resolves.not.toThrow();
+      expect(errorSpy).toHaveBeenCalledWith(
+        'Scheduled evolution pass failed:',
+        'evolution exploded'
+      );
+      errorSpy.mockRestore();
+
+      // still re-armed
+      await jest.advanceTimersByTimeAsync(DAY);
+      expect(fake.runEvolutionPass).toHaveBeenCalledTimes(2);
     });
   });
 });

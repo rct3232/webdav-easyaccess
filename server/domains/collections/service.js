@@ -1316,6 +1316,62 @@ async function runDefinitionPreview(userId, definition, { previousMembers = new 
   };
 }
 
+/**
+ * Materialized-membership evaluation seam for the evolution reconcile pass
+ * (§2.3/§2.4-bis). Evaluates a definition over the requester-visible candidate
+ * set with the pooled-vector θ band and the hysteresis keep rule
+ * (`previousMembers`), then subtracts the collection's exclusions. Vector
+ * definitions run with `keepMissing`: an existing member whose pooled vector is
+ * missing or from another model survives; a non-member without a vector is not
+ * admitted. A vector definition with no resolvable reference (no active embed
+ * model / missing seed vector / foreign-model centroid) admits nothing and
+ * keeps its existing members (nothing can be scored).
+ *
+ * @param {number} userId - collection OWNER whose corpus defines the candidates
+ * @param {Object} definition - stored definition payload
+ * @param {{ previousMembers?: Set<number>|number[], collectionId?: number|null }} [options]
+ * @returns {Promise<Map<number, string>>} admitted nodeId → matched reason
+ */
+async function evaluateDefinitionMembership(
+  userId,
+  definition,
+  { previousMembers = new Set(), collectionId = null } = {}
+) {
+  if (!definitionEngine.hasDefinition(definition)) return new Map();
+  const previous =
+    previousMembers instanceof Set ? previousMembers : new Set(previousMembers || []);
+  const candidates = await loadVisibleCandidates(userId);
+  const providers = await buildProviders(userId);
+  const isVector = definitionEngine.isVectorDefinition(definition);
+  let vector = null;
+  if (isVector) {
+    vector = await buildVectorContext(definition, [...candidates.keys()], previous);
+    if (vector) {
+      vector.keepMissing = true;
+    } else {
+      vector = {
+        previousMembers: previous,
+        thetaIn: 1,
+        thetaOut: 1,
+        keepMissing: true,
+        scoreFor: () => null,
+      };
+    }
+  }
+  const admitted = await definitionEngine.evaluateDefinition({
+    definition,
+    candidateNodes: [...candidates.values()],
+    nodesById: candidates,
+    providers,
+    vector,
+  });
+  if (collectionId != null) {
+    const exclusions = await collectionsStore.listExclusions(collectionId);
+    for (const excludedId of exclusions || []) admitted.delete(Number(excludedId));
+  }
+  return admitted;
+}
+
 // ---------------------------------------------------------------------------
 // Merge (§2.9)
 // ---------------------------------------------------------------------------
@@ -1605,6 +1661,8 @@ module.exports = {
   getForNodes,
   checkUploadAdmissions,
   checkUploadAdmissionsForNode,
+  resolveOwnerIdForNode,
+  evaluateDefinitionMembership,
   listGrants,
   grantCollectionAccess,
   revokeCollectionAccess,

@@ -60,6 +60,22 @@ router.post(
   })
 );
 
+router.post(
+  '/evolution/hint',
+  authenticateToken,
+  requireUser,
+  requireNonAdmin,
+  asyncHandler(async (req, res) => {
+    // Queue-drain hint (§2.4): arms the caller's upload batch debounce for
+    // immediate execution. Latency sugar only — the server debounce remains
+    // authoritative, so a lost hint is safe. The pass runs asynchronously
+    // under the per-user lock; this route never returns pass output.
+    const evolutionService = require('./evolutionService');
+    const scheduled = evolutionService.armUploadTrigger(req.user.full.id, { immediate: true });
+    res.status(202).json({ scheduled });
+  })
+);
+
 router.get(
   '/merge-suggestions',
   authenticateToken,

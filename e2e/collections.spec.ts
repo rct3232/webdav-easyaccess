@@ -215,9 +215,19 @@ async function clickTreeItem(page: Page, isMobile: boolean, locator) {
 }
 
 async function openCardMenu(page: Page, name: string, action: string): Promise<void> {
-  await expect(collectionCard(page, name)).toBeVisible({ timeout: 10_000 });
-  await collectionCard(page, name).locator('[data-testid^="card-menu-button-"]').click();
-  await page.getByTestId(`card-menu-option-${action}`).click();
+  const card = collectionCard(page, name);
+  const menuButton = card.locator('[data-testid^="card-menu-button-"]');
+  const option = page.getByTestId(`card-menu-option-${action}`);
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  // The collections list can refresh/remount immediately after navigation. If
+  // the menu did not survive that refresh, retry the open once the card is
+  // stable; this remains an observable, bounded interaction.
+  await expect(async () => {
+    if (await option.isVisible().catch(() => false)) return;
+    await menuButton.click();
+    await expect(option).toBeVisible({ timeout: 10_000 });
+  }).toPass({ timeout: 60_000 });
+  await option.click();
 }
 
 /** File-parity open (P-3): double-click the card body on desktop; mobile taps

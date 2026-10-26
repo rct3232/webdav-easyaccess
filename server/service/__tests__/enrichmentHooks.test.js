@@ -144,7 +144,7 @@ describe('enrichment hooks — post-commit seams + enqueue decision table', () =
 
       expect(aiJobsRepository.enqueue).toHaveBeenCalledTimes(1);
       expect(aiJobsRepository.enqueue).toHaveBeenCalledWith(result.nodeId, 'embed', 1, sha256(content));
-      const [, kind, generation] = aiJobsRepository.enqueue.mock.calls[0];
+      const [, , generation] = aiJobsRepository.enqueue.mock.calls[0];
       expect(typeof generation).toBe('number'); // INTEGER, not 'v1' (regression guard)
       await cleanupNode(result.nodeId);
     });
@@ -248,7 +248,7 @@ describe('enrichment hooks — post-commit seams + enqueue decision table', () =
 
       expect(aiJobsRepository.enqueue).toHaveBeenCalledTimes(1);
       expect(aiJobsRepository.enqueue).toHaveBeenCalledWith(seeded.nodeId, 'embed', 1, sha256(newContent));
-      const [, kind, generation] = aiJobsRepository.enqueue.mock.calls[0];
+      const [, , generation] = aiJobsRepository.enqueue.mock.calls[0];
       expect(typeof generation).toBe('number');
       expect(result.contentHash).toBe(sha256(newContent));
       await cleanupNode(seeded.nodeId);
@@ -587,7 +587,7 @@ describe('enrichment hooks — post-commit seams + enqueue decision table', () =
       const { node } = await seedVersionedNode(uniqueName('seam4-pic.jpg'));
       const svc = buildVersionsService();
 
-      const result = await svc.restoreVersion('user-1', node.id, 1, { is_admin: 0 });
+      const _result = await svc.restoreVersion('user-1', node.id, 1, { is_admin: 0 });
 
       expect(enqueuedKinds()).toEqual(['caption']);
       expect(aiJobsRepository.enqueue).toHaveBeenCalledWith(node.id, 'caption', 1, sha256(Buffer.from('seam4-v1-content')));

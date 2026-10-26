@@ -556,7 +556,9 @@ test('E2E-S3-RETRIEVAL-001: Results render as accordion zones with honest header
       .isVisible()
       .catch(() => false)
   ) {
-    await page.getByRole('button', { name: 'File actions' }).click();
+    // The FAB is visually underneath the floating search bar; dispatch its
+    // React onClick so the overlay cannot intercept the menu-close action.
+    await page.getByTestId('file-actions-fab').evaluate((el) => el.click());
   }
   await searchBox(page).click();
   await expect(searchBox(page)).toBeFocused();
